@@ -1,9 +1,5 @@
 import type { FrequencyPace } from "@/lib/frequency-targets";
-import {
-  type ProgressPaceTone,
-  PACE_BORDER_CLASS,
-  PACE_FILL_CLASS,
-} from "@/lib/pace-presentation";
+import { PACE_BORDER_CLASS, PACE_FILL_CLASS } from "@/lib/pace-presentation";
 
 // One weekly frequency target's progress, normalized for display.
 export interface WeeklyTarget {
@@ -11,27 +7,7 @@ export interface WeeklyTarget {
   label: string;
   count: number;
   perWeek: number;
-  met: boolean;
-  // Paced status (#748 item 3 / #760). When supplied it drives the chip's tone so
-  // every surface agrees (one computation: getFrequencyTargetProgress). Optional so
-  // a caller with no pace data falls back to the legacy met/count colouring below.
-  pace?: FrequencyPace;
-}
-
-// The chip's pace verdict as a shared PaceTone (#780). With a paced `pace` (every LIVE
-// call site passes it — guarded by pace-chip-wiring.test.ts) the tone IS that
-// FrequencyPace, so a chip is never "failed"/rose: a recurring week resets rather than
-// fails. Only the LEGACY met/count fallback (a caller with no pace data — none of the
-// live four) can reach the old not-started rose, kept solely for backward compat.
-function chipTone(
-  met: boolean,
-  count: number,
-  pace?: FrequencyPace
-): ProgressPaceTone {
-  // A quiet week (#5395) has no word to print and the chip prints none, so it keeps
-  // the in-progress brand tint rather than inventing a fourth colour.
-  if (pace) return pace === "quiet" ? "on-pace" : pace;
-  return met ? "met" : count > 0 ? "behind" : "failed";
+  pace: FrequencyPace;
 }
 
 // The canonical weekly-target chip: a labelled row of squares (one per weekly rep,
@@ -40,7 +16,7 @@ function chipTone(
 // amber = behind (never rose for a paced week). Becomes a button when `onClick` is
 // given (e.g. to select it for editing).
 export function WeeklyTargetChip({
-  target: { label, count, perWeek, met, pace },
+  target: { label, count, perWeek, pace },
   onClick,
   selected,
 }: {
@@ -48,7 +24,8 @@ export function WeeklyTargetChip({
   onClick?: () => void;
   selected?: boolean;
 }) {
-  const tone = chipTone(met, count, pace);
+  // A quiet week prints no verdict and keeps the in-progress tint.
+  const tone = pace === "quiet" ? "on-pace" : pace;
   const base = `flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${PACE_BORDER_CLASS[tone]}`;
   const inner = (
     <>

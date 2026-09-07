@@ -69,7 +69,6 @@ export default async function PlanSection() {
             ),
             count: t.count,
             perWeek: t.per_week,
-            met: t.met,
             pace: t.pace,
           }))}
         />
