@@ -44,7 +44,8 @@ export function DoseOfferProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// The fold reports whether its dose offer is visible on the selected day.
+// The fold says whether its dose offer is on screen. Called from the same handlers
+// that raise and clear the offer itself, so the signal cannot drift from the block.
 export function useDoseOfferSignal(): (live: boolean) => void {
   return useContext(DoseOfferContext)?.setLive ?? (() => {});
 }

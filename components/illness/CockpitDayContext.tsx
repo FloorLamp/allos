@@ -89,7 +89,12 @@ export function CockpitDayProvider({
         altDate,
         activeDate: day,
         isPrimaryDay: day === todayStr,
-        // Closed episodes and history views can have a past primary day.
+        // "TODAY" ONLY WHEN IT IS TODAY (#5489). Every control beneath this card now
+        // takes its day's SPELLING from here, so a default of "Today" would put the
+        // word on a card that is not standing on today — a CLOSED episode's panel
+        // stands on the episode's last active day, and `/history?day=<past>` stands on
+        // the day being read. Unlabelled, such a card names its day through the
+        // login's own date shape (#964); a host that has better words still passes them.
         dateLabel:
           dateLabel ??
           (date === todayStr ? "Today" : formatWeekdayDate(date, prefs)),
@@ -132,7 +137,11 @@ export function useDayBinding(fallbackDate: string, tz?: string): CockpitDay {
   };
 }
 
-// Reuse the labels displayed by the surface's day selector.
+// THE WORDS A SURFACE USES FOR ONE OF ITS DAYS (#5489) — the same words its toggle
+// shows, or null when the day is not one this surface names. Every control beneath a
+// day context reads its day's SPELLING here rather than re-deriving one from the
+// clock: four consumers each asked the clock and three of them answered a storage
+// day, which is how one card came to show `Yesterday` above `2026-09-06`.
 export function cockpitDayLabel(card: CockpitDay, day: string): string | null {
   if (day === card.date) return card.dateLabel;
   if (card.altDate !== undefined && day === card.altDate)

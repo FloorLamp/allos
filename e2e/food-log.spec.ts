@@ -913,6 +913,12 @@ test("the time question relabels on a past day and its answer is per-day (#4118)
   await expect(page.getByTestId("food-eating-time")).toBeVisible();
   await expect(page.getByTestId("food-when-summary")).toHaveText("Set time?");
   await openWhenFold(page);
+  // The shared control renders a FIXED day as text, and names it relatively only for
+  // today — a past day reads as its own WRITTEN date (#5489 fix 3: the storage
+  // spelling this used to print is not a sentence, and the login's date shape is).
+  const whenDay = page.getByTestId("food-when-date");
+  await expect(whenDay).not.toHaveText(/^\d{4}-\d{2}-\d{2}$/);
+  await expect(whenDay).not.toHaveText("Today");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "with no time until you set one"
   );
