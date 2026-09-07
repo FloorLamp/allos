@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import SkinLesionForm from "./SkinLesionForm";
 import TrackSkinFollowUpControl from "./TrackSkinFollowUpControl";
 import LesionPhotoStrip from "./LesionPhotoStrip";
@@ -10,7 +10,7 @@ import FilterPills from "@/components/FilterPills";
 import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
-import { useConfirmedAction } from "@/components/useConfirmedAction";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import OverflowMenu, {
   MENU_ITEM,
@@ -53,20 +53,26 @@ function LesionRecordRow({
   // it, so the shared Undo toast is the safety net behind the confirm — and the photo
   // FILES stay on disk for the retention window so a restore re-points at them.
   const undoable = useUndoableDelete();
-  const { run: runDelete, pending: deleting } = useConfirmedAction(
-    {
-      title: "Delete lesion record",
-      message: "Delete this observation and its photos?",
-      confirmLabel: "Delete",
-    },
-    async () => {
+  const confirm = useConfirm();
+  const [deleting, startTransition] = useTransition();
+
+  async function runDelete() {
+    if (
+      !(await confirm({
+        title: "Delete lesion record",
+        message: "Delete this observation and its photos?",
+        confirmLabel: "Delete",
+      }))
+    )
+      return;
+    startTransition(async () => {
       const fd = new FormData();
       fd.set("id", String(record.id));
       await undoable(deleteSkinLesion, fd, {
         deletedMessage: "Lesion record deleted.",
       });
-    }
-  );
+    });
+  }
   const letters = abcdeLetters(record);
   if (editing) {
     return (
