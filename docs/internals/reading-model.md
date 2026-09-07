@@ -1,809 +1,212 @@
 # The reading model
 
-Status: partial (phases 1 and 2 shipped — one read model and one write core over
-the existing three stores; the physical merge is a separate, later decision)
-
-The app stores dated numeric readings in three places, and before #1997 every
-consumer knew which one it was reading:
-
-| store             | shape                                              | what it carries                                                                              |
-| ----------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `body_metrics`    | WIDE — one row per day, up to three measures on it | value, day, `source`, the #133 edit lock, shared notes, a stated `occurred_at` (#2235)       |
-| `metric_samples`  | TALL — `metric`/`value`, one row per sample        | value, day, an absolute start/end instant, `source`, the edit lock                           |
-| `medical_records` | OBSERVATIONS — one row per reported result         | value, day, canonical name, the lab's own range, flag, document / encounter / provider links |
-
-That coupling is the root of a family of bugs, not a background detail: two
-"7-day averages" with different semantics (#1909), vitals rendered by the lab
-renderer (#1932), three editability contracts (#1933/#1934), clinical knowledge
-stranded in one store while the readings it should judge stream into another
-(#1996), side-state keyed differently per store (#1931). A surface that names a
-TABLE cannot ask a question about a QUANTITY.
-
-## Phase 1 (shipped): one identity-keyed `Reading`
-
-`lib/reading-model.ts` is the pure shape and mapping; `lib/queries/readings.ts`
-presents the existing rows in it. **No schema change, no migration, no write
-path** — every store keeps its own writers and every store-specific reader keeps
-working unchanged.
-
-```ts
-interface Reading {
-  identity: string; // the #482 canonical family — how knowledge resolves
-  value: number;
-  unit: string;
-  date: string; // profile-local day
-  measuredAt: string | null; // the instant, where the row records one:
-  // metric_samples.started_at, or the stated occurred_at on body_metrics
-  // (#2235) and medical_records (#2154). Null = day-grain, in every store.
-  source: "wearable" | "manual" | "import" | "clinical";
-  store: ReadingStore; // the physical row a surface can still reach
-  rowId: number;
-  sourceKey: string | null; // the row's raw `source` column
-  edited: boolean;
-  notes: string | null;
-  provenance?: ReadingProvenance; // observation-only, ABSENT on a stream row
-}
-```
-
-Four rules the shape encodes:
-
-- **Identity, not table.** `readingIdentity()` is `biomarkerFamily()` (#482) —
-  the same function the dedup partition, the `is_latest` marker, the star store
-  and SQL's `biomarker_family()` already key on. A `medical_records` "Resting
-  Heart Rate" and a `body_metrics.resting_hr` row therefore resolve to the SAME
-  identity, which is what lets clinical knowledge filed under a canonical NAME
-  reach a reading that streams into a different table.
-- **`source` is provenance, not membership.** The Health Connect parser writes
-  SpO2 into `medical_records` and resting HR into `body_metrics`, so "which
-  table" says nothing about where a reading came from. `readingSourceFor()`
-  classifies from the row's own links and source stamp: clinical links (document
-  / encounter / provider) → `clinical`, a `document:<id>` stamp → `import`, an
-  integration id → `wearable`, otherwise `manual`.
-- **Provenance is ABSENT, not empty, on a stream reading.** A wearable reading
-  has no document, no encounter, no reporting lab and no lab-stated range.
-  Giving it empty ones is exactly the apparatus #1996 argues a stream must never
-  grow.
-- **The grain boundary is explicit.** The model covers dated readings **above
-  minute grain**. `hr_minutes` is outside it — already excluded from provenance
-  for volume reasons, and a per-minute stream is not what a judgement, a period
-  average or a readings table is asking about.
-
-### The stream ↔ canonical map — one declaration, two derived halves
-
-`STREAM_READING_SOURCES` is the missing half of the identity map: which stream
-store column/metric measures which canonical biomarker name.
-`CONTINUOUS_READING_METRIC` (`lib/reading-cadence.ts`) is the other half
-(canonical name → metric slug). Same exclusion discipline as the family table:
-only a stream key that measures the SAME quantity as a curated canonical entry is
-registered. Weight, height, HRV, steps and the rest are absent because the
-canonical vocabulary has no entry for them, and an invented mapping would grant a
-reading a band nobody curated.
-
-Since **#2086** both halves are **derived** from one declaration,
-`READING_IDENTITY_MAP` in `lib/reading-identity-map.ts`: each entry names a
-canonical quantity, the metric surface that renders it (or `null` — episodic, so
-the reading detail page owns it), and the stream store its rows land in (or
-`null` — observations only). They were two literals in two files, consistency-
-tested but separately edited, and a half-added entry is a live defect: a name
-routed to a metric surface with no stream registered folds no observations in,
-and a stream with no surface answer renders its clinical readings on the wrong
-page. `lib/__tests__/reading-identity-map.test.ts` pins the fold in both
-directions, and that an entry answering neither question cannot exist. The two
-constants keep their existing homes as re-exports, so no call site moved.
-
-### Series assembly
-
-`getReadingSeries(profileId, identity)` returns observations and streams
-together, oldest first. It does not re-implement the observation read: it
-delegates to `getBiomarkerSeries`, which already resolves the family identity and
-applies the cross-source de-dup CTE, so a folded series is the one the biomarker
-surfaces read rather than a parallel realization of it. The two halves run inside
-`readTx` so they describe one snapshot.
-
-`dedupeReadings()` collapses one physical measurement presented twice — the same
-reading recorded in two stores, or a re-push beside its own earlier row. Its
-group is **(identity, date, normalized `ReadingSource`, value)**, sharpened by
-the instant **only where both sides state one** (#2154): two same-value readings
-with different stated instants are two real readings (the fever curve's
-same-value case), while an instant-less reading claims nothing about when and
-still collapses into its group — the #2005 collapse the instant must not undo.
-
-- **The source in the key is the NORMALIZED one** (#2005), never the row's raw
-  `source` column. The stores spell one provenance two ways — a hand-entered
-  `body_metrics` row carries `source = NULL`, a hand-entered `medical_records` row
-  carries the literal `'manual'` — and `readingSourceFor()` already calls those
-  the same thing. Keying on the raw column made two readings out of one, a
-  double-count that would have shipped with the first phase-2 caller.
-- **The value is in the key deliberately.** A same-day fever curve is several
-  genuinely different readings from one source on one date (#800/#843), and a
-  (date, source) key alone would silently drop all but one.
-- **Two devices agreeing on a day therefore collapse**, because both classify as
-  `wearable`. That is the right answer for a series — charting one day's 52 bpm
-  twice skews every average drawn over it — and "which device said what" is a
-  different question with its own reader (`getStreamReadings`, the
-  source-comparison surfaces).
-
-The representative is the reading carrying the most — provenance first, then a
-stated instant — so a fold never costs a document link, and never costs a stated
-time to an untimed twin.
-
-`streamSourcesForIdentity()` **resolves its argument** through `readingIdentity`
-rather than comparing it raw, so a canonical name and its identity answer the
-same. `biomarkerFamily` is idempotent, so this is free — and the asymmetry it
-removes matters: the observation half already normalizes (`getBiomarkerSeries`
-families its argument), so the day one of these canonical names joins a #482
-family, a caller passing the NAME would have been handed every observation and not
-one stream row, with nothing to notice.
-
-## One judgement per identity (#1996) — the model's first consumer
-
-Clinical knowledge (reference range, optimal band, direction, age bands) is filed
-in the canonical vocabulary by biomarker NAME. The metric detail surface is keyed
-by `TrendMetricSlug`. Nothing mapped one to the other, so a streamed reading was
-charted **unjudged** — a toddler's steady 120 bpm resting heart rate measured
-against nothing, while the band that says it is normal (1–3 → 80–150) already
-existed. That is an identity problem, not a storage one: a merged table would
-still be keyed by metric and still need this lookup.
-
-`lib/metric-judgment.ts` answers it:
-
-- `METRIC_KNOWLEDGE` — **every** `TrendMetricSlug` declares which knowledge system
-  answers for it: a `canonical` entry, a `growth-percentile` (a percentile-for-age
-  is not a band; the growth card owns it), or `none` **with a reason** — where the
-  reason is load-bearing, not filler. `waist-circ` (#2322) is the sharpest example:
-  real published cut-offs exist, and they are branched by sex **and by population**,
-  while the vocabulary has a sex axis and no population axis — so the honest answer
-  is `none`, argued, rather than a European band silently applied to everyone. The
-  completeness test over that registry is what turns "audit whether another metric
-  has this shape" into a build failure — the sweep that would have caught body fat
-  before #1996 was written.
-- `metricJudgment(identity, subject, entries?)` — the bands for a subject, plus the
-  verdict for a reading. It resolves them through the same
-  `referenceRange`/`optimalBand`/`rangeBadge` the flag reconcile uses, so a page's
-  band can never disagree with the flag stored on a row of the same reading.
-- `lib/queries/metric-judgment.ts` — the runtime half: the seeded
-  `canonical_result_definitions` row as the vocabulary, and the subject's age **on the
-  reading's date** (the #150 precedent), never today's.
-
-### The domain is judged quantities, not one enum (#2086)
-
-`METRIC_KNOWLEDGE`'s totality is the strongest idea in the #1996 fix, and its
-weakness was its domain: `Record<TrendMetricSlug, …>` — one enum. A judged
-quantity with no metric slug escaped the discipline entirely, and the recorded
-escapee proves it: **VO₂ max** has a curated canonical entry _and_ age/sex
-fitness norms (#158), with nothing in the build able to notice whether either
-reached its readings.
-
-`QUANTITY_KNOWLEDGE` + `quantityKnowledge(identity)` widen the domain to judged
-quantities keyed by **#482 identity**, and `MetricKnowledge` gains a
-`fitness-norms` source (an age/sex percentile is no more a band than a growth
-percentile is). The **membership boundary** is written down beside the
-declaration: this is not a second copy of the canonical vocabulary — an ordinary
-lab analyte is judged by its own canonical row on the surface that reads that
-row, so nothing can go missing. A quantity needs a declaration exactly when its
-readings and its knowledge are reached through **different keys**: metric slugs
-(readings by slug, knowledge by canonical name — #1996) and the
-functional-fitness markers (readings by canonical name, knowledge in a separate
-norms dataset — #2086).
-
-**The teeth** (`lib/__tests__/judged-quantities.test.ts`): the domain is derived
-from `TREND_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a
-marker added to the norms dataset without a declaration fails the build; a
-declaration naming a marker or canonical entry that does not exist fails too, so
-widening the **guard** can never widen the **vocabulary**. VO₂ max is the
-acceptance case: it declares `fitness-norms`, the surface it names is the one
-`clinicalResultDetailHref` actually routes its readings to, and the norms resolve to a
-real percentile for a real subject.
-
-Its renderer stays the reading detail page, on purpose. The #1932 cadence audit
-classifies VO₂ max as **episodic** — an annual-at-best physical test read against
-its population curve — so it earns a declaration and reach from the Fitness
-check, not a daily-trend surface. What was missing was discoverability: the value
-is measured in the Fitness check, and the surface that interprets it was
-reachable only by knowing to search the biomarkers list. The check's entry panel
-now links a measured clinical test to it through `clinicalResultDetailHref`.
-
-Two consequences on `/trends/metric/[kind]`:
-
-- the band renders (`MetricJudgmentCard`), suppressed when the pediatric BP card is
-  showing — that IS the judgement for a child's blood pressure, and a second answer
-  beside it would be a wrong one — and when there is no reading to judge;
-- the series folds in same-identity observations
-  (`getMetricObservations` + `foldObservationPoints`), so a clinic-measured reading
-  joins the trend it belongs to. Folded readings are **marked** — and, since phase
-  2, editable in place — and the fold is empty for a metric whose readings already
-  ARE observations, which would otherwise list each one twice.
-
-**The fold decides once (#2029).** `foldObservations` is that decision: the
-observation side is collapsed by `dedupeReadings`, then anything the stream's
-day/value coverage already answers for is dropped. `foldObservationPoints` is its
-chart projection, and `trendMetricSeriesFold` returns both halves together — the
-points to plot and the observations that survived — so `/trends/metric/[kind]`
-takes its chart and its readings table from ONE call. It used to read the raw
-observations for the table, which meant a clinic value equal to the wearable's
-plotted once and listed twice: the same surface contradicting itself one scroll
-apart. The coverage test is deliberately source-BLIND, and that is the one place
-`dedupeReadings`' key cannot be applied verbatim — a stream series point is a daily
-fold of that day's rows, so it has no single provenance to compare.
-
-### The results ROW asks it too (#2315)
-
-The lookup shipped, the metric card rendered it, the biomarker chart drew it — and
-the primary results list, the surface most readings are actually read on, never
-asked. Its "Reference" cell printed `medical_records.reference_range`, the free-text
-string the lab document stated, beside a flag `reconciledFlag` derived from the
-**canonical** reference range and then the **canonical** optimal band. The printed
-string reaches that function exactly once, as an input to the #761 unit-mislabel
-detector: it is provenance, not a threshold. So the row showed the one range that
-never judges it and hid both that do — measured at 35 of 333 readings (10.5%) on a
-real profile visibly contradicting their own row, including a red "High" on a value
-sitting comfortably inside the printed range. The `non-optimal` class contradicts by
-construction, since it exists precisely to mark a value inside the reference and
-outside the optimal band.
-
-The cell is now a **judgment cell**, and nothing about it is a second derivation:
-
-- `judgeObservations(profileId, rows)` (`lib/queries/metric-judgment.ts`) resolves one
-  `MetricJudgment` per row through `flagReconcileProfileContext` — the same
-  canonical map, the same alias-aware name resolver and the same subject context
-  (sex, birthdate/stored age, reproductive status, cycle log) `reconcileFlags`
-  derived the stored flag with. Age is taken **on the collection date** (#150) and
-  cycle phase on that date (#718), both per row.
-- `referenceCell()` (`lib/reading-reference-cell.ts`) is the pure spelling:
-  `ref ≤ 90 · optimal ≤ 60`, both bands when both exist because which one you
-  crossed is exactly what the amber/red split means, with the **age band named**
-  when one applied (`ref 140–420 · age 1–10`) — the #150 safety half, and the
-  reason the cell cannot be a bare number pair.
-- No canonical entry → the printed string genuinely IS the deciding range, so it
-  shows as before, relabelled **Lab reference**. Either way the lab's own string
-  survives: as the cell's hover title, and in full on the reading detail page under
-  its own "Lab reference" column.
-- `formatBand()` (`lib/band-format.ts`) is the one band formatter, promoted out of
-  `MetricJudgmentCard` (#221). It rounds to four decimals rather than two — Urine
-  Specific Gravity is curated 1.001–1.035, and two places print "1–1.04".
-
-The stored `flag` column is **unchanged** and no reprocess is triggered: every flag
-was already correct. The printed range is **not** reconciled against the canonical
-one either — #761's unit-mislabel detector stays the only place the two are
-compared, for the one case where the comparison means something.
-
-The severity **word** ships with it, because each half is insufficient alone: a band
-with no word leaves the reader inferring which band the amber refers to, and a word
-with no band is a judgment with no visible basis. `MedicalValue` gains
-`showFlagLabel`, which renders `flagLabel` visibly **instead of** the `sr-only` span
-(never both — the severity is announced once), decided by
-`medicalValueFlagText`/`medicalValueCaret` in `lib/medical-value.ts`. The biomarkers
-table and `/results/clinical-results/view`'s readings table adopt it, and `RecentLabReadout`
-migrates onto it and drops the parallel label #1220 built beside the component. The
-other `MedicalValue` call sites — Timeline, Passport, ExtractedObservations,
-BiomarkerScale, the Longevity section, the import preview — keep the `sr-only` label
-until each is considered against its own density; without the prop the behavior is
-byte-identical.
-
-### And the DETAIL page must be able to point at what it coloured (#2340)
-
-#2315 fixed the list. The detail page (`/results/clinical-results/view`) had the mirror-image
-defect: it coloured its latest value from `latest.flag` while building its range
-display — `referenceEntries` / `optimalEntries` — **exclusively from the curated
-entry**. When the catalog carries no band those lists are empty and no range renders
-at all, while the range the flag came from sits on the row, in
-`medical_records.reference_range`, unread by that surface. An alarming value with no
-basis for the alarm, and worst precisely where it is most likely: an analyte the
-catalog **deliberately** declines to band is exactly when the curated list is
-guaranteed empty and the lab's own range is present.
-
-`biomarkerValueBasis()` (`lib/biomarker-value-basis.ts`) is the decision, and it
-returns both halves at once — what to render as the basis, and the flag the value is
-allowed to carry — so a caller cannot take one without the other:
-
-- **curated** — the app's own band is on screen. Unchanged.
-- **reported** — no curated band, but the row carries the source's printed range.
-  It renders, **attributed**: `Reference range (as reported)`. The attribution is
-  load-bearing. Two readings of one such analyte in a single database can carry
-  DIFFERENT source ranges — labs band leptin by sex and body composition — which is
-  precisely why the catalog publishes none, and means the source's range is the only
-  range that ever applied to that draw.
-- **qualitative** — the reading states its own verdict in words ("Detected",
-  "Reactive"), and that word IS the value on screen. A positive infection screen is
-  flagged `abnormal` by `qualitativeFlagResolution` against the classifier, never
-  against a range; its basis is displayable and displayed. The page supplies this
-  from the SAME `classifyQualitativeResult` the flag came from.
-- **none** — nothing displayable. The value renders **neutral**.
-
-The suppression happens at the **flag**, not at the colour, and that is what makes it
-compose with #2315's `showFlagLabel`: handing that mode a basis-less flag would have
-replaced an unexplained red with an unexplained red PLUS the word "Low". One decision
-covers the colour, the caret and the word. It only suppresses a flag whose
-`flagTone` is `bad` or `warn` — `immune` renders its own emerald status and makes no
-claim the page must support, so deleting its label would remove an honest one.
-Nothing about the stored `flag` column changes; this is what the page CLAIMS.
-
-The same call runs per row of the readings table, whose neighbouring "Lab reference"
-column is where a `reported` row's basis is already displayed.
-
-**And the page states each fact once.** The subtitle used to append the curated
-`note` beside the reading count while the explainer card fifteen lines below rendered
-the curated `description`; for at least one analyte those are near-paraphrases. The
-card keeps the description. The note's one distinct clause — _why_ this analyte has
-no band — is extracted by `bandNoteClause()` and rendered in the summary card, beside
-the value and the absent range, which is where a reader asks the question it answers.
-It selects clauses that negate a band/range/cutoff or state a band table in place of
-one, deliberately not a bare `/band/`: "Immature (band) neutrophils" is a cell type,
-and matching it would re-import the description the change exists to stop
-duplicating.
-
-### A care offer on a basis-less reading names its own basis (#2347)
-
-#2340 stopped the page CLAIMING a severity it cannot show. It left two controls on
-that page still reading the stored flag: `canTrackFollowUp` (`isOutOfRange(latest.flag)`)
-offers a **Recheck** whose whole premise is that the reading is out of range, and the
-staleness notice sits beside it. So the same reading rendered neutral _and_ carried an
-affordance that exists only because something called it abnormal.
-
-**The owner ruled: keep the control, name its basis** — not gate it on the basis, and
-not leave it untouched. The stored flag is real. With no curated band `reconciledFlag`
-returns `undefined` (at `valueNum == null || !cb`, and again on a `ref === "unknown"`
-range), so it never overwrote what the import stored: the flag on a basis-less reading
-is the **source record's own**. The app being unable to _display_ a basis is not the
-same as there being none, and gating would make a reading the lab itself flagged
-un-recheckable on the strength of a display rule. The contradiction is resolved by
-making the control honest — the same direction #2340 took.
-
-`careOfferBasis()` (`lib/biomarker-care-basis.ts`) is that decision, pure, for both
-controls at once. It answers where an offer's premise comes from — `displayed`,
-`source-flag`, `unflagged`, `reading-age` — and returns the sentence the surface must
-render, so no surface composes its own.
-
-- **Recheck.** On a `none` basis with an out-of-range flag, under the heading _"Why a
-  recheck is offered."_: _"The record this reading came from flagged it. No range on
-  this page judged the value, so it renders neutral — this offer follows the record's
-  flag, not a judgment of ours."_ It
-  attributes the flag rather than re-speaking it, names no direction, and describes an
-  ordinary state rather than a fault. On every other basis the judgment is already on
-  screen and the note is silent. It renders only for the OFFER: an existing follow-up
-  stands on somebody having tracked one, which is its own premise.
-- **Staleness — the same discipline, a different sentence.** `isBiomarkerStale` never
-  DERIVES staleness from the flag. The flag reaches it only through `ImmunityResult`,
-  where every use is an **exemption** (durable-immunity positive, immutable attribute,
-  QC metric) — it can only make a reading _less_ stale. Suppressing it there would
-  remove an exemption and nudge someone the app had decided to leave alone, which is
-  the contact INCREASE `docs/internals/findings.md`'s contact-consent rule forbids.
-  Those exempting signals are unreachable from a basis-less reading anyway: `immune`
-  is neutral-toned, so #2340's suppression (colouring flags only) never touches it,
-  and an immutable/QC verdict comes from `classifyQualitativeResult`, which _is_ the
-  `qualitative` basis. So the notice keeps its claim — it always printed its own
-  premise inline (the date, the age, the yearly cadence) — and gains the one thing
-  #2340 made newly confusing: on a page that deliberately declines to judge the
-  number, an amber banner beside it reads like a verdict on the VALUE. Hence _"This
-  notice is about the reading's age — it is not a judgment of the value above."_,
-  rendered only where that is the case.
-
-**No reach changed.** Both gates decide exactly what they decided before; nothing here
-is read by a notification, a finding builder or an Upcoming generator. Annotating an
-offer that already renders is the attention doctrine's "enrich what it was already
-saying" case, and a note that appears only where the page has already declined to
-judge cannot widen anything.
-
-The **list** surfaces (`ClinicalResultsTable`, `StarredResults`) have no counterpart to
-this, for a reason worth writing down rather than re-deriving: `TrackReadingFollowUpControl`
-renders on the detail page ONLY, so no list row carries a recheck offer, and their
-`isBiomarkerStale` calls are the retest clock in its ordinary form (the table passes no
-immunity context at all; the starred tile passes one, whose flag can only ever exempt).
-More to the point, those surfaces do not apply `biomarkerValueBasis` — they still colour
-from the stored flag, which is #2340's deliberately detail-page-only scope. There is no
-contradiction to annotate there because there is no silence to inherit: a list row that
-colours a value and a control premised on that colour agree. If #2340's rule is ever
-extended to the list surfaces, this note becomes due at the same time — but widening it
-now would annotate a page that is not yet neutral.
-
-### An unqualified glucose has no band to be judged against (#2337)
-
-Both curated glucose entries used to hold a **fasting** band: `Glucose, Fasting` at
-70–99 (correct — the ADA normal fasting range, with 100–125 prediabetes and ≥126
-diabetes on repeat), and unqualified `Glucose` at 65–99, which is _also_ a fasting
-interval — the familiar lab-printed CMP one, and CMP glucose is reported in a
-fasting frame. So the catalog had **no band for a glucose whose fasting state is
-unknown**, which is exactly what an unqualified reading is, and it judged one anyway.
-
-Re-banding it fails in both directions. Kept fasting, a post-meal 120 is entirely
-normal and reads high on a healthy person. Re-banded random (`< 140`), a genuine
-fasting 130 is prediabetic and reads normal — the missed finding, which is the worse
-error. There is no interval to copy even if we picked: for random glucose the ADA
-publishes diagnostic **thresholds** (≥200 with classic symptoms), not a reference
-interval, and the widely-quoted 80–140 is a rule of thumb. So the unqualified entry
-is **band-less**, with the reason stated in its curated `note` — the second consumer
-of the clause `bandNoteClause()` extracts, and written to be read by a person:
-
-> Whether this draw was fasting is not recorded, and the fasting and non-fasting
-> bands differ by roughly 40 mg/dL at the top of normal. The value is shown but not
-> flagged, because either band would be a guess.
-
-`Glucose, Fasting` keeps 70–99, and 70 — the clinical hypoglycemia threshold, not the
-65 lab-interval artifact — is now the only fasting floor the dataset carries.
-
-Two consequences, both deliberate. A reading under `Glucose` **loses its flag**: that
-flag asserted a fasting frame the document never claimed. And because
-`reconciledFlag` will not clear a stored high/low for an analyte with no reference
-bounds — right for the ~90 analytes the catalog has always declined to band, where
-such a flag came from the document — migration 176 clears the ones already on disk,
-scoped to numeric `Glucose` rows and to the flags `reconcileFlags` itself writes. The
-row keeps its value and the source's own printed `reference_range`, which the detail
-page still renders **attributed**; what goes is only allos's claim about it.
-
-This is a dataset change, so no `FLAG_LOGIC_VERSION` bump: `canonicalFlagsSignature`
-hashes `ref_*`/`optimal_*`, so the boot reconcile re-derives every record on its own
-(the version constant exists for a change to the derivation LOGIC while the dataset
-holds still).
-
-### The lab's own printed range may judge what we decline to band (#2799)
-
-The clause above — "the row keeps the source's printed range, which the detail page
-renders attributed" — was true and still left a hole. `Microalbumin/Creatinine Ratio,
-Urine` is band-less for a different reason than glucose (KDIGO staging needs repeat
-samples over months, so no interval is publishable), a real report prints `<30` beside
-the value anyway, and a rising 31 → 44 mg/g rendered with **no marker on any surface**:
-`referenceStatus` returned `"unknown"`, and the only thing that had ever read
-`reference_range` in the flag path was #761's unit-mislabel veto. Every step was
-deliberate; the composition was the gap, and it read worst exactly where the catalog was
-being careful — across the ~95 band-less analytes.
-
-So `reconciledFlag`'s `"unknown"` branch now has a **last resort**: when nothing of ours
-judges the value, the row's own printed range may, and it says so in its own register.
-
-- **`reported-high` / `reported-low`** are never allos bands and never claim to be.
-  `isOutOfRange` stays false for them, so they are absent from the timeline's abnormal
-  count, from the `oor` row filter and from the attention priority bump; `flagTone`
-  tiers them amber, not red; and `flagLabel` names the source out loud — **"Above
-  reported range"**, sharing vocabulary with #2340's `REPORTED_RANGE_LABEL` ("Reference
-  range (as reported)"), which is the very string a surface showing one has on screen.
-  A coloured value can therefore still point at what coloured it, which is #2340's rule.
-- **The comparison is as-printed.** The lab printed the number and the range in the same
-  unit on the same line; that is the only comparison the report vouches for, and it
-  survives a mislabeled unit (#761's case: both sides are mislabeled identically).
-- **And it is read through the analyte's `direction`.** "Outside the printed range" and
-  "worse than the printed range" are the same thing only for an `in_range` analyte. Eight
-  band-less entries are `higher_better`, and six of those are `category: vitals` measured
-  against a **predicted** range a healthy person beats — FEV1 4.6 L against a printed
-  3.1–4.2, VO2-style fitness norms, grip strength, chair stand. Reading the printed
-  ceiling on those would flag an excellent result and send it to the recent-changes
-  digest, which is #544's "good result reads as needs-attention" failure arriving through
-  a new door. So the rule is the one `optimalStatus` already applies to our own bands:
-  `higher_better` reads only the printed floor, `lower_better` only the printed ceiling,
-  `in_range` both.
-- **Ours wins where we have one.** The lab-stated flag is ordered after the reference
-  band and after the optimal band. Where we publish a band, ours is the band on screen
-  and ours is the verdict.
-- **It is retirable.** The numeric reconcile is the only thing that writes these flags,
-  so they join `RECONCILABLE_FLAGS` and clear when a corrected value lands back inside
-  the printed range — rather than freezing per-row the way #2687's guesses had.
-
-**One list per tier.** The tiers had three independent SQL/TS spellings — the
-predicates, `rangeFilterClause`, and `lib/timeline`'s grouped counts — and adding two
-flag values reached only two of them: the timeline kept counting `LIKE 'non-optimal%'`,
-so the reading this issue is about drew **no marker on the timeline**, which is one of
-the surfaces the issue names. The membership lists now live once in
-`lib/reference-range/flags.ts` (`OUT_OF_RANGE_FLAGS` / `NON_OPTIMAL_FLAGS` /
-`LAB_STATED_FLAGS` / `NOTABLE_FLAGS`); every predicate reads its own list and every
-query spells its list through `flagInSql`. The timeline counts the lab-stated tier
-**separately** rather than folding it into non-optimal — it shares the amber tone, but
-"non-optimal" would be the wrong word for the lab's own range, so the subtitle says
-"outside reported range".
-
-**And it does not re-flag an unqualified glucose.** That is the point where this ruling
-and #2337's could have collided: a CMP prints `65-99` beside a draw whose frame the
-document never stated, so judging by the printed string re-commits the exact fasting
-frame migration 176 unwound — a post-meal 120 reading red again, and a CGM stream
-lighting up wholesale. The guard is not "band-less entry with a curated note" (whether a
-curation ruling should also suppress lab-stated marking is a **separate, still-open owner
-question** on #2799, and its per-entry opt-out is deliberately unimplemented here). It is
-narrower and comes from the vocabulary itself: `frameUnstatedNames`
-(`lib/patient-state-qualifiers.ts`) picks out a bare entry the catalog carries a
-**patient-state-qualified sibling** of — `Glucose`/`Glucose, Fasting`,
-`Insulin`/`Insulin, Fasting` (#2371), `Cortisol`/`Cortisol, Morning` (#2526) — because
-#2338's landing rule means a reading only reaches the bare entry when the document stated
-no condition. A printed range on such a row is stated in a frame the draw never claimed,
-so it cannot judge it either. Three entries today, derived rather than curated, so a
-fourth frame pair needs no edit.
-
-### Pediatric blood pressure is a percentile, not a band (#2794)
-
-The BP entries carry only the adult 90–120 / 60–80 interval and no `ranges_by_age`, so
-`selectAgeBand` returned null and a 22-month-old's entirely normal 54 mmHg diastolic fell
-below 60 and was stored `low` — a red ▼ on the passport, a red chip in the readings
-table, and "1 out of range" on the timeline, three cards below a header saying **"82nd
-percentile · Normal for age"**. The AAP 2017 percentile path
-(`lib/bp-percentiles.ts` → `PediatricBpCard`) was display-only; nothing in the reconcile
-consulted it, and every real write path reconciles, so a CCD import of a pediatric visit
-produced the contradiction for real.
-
-`reconciledFlag` now **declines to judge** a BP component (`bpComponentFor`) for a
-subject under `PEDIATRIC_BP_MAX_AGE`, and **clears** the adult-band `high`/`low`/
-`non-optimal-*` already stored — that flag is our own claim, on rows the reconcile owns,
-and left alone it would outlive the judgement that made it (the same argument migration
-176 made about glucose, arriving at the same answer). A qualitative verdict is never
-ours and is untouched. Unknown age keeps the adult regime, and age is taken on the
-collection date, so a childhood reading does not re-flag when the person turns 13.
-
-**Where the carve-out sits is load-bearing**, because clearing is licensed by
-_ownership_. It runs **below** `convertToCanonical` and below the #761 mislabel veto —
-both of which are the reconcile declining to judge — so a flag that survives either of
-them came from the source, not from us. A BP in kPa (parts of Europe and China) or a
-device export spelling `torr` does not convert, so we could not have written that row's
-flag at any age: above the gate the adult path returned `undefined` and the clinician's
-`low` survived, while the child path returned `null` and erased it. Below the gate, both
-paths decline identically, and the flag the child path _does_ clear is one this function
-would itself have written. Every fixture BP row uses mmHg, which is exactly why a suite
-cannot see this on its own; `lib/__tests__/pediatric-bp-flag.test.ts` now carries the
-unconvertible-unit cases, stated as an equivalence between the two age paths.
-
-Two consequences worth recording. The ruling is in the pure core, so it covers the
-import follow-up, manual entry, the Health Connect ingest, the reprocess **preview** and
-the boot reconcile at once — and `scripts/seed.ts` drops the `[alpId]` exclusion that
-used to hold the child's BP rows out of `reconcileFlags`, a workaround that documented
-the gap and covered only the seed. And the marker list moved to the leaf
-`lib/bp-markers.ts` (re-exported by `lib/bp-percentiles.ts`, so no import path changed):
-the flag core must ask "is this a BP component?" on every numeric row, and it is reached
-from client components, so it cannot pull the AAP normative dataset in to answer.
-
-Both are derivation-LOGIC changes with the dataset held still, which is what
-`FLAG_LOGIC_VERSION` exists for — one bump to **11** re-derives every stored row once.
-
-## Phase 2 (shipped): one write core, one editability contract
-
-`lib/reading-placement.ts` is the pure policy; `lib/reading-writes.ts` executes
-it. **Still no schema change** — this is placement over the same three stores,
-and `medical_records` remains the clinical record.
-
-### The placement rule
-
-`placeReading({ name, provenance })` — four clauses, in order:
-
-1. **No identity, no placement.** Refused, never defaulted into a table. Sleep
-   minutes, steps, HRV and per-minute heart rate all arrive here, and each keeps
-   its own writer: inventing a mapping is exactly what the #482 exclusion
-   discipline forbids, and the grain boundary holds on the write side too.
-2. **Clinical provenance forces the observation store.** A document, an
-   encounter, a performing provider, the lab's own stated range or the name a lab
-   printed has nowhere to live in a stream store, so routing such a reading there
-   would DESTROY the provenance — the one placement error a later correction
-   cannot undo. This is the only clause that overrides a registered stream.
-3. **Otherwise the identity's registered stream** (`STREAM_READING_SOURCES`):
-   resting heart rate → `body_metrics.resting_hr`, body fat →
-   `body_metrics.body_fat_pct`. One quantity in one place, whichever surface
-   submitted it.
-4. **Otherwise `medical_records`** under the identity's canonical name — the
-   default: every lab analyte, and the four vitals whose readings already ARE
-   observations.
-
-The rule is pinned as a decision table over every registered identity
-(`lib/__tests__/reading-placement.test.ts`) and cross-checked in the DB tier
-against `METRIC_READING_STORE`, the registry the write path used to resolve a
-store from. That cross-check is the "nothing moved" proof: a writer migrated onto
-the core writes the row it wrote before.
-
-**A document-linked reading is refused** with `document-import`. Those rows
-belong to the import footprint (#453/#422), whose single entry point is
-`persistDocumentImport` — clear, reassign and the extracted counts cannot see a
-row written past it. The core does not drop the link, it declines the write.
-
-### On the substrate, not beside it
-
-`recordReading` classifies through `classifyUpsert`, its CALLER bumps the split
-only through `tallyUpsert` — a plural `recordReadings` used to loop and tally, and
-#4564 found it had no non-test caller at all, so #4424's body leg deleted it — and
-the #133 lock is read only through `isEditLocked`. The lock holds out a **source-owned re-push** — a write stamped
-with an integration id or a `document:<id>` import stamp — and never the user's
-own correction: a person re-entering a value they previously fixed is not a sync,
-and refusing there would strand them.
-
-### The editability contract
-
-`ReadingTarget` names a row: `{ store, id }` plus the measure the store needs to
-isolate one reading (the `body_metrics` column, the `metric_samples` metric key,
-the `medical_records` **identity**). `updateReadingAt` / `deleteReadingAt` route
-by it, with typed refusals. Observations are matched through the
-`biomarker_family()` SQL function rather than an exact canonical string — the
-#1933/#1934 contract generalized from "which table am I" to "which identity am I".
-
-A surface produces a target FROM THE ROW: `readingTarget(reading)` for a
-`Reading`, `metricReadingTarget(slug, id)` for the metric registry. The metric
-detail page's readings table posts `store:id:measure` alongside its `kind`, and
-the two fields answer different questions — `kind` is the PAGE (display unit,
-routes to revalidate), `target` is the ROW. They used to be one field, which is
-precisely why a folded clinical observation could be charted there but not
-corrected.
-
-A MOOD check-in rating is **not** a reading: a 1–5 self-rating has no canonical
-identity, no clinical knowledge and therefore no placement. It stays outside
-`ReadingTarget`, and `lib/metric-readings.ts` splits it off to the mood store's
-own write core, where #992 requires every mutation of that table to live.
-
-### The lock is reachable, and it survives a reprocess (#2364)
-
-Correcting a reading arms the #133 lock. `updateReadingAt` used to arm it on
-`medical_records` with `CASE WHEN external_id IS NOT NULL`, which asks **which
-import path produced the row** rather than **did a human change a value this app
-derived** — and `extractionToPersistInput` sets `external_id: null`
-unconditionally, so for an AI-extracted reading the lock was not merely unset, it
-was _unsettable_ (measured: 309 of 309 AI-extracted rows on a real database carry
-a null `external_id`; deterministic CCD rows are the mirror image at 250 of 250).
-Every `medical_records` correction writer arms it unconditionally now — the
-Results record editor, the temperature editor, the audiogram entry form,
-`updateReadingAt`, and `lib/unit-mislabel-correction.ts`, which always did; the
-disagreement between them was the tell. On a table an import reaches ONLY through
-`external_id` — `practice_logs`, which has no `document_id` — that condition is
-still the right question and stays, so
-`lib/__tests__/observation-substrate.test.ts` scans `medical_records` statements
-alone.
-
-The lock alone was not enough. A reprocess is **delete-and-reinsert** over
-`IMPORT_FOOTPRINT_TABLES` — that is what makes the delete-set and the reprocess
-path the same code — so even a correctly locked row was removed by a
-re-extraction, a re-import from the saved raw (#903), or a reprocess-all.
-`edited` therefore protected against integration sync while the likeliest
-overwrite of a document-derived reading is the document's own reprocess.
-
-The footprint does not grow a per-table exception. `lib/import-corrections.ts`
-captures the document's corrected readings **before** the clear and re-applies
-them **after** the insert — the `reapplyVisitLinkDecisions` (#1050/#1053) shape,
-for the other durable user decision a reprocess would otherwise discard. Matching
-is on **#482 identity + day + unit**, never on row id (the ids are new); same-day
-duplicates of one identity pair in order, since a second same-day reading is a
-curve and not a correction (#800/#843). A different unit does not match — pasting
-104 mg/dL onto a mmol/L row would be corruption dressed as a rescue.
-
-A correction the fresh extraction produces no counterpart for is **reported, not
-resurrected**: an `ImportDrop` with reason `correction_orphaned` on the document's
-import report, so the user learns the correction lost its subject instead of
-keeping a row the document stopped claiming. It does not move the report's
-`considered` count — a lost correction was never a candidate the document
-offered. No schema change: the capture lives for one persist transaction, and
-nothing is stored between reprocesses.
-
-### What routed differently
-
-`Resting Heart Rate` joined `CONTINUOUS_READING_METRIC` (part 3 of #1996): its
-destination charts the folded observations AND now corrects them, so the two
-structural pins generalize from **one store per destination** to **one identity
-per destination** — the page's own store must be a store of the same quantity,
-which for a streaming reading is its registered stream.
-
-### Where continuous glucose belongs (#2810)
-
-A CGM is the first quantity to arrive that the model has an entry for and a place for,
-and the issue's proposed placement — "a `metric_samples` metric (`glucose_mgdl`) with a
-`/trends/metric/glucose` surface" — is **half right and half a rule this document
-already answers differently.** Recorded here so the design work starts from the rule
-rather than around it.
-
-**The half that is right, and is not new.** A stream store for a home-measured glucose,
-folded onto one chart with the lab draws, is exactly `Peak Expiratory Flow`: a
-`metric_samples` stream keyed by its own instant (a day holds many readings, which is
-what `body_metrics` — one row per day — could not carry), a metric surface, and a
-clinical half that placement clause 2 keeps in `medical_records` with its document. So
-the shape does not need inventing; it needs an entry in `READING_IDENTITY_MAP`, and both
-halves of that entry have to be answered at once, which is what #2086 made impossible to
-half-do.
-
-**The half that conflicts is GRAIN, and it is the expensive one to get wrong.** This
-model covers dated readings **above minute grain**, stated at the top of this document
-and enforced by placement clause 1 — sleep minutes, steps, HRV and per-minute heart rate
-all arrive there and each keeps its own writer. A real CGM is 288 readings a day, which
-is per-5-minute, not per-day: it is on `hr_minutes`' side of that boundary, not
-`peak_flow_lmin`'s. `hr_minutes` is the precedent for a quantity of that volume — its
-own narrow table, minute-keyed, deliberately outside this model and excluded from
-provenance for volume reasons — and it is the precedent because the reasoning is about
-what a reading IS, not about how many rows fit. A per-5-minute trace is not what a
-judgement, a period average or a readings table is asking about, and routing 100k rows a
-year through `dedupeReadings`' (identity, date, source, value) group would make a fold
-that costs more than it answers.
-
-So the placement rule gives **two** stores, not one, and the split is the grain
-boundary it already draws:
-
-1. **The raw trace** is a stream of its own, on `hr_minutes`' side of the line — one
-   narrow instant-keyed table, no `Reading` identity, no provenance, no fold. That is
-   also what makes time-in-range and an AGP day-overlay cheap: both are computed over
-   the trace, and neither is a reading question.
-2. **The daily derivations** the trace supports — mean glucose, time-in-range, and any
-   other once-a-day summary — are above the boundary and are what a `metric_samples`
-   metric legitimately holds, exactly as `hr_minutes` already rolls up into the resting
-   and summary figures that surfaces read.
-
-**And the canonical name is the third question, not a detail.** #2337 ruled unqualified
-`Glucose` **band-less** because the fasting frame it was being judged in was never
-stated, and #2799 then had to add `frameUnstatedNames` specifically so a CMP's printed
-`65-99` could not re-commit that frame — the note there names "a CGM stream lighting up
-wholesale" as the failure being avoided. Registering a CGM stream under the canonical
-name `Glucose` would fold a continuous interstitial trace into the same identity as a
-fasting venous draw and hand it that argument again from the other end. A CGM reading is
-a **patient-state-qualified sibling** in exactly `frameUnstatedNames`' sense; which
-curated entry it maps to (or whether the vocabulary needs one) is a curation decision and
-belongs to whoever adds the dataset entry, not to the ingest.
-
-**What was built against this ruling, and what was deliberately left.** The ruling
-above was recorded before any code existed; the STORES and the write path have since
-landed, and the two surfaces the issue asked for have not.
-
-Shipped: `glucose_trace` (migration `20260819-glucose-trace`) — the narrow
-instant-keyed table of ruling 1, with `source` in its primary key from birth (migration
-014's `hr_minutes` lesson taken up front rather than as a rebuild) and its `ts` BORN on
-the #2205 canonical convention, which is the one thing `hr_minutes` had to be converted
-into. No `n` column: an `hr_minutes` bucket is a count-weighted average that a merge has
-to weight, while a CGM point is one reading at one instant and a count would be a
-fiction. The day's derivations of ruling 2 — `glucose_mean_mgdl`,
-`glucose_time_in_range_pct` and the `glucose_trace_points` coverage figure that says
-whether the first two are worth reading — are `metric_samples` rows written by
-`lib/glucose-trace-db.ts` through the existing `upsertMetricSamples` core, so the #508
-tombstone, the #133 edit lock and the sync split are answered once rather than twice.
-One entry point writes both halves and recomputes each touched profile-LOCAL day from
-the stored trace rather than from the batch, which is what makes a rolling window
-idempotent.
-
-Ruling 3 is honoured by ABSENCE and pinned as one: no `READING_IDENTITY_MAP` entry, and
-the metric keys are named for the trace (`glucose_*`) rather than for the analyte, so
-there is no `glucose_mgdl` for a later change to register as a stream of `Glucose`. The
-pin is the general form of the rule and is derived from the live catalog — no stream may
-be registered under ANY name `frameUnstatedNames` returns (today `Glucose`, `Insulin`,
-`Cortisol`), so a fourth frame pair is covered with no edit.
-
-**The ingest was the next decision, and #3182 made it.** It used to accept
-`blood_glucose` and land EVERY reading as a `medical_records` row under the band-less
-`Glucose`, so a CGM syncing through Health Connect produced the lab shape at trace
-volume. It could not simply key on the record type, because a fingerstick meter pushes
-the same one. **The person says which, once, per connection, and that is the whole rule**:
-one switch on the connection screen, "Treat glucose from this connection as a
-continuous sensor", sends every glucose record from that connection to the trace store;
-it is OFF by default and setup never raises it. An undeclared connection stays on the
-`medical_records` Glucose observation path however its records are shaped, so nothing
-silently becomes a trace — a genuine discrete draw misrouted into a trace loses its
-identity, its band and its document. That default direction is a SAFETY CHOICE rather
-than a measurement, and nothing here has tested it: the observation path is the shipped
-one and #3182 is about the shape it produces, but **prod holds no CGM data at all** and
-this repo holds no real-exporter payload carrying glucose — outside the ingest code
-itself, `blood_glucose` appears only in the two #3182 test files and one synthetic
-fixture. So no sensor has reached either branch, and
-the switch is what the first person to link one turns on, once.
-
-The 2026-09-02 ruling also named a `specimen_source` clause — interstitial fluid to the
-trace, everything else and unset to observations — and #4913 built it. The owner removed
-it on 2026-09-03 (recorded on #3182) because it was dead on arrival: the only live sync
-path is the Health Connect webhook exporter, and that exporter never reads
-`specimenSource` off `BloodGlucoseRecord`. The word does not appear in its
-`SyncManager.kt`, and no recorded payload or fixture in this repo has ever carried the
-field. So every reading fell through to the default, which made the clause a
-discriminator in name only — worse than absent, because a reader would have believed
-the sensor was being asked about itself. #4929 tracks the four-line exporter change
-that would make the field real; if it lands, the clause comes back with the safety
-default intact, since an older exporter will still send nothing.
-
-The trace's `source` is `health-connect:<data_origin>`, the writing app qualifying the
-integration, because one Health Connect connection aggregates every app on the phone
-and `source` is in the trace's primary key so two sensors stay two traces. Record
-metadata is OPTIONAL on the wire, so a bare `health-connect` is the fallback — and a
-later qualified push ABSORBS that bare trace (its rows are re-keyed and the days they
-covered are recomputed) rather than opening a second one, which is what keeps one trace
-per sensor when metadata arrives late. Absorption fires only when a push resolves to
-exactly one source and that source is qualified: a push still carrying bare records, or
-carrying two origins, has no answer to which sensor the backlog belonged to and
-declines to guess.
-
-Still not built, and each its own decision rather than remaining work: the SURFACES — a
-trace chart, an AGP day overlay, a time-in-range card — need a `TrendMetricSlug` and
-therefore an answer to `METRIC_DOCUMENT_REACH`. And the CURATION question ruling 3
-names: which curated entry, if any, a CGM reading maps to.
-
-The `SEED_PERSONA=diabetic-cgm` walkthrough now seeds BOTH shapes — a real per-5-minute
-trace for the same fortnight as its 4 timed `medical_records` vitals a day — so the
-observation half and the trace half can be developed against side by side. It used to
-seed only the lab shape, which is the half this ruling is least about.
-
-## Phase 3 — deliberately not started
-
-A single tall `readings` table is **deliberately deferred**. Nothing reads or
-writes the tables directly any more, so a later collapse is a data move rather
-than a rewrite — and `medical_records` is the highest-stakes table in the app
-(biomarker families, flags, trajectory, the import footprint, tombstones, undo,
-export, the passport, and every FK enumerated in #1808), which is exactly why it
-should be migrated last, behind an abstraction, or not at all. It gets its own
-issue if the remaining duplication still hurts.
+Use the shared reading APIs for dated numeric quantities that have a canonical
+identity. Shared APIs span three stores. Physical consolidation remains deferred;
+store-specific readers and writers still exist.
+
+| Store             | Shape and purpose                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `body_metrics`    | One day/source row with weight, body fat, and resting HR; shared notes and edit lock.             |
+| `metric_samples`  | Metric/value samples with start/end instants, source, and edit lock.                              |
+| `medical_records` | Observations with canonical names, reported ranges, flags, and document/encounter/provider links. |
+
+Only registered quantities participate in the reading model. A store containing a
+quantity does not itself grant that quantity a canonical identity. Minute-scale
+traces, mood ratings, and unmapped measures keep their own models.
+
+## Identity and provenance
+
+[reading-model.ts](../../lib/reading-model.ts) owns `Reading` and row conversion.
+A reading carries its identity, value/unit, profile-local day, optional measured
+instant, normalized source, physical store/row ID, raw source key, edit lock, and
+notes. `measuredAt: null` means day grain; never substitute the capture time.
+Observation provenance is optional and absent on stream readings.
+
+`readingIdentity()` delegates to `biomarkerFamily()`, matching the identity used
+by deduplication, stars, latest markers, and SQL's `biomarker_family()`. Resolve
+canonical names through this function instead of maintaining another name map.
+
+`readingSourceFor()` classifies provenance independently of storage:
+
+1. Document, encounter, or provider links: `clinical`.
+2. A `document:<id>` source stamp: `import`.
+3. Another integration source: `wearable`.
+4. Missing source or `manual`: `manual`.
+
+[reading-identity-map.ts](../../lib/reading-identity-map.ts) declares each mapped
+canonical quantity, its metric surface (or `null`), and its stream location (or
+`null`). `STREAM_READING_SOURCES` and `CONTINUOUS_READING_METRIC` derive from that
+one declaration. Register only the same quantity as the curated canonical entry;
+an approximate match can give a reading the wrong interpretation. Stream
+placement and continuous presentation are separate decisions: a stream entry may
+still use the clinical detail page.
+
+## Reading and folding series
+
+[queries/readings.ts](../../lib/queries/readings.ts) owns the database reads:
+
+- `getReadingSeries(profileId, identity)` combines observations and registered
+  streams, oldest first. Its observation side uses `getBiomarkerSeries` and its
+  existing deduplication. Combined reads run in one `readTx` snapshot.
+- `getStreamReadings` retains the individual stream rows for source comparison.
+- `getMetricObservations` supplies same-identity observations to a metric whose
+  base series is a stream. Metrics already backed by observations return no fold.
+
+`dedupeReadings()` groups by identity, day, normalized source, and value.
+Different values survive. Equal values with distinct stated instants also
+survive; an untimed member can collapse into a timed group. Within a duplicate
+slot, provenance wins first, then a stated instant, then caller order. Two devices
+can collapse because both normalize to `wearable`; use the stream reader when
+device identity matters.
+
+`foldObservations()` first deduplicates observations, then removes those already
+covered by the stream's day/value points. That coverage comparison ignores source
+and instant because a daily point no longer carries either.
+`trendMetricSeriesFold()` in
+[trend-metric-series.ts](../../lib/trend-metric-series.ts) returns both chart points
+and surviving observation rows. Use both results so the chart and its table agree.
+
+## Choosing and displaying a judgment
+
+[metric-judgment.ts](../../lib/metric-judgment.ts) declares the knowledge source for
+every `TrendMetricSlug`: canonical bands, growth percentiles, fitness norms,
+personal best, or `none` with a reason. `QUANTITY_KNOWLEDGE` covers additional
+quantities whose readings and knowledge use different keys; it does not duplicate
+the ordinary lab catalog. `quantityKnowledge()` resolves the combined identity
+lookup. An absent declaration is not evidence that an ordinary lab analyte lacks
+its own canonical judgment.
+
+[queries/metric-judgment.ts](../../lib/queries/metric-judgment.ts) supplies runtime
+canonical definitions and subject context. Use age and cycle phase on the
+collection date. Reuse the reference/optimal-band functions used by flag
+reconciliation. Growth, fitness norms, and pediatric BP have their own percentile
+renderers. Peak-flow zones use `peakFlowZone()` at read time against the person's
+current best; no personal best means no zone. Do not store that changing judgment
+as a fixed flag.
+
+For results tables, `judgeObservations()` and
+[referenceCell()](../../lib/reading-reference-cell.ts) produce the applicable
+reference and optimal bands, age label, and differing canonical unit when needed.
+[formatBand()](../../lib/band-format.ts) owns numeric formatting. Retain the source's
+printed range as attributed provenance. `MedicalValue` can show the severity word
+with `showFlagLabel`; it must be announced once.
+
+On the clinical reading detail page,
+[biomarkerValueBasis()](../../lib/biomarker-value-basis.ts) returns both the visible
+basis and the permitted display flag:
+
+| Basis       | Display                                                                   |
+| ----------- | ------------------------------------------------------------------------- |
+| Curated     | The app's band.                                                           |
+| Reported    | The row's range, attributed as reported.                                  |
+| Qualitative | The result's own classified verdict.                                      |
+| None        | Suppress warning/error flags together with their caret and severity word. |
+
+This is a display decision, not a stored-flag rewrite. Neutral status labels such
+as immunity remain. `bandNoteClause()` supplies the explanation for an absent
+band without repeating the analyte description.
+
+[careOfferBasis()](../../lib/biomarker-care-basis.ts) explains existing recheck and
+retest offers; it does not decide their reach. A recheck on a neutral,
+source-flagged reading names the source's flag. A retest notice names reading age.
+Keep flag-based exemptions in the retest clock. List surfaces that still display
+stored flags do not automatically inherit the detail page's suppression rule.
+
+## Flag ownership and missing context
+
+[reference-range/flags.ts](../../lib/reference-range/flags.ts) owns reconciliation,
+flag tiers, and `flagInSql`. Reuse its membership lists in SQL and TypeScript.
+`reconciledFlag()` returns `undefined` to preserve a flag and `null` to clear it;
+those outcomes are different.
+
+- Conversion failure or a probable unit mislabel declines numeric judgment and
+  preserves the source flag. Do not move clearing rules above these checks.
+- After those checks, pediatric BP declines adult-band judgment and retires the
+  adult numeric flags it owns. Qualitative flags survive. Unknown age keeps the
+  adult regime; collection-date age prevents later birthdays changing the regime
+  of an old reading.
+- Canonical reference and optimal judgments precede the reported-range fallback.
+  Without reference bounds, an existing source `high` or `low` is preserved.
+- The fallback compares the printed value and range, respecting the analyte's
+  direction. It writes `reported-high`/`reported-low`, an attributed amber tier
+  distinct from `isOutOfRange` and non-optimal flags. These derived flags can clear
+  when the value or range changes.
+- `frameUnstatedNames()` derives bare entries with patient-state-qualified siblings,
+  such as unqualified versus fasting glucose. An unstated frame must not acquire
+  a judgment from a printed range or a registered continuous stream. Do not infer
+  the missing patient state.
+
+[canonical-flags-version.ts](../../lib/canonical-flags-version.ts) fingerprints
+flag-relevant dataset fields for boot reconciliation. Change `FLAG_LOGIC_VERSION`
+when derivation logic changes with the dataset held still.
+
+## Placement, corrections, and deletion
+
+[reading-placement.ts](../../lib/reading-placement.ts) owns placement and targets;
+[reading-writes.ts](../../lib/reading-writes.ts) executes writes. Resolve the active
+profile and authorization at the request boundary, and scope reads and writes by
+`profile_id`. Parsing a target does not authorize it.
+
+`placeReading()` applies these rules in order:
+
+1. Refuse an empty identity.
+2. Clinical provenance requires `medical_records`, preserving links, reported
+   names, and ranges that stream stores cannot carry.
+3. Otherwise use the identity's registered stream.
+4. Otherwise use `medical_records` under the supplied canonical name.
+
+Callers supply a valid canonical quantity; placement does not turn an arbitrary
+metric key into one. Mood ratings and unmapped measures use their existing writers.
+
+`recordReading()` refuses document-linked writes with `document-import`. Use
+`persistDocumentImport` so clear, reassign, and counts see the whole footprint.
+Reuse `classifyUpsert`, caller-side `tallyUpsert`, and `isEditLocked`. A source-owned
+re-push must respect the edit lock; the person's own correction remains possible.
+
+For corrections and deletes, derive a `ReadingTarget` from the actual row with
+`readingTarget()` or the appropriate metric target helper. It names store, ID,
+and measure (body column, sample metric, or observation identity).
+`updateReadingAt()` and `deleteReadingAt()` route by that target. The posted
+`store:id:measure` identifies the row; the page's `kind` identifies display and
+revalidation context. A folded observation stays editable in its physical store.
+
+Observation corrections set `edited` regardless of `external_id`.
+[import-corrections.ts](../../lib/import-corrections.ts) captures corrected values
+before reprocess clears the document footprint and reapplies them after insertion,
+in the same transaction. Match by family identity, day, and normalized unit;
+pair same-day duplicates in order, never by old row ID. Preserve the lock and let
+import followups reconcile the corrected values. Report unmatched corrections as
+`correction_orphaned` drops without resurrecting rows or inflating `considered`.
+
+## Where continuous glucose belongs
+
+Raw CGM points live in `glucose_trace`, outside `Reading`, like `hr_minutes`.
+[glucose-trace-db.ts](../../lib/glucose-trace-db.ts) writes canonical UTC instants
+and source-qualified points, then recomputes each touched profile-local day from
+the stored trace. It writes `glucose_mean_mgdl`, `glucose_time_in_range_pct`, and
+`glucose_trace_points` through `upsertMetricSamples`, preserving that core's
+edit-lock, tombstone, and accounting rules. Trace storage uses mg/dL.
+
+Health Connect routes glucose by the person's per-connection continuous-sensor
+setting, off by default. Declared connections write trace points; undeclared ones
+write discrete `Glucose` observations. Current routing does not inspect specimen
+metadata. Sources are `health-connect:<data_origin>`, falling back to
+`health-connect`. A push with exactly one qualified source can absorb the bare
+backlog and recompute its days. Mixed or multiple origins cannot identify that
+backlog and must not guess.
+
+The trace and its summaries have no `READING_IDENTITY_MAP` entry. Adding clinical
+identity requires an explicit curation decision; adding trace/AGP/time-in-range
+surfaces requires a metric and document-reach decision. The `diabetic-cgm` seed
+persona supplies both raw trace points and discrete observations for development.
+
+## Verification and related contracts
+
+Use existing reading-model/placement tests for pure decisions and reading-series,
+reading-writes, metric-fold-agreement, import-correction, and glucose-trace DB
+coverage for persistence changes. Judgment, reported-range, and pediatric-BP tests
+cover their distinct rules. Follow the shared [test policy](../change-policy.md).
+
+See [time](time-model.md), [temporal columns](time-columns.md),
+[charts](charts.md), [integration sync](integrations-sync.md), and
+[findings](findings.md) for their separate contracts.
