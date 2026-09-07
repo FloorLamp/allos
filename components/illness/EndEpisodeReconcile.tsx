@@ -29,6 +29,7 @@ export default function EndEpisodeReconcile({
   triggerLabel,
   pendingLabel = "Ending…",
   triggerTestId,
+  triggerVariant,
   icon,
   successMessage = "Episode ended.",
 }: {
@@ -39,6 +40,8 @@ export default function EndEpisodeReconcile({
   triggerLabel: string;
   pendingLabel?: string;
   triggerTestId: string;
+  /** The trigger's rank, where its surface makes this the primary action (#5487). */
+  triggerVariant?: "primary";
   icon?: React.ReactNode;
   successMessage?: string;
 }) {
@@ -107,6 +110,7 @@ export default function EndEpisodeReconcile({
     <>
       <Button
         data-testid={triggerTestId}
+        variant={triggerVariant}
         disabled={pending}
         onClick={() => void onTrigger()}
       >

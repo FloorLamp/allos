@@ -25,6 +25,7 @@ import {
   type FoodMealEvent,
   getFoodBarOrder,
   getMoodOnDate,
+  getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getProteinDailyGrams,
   getProteinQuickAddPreset,
@@ -37,6 +38,7 @@ import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
 import { formatWeekdayDate } from "@/lib/format-date";
 import type { TimeFormat } from "@/lib/format-date";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 import {
   pendingDayDoses,
   type PendingDayDose,
@@ -112,6 +114,9 @@ export interface QuickEntryPrn {
   tz: string;
   timeFormat: TimeFormat;
   nowIso: string;
+  // The SUBJECT's pediatric dosing context (#4713) — the sheet's chosen profile, not
+  // the acting one — so a child's PRN row bands from the weight on file at the tap.
+  pediatric: PediatricFormContext;
 }
 
 // One recent-past day the dose sheet can switch to, with what it still owes grouped
@@ -588,6 +593,10 @@ export async function loadQuickEntry(
       tz,
       timeFormat: formatPrefs.timeFormat,
       nowIso: now.toISOString(),
+      pediatric: getPediatricFormContext(
+        profile.id,
+        getUnitPrefs(login.id).weightUnit
+      ),
     },
     pastDays,
   };

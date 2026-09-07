@@ -624,16 +624,20 @@ test("the illness cockpit names its situation exactly once at 390px (#3238)", as
     await expect(cockpit).toBeVisible();
     const situation = (await cockpit.getAttribute("data-situation"))!;
     expect(situation.length).toBeGreaterThan(0);
-    const header = cockpit.getByTestId("illness-cockpit-header-row");
-    const text = (await header.innerText()).replace(/\s+/g, " ");
+    // THE WHOLE COCKPIT, not just its header row (#5488 fix 1). Expanded, the row
+    // states no facts at all — the recovery header 100px below owns them — so the
+    // situation's one appearance moved into the card rather than disappearing, and
+    // the claim is where it always belonged: this cockpit names its situation once.
+    await expect(cockpit).toHaveAttribute("data-expanded", "true");
+    const text = (await cockpit.innerText()).replace(/\s+/g, " ");
     const occurrences = text.split(situation).length - 1;
     expect(
       occurrences,
-      `the header row says "${situation}" ${occurrences} times: ${text}`
+      `the cockpit says "${situation}" ${occurrences} times: ${text}`
     ).toBe(1);
     // The day survives — it is the situation's NAME that was doubled, not the day.
-    await expect(cockpit.getByTestId("illness-cockpit-day")).toHaveText(
-      /^Day \d+$/
+    await expect(cockpit.getByTestId("cockpit-day-tag")).toHaveText(
+      new RegExp(`^${situation} · Day \\d+$`)
     );
 
     const actions = ["note-toggle", "clear"].map((id) =>

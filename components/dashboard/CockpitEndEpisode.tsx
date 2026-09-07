@@ -1,4 +1,3 @@
-import { IconMoodCheck } from "@tabler/icons-react";
 import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
 import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 
@@ -24,7 +23,11 @@ export default function CockpitEndEpisode({
       meds={meds}
       triggerLabel="Feeling better"
       triggerTestId="cockpit-end-episode"
-      icon={<IconMoodCheck className="h-3.5 w-3.5" stroke={1.75} />}
+      // THE BOARD'S TREATMENT (#5487 fix 4): a solid primary, no glyph. This is the
+      // action the cockpit's whole state ripens toward, and #4752 §1 approved it as
+      // the header's one primary. The episode page's own end control is unchanged —
+      // there it sits under a heading that already asks the question.
+      triggerVariant="primary"
     />
   );
 }

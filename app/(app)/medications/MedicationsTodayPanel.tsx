@@ -19,6 +19,7 @@ import {
   formatGivenAtClock,
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type { MedCardData } from "./med-data";
 
 // The Today panel that LEADS the Medications page (#817): the daily-use job first.
@@ -47,6 +48,7 @@ export default function MedicationsTodayPanel({
   timeFormat,
   timezone,
   profileId,
+  pediatric,
   canWrite = true,
   ledgerDoor = false,
 }: {
@@ -73,6 +75,10 @@ export default function MedicationsTodayPanel({
   // confirm / PRN log targets THIS profile via the #858 gate; absent on the acting
   // board / single-view, so the panel is byte-identical.
   profileId?: number;
+  // This board's own profile's pediatric dosing context (#4713), so a child's PRN row
+  // offers the label band for the weight on file rather than the amount the item was
+  // last saved with. Undefined leaves every row exactly as it was.
+  pediatric?: PediatricFormContext;
   // Whether the viewer may write this member's doses. A read-only member's board is
   // view-only: scheduled rows show status without the check-off control, and the
   // PRN log rows (a pure write affordance) are omitted. Default true (acting board /
@@ -260,6 +266,7 @@ export default function MedicationsTodayPanel({
                 compactActions
                 profileId={profileId}
                 tz={timezone}
+                pediatric={pediatric}
               />
             ))}
           </div>

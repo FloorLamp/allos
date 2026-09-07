@@ -93,6 +93,12 @@ normally does not repeat its header or a notification's title. Preserve explicit
 approved designs: the illness cockpit header intentionally repeats the person's
 name and `Illness · Day N`. A change to that design needs its own scope.
 
+Where an approved surface and an unapproved one state the same fact, the approved
+half is raised and the other gives way. Owner ruling 2026-09-07: the cockpit's
+accordion row goes quiet when it is expanded — no situation, day, trend arrow,
+temperature, last dose or fever clock — because the header below states all six.
+It keeps the name and avatar, which identify whose card a control writes to.
+
 Use `hoursLabel` in `lib/redose-format.ts` for durations such as `1h 12m`, not
 `~1.2h`. `lib/format-date.ts` retains two clock conventions: `11:39 AM` for
 records and `11:39am` for administrations. Their meeting in the cockpit is an

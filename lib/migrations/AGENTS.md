@@ -28,17 +28,17 @@ These instructions apply to the migration runner and migrations.
 - Migrations run individually with foreign keys temporarily disabled for safe
   SQLite rebuilds. Preserve the runner's post-migration foreign-key delta
   report.
-- The runner copies the database aside before applying anything, triggered on
-  the pending set being non-empty — never on a per-migration declaration, which
-  #2444 forgot and #2703 proved a scan cannot complete. Do not narrow that
-  trigger or move the call out of autocommit.
+- The runner copies the database aside before running pending migration bodies
+  when the pending set is non-empty, subject to the shared snapshot policy's skips.
+  Do not replace that trigger with per-migration declarations or narrow it;
+  keep the call in autocommit.
 - A copy that cannot be taken refuses the boot, which is correct only because
-  nothing has been applied yet. Every later failure in this runner reports
-  instead.
+  no pending migration body has run. A migration exception rolls back that
+  migration and stops boot; post-commit foreign-key diagnostics report instead.
 - `ALLOS_MIGRATION_SNAPSHOT=off` skips the copy for every upgrade;
   `off:<migration name>` scopes it to one pending set and expires by itself.
-- Boot tasks run after the copy is taken, so their deletes have none behind
-  them. Register every one in the boot-task delete census with its row class.
+- Boot tasks do not trigger a fresh snapshot on ordinary starts. Register their
+  deletes in the boot-task delete census with each row class.
 - A migration body may be RE-ENTERED by `runBootTx`'s `SQLITE_BUSY` retry. Keep
   every effect inside the `db` handle you were given — a second connection, a
   file write or a module-level accumulator survives the rollback and applies
