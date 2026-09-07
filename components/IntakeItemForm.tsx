@@ -552,10 +552,6 @@ export default function IntakeItemForm({
   // supplement catalog entries and the household's bottles; each used to have its own
   // seeding code, and the two that were not `resolveIntakePrefill` wrote values without
   // marking them. Now every arm builds a source and hands it to the one resolver.
-  //
-  // Generation-guarded because the medication arm awaits its own RxNorm confirm: a
-  // second pick during that wait owns the form, and the first must not land on top of it.
-  const pickGeneration = useRef(0);
 
   // A dose offered for the previous product has no authority over a new identity.
   // The ledger distinguishes that offer from a saved or caregiver-edited amount.
@@ -570,13 +566,12 @@ export default function IntakeItemForm({
   }
 
   function changeProductIdentity() {
-    ++pickGeneration.current;
+    rx.clear();
     withdrawDoseSuggestion();
   }
 
   async function onPickName(picked: string, query?: string) {
     changeProductIdentity();
-    const generation = pickGeneration.current;
     setSelectedPediatricBandMinLbs(null);
     setFormulationSlug("");
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
@@ -619,20 +614,20 @@ export default function IntakeItemForm({
     // used to be resolved here from `rx.rxcui` as it stood before the pick — a value the
     // confirm had not produced yet — and resolved again by the `prnDefaults` memo once
     // it landed: two computations of one fact, one of them reading a stale code (#4665).
-    const confirmed = await rx.autoConfirm(generic);
-    if (pickGeneration.current !== generation) return;
-    seedFromPick(
-      withBottle({
-        vocabulary: "medication",
-        info: getMedicationInfo(generic),
-        prn: prnDefaultsFor({
-          name: generic,
-          rxcui: confirmed?.rxcui ?? null,
-          rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
-          ingredients: state.ingredients,
-        }),
-      })
-    );
+    await rx.autoConfirm(generic, (confirmed) => {
+      seedFromPick(
+        withBottle({
+          vocabulary: "medication",
+          info: getMedicationInfo(generic),
+          prn: prnDefaultsFor({
+            name: generic,
+            rxcui: confirmed?.rxcui ?? null,
+            rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
+            ingredients: state.ingredients,
+          }),
+        })
+      );
+    });
   }
 
   // What a pick writes, once the ledger has said which parts of the offer it may.
@@ -669,6 +664,7 @@ export default function IntakeItemForm({
   // this item's own save. The door's locked kind already scoped which bottles were
   // offered, so a bottle never changes the form's kind.
   function onPickSupply(supply: SupplyOption | null): void {
+    changeProductIdentity();
     const seed = supply ? itemSeedFromPool(supply) : null;
     const previous = seededRef.current;
     // The NAME is product identity rather than a label figure, so it keeps the pool's
@@ -816,6 +812,15 @@ export default function IntakeItemForm({
     // to be a fan-out of 27 setters, where a field left out was silently dropped on
     // Resume — the person's own answer, gone, with nothing to see.
     onRestore: (d) => {
+      rx.reset(
+        d.state.rxcui
+          ? {
+              rxcui: d.state.rxcui,
+              rxcuiIngredients: d.state.rxcuiIngredients,
+            }
+          : null
+      );
+      setLedger(emptyPrefillLedger());
       setState(d.state);
       setRules(d.rules ?? []);
       setFormulationSlug(d.formulationSlug ?? "");
@@ -960,7 +965,6 @@ export default function IntakeItemForm({
             }
             changeProductIdentity();
             patch({ name: v });
-            rx.onNameChange();
           }}
           onPick={onPickName}
           options={nameOptions}
@@ -971,13 +975,10 @@ export default function IntakeItemForm({
           rx={{
             ...rx,
             confirm: (code) => {
-              changeProductIdentity();
+              withdrawDoseSuggestion();
               return rx.confirm(code);
             },
-            clear: () => {
-              changeProductIdentity();
-              rx.clear();
-            },
+            clear: changeProductIdentity,
           }}
         />
         {isChildProfile &&
