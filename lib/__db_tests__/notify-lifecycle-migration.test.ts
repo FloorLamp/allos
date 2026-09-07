@@ -12,7 +12,7 @@
 // keys, exactly as an upgrading instance would hit it).
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { up as migrate061 } from "@/lib/migrations/versions/061-notify-lifecycle";
 import { getNotifyError } from "@/lib/notifications";
 

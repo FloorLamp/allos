@@ -18,7 +18,7 @@
 // SYNTHETIC ONLY: invented profile, invented values. No PHI.
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import {
   canonicalFlagsSignature,
   FLAG_LOGIC_VERSION,

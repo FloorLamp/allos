@@ -13,7 +13,7 @@
 // fictional names, no phones).
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { up as migrateChannels } from "@/lib/migrations/versions/105-login-notification-channels";
 import {
   getLoginTelegram,

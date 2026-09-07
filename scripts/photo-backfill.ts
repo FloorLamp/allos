@@ -14,14 +14,14 @@
 
 import "./load-env";
 
-import { db } from "../lib/db";
+import { rawDb } from "../lib/db";
 import { backfillPhotoMetadata } from "../lib/photo/metadata-backfill";
 import { createLogger } from "../lib/log";
 
 const log = createLogger("photo-backfill-cli");
 
 async function main() {
-  const tally = await backfillPhotoMetadata(db);
+  const tally = await backfillPhotoMetadata(rawDb);
   log.info("photo metadata backfill complete", { ...tally });
   process.exit(tally.failed > 0 ? 1 : 0);
 }

@@ -7,7 +7,7 @@
 // left untouched (the #133 user-edit lock). Runs under vitest.db.config.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import {
   mapWithingsMeasureGroup,
   mapWithingsSleep,

@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { makeTmpDir } from "@/lib/__tests__/tmp-dir";
 import { toKg } from "@/lib/units";
-import { db, writeTx } from "@/lib/db";
+import { rawDb as db, writeTx } from "@/lib/db";
 import {
   upsertBodyMetrics,
   type NormBodyMetric,

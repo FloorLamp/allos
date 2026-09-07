@@ -150,7 +150,7 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
 export type FixtureTimezoneOverride = keyof typeof FIXTURE_TIMEZONE_OVERRIDES;
 
 export function setFixtureTimezone(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   profileId: number,
   declaration: FixtureTimezoneOverride,
   timezone: string
@@ -172,7 +172,7 @@ export function setFixtureTimezone(
 // behind, so a reused dev database would keep honouring an override the source no
 // longer contains. CI builds a fresh template every run and would never notice.
 export function clearFixtureTimezone(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   profileId: number
 ): void {
   db.prepare(

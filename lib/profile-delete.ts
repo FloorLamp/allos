@@ -53,7 +53,7 @@ interface PragmaFkRow {
   on_delete: string;
 }
 
-function userTables(db: Database.Database): string[] {
+function userTables(db: Pick<Database.Database, "prepare">): string[] {
   return (
     db
       .prepare(
@@ -66,7 +66,9 @@ function userTables(db: Database.Database): string[] {
 
 // Every FK each table declares, grouped by the pragma's constraint id so a
 // composite (multi-column) FK is visible as one unit.
-function tableForeignKeys(db: Database.Database): Map<string, PragmaFkRow[][]> {
+function tableForeignKeys(
+  db: Pick<Database.Database, "prepare">
+): Map<string, PragmaFkRow[][]> {
   const out = new Map<string, PragmaFkRow[][]>();
   for (const t of userTables(db)) {
     const rows = db
@@ -89,7 +91,7 @@ function tableForeignKeys(db: Database.Database): Map<string, PragmaFkRow[][]> {
 // is the decision point: such a schema needs an explicit new plan here, not a
 // silent omission from the sweep.
 export function ownedChildTables(
-  db: Database.Database
+  db: Pick<Database.Database, "prepare">
 ): Map<string, OwnedChildTable> {
   const owned = new Set<string>(OWNED_TABLES);
   const fks = tableForeignKeys(db);
@@ -167,7 +169,7 @@ export interface ProfileChildDelete {
 // finds its parent rows, then alphabetical for stable output. Table names come
 // from sqlite_master, never from user input.
 export function profileChildDeletePlan(
-  db: Database.Database
+  db: Pick<Database.Database, "prepare">
 ): ProfileChildDelete[] {
   const owned = new Set<string>(OWNED_TABLES);
   const children = ownedChildTables(db);
@@ -209,7 +211,7 @@ export function profileChildDeletePlan(
 // tables (profile_settings, login_profiles, sessions, logins, profiles) plus
 // on-disk files itself.
 export function deleteProfileData(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   profileId: number
 ): void {
   for (const step of profileChildDeletePlan(db)) {

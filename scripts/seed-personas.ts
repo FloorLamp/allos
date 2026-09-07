@@ -38,7 +38,7 @@ import type { FitnessEntryInput } from "../lib/fitness-assessment";
 import { VIA_IMPORTED, VIA_SEEDED } from "./seed-logged-via";
 
 export interface PersonaContext {
-  db: Database;
+  db: Pick<Database, "prepare">;
   profileId: number;
   /** Calendar-string date n days ago (negative = future), profile-local. */
   daysAgo(n: number): string;
@@ -64,7 +64,7 @@ export interface PersonaContext {
   /**
    * One BEGIN IMMEDIATE write transaction (lib/db.ts's `writeTx`). Injected like
    * everything else here so this module stays type-only, and IMMEDIATE rather than a
-   * bare `db.transaction` for the reason lib/__tests__/immediate-tx.test.ts gives: a
+   * bare `db.transaction`: a
    * DEFERRED transaction opens a read snapshot and only reaches for the write lock at
    * its first write, where a competing commit makes it throw SQLITE_BUSY instead of
    * waiting.

@@ -149,7 +149,7 @@ Use existing coverage before adding cases:
 
 - `lib/__tests__/auto-reload.test.ts` and `sw-update.test.ts`: decision order,
   retry windows, markers, classifiers, and continuation eligibility.
-- `lib/__tests__/deployed-version-watch.test.ts`: actual polling and settled-state
+- `components/__tests__/deployed-version-watch.test.ts`: actual polling and settled-state
   behavior, including reads invalidated by a newer generation.
 - `components/__tests__/auto-update-reload.test.ts`: unrecoverable work appearing
   while draft capture is awaited.

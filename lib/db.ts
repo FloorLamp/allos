@@ -120,8 +120,11 @@ export function migrate(db: Database.Database): void {
 // between test files — see reopenDatabaseForTests(). ESM exports are LIVE
 // BINDINGS, so every `import { db }` site observes the reassignment without a
 // single call site changing. Nothing in app code may reassign it.
-export let db = globalForDb.__healthDb ?? createDb();
-if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
+let connection = globalForDb.__healthDb ?? createDb();
+// Request code uses writeTx/readTx. Full-handle adapters opt into rawDb explicitly.
+export let db: Omit<Database.Database, "transaction"> = connection;
+export { connection as rawDb };
+if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = connection;
 
 // A prepared statement declared at MODULE scope, resolved at call time.
 //
@@ -139,7 +142,7 @@ if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
 // collected with the handle it belonged to. Use this for a module-scope statement;
 // an inline prepare inside a function already sees the current connection.
 const statementCache = new WeakMap<
-  Database.Database,
+  typeof db,
   Map<string, Database.Statement>
 >();
 
@@ -182,9 +185,11 @@ export function hoistedStatement(sql: string): HoistedStatement {
 // the fd budget. Never call this from app code — the production singleton is
 // opened exactly once, at import.
 export function reopenDatabaseForTests(): void {
-  const previous = db;
-  db = createDb();
-  if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
+  const previous = connection;
+  connection = createDb();
+  db = connection;
+  if (process.env.NODE_ENV !== "production")
+    globalForDb.__healthDb = connection;
   // Module-level state derived from the OLD database outlives the swap in a
   // shared registry. The timezone memo is keyed by profile id, and every seeded
   // file bootstraps the same low ids, so a stale entry would silently answer for
@@ -205,29 +210,13 @@ export function reopenDatabaseForTests(): void {
 // db → boot-tasks → settings cycle otherwise TDZ-faults some import orders). The
 // closure defers the singleton read to call time, and getTierConfigs takes the handle
 // rather than importing it back (#2958), so this edge does not close a cycle.
-setTierConfigProvider(() => getTierConfigs(db));
+setTierConfigProvider(() => getTierConfigs(connection));
 
-// Run a WRITE transaction with the reserved-write lock taken at BEGIN (IMMEDIATE)
-// (issue #468). A plain `db.transaction(fn)` is DEFERRED: it opens a read snapshot
-// and only tries to upgrade to a write lock at its FIRST write — and that upgrade,
-// if another connection has committed since the snapshot opened, throws SQLITE_BUSY
-// *immediately*, NOT covered by busy_timeout. Three processes now write this file
-// (the web app, the hourly notify tick, the poll sidecar), so a read-then-write
-// transaction that snapshots then writes hits that trap under the top-of-hour write
-// burst. IMMEDIATE takes the write lock up front, so a competing writer waits it out
-// via busy_timeout instead of failing. Any app transaction that WRITES must go
-// through here (or `.immediate()` directly, for the arg-passing migration sites) —
-// enforced by lib/__tests__/immediate-tx.test.ts. Nesting is safe: better-sqlite3
-// turns a transaction opened inside an already-open one into a SAVEPOINT and ignores
-// the access mode, so writeTx works at either the top level or nested.
-// The write-transaction TOKEN (#2133, owner mechanism). `writeTx` hands its callback a
-// value only this module can mint, and the in-transaction read/compare helpers in
-// lib/tx.ts REQUIRE it — so a guard read or compare-and-swap written with those helpers
-// cannot typecheck OUTSIDE the transaction it protects. That makes the defect class
-// #2133/#2139 found (status checked outside, write inside) unwritable rather than
-// something each core's author remembers. The token is EVIDENCE, not an async handle:
-// the callback-synchronous rule is unchanged, and a callback that ignores the token
-// (every additive write) is exactly as valid as before.
+// Request writes acquire the reserved lock at BEGIN so read-then-write work
+// cannot fail while upgrading a stale snapshot. Nested calls use savepoints.
+// The exported db type omits transaction; full-handle boot adapters own their
+// IMMEDIATE discipline separately. Tx supplies the synchronous lifecycle helpers
+// with evidence that their reads and compare-and-swaps share this transaction.
 declare const TX_BRAND: unique symbol;
 export interface Tx {
   readonly [TX_BRAND]: true;
@@ -235,7 +224,7 @@ export interface Tx {
 const txToken = {} as Tx;
 
 export function writeTx<T>(fn: (tx: Tx) => T): T {
-  return db.transaction(() => fn(txToken)).immediate() as T;
+  return connection.transaction(() => fn(txToken)).immediate() as T;
 }
 
 // Run a READ-ONLY snapshot transaction (DEFERRED): wrap several reads in one
@@ -243,7 +232,7 @@ export function writeTx<T>(fn: (tx: Tx) => T): T {
 // collector, issue #135). Deferred is correct here — it never writes, so it must NOT
 // take a write lock. Anything that mutates uses writeTx instead.
 export function readTx<T>(fn: () => T): T {
-  return db.transaction(fn)() as T;
+  return connection.transaction(fn)() as T;
 }
 
 // Proactively checkpoint the write-ahead log (issue #135, item 6). Three processes

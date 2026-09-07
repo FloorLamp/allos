@@ -74,7 +74,7 @@ describe("shouldReloadOnControllerChange", () => {
 // deploy under an already-open tab. Picking a detector was never what kept one deploy
 // to one notice — the merge below is, and it is now the whole of that guarantee. The
 // production shape those tests never described is driven by
-// lib/__tests__/deployed-version-watch.test.ts and e2e/sw-update.spec.ts.
+// components/__tests__/deployed-version-watch.test.ts and e2e/sw-update.spec.ts.
 
 describe("resolveUpdateState (#1795)", () => {
   const OLD = "aaaaaaa";

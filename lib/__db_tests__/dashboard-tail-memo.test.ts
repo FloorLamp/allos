@@ -19,7 +19,7 @@
 // as other-process writers of the very suppression bus these findings ride.
 import Database from "better-sqlite3";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { db, dbFilePath, today, writeTx } from "@/lib/db";
+import { rawDb as db, dbFilePath, today, writeTx } from "@/lib/db";
 import {
   installStatementTrace,
   requestCache,

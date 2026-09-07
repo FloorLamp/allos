@@ -15,7 +15,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { plainBody } from "@/lib/notifications/rich-text";
-import { db, today } from "@/lib/db";
+import { rawDb as db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   setTelegramBotConfig,

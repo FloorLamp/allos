@@ -32,7 +32,7 @@ import { seedStandardMetricSaves } from "../lib/standard-metric-seeds";
 // Kept in a PLAIN module (no @playwright/test import) for the same reason
 // e2e/fixture-logins.ts is: the tsx seeder and the specs both import it.
 export function createFixtureProfile(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   name: string
 ): number {
   const id = Number(
@@ -46,7 +46,7 @@ export function createFixtureProfile(
 // Same, for a fixture that pins its profile's ID (the household fixtures reserve
 // id 2). Returns the id it was given.
 export function createFixtureProfileWithId(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   id: number,
   name: string
 ): number {
@@ -77,7 +77,7 @@ export function createFixtureProfileWithId(
 //   • grants go too, since a login may not point at a profile that no longer exists.
 // The order matters: every reference is cleared before the row it points at.
 export function destroyFixtureProfile(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   profileId: number
 ): void {
   db.prepare(

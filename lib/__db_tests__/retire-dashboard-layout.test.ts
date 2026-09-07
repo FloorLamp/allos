@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { up } from "@/lib/migrations/versions/20260818-retire-dashboard-layout";
 
 describe("retired dashboard layout migration (#3096)", () => {

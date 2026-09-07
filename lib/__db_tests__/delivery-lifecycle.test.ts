@@ -19,7 +19,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import path from "node:path";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import {
   setLoginEmailNotify,
   setLoginTelegram,
