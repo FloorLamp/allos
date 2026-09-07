@@ -1004,6 +1004,7 @@ export const DATASETS: ExportDataset[] = [
     columns: [
       "item",
       "dose_amount",
+      "amount_captured",
       "effective_from",
       "time_of_day",
       "weekdays",
@@ -1011,7 +1012,8 @@ export const DATASETS: ExportDataset[] = [
       "end_date",
       "created_at",
     ],
-    select: `SELECT v.id, ii.name AS item, d.amount AS dose_amount, v.effective_from,
+    select: `SELECT v.id, ii.name AS item, v.amount AS dose_amount, v.amount_captured,
+              v.effective_from,
               v.time_of_day, v.weekdays, v.start_date, v.end_date, v.created_at
        FROM intake_dose_schedule_versions v
        JOIN intake_item_doses d ON d.id = v.dose_id

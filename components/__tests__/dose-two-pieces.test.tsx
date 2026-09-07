@@ -128,6 +128,14 @@ const MAGNESIUM = {
 beforeEach(() => {
   posted.length = 0;
   vi.clearAllMocks();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
   mocks.logHistoricalDose.mockImplementation(async (fd: FormData) => {
     posted.push(fd);
     return { ok: true };
@@ -260,6 +268,63 @@ describe("one dose form, add and edit, one layout (#4424 ruling 1)", () => {
     );
     expect(screen.queryByTestId("historical-dose-item-picker")).toBeNull();
   });
+
+  it("defaults the amount by date without clobbering a manual edit", () => {
+    render(
+      <HistoricalDoseForm
+        items={[
+          {
+            ...MAGNESIUM,
+            doses: [
+              {
+                ...MAGNESIUM.doses[0]!,
+                amount: "1000 mg",
+                versions: [
+                  {
+                    effective_from: YESTERDAY,
+                    amount: "500 mg",
+                    amount_captured: 1,
+                  },
+                  {
+                    effective_from: TODAY,
+                    amount: "1000 mg",
+                    amount_captured: 1,
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        initialDate="2026-08-26"
+        maxDate={TODAY}
+        defaultTime="08:00"
+        onDone={vi.fn()}
+      />
+    );
+
+    const amount = screen.getByLabelText("Amount") as HTMLInputElement;
+    expect(amount.value).toBe("500 mg");
+    expect(
+      screen.getByText(
+        "No amount was saved for this date. Using the oldest known amount."
+      )
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Date and time taken" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "August 28, 2026" }));
+    expect(amount.value).toBe("1000 mg");
+    expect(
+      screen.queryByText(
+        "No amount was saved for this date. Using the oldest known amount."
+      )
+    ).toBeNull();
+
+    fireEvent.change(amount, { target: { value: "750 mg" } });
+    fireEvent.click(screen.getByRole("button", { name: "August 27, 2026" }));
+    expect(amount.value).toBe("750 mg");
+  });
 });
 
 const DUE_DOSE = {
@@ -270,6 +335,7 @@ const DUE_DOSE = {
   stack: null,
   bucket: "Morning" as const,
   timeOfDay: "Morning",
+  amountAssumed: false,
 };
 
 function ledgerGroups(): LedgerGroup[] {
@@ -409,7 +475,13 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
               {
                 bucket: "Morning",
                 doses: [
-                  { doseId: 41, name: "Creatine", detail: "5 g", stack: null },
+                  {
+                    doseId: 41,
+                    name: "Creatine",
+                    detail: "5 g",
+                    stack: null,
+                    amountAssumed: false,
+                  },
                 ],
               },
             ],
@@ -953,14 +1025,6 @@ describe("the dose-history panel collects its subject's wall clock (#4693)", () 
       dispatchEvent: () => false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })) as any;
-    vi.stubGlobal(
-      "ResizeObserver",
-      class ResizeObserver {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      }
-    );
   });
   afterEach(() => vi.useRealTimers());
 

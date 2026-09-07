@@ -377,6 +377,7 @@ export default function EditableSupplementRow({
                 id: d.id,
                 amount: d.amount,
                 time_of_day: d.time_of_day,
+                versions: d.versions,
               }))}
               asNeeded={isOnDemand(s)}
               courseBound={false}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
+import type { DoseScheduleVersion } from "@/lib/intake-cadence";
 
 export interface HistoricalDoseLauncherItem {
   id: number;
@@ -14,6 +15,7 @@ export interface HistoricalDoseLauncherItem {
     id: number;
     amount: string | null;
     timeOfDay: string | null;
+    versions?: readonly DoseScheduleVersion[];
   }[];
 }
 
@@ -76,6 +78,7 @@ export default function HistoricalDoseLauncher({
                   timeFormat: formatPrefs.timeFormat,
                 }) || "Dose",
               amount: dose.amount,
+              versions: dose.versions,
             })),
           }))}
           initialDate={initialDate}

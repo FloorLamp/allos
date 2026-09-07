@@ -13,6 +13,7 @@ import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
   doseOnDay,
+  doseScheduleAsOf,
   type DoseCadence,
   type ItemCadence,
 } from "../../intake-cadence";
@@ -64,7 +65,7 @@ import { getEffectiveActiveSituations } from "../derived-situations";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import type { IntakeCondition, IntakeItemKind } from "../../types";
 import { intakeShortLabels } from "../../intake-short-name";
-import { getIntakeItems } from "./schedule";
+import { getDoseScheduleVersions, getIntakeItems } from "./schedule";
 import { DOSE_CONFIRM_UNDO, DOSE_RESOLUTION } from "@/lib/log-manifest";
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
@@ -320,6 +321,7 @@ function applyDoseStatusCore(
           DoseCadence)
       | undefined;
     if (!owned) return "stale-dose";
+    owned.versions = getDoseScheduleVersions(profileId).get(doseId);
     // A paused/stopped item keeps its buttons in old messages; refuse the write so a
     // lingering reminder can't silently log doses (and burn supply) for an item the user
     // has deliberately paused. The web control is only RENDERED for an active item, so
@@ -366,7 +368,10 @@ function applyDoseStatusCore(
     // Snapshot the dose amount at confirm time: history must keep showing what was
     // actually taken even after a later dosage edit rewrites the dose row. A skip
     // records no amount — nothing was consumed.
-    const amount = target === "taken" ? owned.amount : null;
+    const amount =
+      target === "taken"
+        ? (doseScheduleAsOf(owned, date).amount ?? null)
+        : null;
     if (!existing) {
       // `recorded_at` is immutable capture; `occurred_at` is the administration the
       // Taken action asserts. An offline replay may carry the captured administration
@@ -887,16 +892,18 @@ export function logHistoricalDose(
   return writeTx((tx): HistoricalDoseOutcome => {
     const dose = db
       .prepare(
-        `SELECT d.item_id, d.amount, s.obligation
+        `SELECT d.item_id, d.amount, d.time_of_day, d.weekdays,
+                d.start_date, d.end_date, s.obligation
            FROM intake_item_doses d
            JOIN intake_items s ON s.id = d.item_id
           WHERE d.id = ? AND d.item_id = ? AND d.retired = 0
             AND s.profile_id = ?`
       )
       .get(doseId, itemId, profileId) as
-      | { item_id: number; amount: string | null; obligation: IntakeObligation }
+      | ({ item_id: number; obligation: IntakeObligation } & DoseCadence)
       | undefined;
     if (!dose) return { kind: "stale-dose" };
+    dose.versions = getDoseScheduleVersions(profileId).get(doseId);
 
     const inCourse =
       !itemHasCourses(profileId, itemId) ||
@@ -965,7 +972,8 @@ export function logHistoricalDose(
       if (duplicate) return { kind: "duplicate" };
     }
 
-    const amount = amountOverride?.trim() || dose.amount;
+    const amount =
+      amountOverride?.trim() || doseScheduleAsOf(dose, date).amount || null;
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
       // transaction (Tx token), the DML lives with the invariant's owner.

@@ -54,5 +54,6 @@ export function doseOptionsFor(
         timeFormat: prefs.timeFormat,
       }) || "Dose",
     amount: dose.amount,
+    versions: dose.versions,
   }));
 }

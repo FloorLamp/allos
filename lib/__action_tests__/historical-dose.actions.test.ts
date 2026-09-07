@@ -42,6 +42,65 @@ function seedMedication(
 }
 
 describe("logHistoricalDose", () => {
+  it("uses the target day's amount unless the person enters an override", async () => {
+    const { profile } = seedActor();
+    const firstDate = shiftDateStr(today(profile.id), -5);
+    const overrideDate = shiftDateStr(today(profile.id), -4);
+    const { itemId, doseId } = seedMedication(profile.id, {
+      startedOn: shiftDateStr(firstDate, -1),
+    });
+    db.prepare(
+      `INSERT INTO intake_dose_schedule_versions
+         (dose_id, effective_from, amount, amount_captured, time_of_day)
+       VALUES (?, ?, '5 mg', 1, 'morning'),
+              (?, ?, '10 mg', 1, 'morning')`
+    ).run(doseId, firstDate, doseId, today(profile.id));
+    db.prepare(
+      "UPDATE intake_item_doses SET amount = '10 mg' WHERE id = ?"
+    ).run(doseId);
+
+    expect(
+      await logHistoricalDose(
+        fd({ id: itemId, dose_id: doseId, date: firstDate, time: "08:00" })
+      )
+    ).toEqual({ ok: true });
+    expect(
+      await logHistoricalDose(
+        fd({
+          id: itemId,
+          dose_id: doseId,
+          date: overrideDate,
+          time: "08:00",
+          amount: "7.5 mg",
+        })
+      )
+    ).toEqual({ ok: true });
+    expect(
+      db
+        .prepare(
+          "SELECT date, amount FROM intake_item_logs WHERE dose_id = ? ORDER BY date"
+        )
+        .all(doseId)
+    ).toEqual([
+      { date: firstDate, amount: "5 mg" },
+      { date: overrideDate, amount: "7.5 mg" },
+    ]);
+
+    db.prepare(
+      "UPDATE intake_item_doses SET amount = '20 mg' WHERE id = ?"
+    ).run(doseId);
+    expect(
+      db
+        .prepare(
+          "SELECT date, amount FROM intake_item_logs WHERE dose_id = ? ORDER BY date"
+        )
+        .all(doseId)
+    ).toEqual([
+      { date: firstDate, amount: "5 mg" },
+      { date: overrideDate, amount: "7.5 mg" },
+    ]);
+  });
+
   it("stores the posting web surface and demotes a forged provenance", async () => {
     const { profile } = seedActor();
     const date = shiftDateStr(today(profile.id), -2);

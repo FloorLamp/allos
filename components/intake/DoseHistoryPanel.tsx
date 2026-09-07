@@ -25,6 +25,10 @@ import {
   formatMedicationDoseLine,
   formatMedicationDoseProduct,
 } from "@/lib/medication-dose-format";
+import {
+  doseScheduleAsOf,
+  type DoseScheduleVersion,
+} from "@/lib/intake-cadence";
 
 // One recorded administration as the panel renders it. `time` is the
 // already-formatted profile-local clock string — when the row states no intake time
@@ -55,6 +59,7 @@ export interface DoseHistoryDose {
   id: number;
   amount: string | null;
   time_of_day: string | null;
+  versions?: readonly DoseScheduleVersion[];
 }
 
 // The dose-history panel: an item's recorded administrations, with backfill, amend,
@@ -167,6 +172,7 @@ export default function DoseHistoryPanel({
             timeFormat: formatPrefs.timeFormat,
           }) || "Dose",
         amount: dose.amount,
+        versions: dose.versions,
       })),
     },
   ];
@@ -193,19 +199,27 @@ export default function DoseHistoryPanel({
   // label — a row reading "morning" that records 13:04 promises what the tap does not
   // do (#1505), and the label is the whole promise here because there is no visible
   // field to correct it in.
-  const offerHhmm = parseClockHhmm(soleDose?.time_of_day);
-  const offerPromise = [
-    soleDose ? formatMedicationDoseProduct(soleDose.amount, product) : null,
-    offerHhmm ? formatClockValue(offerHhmm, formatPrefs.timeFormat) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const offerOn = (date: string) => {
+    const schedule = soleDose ? doseScheduleAsOf(soleDose, date) : null;
+    const hhmm = parseClockHhmm(schedule?.time_of_day);
+    return {
+      amountAssumed: schedule?.amountAssumed ?? false,
+      hhmm,
+      promise: [
+        schedule ? formatMedicationDoseProduct(schedule.amount, product) : null,
+        hhmm ? formatClockValue(hhmm, formatPrefs.timeFormat) : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  };
 
   function logMissedDay(date: string) {
     if (!soleDose) {
       setBackfill({ kind: "form", date });
       return;
     }
+    const offer = offerOn(date);
     void ledger.tap({
       // Per DAY: two offers in the list are two independent writes, and neither may
       // be absorbed by the other's cooldown.
@@ -219,12 +233,9 @@ export default function DoseHistoryPanel({
         // the subject the form carries — otherwise one tap files the caregiver.
         if (subjectProfileId != null)
           fd.set("profile_id", String(subjectProfileId));
-        // The same field names and the same amount the form posts, so the offer and
-        // the form produce one row rather than two spellings of one write. The TIME
-        // is the one value derived better than the form derives it — see
-        // `offerHhmm` — because this row's words are the only thing standing for it.
-        fd.set("time", offerHhmm ?? defaultTime);
-        if (soleDose.amount) fd.set("amount", soleDose.amount);
+        // Amount is deliberately absent: the server resolves it again for this date,
+        // while the time is the value this visible offer promises.
+        fd.set("time", offer.hhmm ?? defaultTime);
         return logHistoricalDose(stampLoggedVia(fd));
       },
       settle: (result) => {
@@ -330,13 +341,24 @@ export default function DoseHistoryPanel({
               write, so the applicability test leaves it the row it was. `soleDose` is
               a property of the ITEM, so a panel renders one shape or the other and
               never a mixed list. */}
-          {offeredDays.map((date) =>
-            soleDose ? (
+          {offeredDays.map((date) => {
+            const offer = offerOn(date);
+            return soleDose ? (
               <LabeledVerbChip
                 key={date}
                 tone="neutral"
                 testId="dose-backfill-offer"
-                label={`${formatLongDate(date, formatPrefs)} · ${offerPromise}`}
+                label={
+                  <span>
+                    <span>{`${formatLongDate(date, formatPrefs)} · ${offer.promise}`}</span>
+                    {offer.amountAssumed ? (
+                      <span className="block text-xs font-normal">
+                        No amount was saved for this date. Using the oldest
+                        known amount.
+                      </span>
+                    ) : null}
+                  </span>
+                }
                 verb="Log"
                 disabled={ledger.blocked(date)}
                 onAct={() => logMissedDay(date)}
@@ -350,8 +372,8 @@ export default function DoseHistoryPanel({
               >
                 {`${formatLongDate(date, formatPrefs)} · choose a dose`}
               </OfferRow>
-            )
-          )}
+            );
+          })}
           {/* A door, not an offer: no payload to name, so no chip. `w-full` puts it
               on its own line below the wrapped run. */}
           <OfferRow
