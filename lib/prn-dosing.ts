@@ -324,26 +324,6 @@ export function formulationDoseAmount(mg: number): string {
   return `${mg} mg`;
 }
 
-// What one PRN dose row offers, and what its tap writes (#4713).
-//
-// THE BAND RUNS AT THE TAP, NOT ONLY AT ADD TIME. The machinery above had exactly one
-// consumer — the add/edit medication form — so a child's dose row rendered the
-// `amount` SNAPSHOT the band produced whenever the item was last edited. A growing
-// child's snapshot said 160 mg; three months later the tap still wrote 160 mg with
-// nothing re-deriving it, and the staleness refusals below were unreachable from the
-// only surface anybody opens to give a dose at 2 a.m.
-//
-// MATCHED BY NAME, DELIBERATELY. The quick-log projection carries no RxCUI (the same
-// row `antipyreticPrnMeds` already matches name-only, for the same reason), and the
-// row and the WRITE must resolve the same entry or the record would state a figure the
-// reader was never shown — #4753's primitive, that a chip's label is its payload. So
-// both sides run this one function over the same two fields.
-//
-// A REFUSAL DOES NOT BLOCK THE TAP. #798's gates decide what the LABEL suggests, and
-// this moves where they run, not what they decide: the add form states a refusal and
-// still saves, and a caregiver who has already given a dose must still be able to
-// record it. `amount` therefore falls back to the stored snapshot for every non-dose
-// verdict, and the row states the refusal beside it.
 // The one spelling of what a refusal SAYS. #798's gates are stated in two places now
 // — the add form that sets the snapshot and, since #4713, the dose row that offers the
 // band — and a refusal a caregiver reads at 2 a.m. must not be a second, drifting
@@ -366,6 +346,26 @@ export function pediatricRefusalLine(
   }
 }
 
+// What one PRN dose row offers, and what its tap writes (#4713).
+//
+// THE BAND RUNS AT THE TAP, NOT ONLY AT ADD TIME. The machinery above had exactly one
+// consumer — the add/edit medication form — so a child's dose row rendered the
+// `amount` SNAPSHOT the band produced whenever the item was last edited. A growing
+// child's snapshot said 160 mg; three months later the tap still wrote 160 mg with
+// nothing re-deriving it, and the staleness refusals below were unreachable from the
+// only surface anybody opens to give a dose at 2 a.m.
+//
+// MATCHED BY NAME, DELIBERATELY. The quick-log projection carries no RxCUI (the same
+// row `antipyreticPrnMeds` already matches name-only, for the same reason), and the
+// row and the WRITE must resolve the same entry or the record would state a figure the
+// reader was never shown — #4753's primitive, that a chip's label is its payload. So
+// both sides run this one function over the same two fields.
+//
+// A REFUSAL DOES NOT BLOCK THE TAP. #798's gates decide what the LABEL suggests, and
+// this moves where they run, not what they decide: the add form states a refusal and
+// still saves, and a caregiver who has already given a dose must still be able to
+// record it. `amount` therefore falls back to the stored snapshot for every non-dose
+// verdict, and the row states the refusal beside it.
 export interface PrnDoseRowOffer {
   // The amount the row offers and the tap records: the label band's figure when one
   // is derivable, else the item's stored snapshot (adults, no-band items, refusals).
