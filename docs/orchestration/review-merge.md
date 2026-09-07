@@ -43,8 +43,9 @@
 
 ## What a lens looks for, and how verification lies
 
-`docs/internals/verification-failure-modes.md` carries both, each with the
-instance that bought it. Read it before writing a guard or dispatching a lens.
+[Verification failure modes](../internals/verification-failure-modes.md) explains
+coverage gaps and diagnostic checks. Consult the relevant section before writing
+a guard or dispatching a lens.
 
 ## Migrations
 

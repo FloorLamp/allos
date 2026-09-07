@@ -18,7 +18,7 @@ import {
 // kind's row cannot be spelled with a per-kind control; `NotificationMessage.kind` is
 // that same union, so a dispatched kind outside it never compiled either. A guard
 // that lists a union's members does not track the union
-// (docs/internals/verification-failure-modes.md line 83).
+// (docs/internals/verification-failure-modes.md#can-the-check-observe-the-defect).
 //
 // What stays is what neither a type nor ESLint can see: a COPY rule over prose, a
 // uniqueness fact across row VALUES, one policy set, and the behaviour of two pure
