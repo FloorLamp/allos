@@ -1,8 +1,8 @@
 import { expect, test } from "./fixtures";
 import { hydratedClick, settledBoxes, settledFill } from "./helpers";
+import { apiTokenScopeSummary } from "../lib/api-token-format";
 
-const SCOPE_DETAIL =
-  "Add medical documents to the profiles this login can write to. It cannot read anything back.";
+const SCOPE_DETAIL = apiTokenScopeSummary("upload:documents");
 
 test("a registered detail works by touch and keyboard without covering its trigger", async ({
   page,
@@ -60,18 +60,3 @@ test("a registered detail works by touch and keyboard without covering its trigg
   await hydratedClick(page, row.getByTestId("api-token-revoke"));
   await expect(row).toHaveCount(0);
 });
-
-// GONE WITH ITS SUBJECT (#4419 rule 1): "a sync timestamp discloses beside its
-// whole-card destination" drove the info button inside the Data › Import connected
-// card. That button was the last production instance of a disclosure nested in an
-// OverlayDestination — every one of them came from `SyncTimestamp relativeOnly`, and
-// the absolute stamp now lives on the surface each card links to.
-//
-// SO THERE IS NO REAL PAGE LEFT TO DRIVE, and that — not a coverage trade — is why
-// this test went and did not come back somewhere else. The COMPOSITION it guarded (a
-// detail control that is a SIBLING of the whole-surface link, tappable without
-// navigating) is still asserted, on a synthetic fixture that needs no production
-// instance, in components/__tests__/overlay-destination.test.tsx. Do not read the
-// synthetic-only guarantee as a gap and restore an e2e for it: an e2e would first
-// have to invent the very composition the placement rule removed. If a real instance
-// ever comes back, THAT is when a page-level test is worth writing again.
