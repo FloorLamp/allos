@@ -85,228 +85,134 @@ import type { LoadedDataset, MatchStrategy } from "./types";
 // resolve identity (so the harness can assert identity-resolves / refusal-gate with
 // the same strategy the app relies on).
 export interface RegisteredDataset {
-  // Loaded (validated) dataset. Typed loosely here so heterogeneous datasets share
-  // one list; per-dataset modules keep their precise types.
-  dataset: LoadedDataset<Record<string, unknown>, unknown>;
+  // Entry fields vary by dataset; the registry only needs validated object rows.
+  dataset: LoadedDataset<object, unknown>;
   strategy: MatchStrategy;
 }
 
 export const DATASETS: RegisteredDataset[] = [
   {
-    dataset: allergenCrossReactivityDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: allergenCrossReactivityDataset,
     strategy: allergenFamilyStrategy,
   },
   {
-    dataset: biomarkerDescriptionsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: biomarkerDescriptionsDataset,
     strategy: nameStrategy,
   },
   {
-    dataset: canonicalResultDefinitionsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: canonicalResultDefinitionsDataset,
     strategy: nameStrategy,
   },
   {
-    dataset: bpPercentilesDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: bpPercentilesDataset,
     strategy: bpPercentileKeyStrategy,
   },
   {
-    dataset: conditionTrainingConsiderationsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: conditionTrainingConsiderationsDataset,
     strategy: conditionConsiderationKeyStrategy,
   },
   {
-    dataset: contrastDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: contrastDataset,
     strategy: contrastClassStrategy,
   },
   {
-    dataset: dentalSafetyDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: dentalSafetyDataset,
     strategy: dentalKeyStrategy,
   },
   {
-    dataset: driDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: driDataset,
     strategy: driNutrientStrategy,
   },
   {
-    dataset: drugAllergyDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: drugAllergyDataset,
     strategy: drugAllergyKeyStrategy,
   },
   {
-    dataset: drugInteractionsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: drugInteractionsDataset,
     strategy: drugInteractionPairStrategy,
   },
   {
-    dataset: fitnessNormsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: fitnessNormsDataset,
     strategy: fitnessNormNameStrategy,
   },
   {
-    dataset: fitnessHoldNormsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: fitnessHoldNormsDataset,
     strategy: fitnessHoldNormNameStrategy,
   },
   {
-    dataset: foodDrugInteractionsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: foodDrugInteractionsDataset,
     strategy: foodDrugKeyStrategy,
   },
   {
-    dataset: foodGroupsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: foodGroupsDataset,
     strategy: slugStrategy,
   },
   {
-    dataset: growthChartsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: growthChartsDataset,
     strategy: growthChartNameStrategy,
   },
   {
-    dataset: icd10Dataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: icd10Dataset,
     strategy: icd10CodeStrategy,
   },
   {
-    dataset: illnessThresholdsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: illnessThresholdsDataset,
     strategy: illnessThresholdSlugStrategy,
   },
   {
-    dataset: medicationDescriptionsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: medicationDescriptionsDataset,
     strategy: medDescriptionsStrategy,
   },
   {
-    dataset: medMonitoringDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: medMonitoringDataset,
     strategy: medMonitoringKeyStrategy,
   },
   {
-    dataset: metsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: metsDataset,
     strategy: nameStrategy,
   },
   {
-    dataset: mobilityMovesDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: mobilityMovesDataset,
     strategy: slugStrategy,
   },
   {
-    dataset: nutrientFoodMapDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: nutrientFoodMapDataset,
     strategy: nutrientKeyStrategy,
   },
   {
-    dataset: biomarkerSupplementMapDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: biomarkerSupplementMapDataset,
     strategy: supplementMapKeyStrategy,
   },
   {
-    dataset: ototoxicDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: ototoxicDataset,
     strategy: ototoxicKeyStrategy,
   },
   {
-    dataset: pgxDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: pgxDataset,
     strategy: pgxGuidanceStrategy,
   },
   {
-    dataset: weatherMedSafetyDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: weatherMedSafetyDataset,
     strategy: weatherMedKeyStrategy,
   },
   {
-    dataset: prnDefaultsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: prnDefaultsDataset,
     strategy: prnDefaultSlugStrategy,
   },
   {
-    dataset: radiationDoseDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: radiationDoseDataset,
     strategy: radiationDoseKeyStrategy,
   },
   {
-    dataset: screeningsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: screeningsDataset,
     strategy: screeningKeyStrategy,
   },
   {
-    dataset: strengthStandardsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: strengthStandardsDataset,
     strategy: strengthStandardNameStrategy,
   },
   {
-    dataset: tempRedFlagsDataset as unknown as LoadedDataset<
-      Record<string, unknown>,
-      unknown
-    >,
+    dataset: tempRedFlagsDataset,
     strategy: tempRedFlagKeyStrategy,
   },
 ];
