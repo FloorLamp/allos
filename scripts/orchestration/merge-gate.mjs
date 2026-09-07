@@ -136,30 +136,62 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 // curl, not fetch: node's fetch ignores HTTP(S)_PROXY and the managed
 // environments route GitHub through an agent proxy (ci-watch.mjs says why).
 function curl(curlArgs) {
-  const out = execFileSync(
-    "curl",
-    ["-sS", "-w", "\n%{http_code}", ...curlArgs],
-    {
+  let out;
+  try {
+    out = execFileSync("curl", ["-sS", "-w", "\n%{http_code}", ...curlArgs], {
       encoding: "utf8",
       timeout: 30_000,
       maxBuffer: MAX_BUFFER,
-    }
-  );
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    // Never print the thrown command, stdio, or stack: they can contain the
+    // Authorization header or a large response body.
+    const reason =
+      error?.code === "ENOBUFS"
+        ? "curl response exceeded 64 MiB"
+        : error?.code === "ETIMEDOUT"
+          ? "curl timed out after 30 seconds"
+          : Number.isInteger(error?.status)
+            ? `curl exited ${error.status}`
+            : typeof error?.code === "string"
+              ? `curl failed (${error.code})`
+              : error?.signal
+                ? `curl terminated by ${error.signal}`
+                : "curl subprocess failed";
+    return { error: reason };
+  }
   const cut = out.lastIndexOf("\n");
   return { status: Number(out.slice(cut + 1)), body: out.slice(0, cut) };
+}
+
+function unableToEvaluate(reason) {
+  console.error(`Unable to evaluate: ${reason}.`);
+  console.log(`STATUS: unable to evaluate — ${reason}`);
+  process.exit(2);
 }
 
 // `soft` is for reads whose failure must not become the gate's verdict: it
 // answers null instead of exiting, so an advisory read can go dark on its own.
 function gh(pathname, soft = false) {
   for (let attempt = 1; ; attempt++) {
-    const { status, body } = curl([
+    const response = curl([
       "-H",
       `Authorization: Bearer ${token}`,
       "-H",
       "Accept: application/vnd.github+json",
       `https://api.github.com/${pathname}`,
     ]);
+    if (response.error) {
+      if (soft) {
+        console.error(
+          `Soft read unavailable: GET ${pathname}: ${response.error}.`
+        );
+        return null;
+      }
+      unableToEvaluate(`GET ${pathname}: ${response.error}`);
+    }
+    const { status, body } = response;
     if (status === 401) {
       console.error("BLOCKED: 401 — the token exists but is bad/expired.");
       process.exit(3);
@@ -167,8 +199,7 @@ function gh(pathname, soft = false) {
     if (status >= 200 && status < 300) return JSON.parse(body);
     if (status >= 500 && attempt < 4) continue;
     if (soft) return null;
-    console.error(`GET ${pathname} -> ${status} — cannot evaluate; re-invoke.`);
-    process.exit(2);
+    unableToEvaluate(`GET ${pathname} returned HTTP ${status}`);
   }
 }
 
@@ -194,7 +225,7 @@ function unresolvedThreads(owner, name) {
   const nodes = [];
   let cursor = null;
   for (;;) {
-    const { status, body } = curl([
+    const response = curl([
       "-H",
       `Authorization: Bearer ${token}`,
       "-X",
@@ -206,15 +237,14 @@ function unresolvedThreads(owner, name) {
       }),
       "https://api.github.com/graphql",
     ]);
+    if (response.error) unableToEvaluate(`GraphQL read: ${response.error}`);
+    const { status, body } = response;
     if (status === 403) return { kind: "forbidden" };
-    if (status !== 200) {
-      console.error(`graphql -> ${status} — cannot evaluate; re-invoke.`);
-      process.exit(2);
-    }
+    if (status !== 200)
+      unableToEvaluate(`GraphQL read returned HTTP ${status}`);
     const page = JSON.parse(body).data?.repository?.pullRequest?.reviewThreads;
     if (!page) {
-      console.error("graphql returned no reviewThreads — cannot evaluate.");
-      process.exit(2);
+      unableToEvaluate("GraphQL response omitted reviewThreads");
     }
     nodes.push(...page.nodes);
     if (!page.pageInfo.hasNextPage) break;
