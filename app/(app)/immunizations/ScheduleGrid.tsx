@@ -252,6 +252,7 @@ export default function ScheduleGrid({
     };
   }, [pinnedTip]);
 
+  // Open on mouse movement; focus scrolling can enter a cell under a still pointer.
   function showHover(
     event: ReactMouseEvent<HTMLElement>,
     content: TipContent | null
@@ -420,12 +421,7 @@ export default function ScheduleGrid({
                             ? "bg-slate-50 dark:bg-ink-850"
                             : "bg-surface"
                         }`}
-                        onMouseEnter={(e) => showHover(e, nameTip(entry))}
-                        onMouseMove={(e) =>
-                          setHoverTip((t) =>
-                            t ? { ...t, x: e.clientX, y: e.clientY } : t
-                          )
-                        }
+                        onMouseMove={(e) => showHover(e, nameTip(entry))}
                       >
                         <button
                           type="button"
@@ -474,12 +470,7 @@ export default function ScheduleGrid({
                                 ? "bg-brand-100/70 dark:bg-brand-950/60"
                                 : ""
                             } ${content ? "cursor-help" : ""}`}
-                            onMouseEnter={(e) => showHover(e, content)}
-                            onMouseMove={(e) =>
-                              setHoverTip((t) =>
-                                t ? { ...t, x: e.clientX, y: e.clientY } : t
-                              )
-                            }
+                            onMouseMove={(e) => showHover(e, content)}
                           >
                             {content ? (
                               <button
