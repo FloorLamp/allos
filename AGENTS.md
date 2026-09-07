@@ -43,10 +43,15 @@ proportion to the change.
 - Preserve the distinction between an instant and a profile-local day.
 - Missing credentials and optional integrations must degrade gracefully.
 - Keep changes focused. Do not edit shipped migrations or unrelated user work.
-- Add or update tests for behavior changes.
+- Verify behavior changes with existing coverage first; add or update a focused
+  test when a meaningful failure is not covered. CSS-only changes do not
+  automatically require new tests or changed assertions.
 - Do not write redundant assertions or defensive assert checks for conditions
   already proven by types or prior control flow.
 
 - More specific instructions live in nested `AGENTS.md` files.
-- Domain design and history live in `docs/internals/`; read the relevant
-  document before changing a shared domain model.
+- [Development guide](docs/development.md) maps tasks to code, documents, and
+  checks. Read the matching contract before changing a shared domain model.
+- [Change and test policy](docs/change-policy.md) governs scope, new code, and
+  test value. Implement the smallest complete change, then stop when the
+  requested behavior and relevant checks pass.

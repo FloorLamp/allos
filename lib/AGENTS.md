@@ -36,10 +36,8 @@ These instructions apply to business logic and data access under `lib/`.
 
 - Respect the three setting scopes: server-wide `settings`, person/device
   `login_settings`, and data-subject `profile_settings`.
-- Missing integration credentials must degrade gracefully.
 - AI events include login/profile context when available and go through the
   established logging path.
 
-- Read the relevant domain document in `docs/internals/` before changing a
-  shared model. The reading, time, cadence, freshness, notification, integration,
-  food, and supplement documents are the detailed design context.
+Use the [development map](../docs/development.md#find-the-owner) to locate the
+contract before changing a shared model.

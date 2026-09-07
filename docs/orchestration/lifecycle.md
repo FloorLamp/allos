@@ -20,7 +20,7 @@
   or a merge, a measured reproduction no open issue scopes, or removes a
   parallel concept (CLAUDE.md). A scan gap is a line on its #5346 adopter, a
   harness nit a line on the harness issue, a flake joins its mechanism.
-- A new guard, scan or e2e spec is not free work: `what-earns-a-guard.md`.
+- New guards, scans and e2e specs follow the [change and test policy](../change-policy.md).
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
   It scopes territories, expands shared UI to a census, stops on a manual plan.

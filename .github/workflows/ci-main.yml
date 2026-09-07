@@ -65,8 +65,12 @@ jobs:
   # format, lint, and above all typecheck (the widened-signature class).
   check:
     runs-on: ubuntu-latest
+    env:
+      DOC_BREVITY_BASE: ${{ github.event.before || 'HEAD^' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/node-setup
       - name: Format check
         run: npm run format:check

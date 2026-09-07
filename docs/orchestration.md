@@ -4,6 +4,7 @@ Status: **living** · process rules for agent-run development sessions
 
 This is the entrypoint. Read only the procedure needed for the current job:
 
+- [Change and test policy](change-policy.md)
 - [Dispatch and pipeline](orchestration/dispatch.md)
 - [Environment and GitHub access](orchestration/environment.md)
 - [Recovery](orchestration/recovery.md)

@@ -69,7 +69,9 @@
     "gen:migration-manifest": "tsx scripts/gen-migration-manifest.ts",
     "gen:e2e-durations": "tsx scripts/gen-e2e-durations.ts",
     "gen:census-baseline": "CENSUS_BASELINE_REFRESH=1 playwright test census-chrome-baseline --workers=1",
-    "gen:condition-training-considerations": "tsx scripts/gen-condition-training-considerations.ts"
+    "gen:condition-training-considerations": "tsx scripts/gen-condition-training-considerations.ts",
+    "docs:check": "node scripts/check-doc-brevity.mjs",
+    "prelint": "npm run docs:check"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,json,css,scss,md,yml,yaml}": "prettier --write --ignore-unknown"

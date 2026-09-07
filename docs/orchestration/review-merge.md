@@ -8,14 +8,8 @@
 - Relay evidence exactly and make only conclusions you independently derived.
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
-- Require tests at the tier that can observe the defect.
-- Convergence is production-NEGATIVE or it is a third way (owner 2026-08-27).
-- Reject any scanner, registry, allowlist, variant, or compatibility layer.
-- Prefer TYPES over guards (owner 2026-08-31): an invariant a type can make
-  unrepresentable goes back when policed at runtime — simplify, extract,
-  unify, and ask what the real goal costs in less code.
-- Check the ruling's OWN condition, not the one the implementation makes easy:
-  verifying values where they change ≠ rendering the case the ruling names.
+- Apply [the change and test policy](../change-policy.md): inspect new abstractions,
+  unique test value, and production/test line deltas.
 - A guard's existence is not its coverage. Ask which widths, states and
   roles it runs at, and say which in the review.
 - A REMOVAL is checked against the issue's acceptance criteria: unreachable
@@ -72,10 +66,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   refresh or reconcile affected branches.
 - A green exact head merges in the TURN that finds it green. An unrelated
   `e2e-main` run on `main` is not a reason to hold it; a red `main` is.
-- Merges are serial; PRs are not. Every branch that passed its gates opens
-  READY at once (never draft — environment.md §GitHub access), so CI and the
-  exact-head review run in parallel. `landing-independence.mjs` is path-only
-  advice (#5138); the gate refuses an unchecked base-moved head (#5235).
+- Only the landing candidate opens or refreshes a ready PR and consumes final
+  CI/review. Banked work stays branch-only until promotion. Use
+  `landing-independence.mjs` as advice; the merge gate checks base movement.
 - Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it, base-bound
   as a pass is head-bound: run it and merge in one pass. A notes batch moves
   every open PR's base: `lib/release-notes.json` is type-bearing under `/^lib\//`.

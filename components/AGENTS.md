@@ -11,6 +11,7 @@ These instructions apply to shared UI under `components/`.
 - Prefer established components and interaction patterns over local variants.
 - A loading or pending treatment must not erase useful current content.
 
-- Read the relevant documents in `docs/internals/`, especially `copy.md`,
-  `design-doctrine.md`, `component-tests.md`, `overlays.md`, `micro-motion.md`,
-  and `stateful-affordances.md`.
+- Read only the matching guide in `docs/internals/`: `copy.md` for wording,
+  `design-system.md` for layout, `overlays.md` for dialogs/sheets,
+  `micro-motion.md` for animation, `stateful-affordances.md` for pending or
+  interactive states, and `component-tests.md` when writing a DOM test.
