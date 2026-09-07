@@ -57,7 +57,7 @@ Returns a typed outcome: `{ kind: "processed", photo: ProcessedPhoto }` or
 `ProcessedPhoto` =
 `{ bytes, thumbBytes, mime: "image/jpeg", width, height, sizeBytes, contentHash, captureDate }`.
 
-The client half (`components/photo/PhotoCapture.tsx` +
+The client half (`components/media/MediaInput.tsx` +
 `lib/photo/client-compress.ts`) makes the common path clean/small at the first
 hop — a canvas re-encode has no EXIF and `fitWithin` (the same pure sizing
 computation the server tests pin) caps the upload at capture time — but the
@@ -133,8 +133,14 @@ judgment anywhere in the core (product-decided, #1119).
 4. Serve route scoped `id AND profile_id` with `?thumb=1`.
 5. Row-ops side-state: `deleteProfile` gathers `stored_path`+`thumb_path` before
    the sweep and unlinks under the domain root; the export-completeness
-   allowlist documents the export stance; owned-table registration.
-6. Surface: `PhotoCapture` (pass the series' last photo as `ghostUrl`),
+   allowlist documents the export stance; owned-table registration. If the
+   domain's owner is a row that can be MERGED, say what a merge does with it —
+   `training_photos` cascaded off a merged-away session and left its files on
+   disk with nothing pointing at them (#5481), because the merge core's child
+   list is hand-written. Activity-owned tables now declare their disposition in
+   `ACTIVITY_CHILD_LINKS` (`lib/merge-activity.ts`), and a new one fails
+   `lib/__db_tests__/activity-child-links.test.ts` until it does.
+6. Surface: `MediaInput` (pass the series' last photo as `ghostUrl`),
    `PhotoGallery` (add the domain — the selector lights up on data), and
    `PhotoTimeline` per series. A domain whose table predates the core and has no
    `thumb_path` derives the grid's thumbnail with `thumbSiblingPath` instead

@@ -1470,6 +1470,18 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  // NO event/day column, deliberately (#3285 item 3): a training photo's day is its
+  // OWNER's (activities.date / endurance_plans.event_date) and readers derive it in
+  // the SELECT, so there is no second copy to drift when a session's date is
+  // corrected. Only the filing instant is this table's own fact.
+  training_photos: [
+    {
+      column: "created_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "bare",
+    },
+  ],
   protein_daily_totals: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {

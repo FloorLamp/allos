@@ -824,6 +824,7 @@ const PHOTO_TABLE_FOR_DOMAIN: Record<CapturedPhotoDomain, OwnedTable> = {
   progress: "progress_photos",
   lesion: "lesion_photos",
   symptom: "symptom_photos",
+  training: "training_photos",
 };
 
 // The photo half of the same rule (#1847). Two differences from the clips above:

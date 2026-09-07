@@ -1,7 +1,7 @@
 // PURE sizing/date policy for the shared photo core (#1119) — the one place the
 // downscale/thumbnail geometry and the default-date rule live, shared by BOTH
 // halves of the pipeline (#221 one-question-one-computation):
-//   - the CLIENT capture path (components/photo/PhotoCapture + client-compress)
+//   - the CLIENT capture path (components/media/MediaInput + client-compress)
 //     sizes its canvas with fitWithin, so a captured/queued blob is already small;
 //   - the SERVER ingest (lib/photo/ingest.ts) resizes to the same box and its
 //     tests assert the stored dimensions equal fitWithin's answer.

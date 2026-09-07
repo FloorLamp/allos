@@ -1,7 +1,8 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import sharp from "sharp";
+import { capturePhotoFile, settledClick } from "./helpers";
 import { E2E_LOGIN_ENDURANCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { frozenNow } from "./worker-env";
 
@@ -223,6 +224,44 @@ test.describe("endurance event plans (#839)", () => {
     );
     await expect(linked).toHaveCount(0);
     await expect(dayRows).toHaveCount(1);
+
+    // #3285 item 3: the event's photos, through the SHARED add-media door — the
+    // same walk every other photo domain takes (#3286), so this proves the tenant
+    // is wired to the core rather than to a bespoke input. The strip's own
+    // lifecycle is the plan's: clearPlans below deletes the event, and
+    // deleteEndurancePlanCore takes its photos and their files with it.
+    const strip = content.getByTestId("training-photos");
+    await expect(strip).toContainText("No photos yet");
+    await capturePhotoFile(page, strip.getByTestId("training-photo-add"), {
+      name: "podium.jpg",
+      mimeType: "image/jpeg",
+      buffer: await sharp({
+        create: {
+          width: 400,
+          height: 300,
+          channels: 3,
+          background: { r: 20, g: 120, b: 90 },
+        },
+      })
+        .jpeg()
+        .toBuffer(),
+    });
+    // capturePhotoFile STAGES the file; the shared surface waits for a confirm, which
+    // is what makes a batch a list of named things (#3286). The three markers below
+    // are the DIALOG's, mounted by a click after hydration, so they can never sit
+    // inside a streamed Suspense boundary and have no staged copy to be confused with.
+    const preview = page.getByTestId("media-input-preview-0"); // testid-scope-ok: MediaInput's dialog, mounted client-side on click
+    await expect(preview).toBeVisible();
+    await settledClick(page, page.getByTestId("media-input-submit")); // testid-scope-ok: MediaInput's dialog, mounted client-side on click
+    await expect(preview).toBeHidden();
+
+    const thumbs = strip.locator("img");
+    await expect(thumbs).toHaveCount(1);
+    // The grid reads the THUMBNAIL asset, not the original (#1119).
+    await expect(thumbs).toHaveAttribute(
+      "src",
+      /\/api\/training-photo\/\d+\?thumb=1$/
+    );
 
     await clearPlans(page);
   });

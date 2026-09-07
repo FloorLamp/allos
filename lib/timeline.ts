@@ -6,6 +6,7 @@ import {
 } from "./endurance-plan";
 import { trainingActivityPageHref, trainingEventPageHref } from "./hrefs";
 import { isDraftActivityRow } from "./activity-draft";
+import { trainingPhotoCounts } from "./training-photo-write";
 import { shiftDateStr } from "./date";
 import { db, today } from "./db";
 import type { MemberTimeline } from "./timeline-multi";
@@ -351,6 +352,13 @@ function collectEvents(
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
   const tz = getTimezone(profileId);
   const events: TimelineEvent[] = [];
+  // The photo counts both training blocks below need (#3285 item 3), read ONCE in one
+  // grouped statement rather than probed per row — the symptom-photo precedent in
+  // lib/history.ts. LAZY: a gather that emits no session and no event row never asks,
+  // so a profile that does not train pays nothing for the column.
+  let trainingMedia: ReturnType<typeof trainingPhotoCounts> | null = null;
+  const trainingPhotos = () =>
+    (trainingMedia ??= trainingPhotoCounts(profileId));
 
   // Exact bounds for tables whose event date IS a stored calendar column.
   const exact = (col: string) =>
@@ -444,6 +452,7 @@ function collectEvents(
           },
           meta: a.source ? [a.source] : undefined,
           detailItems: setSummaries.get(a.id),
+          media: trainingPhotos().byActivity.get(a.id) ?? 0,
           iconType: a.type,
           iconTitle: a.title,
           iconSportNames: activityComponentSportNames(a.components),
@@ -1275,6 +1284,9 @@ function collectEvents(
           href: trainingEventPageHref(p.id),
           sortTime: timeFromCreatedAt(p.created_at, tz),
           tone: p.status === "completed" ? "good" : "default",
+          // The event's OWN uploads only. The linked sessions' photos are counted on
+          // those sessions' own rows, so the record never counts one photo twice.
+          media: trainingPhotos().byEvent.get(p.id) ?? 0,
         },
         options
       );

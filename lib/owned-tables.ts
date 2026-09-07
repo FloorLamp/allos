@@ -266,6 +266,14 @@ export const OWNED_TABLES = [
   // on-disk files (stored_path + thumb_path) are unlinked separately (path-contained
   // under data/uploads/progress-photos/<profileId>/).
   "progress_photos",
+  // Training photos (#3285 item 3): photos of a logged SESSION or of an EVENT (bib,
+  // podium, venue), the fourth tenant of the shared photo core. ONE table, two
+  // mutually exclusive owner FKs (activity_id XOR endurance_plan_id, a schema CHECK)
+  // — a photo's owner is a column, not a second photo domain. File-backed MEDIA with
+  // a thin row, NOT an observation-store tenant. Directly owned; deleteProfile clears
+  // the rows and its on-disk files (stored_path + thumb_path) are unlinked separately
+  // (path-contained under data/uploads/training-photos/<profileId>/).
+  "training_photos",
   // Wellness-practice session log (#1259, migration 099): one row per logged practice
   // session (red light, sauna, meditation, …) with optional time/duration. A DELIBERATE
   // exception to the reuse-a-store rule (#860/#944) — a session is not a valued

@@ -299,6 +299,29 @@ const KIND_SPECS = {
         childWhere: "activity_id = ?",
         childBinds: 1,
       },
+      {
+        // Training photos (#3285 item 3) — the same class as the clips above:
+        // many-per-activity children cascade-deleted with the activity
+        // (training_photos.activity_id ON DELETE CASCADE), so a plain delete CAPTURES
+        // and RESTORES their rows and a restored row re-points at the same
+        // content-named file (#1847 reclaims it at purge if no undo ever came). The
+        // OTHER owner column is the row's exactly-one alternative and is always NULL
+        // on a captured row — it is declared as an externalRef anyway, because the
+        // #598 reflection guard reads the SCHEMA and every FK on a captured table must
+        // be handled; `null` is what the shape already is.
+        entity: "photo",
+        table: "training_photos",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        externalRefs: [
+          {
+            column: "endurance_plan_id",
+            table: "endurance_plans",
+            onMissing: "null",
+          },
+        ],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
     ],
   },
 
@@ -1357,14 +1380,17 @@ export function capturedVideoFiles(payload: Payload): CapturedVideoFile[] {
 
 // entity.table → the photo domain its files live under (lib/photo/store's DOMAIN_DIRS).
 // Named here rather than imported so this module stays free of fs, exactly like
-// VIDEO_FILE_TABLES. Only `lesion_photos` is captured by a kind today; the other two
-// are declared so a future kind capturing them inherits the purge instead of
-// re-opening the leak.
-export type CapturedPhotoDomain = "progress" | "lesion" | "symptom";
+// VIDEO_FILE_TABLES. `lesion_photos` (a skin-lesion delete) and `training_photos` (an
+// activity delete, #3285 item 3) are captured by a kind today; the other two are
+// declared so a future kind capturing them inherits the purge instead of re-opening
+// the leak.
+export type CapturedPhotoDomain =
+  "progress" | "lesion" | "symptom" | "training";
 export const PHOTO_FILE_TABLES: Record<string, CapturedPhotoDomain> = {
   progress_photos: "progress",
   lesion_photos: "lesion",
   symptom_photos: "symptom",
+  training_photos: "training",
 };
 
 export interface CapturedPhotoFile {

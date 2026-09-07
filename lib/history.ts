@@ -1286,7 +1286,10 @@ export function gatherHistoryLog(
         // `subtitle` and `detail` as separate strings for a two-line card; on a one-line
         // row they are one segment, joined by the grammar rather than by each composer.
         detail: detailSegment([event.subtitle, event.detail]),
-        media: 0,
+        // Carried from the gather that read the event (#3285 item 3): a training
+        // session's and an event's photo counts are the feed's first live media
+        // predicate, exactly as symptom_photos is the Logs half's.
+        media: event.media ?? 0,
         // › AND NEVER ⋯: a lab, a visit, an imported activity, a protocol change are
         // corrected on the surface that owns them. #3958 rules the affordance exclusive
         // and provenance decides which — this is the › half.
@@ -1329,10 +1332,11 @@ export function gatherHistoryLog(
   const dated = rows.filter((row) => row.date <= todayStr);
 
   // A FILTER NOTHING CAN SATISFY DEGRADES, like every other unsatisfiable one on this
-  // page (owner ruling 2026-08-29). No phase-1 kind carries row media yet — the five
-  // composers all write `media: 0` — so a hand-typed `?media=1` rendered "Nothing
-  // recorded here yet." over a full record, which is a page ASSERTING emptiness
-  // rather than degrading to what it can show.
+  // page (owner ruling 2026-08-29). When this shipped no kind carried row media at
+  // all — every composer wrote `media: 0` — so a hand-typed `?media=1` rendered
+  // "Nothing recorded here yet." over a full record, which is a page ASSERTING
+  // emptiness rather than degrading to what it can show. Symptom days carry it now,
+  // and training sessions and events do too (#3285 item 3).
   //
   // ASKED OF THE ROWS, NOT OF THE PHASE. The moment a kind starts carrying media the
   // filter starts working, with no edit here and nothing to remember to undo; and a

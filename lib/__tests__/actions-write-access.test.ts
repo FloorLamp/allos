@@ -784,6 +784,16 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "multi-view activity-media write: gateItemProfile() gates the posted subject profile with requireProfileWriteAccess(), or falls back to requireWriteAccess() for an acting-profile form",
     gate: "gateItemProfile",
   })),
+  ...[
+    "uploadTrainingPhotoAction",
+    "updateTrainingPhotoCaptionAction",
+    "deleteTrainingPhotoAction",
+  ].map((fn) => ({
+    file: "app/(app)/training/photo-actions.ts",
+    fn,
+    why: "multi-view training-photo write (#3285 item 3), the same shape as the clip actions above on the same page: gateItemProfile() gates the posted subject profile with requireProfileWriteAccess(), or falls back to requireWriteAccess() for an acting-profile form",
+    gate: "gateItemProfile",
+  })),
   // --- Tier-1b bespoke lists (issue #1359) — the flat SUB-lists of the Visits and
   // Immunizations surfaces adopt multi-view (Past encounters / All recorded doses);
   // their edit/delete gate the ROW's own profile through the same gateItemProfile()
@@ -1046,6 +1056,7 @@ const ROUTE_WRITE_ALLOW: readonly {
   "app/api/progress-photo/[id]/route.ts",
   "app/api/symptom-photo/[id]/route.ts",
   "app/api/symptom-video/[id]/route.ts",
+  "app/api/training-photo/[id]/route.ts",
 ].map((file) => ({
   file,
   fn: "GET",

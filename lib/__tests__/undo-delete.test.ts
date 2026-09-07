@@ -439,6 +439,7 @@ describe("capturedPhotoFiles (#1847)", () => {
   it("maps the photo-file tables to their domain (the store's DOMAIN_DIRS keys)", () => {
     expect(PHOTO_FILE_TABLES).toEqual({
       progress_photos: "progress",
+      training_photos: "training",
       lesion_photos: "lesion",
       symptom_photos: "symptom",
     });

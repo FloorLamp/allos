@@ -206,6 +206,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "symptom / episode video clips (#1224). Same strictest tier as the photo domains and the same #1846 opt-in: media/symptom-videos/ with date/symptom/caption/kind/duration in media/index.json. Posters are derived artifacts and are deliberately not bundled — the original capture is the record. Clips live at data/uploads/symptom-videos/<profileId>/ and are unlinked with the profile on delete.",
   },
   {
+    table: "training_photos",
+    why: "training photos (#3285 item 3) — a logged session's or an event's pictures (bib, podium, venue), the photo core's fourth tenant. Same strictest tier as the other photo domains and the same #1846 opt-in: media/training-photos/, with the caption plus the OWNER's date and name (activity title or event name) in media/index.json — the photo's date is the owner's and is never stored on the row. The thin row is not a standalone dataset; it is only meaningful beside its image. Files live at data/uploads/training-photos/<profileId>/ and are unlinked with the profile on delete.",
+  },
+  {
     table: "activity_videos",
     why: "training form-check video clips (#1224). Same strictest tier and the same #1846 opt-in (media/activity-videos/, with exercise/caption/duration plus the parent activity's date and title in media/index.json). Activity data is age-neutral, so its clips follow the same profile-scoped activity opt-in at every life stage. Clips live at data/uploads/activity-videos/<profileId>/ and are unlinked with the profile on delete.",
   },

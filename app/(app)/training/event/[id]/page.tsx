@@ -12,6 +12,8 @@ import { formatElapsed } from "@/lib/session-detail";
 import { fmtDistance } from "@/lib/units";
 import { trainingActivityPageHref } from "@/lib/hrefs";
 import EventActivities, { type EventActivityView } from "./EventActivities";
+import TrainingPhotoStrip from "@/components/training/TrainingPhotoStrip";
+import { getEventPhotos } from "@/lib/training-photo-write";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +96,21 @@ export default async function TrainingEventPage(props: {
         activities={activities}
         canWrite={canWrite}
       />
+      {/* The event's own uploads AND its linked activities' — item 3's own sentence,
+          answered by one query rather than two lists stitched together, because it is
+          one set of pictures from one day. New uploads land on the EVENT. */}
+      <div className="mt-6">
+        <TrainingPhotoStrip
+          owner={{ kind: "event", planId: plan.id }}
+          photos={getEventPhotos(profile.id, plan.id).map((p) => ({
+            id: p.id,
+            date: p.date,
+            caption: p.caption,
+            ownerLabel: p.planId != null ? "Event" : p.ownerLabel,
+          }))}
+          canWrite={canWrite}
+        />
+      </div>
     </PageContainer>
   );
 }
