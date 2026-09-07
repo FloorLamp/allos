@@ -1,500 +1,170 @@
-# Overlays: one motion/gesture system, three dismissal contracts
-
-Status: shipped (issues #1425, #1469; the decision rule is #1428's owner
-comment)
-
-The app has three edge-anchored overlay surfaces. They share one visual and
-gesture system while preserving their different lifecycle outcomes.
-
-## The three surfaces
-
-<!-- prettier-ignore -->
-| Surface                             | Anchor                            | Lifecycle     | Gesture outcome                     |
-| ----------------------------------- | --------------------------------- | ------------- | ----------------------------------- |
-| `components/BottomSheet.tsx`        | bottom                            | transactional | **discard** (dismiss, nothing kept) |
-| `components/MobileNav.tsx` drawer   | left                              | transient     | **close**                           |
-| `components/ActivityOverlay.tsx`    | bottom on phone, right on desktop | **session**   | **minimize** — never discard        |
-
-The activity workspace is the one that matters. A live workout runs for an
-hour, survives navigation as the minimized bar, and "away" means STILL RUNNING.
-On mobile it has one horizontal minimize bar. The bar is both a real button and
-the drag handle, so touch, keyboard, and assistive technology all reach the same
-action without a second affordance. Its downward drag is wired to `onMinimize`;
-wiring it to `onClose` would make an in-progress session discardable. The
-desktop drawer omits the bar; its backdrop remains the minimize affordance.
-
-The same reasoning applies to the affordance that OPENS the editor (#1893). A
-minimized session's elapsed timer ticks off `liveStartEpoch`, and `openLive()`
-used to re-stamp it unconditionally — so the bolt, the palette's live action,
-the Training Log aside, and the routine card each said "Start workout" mid-workout
-and, when tapped, reset the running clock and dropped the sets already logged.
-A stray flick can't discard a session, but a deliberate tap on a mislabelled
-button could. All four surfaces now render one derivation
-(`workoutOffer`, `lib/workout-offer.ts`): with a session live they read "Resume
-workout" and reopen the docked session with its epoch untouched, and both
-`openLive`/`openSession` enforce that internally so a stale caller can't stomp
-it either. See [stateful affordances](./stateful-affordances.md).
-
-The quick-log consumer holds its own content geometry stable (#3675), without a
-`BottomSheet` variant: it reserves the due-and-usual context slot before that
-Server Action resolves and fixes the row list to the largest segment the active
-profile can actually see. Both reserves remain inside BottomSheet's existing
-content scroller. Segment switches, non-empty gathers, empty answers, and failed
-gathers therefore leave the panel and its segment strip in place; only the
-gathered section's declared opacity-only `arrive` receipt paints.
-
-## Choosing a host for a new surface
-
-One rule, so a new form does not pick its host by looking at whichever neighbour
-it happened to open next to. Read down the left column; the first row that
-describes the surface is the answer.
-
-| The surface is…                                                          | Host                                                | Why                                                                                                                        |
-| ------------------------------------------------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| a TRANSACTIONAL capture or decision — a record form, a picker, a confirm | `components/ModalShell.tsx` (the responsive dialog) | Sheet below `md`, centred card above, body locked, one scroll owner, declared size. Dismissal means discard.               |
-| a SESSION that survives navigation — a live workout                      | `components/ActivityOverlay.tsx` (the dock)         | "Away" means still running. Its drag resolves to **minimize**; it must never become discardable.                           |
-| a RARE-CADENCE page entry — lab results, imaging                         | `components/AddEntryPanel.tsx`                      | Inline in a reading column, modal in a hub rail (#1497). What "modal" renders as is the row above; the rule is unchanged.  |
-| MENU or NAVIGATION                                                       | the sheet / `components/MobileNav.tsx` drawer       | Dismissal is close, nothing is lost, and the drawer owns the edge swipe.                                                   |
-| ANCHORED to a control — a ⋯ menu, a date picker, a control's own detail  | `components/overlay/AnchoredPanel.tsx`              | A bottom action sheet below `md`, the trigger-anchored popover above it (#3374/#3376). One host decision, thirty surfaces. |
-
-Two consequences worth stating outright, because both were decided rather than
-discovered (#2774):
-
-- **Sheets on phones, for every converged consumer.** An exception is an ANATOMY
-  fact — a surface with no bottom edge to flick toward at any width — and it is
-  RECORDED, not smuggled: it passes `presentation="centered"` and lands in
-  `CENTERED_PRESENTATION` in the chokepoint test with its reason. The command
-  palette (a search field over a result list) and the camera fallback (a live
-  viewfinder) are the two. **"Not a sheet" is only half the argument**, and
-  #3423 is the other half: it rules the bottom edge out, it never defended a
-  floating CARD on a phone. So the palette also passes `fullScreenBelowMd`, and
-  the same host fills the viewport below `md` — same portal, scrim, focus trap,
-  scroll lock and Escape seam, same register entry. It is a GEOMETRY flag, not a
-  fourth presentation.
-- **Width is DECLARED, not styled.** `size: "sm" | "md" | "lg"`
-  (`OVERLAY_PANEL_MAX_WIDTH`) replaced thirty per-host `max-w-*` overrides.
-  Content stays intrinsic (#2014); this is the container half of that rule.
-
-A dirty form gets one more thing for free: a dismissal — a flick, a scrim tap,
-or **Escape** — routes through the app's `ConfirmDialog` when the hosted form
-holds unsaved input. A clean form still dismisses in one gesture or one
-keypress, which is what keeps the confirm from becoming a click-through.
-
-**Escape was added to that list by an owner ruling (#3420), narrowing #2774.**
-The original rule put Escape and the Close button on the unguarded path because
-both are targeted actions on a named control, where a flick and a scrim tap are
-the two a hand produces by accident. That still governs a dialog holding
-**nothing** unsaved: Escape closes it outright, no prompt. It no longer governs
-a dialog holding unsaved work — there, one keystroke destroyed exactly the
-typing a scrim tap two pixels away would have asked about, and the dirty-form
-registry already knew the difference. **The Close button is untouched** and
-still closes without a prompt: it is the control the person aimed at, and a
-confirm on it would be the ask-before-acting pattern the house grammar declines.
-
-### Dialogs that do NOT live on the host (#3405)
-
-**Convergence is the default.** A dialog belongs on
-`components/ModalShell.tsx` unless it is named below with its reason. That is an
-owner ruling, and the alternative was considered and declined: naming every
-hostless dialog as sanctioned would have been nine exceptions to a rule with
-about a dozen followers, which is not a convention — the next hand-rolled dialog
-would have precedent to be the tenth.
-
-Three converged when the ruling landed. `MergeConflictDialog` and
-`PlateBuilderModal` were centred cards hand-copying the host's anatomy;
-`FitnessCheckView`'s entry panel hand-rolled the whole of it, including a scroller
-that had shipped without `overscroll-contain` — the #2774 defect, live, for as
-long as the convergence has existed (#3421).
-
-These are the current non-host rows. Some are genuine anatomy-driven exceptions
-to the shared primitives; some have already converged onto
-`components/overlay` rather than the dialog host. Primitive-first convergence
-onto `ModalShell` or `components/overlay` stays the default.
-
-| Dialog                                          | Why the shared host cannot serve it                                                                                                                                                                                                                                                                                                                                                          |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `components/ImageCropper.tsx`                   | Opens **over** an already-open dialog (both profile-photo pickers are ModalShells), so it needs `z-120` — above the sheet's `z-60` and the toasts' `z-100` — and the host takes no stacking prop. Its pointer drag also manipulates CONTENT across the whole panel.                                                                                                                          |
-| `components/photo/PhotoGallery.tsx`             | A full-bleed media viewer: black ground, image `object-contain` to the viewport edges, its own left/right paging. A titled `bg-surface` card with padding and a scroll owner is the wrong shape, and swipe-to-dismiss would fight the paging gesture.                                                                                                                                        |
-| `components/activity-form/FitnessTestTimer.tsx` | Must survive being closed. Collapsing the takeover returns the viewer to the entry sheet **with the run still going**, and the host unmounts a dialog when it closes. It is also nested inside an already-scrimmed sheet, so it carries no scrim of its own.                                                                                                                                 |
-| `components/ActivityOverlay.tsx`                | Converged — onto `components/overlay`, not the dialog host. A session that survives navigation, whose drag resolves to **minimize** (#1469). The host is transactional; this is the row above it in the host table.                                                                                                                                                                          |
-| `components/MobileNav.tsx`                      | Converged onto `components/overlay` the same way, EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (#1416/#2746). A centred card has no edge to travel from. Found by ANATOMY, not by ARIA (#3445), because it declared neither — #3463 closed that: it carries `role="dialog"`, `aria-modal` and the shared trap now. |
-
-**A recorded exception is about presentation, not about the a11y floor.**
-`ActivityOverlay`, `PhotoGallery` (the photo lightbox) and
-`MobileNav` (the phone nav drawer) take the shared `useFocusTrap`. The lightbox
-adopted it as part of this ruling: its Escape lived on the panel's own
-`onKeyDown`, which fires only once focus is inside, and nothing ever put it there
-— so Escape did nothing at all unless the viewer happened to Tab first.
-
-The nav drawer was the counterexample this sentence carried for a while. It was
-recorded as an exception for its EDGE anatomy and then declared nothing at all —
-no `role`, no `aria-modal`, no trap — so focus could leave it for the page it had
-scroll-locked, and a screen reader was never told a modal layer had taken over
-(#3463). The exception did not change; the floor was met. `MobileNav` keeps its
-edge-swipe open, its swipe-left retreat and its drag, and its own `document`
-keydown listener for Escape is gone — the shared hook answers Escape on the
-capture phase, and yields it to any nearer `[role="dialog"]` or
-`[data-escape-layer="true"]` first, which is what keeps a quick-log sheet opened
-over the drawer closing by itself.
-
-### The anchored panel forks at `md` (#3374 / #3376)
-
-An anchored popover is a DESKTOP shape. It is right where a pointer is precise
-and a page has room beside the control; it is wrong on a phone, where a 160px
-panel of 32px rows hanging off a kebab is a context menu a finger cannot use.
-Before this, thirty phone surfaces opened one — the ⋯ menu is the primary
-per-row action affordance on the most phone-used screens — and every form's date
-picker was a 288px desktop calendar.
-
-`components/overlay/AnchoredPanel.tsx` is where that is decided, once:
-
-- **below `md`** the content mounts in `components/BottomSheet.tsx`. A menu's
-  dismissal IS discard, so it passes no `onGestureDismiss` guard and inherits
-  the drag, the scrim, the scroll lock, the focus trap and the #3425 Escape
-  seam unchanged.
-- **from `md` up** it is the portaled `position: fixed` popover placed by
-  `components/overlay/useAnchoredPopover.ts`, exactly as before.
-
-The rules that make it one fork rather than thirty:
-
-- **Content is authored once.** `children` is a function and the node it returns
-  is mounted in exactly ONE host — never a `hidden md:` twin (#2305). A consumer
-  passes items and an anchor; it says nothing about viewports.
-- **The floor is met where a finger does the tapping.** `MENU_ITEM` rows are
-  44px below `md`, 40px on a coarse pointer above it, and the compact 32px
-  desktop row under a mouse. The two `md:` rules are keyed on mutually exclusive
-  pointer media so neither depends on stylesheet order.
-- **Focus goes in and returns to the trigger in both**, by different routes: the
-  sheet's trap does it, and since #3905 the popover does it for any panel that
-  declares a `role`. A role means the trigger declared `aria-haspopup`, and a
-  promised popup the keyboard cannot reach has not been opened — #3889's two new
-  sidebar panels were portaled to `<body>` under `aria-haspopup="dialog"` with no
-  role, no name and no focus, so the calendar's controls sat behind the whole page
-  in the tab order. The popover takes three of `useFocusTrap`'s four jobs and not
-  the fourth: the Tab CYCLE is what makes a surface modal, and an anchored popover
-  is not one. A ROLE-LESS panel is left alone, which is what keeps `DateField`
-  typable — its calendar opens when the field takes focus and the typist keeps it.
-- **Every anchored menu goes through it**, enforced by the chokepoint test's
-  anchored-menu rule. `components/CompactDateMenu.tsx` is the one recorded
-  exception — a phone-only two-or-three-option day switcher inline in a heading,
-  already at the tap floor, where a modal sheet is a heavier answer than the
-  question. `components/Combobox.tsx`'s listbox is NOT forked either, and for a
-  different reason recorded in #3374: a listbox reads as part of its field on
-  touch, so it is not a menu at all.
-
-## What a dialog BODY renders
-
-The table above says which host a surface gets. This says what goes INSIDE it,
-and it is one sentence:
-
-> **A dialog body renders content, never chrome** — no outer card, no duplicate
-> heading, no own horizontal insets except a bleed that exactly matches the
-> host's declared padding steps.
-
-The host already draws the border, the radius, the padding, the title and the
-Close control. A body that draws them again produces a bordered card floating
-inside a bordered card, with the same sentence printed twice — which is what
-the quick-entry measurements sheet did until #3361.
-
-Three consequences, each one a real defect that shipped:
-
-- **No outer card.** A body whose root carries the `card` utility, or a
-  hand-rolled `rounded-xl` + `border` + `p-4`, is wearing standalone-page
-  chrome inside a panel. A bare `space-y-*` root is the shape. Sub-cards INSIDE a body — the Vitals/Body group boxes, the
-  per-row dose and practice cards, the routine-template picker — are deliberate
-  grouping and stay; the rule is about the body's OWN outermost box.
-- **No duplicate heading.** The host prints the title. If a body prints it too,
-  one of the two must go — either the body drops its `<h2>` or the host hides
-  its own (`titleHidden`). Prefer dropping the body's: the host's title is the
-  dialog's accessible name and it stays in the same place on every surface.
-- **A bleed steps where the PANEL steps.** A body that runs edge to edge (a
-  sticky footer, a full-width list) counteracts the panel's padding with a
-  negative margin, so the two must agree at every width. The dialog panel pads
-  `px-4` and steps to `px-6` at **`md`**, so the bleed is `-mx-4 md:-mx-6` and
-  every re-inset inside it is `px-4 md:px-6`. A bleed that stepped at `sm`
-  over-pulled half a rem per side through the whole `sm`..`md` band, and the
-  footer's edge sat past the panel's (#3361). The centred presentation steps at
-  `sm` instead — read `panelShape` in `components/BottomSheet.tsx` rather than
-  guessing, and match the presentation the body is actually mounted in.
-
-  This rule governs INSETS ONLY, and the difference is load-bearing. A body's
-  other responsive classes have no host counterpart to agree with, so they step
-  where their own content wants. `ProtocolForm`'s sticky footer is the worked
-  example and it looks like an oversight until you know why: it turns horizontal
-  at `sm` (`sm:flex-row sm:justify-end`) while its padding steps at `md`
-  (`md:px-6`). That is DELIBERATE — two buttons fit side by side from 640px, and
-  the padding has to match the panel, which changes at 768px. Do not "tidy" the
-  two onto one breakpoint; that would turn a correct mismatch into a real one.
-
-The title gap has ONE owner: the host's content region (`mt-3`). A call site
-that adds its own `mt-4` on top is not choosing a bigger gap, it is accreting
-one — 28px under a dialog title, decided by nobody.
-
-This is now true everywhere: no dialog body's outermost element carries a top
-margin. Be careful reading the tree for a precedent, though — a `mt-4` on the
-element BELOW a `<p className="mt-2">` description is a description-to-form gap,
-not a title gap, and six dialogs legitimately have one.
-
-The gap ABOVE a dialog FOOTER stays with the call site, and that is a decision
-rather than the sweep running out of steam (#3401). The host draws no footer, so
-there is no host counterpart for a footer's `mt-4` to agree with — it is content
-rhythm, the same category as `ProtocolForm`'s `sm:flex-row` above, not chrome.
-Three bodies do it today, all `mt-4 flex justify-end`, and all three are right.
-Do not "finish the job" by hoisting that gap to the host.
-
-### A form with two mounts uses an escape hatch, not a fifth spelling
-
-Some forms are genuinely mounted both ways: a standalone card on a page AND a
-body inside a dialog. Those take a prop that gates the card chrome, and several
-already exist:
-
-| Form                                                    | Prop           | Dialog value |
-| ------------------------------------------------------- | -------------- | ------------ |
-| `app/(app)/trends/MeasurementsQuickAdd.tsx`             | `presentation` | `"modal"`    |
-| `app/(app)/encounters/EncounterForm.tsx`                | `embedded`     | `true`       |
-| `app/(app)/encounters/AppointmentForm.tsx`              | `embedded`     | `true`       |
-| `app/(app)/settings/profile/DietaryPreferencesForm.tsx` | `embedded`     | `true`       |
-| `app/(app)/wellness/PracticeEditor.tsx`                 | `compact`      | `true`       |
-
-Three spellings of one question, and they are staying that way — renaming
-working props is churn, not convergence. **Copy one of these when a form gains
-its second mount; do not invent a fifth.** And when a mount forgets to pass it,
-the failure is silent and visual: the form simply falls back to its card
-default and the double chrome appears inside the panel. That is exactly how
-#3361's defect reached a phone.
-
-A form with only ONE mount, and that mount a dialog, needs no hatch at all — it
-just renders content. `InstrumentsView` and `SubstanceInstrumentsForm` each
-carried a border wrapper with no page mount left to serve.
-
-## What IS shared
-
-`components/overlay/` — the one import an overlay surface needs:
-
-- **`useDragGesture`** — the ONE recognizer, over the pure `lib/gesture.ts`
-  (axis lock → directed travel → distance-or-flick). Consumers supply the
-  outcome; that callback is the only place the three surfaces differ.
-- **`useOverlayDrag`** — panel drag-to-resolve: finger-following, release
-  settle, and the keyframe/inline-transform handshake (below).
-- **`OverlayDragHandle` + `tokens.ts`** — the affordance (a 40×6 bar inside a
-  64×44 hit target), the scrim tint, panel radius/elevation/safe-area padding.
-- **`overlayMotionClass()`** (from `lib/motion.ts`) — the enter/exit classes
-  over ONE duration + easing pair, declared once as `--overlay-ms` /
-  `--overlay-ease-enter` / `--overlay-ease-exit` in `app/globals.css`.
-
-Before this, the drawer ran at 220ms, the sheet at 240ms, and the dock had no
-animation at all; the drawer's scrim was a different tint with an extra blur.
-That is the "hand-mirrored second engine" shape at the presentation layer.
-
-### The deliberate activity-workspace exceptions
-
-The workspace shares the scrim, surface chrome, drag recognizer, and handle
-geometry, but takes no enter animation. Its panel is a full-height
-(`min-h-full`) child of its own scroll container, so sliding it in changes that
-container's scroll extent for the length of the animation and flips its
-scrollbar on and off. The width changes with it and the activity form re-wraps:
-a browser test caught the date/duration row landing 132px apart mid-enter
-(`e2e/entry-ergonomics.spec.ts`, the #188 layout assertion). Suppressing the
-scrollbar for that window only traded the glitch for 240ms in which the app's
-most complex form could not scroll.
-
-A mount animation would also be inconsistent here in a way it is not on a sheet:
-minimizing HIDES this element rather than unmounting it (the rest timer has to
-keep running), so a restore could never replay the slide. The workspace arrives
-instantly, on purpose.
-
-## Load-bearing details
-
-**The keyframe/inline-transform handshake.** A running CSS animation OUTRANKS
-inline style. A panel that is both class-animated and finger-dragged therefore
-ignores the drag and snaps back. `useOverlayDrag` reports `suppressMotion` the
-moment a drag claims the panel; the consumer stops emitting the motion class,
-and the panel's transform is the hook's alone from then on (including its exit,
-run as an inline transition). The latch does not release while that panel is
-alive — re-adding the enter class after a cancelled drag would replay the whole
-slide-up on a panel that is already sitting still.
-
-**The latch's scope is the PANEL, and only the panel** (#2725). Two corollaries,
-both of which were wrong first and composed into one symptom — drag a sheet
-closed on a phone and the screen holds dark.
-
-_It expires when the panel unmounts._ The rationale above is a claim about one
-DOM element, and `usePresence` destroys that element between opens: a remounted
-panel has no inline transform to fight and is owed its slide. Scoping the latch
-to the COMPONENT instead was invisible only while every consumer unmounted with
-its panel — but the quick-log sheet's `BottomSheet` is rendered unconditionally
-by `MobileNav`, and the quick-entry host retains its form after close, so those
-instances never unmount and one cancelled 30px drag muted that sheet's
-animations for the page's whole life. Consumers whose panel unmounts pass
-`panelMounted` (their `usePresence` `mounted`); the activity workspace uses
-`commitSettle: "rest"` because minimizing parks its panel instead.
-
-_It never reaches the scrim._ The backdrop carries no inline transform — nothing
-ever writes one — so there is no handshake to honour and gating it only cost the
-exit fade. `BottomSheet` used to route both classes through the latch; the
-drawer and the switcher always animated their scrim unconditionally, and that is
-now the one shape. The fade is what says a close is progressing: without it a
-drag-dismissed sheet leaves a full-opacity `dark:bg-black/70` scrim over the
-viewport until the presence timer blinks it out, and anything that delays that
-timer stretches the hold.
-
-**Pull-to-refresh stands down while an overlay is up** (#2725). `PullToRefresh`
-listens at the window, so it sees touches inside overlays too, and a sheet's
-drag-dismiss is downward, starts at the top of the page behind and travels well
-past the arming distance — an armed pull by every test the classifier had.
-Installed as a PWA that fired a whole-page `router.refresh()` inside the sheet's
-exit window. `classifyPull` now takes `overlayOpen`, read once at `touchstart`
-(the gesture dismisses the overlay it began in, so a mid-gesture re-read would
-see none and re-arm).
-
-The measure is **body scroll lock, and only that** (`overlayOwnsViewport` in
-`lib/pull-to-refresh.ts`). `useLockBodyScroll` is the only writer of
-`body.style.overflow`, and its callers are exactly the surfaces that own the
-vertical drag: every downward-capable recognizer in the app runs under a locked
-body, and the lock is a document-level fact, so it covers a drag begun on a
-sheet's scrim too.
-
-It deliberately does **not** ask "is a modal open". That was the first version —
-added for four surfaces that never lock (`ModalShell` and its consumers,
-`MergeConflictDialog`, `PhotoGallery`, `FitnessTestTimer`) — and it was a second
-bug rather than a fix: none of the four has a touch gesture, so none can produce
-the drag being refused, and `e2e/dirty-form-refresh.mobile.spec.ts` already pins
-that a pull STILL refreshes while a record form in a `ModalShell` holds unsaved
-input (#1878: a refresh the user asked for is never deferred, and installed there
-is no other way to ask). "Is a modal open" is a question about ATTENTION; this
-one is about who owns the DRAG. A new fact belongs in it only if it names a
-surface that owns the gesture, and it owes the module a test in both directions.
-
-**`commitSettle: "away" | "rest"`.** A sheet is going away, so it finishes its
-travel while the consumer unmounts it. The activity workspace is being parked:
-the same element stays mounted with a live workout inside it and is merely
-hidden. It therefore returns to its resting transform before minimizing.
-
-**Touch events, not Pointer Events.** Chromium fires `pointercancel` — and stops
-sending `pointermove` — the moment its own scroll recognizer takes over, which
-on a scrollable page happens after ONE move sample even on a purely horizontal
-drag. A pointer-based recognizer therefore never gets to decide anything. Touch
-events keep flowing, which lets our axis lock do the arbitration. Consequence,
-accepted: these are touch gestures only; the tap/click affordance beside each
-one is the pointer route.
-
-**BottomSheet fixes body ownership at touch-start** (#3691). The handle always
-owns a downward drag, whatever the content scroll position. A drag beginning in
-the content owns dismissal only when every effective vertical scroll owner from
-the touch origin through the sheet content was already at its top. That includes
-intentional nested form scrollers with fixed action footers; beginning below any
-owner's top belongs to native scrolling for the touch's entire lifecycle, even
-if the scroll reaches zero before the finger lifts. The shared recognizer's
-one-shot `canStart` admission expresses that boundary without preventing
-default, re-reading mid-gesture, or interfering with taps and fields.
-
-**`overscroll-behavior-x: contain`** on `html`/`body`. Without it a horizontal
-drag the page cannot scroll CHAINS to the browser's in-page history navigation:
-the swipe goes "back" instead and the gesture appears to do nothing. Inner
-horizontal scrollers are unaffected. (Caveat: this governs the browser's
-overscroll gesture, not the platform's — an iOS Safari tab keeps its system
-edge-swipe-back; installed to the home screen there is none.)
-
-**The drag handle's `touch-action: none` costs one tap** (#3262). It is the one
-place in the app that takes an axis away from the browser, and it is still the
-right call — without it the panel's own scroller steals a downward drag before
-the recognizer sees a second sample. The price, measured rather than reasoned:
-**Chromium suppresses the tap gesture of the first touch sequence after a drag
-whose starting element forbade the drag's axis.** The touch events and the
-touch-type PointerEvents still arrive; no `GestureTap` is produced, so no
-`mousedown`, no `mouseup` and no `click` reaches the page at all. It is exactly
-one sequence and roughly 300 ms wide, and the next tap always lands — which is
-the whole of the user-visible symptom #3262 confirmed: after flicking a dirty
-sheet and being asked to confirm, a tap that follows within a third of a second
-does nothing, the dialog stays open, and nothing is ever discarded. `pan-x`
-behaves the same way (it forbids the same axis); `pan-y`, `manipulation` and
-`auto` do not, and all three would give the scroller back the drag. No JS can
-see the suppression or clear it, so the app cannot work around it — the e2e
-suite spends the sequence deliberately instead (`consumeSuppressedTap` in
-`e2e/helpers.ts`, which carries the measurements). Re-derive any of this with
-`node scripts/tap-suppression-probe.mjs`.
-
-**Every gesture has a control path.** The drawer keeps its hamburger, the sheet
-its backdrop tap and Escape, the activity handle is itself a button, and the
-Timeline keeps its prev/next arrows — built from the SAME `timelineDayHref`
-destinations the swipe uses, so the two can never disagree about which day is
-next. A gesture is
-invisible, undiscoverable, and unavailable to a keyboard or a screen reader; it
-is never the only way to do anything.
-
-## The guard
-
-`lib/__tests__/overlay-motion-chokepoint.test.ts` fails CI when:
-
-1. a converged overlay surface stops consuming `components/overlay`;
-2. a NEW full-viewport overlay is neither converged nor classified as a
-   different anatomy (centred dialogs/popovers are scoped out of #1469, each
-   recorded with a justification). **Not just a portalled one** — the
-   `createPortal` half of that test was dropped in #3405, because it is exactly
-   why the guard could not see the hostless dialogs the census found. They
-   render `fixed inset-0` inline, so they sat outside every rule here
-   by construction. The stated cost of the widening: every `fixed inset-0`
-   surface now answers to these rules and some legitimately should not — a
-   full-bleed chart, a camera viewfinder — so expect recorded exceptions rather
-   than reading the first wave as a regression;
-3. an overlay surface hand-rolls a slide (raw transform/transition/keyframe);
-4. an `.overlay-*` class name is written anywhere but `lib/motion.ts`;
-5. a second raw drag recognizer appears (allowlisted: pull-to-refresh, which
-   asks a different question and has its own pure classifier; the image cropper,
-   whose drag manipulates content rather than the overlay);
-6. a full-viewport overlay's own scroller does not contain its overscroll — the
-   #2774 defect, where a drag the scroller declined chained out to the document
-   and moved the page BEHIND the overlay;
-7. a full-viewport dialog hosts a `<form>` without going through the converged
-   host, or opts out of the phone sheet idiom without recording why;
-8. a file positions a `role="menu"` panel itself instead of opening it through
-   `components/overlay/AnchoredPanel.tsx` — the anchored-menu rule (#3374).
-   `CompactDateMenu` is the one recorded exception. The scan reads the panel's
-   WHOLE opening tag by brace depth rather than stopping at the next `>`: its
-   first version stopped at an `onKeyDown={(event) => {` arrow and could not see
-   `CompactDateMenu` at all, which is a green sweep that was never taken.
-9. a consumer hands the host an `onClose` that does nothing (#3405 review). The
-   host draws a real ✕, so a no-op handler makes it a control that lies — it
-   takes the tap and ignores it, often two pixels from a Cancel button that is
-   honestly `disabled`. A surface that must refuse dismissal for a moment (a
-   write already in flight, which closing would not cancel) passes
-   **`closeDisabled`**, which greys the control out and leaves Escape and the
-   gestures on the consumer's own guard. The scan resolves the handler through
-   its LOCAL BINDINGS rather than reading the attribute: the instance that
-   produced this rule was spelled `const close = busy ? noop : onCancel` with
-   `onClose={close}`, and a version of the scan that read the attribute text was
-   green against it.
-
-`lib/__tests__/scroll-lock.test.ts` pins the other half of #2774: the body-scroll
-lock is reference-counted, so a dialog opened over an open sheet leaves the page
-held until the LAST surface closes — in either closing order. The DOM-level stack
-is pinned in `e2e/dialog-convergence.mobile.spec.ts`.
-
-`lib/__tests__/motion-tokens.test.ts` pins the CSS duration/easing to the JS
-ones — the number exists in both because one times the paint and the other times
-the unmount, and a stylesheet that outlives its JS duration leaves a frozen
-panel on screen.
-
-## Testing gestures
-
-`e2e/helpers.ts` drives real Chromium touch input via CDP — Playwright's
-`touchscreen` only taps, and `page.mouse` produces pointer events these gestures
-ignore. It offers two entry points, and the choice is about WHERE the gesture
-must start:
-
-- `touchSwipeFrom(page, locator, { dx, dy })` for a gesture that must begin
-  inside an element (a drag handle, a panel), which is what the recognizer's
-  containment test demands.
-- `touchSwipe(page, from, to)` for a gesture anchored to the DOCUMENT — the
-  drawer's edge swipe, the Timeline's day swipe.
-
-A point measured from an element is not good enough for the first kind, and
-`centerOf`-style settling does not rescue it (#2714): waiting for the box to stop
-moving proves the element held still across one past window, never that it will
-hold still until the touch is dispatched. A bottom-anchored sheet that gathers
-content lazily grows UPWARD after it has come to rest, the handle leaves the
-certified coordinate, the touch lands on whatever moved into it, and the gesture
-is rejected with **no error and no effect** — the test then waits out its budget
-on an exit that was never scheduled. So `touchSwipeFrom` re-aims and proves the
-landing (the target of the dispatched touchstart, the same fact the recognizer
-uses) before moving a pixel; `centerOf` is private to the helper module.
+# Overlays
+
+Use the shared hosts and `components/overlay/` primitives. Choose a host by the
+surface's lifecycle; consumers supply content and the action dismissal means.
+
+## Choose a host
+
+| Surface                                            | Host                         | Dismissal                                              |
+| -------------------------------------------------- | ---------------------------- | ------------------------------------------------------ |
+| Transactional form, picker, or confirmation        | `ModalShell`                 | Discard                                                |
+| Live workout that survives navigation              | `ActivityOverlay`            | Minimize; keep the session running                     |
+| Rare entry such as labs or imaging                 | `AddEntryPanel`              | Inline in a reading column; `ModalShell` in a hub rail |
+| Menu or navigation                                 | `BottomSheet` or `MobileNav` | Close                                                  |
+| Menu, date picker, or detail anchored to a control | `overlay/AnchoredPanel`      | Close                                                  |
+
+`ModalShell` uses `BottomSheet` with `presentation="dialog"`: a sheet below
+`md`, a centered card above. Declare `size="sm" | "md" | "lg"` through
+`OVERLAY_PANEL_MAX_WIDTH`; do not add a per-consumer maximum width.
+
+A centered presentation needs an anatomy-based exception in
+`CENTERED_PRESENTATION` in `lib/__tests__/overlay-motion-chokepoint.test.ts`.
+The command palette and `media/MediaInput` are the current exceptions; the latter
+includes a live camera viewfinder whose aiming gesture conflicts with dismissal.
+The palette also uses `fullScreenBelowMd` to fill a phone's viewport, changing geometry
+within the same host, focus trap, scrim, and scroll lock.
+
+The activity panel is bottom-anchored on phones and right-anchored on desktop.
+Its phone handle is both a minimize button and a drag handle. The desktop
+backdrop minimizes it. Resume controls use `workoutOffer` and preserve the
+session's epoch and logged sets; see [stateful affordances](stateful-affordances.md).
+
+## Dismissal and focus
+
+`ModalShell` checks the dirty-form registry for flicks, scrim taps, and Escape.
+Unsaved input opens `ConfirmDialog`; a clean form closes immediately. The explicit
+Close button calls `onClose` without that confirmation. If a write temporarily
+prevents closing, pass `closeDisabled` and retain the consumer's dismissal guard;
+do not give an enabled Close control a no-op handler.
+
+Modal surfaces need a name, dialog semantics, and focus management even when
+their presentation is exceptional. `useFocusTrap` restores focus and gives a
+nearer dialog or `[data-escape-layer="true"]` first claim on Escape.
+`useLockBodyScroll` is reference-counted: nested surfaces keep the page locked
+until the last lock releases, regardless of closing order. Their scrollers
+contain overscroll so a declined drag cannot scroll the page behind them.
+
+These surfaces use another host for a specific reason:
+
+| Surface                          | Reason                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------- |
+| `ImageCropper`                   | Sits above an existing photo dialog at `z-120`; its drag manipulates image content        |
+| `photo/PhotoGallery`             | Full-bleed media viewer with paging gestures                                              |
+| `activity-form/FitnessTestTimer` | Collapses back into its parent sheet while its timer keeps running; needs no second scrim |
+| `ActivityOverlay`                | Persistent session; converges on overlay primitives                                       |
+| `MobileNav`                      | Left-edge navigation and swipe; converges on overlay primitives                           |
+
+`ActivityOverlay`, `PhotoGallery`, and `MobileNav` use the shared focus trap.
+Presentation exceptions do not waive accessibility.
+
+## Anchored content
+
+`AnchoredPanel` renders a `BottomSheet` below `md` and a fixed, portaled popover
+positioned by `useAnchoredPopover` above it. Author content once through its
+`children` function; mount one copy, never responsive hidden twins. Menu sheets
+need no dirty-form guard.
+
+`MENU_ITEM` supplies 44px rows below `md` and for coarse pointers above it, and
+32px rows for a desktop mouse. The pointer rules are mutually exclusive.
+
+The sheet traps focus. A desktop popover declaring a `role` moves focus inside
+after positioning, restores it on close, and handles Escape without trapping
+Tab. A role-less panel leaves focus alone so a `DateField` calendar can open
+without taking focus from its input. Match popup roles and names to the trigger's
+ARIA declaration.
+
+Two exceptions remain: `CompactDateMenu` is a phone-only inline day switcher
+already at the touch floor; `Combobox`'s listbox belongs to its field and is not
+a menu.
+
+## Dialog bodies
+
+The host owns the outer border, radius, padding, title, Close control, and
+`mt-3` title gap. Bodies render content. Remove duplicate outer cards, headings,
+and top margins; keep internal groups and description-to-form spacing. Prefer
+the host's accessible title over a second body heading (`titleHidden` is available
+when needed).
+
+A full-width list or sticky footer must match the host's padding at each
+breakpoint. For dialog presentation, use `-mx-4 md:-mx-6` and re-inset with
+`px-4 md:px-6`. Centered presentation steps at `sm`; check `panelShape` in
+`BottomSheet` for the actual mount. This constraint concerns insets: content may
+change its flex layout at another breakpoint. Footer spacing belongs to the
+body because the host draws no footer.
+
+For a form used both on a page and inside a dialog, reuse an existing chrome
+switch: `presentation="modal"` in `MeasurementsQuickAdd`, `embedded` in encounter,
+appointment, and dietary-preference forms, or `compact` in `PracticeEditor`.
+Do not rename working props or introduce another spelling. A dialog-only form
+needs no switch.
+
+Quick-log content reserves its asynchronous context slot and the largest row
+segment visible to the active profile inside the host's scroller. Loading,
+empty results, errors, and segment changes should not move the panel or segment
+strip; the gathered section uses its declared opacity-only arrival.
+
+## Motion and gestures
+
+`components/overlay/` owns these shared pieces:
+
+- `useDragGesture`: touch recognition over `lib/gesture.ts`, including axis lock,
+  directed travel, and distance-or-flick decisions.
+- `useOverlayDrag`: finger-following transforms and release settling.
+- `OverlayDragHandle` and `tokens.ts`: a 40×6 bar in a 64×44 target, scrim,
+  panel chrome, and safe-area padding.
+- `overlayMotionClass()` in `lib/motion.ts`: classes tied to the shared CSS
+  duration and enter/exit easing. Keep paint and presence timing aligned and
+  preserve reduced-motion behavior; see [micro-motion](micro-motion.md).
+
+A CSS keyframe animation overrides inline transforms. Once a drag claims a panel,
+`useOverlayDrag` latches `suppressMotion` so the panel stops emitting its motion
+class, including during exit. Keep the latch until that panel unmounts; resetting
+it after a canceled drag would replay entry. Pass presence's `mounted` as
+`panelMounted` when the panel unmounts between opens. Scrims have no drag transform
+and must keep their fade independently of this latch.
+
+Use `commitSettle="away"` for an unmounting sheet and `"rest"` for the activity
+panel that remains mounted while minimized. The activity workspace has no entry
+animation: translating its full-height child changes its scroller's extent,
+and restoring an already-mounted session would not replay a mount animation.
+
+The handle always owns a downward drag. A touch starting in sheet content can
+dismiss only if every vertical scroll owner up through that content was at its
+top at touch-start. Admission stays fixed for the gesture, including when native
+scrolling later reaches zero. `canStart` owns this decision without blocking taps
+or fields.
+
+Pull-to-refresh likewise captures ownership at touch-start, using body scroll
+lock through `overlayOwnsViewport` in `lib/pull-to-refresh.ts`. A closing overlay
+must not release that same gesture into a page refresh. This includes record
+forms in `ModalShell`, which now use the locking sheet primitive. Closing the
+sheet allows a subsequent pull again.
+
+Use the shared touch recognizer rather than pointer handlers for overlay drags;
+native scroll arbitration can cancel pointer movement. Keep a button, backdrop,
+or keyboard route for each gesture. Horizontal overscroll containment on
+`html`/`body` prevents chaining into browser history where supported; it does not
+remove the platform's own navigation gesture.
+
+The handle's `touch-action: none` preserves drag ownership. The repository's
+Chromium probe records suppression of the first tap immediately after this drag;
+`consumeSuppressedTap` in `e2e/helpers.ts` accounts for it in gesture tests.
+Use `scripts/tap-suppression-probe.mjs` when investigating that behavior.
+
+## Verification
+
+Use existing coverage for the behavior changed:
+
+- `overlay-motion-chokepoint.test.ts` checks host convergence, declared exceptions,
+  motion ownership, recognizers, overscroll containment, anchored menus, and
+  disabled-close handling. Do not duplicate its inventories here.
+- `scroll-lock.test.ts` and `dialog-convergence.mobile.spec.ts` cover nested
+  ownership; `motion-tokens.test.ts` checks CSS/JS timing agreement.
+- `dirty-form-refresh.mobile.spec.ts` covers refusal of a pull under a locking
+  form and refresh after closing it.
+
+Follow [E2E hygiene](e2e-hygiene.md). Use `touchSwipeFrom(page, locator, delta)` for
+a gesture starting on an element: it verifies the actual touchstart target before
+moving, including when asynchronous content shifts the handle. Use `touchSwipe`
+for document coordinates such as the drawer edge or Timeline. Mouse events do
+not exercise these touch gestures.
