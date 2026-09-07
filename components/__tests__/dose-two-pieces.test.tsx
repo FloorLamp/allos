@@ -18,6 +18,7 @@ import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import type { LedgerGroup } from "@/lib/day-ledger";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 
 // TWO PIECES FOR THE DOSE DOMAIN (#4424): `HistoricalDoseForm` and
 // `DoseStatusControl`. What each claim here is about is the thing a COPY forgot.
@@ -692,15 +693,18 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
 // 100 mg; the item still carries the 160 mg it was saved with, so every claim below
 // separates "what the label says now" from "what the row remembers".
 describe("the PRN row bands from the child's weight at dose time (#4713)", () => {
-  const CHILD = {
+  const CHILD: PediatricFormContext = {
     ageMonths: 72,
     weightKg: 12,
     weightDate: "2026-09-01",
-    weightUnit: "kg" as const,
+    weightUnit: "kg",
     today: "2026-09-02",
   };
 
-  function row(pediatric: typeof CHILD | null, over: { name?: string } = {}) {
+  function row(
+    pediatric: PediatricFormContext | null,
+    over: { name?: string } = {}
+  ) {
     render(
       <QuickLogPrnControl
         itemId={31}
