@@ -9,7 +9,8 @@
 //
 // LIABILITY POSTURE (#798): every value is a public OTC Drug Facts label figure; the
 // pediatric bands REPRODUCE the label chart (no mg/kg computation); age gates are the
-// label's own "ask a doctor" refusals; aspirin has NO pediatric entry (Reye's).
+// label's own "ask a doctor" refusals at BOTH ends of the chart's stated age range;
+// aspirin has NO pediatric entry (Reye's).
 
 import rawPrn from "./data/prn-defaults.json";
 import { loadDataset } from "./loader";
@@ -41,6 +42,12 @@ export interface PrnAdultDefaults {
 export interface PrnPediatricDefaults {
   // Hard age gate (label's own): below this age the lookup refuses with ageGateText.
   minAgeMonths: number;
+  // The EXCLUSIVE upper end of the ages this children's chart covers, read off the
+  // chart itself (#5539). Required, not optional: the weight bands have no top —
+  // `bandForWeightLbs` hands back the highest band whose minLbs fits — so a chart
+  // without a stated upper age silently answers for every heavier adolescent, which
+  // is the defect. A pediatric table that cannot say where it stops cannot be added.
+  maxAgeMonths: number;
   ageGateText: string;
   bands: PediatricBand[];
   formulations: PrnFormulation[];

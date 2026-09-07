@@ -2,7 +2,7 @@
   "$schema": "allos-dataset/v1",
   "id": "prn-defaults",
   "title": "OTC PRN (as-needed) dosing defaults",
-  "description": "Curated OTC PRN (as-needed) dosing DEFAULTS (issue #798). The medication-info / food-drug-interactions pattern: a committed, human-reviewable, CITED dataset keyed by RxNorm INGREDIENT CUI with a name/synonym fallback (#279). Every value is a public OTC Drug Facts label figure — NOT medical advice. The app only PRE-FILLS these onto the med form as a suggestion the user explicitly confirms/edits; nothing here is applied silently. `adult.minIntervalHours`/`adult.maxDailyCount` pre-fill the redose-notice fields; `pediatric.bands` reproduce the label's weight-band chart (mg per weight band) for informational lookup — NEVER a mg/kg computation. `pediatric.minAgeMonths` is a hard age GATE rendered as the label's own 'ask a doctor' refusal, not a dose. ASPIRIN has NO pediatric entry (Reye's syndrome) — the dataset structurally omits it, pinned by a dataset test. Bands carry an inclusive lower bound (minLbs) only; the lookup picks the highest band whose minLbs <= the child's weight, so a weight between two label bands lands conservatively on the LOWER (lower-dose) band, and a weight below the smallest band is a refusal.",
+  "description": "Curated OTC PRN (as-needed) dosing DEFAULTS (issue #798). The medication-info / food-drug-interactions pattern: a committed, human-reviewable, CITED dataset keyed by RxNorm INGREDIENT CUI with a name/synonym fallback (#279). Every value is a public OTC Drug Facts label figure — NOT medical advice. The app only PRE-FILLS these onto the med form as a suggestion the user explicitly confirms/edits; nothing here is applied silently. `adult.minIntervalHours`/`adult.maxDailyCount` pre-fill the redose-notice fields; `pediatric.bands` reproduce the label's weight-band chart (mg per weight band) for informational lookup — NEVER a mg/kg computation. `pediatric.minAgeMonths` is a hard age GATE rendered as the label's own 'ask a doctor' refusal, not a dose. `pediatric.maxAgeMonths` is the EXCLUSIVE upper end of the ages the children's chart itself covers (both charts' last row is 11 years, so 144 months): at or above it the lookup refuses instead of stating the chart's top band, because the top weight band would otherwise catch every heavier adolescent and adult the label never spoke about. ASPIRIN has NO pediatric entry (Reye's syndrome) — the dataset structurally omits it, pinned by a dataset test. Bands carry an inclusive lower bound (minLbs) only; the lookup picks the highest band whose minLbs <= the child's weight, so a weight between two label bands lands conservatively on the LOWER (lower-dose) band, and a weight below the smallest band is a refusal.",
   "citation": [
     {
       "source": "U.S. FDA OTC Drug Facts labels (public).",
@@ -36,6 +36,7 @@
       },
       "pediatric": {
         "minAgeMonths": 6,
+        "maxAgeMonths": 144,
         "ageGateText": "For children under 6 months, ask a doctor before use (per the product label).",
         "bands": [
           {
@@ -74,7 +75,7 @@
         "minIntervalHours": 6,
         "maxDailyCount": 4
       },
-      "source": "OTC Drug Facts label — ibuprofen oral suspension (children's), U.S. FDA."
+      "source": "OTC Drug Facts label — ibuprofen oral suspension (children's), U.S. FDA. The chart's rows run from 6 months to 11 years."
     },
     {
       "slug": "acetaminophen",
@@ -96,6 +97,7 @@
       },
       "pediatric": {
         "minAgeMonths": 3,
+        "maxAgeMonths": 144,
         "ageGateText": "For children under 12 weeks (about 3 months), ask a doctor before use (per the product label).",
         "bands": [
           {
@@ -134,7 +136,7 @@
         "minIntervalHours": 4,
         "maxDailyCount": 5
       },
-      "source": "OTC Drug Facts label — acetaminophen oral suspension (children's), U.S. FDA."
+      "source": "OTC Drug Facts label — acetaminophen oral suspension (children's), U.S. FDA. The chart's rows run from 12 weeks to 11 years."
     },
     {
       "slug": "aspirin",

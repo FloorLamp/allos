@@ -39,6 +39,11 @@ describe("prn-defaults dataset", () => {
       expect(e!.pediatric, `${slug} has a pediatric table`).toBeTruthy();
       expect(e!.pediatric!.bands.length).toBeGreaterThan(0);
       expect(e!.pediatric!.minAgeMonths).toBeGreaterThan(0);
+      // The chart's own upper end (#5539). Its ORDER is the invariant the type cannot
+      // state: an inverted range would refuse every age the chart actually covers.
+      expect(e!.pediatric!.maxAgeMonths).toBeGreaterThan(
+        e!.pediatric!.minAgeMonths
+      );
       // Bands ascend by minLbs (the lookup relies on picking the highest ≤ weight).
       const mins = e!.pediatric!.bands.map((b) => b.minLbs);
       expect([...mins].sort((a, b) => a - b)).toEqual(mins);

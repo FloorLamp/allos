@@ -823,6 +823,27 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
     }
   );
 
+  // THE ISSUE'S OWN ROW (#5539). A 16-year-old at 60 kg with a prescribed 600 mg: the
+  // weight bands have no top, so the chart's last row used to answer for them and the
+  // row read "Label band for this weight is 300 mg" beside a doubled prescription —
+  // an invitation to halve, at the moment of giving. The chart now refuses above the
+  // ages it covers, and the prescribed dose is still what the tap records.
+  it("refuses above the chart's age range instead of stating its top band", () => {
+    row(
+      { ...CHILD, ageMonths: 192, weightKg: 60 },
+      { doseAmount: "600 mg", profileId: 99 }
+    );
+    expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
+      "covers children under 12 years"
+    );
+    expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    // No weight fixer either: a fresher weight would not make this chart cover them.
+    expect(screen.queryByTestId("pediatric-weight-update-open")).toBeNull();
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Give Ibuprofen · 600 mg"
+    );
+  });
+
   // A MISSING WEIGHT DATE READS AS STALE (#798), and under 12 months the threshold is
   // 60 days — the infant case the machinery was built for, and the one that was
   // unreachable from this row. The fixer is one tap away in place, and the weight it

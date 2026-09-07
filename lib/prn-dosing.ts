@@ -7,8 +7,11 @@
 //   • WEIGHT BANDS ONLY. bandForWeightLbs picks the label band for the weight; a
 //     weight between two label bands lands conservatively on the LOWER (lower-dose)
 //     band, and a weight below the smallest band is a refusal, never an extrapolation.
-//   • HARD AGE GATES as refusals. Below the ingredient's minAgeMonths the result is
-//     the label's own "ask a doctor" text, not a scaled dose.
+//   • HARD AGE GATES as refusals, at BOTH ends. Below the ingredient's minAgeMonths
+//     the result is the label's own "ask a doctor" text, not a scaled dose; at or
+//     above its maxAgeMonths the chart has stopped covering the subject and refuses
+//     too (#5539) — the weight bands have no top, so without that the chart's top row
+//     answers for an adolescent the children's label never spoke about.
 //   • mg is canonical; mL only through a user-PICKED formulation/concentration.
 //   • WEIGHT FRESHNESS. A weight older than an age-scaled threshold prompts to update
 //     it BEFORE any band is suggested (kids grow; a stale band under-doses).
@@ -117,6 +120,19 @@ export function isPediatricAgeGated(
 }
 type PrnPediatricLike = { minAgeMonths: number };
 
+// Whether the subject is past the last age the chart itself covers (#5539). The
+// bound is the CHART's, read off the dataset entry — deliberately not the code's
+// 216-month child test, which answers a different question (which surfaces a
+// profile gets) and, reused here, is exactly what let a 16-year-old at 60 kg be
+// handed the children's top band beside a prescribed dose.
+export function isPediatricAboveChartAge(
+  ped: PrnChartAgeRange,
+  ageMonths: number
+): boolean {
+  return ageMonths >= ped.maxAgeMonths;
+}
+type PrnChartAgeRange = { maxAgeMonths: number };
+
 // Age-scaled weight-freshness threshold (days). Younger children grow faster, so a
 // weight goes stale sooner. Coarse, deliberately conservative bands.
 export function weightStalenessDays(ageMonths: number): number {
@@ -188,6 +204,7 @@ export const PEDIATRIC_DOSE_CAVEAT =
 export type PediatricDoseResult =
   | { kind: "no-pediatric" } // ingredient has no OTC pediatric weight-band table
   | { kind: "ask-doctor"; reason: string } // the label's hard age gate
+  | { kind: "above-age-range"; ageMonths: number; maxAgeMonths: number } // past the chart
   | { kind: "need-weight" } // no recorded weight to band from
   | { kind: "stale-weight"; recordedDate: string | null; thresholdDays: number }
   | {
@@ -209,8 +226,9 @@ export type PediatricDoseResult =
     };
 
 // Reproduce the OTC label's pediatric suggestion for one child from the curated
-// entry. Order of decisions is deliberate: no-table → age gate → no weight →
-// stale weight → below-smallest-band refusal → the band dose. `formulationSlug` is the
+// entry. Order of decisions is deliberate: no-table → age gates (below the label's
+// floor, then past the chart's last age) → no weight → stale weight →
+// below-smallest-band refusal → the band dose. `formulationSlug` is the
 // user's picked product concentration (mL only surfaces when it's set and known).
 // An entry KNOWN to carry a chart cannot come back "no-pediatric" — that verdict is
 // the absence of the table, and #4713's dose row would otherwise have to handle a
@@ -245,6 +263,16 @@ export function pediatricDoseSuggestion(input: {
 
   if (isPediatricAgeGated(ped, input.ageMonths)) {
     return { kind: "ask-doctor", reason: ped.ageGateText };
+  }
+  // ABOVE the chart is answered here, beside the label's own floor and before the
+  // weight questions, because no weight makes this chart cover this subject: asking
+  // an adolescent's caregiver for a fresher weight would imply one would.
+  if (isPediatricAboveChartAge(ped, input.ageMonths)) {
+    return {
+      kind: "above-age-range",
+      ageMonths: input.ageMonths,
+      maxAgeMonths: ped.maxAgeMonths,
+    };
   }
   if (input.weightKg == null || !(input.weightKg > 0)) {
     return { kind: "need-weight" };
@@ -340,6 +368,8 @@ export function pediatricRefusalLine(
       return "Enter a current weight to match the package label’s weight band.";
     case "stale-weight":
       return `The latest recorded weight is over ${result.thresholdDays} days old. Enter a current weight before using a weight band.`;
+    case "above-age-range":
+      return `Recorded age is ${Math.floor(result.ageMonths / 12)} years. The available package-label chart covers children under ${Math.floor(result.maxAgeMonths / 12)} years, so no dose band is suggested. Check the product label and ask a clinician or pharmacist before use.`;
     case "below-weight-band":
       return `Recorded weight is ${result.weightLbs} lb. The available package-label chart starts at ${result.minimumLbs} lb, so no dose band is suggested. Check the product label and ask a clinician or pharmacist before use.`;
     default:

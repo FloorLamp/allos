@@ -10,6 +10,7 @@ import {
   kgToLbs,
   pediatricAgeYears,
   pediatricDoseSuggestion,
+  pediatricRefusalLine,
 } from "@/lib/prn-dosing";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { prnDefaultsFor, type PediatricBand } from "@/lib/prn-defaults";
@@ -186,6 +187,58 @@ describe("pediatricDoseSuggestion — orchestrated lookup", () => {
   it("HARD age gate → ask-doctor (ibuprofen under 6 months)", () => {
     const r = pediatricDoseSuggestion({ ...base, ageMonths: 4 });
     expect(r.kind).toBe("ask-doctor");
+  });
+
+  // THE CHART HAS A TOP, AND IT IS AN AGE (#5539). `bandForWeightLbs` returns the
+  // highest band whose minLbs fits, so a 60 kg (132.3 lb) subject lands on the 72+ lb
+  // row no matter how old they are — and the row that read "Label band for this weight
+  // is 300 mg" beside a prescribed 600 mg was a 16-year-old's. The bound is the
+  // CHART's own `maxAgeMonths`, not the code's 216-month child test, so the boundary
+  // is asserted from BOTH sides at the same weight: one month below it is still the
+  // top band a child who belongs there has always been given.
+  describe("above the chart's stated age range → refusal, not the top band", () => {
+    // 60 kg ≈ 132.3 lb: comfortably past the top band, so only age decides.
+    const heavy = { ...base, weightKg: 60 };
+
+    it.each([
+      { side: "the last month the chart covers", ageMonths: 143 },
+      { side: "the ingredient's own maxAgeMonths", ageMonths: 144 },
+      { side: "a 16-year-old", ageMonths: 192 },
+    ])("$side ($ageMonths months)", ({ ageMonths }) => {
+      const r = pediatricDoseSuggestion({ ...heavy, ageMonths });
+      if (ageMonths < IBUPROFEN.pediatric!.maxAgeMonths) {
+        expect(r).toMatchObject({ kind: "dose", mg: 300, bandLabel: "72+ lb" });
+        expect(pediatricRefusalLine(r)).toBeNull();
+      } else {
+        expect(r).toEqual({
+          kind: "above-age-range",
+          ageMonths,
+          maxAgeMonths: 144,
+        });
+        // The existing refusal vocabulary: what the chart does not cover, then the
+        // same closing sentence `below-weight-band` already says.
+        expect(pediatricRefusalLine(r)).toContain(
+          "covers children under 12 years"
+        );
+        expect(pediatricRefusalLine(r)).toContain(
+          "ask a clinician or pharmacist"
+        );
+      }
+    });
+
+    it("refuses before asking for a weight it would not use", () => {
+      expect(
+        pediatricDoseSuggestion({ ...heavy, ageMonths: 192, weightKg: null })
+          .kind
+      ).toBe("above-age-range");
+      expect(
+        pediatricDoseSuggestion({
+          ...heavy,
+          ageMonths: 192,
+          weightDate: "2020-01-01",
+        }).kind
+      ).toBe("above-age-range");
+    });
   });
 
   it("no recorded weight → need-weight", () => {

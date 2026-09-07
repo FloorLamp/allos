@@ -173,6 +173,21 @@ describe("resolveIntakePrefill — the medication vocabulary", () => {
     expect(pf.writes.minIntervalHours).toBe(6);
   });
 
+  // THE CHART'S TOP IS AN AGE (#5539). This adolescent is heavy enough for the chart's
+  // last row and far past the ages it covers, so the add form must offer no figure at
+  // all — the same door the dose row reads, so both refuse together.
+  it("an adolescent past the chart's age range prefills no dose", () => {
+    const pf = medication(blank, {
+      ageMonths: 192, // 16 years — still under the 216-month child test
+      weightKg: 60, // 132.3 lb, above the chart's top 72 lb band
+      weightDate: "2026-07-10",
+      weightUnit: "lb",
+      today: "2026-07-16",
+    });
+    expect(pf.writes.doseAmount).toBeUndefined();
+    expect(pf.ledger.suggested.has("doseAmount")).toBe(false);
+  });
+
   it("a child band refusal (no weight) prefills no dose, never the adult figure", () => {
     const pf = medication(blank, {
       ageMonths: 24,
