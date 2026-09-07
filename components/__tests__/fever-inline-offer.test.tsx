@@ -336,6 +336,50 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
   });
 });
 
+// ── THE OFFER CARRIES THE READING IT IS ABOUT (#5489 fix 5) ─────────────────
+//
+// `logTemp` holds the reading's day AND its minute, and the offer used to be handed
+// only `{ degF }` — so after logging a fever FOR 11:30 PM the block said "That's a
+// fever — 104.8 °F" with no time, and the dose control it mounts opened its "When was
+// it taken?" field empty on the current instant. The one control that knows why it is
+// on screen could not say when.
+describe("the fever offer states the reading's time and proposes it (#5489)", () => {
+  it("names the stated minute in its sentence and opens the dose on it", async () => {
+    bar();
+    await openFold();
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "23:30" },
+    });
+    await logReading("104.8");
+
+    // THE SENTENCE. The reading's own minute, in the login's clock convention — not
+    // the tap's instant, and not silence.
+    expect(screen.getByTestId("fever-offer-sentence").textContent).toContain(
+      "23:30"
+    );
+
+    // AND THE DOSE PROPOSES IT. The statement is open, because a statement this
+    // control may post is one the reader saw (rule 2), and it holds the minute.
+    fireEvent.click(screen.getByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`));
+    expect(
+      (screen.getByTestId("prn-log-when-time") as HTMLInputElement).value
+    ).toBe("23:30");
+  });
+
+  // THE CONVERSE: a reading with no stated minute proposes nothing, so the offer never
+  // invents a time the person did not give (#2053's rule, and #4686's).
+  it("proposes nothing when the reading stated no minute", async () => {
+    bar();
+    await openFold();
+    await logReading("104.8");
+    expect(
+      screen.getByTestId("fever-offer-sentence").textContent
+    ).not.toMatch(/\d{1,2}:\d{2}/);
+    fireEvent.click(screen.getByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`));
+    expect(screen.queryByTestId("prn-log-when-time")).toBeNull();
+  });
+});
+
 // ONE PROMPT FOR ONE DOSE (#4712, owner ruling 2026-09-04 11:20 UTC part 2).
 //
 // The cockpit's persistent Meds section (`cockpit-prn`) renders a

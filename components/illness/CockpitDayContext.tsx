@@ -3,6 +3,8 @@
 import { createContext, useContext, useState } from "react";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatWeekdayDate } from "@/lib/format-date";
 
 // THE DAY A CARD IS STANDING ON (issue #4691), supplied to every control beneath it.
 //
@@ -46,13 +48,14 @@ const CockpitDayContext = createContext<CockpitDay | null>(null);
 export function CockpitDayProvider({
   date,
   altDate,
-  dateLabel = "Today",
+  dateLabel,
   altDateLabel = "Yesterday",
   tz,
   children,
 }: {
   date: string;
   altDate?: string;
+  /** The primary day's words, when the host has better ones than the day itself. */
   dateLabel?: string;
   altDateLabel?: string;
   // The SUBJECT profile's zone, for a card logging a household member (#858). Defaults
@@ -61,6 +64,7 @@ export function CockpitDayProvider({
   children: React.ReactNode;
 }) {
   const appTz = useTimezone();
+  const prefs = useFormatPrefs();
   const [activeDate, setActiveDate] = useState(date);
   // THE CARD'S DAY RESYNCS WHEN THE SERVER'S DOES. `date` is server state, and a
   // cockpit left open across local midnight is the overnight fevered-child case this
@@ -85,7 +89,15 @@ export function CockpitDayProvider({
         altDate,
         activeDate: day,
         isPrimaryDay: day === todayStr,
-        dateLabel,
+        // "TODAY" ONLY WHEN IT IS TODAY (#5489). Every control beneath this card now
+        // takes its day's SPELLING from here, so a default of "Today" would put the
+        // word on a card that is not standing on today — a CLOSED episode's panel
+        // stands on the episode's last active day, and `/history?day=<past>` stands on
+        // the day being read. Unlabelled, such a card names its day through the
+        // login's own date shape (#964); a host that has better words still passes them.
+        dateLabel:
+          dateLabel ??
+          (date === todayStr ? "Today" : formatWeekdayDate(date, prefs)),
         altDateLabel,
         select: setActiveDate,
       }}
@@ -108,13 +120,18 @@ export function useCockpitDay(): CockpitDay | null {
 export function useDayBinding(fallbackDate: string, tz?: string): CockpitDay {
   const card = useCockpitDay();
   const appTz = useTimezone();
+  const prefs = useFormatPrefs();
   const todayStr = dateStrInTz(tz ?? appTz);
   if (card) return card;
   return {
     date: fallbackDate,
     activeDate: fallbackDate,
     isPrimaryDay: fallbackDate === todayStr,
-    dateLabel: "Today",
+    // Named the same way the provider names its own, for the same reason.
+    dateLabel:
+      fallbackDate === todayStr
+        ? "Today"
+        : formatWeekdayDate(fallbackDate, prefs),
     altDateLabel: "Yesterday",
     select: () => {},
   };

@@ -1,5 +1,12 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { isRealIsoDate } from "@/lib/date";
@@ -7,6 +14,7 @@ import type { LocalDay } from "@/lib/temporal-types";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 
 // WHICH SHAPE THE PAIR TAKES (#4218).
 //
@@ -25,6 +33,8 @@ import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
 // jsdom answers false to every media query through the tier's stand-in, so the
 // panel mounts in its desktop host here. The sheet is a browser claim and lives
 // in e2e/anchored-panel-fork.mobile.spec.ts.
+afterEach(cleanup);
+
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -211,5 +221,140 @@ describe("the composed door", () => {
     });
     expect(seen.at(-1)!.date).toBe("2026-08-20");
     expect(seen.at(-1)!.statedAt).toBe("2026-08-20T19:45:00.000Z");
+  });
+});
+
+// ── WHAT A FIXED DAY SAYS (#5489 fix 3) ──────────────────────────────────────
+//
+// A fixed day renders as TEXT, and the text used to be `value.date === today ?
+// "Today" : value.date` — the clock asked, and a storage day printed whenever the
+// answer was no. One card then showed `Yesterday` on its toggle and `2026-09-06` in
+// the temperature fold 130px below it.
+//
+// FOUR HOSTS MOUNT THIS ARM, NOT ONE, and they mount it four different ways — that is
+// the whole shape of the defect (#5105's ruling reached five sites and this arm was
+// outside them; four sites flattened the same way is what lets three get fixed and one
+// get missed). So the claim is made once per host CONFIGURATION rather than once for a
+// representative: the cockpit's fold and the collapsed statement stand inside a day
+// context and must speak the card's own words, while the two nutrition hosts stand on
+// their surface's single day and must speak the login's date shape. None may print a
+// storage day.
+const STORAGE_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function fixedDayText(
+  props: Partial<Parameters<typeof WhenControl>[0]>,
+  on: LocalDay,
+  card?: { date: LocalDay; altDate?: LocalDay; label?: string }
+): string {
+  const seen: WhenValue[] = [];
+  function Host() {
+    const [value, setValue] = useState<WhenValue>({ date: on, statedAt: null });
+    const control = (
+      <WhenControl
+        mode="state"
+        grain="minute"
+        tz="UTC"
+        value={value}
+        onChange={(next) => {
+          seen.push(next);
+          setValue(next);
+        }}
+        minDate={on}
+        maxDate={on}
+        testId="w"
+        {...props}
+      />
+    );
+    return (
+      <TimezoneProvider tz="UTC">
+        <WeekStartProvider weekStart={0}>
+          <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat: "24h" }}>
+            {card ? (
+              <CockpitDayProvider
+                date={card.date}
+                altDate={card.altDate}
+                dateLabel={card.label}
+                tz="UTC"
+              >
+                {control}
+              </CockpitDayProvider>
+            ) : (
+              control
+            )}
+          </FormatPrefsProvider>
+        </WeekStartProvider>
+      </TimezoneProvider>
+    );
+  }
+  render(<Host />);
+  return screen.getByTestId("w-date").textContent ?? "";
+}
+
+describe("the fixed-day arm speaks the surface's words, never a storage day (#5489)", () => {
+  const TODAY = day(new Date().toISOString().slice(0, 10));
+  const YESTERDAY = day(
+    new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  );
+
+  // components/illness/SymptomLogBar.tsx — the temperature fold. Minute grain, and the
+  // minute is REQUIRED on a day that has ended (#4685), which is the arm that survived
+  // the composed-door split. Inside the cockpit's day context, standing on the alt day:
+  // it must say what the toggle beside it says.
+  it("the illness temperature fold says the card's alt-day words", () => {
+    expect(
+      fixedDayText({ timeRequired: true }, YESTERDAY, {
+        date: TODAY,
+        altDate: YESTERDAY,
+      })
+    ).toBe("Yesterday");
+  });
+
+  // components/TimeStatement.tsx — the collapsed statement every dose row opens. Same
+  // day context, standing on the card's primary day.
+  it("the collapsed time statement says the card's primary-day words", () => {
+    expect(fixedDayText({}, TODAY, { date: TODAY, altDate: YESTERDAY })).toBe(
+      "Today"
+    );
+  });
+
+  // app/(app)/nutrition/DayLedger.tsx — the batch "Set time…" sheet. Minute grain with
+  // a required time, and NO day context: the ledger is a single-day surface, so the day
+  // renders through the login's own date shape rather than through a card's words.
+  it("the day ledger's batch sheet renders the login's date shape", () => {
+    const text = fixedDayText({ timeRequired: true }, YESTERDAY);
+    expect(text).not.toMatch(STORAGE_DAY);
+    expect(text).toContain(YESTERDAY);
+  });
+
+  // app/(app)/nutrition/FoodLogBar.tsx — the eating-time fold. The HOUR grain, which is
+  // a different branch of this control entirely, and the one a fix aimed at the minute
+  // grain would miss.
+  it("the food bar's eating-time fold renders the login's date shape", () => {
+    const text = fixedDayText({ grain: "hour" }, YESTERDAY);
+    expect(text).not.toMatch(STORAGE_DAY);
+    expect(text).toContain(YESTERDAY);
+  });
+
+  // AND TODAY IS STILL "Today" OUTSIDE A CARD — the one word the old expression got
+  // right, kept, so this is a fix to the fallback rather than a replacement of the copy.
+  it("says Today on today with no day context", () => {
+    expect(fixedDayText({}, TODAY)).toBe("Today");
+  });
+
+  // ONE DECLARED WIDTH ACROSS BOTH ARMS (#5490 site 1). The picker arm declared `w-36`
+  // and this one declared nothing, so the slot was content-sized in one arm and fixed
+  // in the other — and switching a card's day changed this control's width by ~35px,
+  // which `flex-1` then spent on whatever sat beside it.
+  it("declares the same slot width as the picker arm", () => {
+    const fixed = fixedDayText({}, TODAY);
+    expect(fixed).toBe("Today");
+    const text = screen.getByTestId("w-date").className;
+    cleanup();
+    mount({ maxDate: "2026-12-31" }, { date: DAY, statedAt: null });
+    const picker = screen.getByTestId("w-date").className;
+    for (const declared of ["h-8", "w-36", "text-sm"]) {
+      expect(text, `fixed-day arm: ${text}`).toContain(declared);
+      expect(picker, `picker arm: ${picker}`).toContain(declared);
+    }
   });
 });

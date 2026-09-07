@@ -210,6 +210,38 @@ describe("logMedicationAdministration action (#797)", () => {
     expect(rows[1].occurred_at).toMatch(/T15:00:00Z$/);
   });
 
+  // THE SCREENSHOT'S CASE (#5489). A dose tapped on a cockpit standing on Yesterday
+  // used to post `offset=now` with NO day, and the action stamped the server's today —
+  // a wrong-day administration record, and the instant that arms the redose clock and
+  // the trailing-24h ceiling. Both arms now state the day, and "now" on a day that has
+  // ended has nothing honest to resolve to, so it is refused rather than stamped: the
+  // surface asks for the minute instead (#4686).
+  it("refuses a 'now' carrying a day that has ended, without writing", async () => {
+    const { profile } = seedActor();
+    const itemId = seedPrnMed(profile.id);
+    const res = await logMedicationAdministration(
+      fd({
+        id: itemId,
+        offset: "now",
+        date: shiftDateStr(today(profile.id), -1),
+      })
+    );
+    expect(res.ok).toBe(false);
+    expect(adminRows(itemId)).toBe(0);
+  });
+
+  // …and the SAME tap on the card's own today is the one-tap it always was: the day
+  // rides along, and the core still stamps the current instant.
+  it("stamps now when the stated day IS today", async () => {
+    const { profile } = seedActor();
+    const itemId = seedPrnMed(profile.id);
+    const res = await logMedicationAdministration(
+      fd({ id: itemId, offset: "now", date: today(profile.id) })
+    );
+    expect(res).toEqual({ ok: true, outcome: "logged" });
+    expect(adminRows(itemId)).toBe(1);
+  });
+
   it("refuses a day the tap's reach does not cover, without writing", async () => {
     const { profile } = seedActor();
     const itemId = seedPrnMed(profile.id);

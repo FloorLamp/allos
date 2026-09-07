@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import CockpitRecoveryHeader from "@/components/illness/CockpitRecoveryHeader";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import type { EpisodeCollapsedStatus } from "@/lib/illness-episode-format";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import type { PrnMedForQuickLog } from "@/lib/queries";
@@ -232,6 +233,53 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
       screen.getByTestId("cockpit-med-panel").getAttribute("data-item-id")
     ).toBe("32");
     expect(chip.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  // THE PANEL'S EYEBROW IS THE CARD'S DAY (#5489 fix 4). It was the literal "Today",
+  // so a panel opened on a cockpit standing on Yesterday was headed TODAY above a tap
+  // that writes yesterday — the card's own day context was one line away.
+  it("heads the dose block with the card's day, not the word Today", () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    render(
+      <CockpitDayProvider date={yesterday} tz="UTC">
+        <IllnessMedicationLogger
+          meds={MEDS}
+          tz="UTC"
+          intakeContext={INTAKE_CONTEXT}
+          canAdd
+          nowIso="2026-09-02T12:00:00.000Z"
+        />
+      </CockpitDayProvider>
+    );
+    fireEvent.click(screen.getByTestId("cockpit-med-chip-31"));
+    const eyebrow = within(screen.getByTestId("cockpit-med-panel")).getByRole(
+      "heading"
+    );
+    expect(eyebrow.textContent).not.toBe("Today");
+    expect(eyebrow.textContent).not.toBe(yesterday);
+    cleanup();
+
+    // …and the same panel on the card's today still reads Today, so this is the day
+    // context reaching the eyebrow rather than the word being replaced.
+    render(
+      <CockpitDayProvider date={today} tz="UTC">
+        <IllnessMedicationLogger
+          meds={MEDS}
+          tz="UTC"
+          intakeContext={INTAKE_CONTEXT}
+          canAdd
+          nowIso="2026-09-02T12:00:00.000Z"
+        />
+      </CockpitDayProvider>
+    );
+    fireEvent.click(screen.getByTestId("cockpit-med-chip-31"));
+    expect(
+      within(screen.getByTestId("cockpit-med-panel")).getByRole("heading")
+        .textContent
+    ).toBe("Today");
   });
 
   it("says Take on the viewer's own meds", () => {
