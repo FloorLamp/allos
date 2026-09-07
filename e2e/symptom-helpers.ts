@@ -54,9 +54,12 @@ export async function ensureUnlogged(
   }).toPass({ timeout: OUTER });
 }
 
-// Add a catalog symptom via the "＋ add symptom" picker — it logs at severity 1 and
-// becomes a logged row. Idempotent: a no-op if already logged; re-opens the picker if a
-// refresh closed it.
+// Add a catalog symptom via the "＋ add symptom" picker — SELECT the chip, then spend
+// the panel's one verb-carrying save (#4752 §3). The chip itself writes nothing, so the
+// write-firing `tap` belongs on the save; leaving it on the chip is what would arm a
+// `settledTap` against a POST that never comes. Untouched severity, so this still lands
+// the level-1 row it always did. Idempotent: a no-op if already logged; re-opens the
+// picker if a refresh closed it, and re-selects if one wiped the staged choice.
 export async function addFromPicker(
   bar: Locator,
   key: string,
@@ -71,8 +74,17 @@ export async function addFromPicker(
         await bar.getByTestId("symptom-add-picker-toggle").click();
       }
       const pick = bar.getByTestId(`symptom-pick-${key}`);
-      if ((await pick.count()) > 0) {
-        await tap(pick);
+      // Selecting is a pure client choice too, and it is the ONE the save is
+      // about: the staged chip must be this key, never whatever was lit before.
+      if (
+        (await pick.count()) > 0 &&
+        (await pick.getAttribute("aria-pressed")) !== "true"
+      ) {
+        await pick.click();
+      }
+      const save = bar.getByTestId("symptom-pick-save");
+      if ((await save.count()) > 0) {
+        await tap(save);
       }
     }
     await expect(row).toBeVisible({ timeout: STEP });
