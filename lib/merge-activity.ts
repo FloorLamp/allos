@@ -45,6 +45,83 @@ export interface DropFoldMove {
   movedSegmentEffortIds: number[];
 }
 
+// EVERY WAY A ROW CAN POINT AT AN ACTIVITY, AND WHAT A MERGE DOES WITH IT (#5481).
+//
+// The child re-parenting below is hand-enumerated, and that is how this core lost a
+// person's training photos: videos were moved because somebody remembered, photos were
+// not because nobody did, and the next activity-owned table would have gone the same
+// way. `lib/owned-tables.ts` cannot drive the list — it enumerates PROFILE ownership,
+// a different axis, and it deliberately omits child tables, so it names neither
+// `exercise_sets` nor `activity_routes`, the two oldest moves here. Nor can any list
+// drive the statements themselves: the disposition differs per table (a blind move, a
+// unique keeper slot, keeper-wins per source, or nothing at all), and picking the
+// wrong one is how #3193 double-counted a ride.
+//
+// So the schema declares the SET and this constant declares the DECISION.
+// `activity-child-links.test.ts` reflects every FK whose parent is `activities` out of
+// the live schema and holds it to exactly these keys — a new activity-owned table
+// fails that test until somebody writes down which line it belongs on, instead of
+// being forgotten in silence.
+export type ActivityChildDisposition =
+  // Every one of the drop's rows moves onto the keeper, unconditionally.
+  | "move"
+  // The keeper's own row/set wins the slot; the drop's is left behind.
+  | "keeper-wins"
+  // The row OUTLIVES the merge (ON DELETE SET NULL) and is not re-pointed.
+  | "unlinked";
+
+export const ACTIVITY_CHILD_LINKS: readonly {
+  link: `${string}.${string}`;
+  disposition: ActivityChildDisposition;
+  why: string;
+}[] = [
+  {
+    link: "exercise_sets.activity_id",
+    disposition: "move",
+    why: "Typed-in training history: two members' sets are two real pieces of history, so the keeper carries both (#199).",
+  },
+  {
+    link: "activity_videos.activity_id",
+    disposition: "move",
+    why: "Form-check clips: many per activity, no per-activity uniqueness, and the FK cascades (#1224).",
+  },
+  {
+    link: "training_photos.activity_id",
+    disposition: "move",
+    why: "Session photos: the FK cascades and three of four callers delete with no undo, so an unmoved row is destroyed and its file stranded (#5481).",
+  },
+  {
+    link: "activity_routes.activity_id",
+    disposition: "keeper-wins",
+    why: "UNIQUE(activity_id): the first drop with a route fills an empty keeper slot; later ones keep their own (#569).",
+  },
+  {
+    link: "activity_telemetry.activity_id",
+    disposition: "keeper-wins",
+    why: "One recording's account of one ride, unique per source: a same-source twin would duplicate it (#3193).",
+  },
+  {
+    link: "activity_laps.activity_id",
+    disposition: "keeper-wins",
+    why: "Same rule as telemetry, per source — a union would give the keeper every lap twice (#3193).",
+  },
+  {
+    link: "activity_segment_efforts.activity_id",
+    disposition: "keeper-wins",
+    why: "Same rule as laps, and the twins contradict each other on pr_rank (#3193).",
+  },
+  {
+    link: "fitness_assessments.activity_id",
+    disposition: "unlinked",
+    why: "ON DELETE SET NULL: the assessment is its own dated result and survives the merge; only its optional back-link to the dropped session is cleared. Nothing is lost, so re-pointing it is a separate question from this core's data-preservation job.",
+  },
+  {
+    link: "niggles.source_activity_id",
+    disposition: "unlinked",
+    why: "ON DELETE SET NULL, same shape: a niggle outlives the session that provoked it, keeping its own date and text.",
+  },
+] as const;
+
 // Re-parent a drop's laps or segment efforts onto the keeper, PER SOURCE — the same
 // keeper-wins rule activity_telemetry and activity_routes already follow, and for the
 // same reason (#3193).
@@ -134,6 +211,13 @@ function moveOwnedActivityChildren(
 // described twice and a union double-counts it. Those four follow keeper-wins instead:
 // the keeper's own account is kept and the drop's is discarded, while a source the
 // keeper lacks still moves. See moveOwnedActivityChildren above.
+//
+// The two MEDIA children — form-check clips and session photos — are blind moves like
+// the sets: many per activity, no per-activity uniqueness, and nothing about them is a
+// second account of one ride. Both FKs cascade, so leaving either behind destroys it on
+// the three callers that delete without a capture (#1224, #5481). Which line each
+// activity-owned table is on is written down in ACTIVITY_CHILD_LINKS above, and
+// lib/__db_tests__/activity-child-links.test.ts holds that list to the live schema.
 export function writeActivityFold(
   profileId: number,
   keepId: number,
@@ -240,6 +324,28 @@ export function writeActivityFold(
       `UPDATE activity_videos SET activity_id = ?
         WHERE activity_id = ? AND profile_id = ?`
     ).run(keepId, dropId, profileId);
+    // Re-parent the drop's training photos onto the keeper (#5481) — the same blind
+    // move as the clips above, for a stronger reason. training_photos.activity_id is
+    // ON DELETE CASCADE, and THREE of this core's four callers delete the drop with no
+    // undo capture behind them (both Review resolvers and the unattended auto-merge,
+    // which runs on import with nobody in the loop), so a photo left on the drop is
+    // destroyed permanently. Its FILE is not: the store names files by content hash and
+    // only a row DELETE unlinks them, so a cascaded row strands its bytes on disk with
+    // nothing pointing at them — invisible to the #1847 purge and to deleteProfile,
+    // which both walk rows. Moving the row keeps the file owned, exactly as it does for
+    // a clip. Profile-owned like activity_videos, so the WHERE names profile_id.
+    //
+    // The UNIQUE(profile_id, content_hash) dedup CANNOT collide on this move:
+    // `activity_id` is not a column of that index, so re-parenting leaves every row
+    // exactly where it already sat in it. (The write core enforces the same fact one
+    // level up — addTrainingPhotoCore returns `duplicate` on a hash the profile already
+    // holds ANYWHERE, so two of one profile's activities can never carry equal bytes to
+    // begin with.) A plain UPDATE is therefore correct; an `OR IGNORE` would only be
+    // able to hide a row here, which is the loss this statement exists to stop.
+    db.prepare(
+      `UPDATE training_photos SET activity_id = ?
+        WHERE activity_id = ? AND profile_id = ?`
+    ).run(keepId, dropId, profileId);
     moves.push({
       dropId,
       movedRouteId,
@@ -250,8 +356,8 @@ export function writeActivityFold(
   }
 
   // THE ANNOUNCEMENT FACT (#2570). Everything above carries a dropped row's DATA onto
-  // the keeper — sets, routes, telemetry, laps, segment efforts, videos, and the fold
-  // columns. This carries the one thing about a dropped row that is not data and is
+  // the keeper — sets, routes, telemetry, laps, segment efforts, videos, photos, and
+  // the fold columns. This carries the one thing about a dropped row that is not data and is
   // not recoverable from it: that the user has already been told about this session.
   //
   // It belongs HERE, at the point where the identity the marker is keyed on is
