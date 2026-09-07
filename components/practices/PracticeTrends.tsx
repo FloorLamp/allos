@@ -14,11 +14,11 @@ import { StateCells, StateLegend } from "@/components/StateCells";
 // One practice, one complete story (#2151): the fixed 26-week lens lives beside
 // the practice's affordances and history on /wellness. The card has no competing
 // range control; this disclosure is the default, today-anchored lens.
-const VERDICT_CELL: Record<PracticeWeekVerdict, string> = {
+const VERDICT_CELL = {
   "at-ceiling": chartAdherenceState.taken.class,
   met: chartAdherenceState.partial.class,
   under: chartAdherenceState.skipped.class,
-};
+} satisfies Record<PracticeWeekVerdict, string>;
 
 const LEGEND: PracticeWeekVerdict[] = ["at-ceiling", "met", "under"];
 

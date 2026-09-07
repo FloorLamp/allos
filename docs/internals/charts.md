@@ -1,8 +1,7 @@
 # Charts
 
-Compose existing chart cards and shared specifications. Keep data decisions in
-`lib/`, chart specifications in the public cards, and drawing in the shared
-renderers.
+Compose existing chart cards: data decisions in `lib/`, specifications in public
+cards, and drawing in shared renderers.
 
 ## Palette
 
@@ -30,7 +29,9 @@ Use the declared cell palettes:
 - `chartActivityTypeBlock` for categorical activity kinds. A category grid uses
   distinct series colors, not a same-hue quantity ramp.
 
-Keep each palette's classes and validated colors in agreement.
+`StateCells`, `StateLegend`, and `stateCellClass` accept `ChartCellTone` derived
+from these palettes. Medication and supplement views share pending/not-due colors.
+Unfilled legend swatches retain an outline.
 
 ## Choose an existing form
 

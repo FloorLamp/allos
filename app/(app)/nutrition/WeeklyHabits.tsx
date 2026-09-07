@@ -31,19 +31,14 @@ import type { GroupServingTotal } from "@/lib/food-daily-totals";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
 
-// The N-week consistency strip (#954) speaks the app's ONE adherence vocabulary
-// (#4543): a week that met its target is `taken`, a short week is `partial` — some
-// of the same thing, which is exactly what the shared pair means — an empty week the
-// neutral `skipped` rather than a red miss, the in-progress week `pending`, and a
-// pre-target week `na`. It used to hand-pick its own Tailwind classes, which is a
-// palette decision made outside `lib/chart-colors`.
-const TREND_TONE: Record<HabitWeekVerdict, string> = {
+// Completed weeks share the adherence palette; the current week stays pending.
+const TREND_TONE = {
   met: chartAdherenceState.taken.class,
   short: chartAdherenceState.partial.class,
   empty: chartAdherenceState.skipped.class,
   current: chartAdherenceState.pending.class,
   na: chartAdherenceState.na.class,
-};
+} satisfies Record<HabitWeekVerdict, string>;
 
 // THIS WEEK, AS ONE LIST (issue #580, consolidated by #3987).
 //
