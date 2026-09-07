@@ -638,31 +638,34 @@ for (const [label, viewport, wide] of [
       // the band's one visible frame with. `NowCards` guards that rule against 16px
       // eight lines above the child that produced 136. Both edges, because a centered
       // cap is symmetric and a single-edge claim would pass on one that only moved.
-      // eslint-disable-next-line no-restricted-properties -- first-ok: any ordinary Now row in this spec's own fixture; the claim is that every row in the frame shares the cockpit's edges
-      const ordinaryRow = page
-        .getByTestId("now-strip")
-        .locator('[data-testid="dashboard-candidate"][data-lane="now"]')
-        .first();
-      await expect(
-        ordinaryRow,
-        "an ordinary Now row — the cockpit's edges are measured against it"
-      ).toBeVisible();
-      const [cardBox, columnBox, rowBox] = await settledBoxes([
+      // EVERY ROW IN THE BAND, not one representative: the claim is about the frame,
+      // and a single sibling would let a second row re-introduce the step unseen.
+      const bandRows = card
+        .locator('xpath=ancestor::ul[contains(@class,"band")]')
+        .locator("> li");
+      const rowCount = await bandRows.count();
+      expect(
+        rowCount,
+        "the Now band's rows — the subject of this claim"
+      ).toBeGreaterThan(1);
+      const [cardBox, columnBox, ...rowBoxes] = await settledBoxes([
         card,
         card.locator("xpath=.."),
-        ordinaryRow,
+        ...Array.from({ length: rowCount }, (_, i) => bandRows.nth(i)),
       ]);
       expect(cardBox.width, `${label} cockpit measure`).toBeLessThanOrEqual(
         880
       );
-      expect(
-        cardBox.x,
-        `${label} left edge vs an ordinary Now row`
-      ).toBeCloseTo(rowBox.x, 0);
-      expect(
-        cardBox.x + cardBox.width,
-        `${label} right edge vs an ordinary Now row`
-      ).toBeCloseTo(rowBox.x + rowBox.width, 0);
+      for (const [index, row] of rowBoxes.entries()) {
+        expect(row.x, `${label} band row ${index} left edge`).toBeCloseTo(
+          cardBox.x,
+          0
+        );
+        expect(
+          row.x + row.width,
+          `${label} band row ${index} right edge`
+        ).toBeCloseTo(cardBox.x + cardBox.width, 0);
+      }
       // …and the cockpit is the whole of its own row in that frame, at every width:
       // the band decides the measure, the row spends only its gutter.
       expect(Math.abs(cardBox.width - columnBox.width)).toBeLessThan(2);
