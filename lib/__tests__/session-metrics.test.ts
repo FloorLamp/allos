@@ -66,6 +66,7 @@ describe("computeMetrics", () => {
         issue(2, ["P3", "ui"]),
         issue(3, ["parked", "design"]),
         issue(4, ["ui"]), // no slot at all — hygiene drift, counted apart
+        issue(5, ["P2", "parked"]), // no arbitrary winner for conflicting slots
       ],
     });
     expect(m.queue.byPriority).toEqual({
@@ -76,9 +77,11 @@ describe("computeMetrics", () => {
       parked: 1,
     });
     expect(m.queue.unslotted).toBe(1);
+    expect(m.queue.conflictingSlots).toEqual([5]);
+    expect(renderMetrics(m)).toContain("conflicting priority slots: #5");
   });
 
-  it("ages the needs-human queue — the metric is the OLDEST, not the count", () => {
+  it("reports issue age without treating it as time waiting for an answer", () => {
     const m = metrics({
       openIssues: [
         issue(1, ["needs-human", "P2", "db"], {
@@ -90,7 +93,11 @@ describe("computeMetrics", () => {
       ],
     });
     expect(m.queue.needsHuman).toBe(2);
-    expect(m.queue.oldestNeedsHumanDays).toBe(14);
+    expect(m.queue.oldestNeedsHumanIssueDays).toBe(14);
+    expect(renderMetrics(m)).toContain("oldest issue 14.0d");
+    expect(renderMetrics(m)).toContain(
+      "time waiting for an owner answer is unmeasured"
+    );
   });
 
   it("marks draft PRs as drift, and publishes no phrase count (#4460)", () => {

@@ -4,7 +4,8 @@
   background fallback. Record the next fire time for the check-in script.
 - Owner HOLDS live in `$SCRATCH/.holds`, never in the orchestrator's head: one
   per line as `<scope> :: <release condition> :: <what it gates>`. The check-in
-  prints them; test every release condition on every wake.
+  prints them; test every release condition on every wake. A hold stops only
+  what it names; it neither accepts an outcome nor widens the cycle scope.
 - A hold is the only input no script can derive, so its loss to a restart is the
   silent one. Everything else the recorder prints is recoverable.
 - The wake prompt carries only DURABLE facts — holds, owner-gated items,
@@ -24,15 +25,23 @@
 - After each UI-affecting merge, while its PR context is fresh, run
   `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
   It scopes territories, expands shared UI to a census, stops on a manual plan.
-- Dispatch continuously until every remaining issue is blocked, owner-gated, or
-  dependency-bound; state that explicitly.
+- The Ladder records the cycle's authorized scope, outcomes, and bounded or
+  continuous termination. If that record is missing or conflicting, mark it
+  `needs-human`; continue only clear, unheld work, then bank and report blocked.
+- Dispatch only within that scope. A bounded cycle completes only when every
+  recorded outcome is accepted; a hold or blocker can end active work, not turn
+  it into completion. A continuous cycle reaches exhaustion only when every
+  remaining eligible in-scope issue is accounted for as blocked, owner-gated,
+  or dependency-bound.
 - Keep `parked` labels and status reports consistent.
 - Merge Dependabot minors on green current main. Send majors through
   `dependabot-eval-brief.mjs` within a day.
 - Give infrastructure issues priorities; active bottlenecks (a red main, a
   blocked queue) are P1 and isolated latent flakes are P3. Only the owner or a
-  red main makes a P1: an agent that raises a priority names the rule it
-  applies, and the PM audits every open P1 each watch (#4741 cost three days).
+  red main makes a P1, including an owner-authorized priority audit: an agent
+  that raises a priority names the rule and demonstrated impact. Reassess P1s
+  after partial fixes against unmet criteria; a resolved incident does not give
+  its residual cleanup permanent P1 status. The PM audits open P1s each watch.
 - Never edit a live agent's worktree without messaging it and receiving an
   acknowledgement.
 - Rerun failed Actions jobs only after all jobs in the run have completed.
@@ -61,6 +70,8 @@
 
 - Stop dispatching new work, land or clearly bank in-flight work, clean
   worktrees and stale branches, stop check-ins, and hand off remaining state.
+- Name the terminal state: bounded completion, continuous exhaustion, or a
+  blocked handoff with its unmet outcomes. Do not collapse them into "done."
 - Use an unverified WIP marker only when an agent actually died.
 - Before deleting a branch or dirty work, settle it on CONTENT: compare its
   files against `main` and say which comparison answered. The PR record and
