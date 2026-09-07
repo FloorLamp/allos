@@ -359,9 +359,10 @@ export default function QuickLogPrnControl({
 
   // THE LABEL'S REFUSAL, ON THE ROW (#4713 fix 2). The same vocabulary the add form
   // states — #798's gates decide, this only moves where they run — reached from the
-  // surface a dose is actually given from. A missing or stale weight also mounts the
-  // shared one-field fixer already open, because "go to Body, expand the body group,
-  // come back" is the trip that made these refusals unreachable in practice.
+  // surface a dose is actually given from. A missing or stale weight also seats the
+  // shared one-field fixer here, because "quick-log → Body → Log measurements → expand
+  // the body group → save → navigate back" is the trip that made these refusals
+  // unreachable in practice.
   const refusalLine = pediatricRefusalLine(band.result);
   const needsWeight =
     band.result?.kind === "need-weight" || band.result?.kind === "stale-weight";
