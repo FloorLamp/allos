@@ -1,7 +1,7 @@
 // Session metrics — the pipeline's trend pulse, read-only. pm-digest.sh
 // answers "what happened since I last looked" (events, anchored); this
 // answers "how is the pipeline trending" (rates, fixed window): merge
-// throughput, review-queue depth, queue shape by priority, needs-human aging,
+// throughput, review-queue depth, queue shape by priority, needs-human issue age,
 // and the drift signals the runbook forbids (draft PRs, revert merges).
 // Numbers first, rules later — a cap or cadence argued from measurement beats
 // one argued from memory, which is how the machine cap (#2964) and the
@@ -71,14 +71,16 @@ export function computeMetrics({
   const slots = ["P0", "P1", "P2", "P3", "parked"];
   const byPriority = Object.fromEntries(slots.map((s) => [s, 0]));
   let unslotted = 0;
+  const conflictingSlots = [];
   for (const issue of openIssues) {
-    const slot = slots.find((s) => issue.labels.includes(s));
-    if (slot) byPriority[slot]++;
-    else unslotted++;
+    const assigned = slots.filter((s) => issue.labels.includes(s));
+    if (assigned.length === 1) byPriority[assigned[0]]++;
+    else if (assigned.length === 0) unslotted++;
+    else conflictingSlots.push(issue.number);
   }
 
   const needsHuman = openIssues.filter((i) => i.labels.includes("needs-human"));
-  const oldestNeedsHumanDays = needsHuman.length
+  const oldestNeedsHumanIssueDays = needsHuman.length
     ? Math.max(
         ...needsHuman.map(
           (i) => (now.getTime() - Date.parse(i.createdAt)) / DAY_MS
@@ -116,8 +118,9 @@ export function computeMetrics({
     queue: {
       byPriority,
       unslotted,
+      conflictingSlots,
       needsHuman: needsHuman.length,
-      oldestNeedsHumanDays,
+      oldestNeedsHumanIssueDays,
     },
   };
 }
@@ -153,8 +156,13 @@ export function renderMetrics(m) {
   );
   lines.push(
     m.throughput.reverts.length
-      ? `- reverts: ${m.throughput.reverts.map((n) => `#${n}`).join(", ")} — read each; a revert is a review escape`
-      : "- reverts: none"
+      ? `- revert-titled merges: ${m.throughput.reverts.map((n) => `#${n}`).join(", ")} — inspect the reason before classifying an escape`
+      : "- revert-titled merges: none"
+  );
+  lines.push(
+    "- Outcome coverage: accepted issue outcomes, dispatch→acceptance time, " +
+      "blocking review rounds, escaped defects and execution cost are unmeasured. " +
+      "Merge throughput and open→merge time do not establish development effectiveness."
   );
   lines.push("");
   lines.push("## Review queue");
@@ -170,10 +178,15 @@ export function renderMetrics(m) {
     .map(([s, n]) => `${s}:${n}`)
     .join(" ");
   lines.push(`- ${slots} unslotted:${m.queue.unslotted}`);
+  if (m.queue.conflictingSlots.length) {
+    lines.push(
+      `- conflicting priority slots: ${m.queue.conflictingSlots.map((n) => `#${n}`).join(", ")} — excluded from the individual slot counts`
+    );
+  }
   lines.push(
     `- needs-human: ${m.queue.needsHuman} open` +
-      (m.queue.oldestNeedsHumanDays !== null
-        ? `, oldest ${f1(m.queue.oldestNeedsHumanDays)}d — aging here is an owner bottleneck, not agent work`
+      (m.queue.oldestNeedsHumanIssueDays !== null
+        ? `, oldest issue ${f1(m.queue.oldestNeedsHumanIssueDays)}d; time waiting for an owner answer is unmeasured (label history not fetched)`
         : "")
   );
   return lines.join("\n");

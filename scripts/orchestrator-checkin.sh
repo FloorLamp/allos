@@ -756,10 +756,11 @@ echo
 # 3c. LANE SATURATION — the refill posture, printed where it cannot be walked
 # past. Two measured drifts (owner, 2026-08-30): after a few merges the session
 # sits at one lane; after a recovery it announces "the lanes are empty" and
-# stops. Both misread the roster. An empty or thin roster with holds clear is a
-# DISPATCH ORDER (the refill rule: dispatch continuously while viable work
-# exists, without asking), and "empty" is only an honest terminal state next to
-# the enumerated list of why each remaining issue cannot dispatch.
+# stops. Both treated roster state as cycle authority. The Ladder records the
+# owner's scope, outcomes, and termination condition: refill only unmet bounded
+# outcomes or eligible continuous in-scope work. Holds, blockers, or unclear
+# scope that leave no authorized work require banking and a blocked handoff;
+# they do not widen the cycle or turn incomplete outcomes into completion.
 # THE COUNT IS PER AXIS (owner, 2026-08-31), because a live session read "both
 # e2e slots full" as "the queue is thin" — a capacity limit substituted for a
 # queue fact — while roughly three non-e2e slots sat open. The caps are
@@ -811,19 +812,22 @@ queue_header=$(head -1 "$QUEUE_FILE" 2>/dev/null || echo "UNWRITTEN — run queu
 
 echo "--- lanes ---"
 if [ "$lanes" -eq 0 ]; then
-  echo "  0 active — *** AN EMPTY ROSTER IS A DISPATCH ORDER, NOT A REPORT ***"
-  echo "      Rescue done? Then unless a hold above or an owner wind-down governs,"
-  echo "      triage and dispatch NOW (dispatch.md §Dispatch). 'The lanes are empty'"
-  echo "      is only honest beside the list of why every remaining issue is"
-  echo "      blocked, owner-gated, or dependency-bound."
+  echo "  0 active — roster state is not cycle authority."
+  echo "      Read the Ladder's owner-recorded scope and terminal condition. Refill"
+  echo "      only unmet bounded outcomes or eligible continuous in-scope work."
+  echo "      Bounded completion requires every outcome accepted; continuous"
+  echo "      exhaustion accounts for every in-scope remainder. If a hold, blocker,"
+  echo "      or unclear scope leaves no authorized work, bank and report a blocked"
+  echo "      handoff naming the unmet outcomes."
 elif [ "$lanes" -lt 3 ]; then
   echo "  $lanes active (e2e $e2e_lanes/2, other $other_lanes) — UNDER-SATURATED. A full e2e"
   echo "      lane is NOT a thin queue: the caps are separate axes (2 e2e, ~5 lanes,"
-  echo "      ~3 unreviewed PRs). Before calling the queue thin, check the candidate"
-  echo "      classes that get skipped: PAIR small issues into one cluster, source"
-  echo "      self-filed P3s (back of the queue is still IN the queue), and do the"
-  echo "      standing work (reconcile pass, release-notes batch). 'Thin' must"
-  echo "      answer $QUEUE_FILE line by line — the queue is written down."
+  echo "      ~3 unreviewed PRs). Inside the Ladder's recorded scope, PAIR small"
+  echo "      issues, source eligible self-filed P3s, or do standing work. A thin"
+  echo "      roster neither widens scope nor proves completion: bounded outcomes"
+  echo "      must be accepted; continuous exhaustion accounts for every in-scope"
+  echo "      remainder. If holds or blockers leave no authorized work, bank and"
+  echo "      report a blocked handoff. Check the scoped candidates in $QUEUE_FILE."
 else
   echo "  $lanes active (e2e $e2e_lanes/2)"
 fi
