@@ -21,6 +21,7 @@ import {
   initialPartsFromSeed,
   repeatSessionFill,
   latchVaried,
+  sharedLoadSets,
   asPlan,
   setDone,
 } from "@/lib/activity-form-model";
@@ -28,8 +29,8 @@ import {
 // Which set's weight field the plate builder is targeting, if open. `seed`
 // (display-unit weight) pre-loads the builder from the coached suggestion instead
 // of the field's current value (#335); omitted for a plain icon tap. `"all"` is the
-// exercise-level weight (#5371): while every set shares one load the builder is
-// seeded from it and its result lands on every set, so the grid stays shared.
+// shared load: the builder reads and updates the remaining plans, or every set
+// when all are recorded.
 export interface PlateTarget {
   pi: number;
   si: number | "all";
@@ -247,12 +248,11 @@ export function useActivityParts({
     setParts((prev) =>
       prev.map((p, idx) => {
         if (idx !== pi) return p;
-        const allSetsDone = p.sets.every(setDone);
+        const shared = sharedLoadSets(p.sets);
         return latchVaried({
           ...p,
           sets: p.sets.map((s, j) => {
-            const selected =
-              si === "all" ? allSetsDone || !setDone(s) : j === si;
+            const selected = si === "all" ? shared.includes(s) : j === si;
             return selected ? { ...s, ...patch } : s;
           }),
         });

@@ -1143,11 +1143,8 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
 });
 
-// Straight sets decide the weight once and vary the reps (#5371). While every set
-// carries the same load the grid says so once, above the rows; the rows are reps
-// only, Enter walks weight → reps → next set, and "Vary" is the way back to a
-// weight per set — which then STAYS per set, even stepped back to a match.
-test("weight is stated once per exercise until a set varies it (#5371)", async ({
+// Shared edits preserve recorded loads and keyboard focus on remaining plans.
+test("remaining sets share a weight until Vary opens per-set editing", async ({
   page,
 }) => {
   const marker = `Shared weight probe ${Date.now()}`; // eslint-disable-line no-restricted-properties -- clock-ok: unique fixture title, never a stored timestamp
@@ -1162,39 +1159,42 @@ test("weight is stated once per exercise until a set varies it (#5371)", async (
     const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
     await form.getByLabel("Activity name").fill(marker);
     const band = form.getByTestId("exercise-weight");
-    const weight = band.getByTestId("set1-weight");
+    const weight = band.getByRole("spinbutton");
     // The coached ghost rides on the band now — it is where set 1's weight goes.
     await expect(weight).toHaveAttribute("placeholder", /^\d/);
     await settledFill(page, weight, "60");
-    // Set the shared load before recording reps. Once a set is confirmed, shared
-    // load edits belong only to remaining planned sets (#5484).
-    await hydratedClick(page, band.getByLabel("Increase weight"));
-    await expect(weight).toHaveValue("62.5");
-    // Enter in the exercise-level weight lands in set 1's reps.
     await weight.press("Enter");
     await expect(form.getByTestId("set1-reps")).toBeFocused();
     await page.keyboard.type("8");
-    // The existing second row stays planned and shares the exercise-level load.
     await expect(form.getByTestId("set2-reps")).toHaveValue("");
-    await expect(form.getByTestId("set2-weight")).toHaveCount(0);
-    await expect(form.getByLabel("Increase weight")).toHaveCount(1);
+
+    // Real keystrokes catch an editor that unmounts after the first change.
+    await weight.focus();
+    await weight.press("ControlOrMeta+A");
+    await weight.pressSequentially("62.5");
+    await expect(weight).toHaveValue("62.5");
+    await expect(weight).toBeFocused();
+    await expect(form.getByTestId("set1-weight")).toHaveValue("60");
+    await weight.press("Enter");
+    await expect(form.getByTestId("set2-reps")).toBeFocused();
 
     // Vary exposes the planned set's inherited load with the caret in its field.
     await form.getByTestId("set-vary-2").click();
     const set2Weight = form.getByTestId("set2-weight");
     await expect(set2Weight).toHaveValue("62.5");
     await expect(set2Weight).toBeFocused();
-    await expect(form.getByTestId("set1-weight")).toHaveValue("62.5");
+    await expect(form.getByTestId("set1-weight")).toHaveValue("60");
     await expect(band).toHaveCount(0);
     // Enter in a set's weight lands in THAT set's reps.
     await set2Weight.press("Enter");
     await expect(form.getByTestId("set2-reps")).toBeFocused();
-    // Change the second set, then return to the same load: the grid must stay open.
+    // Return the plan to the recorded load: explicit Vary must stay open.
     await hydratedClick(
       page,
       form.getByTestId("set-row-2").getByLabel("Decrease weight")
     );
     await expect(set2Weight).toHaveValue("60");
+    await expect(band).toHaveCount(0);
     await hydratedClick(
       page,
       form.getByTestId("set-row-2").getByLabel("Increase weight")
@@ -1264,7 +1264,11 @@ test("a per-side lift saves each side's weight and reps from the shared band (#5
     await settledFill(page, line(band, "L").getByPlaceholder("kg"), "20");
     await settledFill(page, line(band, "R").getByPlaceholder("kg"), "18");
     await settledFill(page, line(row, "L").getByRole("spinbutton"), "10");
-    await settledFill(page, line(row, "R").getByRole("spinbutton"), "8");
+    await settledFill(
+      page,
+      line(row, "R").getByTestId("reps-stepper").getByRole("spinbutton"),
+      "8"
+    );
 
     // The complete set auto-saves; the Delete button is the row existing. The R
     // values may still be an UPDATE in flight behind it, so the read polls for the
