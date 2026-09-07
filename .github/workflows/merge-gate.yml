@@ -87,12 +87,23 @@ jobs:
           case "$rc" in
             0) state=success; desc="gate OPEN — receipt, green head, no unresolved threads" ;;
             1)
-              state=failure
               desc=$(printf '%s\n' "$gate_output" | sed -n 's/^STATUS: //p' | tail -n 1)
-              desc=${desc:-"gate CLOSED — evaluator returned no failure clause"} ;;
-            2) state=pending; desc="CI incomplete — re-evaluated when CI completes" ;;
-            *) state=error;   desc="gate could not evaluate (exit $rc)" ;;
+              if [ -n "$desc" ]; then
+                state=failure
+              else
+                state=error; desc="evaluator crashed before reporting a failure clause"
+              fi ;;
+            2)
+              desc=$(printf '%s\n' "$gate_output" | sed -n 's/^STATUS: //p' | tail -n 1)
+              if [ -n "$desc" ]; then
+                state=error
+              else
+                state=pending; desc="CI incomplete — re-evaluated when CI completes"
+              fi ;;
+            3) state=error; desc="gate blocked — credentials unavailable or rejected" ;;
+            *) state=error; desc="gate could not evaluate (exit $rc)" ;;
           esac
+          desc=$(jq -rn --arg desc "$desc" '$desc[0:140]')
           echo "PR #$pr head ${head:0:8}: $state ($desc)"
           payload=$(jq -cn --arg state "$state" --arg desc "$desc" \
             '{state: $state, context: "merge-gate", description: $desc}')
