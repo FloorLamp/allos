@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
-import { getTimezone } from "@/lib/settings";
+import { getTimezone, setProfileBirthdate } from "@/lib/settings";
 import { logHistoricalDose } from "@/lib/queries";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { seedActor, fd } from "./harness";
@@ -23,7 +23,11 @@ beforeEach(() => {
 });
 
 // A PRN medication (as_needed=1) with one dose + tracked supply, owned by `profileId`.
-function seedPrnMed(profileId: number, quantityOnHand = 10): number {
+function seedPrnMed(
+  profileId: number,
+  amount = "400 mg",
+  quantityOnHand = 10
+): number {
   const itemId = Number(
     db
       .prepare(
@@ -35,8 +39,8 @@ function seedPrnMed(profileId: number, quantityOnHand = 10): number {
   );
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-     VALUES (?, '400 mg', 'any', 'any', 0)`
-  ).run(itemId);
+     VALUES (?, ?, 'any', 'any', 0)`
+  ).run(itemId, amount);
   return itemId;
 }
 
@@ -56,6 +60,32 @@ function onHand(itemId: number): number | null {
       .prepare("SELECT quantity_on_hand AS q FROM intake_items WHERE id = ?")
       .get(itemId) as { q: number | null }
   ).q;
+}
+
+/** The recorded amount on this item's most recent administration. */
+function loggedAmount(itemId: number): string | null {
+  return (
+    db
+      .prepare(
+        "SELECT amount FROM intake_item_logs WHERE item_id = ? ORDER BY id DESC LIMIT 1"
+      )
+      .get(itemId) as { amount: string | null }
+  ).amount;
+}
+
+/** A child of `ageMonths` with one recorded weight on `date`. */
+function seedChild(
+  profileId: number,
+  ageMonths: number,
+  kg: number,
+  date: string
+) {
+  const birth = new Date(`${date}T00:00:00Z`);
+  birth.setUTCMonth(birth.getUTCMonth() - ageMonths);
+  setProfileBirthdate(profileId, birth.toISOString().slice(0, 10));
+  db.prepare(
+    "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, ?, 'manual')"
+  ).run(profileId, date, kg);
 }
 
 describe("logMedicationAdministration action (#797)", () => {
@@ -264,5 +294,55 @@ describe("logMedicationAdministration action (#797)", () => {
       fd({ id: 999999, offset: "now" })
     );
     expect(res.ok).toBe(false);
+  });
+
+  // THE BAND NEVER REACHES THE RECORD (#4713, after the falsifying pass on #5512).
+  // The dose row STATES the label band for a child beside the dose; the administration
+  // still stores the item's own amount, because `intake_item_doses.amount` records the
+  // dose and not its provenance — a lookup cannot tell a stale band figure from a
+  // prescriber's, and #798's line 15 forbids applying the band without the confirm
+  // that distinction would need. The clinician-set toddler dose is the case to rank
+  // on: the ibuprofen chart says 100 mg for 12 kg, and 50 mg is what was prescribed.
+  it.each([
+    {
+      subject: "a clinician-set toddler dose",
+      stored: "50 mg",
+      ageMonths: 24,
+      kg: 12,
+    },
+    {
+      subject: "a teenager's prescribed dose",
+      stored: "600 mg",
+      ageMonths: 192,
+      kg: 60,
+    },
+    {
+      // The issue's own scenario, from the other side: the child has GROWN past the
+      // band the item was saved with (20 kg is 44.1 lb, one band up at 150 mg). The
+      // row says so; the record still states the dose that was actually given.
+      subject: "a dose the child has outgrown",
+      stored: "100 mg",
+      ageMonths: 72,
+      kg: 20,
+    },
+  ])("records $subject unchanged", async ({ stored, ageMonths, kg }) => {
+    const { profile } = seedActor();
+    const itemId = seedPrnMed(profile.id, stored);
+    seedChild(profile.id, ageMonths, kg, today(profile.id));
+    expect(
+      (await logMedicationAdministration(fd({ id: itemId, offset: "now" }))).ok
+    ).toBe(true);
+    expect(loggedAmount(itemId)).toBe(stored);
+  });
+
+  // THE ADULT PATH IS UNTOUCHED, and it is an acceptance criterion rather than a
+  // formality: the same action, the same item, no birthdate — the stored amount.
+  it("stores the item's own amount for a profile with no child context", async () => {
+    const { profile } = seedActor();
+    const itemId = seedPrnMed(profile.id);
+    expect(
+      (await logMedicationAdministration(fd({ id: itemId, offset: "now" }))).ok
+    ).toBe(true);
+    expect(loggedAmount(itemId)).toBe("400 mg");
   });
 });

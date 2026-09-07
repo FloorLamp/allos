@@ -409,7 +409,7 @@ export function loadMedicationsData(
     );
     return {
       label: redoseLine
-        ? administrationLastDoseLabel(admins.length, lastClock)
+        ? administrationLastDoseLabel(lastClock)
         : administrationDayLabel(admins.length, lastClock),
       administrations,
       redoseLine,
@@ -553,7 +553,7 @@ export function loadMedicationsData(
       product: m.product,
       amount: m.amount,
       dayLabel: redoseLine
-        ? administrationLastDoseLabel(m.count, lastClock)
+        ? administrationLastDoseLabel(lastClock)
         : administrationDayLabel(m.count, lastClock),
       redoseLine,
       redosePrimary: redoseActionIsPrimary(redoseStatus),

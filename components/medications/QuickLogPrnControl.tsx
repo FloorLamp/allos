@@ -3,7 +3,9 @@
 import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { useResettableState } from "@/components/useResettableState";
 import CardSectionHeader from "@/components/CardSectionHeader";
+import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdate";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import { LabeledVerbChip } from "@/components/OfferRow";
 import { useTimeStatement } from "@/components/TimeStatement";
@@ -20,6 +22,12 @@ import {
 } from "@/components/medications/dose-action-styles";
 import { medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
+import {
+  PEDIATRIC_DOSE_CAVEAT,
+  pediatricRefusalLine,
+  prnDoseBandStatement,
+  type PediatricFormContext,
+} from "@/lib/prn-dosing";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
@@ -80,6 +88,7 @@ export default function QuickLogPrnControl({
   compactActions = false,
   tz: tzProp,
   proposedTime,
+  pediatric: pediatricProp = null,
   onLogged,
 }: {
   itemId: number;
@@ -113,6 +122,12 @@ export default function QuickLogPrnControl({
   // it — VISIBLY, because a statement only ever posts what was on screen — so the dose
   // offered for an 11:30 PM reading proposes 11:30 PM instead of an empty field.
   proposedTime?: string | null;
+  // THE SUBJECT'S PEDIATRIC DOSING CONTEXT (#4713) — the profile this row writes for,
+  // never the viewer's. Present, and the label's weight band is evaluated HERE, at the
+  // tap, instead of only inside the add form that set the stored snapshot. Absent (or
+  // an adult, or an item with no label chart) and every line below is the snapshot the
+  // row has always shown.
+  pediatric?: PediatricFormContext | null;
   // Fired once a dose is RECORDED — used by the illness fold's dose offer, which the
   // ruling ends when the offer is "taken" (#4712, 2026-09-04 11:20 UTC part 2). It
   // fires on the duplicate outcome too: the dose the offer existed to get is on the
@@ -149,6 +164,29 @@ export default function QuickLogPrnControl({
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
+  // THE WEIGHT THIS ROW IS BANDING FROM, and the one thing on this surface that can
+  // change without a navigation: the refusal below mounts the shared one-field weight
+  // fixer, whose save posts the real body-metric write and hands back the updated
+  // context — so the offer re-derives in place rather than sending a caregiver to the
+  // Body page and back at 2 a.m.
+  // Keyed on the SERVER's own reading, so the two ways this can change compose: a
+  // weight saved here wins until the server states a different one, and a weight
+  // logged anywhere else lands on the next render instead of being shadowed forever
+  // by a local override.
+  const [pediatric, setPediatric] = useResettableState(
+    pediatricProp,
+    `${pediatricProp?.weightKg ?? ""}|${pediatricProp?.weightDate ?? ""}|${pediatricProp?.today ?? ""}`
+  );
+  // #798's band lookup, run at DOSE time (#4713) — and STATED, never applied. The
+  // dose this row offers and records is the item's own, exactly as before; the band
+  // is a line beside it. Nothing distinguishes a stale band figure from a prescriber's
+  // in `intake_item_doses.amount`, so a lookup may not overwrite either (see
+  // `prnDoseBandStatement`). For an adult, an item with no label chart, or a host that
+  // states no context, nothing below renders at all.
+  const band = prnDoseBandStatement(
+    { name, product, amount: doseAmount },
+    pediatric
+  );
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
   // WHAT THE TAP WRITES, as the reader should see it: this administration's DOSE.
   // A med with no recorded amount has nothing quantitative to promise, so the label
@@ -295,6 +333,60 @@ export default function QuickLogPrnControl({
     />
   );
 
+  // THE ROW STATES ITS BASIS (#4713 fix 1, and #4752's last unmet clause). Two
+  // sentences, because there are two facts and only one of them is reassuring:
+  //
+  //   • the dose this row offers IS the label band for this child's recorded weight —
+  //     "160 mg · 24–35 lb band", which is the ordinary case, because the add form's
+  //     own band wrote that amount;
+  //   • the label band for that weight is a DIFFERENT figure — said plainly, with the
+  //     item's own dose still the thing the tap writes. A growing child reaches this
+  //     line, and so does a prescribed dose that the OTC chart does not agree with;
+  //     the row cannot tell those apart, so it reports and lets a person decide.
+  //
+  // The caveat rides both (#798): this is a label lookup, not a prescription.
+  const bandBasis = band.bandLabel ? (
+    <div
+      className="text-xs text-slate-500 dark:text-slate-400"
+      data-testid="prn-band-basis"
+    >
+      {band.differsFromStored
+        ? `Label band for this weight is ${band.bandAmount} · ${band.bandLabel} band`
+        : `${doseDetail} · ${band.bandLabel} band`}
+      <span className="block">{PEDIATRIC_DOSE_CAVEAT}</span>
+    </div>
+  ) : null;
+
+  // THE LABEL'S REFUSAL, ON THE ROW (#4713 fix 2). The same vocabulary the add form
+  // states — #798's gates decide, this only moves where they run — reached from the
+  // surface a dose is actually given from. A missing or stale weight also seats the
+  // shared one-field fixer here, because "quick-log → Body → Log measurements → expand
+  // the body group → save → navigate back" is the trip that made these refusals
+  // unreachable in practice.
+  const refusalLine = pediatricRefusalLine(band.result);
+  const needsWeight =
+    band.result?.kind === "need-weight" || band.result?.kind === "stale-weight";
+  const bandNote = refusalLine ? (
+    <div data-testid="prn-band-refusal" className="text-xs">
+      <p className="text-amber-700 dark:text-amber-300">{refusalLine}</p>
+      {/* THE FIXER OPENS ON DEMAND HERE, not `initiallyOpen` as in the add form —
+          which mounts exactly one of these, for the medicine being added. A list
+          refuses per ROW for ONE fact, so a child with two charted PRNs would get two
+          open editors racing for focus over a single weight. One tap still opens it in
+          place, which is what "zero navigation" was about. The write follows the
+          SUBJECT (#858): this row logs a household member's dose, so the body metric
+          it saves is theirs, not the acting login's. */}
+      {needsWeight && pediatric ? (
+        <PediatricWeightUpdate
+          idPrefix={`prn-${itemId}`}
+          context={pediatric}
+          profileId={profileId}
+          onSaved={setPediatric}
+        />
+      ) : null}
+    </div>
+  ) : null;
+
   const sublines = (
     <div className="mt-0.5 min-w-0">
       <div
@@ -311,6 +403,7 @@ export default function QuickLogPrnControl({
           {redoseLine}
         </div>
       )}
+      {bandBasis}
     </div>
   );
 
@@ -370,6 +463,8 @@ export default function QuickLogPrnControl({
             {redoseLine}
           </div>
         ) : null}
+        {bandBasis ? <div className="mt-0.5">{bandBasis}</div> : null}
+        {bandNote ? <div className="mt-1">{bandNote}</div> : null}
         {options ? (
           <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
             {options}
@@ -390,8 +485,12 @@ export default function QuickLogPrnControl({
       control={control}
       sublines={sublines}
       footer={
-        options ? (
-          <div className="border-t border-black/5 pt-2 pl-6 dark:border-white/5">
+        /* The refusal and its fixer sit in the FOOTER, not among the sublines: the
+           subline column is the row's narrow left cell, and the fixer is a two-field
+           editor. Same seat the retro-time options already take. */
+        bandNote || options ? (
+          <div className="space-y-2 border-t border-black/5 pt-2 pl-6 dark:border-white/5">
+            {bandNote}
             {options}
           </div>
         ) : null

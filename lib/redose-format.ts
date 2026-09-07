@@ -15,7 +15,9 @@ import {
   administrationDayLabel,
   administrationLastDoseLabel,
   formatGivenAtClockWithRelativeAge,
+  withGivenAtDay,
 } from "./administration-format";
+import { zonedDateParts } from "./date";
 import type { TimeFormat } from "./format-date";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
 import { GLYPH } from "./notifications/glyphs";
@@ -349,8 +351,20 @@ export function prnRowStatus(
   const redoseLine = redoseCardLabel(status, med.familyMemberCount);
   return {
     status,
+    // THE LAST-DOSE LINE NAMES ITS DAY (#5488 fix 3). This row's panel renders no date
+    // of its own, so a bare `5:44pm` from last night read as this morning. The switch
+    // is HERE and not inside `formatGivenAtClockWithRelativeAge`, whose "the
+    // neighbouring date already supplies the context" justification still holds for the
+    // day-scoped medication panels that call it directly.
     dayLabel: redoseLine
-      ? administrationLastDoseLabel(med.count, lastClock)
+      ? administrationLastDoseLabel(
+          withGivenAtDay(
+            tz,
+            med.lastGivenAt,
+            zonedDateParts(tz, now).date,
+            lastClock
+          )
+        )
       : administrationDayLabel(med.count, lastClock),
     redoseLine,
     redosePrimary: redoseActionIsPrimary(status),

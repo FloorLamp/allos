@@ -197,7 +197,7 @@ describe("episodeCollapsedStatus", () => {
         dose: "200 mg",
         when: "4:02 PM (2 hrs ago)",
       },
-      worsening: false,
+      worsening: null,
     });
   });
 
@@ -700,8 +700,12 @@ describe("assignOrderedEpisodeFacts", () => {
     ]);
     expect(first.episode.symptoms).toEqual([]);
     expect(second.episode.symptoms).toHaveLength(1);
-    expect(episodeCollapsedStatus(first.episode, "F").worsening).toBe(false);
-    expect(episodeCollapsedStatus(second.episode, "F").worsening).toBe(true);
+    expect(episodeCollapsedStatus(first.episode, "F").worsening).toBeNull();
+    // AND THE ANSWER NAMES WHAT ROSE (#5488 fix 2), so the arrow it draws can too.
+    expect(episodeCollapsedStatus(second.episode, "F").worsening).toEqual({
+      driver: "symptom",
+      label: "Headache",
+    });
   });
 });
 
@@ -963,7 +967,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
         dose: string | null;
         when: string | null;
       } | null,
-      worsening: false,
+      worsening: null,
     };
   }
 

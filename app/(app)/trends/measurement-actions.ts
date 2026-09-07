@@ -262,6 +262,13 @@ export async function addMeasurements(
   revalidateRoute("/results");
   revalidateRoute("/sleep");
   revalidateRoute("/");
+  // THE MEDICATIONS PAGE READS BODY WEIGHT NOW (#4713). Its PRN rows state the
+  // pediatric label band for the profile's latest recorded weight, so a weigh-in saved
+  // anywhere — the Trends panel, a metric page, the quick-log sheet, or the one-field
+  // fixer on a dose row itself — leaves that statement stale until this refreshes it.
+  // It is also what lets a second refusing row on that page stop refusing once its
+  // sibling has answered the same question.
+  revalidateRoute("/medications");
   return {
     ...(statedTimeRefused ? { statedTimeRefused } : {}),
     ...(sleepWindowRefused ? { sleepWindowRefused } : {}),

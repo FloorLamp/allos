@@ -144,9 +144,11 @@ export function formatSchoolReturnLine(
 }
 
 // A COMPACT clause for the cross-profile household line, where the full sentence is
-// too long: "fever-free 18h/24h", or "no reading since 103.4 °F (14h ago)" when
+// too long: "fever-free 18h of 24", or "no reading since 103.4 °F (14h ago)" when
 // nothing has been measured since the fever (#4685). Uses the cleared clock (the
-// convention's single number) in the arm that has one.
+// convention's single number) in the arm that has one. The "18h of 24" spelling is
+// #4752 §1's board (#5487 fix 4), and this one formatter is why the household line,
+// the episode hero and the cockpit ring all say it that way.
 export function schoolReturnCompactClause(
   status: SchoolReturnStatus,
   tempUnit: TemperatureUnit = "F"
@@ -154,7 +156,7 @@ export function schoolReturnCompactClause(
   return status.evidence === "none"
     ? `no reading since ${fmtTemp(status.lastFeverDegF, tempUnit)} ` +
         `(${status.hoursSinceFever}h ago)`
-    : `fever-free ${status.clearedForHours}h/${status.thresholdHours}h`;
+    : `fever-free ${status.clearedForHours}h of ${status.thresholdHours}`;
 }
 
 // The same clause as a standalone LABEL (the cockpit chip, the episode hero), sentence
