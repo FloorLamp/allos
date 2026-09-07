@@ -90,8 +90,11 @@ function rewritePayload(json: string): string | null {
   const events = parsed.rows.events;
   if (events !== undefined && !Array.isArray(events)) return null;
   const needsEvents = events === undefined || events.length === 0;
-  if (needsEvents && !entries.every(isLegacyEntry)) return null;
-  const eventsToAdd = needsEvents ? derivedEvents(entries) : null;
+  let eventsToAdd: Record<string, unknown>[] | null = null;
+  if (needsEvents) {
+    if (!entries.every(isLegacyEntry)) return null;
+    eventsToAdd = derivedEvents(entries);
+  }
 
   for (const entry of entries) {
     if (!Object.hasOwn(entry, "logged_at")) continue;

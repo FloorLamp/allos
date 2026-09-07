@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { runMigrations } from "@/lib/migrations/runner";
 import { MIGRATIONS, migrationsBefore } from "@/lib/migrations/versions";
 import { up as renameRecordedAt } from "@/lib/migrations/versions/20260815-substance-recorded-at";
