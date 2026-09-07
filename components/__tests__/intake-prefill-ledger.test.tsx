@@ -345,6 +345,19 @@ const CHILD_ON_PICK: PediatricFormContext = {
   today: TODAY,
 };
 
+it("keeps an adolescent's dose blank when switching a refused chart's formulation", async () => {
+  mount("medication", { ...CHILD_ON_PICK, ageMonths: 192, weightKg: 60 });
+  await pickName(ACETAMINOPHEN);
+  openFact("dose");
+  expect(screen.getByTestId("pediatric-suggestion").textContent).toContain(
+    "under 12 years"
+  );
+  expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+  expect(textbox("Amount").value).toBe("");
+  pickFormulation("infant_susp_160_5");
+  expect(textbox("Amount").value).toBe("");
+});
+
 /** Record a new dosing weight through the pediatric block's own control. */
 async function updateDosingWeight(kg: string) {
   fireEvent.click(screen.getByTestId("pediatric-weight-update-open"));
