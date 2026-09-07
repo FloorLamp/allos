@@ -191,35 +191,43 @@ async function markDocument(page: Page) {
 
 const CARD_DESTINATION = "/settings/account";
 
-test("a card link with no slot of its own is answered by the top-edge indicator (#2869)", async ({
-  page,
-}) => {
-  // A settings group card is the shape most of this app navigates by: a whole
-  // card, a table row, a drill-down. There is nowhere sensible to put a spinner
-  // inside it, which is the entire argument for a floor.
-  const nav = heldNavigation();
-  await page.route(`**${CARD_DESTINATION}?*`, nav.handler);
+for (const { label, destination, control } of [
+  {
+    label: "A card navigation",
+    destination: CARD_DESTINATION,
+    control: (page: Page) => page.getByTestId("settings-group-account"),
+  },
+  {
+    label: "A same-URL navigation",
+    destination: "/settings",
+    control: (page: Page) => page.locator('aside nav a[href="/settings"]'),
+  },
+]) {
+  test(`${label} reports pending and clears at commit`, async ({ page }) => {
+    const nav = heldNavigation();
+    await page.route(`**${destination}?*`, nav.handler);
 
-  await page.goto("/settings");
-  const card = page.getByTestId("settings-group-account");
-  await expect(card).toBeVisible();
-  const indicatorSeen = await watchIndicator(page);
+    await page.goto("/settings");
+    const card = control(page);
+    await expect(card).toBeVisible();
+    const indicatorSeen = await watchIndicator(page);
 
-  await hydratedClick(page, card);
+    await hydratedClick(page, card);
 
-  await expect(page.getByTestId("nav-progress")).toBeVisible();
-  await expect(page.getByTestId("nav-progress-status")).toHaveText(
-    /Still loading/
-  );
-  // …and the page has NOT moved, so this is the silent window the report named.
-  expect(new URL(page.url()).pathname).toBe("/settings");
-  await expect(page.getByTestId("settings-index")).toBeVisible();
+    await expect(page.getByTestId("nav-progress")).toBeVisible();
+    await expect(page.getByTestId("nav-progress-status")).toHaveText(
+      /Still loading/
+    );
+    // …and the page has NOT moved, so this is the silent window the report named.
+    expect(new URL(page.url()).pathname).toBe("/settings");
+    await expect(page.getByTestId("settings-index")).toBeVisible();
 
-  nav.release();
-  await expect(page).toHaveURL(new RegExp(`${CARD_DESTINATION}$`));
-  await expect(page.getByTestId("nav-progress")).toHaveCount(0);
-  expect(await indicatorSeen()).toBe(true);
-});
+    nav.release();
+    await expect(page).toHaveURL(new RegExp(`${destination}$`));
+    await expect(page.getByTestId("nav-progress")).toHaveCount(0);
+    expect(await indicatorSeen()).toBe(true);
+  });
+}
 
 // NOT asserted here: "the indicator never appears when the navigation commits
 // under the threshold". That negative is a claim about WALL TIME — it holds only

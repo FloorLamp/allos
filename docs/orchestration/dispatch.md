@@ -14,7 +14,9 @@ closed taxonomy, and `needs-human` handling.
 - A `design` issue is dispatchable only when its body records the owner
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
-- Older issues start with an audit table: resolved by what, or still open.
+- Older issues start with a current-state block: shipped PRs, unmet acceptance
+  criteria, latest owner ruling, and the next bounded action. Refresh it after
+  a partial merge; historical comments do not substitute for remaining scope.
 - Cap E2E work at two agents — `dispatch-brief.mjs` refuses a third `--e2e`
   lane on every path (new/resume/adopt) and warns past the machine cap.
   Ordinary concurrency is min(harness slots, machine cap) — five on the
@@ -26,10 +28,14 @@ closed taxonomy, and `needs-human` handling.
   REVIEW, which is serial: hold dispatch at about three unreviewed PRs.
 - With ready P1s, reserve two user/data lanes and select the highest-risk ready
   P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
+  Compare confirmed safety, stored-record integrity, delivery and recovery
+  failures before new features or cleanup. Rank the remaining impact, not the
+  issue's age, author, original title, or estimated lines removed.
 - **Self-filed work joins the BACK of its queue.** An issue you or a lane
   filed defaults to P3, sourced OLDEST FIRST only when no owner-filed work of
   equal or higher priority is ready. Sole exception: a DEMONSTRATED P0/P1
-  regression a merge just introduced.
+  regression a merge just introduced. An owner-authorized priority audit can
+  also promote a demonstrated existing defect; record its evidence and impact.
 - Lanes never file issues. Findings ride the return summary; the orchestrator
   decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
@@ -37,8 +43,9 @@ closed taxonomy, and `needs-human` handling.
   simultaneous gates. `new` warns within 25 minutes; a P0 preempts.
 - No lane or session touches prod: no replay, backfill, snapshot read or
   migration run. A lane states what the owner would run; the owner runs it.
-- A red in code the diff did not touch is contention until proven otherwise —
-  an ASSERTION failure included, not only a timeout (#3436).
+- An untouched-file failure is unattributed, including an assertion failure.
+  Inspect preceding timeouts and shared state, reproduce the focused case, and
+  compare the same case on the pinned base before blaming contention or the diff.
 - Every brief uses the generated template and `agent-gates.sh`'s gate order.
 - Push meaningful checkpoints. A branch not next to land stays branch-only — no
   PR at all, and a draft is not a banking state. The candidate's PR opens READY
@@ -55,8 +62,9 @@ closed taxonomy, and `needs-human` handling.
 1. Read each issue whole via `issue-read.mjs`; `new` refuses a closed one.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
-   Open the PR as soon as the gates pass (title imperative, one clause, 72
-   chars max, it is the commit subject; only a `(#N …)` tail); after another
+   Bank a validated branch until it is this session's landing candidate, then
+   open its ready PR (title imperative, one clause, 72 chars max, it is the
+   commit subject; only a `(#N …)` tail); after another
    merge lands, run `landing-independence.mjs` before deciding to rebase.
 4. Read the full diff, verify claims, and post a substantive COMMENT review.
 5. Diagnose E2E reds locally; send code corrections back to the author unless
@@ -85,7 +93,7 @@ closed taxonomy, and `needs-human` handling.
 - `queue-snapshot.mjs`: the dispatchable queue in `$SCRATCH/.queue`, refreshed
   4-hourly, `[lane:B]` on rows the ledger holds. A "thin" claim answers it.
 - `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
-  shape, needs-human aging; denominators first. Argue caps from its numbers.
+  shape, needs-human issue age; denominators first. Argue caps from its numbers.
 - `release-notes-gather.mjs`: gather merged user-visible changes.
 - `adversarial-review-brief.mjs`: route and brief high-stakes second reviews.
 

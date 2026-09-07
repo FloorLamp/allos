@@ -165,6 +165,13 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   await comboboxRows(page).filter({ hasText: "Advil" }).first().click();
   await expect(nameInput).toHaveValue("Ibuprofen");
 
+  // The pick awaits RxNorm confirmation before applying defaults. Wait for the
+  // resulting timing fact before editing; the code appears before the defaults.
+  await expect(addCard.getByTestId("intake-fact-timing")).toContainText(
+    "≤ every 6 h · max 4/day",
+    { timeout: 10_000 }
+  );
+
   // The Brand combobox offers "Generic" first (#851 item 3): open the identity fact,
   // assert the exact "Generic" option is offered, pick it, confirm it lands.
   const identity = await openFact(page, "identity", addCard);
@@ -195,13 +202,10 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   await expect(rxToggle).not.toBeChecked();
   await closeEditor(page, addCard);
 
-  // The ibuprofen pick auto-marks it PRN via label-default prefill; if not, choose
-  // May by hand — since #1505 `may` IS the as-needed shape, so selecting it is what
-  // reveals the redose block and the amount-only dose row.
+  // The ibuprofen pick marks it PRN through label-default prefill.
   const importance = await openFact(page, "importance", addCard);
   const obligation = importance.getByTestId("intake-obligation");
-  if ((await obligation.inputValue()) !== "may")
-    await obligation.selectOption("may");
+  await expect(obligation).toHaveValue("may");
   await closeEditor(page, addCard);
 
   // The one-line redose copy (#851 item 5): the terse explainer up front, the verbose

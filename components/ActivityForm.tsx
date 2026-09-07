@@ -91,6 +91,7 @@ import { activityDisclosureSummary } from "@/lib/activity-import-details";
 import {
   activityDraftHasTypedContent,
   savedShapeOfParts,
+  sharedLoadSets,
   activityEditDataHasStrength,
 } from "@/lib/activity-form-model";
 import { activityIconIdentitiesAreComposite } from "@/lib/activity-icon";
@@ -1711,12 +1712,12 @@ export default function ActivityForm({
           initialBarId={parts[plateTarget.pi]?.equipmentId ?? null}
           initialWeight={
             plateTarget.seed ??
-            // The exercise-level target ("all") is every set's load, so set 1's
-            // value is the load (#5371).
             (Number(
-              parts[plateTarget.pi]?.sets[
-                plateTarget.si === "all" ? 0 : plateTarget.si
-              ]?.[plateTarget.field]
+              (plateTarget.si === "all"
+                ? sharedLoadSets(parts[plateTarget.pi]?.sets ?? [])[0]
+                : parts[plateTarget.pi]?.sets[plateTarget.si])?.[
+                plateTarget.field
+              ]
             ) ||
               0)
           }

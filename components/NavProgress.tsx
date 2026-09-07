@@ -1,60 +1,20 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 import {
   getNavProgress,
   getServerNavProgress,
   retryNavProgress,
-  settleNavProgress,
   subscribeNavProgress,
 } from "@/lib/nav-progress";
 
-// The slow-navigation floor, and the ask a failed navigation resolves into
-// (issue #2869).
-//
-// #1956 gave nav rows a spinner in their own slot, and #2869 extended that to
-// every control shaped like a button. But most navigation in this app is not
-// button-shaped: a card, a table row, a drill-down, a link inside a sentence,
-// the timeline's day swipe. Those have nowhere to put a spinner, and inventing
-// somewhere for each of them is how an app ends up with six pending styles. So
-// they share one floor: a thin line at the top edge, on screen only while a
-// navigation is genuinely slow.
-//
-// Three deliberate properties:
-//
-//   • IT IS NOT ON THE FAST PATH. Nothing paints until the navigation has been
-//     running past NAV_PROGRESS_THRESHOLD_MS. On a normal connection the
-//     destination commits well inside that and this component renders `null`
-//     from start to finish, so there is no flash on every tap.
-//   • IT DOES NOT ANIMATE A FRACTION. There is no progress to report — `(app)`
-//     has no Suspense boundaries to count (#530) and the server does not stream
-//     a percentage — so a bar creeping toward 90% would be an invented number.
-//     It is present or absent, and the `role="status"` line says which.
-//   • IT DOES NOT REPLACE THE PAGE. The page under it is the one that was
-//     already working, still fully interactive. That is the whole argument of
-//     the failure state below.
-//
-// Completion is observed at COMMIT rather than from a hook, because Next has no
-// router-level "transition ended" event: `onRouterTransitionStart` fires the
-// start (instrumentation-client.ts) and the destination landing is what changes
-// `usePathname()`/`useSearchParams()` here. The one case that leaves is a
-// navigation to the URL already on screen, which cannot move either of them —
-// it resolves on the next navigation and paints nothing meanwhile.
+// Display the shared progress state without replacing the usable page beneath it.
 export default function NavProgress() {
   const phase = useSyncExternalStore(
     subscribeNavProgress,
     getNavProgress,
     getServerNavProgress
   );
-  const pathname = usePathname();
-  const search = useSearchParams().toString();
-
-  // The destination committed.
-  useEffect(() => {
-    settleNavProgress();
-  }, [pathname, search]);
-
   // The connection came back on its own. A held navigation resumes without
   // anyone having to find the Retry — the tap they already made is the tap that
   // lands, which is the same promise #1956 made about repeat taps.
