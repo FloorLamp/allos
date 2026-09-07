@@ -26,48 +26,13 @@ import {
 } from "./update-reload-channel";
 import { useLatestRef } from "./useLatestRef";
 
-// WHAT COUNTS AS UNRECOVERABLE (#3371). Two sources, OR'd, because they see
-// different forms. `hasUnrecoverableWork()` is the #1878 registry's view of every
-// dirty <form> with named controls the browser composes. A form that has none —
-// hand-composed out of React state — is invisible to it and answers for ITSELF with
-// `data-unsaved`, which `pageDeclaresUnrecoverableWork()` reads straight off the DOM
-// at the moment the question is asked. Either one is enough to hold the tab: the
-// resolution is the fail-safe one stated in lib/dirty-forms.ts, and the cost of being
-// wrong is a deploy taken on the next tick rather than this one.
-//
-// PINNED, and by what: `e2e/update-notice.spec.ts` drives an automatic reload with
-// the ration UNSPENT — the one context in the suite where the automatic path is free
-// to fire — so a declaring dialog holding the tab is observable end to end, and the
-// draft-backed flush that licenses the exclusion is observable in the same file. Both
-// were mutation-measured red on 2026-08-21 against the gate removed and against the
-// registration moved back behind the 600ms debounce.
-//
-// The tab that takes the deploy by itself (#2471) — the wiring half. Every decision
-// it makes is `autoReloadPlan` in lib/sw-update.ts; this file owns listeners, the
-// two markers, and the ordering that makes the reload provably lossless.
-//
-// THE ORDERING IS THE FEATURE, and it is fixed:
-//
-//   1. the plan says `reload` (see lib/sw-update.ts for what that costs to earn);
-//   2. every recoverable draft is FLUSHED and settled — never a debounce still in
-//      flight, because a reload over an unflushed keystroke is worse than the four
-//      taps this replaces;
-//   3. the resume and toast markers are written;
-//   4. the ration is spent, recorded BEFORE the attempt exactly as the crash path
-//      records its own (an unrecorded attempt is an unguarded one);
-//   5. and only then the reload, through the registrar's own handshake path — the
-//      same one the bar's tap uses, so the tab lands on the waiting build and the
-//      #1806 only-the-asking-tab rule still holds.
-//
-// Any step that throws or refuses stops the sequence. Nothing is reloaded, the
-// manual affordance renders, and the user is exactly where this issue found them.
-//
-// WHY THIS CANNOT COMPOUND WITH THE CRASH PATH. `app/global-error.tsx` rations its
-// own hard reload under `SKEW_RECOVERY_KEY`; this rations its own under
-// `AUTO_RELOAD_KEY`. Neither clears nor refills the other, and neither is cleared by
-// a page that loads successfully, so the worst case of a genuinely broken deploy is
-// the SUM of two rations of one — two automatic reloads, then the banner, then
-// nothing. That bound is asserted directly in lib/__tests__/auto-reload.test.ts.
+// Applies lib/sw-update.ts decisions to draft capture, markers, and navigation.
+// Both the dirty-form registry and DOM data-unsaved declarations can hold a reload;
+// hand-composed forms may have no named controls for the registry to observe.
+// Flush drafts, recheck those sources after the await, then write continuation and
+// attempt markers before navigating. Manual controls share that sequence.
+// Automatic and crash recovery have separate, windowed attempt limits; neither
+// resets the other. Contract: docs/internals/deploy-skew.md.
 
 /** Events that mean a human is touching the page right now. */
 const INPUT_EVENTS = [
@@ -84,8 +49,7 @@ const INPUT_EVENTS = [
  * How often the verdict is re-evaluated while a deploy is outstanding.
  *
  * A quiet window is the absence of events, so nothing will wake this up when the
- * user stops touching the page — the tick is what notices the silence. It runs only
- * while there is a deploy to answer, so an ordinary tab schedules nothing.
+ * user stops touching the page — the tick is what notices the silence.
  */
 const EVALUATE_MS = 500;
 
@@ -170,18 +134,8 @@ export function useAutoUpdateReload({
       setCaptureRefused(true);
       return false;
     }
-    // Re-check after the await: a flush is fast but not instant, and a form that
-    // started holding unrecoverable input in the gap must still stop this.
-    //
-    // PINNED as of #3446, and this note used to say the opposite. It was right while
-    // the only tier that could see this line was a browser: the window it guards opens
-    // between the await above resolving and the navigation being dispatched, and no
-    // surface in the tree opens that window on purpose, so a browser spec could only
-    // fake it. components/__tests__/auto-update-reload.test.ts supplies the awaited
-    // flush callback, which opens it exactly. Both operands are pinned separately, so
-    // neither half of the OR can be lost on its own — mutation-measured 2026-08-22.
-    // The OR in `evaluate` below is pinned too, by e2e/update-notice.spec.ts's "a
-    // hand-composed dialog holds the tab against an automatic reload".
+    // A form can gain unrecoverable input while the draft flush is awaited.
+    // Recheck both sources before writing markers or navigating.
     if (hasUnrecoverableWork() || pageDeclaresUnrecoverableWork()) {
       takingRef.current = false;
       return false;
