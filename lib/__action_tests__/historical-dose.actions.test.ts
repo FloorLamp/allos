@@ -331,9 +331,13 @@ describe("logHistoricalDose", () => {
 
   it("keeps each recorded amount unless the amendment states a replacement", async () => {
     const { profile } = seedActor();
-    const dates = [-8, -7, -6, -5].map((days) =>
-      shiftDateStr(today(profile.id), days)
-    ) as [string, string, string, string];
+    const currentDay = today(profile.id);
+    const dates = [
+      shiftDateStr(currentDay, -8),
+      shiftDateStr(currentDay, -7),
+      shiftDateStr(currentDay, -6),
+      shiftDateStr(currentDay, -5),
+    ] as const;
     const { itemId, doseId } = seedMedication(profile.id, {
       startedOn: shiftDateStr(dates[0], -1),
     });
