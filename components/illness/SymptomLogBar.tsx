@@ -30,6 +30,7 @@ import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
 import { useLatestRef } from "@/components/useLatestRef";
+import { useResettableState } from "@/components/useResettableState";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
@@ -39,6 +40,12 @@ import {
   useCockpitDay,
   useDayBinding,
 } from "@/components/illness/CockpitDayContext";
+import {
+  CockpitPanelProvider,
+  SYMPTOM_PICKER_PANEL,
+  TEMPERATURE_PANEL,
+  useCockpitPanels,
+} from "@/components/illness/CockpitPanelContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -233,7 +240,13 @@ export default function SymptomLogBar({
     ...(altDate ? { [altDate]: initialAltNotes ?? {} } : {}),
   }));
   const [customDraft, setCustomDraft] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // ONE PANEL OPEN PER CARD (#5487 fix 1). The picker and the temperature fold used
+  // to be two private booleans that only knew about each other; they are the card's
+  // one open panel now, so a med panel or the add-medication fold in the sibling
+  // Meds section closes them too — and an unwrapped mount keeps the same rule over
+  // its own state.
+  const panels = useCockpitPanels();
+  const pickerOpen = panels.openKey === SYMPTOM_PICKER_PANEL;
   // WHAT THE PICKER IS STAGING (#4752 §3) — the chosen symptom and the severity
   // it will be logged at. Nothing here has been written: the panel holds a
   // choice until the save below spends it, which is what lets a symptom arrive
@@ -249,7 +262,8 @@ export default function SymptomLogBar({
   const ledger = useOptimisticLedger<number>("symptom-severity");
 
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
-  const [tempOpen, setTempOpen] = useState(false);
+  const tempOpen = panels.openKey === TEMPERATURE_PANEL;
+  const currentPanel = useLatestRef(panels.openKey);
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // Reading time (#800/#843) through the shared control, which is what retires this
   // bar's own <input type="time"> from the #2236 allowlist. The day is FIXED to the
@@ -284,12 +298,15 @@ export default function SymptomLogBar({
   const [tempPending, setTempPending] = useState(false);
 
   // The offer retains the reading's day and stated instant, not a detached clock time.
-  const [offeredReading, setFeverOffer] = useState<{
+  const [offeredReading, setFeverOffer] = useResettableState<{
     degF: number;
     when: WhenValue;
-  } | null>(null);
+  } | null>(null, tempOpen);
+  // Closing the panel discards the offer, including when another panel opens.
   const feverOffer =
-    offeredReading?.when.date === activeDate ? offeredReading : null;
+    tempOpen && offeredReading?.when.date === activeDate
+      ? offeredReading
+      : null;
   const feverOfferTime =
     statedHhmm(feverOffer?.when.statedAt ?? null, timeZone ?? tempZone) || null;
   const [episodeOfferPending, setEpisodeOfferPending] = useState(false);
@@ -308,9 +325,9 @@ export default function SymptomLogBar({
   const yieldMeds = useDoseOfferSignal();
   // Hide the persistent copy before paint, so the offer never duplicates its chip.
   useLayoutEffect(() => {
-    yieldMeds(tempOpen && feverOffer !== null && offersDose);
+    yieldMeds(feverOffer !== null && offersDose);
     return () => yieldMeds(false);
-  }, [tempOpen, feverOffer, offersDose, yieldMeds]);
+  }, [feverOffer, offersDose, yieldMeds]);
   function showFeverOffer(
     offer: { degF: number; when: WhenValue } | null
   ): void {
@@ -419,26 +436,15 @@ export default function SymptomLogBar({
   }
 
   function toggleSymptomPicker() {
-    const opening = !pickerOpen;
-    setPickerOpen(opening);
+    panels.setOpenKey(pickerOpen ? null : SYMPTOM_PICKER_PANEL);
     // THE STAGE LIVES IN THE FOLD, like the fever offer below: closing the
     // picker takes the unsaved selection with it rather than leaving it to
     // reappear, pre-chosen, the next time the panel opens.
     setPicked(null);
-    if (opening) {
-      setTempOpen(false);
-      // THE BLOCK LIVES IN THE FOLD (#4712 judgement 1). Closing it any way —
-      // including by opening the OTHER fold, which forces this one shut above —
-      // takes the offer with it.
-      showFeverOffer(null);
-    }
   }
 
   function toggleTemperatureEntry() {
-    const opening = !tempOpen;
-    setTempOpen(opening);
-    if (opening) setPickerOpen(false);
-    else showFeverOffer(null);
+    panels.setOpenKey(tempOpen ? null : TEMPERATURE_PANEL);
   }
 
   // NO CLIENT RANGE CHECK. `logTemperatureCore` runs `temperatureRangeError` over the
@@ -470,8 +476,11 @@ export default function SymptomLogBar({
     setTempPending(false);
     if (res.ok) {
       // A completed write still gets its toast, but cannot reset another day's form
-      // or offer a dose there using this reading's time.
-      if (currentDay.current === activeDate) {
+      // or dismiss the panel opened while this request was pending.
+      if (
+        currentDay.current === activeDate &&
+        currentPanel.current === TEMPERATURE_PANEL
+      ) {
         form.reset();
         tempUnitDetection.reset();
         setTempWhen(whenOnDay(activeDate, timeZone ?? tempZone));
@@ -484,7 +493,7 @@ export default function SymptomLogBar({
           });
         } else {
           showFeverOffer(null);
-          setTempOpen(false);
+          panels.setOpenKey(null);
         }
       }
       // NO ACTION ON THIS TOAST (#4712 judgement 1's second exclusion). The owner
@@ -745,18 +754,53 @@ export default function SymptomLogBar({
       {/* ONE ROW (#4752 item 5). The day toggle, both add buttons and the empty
           state used to occupy three stacked rows above an empty list — three lines
           of chrome before a single symptom. They are one row now, and the empty
-          state is the sentence at its end rather than a paragraph of its own. */}
+          state is the sentence at its end rather than a paragraph of its own.
+          THE BOARD'S ORDER (#5487 fix 4): the day toggle leads and the two buttons
+          take the row's far end. */}
       <div
         data-testid="symptom-log-actions"
         className="mb-3 flex flex-wrap items-center gap-2"
       >
+        {card?.altDate && (
+          <div
+            data-testid="symptom-day-toggle"
+            className="inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
+          >
+            <button
+              type="button"
+              data-testid="symptom-day-primary"
+              aria-pressed={isPrimaryDay}
+              onClick={() => selectDay(card.date)}
+              className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+            >
+              {card.dateLabel}
+            </button>
+            <button
+              type="button"
+              data-testid="symptom-day-alt"
+              aria-pressed={!isPrimaryDay}
+              onClick={() => selectDay(card.altDate!)}
+              className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+            >
+              {card.altDateLabel}
+            </button>
+          </div>
+        )}
+        {loggedCount === 0 && (
+          <p
+            data-testid="symptom-none-logged"
+            className="text-xs text-slate-500 dark:text-slate-400"
+          >
+            No symptoms logged{hasToggle ? " for this day" : ""}.
+          </p>
+        )}
         <button
           type="button"
           data-testid="symptom-add-picker-toggle"
           aria-expanded={pickerOpen}
           aria-controls="symptom-add-picker"
           onClick={toggleSymptomPicker}
-          className="btn-ghost btn-sm"
+          className="btn-ghost btn-sm ml-auto"
         >
           <IconChevronDown
             className={`h-3.5 w-3.5 transition-transform ${pickerOpen ? "rotate-180" : ""}`}
@@ -787,39 +831,6 @@ export default function SymptomLogBar({
             <IconChartBar className="h-3.5 w-3.5" />
             Symptom trends
           </Link>
-        )}
-        {loggedCount === 0 && (
-          <p
-            data-testid="symptom-none-logged"
-            className="text-xs text-slate-500 dark:text-slate-400"
-          >
-            No symptoms logged{hasToggle ? " for this day" : ""}.
-          </p>
-        )}
-        {card?.altDate && (
-          <div
-            data-testid="symptom-day-toggle"
-            className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
-          >
-            <button
-              type="button"
-              data-testid="symptom-day-primary"
-              aria-pressed={isPrimaryDay}
-              onClick={() => selectDay(card.date)}
-              className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-            >
-              {card.dateLabel}
-            </button>
-            <button
-              type="button"
-              data-testid="symptom-day-alt"
-              aria-pressed={!isPrimaryDay}
-              onClick={() => selectDay(card.altDate!)}
-              className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-            >
-              {card.altDateLabel}
-            </button>
-          </div>
         )}
       </div>
 
@@ -1184,26 +1195,32 @@ export default function SymptomLogBar({
                   <div data-testid="fever-offer-dose" className="min-w-0">
                     {/* THE DOSE REUSES IllnessMedicationLogger (#4834), narrowed
                         to fever reducers — never a second dose control spelled
-                        here (08:24 audit on #4712). */}
-                    <IllnessMedicationLogger
-                      meds={antipyreticMeds}
-                      tz={timeZone ?? tempZone}
-                      profileId={profileId}
-                      intakeContext={intakeContext}
-                      canAdd={false}
-                      nowIso={nowIso}
-                      // THE OFFER'S OWN READING, PROPOSED (#5489 fix 5). The one
-                      // control that knows why it is on screen can now say when: a
-                      // reading with a stated minute opens the dose's statement on
-                      // that minute; one with none proposes nothing and the tap asks
-                      // wherever the day has ended (#4686).
-                      proposedTime={feverOfferTime}
-                      // TAKEN ENDS THE OFFER (#4712 ruling part 2's own words). The
-                      // dose is on the ledger and the host's Meds chip comes straight
-                      // back; the fold itself stays open, exactly as accepting the
-                      // episode half leaves it.
-                      onLogged={() => showFeverOffer(null)}
-                    />
+                        here (08:24 audit on #4712). NESTED (#5487 fixes 1 and 2):
+                        this control is INSIDE the fold's own panel, so its dose
+                        panel neither joins the card's one-open-panel rule — taking
+                        the dose would close the fold the offer lives in — nor
+                        draws a second border inside this one. */}
+                    <CockpitPanelProvider>
+                      <IllnessMedicationLogger
+                        meds={antipyreticMeds}
+                        tz={timeZone ?? tempZone}
+                        profileId={profileId}
+                        intakeContext={intakeContext}
+                        canAdd={false}
+                        nowIso={nowIso}
+                        // THE OFFER'S OWN READING, PROPOSED (#5489 fix 5). The one
+                        // control that knows why it is on screen can now say when: a
+                        // reading with a stated minute opens the dose's statement on
+                        // that minute; one with none proposes nothing and the tap asks
+                        // wherever the day has ended (#4686).
+                        proposedTime={feverOfferTime}
+                        // TAKEN ENDS THE OFFER (#4712 ruling part 2's own words). The
+                        // dose is on the ledger and the host's Meds chip comes straight
+                        // back; the fold itself stays open, exactly as accepting the
+                        // episode half leaves it.
+                        onLogged={() => showFeverOffer(null)}
+                      />
+                    </CockpitPanelProvider>
                   </div>
                 )}
               </div>

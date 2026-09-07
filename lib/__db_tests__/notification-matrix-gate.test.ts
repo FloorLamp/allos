@@ -182,57 +182,75 @@ describe("the tick's slot dedup reads `ok`, deliberately", () => {
     expect(builds).toBe(1);
   });
 
-  it("leaves the slot open for a partly delivered household — failed channel, somebody reached", async () => {
-    setSetting("telegram_bot_token", "test-token");
-    const p = newProfile("tick-household");
-    // The good chat sorts first (older login), so the fan-out reaches it before the
-    // blocked one throws — the shape that makes `ok` and `delivered` disagree.
-    const good = newLogin("member");
-    grant(good, p);
-    setLoginTelegram(good, {
-      telegramEnabled: true,
-      telegramChatId: "chat-good",
-    });
-    const blocked = newLogin("member");
-    grant(blocked, p);
-    setLoginTelegram(blocked, {
-      telegramEnabled: true,
-      telegramChatId: "chat-blocked",
-    });
-    fetchMock.mockImplementation(
-      async (_url: RequestInfo | URL, init?: RequestInit) =>
-        String(init?.body ?? "").includes("chat-blocked")
-          ? new Response(
-              JSON.stringify({
-                ok: false,
-                description: "Forbidden: bot was blocked by the user",
-              }),
-              { status: 403, headers: { "content-type": "application/json" } }
-            )
-          : new Response(
-              JSON.stringify({ ok: true, result: { message_id: 3 } }),
-              {
-                status: 200,
-                headers: { "content-type": "application/json" },
-              }
-            )
-    );
+  it.each([403, 503])(
+    "keeps a partial %i failure retryable and records recovery",
+    async (status) => {
+      setSetting("telegram_bot_token", "test-token");
+      const p = newProfile("tick-household");
+      const blocked = newLogin("member");
+      grant(blocked, p);
+      setLoginTelegram(blocked, {
+        telegramEnabled: true,
+        telegramChatId: "chat-blocked",
+      });
+      const good = newLogin("member");
+      grant(good, p);
+      setLoginTelegram(good, {
+        telegramEnabled: true,
+        telegramChatId: "chat-good",
+      });
+      let failing = true;
+      fetchMock.mockImplementation(
+        async (_url: RequestInfo | URL, init?: RequestInit) =>
+          failing && String(init?.body ?? "").includes("chat-blocked")
+            ? new Response(
+                JSON.stringify({
+                  ok: false,
+                  description:
+                    status === 403
+                      ? "Forbidden: bot was blocked by the user"
+                      : "Service unavailable",
+                }),
+                { status, headers: { "content-type": "application/json" } }
+              )
+            : new Response(
+                JSON.stringify({ ok: true, result: { message_id: 3 } }),
+                {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                }
+              )
+      );
 
-    expect(
-      await runTickSlot(p, "practice", PRACTICE_MARKER, DAY, () => PRACTICE)
-    ).toBe("failed");
-    // The control on "somebody reached": both chats were attempted and the good one
-    // took the message, so `delivered` is true for this send while `ok` is false.
-    const bodies = fetchMock.mock.calls.map((c) =>
-      String((c[1] as RequestInit | undefined)?.body ?? "")
-    );
-    expect(bodies.some((b) => b.includes("chat-good"))).toBe(true);
-    expect(bodies.some((b) => b.includes("chat-blocked"))).toBe(true);
-    // NOT marked: the household's other chat never got this, and the slot's shared
-    // attempt band is what retries for it next hour. This is the reading tick.ts keeps.
-    expect(getProfileSetting(p, PRACTICE_MARKER)).toBeUndefined();
-    expect(
-      await runTickSlot(p, "practice", PRACTICE_MARKER, DAY, () => PRACTICE)
-    ).toBe("failed");
-  });
+      expect(
+        await runTickSlot(p, "practice", PRACTICE_MARKER, DAY, () => PRACTICE)
+      ).toBe("failed");
+      // The control on "somebody reached": both chats were attempted and the good one
+      // took the message, so `delivered` is true for this send while `ok` is false.
+      const bodies = fetchMock.mock.calls.map((c) =>
+        String((c[1] as RequestInit | undefined)?.body ?? "")
+      );
+      expect(bodies.some((b) => b.includes("chat-good"))).toBe(true);
+      expect(bodies.some((b) => b.includes("chat-blocked"))).toBe(true);
+      // NOT marked: the household's other chat never got this, and the slot's shared
+      // attempt band is what retries for it next hour. This is the reading tick.ts keeps.
+      expect(getProfileSetting(p, PRACTICE_MARKER)).toBeUndefined();
+      failing = false;
+      expect(
+        await runTickSlot(p, "practice", PRACTICE_MARKER, DAY, () => PRACTICE)
+      ).toBe("sent");
+      expect(getProfileSetting(p, PRACTICE_MARKER)).toBe(DAY);
+      expect(getNotifyError()).toBeNull();
+      // Channel-level retry deliberately resends the healthy recipient as well.
+      expect(
+        fetchMock.mock.calls.filter((c) =>
+          String((c[1] as RequestInit | undefined)?.body).includes("chat-good")
+        )
+      ).toHaveLength(2);
+      expect(
+        await runTickSlot(p, "practice", PRACTICE_MARKER, DAY, () => PRACTICE)
+      ).toBe("already-sent");
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    }
+  );
 });
