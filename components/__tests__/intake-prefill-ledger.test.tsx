@@ -610,53 +610,72 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     }
   );
 
-  it("restoring a draft preserves its identity and personal dose after an old lookup lands", async () => {
-    const first = mount("medication", CHILD_ON_PICK, true);
-    await pickName("Ibuprofen (Advil, Motrin)");
-    openFact("dose");
-    fireEvent.change(screen.getByRole("combobox", { name: "Amount" }), {
-      target: { value: "180 mg" },
-    });
-    first.unmount();
-    const saved = actions.putDraft.mock.calls.at(-1)![0];
-    expect(saved).toBeTruthy();
-    actions.getDraft.mockResolvedValue(saved);
-    mount("medication", CHILD_ON_PICK, true);
-    await screen.findByTestId("draft-restore-resume");
-    await pickName(ACETAMINOPHEN);
-    openFact("dose");
-    expect(dosedAt().amount).toBe("240 mg");
-    const old = deferLookup();
-    await pickName(ACETAMINOPHEN);
-    fireEvent.click(screen.getByTestId("draft-restore-resume"));
-    await act(async () =>
-      fireEvent.click(
-        within(screen.getByTestId("confirm-dialog")).getByRole("button", {
-          name: "Resume",
-        })
-      )
-    );
-    await act(async () => old.resolve());
-    expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
-      "value",
-      "Ibuprofen"
-    );
-    expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
-    expect(dosedAt().amount).toBe("180 mg");
-    fireEvent.click(screen.getByTestId("intake-editor-done"));
-    expect(screen.getByTestId("intake-fact-dose").textContent).not.toContain(
-      "from label defaults"
-    );
-    openFact("dose");
-    // A restored amount is personal state, not the prior live label's offer.
-    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
-      target: { value: "Vicodin" },
-    });
-    expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
-      "value",
-      "180 mg"
-    );
-  });
+  it.each([
+    ["stated", "180 mg"],
+    ["cleared", ""],
+  ])(
+    "restoring a draft preserves its identity and %s personal dose after an old lookup lands",
+    async (_kind, restoredAmount) => {
+      const first = mount("medication", CHILD_ON_PICK, true);
+      await pickName("Ibuprofen (Advil, Motrin)");
+      openFact("dose");
+      fireEvent.change(screen.getByRole("combobox", { name: "Amount" }), {
+        target: { value: restoredAmount },
+      });
+      first.unmount();
+      const saved = actions.putDraft.mock.calls.at(-1)![0];
+      expect(saved).toBeTruthy();
+      actions.getDraft.mockResolvedValue(saved);
+      mount("medication", CHILD_ON_PICK, true);
+      await screen.findByTestId("draft-restore-resume");
+      // Positive control: this still is a fresh form until Resume is accepted, so the
+      // supported pediatric suggestion must be able to seed it.
+      await pickName(ACETAMINOPHEN);
+      openFact("dose");
+      expect(dosedAt().amount).toBe("240 mg");
+      const old = deferLookup();
+      await pickName(ACETAMINOPHEN);
+      fireEvent.click(screen.getByTestId("draft-restore-resume"));
+      await act(async () =>
+        fireEvent.click(
+          within(screen.getByTestId("confirm-dialog")).getByRole("button", {
+            name: "Resume",
+          })
+        )
+      );
+      await act(async () => old.resolve());
+      expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
+        "value",
+        "Ibuprofen"
+      );
+      expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
+      expect(dosedAt().amount).toBe(restoredAmount);
+      // A later supported pick may replace product identity, but not the personal amount
+      // restored from the draft.
+      await pickName(ACETAMINOPHEN);
+      expect(screen.getByTestId("rxcui-current").textContent).toContain("161");
+      expect(dosedAt().amount).toBe(restoredAmount);
+      // The current name-only fallback offers the same label dose and is refused by the
+      // same restored ownership.
+      actions.lookupRxcui.mockResolvedValueOnce([]);
+      await pickName(ACETAMINOPHEN);
+      expect(screen.queryByTestId("rxcui-current")).toBeNull();
+      expect(dosedAt().amount).toBe(restoredAmount);
+      fireEvent.click(screen.getByTestId("intake-editor-done"));
+      expect(screen.getByTestId("intake-fact-dose").textContent).not.toContain(
+        "from label defaults"
+      );
+      openFact("dose");
+      // A restored amount is personal state, not the prior live label's offer.
+      fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+        target: { value: "Vicodin" },
+      });
+      expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
+        "value",
+        restoredAmount
+      );
+    }
+  );
 
   it("unmounting the form retires the pending pick before it resolves a label", async () => {
     const old = deferLookup();

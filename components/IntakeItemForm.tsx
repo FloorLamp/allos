@@ -825,7 +825,10 @@ export default function IntakeItemForm({
             }
           : null
       );
-      setLedger(emptyPrefillLedger());
+      // A restored amount is the person's saved draft fact, including a blank they
+      // may have deliberately cleared. The draft does not retain suggestion
+      // provenance, so restore it as touched; a genuinely new form stays empty below.
+      setLedger(touchPrefill(emptyPrefillLedger(), "doseAmount"));
       setState(d.state);
       setRules(d.rules ?? []);
       setFormulationSlug(d.formulationSlug ?? "");
