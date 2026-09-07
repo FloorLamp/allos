@@ -7,7 +7,7 @@
 // vitest.db.config.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import {
   mapOuraSleep,
   mapOuraWorkout,

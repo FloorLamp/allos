@@ -32,7 +32,7 @@
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { reconcileFlags } from "@/lib/queries";
 import { reconcileFlagsIfCanonicalChanged } from "@/lib/migrations/boot-tasks";
 

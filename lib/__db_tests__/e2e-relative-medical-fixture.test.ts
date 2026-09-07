@@ -2,7 +2,7 @@
 // today-relative calendar as its past illness episode (#3949).
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";

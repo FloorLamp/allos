@@ -6,7 +6,7 @@
 // and resolveTaskClient routing a task to the tier that will actually serve it.
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import {
   getTierConfigs,
   getTierConfig,

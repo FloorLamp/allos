@@ -8,7 +8,7 @@
 //       ingest stays idempotent and edit-safe).
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import {
   upsertBodyMetrics,

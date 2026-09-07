@@ -35,7 +35,7 @@ export const NW_TRAINING_LOG_TITLES = ["NW card", "NW sib A", "NW sib B"];
 // (the spec passes dates recent relative to the frozen clock so the Training Log cards land
 // on page 1). Idempotent — deletes are scoped to this fixture's titles.
 export function seedNwayMergeFixture(
-  db: Database.Database,
+  db: Pick<Database.Database, "prepare">,
   profileId: number,
   reviewDate: string,
   trainingLogDate: string,

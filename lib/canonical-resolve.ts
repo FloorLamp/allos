@@ -25,11 +25,13 @@ import { db as defaultDb } from "./db";
 import { buildCanonicalIndex, snapCanonicalName } from "./canonical-name";
 
 const cache = new WeakMap<
-  Database.Database,
+  Pick<Database.Database, "prepare">,
   { count: number; index: Map<string, string> }
 >();
 
-function indexFor(handle: Database.Database): Map<string, string> {
+function indexFor(
+  handle: Pick<Database.Database, "prepare">
+): Map<string, string> {
   const count = (
     handle
       .prepare("SELECT COUNT(*) AS c FROM canonical_result_definitions")
@@ -52,7 +54,7 @@ function indexFor(handle: Database.Database): Map<string, string> {
 // A resolve function bound to the current canonical vocabulary. Call once per
 // operation and reuse across its rows: `const resolve = canonicalResolver()`.
 export function canonicalResolver(
-  handle: Database.Database = defaultDb
+  handle: Pick<Database.Database, "prepare"> = defaultDb
 ): (name: string) => string {
   const index = indexFor(handle);
   return (name: string) => snapCanonicalName(name, index);

@@ -22,14 +22,17 @@ import {
   type TierName,
 } from "../ai-tiers";
 
-function getSetting(db: Database.Database, key: string): string | undefined {
+// Reads and single-statement writes need no transaction capability.
+type SettingsDb = Pick<Database.Database, "prepare">;
+
+function getSetting(db: SettingsDb, key: string): string | undefined {
   const row = db
     .prepare("SELECT value FROM settings WHERE key = ?")
     .get(key) as { value?: string } | undefined;
   return row?.value;
 }
 
-function setSetting(db: Database.Database, key: string, value: string): void {
+function setSetting(db: SettingsDb, key: string, value: string): void {
   db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
@@ -64,7 +67,7 @@ function heavyEnvDefault(
   }
 }
 
-function readTier(db: Database.Database, tier: TierName): TierConfig {
+function readTier(db: SettingsDb, tier: TierName): TierConfig {
   const k = keys(tier);
   const envFor = (field: "shape" | "baseUrl" | "apiKey" | "model") =>
     tier === "heavy" ? heavyEnvDefault(field) : "";
@@ -78,22 +81,19 @@ function readTier(db: Database.Database, tier: TierName): TierConfig {
 
 // The current tier configs from the DB, with the Heavy env fallback baked in. This is
 // the function registered as the runtime provider on lib/ai-client.
-export function getTierConfigs(db: Database.Database): TierConfigs {
+export function getTierConfigs(db: SettingsDb): TierConfigs {
   return { heavy: readTier(db, "heavy"), light: readTier(db, "light") };
 }
 
-export function getTierConfig(
-  db: Database.Database,
-  tier: TierName
-): TierConfig {
+export function getTierConfig(db: SettingsDb, tier: TierName): TierConfig {
   return readTier(db, tier);
 }
 
 // Persist one tier's config. An empty api key is treated as "leave the stored key
 // unchanged" so a masked/write-only key field (which submits blank when untouched)
 // never wipes a saved secret; pass a sentinel clear separately when needed.
-// `.immediate()` is the BEGIN IMMEDIATE writeTx takes. The #468 guard exempts this
-// file wholesale, so dropping it here would not be caught — keep it by hand.
+// This full-handle adapter owns its IMMEDIATE transaction without importing the
+// singleton back into its initialization path.
 export function setTierConfig(
   db: Database.Database,
   tier: TierName,
@@ -116,7 +116,7 @@ export function setTierConfig(
 }
 
 // Clear a tier's stored API key (the "remove key" affordance).
-export function clearTierApiKey(db: Database.Database, tier: TierName): void {
+export function clearTierApiKey(db: SettingsDb, tier: TierName): void {
   setSetting(db, keys(tier).apiKey, "");
 }
 
@@ -130,7 +130,7 @@ export interface TierConfigView {
 }
 
 export function getTierConfigView(
-  db: Database.Database,
+  db: SettingsDb,
   tier: TierName
 ): TierConfigView {
   const cfg = readTier(db, tier);

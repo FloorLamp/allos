@@ -16,7 +16,7 @@
 // SYNTHETIC ONLY: fictional profiles, invented titles. No PHI.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { up as unstrand } from "@/lib/migrations/versions/20260819-unstrand-husk-milestones";
 
 const DAY = "2026-05-04";

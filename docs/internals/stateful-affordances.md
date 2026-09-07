@@ -34,7 +34,12 @@ must move together.
 
 [lib/tx.ts](../../lib/tx.ts) provides `readForUpdate`, `readAllForUpdate`, and
 `casUpdate`. These take the transaction’s `Tx` token and an already-prepared SQL
-statement. `casUpdate` reports `applied` or `stale`; the core maps that result to
+statement. The exported `db` type omits `transaction`; request code uses `writeTx`
+or `readTx`. `rawDb` explicitly exposes the full handle for boot/test adapters and
+the AI-tier store, which owns its own IMMEDIATE transaction. That escape hatch is
+not a guarantee about arbitrary SQL or independently opened connections.
+
+`casUpdate` reports `applied` or `stale`; the core maps that result to
 its domain outcome. Keep the callback synchronous and keep SQL visible at its
 prepare site. These helpers are for guarded transitions; an ordinary additive
 write does not need an artificial compare-and-swap.

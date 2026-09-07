@@ -16,7 +16,7 @@
 // SYNTHETIC ONLY: fictional names, low-entropy values, deep-past dates.
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { ingestMedicalUpload } from "@/lib/medical-pipeline";
 import { seedActor } from "@/lib/__action_tests__/harness";
 import { up as backfillClinicalKeys } from "@/lib/migrations/versions/136-clinical-content-key";

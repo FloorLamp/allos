@@ -21,7 +21,7 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { ingestMedicalUpload } from "@/lib/medical-pipeline";
 import { seedActor } from "@/lib/__action_tests__/harness";
 import { getCanonicalVocabulary, getUsedCanonicalNames } from "@/lib/queries";

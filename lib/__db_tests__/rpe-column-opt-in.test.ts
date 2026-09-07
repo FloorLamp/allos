@@ -17,7 +17,7 @@
 // SYNTHETIC ONLY: fictional profiles, invented lifts. No PHI.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { getProfileSetting } from "@/lib/settings/kv";
 import { getRpeTracking, setRpeTracking } from "@/lib/rpe-tracking";
 import { up as backfillRpeOptIn } from "@/lib/migrations/versions/20260820-rpe-column-opt-in";

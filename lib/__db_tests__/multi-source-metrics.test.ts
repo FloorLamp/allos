@@ -15,7 +15,7 @@
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { toKg } from "@/lib/units";
-import { db } from "@/lib/db";
+import { rawDb as db } from "@/lib/db";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import {
   upsertBodyMetrics,

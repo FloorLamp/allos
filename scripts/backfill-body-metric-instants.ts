@@ -18,14 +18,14 @@
 
 import "./load-env";
 
-import { db } from "../lib/db";
+import { rawDb } from "../lib/db";
 import { backfillBodyMetricInstants } from "../lib/integrations/body-metric-instant-backfill";
 import { getTimezone } from "../lib/settings/display";
 import { createLogger } from "../lib/log";
 
 const log = createLogger("body-metric-instant-backfill-cli");
 
-const tally = backfillBodyMetricInstants(db, (profileId) =>
+const tally = backfillBodyMetricInstants(rawDb, (profileId) =>
   getTimezone(profileId)
 );
 log.info("body-metric instant backfill complete", { ...tally });
