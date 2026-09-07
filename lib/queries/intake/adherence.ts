@@ -6,6 +6,7 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import type { MedFamilyItem } from "../../medication-family";
+import { prnLabelIdentityFor } from "../../prn-defaults";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { db, hoistedStatement, today, writeTx } from "../../db";
 import { readAllForUpdate } from "../../tx";
@@ -1937,6 +1938,8 @@ export function getPrnOverMaxItems(
 // the family values equal the per-item ones. The per-item count/lastGivenAt stay for
 // the "N today · last 4:02pm" day label (the item's own administrations).
 export interface PrnMedForQuickLog {
+  // Complete label identity. Its name is the linked bottle's product name when one
+  // exists, otherwise the item's display name; confirmed CUIs retain precedence.
   identity: Omit<MedFamilyItem, "id">;
   id: number;
   name: string;
@@ -1974,6 +1977,8 @@ export interface PrnMedForQuickLog {
 const PRN_QUICK_LOG_STMT = hoistedStatement(
   `SELECT s.id AS id, s.name AS name, s.kind AS kind, s.product AS product,
               s.rxcui, s.rxcui_ingredients,
+              (SELECT ss.name FROM shared_supplies ss
+                WHERE ss.id = s.supply_id) AS supply_name,
               (SELECT d.amount FROM intake_item_doses d
                 WHERE d.item_id = s.id AND d.retired = 0
                 ORDER BY d.sort, d.id LIMIT 1) AS amount,
@@ -2008,20 +2013,25 @@ function getPrnQuickLogItems(
     | "familyMaxDailyCount"
     | "familyExposure"
     | "familyMemberCount"
-  > & { rxcui: string | null; rxcui_ingredients: string | null })[];
+  > & {
+    rxcui: string | null;
+    rxcui_ingredients: string | null;
+    supply_name: string | null;
+  })[];
   const families = getMedicationFamilyStates(
     profileId,
     ceilingWindowEndMinute(clockNow())
   );
-  return rows.map(({ rxcui, rxcui_ingredients, ...r }) => {
+  return rows.map(({ rxcui, rxcui_ingredients, supply_name, ...r }) => {
     const fam = families.get(r.id);
     return {
       ...r,
-      identity: {
+      identity: prnLabelIdentityFor({
         name: r.name,
+        supplyName: supply_name,
         rxcui,
         rxcuiIngredients: parseRxcuiIngredients(rxcui_ingredients),
-      },
+      }),
       familyCount: fam?.countInWindow ?? r.count,
       familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
       familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,

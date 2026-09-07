@@ -607,8 +607,76 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         "value",
         ""
       );
+      expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+      if (door === "supply") {
+        openFact("supply");
+        fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
+          target: { value: "" },
+        });
+        openFact("dose");
+        await waitFor(() =>
+          expect(screen.getByTestId("pediatric-band-picker")).toBeTruthy()
+        );
+      }
     }
   );
+
+  it("saves a linked combination bottle without replacing the item display name", async () => {
+    actions.listSharedSupplyOptions.mockResolvedValue([
+      {
+        id: 99,
+        name: "Acetaminophen with Codeine",
+        strength: null,
+        form: null,
+        siblingKind: "medication",
+      },
+    ]);
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    openFact("more");
+    fireEvent.click(screen.getByTestId("intake-more-supply"));
+    fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
+      target: { value: "99" },
+    });
+    openFact("dose");
+    expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+    const saved = actions.addIntakeItem.mock.calls[0]![0];
+    expect(saved.get("name")).toBe("Acetaminophen");
+    expect(saved.get("supply_id")).toBe("99");
+    expect(saved.get("rxcui")).toBe("");
+    expect(JSON.parse(String(saved.get("doses")))[0].amount).toBe("");
+  });
+
+  it("uses a supported bottle name when the item display name differs", async () => {
+    actions.listSharedSupplyOptions.mockResolvedValue([
+      {
+        id: 98,
+        name: "Ibuprofen",
+        strength: null,
+        form: null,
+        siblingKind: "medication",
+      },
+    ]);
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    openFact("more");
+    fireEvent.click(screen.getByTestId("intake-more-supply"));
+    fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
+      target: { value: "98" },
+    });
+    expect(screen.getByRole("combobox", { name: "Name" })).toHaveProperty(
+      "value",
+      "Acetaminophen"
+    );
+    openFact("dose");
+    expect(screen.getByTestId("pediatric-suggestion").textContent).toContain(
+      "Ibuprofen"
+    );
+    expect(screen.getByTestId("pediatric-band-picker")).toBeTruthy();
+  });
 
   it.each([
     ["stated", "180 mg"],

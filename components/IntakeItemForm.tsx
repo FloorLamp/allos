@@ -62,7 +62,11 @@ import {
 } from "@/lib/medication-info";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
-import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
+import {
+  prnDefaultsFor,
+  prnLabelIdentityFor,
+  redoseLabelDefaults,
+} from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {
   formulationDoseAmount,
@@ -421,16 +425,22 @@ export default function IntakeItemForm({
   }
 
   // ---- Datasets for the derived kind ----
+  const prnIdentity = useMemo(
+    () =>
+      prnLabelIdentityFor({
+        name: state.name,
+        supplyName: supplyLabel,
+        rxcui: rx.rxcui,
+        rxcuiIngredients: rx.rxcuiIngredients,
+      }),
+    [state.name, supplyLabel, rx.rxcui, rx.rxcuiIngredients]
+  );
   const prnDefaults = useMemo(
     () =>
-      isMed && state.name.trim() && ingredientsAreEmpty(state.ingredients)
-        ? prnDefaultsFor({
-            name: state.name,
-            rxcui: rx.rxcui,
-            rxcuiIngredients: rx.rxcuiIngredients,
-          })
+      isMed && prnIdentity.name.trim() && ingredientsAreEmpty(state.ingredients)
+        ? prnDefaultsFor(prnIdentity)
         : null,
-    [isMed, state.name, state.ingredients, rx.rxcui, rx.rxcuiIngredients]
+    [isMed, prnIdentity, state.ingredients]
   );
   const catalogEntry = CATALOG_BY_NAME.get(state.name.trim().toLowerCase());
   // One call site each for the two suggestion lists #846 found teaching wrong.
@@ -584,6 +594,7 @@ export default function IntakeItemForm({
     const bottle = bottleForOptionLabel(bottles, picked);
     const bottleSeed = bottle ? itemSeedFromPool(bottle) : null;
     const pickedName = bottleSeed ? bottleSeed.name : picked;
+    const pickedSupplyName = bottle?.name ?? supplyLabel;
     if (bottle) {
       onPickSupply(bottle);
     }
@@ -624,11 +635,14 @@ export default function IntakeItemForm({
           vocabulary: "medication",
           info: getMedicationInfo(generic),
           prn: ingredientsAreEmpty(state.ingredients)
-            ? prnDefaultsFor({
-                name: generic,
-                rxcui: confirmed?.rxcui ?? null,
-                rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
-              })
+            ? prnDefaultsFor(
+                prnLabelIdentityFor({
+                  name: generic,
+                  supplyName: pickedSupplyName,
+                  rxcui: confirmed?.rxcui ?? null,
+                  rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
+                })
+              )
             : null,
         })
       );
