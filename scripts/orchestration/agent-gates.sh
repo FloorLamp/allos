@@ -265,6 +265,6 @@ echo "  To DIAGNOSE a specific red you can reproduce it: e2e-shard-plan.ts <n> 1
 echo "  deterministic but balanced from RECORDED durations, so recompute it AT THE"
 echo "  HEAD THAT RAN. On main it names the wrong neighbours (#3400)."
 echo
-echo "OPEN THE PR EARLY. CI triggers on pull_request only, never on a branch push,"
-echo "so until it exists you have no CI. cancel-in-progress is keyed per ref, so a"
-echo "second push cancels your own earlier run rather than queueing."
+echo "LANDING CANDIDATE: open its ready PR after these gates; CI triggers on"
+echo "pull_request, never on a branch push. Banked branches wait for promotion."
+echo "cancel-in-progress is keyed per ref; a push cancels that PR's earlier run."
