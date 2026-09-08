@@ -355,7 +355,7 @@ async function familyTickCalls(profileId: number): Promise<{
   itemId: number;
 }> {
   const date = today(profileId);
-  await runRedoseNotices(profileId, "TickScope", date);
+  await runRedoseNotices(profileId, date);
   const overMax = getPrnOverMaxItems(
     profileId,
     ceilingWindowEndMinute(new Date())

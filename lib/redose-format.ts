@@ -78,51 +78,48 @@ export function exposureFragment(
   return `${lead}${mgLabel(exposure.total)} of ${mgLabel(exposure.max)} mg in 24h`;
 }
 
-// The one-shot redose NOTICE message (title + body) for the fire case. The title
-// names the profile (#1721 — refill.ts's convention, applied to the two dispatch-path
-// builders that never had it). `lastClock` is the profile-local time of the arming
-// administration ("4:02pm" today, "Jul 14, 2026 at 4:02pm" on another day); empty when
-// unknown. Example: "6h since Ibuprofen (4:02pm) — your minimum interval has passed ·
-// 2 of 4 in 24h." `sinceName` (#1027) names the med the ARMING administration belongs
-// to when a same-ingredient SIBLING's dose armed the clock — the body then reads
-// honestly ("8h since Ibuprofen OTC") while the title keeps the notice's own item.
+// Notification-only wording. The title states the current product; the last-dose
+// line names only the arming medication and time, never today's formulation as a
+// historical administered amount. Shared composition owns subject attribution.
 export function redoseNoticeMessage(input: {
   name: string;
-  // The subject profile, named in the TITLE like every other self-attributing
-  // builder (#1721). A redose notice is safety-adjacent — "whose ibuprofen interval
-  // passed?" is not answerable from an unattributed message in a household chat.
-  // Empty (a single-profile caller that passes none) leaves the title as it was.
-  profileName?: string | null;
   amount?: string | null;
   product?: string | null;
   sinceHours: number;
+  // Already formatted with the subject-local date and clock convention.
   lastClock: string;
   countInWindow: number;
-  maxDailyCount: number;
+  maxDailyCount: number | null;
   sinceName?: string | null;
-  // The window's amount-aware exposure (#1854); the count fragment then reads
-  // milligrams on the same basis the ceiling was judged on. Absent/null keeps
-  // the plain count.
   exposure?: PrnDayExposure | null;
 }): { title: string; body: string } {
-  const at = input.lastClock ? ` (${input.lastClock})` : "";
-  const since = input.sinceName?.trim() || input.name;
   const dose = formatMedicationDoseProduct(input.amount, input.product);
-  // A family sibling can arm this window. Its name is known, but its product is
-  // not part of this formatter input, so never attach the current item's dose to
-  // a sibling name.
-  const medication =
-    since === input.name && dose ? `${since} · ${dose}` : since;
-  const who = input.profileName?.trim() ? `${input.profileName.trim()} — ` : "";
+  const elapsed = hoursLabel(input.sinceHours).replace(
+    /(\d+)(h|m)/g,
+    (_, n: string, unit: string) =>
+      `${n} ${unit === "h" ? "hour" : "minute"}${n === "1" ? "" : "s"}`
+  );
+  const since = input.sinceName?.trim();
+  const sibling = since && since !== input.name ? `${since} · ` : "";
+  const last = input.lastClock
+    ? `${input.lastClock} (${elapsed} ago)`
+    : `${elapsed} ago`;
+  // Keep the shared exposure basis, ceiling and incomplete-amount qualifier;
+  // only the notice spells out the unit and window.
+  const unit =
+    input.exposure?.basis === "mg"
+      ? ""
+      : (input.maxDailyCount ?? input.countInWindow) === 1
+        ? " dose"
+        : " doses";
+  const exposure = exposureFragment(
+    input.exposure ?? null,
+    input.countInWindow,
+    input.maxDailyCount
+  ).replace(" in 24h", `${unit} in the past 24 hours`);
   return {
-    title: `${GLYPH.dose} Redose window open: ${who}${input.name}`,
-    body:
-      `${hoursLabel(input.sinceHours)} since ${medication}${at} — your minimum ` +
-      `interval has passed · ${exposureFragment(
-        input.exposure ?? null,
-        input.countInWindow,
-        input.maxDailyCount
-      )}.`,
+    title: `${GLYPH.dose} ${input.name}${dose ? ` · ${dose}` : ""}`,
+    body: `Last dose: ${sibling}${last}.\n${exposure}.`,
   };
 }
 
