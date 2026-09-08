@@ -48,7 +48,7 @@
 // even across a spring-forward, where the absolute duration of that night is 23h.
 
 import type { OutcomeComparison } from "./protocol-compare";
-import { mean, populationSd } from "./robust-stats";
+import { populationSd } from "./robust-stats";
 import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 import { recordedUsual, USUAL_KINDS } from "./usual";
 import { zoneOf, type ProfileDayZone } from "./travel-timezone";
