@@ -26,7 +26,7 @@ import { setTimezone } from "@/lib/settings";
 import { TIER_FROZEN_INSTANT } from "./frozen-clock";
 import { shiftDateStr } from "@/lib/date";
 import { applyIntent, insertVitals } from "@/lib/offline/writes";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import type { FlowKind, IntentPayload } from "@/lib/offline/queue";
 
 function newProfile(name: string): number {

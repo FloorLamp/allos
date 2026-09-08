@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { applyIntent } from "@/lib/offline/writes";
 import { readMobilitySession } from "@/lib/mobility-log-write";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 
 const MOVE = "neck_cars"; // first catalog entry; any registered slug works
 

@@ -28,7 +28,7 @@ import {
   moodCheckinCallbackData,
 } from "@/lib/notifications/mood";
 import { MOOD_CHECKIN_AUTOPAUSE_DAYS } from "@/lib/mood";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 
 function newProfile(name: string): number {
   return Number(

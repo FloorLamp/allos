@@ -31,11 +31,8 @@ import {
   type AnySnapshot,
   type SnapshotEnvelope,
 } from "@/lib/offline/snapshots";
-import {
-  FLOW_KINDS,
-  buildIntent,
-  type QueuedIntent,
-} from "@/lib/offline/queue";
+import { FLOW_KINDS, type QueuedIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 
 const PROFILE = 7;
 const OTHER = 8;
@@ -287,9 +284,10 @@ function doseIntent(
   flow: "dose" | "skip-dose",
   date = "2026-08-16"
 ): QueuedIntent {
-  const intent = buildIntent(flow, date, { doseId }, profileId ?? 0);
-  if (profileId === undefined) delete intent.profileId;
-  return intent;
+  const stamped = buildIntent(flow, date, { doseId }, profileId ?? PROFILE);
+  if (profileId !== undefined) return stamped;
+  const { profileId: _profileId, dayContext: _dayContext, ...legacy } = stamped;
+  return legacy;
 }
 
 describe("overlay — folding queued writes into a stored read", () => {

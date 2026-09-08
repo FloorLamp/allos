@@ -34,7 +34,8 @@ import {
   getMetricSeriesBySourceInRange,
 } from "@/lib/queries";
 import { applyIntent, insertVitals } from "@/lib/offline/writes";
-import { buildIntent, type VitalsPayload } from "@/lib/offline/queue";
+import type { VitalsPayload } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import { setTimezone } from "@/lib/settings";
 import SourceComparison from "@/app/(app)/trends/SourceComparison";
 import SleepPage from "@/app/(app)/sleep/page";

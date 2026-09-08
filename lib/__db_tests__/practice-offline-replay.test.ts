@@ -14,7 +14,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { applyIntent } from "@/lib/offline/writes";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import { logPracticeSession } from "@/lib/practice-log";
 import { getPracticeDayCount } from "@/lib/queries/wellness";
 import { practiceIdentity } from "@/lib/practice";

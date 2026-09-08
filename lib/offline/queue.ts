@@ -63,10 +63,12 @@ import { arguedExclusion, type ArguedExclusion } from "@/lib/loggable-domains";
 // The one logging manifest (#4425). Pure and type-only-importing itself, so reading it
 // here keeps this module's runtime-dependency-free contract.
 import { LOG_MANIFEST } from "@/lib/log-manifest";
-import type {
+import {
+  dayContextKey,
   DayContextKey,
   DayContextParts,
 } from "@/lib/day-context-key";
+import type { TapReach } from "@/lib/log-manifest";
 
 export type FlowKind =
   | "dose"
@@ -478,6 +480,48 @@ export interface QueuedDayContext {
   readonly isPrimaryDay: boolean;
 }
 
+export interface QueuedCapture {
+  readonly dayContext: QueuedDayContext;
+  readonly capturedAt: Date;
+}
+
+export type QueuedDayContextInput =
+  | QueuedDayContext
+  | {
+      readonly date: string;
+      readonly reach: TapReach;
+      readonly isPrimaryDay: boolean;
+    };
+
+// The provider supplies the active profile identity. A mounted context supplies its
+// already-canonical whole stamp; a context-free surface supplies the offer and the
+// live primacy read from RouteDayContext's one profile-clock map.
+export function captureQueuedDayContext(
+  activeProfileId: number,
+  input: QueuedDayContextInput,
+  capturedAt: Date = new Date()
+): QueuedCapture | null {
+  if ("parts" in input) {
+    return input.parts.profileId === activeProfileId &&
+      input.key === dayContextKey(input.parts)
+      ? { dayContext: input, capturedAt }
+      : null;
+  }
+  const parts = {
+    profileId: activeProfileId,
+    day: input.date,
+    reach: input.reach,
+  } as const;
+  return {
+    dayContext: {
+      parts,
+      key: dayContextKey(parts),
+      isPrimaryDay: input.isPrimaryDay,
+    },
+    capturedAt,
+  };
+}
+
 // A new intent carries the profile and its day context as one stamp. The second arm
 // represents stored legacy entries only: profile attribution shipped before day
 // context, so it may be present there, while a partial new context has no type.
@@ -504,9 +548,8 @@ export function newIdempotencyKey(): string {
   });
 }
 
-// Build a fully-formed intent from a flow + captured date + payload + the profile it
-// was captured under (issue #599). Stamped with a fresh idempotency key and the
-// capture timestamp. `now` is injectable for tests.
+// Build a fully formed intent from one immutable capture. Date and profile are derived
+// from its canonical parts, so callers cannot submit two answers to either question.
 export function buildIntent(
   flow: FlowKind,
   payload: IntentPayload,

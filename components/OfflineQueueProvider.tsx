@@ -24,14 +24,15 @@ import {
   syncedAnnouncement,
   describeIntent,
   isAuthFailure,
+  captureQueuedDayContext,
   MAX_INTENTS,
   type FlowKind,
   type IntentPayload,
   type ReplayResult,
   type RejectedEntry,
-  type QueuedDayContext,
+  type QueuedCapture,
+  type QueuedDayContextInput,
 } from "@/lib/offline/queue";
-import { dayContextKey } from "@/lib/day-context-key";
 import type { TapReach } from "@/lib/log-manifest";
 import {
   useLiveProfileClocks,
@@ -94,23 +95,14 @@ export interface OfflineQueueApi {
   // active profile identity; callers supply the existing offer's reach and the
   // DayContext-owned primacy rather than reconstructing either after a failed request.
   captureDayContext: (
-    input:
-      | QueuedDayContext
-      | {
-          readonly date: string;
-          readonly reach: TapReach;
-          readonly isPrimaryDay: boolean;
-        },
+    input: QueuedDayContextInput,
     capturedAt?: Date
   ) => QueuedCapture | null;
   // Attempt to replay the whole queue now (safe to call redundantly).
   flush: () => Promise<void>;
 }
 
-export interface QueuedCapture {
-  readonly dayContext: QueuedDayContext;
-  readonly capturedAt: Date;
-}
+export type { QueuedCapture } from "@/lib/offline/queue";
 
 const OfflineQueueContext = createContext<OfflineQueueApi | null>(null);
 
@@ -397,35 +389,10 @@ export default function OfflineQueueProvider({
 
   const captureDayContext = useCallback(
     (
-      input:
-        | QueuedDayContext
-        | {
-            readonly date: string;
-            readonly reach: TapReach;
-            readonly isPrimaryDay: boolean;
-          },
+      input: QueuedDayContextInput,
       capturedAt: Date = new Date()
-    ): QueuedCapture | null => {
-      if ("parts" in input) {
-        return input.parts.profileId === activeProfileId &&
-          input.key === dayContextKey(input.parts)
-          ? { dayContext: input, capturedAt }
-          : null;
-      }
-      const parts = {
-        profileId: activeProfileId,
-        day: input.date,
-        reach: input.reach,
-      } as const;
-      return {
-        dayContext: {
-          parts,
-          key: dayContextKey(parts),
-          isPrimaryDay: input.isPrimaryDay,
-        },
-        capturedAt,
-      };
-    },
+    ): QueuedCapture | null =>
+      captureQueuedDayContext(activeProfileId, input, capturedAt),
     [activeProfileId]
   );
 

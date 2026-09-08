@@ -6,6 +6,7 @@ import {
   FLOW_KINDS,
   OFFLINE_QUEUE_COVERAGE,
   buildIntent,
+  captureQueuedDayContext,
   chunkIntents,
   MAX_INTENTS,
   newIdempotencyKey,
@@ -61,6 +62,7 @@ describe("buildIntent", () => {
     expect(intent.payload).toEqual({ doseId: 7 });
     // The profile the write was captured under (issue #599) — replay attributes it here.
     expect(intent.profileId).toBe(5);
+    expect(intent.dayContext).toEqual(context("2026-02-03", 5));
     expect(intent.key.length).toBeGreaterThan(0);
   });
 
@@ -102,6 +104,49 @@ describe("buildIntent", () => {
       context("2026-01-01")
     );
     expect(a.key).not.toBe(b.key);
+  });
+});
+
+describe("captureQueuedDayContext", () => {
+  it("keeps the complete context and original tap timestamp", () => {
+    const tappedAt = new Date("2026-09-03T23:59:59.000Z");
+    const source = context("2026-09-03", 7);
+    const captured = captureQueuedDayContext(7, source, tappedAt);
+    expect(captured).toEqual({ dayContext: source, capturedAt: tappedAt });
+  });
+
+  it("accepts canonical equality and refuses profile or key disagreement", () => {
+    const firstReach = {
+      kind: "bounded",
+      back: 2,
+      forward: 0,
+      reason: "First allocation",
+      ref: "#5211",
+    } as const;
+    const secondReach = { ...firstReach };
+    const parts = { profileId: 7, day: "2026-09-03", reach: firstReach };
+    const equivalent = {
+      parts: { ...parts, reach: secondReach },
+      key: dayContextKey(parts),
+      isPrimaryDay: false,
+    };
+    expect(captureQueuedDayContext(7, equivalent)?.dayContext).toBe(equivalent);
+    expect(captureQueuedDayContext(8, equivalent)).toBeNull();
+    expect(
+      captureQueuedDayContext(7, { ...equivalent, key: "wrong" })
+    ).toBeNull();
+  });
+
+  it("mints a context-free stamp only from supplied live primacy", () => {
+    const captured = captureQueuedDayContext(7, {
+      date: "2026-09-03",
+      reach: DATED_REACH,
+      isPrimaryDay: false,
+    });
+    expect(captured?.dayContext).toEqual({
+      ...context("2026-09-03", 7),
+      isPrimaryDay: false,
+    });
   });
 });
 
