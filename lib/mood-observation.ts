@@ -1,3 +1,4 @@
+import { mean } from "./robust-stats";
 // The PURE detection half of the two mood coaching observations (issue #992):
 //
 //   1. the sustained LOW-MOOD window — a calm, dismissible note when mood has
@@ -57,10 +58,6 @@ export interface LowMoodWindow {
   // Mean valence over the window's logged days, one decimal.
   meanValence: number;
   daysLogged: number;
-}
-
-function mean(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
 // Detect a sustained low-mood window over the trailing MOOD_LOW_WINDOW_DAYS
