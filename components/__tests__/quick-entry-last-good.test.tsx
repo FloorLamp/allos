@@ -72,7 +72,9 @@ function renderSheet(
 ) {
   const surface = (id: number, day: string, identity: string) => (
     <ToastProvider>
-      <ProfileDaysBoundary days={new Map([[id, day]])}>
+      <ProfileDaysBoundary
+        clocks={new Map([[id, { today: day, timeZone: "UTC" }]])}
+      >
         <QuickEntryProvider
           key={`${identity}:${id}`}
           measurements={MEASUREMENTS}

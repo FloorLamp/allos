@@ -34,7 +34,7 @@ import {
 import { dayContextKey } from "@/lib/day-context-key";
 import type { TapReach } from "@/lib/log-manifest";
 import {
-  useLiveProfileDays,
+  useLiveProfileClocks,
   useOptionalDayContext,
 } from "@/components/DayContext";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
@@ -136,7 +136,7 @@ export function useQueuedDayContextCapture(): (
 ) => QueuedCapture | null {
   const queue = useOfflineQueue();
   const dayContext = useOptionalDayContext();
-  const liveProfileDays = useLiveProfileDays();
+  const liveProfileClocks = useLiveProfileClocks();
   return useCallback(
     (date: string, fallbackReach: TapReach, capturedAt?: Date) => {
       if (dayContext) {
@@ -150,18 +150,18 @@ export function useQueuedDayContextCapture(): (
           capturedAt
         );
       }
-      const liveToday = liveProfileDays.get(queue.activeProfileId);
-      if (!liveToday) return null;
+      const liveClock = liveProfileClocks.get(queue.activeProfileId);
+      if (!liveClock) return null;
       return queue.captureDayContext(
         {
           date,
           reach: fallbackReach,
-          isPrimaryDay: date === liveToday,
+          isPrimaryDay: date === liveClock.today,
         },
         capturedAt
       );
     },
-    [dayContext, liveProfileDays, queue]
+    [dayContext, liveProfileClocks, queue]
   );
 }
 
@@ -381,11 +381,7 @@ export default function OfflineQueueProvider({
   }, [toast, refreshCount, refreshRejected, announceSynced]);
 
   const enqueue = useCallback(
-    async (
-      flow: FlowKind,
-      payload: IntentPayload,
-      capture: QueuedCapture
-    ) => {
+    async (flow: FlowKind, payload: IntentPayload, capture: QueuedCapture) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
       const outcome = await enqueueIntent(

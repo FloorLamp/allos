@@ -30,7 +30,7 @@ import {
   DayContextBoundary,
   DayContextProvider,
   useDayContext,
-  useLiveProfileDays,
+  useLiveProfileClocks,
   useOptionalDayContext,
   type DayContextValue,
 } from "./DayContext";
@@ -40,6 +40,7 @@ import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
 import { shiftDateStr } from "@/lib/date";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { useFormatPrefs } from "./FormatPrefsProvider";
+import { TimezoneProvider } from "./TimezoneProvider";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -317,9 +318,9 @@ export default function QuickEntryProvider({
 }) {
   const toast = useToast();
   const formatPrefs = useFormatPrefs();
-  const liveProfileDays = useLiveProfileDays();
-  const liveProfileDaysRef = useRef(liveProfileDays);
-  liveProfileDaysRef.current = liveProfileDays;
+  const liveProfileClocks = useLiveProfileClocks();
+  const liveProfileClocksRef = useRef(liveProfileClocks);
+  liveProfileClocksRef.current = liveProfileClocks;
   const [open, setOpen] = useState(false);
   // The form is RETAINED after close so the panel keeps its content through the
   // sheet's exit animation instead of blanking on the way out.
@@ -385,9 +386,16 @@ export default function QuickEntryProvider({
         effectiveRequest.kind === "inherited" && requestedParts
           ? effectiveRequest.value
           : null;
-      const requestLiveToday =
-        liveProfileDaysRef.current.get(subjectId) ??
-        (subjectId === actingProfileId ? measurements.defaultDate : undefined);
+      const requestLiveClock = liveProfileClocksRef.current.get(subjectId);
+      if (!requestLiveClock) {
+        setHost({
+          request: effectiveRequest,
+          sheetDay: null,
+          state: { status: "error" },
+        });
+        return;
+      }
+      const requestLiveToday = requestLiveClock.today;
 
       // NO ROUND TRIP for measurements — the props are already here (#4091), and
       // that gather is resolved for the ACTING profile only (no subject-keyed
@@ -396,7 +404,7 @@ export default function QuickEntryProvider({
       // chosen subject other than the acting profile gets that instead of the
       // wrong person's age gates and defaults.
       if (next === "measurements") {
-        const today = requestLiveToday ?? measurements.defaultDate;
+        const today = requestLiveToday;
         const parts: DayContextParts = requestedParts ?? {
           profileId: subjectId,
           day: today,
@@ -498,10 +506,15 @@ export default function QuickEntryProvider({
           if (requestRef.current !== token) return;
           const gatheredToday = hasDayContext ? quickEntryToday(data) : null;
           const responseLiveToday =
-            liveProfileDaysRef.current.get(subjectId) ??
-            (subjectId === actingProfileId
-              ? measurements.defaultDate
-              : undefined);
+            liveProfileClocksRef.current.get(subjectId)?.today;
+          if (!responseLiveToday) {
+            setHost({
+              request: effectiveRequest,
+              sheetDay: null,
+              state: { status: "error" },
+            });
+            return;
+          }
           if (
             effectiveRequest.kind === "dayless" &&
             gatheredToday &&
@@ -655,24 +668,20 @@ export default function QuickEntryProvider({
   );
 
   const state = useMemo(() => {
-    const liveToday = liveProfileDays.get(subject) ?? measurements.defaultDate;
+    const liveToday = liveProfileClocks.get(subject)?.today;
+    if (!liveToday) return { status: "error" } as const;
     return host.state.status === "ready"
       ? {
           ...host.state,
           data: withLiveDayLabels(host.state.data, liveToday, formatPrefs),
         }
       : host.state;
-  }, [
-    host.state,
-    liveProfileDays,
-    subject,
-    measurements.defaultDate,
-    formatPrefs,
-  ]);
+  }, [host.state, liveProfileClocks, subject, formatPrefs]);
   const sheetDay = host.sheetDay;
-  const subjectToday = liveProfileDays.get(subject) ?? measurements.defaultDate;
+  const subjectClock = liveProfileClocks.get(subject);
+  const subjectToday = subjectClock?.today;
   const inheritedDayValue =
-    sheetDay?.kind === "inherited"
+    sheetDay?.kind === "inherited" && subjectToday
       ? {
           ...sheetDay.value,
           today: subjectToday,
@@ -779,54 +788,62 @@ export default function QuickEntryProvider({
             {/* Keyed on the subject (#4932): switching who this is for remounts the
                 body fresh, which is what actually discards a staged, half-typed
                 entry rather than leaving it to paint under the new subject's name. */}
-            {inheritedDayValue ? (
-              <DayContextBoundary value={inheritedDayValue}>
-                <QuickEntryDayBody
-                  identity={`${form}:${inheritedDayValue.key}`}
-                  form={form}
-                  subject={subject}
-                  state={state}
-                  prefill={prefill}
-                  onDone={close}
-                  onRetry={retry}
-                  subjectProfileId={subjectId}
-                />
-              </DayContextBoundary>
-            ) : sheetDay?.kind === "state" ? (
-              <DayContextProvider
-                profileId={sheetDay.parts.profileId}
-                today={subjectToday}
-                reach={SHEET_REACH}
-                backing={{ kind: "state", initialDay: sheetDay.parts.day }}
-                onSelectedDayChange={selectSheetDay}
-              >
-                <BoundedDaySwitcher />
-                <QuickEntryDayBody
-                  identity={`${form}:${dayContextKey(sheetDay.parts)}`}
-                  form={form}
-                  subject={subject}
-                  state={state}
-                  prefill={prefill}
-                  onDone={close}
-                  onRetry={retry}
-                  subjectProfileId={subjectId}
-                />
-              </DayContextProvider>
+            {subjectClock ? (
+              <TimezoneProvider tz={subjectClock.timeZone}>
+                {inheritedDayValue ? (
+                  <DayContextBoundary value={inheritedDayValue}>
+                    <QuickEntryDayBody
+                      identity={`${form}:${inheritedDayValue.key}`}
+                      form={form}
+                      subject={subject}
+                      state={state}
+                      prefill={prefill}
+                      onDone={close}
+                      onRetry={retry}
+                      subjectProfileId={subjectId}
+                    />
+                  </DayContextBoundary>
+                ) : sheetDay?.kind === "state" ? (
+                  <DayContextProvider
+                    profileId={sheetDay.parts.profileId}
+                    today={subjectClock.today}
+                    reach={SHEET_REACH}
+                    backing={{ kind: "state", initialDay: sheetDay.parts.day }}
+                    onSelectedDayChange={selectSheetDay}
+                  >
+                    <BoundedDaySwitcher />
+                    <QuickEntryDayBody
+                      identity={`${form}:${dayContextKey(sheetDay.parts)}`}
+                      form={form}
+                      subject={subject}
+                      state={state}
+                      prefill={prefill}
+                      onDone={close}
+                      onRetry={retry}
+                      subjectProfileId={subjectId}
+                    />
+                  </DayContextProvider>
+                ) : (
+                  <div
+                    key={subject}
+                    data-testid="quick-entry-body"
+                    data-form={form}
+                    data-subject-profile-id={subject}
+                  >
+                    <QuickEntryBody
+                      state={state}
+                      prefill={prefill}
+                      onDone={close}
+                      onRetry={retry}
+                      subjectProfileId={subjectId}
+                    />
+                  </div>
+                )}
+              </TimezoneProvider>
             ) : (
-              <div
-                key={subject}
-                data-testid="quick-entry-body"
-                data-form={form}
-                data-subject-profile-id={subject}
-              >
-                <QuickEntryBody
-                  state={state}
-                  prefill={prefill}
-                  onDone={close}
-                  onRetry={retry}
-                  subjectProfileId={subjectId}
-                />
-              </div>
+              <p role="alert" className={QUIET_STATE_CLASS}>
+                Couldn&apos;t open that form.
+              </p>
             )}
           </LoggedViaSurface>
         </BottomSheet>

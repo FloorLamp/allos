@@ -41,17 +41,20 @@ export default function RouteDayContext({
     }
     return [...byProfile].map(([id, tz]) => ({ profileId: id, timeZone: tz }));
   }, [profileId, timeZone, profileTimeZones]);
-  const liveDays = useMemo(
+  const liveClocks = useMemo(
     () =>
       new Map(
         clockProfiles.map((entry) => [
           entry.profileId,
-          dateStrInTz(entry.timeZone),
+          {
+            today: dateStrInTz(entry.timeZone),
+            timeZone: entry.timeZone,
+          },
         ])
       ),
     [clockProfiles, dayRevision]
   );
-  const today = liveDays.get(profileId) ?? dateStrInTz(timeZone);
+  const today = liveClocks.get(profileId)?.today ?? dateStrInTz(timeZone);
 
   // App layouts persist across client navigation. Wake this one day owner at the
   // profile's next local midnight rather than treating the server layout's day as a
@@ -60,7 +63,7 @@ export default function RouteDayContext({
     const now = Date.now();
     const delay = Math.min(
       ...clockProfiles.map((entry) => {
-        const profileToday = liveDays.get(entry.profileId)!;
+        const profileToday = liveClocks.get(entry.profileId)!.today;
         const tomorrow = shiftDateStr(profileToday, 1);
         const boundary = zonedWallTimeToUtc(entry.timeZone, tomorrow, "00:00");
         return boundary && dateStrInTz(entry.timeZone, boundary) === tomorrow
@@ -73,7 +76,7 @@ export default function RouteDayContext({
       delay
     );
     return () => window.clearTimeout(timer);
-  }, [clockProfiles, liveDays, dayRevision]);
+  }, [clockProfiles, liveClocks, dayRevision]);
 
   let day: string | undefined;
   let hrefForDay: ((date: string) => AppRoute) | null = null;
@@ -91,7 +94,7 @@ export default function RouteDayContext({
   }
 
   return (
-    <ProfileDaysBoundary days={liveDays}>
+    <ProfileDaysBoundary clocks={liveClocks}>
       <DayContextBoundary
         value={
           day && hrefForDay

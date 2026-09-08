@@ -37,27 +37,45 @@ export interface DayContextValue {
 }
 
 const Context = createContext<DayContextValue | null>(null);
-const ProfileDaysContext = createContext<ReadonlyMap<number, string> | null>(
-  null
-);
+export interface LiveProfileClock {
+  readonly today: string;
+  readonly timeZone: string;
+}
+
+const ProfileClocksContext = createContext<ReadonlyMap<
+  number,
+  LiveProfileClock
+> | null>(null);
+const EMPTY_PROFILE_CLOCKS = new Map<number, LiveProfileClock>();
 const EMPTY_PROFILE_DAYS = new Map<number, string>();
 
 export function ProfileDaysBoundary({
-  days,
+  clocks,
   children,
 }: {
-  days: ReadonlyMap<number, string>;
+  clocks: ReadonlyMap<number, LiveProfileClock>;
   children: ReactNode;
 }) {
   return (
-    <ProfileDaysContext.Provider value={days}>
+    <ProfileClocksContext.Provider value={clocks}>
       {children}
-    </ProfileDaysContext.Provider>
+    </ProfileClocksContext.Provider>
   );
 }
 
+export function useLiveProfileClocks(): ReadonlyMap<number, LiveProfileClock> {
+  return useContext(ProfileClocksContext) ?? EMPTY_PROFILE_CLOCKS;
+}
+
 export function useLiveProfileDays(): ReadonlyMap<number, string> {
-  return useContext(ProfileDaysContext) ?? EMPTY_PROFILE_DAYS;
+  const clocks = useLiveProfileClocks();
+  return useMemo(
+    () =>
+      clocks.size === 0
+        ? EMPTY_PROFILE_DAYS
+        : new Map([...clocks].map(([id, clock]) => [id, clock.today])),
+    [clocks]
+  );
 }
 
 export function DayContextBoundary({
