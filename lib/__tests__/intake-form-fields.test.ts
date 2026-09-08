@@ -153,6 +153,21 @@ describe("intake form field mapping (#3216)", () => {
     ).toBe("120");
   });
 
+  it("posts a bottle count only after an edit and retains its loaded identity", () => {
+    const state = med({ supplyId: "11", qtyPerDose: "2" });
+    expect(value(state, "supply_count")).toBeNull();
+    const changed = {
+      ...state,
+      poolCount: { supplyId: "11", quantity: "0", loaded: "30" },
+      supplyOfferSeen: true,
+    };
+    expect(value(changed, "supply_count")).toBe("0");
+    expect(value(changed, "supply_count_loaded")).toBe("30");
+    expect(value(changed, "qty_per_dose")).toBe("2");
+    expect(value(changed, "supply_offer_seen")).toBe("1");
+    expect(value({ ...changed, supplyId: "12" }, "supply_count")).toBeNull();
+  });
+
   it("qty per dose never reaches the action as zero", () => {
     // Days-of-supply divides by it.
     expect(value(med({ qtyPerDose: "" }), "qty_per_dose")).toBe("1");

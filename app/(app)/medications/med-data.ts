@@ -1,3 +1,4 @@
+import { OFFER_FAMILIES, offerStands, type OfferFamily } from "@/lib/offers";
 // Shared server-side gathering for the Medications surfaces (issue #817). The list
 // page (rows + Today panel), the /medications/[id] detail card, and the records
 // bridge all read from this ONE loader, so a med's adherence strip, refill estimate,
@@ -124,6 +125,7 @@ export interface MedCardData {
   // The shared supply pool this med draws from, if any (#1374) — the chip that
   // REPLACES the per-item refill badge, carrying the POOLED days-left.
   poolChip: PoolChipData | null;
+  trackSupplyOffer?: OfferFamily["copy"] | null;
   due: boolean;
   // Individually due today; item-level dueness cannot distinguish sibling rows.
   dueDoseIds: number[];
@@ -461,6 +463,12 @@ export function loadMedicationsData(
       ),
       refillRate: refillRates.get(med.id) ?? null,
       poolChip: poolChips.get(med.id) ?? null,
+      trackSupplyOffer: offerStands(profileId, {
+        familyId: "track-supply",
+        itemId: med.id,
+      })
+        ? OFFER_FAMILIES["track-supply"](med.id).copy
+        : null,
       due: medDue(med),
       dueDoseIds: med.active
         ? medDoses.filter((dose) => doseDueOn(med, dose, ctx)).map((d) => d.id)

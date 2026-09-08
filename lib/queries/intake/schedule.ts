@@ -11,7 +11,12 @@ import {
 } from "../../intake-cadence";
 import { db, hoistedStatement } from "../../db";
 import { snapshotCached } from "../../read-snapshot";
-import type { IntakeItem, IntakeDose, SupplementSuggestion } from "../../types";
+import type {
+  IntakeItem,
+  IntakeItemKind,
+  IntakeDose,
+  SupplementSuggestion,
+} from "../../types";
 import {
   parseItemIngredients,
   type IntakeItemIngredient,
@@ -235,17 +240,20 @@ export function getMedication(
   return row ?? null;
 }
 
-// Resolve one medication across a viewer's ACCESSIBLE profile ids. This mirrors the
+// Resolve one intake item of the requested kind across ACCESSIBLE profile ids. This mirrors the
 // illness-episode detail boundary: every individual lookup remains profile-scoped, and
-// the caller supplies only ids already filtered by the grants layer. A medication owned
+// the caller supplies only ids already filtered by the grants layer. An item owned
 // by an ungranted profile therefore remains indistinguishable from a missing id.
-export function resolveMedicationAcrossProfiles(
+export function resolveIntakeAcrossProfiles(
   profileIds: number[],
-  id: number
-): { profileId: number; medication: IntakeItem } | null {
+  id: number,
+  kind: IntakeItemKind = "medication"
+): { profileId: number; item: IntakeItem } | null {
   for (const profileId of profileIds) {
-    const medication = getMedication(profileId, id);
-    if (medication) return { profileId, medication };
+    const item = getIntakeItems(profileId).find(
+      (item) => item.id === id && item.kind === kind
+    );
+    if (item) return { profileId, item };
   }
   return null;
 }

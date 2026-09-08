@@ -81,7 +81,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     );
   });
 
-  it("a medication hit lands on its detail page; a supplement keeps the kind surface", () => {
+  it("a medication hit lands on its detail page and a supplement opens its own supply fact", () => {
     const p = newProfile("palette-intake");
     const medId = Number(
       db
@@ -91,18 +91,22 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
         )
         .run(p).lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO intake_items (profile_id, name, kind, active)
+    const supplementId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active)
        VALUES (?, 'PHREF Testazole Powder', 'supplement', 1)`
-    ).run(p);
+        )
+        .run(p).lastInsertRowid
+    );
 
     expect(
       hit(p, "PHREF Testazole", "supplement", "PHREF Testazole").href
     ).toBe(`/medications/${medId}`);
-    // No per-supplement page exists — the kind-level surface (#746) stays right.
+    // The Manage item grammar opens exactly this item’s supply fact.
     expect(
       hit(p, "PHREF Testazole", "supplement", "PHREF Testazole Powder").href
-    ).toBe("/nutrition?tab=supplements");
+    ).toBe(`/nutrition?tab=supplements&item=${supplementId}&fact=supply`);
   });
 
   it("an immunization hit lands on its per-vaccine page", () => {
@@ -250,3 +254,43 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     expect(hrefs).not.toContain("/training");
   });
 });
+
+it.each(["medication", "supplement"] as const)(
+  "pooled %s search uses the bottle's null count instead of stale private stock",
+  (kind) => {
+    const p = newProfile(`pool-null-${kind}`);
+    const pool = Number(
+      db
+        .prepare("INSERT INTO shared_supplies (name) VALUES ('Unknown bottle')")
+        .run().lastInsertRowid
+    );
+    const id = Number(
+      db
+        .prepare(
+          "INSERT INTO intake_items (profile_id, name, kind, quantity_on_hand, supply_id) VALUES (?, ?, ?, 90, ?)"
+        )
+        .run(p, `PHREF Pool ${kind}`, kind, pool).lastInsertRowid
+    );
+    const before = hit(
+      p,
+      `PHREF Pool ${kind}`,
+      "supplement",
+      `PHREF Pool ${kind}`
+    );
+    expect(before.actions?.some((action) => action.kind === "refill")).toBe(
+      false
+    );
+    db.prepare(
+      "UPDATE shared_supplies SET quantity_on_hand = 0 WHERE id = ?"
+    ).run(pool);
+    const after = hit(
+      p,
+      `PHREF Pool ${kind}`,
+      "supplement",
+      `PHREF Pool ${kind}`
+    );
+    expect(
+      after.actions?.find((action) => action.kind === "refill")?.entityId
+    ).toBe(id);
+  }
+);

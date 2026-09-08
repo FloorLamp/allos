@@ -57,7 +57,9 @@ export interface HitAction {
   // The row id a write action targets (submitted as FormData `id`). 0 for a
   // navigate-only action (add-result), which uses `href`.
   entityId: number;
-  // Present only for navigate-style actions (add-result); the write kinds omit it.
+  // The stock identity displayed by an intake refill action, checked again at write time.
+  supplyId?: number | null;
+  // Navigation destination, including the fill-size door when a refill needs one.
   href?: AppRoute;
 }
 

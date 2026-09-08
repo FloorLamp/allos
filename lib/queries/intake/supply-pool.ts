@@ -408,6 +408,7 @@ export interface PoolChipData {
   // and every member's chip follows, with no write to any item row.
   strength: string | null;
   form: string | null;
+  quantityOnHand: number | null;
   daysLeft: number | null;
   memberCount: number;
   low: boolean;
@@ -432,6 +433,7 @@ export function getPoolChips(profileId: number): Map<number, PoolChipData> {
       name: pool.name,
       strength: pool.strength,
       form: pool.form,
+      quantityOnHand: pool.quantity_on_hand,
       daysLeft: pool.daysLeft,
       memberCount: pool.members.length,
       low: pool.low,
@@ -474,6 +476,62 @@ export function createSharedSupply(
   return Number(res.lastInsertRowid);
 }
 
+// One absolute count write, shared by the item supply editor and full item edits.
+// The displayed stock identity is checked under the lock before touching either owner.
+export function updateIntakeSupplyCount(
+  profileId: number,
+  itemId: number,
+  expectedSupplyId: number | null,
+  submitted: number | null,
+  loaded: number | null,
+  onlyUntracked = false
+): { quantity: number | null } | null {
+  return writeTx(() => {
+    const item = db
+      .prepare(
+        "SELECT supply_id, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
+      )
+      .get(itemId, profileId) as
+      { supply_id: number | null; quantity_on_hand: number | null } | undefined;
+    if (!item || item.supply_id !== expectedSupplyId) return null;
+    if (item.supply_id != null) {
+      return updateSharedSupplyCount(
+        item.supply_id,
+        submitted,
+        loaded,
+        onlyUntracked
+      );
+    }
+    if (onlyUntracked && item.quantity_on_hand != null) return null;
+    const quantity = resolveOnHandWrite(
+      submitted,
+      loaded,
+      item.quantity_on_hand
+    );
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = ? WHERE id = ? AND profile_id = ?"
+    ).run(quantity, itemId, profileId);
+    return { quantity };
+  });
+}
+
+function updateSharedSupplyCount(
+  supplyId: number,
+  submitted: number | null,
+  loaded: number | null,
+  onlyUntracked = false
+): { quantity: number | null } | null {
+  const row = db
+    .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
+    .get(supplyId) as { quantity_on_hand: number | null } | undefined;
+  if (!row || (onlyUntracked && row.quantity_on_hand != null)) return null;
+  const quantity = resolveOnHandWrite(submitted, loaded, row.quantity_on_hand);
+  db.prepare(
+    "UPDATE shared_supplies SET quantity_on_hand = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(quantity, supplyId);
+  return { quantity };
+}
+
 // Edit a pool. `quantity_on_hand` goes through the #467 compare-and-set at POOL level —
 // the concurrent-writer set is now every linked member's dose confirms (plus the poll
 // sidecar), which is exactly the case CAS exists for. The whole read-decide-write runs
@@ -485,25 +543,17 @@ export function updateSharedSupply(
   loadedQuantity: number | null
 ): boolean {
   return writeTx(() => {
-    const row = db
-      .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
-      .get(supplyId) as { quantity_on_hand: number | null } | undefined;
-    if (!row) return false;
-    const next = resolveOnHandWrite(
-      submittedQuantity,
-      loadedQuantity,
-      row.quantity_on_hand
-    );
+    if (!updateSharedSupplyCount(supplyId, submittedQuantity, loadedQuantity))
+      return false;
     db.prepare(
       `UPDATE shared_supplies
-          SET name = ?, strength = ?, form = ?, quantity_on_hand = ?,
+          SET name = ?, strength = ?, form = ?,
               low_supply_days = ?, notes = ?, updated_at = datetime('now')
         WHERE id = ?`
     ).run(
       fields.name,
       fields.strength,
       fields.form,
-      next,
       fields.lowSupplyDays,
       fields.notes,
       supplyId

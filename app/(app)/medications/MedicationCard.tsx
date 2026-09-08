@@ -47,6 +47,9 @@ import {
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
 import type { PoolChipData } from "@/lib/queries/intake";
+import OfferInPlace from "@/components/OfferInPlace";
+import type { OfferFamily } from "@/lib/offers";
+import { trackSupplyAskedKey } from "@/lib/dismissal-keys";
 import RefillButton from "@/components/medications/RefillButton";
 import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
@@ -116,6 +119,7 @@ export default function MedicationCard({
   strip,
   refillRate,
   poolChip = null,
+  trackSupplyOffer = null,
   todayStr,
   nowIso,
   suppressedFoodKeys = [],
@@ -136,6 +140,8 @@ export default function MedicationCard({
   canWrite = true,
   subjectProfileId,
   initialAction,
+  initialSupplyEditor = false,
+  initialRefill = false,
   conditions = [],
   ingredients = [],
 }: {
@@ -159,6 +165,7 @@ export default function MedicationCard({
   refillRate: DoseRate | null;
   // The shared-bottle chip when this med draws from a pool (#1374).
   poolChip?: PoolChipData | null;
+  trackSupplyOffer?: OfferFamily["copy"] | null;
   todayStr: string;
   nowIso: string;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
@@ -226,6 +233,8 @@ export default function MedicationCard({
   subjectProfileId?: number;
   // List-row overflow actions land on this detail view with the relevant form open.
   initialAction?: "edit" | "stop";
+  initialSupplyEditor?: boolean;
+  initialRefill?: boolean;
   // The profile's conditions for the "For condition…" indication picker (#1052).
   conditions?: IntakeConditionOption[];
   // The label composition (#2856), shown as this card's "What's in this" line (#3161).
@@ -273,6 +282,19 @@ export default function MedicationCard({
           action={updateIntakeItem}
           kind="medication"
           item={s}
+          initialFact={initialSupplyEditor ? "supply" : null}
+          initialRefill={initialRefill}
+          initialSupply={
+            poolChip
+              ? {
+                  id: poolChip.supplyId,
+                  name: poolChip.name,
+                  strength: poolChip.strength,
+                  form: poolChip.form,
+                  onHand: poolChip.quantityOnHand,
+                }
+              : null
+          }
           doses={doses}
           retiredDoses={retiredDoses}
           allIntakeItems={allIntakeItems}
@@ -310,14 +332,17 @@ export default function MedicationCard({
     rx_number: s.rx_number,
     provider_name: null,
   });
-  const lowSupply = isLowSupply(
-    daysOfSupplyForItem(
-      s.quantity_on_hand,
-      s.qty_per_dose,
-      refillRate,
-      doses.length
-    )
-  );
+  const lowSupply =
+    s.supply_id != null
+      ? !!poolChip?.low
+      : isLowSupply(
+          daysOfSupplyForItem(
+            s.quantity_on_hand,
+            s.qty_per_dose,
+            refillRate,
+            doses.length
+          )
+        );
 
   const fmt = (d: string | null) =>
     d ? formatLongDate(d, formatPrefs) : "unknown";
@@ -336,6 +361,14 @@ export default function MedicationCard({
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      {canWrite && trackSupplyOffer && (
+        <OfferInPlace
+          dedupeKey={trackSupplyAskedKey(s.id)}
+          familyId="track-supply"
+          supplyId={s.supply_id}
+          {...trackSupplyOffer}
+        />
+      )}
       <section
         className={`card ${menuOpen ? "relative z-20" : ""}`}
         data-testid="medication-overview"
@@ -453,6 +486,7 @@ export default function MedicationCard({
               {current && lowSupply && (
                 <RefillButton
                   itemId={s.id}
+                  supplyId={s.supply_id}
                   hasLastFill={s.last_fill_size != null}
                   lastFillSize={s.last_fill_size}
                   // How long a FULL fill lasts (not how much is left) — the same

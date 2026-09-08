@@ -161,11 +161,12 @@ export default function MedicationBoard({
                   strip={m.strip}
                   refillRate={m.refillRate}
                   poolChip={m.poolChip}
+                  trackSupplyOffer={m.trackSupplyOffer}
                   prnRedoseLine={m.prnRedoseLine}
                   monitoringNote={m.monitoringNote}
                   heldBy={m.heldBy}
                   todayStr={data.todayStr}
-                  canWrite={isActing}
+                  canWrite={isActing && canWrite}
                 />
               ))}
             </div>
@@ -203,9 +204,10 @@ export default function MedicationBoard({
                 strip={m.strip}
                 refillRate={m.refillRate}
                 poolChip={m.poolChip}
+                trackSupplyOffer={m.trackSupplyOffer}
                 prnRedoseLine={m.prnRedoseLine}
                 todayStr={data.todayStr}
-                canWrite={isActing}
+                canWrite={isActing && canWrite}
               />
             ))}
           </div>

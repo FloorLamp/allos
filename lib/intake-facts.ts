@@ -295,13 +295,17 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
     "identity",
     join([f.brand.trim(), f.product.trim(), f.stack.trim()])
   );
-  pushOptional(
-    chips,
-    more,
-    "supply",
-    f.supplyLabel?.trim() ||
-      (f.quantityOnHand.trim() ? `${f.quantityOnHand.trim()} on hand` : "")
-  );
+  chips.push({
+    key: "supply",
+    state:
+      f.supplyLabel?.trim() || f.quantityOnHand.trim() ? "stated" : "missing",
+    suggested: false,
+    label:
+      f.supplyLabel?.trim() ||
+      (f.quantityOnHand.trim()
+        ? `${f.quantityOnHand.trim()} on hand`
+        : "supply · not tracked"),
+  });
   pushOptional(
     chips,
     more,

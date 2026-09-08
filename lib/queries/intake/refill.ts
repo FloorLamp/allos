@@ -182,7 +182,8 @@ export type RefillOutcome =
 export function refillSupply(
   profileId: number,
   itemId: number,
-  fillSize: number | null
+  fillSize: number | null,
+  expectedSupplyId?: number | null
 ): RefillOutcome {
   return writeTx(() => {
     const row = db
@@ -198,7 +199,11 @@ export function refillSupply(
           supply_id: number | null;
         }
       | undefined;
-    if (!row) return { kind: "stale-item" };
+    if (
+      !row ||
+      (expectedSupplyId !== undefined && row.supply_id !== expectedSupplyId)
+    )
+      return { kind: "stale-item" };
     // A POOLED item (#1374) refills the shared bottle, not its own (always NULL)
     // counter — same lock-read-relative increment, applied to the pool row. The
     // remembered fill size stays on the ITEM: "I buy the 90-count bottle" is a fact
