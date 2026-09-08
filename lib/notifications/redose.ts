@@ -67,7 +67,6 @@ function redoseLogToken(): string {
 // only for the notice's own clock LABEL ("4:02pm" vs a dated one).
 export async function runRedoseNotices(
   profileId: number,
-  profileName: string,
   date: string,
   now: Date = clockNow(),
   tickMinutes = 60
@@ -124,10 +123,6 @@ export async function runRedoseNotices(
 
     const msg = redoseNoticeMessage({
       name: item.name,
-      // Self-attribution (#1721): this dispatch-path builder never met the tick's
-      // prefixMessage, so a two-profile household chat could not tell whose redose
-      // window had opened. Same convention as refill/preventive/illness-care.
-      profileName,
       amount: item.amount,
       product: item.product,
       sinceHours: decision.sinceHours,
@@ -138,7 +133,7 @@ export async function runRedoseNotices(
       // "1200 of 2400 mg in 24h" when milligrams are known.
       exposure: decision.exposure,
       // When a same-ingredient SIBLING's dose armed the clock (#1027), the body
-      // names it — "8h since Ibuprofen OTC" — instead of implying this item.
+      // names it on the last-dose line instead of implying this item.
       sinceName:
         arming.latestItemId != null && arming.latestItemId !== item.id
           ? arming.latestItemName
