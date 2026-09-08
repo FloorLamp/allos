@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SymptomForm from "@/components/illness/SymptomForm";
 import SymptomRowControl from "@/components/illness/SymptomRowControl";
@@ -40,6 +41,7 @@ let removeResult: { ok: boolean; undoId?: number | null; error?: string } = {
 };
 // The staged mapping the text-intake mock answers with, when a test sets one.
 let staged: unknown = null;
+let removeWait: Promise<void> | undefined;
 
 vi.mock("@/app/(app)/symptom-actions", () => ({
   logSymptom: async (fd: FormData) => {
@@ -72,6 +74,7 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
   },
   removeSymptom: async (fd: FormData) => {
     record("remove")(fd);
+    await removeWait;
     return removeResult;
   },
   logTemperature: async (fd: FormData) => {
@@ -115,6 +118,7 @@ beforeEach(() => {
   toasts.length = 0;
   removeResult = { ok: true, undoId: 9 };
   staged = null;
+  removeWait = undefined;
   // The custom-symptom Combobox anchors its list through `useAnchoredPopover`,
   // which jsdom has no ResizeObserver for — the repo's standing stub.
   vi.stubGlobal(
@@ -261,23 +265,47 @@ describe("SymptomForm is ONE form for add and for edit", () => {
 
 describe("SymptomRowControl is ONE row control", () => {
   function control(severity = 2, note = "") {
-    const state = { severity, note };
-    render(
-      <SymptomRowControl
-        symptom={ROW.symptom}
-        label="Headache"
-        date={FOUND_DAY}
-        severity={state.severity}
-        note={state.note}
-        subjectProfileId={SUBJECT}
-        onSeverity={() => {}}
-        onNote={() => {}}
-      />
-    );
+    function Row() {
+      const [current, setCurrent] = useState(severity);
+      const [currentNote, setNote] = useState(note);
+      return (
+        <SymptomRowControl
+          symptom={ROW.symptom}
+          label="Headache"
+          date={FOUND_DAY}
+          severity={current}
+          note={currentNote}
+          subjectProfileId={SUBJECT}
+          onSeverity={setCurrent}
+          onNote={setNote}
+        />
+      );
+    }
+    render(<Row />);
   }
 
   const chip = (level: number) =>
     screen.getByTestId(`symptom-${ROW.symptom}-sev-${level}`);
+
+  it("keeps a landed severity when an earlier clear is refused", async () => {
+    let release!: () => void;
+    removeWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    removeResult = { ok: false, error: "Clear refused" };
+    control(3);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-headache-clear"))
+    );
+    await act(async () => fireEvent.click(chip(1)));
+    expect(chip(1).getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      release();
+      await removeWait;
+    });
+    expect(toasts).toContain("Clear refused");
+    expect(chip(1).getAttribute("aria-pressed")).toBe("true");
+  });
 
   // ROUTED BY THE RELATIONSHIP, NOT BY THE CHIP. A plain tap can only RAISE (the day
   // keeps its worst severity, server-enforced), so the same chip is a raise from below

@@ -9,14 +9,32 @@ import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
 import InlineError from "@/components/InlineError";
 import {
+  doseScheduleAsOf,
+  type DoseScheduleVersion,
+} from "@/lib/intake-cadence";
+import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import {
   logHistoricalDose,
   updateHistoricalDose,
 } from "@/app/(app)/nutrition/intake-actions";
 
 export interface HistoricalDoseOption {
   id: number;
-  label: string;
   amount: string | null;
+  time_of_day: string | null;
+  product?: string | null;
+  versions?: readonly DoseScheduleVersion[];
+}
+
+const ASSUMED_AMOUNT_COPY =
+  "No amount was saved for this date. Using the oldest known amount.";
+
+function amountOn(
+  dose: HistoricalDoseOption | undefined,
+  date: string
+): string {
+  return doseScheduleAsOf(dose ?? {}, date).amount ?? "";
 }
 
 /**
@@ -119,17 +137,19 @@ export default function HistoricalDoseForm({
   const item = items.find((candidate) => candidate.id === itemId) ?? items[0];
   const doses = item?.doses ?? [];
   const first = doses[0];
-  const initialDose = editing
+  const initialDay = editing?.date ?? initialDate ?? maxDate;
+  const initialDose: HistoricalDoseOption | undefined = editing
     ? (doses.find((dose) => dose.id === editing.doseId) ?? {
         id: editing.doseId,
-        label: "Recorded dose",
         amount: editing.amount,
+        time_of_day: null,
       })
     : first;
   const [doseId, setDoseId] = useState(initialDose?.id ?? 0);
   const [amount, setAmount] = useState(
-    editing?.amount ?? initialDose?.amount ?? ""
+    editing ? (editing.amount ?? "") : amountOn(initialDose, initialDay)
   );
+  const [amountEdited, setAmountEdited] = useState(false);
   const [adjustSupply, setAdjustSupply] = useState(false);
 
   // SWITCHING THE ITEM RESETS THE DOSE AND ITS AMOUNT. The two wrappers this replaced
@@ -139,11 +159,12 @@ export default function HistoricalDoseForm({
     if (!next) return;
     setItemId(nextId);
     setDoseId(next.doses[0]?.id ?? 0);
-    setAmount(next.doses[0]?.amount ?? "");
+    setAmount(amountOn(next.doses[0], when.date));
+    setAmountEdited(false);
   }
   const [when, setWhen] = useState<WhenValue>(() => {
     if (editing) return whenOnDay(editing.date, tz, editing.statedAt);
-    const on = whenOnDay(initialDate ?? maxDate, tz);
+    const on = whenOnDay(initialDay, tz);
     return {
       ...on,
       statedAt:
@@ -153,13 +174,15 @@ export default function HistoricalDoseForm({
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
   const stampLoggedVia = useLoggedViaStamp();
+  const formatPrefs = useFormatPrefs();
 
   function resetAddEntry(): void {
     const resetItem = items[0];
     const resetDose = resetItem?.doses[0];
     setItemId(resetItem?.id ?? 0);
     setDoseId(resetDose?.id ?? 0);
-    setAmount(resetDose?.amount ?? "");
+    setAmount(amountOn(resetDose, when.date));
+    setAmountEdited(false);
     setAdjustSupply(false);
     setWhen((current) => ({
       date: current.date,
@@ -171,6 +194,21 @@ export default function HistoricalDoseForm({
 
   if (!item || !initialDose) return null;
   const { name: itemName, asNeeded, courseBound } = item;
+  const selectedDose = doses.find((dose) => dose.id === doseId) ?? initialDose;
+  const selectedSchedule = doseScheduleAsOf(selectedDose, when.date);
+
+  function optionLabel(dose: HistoricalDoseOption): string {
+    const schedule = doseScheduleAsOf(dose, when.date);
+    return (
+      formatMedicationDoseLine({
+        amount: schedule.amount ?? null,
+        product: dose.product,
+        timeOfDay: schedule.time_of_day ?? null,
+        asNeeded,
+        timeFormat: formatPrefs.timeFormat,
+      }) || "Dose"
+    );
+  }
 
   return (
     <form
@@ -240,13 +278,17 @@ export default function HistoricalDoseForm({
                 const nextId = Number(event.target.value);
                 setDoseId(nextId);
                 setAmount(
-                  doses.find((dose) => dose.id === nextId)?.amount ?? ""
+                  amountOn(
+                    doses.find((dose) => dose.id === nextId),
+                    when.date
+                  )
                 );
+                setAmountEdited(false);
               }}
             >
               {doses.map((dose) => (
                 <option key={dose.id} value={dose.id}>
-                  {dose.label}
+                  {optionLabel(dose)}
                 </option>
               ))}
             </select>
@@ -262,7 +304,10 @@ export default function HistoricalDoseForm({
             id={`history-amount-${itemId}`}
             name="amount"
             value={amount}
-            onChange={(event) => setAmount(event.target.value)}
+            onChange={(event) => {
+              setAmount(event.target.value);
+              setAmountEdited(true);
+            }}
             className="input"
             placeholder="e.g. 5 mg"
           />
@@ -273,7 +318,12 @@ export default function HistoricalDoseForm({
             mode={editing ? "correct" : "state"}
             grain="minute"
             value={when}
-            onChange={setWhen}
+            onChange={(next) => {
+              if (!editing && !amountEdited && next.date !== when.date) {
+                setAmount(amountOn(selectedDose, next.date));
+              }
+              setWhen(next);
+            }}
             tz={tz}
             timeRequired={!editing}
             minDate={minDate}
@@ -284,6 +334,12 @@ export default function HistoricalDoseForm({
           />
         </div>
       </div>
+
+      {!editing && !amountEdited && selectedSchedule.amountAssumed ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {ASSUMED_AMOUNT_COPY}
+        </p>
+      ) : null}
 
       {!editing ? (
         <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">

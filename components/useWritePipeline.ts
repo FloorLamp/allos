@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -15,7 +15,7 @@ import {
   type IntentPayload,
 } from "@/lib/offline/queue";
 import type { ArguedExclusion } from "@/lib/loggable-domains";
-import type { LedgerSettlement, OneTapAffordance } from "@/lib/one-tap";
+import type { OneTapAffordance } from "@/lib/one-tap";
 import type { UndoOffer } from "@/lib/undo-offer";
 
 // THE ONE CLIENT WRITE PIPELINE (#3276). Ten surfaces hand-wired the same commit dance
@@ -260,23 +260,6 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
     [capture, say, stampLoggedVia]
   );
 
-  // THE VALUE A ROLLBACK RETURNS TO — the last one the server accepted, which is
-  // `useSaveStatus`'s `saved` ref answering the same question (#4688). A ref, because
-  // it is read when a write SETTLES, not in the render whose closure started it, and
-  // that definition is what keeps a refusal from erasing a newer success: with two taps
-  // out, the failing one puts back whatever the server last took, never the snapshot it
-  // was fired from, which a sibling tap may already have replaced.
-  //
-  // A RECORDED DECISION, NOT AN OMISSION: `useOptimisticLedger` is the more general
-  // home for this, and `LedgerSettlement.to` already exists, so the move is cheap. It
-  // was not made here because the blast radius is seven surfaces that consume the
-  // ledger directly and that this change cannot test — four of them (`MobilityLogBar`,
-  // `ProteinQuickAdd`, `SymptomRowControl`, `SymptomLogBar`) carrying the same
-  // multi-key/one-value shape and so the same defect. Moving it is the fix for all
-  // four at once, and that is the trade to weigh when someone does.
-  const settled = useRef<V | undefined>(undefined);
-  const inFlight = useRef(0);
-
   const run = useCallback(
     async <R>(spec: WriteSpec<A, R, V>): Promise<WriteResult> => {
       if (ledger.blocked(spec.key)) return "nothing";
@@ -284,49 +267,30 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       // write — happens after the moment the user acted.
       const tappedAt = new Date();
       const projection = spec.optimistic;
-      // Re-read the surface's own truth only while nothing is out. Mid-burst the
-      // caller's `from` is a sibling tap's PROJECTION, and taking it as settled would
-      // make a rollback promise a write that has not answered yet.
-      if (projection && inFlight.current === 0)
-        settled.current = projection.from;
-      inFlight.current += 1;
       // Held in a local rather than read off `tap`'s return so the ledger sees exactly
       // one settlement and the caller sees exactly one answer.
       let outcome: Attempted<V> = { result: "nothing" };
-      const restore = (): LedgerSettlement<V> =>
-        projection
-          ? { kind: "rollback", to: settled.current }
-          : { kind: "rollback" };
-      try {
-        await ledger.tap({
-          key: spec.key,
-          from: projection?.from,
-          optimistic: projection?.to,
-          commit: projection?.commit,
-          write: async () => {
-            outcome = await attempt(spec, tappedAt);
-          },
-          settle: () => {
-            if (outcome.result === "nothing") return restore();
-            if (outcome.value !== undefined) {
-              settled.current = outcome.value;
-              return { kind: "adopt", value: outcome.value };
-            }
-            // A capture, or a write with no authoritative figure: the projection is
-            // what stands in for it until the replay or the revalidation, so it is
-            // also what a later rollback must come back to.
-            if (projection) settled.current = projection.to;
-            return { kind: "keep" };
-          },
-          onError: () => {
-            outcome = { result: "nothing" };
-            say({ message: spec.failureMessage, tone: "error", undo: null });
-            return restore();
-          },
-        });
-      } finally {
-        inFlight.current -= 1;
-      }
+      await ledger.tap({
+        key: spec.key,
+        valueKey: "",
+        from: projection?.from,
+        optimistic: projection?.to,
+        commit: projection?.commit,
+        write: async () => {
+          outcome = await attempt(spec, tappedAt);
+        },
+        settle: () => {
+          if (outcome.result === "nothing") return { kind: "rollback" };
+          if (outcome.value !== undefined)
+            return { kind: "adopt", value: outcome.value };
+          return { kind: "keep" };
+        },
+        onError: () => {
+          outcome = { result: "nothing" };
+          say({ message: spec.failureMessage, tone: "error", undo: null });
+          return { kind: "rollback" };
+        },
+      });
       return outcome.result;
     },
     [attempt, ledger, say]

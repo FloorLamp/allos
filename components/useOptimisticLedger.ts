@@ -15,37 +15,9 @@ import {
 } from "@/lib/one-tap";
 import { noteOneTapWrite } from "@/lib/offline/snapshot-refresh";
 
-// The ONE client binding for one-tap logging (issues #2041 and #2007).
-//
-// Before this hook, five surfaces hand-rolled the same three steps — optimistic
-// delta, `rollback()` closure, adopt the server's authoritative total — while citing
-// the pattern by name ("the food-log #748 item 2 pattern"), and the post-success
-// double-tap window was closed on exactly one of them. Both halves now live in the
-// pure machine in `lib/one-tap.ts`; this is its React wiring and nothing else.
-//
-// WHAT IT OWNS: the phase (ready → writing → cooldown → ready), the pre-tap value a
-// rollback restores, and the cooldown timer.
-//
-// WHAT IT DOES NOT OWN: the surface's state. The adopters keep their counts, sets and
-// severity maps exactly where they are — a food bar's counts are indexed by day, meal
-// slot and group and are also written by corrections and removals, so moving them
-// under a hook would only give one number two homes. The hook is handed the pre-tap
-// slice, the optimistic slice, and a `commit` that writes a slice back; it decides
-// WHICH of the three to commit and when.
-//
-// Usage:
-//   const ledger = useOptimisticLedger<number>("protein-grams");
-//   await ledger.tap({
-//     from: total,
-//     optimistic: total + grams,
-//     commit: setTotal,
-//     write: () => addProteinGrams(fd),
-//     settle: (res) => {
-//       if (res.ok) return { kind: "adopt", value: res.grams };
-//       toast(res.error, { tone: "error" });
-//       return { kind: "rollback" };
-//     },
-//   });
+// Shared write phases, optimistic settlement, and cooldown. Surfaces keep their
+// displayed state; a tap supplies its projection and commit callback. Write keys
+// debounce actions. Value keys group sibling actions that change the same state.
 
 // A tap's own result, so the caller can answer the user without re-deriving what
 // happened. `absorbed` is the double-tap being swallowed: NOTHING was written and
@@ -62,7 +34,10 @@ export interface LedgerTap<V, R> {
   // log tap beside it, so it carries a different key and is never absorbed by the
   // log tap's cooldown. Omitted on a surface with a single affordance.
   readonly key?: string;
-  // The displayed slice as it stands BEFORE the tap — what a rollback restores.
+  // The displayed value this write changes. Defaults to the write key; supply the
+  // same value key for sibling writes, and different keys for independent values.
+  readonly valueKey?: string;
+  // The displayed slice before the tap; refreshes the rollback baseline when idle.
   readonly from?: V;
   // The slice as this tap makes it look, applied immediately.
   readonly optimistic?: V;
@@ -119,6 +94,7 @@ export function useOptimisticLedger<V = void>(
   // synchronously inside one async sequence — a stale render closure must never let
   // a second tap through the `ready` gate — while the mirror below drives rendering.
   const states = useRef(new Map<string, LedgerState<V>>());
+  const values = useRef(new Map<string, { value: V; inFlight: number }>());
   const [phases, setPhases] = useState<ReadonlyMap<string, LedgerPhase>>(
     () => new Map()
   );
@@ -154,6 +130,18 @@ export function useOptimisticLedger<V = void>(
       // The double-tap gate. Read from the ref, so two taps in the same frame — the
       // ones a fat finger and a queued click actually produce — cannot both pass.
       if (!acceptsTap(before.phase)) return { status: "absorbed" };
+      const valueKey = spec.valueKey ?? key;
+      let value =
+        spec.from !== undefined ? values.current.get(valueKey) : undefined;
+      if (spec.from !== undefined) {
+        if (!value) {
+          value = { value: spec.from, inFlight: 0 };
+          values.current.set(valueKey, value);
+        } else if (value.inFlight === 0) {
+          value.value = spec.from;
+        }
+      }
+      if (value) value.inFlight += 1;
       const optimistic =
         spec.optimistic !== undefined ? spec.optimistic : (before.value as V);
       const tapped = ledgerReducer(
@@ -175,10 +163,16 @@ export function useOptimisticLedger<V = void>(
         // maps it to the affected kinds off registries that already exist. A rollback
         // wrote nothing, so it marks nothing.
         if (settlement.kind !== "rollback") noteOneTapWrite(affordance);
+        const resolved =
+          settlement.kind === "rollback" && settlement.to === undefined && value
+            ? { ...settlement, to: value.value }
+            : settlement;
         const settled = ledgerReducer(states.current.get(key) ?? tapped, {
           kind: "settled",
-          settlement,
+          settlement: resolved,
         });
+        if (value && settlement.kind !== "rollback")
+          value.value = settled.value;
         states.current.set(key, settled);
         setPhases((prev) => new Map(prev).set(key, settled.phase));
         if (settlement.kind === "adopt") spec.commit?.(settlement.value);
@@ -201,16 +195,20 @@ export function useOptimisticLedger<V = void>(
         );
       };
 
-      let result: R;
       try {
-        result = await spec.write();
-      } catch (error) {
-        const handled = await spec.onError?.(error);
-        finish(handled ?? { kind: "rollback" });
-        return { status: "failed", error };
+        let result: R;
+        try {
+          result = await spec.write();
+        } catch (error) {
+          const handled = await spec.onError?.(error);
+          finish(handled ?? { kind: "rollback" });
+          return { status: "failed", error };
+        }
+        finish(spec.settle ? spec.settle(result) : { kind: "keep" });
+        return { status: "settled", result };
+      } finally {
+        if (value) value.inFlight -= 1;
       }
-      finish(spec.settle ? spec.settle(result) : { kind: "keep" });
-      return { status: "settled", result };
     },
     [cooldownMs, read, affordance]
   );

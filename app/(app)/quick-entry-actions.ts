@@ -140,6 +140,7 @@ export interface QuickEntryPastDose {
   name: string;
   detail: string | null;
   stack: string | null;
+  amountAssumed: boolean;
 }
 
 // NOT the measurements form. It is the one quick-write surface a person is
@@ -616,6 +617,7 @@ function groupDosesByBucket(
         name: dose.name,
         detail: dose.detail,
         stack: dose.stack ?? null,
+        amountAssumed: dose.amountAssumed,
       })),
   })).filter((slot) => slot.doses.length > 0);
 }
