@@ -215,8 +215,7 @@ test("Add medication opens ONE form, and it opens on the name (#3216)", async ({
   await expect(panel.getByTestId("intake-editor")).toHaveCount(0);
   await expect(panel.getByTestId("intake-fact-row")).toBeVisible();
 
-  // #1505: `may` IS as-needed, so choosing it is what turns the start date into an
-  // optional "Using since" — and the chip row states which it is either way.
+  // The label follows the obligation; an unstated start stays optional either way.
   const importance = await openFact(page, "importance", panel);
   const obligation = importance.getByTestId("intake-obligation");
   await expect(obligation).toHaveValue("must"); // a medication defaults to must
@@ -226,11 +225,8 @@ test("Add medication opens ONE form, and it opens on the name (#3216)", async ({
   await closeEditor(page, panel);
 
   const dates = await openFact(page, "stopDate", panel);
-  const scheduledStartDisplay = await dates
-    .getByLabel("Started on")
-    .inputValue();
-  expect(scheduledStartDisplay).not.toBe("");
-  await expect(dates.getByLabel("Started on")).toHaveAttribute("required");
+  await expect(dates.getByLabel("Started on")).toHaveValue("");
+  await expect(dates.getByLabel("Started on")).not.toHaveAttribute("required");
   await closeEditor(page, panel);
 
   await setObligation(page, "may", panel);
@@ -247,9 +243,7 @@ test("Add medication opens ONE form, and it opens on the name (#3216)", async ({
 
   await setObligation(page, "must", panel);
   const backToScheduled = await openFact(page, "stopDate", panel);
-  await expect(backToScheduled.getByLabel("Started on")).toHaveValue(
-    scheduledStartDisplay
-  );
+  await expect(backToScheduled.getByLabel("Started on")).toHaveValue("");
   await closeEditor(page, panel);
 
   await page.getByTestId("medication-add-toggle").click();

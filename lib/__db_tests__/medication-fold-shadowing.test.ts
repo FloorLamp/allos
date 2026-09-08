@@ -24,6 +24,7 @@ import type {
 } from "@/lib/import-shape";
 
 const DATE = "2019-04-02";
+const RENEWAL_DATE = "2019-05-02";
 
 function emptyInput(over: Partial<PersistInput> = {}): PersistInput {
   return {
@@ -133,7 +134,7 @@ function manualMed(profileId: number, name: string, startedOn: string): number {
 }
 
 describe("re-importing one prescription folds as a renewal (#2919)", () => {
-  it("keeps ONE item and adds a course on the second document", () => {
+  it("keeps ONE item and adds a course for a later prescription date", () => {
     const profile = newProfile("Two Exports");
     persistDocumentImport(
       profile,
@@ -146,12 +147,12 @@ describe("re-importing one prescription folds as a renewal (#2919)", () => {
     persistDocumentImport(
       profile,
       newDocument(profile, "export-2.xml"),
-      emptyInput({ observations: [prescription()] })
+      emptyInput({ observations: [prescription({ date: RENEWAL_DATE })] })
     );
 
     const afterSecond = medRows(profile);
     expect(afterSecond.map((m) => m.id)).toEqual([afterFirst[0].id]);
-    expect(courseCount(afterFirst[0].id)).toBeGreaterThan(1);
+    expect(courseCount(afterFirst[0].id)).toBe(2);
   });
 });
 
@@ -173,18 +174,21 @@ describe("a manual different-strength med must not shadow its twin (#2919)", () 
     expect(afterFirst).toHaveLength(2);
     const twin = afterFirst.find((m) => m.id !== manual)!;
 
-    // Two more exports carrying the identical prescription.
-    for (const name of ["export-2.xml", "export-3.xml"]) {
+    // Reimport the same prescription, then a later renewal at the same strength.
+    for (const [name, date, count] of [
+      ["export-2.xml", DATE, 1],
+      ["export-3.xml", RENEWAL_DATE, 2],
+    ] as const) {
       persistDocumentImport(
         profile,
         newDocument(profile, name),
-        emptyInput({ observations: [prescription()] })
+        emptyInput({ observations: [prescription({ date })] })
       );
+      expect(courseCount(twin.id)).toBe(count);
     }
 
     // Before the fix this was four items — one per document past the first.
     expect(medRows(profile).map((m) => m.id)).toEqual([manual, twin.id]);
-    expect(courseCount(twin.id)).toBeGreaterThan(1);
     // The person's own row is untouched.
     expect(courseCount(manual)).toBe(1);
   });
