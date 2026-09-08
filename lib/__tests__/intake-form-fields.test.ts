@@ -330,14 +330,14 @@ describe("the one intake seeding (#4664)", () => {
     expect(seeded.endDate).toBe("2026-05-05");
   });
 
-  it("starts a new scheduled item today, and an as-needed one with no date", () => {
+  it("leaves a new medication's start unknown until one is stated", () => {
     const scheduled = intakeItemFormStateFrom({
       kind: "medication",
       todayStr: "2026-09-04",
     });
-    expect(scheduled.startedOn).toBe("2026-09-04");
+    expect(scheduled.startedOn).toBe("");
     expect(scheduled.obligation).toBe("must");
-    // An as-needed item has no start date to volunteer, so it does not invent one.
+    // Obligation does not change whether a clinical start was stated.
     const prn = intakeItemFormStateFrom({
       kind: "medication",
       item: { ...FULL_ROW, obligation: "may" },
