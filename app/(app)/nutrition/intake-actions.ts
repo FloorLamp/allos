@@ -5,6 +5,7 @@ import {
   requireSession,
 } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
+import { requirePoolWriteAccess } from "../supplies/access";
 import {
   LOGGED_VIA_FIELD,
   parseWebOrigin,
@@ -611,6 +612,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     const scope = await requireScope();
     if (!isLinkableSupply(scope.ids, postedSupplyId))
       return formError("Couldn't find that shared bottle.");
+    await requirePoolWriteAccess(postedSupplyId);
     supplyId = postedSupplyId;
   }
   if (f.startDateError) return formError(f.startDateError);

@@ -5,7 +5,8 @@
 //
 //   • POOL edits (quantity / threshold / rename / delete) → requirePoolWriteAccess:
 //     write access to at least ONE linked profile.
-//   • LINK / UNLINK → requireItemWriteAccess: the ITEM's own profile.
+//   • LINK → write access to the item and to at least one existing pool member.
+//   • UNLINK → requireItemWriteAccess: the ITEM's own profile.
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
@@ -176,7 +177,7 @@ describe("pool edits gate on membership (write to ≥1 linked profile)", () => {
   });
 });
 
-describe("link / unlink gate on the ITEM's own profile", () => {
+describe("link / unlink membership gates", () => {
   it("creates a pool from an item, migrating its count once", async () => {
     const t = tag();
     const member = createLogin({ role: "member", username: `c_${t}` });
@@ -262,6 +263,28 @@ describe("link / unlink gate on the ITEM's own profile", () => {
     // its count, now orphaned rather than destroyed.
     expect(itemQty(a)).toBe(null);
     expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(25);
+  });
+
+  it("refuses to link a writable item to an inaccessible household bottle", async () => {
+    const t = tag();
+    const member = createLogin({ role: "member", username: `member_${t}` });
+    const mine = createProfile(`Ada Lovelace ${t}`, member.id);
+    const stranger = createProfile(`Test Patient ${t}`);
+    actAs(member, mine);
+
+    const foreignSupplyId = newPool(`Foreign ${t}`, 20);
+    const foreignItem = item(stranger.id, `Foreign med ${t}`, null);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      foreignSupplyId,
+      foreignItem
+    );
+    const mineItem = item(mine.id, `Mine ${t}`, 7);
+
+    await expect(
+      linkItemAction(fd({ item_id: mineItem, supply_id: foreignSupplyId }))
+    ).rejects.toThrow(/not accessible/);
+    expect(supplyIdOf(mineItem)).toBe(null);
+    expect(itemQty(mineItem)).toBe(7);
   });
 });
 
@@ -398,5 +421,39 @@ describe("an item created from a bottle links on save", () => {
     expect(ids).toContain(ownPool);
     expect(ids).toContain(orphan);
     expect(ids).not.toContain(hidden);
+  });
+
+  it("refuses a bottle reachable only through a read-only profile", async () => {
+    const t = tag();
+    const member = createLogin({ role: "member", username: `reader_${t}` });
+    const mine = createProfile(`Ada Lovelace ${t}`, member.id);
+    const readOnly = createProfile(`Read Only ${t}`, member.id);
+    db.prepare(
+      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+    ).run(member.id, readOnly.id);
+    actAs(member, mine);
+
+    const supplyId = newPool(`Read only ${t}`, 20);
+    const readOnlyItem = item(readOnly.id, `Their med ${t}`, null);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      supplyId,
+      readOnlyItem
+    );
+
+    await expect(
+      addIntakeItem(
+        fd({
+          name: `Blocked ${t}`,
+          kind: "supplement",
+          supply_id: supplyId,
+          doses: JSON.stringify([{ amount: "1 tab" }]),
+        })
+      )
+    ).rejects.toThrow(/read-only on target/);
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE name = ?")
+        .get(`Blocked ${t}`)
+    ).toEqual({ n: 0 });
   });
 });

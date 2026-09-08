@@ -1,13 +1,7 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import {
-  requireSession,
-  requireWriteAccess,
-  requireProfileWriteAccess,
-  accessForProfile,
-  canAccessProfile,
-} from "@/lib/auth";
+import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { db } from "@/lib/db";
 import { deleteSetting } from "@/lib/settings";
@@ -28,6 +22,7 @@ import {
 } from "@/lib/queries/intake";
 import { parseQuantityOnHand } from "@/lib/refill";
 import { poolSeedFromItem, type SupplyOption } from "@/lib/supply-product";
+import { requirePoolWriteAccess } from "./access";
 
 export interface SupplyResult {
   ok: boolean;
@@ -47,41 +42,7 @@ function revalidateSupplies(): void {
   revalidateRoute("/");
 }
 
-// THE POOL GATE (#1374). A shared bottle has no owning profile, so "who may edit it"
-// is defined by its MEMBERSHIP: any login with WRITE access to at least ONE linked
-// profile — the same shape cross-profile dose confirms already gate on
-// (requireProfileWriteAccess), applied to the union rather than to one target. An
-// ORPHANED pool (nothing links it) has no membership to derive from, so it falls back to
-// the ordinary active-profile write gate: it holds no one's data, and leaving it
-// uneditable would strand a row in the cabinet forever.
-//
-// Deliberately NOT admin-only and NOT "write to ALL linked profiles": the product
-// decision in #1374 is that a caregiver who manages one member of the household may
-// correct the count on the bottle that member drinks from.
-async function requirePoolWriteAccess(supplyId: number): Promise<void> {
-  const session = await requireSession();
-  const members = poolMembers(supplyId);
-  if (members.length === 0) {
-    await requireWriteAccess();
-    return;
-  }
-  // REACHABILITY FIRST, then access — the requireProfileWriteAccess order, and it
-  // matters: accessForProfile returns "write" for a profile a member was never
-  // granted at all (it only distinguishes read from write WITHIN the accessible set),
-  // so consulting it alone would hand every member every household bottle.
-  const writable = members.some(
-    (m) =>
-      canAccessProfile(session, m.profileId) &&
-      accessForProfile(session.login.id, session.login.role, m.profileId) ===
-        "write"
-  );
-  // Reuse the canonical per-profile gate for the refusal path so the redirect
-  // behaviour (and its demo/read-only handling) is identical to every other write.
-  if (!writable) await requireProfileWriteAccess(members[0].profileId);
-}
-
-// The item's OWN write access governs linking/unlinking (the issue's rule): putting
-// YOUR bottle into the cabinet is a write to YOUR item.
+// The item's OWN write access always governs its side of linking/unlinking.
 async function requireItemWriteAccess(itemId: number): Promise<number> {
   const row = db
     .prepare("SELECT profile_id FROM intake_items WHERE id = ?")
@@ -230,7 +191,7 @@ export async function deletePoolAction(
 
 // Link ONE item to an existing pool. The item's private count is dropped — the pool is
 // now the truth for that bottle (keeping a second count IS the phantom-double-supply
-// bug). Gated on the ITEM's profile.
+// bug). Both sides of the membership change are authorized before the core runs.
 export async function linkItemAction(
   formData: FormData
 ): Promise<SupplyResult> {
@@ -241,6 +202,7 @@ export async function linkItemAction(
   if (!profileId) return fail("Couldn't find that item.");
   const supply = getSharedSupply(supplyId);
   if (!supply) return fail("Couldn't find that shared bottle.");
+  await requirePoolWriteAccess(supplyId);
   linkItemToPool(profileId, itemId, supplyId);
   revalidateSupplies();
   // Members read AFTER the link, so the option returned describes the bottle as it
