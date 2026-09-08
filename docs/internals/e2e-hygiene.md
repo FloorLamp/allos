@@ -70,6 +70,9 @@ Keep established dialogs, disclosures, and combobox interaction helpers.
   needs an explanation against the requested behavior before it is changed.
 - Wait for the specific loaded child before measuring its container. A loading
   placeholder can fit while the real content clips.
+- For an opened `Disclosure`, wait until its inner content fits the disclosure
+  before capturing or hit testing; `getAnimations()` completion may not cover
+  the `::details-content` transition.
 - Use `expectNoClippedContent` for clipped content; document scroll width alone
   cannot detect content hidden by an overflow-clipping ancestor.
 - Read related geometry in one settled snapshot (`settledBoxes` where suitable).

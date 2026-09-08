@@ -61,6 +61,7 @@ export type SubstanceLogOutcome =
 // with nothing logged is a no-op that reports 0.
 export type SubstanceUndoOutcome =
   | { kind: "undone"; units: number; substance: SubstanceKey }
+  | { kind: "changed"; units: number; substance: SubstanceKey }
   | { kind: "unknown-substance" };
 
 // Correcting ONE recorded use (#5026 phase 2) — the `updateFoodLogEventCore` outcome
@@ -167,10 +168,31 @@ export const logSubstanceUnitCoreDeclares = SUBSTANCE_USE_WRITE;
 export function undoSubstanceUnitCore(
   profileId: number,
   substance: string,
-  date: string
+  date: string,
+  expectedEventId?: number
 ): SubstanceUndoOutcome {
   if (!isSubstanceLogged(substance)) return { kind: "unknown-substance" };
   return writeTx(() => {
+    if (expectedEventId != null) {
+      const event = db
+        .prepare(
+          `SELECT id FROM substance_log_events
+            WHERE id = ? AND profile_id = ? AND date = ? AND substance = ?`
+        )
+        .get(expectedEventId, profileId, date, substance) as
+        { id: number } | undefined;
+      if (!event)
+        return {
+          kind: "changed",
+          units: substanceDayCounter.total(profileId, date, [substance]),
+          substance,
+        };
+      const units = substanceDayCounter.unbump(profileId, date, [substance], 1);
+      db.prepare(
+        `DELETE FROM substance_log_events WHERE id = ? AND profile_id = ?`
+      ).run(event.id, profileId);
+      return { kind: "undone", units, substance };
+    }
     const units = substanceDayCounter.unbump(profileId, date, [substance], 1);
     db.prepare(
       `DELETE FROM substance_log_events
