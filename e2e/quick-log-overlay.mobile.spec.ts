@@ -971,9 +971,10 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     await expect(toast).toContainText(
       "3 servings of Cruciferous vegetables today"
     );
-    const mealSlot =
-      (await food.getByTestId("food-slot-chip").getAttribute("data-slot")) ??
-      "Morning";
+    const mealSlot = await food
+      .getByTestId("food-meal-slots")
+      .getByRole("button", { pressed: true })
+      .innerText();
     addExternalShellFoodServing(group, mealSlot);
     await settledClick(page, toast.getByRole("button", { name: "Undo" }));
     await expect(count).toHaveText("4");

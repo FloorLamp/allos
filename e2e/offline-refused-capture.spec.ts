@@ -577,7 +577,9 @@ test("a measurements batch becomes visible together and clears the saved sitting
     page,
     appContent(page).getByTestId("log-measurements-toggle")
   );
-  const form = appContent(page).getByTestId("measurements-quick-add");
+  const form = page
+    .getByRole("dialog", { name: "Log measurements", exact: true })
+    .getByTestId("measurements-quick-add");
   await openMeasurementGroup(page, "body");
   await openMeasurementGroup(page, "vitals");
   await context.setOffline(true);
