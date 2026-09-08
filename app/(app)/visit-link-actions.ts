@@ -1,5 +1,5 @@
 "use server";
-import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "./gate-item";
 import { revalidateRoute } from "@/lib/revalidate";
 import {
   linkRecordToEncounter,
@@ -14,14 +14,14 @@ import {
 import type { VisitLinkDomain } from "@/lib/visit-link-suggest";
 import { isCreateVisitDomain } from "@/lib/visit-link-suggest";
 
-// Record ↔ visit and episode ↔ visit accept/decline/manual-link writes (#1050/#1053).
-// These are rendered as plain server-component <form action={…}> submits, so each
-// returns Promise<void> (the form-action contract) and revalidates; the surfaces
-// re-render with the new link state. Session-scoped with the cross-profile dual gate
-// (the episode/encounter/med detail surfaces resolve across accessible profiles): a
-// posted `profileId` gates on that TARGET profile (requireProfileWriteAccess), else
-// the active profile (requireWriteAccess — the literal every action body carries for
-// the write-access scanner, #319). The lib write cores are auth-blind, profileId-first.
+// Server-component forms revalidate after writing through profile-scoped cores.
+// Retain the old subject field for forms opened before the profile_id migration.
+function normalizeVisitProfile(formData: FormData): FormData {
+  if (!formData.has("profile_id") && formData.has("profileId")) {
+    formData.set("profile_id", String(formData.get("profileId")));
+  }
+  return formData;
+}
 
 const RECORD_DOMAINS: ReadonlySet<string> = new Set([
   "record",
@@ -46,10 +46,6 @@ function recordDomain(
     ? (d as Exclude<VisitLinkDomain, "episode">)
     : null;
 }
-
-// The cross-profile dual gate, inlined into EVERY action body so the write-access
-// scanner (#319) sees the literal requireWriteAccess() per action: a posted profileId
-// gates on that TARGET profile, else the active profile.
 
 function parsePairs(
   formData: FormData
@@ -79,14 +75,7 @@ function revalidateVisitLinks() {
 
 // Accept one suggested (or manually picked) record ↔ visit link.
 export async function linkRecordVisitAction(formData: FormData): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const domain = recordDomain(formData);
   const recordId = Number(formData.get("recordId"));
   const encounterId = Number(formData.get("encounterId"));
@@ -100,14 +89,7 @@ export async function linkRecordVisitAction(formData: FormData): Promise<void> {
 export async function declineRecordVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const domain = recordDomain(formData);
   const recordId = Number(formData.get("recordId"));
   const encounterId = Number(formData.get("encounterId"));
@@ -121,14 +103,7 @@ export async function declineRecordVisitAction(
 export async function linkAllFromVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const encounterId = Number(formData.get("encounterId"));
   if (!encounterId) return;
   for (const p of parsePairs(formData)) {
@@ -148,14 +123,7 @@ export async function linkAllFromVisitAction(
 export async function dismissAllFromVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const encounterId = Number(formData.get("encounterId"));
   if (!encounterId) return;
   for (const p of parsePairs(formData)) {
@@ -175,14 +143,7 @@ export async function dismissAllFromVisitAction(
 export async function unlinkRecordVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const domain = recordDomain(formData);
   const recordId = Number(formData.get("recordId"));
   if (domain && recordId) {
@@ -199,14 +160,7 @@ export async function unlinkRecordVisitAction(
 export async function createVisitFromRecordAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const domain = String(formData.get("domain") ?? "");
   const recordId = Number(formData.get("recordId"));
   if (isCreateVisitDomain(domain) && recordId) {
@@ -219,14 +173,7 @@ export async function createVisitFromRecordAction(
 export async function declineCreateVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const domain = String(formData.get("domain") ?? "");
   const recordId = Number(formData.get("recordId"));
   if (isCreateVisitDomain(domain) && recordId) {
@@ -240,14 +187,7 @@ export async function declineCreateVisitAction(
 export async function linkEpisodeVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const episodeId = Number(formData.get("episodeId"));
   const encounterId = Number(formData.get("encounterId"));
   if (episodeId && encounterId) {
@@ -259,14 +199,7 @@ export async function linkEpisodeVisitAction(
 export async function declineEpisodeVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const episodeId = Number(formData.get("episodeId"));
   const encounterId = Number(formData.get("encounterId"));
   if (episodeId && encounterId) {
@@ -278,14 +211,7 @@ export async function declineEpisodeVisitAction(
 export async function unlinkEpisodeVisitAction(
   formData: FormData
 ): Promise<void> {
-  const target = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    profileId = target;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
   const episodeId = Number(formData.get("episodeId"));
   const encounterId = Number(formData.get("encounterId"));
   if (episodeId && encounterId) {

@@ -47,7 +47,7 @@ export default function EpisodeCareLine({
 
   const linkForm = (encounterId: number, label: string) => (
     <form action={linkEpisodeVisitAction} key={`link-${encounterId}`}>
-      <input type="hidden" name="profileId" value={profileId} />
+      <input type="hidden" name="profile_id" value={profileId} />
       <input type="hidden" name="episodeId" value={episodeId} />
       <input type="hidden" name="encounterId" value={encounterId} />
       <button
@@ -93,7 +93,7 @@ export default function EpisodeCareLine({
                 </span>
                 {canWrite ? (
                   <form action={unlinkEpisodeVisitAction}>
-                    <input type="hidden" name="profileId" value={profileId} />
+                    <input type="hidden" name="profile_id" value={profileId} />
                     <input type="hidden" name="episodeId" value={episodeId} />
                     <input type="hidden" name="encounterId" value={v.id} />
                     <button
@@ -121,7 +121,7 @@ export default function EpisodeCareLine({
                 <div className="flex shrink-0 items-center gap-3">
                   {linkForm(suggestion.encounter.id, "Link this visit")}
                   <form action={declineEpisodeVisitAction}>
-                    <input type="hidden" name="profileId" value={profileId} />
+                    <input type="hidden" name="profile_id" value={profileId} />
                     <input type="hidden" name="episodeId" value={episodeId} />
                     <input
                       type="hidden"

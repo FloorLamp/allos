@@ -11,6 +11,9 @@ import {
   linkRecordVisitAction,
   declineRecordVisitAction,
   linkAllFromVisitAction,
+  dismissAllFromVisitAction,
+  createVisitFromRecordAction,
+  declineCreateVisitAction,
   unlinkRecordVisitAction,
   linkEpisodeVisitAction,
   declineEpisodeVisitAction,
@@ -18,7 +21,7 @@ import {
 } from "@/app/(app)/visit-link-actions";
 import { encountersForEpisode } from "@/lib/queries";
 import { deleteEncounter } from "@/app/(app)/encounters/actions";
-import { seedActor, fd } from "./harness";
+import { seedActor, createProfile, fd } from "./harness";
 
 function episodeVisitIds(profileId: number, episodeId: number): number[] {
   return encountersForEpisode(profileId, episodeId).map((e) => e.id);
@@ -56,16 +59,36 @@ function medEncounterId(id: number): number | null {
 }
 
 describe("record ↔ visit actions", () => {
-  it("linkRecordVisitAction sets encounter_id", async () => {
-    const { profile } = seedActor();
-    const enc = newEncounter(profile.id);
-    const med = newMedication(profile.id);
-    await linkRecordVisitAction(
-      fd({ domain: "medication", recordId: med, encounterId: enc })
-    );
-    expect(medEncounterId(med)).toBe(enc);
-    expect(revalidate).toHaveBeenCalled();
-  });
+  it.each(["profile_id", "profileId"])(
+    "links a writable non-acting profile via %s",
+    async (field) => {
+      const { login, profile: acting } = seedActor({ role: "member" });
+      const profile = createProfile("Shared visit subject", login.id);
+      const enc = newEncounter(profile.id);
+      const med = newMedication(profile.id);
+      await linkRecordVisitAction(
+        fd({
+          [field]: profile.id,
+          domain: "medication",
+          recordId: med,
+          encounterId: enc,
+        })
+      );
+      expect(medEncounterId(med)).toBe(enc);
+      expect(revalidate).toHaveBeenCalled();
+
+      // The canonical field wins if an old field is also present.
+      await unlinkRecordVisitAction(
+        fd({
+          profile_id: profile.id,
+          profileId: acting.id,
+          domain: "medication",
+          recordId: med,
+        })
+      );
+      expect(medEncounterId(med)).toBeNull();
+    }
+  );
 
   it("declineRecordVisitAction remembers the decline (no link set)", async () => {
     const { profile } = seedActor();
@@ -129,7 +152,8 @@ describe("record ↔ visit actions", () => {
 
 describe("episode ↔ visit actions", () => {
   it("linkEpisodeVisitAction sets the link; decline remembers it", async () => {
-    const { profile } = seedActor();
+    const { login } = seedActor({ role: "member" });
+    const profile = createProfile("Shared episode subject", login.id);
     const enc = newEncounter(profile.id, "2026-03-04");
     const episodeId = Number(
       db
@@ -139,11 +163,15 @@ describe("episode ↔ visit actions", () => {
         )
         .run(profile.id).lastInsertRowid
     );
-    await linkEpisodeVisitAction(fd({ episodeId, encounterId: enc }));
+    await linkEpisodeVisitAction(
+      fd({ profile_id: profile.id, episodeId, encounterId: enc })
+    );
     expect(episodeVisitIds(profile.id, episodeId)).toEqual([enc]);
 
     const enc2 = newEncounter(profile.id, "2026-03-05");
-    await declineEpisodeVisitAction(fd({ episodeId, encounterId: enc2 }));
+    await declineEpisodeVisitAction(
+      fd({ profile_id: profile.id, episodeId, encounterId: enc2 })
+    );
     const declined = db
       .prepare(
         `SELECT COUNT(*) AS n FROM visit_link_decisions
@@ -197,3 +225,39 @@ describe("episode ↔ visit actions", () => {
     ).toBe(1);
   });
 });
+
+it.each(["read", "absent"])(
+  "every visit-link action refuses a %s grant on the posted subject",
+  async (access) => {
+    const { login } = seedActor({ role: "member" });
+    const target = createProfile(
+      "Visit subject without write access",
+      access === "read" ? login.id : undefined
+    );
+    if (access === "read") {
+      db.prepare(
+        "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+      ).run(login.id, target.id);
+    }
+    const actions = [
+      linkRecordVisitAction,
+      declineRecordVisitAction,
+      linkAllFromVisitAction,
+      dismissAllFromVisitAction,
+      unlinkRecordVisitAction,
+      createVisitFromRecordAction,
+      declineCreateVisitAction,
+      linkEpisodeVisitAction,
+      declineEpisodeVisitAction,
+      unlinkEpisodeVisitAction,
+    ];
+    for (const action of actions) {
+      for (const field of ["profile_id", "profileId"]) {
+        await expect(
+          action(fd({ [field]: target.id })),
+          `${action.name}: ${field}`
+        ).rejects.toThrow(access === "read" ? /read-only/ : /not accessible/);
+      }
+    }
+  }
+);

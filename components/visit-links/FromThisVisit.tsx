@@ -16,7 +16,7 @@ import SubmitButton from "@/components/SubmitButton";
 // "From this visit?" suggestion block (read-time date/provider matches the user
 // accepts) — #1050. Server component: every accept/dismiss/unlink is a plain
 // server-action <form>, so it needs no client JS and settles as a POST the e2e
-// helpers await. `profileId` rides each form as the cross-profile write target.
+// helpers await. `profile_id` rides each form as the cross-profile write target.
 
 const DOMAIN_LABEL: Record<Exclude<VisitLinkDomain, "episode">, string> = {
   medication: "Medication started",
@@ -75,7 +75,7 @@ export default function FromThisVisit({
                   {r.label}
                 </span>
                 <form action={unlinkRecordVisitAction}>
-                  <input type="hidden" name="profileId" value={profileId} />
+                  <input type="hidden" name="profile_id" value={profileId} />
                   <input type="hidden" name="domain" value={r.domain} />
                   <input type="hidden" name="recordId" value={r.id} />
                   <button
@@ -125,7 +125,7 @@ export default function FromThisVisit({
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
                   <form action={linkRecordVisitAction}>
-                    <input type="hidden" name="profileId" value={profileId} />
+                    <input type="hidden" name="profile_id" value={profileId} />
                     <input
                       type="hidden"
                       name="domain"
@@ -140,7 +140,7 @@ export default function FromThisVisit({
                     <SubmitButton>Link</SubmitButton>
                   </form>
                   <form action={declineRecordVisitAction}>
-                    <input type="hidden" name="profileId" value={profileId} />
+                    <input type="hidden" name="profile_id" value={profileId} />
                     <input
                       type="hidden"
                       name="domain"
@@ -160,7 +160,7 @@ export default function FromThisVisit({
           </ul>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <form action={linkAllFromVisitAction}>
-              <input type="hidden" name="profileId" value={profileId} />
+              <input type="hidden" name="profile_id" value={profileId} />
               <input type="hidden" name="encounterId" value={encounterId} />
               <input
                 type="hidden"
@@ -172,7 +172,7 @@ export default function FromThisVisit({
               </SubmitButton>
             </form>
             <form action={dismissAllFromVisitAction}>
-              <input type="hidden" name="profileId" value={profileId} />
+              <input type="hidden" name="profile_id" value={profileId} />
               <input type="hidden" name="encounterId" value={encounterId} />
               <input
                 type="hidden"

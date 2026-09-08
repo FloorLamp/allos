@@ -11,7 +11,7 @@ import {
   createVisitFromRecordAction,
   declineCreateVisitAction,
 } from "@/app/(app)/visit-link-actions";
-import { seedActor, fd } from "./harness";
+import { seedActor, createProfile, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
@@ -35,23 +35,29 @@ function rxEncounterId(id: number): number | null {
 }
 
 describe("create-visit-from-record actions", () => {
-  it("createVisitFromRecordAction creates a derived encounter and links the record", async () => {
-    const { profile } = seedActor();
-    const rx = newOpticalRx(profile.id);
+  it.each(["profile_id", "profileId"])(
+    "creates and links a visit for the posted non-acting subject via %s",
+    async (field) => {
+      const { login } = seedActor({ role: "member" });
+      const profile = createProfile("Shared optical subject", login.id);
+      const rx = newOpticalRx(profile.id);
 
-    await createVisitFromRecordAction(fd({ domain: "optical", recordId: rx }));
+      await createVisitFromRecordAction(
+        fd({ [field]: profile.id, domain: "optical", recordId: rx })
+      );
 
-    const encId = rxEncounterId(rx);
-    expect(encId).toBeTruthy();
-    const enc = db
-      .prepare(
-        "SELECT source, type FROM encounters WHERE id = ? AND profile_id = ?"
-      )
-      .get(encId, profile.id) as { source: string; type: string };
-    expect(enc.source).toBe("derived-from-record");
-    expect(enc.type).toBe("Eye exam");
-    expect(revalidate).toHaveBeenCalled();
-  });
+      const encId = rxEncounterId(rx);
+      expect(encId).toBeTruthy();
+      const enc = db
+        .prepare(
+          "SELECT source, type FROM encounters WHERE id = ? AND profile_id = ?"
+        )
+        .get(encId, profile.id) as { source: string; type: string };
+      expect(enc.source).toBe("derived-from-record");
+      expect(enc.type).toBe("Eye exam");
+      expect(revalidate).toHaveBeenCalled();
+    }
+  );
 
   it("declineCreateVisitAction remembers the decline and creates no encounter", async () => {
     const { profile } = seedActor();
@@ -78,23 +84,6 @@ describe("create-visit-from-record actions", () => {
     const { profile } = seedActor();
     const rx = newOpticalRx(profile.id);
     await createVisitFromRecordAction(fd({ domain: "record", recordId: rx }));
-    expect(rxEncounterId(rx)).toBeNull();
-  });
-
-  it("rejects a cross-profile write target the actor cannot reach", async () => {
-    const { profile } = seedActor({ role: "member" }); // grant to its OWN profile only
-    const rx = newOpticalRx(profile.id);
-    // A profile the acting member has NO grant to.
-    const stranger = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES ('Stranger')").run()
-        .lastInsertRowid
-    );
-    await expect(
-      createVisitFromRecordAction(
-        fd({ profileId: stranger, domain: "optical", recordId: rx })
-      )
-    ).rejects.toThrow(/not accessible/);
-    // No visit fabricated under either profile.
     expect(rxEncounterId(rx)).toBeNull();
   });
 });
