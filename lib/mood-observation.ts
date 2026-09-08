@@ -1,4 +1,5 @@
 import { mean } from "./robust-stats";
+import type { SleepRegularityDrop } from "./sleep-regularity";
 // The PURE detection half of the two mood coaching observations (issue #992):
 //
 //   1. the sustained LOW-MOOD window — a calm, dismissible note when mood has
@@ -27,9 +28,8 @@ export const MOOD_LOW_WINDOW_DAYS = 14;
 export const MOOD_LOW_MIN_LOGS = 7;
 export const MOOD_LOW_MEAN_THRESHOLD = 2.5;
 
-// Sleep-drop thresholds for the bridge: an SRI drop of ≥ this many points, or a
-// nightly-duration drop of ≥ this many minutes, recent window vs the prior one.
-export const SLEEP_MOOD_SRI_DROP_POINTS = 10;
+// The duration branch retains its own materiality floor. Regularity consumes
+// the same endpoint-drop decision as the Sleep page.
 export const SLEEP_MOOD_DURATION_DROP_MIN = 45;
 // Minimum recorded nights per 14-day duration window for the comparison to mean
 // anything (mirrors the SRI module's sparse-data caution).
@@ -95,10 +95,8 @@ export function detectLowMoodWindow(
 export interface SleepMoodInput {
   // The already-detected low-mood window (null → no bridge, ever).
   lowMood: LowMoodWindow | null;
-  // Sleep Regularity Index over the recent window vs the prior one (null when
-  // either window lacks enough nights to compute).
-  recentSri: number | null;
-  priorSri: number | null;
+  // Shared comparison decision; null includes insufficient SRI history.
+  regularityDrop: SleepRegularityDrop | null;
   // Mean nightly sleep minutes, recent 14 days vs the prior 14 (null when a
   // window has fewer than SLEEP_MOOD_MIN_NIGHTS recorded nights).
   recentAvgSleepMin: number | null;
@@ -127,7 +125,7 @@ export function meanNightlySleepMin(
 }
 
 // Decide the co-occurrence note. Fires ONLY when the low-mood window is present
-// AND at least one sleep signal dropped: SRI down ≥ SLEEP_MOOD_SRI_DROP_POINTS,
+// AND at least one sleep signal dropped: the shared regularity decision,
 // or nightly duration down ≥ SLEEP_MOOD_DURATION_DROP_MIN — each requiring BOTH
 // of its windows to be computable. Either series alone (low mood with steady
 // sleep, or a sleep dip with steady mood) stays silent. Co-occurrence phrasing
@@ -138,29 +136,26 @@ export function decideSleepMoodBridge(
 ): SleepMoodObservation | null {
   if (!input.lowMood) return null;
 
-  const sriDrop =
-    input.recentSri != null && input.priorSri != null
-      ? input.priorSri - input.recentSri
-      : null;
   const durationDrop =
     input.recentAvgSleepMin != null && input.priorAvgSleepMin != null
       ? input.priorAvgSleepMin - input.recentAvgSleepMin
       : null;
 
-  const sriDropped = sriDrop != null && sriDrop >= SLEEP_MOOD_SRI_DROP_POINTS;
   const durationDropped =
     durationDrop != null && durationDrop >= SLEEP_MOOD_DURATION_DROP_MIN;
-  if (!sriDropped && !durationDropped) return null;
+  if (!input.regularityDrop && !durationDropped) return null;
 
-  const sleepFact = sriDropped
-    ? `your sleep regularity dropped about ${Math.round(sriDrop!)} points`
+  const sleepFact = input.regularityDrop
+    ? `your sleep regularity dropped about ${Math.round(input.regularityDrop.points)} points`
     : `you've been sleeping about ${Math.round(durationDrop!)} minutes less per night`;
 
   return {
     dedupeKey: sleepMoodSignalKey(monthAnchor),
-    title: "Sleep and mood moved together",
+    title: input.regularityDrop ? "Sleep regularity and low mood" : "Sleep and mood moved together",
     detail:
-      `Over the same stretch your mood check-ins have been low, ${sleepFact} ` +
+      (input.regularityDrop
+        ? `Your mood check-ins have been low; based on sleep readings through ${input.regularityDrop.through}, ${sleepFact} `
+        : `Over the same stretch your mood check-ins have been low, ${sleepFact} `) +
       `compared with the weeks before. The two often move together — just a ` +
       `pattern from your own data, not a diagnosis.`,
   };

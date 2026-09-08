@@ -129,6 +129,9 @@ describe("compareOutcomePooled — reuse pin (#221)", () => {
     expect(pooled.intervention.mean).toBe(proto.intervention.mean);
     expect(pooled.meanDelta).toBe(proto.meanDelta);
     expect(pooled.medianDelta).toBe(proto.medianDelta);
+    expect(pooled.baseline.last).toBe(proto.baseline.last);
+    expect(pooled.intervention.last).toBe(proto.intervention.last);
+    expect(pooled.lastDelta).toBe(proto.lastDelta);
     expect(pooled.betterness).toBe(proto.betterness);
   });
 });
@@ -311,4 +314,17 @@ describe("declaredSituationNames + formatters", () => {
       })
     ).toBe("2 windows · 6 days");
   });
+});
+
+it("compares the retired Travel fixture through an equal-length episode window", () => {
+  const series = flatSeries({
+    "2026-06-01": 90, "2026-06-02": 88, "2026-06-03": 91, "2026-06-04": 89, "2026-06-05": 92,
+    "2026-06-11": 70, "2026-06-12": 68, "2026-06-13": 71, "2026-06-14": 69, "2026-06-15": 72,
+  }, { label: "SRI", direction: "higher_better" });
+  const impact = buildSituationImpact({
+    situation: "Travel", series: [series],
+    windows: situationWindows("Travel", [ev("2026-06-10", "Travel", "start")], "2026-06-18"),
+  });
+  expect(impact?.outcomes[0].meanDelta).toBe(-20);
+  expect(impactChipLabel(impact!.outcomes[0])).toBe("SRI −20");
 });
