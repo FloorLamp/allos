@@ -1,3 +1,4 @@
+import { stripComments } from "./strip-comments";
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -232,22 +233,8 @@ function sourceFiles(): SourceFile[] {
   return sourceFilesCache;
 }
 
-// This deliberately remains on strip-comments.test.ts's hand-rolled work queue.
-// The shared language projection is stronger, but measured 3.601s in CI here versus
-// the old guard's 1.955s. This narrower SQL scanner keeps its URL-aware fast path;
-// the immutable cache above removes the three repeated projections instead.
-function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
-// ---- SQL extraction ----------------------------------------------------------
-//
-// SQL reaches the driver as a string or template literal argument to db.prepare(), so
-// each literal is at most one statement. Pulling the literals out (rather than
-// regexing the whole file) keeps a SQL keyword in a comment, a variable name or a
-// user-facing string from being read as a statement.
+// Collect candidate SQL literals, including constants and object properties.
+// Statement-specific analysis below decides which writes they contain.
 function sqlLiterals(text: string): string[] {
   const out: string[] = [];
   let i = 0;
