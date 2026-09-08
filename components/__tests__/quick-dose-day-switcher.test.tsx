@@ -51,8 +51,13 @@ const TODAY = "2026-08-28";
 // naming it keeps them independent of whatever zone the test host runs in.
 const DEFAULT_TZ = "UTC";
 
-function dose(doseId: number, name: string, stack: string | null = null) {
-  return { doseId, name, detail: "1 scoop", stack };
+function dose(
+  doseId: number,
+  name: string,
+  stack: string | null = null,
+  amountAssumed = false
+) {
+  return { doseId, name, detail: "1 scoop", stack, amountAssumed };
 }
 
 // A DAILY dose is the SAME `intake_item_doses` row on every day it is unlogged, so
@@ -69,7 +74,7 @@ const PAST_DAYS = [
       {
         bucket: "Morning" as const,
         doses: [
-          dose(DAILY_DOSE, "Creatine", "Morning stack"),
+          dose(DAILY_DOSE, "Creatine", "Morning stack", true),
           dose(12, "Collagen", "Morning stack"),
         ],
       },
@@ -292,6 +297,11 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
       for (const name of rows) {
         expect(within(day).getByText(name)).toBeTruthy();
       }
+      expect(
+        within(day).getByText(
+          "No amount was saved for this date. Using the oldest known amount."
+        )
+      ).toBeTruthy();
       // Tri-state: every row offers take AND skip, because on a closed day "I skipped
       // it" is as ordinary an answer as "I took it".
       expect(within(day).getAllByTestId("dose-take")).toHaveLength(rows.length);

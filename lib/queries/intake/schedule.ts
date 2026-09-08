@@ -290,8 +290,8 @@ export function getDoseScheduleVersions(
 ): Map<number, DoseScheduleVersion[]> {
   const rows = db
     .prepare(
-      `SELECT v.dose_id, v.effective_from, v.time_of_day,
-              v.weekdays, v.start_date, v.end_date
+      `SELECT v.dose_id, v.effective_from, v.amount, v.amount_captured,
+              v.time_of_day, v.weekdays, v.start_date, v.end_date
          FROM intake_dose_schedule_versions v
          JOIN intake_item_doses d ON d.id = v.dose_id
          JOIN intake_items s ON s.id = d.item_id

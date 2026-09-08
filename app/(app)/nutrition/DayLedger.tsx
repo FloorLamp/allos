@@ -333,6 +333,11 @@ export default function DayLedger({
               {dose.detail}
             </span>
           ) : null}
+          {dose.amountAssumed ? (
+            <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
+              No amount was saved for this date. Using the oldest known amount.
+            </span>
+          ) : null}
           {notes[key] && (
             <span
               data-testid={`ledger-dose-note-${dose.doseId}`}

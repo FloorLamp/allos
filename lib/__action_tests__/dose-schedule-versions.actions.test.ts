@@ -29,6 +29,7 @@ import {
 } from "@/app/(app)/nutrition/intake-actions";
 import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
 import { doseBucketOn, doseDueOn } from "@/lib/intake-schedule";
+import { doseScheduleAsOf } from "@/lib/intake-cadence";
 import { setTimezone } from "@/lib/settings";
 import { seedActor, fd } from "./harness";
 
@@ -105,6 +106,22 @@ function versionsOf(doseId: number): [string, string | null, string | null][] {
       weekdays: string | null;
     }[]
   ).map((v) => [v.effective_from, v.time_of_day, v.weekdays]);
+}
+
+function amountVersionsOf(doseId: number): [string, string | null, number][] {
+  return (
+    db
+      .prepare(
+        `SELECT effective_from, amount, amount_captured
+           FROM intake_dose_schedule_versions
+          WHERE dose_id = ? ORDER BY effective_from, id`
+      )
+      .all(doseId) as {
+      effective_from: string;
+      amount: string | null;
+      amount_captured: number;
+    }[]
+  ).map((v) => [v.effective_from, v.amount, v.amount_captured]);
 }
 
 // The dose row as every SURFACE sees it — schedule history attached, so the pure
@@ -231,6 +248,51 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
   });
 });
 
+describe("amount history", () => {
+  it("captures an amount-only edit and resolves both sides without moving the slot", async () => {
+    setDay("2026-07-01");
+    await addIntakeItem(
+      fd({
+        name: "Dose amount",
+        doses: JSON.stringify([dose({ amount: "500 mg" })]),
+      })
+    );
+    const itemId = lastItemId();
+    const doseId = doseRows(itemId)[0].id;
+    const updatedBefore = (
+      db
+        .prepare("SELECT updated_at FROM intake_item_doses WHERE id = ?")
+        .get(doseId) as { updated_at: string | null }
+    ).updated_at;
+
+    setDay("2026-07-20");
+    await updateIntakeItem(
+      fd({
+        id: itemId,
+        name: "Dose amount",
+        doses: JSON.stringify([{ id: doseId, ...dose({ amount: "1000 mg" }) }]),
+      })
+    );
+
+    expect(amountVersionsOf(doseId)).toEqual([
+      ["2026-07-01", "500 mg", 1],
+      ["2026-07-20", "1000 mg", 1],
+    ]);
+    const read = readDose(doseId);
+    expect(doseScheduleAsOf(read, "2026-07-19").amount).toBe("500 mg");
+    expect(doseScheduleAsOf(read, "2026-07-20").amount).toBe("1000 mg");
+    expect(
+      (
+        db
+          .prepare("SELECT updated_at FROM intake_item_doses WHERE id = ?")
+          .get(doseId) as { updated_at: string | null }
+      ).updated_at
+    ).toBe(updatedBefore);
+    expect(doseBucketOn(read, "2026-07-19")).toBe("Morning");
+    expect(doseBucketOn(read, "2026-07-20")).toBe("Morning");
+  });
+});
+
 // ---- The lazy backfill -------------------------------------------------------
 
 describe("#1973 — a dose with no recorded history gets its pre-edit rule backfilled once", () => {
@@ -339,9 +401,16 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
       ["2026-07-01", "Evening", null],
       ["2026-07-20", "Before sleep", null],
     ]);
-    // … amount, food timing and order changed on the morning row, but none can move a
-    // schedule boundary, so it stays historyless while its live values update …
-    expect(versionsOf(morning.id)).toEqual([]);
+    // … the amount change is versioned while food timing and order remain cosmetic.
+    // Its slot stays Morning on both sides of the amount boundary.
+    expect(versionsOf(morning.id)).toEqual([
+      ["2026-07-01", "Morning", null],
+      ["2026-07-20", "Morning", null],
+    ]);
+    expect(amountVersionsOf(morning.id)).toEqual([
+      ["2026-07-01", "5 mg", 0],
+      ["2026-07-20", "7.5 mg", 1],
+    ]);
     expect(
       db
         .prepare(
