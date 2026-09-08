@@ -404,15 +404,16 @@ export function collectRecentChanges(
   }
 
   // ── intake changes (#1463 base 4) ────────────────────────────────────────────
-  // v1 covers the lifecycle events that carry a real timestamp: an item STARTED in
-  // the window (`intake_items.created_at`). Pause and retire are deliberately
+  // v1 covers the lifecycle events that carry a real timestamp: an item ADDED in
+  // the window (`intake_items.created_at`) and a medication course whose start was
+  // actually stated. Pause and retire are deliberately
   // OMITTED rather than approximated — neither carries a change timestamp today,
   // and #1463's implementer note is explicit that a missing timestamp means the
   // event kind waits for one rather than being guessed from row state.
   if (on("intake")) {
-    const started = db
+    const added = db
       .prepare(
-        `SELECT id, name, kind, date(created_at) AS started
+        `SELECT id, name, kind, date(created_at) AS added
            FROM intake_items
           WHERE profile_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
           ORDER BY created_at DESC`
@@ -421,14 +422,38 @@ export function collectRecentChanges(
       id: number;
       name: string;
       kind: string;
+      added: string;
+    }[];
+    for (const it of added) {
+      changes.push({
+        id: `intake-added:${it.id}`,
+        category: "intake",
+        date: it.added,
+        text: `${GLYPH.changed} Added ${it.name}`,
+      });
+    }
+    const started = db
+      .prepare(
+        `SELECT c.id, ii.name, c.started_on AS started
+           FROM medication_courses c
+           JOIN intake_items ii ON ii.id = c.item_id
+          WHERE ii.profile_id = ?
+            AND ii.kind = 'medication'
+            AND c.started_on IS NOT NULL
+            AND c.started_on >= ? AND c.started_on <= ?
+          ORDER BY c.started_on DESC, c.id DESC`
+      )
+      .all(profileId, windowStart, today) as {
+      id: number;
+      name: string;
       started: string;
     }[];
-    for (const it of started) {
+    for (const course of started) {
       changes.push({
-        id: `intake:${it.id}`,
+        id: `intake-started:${course.id}`,
         category: "intake",
-        date: it.started,
-        text: `${GLYPH.changed} Started ${it.name}`,
+        date: course.started,
+        text: `${GLYPH.changed} Started ${course.name}`,
       });
     }
   }
