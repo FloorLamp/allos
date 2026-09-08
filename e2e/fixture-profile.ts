@@ -85,5 +85,9 @@ export function destroyFixtureProfile(
   ).run(profileId);
   db.prepare("DELETE FROM login_profiles WHERE profile_id = ?").run(profileId);
   db.prepare("DELETE FROM saved_items WHERE profile_id = ?").run(profileId);
+  // Merely viewing an untracked item records its once-seen supply offer.
+  db.prepare("DELETE FROM upcoming_dismissals WHERE profile_id = ?").run(
+    profileId
+  );
   db.prepare("DELETE FROM profiles WHERE id = ?").run(profileId);
 }
