@@ -193,17 +193,16 @@ export default function EditableSupplementRow({
                 {s.stack}
               </span>
             )}
-            {dose &&
-              (poolChip ? (
-                <SharedSupplyChip pool={poolChip} />
-              ) : (
-                <RefillBadge
-                  quantityOnHand={s.quantity_on_hand}
-                  qtyPerDose={s.qty_per_dose}
-                  refillRate={refillRate}
-                  doseCount={doses.length}
-                />
-              ))}
+            {poolChip ? (
+              <SharedSupplyChip pool={poolChip} />
+            ) : dose ? (
+              <RefillBadge
+                quantityOnHand={s.quantity_on_hand}
+                qtyPerDose={s.qty_per_dose}
+                refillRate={refillRate}
+                doseCount={doses.length}
+              />
+            ) : null}
             {s.critical === 1 && (
               <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                 Escalates
@@ -248,7 +247,7 @@ export default function EditableSupplementRow({
                 >
                   Edit
                 </button>
-                {dose && (
+                {(dose || doseHistory.length > 0) && (
                   <button
                     type="button"
                     role="menuitem"
@@ -361,13 +360,13 @@ export default function EditableSupplementRow({
             rxcuiIngredients={s.rxcui_ingredients}
             suppressedFoodKeys={suppressedFoodKeys}
           />
-          {dose && <AdherenceSummaryLine strip={strip} noteworthyOnly />}
+          <AdherenceSummaryLine strip={strip} noteworthyOnly />
         </div>
         {/* Dose history is a DISCLOSURE inside the row, not a modal: the ⋯ row
           actions portal above the page but below a modal backdrop, so a menu
           rendered inside a dialog would be unclickable. Inline also matches the
           medication card, which renders the same panel in place. */}
-        {dose && showHistory && (
+        {showHistory && (
           <div
             data-testid="supplement-dose-history-panel"
             className="col-span-2 col-start-1 row-start-3 mt-3 min-w-0 border-t border-black/5 pt-3 dark:border-white/5"
@@ -384,11 +383,12 @@ export default function EditableSupplementRow({
               }))}
               asNeeded={isOnDemand(s)}
               courseBound={false}
+              canWrite={!!dose}
               history={doseHistory}
               strip={strip}
               maxDate={historyMaxDate}
               defaultTime={defaultHistoryTime}
-              note={`Showing the last ${historyWindowDays} days. A backfill can still reach any past date.`}
+              note={`Showing the last ${historyWindowDays} days.${dose ? " A backfill can still reach any past date." : ""}`}
               backfillDisabledReason={
                 doses.length === 0
                   ? "This item has no dose to log against"

@@ -650,35 +650,37 @@ export default async function ManageTab({
     ...skippedToday,
   ]);
 
-  const renderRow = (it: Item) => {
+  const renderRow = (supplement: IntakeItem, dose?: IntakeDose) => {
     // WHO IS STATING THIS DOSE TODAY. The Day ledger states every dose the day OWES
     // (`pendingDayDoses`) and every dose it RESOLVED (taken or skipped), so those rows
     // get no control here — the same fact, twice, is the defect #3987 closes. Read off
     // the ledger's OWN sets rather than re-deriving dueness, so the two surfaces cannot
     // disagree about which of them is speaking.
-    const statedByLedger = ledgerStatedDoseIds.has(it.dose.id);
+    const statedByLedger = dose && ledgerStatedDoseIds.has(dose.id);
     return (
       <EditableSupplementRow
-        key={it.dose.id}
-        supplement={it.supplement}
-        dose={it.dose}
-        isTaken={statedByLedger ? undefined : takenToday.has(it.dose.id)}
-        isSkipped={statedByLedger ? undefined : skippedToday.has(it.dose.id)}
-        doses={dosesBySupp.get(it.supplement.id) ?? []}
-        retiredDoses={retiredBySupp.get(it.supplement.id) ?? []}
+        key={dose?.id ?? `item-${supplement.id}`}
+        supplement={supplement}
+        dose={dose}
+        isTaken={dose && !statedByLedger ? takenToday.has(dose.id) : undefined}
+        isSkipped={
+          dose && !statedByLedger ? skippedToday.has(dose.id) : undefined
+        }
+        doses={dosesBySupp.get(supplement.id) ?? []}
+        retiredDoses={retiredBySupp.get(supplement.id) ?? []}
         allIntakeItems={intakeItems}
         stackItems={stackItems}
         pgxVariants={pgxVariants}
-        pairs={pairsFor(it.supplement.id)}
-        ingredients={ingredientsBySupp.get(it.supplement.id) ?? []}
-        purposes={purposesBySupp.get(it.supplement.id) ?? []}
+        pairs={pairsFor(supplement.id)}
+        ingredients={ingredientsBySupp.get(supplement.id) ?? []}
+        purposes={purposesBySupp.get(supplement.id) ?? []}
         purposeConditions={purposeConditions}
         purposeBiomarkers={purposeBiomarkers}
-        strip={stripFor(it.supplement)}
-        refillRate={refillRates.get(it.supplement.id) ?? null}
-        poolChip={poolChips.get(it.supplement.id) ?? null}
+        strip={stripFor(supplement)}
+        refillRate={refillRates.get(supplement.id) ?? null}
+        poolChip={poolChips.get(supplement.id) ?? null}
         suppressedFoodKeys={suppressedFoodKeys}
-        doseHistory={historyFor(it.supplement)}
+        doseHistory={historyFor(supplement)}
         historyMaxDate={todayStr}
         defaultHistoryTime={hhmm}
         historyWindowDays={DOSE_HISTORY_DAYS}
@@ -686,30 +688,6 @@ export default async function ManageTab({
       />
     );
   };
-  const renderDoseLessRow = (supplement: IntakeItem) => (
-    <EditableSupplementRow
-      key={`item-${supplement.id}`}
-      supplement={supplement}
-      doses={[]}
-      allIntakeItems={intakeItems}
-      stackItems={stackItems}
-      pgxVariants={pgxVariants}
-      pairs={pairsFor(supplement.id)}
-      ingredients={ingredientsBySupp.get(supplement.id) ?? []}
-      purposes={purposesBySupp.get(supplement.id) ?? []}
-      purposeConditions={purposeConditions}
-      purposeBiomarkers={purposeBiomarkers}
-      strip={[]}
-      refillRate={null}
-      poolChip={null}
-      suppressedFoodKeys={suppressedFoodKeys}
-      doseHistory={[]}
-      historyMaxDate={todayStr}
-      defaultHistoryTime={hhmm}
-      historyWindowDays={DOSE_HISTORY_DAYS}
-      activityScheduleAvailable={activityScheduleAvailable}
-    />
-  );
 
   // THE DAILY SCHEDULE RETIRES HERE (#3987 phase 1). Its whole job — what this day
   // owes, what has been taken, what was skipped, in time buckets, with a seven-day
@@ -748,7 +726,7 @@ export default async function ManageTab({
                 <span className="badge mb-1 inline-block bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                   Held — {item.supplement.pause_situation} active
                 </span>
-                {renderRow(item)}
+                {renderRow(item.supplement, item.dose)}
               </div>
             ))}
             {heldDoseLessSupplements.map((supplement) => (
@@ -759,7 +737,7 @@ export default async function ManageTab({
                 <span className="badge mb-1 inline-block bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                   Held — {supplement.pause_situation} active
                 </span>
-                {renderDoseLessRow(supplement)}
+                {renderRow(supplement)}
               </div>
             ))}
           </div>
@@ -772,8 +750,10 @@ export default async function ManageTab({
             Paused ({paused.length + pausedDoseLessSupplements.length})
           </summary>
           <div className="mt-2 space-y-3">
-            {paused.map((item) => renderRow(item))}
-            {pausedDoseLessSupplements.map(renderDoseLessRow)}
+            {paused.map((item) => renderRow(item.supplement, item.dose))}
+            {pausedDoseLessSupplements.map((supplement) =>
+              renderRow(supplement)
+            )}
           </div>
         </Disclosure>
       )}
@@ -971,7 +951,9 @@ export default async function ManageTab({
                   <EmptyState message="No supplements yet. Add one when you're ready. Medications live on their own page." />
                 ) : scheduledItems.length > 0 ? (
                   <div data-testid="supplement-stack" className="space-y-3">
-                    {scheduledItems.map((item) => renderRow(item))}
+                    {scheduledItems.map((item) =>
+                      renderRow(item.supplement, item.dose)
+                    )}
                   </div>
                 ) : (
                   <EmptyState
@@ -1005,8 +987,12 @@ export default async function ManageTab({
                       data-testid="supplement-unscheduled"
                       className="mt-2 space-y-3"
                     >
-                      {unscheduledItems.map((item) => renderRow(item))}
-                      {doseLessSupplements.map(renderDoseLessRow)}
+                      {unscheduledItems.map((item) =>
+                        renderRow(item.supplement, item.dose)
+                      )}
+                      {doseLessSupplements.map((supplement) =>
+                        renderRow(supplement)
+                      )}
                     </div>
                   </Disclosure>
                 )}
