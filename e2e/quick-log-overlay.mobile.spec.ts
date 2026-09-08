@@ -1426,10 +1426,12 @@ test("the shared sheet day carries Food, Practice and Stool into the same Histor
       expect(
         db
           .prepare(
-            "SELECT date, started_at, value FROM metric_samples WHERE profile_id = ? AND date = ? AND metric = 'bristol_stool_type'"
+            "SELECT date, substr(started_at, 1, 10) AS sample_day, substr(started_at, 11) AS sample_time, value FROM metric_samples WHERE profile_id = ? AND date = ? AND metric = 'bristol_stool_type'"
           )
           .all(profileId, day)
-      ).toEqual([{ date: day, started_at: `${day}T08:10:00`, value: 4 }]);
+      ).toEqual([
+        { date: day, sample_day: day, sample_time: "T08:10:00", value: 4 },
+      ]);
     } finally {
       db.close();
     }
