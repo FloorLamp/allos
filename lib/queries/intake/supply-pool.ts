@@ -15,6 +15,8 @@ import { invalidateRefillOffers } from "../../notifications/offer-store";
 // Server Actions in app/(app)/supplies/actions.ts own the whole gate.
 
 import { db, writeTx } from "../../db";
+import { deleteProfileSetting } from "../../settings";
+import { refillMarkerKey } from "../../refill-nudge";
 import { profileIdsIn, type AuthorizedProfileIds } from "../../cross-profile";
 import {
   daysOfSupplyForPool,
@@ -585,6 +587,7 @@ export function linkItemToPool(
       )
       .get(profileId, itemId) as { supply_id: number | null } | undefined;
     if (!old || old.supply_id === supplyId) return;
+    deleteProfileSetting(profileId, refillMarkerKey(itemId));
     if (old.supply_id != null) invalidatePoolRefillOffers(old.supply_id);
     invalidateRefillOffers(profileId, itemId, old.supply_id);
     invalidatePoolRefillOffers(supplyId);
@@ -606,6 +609,7 @@ export function unlinkItemFromPool(profileId: number, itemId: number): void {
       )
       .get(profileId, itemId) as { supply_id: number | null } | undefined;
     if (!old || old.supply_id == null) return;
+    deleteProfileSetting(profileId, refillMarkerKey(itemId));
     invalidatePoolRefillOffers(old.supply_id);
     db.prepare(
       `UPDATE intake_items SET supply_id = NULL WHERE id = ? AND profile_id = ?`
@@ -632,6 +636,7 @@ export function deleteSharedSupply(supplyId: number): number[] {
       members.length
     );
     for (const m of members) {
+      deleteProfileSetting(m.profileId, refillMarkerKey(m.itemId));
       db.prepare(
         `UPDATE intake_items SET supply_id = NULL, quantity_on_hand = ?
           WHERE id = ? AND profile_id = ?`
