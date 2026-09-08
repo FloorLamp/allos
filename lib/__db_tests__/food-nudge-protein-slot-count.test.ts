@@ -9,9 +9,9 @@
 // not that the protein button carries one. The count still comes off food_log_events, where
 // the reserved __protein__ key lives (it never reaches the food_daily_totals day counter), so it is
 // taps rather than grams; the day's grams stay on the nudge's protein line. The clock is
-// FROZEN (ALLOS_TEST_NOW) so the tap lands on a deterministic day.
+// FROZEN (vi.setSystemTime) so the tap lands on a deterministic day.
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 // Stub the RAW transport, keeping the chokepoint (rebuildMessage) + render helpers REAL so
@@ -106,20 +106,14 @@ const FROZEN = "2026-07-15T20:30:00Z";
 let p: SeededProfile;
 let t: string;
 let slot: FoodNudgeWindow;
-let priorTestNow: string | undefined;
 
+beforeEach(() => vi.setSystemTime(new Date(FROZEN)));
 beforeAll(() => {
-  priorTestNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = FROZEN;
+  vi.setSystemTime(new Date(FROZEN));
   p = seedProfile("food-nudge-slot");
   t = today(p.profileId);
   slot = currentFoodSlot(p.profileId) as FoodNudgeWindow;
   seedLoginTelegram(p.profileId, CHAT);
-});
-
-afterAll(() => {
-  if (priorTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorTestNow;
 });
 
 describe("protein '+Xg' button (n) suffix (#1379, day-scoped since #2019)", () => {

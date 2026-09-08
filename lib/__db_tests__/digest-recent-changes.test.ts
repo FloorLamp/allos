@@ -673,16 +673,12 @@ describe("daily step target (#1723 part 2)", () => {
 
     // And it rides the aggregation every existing surface already formats — that IS
     // the "ride the nag" mechanism, and it is what makes a dedicated send unnecessary.
-    const prev = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = afternoon.toISOString();
-    try {
-      expect(collectUpcoming(pid, td).map((i) => i.key)).toContain(
-        stepsPaceKey(td)
-      );
-    } finally {
-      if (prev == null) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = prev;
-    }
+
+    vi.setSystemTime(afternoon);
+
+    expect(collectUpcoming(pid, td).map((i) => i.key)).toContain(
+      stepsPaceKey(td)
+    );
   });
 
   it("STALE step data goes silent rather than manufacturing a 'behind'", () => {
