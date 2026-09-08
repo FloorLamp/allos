@@ -98,9 +98,10 @@ export interface IntakeItem {
   // draws from a household-shared `shared_supplies` bottle: its own quantity_on_hand is
   // NULL, every dose confirm decrements the POOL by this item's qty_per_dose, and the
   // "≈N days left" it shows is the POOLED projection across every linked member.
-  // `supply_name` is joined on read for the shared-bottle chip (null when unlinked).
+  // `supply_name` is joined on every full item read for the shared-bottle chip and
+  // product-identity projections (null when unlinked).
   supply_id: number | null;
-  supply_name?: string | null;
+  supply_name: string | null;
   // Label composition (issue #2856), as a JSON array of intake_item_ingredients rows
   // projected on the item read, or NULL when the item has none — which is nearly all
   // of them. It rides here rather than costing a second statement, because the child
