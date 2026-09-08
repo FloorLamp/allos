@@ -14,7 +14,7 @@
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import {
   loadMedicationsData,
   getMedicationAdherenceCalendar,
@@ -267,7 +267,7 @@ describe("getMedicationAdherenceCalendar reads the board gather (#2114)", () => 
       calendarBefore.weeks.flat().find((d) => d.date === past)?.state
     ).toBe("taken");
 
-    retireBlankDoses(db);
+    retireBlankDoses(rawDb);
 
     const after = loadMedicationsData(profileId);
     const card = after.byId.get(itemId)!;

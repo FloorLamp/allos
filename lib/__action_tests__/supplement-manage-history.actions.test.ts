@@ -9,7 +9,7 @@ import {
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@/components/__tests__/setup";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setActiveSituations, setTimezone } from "@/lib/settings";
 import { invalidateDoseScheduleVersions } from "@/lib/queries/intake/schedule";
@@ -110,7 +110,7 @@ describe("Manage keeps item context after the last dose retires", () => {
       const own = seedHistory(profile.id, "Historical supplement");
       const foreign = createProfile("Other subject", login.id);
       const other = seedHistory(foreign.id, "Other supplement");
-      retireBlankDoses(db);
+      retireBlankDoses(rawDb);
       if (state === "held") {
         setActiveSituations(profile.id, ["Travel"]);
         db.prepare(
@@ -198,7 +198,7 @@ describe("Manage keeps item context after the last dose retires", () => {
   it("keeps the same item context beside a live sibling whose status belongs to Day", async () => {
     const { profile } = seedActor();
     const own = seedHistory(profile.id, "Sibling supplement");
-    retireBlankDoses(db);
+    retireBlankDoses(rawDb);
     const liveId = Number(
       db
         .prepare(
