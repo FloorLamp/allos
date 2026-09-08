@@ -118,7 +118,8 @@ success. This is a UI debounce, not a persistence gate. Surfaces with an optimis
 count can absorb silently; those without one can disable through `blocked()`.
 Use separate write keys for independent actions, including an undo beside a log.
 When several actions change one displayed value, give their taps the same
-`valueKey`; the pipeline groups its projected value automatically. Rollback uses
+`valueKey` (the pipeline's `optimistic.key`). A pipeline with one displayed value
+can omit that key. Rollback uses
 the last accepted
 or queued value, rather than an earlier tap's snapshot. Different symptoms or days
 need distinct value keys. The baseline refreshes from the surface only while that
