@@ -10,7 +10,11 @@ vi.mock("@/app/(app)/trends/measurement-actions", () => ({
 }));
 vi.mock("@/components/Toast", () => ({ useToast: () => () => {} }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: async () => "kept" }),
+  useOfflineQueue: () => ({
+    enqueue: async () => "kept",
+    enqueueBatch: async () => "kept",
+  }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),

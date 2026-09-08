@@ -33,7 +33,6 @@ import {
   DOSE_LOG_DATE_WINDOW_DAYS,
   isDoseDateAccepted,
 } from "@/lib/dose-log-window";
-import { MOOD_LOG_DATE_WINDOW_DAYS, isMoodDateAccepted } from "@/lib/mood";
 import { USUAL_BACKFILL_WINDOW_DAYS } from "@/lib/food-regularity";
 import { ONE_TAP_AFFORDANCES } from "@/lib/one-tap";
 import { shiftDateStr } from "@/lib/date";
@@ -42,15 +41,13 @@ const TODAY = "2026-08-31";
 
 // WINDOWS BIND OFFERS, NOT DOMAINS (owner ruling 2026-08-31). The "byte-identical"
 // pin therefore lives here, on the tap reaches, and not on any domain: dose ±2 is
-// Telegram pointer retention, mood 2 is the day chips, practice 30 is the launcher's
-// minDate, and the usual's 6 is the template offer's own evidence horizon.
+// Telegram pointer retention and the usual's 6 is the template offer's evidence
+// horizon. Mood and practice now inherit the dated host.
 describe("bounded tap reaches are byte-identical to what shipped", () => {
   it.each([
     ["dose-status", 2, 2],
     ["dose-day", 2, 2],
     ["dose-day-stack", 2, 2],
-    ["mood-valence", 2, 0],
-    ["practice-session", 30, 0],
     ["food-usual", USUAL_BACKFILL_WINDOW_DAYS, 0],
     ["routine-usual", USUAL_BACKFILL_WINDOW_DAYS, 0],
   ] as const)("%s reaches %s back and %s forward", (id, back, forward) => {
@@ -59,15 +56,11 @@ describe("bounded tap reaches are byte-identical to what shipped", () => {
 
   it("the named constants read the declaration rather than restating it", () => {
     expect(DOSE_LOG_DATE_WINDOW_DAYS).toBe(2);
-    expect(MOOD_LOG_DATE_WINDOW_DAYS).toBe(2);
     // Through the doors the tap cores actually call, at both edges.
     expect(isDoseDateAccepted(TODAY, shiftDateStr(TODAY, 2))).toBe(true);
     expect(isDoseDateAccepted(TODAY, shiftDateStr(TODAY, 3))).toBe(false);
     expect(isDoseDateAccepted(TODAY, shiftDateStr(TODAY, -2))).toBe(true);
     expect(isDoseDateAccepted(TODAY, shiftDateStr(TODAY, -3))).toBe(false);
-    expect(isMoodDateAccepted(TODAY, shiftDateStr(TODAY, -2))).toBe(true);
-    expect(isMoodDateAccepted(TODAY, shiftDateStr(TODAY, -3))).toBe(false);
-    expect(isMoodDateAccepted(TODAY, shiftDateStr(TODAY, 1))).toBe(false);
   });
 
   // The reach record is keyed on the affordance registry, so a tap cannot ship
@@ -128,13 +121,12 @@ describe("the shared core invariant: any real past day, never the future", () =>
 
   // The hole the fold closed, kept dead by the ruling: `Date.parse` rolls 2026-02-30
   // forward to March 2 and answers a day-difference for it, so `isDoseDateAccepted`
-  // and `isMoodDateAccepted` both accepted days the calendar does not have.
+  // and the retired mood wrapper both accepted days the calendar does not have.
   it.each([["2026-02-30"], ["2026-04-31"], ["2026-13-45"], ["nope"], [""]])(
     "%s is not a day anything accepts",
     (day) => {
       expect(isPastWriteAccepted(TODAY, day)).toBe(false);
       expect(isDoseDateAccepted(TODAY, day)).toBe(false);
-      expect(isMoodDateAccepted(TODAY, day)).toBe(false);
     }
   );
 });

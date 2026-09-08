@@ -2,11 +2,13 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
+  appContent,
   expectPhoneTapTargets,
   hydratedClick,
   openMeasurementGroup,
   openMobileDrawer,
   settledClick,
+  settledFill,
   stageMediaFiles,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -25,7 +27,7 @@ import {
 } from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
-import { zonedDateParts } from "@/lib/date";
+import { dateStrInTz, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { VITAL_CANONICAL } from "@/lib/vitals-input";
 
 // The run's rotating instance timezone: `practice_logs.start_time` is a profile-LOCAL wall
@@ -619,7 +621,7 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
     await expect(fresh.getByTestId("quick-entry-dose-empty")).toBeVisible();
     await expect(
-      fresh.getByTestId("quick-entry-dose-day-toggle").getByRole("button")
+      fresh.getByTestId("bounded-day-switcher").getByRole("button")
     ).toHaveCount(3);
     // No navigation, which is the #1468 rule this test is named for.
     expect(page.url()).toBe(dashboardUrl);
@@ -708,16 +710,12 @@ test("the dose sheet logs a missed day, on the day it names", async ({
 
     // EXACTLY the accepted window — three days, today first. A fourth segment would be
     // a wider window than the write cores accept, and two would hide a day they do.
-    const toggle = overlay.getByTestId("quick-entry-dose-day-toggle");
+    const toggle = overlay.getByTestId("bounded-day-switcher");
     await expect(toggle.getByRole("button")).toHaveCount(3);
-    await expect(overlay.getByTestId("quick-entry-dose-day-0")).toHaveText(
-      "Today"
-    );
-    await expect(overlay.getByTestId("quick-entry-dose-day-1")).toHaveText(
-      "Yesterday"
-    );
+    await expect(overlay.getByTestId("day-context-0")).toHaveText("Today");
+    await expect(overlay.getByTestId("day-context-1")).toHaveText("Yesterday");
 
-    await overlay.getByTestId("quick-entry-dose-day-1").click();
+    await overlay.getByTestId("day-context-1").click();
     const day = overlay.getByTestId("quick-entry-dose-day");
     await expect(day).toBeVisible();
     // The day the sheet says it is writing, taken from the sheet rather than computed
@@ -748,7 +746,7 @@ test("the dose sheet logs a missed day, on the day it names", async ({
     // instead of re-offering doses that are already resolved.
     await page.reload();
     const again = await openQuickEntry(page, "log-dose");
-    await again.getByTestId("quick-entry-dose-day-1").click();
+    await again.getByTestId("day-context-1").click();
     await expect(again.getByTestId("quick-entry-dose-day-empty")).toBeVisible();
   } finally {
     clearDoseLogs(doseId);
@@ -840,7 +838,7 @@ test("a past day's dose captured with no signal leaves that day, then replays on
   try {
     await page.goto("/");
     const overlay = await openQuickEntry(page, "log-dose");
-    await overlay.getByTestId("quick-entry-dose-day-1").click();
+    await overlay.getByTestId("day-context-1").click();
     // The day the sheet says it is writing, read off the sheet rather than computed here
     // — the durable assertion at the bottom is that the replay agreed with this string.
     const named = await overlay
@@ -890,7 +888,7 @@ test("a past day's dose captured with no signal leaves that day, then replays on
     // today is still owed. This is also this locator's POSITIVE CONTROL: the same object
     // the absence above was asserted through finds a row before the tap, none after, and
     // one again here — so that absence cannot have come from a locator that went blind.
-    await overlay.getByTestId("quick-entry-dose-day-0").click();
+    await overlay.getByTestId("day-context-0").click();
     await expect(row).toBeVisible();
   } finally {
     clearDoseLogs(doseId);
@@ -973,9 +971,10 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
     await expect(toast).toContainText(
       "3 servings of Cruciferous vegetables today"
     );
-    const mealSlot =
-      (await food.getByTestId("food-slot-chip").getAttribute("data-slot")) ??
-      "Morning";
+    const mealSlot = await food
+      .getByTestId("food-meal-slots")
+      .getByRole("button", { pressed: true })
+      .innerText();
     addExternalShellFoodServing(group, mealSlot);
     await settledClick(page, toast.getByRole("button", { name: "Undo" }));
     await expect(count).toHaveText("4");
@@ -1048,6 +1047,14 @@ test("switching profiles clears the originating food receipt and cannot target i
         .getByTestId("profile-switcher-panel")
         .getByTestId(`switch-to-${sharedId}`)
     );
+    // The POST can finish before React applies the new profile's keyed layout.
+    // Wait on the persistent desktop identity before opening its new drawer;
+    // otherwise the old drawer can satisfy the opener and then be unmounted.
+    await expect(
+      page
+        .locator('aside:not([role="dialog"])')
+        .getByTestId("profile-identity-bar")
+    ).toHaveAttribute("data-acting-profile-id", String(sharedId));
     await expect(page.locator('[data-toast-key^="food-serving:"]')).toHaveCount(
       0
     );
@@ -1318,6 +1325,305 @@ test("a practice logs in one tap from the sheet and the week count moves", async
   }
 });
 
+// Unequal totals and durable writes exercise the real gather/cache across sheet
+// selection and dated route inheritance, at both owner-reported viewport sizes.
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 900 },
+]) {
+  test(`Food protein follows the selected day at ${viewport.width}px (#5211)`, async ({
+    browser,
+  }) => {
+    const profileId = shellProfileId();
+    const today = dateStrInTz(PINNED_TZ, frozenNow());
+    const yesterday = shiftDateStr(today, -1);
+    const db = openDb();
+    const originalTotals = db
+      .prepare(
+        "SELECT id, date, grams, created_at FROM protein_daily_totals WHERE profile_id = ? AND date IN (?, ?)"
+      )
+      .all(profileId, today, yesterday) as {
+      id: number;
+      date: string;
+      grams: number;
+      created_at: string;
+    }[];
+    const originalPreset = db
+      .prepare(
+        "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'protein_quickadd_last'"
+      )
+      .get(profileId) as { value: string } | undefined;
+    const lastEvent = db
+      .prepare(
+        "SELECT COALESCE(MAX(id), 0) AS id FROM food_log_events WHERE profile_id = ?"
+      )
+      .get(profileId) as { id: number };
+    const page = await signIn(browser);
+    try {
+      db.transaction(() => {
+        for (const [date, grams] of [
+          [today, 11],
+          [yesterday, 22],
+        ] as const) {
+          db.prepare(
+            "INSERT INTO protein_daily_totals (profile_id, date, grams) VALUES (?, ?, ?) ON CONFLICT(profile_id, date) DO UPDATE SET grams = excluded.grams"
+          ).run(profileId, date, grams);
+        }
+        db.prepare(
+          "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'protein_quickadd_last', '3') ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value"
+        ).run(profileId);
+      })();
+      await page.setViewportSize(viewport);
+      async function openFood() {
+        const input = await openCommandPalette(page);
+        await settledFill(page, input, "food");
+        await hydratedClick(
+          page,
+          page
+            .getByRole("listbox", { name: "Results" })
+            .getByTestId("palette-action-log-food")
+        );
+        const sheet = page.getByRole("dialog", {
+          name: "Log food",
+          exact: true,
+        });
+        await expect(sheet.getByTestId("protein-quickadd-total")).toBeVisible();
+        return sheet;
+      }
+      async function addGrams(sheet: Locator, grams: number) {
+        await settledFill(
+          page,
+          sheet.getByTestId("protein-quickadd-input"),
+          String(grams)
+        );
+        await settledClick(page, sheet.getByTestId("protein-quickadd-add"));
+      }
+      function expectTotals(todayGrams: number, yesterdayGrams: number) {
+        expect(
+          db
+            .prepare(
+              "SELECT date, grams FROM protein_daily_totals WHERE profile_id = ? AND date IN (?, ?) ORDER BY date"
+            )
+            .all(profileId, today, yesterday)
+        ).toEqual([
+          { date: yesterday, grams: yesterdayGrams },
+          { date: today, grams: todayGrams },
+        ]);
+      }
+      await page.goto("/");
+      const sheet = await openFood();
+      const total = sheet.getByTestId("protein-quickadd-total");
+      await expect(total).toHaveText("11g today");
+      await hydratedClick(page, sheet.getByTestId("day-context-1"));
+      await expect(total).toHaveText("22g yesterday");
+      await addGrams(sheet, 3);
+      await expect(total).toHaveText("25g yesterday");
+      expectTotals(11, 25);
+      await hydratedClick(page, sheet.getByTestId("day-context-0"));
+      await expect(total).toHaveText("11g today");
+      await page.keyboard.press("Escape");
+      await expect(sheet).toHaveCount(0);
+
+      let yesterdayGrams = 25;
+      for (const [route, grams] of [
+        [`/history?day=${yesterday}`, 4],
+        [`/nutrition?date=${yesterday}`, 5],
+      ] as const) {
+        await page.goto(route);
+        const dated = await openFood();
+        await expect(dated.getByTestId("bounded-day-switcher")).toHaveCount(0);
+        await expect(total).toHaveText(`${yesterdayGrams}g yesterday`);
+        await addGrams(dated, grams);
+        yesterdayGrams += grams;
+        await expect(total).toHaveText(`${yesterdayGrams}g yesterday`);
+        expectTotals(11, yesterdayGrams);
+        await page.keyboard.press("Escape");
+        await expect(dated).toHaveCount(0);
+      }
+      await page.goto("/");
+      const returned = await openFood();
+      await expect(total).toHaveText("11g today");
+      await addGrams(returned, 6);
+      await expect(total).toHaveText("17g today");
+      expectTotals(17, 34);
+      expect(
+        db
+          .prepare(
+            "SELECT date, occurred_at FROM food_log_events WHERE profile_id = ? AND group_key = '__protein__' AND id > ? ORDER BY id"
+          )
+          .all(profileId, lastEvent.id)
+      ).toEqual([
+        { date: yesterday, occurred_at: null },
+        { date: yesterday, occurred_at: null },
+        { date: yesterday, occurred_at: null },
+        { date: today, occurred_at: null },
+      ]);
+    } finally {
+      await page.context().close();
+      db.transaction(() => {
+        db.prepare(
+          "DELETE FROM food_log_events WHERE profile_id = ? AND group_key = '__protein__' AND id > ?"
+        ).run(profileId, lastEvent.id);
+        db.prepare(
+          "DELETE FROM protein_daily_totals WHERE profile_id = ? AND date IN (?, ?)"
+        ).run(profileId, today, yesterday);
+        for (const row of originalTotals) {
+          db.prepare(
+            "INSERT INTO protein_daily_totals (id, profile_id, date, grams, created_at) VALUES (?, ?, ?, ?, ?)"
+          ).run(row.id, profileId, row.date, row.grams, row.created_at);
+        }
+        db.prepare(
+          "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'protein_quickadd_last'"
+        ).run(profileId);
+        if (originalPreset) {
+          db.prepare(
+            "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'protein_quickadd_last', ?)"
+          ).run(profileId, originalPreset.value);
+        }
+      })();
+      db.close();
+    }
+  });
+}
+
+// One selected day reaches real writes, including two opens inherited from dated
+// pages. Store assertions distinguish a correctly labelled sheet from a misdated write.
+test("the shared sheet day carries Food, Practice and Stool into the same History day (#5211)", async ({
+  browser,
+}) => {
+  const profileId = shellProfileId();
+  const day = shiftDateStr(dateStrInTz(PINNED_TZ, frozenNow()), -1);
+  const group = "cruciferous";
+  function clearRows() {
+    const db = openDb();
+    try {
+      db.transaction(() => {
+        db.prepare(
+          "DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?"
+        ).run(profileId, day, group);
+        db.prepare(
+          "DELETE FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
+        ).run(profileId, day, group);
+        db.prepare(
+          "DELETE FROM practice_logs WHERE profile_id = ? AND date = ?"
+        ).run(profileId, day);
+        db.prepare(
+          "DELETE FROM metric_samples WHERE profile_id = ? AND date = ? AND metric = 'bristol_stool_type'"
+        ).run(profileId, day);
+      })();
+    } finally {
+      db.close();
+    }
+  }
+  clearRows();
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const food = await openQuickEntry(page, "log-food");
+    const yesterday = food.getByTestId("day-context-1");
+    await hydratedClick(page, yesterday);
+    await expect(yesterday).toHaveAttribute("aria-pressed", "true");
+    const foodRow = food.getByTestId(`food-group-${group}`);
+    if (!(await foodRow.isVisible())) {
+      await food.getByTestId("food-more-groups-summary").click();
+    }
+    await settledClick(page, foodRow.getByTestId(`log-${group}`));
+    await expect(foodRow.getByTestId(`count-${group}`)).toHaveText("1");
+    await page.keyboard.press("Escape");
+    await expect(food).toHaveCount(0);
+
+    await page.goto(`/history?day=${day}`);
+    const practice = await openQuickEntry(page, "log-practice");
+    const practiceRow = practice
+      .getByTestId("quick-entry-practice-list")
+      .getByRole("listitem")
+      .filter({ hasText: SHELL_PRACTICE });
+    await expect(practiceRow).toBeVisible();
+    await expect(practice.getByTestId("bounded-day-switcher")).toHaveCount(0);
+    await settledFill(
+      page,
+      practiceRow.getByTestId("practice-when-time"),
+      "07:05"
+    );
+    await settledClick(page, practiceRow.getByTestId("practice-log-button"));
+    await expect(practiceRow.getByTestId("practice-today-count")).toContainText(
+      "1"
+    );
+    await page.keyboard.press("Escape");
+    await expect(practice).toHaveCount(0);
+
+    // Leave a different inherited day in the persistent host. The next open must
+    // read Nutrition's current route rather than reuse that prior context.
+    const previousDay = shiftDateStr(day, -1);
+    await page.goto(`/history?day=${previousDay}`);
+    const previous = await openQuickEntry(page, "log-dose");
+    await expect(previous.getByTestId("quick-entry-dose-day")).toHaveAttribute(
+      "data-date",
+      previousDay
+    );
+    await page.keyboard.press("Escape");
+    await expect(previous).toHaveCount(0);
+
+    await page.goto(`/nutrition?date=${day}`);
+    const stool = await openQuickEntry(page, "log-stool");
+    const picker = stool.getByTestId("quick-entry-stool");
+    await expect(picker).toBeVisible();
+    await expect(stool.getByTestId("bounded-day-switcher")).toHaveCount(0);
+    await settledFill(page, picker.getByTestId("stool-when-time"), "08:10");
+    await settledClick(page, picker.getByTestId("stool-type-4"));
+    await expect(picker.getByTestId("quick-entry-stool-count")).toContainText(
+      "1 logged"
+    );
+    await page.keyboard.press("Escape");
+    await expect(stool).toHaveCount(0);
+
+    const db = openDb();
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT date, occurred_at FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?"
+          )
+          .all(profileId, day, group)
+      ).toEqual([{ date: day, occurred_at: null }]);
+      expect(
+        db
+          .prepare(
+            "SELECT date, end_time, live FROM practice_logs WHERE profile_id = ? AND date = ?"
+          )
+          .all(profileId, day)
+      ).toEqual([{ date: day, end_time: "07:05", live: 0 }]);
+      expect(
+        db
+          .prepare(
+            "SELECT date, substr(started_at, 1, 10) AS sample_day, substr(started_at, 11) AS sample_time, value FROM metric_samples WHERE profile_id = ? AND date = ? AND metric = 'bristol_stool_type'"
+          )
+          .all(profileId, day)
+      ).toEqual([
+        { date: day, sample_day: day, sample_time: "T08:10:00", value: 4 },
+      ]);
+    } finally {
+      db.close();
+    }
+    await page.goto(`/history?day=${day}`);
+    const history = appContent(page).getByTestId("history-day");
+    await expect(
+      history
+        .locator('[data-history-kind="food"]')
+        .filter({ hasText: "Cruciferous" })
+    ).toBeVisible();
+    await expect(
+      history
+        .locator('[data-history-kind="practice"]')
+        .filter({ hasText: SHELL_PRACTICE })
+    ).toBeVisible();
+    await expect(history.locator('[data-history-kind="stool"]')).toBeVisible();
+  } finally {
+    clearRows();
+    await page.context().close();
+  }
+});
+
 test("the mood row logs a check-in in place — and 'Yesterday' backfills the missed day (#2130/#2128)", async ({
   browser,
 }) => {
@@ -1348,10 +1654,9 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
 
     // The overlay renders only after its on-open gather resolved, so the chips
     // are hydrated client state by the time they are visible.
-    const yesterdayChip = checkin.getByTestId("quick-mood-day-1");
+    const yesterdayChip = overlay.getByTestId("day-context-1");
     await expect(yesterdayChip).toHaveText("Yesterday");
-    const yesterdayDate = await yesterdayChip.getAttribute("data-date");
-    expect(yesterdayDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const yesterdayDate = shiftDateStr(dateStrInTz(PINNED_TZ, frozenNow()), -1);
     await yesterdayChip.click();
     await expect(yesterdayChip).toHaveAttribute("aria-pressed", "true");
 

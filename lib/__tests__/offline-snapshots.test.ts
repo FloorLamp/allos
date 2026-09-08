@@ -31,11 +31,8 @@ import {
   type AnySnapshot,
   type SnapshotEnvelope,
 } from "@/lib/offline/snapshots";
-import {
-  FLOW_KINDS,
-  buildIntent,
-  type QueuedIntent,
-} from "@/lib/offline/queue";
+import { FLOW_KINDS, type QueuedIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 
 const PROFILE = 7;
 const OTHER = 8;
@@ -287,9 +284,16 @@ function doseIntent(
   flow: "dose" | "skip-dose",
   date = "2026-08-16"
 ): QueuedIntent {
-  const intent = buildIntent(flow, date, { doseId }, profileId ?? 0);
-  if (profileId === undefined) delete intent.profileId;
-  return intent;
+  const stamped = buildIntent(
+    flow,
+    date,
+    { doseId },
+    profileId ?? PROFILE,
+    date === "2026-08-16"
+  );
+  if (profileId !== undefined) return stamped;
+  const { profileId: _profileId, dayContext: _dayContext, ...legacy } = stamped;
+  return legacy;
 }
 
 describe("overlay — folding queued writes into a stored read", () => {
@@ -354,19 +358,22 @@ describe("overlay — folding queued writes into a stored read", () => {
             mealSlot: null,
             grams: null,
           },
-          PROFILE
+          PROFILE,
+          true
         ),
         buildIntent(
           "food",
           "2026-08-16",
           { entry: "serving", groupKey: "greens", mealSlot: null, grams: null },
-          PROFILE
+          PROFILE,
+          true
         ),
         buildIntent(
           "food",
           "2026-08-16",
           { entry: "protein", groupKey: null, mealSlot: null, grams: 30 },
-          PROFILE
+          PROFILE,
+          true
         ),
       ],
       PROFILE
@@ -397,7 +404,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "set",
           "2026-08-16",
           { fields: { title: "Push day", activity_type: "strength" } },
-          PROFILE
+          PROFILE,
+          true
         ),
       ],
       PROFILE
@@ -417,7 +425,8 @@ describe("overlay — folding queued writes into a stored read", () => {
         "practice",
         "2026-08-16",
         { practice: "Sauna", identity: "sauna", durationMin: null },
-        PROFILE
+        PROFILE,
+        true
       )
     );
     const out = overlayPracticeWeek(
@@ -465,7 +474,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "practice",
           "2026-08-15",
           { practice: "Sauna", identity: "sauna", durationMin: null },
-          PROFILE
+          PROFILE,
+          false
         ),
       ],
       PROFILE
@@ -502,7 +512,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "practice",
           "2026-08-09",
           { practice: "Sauna", identity: "sauna", durationMin: null },
-          PROFILE
+          PROFILE,
+          false
         ),
       ],
       PROFILE
@@ -530,7 +541,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "practice",
           "2026-08-16",
           { practice: "Sauna", identity: "sauna", durationMin: null },
-          PROFILE
+          PROFILE,
+          true
         ),
       ],
       PROFILE

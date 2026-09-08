@@ -17,6 +17,7 @@ import { isStaleActionError } from "@/lib/sw-update";
 import { reportStaleBuild } from "@/components/update-reload-channel";
 import { isRetriableSaveError, saveFailureEvent } from "@/lib/sw-update";
 import { useLatestRef } from "@/components/useLatestRef";
+import type { QueuedCapture } from "@/lib/offline/queue";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
 // self-contained hook (#1207). It owns the whole save lifecycle: a 700ms debounced
@@ -77,6 +78,7 @@ export function useActivityAutosave({
   isPrefillCreate,
   buildFormData,
   toast,
+  captureQueue,
   onQueueOffline,
   onRowOwned,
 }: {
@@ -104,6 +106,9 @@ export function useActivityAutosave({
   // pass `silent` (#3699): a cue for something the person is no longer looking at is
   // a phone buzzing on a table.
   toast: (msg: string, opts?: { silent?: boolean }) => void;
+  // Snapshot the day identity and T1 timestamp beside the exact FormData sent by
+  // this attempt. A failure after midnight must not re-read either from live state.
+  captureQueue?: (formData: FormData, capturedAt: Date) => QueuedCapture | null;
   // Offline capture for a NEVER-CREATED session (#1596): called from the CLOSE-path
   // flushes only, when the final save dies on a dead connection and the form has no
   // server row — the one moment the whole session is a pure capture (see the
@@ -112,7 +117,10 @@ export function useActivityAutosave({
   // reconnect auto-save would race the replay into a duplicate row). Returns true
   // once the intent is durably queued; the hook then treats the close like a save
   // (signature advanced, no dirty prompt) — the queue owns the data now.
-  onQueueOffline?: (formData: FormData) => Promise<boolean>;
+  onQueueOffline?: (
+    formData: FormData,
+    capture: QueuedCapture | null
+  ) => Promise<boolean>;
   // Fired ONCE, when a rowless form first OWNS a row — by adopting the
   // provider's create-at-start id, or by its own first create landing (#2870
   // step 3). The provider keys the one-URL navigation off this, so the
@@ -183,6 +191,7 @@ export function useActivityAutosave({
   // Same for the offline-capture callback (#1596) — it closes over the parent's
   // queue context + draft handle.
   const onQueueOfflineRef = useLatestRef(onQueueOffline);
+  const captureQueueRef = useLatestRef(captureQueue);
   // THIS CLOSE'S CAPTURE WAS REFUSED (#3170). `onQueueOffline` answering false means
   // the device kept nothing and the surface has ALREADY told the person so, in the
   // shared refused-capture sentence. Every further attempt from this same close is
@@ -320,10 +329,16 @@ export function useActivityAutosave({
       }
       inFlightRef.current = true;
       const sigAtSave = formSig;
+      const attemptedAt = new Date();
+      const attemptedFormData = buildFormDataRef.current(savableId());
+      const queueCapture = opts?.queueOnOffline
+        ? (captureQueueRef.current?.(attemptedFormData, attemptedAt) ?? null)
+        : null;
       let saved = false;
       if (mountedRef.current) setStatus("saving");
       try {
-        const res = await saveActivity(buildFormDataRef.current(savableId()));
+        if (queueCapture) await queueCapture.writeToken;
+        const res = await saveActivity(attemptedFormData);
         // Nothing persisted (invalid title/date or an id the active profile doesn't
         // own — e.g. after a profile switch). Do NOT advance savedSigRef: the form
         // stays dirty so the edit survives, the auto-saver can retry, and closing it
@@ -369,7 +384,8 @@ export function useActivityAutosave({
         ) {
           try {
             const queued = await onQueueOfflineRef.current(
-              buildFormDataRef.current(null)
+              attemptedFormData,
+              queueCapture
             );
             if (queued) {
               savedSigRef.current = sigAtSave;
@@ -465,6 +481,7 @@ export function useActivityAutosave({
       adoptPendingRef,
       buildFormDataRef,
       canSave,
+      captureQueueRef,
       clearRetryTimer,
       endRetryEpisode,
       formSig,

@@ -160,7 +160,11 @@ vi.mock("@/components/TimezoneProvider", () => ({
   useTimezone: () => "UTC",
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: async () => "kept" }),
+  useOfflineQueue: () => ({
+    enqueue: async () => "kept",
+    enqueueBatch: async () => "kept",
+  }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 
 beforeEach(() => {

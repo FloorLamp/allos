@@ -13,6 +13,7 @@ import {
   addProteinGrams,
   undoProteinGrams,
 } from "@/app/(app)/nutrition/actions";
+import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
 import { getProteinDailyGrams, getProteinQuickAddPreset } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -59,6 +60,30 @@ describe("addProteinGrams", () => {
     // A later add moves the preset to the newest amount.
     await addProteinGrams(fd({ grams: "24", date: DATE }));
     expect(getProteinQuickAddPreset(profile.id)).toBe(24);
+  });
+
+  it("gathers the selected day's total for sheet and dated quick entry", async () => {
+    const login = createLogin();
+    const profile = createProfile("protein-day-gather", login.id);
+    actAs(login, profile);
+    const current = today(profile.id);
+    const yesterday = shiftDateStr(current, -1);
+    const older = shiftDateStr(current, -10);
+
+    await addProteinGrams(fd({ grams: "11", date: current }));
+    await addProteinGrams(fd({ grams: "22", date: yesterday }));
+    await addProteinGrams(fd({ grams: "33", date: older }));
+
+    await expect(loadQuickEntry("food")).resolves.toMatchObject({
+      form: "food",
+      proteinGrams: 11,
+    });
+    await expect(
+      loadQuickEntry("food", undefined, yesterday, "sheet")
+    ).resolves.toMatchObject({ form: "food", proteinGrams: 22 });
+    await expect(
+      loadQuickEntry("food", undefined, older, "dated")
+    ).resolves.toMatchObject({ form: "food", proteinGrams: 33 });
   });
 
   it("rejects a non-positive or over-cap amount without writing", async () => {

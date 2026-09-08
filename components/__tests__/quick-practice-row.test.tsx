@@ -8,6 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuickPracticeList from "@/components/quick-entry/QuickPracticeList";
+import { DayContextProvider } from "@/components/DayContext";
+import { SHEET_REACH } from "@/lib/log-manifest";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 
 // ── THE SHEET'S PRACTICE ROW, AND THE STATE IT USED TO LIE ABOUT (#5431) ─────
@@ -43,6 +45,17 @@ vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: date === "2026-09-06",
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 vi.mock("@/components/LoggedViaSurface", () => ({
@@ -188,6 +201,29 @@ describe("the sheet's practice row states one thing at a time", () => {
       "min"
     );
   });
+
+  it("labels a cached prior-day count from the live profile day", () => {
+    render(
+      <DayContextProvider
+        profileId={1}
+        today="2026-09-07"
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: TODAY }}
+      >
+        <QuickPracticeList
+          practices={[{ ...RED_LIGHT, todayCount: 1, countThisWeek: 1 }]}
+          today={TODAY}
+        />
+      </DayContextProvider>
+    );
+
+    expect(facts()).toBe("1 yesterday · 1 of 3–5 this week");
+    expect(
+      screen.getByRole("button", {
+        name: "Just finished another Red light therapy session — 1 already logged yesterday",
+      })
+    ).toBeTruthy();
+  });
 });
 
 describe("the row follows the server's session rather than a copy of it", () => {
@@ -234,7 +270,12 @@ describe("the row follows the server's session rather than a copy of it", () => 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(61_000);
       });
-      expect(loadQuickEntry).toHaveBeenCalledWith("practice", undefined);
+      expect(loadQuickEntry).toHaveBeenCalledWith(
+        "practice",
+        undefined,
+        TODAY,
+        "sheet"
+      );
       expect(facts()).toBe("1 today · 1 of 3–5 this week");
       expect(screen.queryByTestId("practice-end-button")).toBeNull();
       expect(
@@ -284,7 +325,12 @@ describe("the row follows the server's session rather than a copy of it", () => 
     fireEvent.click(screen.getByTestId("practice-start-button"));
 
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenCalledWith("practice", undefined)
+      expect(loadQuickEntry).toHaveBeenCalledWith(
+        "practice",
+        undefined,
+        TODAY,
+        "sheet"
+      )
     );
     await waitFor(() =>
       expect(facts()).toBe("Running since 06:22 · ends ~06:37")

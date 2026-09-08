@@ -8,12 +8,15 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { useRouter } from "next/navigation";
 import { IconChevronDown, IconSparkles } from "@tabler/icons-react";
 import { useActiveProfileId } from "@/components/ActiveProfileProvider";
+import { useDayContext } from "@/components/DayContext";
 import type { FoodSlot } from "@/lib/food-slot";
 import ModalShell from "@/components/ModalShell";
 import InsightLauncher from "@/components/InsightLauncher";
 import type { FoodLogDay } from "./FoodLogBar";
+import { nutritionDayHref } from "@/lib/hrefs";
 
 type CountsByDate = Record<string, Record<string, number>>;
 type SlotCountsByDate = Record<
@@ -28,7 +31,7 @@ export interface FoodProjectionState {
 
 interface FoodSelectedDateContextValue {
   activeDate: string;
-  setActiveDate: Dispatch<SetStateAction<string>>;
+  setActiveDate: (date: string) => void;
   countsByDate: CountsByDate;
   slotCountsByDate: SlotCountsByDate;
   // Daily and per-meal counts are one projection. A correction moves one event
@@ -53,7 +56,7 @@ export function useFoodSelectedDate(): FoodSelectedDateContextValue {
 // Context-only mount for the global quick-entry sheet. The full Nutrition page owns
 // this state inside FoodSuggestionsLayout below, while the sheet needs the same
 // logger state without the page's suggestions/sidebar composition.
-export function FoodSelectedDateProvider({
+export function FoodProjectionProvider({
   ...props
 }: FoodSelectedDateProviderProps) {
   const activeProfileId = useActiveProfileId();
@@ -72,11 +75,12 @@ interface FoodSelectedDateProviderProps {
 }
 
 function FoodSelectedDateProviderForProfile({
-  today,
   days,
   children,
 }: FoodSelectedDateProviderProps) {
-  const [activeDate, setActiveDate] = useState(today);
+  const dayContext = useDayContext();
+  const activeDate = dayContext.parts.day;
+  const setActiveDate = (date: string) => dayContext.select?.(date);
   const [projection, setProjection] = useState<FoodProjectionState>(() => ({
     countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
     slotCountsByDate: Object.fromEntries(
@@ -155,7 +159,6 @@ interface FoodSuggestionsLayoutProps {
 function FoodSuggestionsLayoutForProfile({
   today,
   days,
-  initialDate,
   logger,
   todaySidebar,
   weeklySidebar,
@@ -163,18 +166,33 @@ function FoodSuggestionsLayoutForProfile({
   suggestionContent,
   suggestionCount,
 }: FoodSuggestionsLayoutProps) {
+  const router = useRouter();
+  const dayContext = useDayContext();
   const [open, setOpen] = useState(false);
-  const initialDateInRange =
-    initialDate != null && days.some((day) => day.date === initialDate);
-  const [activeDate, setActiveDate] = useState(
-    initialDateInRange ? initialDate : today
-  );
+  const activeDate = dayContext.parts.day;
+  const setActiveDate = (date: string) => {
+    if (dayContext.select) dayContext.select(date);
+    else router.push(dayContext.hrefForDay?.(date) ?? nutritionDayHref(date));
+  };
   const [projection, setProjection] = useState<FoodProjectionState>(() => ({
     countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
     slotCountsByDate: Object.fromEntries(
       days.map((day) => [day.date, day.slotCounts])
     ),
   }));
+  const reconciledProjection: FoodProjectionState = {
+    countsByDate: { ...projection.countsByDate },
+    slotCountsByDate: { ...projection.slotCountsByDate },
+  };
+  let addedProjection = false;
+  for (const day of days) {
+    if (!(day.date in reconciledProjection.countsByDate)) {
+      reconciledProjection.countsByDate[day.date] = day.counts;
+      reconciledProjection.slotCountsByDate[day.date] = day.slotCounts;
+      addedProjection = true;
+    }
+  }
+  if (addedProjection) setProjection(reconciledProjection);
   const hasSuggestions = suggestionCount > 0;
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
   const activeDayNutrients = selectedDayNutrients.find(
@@ -198,21 +216,12 @@ function FoodSuggestionsLayoutForProfile({
       value={{
         activeDate,
         setActiveDate,
-        countsByDate: projection.countsByDate,
-        slotCountsByDate: projection.slotCountsByDate,
+        countsByDate: reconciledProjection.countsByDate,
+        slotCountsByDate: reconciledProjection.slotCountsByDate,
         setProjection,
       }}
     >
       <div data-testid="nutrition-food-layout">
-        {initialDate && !initialDateInRange ? (
-          <p
-            className="mb-4 text-sm text-slate-500 dark:text-slate-400"
-            data-testid="food-date-bound-note"
-          >
-            Food backfill is available for today and the previous six days.
-            Showing today.
-          </p>
-        ) : null}
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           {logger}
           <div data-testid="nutrition-sidebar" className="min-w-0 self-start">

@@ -207,6 +207,7 @@ describe("the URL grammar", () => {
     // speculative empty day the gather would have nothing for.
     ["2027-01-01", "2026-08-28"],
     ["not-a-day", undefined],
+    ["2026-02-30", undefined],
     [undefined, undefined],
   ])("clamps ?day=%s to %s", (raw, expected) => {
     expect(clampHistoryDay(raw, "2026-08-28")).toBe(expected);

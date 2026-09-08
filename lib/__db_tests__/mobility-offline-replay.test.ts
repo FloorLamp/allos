@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { applyIntent } from "@/lib/offline/writes";
 import { readMobilitySession } from "@/lib/mobility-log-write";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 
 const MOVE = "neck_cars"; // first catalog entry; any registered slug works
 
@@ -27,7 +27,7 @@ describe("applyIntent — mobility (#2130)", () => {
   it("replays a queued ON tap through the shared core, exactly once", () => {
     const p = newProfile("mobility-replay");
     const date = today(p);
-    const intent = buildIntent("mobility", date, { move: MOVE }, p);
+    const intent = buildIntent("mobility", date, { move: MOVE }, p, true);
 
     expect(applyIntent(p, intent)).toEqual({ status: "done" });
     expect(readMobilitySession(p, date).moves).toContain(MOVE);
@@ -41,12 +41,12 @@ describe("applyIntent — mobility (#2130)", () => {
     const p = newProfile("mobility-idem");
     const date = today(p);
     expect(
-      applyIntent(p, buildIntent("mobility", date, { move: MOVE }, p))
+      applyIntent(p, buildIntent("mobility", date, { move: MOVE }, p, true))
     ).toEqual({ status: "done" });
     // A different key (an online tap raced the queue, then the queue flushed):
     // the set-add is a no-op, not a duplicate row and not a refusal.
     expect(
-      applyIntent(p, buildIntent("mobility", date, { move: MOVE }, p))
+      applyIntent(p, buildIntent("mobility", date, { move: MOVE }, p, true))
     ).toEqual({ status: "done" });
     expect(readMobilitySession(p, date).moves).toEqual([MOVE]);
   });
@@ -55,7 +55,7 @@ describe("applyIntent — mobility (#2130)", () => {
     const p = newProfile("mobility-unknown");
     const outcome = applyIntent(
       p,
-      buildIntent("mobility", today(p), { move: "not-a-move" }, p)
+      buildIntent("mobility", today(p), { move: "not-a-move" }, p, true)
     );
     expect(outcome.status).toBe("rejected");
     expect(outcome.reason).toMatch(/no longer in the catalog/);
@@ -63,7 +63,7 @@ describe("applyIntent — mobility (#2130)", () => {
 
   it("rejects a shapeless payload rather than writing", () => {
     const p = newProfile("mobility-shapeless");
-    const intent = buildIntent("mobility", today(p), { move: MOVE }, p);
+    const intent = buildIntent("mobility", today(p), { move: MOVE }, p, true);
     expect(
       applyIntent(p, {
         ...intent,
