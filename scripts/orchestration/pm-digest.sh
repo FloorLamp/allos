@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PM digest — the owner's catch-up, run by the project manager (see
-# .claude/skills/pm/SKILL.md §The digest). Three questions, in this order:
+# .agents/skills/pm/SKILL.md §The digest). Three questions, in this order:
 #   1. What shipped for people — the largest user-facing features and epics.
 #   2. What went wrong and what changed about how we work because of it.
 #   3. How far we got — the progress numbers and what is in flight.
@@ -105,7 +105,7 @@ echo "=== PM DIGEST  window ${SINCE} .. ${NOW} ==="
 # calls an hour unauthenticated). The merge enumeration and the user-visible
 # verdict are merge-window.mjs, shared with release-notes-gather.mjs so the two
 # surfaces cannot answer the same question differently.
-PROC_PATHS='^(docs/orchestration|scripts/orchestration/|scripts/orchestrator-checkin\.sh|\.claude/|AGENTS\.md|CLAUDE\.md|docs/internals/e2e|\.github/workflows/)'
+PROC_PATHS='^(docs/orchestration|scripts/orchestration/|scripts/orchestrator-checkin\.sh|\.claude/|\.agents/skills/|AGENTS\.md|CLAUDE\.md|docs/internals/e2e|\.github/workflows/)'
 WINDOW="$REPO_DIR/scripts/orchestration/merge-window.mjs"
 fetch "$API/issues?state=closed&since=$SINCE&per_page=100" > "$TMP/closed.json"
 fetch "$API/issues?state=all&since=$SINCE&per_page=100&sort=created&direction=desc" > "$TMP/recent.json"

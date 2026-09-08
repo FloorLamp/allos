@@ -74,6 +74,12 @@ landing candidate's final remote review, CI, and merge. Do not edit a live agent
 worktree without acknowledgement. Production replay, backfill, snapshot access,
 and migration execution remain owner operations outside a normal coding lane.
 
+A decision-held branch is banked work, not a landing candidate. Preserve its head
+and exact release condition, then give available workers the highest ready work
+in the authorized slice. Pending owner answers do not require workers to wait or
+the PM to approve routine queue advancement. Respect actual file, machine, and
+review limits; report a blocked handoff only after no eligible work remains.
+
 ## Tooling
 
 Use the relevant script's `--help` before unfamiliar operations; check its declared
