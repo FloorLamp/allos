@@ -90,12 +90,14 @@ function StateDayContext({
   reach,
   initialDay,
   children,
+  onSelectedDayChange,
 }: {
   profileId: number;
   today: string;
   reach: TapReach;
   initialDay: string;
   children: ReactNode;
+  onSelectedDayChange?: (day: string) => void;
 }) {
   const [day, setDay] = useState(() =>
     isWithinReach(reach, today, initialDay) ? initialDay : today
@@ -112,9 +114,12 @@ function StateDayContext({
   if (reconciledDay !== day) setDay(reconciledDay);
   const select = useCallback(
     (nextDay: string) => {
-      if (isWithinReach(reach, today, nextDay)) setDay(nextDay);
+      if (isWithinReach(reach, today, nextDay) && nextDay !== reconciledDay) {
+        setDay(nextDay);
+        onSelectedDayChange?.(nextDay);
+      }
     },
-    [reach, today]
+    [reach, today, reconciledDay, onSelectedDayChange]
   );
   const value = useMemo(
     () =>
@@ -130,12 +135,14 @@ export function DayContextProvider({
   reach,
   backing,
   children,
+  onSelectedDayChange,
 }: {
   profileId: number;
   today: string;
   reach: TapReach;
   backing: DayBacking;
   children: ReactNode;
+  onSelectedDayChange?: (day: string) => void;
 }) {
   if (backing.kind === "state") {
     return (
@@ -145,6 +152,7 @@ export function DayContextProvider({
         today={today}
         reach={reach}
         initialDay={backing.initialDay}
+        onSelectedDayChange={onSelectedDayChange}
       >
         {children}
       </StateDayContext>

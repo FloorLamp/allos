@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { IconChevronDown, IconSparkles } from "@tabler/icons-react";
 import { useActiveProfileId } from "@/components/ActiveProfileProvider";
+import { useDayContext } from "@/components/DayContext";
 import type { FoodSlot } from "@/lib/food-slot";
 import ModalShell from "@/components/ModalShell";
 import InsightLauncher from "@/components/InsightLauncher";
@@ -78,7 +79,9 @@ function FoodSelectedDateProviderForProfile({
   days,
   children,
 }: FoodSelectedDateProviderProps) {
-  const [activeDate, setActiveDate] = useState(today);
+  const dayContext = useDayContext();
+  const activeDate = dayContext.parts.day;
+  const setActiveDate = (date: string) => dayContext.select?.(date);
   const [projection, setProjection] = useState<FoodProjectionState>(() => ({
     countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
     slotCountsByDate: Object.fromEntries(
@@ -166,11 +169,13 @@ function FoodSuggestionsLayoutForProfile({
   suggestionCount,
 }: FoodSuggestionsLayoutProps) {
   const router = useRouter();
+  const dayContext = useDayContext();
   const [open, setOpen] = useState(false);
-  const initialDateInRange =
-    initialDate != null && days.some((day) => day.date === initialDate);
-  const activeDate = initialDateInRange ? initialDate : today;
-  const setActiveDate = (date: string) => router.push(nutritionDayHref(date));
+  const activeDate = dayContext.parts.day;
+  const setActiveDate = (date: string) => {
+    if (dayContext.select) dayContext.select(date);
+    else router.push(dayContext.hrefForDay?.(date) ?? nutritionDayHref(date));
+  };
   const [projection, setProjection] = useState<FoodProjectionState>(() => ({
     countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
     slotCountsByDate: Object.fromEntries(

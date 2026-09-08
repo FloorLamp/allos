@@ -27,6 +27,14 @@ import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import type { QuickEntryForm, QuickEntryPrefill } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
 import type { OverlaySize } from "./overlay";
+import {
+  DayContextBoundary,
+  DayContextProvider,
+  useOptionalDayContext,
+  type DayContextValue,
+} from "./DayContext";
+import BoundedDaySwitcher from "./BoundedDaySwitcher";
+import { SHEET_REACH } from "@/lib/log-manifest";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -125,18 +133,38 @@ interface QuickEntryApi {
   close: () => void;
 }
 
+interface QuickEntryHostApi extends QuickEntryApi {
+  open: (
+    form: QuickEntryForm,
+    prefill?: QuickEntryPrefill,
+    subjectProfileId?: number,
+    dayContext?: DayContextValue | null
+  ) => void;
+}
+
 // The prefill vocabulary lives beside the form vocabulary in lib/quick-log.ts
 // (#2184: the palette's registry speaks it too); re-exported here for callers
 // that reach it through the overlay host.
 export type { QuickEntryPrefill };
 
-const Ctx = createContext<QuickEntryApi | null>(null);
+const Ctx = createContext<QuickEntryHostApi | null>(null);
 
 export function useQuickEntry(): QuickEntryApi {
   const ctx = useContext(Ctx);
+  const dayContext = useOptionalDayContext();
   if (!ctx)
     throw new Error("useQuickEntry must be used within a QuickEntryProvider");
-  return ctx;
+  return useMemo(
+    () => ({
+      close: ctx.close,
+      open: (
+        form: QuickEntryForm,
+        prefill?: QuickEntryPrefill,
+        subjectProfileId?: number
+      ) => ctx.open(form, prefill, subjectProfileId, dayContext),
+    }),
+    [ctx, dayContext]
+  );
 }
 
 // The sheet's accessible name per form, whether the mounted form already renders
@@ -197,6 +225,21 @@ type LoadState =
   | { status: "ready"; data: QuickEntryBody }
   | { status: "error" };
 
+type SheetDayContext =
+  | { kind: "inherited"; value: DayContextValue }
+  | { kind: "state"; profileId: number; today: string; initialDay: string };
+
+function quickEntryToday(data: QuickEntryBody): string | null {
+  if (data.form === "measurements") return data.defaultDate;
+  if (
+    data.form === "cycle" ||
+    data.form === "document" ||
+    data.form === "unavailable"
+  )
+    return null;
+  return data.today;
+}
+
 // The stall bound a cold "Loading…" may sit under before the sheet admits the
 // gather is not coming back (#3416 proposal 3) — long enough that an ordinary slow
 // connection still finishes first, short enough that a dead one does not leave the
@@ -236,6 +279,7 @@ export default function QuickEntryProvider({
   // persisted past close (Out of scope, #4932): the NEXT open recomputes it fresh,
   // it is not read back in.
   const [subject, setSubject] = useState(actingProfileId);
+  const [sheetDay, setSheetDay] = useState<SheetDayContext | null>(null);
   // The "Who is this for?" block (#4932). Toggled by the chip; nothing else opens
   // it and it never opens on its own.
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -244,6 +288,7 @@ export default function QuickEntryProvider({
   const requestRef = useRef(0);
 
   const close = useCallback(() => {
+    ++requestRef.current;
     setOpen(false);
     setPickerOpen(false);
   }, []);
@@ -269,7 +314,13 @@ export default function QuickEntryProvider({
   // Reused by a fresh open, a mid-sheet subject switch AND a retry (below), so none
   // of the three can diverge into its own reader of the same form.
   const loadFor = useCallback(
-    (next: QuickEntryForm, subjectId: number, token: number) => {
+    (
+      next: QuickEntryForm,
+      subjectId: number,
+      token: number,
+      inheritedDay?: DayContextValue | null,
+      selectedDay?: string
+    ) => {
       // NO ROUND TRIP for measurements — the props are already here (#4091), and
       // that gather is resolved for the ACTING profile only (no subject-keyed
       // version exists). #4932 invariant 2: a form that cannot follow the subject
@@ -288,9 +339,19 @@ export default function QuickEntryProvider({
                     "Switch to this profile to log measurements from the sheet.",
                 },
         });
+        const today = measurements.defaultDate;
+        setSheetDay(
+          inheritedDay?.parts.profileId === subjectId
+            ? { kind: "inherited", value: inheritedDay }
+            : { kind: "state", profileId: subjectId, today, initialDay: today }
+        );
         return;
       }
-      const key = `${next}:${subjectId}`;
+      const requestedDay =
+        inheritedDay?.parts.profileId === subjectId
+          ? inheritedDay.parts.day
+          : selectedDay;
+      const key = `${next}:${subjectId}:${requestedDay ?? "today"}`;
       const cached = lastGoodRef.current.get(key);
       // LAST-GOOD RENDER, REVALIDATE BEHIND IT (#3416 proposal 1). A held copy from
       // an earlier successful open of this SAME (form, subject) pair renders
@@ -308,11 +369,24 @@ export default function QuickEntryProvider({
         : setTimeout(() => {
             if (requestRef.current === token) setState({ status: "error" });
           }, QUICK_ENTRY_LOAD_TIMEOUT_MS);
-      void loadQuickEntry(next, subjectId).then(
+      void loadQuickEntry(next, subjectId, requestedDay).then(
         (data) => {
           if (stallTimer != null) clearTimeout(stallTimer);
           if (requestRef.current !== token) return;
           lastGoodRef.current.set(key, data);
+          const gatheredToday = quickEntryToday(data);
+          setSheetDay(
+            inheritedDay?.parts.profileId === subjectId
+              ? { kind: "inherited", value: inheritedDay }
+              : gatheredToday
+                ? {
+                    kind: "state",
+                    profileId: subjectId,
+                    today: gatheredToday,
+                    initialDay: requestedDay ?? gatheredToday,
+                  }
+                : null
+          );
           setState({ status: "ready", data });
         },
         () => {
@@ -333,7 +407,8 @@ export default function QuickEntryProvider({
     (
       next: QuickEntryForm,
       nextPrefill?: QuickEntryPrefill,
-      subjectProfileId?: number
+      subjectProfileId?: number,
+      dayContext?: DayContextValue | null
     ) => {
       const token = ++requestRef.current;
       const resolvedSubject = subjectProfileId ?? actingProfileId;
@@ -342,7 +417,8 @@ export default function QuickEntryProvider({
       setSubject(resolvedSubject);
       setPickerOpen(false);
       setOpen(true);
-      loadFor(next, resolvedSubject, token);
+      setSheetDay(null);
+      loadFor(next, resolvedSubject, token, dayContext);
     },
     [actingProfileId, loadFor]
   );
@@ -366,6 +442,7 @@ export default function QuickEntryProvider({
       setSubject(profileId);
       setPrefill(null);
       const token = ++requestRef.current;
+      setSheetDay(null);
       loadFor(form, profileId, token);
       const name = writableProfiles.find((p) => p.id === profileId)?.name;
       toast(
@@ -383,12 +460,21 @@ export default function QuickEntryProvider({
   const retry = useCallback(() => {
     if (form == null) return;
     const token = ++requestRef.current;
-    loadFor(form, subject, token);
-  }, [form, subject, loadFor]);
+    loadFor(form, subject, token, sheetDay?.kind === "inherited" ? sheetDay.value : null, sheetDay?.kind === "state" ? sheetDay.initialDay : undefined);
+  }, [form, subject, loadFor, sheetDay]);
 
-  const api = useMemo<QuickEntryApi>(
+  const api = useMemo<QuickEntryHostApi>(
     () => ({ open: openForm, close }),
     [openForm, close]
+  );
+
+  const selectSheetDay = useCallback(
+    (day: string) => {
+      if (form == null) return;
+      const token = ++requestRef.current;
+      loadFor(form, subject, token, null, day);
+    },
+    [form, subject, loadFor]
   );
 
   const sheet = form ? SHEET[form] : null;
@@ -491,6 +577,40 @@ export default function QuickEntryProvider({
             {/* Keyed on the subject (#4932): switching who this is for remounts the
                 body fresh, which is what actually discards a staged, half-typed
                 entry rather than leaving it to paint under the new subject's name. */}
+            {sheetDay?.kind === "inherited" ? (
+              <DayContextBoundary value={sheetDay.value}>
+                <QuickEntryDayBody
+                  identity={`${subject}:${sheetDay.value.key}`}
+                  form={form}
+                  subject={subject}
+                  state={state}
+                  prefill={prefill}
+                  onDone={close}
+                  onRetry={retry}
+                  subjectProfileId={subjectId}
+                />
+              </DayContextBoundary>
+            ) : sheetDay?.kind === "state" ? (
+              <DayContextProvider
+                profileId={sheetDay.profileId}
+                today={sheetDay.today}
+                reach={SHEET_REACH}
+                backing={{ kind: "state", initialDay: sheetDay.initialDay }}
+                onSelectedDayChange={selectSheetDay}
+              >
+                <BoundedDaySwitcher />
+                <QuickEntryDayBody
+                  identity={`${subject}:${sheetDay.initialDay}`}
+                  form={form}
+                  subject={subject}
+                  state={state}
+                  prefill={prefill}
+                  onDone={close}
+                  onRetry={retry}
+                  subjectProfileId={subjectId}
+                />
+              </DayContextProvider>
+            ) : (
             <div
               key={subject}
               data-testid="quick-entry-body"
@@ -505,10 +625,33 @@ export default function QuickEntryProvider({
                 subjectProfileId={subjectId}
               />
             </div>
+            )}
           </LoggedViaSurface>
         </BottomSheet>
       )}
     </Ctx.Provider>
+  );
+}
+
+function QuickEntryDayBody({
+  identity,
+  form,
+  subject,
+  ...props
+}: React.ComponentProps<typeof QuickEntryBody> & {
+  identity: string;
+  form: QuickEntryForm;
+  subject: number;
+}) {
+  return (
+    <div
+      key={identity}
+      data-testid="quick-entry-body"
+      data-form={form}
+      data-subject-profile-id={subject}
+    >
+      <QuickEntryBody {...props} />
+    </div>
   );
 }
 
@@ -533,6 +676,7 @@ function QuickEntryBody({
   // turned a non-acting subject into the `unavailable` case above this switch).
   subjectProfileId?: number;
 }) {
+  const dayContext = useOptionalDayContext();
   if (state.status === "loading") {
     return (
       <p
@@ -567,6 +711,7 @@ function QuickEntryBody({
   }
 
   const data = state.data;
+  const selectedDay = dayContext?.parts.day;
   switch (data.form) {
     case "measurements":
       return (
@@ -616,7 +761,9 @@ function QuickEntryBody({
               // own to post (invariant 2), while the serving rows beside it do.
               data.proteinPreset != null && subjectProfileId == null
                 ? {
-                    initialGramsByDate: { [data.today]: data.proteinToday },
+                    initialGramsByDate: {
+                      [selectedDay ?? data.today]: data.proteinToday,
+                    },
                     lastPreset: data.proteinPreset,
                   }
                 : undefined
@@ -634,6 +781,7 @@ function QuickEntryBody({
           pastDays={data.pastDays}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
+          selectedDay={selectedDay ?? data.today}
         />
       );
     case "cycle":
@@ -670,7 +818,7 @@ function QuickEntryBody({
       return (
         <QuickPracticeList
           practices={data.practices}
-          today={data.today}
+          today={selectedDay ?? data.today}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
         />
@@ -683,7 +831,7 @@ function QuickEntryBody({
       return (
         <StoolTypeControl
           todayCount={data.todayCount}
-          today={data.today}
+          today={selectedDay ?? data.today}
           subjectProfileId={subjectProfileId}
         />
       );
@@ -694,6 +842,7 @@ function QuickEntryBody({
       return (
         <QuickSubstanceList
           substances={data.substances}
+          date={selectedDay ?? data.today}
           subjectProfileId={subjectProfileId}
         />
       );
@@ -705,7 +854,7 @@ function QuickEntryBody({
       // taps revalidate behind the sheet, so "stay where you were" still holds.
       return (
         <QuickSymptomPanel
-          today={data.today}
+          today={selectedDay ?? data.today}
           severities={data.severities}
           notes={data.notes}
           customNames={data.customNames}
