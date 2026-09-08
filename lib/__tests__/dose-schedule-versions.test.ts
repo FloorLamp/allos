@@ -49,10 +49,20 @@ const ctx = (date: string) => ({
 
 describe("doseScheduleAsOf: the version in force on a day", () => {
   const versions: DoseScheduleVersion[] = [
-    { effective_from: "2026-06-01", time_of_day: "Evening" },
-    { effective_from: "2026-07-15", time_of_day: "Morning" },
+    {
+      effective_from: "2026-06-01",
+      amount: "500 mg",
+      amount_captured: 1,
+      time_of_day: "Evening",
+    },
+    {
+      effective_from: "2026-07-15",
+      amount: "1000 mg",
+      amount_captured: 1,
+      time_of_day: "Morning",
+    },
   ];
-  const dose = { time_of_day: "Morning", versions };
+  const dose = { amount: "1000 mg", time_of_day: "Morning", versions };
 
   it("resolves the latest version at or before the day", () => {
     expect(doseScheduleAsOf(dose, "2026-06-30").time_of_day).toBe("Evening");
@@ -66,13 +76,48 @@ describe("doseScheduleAsOf: the version in force on a day", () => {
     // Not "no schedule": existence is a different question with a better answer
     // (doseWindowSince). The oldest recorded rule is the best statement available
     // about a day before recording started.
-    expect(doseScheduleAsOf(dose, "2026-01-01").time_of_day).toBe("Evening");
+    expect(doseScheduleAsOf(dose, "2026-01-01")).toMatchObject({
+      amount: "500 mg",
+      time_of_day: "Evening",
+      amountAssumed: true,
+    });
+  });
+
+  it("returns the captured amount in force on and after each boundary", () => {
+    expect(doseScheduleAsOf(dose, "2026-07-14")).toMatchObject({
+      amount: "500 mg",
+      amountAssumed: false,
+    });
+    expect(doseScheduleAsOf(dose, "2026-07-15")).toMatchObject({
+      amount: "1000 mg",
+      amountAssumed: false,
+    });
+  });
+
+  it("marks migrated or inferred amounts as assumed", () => {
+    const migrated = {
+      amount: "500 mg",
+      versions: [
+        {
+          effective_from: "2026-06-01",
+          amount: "500 mg",
+          amount_captured: 0 as const,
+        },
+      ],
+    };
+    expect(doseScheduleAsOf(migrated, "2026-07-01")).toMatchObject({
+      amount: "500 mg",
+      amountAssumed: true,
+    });
   });
 
   it("falls back to the live row when a dose has no recorded history at all", () => {
     // The pre-#1973 reading, and what every fixture / seed / importer row keeps.
     const bare = { time_of_day: "Midday", weekdays: "1,3" };
-    expect(doseScheduleAsOf(bare, "2020-01-01").time_of_day).toBe("Midday");
+    expect(doseScheduleAsOf(bare, "2020-01-01")).toMatchObject({
+      time_of_day: "Midday",
+      amountAssumed: true,
+    });
     expect(doseScheduleAsOf(bare, "2026-08-03").weekdays).toBe("1,3");
   });
 
@@ -365,19 +410,18 @@ describe("the legacy dose-change day is on the profile's calendar (#3902)", () =
   });
 });
 
-describe("a cosmetic edit moves no boundary at all", () => {
-  // Name, amount, food timing and sort are absent from DoseSchedule by construction,
-  // so they cannot reach the comparator that decides whether a version is appended.
-  it("sees no difference when only non-schedule fields change", () => {
+describe("an amount edit records history without moving a schedule boundary", () => {
+  it("versions amount but ignores food timing and sort", () => {
     const before = {
+      amount: "500 mg",
       time_of_day: "Morning",
       weekdays: null,
       start_date: null,
       end_date: null,
     };
-    expect(
-      doseScheduleDiffers(before, { ...before, amount: "1000 mg" } as never)
-    ).toBe(false);
+    expect(doseScheduleDiffers(before, { ...before, amount: "1000 mg" })).toBe(
+      true
+    );
     expect(
       doseScheduleDiffers(before, {
         ...before,
@@ -419,12 +463,24 @@ describe("a cosmetic edit moves no boundary at all", () => {
     ).toBe(true);
   });
 
-  it("leaves the judged days untouched across a cosmetic edit", () => {
-    // The whole point, stated end to end: a dose whose amount changed has ONE version,
-    // so every day in its life resolves to the same rule and nothing moves.
+  it("leaves dueness, bucket, and slot-change answers untouched", () => {
     const dose = {
+      amount: "1000 mg",
       time_of_day: "Morning",
-      versions: [{ effective_from: "2026-06-01", time_of_day: "Morning" }],
+      versions: [
+        {
+          effective_from: "2026-06-01",
+          amount: "500 mg",
+          amount_captured: 1 as const,
+          time_of_day: "Morning",
+        },
+        {
+          effective_from: "2026-07-15",
+          amount: "1000 mg",
+          amount_captured: 1 as const,
+          time_of_day: "Morning",
+        },
+      ],
     };
     for (const date of ["2026-06-02", "2026-07-01", "2026-08-03"]) {
       expect(doseDueOn(ITEM, dose, ctx(date))).toBe(true);

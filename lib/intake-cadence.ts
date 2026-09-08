@@ -51,13 +51,12 @@ export interface ItemCadence {
   cadence_anchor_date?: string | null;
 }
 
-// The dueness-relevant shape of ONE dose schedule, independent of when it applied:
-// the slot it occupies plus its own calendar. This is what a version RECORDS and what
-// `doseOnDay` evaluates — deliberately narrower than the dose row, which also carries
-// amount, food timing, sort and provenance. Those are cosmetic to dueness: changing an
-// amount cannot make a day due or not due, so it must never move an adherence boundary
-// (#1973).
+// The effective-dated facts of ONE dose, independent of when they applied. `doseOnDay`
+// evaluates only the schedule fields; amount travels in the same version so a past-day
+// administration uses the quantity that applied then. Amount changes never move an
+// adherence boundary.
 export interface DoseSchedule {
+  amount?: string | null;
   time_of_day?: string | null;
   weekdays?: string | null;
   start_date?: string | null;
@@ -72,6 +71,11 @@ export interface DoseSchedule {
 export interface DoseScheduleVersion extends DoseSchedule {
   // Profile-LOCAL calendar day (YYYY-MM-DD), inclusive.
   effective_from: string;
+  amount_captured?: 0 | 1;
+}
+
+export interface ResolvedDoseSchedule extends DoseSchedule {
+  amountAssumed: boolean;
 }
 
 // The per-dose calendar fields: an optional weekday subset and an optional inclusive
@@ -177,9 +181,11 @@ export function cadenceOn(item: ItemCadence, dateISO: string): boolean {
 export function doseScheduleAsOf(
   dose: DoseCadence,
   dateISO: string
-): DoseSchedule {
+): ResolvedDoseSchedule {
   const versions = dose.versions;
-  if (!versions || versions.length === 0) return dose;
+  if (!versions || versions.length === 0) {
+    return { ...dose, amountAssumed: true };
+  }
   let best: DoseScheduleVersion | null = null;
   let earliest: DoseScheduleVersion | null = null;
   for (const v of versions) {
@@ -193,7 +199,12 @@ export function doseScheduleAsOf(
     // effective_from), so this is belt-and-braces rather than the primary defence.
     if (best == null || v.effective_from >= best.effective_from) best = v;
   }
-  return best ?? earliest ?? dose;
+  const selected = best ?? earliest;
+  if (!selected) return { ...dose, amountAssumed: true };
+  return {
+    ...selected,
+    amountAssumed: best == null || selected.amount_captured !== 1,
+  };
 }
 
 // The day a dose's schedule is KNOWN to have changed without the change having been
@@ -246,12 +257,11 @@ export function unrecordedScheduleChangeOn(
   return newest.effective_from >= changedOn ? null : changedOn;
 }
 
-// Whether two schedules differ in a DUENESS-RELEVANT way — the write path's test for
-// "does this edit deserve a new version?". Cosmetic fields (amount, food timing, sort,
-// notes) are absent from DoseSchedule by construction, so a typo fix in an amount can
-// never reach this and can never move an adherence boundary (#1973).
+// Whether two effective-dated dose facts differ. Amount changes deserve a version but
+// remain absent from the separate slot timestamp boundary.
 export function doseScheduleDiffers(a: DoseSchedule, b: DoseSchedule): boolean {
   return (
+    (a.amount ?? null) !== (b.amount ?? null) ||
     (a.time_of_day ?? null) !== (b.time_of_day ?? null) ||
     (a.weekdays ?? null) !== (b.weekdays ?? null) ||
     (a.start_date ?? null) !== (b.start_date ?? null) ||

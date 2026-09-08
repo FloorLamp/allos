@@ -431,16 +431,14 @@ export default async function HistoryPage(props: {
   // item retired since the dose was taken still took it, so history keeps listing it)
   // and which of them still have a live dose to log against.
   const allItems = getIntakeItems(actingProfileId);
-  const dosesByItem = new Map<
-    number,
-    { id: number; amount: string | null; time_of_day: string | null }[]
-  >();
+  const dosesByItem = new Map<number, DoseLedgerItem["doses"]>();
   for (const dose of getIntakeDoses(actingProfileId)) {
     const list = dosesByItem.get(dose.item_id) ?? [];
     list.push({
       id: dose.id,
       amount: dose.amount,
       time_of_day: dose.time_of_day,
+      versions: dose.versions,
     });
     dosesByItem.set(dose.item_id, list);
   }

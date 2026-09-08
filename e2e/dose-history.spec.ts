@@ -423,6 +423,16 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   const newest = offers.first(); // eslint-disable-line no-restricted-properties -- first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
   await expect(newest).toContainText("250 mg");
   await expect(newest).not.toContainText("Morning");
+  const assumption =
+    "No amount was saved for this date. Using the oldest known amount.";
+  const disclosures = panel.getByText(assumption, { exact: true });
+  await expect(disclosures).toHaveCount(MISSED_DAYS);
+  for (const disclosure of await disclosures.all()) {
+    await expect(disclosure).toBeVisible();
+  }
+  await expect(newest).toHaveAccessibleName(
+    /250 mg.*Log.*No amount was saved for this date/
+  );
 
   // ── ONE PILL, ONE TARGET (#4753) ───────────────────────────────────────────
   // The labeled-verb chip's claim is geometric as well as textual, so it is
@@ -479,9 +489,9 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   await expect(control).toHaveText("Log past dose");
 
   // ── ...and when the slot IS a clock, the row names it and writes it ────────
-  // The other arm of the same rule. Written straight to the dose row because the
-  // schedule editor offers the bucket words; what is under test is the OFFER's
-  // reading of stored slot text, not how the text got there.
+  // Make this fixture's stored schedule a clock, including the captured version
+  // the past-day offer reads. Changing only the live row would leave the historical
+  // schedule at Morning and correctly keep that new clock out of the past offer.
   const flip = new Database(workerDbPath());
   try {
     flip.pragma("busy_timeout = 5000");
@@ -491,26 +501,41 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
           WHERE item_id = (SELECT id FROM intake_items WHERE name = ?)`
       )
       .run(name);
+    flip
+      .prepare(
+        `UPDATE intake_dose_schedule_versions SET time_of_day = '08:00'
+          WHERE dose_id IN (
+            SELECT d.id FROM intake_item_doses d
+            JOIN intake_items i ON i.id = d.item_id
+            WHERE i.profile_id = 1 AND i.name = ?
+          )`
+      )
+      .run(name);
   } finally {
     flip.close();
   }
-  await page.goto("/nutrition?tab=supplements");
   // The row LEFT the Morning section — a clock slot groups under its own window — so
   // it is re-found by the name this spec owns rather than by where it used to sit.
   const clockRow = page.locator("div.card").filter({ hasText: name });
-  await expect(clockRow).toHaveCount(1);
-  await hydratedClick(
-    page,
-    clockRow.getByRole("button", { name: "Supplement actions" })
-  );
-  await page.getByRole("menuitem", { name: "Dose history" }).click();
   const clockPanel = clockRow.getByTestId("supplement-dose-history-panel");
-  await hydratedClick(
-    page,
-    clockPanel.getByRole("button", { name: "Log past dose" })
-  );
   const clockOffer = clockPanel.getByTestId("dose-backfill-offer").first(); // eslint-disable-line no-restricted-properties -- first-ok: same spec-owned offer list, newest first
-  await expect(clockOffer).toContainText(/(?:8:00am|08:00)/);
+  // eslint-disable-next-line no-restricted-properties -- topass-ok: fixture SQL bypasses the five-second schedule memo; request fresh read-only server data until it reflects the fixture.
+  await expect(async () => {
+    await page.goto("/nutrition?tab=supplements");
+    await expect(clockRow).toHaveCount(1);
+    await hydratedClick(
+      page,
+      clockRow.getByRole("button", { name: "Supplement actions" })
+    );
+    await page.getByRole("menuitem", { name: "Dose history" }).click();
+    await hydratedClick(
+      page,
+      clockPanel.getByRole("button", { name: "Log past dose" })
+    );
+    await expect(clockOffer).toContainText(/(?:8:00am|08:00)/, {
+      timeout: 1000,
+    });
+  }).toPass({ timeout: 10_000 }); // topass-ok: direct fixture SQL bypasses the schedule-version memo invalidation that real dose edits perform; reload the read-only view until its five-second memo expires. A locator assertion alone cannot request fresh server data; no dose write runs in this loop.
   await settledClick(page, clockOffer);
   await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
   // The row the label promised: the dose's own slot clock, not the panel's default.

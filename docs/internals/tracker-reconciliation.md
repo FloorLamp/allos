@@ -1,330 +1,153 @@
 # Tracker reconciliation
 
-Status: **partial** (gather script, patcher, run summary and protocol shipped;
-the weekly cron stays unwired by decision, with a measurable condition for
-lifting it — see "Scheduling")
+Status: partial. Gathering, patching, and run summaries are shipped; the weekly
+schedule remains unwired under the condition below.
 
-The tracker is prose that quotes the code. At this repo's merge rate — 99 PRs
-across 2026-08-11 and -12 alone — every path, line number, symbol and
-dependency an issue body states is a fact with an expiry date that nobody
-stamps. This is the loop that re-checks them.
+Reconciliation checks tracker claims against the current repository. It may
+refresh factual status markers, cross-references, paths, symbols, and permitted
+labels. It never closes issues or changes scope, decisions, or owner prose beyond
+those factual edits. Flag judgments that the evidence cannot settle.
 
-It is **factual reconciliation only**. It never closes an issue, never edits
-owner prose beyond factual status markers / cross-refs / path refreshes /
-symbol refreshes, and never changes scope or a decision. Judgment calls are FLAGGED, not made.
+Use the [reconciliation protocol](../../.claude/skills/reconcile-tracker/SKILL.md)
+for the ordered run procedure and the [change and test policy](../change-policy.md)
+for implementation scope. This guide describes the current tools and their limits;
+it is not a mandate to build more detectors.
 
-## The pieces
+## Owners and commands
 
-| File                                              | What it is                                                                 |
-| ------------------------------------------------- | -------------------------------------------------------------------------- |
-| `scripts/orchestration/reconcile-tracker-core.ts` | Pure. Repo + tracker in as data, an evidence list out. Decides nothing.    |
-| `scripts/orchestration/reconcile-tracker.ts`      | The read-only entrypoint. GitHub reads, git file list, clock.              |
-| `scripts/orchestration/reconcile-watermark.ts`    | A writer. Stamps the watermark carrier issue; one body, one fixed title.   |
-| `scripts/orchestration/reconcile-patch.ts`        | Pure. Assertion-anchored patching, four kinds wide, refuses by default.    |
-| `scripts/orchestration/reconcile-repo-index.ts`   | The tracked-file list and lazy reads, shared by the scan and the applier.  |
-| `scripts/orchestration/reconcile-apply.ts`        | A writer. Sends exactly one field, `body`.                                 |
-| `scripts/orchestration/reconcile-labels.ts`       | A writer. Label ops only, one field, `labels`. Adds come from a plan file. |
-| `scripts/orchestration/reconcile-run-summary.ts`  | A writer. One comment on #865: this run's date, SHA and counts.            |
-| `.claude/skills/reconcile-tracker/SKILL.md`       | The six-step protocol, the guardrails, the report format, `allowed-tools`. |
-| `lib/__tests__/reconcile-tracker.test.ts`         | Parsers, false-positive floor, guardrails, capability scan.                |
+| Owner                                                                              | Responsibility                                                              |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [reconcile-tracker-core.ts](../../scripts/orchestration/reconcile-tracker-core.ts) | Pure evidence gathering, label decisions, report and summary calculations.  |
+| [reconcile-tracker.ts](../../scripts/orchestration/reconcile-tracker.ts)           | Read-only entrypoint: GitHub reads, repository files, clock, and watermark. |
+| [reconcile-repo-index.ts](../../scripts/orchestration/reconcile-repo-index.ts)     | Shared tracked-file index and lazy source reads.                            |
+| [reconcile-patch.ts](../../scripts/orchestration/reconcile-patch.ts)               | Exact-anchor patch validation and application.                              |
+| [reconcile-apply.ts](../../scripts/orchestration/reconcile-apply.ts)               | Issue-body writes, conditional change notices, and applied-patch outcomes.  |
+| [reconcile-labels.ts](../../scripts/orchestration/reconcile-labels.ts)             | Permitted label removals and plan-driven domain additions.                  |
+| [reconcile-watermark.ts](../../scripts/orchestration/reconcile-watermark.ts)       | Read or advance the tracker-owned sweep watermark.                          |
+| [reconcile-run-summary.ts](../../scripts/orchestration/reconcile-run-summary.ts)   | Record one dated run summary on #865.                                       |
 
 ```bash
-npm run reconcile                        # report to stdout
-npm run reconcile -- --json ev.json --out report.md
-npm run reconcile -- --issue 2603,2589   # one or two issues
-npm run reconcile:apply plan.json        # dry run; add --apply to write
-npm run reconcile:watermark              # read the stamp
-npm run reconcile:watermark -- stamp --evidence ev.json --apply
-npm run reconcile:summary -- --evidence ev.json   # dry run; add --apply to post
+npm run reconcile
+npm run reconcile -- --json evidence.json --out report.md
+npm run reconcile -- --issue 2603,2589
+npm run reconcile:apply -- plan.json --outcome outcome.json
+npm run reconcile:summary -- --evidence evidence.json --outcome outcome.json
+npm run reconcile:watermark
+npm run reconcile:watermark -- stamp --evidence evidence.json
 ```
 
-Every step of the protocol has a name you can type. The stamp step did not
-until 2026-09-05, which is the likeliest reason it is the one step nothing has
-ever run — the carrier issue has never existed on this tracker.
+The writer commands above default to dry runs; `--apply` performs their writes.
+Read the report and review proposed changes before applying them. Keep evidence
+and outcomes from the same run together. A dry-run outcome reports zero applied
+patches, and omitting an outcome tells the summary that nothing was applied.
 
-The run window starts at the previous run's watermark, stored in the tracker
-itself as the body of the issue titled "Reconcile watermark (machine state)" —
-container state dies with the container, and a lost watermark silently
-reshapes the window. The gatherer only reads it; after the report is read,
-`reconcile-watermark.ts stamp --evidence <json> --apply` advances it (dry run
-by default, refuses to rewind). The report stamps both ends of its own window.
+## Evidence and its limits
 
-## What the deterministic half can and cannot see
+The deterministic scan checks citations, paths, symbols, issue dependencies,
+merged-PR references, documentation status, and label findings. It supplies a
+reading list for the judgment pass; a clean report does not establish that an
+issue's premise or proposed fix remains correct.
 
-This matters more than the feature list, because the failure mode is a routine
-that catches the cheap class and reads as coverage. Six drift classes were
-measured on this tracker on 2026-08-12:
+Read the owning code when deciding whether behavior exists, a proposed fix can
+work, or a partially shipped issue still has unmet requirements. Existence checks
+cannot detect the inverse claim: an issue saying something is absent when it
+has since shipped. Reconcile that claim against the implementation rather than
+assuming a detector covers it.
 
-| Class                                | Example                                                                                    | Reachable?                |
-| ------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------- |
-| Moved line numbers                   | #2582, #2578, #2560, #2570, #2567 quoted lines off by 2–75                                 | **yes** — anchor check    |
-| Dead / unqualified paths             | a retired route still cited by name; `RecordTable.tsx` with no directory                   | **yes** — path resolution |
-| Dependency on merged work            | `Depends-on: #X`, "once #X lands" where X closed                                           | **yes** — reference graph |
-| Prescribed fix that cannot work      | #2567 "decline the window's first tick" — at an hourly tick that declines forever          | no                        |
-| Physically impossible premise        | #2552 needed a manual sleep row to be a session; `upsertManualSample` writes `start = end` | no                        |
-| Obsolete premise                     | #2377 said the biomarker→food limit direction was unmodelled; #775 shipped it              | no                        |
-| False supporting claim               | #2554 said every other source-id binding uses `SOURCE`; fourteen do not                    | no                        |
-| Framing that does not match the code | #2135 said "lift the state machine out of SQL"; the pure function already existed          | no                        |
+Path and symbol findings use these distinctions:
 
-Everything in the second group is a claim about BEHAVIOUR, and deciding one
-needs the code read. The script's contribution there is indirect but real: it
-verifies the citations, and a verified citation set is the reading list. An
-issue whose every mechanical claim checks out is precisely the issue whose
-prose still has to be judged.
+- A bare basename may resolve to a tracked file elsewhere in the tree. A path
+  containing directories must resolve as that path; do not discard its directories
+  and substitute a basename match.
+- A missing citation rooted in a real repository directory is actionable evidence.
+  Unrooted missing citations may describe another project and remain unverifiable.
+- A line anchor must be specific enough to locate. More than
+  `MAX_ANCHOR_OCCURRENCES` matches is diffuse; a small number of matches selects
+  the occurrence nearest the cited line.
+- Missing symbols in bug reports are stronger premise evidence than proposed
+  names in feature requests. `symbolConfidence` owns that distinction.
 
-**A routine that only caught the first group would have caught none of the six
-defects found by hand that day.** Do not read a clean report as a clean tracker.
+Read the report's denominators as well as its findings: citations parsed, paths
+resolved, anchors testable, references followed, and documents examined. An empty
+report with little examined is not evidence of a healthy tracker. Watch the ratio
+of testable anchors to line citations; a bare line number without a named anchor
+cannot establish that the cited claim remains true.
 
-### Measured against a human pass: zero of seven
+The gatherer refuses a truncated open-issue sweep. A truncated merged-PR sweep
+can still produce evidence, but marks `prsTruncated` and reports its examined
+count as a lower bound. Never treat that count as complete coverage.
 
-That was the prediction. It was then measured. On 2026-08-12 a read-only triage
-agent audited ~40 open non-parked issues against `main` by reading code, and
-found seven that were not clean:
+## Applying factual changes
 
-| #    | Verdict       | What was actually wrong                                                           |
-| ---- | ------------- | --------------------------------------------------------------------------------- |
-| 2487 | obsolete      | shipped by #2537; `registry.ts` has no `provider` identifier left                 |
-| 2110 | premise stale | the cost comment it complains about was already corrected; fan-out bounded at 12  |
-| 2149 | premise stale | items 1–3 shipped; only item 5 open                                               |
-| 2205 | premise stale | phases 1 and 3 shipped; only the phase-2 rename waves left                        |
-| 1847 | premise stale | #2215 made five of six kinds undoable; only documents remain                      |
-| 1677 | premise stale | all six rankers exist and are tested; 11 call sites still use the unranked getter |
-| 2556 | fix wrong     | the "missing" write paths all exist; this is affordance wiring, not a second core |
+A patch names the exact text it expects. Missing or repeated anchors refuse;
+there is no fuzzy fallback. The patcher admits four kinds:
 
-**This script would have flagged nothing on any of the seven.**
+| Kind             | Allowed change                                                    |
+| ---------------- | ----------------------------------------------------------------- |
+| `status-marker`  | Replace one supported marker with another.                        |
+| `cross-ref`      | Append a bounded issue-reference parenthetical to the anchor.     |
+| `path-refresh`   | Replace a path citation with another path-shaped citation.        |
+| `symbol-refresh` | Replace a backticked identifier with another verified identifier. |
 
-The reason is sharper than "behavioural claims need reading", and it is the
-single most useful sentence in this document. Six of the seven fail in the
-INVERSE DIRECTION to everything here. Every detector in this module asks _does
-the thing this issue cites still exist?_ These issues are wrong because
-**something the issue says does not exist now does**. A dead-path check cannot
-see a path that is alive. A moved-line check cannot see a module that was born.
-The whole apparatus is pointed one way down a road that has traffic in both.
+A symbol refresh requires the shared repository resolver: the replacement must
+exist and the old name must no longer resolve. A rename discussed in ordinary
+prose is not a backticked symbol anchor. If the same anchor appears in a ruling
+and elsewhere in the body, ambiguity refuses the patch rather than selecting one.
 
-### The identified next class: inverse existence
+The applier rereads the live issue body and skips issues that have closed since
+gathering. It writes only the issue's `body` field. When an edited issue already
+has comments, or is named by `--notify`, it also posts a change notice so existing
+readers can distinguish the current body from earlier discussion.
 
-Naming it matters, because "needs judgment" reads as unbounded and this part is
-not. An inverse-existence detector is conceivable and bounded: parse the claims
-an issue makes about ABSENCE — "there is no X anywhere", "X is not modelled at
-all", "to build", "X does not exist yet", an unticked box whose text names a
-symbol — and test each against `main` the same way a citation is tested. It
-would have caught #1677 and #2556, the two most expensive on the list above.
+The label writer changes labels only. A domain addition must fill an empty domain
+slot on an open issue; existing labels and additions earlier in the same plan both
+count as occupied. Reclassification is outside this routine. Use the core's label
+decisions instead of recreating them in a writer.
 
-It is deliberately not built here, and it is not free: an absence claim in a
-feature issue is usually the correct description of work not yet done, which is
-the same tiering problem `symbolConfidence` already handles badly enough to
-warrant caution. But it is the next thing to build, and it is a bounded piece of
-work rather than "add judgment".
+The watermark writer is confined to its fixed-title carrier issue. The summary
+writer posts to the issue named by `RUN_SUMMARY_ISSUE`. None of these writers has
+an issue-close operation; preserve that boundary when changing their payloads or
+allowed tools.
 
-### The two passes are complementary, not redundant
+## Watermark and run summaries
 
-The overlap runs near zero in both directions. The human sweep verified premises
-issue by issue and never systematically checked a citation; this script found
-14 moved `path:line` citations of 46 testable, 9 rooted dead paths, and 17 docs
-citing modules that no longer exist — none of which the sweep attempted.
+The issue titled `Reconcile watermark (machine state)` stores the previous run's
+instant. It belongs in the tracker, independently of a checkout, container, or
+dispatch ledger. Without a watermark, the merged-PR sweep starts without a lower
+bound and can reach the page cap.
 
-That is a better result for this routine than overlap would have been. The
-script does not approximate the judgment pass and is not trying to. It clears
-the mechanical layer so the judgment pass starts from citations known to
-resolve.
+The gather reads the watermark and records both ends of its window. After
+reviewing the run, advance the carrier from that evidence's `watermark.current`,
+not from the time stamping happens. The writer refuses to rewind it.
 
-The cost ratio is the argument for running both, in that order: the human sweep
-took roughly 19 minutes of agent time for 39 issues; this script takes seconds.
-Cheap mechanical pass first, judgment pass on what survives it.
+Each run's durable summary is one comment on #865, keyed by the gather timestamp.
+The writer refuses a duplicate run stamp. The line includes the swept commit,
+window, applied and flagged counts, and merged PRs examined. It describes the run,
+not the correctness of every tracker claim.
 
-## Signal quality
+`patched` comes from the applier's outcome file. `flagged` is the sum of unapplied
+patch candidates, unverifiable findings, documentation findings, and label
+findings. An outcome claiming more applied patches than the evidence proposed is
+rejected. A report-only or dry-run pass must not count previews as applied work.
 
-Three decisions do most of the work of keeping the report readable, each of
-them a measured false-positive class rather than a precaution:
+`boring: yes` requires zero flagged findings and an untruncated PR sweep. A clipped
+sweep reports `boring: not established`, even with zero findings. These decisions
+live in `summarizeRun` and `boringVerdict`; consumers should not recalculate them.
 
-- **A bare basename is not a dead path.** Bodies cite `RecordTable.tsx`, not
-  `components/RecordTable.tsx`. A naive existence check called 46 citations
-  dead where 13 were.
-- **A directoried path is never collapsed to its basename.** The opposite
-  error: `app/api/…/ingest/route.ts` became "ambiguous across 33 `route.ts`
-  files" — less true and less useful than "does not exist".
-- **A citation must be ROOTED in a real top-level directory to be a claim about
-  this repo.** `hr_minutes.ts` is a SQL table, `configuration.yaml` is a Home
-  Assistant file, `server/app-render/…js` is a Next internal. Unrooted dead
-  citations are gathered as unverifiable, not as patch candidates.
+## Scheduling and prevention
 
-Two more, on the anchor check: an anchor appearing on more than
-`MAX_ANCHOR_OCCURRENCES` lines is DIFFUSE and pins nothing (`profile_settings`
-is on sixteen lines of one module), and when an anchor appears two or three
-times the correction is the NEAREST occurrence, not the first — a component
-named in the import block and again 1,700 lines down must not send the reader
-to the import block.
+Run on demand after substantial tracker changes. The weekly cron remains unwired
+under the [recorded decision on #865](https://github.com/FloorLamp/allos/issues/865).
+Three consecutive boring run summaries unblock it; the change wiring the schedule
+must cite those comments. Do not infer readiness from an empty report or a count
+of runs alone.
 
-Absent SYMBOLS are tiered by the issue's labels: a `bug`'s backticked symbol is
-a premise, anything else's is usually the name it PROPOSES to add. The second
-is the majority and would bury the first.
+Use a standalone `Depends-on: #123, #456` line for dependencies. Free-text forms
+remain supported, but the structured form is unambiguous. When a PR completes part
+of a checklist issue, verify the shipped artifact and update its matching box;
+a title claiming completion is not enough evidence.
 
-## The guardrails, and why they are structural
-
-- **Assertion-anchored patching.** A patch names the exact text it expects.
-  Absent ⇒ skip and flag. Present twice ⇒ skip and flag. No fuzzy fallback. A
-  drifted anchor mangling owner prose is strictly worse than doing nothing, so
-  the refusal is the feature, and it is tested directly.
-- **Four patch kinds, shape-checked.** `status-marker` moves between markers;
-  `cross-ref` may only APPEND a bounded `(see #N)` parenthetical, so it cannot
-  delete; `path-refresh` replacement must itself parse as a path;
-  `symbol-refresh` must be a backticked identifier on both sides. Naming the
-  right kind is not enough to smuggle a rewrite through.
-- **A symbol-refresh also asks the tree** (#3619). The other three kinds are
-  decidable from the body alone; a rename is a claim about `main`. So the kind
-  takes a resolver — the same `symbolExists` over the same `RepoIndex` the scan
-  used — and refuses three ways: without a resolver at all, when the
-  replacement does not resolve either (a rename to a name that also does not
-  exist), and when the OLD name still resolves (nothing expired, so there is
-  nothing to refresh). The backticks are the other half: a patch can only land
-  inside an inline code span, so a sentence _discussing_ the rename is
-  unreachable by construction. A body that cites the symbol twice — once in
-  Refs and once inside a ruling, which is #3472's shape — refuses under the
-  anchor contract rather than making a stale decision read as validated.
-- **No close capability in the granted toolchain.** Not "the prompt says not
-  to" — that is the same theatre as gating a Server Action in the UI only
-  (#1279/#2107). The skill's `allowed-tools` grants no `issue_write`, no
-  `gh issue close`, no general `Bash`. There are exactly TWO writers, and each
-  sends a payload built from one field: `reconcile-apply.ts` sends `body`,
-  `reconcile-labels.ts` sends `labels` (its removal path sends no body at all —
-  the label rides in the URL). Neither endpoint has a field an issue's `state`
-  could travel in. A source scan in the pure tier fails any of those appearing.
-- **A domain add may only FILL A GAP.** `reconcile-labels.ts` never re-classifies
-  an issue that already carries a domain label, and "already" includes a label
-  this same run just added — a plan file listing two domains for one issue gets
-  one write and one logged refusal, in a dry run exactly as under `--apply`
-  (#3122). `decideDomainAdd` in the core is the whole judgment;
-  `lib/__tests__/reconcile-labels-script.test.ts` drives the script itself
-  against a stub `curl` so the read-modify-write loop is tested, not just the
-  function it calls.
-
-## Prevention: two conventions that shrink the problem at the source
-
-- **`Depends-on: #123, #456`** on its own line in an issue body. Free-text
-  "depends on" keeps working and is still parsed, but the structured form is
-  line-anchored, unambiguous, and the one the script reports on. (As of
-  2026-08-12 no open issue uses either form, which is why the dependency
-  detector found nothing on its first run — it has no targets, not no bugs.)
-- **The umbrella-checkbox rule**: a PR landing part of a checklist issue ticks
-  its own box in the same breath. The script flags every merged "Part of #X"
-  against a still-open X, so the drift is visible either way — but ticking at
-  merge time is one line and removes the verification pass entirely.
-
-## #2385: how this learns it should stop
-
-**Working:** the flagged corpus is small, specific and actionable — each finding
-carries a computed correction rather than a suspicion — and the flagged items
-survive review.
-
-**Wrong:** findings a reviewer rejects. Two shapes. A "correction" naming the
-wrong place is the dangerous one, because a path refresh is inside the
-guardrails and is therefore the finding most likely to be applied unexamined.
-Noise is the other: an issue flagged for a symbol that was never meant to exist
-yet trains the reader to skim, which costs the real findings too.
-
-**Deceptive success, first shape: an empty report.** A healthy tracker and a
-script that has silently stopped resolving anything produce the same clean
-summary, and the clean one is the one nobody investigates. Nothing in the
-findings can distinguish them, so the report leads with DENOMINATORS — citations
-parsed, paths resolved, anchors testable, references followed, docs examined.
-Zero findings across 224 citations is a healthy tracker. Zero findings across
-zero citations is a broken run. A sharp drop in the examined counts between runs
-is itself the finding.
-
-**Deceptive success, second shape: an authoring habit lapsing.** This is a
-DEPENDENCY, not an observation, and it is the more insidious of the two because
-the denominators do not catch it. The line-citation check works only because
-this tracker's authors name what is on the line, in backticks, in the same
-sentence — a bare line number is unfalsifiable, and a length check finds nothing
-(zero of 72 resolvable citations pointed past EOF). If that habit lapses, the
-class becomes unreachable while `path citations parsed` stays high and
-`line citations` stays high; only `testable against an anchor` sags, and it
-sags into a clean report rather than an error. **Watch the testable-to-cited
-ratio, not just the totals**; today it is 46 of 103. A run where it approaches
-zero is not a tidy tracker, it is a detector that has quietly lost its grip.
-
-**Deceptive success, third shape: a denominator that is a page cap.** The two
-above fail toward a LOW number, which is at least the direction the reader is
-watching. This one fails HIGH. The gatherer pages every collection to a cap of
-ten pages of 100; the PR fetch runs unbounded when no watermark is stamped, and
-on 2026-09-05 it stopped after 1000 of the repo's 2544 closed PRs and reported
-`merged PRs examined: 969`. Nothing had examined the 1544 behind the cap, and
-969 is exactly the sort of number that ends an investigation rather than
-starting one. The fetch now says which of its two reasons it stopped for
-(`TrackerSnapshot.prsTruncated`, required so it cannot be omitted) and the
-examined block prints the count as a floor. **The open-issue fetch refuses
-instead** — a truncated PR list still produces a report worth reading, while an
-unswept issue produces no finding to be wrong about.
-
-The real repair is upstream of the report: **stamp the watermark**. A window
-with a lower bound holds a few dozen PRs and never approaches the cap. As of
-2026-09-05 the carrier issue `Reconcile watermark (machine state)` did not exist
-on the tracker, open or closed, so no run had ever advanced it and every run to
-date has swept from the beginning of the repo.
-
-## The run summary line
-
-Every run appends **one line to #865**, and that comment chain is the routine's
-only run history: no report is committed anywhere in the tree, and the watermark
-holds one instant rather than a log. Before 2026-09-05 nothing recorded that a
-run had happened at all.
-
-```
-Reconciliation run — 2026-09-08T09:00:00Z · main `9b83ed8f2c14` · patched 12 · flagged 0 (unapplied candidates 0 · couldn't-verify 0 · docs 0 · labels 0) · boring: yes · window 2026-09-05T12:40:00Z → 2026-09-08T09:00:00Z · merged PRs examined 312
-```
-
-It is a **fact about the run, never a verdict on the tracker** — the same
-guardrail that stops the routine closing an issue. Three things in it are worth
-stating plainly, because each closes a way the count could be gamed by
-accident:
-
-**`flagged` counts unapplied patch candidates too.** Reading it as only the
-report's `Couldn't verify` bucket leaves a hole wide enough to drive the whole
-condition through: a run that gathers 474 candidates, applies none and has an
-empty unverifiable bucket would print `flagged 0`. Drift nobody wrote back is
-still drift and still a reader's job. So `flagged` is unapplied candidates +
-couldn't-verify + docs + label findings, and `boring` means the reader had
-nothing left to do.
-
-**`patched` comes from the applier, not from the gather.** The gather proposes
-candidates and cannot know which landed, so `reconcile-apply.ts --outcome
-<file>` writes its own count and the summary reads it. A count retyped by hand
-into a durable record is a count nobody can check. No `--outcome` means no
-applier ran, and zero is then the truth rather than a default.
-
-**A truncated sweep can never render `boring: yes`.** Until the watermark
-carrier exists every run is unbounded and the PR fetch stops at its page cap
-(see "deceptive success, third shape"), so its counts are of the whole tracker
-rather than of a window. Three "boring" runs assembled from three clipped sweeps
-would satisfy the unblock condition without anyone noticing, and a trailing
-truncation clause does not prevent that — a counter greps the boring token and
-stops. So the flag sits _inside_ that token: such a run reports
-`boring: not established (flagged 0, but the PR sweep was truncated)`, and
-spells the clipped denominator out at the end of the same line as well.
-
-The writer is confined like the others: one POST, one payload field (`body`),
-one URL built from the pinned `RUN_SUMMARY_ISSUE`. It is a dry run by default,
-`--apply` takes the write credential by name, and it refuses to post twice for
-one run — the line is keyed on the gather's own stamp, so re-running it on the
-same evidence is idempotent.
-
-## Scheduling
-
-Run weekly, or on demand after a heavy merge day. **The cron is not wired, by
-decision** (#865, ruling 2026-09-05 11:50 UTC): `npm run reconcile` is the
-schedule. An unattended pass that writes to the tracker needs its report read at
-least once per convention change, and a schedule nobody reads is how a routine
-starts patching in a shape nobody sanctioned.
-
-The condition that lifts it is **three consecutive boring runs**, counted from
-the summary lines on #865; the lane that wires the cron cites those three
-comments. That condition used to be unmeasurable — nothing recorded a run's
-outcome, so "boring three runs running" was unblockable by construction — which
-is what the previous section exists to fix.
-
-## Relationship to `scripts/orchestration/`
-
-This lives beside the dispatch, CI-watch and gate tooling because it is the same
-kind of thing: process rules given teeth. It shares no code with them and reads
-none of their state — the reconciliation watermark lives in its own tracker
-issue, nowhere near the dispatch ledger.
+Existing reconciliation core and script tests cover anchors, refusals, writer
+boundaries, outcomes, watermark handling, and summary arithmetic. Extend the
+relevant existing test only for a missing behavioral failure; do not add assertions
+that merely pin this guide's wording.
