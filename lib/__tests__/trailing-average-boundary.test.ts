@@ -61,14 +61,6 @@ const ALLOW: { file: string; why: string }[] = [
     why: "the baseline for ONE night: the mean is anchored on the latest recorded night rather than on today (a night logged four days ago still compares against the 30 nights before IT), so a today-anchored window would silently change which nights it covers. Already excludes its anchor day, i.e. it agrees with this helper's default.",
   },
   {
-    file: "lib/sleep-regularity.ts",
-    why: "midpoint/variability over a window — a median and a spread, not a mean of a value series; the window is anchored on the last recorded night, not today.",
-  },
-  {
-    file: "lib/protocol-compare.ts",
-    why: "paired before/after windows around a protocol run: both windows are anchored on the RUN's start and end dates, and the whole point is comparing two spans of history to each other rather than summarising a trailing one.",
-  },
-  {
     file: "lib/illness-episode-format.ts",
     why: "early-half vs late-half fever means WITHIN one episode — the split is the episode's own midpoint, so there is no trailing window and no today.",
   },
