@@ -1316,6 +1316,159 @@ test("a practice logs in one tap from the sheet and the week count moves", async
   }
 });
 
+// Unequal totals and durable writes exercise the real gather/cache across sheet
+// selection and dated route inheritance, at both owner-reported viewport sizes.
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 900 },
+]) {
+  test(`Food protein follows the selected day at ${viewport.width}px (#5211)`, async ({
+    browser,
+  }) => {
+    const profileId = shellProfileId();
+    const today = dateStrInTz(PINNED_TZ, frozenNow());
+    const yesterday = shiftDateStr(today, -1);
+    const db = openDb();
+    const originalTotals = db
+      .prepare(
+        "SELECT id, date, grams, created_at FROM protein_daily_totals WHERE profile_id = ? AND date IN (?, ?)"
+      )
+      .all(profileId, today, yesterday) as {
+      id: number;
+      date: string;
+      grams: number;
+      created_at: string;
+    }[];
+    const originalPreset = db
+      .prepare(
+        "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'protein_quickadd_last'"
+      )
+      .get(profileId) as { value: string } | undefined;
+    const lastEvent = db
+      .prepare(
+        "SELECT COALESCE(MAX(id), 0) AS id FROM food_log_events WHERE profile_id = ?"
+      )
+      .get(profileId) as { id: number };
+    const page = await signIn(browser);
+    try {
+      db.transaction(() => {
+        for (const [date, grams] of [
+          [today, 11],
+          [yesterday, 22],
+        ] as const) {
+          db.prepare(
+            "INSERT INTO protein_daily_totals (profile_id, date, grams) VALUES (?, ?, ?) ON CONFLICT(profile_id, date) DO UPDATE SET grams = excluded.grams"
+          ).run(profileId, date, grams);
+        }
+        db.prepare(
+          "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'protein_quickadd_last', '3') ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value"
+        ).run(profileId);
+      })();
+      await page.setViewportSize(viewport);
+      async function openFood() {
+        const input = await openCommandPalette(page);
+        await settledFill(page, input, "food");
+        await hydratedClick(page, page.getByTestId("palette-action-log-food"));
+        const sheet = page.getByTestId("quick-entry-sheet");
+        await expect(sheet.getByTestId("protein-quickadd-total")).toBeVisible();
+        return sheet;
+      }
+      async function addGrams(sheet: Locator, grams: number) {
+        await settledFill(
+          page,
+          sheet.getByTestId("protein-quickadd-input"),
+          String(grams)
+        );
+        await settledClick(page, sheet.getByTestId("protein-quickadd-add"));
+      }
+      function expectTotals(todayGrams: number, yesterdayGrams: number) {
+        expect(
+          db
+            .prepare(
+              "SELECT date, grams FROM protein_daily_totals WHERE profile_id = ? AND date IN (?, ?) ORDER BY date"
+            )
+            .all(profileId, today, yesterday)
+        ).toEqual([
+          { date: yesterday, grams: yesterdayGrams },
+          { date: today, grams: todayGrams },
+        ]);
+      }
+      await page.goto("/");
+      const sheet = await openFood();
+      const total = sheet.getByTestId("protein-quickadd-total");
+      await expect(total).toHaveText("11g today");
+      await hydratedClick(page, sheet.getByTestId("day-context-1"));
+      await expect(total).toHaveText("22g yesterday");
+      await addGrams(sheet, 3);
+      await expect(total).toHaveText("25g yesterday");
+      expectTotals(11, 25);
+      await hydratedClick(page, sheet.getByTestId("day-context-0"));
+      await expect(total).toHaveText("11g today");
+      await page.keyboard.press("Escape");
+      await expect(sheet).toHaveCount(0);
+
+      let yesterdayGrams = 25;
+      for (const [route, grams] of [
+        [`/history?day=${yesterday}`, 4],
+        [`/nutrition?date=${yesterday}`, 5],
+      ] as const) {
+        await page.goto(route);
+        const dated = await openFood();
+        await expect(dated.getByTestId("bounded-day-switcher")).toHaveCount(0);
+        await expect(total).toHaveText(`${yesterdayGrams}g yesterday`);
+        await addGrams(dated, grams);
+        yesterdayGrams += grams;
+        await expect(total).toHaveText(`${yesterdayGrams}g yesterday`);
+        expectTotals(11, yesterdayGrams);
+        await page.keyboard.press("Escape");
+        await expect(dated).toHaveCount(0);
+      }
+      await page.goto("/");
+      const returned = await openFood();
+      await expect(total).toHaveText("11g today");
+      await addGrams(returned, 6);
+      await expect(total).toHaveText("17g today");
+      expectTotals(17, 34);
+      expect(
+        db
+          .prepare(
+            "SELECT date, occurred_at FROM food_log_events WHERE profile_id = ? AND group_key = '__protein__' AND id > ? ORDER BY id"
+          )
+          .all(profileId, lastEvent.id)
+      ).toEqual([
+        { date: yesterday, occurred_at: null },
+        { date: yesterday, occurred_at: null },
+        { date: yesterday, occurred_at: null },
+        { date: today, occurred_at: null },
+      ]);
+    } finally {
+      await page.context().close();
+      db.transaction(() => {
+        db.prepare(
+          "DELETE FROM food_log_events WHERE profile_id = ? AND group_key = '__protein__' AND id > ?"
+        ).run(profileId, lastEvent.id);
+        db.prepare(
+          "DELETE FROM protein_daily_totals WHERE profile_id = ? AND date IN (?, ?)"
+        ).run(profileId, today, yesterday);
+        for (const row of originalTotals) {
+          db.prepare(
+            "INSERT INTO protein_daily_totals (id, profile_id, date, grams, created_at) VALUES (?, ?, ?, ?, ?)"
+          ).run(row.id, profileId, row.date, row.grams, row.created_at);
+        }
+        db.prepare(
+          "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'protein_quickadd_last'"
+        ).run(profileId);
+        if (originalPreset) {
+          db.prepare(
+            "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'protein_quickadd_last', ?)"
+          ).run(profileId, originalPreset.value);
+        }
+      })();
+      db.close();
+    }
+  });
+}
+
 // One selected day reaches real writes, including two opens inherited from dated
 // pages. Store assertions distinguish a correctly labelled sheet from a misdated write.
 test("the shared sheet day carries Food, Practice and Stool into the same History day (#5211)", async ({
