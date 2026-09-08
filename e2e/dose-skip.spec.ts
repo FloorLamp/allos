@@ -24,6 +24,10 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(NAME);
   const doseEditor1 = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor1.getByRole("button", { name: "Add dose", exact: true })
+  );
   await doseEditor1.getByLabel("Amount").first().fill("15 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the add modal's first dose-row field
   await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the add modal's first dose-row field
   await closeEditor(page, addDialog);
