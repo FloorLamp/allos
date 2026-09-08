@@ -109,7 +109,7 @@
   "episode-med-reconcile.spec.ts": 2,
   "episode-page-fold.mobile.spec.ts": 7,
   "equipment-lifecycle.spec.ts": 4,
-  "equipment-manager.spec.ts": 4,
+  "equipment-manager.spec.ts": 1,
   "equipment-registry.spec.ts": 7,
   "errors-log-access.spec.ts": 2,
   "exercise-guide.spec.ts": 1,

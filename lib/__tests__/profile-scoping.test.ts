@@ -427,7 +427,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/undo-delete-db.ts",
-    includes: "SELECT * FROM ${child.table} WHERE ${child.childWhere}",
+    includes: "FROM ${child.table} WHERE ${child.childWhere}",
     why: "captureDelete's child capture: the predicate is the kind's declared `childWhere`, bound to the ROOT id that the statement just above fetched by `id = ? AND profile_id = ?`. A child row is reached only through that owned root, so the profile scope is the root's; whether every childWhere should ALSO name profile_id at the restore loop is #5384's question, not a waiver this scan can grant",
   },
   {

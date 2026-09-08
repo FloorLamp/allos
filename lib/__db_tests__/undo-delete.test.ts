@@ -14,6 +14,7 @@ import {
   sweepDeletedRows,
 } from "@/lib/undo-delete-db";
 import { deleteEquipment } from "@/lib/equipment";
+import { getStrengthByExercise } from "@/lib/queries";
 import { UNDO_KINDS } from "@/lib/undo-delete";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -46,6 +47,235 @@ beforeAll(() => {
 
 const count = (sql: string, ...args: unknown[]) =>
   (db.prepare(sql).get(...args) as { c: number }).c;
+
+describe("equipment delete → undo", () => {
+  function fixture() {
+    const owner = seedProfile("EQUIPMENT UNDO");
+    const profileId = owner.profileId;
+    const equipmentId = Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name, weight_kg, category, retired)
+       VALUES (?, 'Original machine', 20, 'Machine', 1)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    const activityId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, equipment_id)
+       VALUES (?, '2026-08-01', 'strength', 'Equipment undo session', ?)`
+        )
+        .run(profileId, equipmentId).lastInsertRowid
+    );
+    const setId = Number(
+      db
+        .prepare(
+          `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, equipment_id)
+       VALUES (?, 'Machine Chest Press', 1, 60, 5, ?)`
+        )
+        .run(activityId, equipmentId).lastInsertRowid
+    );
+    const protocolId = Number(
+      db
+        .prepare(
+          `INSERT INTO protocols (profile_id, name, start_date, equipment_id)
+       VALUES (?, 'Equipment undo protocol', '2026-08-01', ?)`
+        )
+        .run(profileId, equipmentId).lastInsertRowid
+    );
+    const goalId = Number(
+      db
+        .prepare(
+          `INSERT INTO goals (profile_id, title, category, exercise, metric, target_weight_kg, equipment_id)
+       VALUES (?, 'Equipment undo goal', 'strength', 'Machine Chest Press', 'weight', 80, ?)`
+        )
+        .run(profileId, equipmentId).lastInsertRowid
+    );
+    const links = [
+      ["exercise_sets", setId],
+      ["activities", activityId],
+      ["protocols", protocolId],
+      ["goals", goalId],
+    ] as const;
+    return {
+      profileId,
+      equipmentId,
+      activityId,
+      setId,
+      protocolId,
+      goalId,
+      links,
+    };
+  }
+
+  it("restores the original equipment and its load lane without replacing linked rows", () => {
+    const f = fixture();
+    const original = db
+      .prepare("SELECT * FROM equipment WHERE id = ?")
+      .get(f.equipmentId);
+    const linksBefore = f.links.map(([table, id]) =>
+      db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id)
+    );
+    const removed = deleteEquipment(f.profileId, f.equipmentId);
+    if (removed.kind !== "deleted") throw new Error("Equipment delete failed");
+    for (const [table, id] of f.links)
+      expect(
+        db.prepare(`SELECT equipment_id FROM ${table} WHERE id = ?`).get(id)
+      ).toEqual({ equipment_id: null });
+    expect(
+      getStrengthByExercise(f.profileId, true).find(
+        (row) => row.equipmentId === f.equipmentId
+      )
+    ).toBeUndefined();
+
+    expect(restoreDeletedRow(f.profileId, removed.undoId)).toBe(true);
+    expect(
+      db.prepare("SELECT * FROM equipment WHERE id = ?").get(f.equipmentId)
+    ).toEqual(original);
+    expect(
+      f.links.map(([table, id]) =>
+        db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id)
+      )
+    ).toEqual(linksBefore);
+    expect(
+      getStrengthByExercise(f.profileId, true).find(
+        (row) => row.equipmentId === f.equipmentId
+      )
+    ).toMatchObject({ topWeightKg: 60 });
+    expect(restoreDeletedRow(f.profileId, removed.undoId)).toBe(false);
+  });
+
+  it("reconnects only surviving null links and keeps newer assignments and other edits", () => {
+    const f = fixture();
+    // The bulk dataset path invokes captureDelete directly and must detach identically.
+    const undoId = captureDelete("equipment", f.profileId, f.equipmentId)!;
+    const replacement = Number(
+      db
+        .prepare(
+          "INSERT INTO equipment (profile_id, name) VALUES (?, 'Replacement')"
+        )
+        .run(f.profileId).lastInsertRowid
+    );
+    db.prepare("UPDATE exercise_sets SET weight_kg = 65 WHERE id = ?").run(
+      f.setId
+    );
+    db.prepare("UPDATE activities SET equipment_id = ? WHERE id = ?").run(
+      replacement,
+      f.activityId
+    );
+    db.prepare("DELETE FROM protocols WHERE id = ?").run(f.protocolId);
+    db.prepare("UPDATE goals SET title = 'Updated goal' WHERE id = ?").run(
+      f.goalId
+    );
+
+    expect(restoreDeletedRow(f.profileId, undoId)).toBe(true);
+    expect(
+      db
+        .prepare(
+          "SELECT weight_kg, equipment_id FROM exercise_sets WHERE id = ?"
+        )
+        .get(f.setId)
+    ).toEqual({ weight_kg: 65, equipment_id: f.equipmentId });
+    expect(
+      db
+        .prepare("SELECT equipment_id FROM activities WHERE id = ?")
+        .get(f.activityId)
+    ).toEqual({ equipment_id: replacement });
+    expect(
+      db.prepare("SELECT id FROM protocols WHERE id = ?").get(f.protocolId)
+    ).toBeUndefined();
+    expect(
+      db
+        .prepare("SELECT title, equipment_id FROM goals WHERE id = ?")
+        .get(f.goalId)
+    ).toEqual({ title: "Updated goal", equipment_id: f.equipmentId });
+  });
+
+  it("does not resurrect a separately deleted activity or its sets", () => {
+    const f = fixture();
+    const undoId = captureDelete("equipment", f.profileId, f.equipmentId)!;
+    captureDelete("activity", f.profileId, f.activityId);
+    expect(restoreDeletedRow(f.profileId, undoId)).toBe(true);
+    expect(
+      db.prepare("SELECT id FROM activities WHERE id = ?").get(f.activityId)
+    ).toBeUndefined();
+    expect(
+      db.prepare("SELECT id FROM exercise_sets WHERE id = ?").get(f.setId)
+    ).toBeUndefined();
+  });
+
+  it("keeps another profile outside capture and restore, and retains the token on an id collision", () => {
+    const f = fixture();
+    expect(captureDelete("equipment", p.profileId, f.equipmentId)).toBeNull();
+    const undoId = captureDelete("equipment", f.profileId, f.equipmentId)!;
+    expect(restoreDeletedRow(p.profileId, undoId)).toBe(false);
+    db.prepare(
+      "INSERT INTO equipment (id, profile_id, name) VALUES (?, ?, 'Occupied id')"
+    ).run(f.equipmentId, p.profileId);
+    expect(() => restoreDeletedRow(f.profileId, undoId)).toThrow(/UNIQUE/);
+    expect(
+      db.prepare("SELECT name FROM equipment WHERE id = ?").get(f.equipmentId)
+    ).toEqual({ name: "Occupied id" });
+    expect(
+      db.prepare("SELECT id FROM deleted_rows WHERE id = ?").get(undoId)
+    ).toBeDefined();
+    for (const [table, id] of f.links)
+      expect(
+        db.prepare(`SELECT equipment_id FROM ${table} WHERE id = ?`).get(id)
+      ).toEqual({ equipment_id: null });
+  });
+
+  it("restores an older activity capture against the returned equipment identity", () => {
+    const f = fixture();
+    const activityUndo = captureDelete("activity", f.profileId, f.activityId)!;
+    const equipmentUndo = captureDelete(
+      "equipment",
+      f.profileId,
+      f.equipmentId
+    )!;
+    expect(restoreDeletedRow(f.profileId, equipmentUndo)).toBe(true);
+    expect(restoreDeletedRow(f.profileId, activityUndo)).toBe(true);
+    expect(
+      getStrengthByExercise(f.profileId, true).find(
+        (row) => row.equipmentId === f.equipmentId
+      )
+    ).toMatchObject({ topWeightKg: 60 });
+  });
+
+  it("does not repoint a linked activity or its sets after its profile changes", () => {
+    const f = fixture();
+    const undoId = captureDelete("equipment", f.profileId, f.equipmentId)!;
+    db.prepare("UPDATE activities SET profile_id = ? WHERE id = ?").run(
+      p.profileId,
+      f.activityId
+    );
+    expect(restoreDeletedRow(f.profileId, undoId)).toBe(true);
+    expect(
+      db
+        .prepare("SELECT equipment_id FROM activities WHERE id = ?")
+        .get(f.activityId)
+    ).toEqual({ equipment_id: null });
+    expect(
+      db
+        .prepare("SELECT equipment_id FROM exercise_sets WHERE id = ?")
+        .get(f.setId)
+    ).toEqual({ equipment_id: null });
+  });
+
+  it("expires through the ordinary retention sweep", () => {
+    const f = fixture();
+    const undoId = captureDelete("equipment", f.profileId, f.equipmentId)!;
+    db.prepare(
+      "UPDATE deleted_rows SET deleted_at = datetime('now', '-31 days') WHERE id = ?"
+    ).run(undoId);
+    sweepDeletedRows(30);
+    expect(restoreDeletedRow(f.profileId, undoId)).toBe(false);
+    expect(
+      db.prepare("SELECT id FROM equipment WHERE id = ?").get(f.equipmentId)
+    ).toBeUndefined();
+  });
+});
 
 describe("activity delete → undo", () => {
   it("captures the activity + its sets, then restores them (new ids)", () => {
@@ -504,6 +734,9 @@ describe("captured FK columns are all internal, external, or profiles (#598 clas
           .prepare(`PRAGMA foreign_key_list(${entity.table})`)
           .all() as { table: string; from: string }[];
         for (const fk of fks) {
+          // Surviving linked rows restore only the declared column, not the
+          // other FKs on their table (which were never captured or deleted).
+          if (entity.repoint && fk.from !== entity.repoint.column) continue;
           const internal = (entity.fks ?? []).some(
             (f) => f.column === fk.from && tableByEntity.get(f.ref) === fk.table
           );

@@ -25,6 +25,7 @@ import {
   biomarkerFamilyKey,
 } from "../medical";
 import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
+import type { Row } from "../../undo-delete";
 
 // The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
 // for O(1) lookup during filtering. This is the shared read behind BOTH the
@@ -301,7 +302,7 @@ export function cleanupOrphanBiomarkerKeyedState(profileId: number): void {
 // no `pr:` suppression rows at all — the overwhelmingly common case — so the seams
 // that call this on every activity save don't pay for a history scan.
 // Profile-scoped; safe to call repeatedly (idempotent).
-export function cleanupOrphanPrDismissals(profileId: number): void {
+export function cleanupOrphanPrDismissals(profileId: number): Row[] {
   const stored = (
     db
       .prepare(
@@ -312,7 +313,7 @@ export function cleanupOrphanPrDismissals(profileId: number): void {
       signal_key: string;
     }[]
   ).map((r) => r.signal_key);
-  if (stored.length === 0) return;
+  if (stored.length === 0) return [];
 
   // Every rep-bearing, non-warmup set — exactly the rows strengthSetRows feeds the PR
   // engine, so a set the records are computed from is a set that keeps its key alive.
@@ -339,12 +340,15 @@ export function cleanupOrphanPrDismissals(profileId: number): void {
   const liveCardio = cardioActivityIdentities(profileId);
 
   const lost = prDismissalKeysLosingBacking(stored, liveStrength, liveCardio);
-  if (lost.length === 0) return;
+  if (lost.length === 0) return [];
   const placeholders = lost.map(() => "?").join(",");
-  db.prepare(
-    `DELETE FROM upcoming_dismissals
-      WHERE profile_id = ? AND signal_key IN (${placeholders})`
-  ).run(profileId, ...lost);
+  // Delete callers can retain precisely this side-state in their undo capture.
+  return db
+    .prepare(
+      `DELETE FROM upcoming_dismissals
+      WHERE profile_id = ? AND signal_key IN (${placeholders}) RETURNING *`
+    )
+    .all(profileId, ...lost) as Row[];
 }
 
 // Every cardio activity identity the profile has logged: top-level `cardio` rows by
