@@ -216,7 +216,7 @@ for (const [issue, patches] of Object.entries(plan)) {
   const { body, entries } = applyPatchPlan(before, patches, { resolveSymbol });
   for (const entry of entries) {
     if (entry.outcome.ok) {
-      applied++;
+      if (APPLY) applied++;
       console.log(`#${issue} ${entry.patch.kind}: ok — ${entry.patch.reason}`);
     } else {
       refused++;
