@@ -84,7 +84,12 @@ import LineChartCard from "@/components/LineChartCard";
 import SportDetailPanel from "@/components/SportDetailPanel";
 import AnalyzePicker from "./AnalyzePicker";
 import CyclingOverviewDetails from "./CyclingOverviewDetails";
-import { cyclingRideHref, type AppRoute, type CyclingLens } from "@/lib/hrefs";
+import {
+  trainingTabHref,
+  cyclingRideHref,
+  type AppRoute,
+  type CyclingLens,
+} from "@/lib/hrefs";
 import {
   CYCLING_METRICS,
   cyclingHistoryMetricOrder,
@@ -206,7 +211,7 @@ export default async function AnalyzeSection({
     return (
       <EmptyState
         message="No training data yet. Log an activity to analyze progress over time."
-        action={{ href: "/training?tab=log", label: "Go to Log" }}
+        action={{ href: trainingTabHref("log"), label: "Go to Log" }}
       />
     );
   }

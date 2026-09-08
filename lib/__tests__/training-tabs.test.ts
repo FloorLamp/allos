@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { trainingTabHref } from "@/lib/hrefs";
 import {
   DEFAULT_TRAINING_TAB,
   retiredTrainingTabTarget,
@@ -16,15 +17,11 @@ import {
 // Plan; their names map there, never to the default.
 
 describe("parseTrainingTab", () => {
-  it("resolves every live tab to itself", () => {
-    for (const tab of TRAINING_TABS) expect(parseTrainingTab(tab)).toBe(tab);
-  });
-
-  it("keeps the deep-linked tab names the app already ships", () => {
-    expect(parseTrainingTab("log")).toBe("log");
-    expect(parseTrainingTab("overview")).toBe("overview");
-    expect(parseTrainingTab("analyze")).toBe("analyze");
-    expect(parseTrainingTab("plan")).toBe("plan");
+  it("resolves each generated tab link to its requested tab", () => {
+    for (const tab of TRAINING_TABS) {
+      const url = new URL(trainingTabHref(tab), "https://allos.test");
+      expect(parseTrainingTab(url.searchParams.get("tab")!)).toBe(tab);
+    }
   });
 
   it("maps every retired name to its canonical redirect target (#2892/#2894)", () => {
