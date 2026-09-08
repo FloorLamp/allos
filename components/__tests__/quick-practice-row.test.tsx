@@ -234,7 +234,12 @@ describe("the row follows the server's session rather than a copy of it", () => 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(61_000);
       });
-      expect(loadQuickEntry).toHaveBeenCalledWith("practice", undefined);
+      expect(loadQuickEntry).toHaveBeenCalledWith(
+        "practice",
+        undefined,
+        TODAY,
+        "sheet"
+      );
       expect(facts()).toBe("1 today · 1 of 3–5 this week");
       expect(screen.queryByTestId("practice-end-button")).toBeNull();
       expect(
@@ -284,7 +289,12 @@ describe("the row follows the server's session rather than a copy of it", () => 
     fireEvent.click(screen.getByTestId("practice-start-button"));
 
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenCalledWith("practice", undefined)
+      expect(loadQuickEntry).toHaveBeenCalledWith(
+        "practice",
+        undefined,
+        TODAY,
+        "sheet"
+      )
     );
     await waitFor(() =>
       expect(facts()).toBe("Running since 06:22 · ends ~06:37")

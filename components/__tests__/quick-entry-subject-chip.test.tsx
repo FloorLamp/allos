@@ -109,7 +109,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     const chip = await screen.findByTestId("quick-entry-subject-chip");
     expect(chip.textContent).toContain("Mia");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", MIA.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        MIA.id,
+        undefined,
+        "sheet"
+      )
     );
   });
 
@@ -122,7 +127,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     // Byte-identical online behavior (#4932/#3416 invariant): the acting-profile
     // path posts no subject id at all.
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", ACTING.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        ACTING.id,
+        undefined,
+        "sheet"
+      )
     );
   });
 
@@ -156,7 +166,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     fireEvent.click(screen.getByText("open with no subject"));
     const chip = await screen.findByTestId("quick-entry-subject-chip");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", ACTING.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        ACTING.id,
+        undefined,
+        "sheet"
+      )
     );
 
     const bodyBefore = screen.getByTestId("quick-entry-body");
@@ -168,7 +183,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     expect(screen.queryByTestId("quick-entry-subject-picker")).toBeNull();
     expect(chip.textContent).toContain("Sam");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", SAM.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        SAM.id,
+        undefined,
+        "sheet"
+      )
     );
     // The body remounted under the new subject (discarding anything staged) —
     // proven by identity, not merely by its content, since both render the same
@@ -186,7 +206,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     fireEvent.click(screen.getByText("open with no subject"));
     const chip = await screen.findByTestId("quick-entry-subject-chip");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", ACTING.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        ACTING.id,
+        undefined,
+        "sheet"
+      )
     );
     loadQuickEntry.mockClear();
 

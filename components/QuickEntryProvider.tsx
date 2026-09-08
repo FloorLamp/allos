@@ -18,7 +18,7 @@ import { useToast } from "./Toast";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
-import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
+import { FoodProjectionProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import {
   loadQuickEntry,
   type QuickEntryData,
@@ -323,11 +323,18 @@ export default function QuickEntryProvider({
       // chosen subject other than the acting profile gets that instead of the
       // wrong person's age gates and defaults.
       if (next === "measurements") {
+        const requestedDay =
+          inheritedDay?.parts.profileId === subjectId
+            ? inheritedDay.parts.day
+            : selectedDay;
         setState({
           status: "ready",
           data:
             subjectId === actingProfileId
-              ? measurements
+              ? {
+                  ...measurements,
+                  defaultDate: requestedDay ?? measurements.defaultDate,
+                }
               : {
                   form: "unavailable",
                   message:
@@ -338,7 +345,12 @@ export default function QuickEntryProvider({
         setSheetDay(
           inheritedDay?.parts.profileId === subjectId
             ? { kind: "inherited", value: inheritedDay }
-            : { kind: "state", profileId: subjectId, today, initialDay: today }
+            : {
+                kind: "state",
+                profileId: subjectId,
+                today,
+                initialDay: requestedDay ?? today,
+              }
         );
         return;
       }
@@ -348,6 +360,18 @@ export default function QuickEntryProvider({
           : selectedDay;
       const key = `${next}:${subjectId}:${requestedDay ?? "today"}`;
       const cached = lastGoodRef.current.get(key);
+      if (inheritedDay?.parts.profileId === subjectId) {
+        setSheetDay({ kind: "inherited", value: inheritedDay });
+      } else if (cached) {
+        const cachedToday = quickEntryToday(cached);
+        if (cachedToday)
+          setSheetDay({
+            kind: "state",
+            profileId: subjectId,
+            today: cachedToday,
+            initialDay: requestedDay ?? cachedToday,
+          });
+      }
       // LAST-GOOD RENDER, REVALIDATE BEHIND IT (#3416 proposal 1). A held copy from
       // an earlier successful open of this SAME (form, subject) pair renders
       // immediately instead of a loading state that would be a lie about what the
@@ -364,7 +388,12 @@ export default function QuickEntryProvider({
         : setTimeout(() => {
             if (requestRef.current === token) setState({ status: "error" });
           }, QUICK_ENTRY_LOAD_TIMEOUT_MS);
-      void loadQuickEntry(next, subjectId, requestedDay).then(
+      void loadQuickEntry(
+        next,
+        subjectId,
+        requestedDay,
+        inheritedDay?.parts.reach.kind === "dated" ? "dated" : "sheet"
+      ).then(
         (data) => {
           if (stallTimer != null) clearTimeout(stallTimer);
           if (requestRef.current !== token) return;
@@ -455,7 +484,13 @@ export default function QuickEntryProvider({
   const retry = useCallback(() => {
     if (form == null) return;
     const token = ++requestRef.current;
-    loadFor(form, subject, token, sheetDay?.kind === "inherited" ? sheetDay.value : null, sheetDay?.kind === "state" ? sheetDay.initialDay : undefined);
+    loadFor(
+      form,
+      subject,
+      token,
+      sheetDay?.kind === "inherited" ? sheetDay.value : null,
+      sheetDay?.kind === "state" ? sheetDay.initialDay : undefined
+    );
   }, [form, subject, loadFor, sheetDay]);
 
   const api = useMemo<QuickEntryHostApi>(
@@ -605,20 +640,20 @@ export default function QuickEntryProvider({
                 />
               </DayContextProvider>
             ) : (
-            <div
-              key={subject}
-              data-testid="quick-entry-body"
-              data-form={form}
-              data-subject-profile-id={subject}
-            >
-              <QuickEntryBody
-                state={state}
-                prefill={prefill}
-                onDone={close}
-                onRetry={retry}
-                subjectProfileId={subjectId}
-              />
-            </div>
+              <div
+                key={subject}
+                data-testid="quick-entry-body"
+                data-form={form}
+                data-subject-profile-id={subject}
+              >
+                <QuickEntryBody
+                  state={state}
+                  prefill={prefill}
+                  onDone={close}
+                  onRetry={retry}
+                  subjectProfileId={subjectId}
+                />
+              </div>
             )}
           </LoggedViaSurface>
         </BottomSheet>
@@ -729,7 +764,7 @@ function QuickEntryBody({
       // logs however many servings they mean to and dismisses the sheet. (Its
       // taps already refresh the page behind, so "stay put" still holds.)
       return (
-        <FoodSelectedDateProvider today={data.today} days={data.days}>
+        <FoodProjectionProvider today={data.today} days={data.days}>
           <FoodLogBar
             today={data.today}
             days={data.days}
@@ -756,7 +791,7 @@ function QuickEntryBody({
             }
             subjectProfileId={subjectProfileId}
           />
-        </FoodSelectedDateProvider>
+        </FoodProjectionProvider>
       );
     case "dose":
       return (

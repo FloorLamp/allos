@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import PracticeEditor from "@/app/(app)/wellness/PracticeEditor";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
+import { useOptionalDayContext } from "@/components/DayContext";
 import { practiceRowFacts, practiceRunningFacts } from "@/lib/practice";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 import {
@@ -83,6 +84,7 @@ export default function QuickPracticeList({
   // subject, so this is only ever passed alongside a non-empty `practices`.
   subjectProfileId?: number;
 }) {
+  const dayContext = useOptionalDayContext();
   const [rows, setRows] = useState(practices);
   // Follow the gather whenever the sheet hands down a new one — the same server-wins
   // discipline the row control keeps over its own count.
@@ -93,7 +95,12 @@ export default function QuickPracticeList({
   }
 
   const reread = useCallback(() => {
-    void loadQuickEntry("practice", subjectProfileId).then(
+    void loadQuickEntry(
+      "practice",
+      subjectProfileId,
+      today,
+      dayContext?.parts.reach.kind === "dated" ? "dated" : "sheet"
+    ).then(
       (data) => {
         if (data.form === "practice") setRows(data.practices);
       },
@@ -101,7 +108,7 @@ export default function QuickPracticeList({
       // so there is no promise to walk back and nothing to say.
       () => {}
     );
-  }, [subjectProfileId]);
+  }, [subjectProfileId, today, dayContext?.parts.reach.kind]);
 
   // THE EARLIEST DERIVED END ON SCREEN. One timer for the list: whichever row completes
   // first, the re-read that follows re-derives the next.

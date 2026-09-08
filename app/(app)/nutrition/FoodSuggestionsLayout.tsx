@@ -56,7 +56,7 @@ export function useFoodSelectedDate(): FoodSelectedDateContextValue {
 // Context-only mount for the global quick-entry sheet. The full Nutrition page owns
 // this state inside FoodSuggestionsLayout below, while the sheet needs the same
 // logger state without the page's suggestions/sidebar composition.
-export function FoodSelectedDateProvider({
+export function FoodProjectionProvider({
   ...props
 }: FoodSelectedDateProviderProps) {
   const activeProfileId = useActiveProfileId();
@@ -75,7 +75,6 @@ interface FoodSelectedDateProviderProps {
 }
 
 function FoodSelectedDateProviderForProfile({
-  today,
   days,
   children,
 }: FoodSelectedDateProviderProps) {
@@ -160,7 +159,6 @@ interface FoodSuggestionsLayoutProps {
 function FoodSuggestionsLayoutForProfile({
   today,
   days,
-  initialDate,
   logger,
   todaySidebar,
   weeklySidebar,

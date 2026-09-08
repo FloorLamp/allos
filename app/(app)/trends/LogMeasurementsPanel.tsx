@@ -93,8 +93,8 @@ export default function LogMeasurementsPanel(
     handledDeepLinkRef.current = true;
     // Desktop opening is derived above. Mobile delegates to the one global entry
     // surface as the external synchronization this effect actually owns.
-    openQuickEntry("measurements");
-  }, [deepLinkDestination, openQuickEntry]);
+    openQuickEntry("measurements", undefined, measurementProps.profileId);
+  }, [deepLinkDestination, openQuickEntry, measurementProps.profileId]);
 
   return (
     // Desktop-only container: phones use the global measurements entry surface.

@@ -16,6 +16,7 @@ import {
 } from "@/components/Toast";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
+import { DayContextProvider } from "@/components/DayContext";
 // The ledger's batch Delete asks ONE confirmation (#4118), through the app-wide
 // dialog `app/(app)/layout.tsx` mounts around every page. The bar renders the ledger,
 // so a tree without the provider is a tree the app never renders.
@@ -24,12 +25,35 @@ import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
 import { buildDayLedger } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import {
-  FoodSelectedDateProvider,
+  FoodProjectionProvider,
   useFoodSelectedDate,
 } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
+
+function FoodSelectedDateProvider({
+  today,
+  days,
+  children,
+}: {
+  today: string;
+  days: FoodLogDay[];
+  children: React.ReactNode;
+}) {
+  return (
+    <DayContextProvider
+      profileId={1}
+      today={today}
+      reach={{ kind: "dated" }}
+      backing={{ kind: "state", initialDay: today }}
+    >
+      <FoodProjectionProvider today={today} days={days}>
+        {children}
+      </FoodProjectionProvider>
+    </DayContextProvider>
+  );
+}
 
 const actions = vi.hoisted(() => ({
   addProteinGrams: vi.fn(),

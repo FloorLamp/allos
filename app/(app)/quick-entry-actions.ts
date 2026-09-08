@@ -33,7 +33,6 @@ import {
   type TrackedPractice,
   type PrnMedForQuickLog,
 } from "@/lib/queries";
-import { MOOD_LOG_DATE_WINDOW_DAYS, moodBackfillLabel } from "@/lib/mood";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
 import { formatWeekdayDate } from "@/lib/format-date";
@@ -71,7 +70,7 @@ import {
 } from "@/lib/queries/symptoms";
 import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
-import { isWithinReach, SHEET_REACH } from "@/lib/log-manifest";
+import { isWithinReach, SHEET_REACH, TAP_REACH } from "@/lib/log-manifest";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -323,7 +322,8 @@ export async function loadQuickEntry(
   // gateItemProfile, which is what keeps this a read-only allowlist entry in
   // actions-write-access.test.ts.
   subjectProfileId?: number,
-  selectedDay?: string
+  selectedDay?: string,
+  selectedReach: "sheet" | "dated" = "sheet"
 ): Promise<QuickEntryData> {
   const { login, profile: actingProfile } = await requireSession();
   const profileId =
@@ -332,20 +332,19 @@ export async function loadQuickEntry(
       : actingProfile.id;
   const profile = { id: profileId };
   const date = today(profile.id);
-  const dayScoped = new Set<QuickEntryForm>([
-    "food",
-    "dose",
-    "practice",
-    "mood",
-    "stool",
-    "substance",
-    "symptom",
-  ]);
+  const selectedDateReach =
+    selectedReach === "dated" &&
+    (form === "food" || form === "mood" || form === "symptom")
+      ? ({ kind: "dated" } as const)
+      : form === "practice"
+        ? TAP_REACH["practice-session"]
+        : form === "dose"
+          ? TAP_REACH["dose-day"]
+          : SHEET_REACH;
   if (
     selectedDay != null &&
-    dayScoped.has(form) &&
     (!isRealIsoDate(selectedDay) ||
-      !isWithinReach(SHEET_REACH, date, selectedDay))
+      !isWithinReach(selectedDateReach, date, selectedDay))
   ) {
     return {
       form: "unavailable",
@@ -403,11 +402,8 @@ export async function loadQuickEntry(
   if (form === "stool") {
     return {
       form: "stool",
-      todayCount: getBristolReadings(
-        profile.id,
-        requestedDate,
-        requestedDate
-      ).length,
+      todayCount: getBristolReadings(profile.id, requestedDate, requestedDate)
+        .length,
       today: date,
     };
   }
@@ -526,23 +522,27 @@ export async function loadQuickEntry(
   if (form === "mood") {
     // Today plus the #2128 backfill window, through the same read the dashboard
     // card's server mount uses — one gather shape, two surfaces.
-    const days = Array.from({ length: 1 }, (_, offset) => {
-        const day = requestedDate;
-        const logged = getMoodOnDate(profile.id, day);
-        return {
-          date: day,
-          label: moodBackfillLabel(offset),
-          mood: logged
-            ? {
-                valence: logged.valence,
-                energy: logged.energy,
-                anxiety: logged.anxiety,
-                factors: logged.factors,
-                notes: logged.notes,
-              }
-            : null,
-        };
-      });
+    const days = [requestedDate].map((day) => {
+      const logged = getMoodOnDate(profile.id, day);
+      return {
+        date: day,
+        label:
+          day === date
+            ? "Today"
+            : day === shiftDateStr(date, -1)
+              ? "Yesterday"
+              : formatWeekdayDate(day, getDisplayFormatPrefs(login.id)),
+        mood: logged
+          ? {
+              valence: logged.valence,
+              energy: logged.energy,
+              anxiety: logged.anxiety,
+              factors: logged.factors,
+              notes: logged.notes,
+            }
+          : null,
+      };
+    });
     return {
       form: "mood",
       today: date,

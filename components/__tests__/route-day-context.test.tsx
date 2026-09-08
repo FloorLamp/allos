@@ -45,6 +45,8 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 it("keeps Nutrition projection local while the selected date navigates", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-07T12:00:00.000Z"));
   const today = {
     date: "2026-09-07",
     label: "Today",
@@ -94,27 +96,32 @@ it("keeps Nutrition projection local while the selected date navigates", () => {
       </>
     );
   }
-  const layout = (offered: FoodLogDay[], initialDate?: string) => (
-    <FoodSuggestionsLayout
-      today={today.date}
-      days={offered}
-      initialDate={initialDate}
-      logger={<Logger />}
-      todaySidebar={null}
-      weeklySidebar={null}
-      suggestionContent={null}
-      suggestionCount={0}
-    />
+  const layout = (offered: FoodLogDay[]) => (
+    <RouteDayContext profileId={7} timeZone="UTC">
+      <FoodSuggestionsLayout
+        today={today.date}
+        days={offered}
+        logger={<Logger />}
+        todaySidebar={null}
+        weeklySidebar={null}
+        suggestionContent={null}
+        suggestionCount={0}
+      />
+    </RouteDayContext>
   );
+  route.pathname = "/nutrition";
+  route.query = "";
   const view = render(layout(days));
   fireEvent.click(screen.getByRole("button", { name: today.date }));
   expect(push).toHaveBeenCalledWith("/nutrition?date=2026-08-20");
 
-  view.rerender(layout([today, earlier], earlier.date));
+  route.query = `date=${earlier.date}`;
+  view.rerender(layout([today, earlier]));
   expect(screen.getByTestId("selected-berries").textContent).toBe("2");
   fireEvent.click(screen.getByRole("button", { name: "Optimistic serving" }));
   expect(screen.getByTestId("selected-berries").textContent).toBe("3");
-  view.rerender(layout([today, earlier], earlier.date));
+  route.query = `date=${earlier.date}`;
+  view.rerender(layout([today, earlier]));
   expect(screen.getByTestId("selected-berries").textContent).toBe("3");
 });
 

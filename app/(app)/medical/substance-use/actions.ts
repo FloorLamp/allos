@@ -11,6 +11,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../../gate-item";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
+import { isWithinReach, SHEET_REACH } from "@/lib/log-manifest";
 import { now } from "@/lib/clock";
 import { judgeStatedAt } from "@/lib/stated-time";
 import { getTimezone } from "@/lib/settings";
@@ -217,7 +218,17 @@ export async function logSubstanceUnitAction(
     String(formData.get("substance") ?? "")
   );
   if (substance === null) return { ok: false, error: "Unknown substance." };
-  return logOneUnit(profileId, substance, webOrigin(formData));
+  const date = quickEntryDate(profileId, formData);
+  if (date == null)
+    return { ok: false, error: "That day is outside quick logging." };
+  return logOneUnit(profileId, substance, date, webOrigin(formData));
+}
+
+function quickEntryDate(profileId: number, formData: FormData): string | null {
+  const profileToday = today(profileId);
+  const raw = String(formData.get("date") ?? "").trim();
+  if (raw === "") return profileToday;
+  return isWithinReach(SHEET_REACH, profileToday, raw) ? raw : null;
 }
 
 // The surface this post came from, defaulting to the substance page's own form when
@@ -241,11 +252,11 @@ function webOrigin(formData: StampedFormData): WebLoggedVia {
 function logOneUnit(
   profileId: number,
   substance: SubstanceKey,
+  date: string,
   // The mounting surface, read off the post (#3087): the substance row is offered on
   // its own page AND in the quick-log sheet, so the action cannot know which it is.
   loggedVia: WebLoggedVia
 ): SubstanceLogResult {
-  const date = today(profileId);
   const outcome =
     substanceDef(substance).ledger === "food-log"
       ? logFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, date, loggedVia)
@@ -306,7 +317,12 @@ export async function trackSubstanceUseAction(
     String(formData.get("name") ?? "")
   );
   if (!name.ok) return { ok: false, error: substanceNameError(name.reason) };
-  const logged = logOneUnit(profile.id, name.key, webOrigin(formData));
+  const logged = logOneUnit(
+    profile.id,
+    name.key,
+    today(profile.id),
+    webOrigin(formData)
+  );
   if (!logged.ok) return logged;
   return {
     ok: true,
@@ -333,7 +349,8 @@ export async function undoSubstanceUnitAction(
   if (substance === null) return { ok: false, error: "Unknown substance." };
   const hasEventId = formData.has("event_id");
   const hasDate = formData.has("date");
-  const exactReceipt = hasEventId || hasDate;
+  const sheetDate = formData.get("date_reach") === "sheet";
+  const exactReceipt = hasEventId || (hasDate && !sheetDate);
   const rawEventId = String(formData.get("event_id") ?? "").trim();
   const rawDate = String(formData.get("date") ?? "").trim();
   let expectedEventId: number | undefined;
@@ -350,7 +367,12 @@ export async function undoSubstanceUnitAction(
       return { ok: false, error: "That use has changed." };
     expectedEventId = parsedEventId;
   }
-  const date = expectedEventId === undefined ? today(profileId) : rawDate;
+  const date =
+    expectedEventId === undefined
+      ? quickEntryDate(profileId, formData)
+      : rawDate;
+  if (date == null)
+    return { ok: false, error: "That day is outside quick logging." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
       ? undoFoodServingCore(
