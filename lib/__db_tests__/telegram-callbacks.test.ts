@@ -38,9 +38,10 @@ import {
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getProfileSetting, setProfileSetting, setTelegramBotConfig } from "@/lib/settings";
+import { getProfileSetting, setProfileSetting, setTelegramBotConfig, getPublicUrl, setPublicUrl } from "@/lib/settings";
 import { preventiveSignalKey } from "@/lib/preventive-upcoming";
 import { refillSignalKey, refillMarkerKey, parseRefillMarker } from "@/lib/refill-nudge";
+import { intakeSupplyHref } from "@/lib/hrefs";
 import { orderedRefillToken, parseOrderedRefillCallback } from "@/lib/notifications/refill-tokens";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import {
@@ -1739,25 +1740,41 @@ it.each(["acknowledgement", "edit"])("keeps accepted Ordered truthful and recove
   expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(accepted);
 });
 
-it("a Received operation wins over a pending legacy-confirmation edit before pointer refresh", async () => {
+it("a Received operation defeats stale edit cleanup before its pointer refresh", async () => {
   const f = await legacyOrderedFixture();
-  let release!: () => void;
-  let entered!: () => void;
-  const waiting = new Promise<void>((resolve) => { entered = resolve; });
-  const hold = new Promise<void>((resolve) => { release = resolve; });
-  editTextMock.mockImplementationOnce(async () => { entered(); await hold; });
+  let releaseEdit!: () => void;
+  let editEntered!: () => void;
+  let releaseReceipt!: () => void;
+  let receiptEntered!: () => void;
+  const editing = new Promise<void>((resolve) => { editEntered = resolve; });
+  const editHold = new Promise<void>((resolve) => { releaseEdit = resolve; });
+  const sending = new Promise<void>((resolve) => { receiptEntered = resolve; });
+  const receiptHold = new Promise<void>((resolve) => { releaseReceipt = resolve; });
+  editTextMock.mockImplementationOnce(async () => {
+    editEntered(); await editHold; throw new Error("synthetic old edit failure");
+  });
   const pending = handleOrderedRefillCallback(f.tap, { profileId: f.profileId, itemId: f.supplementId });
-  await waiting;
+  const rejected = expect(pending).rejects.toThrow("synthetic old edit failure");
+  await editing;
+  vi.mocked(sendMessageRaw).mockImplementationOnce(async () => {
+    receiptEntered(); await receiptHold; return 22001;
+  });
+  const received = handleReceivedCallback({ ...f.tap, data: f.action.data, from: { id: 71 } },
+    { profileId: f.profileId, offerId: f.offerId });
+  await sending;
   try {
-    await handleReceivedCallback({ ...f.tap, data: f.action.data, from: { id: 71 } },
-      { profileId: f.profileId, offerId: f.offerId });
-    const current = messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!;
-    expect(current.keyboard.flat().some((button) => button.callback_data?.startsWith("rfordered:"))).toBe(false);
-    release();
-    await pending;
-    expect(messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!.version).toBe(current.version);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe("sending");
+    const held = messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!;
+    releaseEdit(); await rejected;
+    const after = messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!;
+    expect(after.version).toBe(held.version);
+    // Pointer+marker alone would dirty this hash; the changed offer must defeat cleanup.
+    expect(after.bodyHash).toBe(held.bodyHash);
+    releaseReceipt(); await received;
+    expect(messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!.keyboard.flat()
+      .some((button) => button.callback_data?.startsWith("rfordered:"))).toBe(false);
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe("pending");
-  } finally { release(); await pending; }
+  } finally { releaseEdit(); releaseReceipt(); await Promise.allSettled([pending, received]); }
 });
 
 it("rolls back Ordered suppression and marker if the final pointer claim fails", async () => {
@@ -1784,4 +1801,44 @@ it("ordinary cancellation and restore keep an explicitly accepted episode spent"
   send.mockClear();
   await runRefills(f.profileId, shiftDateStr(today(f.profileId), 3));
   expect(send).not.toHaveBeenCalled();
+});
+
+
+it.each(["recovery", "pause"])("retires a requested last item's generation on %s and permits a fresh episode", async (ending) => {
+  const f = await orderedFixture();
+  await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+  db.prepare("UPDATE intake_items SET quantity_on_hand = ?, active = ? WHERE profile_id = ? AND id = ?")
+    .run(ending === "recovery" ? 300 : 4, ending === "pause" ? 0 : 1, f.profileId, f.supplementId);
+  await runRefills(f.profileId, today(f.profileId));
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBeUndefined();
+  db.prepare("UPDATE intake_items SET quantity_on_hand = 4, active = 1 WHERE profile_id = ? AND id = ?")
+    .run(f.profileId, f.supplementId);
+  // The original snooze still stands; its ordinary restoration does not revive g.
+  restoreFinding(f.profileId, refillSignalKey(f.supplementId));
+  await runRefills(f.profileId, today(f.profileId));
+  const fresh = getProfileSetting(f.profileId, refillMarkerKey(f.supplementId));
+  expect(parseRefillMarker(fresh)).toMatchObject({ state: "sent" });
+  await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(fresh);
+});
+
+it("offers the actual item link for an authorized missing legacy receipt, but not foreign or consumed-generation taps", async () => {
+  const f = await orderedFixture();
+  const before = getPublicUrl();
+  const send = vi.mocked(sendMessageRaw);
+  setPublicUrl("https://allos.example.test");
+  send.mockClear();
+  try {
+    const data = `rfsnooze:${f.profileId}:${f.supplementId}`;
+    const token = { profileId: f.profileId, itemId: f.supplementId };
+    await handleOrderedRefillCallback(cq(data, OTHER_CHAT), token);
+    expect(send).not.toHaveBeenCalled();
+    await handleOrderedRefillCallback(cq(data, OWN_CHAT), token);
+    expect(send.mock.calls.at(-1)?.[1].actions?.[0].url)
+      .toBe(`https://allos.example.test${intakeSupplyHref("supplement", f.supplementId, true)}`);
+    await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+    send.mockClear();
+    await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+    expect(send).not.toHaveBeenCalled();
+  } finally { setPublicUrl(before); }
 });
