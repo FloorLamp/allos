@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -104,7 +105,7 @@ const ROW = {
   cadence_anchor_date: "2026-02-02",
   purposes_json: null,
   ingredients_json: null,
-};
+} as const;
 
 const EDIT_MOUNT = {
   medication: ROW,
@@ -148,19 +149,21 @@ const EDIT_MOUNT = {
       created_at: "2026-01-15T00:00:00.000Z",
     },
   ],
-  conditions: [{ id: 3, name: "Migraine" }],
-  allIntakeItems: [
-    { id: 42, name: "Ibuprofen" },
-    { id: 7, name: "Levothyroxine" },
-  ],
-  stackItems: [],
-  pgxVariants: [],
+  intakeContext: intakeFormContext("2026-09-04", {
+    conditions: [{ id: 3, name: "Migraine", status: "active" }],
+    allIntakeItems: [
+      { ...ROW, id: 42, name: "Ibuprofen" },
+      { ...ROW, id: 7, name: "Levothyroxine" },
+    ],
+    stackItems: [],
+    pgxVariants: [],
+  }),
+
   sideEffects: [],
   strip: [],
   takenDoseIds: [],
   skippedDoseIds: [],
   doseHistory: [],
-  todayStr: "2026-09-04",
   initialAction: "edit",
 } as unknown as Parameters<typeof MedicationCard>[0];
 

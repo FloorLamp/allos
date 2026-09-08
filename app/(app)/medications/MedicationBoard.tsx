@@ -94,7 +94,7 @@ export default function MedicationBoard({
         timeFormat={timeFormat}
         timezone={data.tz}
         profileId={confirmProfileId}
-        pediatric={data.pediatric}
+        pediatric={data.intakeContext.pediatric}
         canWrite={canWrite}
         ledgerDoor={isActing}
       />

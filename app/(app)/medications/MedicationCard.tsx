@@ -11,12 +11,9 @@ import type {
   IntakeItem,
   IntakeDose,
   IntakePair,
-  IntakeConditionOption,
 } from "@/lib/types";
-import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import { parseItemPurposes } from "@/lib/intake-purposes";
-import type { PgxVariantInput } from "@/lib/pgx";
 import {
   STOP_REASONS,
   STOP_REASON_LABELS,
@@ -32,7 +29,6 @@ import {
 import type { AdherenceDot } from "@/lib/intake-adherence";
 import type { AdherenceCalendarModel } from "@/lib/adherence-calendar";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { medicationHref } from "@/lib/hrefs";
 import { formatLongDate } from "@/lib/format-date";
 import {
@@ -59,6 +55,8 @@ import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { prnLabelIdentityFor } from "@/lib/prn-defaults";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
+import { pediatricAgeYears } from "@/lib/prn-dosing";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import ProviderName from "@/components/ProviderName";
 import FoodGuidance from "@/components/FoodGuidance";
@@ -105,10 +103,8 @@ const SIDE_EFFECT_OPTIONS = symptomLabelOptions();
 export default function MedicationCard({
   medication,
   doses,
+  intakeContext,
   retiredDoses = [],
-  allIntakeItems,
-  stackItems,
-  pgxVariants,
   pairs,
   takenDoseIds,
   skippedDoseIds,
@@ -120,7 +116,6 @@ export default function MedicationCard({
   refillRate,
   poolChip = null,
   trackSupplyOffer = null,
-  todayStr,
   nowIso,
   suppressedFoodKeys = [],
   prnDayLabel = null,
@@ -129,8 +124,6 @@ export default function MedicationCard({
   prnRedoseLine = null,
   prnRedosePrimary = true,
   monitoringLabs = [],
-  pediatric,
-  age = null,
   adherenceCalendar = null,
   takenDoseTimes = {},
   timezone,
@@ -142,16 +135,13 @@ export default function MedicationCard({
   initialAction,
   initialSupplyEditor = false,
   initialRefill = false,
-  conditions = [],
   ingredients = [],
 }: {
   medication: IntakeItem;
   doses: IntakeDose[];
+  intakeContext: IntakeFormContext;
   // Retired doses of this med (#2131), for the edit form's Restore affordance.
   retiredDoses?: IntakeDose[];
-  allIntakeItems: { id: number; name: string }[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
   pairs: IntakePair[];
   takenDoseIds: Set<number>;
   skippedDoseIds: Set<number>;
@@ -166,7 +156,6 @@ export default function MedicationCard({
   // The shared-bottle chip when this med draws from a pool (#1374).
   poolChip?: PoolChipData | null;
   trackSupplyOffer?: OfferFamily["copy"] | null;
-  todayStr: string;
   nowIso: string;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
   suppressedFoodKeys?: string[];
@@ -203,11 +192,6 @@ export default function MedicationCard({
   prnRedoseLine?: string | null;
   prnRedosePrimary?: boolean;
   monitoringLabs?: string[];
-  // Pediatric label-dosing context (#798) for the edit form's weight-band suggestion.
-  pediatric?: PediatricFormContext;
-  // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so
-  // an age-gated food note (alcohol → adult) is hidden for a child.
-  age?: number | null;
   adherenceCalendar?: AdherenceCalendarModel | null;
   takenDoseTimes?: Record<number, string>;
   timezone: string;
@@ -235,11 +219,10 @@ export default function MedicationCard({
   initialAction?: "edit" | "stop";
   initialSupplyEditor?: boolean;
   initialRefill?: boolean;
-  // The profile's conditions for the "For condition…" indication picker (#1052).
-  conditions?: IntakeConditionOption[];
   // The label composition (#2856), shown as this card's "What's in this" line (#3161).
   ingredients?: IntakeItemIngredient[];
 }) {
+  const { pediatric, todayStr } = intakeContext;
   const s = medication;
   const router = useRouter();
   const [editing, setEditing] = useState(canWrite && initialAction === "edit");
@@ -279,6 +262,7 @@ export default function MedicationCard({
     return (
       <div className="card relative z-20 bg-slate-50/60 dark:bg-ink-900/60">
         <IntakeItemForm
+          intakeContext={intakeContext}
           action={updateIntakeItem}
           kind="medication"
           item={s}
@@ -297,20 +281,14 @@ export default function MedicationCard({
           }
           doses={doses}
           retiredDoses={retiredDoses}
-          allIntakeItems={allIntakeItems}
-          stackItems={stackItems}
-          pgxVariants={pgxVariants}
           pairs={pairs}
           onDone={() => {
             setEditing(false);
             closeInitialAction();
           }}
-          pediatric={pediatric}
-          conditions={conditions}
           ingredients={ingredients}
           purposes={parseItemPurposes(s.purposes_json)}
           course={open ?? ordered[ordered.length - 1]}
-          todayStr={todayStr}
         />
       </div>
     );
@@ -860,7 +838,7 @@ export default function MedicationCard({
             rxcui={s.rxcui}
             rxcuiIngredients={s.rxcui_ingredients}
             suppressedFoodKeys={suppressedFoodKeys}
-            age={age}
+            age={pediatricAgeYears(pediatric)}
             heading="Food guidance"
             className="py-4 first:pt-0 last:pb-0"
             canDismiss={canWrite}
