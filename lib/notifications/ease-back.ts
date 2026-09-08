@@ -46,7 +46,6 @@ export function easeBackMarkerKey(episodeId: number): string {
 // training page rides along when a public URL is configured (informational, no
 // callback — resuming training is a decision, not a one-tap state change).
 export function renderEaseBackMessage(
-  profileName: string,
   deepLinkBase = "",
   // How long the closing episode ran (#1722 item 7). The note fires ON episode close
   // and never said how long the person was down or that nudges were held — the
@@ -58,13 +57,12 @@ export function renderEaseBackMessage(
     episodeDays != null && episodeDays > 0
       ? `Back after ${episodeDays} day${episodeDays === 1 ? "" : "s"} — `
       : "";
-  const who = profileName ? ` — ${profileName}` : "";
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] | undefined = base
     ? [{ label: rec.actionLabel ?? "Open training", url: `${base}/training` }]
     : undefined;
   return {
-    title: `${GLYPH.easingBack} Ease back in${who}`,
+    title: `${GLYPH.easingBack} Ease back in`,
     body: `${back}${rec.detail}`,
     actions,
     kind: "ease-back",
@@ -78,7 +76,6 @@ export function renderEaseBackMessage(
 // slot + rest-episode reconcile); `date` is the profile-local date (marker value).
 export async function runEaseBack(
   profileId: number,
-  profileName: string,
   input: CoachingInput,
   date: string
 ): Promise<{ failed: boolean }> {
@@ -96,7 +93,7 @@ export async function runEaseBack(
 
   const results = await dispatch(
     profileId,
-    renderEaseBackMessage(profileName, getPublicUrl(), easeBackEpisodeDays)
+    renderEaseBackMessage(getPublicUrl(), easeBackEpisodeDays)
   );
   if (results.length === 0) {
     // No channel configured — leave the marker unset so it can fire once configured.

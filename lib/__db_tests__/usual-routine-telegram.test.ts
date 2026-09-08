@@ -46,6 +46,8 @@ import {
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
+import { composeForSend } from "@/lib/notifications/compose";
+import { messageBodyHash } from "@/lib/notifications/reconcile-core";
 import { buildFoodNudge } from "@/lib/notifications/food";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
 import { deliveredKeyboard } from "@/lib/notifications/delivered-keyboard";
@@ -866,6 +868,7 @@ describe("the reconcile sweep keeps the bundle honest (#2460)", () => {
       date,
       title: "🍽️ Morning food log",
       keyboard: deliveredKeyboard(nudge),
+      bodyHash: messageBodyHash(composeForSend(sp.profileId, nudge)),
     });
     return { sp, date, a };
   }

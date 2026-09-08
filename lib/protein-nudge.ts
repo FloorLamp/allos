@@ -1,4 +1,4 @@
-// The reserved pseudo-group for the protein "+Xg" food-nudge button (issue #1073).
+// The reserved pseudo-group for the protein food-nudge button (issue #1073).
 //
 // `__protein__` rides the EXISTING food_log_events ledger + blendFoodOrder ranking (#950)
 // so the protein button self-surfaces in the slots the profile actually logs protein
@@ -35,8 +35,8 @@ export const DEFAULT_PROTEIN_PRESET_GRAMS = 30;
 // catalog group, and reusing a group's glyph would claim otherwise.
 export const PROTEIN_NUDGE_EMOJI = GLYPH.protein;
 
-// The "💪 ＋Xg protein" button label — the grams preset, deliberately distinct from a
+// The protein button names the grams preset, deliberately distinct from a
 // food-group name so it reads as the shake path, not a serving.
 export function proteinNudgeButtonLabel(grams: number): string {
-  return `${PROTEIN_NUDGE_EMOJI} ＋${grams}g protein`;
+  return `${PROTEIN_NUDGE_EMOJI} ${grams} g protein`;
 }

@@ -1,5 +1,6 @@
+import { loadIntakeFormContext } from "@/lib/intake-form-context";
 import {
-  getIntakeItems,
+  resolveIntakeAcrossProfiles,
   getIntakeDosesForHistory,
   getTakenDoseIds,
   getSkippedDoseIds,
@@ -21,7 +22,6 @@ import {
   getDietaryAdequacy,
   getInteractionWarnings,
   getSafetyScreeningCoverage,
-  getGenomicVariants,
   getFindingSuppressions,
   getDerivedSituationLines,
   getNavRelevance,
@@ -49,13 +49,12 @@ import {
 } from "@/lib/dri";
 import { foodSourcesForDriNutrient } from "@/lib/food-suggest";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
-import { type InteractionItem } from "@/lib/drug-interactions";
-import { type PgxVariantInput } from "@/lib/pgx";
 import { FindingCard } from "@/components/FindingCard";
 import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
-import { today } from "@/lib/db";
-import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import { requireSession } from "@/lib/auth";
+import { notFound } from "next/navigation";
+import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
+import { OFFER_FAMILIES, offerStands } from "@/lib/offers";
+import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
@@ -162,12 +161,44 @@ interface Item {
 export default async function ManageTab({
   supplyId = 0,
   backfillDate,
+  itemId = 0,
+  supplyFact = false,
+  initialRefill = false,
 }: {
   // The cabinet's "Add for another person" deep link (#1705). 0 / unreachable = no seed.
   supplyId?: number;
   backfillDate?: string;
+  itemId?: number;
+  supplyFact?: boolean;
+  initialRefill?: boolean;
 }) {
-  const { login, profile } = await requireSession();
+  const { login, profile, access } = await requireSession();
+  if (itemId) {
+    const accessible = await getAccessibleProfiles();
+    const resolved = resolveIntakeAcrossProfiles(
+      accessible.map((profile) => profile.id),
+      itemId,
+      "supplement"
+    );
+    if (!resolved) notFound();
+    if (resolved.profileId !== profile.id) {
+      const subject = accessible.find(
+        (profile) => profile.id === resolved.profileId
+      )!;
+      return (
+        <div className="space-y-4">
+          <ProfileIdentityBanner
+            profile={subject}
+            crossProfile
+            testIdPrefix="intake"
+          />
+          <p>
+            {resolved.item.name} · Act as {subject.name} to edit its supply.
+          </p>
+        </div>
+      );
+    }
+  }
   const profileAge = getProfileAge(profile.id);
   const activityScheduleAvailable = isTrainingRelevant(profileAge);
   // The same life-stage gate the Settings copy uses: the adult food-group catalog is
@@ -183,7 +214,9 @@ export default async function ManageTab({
   // Resolved through the SAME offerability rule the item form's picker uses, so an id
   // outside this caller's reach simply doesn't seed anything.
   const initialSupply = findLinkableSupply(scope.ids, supplyId);
-  const todayStr = today(profile.id);
+  const units = getUnitPrefs(login.id);
+  const intakeContext = loadIntakeFormContext(profile.id, units.weightUnit);
+  const todayStr = intakeContext.todayStr;
   const acceptedBackfillDate =
     backfillDate && isHistoricalDoseDateAccepted(todayStr, backfillDate)
       ? backfillDate
@@ -192,7 +225,7 @@ export default async function ManageTab({
   // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
   // excluded groups the same way the #577 suggestions do.
   const excludedGroups = getExcludedFoodGroups(profile.id);
-  const intakeItems = getIntakeItems(profile.id);
+  const intakeItems = intakeContext.allIntakeItems;
   const historyDosesBySupp = new Map<number, IntakeDose[]>();
   const dosesBySupp = new Map<number, IntakeDose[]>();
   const retiredBySupp = new Map<number, IntakeDose[]>();
@@ -247,7 +280,7 @@ export default async function ManageTab({
   const derivedLines = getDerivedSituationLines(
     profile.id,
     todayStr,
-    getUnitPrefs(login.id).temperatureUnit
+    units.temperatureUnit
   );
   const showPoorSleepOverride = derivedLines.poorSleepOverridable;
   // Adherence strip inputs.
@@ -476,14 +509,6 @@ export default async function ManageTab({
   // pickers behind it read the profile's own conditions and the biomarker names it
   // actually has results for — a reason names something the person has seen.
   const purposesBySupp = getIntakePurposesByItem(profile.id);
-  // EVERY recorded condition, with its status (#3650). The purpose picker offers the
-  // active ones; a purpose already declared against one that has since been resolved
-  // still has to be able to say its name.
-  const purposeConditions = getConditions(profile.id).map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-  }));
   const purposeBiomarkers = getUsedCanonicalNames(profile.id);
   // KEEP-APART WARNINGS MOVED TO THE DAY LEDGER (#3987): they are advice about what
   // not to take together right now, so they belong beside the taps that would take
@@ -605,35 +630,6 @@ export default async function ManageTab({
     []
   );
   const safetyCoverage = getSafetyScreeningCoverage(profile.id);
-  // The profile's stored PGx variants, threaded to every form for the client-side
-  // create/edit PGx notice (a lean projection — enough for phenotype resolution + the
-  // marker match, no report prose beyond interpretation/notes the page already holds).
-  const pgxVariants: PgxVariantInput[] = getGenomicVariants(profile.id)
-    .filter((v) => v.result_type === "pharmacogenomic")
-    .map((v) => ({
-      id: v.id,
-      gene: v.gene,
-      star_allele: v.star_allele,
-      genotype: v.genotype,
-      variant: v.variant,
-      interpretation: v.interpretation,
-      notes: v.notes,
-    }));
-  // The item stack (name + cached RxCUI(s) + active) threaded to every form for
-  // the client-side create/edit interaction notice. Cached ingredient CUIs (issue
-  // #279) keep a combination product matchable against ingredient-keyed concepts.
-  // Composition rides along (#2856): the notice must answer the SAME for a pair of
-  // items whichever one is being entered. Without it, typing the blend against a saved
-  // SSRI warned while typing the SSRI against the saved blend said nothing — one pair,
-  // one profile, two answers decided by the order the person happened to add them.
-  const stackItems: InteractionItem[] = intakeItems.map((s) => ({
-    id: s.id,
-    name: s.name,
-    rxcui: s.rxcui,
-    rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
-    ingredients: (ingredientsBySupp.get(s.id) ?? []).map((g) => g.name),
-    active: !!s.active,
-  }));
 
   // A MANAGEMENT ROW, NOT A DAY ROW (#3987). Whether today's dose is taken, skipped or
   // still owed is the Day ledger's statement now, and it is the only one: this row used
@@ -657,10 +653,28 @@ export default async function ManageTab({
     // the ledger's OWN sets rather than re-deriving dueness, so the two surfaces cannot
     // disagree about which of them is speaking.
     const statedByLedger = dose && ledgerStatedDoseIds.has(dose.id);
+    const representative = dose?.id === dosesBySupp.get(supplement.id)?.[0]?.id;
+    const canWrite = access === "write";
+    const openSupply =
+      canWrite && representative && supplyFact && supplement.id === itemId;
     return (
       <EditableSupplementRow
-        key={dose?.id ?? `item-${supplement.id}`}
+        key={`${dose?.id ?? `item-${supplement.id}`}:${openSupply ? (initialRefill ? "refill" : "supply") : "row"}`}
         supplement={supplement}
+        canWrite={canWrite}
+        supplyRepresentative={representative}
+        initialSupplyEditor={openSupply}
+        initialRefill={openSupply && initialRefill}
+        trackSupplyOffer={
+          canWrite &&
+          representative &&
+          offerStands(profile.id, {
+            familyId: "track-supply",
+            itemId: supplement.id,
+          })
+            ? OFFER_FAMILIES["track-supply"](supplement.id).copy
+            : null
+        }
         dose={dose}
         isTaken={dose && !statedByLedger ? takenToday.has(dose.id) : undefined}
         isSkipped={
@@ -668,13 +682,10 @@ export default async function ManageTab({
         }
         doses={dosesBySupp.get(supplement.id) ?? []}
         retiredDoses={retiredBySupp.get(supplement.id) ?? []}
-        allIntakeItems={intakeItems}
-        stackItems={stackItems}
-        pgxVariants={pgxVariants}
+        intakeContext={intakeContext}
         pairs={pairsFor(supplement.id)}
         ingredients={ingredientsBySupp.get(supplement.id) ?? []}
         purposes={purposesBySupp.get(supplement.id) ?? []}
-        purposeConditions={purposeConditions}
         purposeBiomarkers={purposeBiomarkers}
         strip={stripFor(supplement)}
         refillRate={refillRates.get(supplement.id) ?? null}
@@ -745,7 +756,12 @@ export default async function ManageTab({
       )}
 
       {paused.length + pausedDoseLessSupplements.length > 0 && (
-        <Disclosure>
+        <Disclosure
+          open={
+            paused.some((entry) => entry.supplement.id === itemId) ||
+            pausedDoseLessSupplements.some((item) => item.id === itemId)
+          }
+        >
           <summary className="fold-control section-label">
             Paused ({paused.length + pausedDoseLessSupplements.length})
           </summary>
@@ -874,9 +890,7 @@ export default async function ManageTab({
   const addSupplementModal = {
     action: addIntakeItem,
     initialSupply,
-    allIntakeItems: intakeItems,
-    stackItems,
-    pgxVariants,
+    intakeContext,
     activityScheduleAvailable,
   };
 
@@ -941,7 +955,6 @@ export default async function ManageTab({
                     control: (
                       <AddSupplementModal
                         {...addSupplementModal}
-                        conditions={purposeConditions}
                         biomarkers={purposeBiomarkers}
                       />
                     ),

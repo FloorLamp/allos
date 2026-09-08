@@ -34,7 +34,7 @@ import path from "node:path";
 //      axis is a known one, and the identity is non-empty.
 //   3. AN ANTI-DRIFT SCAN — no `ROW_NUMBER() OVER (PARTITION BY profile_id` may appear
 //      in a `.prepare` statement outside the builder, so an eighth copy can't be
-//      grown by hand (the identity-registry-doc.test.ts pattern).
+//      grown by hand.
 //
 // Pure: SQL TEXT only, no DB. The rows this SQL actually selects are asserted in
 // lib/__db_tests__/representative-ids.test.ts.

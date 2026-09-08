@@ -40,7 +40,7 @@ import {
   type NotificationChannel,
   type NotificationMessage,
 } from "./types";
-import { composeForSend, composeMessage } from "./compose";
+import { composeForRebuild, composeMessage } from "./compose";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
 import { resolveTelegramChats, resolveTelegramRecipients } from "./fan-out";
@@ -73,10 +73,6 @@ import {
   type MessagePointer,
 } from "./message-pointers";
 import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
-import {
-  attachmentOnKeyboard,
-  type UsualRoutineAttachment,
-} from "./usual-routine-attach";
 import { messageBodyHash, reconcileClosingText } from "./reconcile-core";
 import { classifyTelegramFailure } from "./telegram-error";
 
@@ -215,7 +211,8 @@ async function trackDelivered(
   profileId: number,
   chatId: string | number,
   messageId: number | undefined,
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  chatWide = false
 ): Promise<void> {
   // A food nudge closes the PREVIOUS food nudge's still-live keyboard (#947): each
   // slot sends a fresh message with live serving buttons, and a stale keyboard from a
@@ -229,7 +226,7 @@ async function trackDelivered(
   // else here: the send already succeeded.
   if (msg.kind === "food" && messageId != null)
     await rotateFoodNudgePointer(profileId, chatId, messageId, msg);
-  recordPointer(profileId, chatId, messageId, msg);
+  recordPointer(profileId, chatId, messageId, msg, chatWide);
   await supersedePriorKeyboards(profileId, chatId, messageId, msg);
 }
 
@@ -249,7 +246,8 @@ function recordPointer(
   profileId: number,
   chatId: string | number,
   messageId: number | undefined,
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  chatWide: boolean
 ): void {
   if (messageId == null) return;
   // No resolvable subject (an explicit-chat send to a chat that maps to no profile):
@@ -261,7 +259,7 @@ function recordPointer(
   // digest's every button is declared inert — an offer tail and a ⚙️ Tune control claim
   // nothing — so the keyboard test that gates every other pointer would have skipped the
   // one message whose CLAIMS ARE ITS SENTENCES. `prose` also decides whether a body hash
-  // is worth storing: nothing else reads one.
+  // is worth storing. Food also compares its tally independently of its keyboard.
   const prose = proseReconcilerFor(msg.kind);
   if (keyboard.length === 0 && !prose) return;
   recordMessagePointer({
@@ -269,9 +267,10 @@ function recordPointer(
     chatId,
     messageId,
     kind: msg.kind ?? "other",
+    chatWide,
     date: today(profileId),
     keyboard,
-    bodyHash: prose ? messageBodyHash(msg) : null,
+    bodyHash: prose || msg.kind === "food" ? messageBodyHash(msg) : null,
     // The TITLE AS DELIVERED, attribution prefix and all (#1822 item 7). Recorded for
     // exactly the reason the keyboard is: this is the only moment anyone holds it, and
     // a reconcile close that replaces the whole text must be able to say what it closed
@@ -651,7 +650,8 @@ export async function sendTelegramMessage(
     resolveSubject(chatId, subject),
     chatId,
     messageId,
-    composed
+    composed,
+    subject === CHAT_WIDE
   );
 }
 
@@ -670,28 +670,25 @@ function resolveSubject(
 
 // ---- Chokepoint: outbound edits (callback rebuilds/consumption) ----
 
-// The composed one-tap (#2460) a delivered message is CURRENTLY showing, re-derived
-// against fresh state — or null when the message never carried one, or when nothing it
-// named still stands. Read off the pointer's own delivered keyboard, which is the only
-// record of what a chat is showing, so a rebuild carries the SAME offer the send minted
-// rather than minting a second one for the slot.
-function liveUsualAttachment(
+// A callback can act for a different member of a chat-wide message. Its target
+// remains unchanged; only the stored pointer owner supplies delivered context.
+function rebuildPointer(
   profileId: number,
   chatId: number | string,
   messageId: number
-): UsualRoutineAttachment | null {
-  const pointer = messagePointerAt(profileId, chatId, messageId);
-  return pointer
-    ? attachmentOnKeyboard(profileId, pointer.keyboard, today(profileId))
-    : null;
+): MessagePointer | null {
+  const own = messagePointerAt(profileId, chatId, messageId);
+  if (own) return own;
+  for (const memberId of getProfilesByTelegramChatId(String(chatId))) {
+    const pointer = messagePointerAt(memberId, chatId, messageId);
+    if (pointer?.chatWide) return pointer;
+  }
+  return null;
 }
 
 // Rebuild an existing message from a freshly-built (UN-prefixed) NotificationMessage,
-// re-applying the SAME send-time attribution prefix (prefixForProfile), escaping,
-// and keyboard the initial send used. This is what closes the #377 class at the
-// boundary: a callback handler hands over the raw rebuilt message + its profileId
-// and CANNOT re-render without the "[Name] " label, because the chokepoint owns
-// applying it.
+// preserving the declared subject recorded at delivery. Legacy/missing pointers
+// retain profile attribution; a chat-wide pointer never borrows its owner's name.
 export async function rebuildMessage(
   profileId: number,
   chatId: number | string,
@@ -713,12 +710,9 @@ export async function rebuildMessage(
   // delivered one only by what the stored offer no longer stands for. No origin: a
   // rebuild PRESERVES what the live keyboard declares, which its callers already read
   // off the tapped token or the pointer and applied.
-  const attributed = composeForSend(
-    profileId,
-    msg,
-    null,
-    liveUsualAttachment(profileId, chatId, messageId)
-  );
+  const pointer = rebuildPointer(profileId, chatId, messageId);
+  const ownerId = pointer?.profileId ?? profileId;
+  const attributed = composeForRebuild(profileId, msg, pointer);
   await editMessageTextRaw(chatId, messageId, renderMessageHtml(attributed), {
     keyboard: messageKeyboard(attributed),
     parseMode: "HTML",
@@ -727,10 +721,11 @@ export async function rebuildMessage(
   // `deliveredKeyboard` the send records, so a rebuilt pointer and a sent one are the
   // same shape and the sweep cannot tell which wrote it.
   syncMessagePointerKeyboard(
-    profileId,
+    ownerId,
     chatId,
     messageId,
-    deliveredKeyboard(attributed)
+    deliveredKeyboard(attributed),
+    attributed.kind === "food" ? messageBodyHash(attributed) : undefined
   );
 }
 

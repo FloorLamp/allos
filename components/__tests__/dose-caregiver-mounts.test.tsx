@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import {
   act,
   cleanup,
@@ -86,9 +87,9 @@ function renderDoseLessPausedSupplement() {
         <EditableSupplementRow
           supplement={supplement}
           doses={[]}
-          allIntakeItems={[supplement]}
-          stackItems={[]}
-          pgxVariants={[]}
+          intakeContext={intakeFormContext("2026-03-02", {
+            allIntakeItems: [supplement],
+          })}
           pairs={[]}
           strip={[]}
           refillRate={null}
@@ -201,9 +202,7 @@ function renderCard(props: {
         <MedicationCard
           medication={props.medication ?? MED}
           doses={props.doses ?? [DOSE]}
-          allIntakeItems={[]}
-          stackItems={[]}
-          pgxVariants={[]}
+          intakeContext={intakeFormContext("2026-03-02")}
           pairs={[]}
           takenDoseIds={new Set<number>()}
           skippedDoseIds={new Set<number>()}
@@ -213,7 +212,6 @@ function renderCard(props: {
           sideEffects={[]}
           strip={[]}
           refillRate={null}
-          todayStr="2026-03-02"
           nowIso="2026-03-02T13:20:00Z"
           timezone="UTC"
           historyMaxDate="2026-03-02"

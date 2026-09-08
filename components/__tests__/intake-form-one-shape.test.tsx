@@ -1,9 +1,11 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import MedicationCard from "@/app/(app)/medications/MedicationCard";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
+import type { SupplyOption } from "@/lib/supply-product";
 import { emptyIntakeItemFormState } from "@/lib/intake-form-fields";
 
 // ONE STATE SHAPE FOR THE INTAKE FORM (#4664).
@@ -26,7 +28,17 @@ import { emptyIntakeItemFormState } from "@/lib/intake-form-fields";
 //     same result whether the property holds or the regex is wrong.
 
 const actions = vi.hoisted(() => ({
+  refill: vi.fn(async (_data: FormData) => ({
+    ok: true as const,
+    fillSize: 30,
+    newQuantity: 34,
+  })),
+  bottles: vi.fn(async (): Promise<SupplyOption[]> => []),
   update: vi.fn(async (_data: FormData) => ({ ok: true as const })),
+}));
+
+vi.mock("@/app/(app)/medications/actions", () => ({
+  refillMedication: actions.refill,
 }));
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
@@ -36,7 +48,7 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   lookupRxcuiIngredients: vi.fn(async () => []),
 }));
 vi.mock("@/app/(app)/supplies/actions", () => ({
-  listSharedSupplyOptions: vi.fn(async () => []),
+  listSharedSupplyOptions: actions.bottles,
   createPoolAction: vi.fn(async () => ({ ok: true })),
   linkItemAction: vi.fn(async () => ({ ok: true })),
   unlinkItemAction: vi.fn(async () => ({ ok: true })),
@@ -104,7 +116,7 @@ const ROW = {
   cadence_anchor_date: "2026-02-02",
   purposes_json: null,
   ingredients_json: null,
-};
+} as const;
 
 const EDIT_MOUNT = {
   medication: ROW,
@@ -148,19 +160,21 @@ const EDIT_MOUNT = {
       created_at: "2026-01-15T00:00:00.000Z",
     },
   ],
-  conditions: [{ id: 3, name: "Migraine" }],
-  allIntakeItems: [
-    { id: 42, name: "Ibuprofen" },
-    { id: 7, name: "Levothyroxine" },
-  ],
-  stackItems: [],
-  pgxVariants: [],
+  intakeContext: intakeFormContext("2026-09-04", {
+    conditions: [{ id: 3, name: "Migraine", status: "active" }],
+    allIntakeItems: [
+      { ...ROW, id: 42, name: "Ibuprofen" },
+      { ...ROW, id: 7, name: "Levothyroxine" },
+    ],
+    stackItems: [],
+    pgxVariants: [],
+  }),
+
   sideEffects: [],
   strip: [],
   takenDoseIds: [],
   skippedDoseIds: [],
   doseHistory: [],
-  todayStr: "2026-09-04",
   initialAction: "edit",
 } as unknown as Parameters<typeof MedicationCard>[0];
 
@@ -209,11 +223,13 @@ const EXPECTED: Record<string, string> = {
 /** The four child-row fields, compared as parsed JSON rather than as strings. */
 const JSON_FIELDS = ["doses", "pairs", "ingredients", "purposes"] as const;
 
-function mountEdit() {
+function mountEdit(
+  overrides: Partial<Parameters<typeof MedicationCard>[0]> = {}
+) {
   render(
     <ToastProvider>
       <ConfirmProvider>
-        <MedicationCard {...EDIT_MOUNT} />
+        <MedicationCard {...EDIT_MOUNT} {...overrides} />
       </ConfirmProvider>
     </ToastProvider>
   );
@@ -269,6 +285,64 @@ describe("an edit mount posts the whole row back, with no editor opened (#4664)"
     expect(child.purposes).toEqual([]);
   });
 });
+
+it.each([null, 11])(
+  "adopts refill count and CAS baseline for supply %s while retaining edits",
+  async (supplyId) => {
+    actions.update.mockClear();
+    actions.refill.mockClear();
+    actions.bottles.mockResolvedValue(
+      supplyId
+        ? [
+            {
+              id: 11,
+              name: "The household ibuprofen",
+              strength: null,
+              form: null,
+              siblingKind: "medication",
+              onHand: 4,
+            },
+          ]
+        : []
+    );
+    mountEdit({
+      medication: {
+        ...ROW,
+        supply_id: supplyId,
+        quantity_on_hand: 4,
+      } as Parameters<typeof MedicationCard>[0]["medication"],
+      initialSupplyEditor: true,
+      initialRefill: true,
+    });
+    const count = await screen.findByLabelText(
+      supplyId ? "Shared bottle count" : "Quantity on hand"
+    );
+    await waitFor(() => expect((count as HTMLInputElement).value).toBe("4"));
+    fireEvent.change(screen.getByLabelText("Units per dose"), {
+      target: { value: "3" },
+    });
+    fireEvent.change(screen.getByLabelText("Fill size (units)"), {
+      target: { value: "30" },
+    });
+    fireEvent.click(screen.getByTestId("refill-confirm"));
+    await waitFor(() => expect(actions.refill).toHaveBeenCalledOnce());
+    await waitFor(() => expect((count as HTMLInputElement).value).toBe("34"));
+    fireEvent.click(screen.getByTestId("intake-editor-done"));
+    expect(screen.getByTestId("intake-fact-supply").textContent).toContain(
+      "34"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(actions.update).toHaveBeenCalledOnce());
+    const posted = actions.update.mock.calls[0][0];
+    expect(posted.get(supplyId ? "supply_count" : "quantity_on_hand")).toBe(
+      "34"
+    );
+    expect(
+      posted.get(supplyId ? "supply_count_loaded" : "quantity_on_hand_loaded")
+    ).toBe("34");
+    expect(posted.get("qty_per_dose")).toBe("3");
+  }
+);
 
 // ── The shape itself ─────────────────────────────────────────────────────────
 

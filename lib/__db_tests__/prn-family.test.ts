@@ -190,14 +190,14 @@ describe("runRedoseNotices — the sibling dose holds the notice (#1027)", () =>
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "FamHold", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).not.toHaveBeenCalled(); // the pre-#1027 false GO
     expect(getProfileSetting(p, redoseMarkerKey(otc.itemId))).toBeUndefined();
 
     // Six hours later the interval has cleared from the SIBLING's dose — the notice
     // fires once, armed by (and marker-keyed to) that administration.
     const later = new Date(now.getTime() + 6 * 3_600_000);
-    await runRedoseNotices(p, "FamHold", date, later);
+    await runRedoseNotices(p, date, later);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, redoseMarkerKey(otc.itemId))).toBe(
       String(rxAdmin)
@@ -207,7 +207,7 @@ describe("runRedoseNotices — the sibling dose holds the notice (#1027)", () =>
     expect(body).toContain("Ibuprofen 800 mg");
 
     // Same state, next tick → one-shot done, no re-send.
-    await runRedoseNotices(p, "FamHold", date, later);
+    await runRedoseNotices(p, date, later);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -225,7 +225,7 @@ describe("runRedoseNotices — the sibling dose holds the notice (#1027)", () =>
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "FamMgCeiling", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(otc.itemId))).toBeUndefined();
   });

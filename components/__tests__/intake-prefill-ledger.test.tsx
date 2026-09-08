@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   act,
@@ -136,12 +137,10 @@ function mount(
           <MedicationAddWorkspace
             subtitle=""
             action={actions.addIntakeItem}
-            allIntakeItems={[]}
-            stackItems={[]}
-            pgxVariants={[]}
-            conditions={[]}
-            pediatric={pediatric}
-            todayStr={TODAY}
+            intakeContext={intakeFormContext(
+              TODAY,
+              pediatric ? { pediatric } : {}
+            )}
             initialSupply={initialSupply}
           />
         ) : (
@@ -151,9 +150,10 @@ function mount(
               control: (
                 <AddSupplementModal
                   action={actions.addIntakeItem}
-                  allIntakeItems={[]}
-                  stackItems={[]}
-                  pgxVariants={[]}
+                  intakeContext={intakeFormContext(
+                    TODAY,
+                    pediatric ? { pediatric } : {}
+                  )}
                 />
               ),
             }}
@@ -269,11 +269,17 @@ beforeEach(() => {
   prnSpy.calls.length = 0;
 });
 
-it("saves a must-take medication after its optional start is left blank", async () => {
+it("keeps an unknown start when obligation changes and the medication is saved", async () => {
   mount("medication");
   fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
     target: { value: "Longstanding medicine" },
   });
+  openFact("importance");
+  for (const value of ["may", "must"]) {
+    fireEvent.change(screen.getByLabelText("Obligation"), {
+      target: { value },
+    });
+  }
   openFact("stopDate");
   const start = screen.getByLabelText(/Started on/) as HTMLInputElement;
   expect(start.value).toBe("");
@@ -657,8 +663,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         actions.lookupRxcuiIngredients.mockResolvedValueOnce(["161", "2670"]);
         await pickName("Acetaminophen with Codeine — shared bottle");
       } else {
-        openFact("more");
-        fireEvent.click(screen.getByTestId("intake-more-supply"));
+        openFact("supply");
         fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
           target: { value: "99" },
         });
@@ -700,8 +705,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     ]);
     mount("medication", CHILD_ON_PICK);
     await pickName(ACETAMINOPHEN);
-    openFact("more");
-    fireEvent.click(screen.getByTestId("intake-more-supply"));
+    openFact("supply");
     fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
       target: { value: "99" },
     });
@@ -768,8 +772,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     openFact("dose");
     fireEvent.change(textbox("Amount"), { target: { value: "12.5 mg" } });
 
-    openFact("more");
-    fireEvent.click(screen.getByTestId("intake-more-supply"));
+    openFact("supply");
     fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
       target: { value: "98" },
     });
@@ -796,8 +799,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     ]);
     mount("medication", CHILD_ON_PICK);
     await pickName(ACETAMINOPHEN);
-    openFact("more");
-    fireEvent.click(screen.getByTestId("intake-more-supply"));
+    openFact("supply");
     fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
       target: { value: "98" },
     });
@@ -843,8 +845,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       actions.listSharedSupplyOptions.mockResolvedValue([bottle]);
       const first = mount("medication", CHILD_ON_PICK, true);
       await pickName(ACETAMINOPHEN);
-      openFact("more");
-      fireEvent.click(screen.getByTestId("intake-more-supply"));
+      openFact("supply");
       await screen.findByRole("option", { name: bottle.name });
       fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
         target: { value: String(bottle.id) },
@@ -1224,4 +1225,40 @@ describe("every prefillable field's control marks the ledger (#4665)", () => {
       expect(c.read()).toBe(c.edited);
     });
   }
+});
+
+describe("add-form supply offer stays local until Save", () => {
+  it("can be declined at the front door, then saves the once-asked intent without a count or dose", async () => {
+    mount("supplement");
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Unlisted supply item" },
+    });
+    fireEvent.click(screen.getByTestId("offer-decline-track-supply"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("offer-track-supply")).toBeNull()
+    );
+    expect(actions.addIntakeItem).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+    const posted = actions.addIntakeItem.mock.calls[0][0];
+    expect(posted.get("supply_offer_seen")).toBe("1");
+    expect(posted.get("quantity_on_hand")).toBe("");
+    expect(JSON.parse(String(posted.get("doses")))).toEqual([]);
+  });
+
+  it("accepting the count and then cancelling creates no item", async () => {
+    mount("supplement");
+    fireEvent.change(screen.getByLabelText("How many are left?"), {
+      target: { value: "60" },
+    });
+    fireEvent.click(screen.getByTestId("offer-accept-track-supply"));
+    await waitFor(() =>
+      expect(screen.getByTestId("intake-fact-supply").textContent).toContain(
+        "60 on hand"
+      )
+    );
+    expect(actions.addIntakeItem).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(actions.addIntakeItem).not.toHaveBeenCalled();
+  });
 });

@@ -33,6 +33,7 @@ import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
+import { writesCount } from "./button-label";
 import { callbackDataFits, MED_STOP_PREFIX } from "./callback-tokens";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
@@ -392,8 +393,8 @@ function doseSessionActions(
     const head = wholeSlotStack ?? "All";
     actions.push({
       label: labelAll
-        ? `${GLYPH.done} ${head} ${INTAKE_SLOT_LABELS[slot]} (${pending.length})`
-        : `${GLYPH.done} ${head} (${pending.length})`,
+        ? `${GLYPH.done} ${head} ${INTAKE_SLOT_LABELS[slot]} ${writesCount(pending.length)}`
+        : `${GLYPH.done} ${head} ${writesCount(pending.length)}`,
       data: `all:${profileId}:${slot}:${date}`,
     });
   }
@@ -409,7 +410,7 @@ function doseSessionActions(
       const data = stackToken(members.map((m) => m.dose.id));
       if (!callbackDataFits(data)) continue;
       actions.push({
-        label: `${GLYPH.done} ${stack} (${members.length})`,
+        label: `${GLYPH.done} ${stack} ${writesCount(members.length)}`,
         data,
       });
     }

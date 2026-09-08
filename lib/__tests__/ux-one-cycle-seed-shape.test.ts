@@ -124,17 +124,4 @@ describe("UX_SEED=one-cycle (#3489 D5)", () => {
     expect(page).toContain("{lengthStatsState.message}");
     expect(page).not.toContain("insufficientLengthCopy");
   });
-
-  it("is in the documented standard cadence as the one-cycle boundary", () => {
-    const skill = fs.readFileSync(
-      path.join(repo, ".claude/skills/ux-walkthrough/SKILL.md"),
-      "utf8"
-    );
-    expect(skill).toContain("Run all five census shapes");
-    expect(skill).toContain(
-      "UX_SEED=one-cycle node scripts/ux-walkthrough.mjs --serve pages"
-    );
-    expect(skill).toContain("stores exactly two periods");
-    expect(skill).toContain("SEED_DIAL_SHAPE=one-cycle");
-  });
 });

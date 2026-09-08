@@ -97,7 +97,10 @@ export type IntakeField =
   | "quantity_on_hand"
   | "qty_per_dose"
   | "quantity_on_hand_loaded"
-  | "supply_id";
+  | "supply_id"
+  | "supply_count"
+  | "supply_count_loaded"
+  | "supply_offer_seen";
 
 // One dose row, structurally what DoseRowsEditor edits (declared here so the mapping
 // stays free of React).
@@ -167,6 +170,9 @@ export interface IntakeItemFormState {
   qtyPerDose: string;
   quantityOnHandLoaded: string;
   supplyId: string;
+  poolCount?: { supplyId: string; quantity: string; loaded: string };
+  supplyOfferSeen?: boolean;
+  supplyOfferAnswered?: boolean;
 }
 
 export function emptyIntakeCadence(): IntakeCadenceDraft {
@@ -276,7 +282,12 @@ export function intakeItemFields(
   set("quantity_on_hand", state.quantityOnHand.trim());
   set("qty_per_dose", state.qtyPerDose.trim() || "1");
   set("quantity_on_hand_loaded", state.quantityOnHandLoaded);
-  if (state.supplyId.trim()) set("supply_id", state.supplyId.trim());
+  set("supply_id", state.supplyId.trim());
+  if (state.poolCount?.supplyId === state.supplyId) {
+    set("supply_count", state.poolCount.quantity);
+    set("supply_count_loaded", state.poolCount.loaded);
+  }
+  if (state.supplyOfferSeen) set("supply_offer_seen", "1");
 
   return out;
 }

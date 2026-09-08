@@ -441,7 +441,13 @@ export default function CommandPalette({
           );
           if (!res.ok) return;
         } else if (action.kind === "refill") {
+          if (action.supplyId !== undefined)
+            fd.set("supply_id", String(action.supplyId ?? ""));
           const res = await refillMedication(fd);
+          if (!res.ok && res.kind === "needs-size" && action.href) {
+            go(action.href);
+            return;
+          }
           toast(res.ok ? "Refill recorded" : res.error, {
             tone: res.ok ? "success" : "error",
           });

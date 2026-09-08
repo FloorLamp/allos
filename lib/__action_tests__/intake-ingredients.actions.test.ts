@@ -346,7 +346,7 @@ describe("what the engines now see", () => {
         ]),
       })
     );
-    const { stackItems } = loadMedicationsData(profile.id);
+    const { stackItems } = loadMedicationsData(profile.id).intakeContext;
     const blend = stackItems.find((i) => i.name === "Mood Support");
     expect(blend?.ingredients).toEqual(["St. John's Wort"]);
   });

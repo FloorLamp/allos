@@ -5,23 +5,19 @@ import { IconPlus } from "@tabler/icons-react";
 import Button from "@/components/Button";
 import ModalShell from "@/components/ModalShell";
 import IntakeItemForm from "@/components/IntakeItemForm";
-import type { InteractionItem } from "@/lib/drug-interactions";
-import type { PgxVariantInput } from "@/lib/pgx";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 import type { SupplyOption } from "@/lib/supply-product";
-import type { FormResult, IntakeConditionOption } from "@/lib/types";
+import type { FormResult } from "@/lib/types";
 import { useCreateActionLabel } from "@/components/CreateAction";
 
 export interface AddSupplementModalProps {
   action: (formData: FormData) => Promise<FormResult>;
-  allIntakeItems: { id: number; name: string }[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
+  intakeContext: IntakeFormContext;
   // Arrived from the cabinet's "Add for another person" (#1705): the modal opens
   // already showing the seeded form rather than making the user find Add again.
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
   // Picker sources for the "What you take it for" control (#2857).
-  conditions?: IntakeConditionOption[];
   biomarkers?: string[];
 }
 
@@ -29,12 +25,9 @@ export interface AddSupplementModalProps {
 // action opens the same kind-locked form in the shared accessible modal shell.
 export default function AddSupplementModal({
   action,
-  allIntakeItems,
-  stackItems,
-  pgxVariants,
+  intakeContext,
   initialSupply = null,
   activityScheduleAvailable = true,
-  conditions = [],
   biomarkers = [],
 }: AddSupplementModalProps) {
   const [open, setOpen] = useState(initialSupply != null);
@@ -63,13 +56,10 @@ export default function AddSupplementModal({
               portaled name combobox (#2774). */}
           <div data-testid="supplement-add-panel" className="px-1">
             <IntakeItemForm
+              intakeContext={intakeContext}
               action={action}
               kind="supplement"
-              allIntakeItems={allIntakeItems}
-              stackItems={stackItems}
-              pgxVariants={pgxVariants}
               initialSupply={initialSupply}
-              conditions={conditions}
               biomarkers={biomarkers}
               activityScheduleAvailable={activityScheduleAvailable}
               onDone={close}

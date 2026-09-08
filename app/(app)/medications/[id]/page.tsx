@@ -9,9 +9,8 @@ import {
   getRankedPickerProviders,
   getIntakeCatalogOptions,
   getIntakeDoseHistory,
-  resolveMedicationAcrossProfiles,
+  resolveIntakeAcrossProfiles,
   encounterForRecord,
-  getConditions,
   episodesForMedication,
 } from "@/lib/queries";
 import { encounterHref } from "@/lib/hrefs";
@@ -59,7 +58,11 @@ export const dynamic = "force-dynamic";
 // banner, keeping all existing medication actions tied to the acting profile.
 export default async function MedicationDetailPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ action?: string | string[] }>;
+  searchParams: Promise<{
+    action?: string | string[];
+    fact?: string;
+    refill?: string;
+  }>;
 }) {
   const params = await props.params;
   const searchParams = await props.searchParams;
@@ -71,7 +74,7 @@ export default async function MedicationDetailPage(props: {
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
   const accessible = await getAccessibleProfiles();
-  const resolved = resolveMedicationAcrossProfiles(
+  const resolved = resolveIntakeAcrossProfiles(
     accessible.map((profile) => profile.id),
     id
   );
@@ -90,7 +93,7 @@ export default async function MedicationDetailPage(props: {
   // REACHABILITY FIRST, THEN THE GRANT — the ordering requireProfileWriteAccess itself
   // depends on, because `accessForProfile` defaults an UNGRANTED member to 'write' and
   // so decides nothing on its own. Reachability is settled above by construction:
-  // `profileId` came out of `resolveMedicationAcrossProfiles(accessible…)`, so a
+  // `profileId` came out of `resolveIntakeAcrossProfiles(accessible…)`, so a
   // profile this login cannot reach 404s before this line. Write access is then asked
   // of the SUBJECT rather than of the acting profile — and this is only what the page
   // OFFERS: every action re-gates the posted id server-side.
@@ -190,12 +193,6 @@ export default async function MedicationDetailPage(props: {
   // entity, so its own encounter link is the sole source (no source_record_id chain).
   const prescribedAt = encounterForRecord(profileId, "medication", m.med.id);
   const illnessEpisodes = episodesForMedication(profileId, m.med.id);
-  // Conditions for the "For condition…" indication picker (#1052) on the edit form.
-  const medConditions = getConditions(profileId).map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-  }));
   const situationOptions = mergedSituationOptions(getSituations(profileId)).map(
     (o) => o.name
   );
@@ -308,12 +305,11 @@ export default async function MedicationDetailPage(props: {
               </div>
             ) : null}
             <MedicationCard
+              key={`${m.med.id}:${initialAction ?? "view"}:${searchParams.fact ?? ""}:${searchParams.refill ?? ""}`}
+              intakeContext={data.intakeContext}
               medication={m.med}
               doses={m.doses}
               retiredDoses={m.retiredDoses}
-              allIntakeItems={data.allIntakeItems}
-              stackItems={data.stackItems}
-              pgxVariants={data.pgxVariants}
               pairs={m.pairs}
               takenDoseIds={data.taken}
               skippedDoseIds={data.skipped}
@@ -324,7 +320,6 @@ export default async function MedicationDetailPage(props: {
               strip={m.strip}
               refillRate={m.refillRate}
               poolChip={m.poolChip}
-              todayStr={data.todayStr}
               nowIso={data.nowIso}
               suppressedFoodKeys={data.suppressedFoodKeys}
               prnDayLabel={m.prnDayLabel}
@@ -333,8 +328,6 @@ export default async function MedicationDetailPage(props: {
               prnRedoseLine={m.prnRedoseLine}
               prnRedosePrimary={m.prnRedosePrimary}
               monitoringLabs={m.monitoringLabs}
-              pediatric={data.pediatric}
-              age={data.age}
               adherenceCalendar={calendar}
               takenDoseTimes={m.takenDoseTimes}
               timezone={data.tz}
@@ -344,7 +337,9 @@ export default async function MedicationDetailPage(props: {
               canWrite={canWrite}
               subjectProfileId={subjectProfileId}
               initialAction={initialAction}
-              conditions={medConditions}
+              initialSupplyEditor={searchParams.fact === "supply"}
+              initialRefill={searchParams.refill === "1"}
+              trackSupplyOffer={m.trackSupplyOffer}
               ingredients={m.ingredients}
             />
           </IntakeOptionsProvider>

@@ -1,107 +1,14 @@
-// PER-TEST CEILINGS FOR BOTH NON-BROWSER TIERS, derived rather than inherited.
-//
-// Both `vitest.config.ts` (pure) and `vitest.db.config.ts` (DB + action) ran on
-// vitest's implicit 5 000 ms default. Nobody chose that number for these suites,
-// and measuring it (#3436) showed both had grown under it until a single slow
-// fixture would tip them — on an IDLE box, not merely a loaded one.
-//
-// Measured 2026-08-21 on a 4-core box, each tier running ALONE:
-//
-//   tier   files/tests    wall    p99      p99.9    WORST SINGLE TEST
-//   pure    980 / 15775    57 s    85 ms   1 119 ms  3 863 ms  stateful-writes
-//   db      761 /  6489   161 s   768 ms   1 155 ms  3 407 ms  video.actions
-//
-// So the stock ceiling gave the pure tier's worst test 1.29x of headroom and the
-// DB tier's 1.47x, on a quiet machine. Those are not ceilings; they are coin
-// flips. The pure tier has already lost one on a CI runner —
-// `lib/__tests__/e2e-fixture-time.test.ts`, `Test timed out in 5000ms`.
-//
-//   15 000 ms = 3.9x the pure tier's worst measured test
-//             = 4.4x the DB tier's worst measured test
-//             = ~13x either tier's measured p99.9
-//
-// A per-test ceiling is a HANG detector, not a performance budget. At 15 000 ms
-// it still fails a regression that makes an ordinary test ~13x slower, which is
-// the size of regression this instrument can honestly detect on the 17 395 pure
-// and 6 930 DB tests that finish inside a second. Gradual tier-wide slowdown is
-// CI's whole-tier wall time, and that is stable enough to read: `test-unit` over
-// 59 sampled runs on 28-29 Aug 2026 ran a median 231 s, p90 243 s, max 257 s;
-// `test-db` a median 185 s, p90 192 s, max 209 s.
-//
-// WHAT THE STABLE JOB TIME DOES NOT SAY, and what this file used to infer from it
-// (#3986). The sentence here read "CI co-schedules nothing, so a strict ceiling
-// there is a tripwire rather than a flake generator", with 1.18x max/median as its
-// evidence. That ratio is a JOB-level number and it is still true. The per-TEST
-// number underneath it is not: measured on the same commit, the same runner image
-// and five minutes apart (43bdc712, CI attempts 1 and 2), the pure tier's total
-// test time moved 1.03x — 420 158 ms against 408 970 ms — while INDIVIDUAL files
-// moved much further, and `test-db` between two green runs moved 3.11x on
-// migration-snapshot (3 167/1 017 ms) and 3.59x on restore (1 793/500 ms).
-//
-// The tier is not slower on a bad run; the WORK IS DEALT OUT DIFFERENTLY. Vitest
-// packs files onto workers dynamically, and both configs here run TWO pools at
-// once — a `threads` pool for the shared projects and a `forks` pool for the
-// isolated ones (vitest's default pool) — each sized independently to
-// `availableParallelism()`. On a 4-vCPU `ubuntu-latest` runner that is up to 8
-// workers plus the vitest main process, plus the `node --import tsx` children the
-// two seed-shape DB specs spawn. Which files are co-resident when a heavy one runs
-// is therefore a property of the run, not of the commit — so a test's wall time is
-// a reading of how much CPU it got, and that reading disperses 3-4x.
-//
-// SO THE "~4x THE WORST MEASURED TEST" RULE IS RIGHT AND ITS INPUT WAS WRONG. The
-// worst case has to be measured ON CI, and the margin has to cover the per-test
-// dispersion CI actually shows (3-4x), not the job-level 1.18x. Measured on CI at
-// 43bdc712 against a solo run of the same test on a 4-core box:
-//
-//   test                                     solo     CI green    CI red   ceiling
-//   nav-routes.test.ts:332                  2 687 ms   12 746 ms  16 919 ms  15 000  <- crossed
-//   strip-comments oracle sweep            ~12 000 ms 118 700 ms 118 279 ms 120 000  <- 98.9% used
-//   migration-reentry first test            3 004 ms    3 505 ms  >15 000 ms 15 000  <- crossed
-//
-// The two that crossed were not slow tests creeping up on their limits; they were
-// tests whose ceiling had never been measured against the environment that
-// enforces it. The tier default below stays STRICT, because it is honest for
-// everything that finishes inside a second. The handful of whole-tree scanners and
-// migration replays that do not are given an explicit ceiling at their call site,
-// each with its own CI reading written beside it, through `perTestCeiling` below.
-//
-// RE-DERIVE, do not nudge. Run a tier alone with
-// `--testTimeout=120000 --reporter=json` and read the slowest test back out, then
-// read the same test's duration out of a GREEN CI job log and use THAT. If a worst
-// case has crept past ~5 000 ms solo, fix that test rather than raise this: the
-// DB tier's slowest specs replay the whole migration chain per test, and that
-// chain grows with every merge (#3436).
+// Shared non-browser test and hook limits. CI keeps the default; local agent
+// gates may allow more time on a contended development machine. Per-test limits
+// detect hangs; comparable tier timings are better for gradual slowdown.
+// See docs/internals/test-tier-timeouts.md for diagnosis and measurement policy.
 const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 
-// ORCHESTRATION-BOX ESCAPE HATCH, in milliseconds, set by
-// `scripts/orchestration/agent-gates.sh` and IGNORED WHEN `CI` IS SET.
-//
-// Up to five agents share four cores on the dispatch box. The DB tier measured
-// there took 862 s instead of 161 s at load average 18.1 — 5.35x on wall time,
-// 5.7x at the per-test p99, worst single test 16 308 ms. The cost is sharply
-// non-linear: the same tier at load 11 finished in 220 s and needed no allowance
-// at all. One knob covers both tiers because both are vitest on the same four
-// cores; the contention is a property of the box, not of a suite.
-//
-// THE `CI` CHECK IS THE WHOLE DESIGN, NOT A PRECAUTION. This split only works as
-// a division of labour: the GATE PERMITS at 60 000 ms so a loaded box stops
-// manufacturing reds, and CI DETECTS at the strict number. If the variable ever
-// reached a CI runner, the detector would silently become the permitter — every
-// tier still green, nothing anywhere to notice, and the strict half of the design
-// gone. So CI does not get to be overridden: `resolveTestTimeoutMs` returns the
-// strict default on `env.CI` before it ever reads the variable, which is the rule
-// rather than a comment asking nicely. (CI is not the QUIET environment
-// this used to claim — see the dispersion measurement above — it is the one whose
-// verdict counts, which is a different reason for the same rule.)
+// agent-gates.sh defaults this local override to 60,000 ms. A truthy CI value
+// disables the override so local contention allowances cannot relax CI's default.
 const OVERRIDE_ENV = "ALLOS_VITEST_TIMEOUT_MS";
 
-/**
- * The per-test ceiling this run should use, in milliseconds.
- *
- * Takes its environment as an argument so the guard above is testable without
- * mutating `process.env` — and so the export below cannot drift from the thing
- * the test checks.
- */
+/** Resolve the run's per-test limit from its environment, in milliseconds. */
 export function resolveTestTimeoutMs(
   env: Readonly<Record<string, string | undefined>> = process.env
 ): number {
@@ -116,44 +23,21 @@ export function resolveTestTimeoutMs(
 
 export const testTimeout = resolveTestTimeoutMs();
 
-// Vitest ships hookTimeout at 2x testTimeout, and the ratio is load-bearing:
-// 433 of the DB tier's files do their setup in a `beforeAll`/`beforeEach`, so a
-// hook ceiling left at its 10 000 ms default while the test ceiling moved would
-// simply become the new binding constraint — and it fails with a different
-// sentence ("Hook timed out in 10000ms") that no runbook describes.
+// Setup and teardown receive twice the test budget, including local overrides.
 export const hookTimeout = testTimeout * 2;
 
-/** The strict ceiling CI must always get, exported so the guard test can name it. */
+/** Default per-test ceiling used when CI is set. */
 export const CI_TEST_TIMEOUT_MS = DEFAULT_TEST_TIMEOUT_MS;
 
 /**
- * A ceiling for ONE test, expressed as a multiple of the tier ceiling.
- *
- * WHY A MULTIPLE AND NOT A LITERAL (#3986). A hard-coded `}, 30_000)` is immune to
- * `ALLOS_VITEST_TIMEOUT_MS`, so the one lever the harness offers does not reach the
- * specs that need it most — the seed-shape files, which spawn real `node` children
- * and were the tier's most frequent local red on the dispatch box. Written as a
- * multiple, a per-test cap scales with whichever half of the design is in force:
- * strict on CI, permissive under `agent-gates.sh`.
- *
- * State the multiple against a MEASUREMENT at the call site, never on its own.
- *
- * `basis` says WHICH measurement, and it is required because the two kinds of
- * reading are different claims that used to look identical in the source (#4002).
- * "worst" is the rule this file states — ~4x the slowest run anyone has seen, so
- * the margin covers a bad day. "green" is weaker: the reading came from a run that
- * passed, nobody has measured this test on a bad day, and #3999 shows the gap is
- * the 3-4x per-test dispersion CI actually has. `migration-reentry` was derived
- * from a 3 505 ms green reading while the same comment recorded the test crossing
- * 15 000 ms on main, and nothing in the call said so.
+ * Scale one exceptional test's limit with the tier. Record the duration and
+ * rationale at the call site: "worst" names the slowest observed run; "green"
+ * means only a passing-run reading is available. Basis does not affect the math.
  */
 export function perTestCeiling(
   multiple: number,
   basis: "worst" | "green"
 ): number {
-  // `basis` is not arithmetic. It is the sentence the author has to write down,
-  // which is how #3999's thin margin was found at all: having to say what a bound
-  // is bounding is the check.
   void basis;
   return Math.round(testTimeout * multiple);
 }
@@ -173,22 +57,12 @@ export interface TimeoutObservation {
   utilization: number;
 }
 
-// HOW LOUD A TEST HAS TO BE BEFORE THIS SAYS ANYTHING, as a fraction of its own
-// ceiling. Only a test that actually TIMED OUT is described; the threshold exists
-// so a future caller cannot make this chatty by accident.
+// Event-loop utilization separates mostly waiting from busy-loop observations.
 const IDLE_UTILIZATION = 0.25;
 
 /**
- * One paragraph naming what a timeout WAS, or `null` when the test did not time
- * out. Pure, so a caller can drive it without forging a timeout — which also means
- * the real signal is never buried under a fixture's copies of itself.
- *
- * THE DISCRIMINATOR IS EVENT-LOOP UTILIZATION, and it is the question a reader of a
- * red tier actually has. A test that awaited something that never settled — an
- * unresolved promise, a real-time await under fake timers — leaves its loop IDLE,
- * measured at 0.006 on a probe. A test that was computing, or that was descheduled
- * while computing, leaves it at 1.0. The first is a hang and belongs to whoever
- * touched the test; the second is the box, and re-running it is not a diagnosis.
+ * Describe a test timeout, or return null for other results. Utilization is a
+ * diagnostic clue: it cannot prove a hang or separate computation from contention.
  */
 export function describeTimeout(o: TimeoutObservation): string | null {
   if (!o.message?.startsWith("Test timed out in")) return null;

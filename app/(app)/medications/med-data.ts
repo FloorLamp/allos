@@ -1,3 +1,4 @@
+import { OFFER_FAMILIES, offerStands, type OfferFamily } from "@/lib/offers";
 // Shared server-side gathering for the Medications surfaces (issue #817). The list
 // page (rows + Today panel), the /medications/[id] detail card, and the records
 // bridge all read from this ONE loader, so a med's adherence strip, refill estimate,
@@ -32,7 +33,10 @@ import {
   getPrnMedicationsForQuickLog,
   getMedicationFamilyStates,
 } from "@/lib/queries";
-import { loadIntakeFormContext } from "@/lib/intake-form-context";
+import {
+  loadIntakeFormContext,
+  type IntakeFormContext,
+} from "@/lib/intake-form-context";
 import {
   ceilingWindowEndMinute,
   effectiveMaxDailyCount,
@@ -50,8 +54,6 @@ import { activeByKey } from "@/lib/findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
-import { type InteractionItem } from "@/lib/drug-interactions";
-import { type PgxVariantInput } from "@/lib/pgx";
 import {
   partitionMedications,
   type MedicationWithHistory,
@@ -70,7 +72,7 @@ import {
   zonedDateParts,
   parseUtcSql,
 } from "@/lib/date";
-import { getTimezone, getProfileAge, type WeightUnit } from "@/lib/settings";
+import { getTimezone, type WeightUnit } from "@/lib/settings";
 import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
   doseDueOn,
@@ -79,7 +81,6 @@ import {
   isPostWorkoutReady,
   heldBySituation,
 } from "@/lib/intake-schedule";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type {
   MedicationCourse,
   MedicationSideEffect,
@@ -124,6 +125,7 @@ export interface MedCardData {
   // The shared supply pool this med draws from, if any (#1374) — the chip that
   // REPLACES the per-item refill badge, carrying the POOLED days-left.
   poolChip: PoolChipData | null;
+  trackSupplyOffer?: OfferFamily["copy"] | null;
   due: boolean;
   // Individually due today; item-level dueness cannot distinguish sibling rows.
   dueDoseIds: number[];
@@ -184,15 +186,9 @@ export interface MedicationsData {
   // The profile's local wall clock (HH:MM) at load, so the Today panel can flag a
   // past-bucket unresolved dose in the profile's timezone (#852 item 1).
   nowHhmm: string;
-  // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so a
-  // child never sees an age-gated food note (alcohol → adult). Null when unknown.
-  age: number | null;
   taken: Set<number>;
   skipped: Set<number>;
-  allIntakeItems: IntakeItem[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
-  pediatric: PediatricFormContext;
+  intakeContext: IntakeFormContext;
   suppressedFoodKeys: string[];
   interactionWarnings: ReturnType<typeof getInteractionWarnings>;
   pgxWarnings: ReturnType<typeof getPgxWarnings>;
@@ -461,6 +457,12 @@ export function loadMedicationsData(
       ),
       refillRate: refillRates.get(med.id) ?? null,
       poolChip: poolChips.get(med.id) ?? null,
+      trackSupplyOffer: offerStands(profileId, {
+        familyId: "track-supply",
+        itemId: med.id,
+      })
+        ? OFFER_FAMILIES["track-supply"](med.id).copy
+        : null,
       due: medDue(med),
       dueDoseIds: med.active
         ? medDoses.filter((dose) => doseDueOn(med, dose, ctx)).map((d) => d.id)
@@ -596,13 +598,9 @@ export function loadMedicationsData(
     tz,
     nowIso: nowInstant.toISOString(),
     nowHhmm: hhmm,
-    age: getProfileAge(profileId),
     taken,
     skipped,
-    allIntakeItems: intakeItems,
-    stackItems: intakeForm.stackItems,
-    pgxVariants: intakeForm.pgxVariants,
-    pediatric: intakeForm.pediatric,
+    intakeContext: intakeForm,
     suppressedFoodKeys,
     interactionWarnings,
     pgxWarnings,

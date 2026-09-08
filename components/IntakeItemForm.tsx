@@ -45,7 +45,6 @@ import {
   type SupplyOption,
 } from "@/lib/supply-product";
 import { listSharedSupplyOptions } from "@/app/(app)/supplies/actions";
-import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import PurposesEditor from "@/components/intake/PurposesEditor";
 import {
@@ -54,7 +53,6 @@ import {
   type IntakeItemPurpose,
   type PurposeDraft,
 } from "@/lib/intake-purposes";
-import type { PgxVariantInput } from "@/lib/pgx";
 import {
   medicationBrandOptions,
   resolveMedicationPick,
@@ -75,7 +73,6 @@ import {
   pediatricAgeYears,
   pediatricDoseSuggestion,
   pediatricRefusalLine,
-  type PediatricFormContext,
 } from "@/lib/prn-dosing";
 import {
   DEFAULT_FORMULATION_SLUG,
@@ -128,7 +125,6 @@ import {
 import type {
   FormResult,
   IntakeCondition,
-  IntakeConditionOption,
   IntakeItem,
   IntakeItemKind,
   IntakeDose,
@@ -137,6 +133,8 @@ import type {
   MedicationCourse,
 } from "@/lib/types";
 import { requireIntakeFormKind } from "@/lib/intake-form-kind";
+import OfferInPlace from "@/components/OfferInPlace";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 import Disclosure from "@/components/Disclosure";
 
 const CATALOG_BY_NAME = new Map(
@@ -173,6 +171,7 @@ const CATALOG_BY_NAME = new Map(
 
 export default function IntakeItemForm({
   action,
+  intakeContext,
   item,
   kind: requestedKind,
   doses: initialDoses,
@@ -180,19 +179,16 @@ export default function IntakeItemForm({
   purposes: initialPurposes = [],
   biomarkers = [],
   retiredDoses = [],
-  allIntakeItems = [],
-  conditions = [],
-  stackItems = [],
-  pgxVariants = [],
   pairs: initialPairs = [],
   onDone,
-  pediatric,
   course,
-  todayStr,
   initialSupply = null,
   activityScheduleAvailable = true,
+  initialFact = null,
+  initialRefill = false,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
+  intakeContext: IntakeFormContext;
   // Present ⇒ edit mode, seeded from the row; absent ⇒ create.
   item?: IntakeItem;
   // Every shipped door is kind-locked (/medications or Nutrition → Supplements).
@@ -206,18 +202,22 @@ export default function IntakeItemForm({
   // the biomarker purpose's picker source. Empty ⇒ that row does not render.
   biomarkers?: string[];
   retiredDoses?: IntakeDose[];
-  allIntakeItems?: { id: number; name: string }[];
-  conditions?: IntakeConditionOption[];
-  stackItems?: InteractionItem[];
-  pgxVariants?: PgxVariantInput[];
   pairs?: IntakePair[];
   onDone?: () => void;
-  pediatric?: PediatricFormContext;
   course?: MedicationCourse;
-  todayStr?: string;
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
+  initialFact?: "supply" | null;
+  initialRefill?: boolean;
 }) {
+  const {
+    allIntakeItems,
+    stackItems,
+    pgxVariants,
+    conditions,
+    pediatric,
+    todayStr,
+  } = intakeContext;
   const lockedKind = requireIntakeFormKind(requestedKind);
   const s = item;
   const fid = s?.id ?? "new";
@@ -235,7 +235,10 @@ export default function IntakeItemForm({
     open: setOpenPanel,
     close: closePanel,
     onKeyDown: onFormKeyDown,
-  } = useFactEditor<IntakeOpenPanel>({ scopeRef: formRef });
+  } = useFactEditor<IntakeOpenPanel>({
+    scopeRef: formRef,
+    initial: initialFact,
+  });
   // Whether the rules panel was entered to ADD one (the chip row's "+ rule") rather
   // than to correct an existing sentence.
   const [rulesStartOnMenu, setRulesStartOnMenu] = useState(false);
@@ -255,8 +258,8 @@ export default function IntakeItemForm({
   // The hooks BELOW this are deliberately not part of it: an open panel, a narrowed
   // brand list, a seed note and the prefill ledger are not facts about the item and
   // are never saved.
-  const [state, setState] = useState<IntakeItemFormState>(() =>
-    intakeItemFormStateFrom({
+  const [state, setState] = useState<IntakeItemFormState>(() => ({
+    ...intakeItemFormStateFrom({
       kind: lockedKind,
       item: s,
       course,
@@ -267,11 +270,12 @@ export default function IntakeItemForm({
       purposes: initialPurposes
         .map(purposeToDraft)
         .filter((d): d is PurposeDraft => d != null),
-    })
-  );
+    }),
+    // This front-door offer is part of the pristine add form, not a user edit.
+    ...(!s && initialSupply?.onHand == null ? { supplyOfferSeen: true } : {}),
+  }));
   // The ONE writer. A patch that changes nothing returns the SAME object, so a
-  // controlled child re-asserting a value from an effect (RefillTracking clears the
-  // private count a pooled item does not own) cannot spin the render loop that a
+  // controlled child recording local offer visibility cannot spin the render loop that a
   // fresh object every time would.
   function patch(
     next:
@@ -329,6 +333,27 @@ export default function IntakeItemForm({
       return initialSupply?.name ?? null;
     return null;
   }, [availableBottles, initialSupply, s, state.supplyId]);
+  const selectedSupply = availableBottles.find(
+    (option) => String(option.id) === state.supplyId
+  );
+  const poolQuantity =
+    state.poolCount?.supplyId === state.supplyId
+      ? state.poolCount.quantity
+      : String(selectedSupply?.onHand ?? "");
+  function setSupplyQuantity(quantity: string) {
+    if (state.supplyId) {
+      patch({
+        poolCount: {
+          supplyId: state.supplyId,
+          quantity,
+          loaded:
+            state.poolCount?.supplyId === state.supplyId
+              ? state.poolCount.loaded
+              : String(selectedSupply?.onHand ?? ""),
+        },
+      });
+    } else patch({ quantityOnHand: quantity });
+  }
   const selectedSupplyAmount = useMemo(() => {
     const loaded = availableBottles.find(
       (option) => String(option.id) === state.supplyId
@@ -507,7 +532,7 @@ export default function IntakeItemForm({
   // whose result feeds `activeSlug` as something that may change later — which makes it
   // abandon the `pediatricResult` memo below. Stating the boundary here keeps the memo.
   const isChildProfile = useMemo(
-    () => isChildProfileAge(pediatricContext?.ageMonths),
+    () => isChildProfileAge(pediatricContext.ageMonths),
     [pediatricContext]
   );
   // The age-aware label figures to OFFER (#851 item 12) — pediatric for a child where
@@ -550,7 +575,6 @@ export default function IntakeItemForm({
     if (
       !affordances.pediatric ||
       !prnDefaults?.pediatric ||
-      !pediatricContext ||
       pediatricContext.ageMonths == null
     )
       return null;
@@ -757,7 +781,7 @@ export default function IntakeItemForm({
   }
 
   function onLinkSupply(supply: SupplyOption | null): void {
-    patch({ supplyId: supply ? String(supply.id) : "" });
+    patch({ supplyId: supply ? String(supply.id) : "", poolCount: undefined });
     if (supply)
       setAvailableBottles((current) =>
         current.some((option) => option.id === supply.id)
@@ -852,7 +876,9 @@ export default function IntakeItemForm({
     brand: state.brand,
     product: state.product,
     stack: state.stack,
-    supplyLabel: selectedSupplyName,
+    supplyLabel: selectedSupplyName
+      ? `${selectedSupplyName} · shared bottle · ${poolQuantity ? `${poolQuantity} on hand` : "no count"}`
+      : null,
     quantityOnHand: state.quantityOnHand,
     stopDate: state.endDate,
     ingredientCount: state.ingredients.filter((g) => g.name.trim()).length,
@@ -965,6 +991,7 @@ export default function IntakeItemForm({
     formRef.current?.reset();
     setState({
       ...intakeItemFormStateFrom({ kind: lockedKind, todayStr }),
+      supplyOfferSeen: true,
       // The course is the HOST's, not this item's: it outlives the row being cleared.
       courseId: course?.id ?? null,
     });
@@ -1131,6 +1158,31 @@ export default function IntakeItemForm({
         age={pediatricAgeYears(pediatricContext)}
       />
 
+      {!s &&
+        !state.supplyOfferAnswered &&
+        !(state.supplyId ? poolQuantity : state.quantityOnHand) && (
+          <OfferInPlace
+            dedupeKey=""
+            familyId="track-supply"
+            question="Track supply · how many on hand?"
+            yes="Track supply"
+            no="No thanks"
+            onSeen={() => patch({ supplyOfferSeen: true })}
+            onAccept={async (formData) => {
+              const raw = String(formData.get("quantity_on_hand") ?? "").trim();
+              if (!raw || !Number.isFinite(Number(raw)) || Number(raw) < 0)
+                return { ok: false, error: "Enter how many are left." };
+              setSupplyQuantity(raw);
+              patch({ supplyOfferSeen: true, supplyOfferAnswered: true });
+              return { ok: true };
+            }}
+            onDecline={async () => {
+              patch({ supplyOfferSeen: true, supplyOfferAnswered: true });
+              return { ok: true };
+            }}
+          />
+        )}
+
       {openPanel == null ? (
         <IntakeFactRow
           summary={summary}
@@ -1200,52 +1252,50 @@ export default function IntakeItemForm({
                     {pediatricRefusal}
                   </p>
                 )}
-                {pediatricContext && (
-                  <PediatricWeightUpdate
-                    idPrefix={`pediatric-${fid}`}
-                    context={pediatricContext}
-                    initiallyOpen={
-                      pediatricResult.kind === "need-weight" ||
-                      pediatricResult.kind === "stale-weight"
+                <PediatricWeightUpdate
+                  idPrefix={`pediatric-${fid}`}
+                  context={pediatricContext}
+                  initiallyOpen={
+                    pediatricResult.kind === "need-weight" ||
+                    pediatricResult.kind === "stale-weight"
+                  }
+                  onSaved={(next) => {
+                    setPediatricContext(next);
+                    setSelectedPediatricBandMinLbs(null);
+                    // A new weight re-derives the label's OFFER, never the
+                    // caregiver's own number. An untouched suggestion follows the
+                    // new band — and is CLEARED when the new weight has no band,
+                    // because leaving the old weight's figure standing would be a
+                    // dose attributed to a measurement that no longer supports it.
+                    if (!prnDefaults) return;
+                    const nextResult = pediatricDoseSuggestion({
+                      entry: prnDefaults,
+                      ageMonths: next.ageMonths as number,
+                      weightKg: next.weightKg,
+                      weightDate: next.weightDate,
+                      today: next.today,
+                      formulationSlug: activeSlug || null,
+                    });
+                    // The ledger refuses a figure the caregiver typed. The extra
+                    // empty-check is the one thing it cannot answer: a stored row's
+                    // amount is neither offered nor marked touched, and a new weight
+                    // must not rewrite what was already saved.
+                    const offered =
+                      ledgerRef.current.suggested.has("doseAmount");
+                    if (
+                      nextResult.kind === "dose" &&
+                      (offered || !state.doses[0]?.amount.trim())
+                    ) {
+                      writePrefill(
+                        offerPrefill({
+                          doseAmount: formulationDoseAmount(nextResult.mg),
+                        })
+                      );
+                    } else if (nextResult.kind !== "dose") {
+                      withdrawDoseSuggestion();
                     }
-                    onSaved={(next) => {
-                      setPediatricContext(next);
-                      setSelectedPediatricBandMinLbs(null);
-                      // A new weight re-derives the label's OFFER, never the
-                      // caregiver's own number. An untouched suggestion follows the
-                      // new band — and is CLEARED when the new weight has no band,
-                      // because leaving the old weight's figure standing would be a
-                      // dose attributed to a measurement that no longer supports it.
-                      if (!prnDefaults) return;
-                      const nextResult = pediatricDoseSuggestion({
-                        entry: prnDefaults,
-                        ageMonths: next.ageMonths as number,
-                        weightKg: next.weightKg,
-                        weightDate: next.weightDate,
-                        today: next.today,
-                        formulationSlug: activeSlug || null,
-                      });
-                      // The ledger refuses a figure the caregiver typed. The extra
-                      // empty-check is the one thing it cannot answer: a stored row's
-                      // amount is neither offered nor marked touched, and a new weight
-                      // must not rewrite what was already saved.
-                      const offered =
-                        ledgerRef.current.suggested.has("doseAmount");
-                      if (
-                        nextResult.kind === "dose" &&
-                        (offered || !state.doses[0]?.amount.trim())
-                      ) {
-                        writePrefill(
-                          offerPrefill({
-                            doseAmount: formulationDoseAmount(nextResult.mg),
-                          })
-                        );
-                      } else if (nextResult.kind !== "dose") {
-                        withdrawDoseSuggestion();
-                      }
-                    }}
-                  />
-                )}
+                  }}
+                />
                 {(pediatricResult.kind === "dose" ||
                   pediatricResult.kind === "below-weight-band") && (
                   <PediatricDoseBandPicker
@@ -1254,7 +1304,7 @@ export default function IntakeItemForm({
                     bands={prnDefaults?.pediatric?.bands ?? []}
                     formulations={prnDefaults?.pediatric?.formulations ?? []}
                     formulationSlug={activeSlug}
-                    today={pediatricContext?.today ?? todayStr ?? ""}
+                    today={pediatricContext.today}
                     selectedBandMinLbs={selectedPediatricBandMinLbs}
                     currentAmount={state.doses[0]?.amount ?? ""}
                     onBandSelect={selectPediatricBand}
@@ -1694,8 +1744,30 @@ export default function IntakeItemForm({
             supplyId={state.supplyId}
             supplyName={selectedSupplyName}
             onPickSupply={s ? onLinkSupply : onPickSupply}
-            quantityOnHand={state.quantityOnHand}
-            setQuantityOnHand={(quantityOnHand) => patch({ quantityOnHand })}
+            quantityOnHand={
+              state.supplyId ? poolQuantity : state.quantityOnHand
+            }
+            setQuantityOnHand={setSupplyQuantity}
+            onRefilled={(newQuantity) => {
+              const quantity = String(newQuantity);
+              patch((current) =>
+                current.supplyId !== state.supplyId
+                  ? {}
+                  : state.supplyId
+                    ? {
+                        poolCount: {
+                          supplyId: state.supplyId,
+                          quantity,
+                          loaded: quantity,
+                        },
+                      }
+                    : {
+                        quantityOnHand: quantity,
+                        quantityOnHandLoaded: quantity,
+                      }
+              );
+            }}
+            initialRefill={initialRefill}
             qtyPerDose={state.qtyPerDose}
             setQtyPerDose={(qtyPerDose) => patch({ qtyPerDose })}
           />

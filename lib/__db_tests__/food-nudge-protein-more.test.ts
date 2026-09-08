@@ -350,9 +350,8 @@ describe("'Show less' collapse (#1807)", () => {
     expect(lastRebuiltExpandLabels()).toEqual(["➖ Show less"]);
   });
 
-  it("more → less restores the original button set, counts intact", async () => {
-    // Log a serving first, so the "(n)" suffixes are non-trivial and a lost count would
-    // show up as a different label rather than only a different length.
+  it("more → less restores the original button set and tally", async () => {
+    // A real serving makes the tally non-empty before the view round trip.
     logFoodServingCore(
       p.profileId,
       "leafy_greens",
@@ -377,11 +376,9 @@ describe("'Show less' collapse (#1807)", () => {
       )
     );
     const before = labelsAt(lastRebuiltKeyboard());
-    // At least one visible button carries a count, so a collapse that LOST one would
-    // show up as a different label rather than only a different length. (The count is
-    // the DAY total since #2019, so its exact value depends on what this file has
-    // logged; what matters here is that a suffix survives the round trip.)
-    expect(before.some((l) => /\(\d+\)$/.test(l))).toBe(true);
+    const tally = lastRebuiltText();
+    expect(tally).toMatch(/<b>Greens<\/b> ×\d+/);
+    expect(before).toContain("🥬 Greens");
 
     await handleCallbackQuery(
       cqWithFoodButtons(
@@ -406,6 +403,7 @@ describe("'Show less' collapse (#1807)", () => {
       )
     );
     expect(labelsAt(lastRebuiltKeyboard())).toEqual(before);
+    expect(lastRebuiltText()).toBe(tally);
   });
 });
 

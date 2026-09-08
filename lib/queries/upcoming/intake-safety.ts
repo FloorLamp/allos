@@ -21,11 +21,11 @@ import {
 } from "../../refill";
 import {
   intakeHref,
+  intakeSupplyHref,
   nutritionTabHref,
   historyDayHref,
   MEDICATIONS_HREF,
   INSTRUMENTS_HREF,
-  SUPPLIES_HREF,
 } from "../../hrefs";
 import { getInstrumentStates } from "../../instrument-records";
 import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
@@ -420,7 +420,7 @@ export function refillItems(profileId: number, today: string): UpcomingItem[] {
       title: s.name,
       detail:
         daysLeft <= 0 ? "Out of supply" : `≈${daysLeft} days of supply left`,
-      href: intakeHref(s.kind),
+      href: intakeSupplyHref(s.kind, s.id),
       dueDate: shiftDateStr(today, daysLeft),
     });
   }
@@ -452,6 +452,10 @@ export function poolRefillItems(
     // member is a `may` supplement drops out of the nudge. Any pushable
     // member keeps the whole pool's signal alive — see poolPushes.
     if (!poolPushes(pool.members)) continue;
+    const member = pool.members
+      .filter((member) => member.profileId === profileId)
+      .sort((a, b) => a.itemId - b.itemId)[0];
+    if (!member) continue;
     items.push({
       key: poolRefillSignalKey(pool.id),
       domain: "refill",
@@ -461,7 +465,7 @@ export function poolRefillItems(
           ? "Shared bottle — out of supply"
           : `Shared bottle — ≈${pool.daysLeft} days left across everyone`) +
         (pool.members.length > 1 ? ` (${pool.members.length} people)` : ""),
-      href: SUPPLIES_HREF,
+      href: intakeSupplyHref(member.kind, member.itemId),
       dueDate: shiftDateStr(today, pool.daysLeft),
     });
   }
