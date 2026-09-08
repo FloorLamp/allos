@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import {
@@ -7,6 +13,7 @@ import {
   type WriteResult,
   type WriteSpec,
 } from "@/components/useWritePipeline";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 import { dateStrInTz } from "@/lib/date";
@@ -515,6 +522,71 @@ describe("the optimistic value a quick-log tap moves (#3728)", () => {
     expect(answered[1]).toBe("a:nothing");
     expect(shown()).toBe(1);
   });
+});
+
+describe("ledger rollback values", () => {
+  it.each(["adopt", "keep", "rollback"] as const)(
+    "uses the baseline after a sibling %s and isolates another value",
+    async (kind) => {
+      const { result } = renderHook(() =>
+        useOptimisticLedger<number>("symptom-severity")
+      );
+      const values: Record<string, number> = { headache: 0, cough: 7 };
+      const refused = gate();
+      const dropped = gate();
+      const tap = (
+        key: string,
+        valueKey: string,
+        to: number,
+        write: () => Promise<boolean>
+      ) =>
+        result.current.tap({
+          key,
+          valueKey,
+          from: values[valueKey],
+          optimistic: to,
+          commit: (value) => {
+            values[valueKey] = value;
+          },
+          write,
+          settle: (ok) =>
+            ok
+              ? kind === "adopt"
+                ? { kind, value: to }
+                : { kind }
+              : { kind: "rollback" },
+        });
+      let first!: Promise<unknown>;
+      let other!: Promise<unknown>;
+      await act(async () => {
+        first = tap("headache:raise", "headache", 1, async () => {
+          await refused.promise;
+          return false;
+        });
+        other = tap("cough:raise", "cough", 8, async () => {
+          await dropped.promise;
+          throw new Error("connection lost");
+        });
+        await tap("headache:correct", "headache", 2, async () => true);
+      });
+      const expected = kind === "rollback" ? 0 : 2;
+      expect(values.headache).toBe(expected);
+      await act(async () => {
+        refused.open();
+        await first;
+        dropped.open();
+        await other;
+      });
+      expect(values).toEqual({ headache: expected, cough: 7 });
+
+      // A correction outside the ledger becomes the baseline once this value is idle.
+      values.headache = 9;
+      await act(async () => {
+        await tap("headache:retry", "headache", 10, async () => false);
+      });
+      expect(values.headache).toBe(9);
+    }
+  );
 });
 
 // ── THE COMPILE-TIME HALF ────────────────────────────────────────────────────

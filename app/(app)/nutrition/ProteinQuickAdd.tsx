@@ -122,6 +122,7 @@ export default function ProteinQuickAdd({
       // The key names the WRITE: an immediate correction with "−" is a different
       // write from the "+" that preceded it and must not be absorbed by its cooldown.
       key: delta === 1 ? "add" : "undo",
+      valueKey: today,
       from: total,
       // Optimistic: reflect the change immediately (clamped at zero on remove).
       optimistic: Math.max(0, total + delta * grams),
