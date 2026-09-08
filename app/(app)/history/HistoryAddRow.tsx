@@ -12,7 +12,7 @@ import type { HistoryKind } from "@/lib/history-format";
 // THE ADD ROW READS THE WINDOW THE CHART IS ALREADY SHOWING (#4950, owner amendment).
 //
 // There is no chip to arm and no mode to be in: zoomed, the view IS the window; at full
-// day a crosshair is a start alone. This is the only reason the row is a client
+// day a pinned minute is a start alone. This is the only reason the row is a client
 // component — the labels, the kinds and the hrefs are all still the server's, handed
 // down whole.
 //
@@ -43,8 +43,8 @@ export default function HistoryAddRow({
    */
   workoutsDate?: string | null;
 }) {
-  const { view, cursor } = useIntradayInteraction();
-  const window = windowFromView(view, cursor);
+  const { view, pin } = useIntradayInteraction();
+  const window = windowFromView(view, pin);
   const params = window ? intradayWindowParams(window) : null;
   const clock = (minute: number) => formatClockMinutes(timeFormat, minute);
   // "Add at 19:10–20:40" for a span, "Add at 19:10" for a start alone, "Add" for
@@ -64,7 +64,7 @@ export default function HistoryAddRow({
       {/* "Add", not "Add past" (#4918 ruling 5): on the day view the day bar states the
           day being written to, and on the feed the door is bounded by today anyway. */}
       <span
-        className="shrink-0 text-slate-500 dark:text-slate-400"
+        className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400"
         data-testid="history-add-label"
       >
         {label}

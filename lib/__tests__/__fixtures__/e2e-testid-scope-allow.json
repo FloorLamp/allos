@@ -191,7 +191,7 @@
   "integrations-health-connect.spec.ts": 20,
   "integrations-strava.spec.ts": 6,
   "intraday-panel.mobile.spec.ts": 3,
-  "intraday-panel.spec.ts": 9,
+  "intraday-panel.spec.ts": 7,
   "kids-growth.spec.ts": 22,
   "lab-result-lifecycle.spec.ts": 3,
   "lab-value-goal.spec.ts": 9,
