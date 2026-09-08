@@ -1,9 +1,8 @@
 import {
   getIntakeItems,
-  getIntakeDoses,
+  getIntakeDosesForHistory,
   getTakenDoseIds,
   getSkippedDoseIds,
-  getRetiredDoses,
   getIntakeAdherenceEvidence,
   getIntakePairs,
   getIntakeIngredientsByItem,
@@ -194,20 +193,18 @@ export default async function ManageTab({
   // excluded groups the same way the #577 suggestions do.
   const excludedGroups = getExcludedFoodGroups(profile.id);
   const intakeItems = getIntakeItems(profile.id);
-  const doses = getIntakeDoses(profile.id);
+  const historyDosesBySupp = new Map<number, IntakeDose[]>();
   const dosesBySupp = new Map<number, IntakeDose[]>();
-  for (const d of doses) {
-    const arr = dosesBySupp.get(d.item_id) ?? [];
-    arr.push(d);
-    dosesBySupp.set(d.item_id, arr);
-  }
-  // Retired doses (#2131): the edit form's Restore affordance. Kept apart from the
-  // live map so no schedule consumer can act on one.
   const retiredBySupp = new Map<number, IntakeDose[]>();
-  for (const d of getRetiredDoses(profile.id)) {
-    const arr = retiredBySupp.get(d.item_id) ?? [];
-    arr.push(d);
-    retiredBySupp.set(d.item_id, arr);
+  for (const d of getIntakeDosesForHistory(profile.id)) {
+    const history = historyDosesBySupp.get(d.item_id) ?? [];
+    history.push(d);
+    historyDosesBySupp.set(d.item_id, history);
+    // Historical adherence includes retired rows; current controls cannot act on them.
+    const currentOrRetired = d.retired ? retiredBySupp : dosesBySupp;
+    const rows = currentOrRetired.get(d.item_id) ?? [];
+    rows.push(d);
+    currentOrRetired.set(d.item_id, rows);
   }
 
   // The DECLARED set, for the condition bridge below — which suggests situations to
@@ -274,7 +271,7 @@ export default async function ManageTab({
       s.id,
       intakeAdherenceStrip(
         s,
-        dosesBySupp.get(s.id) ?? [],
+        historyDosesBySupp.get(s.id) ?? [],
         dates,
         workoutDays,
         situationsOn,
