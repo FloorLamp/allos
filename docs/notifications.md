@@ -1,246 +1,160 @@
-# Notifications — channels, buttons & scheduling
+# Notifications
 
-Status: **shipped** · descriptive documentation of current behavior, extracted
-from the README (#597)
+Allos can deliver reminders through Telegram, browser notifications, Home
+Assistant, and email. Open **Settings → Notifications** to choose channels,
+message kinds, profiles, and times. No AI configuration is needed for ordinary
+reminders, recaps, or milestones.
 
-Reminders (supplements due in a window, and a workout nudge when you're behind
-on a weekly target) are delivered over four channels — **Telegram**, **Web
-Push**, a **Home Assistant** webhook, and **email** — that share the same
-schedule and per-day/slot dedup. Enable any or all; a profile with several
-configured gets each reminder on each.
+## Set up a channel
 
-**Where the channels live.** The four channels are a **status strip** at the top of
-**Settings → Notifications** (#2565): one row each, saying whether it is **Not set
-up**, **Ready** (set up, nothing sent through it yet), **Delivering** (a message got
-through, with when) or **Erroring** (with what went wrong). Telegram, Web Push and
-Email follow your login; the Home Assistant webhook follows the profile you are
-looking at, and each row says which. Open a row to set that channel up; a row that is
-erroring opens itself. Below the strip come the message kinds, the household dose
-round, the schedule, the morning digest, and mute.
+The channel rows show **Not set up**, **Ready**, **Delivering**, or **Erroring**.
+Ready means configured without a completed delivery yet; Delivering and Erroring
+reflect recorded outcomes. Open a row to configure it or inspect an error.
 
-**Email** (issue #1855) is per person and opt-in: turn it on under **Settings →
-Notifications → Email**, and reminders for every profile you manage go to your
-account's email address (the one invitations and password resets use; the
-instance needs SMTP configured on **Settings → Server**). By default the emails
-are **content-free** — "something needs your attention — open Allos" — so no
-health details land in your inbox or wherever your mail is stored or forwarded.
-You can switch your own account to **full content** on the same card; the
-control states the trade-off, and nothing but your own choice ever widens it.
-Email can't carry one-tap buttons, so the button-only nudges (the food nudge,
-the mood check-in) never send there.
+| Channel        | Belongs to             | Setup                                                                                          |
+| -------------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
+| Telegram       | Your login             | Configure the instance bot under Settings → Server, then enable your chat under Notifications. |
+| Web Push       | Your login and browser | Enable notifications in each browser where you want reminders.                                 |
+| Email          | Your login             | Configure instance SMTP, then enable email to your account's address.                          |
+| Home Assistant | The selected profile   | Enable the webhook and enter its URL under Notifications.                                      |
 
-**Who a profile's reminders reach.** A channel belongs to a **login** (a person
-with a phone); an event is about a **profile** (a toddler has no phone, their
-caregiver does). So each reminder goes to the logins that manage that profile —
-the ones granted it, plus whoever has it set as their own profile. **Admins are
-the deliberate exception**: they can open every profile, but a reminder is a
-push to your pocket rather than a page you chose to visit, so an admin is
-notified only about the profiles they explicitly pick. Pick them under
-**Settings → Notifications → Profiles** (your own login), or for any login under
-**Settings → People & access**. Your own profile is always included and can't be
-switched off there. A newly created profile has no recipient until someone
-chooses one.
+A reminder can reach several enabled channels. Their content and available actions
+may differ, and each channel can allow different message kinds.
 
-Beyond reminders, two opt-in retention nudges ride the same channels: a **recap**
-— a quiet periodic summary (workouts, PRs, supplement adherence, how varied and
-how covered your eating week was, a body-weight trend, aerobic base, your typical
-night's sleep and how regular it was, and the goals you reached), whose week covers the same "this
-week" your routine counters use per your **week mode** (a calendar week or a
-rolling seven days — **Settings → Health profile**), with the send day/time set
-under **Settings → Notifications**; and **milestone alerts** — a brief note when
-you cross a milestone (your 10th/50th/100th/… workout, or a completed goal). Both
-are rule-based and work with **no AI configured**. Milestones are always recorded
-to your **Timeline** (under the **Milestone** filter) regardless of the alert
-toggle. The recap is also available in the dashboard's **Show everything** section
-when its reporting window has a recap to show.
+### Telegram
 
-The recap also has a **cadence** — _Weekly_, _Monthly_ or _Quarterly_, beside the
-day and time on the same row. It sets the **shortest** period the recap reports
-on, and **it never adds a message**: every recap arrives in that one slot you
-chose, so when a longer period ends on the same slot the longer recap **replaces**
-the shorter one instead of sending twice. On the first slot after a quarter ends —
-a week, a month and a quarter all closing together — you get one quarterly recap,
-not three messages. Choosing _Monthly_ or _Quarterly_ means strictly fewer
-messages, never more, and nothing but your own tap ever changes it.
+An admin sets the bot token and button-tap mode under **Settings → Server**.
+Set your chat ID and send a test under **Settings → Notifications**.
 
-A monthly or quarterly recap says **different things**, not the same things added
-up: the _shape_ of your training rather than a session count, the weekday/weekend
-_pattern_ behind an adherence percentage, and where your weight is _heading_
-rather than what the scale said on one day. It never re-totals the weeks.
+Buttons can take or skip doses, acknowledge an escalation, snooze a refill, or
+record a preventive-care response. An "I'm on it" acknowledgement does not claim
+the dose was taken. Actions needing more information open the corresponding form.
 
-**Food and sleep are reported the same way.** The food line states how many days of
-the week you logged anything at all and how many different food groups those days
-covered, plus how many of the days that could be measured met your protein and fibre
-targets — never a serving total, which would just be seven daily numbers added up. The
-sleep line states your **typical night** for the period (a median, so one late finish
-does not define the week) beside the regularity index, because a perfectly consistent
-five hours a night looks fine on regularity alone.
+Choose how button taps reach Allos:
 
-**A goal is reported in the period you actually reached it** — early, late, or with no
-deadline at all — rather than in the period its deadline happened to fall in. A goal
-whose target date passes without being met is reported once, factually, in that period's
-recap and never again; a goal you have archived is not mentioned either way.
+- **Polling**, the default, works without a publicly reachable app. Docker's
+  notification service runs the poller. Outside Docker, keep
+  `npm run notify -- poll` running alongside the scheduler.
+- **Webhook** requires an HTTPS public app URL. Set **Settings → Server → Public
+  app URL**, then register the webhook there.
 
-**Which kinds reach which channel** is one table on **Settings → Notifications**
-— _Message kinds_, one row per kind and one column per channel. The box in a
-column header edits that whole column at once: it turns off everything except
-safety reminders (dose reminders, missed-dose escalations, and the PRN redose
-notice), which keep their own boxes so they can never be silenced by a single
-undifferentiated tap.
+### Web Push
 
-Newly-due **preventive care** (an age/sex-appropriate checkup or screening) also
-sends a proactive nudge — **one message per screening**, so each message names
-its item and its ✅ Done / 🚫 Not applicable / ⏰ Remind later buttons are
-unambiguous — and a due mammogram/colonoscopy/lipid panel doesn't wait to be
-noticed in the "what's due" digest. Each screening is deduped **once per due
-episode** (not once a day): the ping fires when an item first becomes due or
-overdue and stays quiet until the item is satisfied or ages out, then re-fires
-when the next interval comes due. The whole domain is a per-profile toggle —
-**Settings → Notifications → Preventive-care reminders** (on by default). Turning it
-off suppresses both the nudge and the preventive lines in the digest; due items
-still appear on your **Upcoming** page either way (that's a pull view, not a
-push). Informational only — not medical advice.
+Under **Settings → Notifications → Web Push notifications**, enable the browser
+and grant notification permission. Repeat on each device. Allos creates its push
+keys automatically; you do not need a Telegram account.
 
-**Dismiss once, silence everywhere.** Snoozing or dismissing a **refill**,
-**preventive-care**, or **training-target** item on the **Upcoming** page (or
-dashboard placement) now also silences its **push nudge**, not just
-the page and digest lines — the reminder and the nudge share the same identity,
-so one "I've decided about this" hides both. For the workout nudge that means
-dismissing every behind training target quiets the "today's workout" reminder (a
-still-behind target keeps it coming). A snooze resumes nudging after its date;
-restoring the item brings the nudge back. Safety-critical reminders are
-deliberately **not** silenceable this way — scheduled **dose reminders** and
-**missed-dose escalations** keep firing on their own per-day dedup regardless of
-a page dismissal.
+Push needs a supported browser, a service worker, and HTTPS or localhost. The app
+has no service worker in `next dev`, and a plain HTTP LAN address will not work.
+On iPhone or iPad, add Allos to the Home Screen and open it there before enabling
+notifications; see [WebKit's Home Screen push guidance](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+Notification text can include health details, so consider who can see the device's
+notifications. Tapping a notification opens Allos. Button-only prompts, such as
+food logging and mood check-in, are not sent over Web Push.
 
-**Quiet hours.** The non-urgent episode nudges (refill, preventive, milestone)
-are only sent during a per-profile **waking window** — set the start/end hours
-under **Settings → Notifications → Quiet hours** (this profile's timezone; defaults to
-08:00–21:00). An overnight span like 20:00 → 08:00 is supported for a
-night-shift rhythm. Outside the window a due nudge simply waits for the next
-in-window tick (its once-per-episode dedup is unchanged). Slot-anchored sends
-(dose reminders, morning digest, workout, weekly recap) already fire at their
-own chosen hours and are unaffected; safety-critical **dose reminders** and
-**missed-dose escalations** are **never** held by quiet hours — an escalation at
-2am for a missed critical med is the feature working.
+### Email
 
-## Telegram
+An admin configures SMTP under **Settings → Server → Outbound email**; see
+[SMTP setup](../README.md#outbound-email). Enable your own channel under
+**Settings → Notifications → Email**. It uses the same account address as
+invitations and password resets.
 
-Configure the bot token and mode under **Settings → Server** (global,
-admin-only); enable notifications, set the chat ID, and choose per-profile
-schedule and message kinds under **Settings → Notifications**.
+The default message contains no health details: it asks you to open Allos. Choose
+**full content** only if you want reminder details in your inbox. The test message
+uses your saved content choice. Email includes ordinary links but cannot carry
+one-tap callback buttons; button-only prompts are excluded.
 
-Several nudges carry one-tap action buttons that make the obvious response
-without opening the app: a **dose reminder** has ✅ take / ⏭️ skip (and ✅ All);
-a **preventive** nudge has ✅ Done / 🚫 Not applicable / ⏰ Remind later; a
-**refill** nudge has 📦 Ordered — remind me in 3 days (plus a link to the refill
-form); and a **missed-dose escalation** has ✅ Confirmed taken / 👍 I'm on it
-(an acknowledgement that stops the re-nudge without claiming the dose was taken
-— anyone in the caregiver escalate chat can tap it). A snooze tapped here is the
-same fact as a page snooze, so it's silenced everywhere. Buttons whose answer
-needs a number (e.g. "mark refilled") deep-link to the form instead.
+### Home Assistant
 
-These button taps reach the app one of two ways (pick under **Button taps**):
+Enter the selected profile's HA webhook URL, optionally add a shared secret, and
+send a test. HA can use the received reminder for a speaker announcement, lights,
+or another household automation. The body can contain medication names and other
+health details.
 
-- **Polling** (default) — the notify service long-polls Telegram's `getUpdates`,
-  so it works without the app being publicly reachable. The Docker
-  `allos-notify` service runs the poller automatically; without Docker, keep
-  `npm run notify -- poll` running.
-- **Webhook** — Telegram POSTs taps to `<public URL>/api/telegram/webhook`. Set
-  the shared **Settings → Server → Public app URL** (also used for Strava OAuth
-  callbacks and the Health Connect ingest endpoint), then register the webhook
-  from **Settings → Server**. Telegram requires HTTPS.
+Use the [Home Assistant setup and recipes](home-assistant-notifications.md) for
+payloads and configuration. This shipped channel sends from Allos to HA. The
+reverse endpoint for logging a dose from HA is still a
+[proposal](home-assistant-spec.md); the confirmation part of that recipe will not
+work until it is implemented.
 
-## Web Push (browser notifications)
+## Choose who receives reminders
 
-No Telegram account needed: subscribe a browser under
-**Settings → Notifications → Web Push notifications** and reminders arrive as native OS/browser
-notifications, opening the app when tapped. Notes:
+Telegram, Web Push, and email follow the login receiving them. A profile's
+reminders reach its managing logins: explicit profile grants plus the login whose
+own profile it is. Channel settings, message-kind choices, and profile mutes still
+apply. Home Assistant uses the selected profile's webhook instead.
 
-- **HTTPS required.** Web Push needs a service worker, which browsers only run
-  over HTTPS (or `localhost`). It works on the deployed/installed app, **not**
-  over plain `http://` on a LAN IP, and not in local `next dev` (the service
-  worker is disabled there).
-- **Per browser, per login.** A subscription belongs to the browser you enable
-  it on and to your login — enable it on each device you want notified. A
-  subscribed browser receives reminders for every profile that login can access.
-- **Browser support.** Chrome/Edge/Firefox (desktop + Android) and, on **iOS
-  16.4+**, Safari **only after you install the app to the Home Screen** (Add to
-  Home Screen).
-- **Zero setup.** The instance's VAPID keypair is generated automatically the
-  first time anyone enables push; the private key stays on the server. Payloads
-  carry only a title + short body (the same text Telegram would show) and a link
-  — no record detail.
+Admins can view every profile, but that does not subscribe them to every profile's
+reminders. Choose notification profiles under **Settings → Notifications → Profiles**,
+or manage another login under **Settings → People & access**. Your own profile
+is included in that selection; use the notification mute controls when needed.
 
-## Home Assistant (presence/room-aware reminders)
+## Choose messages and times
 
-If you run **Home Assistant** on the same LAN, Allos can send each reminder to
-an HA **webhook** so HA presents it with what only it knows — _who is home, and
-which room_: kitchen-speaker **TTS dose announcements** when the person is
-actually in the kitchen (the accessibility win for a household member who'll
-never install Telegram), **escalation theatrics** (a critical dose left
-unconfirmed flashes the lights / announces on the caregiver's floor), and
-**presence-aware delivery** (hold an announcement until someone's home, or
-suppress the phone push once the wall panel has spoken). Configure it per person
-under **Settings → Notifications → Home Assistant**: enable it, paste
-your HA webhook URL (`http(s)://<host>:8123/api/webhook/<id>` — HA's built-in
-[webhook trigger](https://www.home-assistant.io/docs/automation/trigger/#webhook-trigger),
-no custom component needed), optionally set a shared secret, and **Send test**.
-Which reminder kinds it forwards (a household may want doses announced but not
-weekly recaps) is the **HA** column of the _Message kinds_ table on that same
-page. A wrong URL / unreachable HA shows as **Erroring** on that channel's row
-on the same page, and in the delivery failure on **Settings → Server**.
+The **Message kinds** table has one column per channel. Its column checkbox changes
+ordinary kinds together; dose reminders, missed-dose escalations, and PRN redose
+notices retain individual controls. Review those controls separately.
 
-- **Payload.** A JSON POST with `title`, `body`, a machine-readable `kind`
-  (`dose`/`escalation`/`refill`/…), the profile display `name`, and — for
-  actionable dose reminders — the `doses` (`dose_id` + `date` +
-  `taken`/`skipped`) so an HA automation can wire a voice/button confirmation
-  back to the Allos `POST /dose` endpoint. Full shape and copy-paste automation
-  recipes (TTS announcement + confirm-to-`/dose`; escalation lights) are in
-  [`home-assistant-notifications.md`](home-assistant-notifications.md).
-- **PHI posture.** The body contains medication names and usually travels
-  LAN-to-LAN. Use an `https` HA URL when the instances aren't co-located, and
-  set a shared secret (sent as the `X-Allos-Webhook-Secret` header) so an HA
-  automation can reject calls without it.
-- **Delivery only, not a decision surface.** Snooze/dismiss (the "dismiss once,
-  silence everywhere" bus) and the safety-tier rules apply _upstream_ of this
-  channel exactly as they do for Telegram — a suppressed reminder never reaches
-  HA either.
+Schedules use the tracked profile's timezone from **Settings → Health profile**.
+New profiles inherit the server's default timezone. Set the intake windows and
+other enabled reminders in Notifications. The Morning intake window can follow
+typical wake time. The morning digest has separate Static and Dynamic modes:
+Static uses your chosen time; Dynamic can wait for sleep data after that time,
+within the deadline described in settings.
 
-Sending is driven by a tick that runs **every 5 minutes** in the default
-Docker setup (`TICK_SECONDS` in `docker-notify.sh` is the operator's knob;
-offered values are the divisors of 60 minutes — #2216). Reminder times are minute-precise (#2121): each tick sends
-whatever is scheduled at or just before the current profile-local minute
-(supplement windows at their configured times; the workout reminder on your
-inferred training days/time) and not already sent today, deduped per day/slot
-so a retry never double-sends — a failing send is retried exactly once, an hour
-later, at any tick rate. Timing follows the per-profile timezone you pick in
-**Settings → Health profile** (stored in the DB and shared with the notifier;
-new profiles inherit the **Settings → Server** instance default), defaulting to
-UTC until set.
+**Quiet hours** define when non-urgent nudges may arrive. The default waking window
+is 08:00 through 21:59; the selected end hour is inclusive. Overnight windows are
+supported. Eligible nudges wait until the window opens. Slot-scheduled messages
+use their own times, and urgent medication reminders are not held by quiet hours.
 
-**Docker (default):** the `allos-notify` service in `docker-compose.yml` runs
-the tick every 5 minutes automatically — no host crontab needed — and keeps the
-Telegram button-tap poller running alongside it (idle unless polling mode is
-selected). It shares the app's image and database; bring it up with the rest of
-the stack (`docker compose up -d`). Remove that service if you'd rather drive
-the tick yourself.
+**Preventive-care reminders** default on. A screening is announced once when due
+for that episode, then can be announced again when a later interval becomes due.
+Turning this off also removes preventive-care lines from the digest, while
+Upcoming still shows the items.
 
-**Without Docker / external scheduler:** add a cron entry instead. The tick
-observes its own cadence, so any steady rhythm works:
+Snoozing or dismissing a refill, preventive-care item, or training target also
+suppresses its associated nudge. A workout nudge can remain while another target
+is behind. Snoozes expire; restoring an item removes its suppression. These page
+decisions do not silence scheduled dose reminders or missed-dose escalations.
+
+## Recaps and milestones
+
+Recaps are optional. Choose the day, time, and shortest reporting period: weekly,
+monthly, or quarterly. When several periods close at the same slot, the longer
+recap replaces the shorter one. Choosing a longer cadence reduces messages.
+Weekly periods follow the profile's week mode.
+
+Recaps describe training, adherence, food-log coverage, sleep, weight trends, and
+goals when enough data is available. They describe logged evidence rather than
+assuming missing logs mean missing activity. Goals belong to the period they were
+reached; unmet deadlines are reported in their period, and archived goals are omitted.
+
+Milestone alerts default on and can be disabled. Milestones still appear on the
+Timeline when alerts are off.
+
+## Run the scheduler
+
+Docker's `allos-notify` service shares the app image and database, runs the
+notification tick every five minutes, and keeps the Telegram poller available.
+Start it with the rest of the stack using `docker compose up -d`.
+
+Outside Docker, run one scheduler, for example:
 
 ```cron
 */5 * * * * cd /app && npm run notify
 ```
 
-An hourly `0 * * * *` entry also still works exactly as before — but reminder
-times set between the hours will then fire at the next hour (up to ~an hour
-late), and Settings → Notifications shows a warning naming the affected times.
-The time picker's steps follow the cadence the scheduler is OBSERVED to keep, so
-it offers the minutes your server can actually hit — and a typed off-grid time
-is still saved and still fires, just at the next tick (#2216).
-Run exactly one tick scheduler (the Docker sidecar OR a crontab, never both).
+Use your actual checkout path. Run either the Docker tick scheduler or an external
+scheduler, so they do not compete. `TICK_SECONDS` in `docker-notify.sh` controls
+the Docker interval. Settings reports the observed interval and warns when it
+cannot meet a chosen time; hourly scheduling can deliver between-hour reminders
+at the following tick.
 
-Manual sends for testing:
-`npm run notify -- morning|midday|evening|bedtime|workout` (in the running
-container: `docker compose exec allos-notify node dist/notify.cjs workout`).
+Scheduled slots allow a second attempt opportunity an hour after the first band.
+A partial delivery can produce duplicate notifications if retried. Check channel
+errors and scheduler logs when messages do not arrive.
+
+To send a workout reminder manually, use `npm run notify -- workout`, or inside
+Docker, `docker compose exec allos-notify node dist/notify.cjs workout`.
+Maintainers changing behavior should read the
+[notification architecture](internals/notifications.md).
