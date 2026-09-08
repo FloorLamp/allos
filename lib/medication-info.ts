@@ -157,29 +157,12 @@ export function medicationCatalogOptions(): string[] {
   );
 }
 
-// The generic a collapsed catalog label names, decided by the CATALOG rather than by
-// text-stripping the trailing parenthetical. The catalog holds generics whose own name
-// carries parentheses ("Cholecalciferol (Vitamin D3)"), and no regex over label text can
-// tell that parenthetical from a "(Brand, …)" suffix — the old strip truncated them
-// (#1817). So: the whole string is looked up first, and only when the catalog does not
-// recognize it is the parenthetical stripped, as a CANDIDATE the catalog must confirm is
-// a generic display name. That keeps a hand-built or stale brand list resolving
-// ("Acetaminophen (Tylenol, Panadol)" → "Acetaminophen") while refusing a strip the
-// catalog does not vouch for. Every answer that differs from the input is a name the
-// catalog knows.
-//
-// FALLBACK — a string the catalog cannot resolve either way (free text the user typed
-// and picked) comes back trimmed and otherwise UNCHANGED. Off the catalog there is no
-// authority saying a trailing parenthetical is a brand list rather than part of the
-// name, so dropping it would be a guess; the free-text callers (resolveMedicationPick →
-// splitMedicationName) keep exactly what was typed.
+// Only a whole catalog label can discard its brand suffix. An arbitrary parenthetical
+// may name another active ingredient, even when the prefix is a known generic.
 export function catalogLabelGeneric(label: string): string {
   const { genericBy } = catalogLabelIndex();
   const raw = label.trim();
-  const known = genericBy.get(raw.toLowerCase());
-  if (known) return known;
-  const stripped = raw.match(/^(.*?)\s*\([^()]*\)\s*$/)?.[1]?.trim();
-  return (stripped && genericBy.get(stripped.toLowerCase())) || raw;
+  return genericBy.get(raw.toLowerCase()) || raw;
 }
 
 // Resolve a combobox pick from the collapsed catalog (issue #851 item 14). `picked` is
@@ -188,14 +171,17 @@ export function catalogLabelGeneric(label: string): string {
 // typed query matched a brand of that med ("tylenol" → { name: "Acetaminophen", brand:
 // "Tylenol" }). A generic-matched pick (or no query) leaves brand null so the
 // Generic/brand_names picker (#851 item 3) owns it. A free-text pick outside the
-// catalog falls back to splitMedicationName. Pure; pinned by the descriptions test.
+// catalog stays unchanged. Only an exact displayed label or generic may be
+// canonicalized; the educational lookup's strength-stripping is intentionally not
+// identity authority. Pure; pinned by the descriptions test.
 export function resolveMedicationPick(
   picked: string,
   query?: string
 ): { name: string; brand: string | null } {
-  const generic = catalogLabelGeneric(picked);
-  const info = getMedicationInfo(generic);
-  if (!info) return splitMedicationName(picked);
+  const raw = picked.trim();
+  const generic = catalogLabelIndex().genericBy.get(raw.toLowerCase());
+  if (!generic) return { name: raw, brand: null };
+  const info = getMedicationInfo(generic)!;
   const qn = normalizeMedName(query ?? "");
   let brand: string | null = null;
   // Only treat the query as a brand match when it does NOT already match the generic
