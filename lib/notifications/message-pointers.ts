@@ -58,10 +58,9 @@ export interface MessagePointer {
   // which closes with the subjectless line rather than a guessed one.
   title: string | null;
   sentAt: string;
-  // A HASH of the delivered BODY, for the prose-claim class (#1913 item 4) — what lets
-  // a re-render be compared against what the chat is showing, so an unchanged tick makes
-  // no Telegram call. Null for a pointer recorded before migration 153 and for every kind
-  // that declares no prose reconciler.
+  // The delivered body hash lets text rebuilds skip unchanged messages. Food uses it
+  // alongside its keyboard; prose-only reconcilers use it on its own. Older pointers
+  // and kinds whose text is not independently reconciled may have no hash.
   bodyHash: string | null;
   // The stored keyboard blob VERBATIM — the optimistic-concurrency witness (#1788).
   //
@@ -128,8 +127,7 @@ export function recordMessagePointer(p: {
   // The delivered title line, attribution prefix included (#1822 item 7). Optional so a
   // caller with nothing to record stores NULL rather than an empty subject.
   title?: string | null;
-  // The delivered BODY's hash (#1913 item 4), for the prose-claim class. Optional: a kind
-  // with no prose reconciler stores NULL, and nothing reads it.
+  // The delivered body hash for food and prose-only reconciliation.
   bodyHash?: string | null;
 }): void {
   try {
@@ -415,20 +413,31 @@ export function correctionMessageBinding(
 // reading a half-applied state.
 
 // Claim the right to replace this pointer's keyboard. True only for the tick that
-// still saw `version`; a loser gets false and skips its edit entirely.
+// still saw `version`; a loser gets false and skips its edit entirely. A food rebuild
+// also claims the body hash, since its tally can change without changing any button.
 export function claimMessagePointerKeyboard(
   profileId: number,
   id: number,
   version: string,
-  next: InlineKeyboard
+  next: InlineKeyboard,
+  body?: { previous: string | null; next: string }
 ): boolean {
   return writeTx(() => {
     const res = db
       .prepare(
-        `UPDATE notify_messages SET keyboard = ?
-          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+        `UPDATE notify_messages SET keyboard = ?, body_hash = COALESCE(?, body_hash)
+          WHERE profile_id = ? AND id = ? AND keyboard = ?
+            AND (? IS NULL OR body_hash IS ?)`
       )
-      .run(JSON.stringify(next), profileId, id, version);
+      .run(
+        JSON.stringify(next),
+        body?.next ?? null,
+        profileId,
+        id,
+        version,
+        body?.next ?? null,
+        body?.previous ?? null
+      );
     return res.changes === 1;
   });
 }
@@ -470,15 +479,27 @@ export function releaseMessagePointerKeyboard(
   profileId: number,
   id: number,
   claimed: InlineKeyboard,
-  version: string
+  version: string,
+  body?: { previous: string | null; next: string }
 ): boolean {
   return writeTx(() => {
     const res = db
       .prepare(
-        `UPDATE notify_messages SET keyboard = ?
-          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+        `UPDATE notify_messages SET keyboard = ?,
+            body_hash = CASE WHEN ? IS NULL THEN body_hash ELSE ? END
+          WHERE profile_id = ? AND id = ? AND keyboard = ?
+            AND (? IS NULL OR body_hash = ?)`
       )
-      .run(version, profileId, id, JSON.stringify(claimed));
+      .run(
+        version,
+        body?.next ?? null,
+        body?.previous ?? null,
+        profileId,
+        id,
+        JSON.stringify(claimed),
+        body?.next ?? null,
+        body?.next ?? null
+      );
     return res.changes === 1;
   });
 }
@@ -555,12 +576,19 @@ export function syncMessagePointerKeyboard(
   profileId: number,
   chatId: string | number,
   messageId: number,
-  keyboard: InlineKeyboard
+  keyboard: InlineKeyboard,
+  bodyHash?: string
 ): void {
   db.prepare(
-    `UPDATE notify_messages SET keyboard = ?
+    `UPDATE notify_messages SET keyboard = ?, body_hash = COALESCE(?, body_hash)
       WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
-  ).run(JSON.stringify(keyboard), profileId, String(chatId), messageId);
+  ).run(
+    JSON.stringify(keyboard),
+    bodyHash ?? null,
+    profileId,
+    String(chatId),
+    messageId
+  );
 }
 
 // Forget the pointer for a message an edit just CLOSED. The twin of

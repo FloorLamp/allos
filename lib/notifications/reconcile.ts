@@ -26,8 +26,8 @@
 //
 // Each predicate reads the SAME computation that composed the send: `collectWindowDoses`
 // for a dose session, `behindPractices` for a practice shortfall, `getWorkoutPresence`
-// for a live draft. The one family that re-RENDERS (food, whose button labels carry the
-// counts) calls the same `buildFoodNudge` the send called, then edits only if the render
+// for a live draft. Food calls the same `buildFoodNudge` the send called and compares
+// both the keyboard and tally, then edits only if the render
 // actually differs — so an unchanged tick still performs zero Telegram calls.
 //
 // ── OVERLAPPING TICKS ────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ import { type IntakeSendSlot } from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { getRecentFoodTaps } from "../queries/nutrition";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
-import { composeForSend } from "./compose";
+import { composeForRebuild } from "./compose";
 import { now as clockNow } from "../clock";
 import { correctionBursts, correctionTokenAnchor } from "../correction-time";
 import {
@@ -710,10 +710,9 @@ const householdRound: FamilyReconciler = {
 };
 
 // ── food (class 2: additive) ─────────────────────────────────────────────────
-// The buttons never lie — another serving is always loggable — but their labels carry
-// the day's counts ("Leafy greens (2)") and the body carries the tally. So this family
-// kills nothing and instead RE-RENDERS from the same builder; the sweep edits only when
-// the render actually differs from what was delivered.
+// Another serving is always loggable, while the body carries the changing tally.
+// This family rebuilds from the same builder and compares both body and keyboard,
+// so a changed total is refreshed even when the offered buttons stay identical.
 //
 // EXPANSION IS THE USER'S (#1807). The re-render must derive its visible count from the
 // LIVE keyboard, exactly as the tap handlers do — the pointer's stored blob is the only
@@ -1501,6 +1500,10 @@ async function reconcilePointer(
   // end state converges, but the rate-limit budget this sweep's zero-call steady
   // state exists to protect is spent twice. The compare-and-swap on the pointer's
   // stored blob lets exactly one pass through; the loser skips without a call.
+  const bodyChange =
+    plan.kind === "rebuild" && plan.bodyHash
+      ? { previous: pointer.bodyHash, next: plan.bodyHash }
+      : undefined;
   const claimed =
     plan.kind === "close"
       ? claimMessagePointerClose(profileId, pointer.id, pointer.version)
@@ -1508,7 +1511,8 @@ async function reconcilePointer(
           profileId,
           pointer.id,
           pointer.version,
-          plan.keyboard
+          plan.keyboard,
+          bodyChange
         );
   if (!claimed) {
     result.skipped++;
@@ -1567,7 +1571,8 @@ async function reconcilePointer(
               profileId,
               pointer.id,
               plan.keyboard,
-              pointer.version
+              pointer.version,
+              bodyChange
             );
       log.info("message reconcile deferred (transient, pointer kept)", {
         profile: profileId,
@@ -1649,7 +1654,7 @@ async function reconcileProse(
   // the "[Name] " label alone and every multi-profile digest would draw one edit that
   // changed nothing. The RAW message still goes to `rebuildMessage`, which composes it
   // there, exactly once.
-  const hash = messageBodyHash(composeForSend(profileId, rebuilt));
+  const hash = messageBodyHash(composeForRebuild(profileId, rebuilt, pointer));
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
   // an hourly sweep over the most-read message in the app off the rate limiter.
   if (pointer.bodyHash === hash) return;
@@ -1726,7 +1731,12 @@ function withStandingUsual(
 type EditPlan =
   | { kind: "close"; text: string }
   | { kind: "keyboard"; keyboard: InlineKeyboard }
-  | { kind: "rebuild"; message: NotificationMessage; keyboard: InlineKeyboard };
+  | {
+      kind: "rebuild";
+      message: NotificationMessage;
+      keyboard: InlineKeyboard;
+      bodyHash?: string;
+    };
 
 function planEdit(
   profileId: number,
@@ -1765,9 +1775,8 @@ function planEdit(
     return { kind: "keyboard", keyboard: decision.keyboard };
   }
   if (decision.action === "none") {
-    // The additive class still re-renders: its buttons never die, but their labels
-    // carry counts that do. Gated on the render actually DIFFERING from what was
-    // delivered, so a quiet tick stays at zero calls.
+    // The food tally changes independently of its buttons. Older food pointers have
+    // no body hash: refresh once to establish it, then quiet ticks make no calls.
     if (!reconciler?.rebuild) return null;
     const rebuilt = withStandingUsual(
       profileId,
@@ -1776,9 +1785,16 @@ function planEdit(
     );
     if (!rebuilt) return null;
     const keyboard = messageKeyboard(rebuilt);
-    if (JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard))
+    const bodyHash =
+      pointer.kind === "food"
+        ? messageBodyHash(composeForRebuild(profileId, rebuilt, pointer))
+        : undefined;
+    if (
+      JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard) &&
+      (bodyHash === undefined || bodyHash === pointer.bodyHash)
+    )
       return null;
-    return { kind: "rebuild", message: rebuilt, keyboard };
+    return { kind: "rebuild", message: rebuilt, keyboard, bodyHash };
   }
   // Partial resolution. A family with a rebuilder re-renders the whole message from
   // current state (the same computation the tap rebuild runs); everything else has
@@ -1793,6 +1809,10 @@ function planEdit(
       kind: "rebuild",
       message: rebuilt,
       keyboard: messageKeyboard(rebuilt),
+      bodyHash:
+        pointer.kind === "food"
+          ? messageBodyHash(composeForRebuild(profileId, rebuilt, pointer))
+          : undefined,
     };
   }
   return { kind: "keyboard", keyboard: decision.keyboard };
