@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { useUndoableAction } from "@/components/useUndoableAction";
+import {
+  useClaimToastKey,
+  useDismissToast,
+  useToastProfileScopeGetter,
+} from "@/components/Toast";
 import { substanceDef } from "@/lib/substance-use";
+import { LabeledVerbChip } from "@/components/OfferRow";
+import { useQuickEntryRow } from "@/components/quick-entry/QuickEntryRowList";
 import {
   logSubstanceUnitAction,
   undoSubstanceUnitAction,
@@ -52,9 +60,42 @@ export default function SubstanceUnitControl({
   const stampLoggedVia = useLoggedViaStamp();
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(weekCount);
+  const inQuickEntryRow = useQuickEntryRow();
+  const announceUndoable = useUndoableAction();
+  const getToastProfileScope = useToastProfileScopeGetter();
+  const claimToastKey = useClaimToastKey();
+  const dismissToast = useDismissToast();
+  const mountedRef = useRef(false);
+  const generationRef = useRef(0);
+  const receiptOwnersRef = useRef(new Map<string, symbol>());
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    generationRef.current += 1;
+    const receiptOwners = receiptOwnersRef.current;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      for (const [key, owner] of receiptOwners) dismissToast(key, owner);
+      receiptOwners.clear();
+    };
+  }, [dismissToast, subjectProfileId, substance]);
 
   async function tap(kind: "log" | "undo"): Promise<void> {
     setError(null);
+    const originGeneration = generationRef.current;
+    const originScope = getToastProfileScope();
+    const originProfileId = subjectProfileId ?? originScope?.profileId;
+    const isCurrent = () => {
+      if (!mountedRef.current || generationRef.current !== originGeneration)
+        return false;
+      if (!originScope) return true;
+      const currentScope = getToastProfileScope();
+      return (
+        currentScope?.profileId === originScope.profileId &&
+        currentScope.token === originScope.token
+      );
+    };
     // #2007: additive substance taps never confirm — several a day is the use case.
     // The ledger's inert window absorbs an accidental double click; undo carries its
     // own key, so a correction straight after a log is not absorbed by it.
@@ -63,8 +104,8 @@ export default function SubstanceUnitControl({
       write: async (): Promise<SubstanceLogResult | SubstanceCountResult> => {
         const fd = stampLoggedVia(new FormData());
         fd.set("substance", substance);
-        if (subjectProfileId != null)
-          fd.set("profile_id", String(subjectProfileId));
+        if (originProfileId != null)
+          fd.set("profile_id", String(originProfileId));
         return kind === "log"
           ? await logSubstanceUnitAction(fd)
           : await undoSubstanceUnitAction(fd);
@@ -77,10 +118,58 @@ export default function SubstanceUnitControl({
         }
         if (!isCurrent()) return { kind: "keep" };
         setCount(result.weekCount);
+        if (
+          kind === "log" &&
+          inQuickEntryRow &&
+          originScope &&
+          originProfileId != null &&
+          "eventId" in result
+        ) {
+          const { eventId, date } = result;
+          const key = `substance-log:${originProfileId}:${substance}:${eventId}`;
+          const owner = Symbol(key);
+          receiptOwnersRef.current.set(key, owner);
+          claimToastKey(key, owner);
+          const unit =
+            substanceDef(substance).unitSingular === "drink"
+              ? "Standard drink"
+              : "Use";
+          announceUndoable({
+            message: `${unit} logged.`,
+            key,
+            profileId: originScope.profileId,
+            profileToken: originScope.token,
+            owner,
+            undo: {
+              undoneMessage: `${unit} undone.`,
+              isCurrent,
+              run: async () => {
+                if (!isCurrent()) return { ok: false, reason: "changed" };
+                const undoFd = new FormData();
+                undoFd.set("profile_id", String(originProfileId));
+                undoFd.set("substance", substance);
+                undoFd.set("event_id", String(eventId));
+                undoFd.set("date", date);
+                const undone = await undoSubstanceUnitAction(undoFd);
+                if (isCurrent() && undone.weekCount != null)
+                  setCount(undone.weekCount);
+                return undone.ok
+                  ? { ok: true }
+                  : {
+                      ok: false,
+                      reason:
+                        undone.error === "That use has changed."
+                          ? "changed"
+                          : "failed",
+                    };
+              },
+            },
+          });
+        }
         return { kind: "keep" };
       },
       onError: () => {
-        setError("Couldn't update that entry.");
+        if (isCurrent()) setError("Couldn't update that entry.");
         return { kind: "rollback" };
       },
     });
@@ -89,26 +178,44 @@ export default function SubstanceUnitControl({
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn"
-          disabled={ledger.blocked("log")}
-          onClick={() => void tap("log")}
-          data-testid={`${testIdPrefix}-log-${substance}`}
-        >
-          {ledger.pending("log")
-            ? "Logging…"
-            : substanceDef(substance).logLabel}
-        </button>
-        <button
-          type="button"
-          className="btn-ghost"
-          disabled={ledger.blocked("undo") || count === 0}
-          onClick={() => void tap("undo")}
-          data-testid={`${testIdPrefix}-undo-${substance}`}
-        >
-          Undo today
-        </button>
+        {inQuickEntryRow ? (
+          <LabeledVerbChip
+            label={
+              substanceDef(substance).unitSingular === "drink"
+                ? "Standard drink"
+                : "Use"
+            }
+            verb={ledger.pending("log") ? "Logging…" : "Log"}
+            tone="neutral"
+            disabled={ledger.blocked("log")}
+            onAct={() => void tap("log")}
+            ariaLabel={substanceDef(substance).logLabel}
+            testId={`${testIdPrefix}-log-${substance}`}
+          />
+        ) : (
+          <button
+            type="button"
+            className="btn"
+            disabled={ledger.blocked("log")}
+            onClick={() => void tap("log")}
+            data-testid={`${testIdPrefix}-log-${substance}`}
+          >
+            {ledger.pending("log")
+              ? "Logging…"
+              : substanceDef(substance).logLabel}
+          </button>
+        )}
+        {!inQuickEntryRow ? (
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={ledger.blocked("undo") || count === 0}
+            onClick={() => void tap("undo")}
+            data-testid={`${testIdPrefix}-undo-${substance}`}
+          >
+            Undo today
+          </button>
+        ) : null}
       </div>
       {capProgress ? (
         <p

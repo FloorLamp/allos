@@ -6,6 +6,7 @@ import DoseStatusControl from "@/components/DoseStatusControl";
 import OfferRow from "@/components/OfferRow";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
+import SegmentedControl from "@/components/SegmentedControl";
 import {
   QuickEntryRow,
   QuickEntryRowList,
@@ -68,7 +69,6 @@ export default function QuickDoseList({
   pastDays,
   onDone,
   subjectProfileId,
-  selectedDay,
 }: {
   today: string;
   doses: QuickEntryDose[];
@@ -85,7 +85,6 @@ export default function QuickDoseList({
   // acting profile the gather no longer reflects. `DoseStatusControl` and
   // `resolveDayDoses` both re-gate it server-side.
   subjectProfileId?: number;
-  selectedDay: string;
 }) {
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
@@ -104,7 +103,7 @@ export default function QuickDoseList({
   // The last outcome per (day, dose) that did NOT resolve it — shown inline so the
   // reason the row is still there is legible without hunting for the toast.
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const day = selectedDay;
+  const [day, setDay] = useState(today);
 
   const remaining = doses.filter(
     (d) => !resolved.has(occurrenceKey(today, d.doseId))
@@ -161,8 +160,25 @@ export default function QuickDoseList({
     if (!left) onDone();
   }, [resolved, doses, pastDays, today, onDone]);
 
+  const days = [
+    { date: today, label: "Today" },
+    ...pastDays.map((past) => ({ date: past.date, label: past.label })),
+  ];
+
   return (
     <div className="flex flex-col gap-3">
+      <SegmentedControl
+        options={days.map((entry, daysAgo) => ({
+          value: entry.date,
+          label: entry.label,
+          testId: `quick-entry-dose-day-${daysAgo}`,
+          dataAttributes: { "data-days-ago": daysAgo },
+        }))}
+        value={day}
+        onChange={setDay}
+        ariaLabel="Day to log"
+        testId="quick-entry-dose-day-toggle"
+      />
       {day !== today ? (
         <PastDayDoses
           date={day}

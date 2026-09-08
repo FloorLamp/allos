@@ -33,7 +33,7 @@ import {
   DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
-import { OFFER_VERB_TONE } from "@/components/OfferRow";
+import { LabeledVerbChip } from "@/components/OfferRow";
 import type { LivePracticeSession, PracticeLogOutcome } from "@/lib/types";
 import {
   endPracticeLive,
@@ -561,57 +561,38 @@ export default function LogPracticeButton({
           </button>
         ) : chipRow ? (
           <>
-            {/* THE LABELLED PILL (#5431, #4753's grammar): the label IS the payload
-                the nub writes, so the verb is one word and never says when. Two
-                halves in one box, which is the shape `FactChipRow`'s removable pill
-                already draws — `data-fact-chip` puts both in the control-box selector
-                list and gives the flush halves a BLOCK-only reach, because an inline
-                reach could only be taken from the half next door (#3954). */}
-            <span
-              data-fact-chip="pill"
-              data-testid="practice-duration-chip"
-              className="inline-flex items-stretch overflow-hidden rounded-lg border border-(--border) bg-surface text-sm text-slate-700 dark:text-slate-200"
-            >
-              <button
-                type="button"
-                data-fact-chip="tiled"
-                disabled={pending}
-                aria-expanded={durationOpen}
-                aria-controls="practice-duration-editor"
-                onClick={() => setDurationOpen((open) => !open)}
-                data-testid="practice-duration-toggle"
-                aria-label={`Adjust the duration of this ${practice} session`}
-                className="flex items-center px-3 transition hover:bg-(--ghost-hover) disabled:opacity-50"
-              >
-                {durationLabel}
-              </button>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={onStart}
-                data-fact-chip="tiled"
-                data-testid="practice-start-button"
-                aria-label={`Start a ${practice} session, ${durationLabel}`}
-                className={`flex items-center px-2.5 text-xs font-semibold transition disabled:opacity-50 ${OFFER_VERB_TONE.neutral}`}
-              >
-                Start
-              </button>
-            </span>
-            <button
-              type="button"
+            {/* The duration label opens its editor while the verb writes. Both halves
+                use the shared labeled-verb primitive, so this row does not maintain a
+                second two-part pill. */}
+            <LabeledVerbChip
+              label={durationLabel}
+              verb="Start"
+              tone="neutral"
+              disabled={pending}
+              onAct={onStart}
+              testId="practice-start-button"
+              ariaLabel={`Start a ${practice} session, ${durationLabel}`}
+              labelAction={{
+                onAct: () => setDurationOpen((open) => !open),
+                ariaLabel: `Adjust the duration of this ${practice} session`,
+                expanded: durationOpen,
+                controls: "practice-duration-editor",
+                testId: "practice-duration-toggle",
+              }}
+            />
+            <LabeledVerbChip
+              label="Just finished"
+              verb="Log"
+              tone="neutral"
               disabled={pending || ledger.blocked()}
-              onClick={onFinished}
-              data-testid="practice-log-button"
-              aria-label={
+              onAct={onFinished}
+              testId="practice-log-button"
+              ariaLabel={
                 count === 0
                   ? `Just finished a ${practice} session`
                   : `Just finished another ${practice} session — ${count} already logged today`
               }
-              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
-            >
-              <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
-              Just finished
-            </button>
+            />
             {statement.door}
           </>
         ) : (
