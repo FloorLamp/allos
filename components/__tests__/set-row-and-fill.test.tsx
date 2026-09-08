@@ -398,7 +398,10 @@ describe("the shared weight stepper (#5371)", () => {
   it("keeps load editing stable across the final planned-set removal", () => {
     const planned = asPlan({ ...blankSet(), weight: "60", reps: "8" });
     mountLive(part({ sets: [planned, planned, planned] }));
+    expect(screen.queryByTestId("weight-column-heading")).toBeNull();
     fireEvent.click(byId("set-confirm-1"));
+    expect(byId("weight-column-heading").textContent).toBe("Weight (kg)");
+    expect(byId("reps-column-heading").textContent).toBe("Reps");
     const weight = within(byId("exercise-weight")).getByRole("spinbutton");
     weight.focus();
     fireEvent.change(weight, { target: { value: "6" } });
