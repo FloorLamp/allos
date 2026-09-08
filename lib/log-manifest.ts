@@ -891,6 +891,32 @@ export const TAP_REACH = {
   "medication-refill": { kind: "today" },
 } as const satisfies Record<OneTapAffordance, TapReach>;
 
+// The quick-entry sheet offers one recent-day window to every adopting row. Its
+// bound cannot outgrow the dose pointer window: a web offer beyond that window would
+// create a dose tap whose corresponding Telegram pointer can no longer be reconciled.
+export const SHEET_REACH = {
+  kind: "bounded",
+  back: 2,
+  forward: 0,
+  reason:
+    "The quick-entry sheet covers today and two prior profile-local days; earlier facts use the dated record door.",
+  ref: "#5211",
+} as const satisfies TapReach;
+
+type AtMost<
+  Value extends number,
+  Limit extends number,
+  Count extends readonly unknown[] = [],
+> = Count["length"] extends Value
+  ? true
+  : Count["length"] extends Limit
+    ? false
+    : AtMost<Value, Limit, readonly [...Count, unknown]>;
+type Assert<T extends true> = T;
+export type SheetReachFitsDoseWindow = Assert<
+  AtMost<typeof SHEET_REACH.back, (typeof TAP_REACH)["dose-day"]["back"]>
+>;
+
 // Is `date` inside a declared reach, given the profile's already-resolved today?
 // The offer-side twin of `isPastWriteAccepted`, and the ONE realization of every tap
 // bound: `isDoseDateAccepted` and `isMoodDateAccepted` are this function wearing their
