@@ -162,29 +162,28 @@ export function useTimeStatement({
   // than `node`. `minDate === maxDate` is the day clause above made structural: the
   // shared control renders a FIXED day as text and offers no picker, so no mount can
   // state a day through it however it is hosted.
-  const reveal =
-    effectiveOpen ? (
-      <>
-        {/* `WhenControl` names its time input `{testId}-time`, which is what this
+  const reveal = effectiveOpen ? (
+    <>
+      {/* `WhenControl` names its time input `{testId}-time`, which is what this
             points at — one label, visible and associated, rather than a second
             spelling of the accessible name the control already carries. */}
-        <label className="label" htmlFor={`${testId}-time`}>
-          {timeLabel}
-        </label>
-        <WhenControl
-          mode="state"
-          grain="minute"
-          value={when}
-          onChange={setWhen}
-          tz={tz}
-          minDate={day}
-          maxDate={day}
-          timeLabel={timeLabel}
-          disabled={disabled}
-          testId={testId}
-        />
-      </>
-    ) : null;
+      <label className="label" htmlFor={`${testId}-time`}>
+        {timeLabel}
+      </label>
+      <WhenControl
+        mode="state"
+        grain="minute"
+        value={when}
+        onChange={setWhen}
+        tz={tz}
+        minDate={day}
+        maxDate={day}
+        timeLabel={timeLabel}
+        disabled={disabled}
+        testId={testId}
+      />
+    </>
+  ) : null;
   return {
     at,
     instant: at ? when.statedAt : null,
@@ -201,19 +200,20 @@ export function useTimeStatement({
     // already the shared language of these rows — practices and protocols import it
     // beside medications — so the door wears the same box as the action it sits
     // against rather than a fifth one.
-    door: shown && !required ? (
-      <button
-        type="button"
-        data-testid={`${testId}-toggle`}
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        aria-label={HAPPENED_EARLIER}
-        className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
-      >
-        <IconClock className="h-4 w-4" stroke={2} />
-        <span className="sr-only">{HAPPENED_EARLIER}</span>
-      </button>
-    ) : null,
+    door:
+      shown && !required ? (
+        <button
+          type="button"
+          data-testid={`${testId}-toggle`}
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          aria-label={HAPPENED_EARLIER}
+          className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
+        >
+          <IconClock className="h-4 w-4" stroke={2} />
+          <span className="sr-only">{HAPPENED_EARLIER}</span>
+        </button>
+      ) : null,
   };
 }

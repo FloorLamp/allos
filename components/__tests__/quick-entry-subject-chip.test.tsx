@@ -67,9 +67,7 @@ const CLOCKS = new Map([
 ]);
 
 function WithClocks({ children }: { children: React.ReactNode }) {
-  return (
-    <ProfileDaysBoundary clocks={CLOCKS}>{children}</ProfileDaysBoundary>
-  );
+  return <ProfileDaysBoundary clocks={CLOCKS}>{children}</ProfileDaysBoundary>;
 }
 
 // Opens a form via the real context, so every assertion below drives the API a
@@ -135,15 +133,15 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
             hrefForDay: (day) => `/history?day=${day}` as AppRoute,
           }}
         >
-        <ToastProvider>
-          <QuickEntryProvider
-            measurements={MEASUREMENTS}
-            writableProfiles={[ACTING]}
-            actingProfileId={ACTING.id}
-          >
-            <Opener />
-          </QuickEntryProvider>
-        </ToastProvider>
+          <ToastProvider>
+            <QuickEntryProvider
+              measurements={MEASUREMENTS}
+              writableProfiles={[ACTING]}
+              actingProfileId={ACTING.id}
+            >
+              <Opener />
+            </QuickEntryProvider>
+          </ToastProvider>
         </DayContextProvider>
       </WithClocks>
     );

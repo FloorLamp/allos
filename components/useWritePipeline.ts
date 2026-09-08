@@ -334,13 +334,7 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       });
       return outcome.result;
     },
-    [
-      affordance,
-      attempt,
-      captureDayContext,
-      ledger,
-      say,
-    ]
+    [affordance, attempt, captureDayContext, ledger, say]
   );
 
   return {

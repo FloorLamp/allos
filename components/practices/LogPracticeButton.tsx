@@ -632,7 +632,9 @@ export default function LogPracticeButton({
               label="Just finished"
               verb="Log"
               tone="neutral"
-              disabled={pending || ledger.blocked() || (!isPrimaryDay && !statement.at)}
+              disabled={
+                pending || ledger.blocked() || (!isPrimaryDay && !statement.at)
+              }
               onAct={onFinished}
               testId="practice-log-button"
               ariaLabel={
@@ -664,7 +666,9 @@ export default function LogPracticeButton({
             ) : null}
             <button
               type="button"
-              disabled={pending || ledger.blocked() || (!isPrimaryDay && !statement.at)}
+              disabled={
+                pending || ledger.blocked() || (!isPrimaryDay && !statement.at)
+              }
               onClick={onFinished}
               data-testid="practice-log-button"
               // Layer 2 (#1893's doctrine): the affordance renders today's state, so the

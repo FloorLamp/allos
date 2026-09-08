@@ -122,8 +122,7 @@ export default function SubstanceUnitControl({
         if (writeDate) {
           fd.set("date", writeDate);
         }
-        if (kind === "log" && statedInstant)
-          fd.set("stated_at", statedInstant);
+        if (kind === "log" && statedInstant) fd.set("stated_at", statedInstant);
         if (originProfileId != null)
           fd.set("profile_id", String(originProfileId));
         return kind === "log"
@@ -208,7 +207,7 @@ export default function SubstanceUnitControl({
             }
             verb={ledger.pending("log") ? "Logging…" : "Log"}
             tone="neutral"
-              disabled={ledger.blocked("log")}
+            disabled={ledger.blocked("log")}
             onAct={() => void tap("log")}
             ariaLabel={substanceDef(substance).logLabel}
             testId={`${testIdPrefix}-log-${substance}`}

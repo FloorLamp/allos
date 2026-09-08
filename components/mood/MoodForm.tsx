@@ -203,13 +203,17 @@ export default function MoodForm({
     let outcome: "kept" | "closed" | "failed";
     if (!capturedContext) return "refused";
     try {
-      outcome = await enqueue("mood", {
-        valence: next.valence,
-        energy: next.energy,
-        anxiety: next.anxiety,
-        factors: next.factors,
-        note: next.notes,
-      }, capturedContext);
+      outcome = await enqueue(
+        "mood",
+        {
+          valence: next.valence,
+          energy: next.energy,
+          anxiety: next.anxiety,
+          factors: next.factors,
+          note: next.notes,
+        },
+        capturedContext
+      );
     } catch {
       outcome = "failed";
     }
@@ -292,12 +296,7 @@ export default function MoodForm({
       }
       complete(target, valence);
     } catch (err) {
-      const queued = await queueIfOffline(
-        err,
-        target,
-        next,
-        capturedContext
-      );
+      const queued = await queueIfOffline(err, target, next, capturedContext);
       if (queued === "queued") complete(target, valence);
       else if (queued === "not-offline")
         setError("Couldn't save that check-in — try again.");

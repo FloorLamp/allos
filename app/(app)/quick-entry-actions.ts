@@ -342,8 +342,8 @@ export async function loadQuickEntry(
       form === "substance")
       ? ({ kind: "dated" } as const)
       : form === "dose"
-          ? TAP_REACH["dose-day"]
-          : SHEET_REACH;
+        ? TAP_REACH["dose-day"]
+        : SHEET_REACH;
   if (
     selectedDay != null &&
     (!isRealIsoDate(selectedDay) ||

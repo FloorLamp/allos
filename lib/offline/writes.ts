@@ -140,13 +140,14 @@ function applyDoseIntent(
   const outcome =
     flow === "dose"
       ? markDoseTaken(profileId, doseId, null, date, OFFLINE_REPLAY, {
-          takenAt: capturedPrimary === false
-            ? null
-            : capturedOnRowDate
-              ? capturedTakenAt
-            : date === todayStr
-              ? (capturedTakenAt ?? undefined)
-              : null,
+          takenAt:
+            capturedPrimary === false
+              ? null
+              : capturedOnRowDate
+                ? capturedTakenAt
+                : date === todayStr
+                  ? (capturedTakenAt ?? undefined)
+                  : null,
         })
       : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);
   return classifyDoseReplay(flow, outcome);
@@ -1612,12 +1613,11 @@ export function applyIntent(
       const capturedInstant = new Date(
         resolveCapturedInstant(intent.capturedAt, clockNow())
       );
-      const endTime =
-        normalizedEnd
-          ? normalizedEnd
-          : capturedPrimary === true
-            ? zonedDateParts(getTimezone(profileId), capturedInstant).hhmm
-            : undefined;
+      const endTime = normalizedEnd
+        ? normalizedEnd
+        : capturedPrimary === true
+          ? zonedDateParts(getTimezone(profileId), capturedInstant).hhmm
+          : undefined;
       const applied = logPracticeSessionForDay(
         profileId,
         name,

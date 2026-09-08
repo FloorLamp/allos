@@ -1302,21 +1302,25 @@ export default function FoodLogBar({
         return false;
       if (!capturedDayContext) return false;
       const kept =
-        (await enqueue("food", {
-          entry: "serving",
-          groupKey: slug,
-          // This is the fallback declaration, not an echo of a stated instant. If
-          // the replay accepts eatenAt, the write core derives its slot from that
-          // instant. If a fast device clock makes eatenAt unusable, the serving
-          // stays in the active window the person actually tapped.
-          mealSlot: activeSlot,
-          grams: null,
-          // The statement travels as a RESOLVED instant, because a replay has no server
-          // to resolve a wall time against. The replay validates it (judgeEatenAt)
-          // rather than trusting it, and an unusable one costs the statement, never the
-          // serving.
-          eatenAt: statedAt,
-        }, capturedDayContext)) === "kept";
+        (await enqueue(
+          "food",
+          {
+            entry: "serving",
+            groupKey: slug,
+            // This is the fallback declaration, not an echo of a stated instant. If
+            // the replay accepts eatenAt, the write core derives its slot from that
+            // instant. If a fast device clock makes eatenAt unusable, the serving
+            // stays in the active window the person actually tapped.
+            mealSlot: activeSlot,
+            grams: null,
+            // The statement travels as a RESOLVED instant, because a replay has no server
+            // to resolve a wall time against. The replay validates it (judgeEatenAt)
+            // rather than trusting it, and an unusable one costs the statement, never the
+            // serving.
+            eatenAt: statedAt,
+          },
+          capturedDayContext
+        )) === "kept";
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {

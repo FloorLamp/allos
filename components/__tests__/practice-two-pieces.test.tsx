@@ -85,19 +85,17 @@ vi.mock("@/components/ConfirmDialog", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
-  useQueuedDayContextCapture: () => (
-    date: string,
-    reach: unknown,
-    capturedAt = new Date()
-  ) => ({
-    dayContext: {
-      parts: { profileId: 7, day: date, reach },
-      key: "test-context",
-      isPrimaryDay: true,
-    },
-    capturedAt,
-    writeToken: Promise.resolve(0),
-  }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 7, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: true,
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 vi.mock("@/components/FormatPrefsProvider", () => ({
