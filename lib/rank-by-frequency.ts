@@ -54,23 +54,28 @@ export function prioritizeRoutineSlots(
   return [...front, ...rest];
 }
 
-// Rank a curated catalog by a profile's RECENT usage: each occurrence is weighted by
-// `weight × decayedWeight(date)` (recency half-life, lib/decay.ts) so a recent habit
-// outranks a stale one, then `rankByFrequency` orders the catalog + any previously-used
-// custom names by that decayed weight (catalog order breaks ties). The ONE recency-
-// ranking computation shared by the food-log bar (#591) and the symptom picker (#857) —
-// callers differ only in what an occurrence weighs (food: servings; symptoms: 1/day).
+// Sum recency-weighted occurrences by name; callers own their ranking rules.
+export function decayWeights(
+  occurrences: readonly { name: string; date: string; weight?: number }[],
+  today: string,
+  halfLifeDays?: number
+): Map<string, number> {
+  const weights = new Map<string, number>();
+  for (const o of occurrences) {
+    const w = (o.weight ?? 1) * decayedWeight(o.date, today, halfLifeDays);
+    weights.set(o.name, (weights.get(o.name) ?? 0) + w);
+  }
+  return weights;
+}
+
+// Rank by recent usage, keeping curated order on ties and including custom names.
 export function rankByRecentFrequency(
   curated: string[],
   occurrences: { name: string; date: string; weight?: number }[],
   today: string,
   halfLifeDays?: number
 ): string[] {
-  const weights = new Map<string, number>();
-  for (const o of occurrences) {
-    const w = (o.weight ?? 1) * decayedWeight(o.date, today, halfLifeDays);
-    weights.set(o.name, (weights.get(o.name) ?? 0) + w);
-  }
+  const weights = decayWeights(occurrences, today, halfLifeDays);
   const rows = [...weights].map(([name, c]) => ({ name, c }));
   return rankByFrequency(curated, rows);
 }

@@ -27,7 +27,7 @@ import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
-import { trainingActivityPageHref } from "@/lib/hrefs";
+import { trainingTabHref, trainingActivityPageHref } from "@/lib/hrefs";
 import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import { hasExerciseGuide } from "@/lib/exercise-guides";
@@ -221,7 +221,7 @@ export default function ExerciseDetailPanel({
               key={g.id}
               label="Goal"
               value={goalTargetValueText(g, wu) ?? g.title}
-              href="/training?tab=goals#goals"
+              href={trainingTabHref("plan", "goals")}
               sub={`${pct}% complete`}
               progress={pct}
             />

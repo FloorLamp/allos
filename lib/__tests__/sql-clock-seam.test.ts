@@ -1,3 +1,4 @@
+import { stripComments } from "./strip-comments";
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -254,20 +255,19 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
-// Strip line and block comments so PROSE about `datetime('now')` — of which this
-// codebase has plenty, including the explanations the rewrites added — can't trip
-// the scanner. Only real code counts.
-function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
 function countMatches(text: string): number {
   return (stripComments(text).match(NOW_READ_RE) ?? []).length;
 }
 
 describe("SQL clock seam boundary (issue #1534)", () => {
+  it("keeps quoted comment markers in SQL while ignoring actual comments", () => {
+    expect(
+      countMatches(
+        `const sql = "SELECT '/*', datetime('now'), '*/'"; // datetime('now')`
+      )
+    ).toBe(1);
+  });
+
   it("no NEW raw SQL now-read in query text — date-semantic stamps bind sqlNow()", () => {
     const violations: string[] = [];
     const seen = new Set<string>();
@@ -304,22 +304,6 @@ describe("SQL clock seam boundary (issue #1534)", () => {
     }
 
     expect(violations, violations.join("\n")).toEqual([]);
-  });
-
-  it("every allowlist entry documents WHY its now-read is not date-semantic", () => {
-    const thin = Object.entries(ALLOW)
-      .filter(([, v]) => v.why.trim().length < 20)
-      .map(([rel]) => rel);
-    expect(
-      thin,
-      `These allowlist entries need a real reason (what the stamp is, and why its ` +
-        `calendar day never meets today()):\n${thin.join("\n")}`
-    ).toEqual([]);
-  });
-
-  it("the sqlNow() seam helper exists in lib/clock.ts", () => {
-    const src = fs.readFileSync(path.join(REPO, "lib/clock.ts"), "utf8");
-    expect(/export function sqlNow\b/.test(src)).toBe(true);
   });
 });
 

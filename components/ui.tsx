@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
 import CreateAction, {
@@ -127,33 +126,6 @@ export function PageHeader({
       ) : null}
     </div>
   );
-}
-
-export function StatCard({
-  label,
-  value,
-  sub,
-  href,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  href?: AppRoute;
-}) {
-  const inner = (
-    <div className="card transition hover:shadow-md">
-      <div className="section-label">{label}</div>
-      <div className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-100">
-        {value}
-      </div>
-      {sub && (
-        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {sub}
-        </div>
-      )}
-    </div>
-  );
-  return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
 // The dashed "nothing here yet" panel. `action` is an optional typed link

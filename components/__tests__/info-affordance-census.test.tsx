@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
@@ -157,6 +157,43 @@ const SYNCED_ABSOLUTE_UTC =
   formatTimestampDisplay(SYNCED_AT, DEFAULT_FORMAT_PREFS, {
     timeZone: "UTC",
   })?.absolute ?? "";
+
+it("refreshes both timestamp labels, adopts a new value, and stops on unmount", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-30T10:01:00Z"));
+  const timestamps = (value: string) => (
+    <>
+      <RelativeTime value={value} />
+      <SyncTimestamp value={value} relativeOnly />
+    </>
+  );
+  const view = render(timestamps(SYNCED_AT));
+  const labels = () =>
+    [...view.container.querySelectorAll("time")].map(
+      (node) => node.textContent
+    );
+  try {
+    expect(labels()).toEqual([
+      expect.stringContaining("1 minute ago"),
+      "1 minute ago",
+    ]);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(labels()).toEqual([
+      expect.stringContaining("2 minutes ago"),
+      "2 minutes ago",
+    ]);
+    view.rerender(timestamps("2026-08-30T09:57:00Z"));
+    expect(labels()).toEqual([
+      expect.stringContaining("5 minutes ago"),
+      "5 minutes ago",
+    ]);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
+});
 
 describe("the absolute sync stamp lives on one surface (#4419 rule 1)", () => {
   it("gives a three-row status list three timestamps and no buttons", () => {

@@ -1,3 +1,4 @@
+import { formatCount } from "./format-number";
 // Post-workout session recap (issue #924) — the ONE pure computation that turns a
 // just-completed strength session (+ its recent per-exercise history) into a
 // factual recap: duration, per-exercise + total working sets/volume, a
@@ -485,7 +486,7 @@ export function recapSessionFromEditData(
 
 // Display volume for a card/step, in the login's unit ("2,450 kg" / "5,400 lb").
 export function fmtRecapVolume(volumeKg: number, unit: WeightUnit): string {
-  return `${Math.round(kgTo(volumeKg, unit)).toLocaleString("en-US")} ${unit}`;
+  return `${formatCount(Math.round(kgTo(volumeKg, unit)))} ${unit}`;
 }
 
 // ── THE RECAP LINE (issue #2172) ───────────────────────────────────────────────

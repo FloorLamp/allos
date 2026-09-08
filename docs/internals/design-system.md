@@ -123,6 +123,11 @@ width cap. Preserve access to the full value. Exercise the long-name corpus in
 `TabList` owns scrollbar suppression while preserving horizontal scrolling;
 callers do not repeat its CSS.
 
+`components/catalog.tsx` declares catalog adoption and equipment’s form, facts, usage
+reader, and lifecycle. `CatalogRow`, `CatalogLifecycleControl`, and `CatalogEditor`
+share row, action, and responsive form hosting. Pending kinds retain their domain
+lifecycles.
+
 ### Chip roles
 
 | Meaning                | Control                                                                                                               |

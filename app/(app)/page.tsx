@@ -1,3 +1,4 @@
+import { formatCount } from "@/lib/format-number";
 import { cloneElement, type ReactElement } from "react";
 import { redirect } from "next/navigation";
 import { now as clockNow } from "@/lib/clock";
@@ -276,6 +277,8 @@ import {
   undoAttentionDose,
 } from "./actions";
 import {
+  trainingTabHref,
+  onboardingStepHref,
   episodeHref,
   encounterHref,
   historyDayIntradayHref,
@@ -1776,7 +1779,7 @@ async function renderDashboard(
         label: loadContextLabel(record.exercise, record.equipment),
         value: strengthValue,
         detail: "New personal record",
-        href: "/training?tab=analyze",
+        href: trainingTabHref("analyze"),
       }
     );
   });
@@ -1799,7 +1802,7 @@ async function renderDashboard(
         label: record.activity,
         value,
         detail: "New personal record",
-        href: "/training?tab=analyze",
+        href: trainingTabHref("analyze"),
       }
     );
   });
@@ -1877,7 +1880,7 @@ async function renderDashboard(
         {
           label: stepLabels[step - 1],
           detail: `Setup step ${step} of ${ONBOARDING_STEP_COUNT}`,
-          href: `/onboarding?step=${step}` as AppRoute,
+          href: onboardingStepHref(step),
           actionLabel: "Continue",
         }
       );
@@ -2118,7 +2121,7 @@ async function renderDashboard(
         label: goal.title,
         value: statement.value,
         detail: statement.percent ?? undefined,
-        href: "/training?tab=goals",
+        href: trainingTabHref("plan", "goals"),
         presence: "current",
       }
     );
@@ -2475,12 +2478,12 @@ async function renderDashboard(
         value:
           stepsSummary.today == null
             ? "No steps logged yet today"
-            : stepsSummary.today.toLocaleString("en-US"),
+            : formatCount(stepsSummary.today),
         detail:
           [
             stepsSummary.average7 == null
               ? null
-              : `Prior 7 days · ${stepsSummary.average7.toLocaleString("en-US")} steps a day`,
+              : `Prior 7 days · ${formatCount(stepsSummary.average7)} steps a day`,
             // Absent for most of the day BY DESIGN (#3258): the summary withholds it
             // until today can be compared, so the row states the neutral average alone
             // rather than a percentage that was only ever counting the hours.
@@ -2509,7 +2512,7 @@ async function renderDashboard(
         stale: false,
         name: `Steps, today and the prior ${STEPS_TRAILING_DAYS} days`,
         pointLabel: (point) =>
-          `${point.value.toLocaleString("en-US")} steps · ${formatLongDate(point.date, formatPrefs)}`,
+          `${formatCount(point.value)} steps · ${formatLongDate(point.date, formatPrefs)}`,
         loneCaption: `Single reading · ${formatLongDate(on, formatPrefs)}`,
       },
     });

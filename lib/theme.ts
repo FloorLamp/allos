@@ -1,3 +1,5 @@
+import { MEDIA_QUERIES } from "./media-queries";
+
 // The ONE theme decision.
 //
 // Everywhere in the app, "is it dark?" is answered by a `dark` class on <html> and
@@ -41,7 +43,7 @@ export const THEME_BOOT_SCRIPT = `
 (function () {
   try {
     var t = localStorage.getItem('${THEME_STORAGE_KEY}');
-    var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var dark = t === 'dark' || (t !== 'light' && window.matchMedia('${MEDIA_QUERIES.dark}').matches);
     document.documentElement.classList.toggle('dark', dark);
   } catch (e) {}
 })();

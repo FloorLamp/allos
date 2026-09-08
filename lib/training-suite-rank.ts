@@ -1,4 +1,5 @@
-import { decayedWeight, SUGGESTION_HALF_LIFE_DAYS } from "./decay";
+import { SUGGESTION_HALF_LIFE_DAYS } from "./decay";
+import { decayWeights } from "./rank-by-frequency";
 import { parseComponents, type ActivityType } from "./types/training";
 
 export type TrainingDepthSuite = "strength" | "endurance" | "sport";
@@ -39,8 +40,7 @@ export function rankTrainingSuites(
   today: string,
   halfLifeDays = SUGGESTION_HALF_LIFE_DAYS
 ): RankedTrainingSuite[] {
-  const weights = new Map(DEFAULT_ORDER.map((suite) => [suite, 0]));
-  for (const row of rows) {
+  const occurrences = rows.flatMap((row) => {
     const represented = new Set<TrainingDepthSuite>();
     const own = suiteForType(row.type);
     if (own) represented.add(own);
@@ -48,12 +48,13 @@ export function rankTrainingSuites(
       const suite = suiteForType(component.type);
       if (suite) represented.add(suite);
     }
-    const weight = decayedWeight(row.date, today, halfLifeDays);
-    for (const suite of represented) {
-      weights.set(suite, (weights.get(suite) ?? 0) + weight);
-    }
-  }
-  const total = [...weights.values()].reduce((sum, weight) => sum + weight, 0);
+    return [...represented].map((name) => ({ name, date: row.date }));
+  });
+  const weights = decayWeights(occurrences, today, halfLifeDays);
+  const total = DEFAULT_ORDER.reduce(
+    (sum, suite) => sum + (weights.get(suite) ?? 0),
+    0
+  );
   return DEFAULT_ORDER.map((suite, index) => ({
     suite,
     weight: weights.get(suite) ?? 0,

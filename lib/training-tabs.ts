@@ -2,7 +2,7 @@
 // build only the active tab (#105), while retired names keep historic deep links
 // resolving to the section that absorbed them (#2892).
 
-import type { AppRoute } from "./hrefs";
+import { trainingTabHref, type AppRoute } from "./hrefs";
 
 export const TRAINING_TABS = ["overview", "log", "analyze", "plan"] as const;
 
@@ -26,8 +26,8 @@ const TAB_LABELS: Record<TrainingTab, string> = {
 // The redirect normalizes both the selected tab and the historic section anchor;
 // the parser mapping below covers callers that parse without redirecting.
 const RETIRED_TAB_TARGETS: Record<string, AppRoute> = {
-  goals: "/training?tab=plan#goals",
-  routines: "/training?tab=plan#routines",
+  goals: trainingTabHref("plan", "goals"),
+  routines: trainingTabHref("plan", "routines"),
   // The Fitness check left the tab bar for its own route (#2894): the battery
   // is quarterly work, and Overview's strip is its standing surface.
   fitness: "/training/fitness-check",

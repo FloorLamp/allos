@@ -1,5 +1,7 @@
 "use client";
 
+import { formatList } from "@/lib/format-number";
+
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -777,11 +779,7 @@ export default function MedicationCard({
             >
               <div className="section-label">Monitoring</div>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {s.name} may need periodic{" "}
-                {new Intl.ListFormat("en", {
-                  style: "long",
-                  type: "conjunction",
-                }).format(monitoringLabs)}{" "}
+                {s.name} may need periodic {formatList(monitoringLabs)}{" "}
                 monitoring. Ask your prescriber which tests you need and how
                 often.
               </p>
