@@ -239,6 +239,7 @@ import { migration as mEventLinkDecision } from "./20260906-event-link-decision"
 import { migration as mTrainingPhotos } from "./20260906-training-photos";
 import { migration as mSubstanceTrashRecordedAt } from "./20260907-substance-trash-recorded-at";
 import { migration as mDoseScheduleAmount } from "./20260907-dose-schedule-amount";
+import { migration as mRetireBlankIntakeDoses } from "./20260908-retire-blank-intake-doses";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -487,6 +488,7 @@ export const MIGRATIONS: Migration[] = [
   mTrainingPhotos,
   mSubstanceTrashRecordedAt,
   mDoseScheduleAmount,
+  mRetireBlankIntakeDoses,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1
