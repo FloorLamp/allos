@@ -49,7 +49,11 @@ vi.mock("@/components/Toast", () => ({
   useToast: () => (text: string) => toasts.push(text),
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: async () => "kept" }),
+  useOfflineQueue: () => ({
+    enqueue: async () => "kept",
+    enqueueBatch: async () => "kept",
+  }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),

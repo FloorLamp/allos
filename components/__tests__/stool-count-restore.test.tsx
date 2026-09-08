@@ -15,6 +15,7 @@ const { toast, logStoolForm } = vi.hoisted(() => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/app/(app)/stool-actions", () => ({ logStoolForm }));
 // The pipeline's provider-bound collaborators, which this tier does not mount. The

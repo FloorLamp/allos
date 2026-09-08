@@ -3,23 +3,17 @@
 // Proves the real logMood action runs through the (mocked) auth guard and
 // enforces: the per-day idempotent upsert (a re-tap updates today's single row),
 // the expand fields (energy/anxiety/factors/note), input rejection, per-profile
-// scoping, the date fallback to the profile's today, the #2128 backfill window
-// (a dated write lands on that date; an out-of-window one is refused), and the
+// scoping, the date fallback to the profile's today, dated backfill, and the
 // reminder re-arm (a submission resets the ignored counter).
 //
-// Dates are relative to the profile's own today because #2128 bounded the
-// action to MOOD_LOG_DATE_WINDOW_DAYS — a fixed past date would now be refused.
+// Dates are relative to the profile's own today so future refusal is stable.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { logMood } from "@/app/(app)/mood-actions";
-import {
-  MOOD_DATE_OUT_OF_WINDOW_ERROR,
-  MOOD_LOG_DATE_WINDOW_DAYS,
-  moodSeriesPoints,
-} from "@/lib/mood";
+import { moodSeriesPoints } from "@/lib/mood";
 import { getMoodLogs, getMoodOnDate } from "@/lib/queries";
 import { getMoodCheckinIgnored, bumpMoodCheckinIgnored } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -159,7 +153,7 @@ describe("logMood — one-tap + expanded save", () => {
 // (and reaches the trend), bounded by the dose-log-window-style window.
 // ---------------------------------------------------------------------------
 
-describe("logMood — the #2128 backfill window", () => {
+describe("logMood — dated backfill", () => {
   it("a yesterday write lands on yesterday and feeds the trend", async () => {
     const login = createLogin();
     const profile = createProfile("mood-backfill", login.id);
@@ -182,21 +176,16 @@ describe("logMood — the #2128 backfill window", () => {
     expect(revalidate).toHaveBeenCalledWith("/trends");
   });
 
-  it("accepts the whole declared window, nothing older", async () => {
+  it("accepts an old real day", async () => {
     const login = createLogin();
     const profile = createProfile("mood-window", login.id);
     actAs(login, profile);
 
-    const on = today(profile.id);
-    const oldest = shiftDateStr(on, -MOOD_LOG_DATE_WINDOW_DAYS);
-    expect(await logMood(fd({ date: oldest, valence: 3 }))).toEqual({
+    const old = shiftDateStr(today(profile.id), -400);
+    expect(await logMood(fd({ date: old, valence: 3 }))).toEqual({
       ok: true,
     });
-
-    const tooOld = shiftDateStr(on, -(MOOD_LOG_DATE_WINDOW_DAYS + 1));
-    const res = await logMood(fd({ date: tooOld, valence: 3 }));
-    expect(res).toEqual({ ok: false, error: MOOD_DATE_OUT_OF_WINDOW_ERROR });
-    expect(getMoodOnDate(profile.id, tooOld)).toBeNull();
+    expect(getMoodOnDate(profile.id, old)?.valence).toBe(3);
   });
 
   it("lets the record's dated form correct or add any real past day", async () => {
@@ -218,7 +207,10 @@ describe("logMood — the #2128 backfill window", () => {
 
     const tomorrow = shiftDateStr(today(profile.id), 1);
     const res = await logMood(fd({ date: tomorrow, valence: 4 }));
-    expect(res).toEqual({ ok: false, error: MOOD_DATE_OUT_OF_WINDOW_ERROR });
+    expect(res).toEqual({
+      ok: false,
+      error: "Choose today or an earlier date.",
+    });
     expect(getMoodLogs(profile.id)).toEqual([]);
   });
 });

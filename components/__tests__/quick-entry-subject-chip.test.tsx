@@ -6,6 +6,11 @@ import QuickEntryProvider, {
 } from "@/components/QuickEntryProvider";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
+import {
+  DayContextProvider,
+  ProfileDaysBoundary,
+} from "@/components/DayContext";
+import type { AppRoute } from "@/lib/hrefs";
 
 // COMPONENT TIER — the quick-log sheet's title-row subject chip (#4932): defaulting
 // per opener, the toggle, and a subject switch discarding what the previous subject
@@ -17,6 +22,7 @@ import type { SessionProfile } from "@/lib/auth";
 const loadQuickEntry = vi.hoisted(() =>
   vi.fn(async (form: QuickEntryForm, subjectProfileId?: number) => ({
     form: "unavailable" as const,
+    today: MEASUREMENTS.defaultDate,
     message: `loaded ${form} for ${subjectProfileId ?? "acting"}`,
   }))
 );
@@ -54,6 +60,16 @@ const MEASUREMENTS = {
   showHeadCirc: false,
 };
 
+const CLOCKS = new Map([
+  [ACTING.id, { today: "2026-09-03", timeZone: "UTC" }],
+  [MIA.id, { today: "2026-09-03", timeZone: "Pacific/Honolulu" }],
+  [SAM.id, { today: "2026-09-04", timeZone: "Pacific/Kiritimati" }],
+]);
+
+function WithClocks({ children }: { children: React.ReactNode }) {
+  return <ProfileDaysBoundary clocks={CLOCKS}>{children}</ProfileDaysBoundary>;
+}
+
 // Opens a form via the real context, so every assertion below drives the API a
 // real opener (the dock, a subject-scoped panel) would call — never a shortcut
 // into the provider's internals.
@@ -81,15 +97,17 @@ function OpenMeasurementsFor({ subjectId }: { subjectId: number }) {
 
 function renderSheet(writableProfiles: SessionProfile[]) {
   return render(
-    <ToastProvider>
-      <QuickEntryProvider
-        measurements={MEASUREMENTS}
-        writableProfiles={writableProfiles}
-        actingProfileId={ACTING.id}
-      >
-        <Opener />
-      </QuickEntryProvider>
-    </ToastProvider>
+    <WithClocks>
+      <ToastProvider>
+        <QuickEntryProvider
+          measurements={MEASUREMENTS}
+          writableProfiles={writableProfiles}
+          actingProfileId={ACTING.id}
+        >
+          <Opener />
+        </QuickEntryProvider>
+      </ToastProvider>
+    </WithClocks>
   );
 }
 
@@ -102,6 +120,44 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     ).toBeTruthy();
   });
 
+  it("captures a dated route at the opener boundary", async () => {
+    render(
+      <WithClocks>
+        <DayContextProvider
+          profileId={ACTING.id}
+          today="2026-09-07"
+          reach={{ kind: "dated" }}
+          backing={{
+            kind: "url",
+            day: "2026-08-20",
+            hrefForDay: (day) => `/history?day=${day}` as AppRoute,
+          }}
+        >
+          <ToastProvider>
+            <QuickEntryProvider
+              measurements={MEASUREMENTS}
+              writableProfiles={[ACTING]}
+              actingProfileId={ACTING.id}
+            >
+              <Opener />
+            </QuickEntryProvider>
+          </ToastProvider>
+        </DayContextProvider>
+      </WithClocks>
+    );
+
+    fireEvent.click(screen.getByText("open food"));
+    await waitFor(() =>
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "food",
+        ACTING.id,
+        "2026-08-20",
+        "dated"
+      )
+    );
+    expect(screen.queryByTestId("bounded-day-switcher")).toBeNull();
+  });
+
   it("defaults to the opener's subject when one is passed", async () => {
     renderSheet([ACTING, MIA, SAM]);
     fireEvent.click(screen.getByText("open for Mia"));
@@ -109,7 +165,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     const chip = await screen.findByTestId("quick-entry-subject-chip");
     expect(chip.textContent).toContain("Mia");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", MIA.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        MIA.id,
+        undefined,
+        "sheet"
+      )
     );
   });
 
@@ -122,7 +183,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     // Byte-identical online behavior (#4932/#3416 invariant): the acting-profile
     // path posts no subject id at all.
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", ACTING.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        ACTING.id,
+        undefined,
+        "sheet"
+      )
     );
   });
 
@@ -156,7 +222,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     fireEvent.click(screen.getByText("open with no subject"));
     const chip = await screen.findByTestId("quick-entry-subject-chip");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", ACTING.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        ACTING.id,
+        undefined,
+        "sheet"
+      )
     );
 
     const bodyBefore = screen.getByTestId("quick-entry-body");
@@ -168,7 +239,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     expect(screen.queryByTestId("quick-entry-subject-picker")).toBeNull();
     expect(chip.textContent).toContain("Sam");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", SAM.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        SAM.id,
+        undefined,
+        "sheet"
+      )
     );
     // The body remounted under the new subject (discarding anything staged) —
     // proven by identity, not merely by its content, since both render the same
@@ -186,7 +262,12 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     fireEvent.click(screen.getByText("open with no subject"));
     const chip = await screen.findByTestId("quick-entry-subject-chip");
     await waitFor(() =>
-      expect(loadQuickEntry).toHaveBeenLastCalledWith("stool", ACTING.id)
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        ACTING.id,
+        undefined,
+        "sheet"
+      )
     );
     loadQuickEntry.mockClear();
 
@@ -201,15 +282,17 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
 
   it("measurements renders unavailable for a chosen non-acting subject (#4091's gather has no per-subject version)", async () => {
     render(
-      <ToastProvider>
-        <QuickEntryProvider
-          measurements={MEASUREMENTS}
-          writableProfiles={[ACTING, MIA]}
-          actingProfileId={ACTING.id}
-        >
-          <OpenMeasurementsFor subjectId={MIA.id} />
-        </QuickEntryProvider>
-      </ToastProvider>
+      <WithClocks>
+        <ToastProvider>
+          <QuickEntryProvider
+            measurements={MEASUREMENTS}
+            writableProfiles={[ACTING, MIA]}
+            actingProfileId={ACTING.id}
+          >
+            <OpenMeasurementsFor subjectId={MIA.id} />
+          </QuickEntryProvider>
+        </ToastProvider>
+      </WithClocks>
     );
     fireEvent.click(screen.getByText("open measurements"));
     const unavailable = await screen.findByTestId("quick-entry-unavailable");

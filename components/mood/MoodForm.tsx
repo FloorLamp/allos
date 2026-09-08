@@ -4,9 +4,14 @@ import { useRef, useState } from "react";
 import { logMood } from "@/app/(app)/mood-actions";
 import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
+import { useOptionalDayContext } from "@/components/DayContext";
 import MoodValencePicker from "@/components/MoodValencePicker";
 import IconButton from "@/components/IconButton";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+  type QueuedCapture,
+} from "@/components/OfflineQueueProvider";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
@@ -22,6 +27,7 @@ import {
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import SubmitButton from "@/components/SubmitButton";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 export interface MoodFormValue {
   valence: number;
@@ -100,10 +106,13 @@ export default function MoodForm({
   onCancel?: () => void;
 }) {
   const toast = useToast();
+  const dayContext = useOptionalDayContext();
   const { enqueue } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   const ledger = useOptimisticLedger<number | null>("mood-valence");
-  const [selected, setSelected] = useState(0);
-  const initial = days[0]?.mood;
+  const day =
+    days.find((entry) => entry.date === dayContext?.parts.day) ?? days[0];
+  const initial = day?.mood;
   const [valence, setValence] = useState<number | null>(
     initial?.valence ?? null
   );
@@ -117,20 +126,6 @@ export default function MoodForm({
   const [error, setError] = useState<string | null>(null);
   const [entryVersion, setEntryVersion] = useState(0);
   const writing = useRef(false);
-
-  const day = days[selected];
-
-  function pickDay(index: number): void {
-    if (index === selected) return;
-    const mood = days[index]?.mood;
-    setSelected(index);
-    setValence(mood?.valence ?? null);
-    setEnergy(mood?.energy ?? null);
-    setAnxiety(mood?.anxiety ?? null);
-    setFactors(mood?.factors ?? []);
-    setNote(mood?.notes ?? "");
-    setError(null);
-  }
 
   function draft(nextValence: number): MoodFormValue {
     return {
@@ -190,7 +185,8 @@ export default function MoodForm({
   async function queueIfOffline(
     err: unknown,
     target: MoodFormDay,
-    next: MoodFormValue
+    next: MoodFormValue,
+    capturedContext: QueuedCapture | null
   ): Promise<"not-offline" | "refused" | "queued"> {
     // The queue is stamped to the acting profile and carries no subject. A record-row
     // correction posts its subject and therefore must fail honestly rather than queue
@@ -205,14 +201,19 @@ export default function MoodForm({
       return "not-offline";
     }
     let outcome: "kept" | "closed" | "failed";
+    if (!capturedContext) return "refused";
     try {
-      outcome = await enqueue("mood", target.date, {
-        valence: next.valence,
-        energy: next.energy,
-        anxiety: next.anxiety,
-        factors: next.factors,
-        note: next.notes,
-      });
+      outcome = await enqueue(
+        "mood",
+        {
+          valence: next.valence,
+          energy: next.energy,
+          anxiety: next.anxiety,
+          factors: next.factors,
+          note: next.notes,
+        },
+        capturedContext
+      );
     } catch {
       outcome = "failed";
     }
@@ -236,13 +237,20 @@ export default function MoodForm({
     }
     if (!beginWrite()) return;
     const next = draft(nextValence);
+    const capturedContext = captureDayContext(
+      target.date,
+      TAP_REACH["mood-valence"]
+    );
     void ledger
       .tap({
         key: `${target.date}:${nextValence}:${entryVersion}`,
         from: valence,
         optimistic: nextValence,
         commit: setValence,
-        write: () => logMood(payload(target, next)),
+        write: async () => {
+          if (capturedContext) await capturedContext.writeToken;
+          return logMood(payload(target, next));
+        },
         settle: (result) => {
           if (!result.ok) {
             setError(result.error);
@@ -252,7 +260,12 @@ export default function MoodForm({
           return { kind: "keep" };
         },
         onError: async (err) => {
-          const queued = await queueIfOffline(err, target, next);
+          const queued = await queueIfOffline(
+            err,
+            target,
+            next,
+            capturedContext
+          );
           if (queued === "queued") {
             complete(target, nextValence);
             return { kind: "keep" };
@@ -269,8 +282,13 @@ export default function MoodForm({
     if (!day || valence == null || !beginWrite()) return;
     const target = day;
     const next = draft(valence);
+    const capturedContext = captureDayContext(
+      target.date,
+      TAP_REACH["mood-valence"]
+    );
     setError(null);
     try {
+      if (capturedContext) await capturedContext.writeToken;
       const result = await logMood(payload(target, next));
       if (!result.ok) {
         setError(result.error);
@@ -278,7 +296,7 @@ export default function MoodForm({
       }
       complete(target, valence);
     } catch (err) {
-      const queued = await queueIfOffline(err, target, next);
+      const queued = await queueIfOffline(err, target, next, capturedContext);
       if (queued === "queued") complete(target, valence);
       else if (queued === "not-offline")
         setError("Couldn't save that check-in — try again.");
@@ -313,26 +331,6 @@ export default function MoodForm({
         data-testid="mood-form-controls"
         disabled={busy}
       >
-        {days.length > 1 ? (
-          // A wrapping strip of box-height chips: `gap-3.5` where the reach exists, so
-          // two extended targets on adjacent lines never own the same point (#4035's
-          // measurement — `gap-3` against 6px per side lands on exactly zero margin).
-          <div className="flex flex-wrap items-center gap-1.5 pointer-coarse:gap-3.5">
-            {days.map((entry, index) => (
-              <Chip
-                key={entry.date}
-                role="filter"
-                pressed={index === selected}
-                testId={`quick-mood-day-${index}`}
-                data={{ "data-date": entry.date }}
-                onClick={() => pickDay(index)}
-              >
-                {entry.label}
-              </Chip>
-            ))}
-          </div>
-        ) : null}
-
         <div className="flex flex-wrap items-center gap-2">
           <MoodValencePicker
             value={valence}
