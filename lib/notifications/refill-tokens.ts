@@ -20,7 +20,8 @@ export function orderedRefillToken(
   generation: string,
   cancel = false
 ): string {
-  return `${cancel ? "rfordno" : "rfordered"}:${profileId}:${itemId}:${generation}`;
+  if (cancel) return `rfordno:${profileId}:${itemId}:${generation}`;
+  return `rfordered:${profileId}:${itemId}:${generation}`;
 }
 
 // A distinct namespace matters: deployed rfsnooze readers ignore extra fields.
