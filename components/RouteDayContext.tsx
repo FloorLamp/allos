@@ -2,10 +2,17 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { DayContextProvider } from "@/components/DayContext";
+import {
+  DayContextBoundary,
+  urlDayContextValue,
+} from "@/components/DayContext";
 import { dateStrInTz, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { clampHistoryDay } from "@/lib/history-format";
-import { historyDayHref, nutritionDayHref } from "@/lib/hrefs";
+import {
+  historyDayHref,
+  nutritionDayHref,
+  parseNutritionTab,
+} from "@/lib/hrefs";
 import type { AppRoute } from "@/lib/hrefs";
 import { isPastWriteAccepted } from "@/lib/log-manifest";
 
@@ -46,7 +53,7 @@ export default function RouteDayContext({
     hrefForDay = historyDayHref;
   } else if (
     pathname === "/nutrition" &&
-    (params.get("tab") == null || params.get("tab") === "food")
+    parseNutritionTab(params.get("tab") ?? undefined) === "food"
   ) {
     const requested = params.get("date");
     day =
@@ -54,15 +61,21 @@ export default function RouteDayContext({
     hrefForDay = nutritionDayHref;
   }
 
-  if (!day || !hrefForDay) return children;
   return (
-    <DayContextProvider
-      profileId={profileId}
-      today={today}
-      reach={{ kind: "dated" }}
-      backing={{ kind: "url", day, hrefForDay }}
+    <DayContextBoundary
+      value={
+        day && hrefForDay
+          ? urlDayContextValue({
+              profileId,
+              today,
+              reach: { kind: "dated" },
+              day,
+              hrefForDay,
+            })
+          : null
+      }
     >
       {children}
-    </DayContextProvider>
+    </DayContextBoundary>
   );
 }

@@ -177,6 +177,19 @@ function FoodSuggestionsLayoutForProfile({
       days.map((day) => [day.date, day.slotCounts])
     ),
   }));
+  const reconciledProjection: FoodProjectionState = {
+    countsByDate: { ...projection.countsByDate },
+    slotCountsByDate: { ...projection.slotCountsByDate },
+  };
+  let addedProjection = false;
+  for (const day of days) {
+    if (!(day.date in reconciledProjection.countsByDate)) {
+      reconciledProjection.countsByDate[day.date] = day.counts;
+      reconciledProjection.slotCountsByDate[day.date] = day.slotCounts;
+      addedProjection = true;
+    }
+  }
+  if (addedProjection) setProjection(reconciledProjection);
   const hasSuggestions = suggestionCount > 0;
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
   const activeDayNutrients = selectedDayNutrients.find(
@@ -200,21 +213,12 @@ function FoodSuggestionsLayoutForProfile({
       value={{
         activeDate,
         setActiveDate,
-        countsByDate: projection.countsByDate,
-        slotCountsByDate: projection.slotCountsByDate,
+        countsByDate: reconciledProjection.countsByDate,
+        slotCountsByDate: reconciledProjection.slotCountsByDate,
         setProjection,
       }}
     >
       <div data-testid="nutrition-food-layout">
-        {initialDate && !initialDateInRange ? (
-          <p
-            className="mb-4 text-sm text-slate-500 dark:text-slate-400"
-            data-testid="food-date-bound-note"
-          >
-            Food backfill is available for today and the previous six days.
-            Showing today.
-          </p>
-        ) : null}
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           {logger}
           <div data-testid="nutrition-sidebar" className="min-w-0 self-start">

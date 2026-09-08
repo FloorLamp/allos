@@ -610,7 +610,7 @@ export function clampHistoryDay(
   todayStr: string
 ): string | undefined {
   const raw = first(value)?.trim();
-  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  if (!isRealIsoDate(raw)) return undefined;
   return raw > todayStr ? todayStr : raw;
 }
 
@@ -719,3 +719,4 @@ export function parseHistoryExpand(
   }
   return out;
 }
+import { isRealIsoDate } from "./date";

@@ -36,6 +36,16 @@ export interface DayContextValue {
 
 const Context = createContext<DayContextValue | null>(null);
 
+export function DayContextBoundary({
+  value,
+  children,
+}: {
+  value: DayContextValue | null;
+  children: ReactNode;
+}) {
+  return <Context.Provider value={value}>{children}</Context.Provider>;
+}
+
 function valueFor(
   profileId: number,
   today: string,
@@ -55,6 +65,23 @@ function valueFor(
     select,
     hrefForDay,
   };
+}
+
+export function urlDayContextValue({
+  profileId,
+  today,
+  reach,
+  day,
+  hrefForDay,
+}: {
+  profileId: number;
+  today: string;
+  reach: TapReach;
+  day: string;
+  hrefForDay: (day: string) => AppRoute;
+}): DayContextValue {
+  const selected = isWithinReach(reach, today, day) ? day : today;
+  return valueFor(profileId, today, reach, selected, "url", null, hrefForDay);
 }
 
 function StateDayContext({
@@ -123,21 +150,18 @@ export function DayContextProvider({
       </StateDayContext>
     );
   }
-  const day = isWithinReach(reach, today, backing.day) ? backing.day : today;
   return (
-    <Context.Provider
-      value={valueFor(
+    <DayContextBoundary
+      value={urlDayContextValue({
         profileId,
         today,
         reach,
-        day,
-        "url",
-        null,
-        backing.hrefForDay
-      )}
+        day: backing.day,
+        hrefForDay: backing.hrefForDay,
+      })}
     >
       {children}
-    </Context.Provider>
+    </DayContextBoundary>
   );
 }
 

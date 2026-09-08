@@ -71,6 +71,15 @@ export type AppRoute = Route;
 export const NUTRITION_TABS = ["food", "supplements"] as const;
 export type NutritionTab = (typeof NUTRITION_TABS)[number];
 
+export function parseNutritionTab(
+  value: string | string[] | undefined
+): NutritionTab {
+  const first = Array.isArray(value) ? value[0] : value;
+  return NUTRITION_TABS.includes(first as NutritionTab)
+    ? (first as NutritionTab)
+    : "food";
+}
+
 export function nutritionTabHref(tab: NutritionTab): AppRoute {
   return tab === "food" ? "/nutrition" : `/nutrition?tab=${tab}`;
 }
