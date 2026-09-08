@@ -56,16 +56,13 @@ import InlineError from "@/components/InlineError";
 //    with nothing on screen to show for it, and every test would still pass. So
 //    `title`, `kind`, `location` and `notes` keep `defaultValue` + an onChange MIRROR
 //    that feeds the chip label only; the mirror is never the source of what submits.
-//    `date` and `provider` are DateField and ProviderCombobox, which hold their own
-//    state internally and were never registry-visible — they lose nothing. `time`
-//    JOINS them here as of TimeField's adoption (#4976): its named element is now
-//    TimeField's own hidden input, which the registry excludes the same way it
-//    already excludes `date`'s — so an edit that touches ONLY the time no longer
-//    marks this form dirty, a real (if narrow) change from the native input this
-//    replaces. Flagged rather than silently accepted; see the issue's return summary.
+//    `provider` holds its own state internally and is not registry-visible.
+//    `date` and `time` post through DateField and TimeField's named hidden inputs;
+//    each marks that canonical value as user-owned so an edit to either one alone
+//    participates in the unsaved-input guard (#4976, #4986).
 //
-//    e2e/dirty-form-refresh.spec.ts is the pin, and it is this form: all three of its
-//    #1878 tests type into "Reason / title" here.
+//    e2e/dirty-form-refresh.spec.ts is the pin on this form: its cases cover a
+//    text save, a time-only edit and a date-only edit across refresh deferral.
 //
 // AND `required` CAME OFF THE DATE INPUT, deliberately. A `required` control inside a
 // `display:none` panel makes the browser refuse the submit it cannot focus, which would
@@ -379,10 +376,9 @@ export default function AppointmentForm({
                 </label>
                 {/* Its own column, never folded into the date (#2234): blank stores a
                     bare day rather than a fabricated midnight. Controlled by `mirror.time`
-                    exactly as `date` is by `currentDate` above — its named element is
-                    TimeField's own hidden input, which the dirty-form registry excludes
-                    the same way it already excludes `date` and `provider` (#4976), so this
-                    loses nothing the DOM-owned fields below still need. */}
+                    exactly as `date` is by `currentDate` above. Their named canonical
+                    values remain separate and each participates in dirty tracking
+                    (#4976, #4986). */}
                 <TimeField
                   id={`appt-time-${uid}`}
                   name="time"
