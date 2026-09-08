@@ -602,7 +602,7 @@ export default function LogPracticeButton({
               disabled={pending}
               onClick={onStart}
               data-testid="practice-start-button"
-              aria-label={`Start a ${practice} session now`}
+              aria-label={`Start a ${practice} session`}
               className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
             >
               <IconPlayerPlay
@@ -610,7 +610,7 @@ export default function LogPracticeButton({
                 stroke={2.5}
                 aria-hidden
               />
-              Start now
+              Start
             </button>
             <button
               type="button"
