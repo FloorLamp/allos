@@ -1,3 +1,4 @@
+import { invalidateRefillOffers } from "../../notifications/offer-store";
 // Shared supply pools — the household medicine cabinet (issue #1374).
 //
 // `shared_supplies` is a household-shared entity (the `providers` precedent): it has no
@@ -511,8 +512,14 @@ export function updateIntakeSupplyCount(
     db.prepare(
       "UPDATE intake_items SET quantity_on_hand = ? WHERE id = ? AND profile_id = ?"
     ).run(quantity, itemId, profileId);
+    if (submitted !== loaded) invalidateRefillOffers(profileId, itemId, null);
     return { quantity };
   });
+}
+
+export function invalidatePoolRefillOffers(supplyId: number): void {
+  for (const member of poolMembers(supplyId))
+    invalidateRefillOffers(member.profileId, member.itemId, supplyId);
 }
 
 function updateSharedSupplyCount(
@@ -529,6 +536,7 @@ function updateSharedSupplyCount(
   db.prepare(
     "UPDATE shared_supplies SET quantity_on_hand = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(quantity, supplyId);
+  if (submitted !== loaded) invalidatePoolRefillOffers(supplyId);
   return { quantity };
 }
 
@@ -571,6 +579,15 @@ export function linkItemToPool(
   supplyId: number
 ): void {
   writeTx(() => {
+    const old = db
+      .prepare(
+        "SELECT supply_id FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(profileId, itemId) as { supply_id: number | null } | undefined;
+    if (!old || old.supply_id === supplyId) return;
+    if (old.supply_id != null) invalidatePoolRefillOffers(old.supply_id);
+    invalidateRefillOffers(profileId, itemId, old.supply_id);
+    invalidatePoolRefillOffers(supplyId);
     db.prepare(
       `UPDATE intake_items SET supply_id = ?, quantity_on_hand = NULL
         WHERE id = ? AND profile_id = ?`
@@ -582,9 +599,18 @@ export function linkItemToPool(
 // pool keeps the bottle's count, because the bottle didn't move. The user re-opts into
 // per-item tracking by entering a quantity on the item form.
 export function unlinkItemFromPool(profileId: number, itemId: number): void {
-  db.prepare(
-    `UPDATE intake_items SET supply_id = NULL WHERE id = ? AND profile_id = ?`
-  ).run(itemId, profileId);
+  writeTx(() => {
+    const old = db
+      .prepare(
+        "SELECT supply_id FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(profileId, itemId) as { supply_id: number | null } | undefined;
+    if (!old || old.supply_id == null) return;
+    invalidatePoolRefillOffers(old.supply_id);
+    db.prepare(
+      `UPDATE intake_items SET supply_id = NULL WHERE id = ? AND profile_id = ?`
+    ).run(itemId, profileId);
+  });
 }
 
 // Delete a pool, carrying its side-state (the row-ops rule): every linked item is
@@ -599,6 +625,7 @@ export function deleteSharedSupply(supplyId: number): number[] {
       .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
       .get(supplyId) as { quantity_on_hand: number | null } | undefined;
     if (!supply) return [];
+    invalidatePoolRefillOffers(supplyId);
     const members = poolMembers(supplyId);
     const restored = resolvePoolUnlinkRestore(
       supply.quantity_on_hand,

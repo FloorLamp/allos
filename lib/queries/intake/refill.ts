@@ -1,3 +1,5 @@
+import { invalidateRefillOffers } from "../../notifications/offer-store";
+import { invalidatePoolRefillOffers } from "./supply-pool";
 // Part of the lib/queries/intake barrel (#319 — same #126 treatment training
 // got). The profile-scoping guard walks all of lib/, so these split modules stay
 // covered; every read is profile-scoped directly or through the parent
@@ -228,6 +230,7 @@ export function refillSupply(
       db.prepare(
         "UPDATE intake_items SET last_fill_size = ? WHERE id = ? AND profile_id = ?"
       ).run(fill, itemId, profileId);
+      invalidatePoolRefillOffers(row.supply_id);
       return { kind: "refilled", newQuantity: next, fillSize: fill };
     }
     if (row.quantity_on_hand == null) return { kind: "untracked" };
@@ -245,6 +248,7 @@ export function refillSupply(
           SET quantity_on_hand = ?, last_fill_size = ?
         WHERE id = ? AND profile_id = ?`
     ).run(next, fill, itemId, profileId);
+    invalidateRefillOffers(profileId, itemId, null);
     return { kind: "refilled", newQuantity: next, fillSize: fill };
   });
 }

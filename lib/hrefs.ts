@@ -82,6 +82,10 @@ export function retrospectiveHref(year?: number): AppRoute {
 // pool nudge deep-links here rather than to a kind page.
 export const SUPPLIES_HREF: AppRoute = "/supplies";
 
+export function sharedSupplyHref(supplyId: number): AppRoute {
+  return `/supplies#supply-${supplyId}`;
+}
+
 // The Illness episodes index (#856), which BECAME the cross-profile care-trail surface
 // (#1373 Part 2): the view-set banner drives whose data shows, a `?kind=` toggle drives
 // what shows. The old /household/history route was REMOVED — this const replaced

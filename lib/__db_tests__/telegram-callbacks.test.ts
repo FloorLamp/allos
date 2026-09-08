@@ -1,3 +1,17 @@
+import { messagePointerAt } from "@/lib/notifications/message-pointers";
+import { setProfileMutedForLogin } from "@/lib/settings";
+import {
+  refillReceivedAction,
+  handleReceivedReply,
+  handleReceivedCallback,
+  reconcileRefillReceipt,
+  renderRefillMessage,
+} from "@/lib/notifications/refill";
+import { readRefillOffer } from "@/lib/notifications/offer-store";
+import { sendTelegramMessage } from "@/lib/notifications/telegram";
+import { sendMessageRaw } from "@/lib/notifications/telegram-api";
+import { updateIntakeSupplyCount } from "@/lib/queries/intake/supply-pool";
+import { decrementSupply, incrementSupply } from "@/lib/queries/intake/refill";
 // DB INTEGRATION TIER — the two-way Telegram action buttons (issue #233) driven
 // end-to-end through handleCallbackQuery against the REAL query layer, with only
 // the Telegram network surface (answer/edit/send) stubbed. Proves each button's
@@ -1256,3 +1270,384 @@ describe("the sweep is never more generous than the handler (#4544)", () => {
     );
   });
 });
+
+async function receivedFixture() {
+  const profile = seedProfile("Received", { quantityOnHand: 4 });
+  const loginId = seedLoginTelegram(profile.profileId, OWN_CHAT);
+  const action = refillReceivedAction(profile.profileId, profile.supplementId)!;
+  const messageId = await sendTelegramMessage(
+    OWN_CHAT,
+    { title: "Supply", body: "Running low", actions: [action], kind: "refill" },
+    profile.profileId
+  );
+  const offerId = Number(action.data!.split(":")[2]);
+  const open = {
+    ...cq(action.data!, OWN_CHAT),
+    from: { id: 71 },
+    message: { ...cq(action.data!, OWN_CHAT).message, message_id: messageId! },
+  };
+  return { ...profile, loginId, offerId, open, action };
+}
+
+function receiptReply(
+  f: Awaited<ReturnType<typeof receivedFixture>>,
+  amount: string,
+  messageId = 801
+) {
+  const offer = readRefillOffer(f.profileId, f.offerId)!.offer;
+  return {
+    message_id: messageId,
+    chat: { id: OWN_CHAT },
+    from: { id: 71 },
+    text: amount,
+    reply_to_message: {
+      message_id: offer.promptId,
+      text: `(refill:${f.profileId}:${f.offerId})`,
+    },
+  };
+}
+
+function receivedCount(f: Awaited<ReturnType<typeof receivedFixture>>) {
+  return (
+    db
+      .prepare(
+        "SELECT quantity_on_hand FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(f.profileId, f.supplementId) as { quantity_on_hand: number }
+  ).quantity_on_hand;
+}
+
+describe("Received receipt operation", () => {
+  it("asks first, keeps a partial refill warning, and never redirects an old reply to the next prompt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    expect(receivedCount(f)).toBe(4);
+    const oldReply = receiptReply(f, "2");
+    await handleReceivedReply(oldReply);
+    expect(receivedCount(f)).toBe(6);
+    expect(editTextMock.mock.calls.at(-1)?.[2]).toContain("running low");
+    const next = refillReceivedAction(f.profileId, f.supplementId)!;
+    expect(next.data).not.toBe(f.action.data);
+    await handleCallbackQuery({ ...f.open, id: "open-next", data: next.data });
+    expect(
+      readRefillOffer(f.profileId, Number(next.data!.split(":")[2]))!.offer
+        .state
+    ).toBe("pending");
+    await handleReceivedReply(oldReply);
+    await handleReceivedReply({ ...oldReply, message_id: 802 });
+    expect(receivedCount(f)).toBe(6);
+    const nextId = Number(next.data!.split(":")[2]);
+    expect(readRefillOffer(f.profileId, nextId)!.offer.defaultSize).toBe(2);
+    await handleReceivedReply(
+      receiptReply({ ...f, offerId: nextId }, "3", 803)
+    );
+    expect(receivedCount(f)).toBe(9);
+    await handleReceivedReply(oldReply);
+    expect(receivedCount(f)).toBe(9);
+  });
+
+  it("reports a stock write only for a newly confirmed receipt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    await handleReceivedReply(receiptReply(f, "2"));
+    const action = refillReceivedAction(f.profileId, f.supplementId)!;
+    const token = {
+      profileId: f.profileId,
+      offerId: Number(action.data!.split(":")[2]),
+    };
+    expect(
+      await handleReceivedCallback({ ...f.open, data: action.data }, token)
+    ).toBeUndefined();
+    const promptId = readRefillOffer(f.profileId, token.offerId)!.offer
+      .promptId!;
+    const confirm = {
+      ...f.open,
+      data: `rfconfirm:${f.profileId}:${token.offerId}`,
+      message: { ...f.open.message, message_id: promptId },
+    };
+    expect(
+      await handleReceivedCallback({ ...confirm, from: { id: 72 } }, token)
+    ).toBeUndefined();
+    expect(await handleReceivedCallback(confirm, token)).toBe(f.profileId);
+    expect(receivedCount(f)).toBe(8);
+    expect(await handleReceivedCallback(confirm, token)).toBeUndefined();
+    const next = refillReceivedAction(f.profileId, f.supplementId)!;
+    const nextToken = { ...token, offerId: Number(next.data!.split(":")[2]) };
+    await handleReceivedCallback({ ...f.open, data: next.data }, nextToken);
+    expect(
+      await handleReceivedCallback(
+        { ...f.open, data: `rfcancel:${f.profileId}:${nextToken.offerId}` },
+        nextToken
+      )
+    ).toBeUndefined();
+    expect(receivedCount(f)).toBe(8);
+  });
+
+  it("claims concurrent opens before sending and does not reactivate a cancellation during delivery", async () => {
+    const f = await receivedFixture();
+    const send = vi.mocked(sendMessageRaw);
+    let release!: (id: number) => void;
+    send.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          release = resolve;
+        })
+    );
+    const first = handleCallbackQuery(f.open);
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const calls = send.mock.calls.length;
+    await handleCallbackQuery({ ...f.open, id: "second-open" });
+    expect(send.mock.calls.length).toBe(calls);
+    await handleCallbackQuery({
+      ...f.open,
+      id: "cancel-opening",
+      data: `rfcancel:${f.profileId}:${f.offerId}`,
+    });
+    release(9123);
+    await first;
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "canceled"
+    );
+    expect(receivedCount(f)).toBe(4);
+    await handleCallbackQuery(f.open);
+    expect(send.mock.calls.length).toBe(calls);
+  });
+
+  it.each(["rejected", "missing-id"])(
+    "requires explicit cancellation after a %s send outcome",
+    async (outcome) => {
+      const f = await receivedFixture();
+      if (outcome === "rejected")
+        vi.mocked(sendMessageRaw).mockRejectedValueOnce(
+          new Error("synthetic transport uncertainty")
+        );
+      else vi.mocked(sendMessageRaw).mockResolvedValueOnce(undefined);
+      await handleCallbackQuery(f.open);
+      const originTokens = () =>
+        messagePointerAt(f.profileId, OWN_CHAT, f.open.message.message_id)!
+          .keyboard.flat()
+          .map((button) => button.callback_data);
+      expect(originTokens()).toContain(`rfcancel:${f.profileId}:${f.offerId}`);
+      const calls = vi.mocked(sendMessageRaw).mock.calls.length;
+      await handleCallbackQuery(f.open);
+      expect(originTokens()).toContain(`rfcancel:${f.profileId}:${f.offerId}`);
+      expect(vi.mocked(sendMessageRaw).mock.calls.length).toBe(calls);
+      expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+        "sending"
+      );
+      await handleCallbackQuery({
+        ...f.open,
+        data: `rfcancel:${f.profileId}:${f.offerId}`,
+      });
+      expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+        "canceled"
+      );
+      const next = refillReceivedAction(f.profileId, f.supplementId)!;
+      expect(next.data).not.toBe(f.action.data);
+      await handleCallbackQuery({ ...f.open, id: "reopen", data: next.data });
+      expect(
+        readRefillOffer(f.profileId, Number(next.data!.split(":")[2]))!.offer
+          .state
+      ).toBe("pending");
+    }
+  );
+
+  it("preserves pending receipts through dose decrement/Undo but invalidates an intentional recount ABA", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    decrementSupply(f.profileId, f.supplementId);
+    incrementSupply(f.profileId, f.supplementId);
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 4, 4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    const reply = receiptReply(f, "30");
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 8, 4);
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 4, 8);
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "invalidated"
+    );
+  });
+
+  it("refuses another sender and another quoted message without consuming the prompt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const reply = receiptReply(f, "30");
+    await handleReceivedReply({ ...reply, from: { id: 72 } });
+    await handleReceivedReply({
+      ...reply,
+      reply_to_message: { ...reply.reply_to_message, message_id: 999999 },
+    });
+    expect(receivedCount(f)).toBe(4);
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(34);
+  });
+
+  it("rolls stock and receipt state back together when completion persistence fails", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const reply = receiptReply(f, "30");
+    db.exec(`CREATE TEMP TRIGGER refuse_received_completion BEFORE UPDATE ON notify_offers
+      WHEN json_extract(NEW.payload, '$.state') = 'completed'
+      BEGIN SELECT RAISE(ABORT, 'synthetic completion failure'); END`);
+    try {
+      await expect(handleReceivedReply(reply)).rejects.toThrow(
+        "synthetic completion failure"
+      );
+    } finally {
+      db.exec("DROP TRIGGER refuse_received_completion");
+    }
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(34);
+  });
+});
+
+it("does not restore an Ordered item's row when another low item keeps the reminder alive", async () => {
+  const f = await receivedFixture();
+  const otherId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+    VALUES (?, 'Other receipt bottle', 1, 'supplement', 'daily', 'should', 4, 1)`
+      )
+      .run(f.profileId).lastInsertRowid
+  );
+  db.prepare(
+    "INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort) VALUES (?, '1 tablet', 'morning', 'any', 0)"
+  ).run(otherId);
+  const message = renderRefillMessage(
+    [
+      {
+        id: f.supplementId,
+        name: "First bottle",
+        daysLeft: 4,
+        received: f.action,
+      },
+      {
+        id: otherId,
+        name: "Other bottle",
+        daysLeft: 4,
+        received: refillReceivedAction(f.profileId, otherId),
+      },
+    ],
+    f.profileId
+  );
+  const messageId = (await sendTelegramMessage(
+    OWN_CHAT,
+    message,
+    f.profileId
+  ))!;
+  const origin = messagePointerAt(f.profileId, OWN_CHAT, messageId)!;
+  await handleCallbackQuery({
+    ...cq(`rfsnooze:${f.profileId}:${f.supplementId}`, OWN_CHAT),
+    message: {
+      message_id: messageId,
+      chat: { id: OWN_CHAT },
+      reply_markup: { inline_keyboard: origin.keyboard },
+    },
+  });
+  const after = messagePointerAt(f.profileId, OWN_CHAT, messageId)!;
+  const tokens = after.keyboard.flat().map((button) => button.callback_data);
+  expect(tokens).toContain(`rfsnooze:${f.profileId}:${otherId}`);
+  expect(tokens).not.toContain(`rfsnooze:${f.profileId}:${f.supplementId}`);
+  expect(tokens).not.toContain(f.action.data);
+  await reconcileRefillReceipt(f.profileId, after);
+  expect(messagePointerAt(f.profileId, OWN_CHAT, messageId)!.keyboard).toEqual(
+    after.keyboard
+  );
+  const snooze = db
+    .prepare(
+      "SELECT snooze_until FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+    )
+    .get(f.profileId, refillSignalKey(f.supplementId)) as {
+    snooze_until: string;
+  };
+  expect(snooze.snooze_until).toBe(shiftDateStr(today(f.profileId), 3));
+});
+
+it.each(["success", "failure"])(
+  "preserves a newer same-offer pointer when an older edit ends with %s",
+  async (outcome) => {
+    const f = await receivedFixture();
+    const pointer = () =>
+      messagePointerAt(f.profileId, OWN_CHAT, f.open.message.message_id)!;
+    await reconcileRefillReceipt(f.profileId, pointer());
+    decrementSupply(f.profileId, f.supplementId);
+    let finish!: () => void;
+    editTextMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          finish = () =>
+            outcome === "success"
+              ? resolve()
+              : reject(new Error("synthetic stale edit failure"));
+        })
+    );
+    const older = reconcileRefillReceipt(f.profileId, pointer());
+    const observed = older.catch((error) => error);
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    const oldHash = pointer().bodyHash;
+    decrementSupply(f.profileId, f.supplementId);
+    await reconcileRefillReceipt(f.profileId, pointer());
+    const newer = pointer();
+    finish();
+    await observed;
+    expect(pointer().version).toBe(newer.version);
+    expect(pointer().bodyHash).toBe(
+      outcome === "success" ? "" : newer.bodyHash
+    );
+    expect(pointer().bodyHash).not.toBe(oldHash);
+    await reconcileRefillReceipt(f.profileId, pointer());
+    expect(pointer().bodyHash).toBe(newer.bodyHash);
+    expect(receivedCount(f)).toBe(2);
+  }
+);
+
+it.each(["foreign", "muted"])(
+  "does not refresh origin messages for a %s refused callback",
+  async (refusal) => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const offer = readRefillOffer(f.profileId, f.offerId)!.offer;
+    decrementSupply(f.profileId, f.supplementId);
+    const before = [offer.promptId!, offer.origin!.messageId].map((id) =>
+      messagePointerAt(f.profileId, OWN_CHAT, id)
+    );
+    if (refusal === "muted")
+      setProfileMutedForLogin(f.loginId, f.profileId, true);
+    editTextMock.mockClear();
+    const cancel = {
+      ...f.open,
+      data: `rfcancel:${f.profileId}:${f.offerId}`,
+      message: {
+        ...f.open.message,
+        message_id: offer.promptId!,
+        chat: { id: refusal === "foreign" ? OTHER_CHAT : OWN_CHAT },
+      },
+    };
+    await handleCallbackQuery(cancel);
+    expect(receivedCount(f)).toBe(3);
+    expect(editTextMock).not.toHaveBeenCalled();
+    expect(
+      [offer.promptId!, offer.origin!.messageId].map((id) =>
+        messagePointerAt(f.profileId, OWN_CHAT, id)
+      )
+    ).toEqual(before);
+    if (refusal === "muted")
+      setProfileMutedForLogin(f.loginId, f.profileId, false);
+    await handleCallbackQuery({
+      ...cancel,
+      message: { ...cancel.message, chat: { id: OWN_CHAT } },
+    });
+    expect(editTextMock).toHaveBeenCalled();
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "canceled"
+    );
+  }
+);
