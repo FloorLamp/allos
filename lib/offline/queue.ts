@@ -532,11 +532,15 @@ export function captureQueuedDayContext(
 // A new intent carries the profile and its day context as one stamp. The second arm
 // represents stored legacy entries only: profile attribution shipped before day
 // context, so it may be present there, while a partial new context has no type.
-export type QueuedIntent = QueuedIntentBase &
-  (
-    | { readonly profileId: number; readonly dayContext: QueuedDayContext }
-    | { readonly profileId?: number; readonly dayContext?: never }
-  );
+type StampedQueuedIntent = QueuedIntentBase & {
+  readonly profileId: number;
+  readonly dayContext: QueuedDayContext;
+};
+type LegacyQueuedIntent = QueuedIntentBase & {
+  readonly profileId?: number;
+  readonly dayContext?: never;
+};
+export type QueuedIntent = StampedQueuedIntent | LegacyQueuedIntent;
 
 // A uuid for the idempotency key. Prefers crypto.randomUUID (all evergreen
 // browsers + Node 24); falls back to a random-hex composition where it's absent so
@@ -562,7 +566,7 @@ export function buildIntent(
   payload: IntentPayload,
   dayContext: QueuedDayContext,
   now: Date = new Date()
-): QueuedIntent {
+): StampedQueuedIntent {
   return {
     key: newIdempotencyKey(),
     flow,

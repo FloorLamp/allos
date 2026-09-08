@@ -52,6 +52,7 @@ import {
 import { whenOnDay } from "@/lib/stated-time";
 import { DATED_REACH } from "@/lib/log-manifest";
 import { useOptionalDayContext } from "@/components/DayContext";
+import { isRealIsoDate } from "@/lib/date";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
@@ -314,6 +315,13 @@ export default function MeasurementsQuickAdd({
     setSeenOwnedDate(ownedDate);
     setWhen(whenOnDay(ownedDate, tz));
   }
+  const updateWhen = (next: WhenValue) => {
+    if (ownedDate === null) {
+      setWhen(next);
+    } else if (isRealIsoDate(ownedDate)) {
+      setWhen({ ...next, date: ownedDate });
+    }
+  };
   // The night's two clocks (#1851, #4976), controlled the same way `when` is —
   // `TimeRangeFields` posts them through its own hidden inputs (`bed_time`/
   // `wake_time`, unchanged names), so the write below reads the pair exactly as
@@ -1222,9 +1230,7 @@ export default function MeasurementsQuickAdd({
           mode="state"
           grain="minute"
           value={when}
-          onChange={(next) =>
-            setWhen(ownedDate ? { ...next, date: ownedDate } : next)
-          }
+          onChange={updateWhen}
           minDate={ownedDate ?? undefined}
           maxDate={ownedDate ?? maxDate}
           testId="m"

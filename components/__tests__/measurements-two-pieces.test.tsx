@@ -47,7 +47,9 @@ const record = (name: string) => (fd: FormData) => {
 
 const mocks = vi.hoisted(() => ({
   enqueue: vi.fn(async () => "kept" as const),
-  enqueueBatch: vi.fn(async () => "kept" as const),
+  enqueueBatch: vi.fn(
+    async (): Promise<"kept" | "closed" | "failed"> => "kept"
+  ),
 }));
 
 vi.mock("@/app/(app)/trends/measurement-actions", () => ({

@@ -113,7 +113,11 @@ describe("captureQueuedDayContext", () => {
     const source = context("2026-09-03", 7);
     const writeToken = Promise.resolve(7);
     const captured = captureQueuedDayContext(7, source, tappedAt, writeToken);
-    expect(captured).toEqual({ dayContext: source, capturedAt: tappedAt, writeToken });
+    expect(captured).toEqual({
+      dayContext: source,
+      capturedAt: tappedAt,
+      writeToken,
+    });
   });
 
   it("accepts canonical equality and refuses profile or key disagreement", () => {
@@ -134,7 +138,7 @@ describe("captureQueuedDayContext", () => {
     expect(captureQueuedDayContext(7, equivalent)?.dayContext).toBe(equivalent);
     expect(captureQueuedDayContext(8, equivalent)).toBeNull();
     expect(
-      captureQueuedDayContext(7, { ...equivalent, key: "wrong" })
+      captureQueuedDayContext(7, { ...equivalent, key: "wrong" } as never)
     ).toBeNull();
   });
 

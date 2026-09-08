@@ -3,7 +3,6 @@ import {
   buildIntent as buildStampedIntent,
   type FlowKind,
   type IntentPayload,
-  type QueuedIntent,
 } from "@/lib/offline/queue";
 import { DATED_REACH, TAP_REACH, type TapReach } from "@/lib/log-manifest";
 
@@ -36,7 +35,7 @@ export function buildIntent(
   profileId: number,
   isPrimaryDay: boolean,
   now?: Date
-): QueuedIntent {
+): ReturnType<typeof buildStampedIntent> {
   const parts = { profileId, day: date, reach: reachForFlow(flow) };
   return buildStampedIntent(
     flow,

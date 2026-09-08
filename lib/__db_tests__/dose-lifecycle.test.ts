@@ -130,7 +130,7 @@ function doseIntent(
     day: date,
     reach: TAP_REACH["dose-day"],
   };
-  return {
+  const base = {
     key: opts.key ?? `dose-intent-${++seq}-${Date.now()}`,
     flow,
     date,
@@ -139,16 +139,16 @@ function doseIntent(
       doseId,
       ...(opts.clientTakenAt ? { clientTakenAt: opts.clientTakenAt } : {}),
     },
-    ...(opts.isPrimaryDay === undefined
-      ? {}
-      : {
-          profileId: parts.profileId,
-          dayContext: {
-            parts,
-            key: dayContextKey(parts),
-            isPrimaryDay: opts.isPrimaryDay,
-          },
-        }),
+  };
+  if (opts.isPrimaryDay === undefined) return base;
+  return {
+    ...base,
+    profileId: parts.profileId,
+    dayContext: {
+      parts,
+      key: dayContextKey(parts),
+      isPrimaryDay: opts.isPrimaryDay,
+    },
   };
 }
 

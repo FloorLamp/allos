@@ -271,6 +271,10 @@ function withLiveDayLabels(
   const label = (date: string) => contextDayLabel(date, today, prefs);
   switch (data.form) {
     case "food":
+      return {
+        ...data,
+        days: data.days.map((day) => ({ ...day, label: label(day.date) })),
+      };
     case "mood":
       return {
         ...data,
@@ -765,7 +769,7 @@ export default function QuickEntryProvider({
   return (
     <Ctx.Provider value={api}>
       {children}
-      {sheet && (
+      {sheet && form && (
         <BottomSheet
           open={open}
           onClose={close}
