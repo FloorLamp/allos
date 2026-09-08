@@ -3,7 +3,6 @@ import { today } from "@/lib/db";
 import {
   getRankedPickerProviders,
   getIntakeCatalogOptions,
-  getConditions,
   collectHouseholdRollup,
   countVisiblePools,
   findLinkableSupply,
@@ -121,13 +120,7 @@ export default async function MedicationsPage(props: {
     : [];
 
   // The add-workspace is ACTING-ONLY (#1096 write-centric): its pickers/options come
-  // from the acting profile. Conditions for the "For condition…" indication picker
-  // (#1052); situation options for the schedule form.
-  const medConditions = getConditions(actingProfileId).map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-  }));
+  // from the acting profile.
   const situationOptions = mergedSituationOptions(
     getSituations(actingProfileId)
   ).map((o) => o.name);
@@ -156,6 +149,7 @@ export default async function MedicationsPage(props: {
             options={getIntakeCatalogOptions(actingProfileId)}
           >
             <MedicationAddWorkspace
+              intakeContext={actingData.intakeContext}
               initialSupply={initialSupply}
               subtitle={
                 medCount === 0
@@ -163,12 +157,6 @@ export default async function MedicationsPage(props: {
                   : subtitle
               }
               action={addIntakeItem}
-              allIntakeItems={actingData.allIntakeItems}
-              stackItems={actingData.stackItems}
-              pgxVariants={actingData.pgxVariants}
-              pediatric={actingData.pediatric}
-              todayStr={actingData.todayStr}
-              conditions={medConditions}
             />
 
             {multi && (

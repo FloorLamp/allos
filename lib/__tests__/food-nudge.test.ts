@@ -1,10 +1,4 @@
-// PURE TIER — the Telegram food-log nudge renderer + callback tokens (issues #682, #1016,
-// #1073, #1075, #1807). DB-free: the gather (lib/notifications/food.ts) hands ranked KEYS +
-// slot-scoped counts + day totals here; this pins that the top-N ranked keys become quick-log
-// buttons in order, the button "(n)" suffix is SLOT-scoped while the tally is the DAY total
-// (labeled "Today:"), the reserved __protein__ key renders the "+Xg protein" button, the
-// progressive-expansion window + "Show more"/"Show less" behave per visibleCount, and the
-// keyboard carries no deep link at all (#1807).
+// Pure food-nudge rendering: ranked buttons offer writes, and the tally states day totals.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -64,16 +58,13 @@ describe("renderFoodNudge", () => {
     expect(msg.title).toContain("Morning");
   });
 
-  it("the button suffix is the DAY total, matching the tally (#2019 retired the slot count)", () => {
+  it("keeps the day total in the tally without repeating it on the button", () => {
     const top = RANKED_GROUPS[0];
     const day = new Map<string, number>([[top.slug, 3]]);
     const msg = renderFoodNudge(1, "Midday", DATE, RANKED, day);
     const first = (msg.actions ?? [])[0];
-    // #1016's "n this slot" is gone with the read-time window derivation it depended on:
-    // a Telegram tap no longer asserts a meal, so "this slot" would have to be re-derived
-    // and a tap minutes past a boundary would tick nobody's button.
     expect(first.label).toBe(
-      `${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)} (3)`
+      `${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)}`
     );
     expect(plainBody(msg.body)).toContain(
       `✅ Today: ${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)} ×3`
@@ -158,28 +149,25 @@ describe("renderFoodNudge", () => {
   });
 });
 
-// ---- #1073: reserved __protein__ pseudo-group renders the "+Xg protein" button ----
-// #1379: it now also carries the #1016 slot-scoped "(n)" suffix like every sibling.
+// The reserved protein key offers grams instead of a food serving.
 describe("renderFoodNudge protein pseudo-group (#1073)", () => {
   // A ranked list with __protein__ at position 1 (within the default 6-button window).
   const withProtein = [RANKED[0], PROTEIN_NUDGE_KEY, ...RANKED.slice(1)];
 
-  it("renders the reserved key as a '+Xg protein' button, not a food group", () => {
+  it("renders the reserved key as a protein amount, not a food group", () => {
     const msg = renderFoodNudge(1, "Evening", DATE, withProtein, new Map(), {
       proteinPresetGrams: 30,
     });
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("💪 ＋30g protein");
+    expect(proteinBtn?.label).toBe("💪 30 g protein");
     expect(proteinBtn?.data).toBe(
       foodProteinCallbackData(1, "Evening", DATE, 30)
     );
   });
 
-  it("carries the (n) suffix like its siblings (#1379), on the day's protein taps", () => {
-    // #1379's sibling-consistency decision survives #2019; only the count's MEANING
-    // changed with every other button's — 3 protein taps today, not "this slot".
+  it("keeps the offered grams unchanged after prior protein taps", () => {
     const msg = renderFoodNudge(
       1,
       "Evening",
@@ -191,7 +179,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("💪 ＋25g protein (3)");
+    expect(proteinBtn?.label).toBe("💪 25 g protein");
     // The tally line is empty (no real food group logged) — the reserved key is filtered.
     expect(msg.body).not.toContain("✅ Today:");
     expect(msg.body).not.toContain("__protein__");
@@ -204,7 +192,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("💪 ＋25g protein"); // 0 → bare, matches the sibling matrix
+    expect(proteinBtn?.label).toBe("💪 25 g protein");
   });
 
   // #1822 item 6: one keyboard, one label grammar. Every food-group button leads with
@@ -235,7 +223,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("💪 ＋30g protein"); // DEFAULT_PROTEIN_PRESET_GRAMS
+    expect(proteinBtn?.label).toBe("💪 30 g protein"); // DEFAULT_PROTEIN_PRESET_GRAMS
   });
 });
 

@@ -1,53 +1,61 @@
 # API tokens
 
-API tokens let scripts act as a login. Manage them under **Settings → Account &
-security → API tokens**. Permissions follow that login's current role and profile
-access on every request; changing grants takes effect without replacing tokens.
+API tokens let scripts act as a login within a capability. The current scope,
+`upload:documents`, permits document uploads, run reports, and supporting reads;
+it does not permit downloading stored documents. Each request uses the login's
+current role and profile grants. Knowing an ID or portal mapping does not grant
+write access.
 
-## What a token is
+## Manage tokens
 
-A token is login-owned and capability-scoped. The current scope,
-`upload:documents`, permits document uploads, run reports, and supporting reads:
-writable profile names/IDs, visible portal/account names and slugs, document
-hashes, and open sync requests. It does not permit downloading stored documents.
+Under **Settings → Account & security → API tokens**, name the client, choose its
+capability, and create a token. Copy it immediately; the secret is shown once.
+Use separate tokens for devices you may revoke independently.
 
-Each endpoint applies its own authorization after authenticating the token.
-Knowing a profile ID or portal mapping does not grant access to it.
+A login can have 20 live tokens. The format is `<id>.<secret>`: the ID is public,
+and only a scrypt hash of the secret is stored. Tokens do not expire automatically.
+Revoke unused credentials using their last-used times. Revocation takes effect on
+subsequent authentication without a cache or grace period. The revoked row remains
+to prevent ID reuse but disappears from management lists; login deletion removes
+its tokens.
 
-## Creating a token
+Members manage their own tokens. Admins can also list and revoke other logins'
+tokens. Lists expose names, capabilities, and usage times, never secrets.
 
-1. Open **Settings → Account & security → API tokens**.
-2. Name the device or client, choose the capability, and press **Create token**.
-3. Copy the token immediately; it is shown once.
+## Authenticate and select a destination
 
-Use a separate token per device so revocation can be selective. A login can have
-up to 20 live tokens. The wire format is `<id>.<secret>`: the ID is public; only a
-scrypt hash of the secret is stored. A lost secret cannot be recovered.
-
-## Using a token
-
-Send `Authorization: Bearer <id>.<secret>`. These examples assume `ALLOS_TOKEN`
-is already set and pass the header through stdin to keep the secret out of
-curl's arguments. Keep credentials out of committed files and logs.
-
-### Uploading documents
-
-`POST /api/documents` accepts multipart `file` parts and an explicit destination:
+Send `Authorization: Bearer <id>.<secret>`. This example assumes `ALLOS_TOKEN` is
+set and passes the header through stdin to keep it out of curl's arguments:
 
 ```bash
 printf 'Authorization: Bearer %s\n' "$ALLOS_TOKEN" | curl -H @- \
   -F file=@labs.pdf 'https://allos.example/api/documents?profile=2'
 ```
 
-Destination fields may be query parameters or multipart fields; query parameters
-win. Supply exactly one of `profile=<id>` or `portal=<slug>&patient=<label>` with
-optional `account=<slug>`. Missing, malformed, or conflicting targets return
-`400`; there is no active-profile default. The login must be able to reach and
-write the destination, and demo restrictions still apply.
+Keep credentials out of committed files and logs. Upload and inventory requests
+need exactly one destination:
 
-Uploads use the in-app ingest engine's size, content, batch, and deduplication
-rules. Files are processed sequentially; batch overflow is returned as `skipped`.
-Read every per-file result: `ok: true` means the request was handled.
+- `profile=<id>`; there is no active-profile default.
+- `portal=<slug>&patient=<label>`, optionally with `account=<slug>`. Use the
+  portal's patient label and Allos's mapping under **Integrations → Patient
+  portals**. URL-encode query values. Omit `account` only for a single-account
+  portal.
+
+Upload targets may be query parameters or multipart fields; query values win.
+Missing, malformed, or conflicting targets return 400. The login must reach and
+write the resolved profile, and demo restrictions apply.
+
+Unknown, unmapped, ignored, or ambiguous portal identities receive the same 404
+with `error: "unmapped-identity"`. Authenticated upload refusals can record a
+bounded pending identity for a person to map; repeated sightings update it.
+An unmapped inventory read creates no pending identity.
+
+## Upload documents
+
+`POST /api/documents` accepts multipart `file` parts. It uses the in-app ingest
+engine's size, type, content, batch, and deduplication rules. Processing is
+sequential; batch overflow appears in `skipped`. Inspect every file result:
+`ok: true` means the request was handled, not that every file was stored.
 
 ```json
 {
@@ -59,227 +67,126 @@ Read every per-file result: `ok: true` means the request was handled.
 }
 ```
 
-| Outcome     | Meaning and client action                                                                                              |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `stored`    | Stored for processing through the normal Review flow.                                                                  |
-| `duplicate` | Same bytes or fully covered clinical entries; nothing stored. Count as `unchanged`.                                    |
-| `blocked`   | A user deleted these bytes; nothing stored. Count as `suppressed`, not failed. Stop offering them until allowed again. |
-| `failed`    | Inspect `reason`, such as an unsupported type or size refusal.                                                         |
+| Outcome     | Client action                                                     |
+| ----------- | ----------------------------------------------------------------- |
+| `stored`    | Continue through the normal Review flow.                          |
+| `duplicate` | Count as `unchanged`; bytes or clinical entries are already held. |
+| `blocked`   | Count as `suppressed`, not failed; a person deleted these bytes.  |
+| `failed`    | Inspect `reason` for the refusal.                                 |
 
-`duplicate` and `blocked` have `id: null` and create no document row. Clinical-entry
-coverage can recognize the same records in different export packaging; a partly
-new export is stored. A user can reverse a block through Review's
-**blocked from re-acquisition** controls or a direct upload.
+Duplicate and blocked offers create no row and return `id: null`. Clinical-entry
+coverage can recognize differently packaged exports; partly new exports are stored.
+A person can reverse a block through Review's **blocked from re-acquisition**
+controls or a direct upload.
 
-### Uploading for a portal patient instead of a profile id
+## Report an acquisition run
 
-Automated portal clients should send the patient label shown by the portal,
-rather than maintain their own profile mapping:
-
-```bash
-printf 'Authorization: Bearer %s\n' "$ALLOS_TOKEN" | curl -H @- \
-  -F file=@summary.pdf \
-  'https://allos.example/api/documents?portal=example-portal&account=default&patient=Example%20Patient'
-```
-
-Allos resolves the mapping managed under **Integrations → Patient portals**, then
-checks write access. `account` can be omitted only when the portal has exactly one
-account. Unknown, unmapped, ignored, and ambiguous identities receive the same
-`404` with `error: "unmapped-identity"`; nothing is filed. Authenticated upload
-refusals can record a bounded pending identity for a person to map. Repeated
-sightings update that identity instead of adding rows.
-
-### Reporting a run
-
-Finish each acquisition with `POST /api/documents/sync-report`, including runs
-that found nothing new:
-
-```bash
-printf 'Authorization: Bearer %s\n' "$ALLOS_TOKEN" | curl -H @- \
-  -H 'Content-Type: application/json' \
-  -d '{"status":"nothing-new","portal":"example-portal","account":"default",
-       "patient":"Example Patient","unchanged":4,"identities":["Example Patient"],
-       "contacted":true,"attended":false}' \
-  https://allos.example/api/documents/sync-report
-```
-
-- `status`: `downloaded`, `nothing-new`, or `failed`.
-- Destination: the same profile or portal/patient forms as upload.
-- Counts: optional `inserted`, `updated`, `unchanged`, `failed`, `suppressed`;
-  each defaults to zero. A suppressed file does not make the run fail.
-- `message`: optional, trimmed to 500 characters.
-- `identities`: patient labels seen on the portal, verbatim. Entries may also be
-  `{ "patient": "Example Patient", "outcome": "declined" }`; see the supported
-  outcomes in [the parser](../lib/acquirer-identity.ts).
-- `contacted`: whether the client actually checked the portal. Set false for
-  delivery of files already on disk.
-- `attended`: whether a person participated. Set false for scheduled runs.
-  Both flags default to true when absent, preserving older clients' behavior.
-
-A successful check, including `nothing-new`, advances **Last checked**. Delivery
-alone and failed checks do not. An attended check or a successful unattended check
-answers an open sync request; delivery alone and unattended failures leave it open.
-See [patient portal behavior](integrations.md#patient-portals).
-
-Reporting against a portal account requires write access to a profile mapped
-under it; before any patient is mapped, write access to any profile suffices.
-An inaccessible account gets the same `404` as an unknown account, without
-recording state. Per-patient writes remain limited to writable profiles.
-
-Authorized reports accept discovered identities even when the run failed or its
-target patient is unmapped. Labels are sanitized, deduplicated, and capped;
-already mapped or ignored labels do not become pending again. The optional
-`discovered` response counts newly pending labels, including on an unmapped-target
-`404`; it is absent when none are new.
-
-### Reporting a failure that never reached a patient
-
-Only `status: "failed"` may name a portal/account without a patient. For example,
-send `{"status":"failed","portal":"example-portal","account":"default",
-"message":"Portal login failed","contacted":true,"attended":false}` to the
-same reporting endpoint.
-
-This records an account-level run report shown in Patient portals, not a
-profile's sync event. It uses the same account authorization and ambiguity rules.
-Successful statuses still require a destination patient or profile.
-
-### Asking what allos already holds
-
-`GET /api/documents/held` accepts the upload's destination query parameters and
-requires the same write access:
-
-```bash
-printf 'Authorization: Bearer %s\n' "$ALLOS_TOKEN" | curl -H @- \
-  'https://allos.example/api/documents/held?profile=2'
-```
+Send JSON to `POST /api/documents/sync-report` after each acquisition, including
+one that found nothing new:
 
 ```json
 {
-  "ok": true,
-  "profile": 2,
-  "held": ["ab12…"],
-  "deleted": ["cd34…"],
-  "covered": ["ef56…"]
+  "status": "nothing-new",
+  "portal": "example-portal",
+  "account": "default",
+  "patient": "Example Patient",
+  "unchanged": 4,
+  "identities": ["Example Patient"],
+  "contacted": true,
+  "attended": false
 }
 ```
 
-The lists contain SHA-256 hashes of file bytes:
+- `status` is `downloaded`, `nothing-new`, or `failed`. Supply the same destination
+  fields as upload.
+- Optional counts are `inserted`, `updated`, `unchanged`, `failed`, and
+  `suppressed`, each defaulting to zero. Suppression is not a failure.
+- Optional `message` is trimmed to 500 characters.
+- `identities` contains patient labels seen on the portal. Entries can also be
+  `{ "patient": "Example Patient", "outcome": "declined" }`; supported outcomes
+  live in [the parser](../lib/acquirer-identity.ts).
+- `contacted` says the client checked the portal; use false for delivering files
+  already on disk. `attended` says a person participated; use false for scheduled
+  runs. Both default to true when absent.
 
-- `held`: currently stored documents.
-- `deleted`: user-deleted bytes that automated upload will refuse.
-- `covered`: offered bytes whose clinical entries are already held in other
-  documents. Coverage is recomputed on each read; deletion, reassignment, or
-  reprocessing can make the hash disappear from this list.
+A successful check advances **Last checked**. Delivery alone and failed checks do
+not. An attended check or successful unattended check answers an open sync request;
+unattended failures and delivery alone leave it open. See
+[patient portal behavior](integrations.md#patient-portals).
 
-Send files whose hashes appear in **none** of the three lists. Query current
-inventory instead of permanently caching a previous upload or duplicate verdict.
-The upload endpoint independently enforces deletion and coverage refusals.
-Inventory returns no filenames or document contents, and an unmapped read does
-not create a pending identity.
+Account authorization precedes report and discovery writes: the login needs write
+access to a mapped profile, or to any profile while the account has no mapped
+patients. Inaccessible and unknown accounts get the same 404 without recording
+state. Patient writes remain limited to writable profiles.
 
-### Finding the profile ids
+Authorized reports accept discovered labels even after a failed run or for an
+unmapped target. Labels are sanitized, deduplicated, and capped; mapped or ignored
+labels do not become pending again. A `discovered` response field counts newly
+pending labels, including on an unmapped-target 404; zero omits the field.
 
-`GET /api/documents/profiles` returns
-`{"ok":true,"profiles":[{"id":2,"name":"Example Patient"}]}` for the login's
-writable profiles. Names use the same disambiguation as the profile switcher.
-Read-only profiles are omitted; demo-restricted tokens receive an empty list.
+Only `status: "failed"` may name a portal/account without a patient. This records
+an account-level report, such as a portal-login failure, rather than a profile sync
+event. Successful statuses still require a patient or profile destination.
 
-### Finding the portal and account slugs
+## Read inventory and destinations
 
-`GET /api/documents/portals` returns visible registry entries:
+All these endpoints require `upload:documents`:
 
-```json
-{
-  "ok": true,
-  "portals": [
-    {
-      "slug": "example-portal",
-      "name": "Example Portal",
-      "software": "mychart",
-      "accounts": [
-        { "slug": "default", "name": "Default login", "implicit": true }
-      ]
-    }
-  ]
-}
-```
+| GET endpoint              | Response                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/documents/held`     | `ok`, `profile`, and arrays `held`, `deleted`, `covered`. Uses the upload destination and write gate.                          |
+| `/api/documents/profiles` | `ok`, `profiles: [{id, name}]` for writable profiles, with disambiguated names. Demo-restricted tokens receive an empty list.  |
+| `/api/documents/portals`  | `ok`, `portals: [{slug, name, software, accounts: [{slug, name, implicit}]}]`.                                                 |
+| `/api/documents/requests` | `ok`, `requests: [{portal, account, reason, expires}]` for open, unexpired requests on writable profiles. `expires` is a date. |
 
-A login needs write access to at least one profile; otherwise this endpoint returns
-`403`. Accounts are filtered by profile reachability, and portals with no visible
-accounts are omitted. Unclaimed accounts remain visible for setup. The response
-contains no portal URLs or patient bindings; configure the URL and credentials
-locally. Use the returned slugs, and select `account` explicitly when multiple
-accounts exist. `software` may be null; `implicit` identifies the default account.
+Inventory arrays contain SHA-256 file hashes: `held` is stored content, `deleted`
+is deliberately blocked content, and `covered` is offered content whose clinical
+entries are already held. Send hashes in none of these lists. Query fresh inventory:
+deletion, reassignment, or reprocessing can remove coverage. Upload independently
+enforces these refusals. Inventory exposes no filenames or document contents.
 
-### Finding open sync requests
+Portal listings require write access to at least one profile or return 403.
+Accounts are filtered by reachability; unclaimed accounts remain visible for setup,
+and portals without visible accounts are omitted. `software` may be null and
+`implicit` marks the default account. Use returned slugs, choosing an account
+explicitly when several exist. Configure portal URLs and credentials locally;
+the response exposes neither URLs nor patient bindings.
 
-`GET /api/documents/requests` returns `{"ok":true,"requests":[...]}` for open,
-unexpired requests on writable profiles. Each entry has `portal`, `account`,
-`reason`, and `expires` (a date). It exposes no patient labels or portal URLs.
-This is a list clients may act on, without claiming or acknowledging requests;
-the ordinary run report answers them. Demo-restricted tokens receive `403`.
+Requests expose no patient labels or portal URLs and do not claim or acknowledge
+work; the ordinary run report answers them. Demo-restricted tokens receive 403.
 
-### Rate limits
+## Limits and CLI
 
-Limits apply per presented token ID, in separate endpoint budgets: uploads allow
-60 requests per five minutes; profiles, portals, held, requests, and sync reports
-allow 120 each. A refusal returns `429` and `Retry-After`. Malformed credentials
-share an anonymous rate-limit bucket within each endpoint.
-
-## The command-line tool
+Each endpoint has a separate five-minute budget per presented token ID: 60 uploads
+or 120 requests to each supporting endpoint. Limits return 429 with `Retry-After`;
+malformed credentials share an anonymous bucket within that endpoint.
 
 [upload-docs.ts](../scripts/upload-docs.ts) runs on Node 24 without repository
-packages or database access:
+packages or database access, reading `ALLOS_TOKEN`:
 
 ```bash
 node scripts/upload-docs.ts --url https://allos.example --profile 2 labs.pdf
 ```
 
-It reads `ALLOS_TOKEN` from the environment. From a checkout, use
-`npm run upload-docs -- --url … --profile … files…`.
+From a checkout, `npm run upload-docs -- --url … --profile … files…` also works.
+`--profile` accepts names or IDs and can repeat; names ignore case and normalize
+repeated or surrounding whitespace, and ambiguity is an error. Each destination uploads and deduplicates
+independently. `--list` prints writable profiles. Exit codes are 0 for non-failed
+outcomes, including duplicates/blocks; 1 for a failed file/request; 2 for bad arguments.
 
-- `--profile` accepts a name or ID and can repeat for multiple destinations.
-  Names resolve case- and whitespace-insensitively; ambiguity is an error.
-- `--list` prints writable profiles and exits.
-- Each destination receives its own upload and deduplicates independently.
-- Exit codes: `0` for non-failed outcomes, including duplicates and blocks;
-  `1` for a failed file or request; `2` for invalid arguments.
+## Developer owners
 
-## Revoking
+[api-token-format](../lib/api-token-format.ts) owns wire parsing, scopes, labels,
+and rate-limit identity; [api-tokens](../lib/api-tokens.ts) owns token storage and
+authentication. [Acquirer identity](../lib/acquirer-identity.ts) owns destination
+and report parsing; [routes](../app/api/documents) authorize before domain work.
+[Upload outcomes](../lib/document-upload-api.ts),
+[coverage](../lib/document-coverage.ts), and
+[deletion decisions](../lib/document-tombstones.ts) have existing owners. Document
+hash blocks live in `import_tombstones`, separately from keyed-upsert tombstones.
 
-Press **Revoke** on a token's row. It is rejected on subsequent authentication,
-with no cache or grace period. Its row remains to prevent ID reuse but disappears
-from the management list. Deleting a login deletes its tokens.
-
-## Expiry
-
-Tokens have no automatic expiry. Use the last-used time to identify and revoke
-unused credentials.
-
-## Who sees what
-
-Members manage their own tokens. Admins can also list and revoke other logins'
-tokens. Lists expose names, capabilities, and last-used times, never secrets.
-
-## For developers
-
-- [api-token-format.ts](../lib/api-token-format.ts) owns wire parsing, scope
-  vocabulary, UI descriptions, and the public-ID rate-limit key.
-- [api-tokens.ts](../lib/api-tokens.ts) owns mint/list/revoke and
-  `authenticateApiToken()`. Tokens are login-owned, not profile-owned.
-- [acquirer-identity.ts](../lib/acquirer-identity.ts) owns destination/report
-  parsing and explicit response shapes. The [routes](../app/api/documents)
-  authenticate and authorize before invoking domain readers/writers.
-- [document-upload-api.ts](../lib/document-upload-api.ts) classifies upload
-  outcomes. Uploads use `ingestMedicalUpload`, the shared ingest engine.
-- [document-coverage.ts](../lib/document-coverage.ts) recomputes coverage from
-  stored evidence. [document-tombstones.ts](../lib/document-tombstones.ts)
-  records user deletion decisions in `import_tombstones`; it is consulted at
-  ingest, separately from keyed-upsert `TOMBSTONE_TABLES`.
-
-For a bearer route, register the cookie-free path in
-[public-paths.ts](../lib/public-paths.ts), rate-limit **before** scrypt verification,
-and call `authenticateApiToken()` for the required scope. Middleware registration
-does not authorize the request. Resolve profile reachability before checking
-write access, and apply demo restrictions; `accessForProfile()` alone assumes
-reachability. Portal account gates likewise precede discovery and report writes.
+Register bearer paths in [public-paths](../lib/public-paths.ts), rate-limit before
+scrypt verification, and authenticate the required scope. Middleware registration
+is not authorization. Resolve profile reachability before write access and demo
+checks; `accessForProfile` alone assumes reachability. Reuse the ingest engine and
+account gates instead of adding another upload or authorization path.

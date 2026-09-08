@@ -36,7 +36,7 @@ function oneDose(amount: string) {
   return [
     {
       amount,
-      time_of_day: "",
+      time_of_day: "Morning",
       food_timing: "any" as const,
       weekdays: [],
       start_date: "",

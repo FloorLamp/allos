@@ -1,29 +1,6 @@
-// Global security response headers (issue #21). Applied to every route by the
-// `headers()` hook below. Route handlers (API, .ics feed, SSE, icons) get the
-// same set — these are all response headers and none constrain a JSON/stream/
-// binary body.
-//
-// The /share/* responses layer STRICTER values on top in middleware.ts
-// (withShareHeaders: Referrer-Policy: no-referrer, plus Cache-Control/X-Robots-
-// Tag) — middleware runs per-request and its `res.headers.set(...)` overrides
-// these config defaults for that route, which is verified by the e2e spec.
-//
-// CSP lives in middleware, NOT here (issue #595, step 3 — final). The full
-// Content-Security-Policy is now built and set per-request by middleware.ts (from
-// the single-source-of-truth builder lib/csp.ts), because its script-src carries
-// a per-request nonce that a static config header can't express. So this config
-// declares NO Content-Security-Policy / -Report-Only header at all — moving it out
-// keeps exactly ONE copy of the policy and removes the report-only test bed that
-// #624 used to trial the nonce tightening (now graduated).
-//
-// Final policy shape (see lib/csp.ts for the full reasoning): the non-script
-// directives are unchanged from #624 (default-src 'self', base-uri 'self',
-// object-src 'none', form-action 'self', the always-safe frame-ancestors 'none',
-// img-src 'self' data: blob:, connect-src 'self'); script-src drops 'unsafe-inline'
-// for `'self' 'nonce-<value>'` (dev keeps 'unsafe-inline' + adds 'unsafe-eval' for
-// HMR); style-src KEEPS 'unsafe-inline' by design (Tailwind + Next inline styles
-// have no nonce hook). The theme-boot inline script (app/layout.tsx) and Next's
-// own inline bootstrap both carry the nonce.
+// Global response defaults. SECURITY.md describes their scope and exceptions.
+// Middleware builds CSP per request through lib/csp.ts so its nonce can also
+// reach the document bootstrap; do not add a static CSP copy here.
 
 const SECURITY_HEADERS = [
   // HSTS: 180 days, includeSubDomains but NOT preload — a self-hoster may run
