@@ -22,7 +22,7 @@ Two axes are load-bearing; `reconcile-tracker` flags violations of both
   label, extend `KNOWN_LABELS` and merge first — the live list follows code.
 - `needs-human` means one owner answer is required. Label + assign, keep
   working elsewhere; never prompt the owner uninvited and never a blocking
-  `AskUserQuestion` mid-session — the owner is usually absent. The
+  owner-question tool mid-session — the owner is usually absent. The
   needs-human skill drains the queue when they show up.
 - A `needs-human` comment is shaped for the fastest answer: the options, a
   recommendation, each option's size, and what the answer unblocks. A wording
@@ -30,6 +30,6 @@ Two axes are load-bearing; `reconcile-tracker` flags violations of both
   or a ruling? If not, it is a note, not a question.
 - State whether the answer is VISIBLE to a person (copy, layout, a control,
   a reach, where data lands). Visible answers wait for the owner; the rest
-  the PM rules on the recommendation (`.claude/skills/pm`).
+  the PM rules on the recommendation (`.agents/skills/pm`).
 - Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
   `parked`; an adopt is merged by the orchestrator.
