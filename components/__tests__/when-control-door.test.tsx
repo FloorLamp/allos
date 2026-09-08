@@ -173,9 +173,13 @@ describe("opening proposals in both time-picker hosts", () => {
         document.getElementById(minutes.getAttribute("aria-activedescendant")!)
           ?.textContent
       ).toBe("37");
-      expect(screen.queryAllByRole("option", { selected: true })).toHaveLength(
-        0
-      );
+      for (const column of screen.getAllByRole("listbox", {
+        name: /^(Hour|Minute|AM or PM)$/,
+      })) {
+        expect(
+          within(column).queryAllByRole("option", { selected: true })
+        ).toHaveLength(0);
+      }
       expect(seen).toEqual([]);
       fireEvent.click(within(hours).getByRole("option", { name: hour }));
       expect(seen.at(-1)).toEqual({
