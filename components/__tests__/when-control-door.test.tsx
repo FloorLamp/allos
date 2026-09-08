@@ -11,6 +11,7 @@ import { useState } from "react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { isRealIsoDate } from "@/lib/date";
 import type { LocalDay } from "@/lib/temporal-types";
+import type { TimeFormat } from "@/lib/format-date";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
@@ -33,7 +34,10 @@ import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 // jsdom answers false to every media query through the tier's stand-in, so the
 // panel mounts in its desktop host here. The sheet is a browser claim and lives
 // in e2e/anchored-panel-fork.mobile.spec.ts.
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -60,7 +64,8 @@ const AT = "2026-08-29T19:30:00.000Z";
 
 function mount(
   props: Partial<Parameters<typeof WhenControl>[0]>,
-  initial: WhenValue = { date: DAY, statedAt: AT }
+  initial: WhenValue = { date: DAY, statedAt: AT },
+  timeFormat: TimeFormat = "24h"
 ) {
   const seen: WhenValue[] = [];
   function Host() {
@@ -68,7 +73,7 @@ function mount(
     return (
       <TimezoneProvider tz="UTC">
         <WeekStartProvider weekStart={0}>
-          <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat: "24h" }}>
+          <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat }}>
             <WhenControl
               mode="state"
               grain="minute"
@@ -135,6 +140,50 @@ describe("WhenControl composes one door only when the pair is one required value
     expect(door()).toBeNull();
     expect(split().time?.tagName).toBe("SELECT");
   });
+});
+
+describe("opening proposals in both time-picker hosts", () => {
+  it.each([
+    [true, "24h", "14"],
+    [true, "12h", "02"],
+    [false, "24h", "14"],
+    [false, "12h", "02"],
+  ] as const)(
+    "required=%s, %s uses the explicit subject zone and retains the chosen day",
+    (timeRequired, timeFormat, hour) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-09T00:37:00Z"));
+      const { seen } = mount(
+        { timeRequired, tz: "Pacific/Honolulu", maxDate: "2026-12-31" },
+        { date: DAY, statedAt: null },
+        timeFormat
+      );
+      fireEvent.click(
+        timeRequired
+          ? door()!
+          : screen.getByRole("button", { name: "Open time picker" })
+      );
+      const hours = screen.getByRole("listbox", { name: "Hour" });
+      const minutes = screen.getByRole("listbox", { name: "Minute" });
+      expect(
+        document.getElementById(hours.getAttribute("aria-activedescendant")!)
+          ?.textContent
+      ).toBe(hour);
+      expect(
+        document.getElementById(minutes.getAttribute("aria-activedescendant")!)
+          ?.textContent
+      ).toBe("37");
+      expect(screen.queryAllByRole("option", { selected: true })).toHaveLength(
+        0
+      );
+      expect(seen).toEqual([]);
+      fireEvent.click(within(hours).getByRole("option", { name: hour }));
+      expect(seen.at(-1)).toEqual({
+        date: DAY,
+        statedAt: "2026-08-30T00:37:00.000Z",
+      });
+    }
+  );
 });
 
 describe("the composed door", () => {
@@ -206,7 +255,9 @@ describe("the composed door", () => {
     // A flick still in the air: the column rests fifteen rows from its value and
     // its settle has not fired.
     const minutes = within(panel).getByRole("listbox", { name: "Minute" });
-    minutes.scrollTop = 45 * 44;
+    const row = within(minutes).getByRole("option", { name: "45" });
+    fireEvent.wheel(minutes, { deltaY: 44 });
+    minutes.scrollTop = (Array.from(minutes.children).indexOf(row) - 1) * 44;
     fireEvent.scroll(minutes);
 
     // ...and inside that window the user picks a day.
