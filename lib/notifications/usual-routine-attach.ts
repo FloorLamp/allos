@@ -43,6 +43,7 @@ import { mintOffer, readOffer } from "./offer-store";
 import { keyboardFamilyValid } from "./reconcile-registry";
 import { tokenPrefix } from "./reconcile-core";
 import { GLYPH } from "./glyphs";
+import { writesCount } from "./button-label";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { joinBody } from "./rich-text";
 
@@ -106,7 +107,7 @@ export function usualRoutineAttachmentFor(
     token,
     // The COUNT is every write the tap performs — servings plus dose confirms — so the
     // number on the button and the things named on the line are the same things.
-    label: `${GLYPH.done} Your usual ${offer.window} (${foodNames.length + offer.doses.length})`,
+    label: `${GLYPH.done} Your usual ${offer.window} ${writesCount(foodNames.length + offer.doses.length)}`,
     line: `${GLYPH.done} Your usual ${offer.window}: ${phrase}`,
   };
 }
