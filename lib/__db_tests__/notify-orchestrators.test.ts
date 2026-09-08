@@ -248,7 +248,7 @@ describe("runRefills orchestrator", () => {
     const fetchMock = stubFetch();
     const date = today(p);
 
-    const res = await runRefills(p, "RefillSend", date);
+    const res = await runRefills(p, date);
     expect(res.failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1); // one HA POST
     // Delivered → the item's low-supply episode marker is stamped with the date.
@@ -266,7 +266,7 @@ describe("runRefills orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    const res = await runRefills(p, "RefillRecover", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(false);
     // Episode ended (not low) → marker swept, and nothing sent.
     expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
@@ -282,7 +282,7 @@ describe("runRefills orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    const res = await runRefills(p, "RefillFrozen", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled(); // held out of the send
     // The marker is the third "frozen" state: still low, still marked, but untouched
@@ -295,7 +295,7 @@ describe("runRefills orchestrator", () => {
     const supp = seedLowSupplement(p);
     const fetchMock = stubFetch();
 
-    const res = await runRefills(p, "RefillNoChannel", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     // No marker written, so the nudge is retried once a channel is configured.
@@ -310,7 +310,7 @@ describe("runRefills orchestrator", () => {
     const fetchMock = stubFetch({ telegramOk: true, haOk: false });
     const date = today(p);
 
-    const res = await runRefills(p, "RefillPartial", date);
+    const res = await runRefills(p, date);
     // At least one channel delivered → the marker is set; the failed channel is
     // aggregated into the tick's exit signal.
     expect(res.failed).toBe(true);
@@ -325,7 +325,7 @@ describe("runRefills orchestrator", () => {
     configureTelegram(p);
     stubFetch({ telegramOk: false, haOk: false });
 
-    const res = await runRefills(p, "RefillAllFail", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(true);
     // Nothing delivered → marker stays unset so the episode re-fires next tick.
     expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
@@ -498,7 +498,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscSend",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -516,7 +515,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscFail",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -533,7 +531,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscNoChannel",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -550,13 +547,7 @@ describe("runEscalations orchestrator", () => {
     const fetchMock = stubFetch();
 
     // 09:00 < the 10:00 threshold (slot 8 + 120 min) → not yet due.
-    const res = await runEscalations(
-      p,
-      "EscEarly",
-      date,
-      9,
-      getNotifySchedule(p)
-    );
+    const res = await runEscalations(p, date, 9, getNotifySchedule(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBeUndefined();
@@ -575,7 +566,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscConfirmed",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -598,7 +588,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscSuppressed",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -633,7 +622,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscOverride",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -659,7 +647,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscFanOut",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -693,7 +680,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscAccounting",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -721,13 +707,7 @@ describe("runEscalations orchestrator", () => {
     });
     expect(getNotifyError()).not.toBeNull();
 
-    await runEscalations(
-      p,
-      "EscAccountingClear",
-      date,
-      LATE_MINUTE,
-      getNotifySchedule(p)
-    );
+    await runEscalations(p, date, LATE_MINUTE, getNotifySchedule(p));
     // Cleared because this dispatch actually reached THAT caregiver's chat — the
     // owner whose row was failing (#2565), reached by the safety tier too.
     expect(getNotifyError()).toBeNull();
@@ -740,13 +720,7 @@ describe("runEscalations orchestrator", () => {
     const fetchMock = stubFetch();
 
     // 12:00 tick against the 08:00 Morning slot → 4h unconfirmed.
-    await runEscalations(
-      p,
-      "EscElapsed",
-      date,
-      LATE_MINUTE,
-      getNotifySchedule(p)
-    );
+    await runEscalations(p, date, LATE_MINUTE, getNotifySchedule(p));
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(String(body.text)).toContain("morning slot, unconfirmed for 4h");
   });
@@ -772,7 +746,6 @@ describe("runEscalations orchestrator", () => {
     // no marker of its own, no further nag.
     const res = await runEscalations(
       p,
-      "EscSkip",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -1137,7 +1110,7 @@ describe("runEaseBack (#837)", () => {
 
     const input1 = gatherCoachingInput(p, "kg", "km");
     const fetchMock = stubFetch();
-    const res1 = await runEaseBack(p, "EaseBack", input1, td);
+    const res1 = await runEaseBack(p, input1, td);
     expect(res1.failed).toBe(false);
     // Delivered → the per-episode one-shot marker is set to the send date.
     expect(getProfileSetting(p, easeBackMarkerKey(episodeId))).toBe(td);
@@ -1149,7 +1122,7 @@ describe("runEaseBack (#837)", () => {
 
     // Second tick, same open ease-back window → one-shot: no new send.
     const input2 = gatherCoachingInput(p, "kg", "km");
-    const res2 = await runEaseBack(p, "EaseBack", input2, td);
+    const res2 = await runEaseBack(p, input2, td);
     expect(res2.failed).toBe(false);
     expect(fetchMock.mock.calls.length).toBe(firstSendCalls);
   });
@@ -1162,7 +1135,7 @@ describe("runEaseBack (#837)", () => {
 
     const input = gatherCoachingInput(p, "kg", "km");
     const fetchMock = stubFetch();
-    const res = await runEaseBack(p, "EaseBackOpen", input, td);
+    const res = await runEaseBack(p, input, td);
     expect(res.failed).toBe(false);
     expect(fetchMock.mock.calls.length).toBe(0);
   });
