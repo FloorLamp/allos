@@ -32,7 +32,7 @@ import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 // the surface must
 //   • say the ONE shared sentence (OFFLINE_CAPTURE_REFUSED_MESSAGE),
 //   • never claim "saved offline",
-//   • roll its optimistic state back (no phantom count, chip, or closed sheet),
+//   • roll back committed-state claims while retaining retryable drafts,
 //   • and leave no pending badge — nothing was queued, so nothing may claim it.
 //
 // POSITIVE EVIDENCE, per surface: the refused toast can only come from the
@@ -354,9 +354,9 @@ function dropActivitiesCreatedAfter(since: number): void {
 const REFUSED_FLUSH_SETTLE_MS = 3_000;
 
 async function expectRefusedOnly(page: Page): Promise<void> {
-  await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(
+    page.getByRole("status").getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(SAVED_OFFLINE)).toHaveCount(0);
   // Nothing was queued, so nothing may count itself pending.
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
@@ -667,7 +667,7 @@ test("a refused mobility-move tap says so and un-presses the chip", async ({
   }
 });
 
-test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet open", async ({
+test("a refused quick-entry mood tap retains its draft and error without claiming a save", async ({
   page,
   context,
 }) => {
@@ -681,8 +681,7 @@ test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet op
   const checkin = page.getByTestId("mood-form");
   await expect(checkin).toBeVisible();
 
-  // Tap a face that is not already the stored rating, so the rollback below is
-  // observable as its own state change.
+  // Choose a different face so keeping this unsaved draft is observable.
   const face2 = checkin.getByTestId("quick-mood-tap-2");
   const face3 = checkin.getByTestId("quick-mood-tap-3");
   const face =
@@ -692,9 +691,12 @@ test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet op
   await face.click();
 
   await expectRefusedOnly(page);
-  // The face rolled back, and the sheet stayed open — closing it is this
-  // surface's claim that the check-in landed.
-  await expect(face).toHaveAttribute("aria-pressed", "false");
+  // The controller keeps the failed attempt ready to retry; the persistent error
+  // and open sheet distinguish that draft from a saved check-in.
+  await expect(face).toHaveAttribute("aria-pressed", "true");
+  await expect(checkin.getByRole("alert")).toHaveText(
+    OFFLINE_CAPTURE_REFUSED_MESSAGE
+  );
   await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
   await context.setOffline(false);
   await page.keyboard.press("Escape");

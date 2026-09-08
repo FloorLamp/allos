@@ -1,17 +1,14 @@
 "use server";
 
-import { requireSession } from "@/lib/auth";
+import { requireSession, type CurrentSession } from "@/lib/auth";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { gateSubjectProfile } from "./gate-item";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
-import {
-  getExcludedFoodGroups,
-  getProfileAge,
-} from "@/lib/settings/profile-attrs";
-import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import {
@@ -20,15 +17,10 @@ import {
 } from "@/lib/cycle-plausibility";
 import {
   collectDueDosesNow,
-  currentFoodSlot,
-  getFoodMealDays,
   type FoodMealEvent,
-  getFoodBarOrder,
   getMoodOnDate,
   getPediatricFormContext,
   getPrnMedicationsForQuickLog,
-  getProteinDailyGrams,
-  getProteinQuickAddPreset,
   getTrackedPractices,
   type TrackedPractice,
   type PrnMedForQuickLog,
@@ -45,12 +37,7 @@ import {
 import { upcomingDueText } from "@/lib/upcoming";
 import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import type { FoodGroup } from "@/lib/food-groups";
-import {
-  FOOD_SLOTS,
-  type FoodSlot,
-  type FoodSlotBoundaries,
-} from "@/lib/food-slot";
-import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
+import type { FoodSlot, FoodSlotBoundaries } from "@/lib/food-slot";
 import type { TemperatureUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import { getBristolReadings } from "@/lib/queries/bristol-stool";
@@ -71,6 +58,7 @@ import {
 import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import { isWithinReach, SHEET_REACH, TAP_REACH } from "@/lib/log-manifest";
+import { gatherQuickEntryFood } from "@/lib/quick-entry-food";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -188,7 +176,7 @@ export type QuickEntryData =
       // TODAY's offer, unchanged: the arrived-slot due-now slice. An evening dose is
       // still not "due right now" in the morning.
       doses: QuickEntryDose[];
-      prn: QuickEntryPrn;
+      prn?: QuickEntryPrn;
       // The recent-past days the sheet may switch to (#3936), newest first — exactly
       // `doseLogDays(today)` minus today, so the switcher offers precisely the window
       // the write cores accept. A day with nothing left to log is still LISTED (with
@@ -235,6 +223,9 @@ export type QuickEntryData =
         } | null;
       }[];
       showCalm: boolean;
+      // Set only by device recovery in the client host. A Server Action result has
+      // seen the authoritative row and therefore always leaves this absent.
+      dayUnseen?: true;
     }
   | {
       // The well-day symptom bar (#4064) — the SAME props the dashboard's own mount
@@ -311,6 +302,10 @@ export type QuickEntryData =
     }
   | { form: "unavailable"; today: string; message: string };
 
+export type QuickEntryLoadResult =
+  | { kind: "ready"; data: QuickEntryData }
+  | { kind: "refused"; reason: "session" | "subject" };
+
 export async function loadQuickEntry(
   form: QuickEntryForm,
   // The sheet's chosen subject (#4932) — present when the title-row chip names
@@ -325,12 +320,47 @@ export async function loadQuickEntry(
   subjectProfileId?: number,
   selectedDay?: string,
   selectedReach: "sheet" | "dated" = "sheet"
+): Promise<QuickEntryLoadResult> {
+  let session: CurrentSession;
+  let profileId: number;
+  try {
+    session = await requireSession();
+  } catch (error) {
+    if (isRedirectError(error)) return { kind: "refused", reason: "session" };
+    throw error;
+  }
+  if (subjectProfileId != null && subjectProfileId !== session.profile.id) {
+    try {
+      profileId = await gateSubjectProfile(subjectProfileId);
+    } catch (error) {
+      if (isRedirectError(error)) return { kind: "refused", reason: "subject" };
+      throw error;
+    }
+  } else {
+    profileId = session.profile.id;
+  }
+  return {
+    kind: "ready",
+    data: await gatherQuickEntry(
+      form,
+      session,
+      profileId,
+      subjectProfileId,
+      selectedDay,
+      selectedReach
+    ),
+  };
+}
+
+async function gatherQuickEntry(
+  form: QuickEntryForm,
+  session: CurrentSession,
+  profileId: number,
+  subjectProfileId?: number,
+  selectedDay?: string,
+  selectedReach: "sheet" | "dated" = "sheet"
 ): Promise<QuickEntryData> {
-  const { login, profile: actingProfile } = await requireSession();
-  const profileId =
-    subjectProfileId != null && subjectProfileId !== actingProfile.id
-      ? await gateSubjectProfile(subjectProfileId)
-      : actingProfile.id;
+  const { login, profile: actingProfile } = session;
   const profile = { id: profileId };
   const date = today(profile.id);
   const selectedDateReach =
@@ -359,10 +389,13 @@ export async function loadQuickEntry(
   const requestedDate = selectedDay ?? date;
 
   if (form === "food") {
-    // The same gate the Food tab applies server-side (#591): below one year the
-    // adult food-group catalog is meaningless, so say so instead of rendering an
-    // empty logger.
-    if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
+    const food = gatherQuickEntryFood(profile.id, {
+      loginId: login.id,
+      today: date,
+      requestedDate,
+      now: clockNow(),
+    });
+    if (!food.available) {
       return {
         form: "unavailable",
         today: date,
@@ -370,38 +403,17 @@ export async function loadQuickEntry(
           "Food-group serving logging starts after the first year. Growth for this age lives in the Body and History views.",
       };
     }
-    const days = getFoodMealDays(profile.id, [requestedDate]).map((day) => ({
-      ...day,
-      label:
-        day.date === date
-          ? "Today"
-          : day.date === shiftDateStr(date, -1)
-            ? "Yesterday"
-            : formatWeekdayDate(day.date, getDisplayFormatPrefs(login.id)),
-    }));
-    // The SAME slot derivation that orders the catalog, so the bar's slot chip
-    // and its row order agree here exactly as they do on the page (#950).
-    const slot = currentFoodSlot(profile.id);
-    // THE ranking (#1980) — the same call the Food tab and the Telegram nudge make, so
-    // the sheet can never offer a different order than the page it opened over.
-    const orderBySlot = Object.fromEntries(
-      FOOD_SLOTS.map((meal) => [meal, getFoodBarOrder(profile.id, meal)])
-    ) as Record<FoodSlot, ReturnType<typeof getFoodBarOrder>>;
     return {
       form: "food",
       today: date,
-      days,
-      groupsBySlot: Object.fromEntries(
-        FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].groups])
-      ) as Record<FoodSlot, FoodGroup[]>,
-      proteinRankBySlot: Object.fromEntries(
-        FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
-      ) as Record<FoodSlot, number | null>,
-      proteinGrams: getProteinDailyGrams(profile.id, requestedDate),
-      proteinPreset: getProteinQuickAddPreset(profile.id),
-      excludedGroups: getExcludedFoodGroups(profile.id),
-      slot,
-      slotBoundaries: profileFoodSlotBoundaries(profile.id),
+      days: food.days,
+      groupsBySlot: food.groupsBySlot,
+      proteinRankBySlot: food.proteinRankBySlot,
+      proteinGrams: food.grams,
+      proteinPreset: food.preset,
+      excludedGroups: food.exclusions,
+      slot: food.slot,
+      slotBoundaries: food.boundaries,
     };
   }
 
