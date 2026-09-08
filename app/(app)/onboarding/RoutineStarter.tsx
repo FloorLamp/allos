@@ -1,5 +1,6 @@
 "use client";
 
+import { onboardingStepHref, trainingTabHref } from "@/lib/hrefs";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -83,7 +84,7 @@ export default function RoutineStarter({
       return;
     }
     toast(`${result.routineName} is ready`);
-    router.push("/onboarding?step=5");
+    router.push(onboardingStepHref(5));
   }
 
   return (
@@ -112,7 +113,10 @@ export default function RoutineStarter({
             <IconCheck className="h-4 w-4" aria-hidden="true" />
             {activeRoutineName} is active
           </span>
-          <Link href="/training?tab=routines" className="text-xs text-link">
+          <Link
+            href={trainingTabHref("plan", "routines")}
+            className="text-xs text-link"
+          >
             Manage routines
           </Link>
         </div>
