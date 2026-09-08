@@ -1,186 +1,119 @@
 # Identity registry
 
-Status: shipped
+Choose an identity for the question being answered, then reuse its existing
+owner across grouping, history, stars and dismissal keys. One subject can have
+several identities: a movement, its load context and a particular recorded set
+are different questions. Identity keys do not replace profile scoping.
 
-The **identity-family convention** (#482) says: when several stored names/codes
-answer ONE question, there is exactly ONE pure function that collapses them, and
-EVERY surface — the dedup partition, the series/`is_latest` grouping, the
-starred/pinned store, the retest/plateau clock, and the `dedupeKey` of any
-dismissal — keys on it, never on the raw name. A hand-rolled second grouping is
-the "one question, one computation" disease at the identity layer.
+This guide locates the owners and explains distinctions that callers must
+preserve. It is not a second registry of every exported function.
 
-This file is the index of those canonical identity functions (Track D of #860),
-so a new name-keyed signal reaches for its domain's existing function instead of
-inventing a parallel grouping. Every entry below is verified against the code by
-`lib/__tests__/identity-registry-doc.test.ts` (an anti-rot guard — a renamed or
-deleted symbol named here fails CI).
+## Domain owners
 
-## The canonical domain-identity functions
+| Subject                             | Existing owner and entry points                                                                                                                                                                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Biomarker family                    | [canonical-name.ts](../../lib/canonical-name.ts): `biomarkerFamily`, `normalizeCanonicalKey`. Family facts and canonical dataset rows are different identities.                                                                                                                |
+| Biomarker panel                     | [biomarker-panels.ts](../../lib/biomarker-panels.ts): `panelForCanonicalName`.                                                                                                                                                                                                 |
+| Lab result lifecycle                | [lab-result-lifecycle.ts](../../lib/lab-result-lifecycle.ts): `supersedesReading`, `normalizeResultStatus`. Determines whether a reissued result supersedes an earlier reading.                                                                                                |
+| Exercise movement                   | [lifts.ts](../../lib/lifts.ts): `exerciseHistoryKey`, `baseLiftName`, `exerciseHistoryNames`. The latter supplies the finite set of catalog names for SQL reads.                                                                                                               |
+| Strength load context               | [lifts.ts](../../lib/lifts.ts): `equipmentLoadLane`, `strengthLoadKey`, `movementLoadKey`, `loadContextLabel`. See the separate load axes below.                                                                                                                               |
+| Muscle region                       | [lifts.ts](../../lib/lifts.ts): `muscleRegion` maps a muscle to its coarse region.                                                                                                                                                                                             |
+| Cardio or sport activity            | [activities-catalog.ts](../../lib/activities-catalog.ts): `activityHistoryKey` matches case and whitespace variants.                                                                                                                                                           |
+| Personal-record dismissal           | [dismissal-keys.ts](../../lib/dismissal-keys.ts): `prStrengthDismissalKey`, `prCardioDismissalKey`, `prDismissalKeysLosingBacking`.                                                                                                                                            |
+| Symptom                             | [symptoms.ts](../../lib/symptoms.ts): `normalizeSymptomName`, `resolveSymptomKey`, `symptomSlugs`, curated/custom predicates and `symptomLabel`.                                                                                                                               |
+| Substance                           | [substance-use.ts](../../lib/substance-use.ts): `normalizeSubstanceName`, `resolveSubstanceKey`, curated/custom predicates, `substanceLabel` and `substanceDef`.                                                                                                               |
+| Shared vocabulary matching          | [vocabulary-fold.ts](../../lib/vocabulary-fold.ts): `foldVocabularyName`, `sameVocabularyName`, `matchFoldedVocabulary`; [vocabulary-store.ts](../../lib/vocabulary-store.ts) resolves profile-owned spellings.                                                                |
+| Drug ingredients                    | [rxnorm.ts](../../lib/rxnorm.ts): `parseRxcuiIngredients`; [drug-interactions.ts](../../lib/drug-interactions.ts): `itemRxcuis`.                                                                                                                                               |
+| Condition                           | [icd10.ts](../../lib/icd10.ts): `conditionCollapseKey`; [clinical queries](../../lib/queries/clinical.ts) use the corresponding representative-row grouping.                                                                                                                   |
+| Vaccine                             | [immunization-catalog.ts](../../lib/immunization-catalog.ts): `normalizeVaccineName` and component expansion; [dismissal keys](../../lib/dismissal-keys.ts) own `immunizationDismissalKey` and `immunizationCodesLosingBacking`.                                               |
+| Provider                            | [providers.ts](../../lib/providers.ts): `normalizeProviderName`.                                                                                                                                                                                                               |
+| Allergen                            | [allergy-ige.ts](../../lib/allergy-ige.ts): `allergenKey`, `allergenFromIgEName`.                                                                                                                                                                                              |
+| Nutrient                            | [dri.ts](../../lib/dri.ts): `resolveNutrientKey`, `nutrientByKey`.                                                                                                                                                                                                             |
+| Reading across storage tables       | [reading-model.ts](../../lib/reading-model.ts): `readingIdentity` uses biomarker-family identity. [READING_IDENTITY_MAP](../../lib/reading-identity-map.ts) supplies the shared stream/canonical mapping used by reading adapters and [cadence](../../lib/reading-cadence.ts). |
+| Representative row across documents | [representative-ids.ts](../../lib/representative-ids.ts): `representativeIds`, `representativeCte`, `REPRESENTATIVE_SPECS` and named preference axes. [latest-per-group.ts](../../lib/latest-per-group.ts) owns the pure recency comparison.                                   |
 
-| Subject                                                                                             | Function(s)                                                                                                                                                                                                                                                                                                                         | Location                                                                                           |
-| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Biomarker / lab analyte (total vs D2/D3 vitamin D, A1c ↔ eAG)                                       | `biomarkerFamily()`, its SQL twin `biomarkerFamilyKey()` (which CALLS it through the `biomarker_family` SQLite user function, #1401), and the name-keyed re-keys `biomarkerDismissalKey()` / `biomarkerFlagDismissalKey()`                                                                                                          | `lib/canonical-name.ts`, `lib/queries/medical.ts`, `lib/sql-functions.ts`, `lib/dismissal-keys.ts` |
-| Biomarker PANEL (which clinical order an analyte belongs to)                                        | `panelForCanonicalName()`, its SQL twin `biomarkerPanelKey()` (the `biomarker_panel` SQLite user function, #1629 — a family's members share one panel by construction)                                                                                                                                                              | `lib/biomarker-panels.ts`, `lib/queries/medical.ts`, `lib/sql-functions.ts`                        |
-| Lab result LIFECYCLE (is this re-import a re-issue of a value already read?)                        | `supersedesReading()` + `normalizeResultStatus()`                                                                                                                                                                                                                                                                                   | `lib/lab-result-lifecycle.ts`                                                                      |
-| Exercise / lift (a lift and its equipment variants — Barbell/Dumbbell Curl → Curl)                  | `exerciseHistoryKey()` (over `baseLiftName()`), with `exerciseHistoryNames()` as the `IN (...)` finite-preimage                                                                                                                                                                                                                     | `lib/lifts.ts`                                                                                     |
-| Strength LOAD CONTEXT (two registry machines logged under ONE exercise name — non-comparable loads) | `equipmentLoadLane()` and its two composers `strengthLoadKey()` (exact variant + lane, for seeds) and `movementLoadKey()` (`exerciseHistoryKey` + lane, for progression series and plateau dedupe keys); `loadContextLabel()` names a lane on screen                                                                                | `lib/lifts.ts`                                                                                     |
-| Muscle → region rollup (`MuscleId` → coarse `MuscleRegion`)                                         | `muscleRegion()`                                                                                                                                                                                                                                                                                                                    | `lib/lifts.ts`                                                                                     |
-| Cardio / sport ACTIVITY name (case + whitespace variants of one logged effort)                      | `activityHistoryKey()` — the cardio twin of `exerciseHistoryKey`; the stats grouping, the outdoor-plan key and the PR dismissal key (`prCardioDismissalKey()`) all resolve through it (#1931)                                                                                                                                       | `lib/activities-catalog.ts`, `lib/dismissal-keys.ts`                                               |
-| Personal-record celebration (which record a dismissal silences)                                     | `prStrengthDismissalKey()` (over `movementLoadKey`) / `prCardioDismissalKey()` (over `activityHistoryKey`), with `prDismissalKeysLosingBacking()` as the no-orphan sweep arithmetic (#1931)                                                                                                                                         | `lib/dismissal-keys.ts`                                                                            |
-| Symptom (curated + custom, spelling/case variants)                                                  | `normalizeSymptomName()`, `resolveSymptomKey()`, `symptomSlugs()`, `isCuratedSymptom()`, `isCustomSymptomKey()`, `symptomLabel()`; case folds for MATCHING through the shared `matchFoldedVocabulary()` (#3325)                                                                                                                     | `lib/symptoms.ts`, `lib/vocabulary-fold.ts`                                                        |
-| Substance (curated + custom, spelling/case variants)                                                | `normalizeSubstanceName()`, `resolveSubstanceKey()`, `isCuratedSubstance()`, `isCustomSubstanceKey()`, `substanceLabel()` — the symptom vocabulary re-instantiated for the substance ledger (#3279); `substanceDef()` is total over the key space; case folds through the SAME `matchFoldedVocabulary()` as the symptom row (#3325) | `lib/substance-use.ts`, `lib/vocabulary-fold.ts`                                                   |
-| FREE-TEXT VOCABULARY CASE (the two rows above SHARE this; neither owns a copy)                      | `foldVocabularyName()` / `sameVocabularyName()` / `matchFoldedVocabulary()` — compared, NEVER stored — with `profileVocabulary()` / `resolveProfileVocabularyKey()` as the profile-scoped DB half every TYPED write resolves through (#3325)                                                                                        | `lib/vocabulary-fold.ts`, `lib/vocabulary-store.ts`                                                |
-| Drug ingredient identity (combination drug ↔ its ingredient CUIs)                                   | `parseRxcuiIngredients()`, `itemRxcuis()`                                                                                                                                                                                                                                                                                           | `lib/rxnorm.ts`, `lib/drug-interactions.ts`                                                        |
-| Condition (a coded problem ↔ its display-name variants — "Type 2 diabetes"/"T2DM"/E11.9)            | `conditionCollapseKey()` (code beats name), mirrored by the SQL `CONDITION_REPRESENTATIVE_IDS` grouping (built from the `conditions` registry row below)                                                                                                                                                                            | `lib/icd10.ts`, `lib/queries/clinical.ts`                                                          |
-| Vaccine / immunization (a combo dose ↔ its component catalog codes — the #482 example)              | `normalizeVaccineName()` + component expansion; the name-keyed dismissal `immunizationDismissalKey()` and its no-orphan sweep `immunizationCodesLosingBacking()`                                                                                                                                                                    | `lib/immunization-catalog.ts`, `lib/dismissal-keys.ts`                                             |
-| Provider (a clinician ↔ spelling/punctuation variants of the printed name)                          | `normalizeProviderName()`                                                                                                                                                                                                                                                                                                           | `lib/providers.ts`                                                                                 |
-| Allergen (a documented allergy ↔ its IgE-sensitization name — "Peanut"/"Peanut IgE")                | `allergenKey()`, with `allergenFromIgEName()` lifting an IgE analyte to its allergen                                                                                                                                                                                                                                                | `lib/allergy-ige.ts`                                                                               |
-| Nutrient (a supplement/med name ↔ its UL-bearing DRI nutrient key)                                  | `resolveNutrientKey()` → `nutrientByKey()`                                                                                                                                                                                                                                                                                          | `lib/dri.ts`                                                                                       |
-| Dated READING (the same quantity in `body_metrics` / `metric_samples` / `medical_records`, #1997)   | `readingIdentity()` (which IS `biomarkerFamily`, applied one level up) plus `READING_IDENTITY_MAP` — the ONE declaration (#2086) both halves derive from: `STREAM_READING_SOURCES` (stream ↔ canonical) and `CONTINUOUS_READING_METRIC` (canonical → metric surface)                                                                | `lib/reading-identity-map.ts`, `lib/reading-model.ts`, `lib/reading-cadence.ts`                    |
-| REPRESENTATIVE row across overlapping documents (one entry stored once per uploaded CCD, #2035)     | `representativeIds()` / `representativeCte()` over the `REPRESENTATIVE_SPECS` registry — one collapse identity plus one named `PREFERENCE_SQL` axis per table; `latestByGroup()` is the pure twin of its `recency` axis                                                                                                             | `lib/representative-ids.ts`, `lib/latest-per-group.ts`                                             |
+## Preserve the correct distinctions
 
-Two disciplines every one of these shares:
+**Family and canonical row.** A biomarker goal stores the analyte the person
+picked. Picker rows use `normalizeCanonicalKey`; readings that advance the goal
+use `biomarkerFamily`. Collapsing the picker by family would remove separately
+selectable fractions. Family identity groups facts; it does not redefine which
+curated row the person chose.
 
-- **Exclusion discipline.** Distinct assays/fractions/specimens/metabolites,
-  distinct equipment where the load genuinely differs, distinct symptoms — stay
-  APART. Over-collapsing grants a wrong "all-clear"; over-expanding multiplies
-  entries. (Example: the #836 catalog keeps a trap-bar deadlift and a Smith
-  bench as their OWN `exerciseHistoryKey`, separate from the barbell base,
-  rather than folding them in as merged variants; `conditionCollapseKey` never
-  collapses a coded row with an uncoded same-name one.)
-- **Name-keyed re-key.** Because names/codes recycle (integer ids never do), a
-  star/dismiss keyed by name must re-key to the canonical family so it covers
-  the family and does not drift as which member is newest. When the subject that
-  backed a name-keyed row is deleted or renamed, the leftover key is swept
-  (`immunizationCodesLosingBacking` is the pattern — clear only the keys this
-  deletion actually un-backed, never every unbacked code).
+[Medical query helpers](../../lib/queries/medical.ts) expose
+`biomarkerFamilyKey` and `biomarkerPanelKey`. They call the pure family/panel
+functions through the SQLite functions registered in
+[sql-functions.ts](../../lib/sql-functions.ts). Reuse these expressions instead
+of reconstructing a second SQL grouping.
 
-One subject can also be answered by a function two domains SHARE rather than each
-re-instantiating, and the free-text vocabulary case-fold is the worked example (#3325).
-#3323 re-instantiated the symptom vocabulary for substances function for function, and
-folding case in one of them alone would have re-forked what that PR unified — so the fold
-itself is one module both import, not a rule written twice and agreed by convention.
-Two properties keep it honest, and both are asserted in
-`lib/__tests__/vocabulary-fold.test.ts` and `lib/__db_tests__/vocabulary-fold.test.ts`:
+**Exclusions.** Preserve distinctions declared by the domain: different assays,
+specimens or metabolites are not automatically aliases. The lift catalog keeps
+trap-bar deadlift and Smith bench separate from their barbell counterparts.
+`conditionCollapseKey` prefers a nonblank code and never merges a coded row with
+an uncoded row solely because their names match.
 
-- **The fold is compared, never stored.** No code path runs from a fold to a key, which
-  is what structurally forbids the mirror-image bug — a fold applied to DISPLAY, where
-  "MDMA" renders as "Mdma".
-- **The spelling kept is the FIRST SEEN**, read from the oldest ledger row, so a later
-  re-spelling never re-titles a card. Renaming stays the explicit, separate act — and
-  resolves BARE at both ends, because re-casing is precisely what a rename may be for.
-  Rows that already differ only by case are left alone, with the reasoning stated in
-  `lib/vocabulary-store.ts`.
-- **The fold may not be re-spelled in SQL.** The JS fold is Unicode-aware and SQLite's
-  `LOWER(...)` / `COLLATE NOCASE` are ASCII-only, so a case-insensitive MATCH
-  written in SQL would call two spellings distinct that the write boundary calls one, and
-  the duplicate would silently return. Sorting is unaffected; identity is not.
-  `lib/__tests__/vocabulary-sql-fold-census.test.ts` is the reflection guard, and it
-  points at the `biomarker_family` user-function pattern — the way SQL is meant to reach
-  a pure identity here.
+**Movement and load.** `exerciseHistoryKey` groups catalog variants for
+movement-wide history and matching. Load-sensitive facts need the relevant
+additional axis:
 
-One subject can need TWO identities on different axes, and the strength domain is
-the worked example (#1610). `exerciseHistoryKey` answers **which movement** — it
-merges a lift's catalog variants and owns regions, routine matching, coverage,
-staleness and navigation. `equipmentLoadLane` answers **which implement** — two
-registry machines both serialize as the exact same logged name, so no name-derived
-key can tell a home chest press from a hotel one whose stack geometry makes 50 kg
-the right load. Load-sensitive facts (seeds, top weight/e1RM/PRs, comparison series,
-plateau signals, weight-goal progress) key on a COMPOSER of both; movement-wide
-facts keep the movement key alone. Two rules make the pair safe:
+- `strengthLoadKey` combines the exact logged variant with an equipment lane for
+  seeds and recent-session fills.
+- `movementLoadKey` combines movement identity with the lane for aggregate
+  progression and plateau keys.
+- A null set `equipment_id` is the explicit unassigned lane, not a wildcard.
+  Unassigned history must not silently seed a named machine.
+- A null goal `equipment_id` leaves its scope undeclared and movement-wide.
+  It does not mean “only unassigned observations.”
 
-- a NULL `exercise_sets.equipment_id` is an explicit **unassigned lane**, never a
-  wildcard — history that names no implement never seeds, PRs or plateaus a machine;
-- a NULL `goals.equipment_id` is the opposite: an **undeclared scope**, so a goal
-  that names no machine stays movement-wide (what every goal stored before the
-  column means). An observation with no implement is a distinct fact; a scope with
-  no implement is simply not narrowed.
+Use `loadContextLabel` whenever a surface splits results by lane, so separate
+implements do not produce indistinguishable rows.
 
-Any surface that SPLITS by lane must label the lanes with `loadContextLabel()`;
-#1610 forbids duplicate unlabeled rows, which is what an unlabeled split renders.
+## Free-text vocabularies
 
-## The cross-cutting identity registries
+Symptoms and substances share matching rules; they retain their own domain
+normalizers and labels. `foldVocabularyName` compares already-normalized names.
+Its result is for matching, never storage or display.
 
-Three registries carry identity at a layer above a single domain. Each is a
-closed set with its own reflection guard (below), the same discipline as the
-domain functions.
+`profileVocabulary` reads the profile's spellings in first-seen order, and
+`resolveProfileVocabularyKey` reuses the first matching spelling for typed
+writes. This order answers which spelling to keep, not which suggestion was used
+most recently. Existing rows that differ only by case are not silently rewritten.
+Explicit renames resolve their old and new names without adopting the stored
+spelling, so a deliberate case-only rename remains possible.
 
-- **Reason codes (#656).** `REASON_CODES` (backing the `ReasonCode` union) in
-  `lib/reasons.ts` is the closed set of "why" kinds a `Finding`/`UpcomingItem`
-  carries — identity at the EXPLANATION layer, so the page, the digest, and a
-  reminder render the SAME reason from one computation, never a second
-  derivation.
-- **Dataset identity strategies (#860 Track B).** The curated-dataset framework
-  resolves a query to an entry via a pluggable `MatchStrategy`
-  (`lib/datasets/matcher.ts`): `nameStrategy` / `slugStrategy` / `fieldStrategy`
-  for single-key identity, and `multiValueStrategy()` / `pairStrategy()` /
-  `compositeStrategy()` for synonyms/aliases/RxCUI-sets/`gene|allele` pairs.
-  Each dataset declares its `identity.keys` in its envelope;
-  `canonical-result-definitions` keys on the exact canonical `name` (which curated row —
-  distinct from `biomarkerFamily`, which collapses ACROSS names; different
-  layers). Full spec: `docs/internals/datasets.md`.
-- **Biomarker goals: family for FACTS, canonical row for the ANCHOR (#1853).**
-  A goal stores the analyte name the user PICKED (`goals.biomarker_name`), and the
-  picker dedupes its rows on `normalizeCanonicalKey` like every other biomarker
-  field — collapsing rows on family would make the vitamin-D D2/D3 fractions
-  unpickable (#482). The READINGS that advance the goal reach it through
-  `biomarkerFamily`, because `getBiomarkerSeries` is what gathers them, so an A1c
-  goal is advanced by the eAG re-expression of the same draw and shows on the
-  detail page that charts them. Family is how facts REACH a row; it is not what a
-  row IS.
-- **Findings dedupeKey registry (#448 → #860 Track A).** `RULE_FINDING_REGISTRY`
-  in `lib/rule-finding-prefixes.ts` binds every finding-producing builder's
-  dedupeKey PREFIX to its reach TIER (`FindingTier` care/coaching) and its
-  declared reason codes. `dedupeKeyHasKnownPrefix()`,
-  `findingRegistryEntryFor()`, and `tierForDedupeKey()` read it. Full policy:
-  `docs/internals/findings.md`.
-- **Dismissal-key CLASSES (#1931).** `DISMISSAL_KEY_REGISTRY` in
-  `lib/dismissal-classes.ts` answers the orthogonal question the prefix registry
-  above does not: for every `upcoming_dismissals.signal_key` namespace, WHAT
-  stops the key from re-attaching to a subject the user never silenced. Each
-  namespace declares one `DismissalKeyClass` — `id-keyed` (ids never recycle),
-  `catalog` (fixed vocabulary; the topic IS the subject), `anchored` (a
-  date/period/episode anchor bounds re-attachment), `name-keyed-swept` (a
-  recyclable name PLUS a named de-orphan sweep), `name-keyed-open` (recyclable,
-  unswept, residual risk stated), or `legacy` (no longer minted). Read with
-  `dismissalKeyEntryFor()`.
+Do not reproduce matching with SQLite's built-in `LOWER` or `COLLATE NOCASE`:
+the JS fold handles Unicode while those built-ins fold ASCII. Sorting is a
+separate concern. If SQL must perform the identity match, use the established
+SQLite user-function pattern rather than another normalization rule.
 
-  This is the **name-keyed re-key discipline made enforceable** rather than
-  re-audited by hand every time the class resurfaces (#203/#283/#327 biomarkers,
-  #376 immunizations, #1399/#1610 training observations, #1931 personal records).
-  `lib/__tests__/dismissal-classes.test.ts` asserts the registry and
-  `SUPPRESSION_DISPLAY_PREFIXES` are the same set, requires a named sweep for
-  every `name-keyed-swept` entry and a stated risk for every open/legacy one, and
-  scans lib/ so that every `export const *_PREFIX = "…"` literal is either
-  classified or listed in `NON_DISMISSAL_PREFIXES` with what it actually keys.
-  A namespace that is BOTH spelled inline and absent from the display resolver
-  still escapes both teeth — noted in the module header, because that combination
-  already renders as an unnameable orphan row in Snoozed & dismissed.
+## Registries above a domain
 
-## The reflection-guard convention
+| Owner                                                          | Responsibility                                                                                                                                                                                                               |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [reasons.ts](../../lib/reasons.ts)                             | `REASON_CODES` / `ReasonCode` identify the explanations carried by findings and upcoming items.                                                                                                                              |
+| [Dataset matcher](../../lib/datasets/matcher.ts)               | Existing name, slug, field, multi-value, pair and composite strategies implement each dataset envelope's declared identity. See [datasets](datasets.md). A canonical dataset row remains distinct from its biomarker family. |
+| [rule-finding-prefixes.ts](../../lib/rule-finding-prefixes.ts) | `RULE_FINDING_REGISTRY` associates finding prefixes with care/coaching tiers and permitted reason codes. See [findings](findings.md).                                                                                        |
+| [dismissal-classes.ts](../../lib/dismissal-classes.ts)         | `DISMISSAL_KEY_REGISTRY` classifies namespaces by how they avoid reattaching an old dismissal to a different subject.                                                                                                        |
 
-An identity/prefix registry is only trustworthy if nothing can ship a key
-outside it. So each namespace carries a **reflection guard** — a test that
-enumerates the real emitters and asserts every emitted key parses against the
-known registry:
+Dismissal classes distinguish nonrecycling IDs, fixed catalog subjects, anchored
+episodes, swept names, unswept names and legacy keys. Names can be reused. A
+name-keyed dismissal must follow the canonical identity, and its declared sweep
+must clear keys that lose their backing on deletion or rename. Clear only keys
+that the operation actually unbacked. Open and legacy classes state their
+remaining risk; classification does not itself provide a sweep.
 
-- The finding-`dedupeKey` registry (`lib/rule-finding-prefixes.ts`) is enforced
-  by `lib/__db_tests__/rule-findings-builders.test.ts`: every builder-emitted
-  `dedupeKey` parses against it AND resolves the tier the code actually travels
-  (a coaching builder registered `care`, or vice versa, fails CI), and every
-  attached reason code is one the prefix declared — a new engine cannot ship an
-  un-guardable or mis-tiered key namespace.
-- The curated-dataset framework (`lib/__tests__/datasets-framework.test.ts`)
-  runs the harness over every registered dataset — citation present, every entry
-  resolves by its own identity, an absent query refuses — so a dataset can't
-  join the registry without a working identity strategy.
-- The exercise-guides completeness test
-  (`lib/__tests__/exercise-guides.test.ts`) derives its key set from
-  `exerciseHistoryKey` over the catalog, so a new lift automatically joins the
-  invariant (a guide per key, tags equal to the catalog).
+## Verification
 
-A new findings engine or name-keyed signal adds its prefix/identity to the
-registry and its own reflection guard, rather than a bespoke second grouping —
-and adds a row to the table above (the doc guard keeps this index honest, but it
-can only verify the symbols named here still exist, not that a NEW identity
-function was added; that discipline stays a review convention).
+Use existing behavioral coverage for grouping exclusions, SQL/JS agreement,
+profile-owned vocabulary resolution, load-lane separation and dismissal cleanup.
+The finding-builder, dataset and exercise-guide tests also exercise their
+existing registries against emitted keys or catalog entries.
+
+Registry scans have bounded coverage. The dismissal scan recognizes exported
+prefix literals and the display resolver's namespaces; a prefix absent from both
+can escape it. A document index cannot establish exhaustive runtime coverage.
+
+For a new caller, reuse the owner before adding code. For a new identity, explain
+which existing identity cannot answer its question and extend the appropriate
+owner and meaningful tests. Do not automatically add a scanner or a second
+registry. Follow the [change and test policy](../change-policy.md).

@@ -1,23 +1,8 @@
-// Email notification channel (issue #1855) — the fourth delivery channel beside
-// Telegram, Web Push, and Home Assistant. The DB reads + the send loop; every
-// composition/content decision is pure and lives in ./email-core, and the wire
-// itself stays behind the ONE lib/email.ts chokepoint (#985) — this module never
-// imports nodemailer.
-//
-// SCOPE: the channel belongs to the LOGIN (#1072 — a person with an inbox), and a
-// per-profile event fans out to the managing logins exactly like Telegram: explicit
-// grants + own profile, never admin-bypass-all, minus the per-(login, profile)
-// mute. The ADDRESS is `logins.email` (migration 064) — the one address the login
-// already has for auth mail — so there is no second "notification address" store.
-//
-// PHI: what a mail may carry is the per-login content mode (email-core header;
-// owner ruling on #1855). Default is content-free; only the login's own Settings
-// tap widens it.
-//
-// RETRY POSTURE (#2121/#2157): none of email's own. A failed send throws, dispatch
-// records the channel failed, the slot marker stays unset, and the shared
-// attempt-band budget retries ONCE an hour later — an hour outlives an SMTP
-// greylist, so the shared budget serves email as-is (no email-specific counter).
+// Email delivery resolves managing logins, applies channel/kind/mute preferences,
+// and deduplicates addresses through email-core. Each recipient gets an outcome;
+// partial success delivers the channel, while all-attempts-failed throws.
+// Composition lives in email-core, transport in lib/email.ts, and retry policy
+// in shared dispatch. See docs/internals/email.md for the full contract.
 
 import { db } from "../db";
 import { sendEmail } from "../email";
