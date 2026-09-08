@@ -27,20 +27,27 @@ import type { TrackedPractice } from "@/lib/queries/wellness";
 // thing. What no tier below this could see is that the row's two columns agree, since
 // the facts and the control are rendered by different components.
 
-const { loadQuickEntry, startPracticeLive, endPracticeLive } = vi.hoisted(
-  () => ({
-    loadQuickEntry: vi.fn(),
-    startPracticeLive: vi.fn(),
-    endPracticeLive: vi.fn(),
-  })
-);
+const {
+  loadQuickEntry,
+  logPractice,
+  startPracticeLive,
+  endPracticeLive,
+  clearLastGood,
+} = vi.hoisted(() => ({
+  loadQuickEntry: vi.fn(),
+  logPractice: vi.fn(),
+  startPracticeLive: vi.fn(),
+  endPracticeLive: vi.fn(),
+  clearLastGood: vi.fn(),
+}));
 
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
 vi.mock("@/app/(app)/wellness/actions", () => ({
-  logPractice: vi.fn(),
+  logPractice,
   startPracticeLive,
   endPracticeLive,
 }));
+vi.mock("@/lib/offline/quick-entry-read", () => ({ clearLastGood }));
 vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
@@ -98,8 +105,10 @@ const list = (practices: TrackedPractice[]) => (
 
 beforeEach(() => {
   loadQuickEntry.mockReset();
+  logPractice.mockReset();
   startPracticeLive.mockReset();
   endPracticeLive.mockReset();
+  clearLastGood.mockReset();
 });
 afterEach(cleanup);
 
@@ -251,9 +260,12 @@ describe("the row follows the server's session rather than a copy of it", () => 
         liveSession: null,
       };
       loadQuickEntry.mockResolvedValue({
-        form: "practice",
-        practices: [finished],
-        today: TODAY,
+        kind: "ready",
+        data: {
+          form: "practice",
+          practices: [finished],
+          today: TODAY,
+        },
       });
 
       render(list([running]));
@@ -306,19 +318,22 @@ describe("the row follows the server's session rather than a copy of it", () => 
       date: TODAY,
     });
     loadQuickEntry.mockResolvedValue({
-      form: "practice",
-      practices: [
-        {
-          ...RED_LIGHT,
-          liveSession: {
-            id: 9,
-            date: TODAY,
-            startTime: "06:22",
-            expectedEnd: { at: Date.now() + 900_000, hhmm: "06:37" },
+      kind: "ready",
+      data: {
+        form: "practice",
+        practices: [
+          {
+            ...RED_LIGHT,
+            liveSession: {
+              id: 9,
+              date: TODAY,
+              startTime: "06:22",
+              expectedEnd: { at: Date.now() + 900_000, hhmm: "06:37" },
+            },
           },
-        },
-      ],
-      today: TODAY,
+        ],
+        today: TODAY,
+      },
     });
 
     render(list([RED_LIGHT]));
@@ -338,5 +353,119 @@ describe("the row follows the server's session rather than a copy of it", () => 
     // Never the pair the screenshot caught: the row cannot say a session is running
     // and count no sessions in the same breath, because one read produces both.
     expect(screen.queryByTestId("practice-today-count")).toBeNull();
+  });
+
+  it("invalidates the host copy on an authorization refusal", async () => {
+    startPracticeLive.mockResolvedValue({
+      kind: "started",
+      session: {
+        id: 9,
+        date: TODAY,
+        startTime: "06:22",
+        expectedEnd: null,
+      },
+      count: 1,
+      date: TODAY,
+    });
+    loadQuickEntry.mockResolvedValue({ kind: "refused", reason: "subject" });
+
+    render(list([RED_LIGHT]));
+    fireEvent.click(screen.getByTestId("practice-start-button"));
+
+    await waitFor(() => expect(clearLastGood).toHaveBeenCalledOnce());
+    expect(screen.getByTestId("quick-entry-practice-empty")).toBeTruthy();
+  });
+
+  it("keeps the current rows when a re-read loses transport", async () => {
+    startPracticeLive.mockResolvedValue({
+      kind: "started",
+      session: {
+        id: 9,
+        date: TODAY,
+        startTime: "06:22",
+        expectedEnd: null,
+      },
+      count: 1,
+      date: TODAY,
+    });
+    loadQuickEntry.mockRejectedValue(new Error("offline"));
+
+    render(list([RED_LIGHT]));
+    fireEvent.click(screen.getByTestId("practice-start-button"));
+
+    await waitFor(() => expect(loadQuickEntry).toHaveBeenCalledOnce());
+    expect(clearLastGood).not.toHaveBeenCalled();
+    expect(screen.getByText("Red light therapy")).toBeTruthy();
+  });
+});
+
+describe("a newer prefill does not take back minutes the person set", () => {
+  const sauna: TrackedPractice = {
+    ...RED_LIGHT,
+    identity: "sauna",
+    name: "Sauna",
+    previousDurationMin: null,
+  };
+  const answered = { ...sauna, previousDurationMin: 15 };
+
+  const setDuration = (minutes: string) => {
+    fireEvent.click(screen.getByTestId("practice-duration-toggle"));
+    fireEvent.change(screen.getByTestId("practice-duration-input"), {
+      target: { value: minutes },
+    });
+  };
+  const logged = async () => {
+    logPractice.mockResolvedValue({ kind: "logged", date: TODAY, count: 1 });
+    loadQuickEntry.mockResolvedValue({
+      kind: "ready",
+      data: { form: "practice", practices: [], today: TODAY },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("practice-log-button"));
+    });
+    const fd = logPractice.mock.calls[0]?.[0] as FormData;
+    return fd?.get("duration_min");
+  };
+
+  it("keeps and posts the entered duration when the late answer brings a usual one", async () => {
+    const view = render(list([sauna]));
+    setDuration("45");
+    const button = screen.getByTestId("practice-log-button");
+
+    view.rerender(list([answered]));
+
+    expect(screen.getByTestId("practice-log-button")).toBe(button);
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "45 min"
+    );
+    expect(
+      (screen.getByTestId("practice-duration-input") as HTMLInputElement).value
+    ).toBe("45");
+    expect(await logged()).toBe("45");
+  });
+
+  it("still follows the prefill on a field nobody answered", async () => {
+    const view = render(list([sauna]));
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "min"
+    );
+
+    view.rerender(list([answered]));
+
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "15 min"
+    );
+    expect(await logged()).toBe("15");
+  });
+
+  it("keeps a blank the person entered rather than refilling it", () => {
+    const view = render(list([{ ...sauna, previousDurationMin: 30 }]));
+    setDuration("");
+
+    view.rerender(list([answered]));
+
+    expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
+      "min"
+    );
   });
 });

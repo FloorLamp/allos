@@ -52,7 +52,10 @@ vi.mock("@/app/(app)/search-actions", () => ({
   askRecordsAction: async () => ({ ok: false, error: "off" }),
 }));
 vi.mock("@/app/(app)/quick-entry-actions", () => ({
-  loadQuickEntry: async () => ({ form: "practice", practices: [] }),
+  loadQuickEntry: async () => ({
+    kind: "ready",
+    data: { form: "practice", practices: [], today: "2026-01-01" },
+  }),
 }));
 vi.mock("@/app/(app)/medications/actions", () => ({
   logMedicationAdministration: async () => ({ ok: true }),

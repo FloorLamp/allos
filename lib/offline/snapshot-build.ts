@@ -30,6 +30,7 @@ import {
   getTrackedPractices,
   getRecentByExercise,
 } from "@/lib/queries";
+import { gatherQuickEntryFood } from "@/lib/quick-entry-food";
 import {
   getTimezone,
   getDisplayFormatPrefs,
@@ -45,6 +46,7 @@ import {
 import { buildMedicationList } from "@/lib/medication-list";
 import { medicationStartDate } from "@/lib/profile-summary";
 import { foodGroupBySlug } from "@/lib/food-groups";
+import { FOOD_SLOTS } from "@/lib/food-slot";
 import { utcInstant } from "@/lib/date";
 import { doseSortKey, compareSortHint } from "@/lib/dose-order";
 import {
@@ -59,6 +61,7 @@ import {
   SNAPSHOT_VERSION,
   type AnySnapshot,
   type DoseScheduleEntry,
+  type FoodQuickEntryAvailableSnapshot,
   type SnapshotDataByKind,
   type SnapshotKind,
 } from "@/lib/offline/snapshots";
@@ -272,9 +275,21 @@ function buildRecentTraining(
 // ── food-tallies ─────────────────────────────────────────────────────────────
 
 function buildFoodTallies(
-  ctx: SnapshotContext
+  ctx: SnapshotContext,
+  now: Date
 ): SnapshotDataByKind["food-tallies"] {
-  const servings = getFoodServingsOnDate(ctx.profileId, ctx.date);
+  const gathered = gatherQuickEntryFood(ctx.profileId, {
+    loginId: ctx.loginId,
+    today: ctx.date,
+    requestedDate: ctx.date,
+    now,
+  });
+  // The quick-entry gate is about whether the adult logging catalog is relevant.
+  // Existing /offline tallies remain facts for this profile even when that answer is
+  // unavailable, so keep gathering them through their original owner in that arm.
+  const servings = gathered.available
+    ? new Map(Object.entries(gathered.days[0]?.counts ?? {}))
+    : getFoodServingsOnDate(ctx.profileId, ctx.date);
   const groups = [...servings.entries()]
     .filter(([, n]) => n > 0)
     .map(([key, n]) => ({
@@ -291,8 +306,30 @@ function buildFoodTallies(
     // Null, not 0, for a profile that doesn't track protein: an absent number and a
     // logged zero are different facts, and the offline card renders them differently.
     proteinGrams: profileTracksProtein(ctx.profileId)
-      ? getProteinDailyGrams(ctx.profileId, ctx.date)
+      ? gathered.available
+        ? gathered.grams
+        : getProteinDailyGrams(ctx.profileId, ctx.date)
       : null,
+    quickEntry: gathered.available
+      ? {
+          available: true,
+          rankedGroupSlugsBySlot: Object.fromEntries(
+            FOOD_SLOTS.map((slot) => [
+              slot,
+              gathered.groupsBySlot[slot].map((group) => group.slug),
+            ])
+          ) as FoodQuickEntryAvailableSnapshot["rankedGroupSlugsBySlot"],
+          proteinRankBySlot: gathered.proteinRankBySlot,
+          proteinPreset: gathered.preset,
+          excludedGroups: gathered.exclusions,
+          slotBoundaries: gathered.boundaries,
+          slotCounts: gathered.days[0]?.slotCounts ?? {
+            Morning: {},
+            Midday: {},
+            Evening: {},
+          },
+        }
+      : { available: false },
   };
 }
 
@@ -320,7 +357,10 @@ function buildPracticeWeek(
 // ── The one dispatch ─────────────────────────────────────────────────────────
 
 const BUILDERS: {
-  [K in SnapshotKind]: (ctx: SnapshotContext) => SnapshotDataByKind[K];
+  [K in SnapshotKind]: (
+    ctx: SnapshotContext,
+    now: Date
+  ) => SnapshotDataByKind[K];
 } = {
   "dose-schedule": buildDoseSchedule,
   "medication-list": buildMedicationListData,
@@ -344,7 +384,7 @@ export function buildSnapshot<K extends SnapshotKind>(
     timeZone: ctx.timeZone,
     capturedOn: ctx.date,
     fetchedAt: utcInstant(now),
-    data: BUILDERS[kind](ctx),
+    data: BUILDERS[kind](ctx, now),
   } as AnySnapshot;
 }
 

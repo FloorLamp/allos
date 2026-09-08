@@ -9,6 +9,7 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { shiftDateStr } from "@/lib/date";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { practiceRowFacts, practiceRunningFacts } from "@/lib/practice";
+import { clearLastGood } from "@/lib/offline/quick-entry-read";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 import {
   QuickEntryRow,
@@ -112,7 +113,13 @@ export default function QuickPracticeList({
       today,
       dayContext?.parts.reach.kind === "dated" ? "dated" : "sheet"
     ).then(
-      (data) => {
+      (result) => {
+        if (result.kind === "refused") {
+          setRows([]);
+          clearLastGood();
+          return;
+        }
+        const data = result.data;
         if (data.form === "practice") setRows(data.practices);
       },
       // A dropped read leaves the rows exactly as they were. Nothing here is a write,

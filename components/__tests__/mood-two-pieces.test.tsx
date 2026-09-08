@@ -17,10 +17,13 @@ const record = (name: string, fd: FormData) => {
   (posted[name] ??= []).push(fd);
 };
 
-let logMoodReply: (fd: FormData) => Promise<{ ok: true }> = async () => ({
+type MoodResult = { ok: true } | { ok: false; error: string };
+let logMoodReply: (fd: FormData) => Promise<MoodResult> = async () => ({
   ok: true,
 });
 let enqueueReply: "kept" | "closed" | "failed" = "kept";
+const enqueued: Array<{ flow: string; payload: unknown; capture: unknown }> =
+  [];
 const toasts: string[] = [];
 
 vi.mock("@/app/(app)/mood-actions", () => ({
@@ -40,7 +43,12 @@ vi.mock("@/components/Toast", () => ({
   useToast: () => (message: string) => toasts.push(message),
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: async () => enqueueReply }),
+  useOfflineQueue: () => ({
+    enqueue: async (flow: string, payload: unknown, capture: unknown) => {
+      enqueued.push({ flow, payload, capture });
+      return enqueueReply;
+    },
+  }),
   useQueuedDayContextCapture:
     () =>
     (date: string, reach: unknown, capturedAt = new Date()) => ({
@@ -60,28 +68,6 @@ vi.mock("@/components/ConfirmDialog", () => ({
 vi.mock("@/components/useUndoableDelete", () => ({
   useUndoableDelete: () => async () => {},
 }));
-vi.mock("@/components/useOptimisticLedger", () => ({
-  useOptimisticLedger: () => ({
-    tap: async (spec: {
-      from?: number | null;
-      optimistic: number;
-      commit: (value: number | null) => void;
-      write: () => Promise<unknown>;
-      settle: (value: unknown) => { kind: string };
-      onError?: (error: unknown) => Promise<{ kind: string } | undefined>;
-    }) => {
-      spec.commit(spec.optimistic);
-      try {
-        const settlement = spec.settle(await spec.write());
-        if (settlement.kind === "rollback") spec.commit(spec.from ?? null);
-      } catch (error) {
-        const settlement = await spec.onError?.(error);
-        if (settlement?.kind !== "keep") spec.commit(spec.from ?? null);
-      }
-    },
-  }),
-}));
-
 const EMPTY: MoodFormDay = {
   date: "2026-08-20",
   label: "Today",
@@ -103,6 +89,7 @@ beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   logMoodReply = async () => ({ ok: true });
   enqueueReply = "kept";
+  enqueued.length = 0;
   toasts.length = 0;
   vi.stubGlobal(
     "ResizeObserver",
@@ -184,7 +171,7 @@ describe("the mood domain's two pieces", () => {
   });
 
   it.each(["closed", "failed"] as const)(
-    "rolls back and stays open when offline capture is %s",
+    "retains the draft and stays open when offline capture is %s",
     async (outcome) => {
       enqueueReply = outcome;
       logMoodReply = async () => {
@@ -201,7 +188,7 @@ describe("the mood domain's two pieces", () => {
         screen
           .getByRole("button", { name: "Mood: Good" })
           .getAttribute("aria-pressed")
-      ).toBe("false");
+      ).toBe("true");
       expect(toasts).toContain(
         "This entry wasn't saved. Try again once you're back online."
       );
@@ -230,7 +217,65 @@ describe("the mood domain's two pieces", () => {
     expect(done).toHaveBeenCalledOnce();
   });
 
-  it("freezes the whole dated statement until a delayed write rolls back", async () => {
+  it("accepts an intentional identical History entry after the form resets", async () => {
+    const saved = vi.fn();
+    const view = render(
+      <MoodForm
+        days={[EMPTY]}
+        showCalm={false}
+        repeatAfterSave
+        onSaved={saved}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(screen.getByRole("button", { name: "Energy: 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "the row just saved" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    view.rerender(
+      <MoodForm
+        days={[
+          {
+            ...EMPTY,
+            mood: {
+              valence: 4,
+              energy: 3,
+              anxiety: null,
+              factors: ["work"],
+              notes: "the row just saved",
+            },
+          },
+        ]}
+        showCalm={false}
+        repeatAfterSave
+        onSaved={saved}
+      />
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Energy: 3" })
+        .getAttribute("aria-pressed")
+    ).toBe("false");
+    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe(
+      ""
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+
+    expect(posted.logMood).toHaveLength(2);
+    expect(Object.fromEntries(posted.logMood[1])).not.toHaveProperty("energy");
+    expect(Object.fromEntries(posted.logMood[1])).not.toHaveProperty("note");
+    expect(saved).toHaveBeenCalledTimes(2);
+  });
+
+  it("freezes the whole dated statement and retains it after a delayed refusal", async () => {
     let rejectWrite!: (error: unknown) => void;
     logMoodReply = () =>
       new Promise<{ ok: true }>((_, reject) => {
@@ -276,7 +321,7 @@ describe("the mood domain's two pieces", () => {
       screen
         .getByRole("button", { name: "Mood: Good" })
         .getAttribute("aria-pressed")
-    ).toBe("false");
+    ).toBe("true");
     expect(
       screen
         .getByRole("button", { name: "Energy: 3" })
@@ -294,6 +339,213 @@ describe("the mood domain's two pieces", () => {
       "keep this detail"
     );
     expect(screen.getByTestId("mood-form")).toBeTruthy();
+  });
+
+  it.each(["returned", "thrown"] as const)(
+    "keeps a blind attempt immutable through a %s failure, then retries completely",
+    async (failure) => {
+      let finishFirst!: () => void;
+      logMoodReply = () =>
+        new Promise<MoodResult>((resolve, reject) => {
+          finishFirst = () => {
+            if (failure === "returned")
+              resolve({ ok: false, error: "Couldn't save that check-in." });
+            else reject(new TypeError("Failed to fetch"));
+          };
+        });
+      enqueueReply = "closed";
+      const view = render(
+        <MoodForm days={[EMPTY]} showCalm dayUnseen onDone={vi.fn()} />
+      );
+      fireEvent.click(screen.getByText("Details"));
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+      await waitFor(() => expect(posted.logMood).toHaveLength(1));
+
+      const fresh: MoodFormDay = {
+        ...EMPTY,
+        mood: {
+          valence: 2,
+          energy: 3,
+          anxiety: null,
+          factors: [],
+          notes: "new",
+        },
+      };
+      view.rerender(<MoodForm days={[fresh]} showCalm dayUnseen={false} />);
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("Note") as HTMLTextAreaElement).value
+        ).toBe("new")
+      );
+      expect(
+        screen
+          .getByRole("button", { name: "Mood: Good" })
+          .getAttribute("aria-pressed")
+      ).toBe("true");
+      expect(
+        screen
+          .getByRole("button", { name: "Energy: 3" })
+          .getAttribute("aria-pressed")
+      ).toBe("true");
+
+      await act(async () => finishFirst());
+      expect(enqueued).toHaveLength(failure === "thrown" ? 1 : 0);
+      if (failure === "thrown") {
+        expect(enqueued[0].payload).toMatchObject({
+          valence: 4,
+          energy: null,
+          note: null,
+          dayUnseen: true,
+        });
+      }
+      expect(Object.fromEntries(posted.logMood[0])).toMatchObject({
+        date: EMPTY.date,
+        valence: "4",
+        day_unseen: "1",
+      });
+      expect(Object.fromEntries(posted.logMood[0])).not.toHaveProperty(
+        "energy"
+      );
+      expect(Object.fromEntries(posted.logMood[0])).not.toHaveProperty("note");
+      expect(screen.getByRole("alert").textContent).toContain(
+        failure === "thrown" ? "wasn't saved" : "Couldn't save"
+      );
+
+      logMoodReply = async () => ({ ok: true });
+      await act(async () =>
+        fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+      );
+      const retry = Object.fromEntries(posted.logMood[1]);
+      expect(retry).toMatchObject({
+        date: EMPTY.date,
+        valence: "4",
+        energy: "3",
+        note: "new",
+      });
+      expect(retry).not.toHaveProperty("day_unseen");
+    }
+  );
+
+  it("finishes stale-attempt persistence without speaking into a replacement day", async () => {
+    let rejectWrite!: (error: unknown) => void;
+    logMoodReply = () =>
+      new Promise<MoodResult>((_, reject) => {
+        rejectWrite = reject;
+      });
+    const done = vi.fn();
+    const view = render(
+      <MoodForm days={[EMPTY]} showCalm={false} dayUnseen onDone={done} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+    await waitFor(() => expect(posted.logMood).toHaveLength(1));
+
+    const replacement: MoodFormDay = {
+      date: "2026-08-21",
+      label: "Today",
+      mood: {
+        valence: 2,
+        energy: 3,
+        anxiety: null,
+        factors: [],
+        notes: "replacement",
+      },
+    };
+    view.rerender(
+      <MoodForm
+        days={[replacement]}
+        showCalm={false}
+        dayUnseen={false}
+        onDone={done}
+      />
+    );
+    await act(async () => rejectWrite(new TypeError("Failed to fetch")));
+
+    await waitFor(() => expect(enqueued).toHaveLength(1));
+    expect(enqueued[0]).toMatchObject({
+      flow: "mood",
+      payload: { valence: 4, dayUnseen: true },
+      capture: { dayContext: { parts: { day: EMPTY.date } } },
+    });
+    expect(done).not.toHaveBeenCalled();
+    expect(toasts).toEqual([]);
+    expect(screen.getByTestId("mood-form").getAttribute("aria-busy")).toBe(
+      "false"
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Mood: Low" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "no longer available"
+    );
+  });
+
+  it("suppresses a stale server success after the offered day is replaced", async () => {
+    let resolveWrite!: (result: MoodResult) => void;
+    logMoodReply = () =>
+      new Promise<MoodResult>((resolve) => {
+        resolveWrite = resolve;
+      });
+    const done = vi.fn();
+    const view = render(
+      <MoodForm days={[EMPTY]} showCalm={false} onDone={done} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+    await waitFor(() => expect(posted.logMood).toHaveLength(1));
+
+    const replacement: MoodFormDay = {
+      date: "2026-08-21",
+      label: "Today",
+      mood: {
+        valence: 2,
+        energy: null,
+        anxiety: null,
+        factors: [],
+        notes: null,
+      },
+    };
+    view.rerender(
+      <MoodForm days={[replacement]} showCalm={false} onDone={done} />
+    );
+    await act(async () => resolveWrite({ ok: true }));
+
+    expect(done).not.toHaveBeenCalled();
+    expect(toasts).toEqual([]);
+    expect(screen.getByTestId("mood-form").getAttribute("aria-busy")).toBe(
+      "false"
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Mood: Low" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+  });
+
+  it("lets a pending attempt reach the existing queue gate after unmount without stale presentation", async () => {
+    let rejectWrite!: (error: unknown) => void;
+    logMoodReply = () =>
+      new Promise<MoodResult>((_, reject) => {
+        rejectWrite = reject;
+      });
+    enqueueReply = "closed";
+    const done = vi.fn();
+    const view = render(
+      <MoodForm days={[EMPTY]} showCalm={false} dayUnseen onDone={done} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+    await waitFor(() => expect(posted.logMood).toHaveLength(1));
+
+    view.unmount();
+    await act(async () => rejectWrite(new TypeError("Failed to fetch")));
+
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]).toMatchObject({
+      flow: "mood",
+      payload: { valence: 4, dayUnseen: true },
+    });
+    expect(done).not.toHaveBeenCalled();
+    expect(toasts).toEqual([]);
   });
 
   it("writes only the selected shared-context day without private day chips", async () => {
