@@ -81,12 +81,7 @@ import { weekWindow } from "./week-window";
 import { sriPresentation } from "./sleep-regularity";
 import { formatHm } from "./sleep-summary";
 import { NUTRIENT_LABELS, type NutrientKey } from "./nutrition-day";
-import type {
-  WeekMode,
-  WeekStart,
-  WeightUnit,
-  DistanceUnit,
-} from "./settings";
+import type { WeekMode, WeekStart, WeightUnit, DistanceUnit } from "./settings";
 import type { NotificationMessage } from "./notifications/types";
 import {
   formatEmphasizedLine,

@@ -320,7 +320,11 @@ export const pushChannel: NotificationChannel = {
     if (!isPushDeliverableKind(msg.kind)) return [];
     return [...new Set(audience(profileId, msg.kind).map((s) => s.login_id))];
   },
-  async send(profileId: number, msg: NotificationMessage, opts?: DispatchOptions) {
+  async send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ) {
     // An interaction-only kind (e.g. the food-log nudge) would arrive here as a
     // content-less, button-less push since the payload drops actions — so no-op it,
     // a healthy success like the HA channel's disabled-kind gate (#692). This also

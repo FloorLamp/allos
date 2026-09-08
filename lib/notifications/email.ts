@@ -138,7 +138,11 @@ export const emailChannel: NotificationChannel = {
       (r) => r.loginId
     );
   },
-  async send(profileId: number, msg: NotificationMessage, opts?: DispatchOptions) {
+  async send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ) {
     // A button-only kind (food nudge, mood check-in) would arrive as words about
     // buttons email strips — a no-op success, exactly like Web Push (#692).
     if (!isEmailDeliverableKind(msg.kind)) {

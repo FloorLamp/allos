@@ -388,17 +388,49 @@ describe("buildRecap", () => {
   });
 
   it.each([
-    ["distance", "Run", 10, 0, 0, "longest Run at 10 km", "longest Run at 6.21 mi"],
-    ["speed", "Cycle", 0, 0, 30, "fastest Cycle at 30 km/h", "fastest Cycle at 18.6 mi/h"],
-    ["duration", "Row", 0, 90, 0, "longest Row at 1h 30m", "longest Row at 1h 30m"],
+    [
+      "distance",
+      "Run",
+      10,
+      0,
+      0,
+      "longest Run at 10 km",
+      "longest Run at 6.21 mi",
+    ],
+    [
+      "speed",
+      "Cycle",
+      0,
+      0,
+      30,
+      "fastest Cycle at 30 km/h",
+      "fastest Cycle at 18.6 mi/h",
+    ],
+    [
+      "duration",
+      "Row",
+      0,
+      90,
+      0,
+      "longest Row at 1h 30m",
+      "longest Row at 1h 30m",
+    ],
   ] as const)(
     "carries %s record detail through notes and headline in each distance unit",
     (kind, label, distanceKm, durationMin, speedKmh, km, mi) => {
-      for (const [distanceUnit, phrase] of [["km", km], ["mi", mi]] as const) {
-        const recap = buildRecap(baseInput({
-          distanceUnit,
-          prs: [{ label, cardio: { kind, distanceKm, durationMin, speedKmh } }],
-        }));
+      for (const [distanceUnit, phrase] of [
+        ["km", km],
+        ["mi", mi],
+      ] as const) {
+        const recap = buildRecap(
+          baseInput({
+            workouts: [{ date: TODAY, type: "cardio" }],
+            distanceUnit,
+            prs: [
+              { label, cardio: { kind, distanceKm, durationMin, speedKmh } },
+            ],
+          })
+        );
         expect(recap.lines.find((line) => line.key === "prs")?.notes).toEqual([
           phrase,
           null,

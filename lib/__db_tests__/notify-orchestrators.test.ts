@@ -988,7 +988,10 @@ describe("runRecap cadence (#2178)", () => {
     setRecapScale(p, "month");
     onlyScale(p, "month", td);
     const month = periodOf(p, "month", td, true);
-    for (const [day, km] of [[2, 5], [26, 10]]) {
+    for (const [day, km] of [
+      [2, 5],
+      [26, 10],
+    ]) {
       db.prepare(
         `INSERT INTO activities (profile_id, date, type, title, distance_km, duration_min)
          VALUES (?, ?, 'cardio', 'Run', ?, 60)`
@@ -996,8 +999,16 @@ describe("runRecap cadence (#2178)", () => {
     }
     const metric = configureTelegram(p, "recap-metric");
     const imperial = configureTelegram(p, "recap-imperial");
-    setUnitPrefs(metric, { weightUnit: "kg", distanceUnit: "km", temperatureUnit: "F" });
-    setUnitPrefs(imperial, { weightUnit: "lb", distanceUnit: "mi", temperatureUnit: "F" });
+    setUnitPrefs(metric, {
+      weightUnit: "kg",
+      distanceUnit: "km",
+      temperatureUnit: "F",
+    });
+    setUnitPrefs(imperial, {
+      weightUnit: "lb",
+      distanceUnit: "mi",
+      temperatureUnit: "F",
+    });
     const input = gatherRecapInput(p, "kg", "month", true, td, true, "mi");
     expect(input.prs.find((pr) => pr.label === "Run")).toEqual({
       label: "Run",
@@ -1005,9 +1016,17 @@ describe("runRecap cadence (#2178)", () => {
     });
     const wire = stubFetch();
     await runRecap(p, "RecapCardioUnits", td);
-    const bodies = wire.mock.calls.map(([, init]) => JSON.parse(init.body as string));
-    expect(bodies.find((body) => body.chat_id === "recap-metric").text).toContain("longest Run at 10 km");
-    expect(bodies.find((body) => body.chat_id === "recap-imperial").text).toContain("longest Run at 6.21 mi");
+    const bodies = wire.mock.calls.map(([, init]) =>
+      JSON.parse(init.body as string)
+    );
+    expect(
+      bodies.find((body) => body.chat_id === "recap-metric").text
+    ).toContain("longest Run at 10 km");
+    expect(
+      bodies.find((body) => body.chat_id === "recap-imperial").text
+    ).toContain("longest Run at 6.21 mi");
+    // The scheduled body-weight spelling stays kg even for the lb-preferring login.
+    for (const body of bodies) expect(body.text).toContain("now 80.4 kg");
     expect(getProfileSetting(p, recapMarkerKey("month"))).toBe(month.end);
     await runRecap(p, "RecapCardioUnits", td);
     expect(wire).toHaveBeenCalledTimes(2);

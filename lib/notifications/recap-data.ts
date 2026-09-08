@@ -615,8 +615,7 @@ export const getRecapCard = commitCached(
     profileId: number,
     weightUnit: WeightUnit = "kg",
     distanceUnit: DistanceUnit = "km"
-  ) =>
-    `${profileId}:${weightUnit}:${distanceUnit}:${today(profileId)}`,
+  ) => `${profileId}:${weightUnit}:${distanceUnit}:${today(profileId)}`,
   (
     profileId: number,
     weightUnit: WeightUnit = "kg",

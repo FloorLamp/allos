@@ -164,17 +164,35 @@ describe("emailChannel.send end-to-end (capture)", () => {
     const free = newLogin("member", "units-private", "private@example.com");
     for (const login of [a, b, free]) {
       grant(login, p);
-      setLoginEmailNotify(login, { emailEnabled: true, emailFullContent: login !== free });
+      setLoginEmailNotify(login, {
+        emailEnabled: true,
+        emailFullContent: login !== free,
+      });
     }
-    setUnitPrefs(a, { weightUnit: "kg", distanceUnit: "mi", temperatureUnit: "F" });
-    const units: string[] = [];
-    await emailChannel.send(p, { title: "Recap", body: "canonical", kind: "weekly-recap" }, {
-      bodyForDistanceUnit: (unit) => { units.push(unit); return `distance in ${unit}`; },
+    setUnitPrefs(a, {
+      weightUnit: "kg",
+      distanceUnit: "mi",
+      temperatureUnit: "F",
     });
+    const units: string[] = [];
+    await emailChannel.send(
+      p,
+      { title: "Recap", body: "canonical", kind: "weekly-recap" },
+      {
+        bodyForDistanceUnit: (unit) => {
+          units.push(unit);
+          return `distance in ${unit}`;
+        },
+      }
+    );
     const mails = capturedMails();
     expect(mails).toHaveLength(2);
-    expect(mails.find((mail) => mail.to === "shared@example.com")?.text).toContain("distance in mi");
-    expect(mails.find((mail) => mail.to === "private@example.com")?.text).not.toContain("distance in");
+    expect(
+      mails.find((mail) => mail.to === "shared@example.com")?.text
+    ).toContain("distance in mi");
+    expect(
+      mails.find((mail) => mail.to === "private@example.com")?.text
+    ).not.toContain("distance in");
     expect(units).toEqual(["mi"]);
   });
 
@@ -184,20 +202,39 @@ describe("emailChannel.send end-to-end (capture)", () => {
     const healthy = newLogin("member", "render-healthy", "healthy@example.com");
     for (const login of [failed, healthy]) {
       grant(login, p);
-      setLoginEmailNotify(login, { emailEnabled: true, emailFullContent: true });
+      setLoginEmailNotify(login, {
+        emailEnabled: true,
+        emailFullContent: true,
+      });
     }
-    setUnitPrefs(failed, { weightUnit: "kg", distanceUnit: "mi", temperatureUnit: "F" });
-    const outcome = await emailChannel.send(p, {
-      title: "Recap", body: "canonical", kind: "weekly-recap",
-    }, { bodyForDistanceUnit: (unit) => {
-      if (unit === "mi") throw new Error("synthetic renderer failure");
-      return "metric detail";
-    } });
+    setUnitPrefs(failed, {
+      weightUnit: "kg",
+      distanceUnit: "mi",
+      temperatureUnit: "F",
+    });
+    const outcome = await emailChannel.send(
+      p,
+      {
+        title: "Recap",
+        body: "canonical",
+        kind: "weekly-recap",
+      },
+      {
+        bodyForDistanceUnit: (unit) => {
+          if (unit === "mi") throw new Error("synthetic renderer failure");
+          return "metric detail";
+        },
+      }
+    );
     expect(outcome).toEqual({ delivered: true });
-    expect(capturedMails().map((mail) => mail.to)).toEqual(["healthy@example.com"]);
-    expect([failed, healthy].map((login) => readDeliveryOutcome("email", login)?.state)).toEqual([
-      "failing", "delivering",
+    expect(capturedMails().map((mail) => mail.to)).toEqual([
+      "healthy@example.com",
     ]);
+    expect(
+      [failed, healthy].map(
+        (login) => readDeliveryOutcome("email", login)?.state
+      )
+    ).toEqual(["failing", "delivering"]);
   });
 
   it("the content-free DEFAULT strips the message: no medication name reaches the mail", async () => {
