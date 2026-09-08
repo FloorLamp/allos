@@ -205,13 +205,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
   it("dead-letters a pre-fix capture without costing the fixed one beside it", () => {
     const p = newProfile("mixed-queue");
     const day = today(p);
-    const preFix = buildIntent(
-      "mood",
-      shiftDateStr(day, 1),
-      mood(2),
-      p,
-      false
-    );
+    const preFix = buildIntent("mood", shiftDateStr(day, 1), mood(2), p, false);
     const fixed = buildIntent("mood", day, mood(5), p, true);
 
     expect(applyIntent(p, preFix).status).toBe("rejected");
@@ -326,6 +320,33 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
       time_source: null,
     });
   });
+
+  it.each([
+    ["a DST-gap minute", "America/New_York", "2026-03-08", "02:30"],
+    ["a future minute", "UTC", "2026-08-29", "23:59"],
+  ])(
+    "rejects %s for a nonprimary stool before recording it",
+    (_name, tz, date, at) => {
+      const p = newProfile(`stool-refused-${_name}`);
+      setTimezone(p, tz);
+      vi.setSystemTime(new Date("2026-08-29T12:00:00.000Z"));
+      const intent = buildIntent("stool", date, { type: 4, at }, p, false);
+
+      expect(applyIntent(p, intent)).toEqual({
+        status: "rejected",
+        reason: "Choose a time for a stool entry on a past day.",
+      });
+      expect(alreadyReplayed(p, intent.key)).toBe(false);
+      expect(
+        db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM metric_samples
+            WHERE profile_id = ? AND metric = 'bristol_stool'`
+          )
+          .get(p)
+      ).toEqual({ n: 0 });
+    }
+  );
 });
 
 describe("queued day-context replay boundary (#5211)", () => {

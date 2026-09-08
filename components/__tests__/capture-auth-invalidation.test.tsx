@@ -2,7 +2,10 @@ import React from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
-import { useWritePipeline, type WriteSpec } from "@/components/useWritePipeline";
+import {
+  useWritePipeline,
+  type WriteSpec,
+} from "@/components/useWritePipeline";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import {
   ProfileDaysBoundary,
@@ -43,6 +46,7 @@ vi.mock("@/lib/offline/queue-db", () => ({
   removeIntents: vi.fn(async () => undefined),
   putIntents: vi.fn(async () => undefined),
   saveRejected: vi.fn(async () => undefined),
+  enqueueIntents: vi.fn(async () => "kept"),
   allRejected: vi.fn(async () => []),
   removeRejected: vi.fn(async () => undefined),
   countIntents: vi.fn(async () => mocks.intents.length),
@@ -119,7 +123,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.intents.length = 0;
   gate = openSessionAs("session-a")(defaultGate());
-  mocks.captureWriteToken.mockImplementation(async () => gate.generation);
+  mocks.captureWriteToken.mockImplementation(async () =>
+    gate.sessionClosed ? -1 : gate.generation
+  );
   mocks.enqueueIntent.mockImplementation(
     async (intent: QueuedIntent, token: number) => {
       const outcome = gateWriteOutcome(gate, "queue", token);
@@ -174,5 +180,14 @@ describe("a pending captured attempt across identity invalidation", () => {
         isPrimaryDay: true,
       },
     });
+  });
+
+  it("does not revive a capture that began while the session was closed", async () => {
+    gate = closeSession(gate);
+    const pending = await beginPending();
+    gate = openSessionAs("session-b")(gate);
+
+    expect(await pending.settle()).toBe("nothing");
+    expect(mocks.intents).toHaveLength(0);
   });
 });

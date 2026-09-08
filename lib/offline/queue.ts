@@ -755,23 +755,6 @@ export function syncedAnnouncement(
 export const OFFLINE_CAPTURE_REFUSED_MESSAGE =
   "This entry wasn't saved. Try again once you're back online.";
 
-// ── THE HALF-KEPT MEASUREMENTS SITTING (#3118) ───────────────────────────────
-//
-// One surface makes TWO enqueues from one tap: MeasurementsQuickAdd queues the body
-// metrics and the vitals as separate intents, because those are the queue's flow
-// kinds. The refusal causes are device-wide, so in practice the two refuse together
-// and the sentence above is true — but storage can fail BETWEEN them (a quota edge, a
-// logout in another tab landing in the gap), and then the weight is queued and will
-// sync while the screen says nothing was saved. A person who re-enters the whole
-// sitting as that sentence instructs duplicates the weight, since intents are
-// uuid-keyed and re-entry is a distinct write.
-//
-// So the surface says which half it kept. The body half is enqueued FIRST and a
-// refusal there stops the second enqueue (#3114), so this is the only partial shape
-// that exists — one sentence, not a parameterised pair.
-export const MEASUREMENTS_PARTIAL_REFUSED_MESSAGE =
-  "Body measurements were saved. Vitals weren't — add those again.";
-
 export const MEASUREMENTS_WAIST_REFUSED_MESSAGE =
   "Body measurements were saved. Waist circumference wasn't — add that again.";
 

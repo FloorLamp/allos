@@ -44,8 +44,7 @@ function rejectedTx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
 // service worker is.
 export async function enqueueIntent(
   intent: QueuedIntent,
-  token?: number,
-  priorIntentKey?: string
+  token?: number
 ): Promise<DeviceWriteOutcome> {
   // Gated like every other device-local PHI write (#2908's write gate). Direct callers
   // use the foreground path. A quick-log caller supplies the token it started at T1,
@@ -61,23 +60,20 @@ export async function enqueueIntent(
   const put = (tx: IDBTransaction) => tx.objectStore(STORE).put(intent);
   return token === undefined
     ? guardedWriteNow([STORE], "queue", put)
-    : guardedWriteWithOutcome(
-        [STORE],
-        "queue",
-        token,
-        put,
-        priorIntentKey
-          ? async (tx, outcome) => {
-              if (outcome === "closed") return outcome;
-              const survived = await new Promise<boolean>((resolve, reject) => {
-                const req = tx.objectStore(STORE).getKey(priorIntentKey);
-                req.onsuccess = () => resolve(req.result !== undefined);
-                req.onerror = () => reject(req.error);
-              });
-              return survived ? "failed" : "closed";
-            }
-          : undefined
-      );
+    : enqueueIntents([intent], token);
+}
+
+// One user submission can contain body measurements and vitals. They remain two
+// existing replay intents, but become visible to every queue reader in one commit.
+export async function enqueueIntents(
+  intents: readonly QueuedIntent[],
+  token: number
+): Promise<DeviceWriteOutcome> {
+  if (intents.length === 0) return "failed";
+  return guardedWriteWithOutcome([STORE], "queue", token, (tx) => {
+    const store = tx.objectStore(STORE);
+    for (const intent of intents) store.put(intent);
+  });
 }
 
 // All queued intents, oldest first (insertion order — the store's default key

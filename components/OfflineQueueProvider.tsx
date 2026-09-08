@@ -46,6 +46,7 @@ import {
 } from "@/lib/offline/write-gate";
 import {
   enqueueIntent,
+  enqueueIntents,
   allIntents,
   removeIntents,
   putIntents,
@@ -80,25 +81,23 @@ export interface OfflineQueueApi {
   // Persist an intent for later replay. `date` is the captured local date the write
   // lands on; `payload` is the flow's raw fields.
   //
-  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT, AND WHY NOT. A caller that ignores the
-  // answer tells someone "saved offline, will sync when you reconnect" about a write that
-  // was never recorded. Most surfaces make ONE enqueue per tap and only need
-  // `=== "kept"`; the two refusals differ only for a surface making two, because
-  // "closed" means the logout wipe has already committed and took the earlier half with
-  // it, while "failed" leaves it standing (#3118 — see lib/offline/write-gate.ts).
+  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT. A caller that ignores the answer tells
+  // someone "saved offline, will sync when you reconnect" about a write that was never
+  // recorded.
   enqueue: (
     flow: FlowKind,
     payload: IntentPayload,
     capture: QueuedCapture
   ) => Promise<DeviceWriteOutcome>;
-  // The composite measurements form keeps the first intent's exact key so a refused
-  // second enqueue can distinguish a surviving partial save from a session wipe.
-  enqueueWithReceipt: (
-    flow: FlowKind,
-    payload: IntentPayload,
-    capture: QueuedCapture,
-    priorIntentKey?: string
-  ) => Promise<{ readonly key: string; readonly outcome: DeviceWriteOutcome }>;
+  // One measurements submission can produce body + vitals intents. They keep their
+  // existing replay shapes and become durable together in one gated transaction.
+  enqueueBatch: (
+    entries: readonly {
+      readonly flow: FlowKind;
+      readonly payload: IntentPayload;
+    }[],
+    capture: QueuedCapture
+  ) => Promise<DeviceWriteOutcome>;
   // Mint the immutable context stamp synchronously at the tap. The provider owns the
   // active profile identity; callers supply the existing offer's reach and the
   // DayContext-owned primacy rather than reconstructing either after a failed request.
@@ -380,13 +379,8 @@ export default function OfflineQueueProvider({
     }
   }, [toast, refreshCount, refreshRejected, announceSynced]);
 
-  const enqueueWithReceipt = useCallback(
-    async (
-      flow: FlowKind,
-      payload: IntentPayload,
-      capture: QueuedCapture,
-      priorIntentKey?: string
-    ) => {
+  const enqueue = useCallback(
+    async (flow: FlowKind, payload: IntentPayload, capture: QueuedCapture) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
       const intent = buildIntent(
@@ -395,23 +389,33 @@ export default function OfflineQueueProvider({
         capture.dayContext,
         capture.capturedAt
       );
-      const outcome = await enqueueIntent(
-        intent,
-        await capture.writeToken,
-        priorIntentKey
-      );
-      if (outcome !== "kept") return { key: intent.key, outcome };
+      const outcome = await enqueueIntent(intent, await capture.writeToken);
+      if (outcome !== "kept") return outcome;
       await refreshCount();
       void registerBackgroundSync();
-      return { key: intent.key, outcome };
+      return outcome;
     },
     [refreshCount]
   );
 
-  const enqueue = useCallback(
-    async (flow: FlowKind, payload: IntentPayload, capture: QueuedCapture) =>
-      (await enqueueWithReceipt(flow, payload, capture)).outcome,
-    [enqueueWithReceipt]
+  const enqueueBatch = useCallback(
+    async (
+      entries: readonly {
+        readonly flow: FlowKind;
+        readonly payload: IntentPayload;
+      }[],
+      capture: QueuedCapture
+    ) => {
+      const intents = entries.map(({ flow, payload }) =>
+        buildIntent(flow, payload, capture.dayContext, capture.capturedAt)
+      );
+      const outcome = await enqueueIntents(intents, await capture.writeToken);
+      if (outcome !== "kept") return outcome;
+      await refreshCount();
+      void registerBackgroundSync();
+      return outcome;
+    },
+    [refreshCount]
   );
 
   const captureDayContext = useCallback(
@@ -500,7 +504,7 @@ export default function OfflineQueueProvider({
         activeProfileId,
         pending,
         enqueue,
-        enqueueWithReceipt,
+        enqueueBatch,
         captureDayContext,
         flush,
       }}

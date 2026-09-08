@@ -38,7 +38,6 @@ import {
   type MeasurementEntryMetric,
 } from "@/lib/measurement-entry";
 import {
-  MEASUREMENTS_PARTIAL_REFUSED_MESSAGE,
   MEASUREMENTS_WAIST_REFUSED_MESSAGE,
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
@@ -56,14 +55,9 @@ import { useOptionalDayContext } from "@/components/DayContext";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
-// Which refusal sentence a queued capture gets. The shared one when the device kept
-// NOTHING; the partial one when the body half is already in the queue and only the
-// vitals were refused (#3118) — the badge would otherwise say "1 queued offline"
-// under a sentence saying nothing was saved.
-function refusedMessage(
-  captured: "refused" | "partial" | "partial-waist"
-): string {
-  if (captured === "partial") return MEASUREMENTS_PARTIAL_REFUSED_MESSAGE;
+// Which refusal sentence a queued capture gets. Body + vitals are atomic; the distinct
+// waist sentence remains because waist is not queueable and its body sibling can be.
+function refusedMessage(captured: "refused" | "partial-waist"): string {
   return captured === "partial-waist"
     ? MEASUREMENTS_WAIST_REFUSED_MESSAGE
     : OFFLINE_CAPTURE_REFUSED_MESSAGE;
@@ -274,6 +268,12 @@ const UNCONTROLLED_VITAL_FIELDS = [
   "respiratory_rate",
   "peak_flow",
 ] as const;
+const UNCONTROLLED_BODY_FIELDS = [
+  "weight",
+  "body_fat_pct",
+  "resting_hr",
+  "notes",
+] as const;
 
 export default function MeasurementsQuickAdd({
   defaultDate,
@@ -291,7 +291,7 @@ export default function MeasurementsQuickAdd({
   subjectProfileId,
 }: MeasurementsQuickAddProps) {
   const toast = useToast();
-  const { enqueueWithReceipt } = useOfflineQueue();
+  const { enqueue, enqueueBatch } = useOfflineQueue();
   const captureDayContext = useQueuedDayContextCapture();
   const dayContext = useOptionalDayContext();
   const ownedDate = dayContext?.parts.day ?? null;
@@ -382,15 +382,21 @@ export default function MeasurementsQuickAdd({
     );
   }
 
-  // React resets uncontrolled fields when a form action resolves. Pin the refused
-  // vitals as that reset's defaults for a partial save, then restore the ordinary
-  // empty/default baseline at the start of the next action (after FormData exists).
-  function pinVitalsAcrossActionReset(data?: FormData) {
+  // React resets uncontrolled fields when a form action resolves. Pin a refused
+  // sitting as that reset's defaults, then restore the ordinary empty baseline at the
+  // start of the next action (after FormData exists).
+  function pinMeasurementsAcrossActionReset(data?: FormData) {
     const form = formRef.current;
     if (!form) return;
-    for (const name of UNCONTROLLED_VITAL_FIELDS) {
+    for (const name of [
+      ...UNCONTROLLED_BODY_FIELDS,
+      ...UNCONTROLLED_VITAL_FIELDS,
+    ]) {
       const field = form.elements.namedItem(name);
-      if (field instanceof HTMLInputElement) {
+      if (
+        field instanceof HTMLInputElement ||
+        field instanceof HTMLTextAreaElement
+      ) {
         field.defaultValue = data ? String(data.get(name) ?? "") : "";
       }
     }
@@ -419,14 +425,13 @@ export default function MeasurementsQuickAdd({
   }
 
   async function handle(formData: FormData) {
-    pinVitalsAcrossActionReset();
+    pinMeasurementsAcrossActionReset();
     setError(null);
     const s = (k: string): string | null => {
       const v = formData.get(k);
       return v === null || String(v).trim() === "" ? null : String(v);
     };
-    const date =
-      ownedDate ?? String(formData.get("date") ?? "").trim();
+    const date = ownedDate ?? String(formData.get("date") ?? "").trim();
     formData.set("date", date);
     const capturedDayContext = captureDayContext(date, DATED_REACH);
     // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile.
@@ -570,73 +575,61 @@ export default function MeasurementsQuickAdd({
       setBedTime("");
       setWakeTime("");
     };
-    const clearQueuedBodyFields = (): void => {
-      const form = formRef.current;
-      if (!form) return;
-      for (const name of ["weight", "body_fat_pct", "resting_hr", "notes"]) {
-        const field = form.elements.namedItem(name);
-        if (
-          field instanceof HTMLInputElement ||
-          field instanceof HTMLTextAreaElement
-        ) {
-          field.value = "";
-        }
-      }
-    };
-
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
     // kind. Growth, composition, and waist-only entries remain unqueueable; when a
     // waist accompanies body metrics, the body intent can still be kept (#4142).
     //
     // "refused" is the device declining the capture (#3038): nothing will sync,
-    // so the caller says the shared sentence and every success step — the toast,
-    // the group memory, the summaries refresh — is skipped. The refusal causes
-    // are device-wide (no storage to queue into, or this device was logged out),
-    // so in practice the two halves refuse together — and the first refusal
-    // stops the second enqueue rather than queueing half a sitting under a toast
-    // that says none of it was saved.
-    //
-    // "partial" is the narrow case that survives that rule (#3118): storage failing
-    // BETWEEN the two enqueues, so the body half is kept and the vitals half is not.
-    // It is a refusal — no success toast, no reset, no group memory — but it is not
-    // the shared sentence, because the weight WILL sync and telling someone it did
-    // not is what makes them log it twice.
-    //
-    // WHICH IS ONLY TRUE OF ONE OF THE TWO CAUSES, and that is why the queue answers
-    // with a cause rather than a boolean. A "failed" vitals half (the quota edge) leaves
-    // the body intent sitting in the store. A "closed" one does not: the gate is closed
-    // only by `clearQueue`, which clears the intents store in the SAME transaction (see
-    // lib/offline/write-gate.ts), so a logout landing in the gap took the body half with
-    // it. Claiming "Body measurements were saved" there tells the person to re-enter only
-    // the vitals and silently loses the weigh-in — a worse trade than the duplicate this
-    // sentence exists to prevent. So a close falls back to the shared sentence, which is
-    // then simply true: nothing is queued and no badge says otherwise.
+    // so the caller says the shared sentence and skips every success step. A body +
+    // vitals sitting is atomic (#3118): its two existing replay intents are put in one
+    // gated transaction, so no queue reader can observe one half and any storage
+    // failure leaves the complete sitting ready to retry.
     const queueOffline = async (): Promise<
-      "queued" | "refused" | "partial" | "partial-waist" | "unqueueable"
+      "queued" | "refused" | "partial-waist" | "unqueueable"
     > => {
       if (hasGrowth || hasComposition || (hasWaist && (!hasBody || hasVitals)))
         return "unqueueable";
-      let keptBodyKey: string | null = null;
-      if (hasBody) {
-        if (!capturedDayContext) return "refused";
-        const receipt = await enqueueWithReceipt(
-          "body-metric",
-          {
-            weight: String(body.weight ?? ""),
-            weightUnit,
-            bodyFatPct: body.bodyFatPct,
-            restingHr: body.restingHr,
-            notes: body.notes,
-            // The sitting's stated time travels with the queued intent (#2235):
-            // an offline weigh-in keeps its statement, and an explicitly-empty
-            // Time still clears — same trichotomy the online action posts.
-            occurredAt: s("occurred_at"),
-          },
+      const refused = (): "refused" => {
+        pinMeasurementsAcrossActionReset(formData);
+        return "refused";
+      };
+      if (!capturedDayContext) return refused();
+      const bodyPayload = {
+        weight: String(body.weight ?? ""),
+        weightUnit,
+        bodyFatPct: body.bodyFatPct,
+        restingHr: body.restingHr,
+        notes: body.notes,
+        // The sitting's stated time travels with the queued intent (#2235):
+        // an offline weigh-in keeps its statement, and an explicitly-empty
+        // Time still clears — same trichotomy the online action posts.
+        occurredAt: s("occurred_at"),
+      };
+      const vitalsPayload = {
+        ...vitals,
+        // The same sitting statement travels with every vital (#2154).
+        occurredAt: s("occurred_at"),
+      };
+      if (hasBody && hasVitals) {
+        const kept = await enqueueBatch(
+          [
+            { flow: "body-metric", payload: bodyPayload },
+            { flow: "vitals", payload: vitalsPayload },
+          ],
           capturedDayContext
         );
-        if (receipt.outcome !== "kept") return "refused";
-        keptBodyKey = receipt.key;
+        if (kept !== "kept") return refused();
+      } else if (hasBody) {
+        const kept = await enqueue(
+          "body-metric",
+          bodyPayload,
+          capturedDayContext
+        );
+        if (kept !== "kept") return refused();
+      } else if (hasVitals) {
+        const kept = await enqueue("vitals", vitalsPayload, capturedDayContext);
+        if (kept !== "kept") return refused();
       }
       if (hasWaist) {
         const form = formRef.current;
@@ -652,35 +645,6 @@ export default function MeasurementsQuickAdd({
         }
         rememberWritten();
         return "partial-waist";
-      }
-      if (hasVitals) {
-        // The sitting's one stated time travels with the vitals intent too
-        // (#2154): a queued evening BP keeps its statement, and an explicitly
-        // empty Time replays as "no time" — the same trichotomy the online
-        // action reads off the same hidden field.
-        if (!capturedDayContext) return "refused";
-        const receipt = await enqueueWithReceipt(
-          "vitals",
-          {
-            ...vitals,
-            occurredAt: s("occurred_at"),
-          },
-          capturedDayContext,
-          keptBodyKey ?? undefined
-        );
-        if (receipt.outcome !== "kept") {
-          if (keptBodyKey && receipt.outcome === "failed") {
-            // The body intent is durable but the vitals are not. Keep the refused
-            // half (and its shared date/time) ready for retry while removing every
-            // field another body intent would duplicate (#3830).
-            clearQueuedBodyFields();
-            pinVitalsAcrossActionReset(formData);
-            rememberWritten();
-            refreshSummaries();
-            return "partial";
-          }
-          return "refused";
-        }
       }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");

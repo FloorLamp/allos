@@ -161,7 +161,8 @@ vi.mock("@/components/TimezoneProvider", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({
-    enqueueWithReceipt: async () => ({ key: "queued-key", outcome: "kept" }),
+    enqueue: async () => "kept",
+    enqueueBatch: async () => "kept",
   }),
   useQueuedDayContextCapture: () => () => null,
 }));

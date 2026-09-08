@@ -20,7 +20,7 @@ vi.mock("@/components/Toast", () => ({
   },
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueueWithReceipt: vi.fn() }),
+  useOfflineQueue: () => ({ enqueue: vi.fn(), enqueueBatch: vi.fn() }),
   useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/components/LoggedViaSurface", () => ({

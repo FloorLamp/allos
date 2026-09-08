@@ -138,6 +138,7 @@ export function gateWriteOutcome(
   lane: WriteLane,
   token: number
 ): DeviceWriteOutcome {
+  if (token < 0) return "failed";
   if (gateAllows(gate, lane, token)) return "kept";
   return gate.sessionClosed ? "closed" : "failed";
 }
@@ -165,7 +166,7 @@ export async function captureWriteToken(): Promise<number> {
       db.transaction(META_STORE, "readonly").objectStore(META_STORE)
     );
     db.close();
-    return gate.generation;
+    return gate.sessionClosed ? -1 : gate.generation;
   } catch {
     return -1;
   }
@@ -180,31 +181,40 @@ async function runGuardedWrite(
   stores: readonly string[],
   lane: WriteLane,
   token: number,
-  work: (tx: IDBTransaction) => void,
-  classifyRefusal?: (
-    tx: IDBTransaction,
-    outcome: Exclude<DeviceWriteOutcome, "kept">
-  ) => Promise<Exclude<DeviceWriteOutcome, "kept">>
+  work: (tx: IDBTransaction) => void
 ): Promise<DeviceWriteOutcome> {
   if (!hasIndexedDB()) return "failed";
+  let db: IDBDatabase | null = null;
+  let tx: IDBTransaction | null = null;
   try {
-    const db = await openDb();
-    const tx = db.transaction([META_STORE, ...stores], "readwrite");
+    db = await openDb();
+    tx = db.transaction([META_STORE, ...stores], "readwrite");
     const gate = await readGate(tx.objectStore(META_STORE));
     const outcome = gateWriteOutcome(gate, lane, token);
     if (outcome !== "kept") {
-      const refusal = classifyRefusal
-        ? await classifyRefusal(tx, outcome)
-        : outcome;
       tx.abort();
       db.close();
-      return refusal;
+      return outcome;
     }
-    work(tx);
+    try {
+      work(tx);
+    } catch {
+      // A synchronous second `put` failure must roll back an already-scheduled first
+      // one. IndexedDB does not abort merely because caller code threw.
+      tx.abort();
+      db.close();
+      return "failed";
+    }
     await done(tx);
     db.close();
     return "kept";
   } catch {
+    try {
+      tx?.abort();
+    } catch {
+      // Already completed/aborted.
+    }
+    db?.close();
     // A quota failure, a blocked open, or our own abort — the device simply does not
     // keep this copy, which is every caller's existing degraded path.
     return "failed";
@@ -229,39 +239,12 @@ export async function guardedWriteWithOutcome(
   stores: readonly string[],
   lane: WriteLane,
   token: number,
-  work: (tx: IDBTransaction) => void,
-  classifyRefusal?: (
-    tx: IDBTransaction,
-    outcome: Exclude<DeviceWriteOutcome, "kept">
-  ) => Promise<Exclude<DeviceWriteOutcome, "kept">>
+  work: (tx: IDBTransaction) => void
 ): Promise<DeviceWriteOutcome> {
-  return runGuardedWrite(stores, lane, token, work, classifyRefusal);
+  return runGuardedWrite(stores, lane, token, work);
 }
 
-/**
- * WHY A FOREGROUND WRITE ANSWERS WITH A CAUSE AND NOT A BOOLEAN (#3118).
- *
- * The two ways this refuses are not the same event on the device:
- *
- *   • `"closed"` — the gate said no. Only `closeSession` sets `sessionClosed`, only
- *     `clearQueue` (lib/offline/queue-db.ts) calls it, and it closes the gate IN THE SAME
- *     TRANSACTION that clears the stores. So a close observed here is proof that a wipe
- *     has already committed, and therefore that ANY EARLIER WRITE THIS CALLER MADE TO A
- *     WIPED STORE IS GONE TOO — including one this same tap made moments ago.
- *   • `"failed"` — quota, a blocked open, a throwing `work`. The device simply did not
- *     keep THIS copy; nothing else was touched.
- *
- * "A close means a wipe" holds for the two lanes that come through here — `queue` and
- * `drafts`, where `sessionClosed` is the only thing `gateAllows` can refuse on. The
- * `snapshots` lane has a second refusal (`snapshotsClosed`, the reads off switch) that
- * clears nothing, so a snapshots caller reading this for durability would have to say
- * which close it saw. None does today; this is the sentence to re-decide if one appears.
- *
- * A caller making two writes from one tap cannot tell those apart from `false`, and
- * MeasurementsQuickAdd guessed wrong in the direction that loses data: it told the person
- * the first half was safe and to re-enter only the second, on a device that had just
- * thrown the first half away. The cause is the fix — see that file's `queueOffline`.
- */
+/** The outcome of one device write transaction. */
 export type DeviceWriteOutcome = "kept" | "closed" | "failed";
 
 /**

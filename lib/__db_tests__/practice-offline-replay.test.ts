@@ -162,13 +162,7 @@ describe("applyIntent — practice (#2908)", () => {
     expect(
       applyIntent(
         p,
-        buildIntent(
-          "practice",
-          date,
-          { ...base, endTime: "09:00" },
-          p,
-          false
-        )
+        buildIntent("practice", date, { ...base, endTime: "09:00" }, p, false)
       )
     ).toEqual({ status: "done" });
     expect(
@@ -179,6 +173,37 @@ describe("applyIntent — practice (#2908)", () => {
         .get(p)
     ).toEqual({ date, end_time: "09:00" });
   });
+
+  it.each([
+    ["a DST-gap minute", "America/New_York", "2026-03-08", "02:30"],
+    ["a future minute", "UTC", "2026-08-29", "23:59"],
+  ])(
+    "rejects %s for a nonprimary practice before recording it",
+    (_name, tz, date, endTime) => {
+      const p = newProfile(`practice-refused-${_name}`);
+      setTimezone(p, tz);
+      vi.setSystemTime(new Date("2026-08-29T12:00:00.000Z"));
+      const intent = buildIntent(
+        "practice",
+        date,
+        {
+          practice: PRACTICE,
+          identity: practiceIdentity(PRACTICE),
+          durationMin: null,
+          endTime,
+        },
+        p,
+        false
+      );
+
+      expect(applyIntent(p, intent)).toEqual({
+        status: "rejected",
+        reason: "Choose an end time for a practice on a past day.",
+      });
+      expect(alreadyReplayed(p, intent.key)).toBe(false);
+      expect(getPracticeDayCount(p, PRACTICE, date)).toBe(0);
+    }
+  );
 
   it("rejects a shapeless payload rather than writing", () => {
     const p = newProfile("practice-shapeless");

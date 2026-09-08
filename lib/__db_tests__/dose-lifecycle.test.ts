@@ -21,7 +21,7 @@
 //
 // The db singleton is redirected at a per-file temp DB by setup.ts.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   getIntakeDoses,
@@ -45,6 +45,7 @@ import {
 } from "@/lib/offline/queue";
 import { dayContextKey } from "@/lib/day-context-key";
 import { TAP_REACH } from "@/lib/log-manifest";
+import { TIER_FROZEN_INSTANT } from "./frozen-clock";
 
 let seq = 0;
 
@@ -507,6 +508,8 @@ describe("escalationAckState status-awareness (#280)", () => {
 });
 
 describe("offline dose replay rides the shared write cores (#1427)", () => {
+  afterEach(() => vi.setSystemTime(TIER_FROZEN_INSTANT));
+
   it("never invents an instant for a captured nonprimary day that is current at replay", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId);
@@ -526,26 +529,22 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
     expect(occurredAt(doseId, DATE)).toBeNull();
   });
 
-  it("stamps the CAPTURED tap time, snapshots the amount, and decrements supply once", () => {
+  it("stamps a primary-day T1 tap after replay crosses midnight", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "2 caps");
 
-    // Local midnight of the log's own day: unambiguously inside DATE in the profile
-    // timezone and (except for the first instant of the day) hours before "now", so
-    // the stored recorded_at could not have come from datetime('now').
-    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "00:00")!;
+    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "23:50")!;
+    vi.setSystemTime(tapped);
+    const intent = doseIntent("dose", doseId, {
+      clientTakenAt: tapped.toISOString(),
+      isPrimaryDay: true,
+      profileId,
+    });
+    vi.setSystemTime(new Date(tapped.getTime() + 20 * 60_000));
+    expect(today(profileId)).toBe(shiftDateStr(DATE, 1));
 
-    expect(
-      applyIntent(
-        profileId,
-        doseIntent("dose", doseId, {
-          clientTakenAt: tapped.toISOString(),
-          isPrimaryDay: true,
-          profileId,
-        })
-      )
-    ).toEqual({ status: "done" });
+    expect(applyIntent(profileId, intent)).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)).toEqual({ amount: "2 caps", status: "taken" });
     expect(occurredAt(doseId, DATE)).toBe(utcInstant(tapped));
     expect(onHand(itemId)).toBe(9);

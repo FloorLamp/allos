@@ -163,6 +163,10 @@ describe("a tokened foreground write's refusal cause", () => {
 
   it("treats an unreadable capture token as failure rather than a wipe", () => {
     expect(gateWriteOutcome(defaultGate(), "queue", -1)).toBe("failed");
+    expect(gateWriteOutcome(closeAt(), "queue", -1)).toBe("failed");
+    expect(
+      gateWriteOutcome(openFor(NEXT_SESSION, closeAt()), "queue", -1)
+    ).toBe("failed");
   });
 });
 

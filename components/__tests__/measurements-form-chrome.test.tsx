@@ -11,7 +11,8 @@ vi.mock("@/app/(app)/trends/measurement-actions", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => () => {} }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({
-    enqueueWithReceipt: async () => ({ key: "queued-key", outcome: "kept" }),
+    enqueue: async () => "kept",
+    enqueueBatch: async () => "kept",
   }),
   useQueuedDayContextCapture: () => () => null,
 }));
