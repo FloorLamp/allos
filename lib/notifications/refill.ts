@@ -1184,9 +1184,7 @@ export async function reconcileRefillReceipt(
     const marker = parseRefillMarker(
       readRefillMarker(profileId, legacy.itemId)
     );
-    return (
-      marker?.state === "confirm" && marker.sourcePointerId === pointer.id
-    );
+    return marker?.state === "confirm" && marker.sourcePointerId === pointer.id;
   });
   // Ordinary legacy reminders retain the family's existing close/detail behavior.
   // Callbacks enter the planner directly after their atomic state transition.
