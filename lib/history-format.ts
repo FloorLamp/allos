@@ -40,6 +40,7 @@ import { BODY_METRIC_MEASURE_SLUG } from "./body-metric-measures";
 import type { AppRoute } from "./hrefs";
 import type { MergeableRow } from "./timeline-multi";
 import type { TimelineEvent } from "./timeline-format";
+import { isRealIsoDate } from "./date";
 
 // THE CLOSED KIND REGISTRY (#3958), one family at a time and in chip order.
 //
@@ -719,4 +720,3 @@ export function parseHistoryExpand(
   }
   return out;
 }
-import { isRealIsoDate } from "./date";

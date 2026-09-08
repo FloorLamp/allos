@@ -27,7 +27,7 @@ export default function RouteDayContext({
 }) {
   const pathname = usePathname();
   const params = useSearchParams();
-  const [, setDayRevision] = useState(0);
+  const [dayRevision, setDayRevision] = useState(0);
   const today = dateStrInTz(timeZone);
 
   // App layouts persist across client navigation. Wake this one day owner at the
@@ -36,7 +36,9 @@ export default function RouteDayContext({
   useEffect(() => {
     const tomorrow = shiftDateStr(today, 1);
     const boundary = zonedWallTimeToUtc(timeZone, tomorrow, "00:00");
-    const delay = boundary
+    const landsOnTomorrow =
+      boundary && dateStrInTz(timeZone, boundary) === tomorrow;
+    const delay = landsOnTomorrow
       ? Math.max(1, boundary.getTime() - Date.now() + 25)
       : 60_000;
     const timer = window.setTimeout(
@@ -44,7 +46,7 @@ export default function RouteDayContext({
       delay
     );
     return () => window.clearTimeout(timer);
-  }, [timeZone, today]);
+  }, [timeZone, today, dayRevision]);
 
   let day: string | undefined;
   let hrefForDay: ((date: string) => AppRoute) | null = null;

@@ -134,6 +134,24 @@ it("refreshes the route day when a persistent layout crosses local midnight", ()
   expect(screen.getByTestId("route-day").textContent).toBe("2026-09-08:url");
 });
 
+it("rearms through a local midnight gap until the calendar day changes", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2018-11-04T01:59:59.000Z"));
+  route.pathname = "/history";
+  route.query = "day=2018-11-04";
+  render(
+    <RouteDayContext profileId={7} timeZone="America/Sao_Paulo">
+      <Probe />
+    </RouteDayContext>
+  );
+  expect(screen.getByTestId("route-day").textContent).toBe("2018-11-03:url");
+
+  act(() => vi.advanceTimersByTime(1_100));
+  expect(screen.getByTestId("route-day").textContent).toBe("2018-11-03:url");
+  act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+  expect(screen.getByTestId("route-day").textContent).toBe("2018-11-04:url");
+});
+
 it("provides dated history and Food contexts while Home and supplements stay undated", () => {
   const surface = () => (
     <RouteDayContext profileId={7} timeZone="UTC">
