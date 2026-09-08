@@ -452,15 +452,29 @@ describe("FoodLogBar projection publication", () => {
     });
 
     expect(screen.getByTestId("protein-quickadd")).toBeTruthy();
-    expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe("5");
+    expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+      "5g today"
+    );
     fireEvent.click(screen.getByTestId("food-day-yesterday"));
     expect(screen.getByTestId("protein-quickadd")).toBeTruthy();
-    expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe("0");
+    expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+      "0g yesterday"
+    );
     fireEvent.click(screen.getByTestId("protein-quickadd-add"));
 
     await waitFor(() => expect(actions.addProteinGrams).toHaveBeenCalledOnce());
     const submitted = actions.addProteinGrams.mock.calls[0][0] as FormData;
     expect(submitted.get("date")).toBe(yesterday);
+    await waitFor(() =>
+      expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+        "30g yesterday"
+      )
+    );
+
+    fireEvent.click(screen.getByTestId("food-day-today"));
+    expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+      "5g today"
+    );
   });
 
   // THE TYPED AMOUNT IS THE TYPIST'S; THE TOTAL IS THE DAY'S (#4934, owner ruling

@@ -11,7 +11,11 @@ import QuickEntryProvider, {
   useQuickEntry,
 } from "@/components/QuickEntryProvider";
 import type { SessionProfile } from "@/lib/auth";
-import { ProfileDaysBoundary } from "@/components/DayContext";
+import {
+  DayContextProvider,
+  ProfileDaysBoundary,
+} from "@/components/DayContext";
+import type { AppRoute } from "@/lib/hrefs";
 
 // COMPONENT TIER — #3416/#4454, the sheet's offline OPEN path: last-good render
 // with a revalidate behind it, a failed revalidate keeping what is already shown, a
@@ -21,6 +25,29 @@ import { ProfileDaysBoundary } from "@/components/DayContext";
 
 const loadQuickEntry = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
+vi.mock("@/app/(app)/nutrition/FoodLogBar", async () => {
+  const { useDayContext } = await vi.importActual<
+    typeof import("@/components/DayContext")
+  >("@/components/DayContext");
+  return {
+    default: function FoodHostProbe({
+      days,
+      proteinQuickAdd,
+    }: {
+      days: { date: string; label: string }[];
+      proteinQuickAdd?: { initialGramsByDate: Record<string, number> };
+    }) {
+      const selected = useDayContext().parts.day;
+      const label = days.find((day) => day.date === selected)?.label ?? "";
+      const grams = proteinQuickAdd?.initialGramsByDate[selected] ?? -1;
+      return (
+        <output data-testid="food-host-probe">
+          {selected}:{grams}:{label}
+        </output>
+      );
+    },
+  };
+});
 vi.mock("@/components/DoseStatusControl", () => ({
   default: ({ date }: { date?: string }) => (
     <span data-testid="dose-control-probe" data-date={date ?? ""} />
@@ -59,6 +86,7 @@ function Sheet({ actingProfileId = ACTING.id }: { actingProfileId?: number }) {
     <>
       <button onClick={() => open("stool")}>open</button>
       <button onClick={() => open("dose")}>open dose</button>
+      <button onClick={() => open("food")}>open food</button>
       <button onClick={() => open("cycle")}>open cycle</button>
       <button onClick={close}>close</button>
     </>
@@ -135,6 +163,29 @@ function dueDose(today: string) {
       { date: "2026-09-02", label: "Yesterday", slots: [] },
       { date: "2026-09-01", label: "Mon, Sep 1", slots: [] },
     ],
+  };
+}
+
+function food(day: string, proteinGrams: number, today = "2026-09-03") {
+  return {
+    form: "food" as const,
+    today,
+    days: [
+      {
+        date: day,
+        label: "server-relative label",
+        counts: {},
+        slotCounts: { Morning: {}, Midday: {}, Evening: {} },
+        events: [],
+      },
+    ],
+    groupsBySlot: { Morning: [], Midday: [], Evening: [] },
+    proteinRankBySlot: { Morning: 0, Midday: 0, Evening: 0 },
+    proteinGrams,
+    proteinPreset: 30,
+    excludedGroups: [],
+    slot: "Midday" as const,
+    slotBoundaries: { midday: 660, evening: 900 },
   };
 }
 
@@ -283,6 +334,86 @@ describe("the stall bound and Retry (#3416 proposal 3)", () => {
 });
 
 describe("day request identity", () => {
+  it("returns from Yesterday to the cached Today Food total while refreshing that key", async () => {
+    let resolveTodayRefresh!: (value: ReturnType<typeof food>) => void;
+    loadQuickEntry
+      .mockResolvedValueOnce(food("2026-09-03", 5))
+      .mockResolvedValueOnce(food("2026-09-02", 0))
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveTodayRefresh = resolve))
+      );
+    renderSheet();
+    fireEvent.click(screen.getByText("open food"));
+    expect((await screen.findByTestId("food-host-probe")).textContent).toBe(
+      "2026-09-03:5:Today"
+    );
+
+    fireEvent.click(screen.getByTestId("day-context-1"));
+    await waitFor(() =>
+      expect(screen.getByTestId("food-host-probe").textContent).toBe(
+        "2026-09-02:0:Yesterday"
+      )
+    );
+
+    fireEvent.click(screen.getByTestId("day-context-0"));
+    expect(screen.getByTestId("food-host-probe").textContent).toBe(
+      "2026-09-03:5:Today"
+    );
+    resolveTodayRefresh(food("2026-09-03", 7));
+    await waitFor(() =>
+      expect(screen.getByTestId("food-host-probe").textContent).toBe(
+        "2026-09-03:7:Today"
+      )
+    );
+  });
+
+  it("renders the inherited dated Food total without a sheet switcher", async () => {
+    const inheritedDay = "2026-08-20";
+    loadQuickEntry.mockResolvedValueOnce(food(inheritedDay, 33));
+    render(
+      <ToastProvider>
+        <ProfileDaysBoundary
+          clocks={
+            new Map([[ACTING.id, { today: "2026-09-03", timeZone: "UTC" }]])
+          }
+        >
+          <DayContextProvider
+            profileId={ACTING.id}
+            today="2026-09-03"
+            reach={{ kind: "dated" }}
+            backing={{
+              kind: "url",
+              day: inheritedDay,
+              hrefForDay: (day) => `/history?day=${day}` as AppRoute,
+            }}
+          >
+            <QuickEntryProvider
+              measurements={MEASUREMENTS}
+              writableProfiles={[ACTING]}
+              actingProfileId={ACTING.id}
+            >
+              <Sheet />
+            </QuickEntryProvider>
+          </DayContextProvider>
+        </ProfileDaysBoundary>
+      </ToastProvider>
+    );
+
+    fireEvent.click(screen.getByText("open food"));
+    await waitFor(() =>
+      expect(screen.getByTestId("food-host-probe").textContent).toContain(
+        `${inheritedDay}:33:`
+      )
+    );
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "food",
+      ACTING.id,
+      inheritedDay,
+      "dated"
+    );
+    expect(screen.queryByTestId("bounded-day-switcher")).toBeNull();
+  });
+
   it("reopens an undated form daylessly, not on the prior selection", async () => {
     loadQuickEntry
       .mockResolvedValueOnce(unavailable("today"))

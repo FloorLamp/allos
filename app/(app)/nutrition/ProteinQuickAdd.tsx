@@ -13,13 +13,17 @@ import { addProteinGrams, undoProteinGrams } from "./actions";
 // The pipeline owns transport, queue capture, and optimistic settlement.
 
 export default function ProteinQuickAdd({
-  today,
+  date,
+  dayLabel,
   initialGrams,
   lastPreset,
 }: {
   // The day the bar has selected (YYYY-MM-DD) — the tap logs against this, so a
   // move of the day picker moves where a typed amount lands.
-  today: string;
+  date: string;
+  // The same selected day's visible label. The total, label, and write date are
+  // one tuple owned by the bar rather than three readings of "today".
+  dayLabel: string;
   // That day's manual-protein total so far (0 when nothing logged).
   initialGrams: number;
   // The profile's last-used amount (repeated scoop size), or null if never logged.
@@ -30,9 +34,9 @@ export default function ProteinQuickAdd({
     lastPreset != null ? String(lastPreset) : ""
   );
   // Keep typed grams when the selected day changes; only its displayed total resets.
-  const [seededDay, setSeededDay] = useState(today);
-  if (seededDay !== today) {
-    setSeededDay(today);
+  const [seededDay, setSeededDay] = useState(date);
+  if (seededDay !== date) {
+    setSeededDay(date);
     setTotal(initialGrams);
   }
   const toast = useToast();
@@ -49,10 +53,10 @@ export default function ProteinQuickAdd({
     }
     await pipeline.run({
       key: delta === 1 ? "add" : "undo",
-      fields: { grams: String(grams), date: today },
+      fields: { grams: String(grams), date },
       action: delta === 1 ? addProteinGrams : undoProteinGrams,
       optimistic: {
-        key: today,
+        key: date,
         from: total,
         to: Math.max(0, total + delta * grams),
         commit: setTotal,
@@ -73,7 +77,7 @@ export default function ProteinQuickAdd({
           ? {
               kind: "capture",
               flow: "food",
-              date: today,
+              date,
               payload: {
                 entry: "protein",
                 groupKey: null,
@@ -89,6 +93,11 @@ export default function ProteinQuickAdd({
       failureMessage: "Couldn't save that — try again.",
     });
   }
+
+  const visibleDay =
+    dayLabel === "Today" || dayLabel === "Yesterday"
+      ? dayLabel.toLowerCase()
+      : dayLabel;
 
   return (
     // THE PROTEIN CHIP, AT THE USUAL GRAMS (#4477's blessed add door). The scoop keeps
@@ -120,7 +129,7 @@ export default function ProteinQuickAdd({
             value={Math.round(total)}
             testId="protein-quickadd-grams"
           />
-          g today
+          g {visibleDay}
         </span>
       </div>
       {/* THE CONTROL BOX (#4505, over #3486's 32). `.tap-target`'s `inset: -6px`

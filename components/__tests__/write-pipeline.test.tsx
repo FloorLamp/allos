@@ -695,7 +695,12 @@ describe.each(["protein", "mobility"] as const)(
       render(
         <LoggedViaSurface value="quick-log">
           {kind === "protein" ? (
-            <ProteinQuickAdd today={day} initialGrams={0} lastPreset={25} />
+            <ProteinQuickAdd
+              date={day}
+              dayLabel="Today"
+              initialGrams={0}
+              lastPreset={25}
+            />
           ) : (
             <MobilityLogBar
               today={day}

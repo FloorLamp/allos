@@ -168,9 +168,10 @@ export type QuickEntryData =
       // completeness), so nothing is lost: this compact overlay just doesn't offer a
       // gram box to someone with no scoop size to re-offer.
       proteinRankBySlot: Record<FoodSlot, number | null>;
-      // Today's manual-protein total + the last-used amount, for the ranked protein
-      // control. Null preset ⇒ untracked ⇒ no control (proteinRankBySlot is all null).
-      proteinToday: number;
+      // The requested day's manual-protein total + the last-used amount, for the
+      // ranked protein control. Null preset ⇒ untracked ⇒ no control
+      // (proteinRankBySlot is all null).
+      proteinGrams: number;
       proteinPreset: number | null;
       excludedGroups: string[];
       slot: FoodSlot;
@@ -396,7 +397,7 @@ export async function loadQuickEntry(
       proteinRankBySlot: Object.fromEntries(
         FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
       ) as Record<FoodSlot, number | null>,
-      proteinToday: getProteinDailyGrams(profile.id, requestedDate),
+      proteinGrams: getProteinDailyGrams(profile.id, requestedDate),
       proteinPreset: getProteinQuickAddPreset(profile.id),
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,

@@ -990,7 +990,7 @@ function QuickEntryBody({
               data.proteinPreset != null && subjectProfileId == null
                 ? {
                     initialGramsByDate: {
-                      [selectedDay ?? data.today]: data.proteinToday,
+                      [selectedDay ?? data.today]: data.proteinGrams,
                     },
                     lastPreset: data.proteinPreset,
                   }
