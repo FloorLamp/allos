@@ -680,26 +680,29 @@ describe.each(["protein", "mobility"] as const)(
       expect(screen.getByTestId(totalId).textContent).toBe(amount);
     });
 
-    it("keeps the domain capture offline and refuses its removal without queueing an inverse", async () => {
-      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
-      add.mockRejectedValue(new TypeError("Failed to fetch"));
-      remove.mockRejectedValue(new TypeError("Failed to fetch"));
-      mount();
-      await act(async () => screen.getByTestId(addId).click());
-      expect(mocks.enqueue).toHaveBeenCalledWith(
-        kind === "protein" ? "food" : "mobility",
-        day,
-        payload
-      );
-      expect(screen.getByTestId(totalId).textContent).toBe(queued);
-      await act(async () => screen.getByTestId(removeId).click());
-      expect(mocks.enqueue).toHaveBeenCalledTimes(1);
-      expect(screen.getByTestId(totalId).textContent).toBe(queued);
-      expect(mocks.toast).toHaveBeenLastCalledWith(
-        expect.stringContaining("needs a connection"),
-        { tone: "error" }
-      );
-    });
+    it.each([false, true])(
+      "keeps a disconnected capture and refuses its inverse (navigator online: %s)",
+      async (online) => {
+        vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(online);
+        add.mockRejectedValue(new TypeError("Failed to fetch"));
+        remove.mockRejectedValue(new TypeError("Failed to fetch"));
+        mount();
+        await act(async () => screen.getByTestId(addId).click());
+        expect(mocks.enqueue).toHaveBeenCalledWith(
+          kind === "protein" ? "food" : "mobility",
+          day,
+          payload
+        );
+        expect(screen.getByTestId(totalId).textContent).toBe(queued);
+        await act(async () => screen.getByTestId(removeId).click());
+        expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId(totalId).textContent).toBe(queued);
+        expect(mocks.toast).toHaveBeenLastCalledWith(
+          expect.stringContaining("needs a connection"),
+          { tone: "error" }
+        );
+      }
+    );
   }
 );
 

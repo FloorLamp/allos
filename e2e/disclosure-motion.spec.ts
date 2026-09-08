@@ -17,52 +17,9 @@ import {
   MICRO_MOTION_MIN_MS,
 } from "@/lib/micro-motion";
 
-// THE CONTINUITY MOTION, MEASURED (#3676 / #3677).
-//
-// Every disclosure in the app now grows open through `components/Disclosure.tsx`
-// instead of snapping. The class is defined by two properties that only a browser can
-// answer, and BOTH of them are heights over frames rather than events: Chromium does
-// not expose a `::details-content` transition through `getAnimations()` or through
-// `transitionrun`, which was measured before this spec was written. So each test
-// samples the disclosure's own height once per animation frame, inside the page, and
-// reads the SHAPE of the sequence.
-//
-//   * It ANIMATES: at least one frame sits strictly between closed and open. A snap
-//     produces no such frame, which is exactly what every one of these folds did
-//     before.
-//   * It does not REPLAY. A fold restored open by the pre-paint memory script must be
-//     open on the first frame and never move — an entrance on load is the ambient
-//     motion #3676 refuses, and "it does not animate" is only worth asserting if the
-//     assertion could have failed, so the same sampler that catches growth is pointed
-//     at the load.
-//
-// Under reduced motion the same sampler must find the panel at full height on the
-// FIRST frame after the tap, which is the designed end state rather than an absence.
-
-// WHY THE SAMPLER REPORTS WHETHER ITS NODE IS STILL THE MOUNTED ONE (#4339).
-//
-// It resolves the fold ONCE and then measures that node for every frame — it has to,
-// because the whole point is one continuous element travelling. So if React replaces
-// the subtree while the frames run, this measures a node that is no longer in the
-// document: a detached element reports height 0 forever, and `growthFrames` on
-// `0,0,0,…` is empty. The assertion below then reads "the fold did not animate" when
-// what happened is "the fold I was holding stopped being the fold".
-//
-// Those two are indistinguishable in the failure text, and that cost this issue three
-// weeks: run 33337869481 shard 4 failed with `heights while opening: 0,0,…,0` and with
-// `{"contentVisibility":"","innerTextLength":8,"visible":false}` and neither said which
-// one it was. Forging each candidate state on this page settles it — only a DETACHED
-// node reports `contentVisibility: ""` (a display:none one still reports "visible"),
-// and only a detached or display:none one reports height 0:
-//
-//   detach the details      {before:8,open:true,contentVisibility:"",       …} heights 0,0,0…
-//   display:none details    {before:8,open:true,contentVisibility:"visible",…} heights 0,0,0…
-//   content-visibility:hidden parent                     …contentVisibility:"visible"  heights 525,525…
-//   untouched (control)     {before:0,open:true,contentVisibility:"visible",…} heights 164,524,761…
-//
-// Reviewer: this flag pins nothing and backs no assertion, and it is not scaffolding.
-// It is the one line that makes the NEXT occurrence say which failure it is instead of
-// sending the reader after a motion regression that never happened.
+// Sample real frame geometry: user-opened disclosures interpolate between heights,
+// while remembered disclosures must already contain their content at first paint.
+// Track node replacement so detached geometry cannot masquerade as no animation.
 /** One height sample per animation frame, taken from inside the page. */
 async function heightsWhileOpening(
   page: Page,
@@ -291,7 +248,14 @@ test("reduced motion opens the panel instantly, and schedules no keyframe", asyn
   }
 });
 
-test("a remembered-open disclosure is open on the first painted frame and never replays", async ({
+type RestoredFrame = {
+  open: boolean;
+  visible: boolean;
+  overflow: number;
+  height: number;
+};
+
+test("a remembered-open disclosure stays fully open while its content grows", async ({
   browser,
 }) => {
   resetDashboardAllOffer();
@@ -303,56 +267,74 @@ test("a remembered-open disclosure is open on the first painted frame and never 
     await page.goto("/");
     const details = page.getByTestId("dashboard-all");
     await expect(details).not.toHaveAttribute("open", "");
-    // The outer control's OWN summary, not "the first summary inside `details`" — a
-    // capped Everything band nests its own fold (and its own summary) under this
-    // same `<details>` (#4065), which makes the naive `.locator("summary")` ambiguous.
     await hydratedClick(page, dashboardAllSummary(page));
     await expect(details).toHaveAttribute("open", "");
 
-    // Sample from the earliest frame the element exists in, on the RELOAD. If the
-    // restore replayed its entrance, the first frames would climb — the very shape
-    // the opening test above proves this sampler can see.
+    // Sample from the first frame the fold exists. Grow its content after sampling
+    // to exercise streamed layout changes without mistaking them for an entrance.
     await page.addInitScript(() => {
-      const bag = window as typeof window & { __discloseHeights?: number[] };
-      bag.__discloseHeights = [];
+      const bag = window as typeof window & {
+        __discloseFrames?: RestoredFrame[];
+      };
+      bag.__discloseFrames = [];
+      let grew = false;
       const sample = () => {
-        const el = document.querySelector<HTMLElement>(
+        const el = document.querySelector<HTMLDetailsElement>(
           '[data-testid="dashboard-all"]'
         );
-        if (el) bag.__discloseHeights!.push(el.getBoundingClientRect().height);
-        if ((bag.__discloseHeights?.length ?? 0) < 20)
-          requestAnimationFrame(sample);
+        if (el) {
+          const box = el.getBoundingClientRect();
+          const content = el.querySelector<HTMLElement>(
+            '[data-testid="dashboard-all-contents"]'
+          );
+          bag.__discloseFrames!.push({
+            open: el.open,
+            visible: content?.checkVisibility() ?? true,
+            overflow: content
+              ? Math.max(0, content.getBoundingClientRect().bottom - box.bottom)
+              : 0,
+            height: box.height,
+          });
+          if (content && !grew) {
+            content.style.minHeight = `${Math.max(2000, box.height * 3)}px`;
+            grew = true;
+          }
+        }
+        if (bag.__discloseFrames!.length < 20) requestAnimationFrame(sample);
       };
       requestAnimationFrame(sample);
     });
     await page.reload();
     await expect(details).toHaveAttribute("open", "");
     await expect(page.getByTestId("dashboard-all-contents")).toBeVisible();
-
     await expect
       .poll(
         () =>
           page.evaluate(
             () =>
-              (window as typeof window & { __discloseHeights?: number[] })
-                .__discloseHeights?.length ?? 0
+              (window as typeof window & { __discloseFrames?: RestoredFrame[] })
+                .__discloseFrames?.length ?? 0
           ),
         { message: "the first-frames sampler never ran" }
       )
       .toBeGreaterThanOrEqual(10);
-    const heights = await page.evaluate(
+    const frames = await page.evaluate(
       () =>
-        (window as typeof window & { __discloseHeights?: number[] })
-          .__discloseHeights ?? []
+        (window as typeof window & { __discloseFrames?: RestoredFrame[] })
+          .__discloseFrames ?? []
     );
-    // Already at its full height on the first frame it exists in, and unmoved after.
-    // The content streams in around it, so the panel may still be GROWING with its
-    // own rows — what may not happen is the panel starting near zero, which is what
-    // an entrance replay looks like.
-    expect(heights[0], `first frames: ${heights.join(",")}`).toBeGreaterThan(
-      Math.max(...heights) / 2
+    // The growing fixture would fail the old first-height / final-height threshold.
+    expect(Math.max(...frames.map((frame) => frame.height))).toBeGreaterThan(
+      frames[0].height * 2
     );
-    expect(growthFrames(heights).length, heights.join(",")).toBe(0);
+    // An entrance clips natural content below the interpolating details box. Compare
+    // within each frame: streamed content and font/layout changes can change both.
+    expect(
+      frames.every(
+        (frame) => frame.open && frame.visible && frame.overflow <= 1
+      ),
+      JSON.stringify(frames)
+    ).toBe(true);
   } finally {
     await page.context().close();
   }

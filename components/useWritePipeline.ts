@@ -241,13 +241,10 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       try {
         result = await spec.action(formData);
       } catch (error) {
-        // Only the CAPTURE arm applies here. The pre-flight decision answers "the
-        // browser says we are offline"; this one answers "the request died", where the
-        // surface's own failure sentence is what every adopted site has always said —
-        // the refusal copy is about a state the user is in, not about a dropped fetch.
+        // A dropped connection uses the same capture or refusal as offline preflight.
         if (offline && shouldQueueOffline(navigator.onLine !== false, error)) {
           const decision = offline(tappedAt);
-          if (decision.kind === "capture")
+          if (decision.kind !== "attempt")
             return { result: await capture(decision) };
         }
         say({ message: spec.failureMessage, tone: "error", undo: null });
