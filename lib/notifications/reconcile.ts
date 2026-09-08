@@ -89,7 +89,7 @@ import { type IntakeSendSlot } from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { getRecentFoodTaps } from "../queries/nutrition";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
-import { composeForSend } from "./compose";
+import { composeForRebuild } from "./compose";
 import { now as clockNow } from "../clock";
 import { correctionBursts, correctionTokenAnchor } from "../correction-time";
 import {
@@ -1654,7 +1654,7 @@ async function reconcileProse(
   // the "[Name] " label alone and every multi-profile digest would draw one edit that
   // changed nothing. The RAW message still goes to `rebuildMessage`, which composes it
   // there, exactly once.
-  const hash = messageBodyHash(composeForSend(profileId, rebuilt));
+  const hash = messageBodyHash(composeForRebuild(profileId, rebuilt, pointer));
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
   // an hourly sweep over the most-read message in the app off the rate limiter.
   if (pointer.bodyHash === hash) return;
@@ -1787,7 +1787,7 @@ function planEdit(
     const keyboard = messageKeyboard(rebuilt);
     const bodyHash =
       pointer.kind === "food"
-        ? messageBodyHash(composeForSend(profileId, rebuilt))
+        ? messageBodyHash(composeForRebuild(profileId, rebuilt, pointer))
         : undefined;
     if (
       JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard) &&
@@ -1811,7 +1811,7 @@ function planEdit(
       keyboard: messageKeyboard(rebuilt),
       bodyHash:
         pointer.kind === "food"
-          ? messageBodyHash(composeForSend(profileId, rebuilt))
+          ? messageBodyHash(composeForRebuild(profileId, rebuilt, pointer))
           : undefined,
     };
   }

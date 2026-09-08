@@ -221,6 +221,10 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     // The dose rows never exist as named inputs — they are React state serialized
     // into FormData at submit — so this is the `extra` half of the draft.
     const doseEditor1 = await openFact(page, "dose", addCard);
+    await hydratedClick(
+      page,
+      doseEditor1.getByRole("button", { name: "Add dose", exact: true })
+    );
     await doseEditor1.getByLabel("Amount").first().fill("25 mg"); // eslint-disable-line no-restricted-properties -- first-ok: this form's own first dose row, one render, not a seeded list
     await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: same row
     await closeEditor(page, addCard);
@@ -336,6 +340,10 @@ test("the reactive unsaved signature is cheap enough to run per keystroke (#3371
     // A dose row, so `extra` carries the state-only half rather than an empty object
     // — that half is what `draftSig` actually spends its time on.
     const doseEditor = await openFact(page, "dose", addCard);
+    await hydratedClick(
+      page,
+      doseEditor.getByRole("button", { name: "Add dose", exact: true })
+    );
     await doseEditor.getByLabel("Amount").first().fill("25 mg"); // eslint-disable-line no-restricted-properties -- first-ok: this form's own first dose row
     await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: same row
     await closeEditor(page, addCard);

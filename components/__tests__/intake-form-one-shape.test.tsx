@@ -108,6 +108,7 @@ const ROW = {
 
 const EDIT_MOUNT = {
   medication: ROW,
+  dueDoseIds: [5],
   doses: [
     {
       id: 5,

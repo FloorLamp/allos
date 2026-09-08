@@ -14,7 +14,7 @@ import DraftRestoreBanner from "@/components/DraftRestoreBanner";
 import { useFormDraft } from "@/components/useFormDraft";
 import RxNormAffordance from "@/components/intake/RxNormAffordance";
 import IntakeInteractionNotices from "@/components/intake/IntakeInteractionNotices";
-import DoseRowsEditor from "@/components/intake/DoseRowsEditor";
+import DoseRowsEditor, { emptyDose } from "@/components/intake/DoseRowsEditor";
 import RetiredDoses from "@/components/intake/RetiredDoses";
 import CadenceEditor from "@/components/intake/CadenceEditor";
 import CriticalEscalation from "@/components/intake/CriticalEscalation";
@@ -329,6 +329,15 @@ export default function IntakeItemForm({
       return initialSupply?.name ?? null;
     return null;
   }, [availableBottles, initialSupply, s, state.supplyId]);
+  const selectedSupplyAmount = useMemo(() => {
+    const loaded = availableBottles.find(
+      (option) => String(option.id) === state.supplyId
+    );
+    if (loaded) return itemSeedFromPool(loaded).amount;
+    if (String(initialSupply?.id ?? "") === state.supplyId)
+      return initialSupply ? itemSeedFromPool(initialSupply).amount : "";
+    return "";
+  }, [availableBottles, initialSupply, state.supplyId]);
   const rx = useIntakeRxcui(s);
 
   const kind = lockedKind;
@@ -349,7 +358,9 @@ export default function IntakeItemForm({
   // MIRRORED IN A REF because a name pick now awaits its own RxNorm confirm before it
   // seeds (below), so the ledger it consults must be the one that stands WHEN it seeds
   // and not the one captured by the render that started the pick.
-  const [ledger, setLedgerState] = useState<PrefillLedger>(emptyPrefillLedger);
+  const [ledger, setLedgerState] = useState<PrefillLedger>(() =>
+    emptyPrefillLedger()
+  );
   const ledgerRef = useRef(ledger);
   function setLedger(next: PrefillLedger) {
     ledgerRef.current = next;
@@ -373,18 +384,28 @@ export default function IntakeItemForm({
       patch({ minIntervalHours: String(writes.minIntervalHours) });
     if (writes.maxDailyCount !== undefined)
       patch({ maxDailyCount: String(writes.maxDailyCount) });
-    if (writes.doseAmount !== undefined || writes.timeOfDay !== undefined)
+    if (writes.doseAmount !== undefined || writes.timeOfDay !== undefined) {
       patch((current) => ({
-        doses: current.doses.map((d, i) =>
-          i === 0
-            ? {
-                ...d,
-                amount: writes.doseAmount ?? d.amount,
-                time_of_day: writes.timeOfDay ?? d.time_of_day,
-              }
-            : d
-        ),
+        doses:
+          current.doses.length === 0
+            ? [
+                {
+                  ...emptyDose(),
+                  amount: writes.doseAmount ?? "",
+                  time_of_day: writes.timeOfDay ?? "",
+                },
+              ]
+            : current.doses.map((d, i) =>
+                i === 0
+                  ? {
+                      ...d,
+                      amount: writes.doseAmount ?? d.amount,
+                      time_of_day: writes.timeOfDay ?? d.time_of_day,
+                    }
+                  : d
+              ),
       }));
+    }
   }
   const [formulationSlug, setFormulationSlug] = useState("");
   const [selectedPediatricBandMinLbs, setSelectedPediatricBandMinLbs] =
@@ -591,9 +612,17 @@ export default function IntakeItemForm({
   function withdrawDoseSuggestion() {
     if (!ledgerRef.current.suggested.has("doseAmount")) return;
     patch((current) => ({
-      doses: current.doses.map((dose, index) =>
-        index === 0 ? { ...dose, amount: "" } : dose
-      ),
+      doses: current.doses.flatMap((dose, index) => {
+        if (index !== 0) return [dose];
+        const cleared = { ...dose, amount: "" };
+        return !cleared.time_of_day &&
+          !cleared.start_date &&
+          !cleared.end_date &&
+          cleared.weekdays.length === 0 &&
+          cleared.food_timing === "any"
+          ? []
+          : [cleared];
+      }),
     }));
     setLedger(withdrawPrefill(ledgerRef.current, "doseAmount"));
   }
@@ -717,9 +746,9 @@ export default function IntakeItemForm({
         seed?.name ?? ""
       ),
     }));
-    if (seed) {
+    if (seed?.amount) {
       writePrefill(offerPrefill({ doseAmount: seed.amount }));
-    } else {
+    } else if (!seed) {
       // Unlinked: the bottle that stated this strength is gone.
       withdrawDoseSuggestion();
     }
@@ -740,11 +769,7 @@ export default function IntakeItemForm({
   function selectPediatricBand(band: PediatricBand) {
     setSelectedPediatricBandMinLbs(band.minLbs);
     markTouched("doseAmount");
-    patch((current) => ({
-      doses: current.doses.map((dose, index) =>
-        index === 0 ? { ...dose, amount: formulationDoseAmount(band.mg) } : dose
-      ),
-    }));
+    writePrefill({ doseAmount: formulationDoseAmount(band.mg) });
   }
 
   // ---- The rule sentences decide the fields they own ----
@@ -1256,6 +1281,13 @@ export default function IntakeItemForm({
               amountPlaceholder={isMed ? "e.g. 200 mg" : "amount"}
               singleAmountOnly={state.obligation === "may"}
               hideFoodTiming
+              newDoseAmount={selectedSupplyAmount}
+              onAddDose={() => {
+                if (selectedSupplyAmount) markTouched("doseAmount");
+                patch((current) => ({
+                  doses: [...current.doses, emptyDose(selectedSupplyAmount)],
+                }));
+              }}
             />
             {s && (
               <RetiredDoses

@@ -42,6 +42,8 @@ export interface MessagePointer {
   chatId: string;
   messageId: number;
   kind: string;
+  // The delivered message covers the chat; profileId only owns its pointer.
+  chatWide: boolean;
   // The SUBJECT's local calendar date at send time — the rollover comparison.
   date: string;
   // The keyboard currently visible in Telegram, updated after every successful edit.
@@ -119,6 +121,7 @@ export function recordMessagePointer(p: {
   chatId: string | number;
   messageId: number;
   kind: string;
+  chatWide?: boolean;
   date: string;
   keyboard: InlineKeyboard;
   // The delivered title line, attribution prefix included (#1822 item 7). Optional so a
@@ -131,8 +134,8 @@ export function recordMessagePointer(p: {
     db.prepare(
       `INSERT INTO notify_messages
          (profile_id, chat_id, message_id, kind, date, keyboard, receipt_keyboard,
-          title, body_hash, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          title, body_hash, chat_wide, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, message_id) DO UPDATE SET
          profile_id = excluded.profile_id,
          kind       = excluded.kind,
@@ -141,6 +144,7 @@ export function recordMessagePointer(p: {
          receipt_keyboard = excluded.receipt_keyboard,
          title      = excluded.title,
          body_hash  = excluded.body_hash,
+         chat_wide  = excluded.chat_wide,
          sent_at    = excluded.sent_at`
     ).run(
       p.profileId,
@@ -152,6 +156,7 @@ export function recordMessagePointer(p: {
       JSON.stringify(p.keyboard),
       p.title?.trim() || null,
       p.bodyHash ?? null,
+      p.chatWide ? 1 : 0,
       sqlNow()
     );
   } catch (e) {
@@ -173,6 +178,7 @@ interface PointerRow {
   receipt_keyboard: string | null;
   title: string | null;
   body_hash: string | null;
+  chat_wide: number;
   sent_at: string;
 }
 
@@ -187,6 +193,7 @@ function pointerFromRow(r: PointerRow): MessagePointer | null {
     chatId: r.chat_id,
     messageId: r.message_id,
     kind: r.kind,
+    chatWide: r.chat_wide === 1,
     date: r.date,
     keyboard,
     receiptKeyboard: parsedReceipt ?? keyboard,
@@ -205,7 +212,7 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
   const rows = db
     .prepare(
       `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
-              receipt_keyboard, title, body_hash, sent_at
+              receipt_keyboard, title, body_hash, chat_wide, sent_at
          FROM notify_messages
         WHERE profile_id = ?
         ORDER BY sent_at, id`
@@ -244,7 +251,7 @@ export function liveMessagePointersForKind(
   const rows = db
     .prepare(
       `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
-              receipt_keyboard, title, body_hash, sent_at
+              receipt_keyboard, title, body_hash, chat_wide, sent_at
          FROM notify_messages
         WHERE profile_id = ? AND chat_id = ? AND kind = ?
         ORDER BY sent_at, id`
@@ -300,7 +307,7 @@ export function messagePointerAt(
   const row = db
     .prepare(
       `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
-              receipt_keyboard, title, body_hash, sent_at
+              receipt_keyboard, title, body_hash, chat_wide, sent_at
          FROM notify_messages
         WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
     )
@@ -509,8 +516,8 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
       .prepare(
         `INSERT INTO notify_messages
            (id, profile_id, chat_id, message_id, kind, date, keyboard,
-            receipt_keyboard, title, body_hash, sent_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            receipt_keyboard, title, body_hash, chat_wide, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT DO NOTHING`
       )
       .run(
@@ -526,6 +533,7 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
         p.receiptVersion,
         p.title,
         p.bodyHash,
+        p.chatWide ? 1 : 0,
         p.sentAt
       );
     return res.changes === 1;

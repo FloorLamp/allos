@@ -146,10 +146,7 @@ test("a retired dose offers Restore in the edit form and rejoins the schedule (#
   // and the restored dose joined the editable dose rows.
   await expect(page.getByTestId("retired-doses")).toHaveCount(0);
   await expect(
-    page
-      .getByTestId("intake-editor")
-      .getByRole("combobox", { name: "Amount" })
-      .nth(1)
+    page.getByTestId("intake-editor").getByRole("combobox", { name: "Amount" })
   ).toHaveValue("500 mg");
 
   // The SAME dose row is live again (id stability is the point of retire).
@@ -163,6 +160,7 @@ test("a retired dose offers Restore in the edit form and rejoins the schedule (#
   );
   expect(retiredFlag).toBe(0);
 
-  await page.getByRole("button", { name: "Cancel" }).click();
+  // Restoring the first live dose moves the item to its scheduled row.
+  await page.reload();
   await deleteIntakeItem(page, NAME);
 });

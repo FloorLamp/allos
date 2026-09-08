@@ -689,13 +689,7 @@ export async function tickProfile(
   // later the same day. Its own per-dose/day dedup prevents repeat nudges; a
   // finer tick only shrinks how long past the wait the chase lands.
   try {
-    const esc = await runEscalations(
-      profileId,
-      profileName,
-      date,
-      minute,
-      sched
-    );
+    const esc = await runEscalations(profileId, date, minute, sched);
     if (esc.failed) anyFailed = true;
   } catch (e) {
     log.error("escalation check failed", {
@@ -766,7 +760,7 @@ export async function tickProfile(
   // it from re-nagging daily.
   if (waking) {
     try {
-      const rf = await runRefills(profileId, profileName, date);
+      const rf = await runRefills(profileId, date);
       if (rf.failed) anyFailed = true;
     } catch (e) {
       log.error("refill check failed", {
@@ -848,7 +842,7 @@ export async function tickProfile(
     getProfileSetting(profileId, "notify_followup_assessed") !== date
   ) {
     try {
-      const fu = await runFollowUpNudges(profileId, profileName, date);
+      const fu = await runFollowUpNudges(profileId, date);
       if (fu.failed) anyFailed = true;
       else setProfileSetting(profileId, "notify_followup_assessed", date);
     } catch (e) {
@@ -981,12 +975,7 @@ export async function tickProfile(
   // sends. The workout slot itself stays quiet through the ramp (recommendWorkout).
   if (waking) {
     try {
-      const eb = await runEaseBack(
-        profileId,
-        profileName,
-        coachingInput(),
-        date
-      );
+      const eb = await runEaseBack(profileId, coachingInput(), date);
       if (eb.failed) anyFailed = true;
     } catch (e) {
       log.error("ease-back nudge failed", {
