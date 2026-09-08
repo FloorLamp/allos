@@ -139,10 +139,8 @@ export function useQuickEntry(): QuickEntryApi {
   return ctx;
 }
 
-// The sheet's accessible name per form, whether the mounted form already renders
-// that heading itself (in which case the sheet's copy is screen-reader only, so the
-// panel doesn't print the same sentence twice), and HOW WIDE the panel gets from
-// `sm` up.
+// The sheet's visible and accessible name per form, and how wide its panel gets
+// from `sm` up. Bodies render content beneath that shared title.
 //
 // THE SIZE IS DECLARED PER FORM, NOT PER HOST (#4977 item 1). One `BottomSheet`
 // mounts every body in this registry, so a width set on the mount below is a width
@@ -153,39 +151,35 @@ export function useQuickEntry(): QuickEntryApi {
 // `sm`, which is the sheet's historical default and therefore the width each of them
 // renders at today; measurements declares `lg`, the bucket
 // `OVERLAY_PANEL_MAX_WIDTH`'s own note already assigns to "the measurements grid".
-const SHEET: Record<
-  QuickEntryForm,
-  { title: string; ownsHeading: boolean; size: OverlaySize }
-> = {
-  food: { title: "Log food", ownsHeading: true, size: "sm" },
+const SHEET: Record<QuickEntryForm, { title: string; size: OverlaySize }> = {
+  food: { title: "Log food", size: "sm" },
   // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
-  // #3361: the form is mounted `presentation="modal"` below, so it renders no
-  // heading of its own and the sheet prints this one.
+  // #3361: the form renders body content, so the sheet prints its heading.
   //
   // `lg` (#4977 item 1): the form's grid is INTRINSIC since #2014 — it asks its
   // container (`repeat(auto-fit, minmax(10.5rem, 1fr))`) rather than the window — so
   // the only thing standing between this mount and the two-row Vitals group the
   // Trends modal already renders was a container that never said how wide it was.
   // Nothing in the form changes; it flows to four fields a row on its own.
-  measurements: { title: "Log measurements", ownsHeading: false, size: "lg" },
-  dose: { title: "Log dose", ownsHeading: false, size: "sm" },
-  practice: { title: "Log practice", ownsHeading: false, size: "sm" },
+  measurements: { title: "Log measurements", size: "lg" },
+  dose: { title: "Log dose", size: "sm" },
+  practice: { title: "Log practice", size: "sm" },
   // #1892: the sheet's period row. The panel owns no heading — the verb is on the
   // button, which is the point.
-  cycle: { title: "Log period", ownsHeading: false, size: "sm" },
+  cycle: { title: "Log period", size: "sm" },
   // #2130: the sheet's mood row — the same check-in write, a second mount.
-  mood: { title: "Log mood", ownsHeading: false, size: "sm" },
+  mood: { title: "Log mood", size: "sm" },
   // #2785: the sheet's stool row. The panel owns no heading — the seven buttons ARE
   // the question, and a printed one above them would say it twice.
-  stool: { title: "Log stool form", ownsHeading: false, size: "sm" },
+  stool: { title: "Log stool form", size: "sm" },
   // #3327: the sheet's substance row. The panel owns no heading — the rows ARE the
   // question, and each carries its own verb.
-  substance: { title: "Log substance", ownsHeading: false, size: "sm" },
+  substance: { title: "Log substance", size: "sm" },
   // #4064: the sheet's symptom row. The panel owns no heading — the bar's own
   // "Daily symptoms" label is suppressed the way the illness cockpit suppresses it,
   // so the sheet prints the one heading.
-  symptom: { title: "Log symptom", ownsHeading: false, size: "sm" },
-  document: { title: "Add document", ownsHeading: false, size: "sm" },
+  symptom: { title: "Log symptom", size: "sm" },
+  document: { title: "Add document", size: "sm" },
 };
 
 // The measurements payload comes from the SHELL, everything else from the gather —
@@ -202,6 +196,7 @@ type LoadState =
 // connection still finishes first, short enough that a dead one does not leave the
 // sheet looking merely quiet.
 const QUICK_ENTRY_LOAD_TIMEOUT_MS = 10_000;
+const QUIET_STATE_CLASS = "text-sm text-slate-500 dark:text-slate-400";
 
 export default function QuickEntryProvider({
   children,
@@ -477,7 +472,6 @@ export default function QuickEntryProvider({
           // a centered card from `md` up, so the palette's future adoption of the
           // same host doesn't need a second presentation.
           presentation="dialog"
-          titleHidden={sheet.ownsHeading}
           titleAdornment={chip}
           belowTitle={picker}
         >
@@ -535,23 +529,20 @@ function QuickEntryBody({
 }) {
   if (state.status === "loading") {
     return (
-      <p
-        data-testid="quick-entry-loading"
-        className="py-6 text-sm text-slate-500 dark:text-slate-400"
-      >
+      <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
         Loading…
       </p>
     );
   }
   if (state.status === "error") {
     return (
-      <div data-testid="quick-entry-error" className="py-6">
+      <div data-testid="quick-entry-error">
         {/* #3416 proposal 3: the copy stops instructing "close this and try
             again" — the button does the trying. A stalled gather (past
             QUICK_ENTRY_LOAD_TIMEOUT_MS) reaches here exactly like a hard
             rejection; both are the same "try again" ask to the person looking
             at the sheet. */}
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+        <p role="alert" className={QUIET_STATE_CLASS}>
           Couldn&apos;t open that form.
         </p>
         <button
@@ -728,10 +719,7 @@ function QuickEntryBody({
       );
     case "unavailable":
       return (
-        <p
-          data-testid="quick-entry-unavailable"
-          className="py-4 text-sm text-slate-500 dark:text-slate-400"
-        >
+        <p data-testid="quick-entry-unavailable" className={QUIET_STATE_CLASS}>
           {data.message}
         </p>
       );

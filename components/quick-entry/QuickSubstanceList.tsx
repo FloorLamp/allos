@@ -1,6 +1,10 @@
 "use client";
 
 import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
+import {
+  QuickEntryRow,
+  QuickEntryRowList,
+} from "@/components/quick-entry/QuickEntryRowList";
 
 export interface QuickSubstanceRow {
   key: string;
@@ -39,29 +43,22 @@ export default function QuickSubstanceList({
   subjectProfileId?: number;
 }) {
   return (
-    <ul
-      data-testid="quick-entry-substance-list"
-      className="flex flex-col gap-2"
-    >
+    <QuickEntryRowList testId="quick-entry-substance-list">
       {substances.map((substance) => (
-        <li
+        <QuickEntryRow
           key={substance.key}
-          data-testid={`quick-entry-substance-${substance.key}`}
-          className="rounded-lg border border-(--border) bg-surface px-3 py-2.5"
-        >
-          <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-            {substance.label}
-          </span>
-          <div className="mt-1.5">
+          testId={`quick-entry-substance-${substance.key}`}
+          identity={substance.label}
+          actions={
             <SubstanceUnitControl
               substance={substance.key}
               capProgress={substance.capProgress}
               testIdPrefix="quick-entry-substance"
               subjectProfileId={subjectProfileId}
             />
-          </div>
-        </li>
+          }
+        />
       ))}
-    </ul>
+    </QuickEntryRowList>
   );
 }
