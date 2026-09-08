@@ -261,7 +261,7 @@ function recordPointer(
   // digest's every button is declared inert — an offer tail and a ⚙️ Tune control claim
   // nothing — so the keyboard test that gates every other pointer would have skipped the
   // one message whose CLAIMS ARE ITS SENTENCES. `prose` also decides whether a body hash
-  // is worth storing: nothing else reads one.
+  // is worth storing. Food also compares its tally independently of its keyboard.
   const prose = proseReconcilerFor(msg.kind);
   if (keyboard.length === 0 && !prose) return;
   recordMessagePointer({
@@ -271,7 +271,7 @@ function recordPointer(
     kind: msg.kind ?? "other",
     date: today(profileId),
     keyboard,
-    bodyHash: prose ? messageBodyHash(msg) : null,
+    bodyHash: prose || msg.kind === "food" ? messageBodyHash(msg) : null,
     // The TITLE AS DELIVERED, attribution prefix and all (#1822 item 7). Recorded for
     // exactly the reason the keyboard is: this is the only moment anyone holds it, and
     // a reconcile close that replaces the whole text must be able to say what it closed
@@ -730,7 +730,8 @@ export async function rebuildMessage(
     profileId,
     chatId,
     messageId,
-    deliveredKeyboard(attributed)
+    deliveredKeyboard(attributed),
+    attributed.kind === "food" ? messageBodyHash(attributed) : undefined
   );
 }
 

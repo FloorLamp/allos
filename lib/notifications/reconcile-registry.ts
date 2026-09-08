@@ -662,7 +662,7 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
   {
     kind: "food",
     prose: null,
-    why: "The food nudge's counts live in its button labels and its tally line, and the `food` family already re-renders the whole message from buildFoodNudge on change. Covered, by a keyboard family that happens to rebuild text.",
+    why: "The food family owns both its live keyboard and tally. It compares the rebuilt keyboard and body hash, preserving expansion and the food date window. A separate prose reconciler would duplicate that owner.",
   },
   {
     kind: "redose",

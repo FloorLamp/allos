@@ -114,6 +114,7 @@ import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {
   claimMessagePointerClose,
   claimMessagePointerKeyboard,
+  releaseMessagePointerKeyboard,
   liveMessagePointers,
   recordMessagePointer,
   parseStoredKeyboard,
@@ -121,6 +122,7 @@ import {
 } from "@/lib/notifications/message-pointers";
 import {
   keyboardTokens,
+  messageBodyHash,
   RECONCILE_CLOSING,
 } from "@/lib/notifications/reconcile-core";
 import {
@@ -1201,13 +1203,14 @@ describe("class 2 — additive quick-log buttons", () => {
       kind: "food",
       date: td,
       keyboard: messageKeyboard(nudge!),
+      bodyHash: messageBodyHash(composeForSend(pid, nudge!)),
     });
 
-    // Nothing logged since the send: the counts on the buttons are still correct.
+    // Nothing logged since the send: the tally and keyboard are still correct.
     expect((await reconcileProfileMessages(pid)).edited).toBe(0);
     expect(editText).not.toHaveBeenCalled();
 
-    // A serving logged IN THE APP changes the "(n)" the buttons carry.
+    // A serving logged in the app changes the tally without changing the offered amount.
     const slug = canonicalFoodGroup("leafy greens");
     expect(slug).not.toBeNull();
     // Explicit meal slot, so the serving lands in the window the nudge is scoped to
@@ -1251,6 +1254,7 @@ describe("class 2 — additive quick-log buttons", () => {
       kind: "food",
       date: td,
       keyboard: sentKeyboard,
+      bodyHash: messageBodyHash(composeForSend(pid, expanded!)),
     });
 
     // Nothing has changed, so the sweep must not touch it at all — a rebuild at the
@@ -1342,28 +1346,52 @@ describe("the pointer claim is a compare-and-swap (#1788)", () => {
     return p;
   }
 
-  it("the stored witness allows exactly one keyboard update", async () => {
-    // The regression this pins: the witness is the stored blob VERBATIM, never a
-    // re-serialization. A round-trip that reordered a key would produce a witness that
-    // never matches — and the sweep would silently stop editing anything, forever.
-    const pid = newProfile("Witness Wren");
-    seedDose(pid, "Wren D3");
-    seedLoginTelegram(pid, "5551805");
-    await sendMorningReminder(pid);
+  it.each(["keyboard", "body"] as const)(
+    "the stored witness allows exactly one %s update",
+    async (change) => {
+      // The regression this pins: the witness is the stored blob VERBATIM, never a
+      // re-serialization. A round-trip that reordered a key would produce a witness that
+      // never matches — and the sweep would silently stop editing anything, forever.
+      const pid = newProfile("Witness Wren");
+      seedDose(pid, "Wren D3");
+      seedLoginTelegram(pid, "5551805");
+      await sendMorningReminder(pid);
 
-    // Both processes read before either wrote: the cross-process shape, which no amount
-    // of in-process ordering can prevent.
-    const p = onePointer(pid);
-    const first = claimMessagePointerKeyboard(pid, p.id, p.version, [
-      [{ text: "a", callback_data: "x:1" }],
-    ]);
-    const second = claimMessagePointerKeyboard(pid, p.id, p.version, [
-      [{ text: "b", callback_data: "x:2" }],
-    ]);
-    expect([first, second]).toEqual([true, false]);
-    // The winner's keyboard stands; the loser overwrote nothing.
-    expect(onePointer(pid).keyboard[0][0].text).toBe("a");
-  });
+      // Both processes read before either wrote: the cross-process shape, which no amount
+      // of in-process ordering can prevent.
+      const p = onePointer(pid);
+      const next =
+        change === "body"
+          ? p.keyboard
+          : [[{ text: "a", callback_data: "x:1" }]];
+      const body =
+        change === "body"
+          ? { previous: p.bodyHash, next: "changed-tally" }
+          : undefined;
+      const first = claimMessagePointerKeyboard(
+        pid,
+        p.id,
+        p.version,
+        next,
+        body
+      );
+      const second = claimMessagePointerKeyboard(
+        pid,
+        p.id,
+        p.version,
+        next,
+        body
+      );
+      expect([first, second]).toEqual([true, false]);
+      expect(onePointer(pid).keyboard).toEqual(next);
+      // A transient failure restores the exact witnesses, including a legacy null hash.
+      expect(
+        releaseMessagePointerKeyboard(pid, p.id, next, p.version, body)
+      ).toBe(true);
+      expect(onePointer(pid).version).toBe(p.version);
+      expect(onePointer(pid).bodyHash).toBe(p.bodyHash);
+    }
+  );
 
   it("a close claim is profile-scoped and can win only once", async () => {
     const mine = newProfile("Mine Mabel");
@@ -2566,8 +2594,7 @@ describe("the pointer follows a callback edit, not just a send", () => {
     const expanded = countVisibleFoodButtons(liveKeyboard(pid));
     expect(expanded).toBeGreaterThan(compact);
 
-    // A serving logged elsewhere moves the button labels, which is what used to make the
-    // sweep re-render — at the stale compact width.
+    // A serving logged elsewhere changes the tally; the sweep must retain the width.
     logFoodServingCore(pid, canonicalFoodGroup("leafy_greens")!, date, "page");
     await reconcileProfileMessages(pid);
     expect(countVisibleFoodButtons(liveKeyboard(pid))).toBe(expanded);
