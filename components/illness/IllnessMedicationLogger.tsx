@@ -265,12 +265,7 @@ export default function IllnessMedicationLogger({
           <IntakeItemForm
             action={addIntakeItem}
             kind="medication"
-            allIntakeItems={intakeContext.allIntakeItems}
-            stackItems={intakeContext.stackItems}
-            pgxVariants={intakeContext.pgxVariants}
-            conditions={intakeContext.conditions}
-            pediatric={intakeContext.pediatric}
-            todayStr={intakeContext.todayStr}
+            intakeContext={intakeContext}
             onDone={() => panels.setOpenKey(null)}
           />
         </div>
