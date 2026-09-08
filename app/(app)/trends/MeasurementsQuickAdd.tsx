@@ -192,16 +192,11 @@ export interface MeasurementsQuickAddProps {
   // overlay closes itself, the record's add door re-reads its feed, and the Trends
   // page mounts simply reset and stay put.
   onSaved?: () => void;
-  // Optional action for a standalone card mount.
-  headerSlot?: ReactNode;
   // A metric detail page narrows this shared form to the observation currently
   // being viewed. Omitted on the body census and quick-entry overlay, which keep the
   // combined morning-measurements workflow. Single-metric mode has one field and no
   // disclosure at all — there is nothing to progressively reveal.
   metric?: { key: MeasurementEntryMetric; label: string };
-  // A surrounding modal already owns the dialog surface and title, so this form
-  // drops its standalone card chrome and duplicate heading in that mount.
-  presentation?: "card" | "modal";
   // Which group this ENTRY POINT opens (#2014). A deep link still wins over it.
   // Every SERVER-RENDERED mount passes one, so the last-written memory below (a
   // browser-local read) only ever runs in a client-only mount and cannot produce a
@@ -286,9 +281,7 @@ export default function MeasurementsQuickAdd({
   showGrowth = false,
   showHeadCirc = false,
   onSaved,
-  headerSlot,
   metric,
-  presentation = "card",
   defaultGroup,
   profileId,
   subjectProfileId,
@@ -1199,8 +1192,7 @@ export default function MeasurementsQuickAdd({
     sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
-  // ONE sentence for what this form is (#4977 item 3): the same string whichever
-  // presentation renders it, and whichever mount is rendering.
+  // The surrounding host owns the title; this body supplies its help text.
   const about = metric
     ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
     : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings.";
@@ -1211,34 +1203,12 @@ export default function MeasurementsQuickAdd({
       ref={formRef}
       action={handle}
       onInput={refreshSummaries}
-      className={`${presentation === "card" ? "card" : ""} space-y-3 ${
-        metric ? "max-w-2xl" : ""
-      }`}
+      className={`space-y-3 ${metric ? "max-w-2xl" : ""}`}
       data-testid="measurements-quick-add"
       data-life-stage={showGrowth ? "minor" : "adult"}
     >
       <input type="hidden" name="weight_unit" value={weightUnit} />
-      {/* WHAT THE FORM IS FOR, AS THE TITLE'S GLYPH (#4977 item 3, on #4918
-          ruling 4's precedent). It was a paragraph, and it said the same sentence
-          on every visit forever while holding the widest line under the title — the
-          shape that rule moves to an info affordance. `about` is authored ONCE and
-          read by both branches below; the two hosts used to carry their own copy of
-          it, which is how a sentence gets edited in one place and not the other.
-
-          IN A DIALOG THE HEADING IS THE HOST'S (#3361), so the glyph is the whole
-          of what this form contributes to that row — a heading of its own here
-          would print the panel's name twice, which is the thing #3361 removed. */}
-      {presentation === "card" ? (
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-100">
-            {metric ? `Log ${metric.label}` : "Log measurements"}
-            <InfoTooltipIcon label={about} data-testid="measurements-help" />
-          </h2>
-          {headerSlot}
-        </div>
-      ) : (
-        <InfoTooltipIcon label={about} data-testid="measurements-help" />
-      )}
+      <InfoTooltipIcon label={about} data-testid="measurements-help" />
 
       {/* The submission's one date + one optional Time (#2235 decision 3): the
           shared WhenControl owns the pair (ids m-date / m-time from its testId),

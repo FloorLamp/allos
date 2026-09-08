@@ -575,11 +575,6 @@ function QuickEntryBody({
           // answers "what does this form need on day D" for every surface that mounts
           // it, so the sheet and the record's add door cannot list different props.
           {...data}
-          // A dialog body renders content, never chrome (#3361). Without this the
-          // form falls back to `presentation="card"` and draws its own card
-          // border and `<h2>` inside a panel that already draws both — the same
-          // escape hatch its two ModalShell mounts already pass.
-          presentation="modal"
           defaultGroup={prefill?.measurementGroup}
           onSaved={onDone}
           // Always undefined in THIS mount: `loadFor` already turned any
