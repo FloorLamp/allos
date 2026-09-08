@@ -19,6 +19,7 @@ export default function RefillTracking({
   onPickSupply,
   quantityOnHand,
   setQuantityOnHand,
+  onRefilled,
   qtyPerDose,
   setQtyPerDose,
   initialRefill = false,
@@ -31,6 +32,7 @@ export default function RefillTracking({
   // happened to be open; every posted value is state.
   quantityOnHand: string;
   setQuantityOnHand: (v: string) => void;
+  onRefilled: (newQuantity: number) => void;
   qtyPerDose: string;
   setQtyPerDose: (v: string) => void;
   bottles: SupplyOption[];
@@ -90,6 +92,7 @@ export default function RefillTracking({
             hasLastFill={s.last_fill_size != null}
             lastFillSize={s.last_fill_size}
             initialAsk={initialRefill}
+            onRefilled={onRefilled}
           />
         </div>
       )}

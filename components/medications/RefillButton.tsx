@@ -38,6 +38,7 @@ export default function RefillButton({
   itemId,
   supplyId,
   initialAsk = false,
+  onRefilled,
   hasLastFill,
   lastFillSize = null,
   supplyCycleDays = null,
@@ -45,6 +46,7 @@ export default function RefillButton({
   itemId: number;
   supplyId?: number | null;
   initialAsk?: boolean;
+  onRefilled?: (newQuantity: number) => void;
   // Whether a fill size is remembered — true ⇒ one-tap; false ⇒ ask on first tap.
   hasLastFill: boolean;
   lastFillSize?: number | null;
@@ -113,6 +115,7 @@ export default function RefillButton({
           // Nothing was added, so the tap stays immediately retryable.
           return { kind: "rollback" };
         }
+        onRefilled?.(res.newQuantity);
         toast("Refill recorded.");
         setAsking(false);
         // The core's own number, not the form's — the one-tap path reuses a remembered

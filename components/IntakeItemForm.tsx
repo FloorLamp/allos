@@ -1748,6 +1748,25 @@ export default function IntakeItemForm({
               state.supplyId ? poolQuantity : state.quantityOnHand
             }
             setQuantityOnHand={setSupplyQuantity}
+            onRefilled={(newQuantity) => {
+              const quantity = String(newQuantity);
+              patch((current) =>
+                current.supplyId !== state.supplyId
+                  ? {}
+                  : state.supplyId
+                    ? {
+                        poolCount: {
+                          supplyId: state.supplyId,
+                          quantity,
+                          loaded: quantity,
+                        },
+                      }
+                    : {
+                        quantityOnHand: quantity,
+                        quantityOnHandLoaded: quantity,
+                      }
+              );
+            }}
             initialRefill={initialRefill}
             qtyPerDose={state.qtyPerDose}
             setQtyPerDose={(qtyPerDose) => patch({ qtyPerDose })}
