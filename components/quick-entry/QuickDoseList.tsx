@@ -63,6 +63,7 @@ function occurrenceKey(date: string, doseId: number): string {
 
 export default function QuickDoseList({
   today,
+  profileToday = today,
   doses,
   prn,
   pastDays,
@@ -70,7 +71,13 @@ export default function QuickDoseList({
   subjectProfileId,
   selectedDay,
 }: {
+  // The day whose current-day bucket produced `doses`. Usually the live profile day;
+  // it can be the prior day while an in-reach cached response remains visible.
   today: string;
+  // The live profile day. `today` remains the gathered payload's anchor: a cached
+  // former-today response still carries its rows in `doses`, while this value says
+  // that those rows now need an explicit historical write date.
+  profileToday?: string;
   doses: QuickEntryDose[];
   prn?: QuickEntryPrn;
   pastDays: QuickEntryPastDay[];
@@ -214,6 +221,7 @@ export default function QuickDoseList({
               actions={
                 <DoseStatusControl
                   doseId={dose.doseId}
+                  date={today === profileToday ? undefined : today}
                   taken={false}
                   skipped={false}
                   variant="pill"

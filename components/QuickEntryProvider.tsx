@@ -385,6 +385,9 @@ export default function QuickEntryProvider({
         effectiveRequest.kind === "inherited" && requestedParts
           ? effectiveRequest.value
           : null;
+      const requestLiveToday =
+        liveProfileDaysRef.current.get(subjectId) ??
+        (subjectId === actingProfileId ? measurements.defaultDate : undefined);
 
       // NO ROUND TRIP for measurements — the props are already here (#4091), and
       // that gather is resolved for the ACTING profile only (no subject-keyed
@@ -393,8 +396,7 @@ export default function QuickEntryProvider({
       // chosen subject other than the acting profile gets that instead of the
       // wrong person's age gates and defaults.
       if (next === "measurements") {
-        const today =
-          liveProfileDaysRef.current.get(subjectId) ?? measurements.defaultDate;
+        const today = requestLiveToday ?? measurements.defaultDate;
         const parts: DayContextParts = requestedParts ?? {
           profileId: subjectId,
           day: today,
@@ -424,9 +426,7 @@ export default function QuickEntryProvider({
       const requestedKey = requestedParts
         ? `${next}:${dayContextKey(requestedParts)}`
         : null;
-      const liveToday =
-        liveProfileDaysRef.current.get(subjectId) ??
-        (subjectId === actingProfileId ? measurements.defaultDate : undefined);
+      const liveToday = requestLiveToday;
       let fallback: CachedEntry | undefined;
       if (liveToday) {
         for (let ago = 0; ago <= SHEET_REACH.back; ago += 1) {
@@ -506,10 +506,25 @@ export default function QuickEntryProvider({
             effectiveRequest.kind === "dayless" &&
             gatheredToday &&
             responseLiveToday &&
+            requestLiveToday &&
+            responseLiveToday !== requestLiveToday &&
             responseLiveToday !== gatheredToday
           ) {
             const nextToken = ++requestRef.current;
             runLoad(next, subjectId, nextToken, { kind: "dayless" });
+            return;
+          }
+          if (
+            effectiveRequest.kind === "dayless" &&
+            gatheredToday &&
+            responseLiveToday &&
+            !isWithinReach(SHEET_REACH, responseLiveToday, gatheredToday)
+          ) {
+            if (!cached)
+              setHost((current) => ({
+                ...current,
+                state: { status: "error" },
+              }));
             return;
           }
           let nextSheetDay: SheetDayContext | null = null;
@@ -966,7 +981,8 @@ function QuickEntryBody({
     case "dose":
       return (
         <QuickDoseList
-          today={profileToday ?? data.today}
+          today={data.today}
+          profileToday={profileToday ?? data.today}
           doses={data.doses}
           prn={data.prn}
           pastDays={data.pastDays}

@@ -109,6 +109,7 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
 
 const TODAY = "2026-08-28";
 const YESTERDAY = "2026-08-27";
+const TOMORROW = "2026-08-29";
 
 const CREATINE = {
   id: 7,
@@ -632,6 +633,39 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
     });
     // The day is the ROW's, and today's row states none — the same post it always made.
     expect(sent.date).toBe(date);
+  });
+
+  it("keeps a cached former-today row visible and writes its explicit day", async () => {
+    render(
+      <DayContextProvider
+        profileId={1}
+        today={TOMORROW}
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: TODAY }}
+      >
+        <QuickDoseList
+          today={TODAY}
+          profileToday={TOMORROW}
+          selectedDay={TODAY}
+          doses={[
+            { doseId: 41, title: "Creatine", detail: null, dueText: "8:00am" },
+          ]}
+          pastDays={[]}
+          onDone={vi.fn()}
+        />
+      </DayContextProvider>
+    );
+
+    expect(screen.getByTestId("quick-entry-dose-41")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("dose-take"));
+    });
+    expect(fields()).toMatchObject({
+      dose_id: "41",
+      status: "taken",
+      from: "clear",
+      date: TODAY,
+    });
   });
 });
 

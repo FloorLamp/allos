@@ -21,6 +21,17 @@ import { ProfileDaysBoundary } from "@/components/DayContext";
 
 const loadQuickEntry = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
+vi.mock("@/components/DoseStatusControl", () => ({
+  default: ({ date }: { date?: string }) => (
+    <span data-testid="dose-control-probe" data-date={date ?? ""} />
+  ),
+}));
+vi.mock("@/components/medications/dose-day-settlement", () => ({
+  useDoseDayResolution: () => ({
+    resolveAll: vi.fn(),
+    bulkBlocked: () => false,
+  }),
+}));
 
 const ACTING: SessionProfile = {
   id: 1,
@@ -47,6 +58,7 @@ function Sheet({ actingProfileId = ACTING.id }: { actingProfileId?: number }) {
   return (
     <>
       <button onClick={() => open("stool")}>open</button>
+      <button onClick={() => open("dose")}>open dose</button>
       <button onClick={() => open("cycle")}>open cycle</button>
       <button onClick={close}>close</button>
     </>
@@ -89,6 +101,38 @@ function unavailable(message: string, today = MEASUREMENTS.defaultDate) {
     form: "unavailable" as const,
     today,
     message,
+  };
+}
+
+function dueDose(today: string) {
+  return {
+    form: "dose" as const,
+    today,
+    doses: [
+      {
+        doseId: 77,
+        title: "Held midnight dose",
+        detail: null,
+        dueText: "8:00am",
+      },
+    ],
+    prn: {
+      meds: [],
+      tz: "UTC",
+      timeFormat: "24h" as const,
+      nowIso: `${today}T12:00:00.000Z`,
+      pediatric: {
+        ageMonths: null,
+        weightKg: null,
+        weightDate: null,
+        weightUnit: "kg" as const,
+        today,
+      },
+    },
+    pastDays: [
+      { date: "2026-09-02", label: "Yesterday", slots: [] },
+      { date: "2026-09-01", label: "Mon, Sep 1", slots: [] },
+    ],
   };
 }
 
@@ -421,5 +465,68 @@ describe("day request identity", () => {
     expect(
       (await screen.findByTestId("quick-entry-unavailable")).textContent
     ).toContain("new day");
+  });
+});
+
+describe("midnight fallback integration", () => {
+  it("keeps a reachable prior-day dose row and gives its control the explicit day", async () => {
+    loadQuickEntry
+      .mockResolvedValueOnce(dueDose("2026-09-03"))
+      .mockRejectedValueOnce(new Error("offline"));
+    const { rerenderWithDay } = renderSheet(ACTING.id, "2026-09-03");
+
+    fireEvent.click(screen.getByText("open dose"));
+    expect(await screen.findByText("Held midnight dose")).toBeTruthy();
+    fireEvent.click(screen.getByText("close"));
+    rerenderWithDay("2026-09-04");
+    fireEvent.click(screen.getByText("open dose"));
+
+    await waitFor(() => expect(loadQuickEntry).toHaveBeenCalledTimes(2));
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "dose",
+      ACTING.id,
+      undefined,
+      "sheet"
+    );
+    expect(
+      screen.getByTestId("day-context-1").getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(screen.getByText("Held midnight dose")).toBeTruthy();
+    expect(screen.getByTestId("dose-control-probe").dataset.date).toBe(
+      "2026-09-03"
+    );
+  });
+
+  it("settles persistent in-reach disagreement with one historical response", async () => {
+    let calls = 0;
+    loadQuickEntry.mockImplementation(() => {
+      calls += 1;
+      return Promise.resolve(
+        unavailable(`stale response ${calls}`, "2026-09-03")
+      );
+    });
+    renderSheet(ACTING.id, "2026-09-04");
+    fireEvent.click(screen.getByText("open"));
+
+    expect(
+      (await screen.findByTestId("quick-entry-unavailable")).textContent
+    ).toContain("stale response 1");
+    expect(loadQuickEntry).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId("day-context-1").getAttribute("aria-pressed")
+    ).toBe("true");
+  });
+
+  it("settles a consistent dayless response without an extra request", async () => {
+    loadQuickEntry.mockResolvedValueOnce(
+      unavailable("current response", "2026-09-04")
+    );
+    renderSheet(ACTING.id, "2026-09-04");
+    fireEvent.click(screen.getByText("open"));
+
+    expect(
+      (await screen.findByTestId("quick-entry-unavailable")).textContent
+    ).toContain("current response");
+    expect(loadQuickEntry).toHaveBeenCalledTimes(1);
   });
 });
