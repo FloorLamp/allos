@@ -3,6 +3,7 @@ import { setProfileMutedForLogin } from "@/lib/settings";
 import {
   refillReceivedAction,
   handleReceivedReply,
+  handleReceivedCallback,
   reconcileRefillReceipt,
   renderRefillMessage,
 } from "@/lib/notifications/refill";
@@ -1335,6 +1336,51 @@ describe("Received receipt operation", () => {
     await handleReceivedReply(oldReply);
     await handleReceivedReply({ ...oldReply, message_id: 802 });
     expect(receivedCount(f)).toBe(6);
+    const nextId = Number(next.data!.split(":")[2]);
+    expect(readRefillOffer(f.profileId, nextId)!.offer.defaultSize).toBe(2);
+    await handleReceivedReply(
+      receiptReply({ ...f, offerId: nextId }, "3", 803)
+    );
+    expect(receivedCount(f)).toBe(9);
+    await handleReceivedReply(oldReply);
+    expect(receivedCount(f)).toBe(9);
+  });
+
+  it("reports a stock write only for a newly confirmed receipt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    await handleReceivedReply(receiptReply(f, "2"));
+    const action = refillReceivedAction(f.profileId, f.supplementId)!;
+    const token = {
+      profileId: f.profileId,
+      offerId: Number(action.data!.split(":")[2]),
+    };
+    expect(
+      await handleReceivedCallback({ ...f.open, data: action.data }, token)
+    ).toBeUndefined();
+    const promptId = readRefillOffer(f.profileId, token.offerId)!.offer
+      .promptId!;
+    const confirm = {
+      ...f.open,
+      data: `rfconfirm:${f.profileId}:${token.offerId}`,
+      message: { ...f.open.message, message_id: promptId },
+    };
+    expect(
+      await handleReceivedCallback({ ...confirm, from: { id: 72 } }, token)
+    ).toBeUndefined();
+    expect(await handleReceivedCallback(confirm, token)).toBe(f.profileId);
+    expect(receivedCount(f)).toBe(8);
+    expect(await handleReceivedCallback(confirm, token)).toBeUndefined();
+    const next = refillReceivedAction(f.profileId, f.supplementId)!;
+    const nextToken = { ...token, offerId: Number(next.data!.split(":")[2]) };
+    await handleReceivedCallback({ ...f.open, data: next.data }, nextToken);
+    expect(
+      await handleReceivedCallback(
+        { ...f.open, data: `rfcancel:${f.profileId}:${nextToken.offerId}` },
+        nextToken
+      )
+    ).toBeUndefined();
+    expect(receivedCount(f)).toBe(8);
   });
 
   it("claims concurrent opens before sending and does not reactivate a cancellation during delivery", async () => {

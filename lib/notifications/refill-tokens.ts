@@ -3,10 +3,8 @@
 // outcome type until step 3 moves the handler.
 
 // ---- Phase 3: refill-nudge snooze button (issue #233) ----
-// 📦 Ordered — remind me in 3 days → bus snooze via refillSignalKey (#227). No
-// "mark refilled" button: that needs an amount, which a button handles badly (a
-// deep-link opens the form instead). The token carries the (integer, never-
-// recycled) intake-item id.
+// Ordered snoozes via refillSignalKey (#227). Its token carries the integer,
+// never-recycled intake-item id; Received binds a stored receipt operation.
 
 export interface RefillCallback {
   profileId: number;

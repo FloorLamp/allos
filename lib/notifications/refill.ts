@@ -54,6 +54,7 @@ import {
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
+import type { TapWrote } from "./callback-data";
 import { getFindingSuppressions } from "../queries/upcoming";
 import {
   daysOfSupplyLeft,
@@ -90,12 +91,10 @@ interface LowItem {
   received?: NotificationAction | null;
 }
 
-// The refill nudge lists each low item with its remaining days. Each item gets a
-// "📦 Ordered — remind me in 3 days" button (issue #233) that snoozes its
-// `refill:<id>` finding on the shared bus (#227), plus — when a public URL is
-// configured — a deep link to the refill form (a real "mark refilled" needs an
-// amount, which a button handles badly, so the form is the actuator). One row per
-// item so a snooze consumes just that item.
+// The refill nudge lists each low item with its remaining days. Each item gets an
+// Ordered button that snoozes its finding and a Received button that asks for
+// the amount in chat. When a public URL is configured, a refill-form link is also
+// available. One row per item so a snooze consumes just that item.
 export function renderRefillMessage(
   items: LowItem[],
   profileId: number,
@@ -353,7 +352,7 @@ export function refillReceivedAction(
     return {
       label:
         current.offer.state === "available"
-          ? "Received"
+          ? `${GLYPH.ordered} Received`
           : "Cancel pending receipt",
       data: offerCallback(
         current.offer.state === "available" ? "rfreceived" : "rfcancel",
@@ -380,7 +379,7 @@ function receiptAuthorized(profileId: number, chatId: string): boolean {
 export async function handleReceivedCallback(
   cq: TelegramCallbackQuery,
   token: OfferCallback
-): Promise<void> {
+): Promise<TapWrote> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const senderId = cq.from?.id;
@@ -499,6 +498,7 @@ export async function handleReceivedCallback(
   );
   await answerCallbackQuery(cq.id, outcome.text);
   if (outcome.refresh) await refreshReceipt(token.profileId, token.offerId);
+  return outcome.wroteProfileId;
 }
 
 function settleReceived(
@@ -509,7 +509,7 @@ function settleReceived(
   senderId: number,
   submissionId: string,
   answer: "cancel" | "confirm" | { amount: string | undefined }
-): { text: string; refresh: boolean } {
+): { text: string; refresh: boolean; wroteProfileId?: number } {
   return writeTx(() => {
     const row = readRefillOffer(profileId, offerId);
     const offer = row?.offer;
@@ -583,7 +583,11 @@ function settleReceived(
         submissionId,
       },
     });
-    return { text: receiptText({ ...result, submissionId }), refresh: true };
+    return {
+      text: receiptText({ ...result, submissionId }),
+      refresh: true,
+      wroteProfileId: profileId,
+    };
   });
 }
 
