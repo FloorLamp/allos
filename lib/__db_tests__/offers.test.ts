@@ -3,7 +3,7 @@ import { db, today } from "@/lib/db";
 import { setSetting } from "@/lib/settings/kv";
 import { getNotifySchedule } from "@/lib/settings/notifications";
 import { dismissalKeyEntryFor } from "@/lib/dismissal-classes";
-import { OFFER_ASKED_PREFIX } from "@/lib/dismissal-keys";
+import { OFFER_ASKED_PREFIX, trackSupplyAskedKey } from "@/lib/dismissal-keys";
 import { ALL_NOTIFICATION_KINDS } from "@/lib/notifications/kinds";
 import {
   answerOffer,
@@ -148,5 +148,110 @@ describe.each(OFFER_FAMILY_IDS)("%s", (id) => {
     expect(
       id === "digest-on-connect" ? s.digestMinute : s.weeklyRecapDay
     ).not.toBeNull();
+  });
+});
+
+describe("item supply offers", () => {
+  it("records seeing once per item, then accepts without changing dose units", () => {
+    const fx = seedProfile("track-supply-seen");
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = NULL, qty_per_dose = 2 WHERE id = ?"
+    ).run(fx.supplementId);
+    const instance = {
+      familyId: "track-supply" as const,
+      itemId: fx.supplementId,
+    };
+    const key = trackSupplyAskedKey(fx.supplementId);
+    expect(offerFamilyForKey(key)).toEqual(instance);
+    expect(dismissalKeyEntryFor(key)?.keyClass).toBe("id-keyed");
+    expect(offerStands(fx.profileId, instance)).toBe(true);
+    expect(markOfferAsked(fx.profileId, instance)).toBe(true);
+    expect(offerStands(fx.profileId, instance)).toBe(false);
+    expect(
+      answerOffer(fx.profileId, instance, true, {
+        supplyId: null,
+        quantity: 60,
+      })
+    ).toBe("written");
+    expect(
+      db
+        .prepare(
+          "SELECT quantity_on_hand, qty_per_dose FROM intake_items WHERE id = ?"
+        )
+        .get(fx.supplementId)
+    ).toEqual({ quantity_on_hand: 60, qty_per_dose: 2 });
+    expect(
+      answerOffer(fx.profileId, instance, true, {
+        supplyId: null,
+        quantity: 90,
+      })
+    ).toBe("stale");
+    expect(askedRows(fx.profileId)).toContain(key);
+  });
+
+  it("decline changes no stock and a different item still has its own offer", () => {
+    const fx = seedProfile("track-supply-decline");
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = NULL WHERE profile_id = ?"
+    ).run(fx.profileId);
+    expect(
+      answerOffer(
+        fx.profileId,
+        { familyId: "track-supply", itemId: fx.supplementId },
+        false
+      )
+    ).toBe("declined");
+    expect(
+      offerStands(fx.profileId, {
+        familyId: "track-supply",
+        itemId: fx.medicationId,
+      })
+    ).toBe(true);
+    expect(
+      db
+        .prepare("SELECT quantity_on_hand FROM intake_items WHERE id = ?")
+        .get(fx.supplementId)
+    ).toEqual({ quantity_on_hand: null });
+    const foreign = seedProfile("track-supply-foreign");
+    const forged = {
+      familyId: "track-supply" as const,
+      itemId: fx.supplementId,
+    };
+    expect(markOfferAsked(foreign.profileId, forged)).toBe(false);
+    expect(
+      answerOffer(foreign.profileId, forged, true, {
+        supplyId: null,
+        quantity: 2,
+      })
+    ).toBe("stale");
+    expect(askedRows(foreign.profileId)).toEqual([]);
+    expect(offerFamilyForKey("offer-asked:track-supply:1e2")).toBeNull();
+  });
+
+  it("rolls back the count when recording the asked state fails", () => {
+    const fx = seedProfile("track-supply-atomic");
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = NULL WHERE id = ?"
+    ).run(fx.supplementId);
+    db.exec(`CREATE TEMP TRIGGER fail_track_asked BEFORE INSERT ON upcoming_dismissals
+      WHEN NEW.profile_id = ${fx.profileId} BEGIN SELECT RAISE(ABORT, 'synthetic asked failure'); END`);
+    try {
+      expect(() =>
+        answerOffer(
+          fx.profileId,
+          { familyId: "track-supply", itemId: fx.supplementId },
+          true,
+          { supplyId: null, quantity: 60 }
+        )
+      ).toThrow("synthetic asked failure");
+      expect(
+        db
+          .prepare("SELECT quantity_on_hand FROM intake_items WHERE id = ?")
+          .get(fx.supplementId)
+      ).toEqual({ quantity_on_hand: null });
+      expect(askedRows(fx.profileId)).toEqual([]);
+    } finally {
+      db.exec("DROP TRIGGER fail_track_asked");
+    }
   });
 });

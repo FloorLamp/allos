@@ -1,5 +1,6 @@
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
 import {
+  resolveIntakeAcrossProfiles,
   getIntakeDosesForHistory,
   getTakenDoseIds,
   getSkippedDoseIds,
@@ -50,7 +51,10 @@ import { foodSourcesForDriNutrient } from "@/lib/food-suggest";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
 import { FindingCard } from "@/components/FindingCard";
 import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
-import { requireSession } from "@/lib/auth";
+import { notFound } from "next/navigation";
+import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
+import { OFFER_FAMILIES, offerStands } from "@/lib/offers";
+import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
@@ -157,12 +161,44 @@ interface Item {
 export default async function ManageTab({
   supplyId = 0,
   backfillDate,
+  itemId = 0,
+  supplyFact = false,
+  initialRefill = false,
 }: {
   // The cabinet's "Add for another person" deep link (#1705). 0 / unreachable = no seed.
   supplyId?: number;
   backfillDate?: string;
+  itemId?: number;
+  supplyFact?: boolean;
+  initialRefill?: boolean;
 }) {
-  const { login, profile } = await requireSession();
+  const { login, profile, access } = await requireSession();
+  if (itemId) {
+    const accessible = await getAccessibleProfiles();
+    const resolved = resolveIntakeAcrossProfiles(
+      accessible.map((profile) => profile.id),
+      itemId,
+      "supplement"
+    );
+    if (!resolved) notFound();
+    if (resolved.profileId !== profile.id) {
+      const subject = accessible.find(
+        (profile) => profile.id === resolved.profileId
+      )!;
+      return (
+        <div className="space-y-4">
+          <ProfileIdentityBanner
+            profile={subject}
+            crossProfile
+            testIdPrefix="intake"
+          />
+          <p>
+            {resolved.item.name} · Act as {subject.name} to edit its supply.
+          </p>
+        </div>
+      );
+    }
+  }
   const profileAge = getProfileAge(profile.id);
   const activityScheduleAvailable = isTrainingRelevant(profileAge);
   // The same life-stage gate the Settings copy uses: the adult food-group catalog is
@@ -617,10 +653,28 @@ export default async function ManageTab({
     // the ledger's OWN sets rather than re-deriving dueness, so the two surfaces cannot
     // disagree about which of them is speaking.
     const statedByLedger = dose && ledgerStatedDoseIds.has(dose.id);
+    const representative = dose?.id === dosesBySupp.get(supplement.id)?.[0]?.id;
+    const canWrite = access === "write";
+    const openSupply =
+      canWrite && representative && supplyFact && supplement.id === itemId;
     return (
       <EditableSupplementRow
-        key={dose?.id ?? `item-${supplement.id}`}
+        key={`${dose?.id ?? `item-${supplement.id}`}:${openSupply ? (initialRefill ? "refill" : "supply") : "row"}`}
         supplement={supplement}
+        canWrite={canWrite}
+        supplyRepresentative={representative}
+        initialSupplyEditor={openSupply}
+        initialRefill={openSupply && initialRefill}
+        trackSupplyOffer={
+          canWrite &&
+          representative &&
+          offerStands(profile.id, {
+            familyId: "track-supply",
+            itemId: supplement.id,
+          })
+            ? OFFER_FAMILIES["track-supply"](supplement.id).copy
+            : null
+        }
         dose={dose}
         isTaken={dose && !statedByLedger ? takenToday.has(dose.id) : undefined}
         isSkipped={
@@ -702,7 +756,12 @@ export default async function ManageTab({
       )}
 
       {paused.length + pausedDoseLessSupplements.length > 0 && (
-        <Disclosure>
+        <Disclosure
+          open={
+            paused.some((entry) => entry.supplement.id === itemId) ||
+            pausedDoseLessSupplements.some((item) => item.id === itemId)
+          }
+        >
           <summary className="fold-control section-label">
             Paused ({paused.length + pausedDoseLessSupplements.length})
           </summary>

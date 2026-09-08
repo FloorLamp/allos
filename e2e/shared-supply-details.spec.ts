@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { workerDbPath, frozenNow } from "./worker-env";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import {
+  appContent,
   hydratedClick,
   settledClick,
   settledFill,
@@ -145,6 +149,12 @@ test("adding a bottle for another person prefills its facts and links on save", 
   ).toContainText(bottleName);
   // A pooled item keeps no private count, so that field is gone before the save.
   await expect(supplyEditor2.getByLabel("Quantity on hand")).toBeHidden();
+  await expect(supplyEditor2.getByLabel("Shared bottle count")).toHaveValue("");
+  await settledFill(
+    page,
+    supplyEditor2.getByLabel("Shared bottle count"),
+    "60"
+  );
   await closeEditor(page, seeded);
 
   await settledFill(page, seeded.getByLabel("Name"), secondName);
@@ -166,4 +176,79 @@ test("adding a bottle for another person prefills its facts and links on save", 
     .getByTestId("shared-supply-card")
     .filter({ hasText: bottleName });
   await expect(linked.getByTestId("shared-supply-member-link")).toHaveCount(2);
+  await expect(linked.getByTestId("shared-supply-quantity")).toContainText(
+    "60"
+  );
+});
+
+test("a supply link retains its subject and opens one editor for a paused split-dose item", async ({
+  page,
+}) => {
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  const subjectName = "Supply link subject (e2e)";
+  const name = "Paused split supply (e2e)";
+  const profileId = createFixtureProfile(db, subjectName);
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+    (profile_id, name, kind, active, quantity_on_hand, qty_per_dose)
+    VALUES (?, ?, 'supplement', 0, 4, 1)`
+      )
+      .run(profileId, name).lastInsertRowid
+  );
+  for (const [sort, clock] of ["Morning", "Evening"].entries()) {
+    db.prepare(
+      `INSERT INTO intake_item_doses
+      (item_id, amount, time_of_day, sort, created_at)
+      VALUES (?, '1 capsule', ?, ?, ?)`
+    ).run(itemId, clock, sort, frozenNow().toISOString());
+  }
+  try {
+    await page.goto(`/nutrition?tab=supplements&item=${itemId}&fact=supply`);
+    await expect(
+      appContent(page).getByTestId("intake-subject-name")
+    ).toHaveText(subjectName);
+    await expect(
+      page.getByRole("dialog", { name: `Edit ${name}` })
+    ).toHaveCount(0);
+    await settledClick(
+      page,
+      appContent(page).getByTestId("intake-switch-profile")
+    );
+    const editor = page.getByRole("dialog", {
+      name: `Edit ${name}`,
+      exact: true,
+    });
+    await expect(editor).toHaveCount(1);
+    await expect(
+      editor.getByLabel("Quantity on hand", { exact: true })
+    ).toHaveValue("4");
+    await closeEditor(page, editor);
+    await hydratedClick(
+      page,
+      editor.getByRole("button", { name: "Cancel", exact: true })
+    );
+    await expect(editor).toHaveCount(0);
+    const rows = appContent(page)
+      .getByTestId("supplement-row")
+      .filter({ hasText: name });
+    await expect(rows).toHaveCount(2);
+    await expect(rows.getByTestId("intake-item-name")).toHaveText([name, name]);
+  } finally {
+    db.prepare(
+      "UPDATE sessions SET active_profile_id = 1 WHERE active_profile_id = ?"
+    ).run(profileId);
+    db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(itemId);
+    db.prepare("DELETE FROM intake_items WHERE id = ? AND profile_id = ?").run(
+      itemId,
+      profileId
+    );
+    db.prepare("DELETE FROM profile_settings WHERE profile_id = ?").run(
+      profileId
+    );
+    destroyFixtureProfile(db, profileId);
+    db.close();
+  }
 });

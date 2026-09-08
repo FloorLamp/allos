@@ -229,11 +229,12 @@ it("updates the supply fact after edit apply without changing item identity (#46
   fireEvent.click(screen.getByTestId("shared-supply-apply"));
   await screen.findByText("Linked to “Ibuprofen”.");
   expect(
-    screen
-      .getByLabelText("Quantity on hand")
-      .closest("[aria-hidden]")
-      ?.getAttribute("aria-hidden")
-  ).toBe("true");
+    (
+      screen.getByRole("spinbutton", {
+        name: "Shared bottle count",
+      }) as HTMLInputElement
+    ).value
+  ).toBe("");
   fireEvent.click(screen.getByTestId("intake-editor-done"));
 
   expect(screen.getByTestId("intake-fact-supply").textContent).toContain(

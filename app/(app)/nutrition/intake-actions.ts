@@ -98,8 +98,10 @@ import {
   type IntakeField,
   type IntakePairInput,
 } from "@/lib/intake-form-fields";
+import { updateIntakeSupplyCount } from "@/lib/queries/intake";
+import { markOfferAsked } from "@/lib/offers";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
-import { parseQuantityOnHand, resolveOnHandWrite } from "@/lib/refill";
+import { parseQuantityOnHand } from "@/lib/refill";
 import {
   intakeItemDoseIds,
   sweepIntakeItemMarkers,
@@ -164,6 +166,8 @@ import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
 function revalidateIntake() {
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");
+  revalidateRoute("/supplies");
+  revalidateRoute("/upcoming");
   // Both doors onto the cross-item dose ledger (#2417) — a backfill, amend or delete
   // made FROM the ledger has to leave the ledger showing what it just wrote.
   revalidateRoute("/history");
@@ -692,6 +696,20 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
         : { ...base, kind: "supplement" }
     );
     if (!outcome.ok) return outcome;
+    if (supplyId != null && formData.has("supply_count")) {
+      updateIntakeSupplyCount(
+        profile.id,
+        outcome.id,
+        supplyId,
+        parseQuantityOnHand(get("supply_count")),
+        parseQuantityOnHand(get("supply_count_loaded"))
+      );
+    }
+    if (get("supply_offer_seen") === "1")
+      markOfferAsked(profile.id, {
+        familyId: "track-supply",
+        itemId: outcome.id,
+      });
     reconcilePairs(outcome.id, pairs, profile.id);
     reconcileIngredients(outcome.id, ingredients?.ok ? ingredients.rows : null);
     // Purpose links (#2857). Inside the same write transaction as the item and its
@@ -752,6 +770,12 @@ export async function updateIntakeItem(
   const loadedQuantityOnHand = parseQuantityOnHand(
     get("quantity_on_hand_loaded")
   );
+  if (has("supply_count") && !has("supply_id"))
+    return formError("Reload the item before saving its bottle count.");
+  const expectedSupplyId = has("supply_id")
+    ? Number(get("supply_id")) || null
+    : undefined;
+  if (expectedSupplyId != null) await requirePoolWriteAccess(expectedSupplyId);
   const result = writeTx((tx) => {
     // Verify ownership before touching the supplement or its child rows — the
     // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
@@ -759,12 +783,13 @@ export async function updateIntakeItem(
     // quantity tracking off can clear the low-supply episode marker (issue #325).
     const owned = db
       .prepare(
-        "SELECT active, quantity_on_hand, created_at, kind, condition FROM intake_items WHERE id = ? AND profile_id = ?"
+        "SELECT active, quantity_on_hand, supply_id, created_at, kind, condition FROM intake_items WHERE id = ? AND profile_id = ?"
       )
       .get(id, profile.id) as
       | {
           active: number;
           quantity_on_hand: number | null;
+          supply_id: number | null;
           created_at: string | null;
           kind: IntakeItemKind;
           condition: IntakeCondition;
@@ -808,11 +833,29 @@ export async function updateIntakeItem(
     // current value (re-read here under the IMMEDIATE write lock), so a concurrent
     // dose decrement — e.g. a poll-sidecar Telegram ✅ tap — isn't clobbered by a
     // stale form save. Everything else on the row is still absolute last-write-wins.
-    const effectiveQuantityOnHand = resolveOnHandWrite(
-      f.quantityOnHand,
-      loadedQuantityOnHand,
-      owned.quantity_on_hand
-    );
+    if (expectedSupplyId !== undefined && owned.supply_id !== expectedSupplyId)
+      return "stale-supply" as const;
+    const count =
+      owned.supply_id == null
+        ? updateIntakeSupplyCount(
+            profile.id,
+            id,
+            null,
+            f.quantityOnHand,
+            loadedQuantityOnHand
+          )
+        : has("supply_count")
+          ? updateIntakeSupplyCount(
+              profile.id,
+              id,
+              owned.supply_id,
+              parseQuantityOnHand(get("supply_count")),
+              parseQuantityOnHand(get("supply_count_loaded"))
+            )
+          : { quantity: null };
+    if (!count) return "stale-supply" as const;
+    const effectiveQuantityOnHand =
+      owned.supply_id == null ? count.quantity : null;
 
     // Re-resolve the situation link on edit so a re-typed/changed label re-keys to
     // (or creates) the matching situation ROW (#560); null when not situational.
@@ -830,7 +873,7 @@ export async function updateIntakeItem(
              product = ?, situation = ?, situation_id = ?, pause_situation_id = ?,
              stack = ?,
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
-             quantity_on_hand = ?, qty_per_dose = ?,
+             qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?,
              min_interval_hours = ?, max_daily_count = ?,
              max_daily_amount_mg = ?, redose_notice = ?,
@@ -853,7 +896,6 @@ export async function updateIntakeItem(
       f.critical,
       f.escalateAfterMin,
       f.escalateChatId,
-      effectiveQuantityOnHand,
       f.qtyPerDose,
       f.kind,
       f.prescriber,
@@ -1042,6 +1084,10 @@ export async function updateIntakeItem(
     }
     return true;
   });
+  if (result === "stale-supply")
+    return formError(
+      "The shared bottle changed. Reload before saving its count."
+    );
   if (result === "course-not-found") {
     return formError("Couldn't find that medication course.");
   }

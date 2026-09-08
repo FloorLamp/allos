@@ -97,6 +97,18 @@ export const INSTRUMENTS_HREF: AppRoute = "/records/specialty/mental-health";
 // ONE place the intake-surface seam is encoded, so every deep-linker (Upcoming,
 // Timeline, search, refill/dose Telegram buttons, imports) agrees on where each
 // kind lives — a #285 "rule-carrying link" (the rule = kind → surface).
+export function intakeSupplyHref(
+  kind: IntakeItemKind,
+  itemId: number,
+  refill = false
+): AppRoute {
+  const base =
+    kind === "medication"
+      ? `/medications/${itemId}?action=edit&fact=supply`
+      : `/nutrition?tab=supplements&item=${itemId}&fact=supply`;
+  return `${base}${refill ? "&refill=1" : ""}` as AppRoute;
+}
+
 export function intakeHref(kind: IntakeItemKind): AppRoute {
   return kind === "medication"
     ? MEDICATIONS_HREF

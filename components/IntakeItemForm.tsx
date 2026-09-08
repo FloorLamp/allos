@@ -133,6 +133,7 @@ import type {
   MedicationCourse,
 } from "@/lib/types";
 import { requireIntakeFormKind } from "@/lib/intake-form-kind";
+import OfferInPlace from "@/components/OfferInPlace";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
 import Disclosure from "@/components/Disclosure";
 
@@ -183,6 +184,8 @@ export default function IntakeItemForm({
   course,
   initialSupply = null,
   activityScheduleAvailable = true,
+  initialFact = null,
+  initialRefill = false,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   intakeContext: IntakeFormContext;
@@ -204,6 +207,8 @@ export default function IntakeItemForm({
   course?: MedicationCourse;
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
+  initialFact?: "supply" | null;
+  initialRefill?: boolean;
 }) {
   const {
     allIntakeItems,
@@ -230,7 +235,10 @@ export default function IntakeItemForm({
     open: setOpenPanel,
     close: closePanel,
     onKeyDown: onFormKeyDown,
-  } = useFactEditor<IntakeOpenPanel>({ scopeRef: formRef });
+  } = useFactEditor<IntakeOpenPanel>({
+    scopeRef: formRef,
+    initial: initialFact,
+  });
   // Whether the rules panel was entered to ADD one (the chip row's "+ rule") rather
   // than to correct an existing sentence.
   const [rulesStartOnMenu, setRulesStartOnMenu] = useState(false);
@@ -250,8 +258,8 @@ export default function IntakeItemForm({
   // The hooks BELOW this are deliberately not part of it: an open panel, a narrowed
   // brand list, a seed note and the prefill ledger are not facts about the item and
   // are never saved.
-  const [state, setState] = useState<IntakeItemFormState>(() =>
-    intakeItemFormStateFrom({
+  const [state, setState] = useState<IntakeItemFormState>(() => ({
+    ...intakeItemFormStateFrom({
       kind: lockedKind,
       item: s,
       course,
@@ -262,11 +270,12 @@ export default function IntakeItemForm({
       purposes: initialPurposes
         .map(purposeToDraft)
         .filter((d): d is PurposeDraft => d != null),
-    })
-  );
+    }),
+    // This front-door offer is part of the pristine add form, not a user edit.
+    ...(!s && initialSupply?.onHand == null ? { supplyOfferSeen: true } : {}),
+  }));
   // The ONE writer. A patch that changes nothing returns the SAME object, so a
-  // controlled child re-asserting a value from an effect (RefillTracking clears the
-  // private count a pooled item does not own) cannot spin the render loop that a
+  // controlled child recording local offer visibility cannot spin the render loop that a
   // fresh object every time would.
   function patch(
     next:
@@ -324,6 +333,27 @@ export default function IntakeItemForm({
       return initialSupply?.name ?? null;
     return null;
   }, [availableBottles, initialSupply, s, state.supplyId]);
+  const selectedSupply = availableBottles.find(
+    (option) => String(option.id) === state.supplyId
+  );
+  const poolQuantity =
+    state.poolCount?.supplyId === state.supplyId
+      ? state.poolCount.quantity
+      : String(selectedSupply?.onHand ?? "");
+  function setSupplyQuantity(quantity: string) {
+    if (state.supplyId) {
+      patch({
+        poolCount: {
+          supplyId: state.supplyId,
+          quantity,
+          loaded:
+            state.poolCount?.supplyId === state.supplyId
+              ? state.poolCount.loaded
+              : String(selectedSupply?.onHand ?? ""),
+        },
+      });
+    } else patch({ quantityOnHand: quantity });
+  }
   const selectedSupplyAmount = useMemo(() => {
     const loaded = availableBottles.find(
       (option) => String(option.id) === state.supplyId
@@ -751,7 +781,7 @@ export default function IntakeItemForm({
   }
 
   function onLinkSupply(supply: SupplyOption | null): void {
-    patch({ supplyId: supply ? String(supply.id) : "" });
+    patch({ supplyId: supply ? String(supply.id) : "", poolCount: undefined });
     if (supply)
       setAvailableBottles((current) =>
         current.some((option) => option.id === supply.id)
@@ -846,7 +876,9 @@ export default function IntakeItemForm({
     brand: state.brand,
     product: state.product,
     stack: state.stack,
-    supplyLabel: selectedSupplyName,
+    supplyLabel: selectedSupplyName
+      ? `${selectedSupplyName} · shared bottle · ${poolQuantity ? `${poolQuantity} on hand` : "no count"}`
+      : null,
     quantityOnHand: state.quantityOnHand,
     stopDate: state.endDate,
     ingredientCount: state.ingredients.filter((g) => g.name.trim()).length,
@@ -959,6 +991,7 @@ export default function IntakeItemForm({
     formRef.current?.reset();
     setState({
       ...intakeItemFormStateFrom({ kind: lockedKind, todayStr }),
+      supplyOfferSeen: true,
       // The course is the HOST's, not this item's: it outlives the row being cleared.
       courseId: course?.id ?? null,
     });
@@ -1124,6 +1157,31 @@ export default function IntakeItemForm({
         excludeId={s?.id}
         age={pediatricAgeYears(pediatricContext)}
       />
+
+      {!s &&
+        !state.supplyOfferAnswered &&
+        !(state.supplyId ? poolQuantity : state.quantityOnHand) && (
+          <OfferInPlace
+            dedupeKey=""
+            familyId="track-supply"
+            question="Track supply · how many on hand?"
+            yes="Track supply"
+            no="No thanks"
+            onSeen={() => patch({ supplyOfferSeen: true })}
+            onAccept={async (formData) => {
+              const raw = String(formData.get("quantity_on_hand") ?? "").trim();
+              if (!raw || !Number.isFinite(Number(raw)) || Number(raw) < 0)
+                return { ok: false, error: "Enter how many are left." };
+              setSupplyQuantity(raw);
+              patch({ supplyOfferSeen: true, supplyOfferAnswered: true });
+              return { ok: true };
+            }}
+            onDecline={async () => {
+              patch({ supplyOfferSeen: true, supplyOfferAnswered: true });
+              return { ok: true };
+            }}
+          />
+        )}
 
       {openPanel == null ? (
         <IntakeFactRow
@@ -1686,8 +1744,30 @@ export default function IntakeItemForm({
             supplyId={state.supplyId}
             supplyName={selectedSupplyName}
             onPickSupply={s ? onLinkSupply : onPickSupply}
-            quantityOnHand={state.quantityOnHand}
-            setQuantityOnHand={(quantityOnHand) => patch({ quantityOnHand })}
+            quantityOnHand={
+              state.supplyId ? poolQuantity : state.quantityOnHand
+            }
+            setQuantityOnHand={setSupplyQuantity}
+            onRefilled={(newQuantity) => {
+              const quantity = String(newQuantity);
+              patch((current) =>
+                current.supplyId !== state.supplyId
+                  ? {}
+                  : state.supplyId
+                    ? {
+                        poolCount: {
+                          supplyId: state.supplyId,
+                          quantity,
+                          loaded: quantity,
+                        },
+                      }
+                    : {
+                        quantityOnHand: quantity,
+                        quantityOnHandLoaded: quantity,
+                      }
+              );
+            }}
+            initialRefill={initialRefill}
             qtyPerDose={state.qtyPerDose}
             setQtyPerDose={(qtyPerDose) => patch({ qtyPerDose })}
           />

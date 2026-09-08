@@ -41,6 +41,9 @@ export default async function NutritionPage(props: {
     tab === "supplements" ? (
       <ManageTab
         supplyId={Number(rawSupply ?? 0)}
+        itemId={Number(one(searchParams.item) ?? 0)}
+        supplyFact={one(searchParams.fact) === "supply"}
+        initialRefill={one(searchParams.refill) === "1"}
         backfillDate={isRealIsoDate(rawBackfill) ? rawBackfill : undefined}
       />
     ) : (

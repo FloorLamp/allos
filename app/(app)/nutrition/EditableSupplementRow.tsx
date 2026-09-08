@@ -1,5 +1,7 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { nutritionTabHref } from "@/lib/hrefs";
 import { useState } from "react";
 import type { IntakeItem, IntakeDose, IntakePair } from "@/lib/types";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
@@ -12,13 +14,17 @@ import {
   stackSchedule,
 } from "@/lib/intake-schedule";
 import type { AdherenceDot } from "@/lib/intake-adherence";
-import type { DoseRate } from "@/lib/refill";
+import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import {
   RefillBadge,
   SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
 import type { PoolChipData } from "@/lib/queries/intake";
+import RefillButton from "@/components/medications/RefillButton";
+import type { OfferFamily } from "@/lib/offers";
+import OfferInPlace from "@/components/OfferInPlace";
+import { trackSupplyAskedKey } from "@/lib/dismissal-keys";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
@@ -77,6 +83,11 @@ export default function EditableSupplementRow({
   defaultHistoryTime,
   historyWindowDays,
   activityScheduleAvailable = true,
+  canWrite = true,
+  supplyRepresentative = true,
+  initialSupplyEditor = false,
+  initialRefill = false,
+  trackSupplyOffer = null,
 }: {
   supplement: IntakeItem;
   dose?: IntakeDose;
@@ -125,14 +136,36 @@ export default function EditableSupplementRow({
   defaultHistoryTime: string;
   historyWindowDays: number;
   activityScheduleAvailable?: boolean;
+  canWrite?: boolean;
+  supplyRepresentative?: boolean;
+  initialSupplyEditor?: boolean;
+  initialRefill?: boolean;
+  trackSupplyOffer?: OfferFamily["copy"] | null;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialSupplyEditor && canWrite);
   const [showHistory, setShowHistory] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const router = useRouter();
+  const closeEditor = () => {
+    setEditing(false);
+    if (initialSupplyEditor)
+      router.replace(nutritionTabHref("supplements"), { scroll: false });
+  };
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const s = supplement;
 
+  const lowSupply =
+    s.supply_id != null
+      ? !!poolChip?.low
+      : isLowSupply(
+          daysOfSupplyForItem(
+            s.quantity_on_hand,
+            s.qty_per_dose,
+            refillRate,
+            doses.length
+          )
+        );
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
   const foodHint = dose ? FOOD_TIMING_HINTS[dose.food_timing] : null;
   const multi = doses.length > 1;
@@ -192,6 +225,20 @@ export default function EditableSupplementRow({
                 doseCount={doses.length}
               />
             ) : null}
+            {canWrite && supplyRepresentative && lowSupply && (
+              <RefillButton
+                itemId={s.id}
+                supplyId={s.supply_id}
+                hasLastFill={s.last_fill_size != null}
+                lastFillSize={s.last_fill_size}
+                supplyCycleDays={daysOfSupplyForItem(
+                  s.last_fill_size,
+                  s.qty_per_dose,
+                  refillRate,
+                  doses.length
+                )}
+              />
+            )}
             {s.critical === 1 && (
               <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                 Escalates
@@ -389,12 +436,16 @@ export default function EditableSupplementRow({
         )}
       </div>
 
-      {editing && (
-        <ModalShell
-          title={`Edit ${s.name}`}
-          onClose={() => setEditing(false)}
-          size="lg"
-        >
+      {trackSupplyOffer && canWrite && supplyRepresentative && (
+        <OfferInPlace
+          dedupeKey={trackSupplyAskedKey(s.id)}
+          familyId="track-supply"
+          supplyId={s.supply_id}
+          {...trackSupplyOffer}
+        />
+      )}
+      {editing && canWrite && (
+        <ModalShell title={`Edit ${s.name}`} onClose={closeEditor} size="lg">
           <div
             data-testid="supplement-edit-panel"
             className="min-h-0 overflow-y-auto px-1"
@@ -404,6 +455,19 @@ export default function EditableSupplementRow({
               action={updateIntakeItem}
               kind="supplement"
               item={s}
+              initialFact={initialSupplyEditor ? "supply" : null}
+              initialRefill={initialRefill}
+              initialSupply={
+                poolChip
+                  ? {
+                      id: poolChip.supplyId,
+                      name: poolChip.name,
+                      strength: poolChip.strength,
+                      form: poolChip.form,
+                      onHand: poolChip.quantityOnHand,
+                    }
+                  : null
+              }
               doses={doses}
               ingredients={ingredients}
               purposes={purposes}
@@ -411,7 +475,7 @@ export default function EditableSupplementRow({
               retiredDoses={retiredDoses}
               pairs={pairs}
               activityScheduleAvailable={activityScheduleAvailable}
-              onDone={() => setEditing(false)}
+              onDone={closeEditor}
             />
           </div>
         </ModalShell>

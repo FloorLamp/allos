@@ -36,6 +36,7 @@ import {
   setProfileSetting,
   setStoredAge,
 } from "@/lib/settings";
+import { trackSupplyAskedKey } from "@/lib/dismissal-keys";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { seedActor, fd } from "./harness";
@@ -854,4 +855,23 @@ describe("dismissIntakeFinding (#435)", () => {
     await dismissIntakeFinding(fd({ dedupe_key: "biomarker:ldl" }));
     expect(suppressed().has("biomarker:ldl")).toBe(false);
   });
+});
+
+it("saves an add-form ignored/declined supply offer with its new item, but no stock or placeholder dose", async () => {
+  const { profile } = seedActor();
+  const result = await addIntakeItem(
+    fd({ name: "Local offer", supply_offer_seen: "1", qty_per_dose: "2" })
+  );
+  expect(result.ok).toBe(true);
+  const item = getIntakeItems(profile.id)[0];
+  expect(item.quantity_on_hand).toBeNull();
+  expect(item.qty_per_dose).toBe(2);
+  expect(getIntakeDoses(profile.id)).toEqual([]);
+  expect(
+    getFindingSuppressions(profile.id).has(trackSupplyAskedKey(item.id))
+  ).toBe(true);
+  expect(
+    (await addIntakeItem(fd({ name: "", supply_offer_seen: "1" }))).ok
+  ).toBe(false);
+  expect(getIntakeItems(profile.id)).toHaveLength(1);
 });

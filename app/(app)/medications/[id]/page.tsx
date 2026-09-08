@@ -9,7 +9,7 @@ import {
   getRankedPickerProviders,
   getIntakeCatalogOptions,
   getIntakeDoseHistory,
-  resolveMedicationAcrossProfiles,
+  resolveIntakeAcrossProfiles,
   encounterForRecord,
   episodesForMedication,
 } from "@/lib/queries";
@@ -58,7 +58,11 @@ export const dynamic = "force-dynamic";
 // banner, keeping all existing medication actions tied to the acting profile.
 export default async function MedicationDetailPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ action?: string | string[] }>;
+  searchParams: Promise<{
+    action?: string | string[];
+    fact?: string;
+    refill?: string;
+  }>;
 }) {
   const params = await props.params;
   const searchParams = await props.searchParams;
@@ -70,7 +74,7 @@ export default async function MedicationDetailPage(props: {
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
   const accessible = await getAccessibleProfiles();
-  const resolved = resolveMedicationAcrossProfiles(
+  const resolved = resolveIntakeAcrossProfiles(
     accessible.map((profile) => profile.id),
     id
   );
@@ -89,7 +93,7 @@ export default async function MedicationDetailPage(props: {
   // REACHABILITY FIRST, THEN THE GRANT — the ordering requireProfileWriteAccess itself
   // depends on, because `accessForProfile` defaults an UNGRANTED member to 'write' and
   // so decides nothing on its own. Reachability is settled above by construction:
-  // `profileId` came out of `resolveMedicationAcrossProfiles(accessible…)`, so a
+  // `profileId` came out of `resolveIntakeAcrossProfiles(accessible…)`, so a
   // profile this login cannot reach 404s before this line. Write access is then asked
   // of the SUBJECT rather than of the acting profile — and this is only what the page
   // OFFERS: every action re-gates the posted id server-side.
@@ -301,6 +305,7 @@ export default async function MedicationDetailPage(props: {
               </div>
             ) : null}
             <MedicationCard
+              key={`${m.med.id}:${initialAction ?? "view"}:${searchParams.fact ?? ""}:${searchParams.refill ?? ""}`}
               intakeContext={data.intakeContext}
               medication={m.med}
               doses={m.doses}
@@ -332,6 +337,9 @@ export default async function MedicationDetailPage(props: {
               canWrite={canWrite}
               subjectProfileId={subjectProfileId}
               initialAction={initialAction}
+              initialSupplyEditor={searchParams.fact === "supply"}
+              initialRefill={searchParams.refill === "1"}
+              trackSupplyOffer={m.trackSupplyOffer}
               ingredients={m.ingredients}
             />
           </IntakeOptionsProvider>
