@@ -311,6 +311,10 @@ export interface MoodPayload {
   anxiety: number | null;
   factors: string[];
   note: string | null;
+  // The quick logger could not read this day's stored row before composing the
+  // payload. Empty optional fields are unknown, so replay preserves server values
+  // it could not show. Absent means the form incorporated an authoritative read.
+  dayUnseen?: true;
 }
 
 // Workout session logged entirely offline (#1596, landing #28's "add set"). The
@@ -745,10 +749,11 @@ export function syncedAnnouncement(
 //
 // The flows that read it (a new quick-log surface joins this list and reuses the
 // constant rather than inventing a ninth copy):
-//   • components/DoseStatusControl.tsx — dose take/skip
+//   • components/DoseStatusControl.tsx and quick-entry/QuickDoseList.tsx — dose take/skip
 //   • components/practices/LogPracticeButton.tsx — practice session
-//   • components/quick-entry/QuickMoodCheckin.tsx — quick-entry mood
+//   • components/mood/MoodForm.tsx — mood check-in
 //   • components/ActivityForm.tsx — close-path workout capture
+//   • app/(app)/nutrition/DayLedger.tsx — day-ledger capture
 //   • app/(app)/nutrition/FoodLogBar.tsx — food serving "+"
 //   • app/(app)/nutrition/ProteinQuickAdd.tsx — protein grams "+"
 //   • app/(app)/trends/MeasurementsQuickAdd.tsx — body metrics + vitals

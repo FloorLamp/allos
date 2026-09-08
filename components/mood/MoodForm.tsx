@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useReducer, useRef } from "react";
 import { logMood } from "@/app/(app)/mood-actions";
 import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
@@ -41,6 +41,171 @@ export interface MoodFormDay {
   date: string;
   label: string;
   mood: MoodFormValue | null;
+}
+
+type MoodDraftValues = Omit<MoodFormValue, "valence"> & {
+  valence: number | null;
+};
+
+type MoodField = keyof MoodDraftValues;
+type MoodTouched = Record<MoodField, boolean>;
+type MoodError = { kind: "write" | "reach"; message: string } | null;
+type MoodTouchAction = {
+  [K in MoodField]: { kind: "touch"; field: K; value: MoodDraftValues[K] };
+}[MoodField];
+
+interface MoodAttempt {
+  readonly id: number;
+  readonly date: string;
+  readonly label: string;
+  readonly values: MoodFormValue;
+  readonly dayUnseen: boolean;
+  readonly subjectProfileId?: number;
+  readonly dateReach: "tap" | "dated";
+  readonly capture: QueuedCapture | null;
+  readonly presentation: number;
+}
+
+interface MoodControllerState {
+  readonly date: string | null;
+  readonly label: string;
+  readonly values: MoodDraftValues;
+  readonly touched: MoodTouched;
+  readonly complete: boolean;
+  readonly error: MoodError;
+  readonly attempt: MoodAttempt | null;
+}
+
+type MoodControllerAction =
+  | {
+      kind: "reconcile";
+      days: readonly MoodFormDay[];
+      selectedDate: string | null;
+      complete: boolean;
+    }
+  | MoodTouchAction
+  | { kind: "start"; attempt: MoodAttempt }
+  | { kind: "failed"; id: number; message: string }
+  | { kind: "finished"; id: number }
+  | { kind: "retire"; id: number }
+  | { kind: "reset" };
+
+const UNTOUCHED: MoodTouched = {
+  valence: false,
+  energy: false,
+  anxiety: false,
+  factors: false,
+  notes: false,
+};
+
+function rowValues(row: MoodFormDay | undefined): MoodDraftValues {
+  return {
+    valence: row?.mood?.valence ?? null,
+    energy: row?.mood?.energy ?? null,
+    anxiety: row?.mood?.anxiety ?? null,
+    factors: row?.mood?.factors ?? [],
+    notes: row?.mood?.notes ?? null,
+  };
+}
+
+function initialController(
+  days: readonly MoodFormDay[],
+  selectedDate: string | null,
+  complete: boolean
+): MoodControllerState {
+  const selected = days.find((entry) => entry.date === selectedDate) ?? days[0];
+  return {
+    date: selected?.date ?? null,
+    label: selected?.label ?? "that day",
+    values: rowValues(selected),
+    touched: UNTOUCHED,
+    complete,
+    error: null,
+    attempt: null,
+  };
+}
+
+function moodController(
+  state: MoodControllerState,
+  action: MoodControllerAction
+): MoodControllerState {
+  switch (action.kind) {
+    case "reconcile": {
+      const selected = action.days.find(
+        (entry) => entry.date === action.selectedDate
+      );
+      const fallback = selected ?? action.days[0];
+      if (!fallback) return state;
+      if (fallback.date !== state.date) {
+        return {
+          ...initialController(action.days, fallback.date, action.complete),
+          error:
+            state.date == null
+              ? null
+              : {
+                  kind: "reach",
+                  message:
+                    "That day is no longer available. Your draft was reset to the offered day.",
+                },
+          attempt: state.attempt,
+        };
+      }
+      const fresh = rowValues(fallback);
+      return {
+        ...state,
+        label: fallback.label,
+        values: {
+          valence: state.touched.valence ? state.values.valence : fresh.valence,
+          energy: state.touched.energy ? state.values.energy : fresh.energy,
+          anxiety: state.touched.anxiety ? state.values.anxiety : fresh.anxiety,
+          factors: state.touched.factors ? state.values.factors : fresh.factors,
+          notes: state.touched.notes ? state.values.notes : fresh.notes,
+        },
+        // Once an authoritative row (including an authoritative absence) has been
+        // incorporated, a later held/device copy cannot make the draft blind again.
+        complete: state.complete || action.complete,
+      };
+    }
+    case "touch":
+      return {
+        ...state,
+        values: { ...state.values, [action.field]: action.value },
+        touched: { ...state.touched, [action.field]: true },
+      };
+    case "start":
+      return {
+        ...state,
+        values: action.attempt.values,
+        touched: { ...state.touched, valence: true },
+        error: state.error?.kind === "reach" ? state.error : null,
+        attempt: action.attempt,
+      };
+    case "failed":
+      return state.attempt?.id === action.id
+        ? {
+            ...state,
+            error: { kind: "write", message: action.message },
+            attempt: null,
+          }
+        : state;
+    case "finished":
+      return state.attempt?.id === action.id
+        ? { ...state, attempt: null, error: null }
+        : state;
+    case "retire":
+      return state.attempt?.id === action.id
+        ? { ...state, attempt: null }
+        : state;
+    case "reset":
+      return {
+        ...state,
+        values: rowValues(undefined),
+        touched: UNTOUCHED,
+        complete: true,
+        error: null,
+        attempt: null,
+      };
+  }
 }
 
 function ScaleRow({
@@ -87,6 +252,7 @@ function ScaleRow({
 export default function MoodForm({
   days,
   showCalm,
+  dayUnseen = false,
   subjectProfileId,
   dateReach = "tap",
   mode = "quick",
@@ -97,6 +263,7 @@ export default function MoodForm({
 }: {
   days: readonly MoodFormDay[];
   showCalm: boolean;
+  dayUnseen?: boolean;
   subjectProfileId?: number;
   dateReach?: "tap" | "dated";
   mode?: "quick" | "edit";
@@ -109,90 +276,77 @@ export default function MoodForm({
   const dayContext = useOptionalDayContext();
   const { enqueue } = useOfflineQueue();
   const captureDayContext = useQueuedDayContextCapture();
-  const ledger = useOptimisticLedger<number | null>("mood-valence");
-  const day =
-    days.find((entry) => entry.date === dayContext?.parts.day) ?? days[0];
-  const initial = day?.mood;
-  const [valence, setValence] = useState<number | null>(
-    initial?.valence ?? null
+  const ledger = useOptimisticLedger<void>("mood-valence");
+  const selectedDate = dayContext?.parts.day ?? days[0]?.date ?? null;
+  const [controller, dispatch] = useReducer(
+    moodController,
+    initialController(days, selectedDate, !dayUnseen)
   );
-  const [energy, setEnergy] = useState<number | null>(initial?.energy ?? null);
-  const [anxiety, setAnxiety] = useState<number | null>(
-    initial?.anxiety ?? null
-  );
-  const [factors, setFactors] = useState<string[]>(initial?.factors ?? []);
-  const [note, setNote] = useState(initial?.notes ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [entryVersion, setEntryVersion] = useState(0);
+  const attemptId = useRef(0);
   const writing = useRef(false);
-
-  function draft(nextValence: number): MoodFormValue {
-    return {
-      valence: nextValence,
-      energy,
-      anxiety,
-      factors,
-      notes: note.trim() || null,
+  const presentation = useRef(0);
+  const offeredDate =
+    days.find((entry) => entry.date === selectedDate)?.date ??
+    days[0]?.date ??
+    "missing";
+  const presentationIdentity = `${dayContext?.key ?? "unscoped"}:${subjectProfileId ?? "acting"}:${dateReach}:${offeredDate}`;
+  useLayoutEffect(() => {
+    const token = ++presentation.current;
+    return () => {
+      if (presentation.current === token) presentation.current += 1;
     };
-  }
+  }, [presentationIdentity]);
+  useLayoutEffect(() => {
+    dispatch({
+      kind: "reconcile",
+      days,
+      selectedDate,
+      complete: !dayUnseen,
+    });
+  }, [days, selectedDate, dayUnseen]);
 
-  function beginWrite(): boolean {
-    if (writing.current) return false;
-    writing.current = true;
-    setBusy(true);
-    return true;
-  }
+  const busy = controller.attempt != null;
+  const { valence, energy, anxiety, factors, notes } = controller.values;
 
-  function endWrite(): void {
+  function complete(attempt: MoodAttempt, message?: string): void {
+    if (attempt.presentation !== presentation.current) return;
+    dispatch({ kind: "finished", id: attempt.id });
     writing.current = false;
-    setBusy(false);
-  }
-
-  function resetEntry(): void {
-    setValence(null);
-    setEnergy(null);
-    setAnxiety(null);
-    setFactors([]);
-    setNote("");
-    setError(null);
-    // A second identical rating is a second history entry attempt, not a double tap
-    // on the first ledger key. Give each cleared form its own write identity.
-    setEntryVersion((current) => current + 1);
-  }
-
-  function complete(target: MoodFormDay, nextValence: number): void {
-    toast(`Logged ${moodLabel(nextValence)} · ${target.label}`);
+    toast(
+      message ??
+        `Logged ${moodLabel(attempt.values.valence)} · ${attempt.label}`
+    );
     onSaved?.();
-    if (repeatAfterSave) resetEntry();
+    if (repeatAfterSave) dispatch({ kind: "reset" });
     else onDone?.();
   }
 
-  function payload(target: MoodFormDay, next: MoodFormValue): FormData {
+  function payload(attempt: MoodAttempt): FormData {
     const fd = new FormData();
-    fd.set("date", target.date);
-    fd.set("valence", String(next.valence));
-    if (next.energy != null) fd.set("energy", String(next.energy));
-    if (next.anxiety != null) fd.set("anxiety", String(next.anxiety));
-    for (const factor of next.factors) fd.append("factors", factor);
-    if (next.notes) fd.set("note", next.notes);
-    if (subjectProfileId != null)
-      fd.set("profile_id", String(subjectProfileId));
-    fd.set("date_reach", dateReach);
+    fd.set("date", attempt.date);
+    fd.set("valence", String(attempt.values.valence));
+    if (attempt.values.energy != null)
+      fd.set("energy", String(attempt.values.energy));
+    if (attempt.values.anxiety != null)
+      fd.set("anxiety", String(attempt.values.anxiety));
+    for (const factor of attempt.values.factors) fd.append("factors", factor);
+    if (attempt.values.notes) fd.set("note", attempt.values.notes);
+    if (attempt.dayUnseen) fd.set("day_unseen", "1");
+    if (attempt.subjectProfileId != null)
+      fd.set("profile_id", String(attempt.subjectProfileId));
+    fd.set("date_reach", attempt.dateReach);
     return fd;
   }
 
   async function queueIfOffline(
     err: unknown,
-    target: MoodFormDay,
-    next: MoodFormValue,
-    capturedContext: QueuedCapture | null
+    attempt: MoodAttempt
   ): Promise<"not-offline" | "refused" | "queued"> {
     // The queue is stamped to the acting profile and carries no subject. A record-row
     // correction posts its subject and therefore must fail honestly rather than queue
     // a write that could replay onto somebody else.
     if (
-      subjectProfileId != null ||
+      attempt.subjectProfileId != null ||
       !shouldQueueOffline(
         typeof navigator === "undefined" ? true : navigator.onLine,
         err
@@ -201,116 +355,117 @@ export default function MoodForm({
       return "not-offline";
     }
     let outcome: "kept" | "closed" | "failed";
-    if (!capturedContext) return "refused";
+    if (!attempt.capture) return "refused";
     try {
       outcome = await enqueue(
         "mood",
         {
-          valence: next.valence,
-          energy: next.energy,
-          anxiety: next.anxiety,
-          factors: next.factors,
-          note: next.notes,
+          valence: attempt.values.valence,
+          energy: attempt.values.energy,
+          anxiety: attempt.values.anxiety,
+          factors: attempt.values.factors,
+          note: attempt.values.notes,
+          ...(attempt.dayUnseen ? { dayUnseen: true as const } : {}),
         },
-        capturedContext
+        attempt.capture
       );
     } catch {
       outcome = "failed";
     }
     if (outcome !== "kept") {
-      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
       return "refused";
     }
-    toast("Saved offline — will sync when you reconnect.");
     return "queued";
   }
 
-  function tap(nextValence: number): void {
-    setError(null);
-    const target = day;
-    if (!target) return;
+  function submit(nextValence: number): void {
+    if (controller.date == null || writing.current || ledger.blocked()) return;
     if (mode === "edit") {
-      // A correction is one statement and has one commit point. Its rating is local
-      // form state until Save, just like Energy, Calm, factors and the note.
-      setValence(nextValence);
-      return;
+      dispatch({ kind: "touch", field: "valence", value: nextValence });
     }
-    if (!beginWrite()) return;
-    const next = draft(nextValence);
-    const capturedContext = captureDayContext(
-      target.date,
-      TAP_REACH["mood-valence"]
-    );
+    writing.current = true;
+    const values: MoodFormValue = {
+      ...controller.values,
+      valence: nextValence,
+      notes: controller.values.notes?.trim() || null,
+    };
+    const attempt: MoodAttempt = {
+      id: ++attemptId.current,
+      date: controller.date,
+      label: controller.label,
+      values,
+      dayUnseen: !controller.complete,
+      subjectProfileId,
+      dateReach,
+      capture: captureDayContext(controller.date, TAP_REACH["mood-valence"]),
+      presentation: presentation.current,
+    };
+    dispatch({ kind: "start", attempt });
     void ledger
       .tap({
-        key: `${target.date}:${nextValence}:${entryVersion}`,
-        from: valence,
-        optimistic: nextValence,
-        commit: setValence,
         write: async () => {
-          if (capturedContext) await capturedContext.writeToken;
-          return logMood(payload(target, next));
+          if (attempt.capture) await attempt.capture.writeToken;
+          return logMood(payload(attempt));
         },
         settle: (result) => {
+          if (attempt.presentation !== presentation.current)
+            return { kind: "rollback" };
           if (!result.ok) {
-            setError(result.error);
+            dispatch({ kind: "failed", id: attempt.id, message: result.error });
+            writing.current = false;
             return { kind: "rollback" };
           }
-          complete(target, nextValence);
+          complete(attempt);
           return { kind: "keep" };
         },
         onError: async (err) => {
-          const queued = await queueIfOffline(
-            err,
-            target,
-            next,
-            capturedContext
-          );
+          const queued = await queueIfOffline(err, attempt);
+          // Persistence belongs to the captured attempt even if its sheet has moved;
+          // only presentation is suppressed for an obsolete lifetime.
+          if (attempt.presentation !== presentation.current)
+            return queued === "queued"
+              ? { kind: "keep" }
+              : { kind: "rollback" };
           if (queued === "queued") {
-            complete(target, nextValence);
+            complete(attempt, "Saved offline — will sync when you reconnect.");
             return { kind: "keep" };
           }
-          if (queued === "not-offline")
-            setError("Couldn't save that check-in — try again.");
+          if (queued === "refused")
+            toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+          dispatch({
+            kind: "failed",
+            id: attempt.id,
+            message:
+              queued === "refused"
+                ? OFFLINE_CAPTURE_REFUSED_MESSAGE
+                : "Couldn't save that check-in — try again.",
+          });
+          writing.current = false;
           return { kind: "rollback" };
         },
       })
-      .finally(endWrite);
+      .finally(() => {
+        writing.current = false;
+        dispatch({ kind: "retire", id: attempt.id });
+      });
   }
 
-  async function save(): Promise<void> {
-    if (!day || valence == null || !beginWrite()) return;
-    const target = day;
-    const next = draft(valence);
-    const capturedContext = captureDayContext(
-      target.date,
-      TAP_REACH["mood-valence"]
-    );
-    setError(null);
-    try {
-      if (capturedContext) await capturedContext.writeToken;
-      const result = await logMood(payload(target, next));
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      complete(target, valence);
-    } catch (err) {
-      const queued = await queueIfOffline(err, target, next, capturedContext);
-      if (queued === "queued") complete(target, valence);
-      else if (queued === "not-offline")
-        setError("Couldn't save that check-in — try again.");
-    } finally {
-      endWrite();
+  function tap(nextValence: number): void {
+    if (mode === "edit") {
+      dispatch({ kind: "touch", field: "valence", value: nextValence });
+      return;
     }
+    submit(nextValence);
   }
 
   function toggleFactor(slug: string): void {
-    setFactors((current) =>
-      current.includes(slug)
-        ? current.filter((factor) => factor !== slug)
-        : [...current, slug]
-    );
+    dispatch({
+      kind: "touch",
+      field: "factors",
+      value: factors.includes(slug)
+        ? factors.filter((factor) => factor !== slug)
+        : [...factors, slug],
+    });
   }
 
   return (
@@ -320,7 +475,7 @@ export default function MoodForm({
       aria-busy={busy}
       onSubmit={(event) => {
         event.preventDefault();
-        void save();
+        if (valence != null) submit(valence);
       }}
     >
       {/* One write snapshots the whole statement and its date. Freeze that whole
@@ -355,7 +510,11 @@ export default function MoodForm({
               name="Energy"
               value={energy}
               onPick={(score) =>
-                setEnergy((current) => (current === score ? null : score))
+                dispatch({
+                  kind: "touch",
+                  field: "energy",
+                  value: energy === score ? null : score,
+                })
               }
               testPrefix="mood-energy"
               lowLabel="drained"
@@ -367,7 +526,11 @@ export default function MoodForm({
                 value={anxiety == null ? null : anxietyDisplaySlot(anxiety)}
                 onPick={(score) => {
                   const stored = anxietyStoredValue(score);
-                  setAnxiety((current) => (current === stored ? null : stored));
+                  dispatch({
+                    kind: "touch",
+                    field: "anxiety",
+                    value: anxiety === stored ? null : stored,
+                  });
                 }}
                 testPrefix="mood-anxiety"
                 lowLabel={ANXIETY_CALM_LOW_LABEL}
@@ -393,9 +556,15 @@ export default function MoodForm({
               Note
               <textarea
                 className="input mt-1 min-h-20"
-                value={note}
+                value={notes ?? ""}
                 maxLength={500}
-                onChange={(event) => setNote(event.target.value)}
+                onChange={(event) =>
+                  dispatch({
+                    kind: "touch",
+                    field: "notes",
+                    value: event.target.value,
+                  })
+                }
               />
             </label>
             <div className="flex items-center gap-2">
@@ -419,9 +588,9 @@ export default function MoodForm({
           </div>
         </Disclosure>
 
-        {error ? (
+        {controller.error ? (
           <p className="text-xs text-rose-600" role="alert">
-            {error}
+            {controller.error.message}
           </p>
         ) : null}
       </fieldset>

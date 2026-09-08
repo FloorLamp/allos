@@ -888,6 +888,34 @@ export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
 
+export type MoodWriteSight = "saw-the-day" | "day-unseen";
+
+function moodUpsert(sight: MoodWriteSight) {
+  return sight === "day-unseen"
+    ? db.prepare(
+        `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+         VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(profile_id, date) DO UPDATE SET
+           valence = excluded.valence,
+           energy = COALESCE(excluded.energy, mood_logs.energy),
+           anxiety = COALESCE(excluded.anxiety, mood_logs.anxiety),
+           factors = COALESCE(excluded.factors, mood_logs.factors),
+           notes = COALESCE(excluded.notes, mood_logs.notes),
+           updated_at = datetime('now')`
+      )
+    : db.prepare(
+        `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+         VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(profile_id, date) DO UPDATE SET
+           valence = excluded.valence,
+           energy = excluded.energy,
+           anxiety = excluded.anxiety,
+           factors = excluded.factors,
+           notes = excluded.notes,
+           updated_at = datetime('now')`
+      );
+}
+
 // Persist one daily wellbeing check-in — the SINGLE write core shared by the
 // dashboard card's server action, the offline replay, and the Telegram check-in
 // button, all running the same pure normalizeMoodInput guard. IDEMPOTENT PER DAY:
@@ -915,7 +943,8 @@ export function upsertMoodLog(
     anxiety?: unknown;
     factors?: unknown;
     note?: unknown;
-  }
+  },
+  sight: MoodWriteSight = "saw-the-day"
 ): boolean {
   // The shared date invariant (#4425). The CHIP tap's ±2 reach lives in `TAP_REACH`
   // where the offer is; the core takes any real past day, which is also what lets the
@@ -924,17 +953,7 @@ export function upsertMoodLog(
   if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeMoodInput(raw);
   if ("error" in normalized) return false;
-  db.prepare(
-    `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
-     VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT(profile_id, date) DO UPDATE SET
-       valence = excluded.valence,
-       energy = excluded.energy,
-       anxiety = excluded.anxiety,
-       factors = excluded.factors,
-       notes = excluded.notes,
-       updated_at = datetime('now')`
-  ).run(
+  moodUpsert(sight).run(
     profileId,
     date,
     normalized.valence,
@@ -1457,13 +1476,22 @@ export function applyIntent(
       if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else if (intent.flow === "mood") {
       const p = intent.payload as MoodPayload;
-      ok = upsertMoodLog(profileId, intent.date, {
-        valence: p.valence,
-        energy: p.energy,
-        anxiety: p.anxiety,
-        factors: p.factors,
-        note: p.note,
-      });
+      if (p.dayUnseen !== undefined && p.dayUnseen !== true) {
+        outcome = { status: "rejected" };
+        return;
+      }
+      ok = upsertMoodLog(
+        profileId,
+        intent.date,
+        {
+          valence: p.valence,
+          energy: p.energy,
+          anxiety: p.anxiety,
+          factors: p.factors,
+          note: p.note,
+        },
+        p.dayUnseen === true ? "day-unseen" : "saw-the-day"
+      );
     } else if (intent.flow === "stool") {
       const p = intent.payload as StoolPayload;
       const statedAt = normalizeClockTime(p?.at);

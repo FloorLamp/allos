@@ -13,17 +13,20 @@ import {
 import type { AppRoute } from "@/lib/hrefs";
 
 // COMPONENT TIER — the quick-log sheet's title-row subject chip (#4932): defaulting
-// per opener, the toggle, and a subject switch discarding what the previous subject
-// had staged. `loadQuickEntry` is mocked to answer `unavailable` for every call —
+// per opener, the toggle, and a subject switch replacing the previous subject's
+// context. `loadQuickEntry` is mocked to answer `unavailable` for every call —
 // the mechanism under test is the CHIP/PROVIDER, not any one hosted form's own
 // rendering (those forms' own subject wiring is proven where each one already lives:
 // quick-symptom-parity.test.tsx, the DB-tier gateItemProfile suites).
 
 const loadQuickEntry = vi.hoisted(() =>
   vi.fn(async (form: QuickEntryForm, subjectProfileId?: number) => ({
-    form: "unavailable" as const,
-    today: MEASUREMENTS.defaultDate,
-    message: `loaded ${form} for ${subjectProfileId ?? "acting"}`,
+    kind: "ready" as const,
+    data: {
+      form: "unavailable" as const,
+      today: MEASUREMENTS.defaultDate,
+      message: `loaded ${form} for ${subjectProfileId ?? "acting"}`,
+    },
   }))
 );
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));

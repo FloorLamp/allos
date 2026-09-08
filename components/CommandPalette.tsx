@@ -269,8 +269,13 @@ export default function CommandPalette({
     if (!open) return;
     let cancelled = false;
     void loadQuickEntry("practice").then(
-      (data) => {
+      (result) => {
         if (cancelled) return;
+        if (result.kind === "refused") {
+          setPractices([]);
+          return;
+        }
+        const data = result.data;
         setPractices(
           data.form === "practice"
             ? data.practices.map((p) => ({

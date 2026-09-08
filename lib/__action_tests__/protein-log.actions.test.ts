@@ -75,15 +75,21 @@ describe("addProteinGrams", () => {
     await addProteinGrams(fd({ grams: "33", date: older }));
 
     await expect(loadQuickEntry("food")).resolves.toMatchObject({
-      form: "food",
-      proteinGrams: 11,
+      kind: "ready",
+      data: { form: "food", proteinGrams: 11 },
     });
     await expect(
       loadQuickEntry("food", undefined, yesterday, "sheet")
-    ).resolves.toMatchObject({ form: "food", proteinGrams: 22 });
+    ).resolves.toMatchObject({
+      kind: "ready",
+      data: { form: "food", proteinGrams: 22 },
+    });
     await expect(
       loadQuickEntry("food", undefined, older, "dated")
-    ).resolves.toMatchObject({ form: "food", proteinGrams: 33 });
+    ).resolves.toMatchObject({
+      kind: "ready",
+      data: { form: "food", proteinGrams: 33 },
+    });
   });
 
   it("rejects a non-positive or over-cap amount without writing", async () => {
