@@ -407,11 +407,14 @@ export function dayHistoryAddHref(
   return `${base}${separator}${param}=${encodeURIComponent(date)}` as AppRoute;
 }
 
-// The Data hub's deep-linkable sections. Source of truth for the union — the page
-// (`app/(app)/data/page.tsx`) imports it, so a section rename is one edit and
-// every caller of `dataSectionHref` is re-checked by the compiler (typedRoutes
-// validates the `/data` path but NOT the `?section=` value — this union does).
-export const DATA_SECTIONS = ["import", "review", "manage"] as const;
+// Shared by the Data page parser and links; typedRoutes cannot check query values.
+export const DATA_SECTIONS = [
+  "import",
+  "review",
+  "coverage",
+  "manage",
+  "trash",
+] as const;
 export type DataSection = (typeof DATA_SECTIONS)[number];
 
 // Link to a section of the Data hub, with an optional in-page hash

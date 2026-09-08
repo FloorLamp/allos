@@ -1,5 +1,6 @@
 "use client";
 
+import { dataSectionHref } from "@/lib/hrefs";
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -135,7 +136,7 @@ export default function UploadForm({
       key: MEDICAL_UPLOAD_TOAST_KEY,
       action: {
         label: "Track in Review",
-        onClick: () => router.push("/data?section=review"),
+        onClick: () => router.push(dataSectionHref("review")),
       },
     });
     // Only after a real ingest — a zero-file submit returned above with its hint, and
@@ -258,7 +259,7 @@ export default function UploadForm({
             We’ll read {selected.length > 1 ? "them" : "it"} in the background —
             follow progress and results in the{" "}
             <Link
-              href="/data?section=review"
+              href={dataSectionHref("review")}
               className="font-medium text-brand-700 hover:underline dark:text-brand-400"
             >
               Review

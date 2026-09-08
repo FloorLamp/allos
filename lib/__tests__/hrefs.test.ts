@@ -7,7 +7,6 @@ import {
   trainingLogDayHref,
   dayHistoryAddHref,
   dataSectionHref,
-  DATA_SECTIONS,
   importHref,
   encounterHref,
   protocolHref,
@@ -158,16 +157,14 @@ describe("dataSectionHref", () => {
     expect(dataSectionHref("review")).toBe("/data?section=review");
     expect(dataSectionHref("import")).toBe("/data?section=import");
     expect(dataSectionHref("manage")).toBe("/data?section=manage");
+    expect(dataSectionHref("coverage")).toBe("/data?section=coverage");
+    expect(dataSectionHref("trash")).toBe("/data?section=trash");
   });
 
   it("appends an optional in-page hash", () => {
     expect(dataSectionHref("import", "paste-import")).toBe(
       "/data?section=import#paste-import"
     );
-  });
-
-  it("DATA_SECTIONS is the source-of-truth union the page mirrors", () => {
-    expect([...DATA_SECTIONS]).toEqual(["import", "review", "manage"]);
   });
 });
 

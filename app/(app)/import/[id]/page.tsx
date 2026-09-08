@@ -106,6 +106,7 @@ import {
   triageRowId,
 } from "@/lib/confidence-triage";
 import {
+  dataSectionHref,
   importTabHref,
   clinicalResultDetailHref,
   episodeHref,
@@ -432,7 +433,7 @@ export default async function ImportDetailPage(props: {
     <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
       <CanonicalNamesProvider options={canonicalOptions}>
         <div>
-          <BackLink href="/data?section=review" label="Back to Review" />
+          <BackLink href={dataSectionHref("review")} label="Back to Review" />
           <PageHeader
             title={doc.filename}
             subtitle={documentFormatLabel(doc)}

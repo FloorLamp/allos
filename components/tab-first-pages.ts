@@ -1,4 +1,4 @@
-import type { AppRoute, NutritionTab } from "@/lib/hrefs";
+import type { AppRoute, DataSection, NutritionTab } from "@/lib/hrefs";
 import { trainingTabStrip } from "@/lib/training-tabs";
 
 interface TabFirstPageBase {
@@ -54,7 +54,7 @@ export const DATA_TAB_FIRST_PAGE = {
     { id: "coverage", label: "Coverage" },
     { id: "manage", label: "Manage & export" },
     { id: "trash", label: "Trash" },
-  ],
+  ] satisfies readonly { id: DataSection; label: string }[],
 } as const satisfies TabFirstPageConfig;
 
 export const NUTRITION_TAB_FIRST_PAGE = {

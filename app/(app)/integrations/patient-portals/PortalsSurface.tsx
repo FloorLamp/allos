@@ -1,5 +1,6 @@
 "use client";
 
+import { dataSectionHref } from "@/lib/hrefs";
 import Link from "next/link";
 import LeadFold from "@/components/LeadFold";
 import { useState, useTransition, type ReactNode } from "react";
@@ -1621,7 +1622,7 @@ export default function PortalsSurface({
               Same as any other import — with the same review, deduplication and
               checks. See{" "}
               <Link
-                href="/data?section=review"
+                href={dataSectionHref("review")}
                 className="text-brand-700 hover:underline dark:text-brand-300"
               >
                 Data → Review

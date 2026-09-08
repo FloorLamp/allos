@@ -1,3 +1,4 @@
+import { dataSectionHref } from "@/lib/hrefs";
 import { permanentRedirect } from "next/navigation";
 
 // `/integrations` has never been a page — the integrations grid lives at Data → Import,
@@ -15,5 +16,5 @@ import { permanentRedirect } from "next/navigation";
 // It forwards to where the grid ACTUALLY is, section anchor included, so the URL a person
 // guessed lands on the thing they were guessing at.
 export default function IntegrationsIndexPage() {
-  permanentRedirect("/data?section=import");
+  permanentRedirect(dataSectionHref("import"));
 }

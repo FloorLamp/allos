@@ -1,3 +1,4 @@
+import { DATA_SECTIONS, dataSectionHref } from "@/lib/hrefs";
 import DestinationLink from "@/components/DestinationLink";
 import {
   getTrashRetentionDays,
@@ -37,30 +38,12 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const SECTIONS = ["import", "review", "coverage", "manage", "trash"] as const;
-type Section = (typeof SECTIONS)[number];
-
-function parseSection(value: string | string[] | undefined): Section {
+function parseSection(value: string | string[] | undefined) {
   const first = Array.isArray(value) ? value[0] : value;
-  return SECTIONS.includes(first as Section) ? (first as Section) : "import";
+  return DATA_SECTIONS.find((section) => section === first) ?? "import";
 }
 
-// The consolidated data hub: one "Data" umbrella for
-// everything you do with your data. The "Import" tab is every way to bring data
-// in (upload a document, paste a workout/lab log, connect a device/service) plus
-// the unified, profile-scoped import log — each entry drilling into a verify +
-// debug view of what it produced. The "Manage & Export" tab (the former
-// standalone Data page content) browses and exports everything you've logged,
-// with per-dataset CSV download and row edit/delete. The "Coverage" tab (issue
-// #1086) is the catalog-coverage-gaps workflow (formerly /coverage, then briefly
-// /records#coverage) — clinical results/meds/conditions the curated catalogs don't cover
-// yet, with the track/enrich/request paths — a data-management workflow about the
-// app's coverage of your data, not a clinical record. The "Trash" tab (issue #2013)
-// is the rendered view over the restorable capture every destructive delete has
-// written since #30 — deleted rows, restorable for an admin-configured window, with
-// per-row "Delete permanently" and "Empty trash". The active tab is deep-linkable via
-// ?section= (import | review | coverage | manage | trash); /import and /coverage
-// redirect here.
+// Each deep-linked section loads only its own profile-scoped data.
 export default async function DataPage(
   props: {
     searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -77,20 +60,11 @@ export default async function DataPage(
   // hint. The write is already blocked server-side; this is the UX on top.
   const demo = isDemoRestricted(isDemoMode(), login.role);
 
-  // Build ONLY the active section server-side (issue #113, mirroring the #109
-  // /trends fix): passing every section as a prop rendered — and ran the queries
-  // for — all three on every /data request, including the Manage panel that
-  // serialized every dataset in full. The tab strip switches sections via a URL
-  // navigation, so each request computes one section.
   let activeSection: React.ReactNode;
   if (section === "manage") {
     activeSection = <DataExport searchParams={searchParams} />;
   } else if (section === "trash") {
-    // Recently deleted (#2013) — the rendered view over the `deleted_rows` capture
-    // that has existed since #30 behind nothing but a 15-second toast. Built only
-    // when active: it parses one payload per capture, which is no work to do on an
-    // Import or Review request. The retention window is instance policy read from
-    // global settings (Settings → Server, admin-only).
+    // Retention is instance policy; capture payloads are read only in this tab.
     activeSection = (
       <TrashSection
         profileId={profile.id}
@@ -107,10 +81,6 @@ export default async function DataPage(
     const rawFix = Array.isArray(searchParams.fix)
       ? searchParams.fix[0]
       : searchParams.fix;
-    // Duplicate/conflict detection over the activities/body_metrics tables. This
-    // used to run on EVERY /data request because the tab strip printed its total
-    // as "Review (N)"; the strip is now the shared tab-first config, which is
-    // static, so these are per-section work like everything else in this chain.
     const importIssues = getImportIssues(profile.id);
     const activityClusters = getActivityDuplicateClusters(profile.id);
     const bodyMetricPairs = getBodyMetricConflicts(profile.id);
@@ -207,7 +177,7 @@ export default async function DataPage(
             feed — so there's a single source of truth for everything imported
             (documents, pastes, and background syncs), not two competing logs. */}
         <DestinationLink
-          href="/data?section=review"
+          href={dataSectionHref("review")}
           className="card flex items-center justify-between gap-3 transition hover:border-brand-300 dark:hover:border-brand-800"
         >
           <div>

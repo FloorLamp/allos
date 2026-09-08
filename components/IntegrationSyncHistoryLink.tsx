@@ -1,3 +1,4 @@
+import { dataSectionHref } from "@/lib/hrefs";
 import DestinationIndicator from "@/components/DestinationIndicator";
 import OverlayDestination from "@/components/OverlayDestination";
 import SyncTimestamp from "./integrations/SyncTimestamp";
@@ -22,7 +23,7 @@ export default function IntegrationSyncHistoryLink({
 }) {
   return (
     <OverlayDestination
-      href="/data?section=review"
+      href={dataSectionHref("review")}
       label="Open import history"
       data-testid="sync-history-link"
     >

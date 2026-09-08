@@ -1,3 +1,4 @@
+import { dataSectionHref } from "@/lib/hrefs";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import {
@@ -323,7 +324,11 @@ export default async function PatientPortalsPage() {
     // full width of a desktop shell.
     <PageContainer width="flow" className="space-y-6">
       <div>
-        <BackLink href="/data?section=import" label="Import" className="" />
+        <BackLink
+          href={dataSectionHref("import")}
+          label="Import"
+          className=""
+        />
         <PageHeader title={def.name} />
       </div>
 

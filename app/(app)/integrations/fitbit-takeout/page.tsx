@@ -1,3 +1,4 @@
+import { dataSectionHref } from "@/lib/hrefs";
 import { PageHeader } from "@/components/ui";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 import LeadFold from "@/components/LeadFold";
@@ -44,7 +45,11 @@ export default async function FitbitTakeoutPage() {
   return (
     <div className="space-y-6">
       <div>
-        <BackLink href="/data?section=import" label="Import" className="" />
+        <BackLink
+          href={dataSectionHref("import")}
+          label="Import"
+          className=""
+        />
         <PageHeader title={def.name} />
       </div>
 

@@ -1,3 +1,4 @@
+import { dataSectionHref } from "@/lib/hrefs";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import LeadFold from "@/components/LeadFold";
@@ -70,7 +71,7 @@ export default async function WithingsPage(props: {
       className="mx-auto"
       data-testid="integration-page"
     >
-      <BackLink href="/data?section=import" label="Import" />
+      <BackLink href={dataSectionHref("import")} label="Import" />
 
       <PageHeader title={def.name} />
 

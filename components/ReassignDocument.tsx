@@ -1,5 +1,6 @@
 "use client";
 
+import { dataSectionHref } from "@/lib/hrefs";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconArrowsExchange } from "@tabler/icons-react";
@@ -57,7 +58,7 @@ export default function ReassignDocument({
       }
       // The document now lives under another profile — the active-profile-scoped
       // detail page can no longer resolve it, so return to the import log.
-      router.push("/data?section=import");
+      router.push(dataSectionHref("import"));
     });
   }
 

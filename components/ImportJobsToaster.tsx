@@ -1,5 +1,6 @@
 "use client";
 
+import { dataSectionHref } from "@/lib/hrefs";
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
@@ -118,7 +119,7 @@ export default function ImportJobsToaster({
                 action: {
                   label: "Review",
                   onClick: () =>
-                    router.push("/data?section=import#paste-import"),
+                    router.push(dataSectionHref("import", "paste-import")),
                 },
               }
             );

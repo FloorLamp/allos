@@ -1,4 +1,4 @@
-import { MEDICATIONS_HREF, type AppRoute } from "@/lib/hrefs";
+import { dataSectionHref, MEDICATIONS_HREF, type AppRoute } from "@/lib/hrefs";
 import {
   remainingOnboardingChecklistSuggestions,
   type OnboardingChecklistCompletion,
@@ -29,7 +29,7 @@ const CHECKLIST_TASKS: Record<
   "medical-records": {
     label: "Import a health record",
     benefit: "Bring medications, lab results, and history together for review.",
-    href: "/data?section=import",
+    href: dataSectionHref("import"),
   },
   medications: {
     label: "Check your medications",
@@ -39,13 +39,13 @@ const CHECKLIST_TASKS: Record<
   fitness: {
     label: "Connect an app or device",
     benefit: "Sync workouts and build a useful training history automatically.",
-    href: "/data?section=import#integrations",
+    href: dataSectionHref("import", "integrations"),
   },
   "metrics-labs": {
     label: "Import medical data",
     benefit:
       "See results, ranges, and trends alongside your other health data.",
-    href: "/data?section=import",
+    href: dataSectionHref("import"),
   },
   "preventive-care": {
     label: "Add your next appointment",

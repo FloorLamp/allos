@@ -1,5 +1,6 @@
 "use client";
 
+import { dataSectionHref } from "@/lib/hrefs";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconTrash, IconRefresh } from "@tabler/icons-react";
@@ -121,7 +122,7 @@ export default function ImportDetailActions({
     fd.set("id", String(id));
     startDelete(async () => {
       await deleteMedicalDocument(fd);
-      router.push("/data?section=import");
+      router.push(dataSectionHref("import"));
     });
   }
 

@@ -1,7 +1,7 @@
+import { dataSectionHref, type AppRoute } from "@/lib/hrefs";
 import { requireScope } from "@/lib/scope";
 import { getRecordsSpecialtyRelevanceForView } from "@/lib/queries/nav-relevance";
 import PageContainer from "@/components/PageContainer";
-import type { AppRoute } from "@/lib/hrefs";
 import AnchorRedirect from "@/components/AnchorRedirect";
 import TabFirstPage from "@/components/TabFirstPage";
 import { RECORDS_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
@@ -45,7 +45,7 @@ const ANCHOR_MAP: Record<string, AppRoute> = {
   skin: "/records/specialty/skin",
   "mental-health": "/records/specialty/mental-health",
   "substance-use": "/records/specialty/substance-use",
-  coverage: "/data?section=coverage",
+  coverage: dataSectionHref("coverage"),
 };
 
 export default async function RecordsLayout({
