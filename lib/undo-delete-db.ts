@@ -266,11 +266,18 @@ export function captureDelete(
 
     for (const child of spec.entities.slice(1)) {
       if (!child.repoint) continue;
-      const { column, scopeWhere } = child.repoint;
-      const detach = db.prepare(
-        `UPDATE ${child.table} SET ${column} = NULL
-            WHERE id = ? AND ${column} = ? AND ${scopeWhere}`
-      );
+      const { column } = child.repoint;
+      const detach =
+        child.table === "exercise_sets"
+          ? db.prepare(
+              `UPDATE exercise_sets SET ${column} = NULL
+            WHERE id = ? AND ${column} = ?
+              AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
+            )
+          : db.prepare(
+              `UPDATE ${child.table} SET ${column} = NULL
+            WHERE id = ? AND ${column} = ? AND profile_id = ?`
+            );
       for (const row of rows[child.entity])
         detach.run(row.id, rootId, profileId);
     }
@@ -500,11 +507,18 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       idMaps[entity.entity] = map;
       const captured = payload.rows[entity.entity] ?? [];
       if (entity.repoint) {
-        const { column, scopeWhere } = entity.repoint;
-        const reconnect = db.prepare(
-          `UPDATE ${entity.table} SET ${column} = ?
-            WHERE id = ? AND ${column} IS NULL AND ${scopeWhere}`
-        );
+        const { column } = entity.repoint;
+        const reconnect =
+          entity.table === "exercise_sets"
+            ? db.prepare(
+                `UPDATE exercise_sets SET ${column} = ?
+              WHERE id = ? AND ${column} IS NULL
+                AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
+              )
+            : db.prepare(
+                `UPDATE ${entity.table} SET ${column} = ?
+              WHERE id = ? AND ${column} IS NULL AND profile_id = ?`
+              );
         for (const row of captured) {
           const restored = remapRow(row, idMaps, entity.fks);
           reconnect.run(restored[column], row.id, profileId);

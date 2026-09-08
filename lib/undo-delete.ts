@@ -98,9 +98,9 @@ export interface EntitySpec {
   // Its undo restores the original id instead of allocating a new lane.
   preserveId?: boolean;
   // These rows survive the delete. Capture only their id and this FK; detach it
-  // on delete, and reconnect only still-null links on restore. scopeWhere binds
-  // the owning profile once (sets scope through their activity).
-  repoint?: { column: string; scopeWhere: string };
+  // on delete, and reconnect only still-null links on restore. Sets are scoped
+  // through their current activity; other linked rows carry their own profile.
+  repoint?: { column: string };
   // String-key references to remap on restore (for example
   // upcoming_dismissals.signal_key = `practice:<targetId>`).
   keyRefs?: readonly KeyRefSpec[];
@@ -238,11 +238,7 @@ const KIND_SPECS = {
         childWhere:
           "equipment_id = ? AND activity_id IN (SELECT id FROM activities WHERE profile_id = (SELECT profile_id FROM equipment WHERE id = ?))",
         childBinds: 2,
-        repoint: {
-          column: "equipment_id",
-          scopeWhere:
-            "activity_id IN (SELECT id FROM activities WHERE profile_id = ?)",
-        },
+        repoint: { column: "equipment_id" },
       },
       ...(["activities", "protocols", "goals"] as const).map((table) => ({
         entity: table,
@@ -251,7 +247,7 @@ const KIND_SPECS = {
         childWhere:
           "equipment_id = ? AND profile_id = (SELECT profile_id FROM equipment WHERE id = ?)",
         childBinds: 2,
-        repoint: { column: "equipment_id", scopeWhere: "profile_id = ?" },
+        repoint: { column: "equipment_id" },
       })),
       {
         entity: "dismissals",
