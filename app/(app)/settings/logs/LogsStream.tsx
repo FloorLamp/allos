@@ -1,5 +1,7 @@
 "use client";
 
+import { formatCount } from "@/lib/format-number";
+
 import { useEffect, useRef, useState } from "react";
 import type { AiEvent, AiStatus } from "@/lib/ai-log";
 import ClearLogControl from "@/components/ClearLogControl";
@@ -115,7 +117,7 @@ export default function LogsStream({
             </td>
             <td className="td whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
               {e.usage
-                ? `${e.usage.in.toLocaleString("en-US")} / ${e.usage.out.toLocaleString("en-US")}`
+                ? `${formatCount(e.usage.in)} / ${formatCount(e.usage.out)}`
                 : "—"}
             </td>
             <td className="td">
