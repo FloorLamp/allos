@@ -1165,16 +1165,15 @@ export async function setDoseStatus(
       // instant: the day is this action's (`date`), so anchoring the two here is what
       // makes them one claim — a client that sent a resolved instant could contradict
       // the row it lands on. Only a `taken` states an administration; a skip and a
-      // clear assert none. A malformed or non-existent local time resolves to null and
-      // the row keeps the tap instant, which is the same fallback a refused capture
-      // takes.
+      // clear assert none. An unstated or invalid time keeps the tap instant today,
+      // while a past-day row keeps its instant unknown, matching resolveDayDoses.
       takenAt:
         target === "taken"
           ? (statedInstantOnDate(
               date,
               String(formData.get("at") ?? ""),
               getTimezone(profileId)
-            ) ?? undefined)
+            ) ?? (date === localToday ? undefined : null))
           : undefined,
     }
   );
