@@ -33,6 +33,7 @@
 // has no refill finding to suppress, so its recovered-marker clear runs regardless.
 
 import { ONCE_PER_EPISODE, planNudgeCadence } from "./nudge-cadence";
+import { isRealIsoDate } from "./date";
 
 // One low item the nudge can announce.
 export interface RefillNudgeItem {
@@ -114,6 +115,85 @@ export function refillMarkerKey(itemId: number): string {
 // Returns NaN for a malformed key; the caller filters those out.
 export function refillIdFromMarker(key: string): number {
   return Number(key.slice(REFILL_MARKER_PREFIX.length));
+}
+
+// The episode marker also owns an explicitly requested follow-up. A generation
+// identifies one attempted delivery across all recipient copies, not an order.
+export type RefillDeliveryState =
+  | { v: 1; state: "sent"; g: string; sentOn: string }
+  | { v: 1; state: "requested"; g: string; sentOn: string; dueOn: string }
+  | {
+      v: 1;
+      state: "attempt";
+      g: string;
+      sentOn: string | null;
+      dueOn: string | null;
+      // Epoch milliseconds; a null claim is a finished unsuccessful attempt.
+      claimUntil: number | null;
+    }
+  | {
+      v: 1;
+      state: "confirm";
+      g: string;
+      sentOn: string;
+      sourcePointerId: number;
+    };
+
+export type RefillMarker =
+  | RefillDeliveryState
+  | { state: "legacy"; sentOn: string }
+  | { state: "invalid" }
+  | null;
+
+export const REFILL_GENERATION_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+
+export function parseRefillMarker(raw: string | undefined): RefillMarker {
+  if (raw == null) return null;
+  if (isRealIsoDate(raw)) return { state: "legacy", sentOn: raw };
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (value && typeof value === "object" && "v" in value && value.v === 1) {
+      const row = value as Record<string, unknown>;
+      const date = (v: unknown): v is string => typeof v === "string" && isRealIsoDate(v);
+      if (typeof row.g !== "string" || !REFILL_GENERATION_PATTERN.test(row.g))
+        return { state: "invalid" };
+      const base = { v: 1 as const, g: row.g };
+      if (row.state === "sent" && date(row.sentOn))
+        return { ...base, state: "sent", sentOn: row.sentOn };
+      if (row.state === "requested" && date(row.sentOn) && date(row.dueOn))
+        return { ...base, state: "requested", sentOn: row.sentOn, dueOn: row.dueOn };
+      if (row.state === "attempt" &&
+          (row.sentOn === null || date(row.sentOn)) &&
+          (row.dueOn === null || date(row.dueOn)) &&
+          (row.dueOn === null || row.sentOn !== null) &&
+          (row.claimUntil === null ||
+            (typeof row.claimUntil === "number" && Number.isFinite(row.claimUntil))))
+        return { ...base, state: "attempt", sentOn: row.sentOn, dueOn: row.dueOn, claimUntil: row.claimUntil };
+      if (row.state === "confirm" && date(row.sentOn) &&
+          typeof row.sourcePointerId === "number" &&
+          Number.isSafeInteger(row.sourcePointerId) && row.sourcePointerId > 0)
+        return { ...base, state: "confirm", sentOn: row.sentOn, sourcePointerId: row.sourcePointerId };
+    }
+  } catch {
+    // A corrupt marker must not turn into an unmarked send opportunity.
+  }
+  return { state: "invalid" };
+}
+
+export function refillAttemptDue(marker: RefillMarker, date: string, at: number): boolean {
+  if (marker == null) return true;
+  if (marker.state === "requested") return date >= marker.dueOn;
+  return marker.state === "attempt" &&
+    (marker.claimUntil == null || marker.claimUntil <= at) &&
+    (marker.dueOn == null || date >= marker.dueOn);
+}
+
+// Later ordinary intent retires the token without re-arming a delivered episode.
+// Null sentOn is no prior settled/accepted baseline, not proof of zero contact.
+export function cancelRefillRequest(raw: string | undefined): string | undefined {
+  const marker = parseRefillMarker(raw);
+  if (!marker || marker.state === "invalid" || marker.state === "legacy") return raw;
+  return marker.sentOn ?? undefined;
 }
 
 // An intake item's membership in the refill-nudge tracked set: active AND opted into

@@ -1,6 +1,4 @@
-// THE REFILL-SNOOZE TOKEN FAMILY (issue #2961 step 2) — `rfsnooze:`. Carved off
-// `callback-data.ts` verbatim; no imports. The answer text stays beside the handler's
-// outcome type until step 3 moves the handler.
+import { REFILL_GENERATION_PATTERN } from "../refill-nudge";
 
 // ---- Phase 3: refill-nudge snooze button (issue #233) ----
 // Ordered snoozes via refillSignalKey (#227). Its token carries the integer,
@@ -9,6 +7,29 @@
 export interface RefillCallback {
   profileId: number;
   itemId: number;
+}
+
+export interface OrderedRefillCallback extends RefillCallback {
+  generation: string;
+  cancel: boolean;
+}
+
+export function orderedRefillToken(profileId: number, itemId: number, generation: string, cancel = false): string {
+  return `${cancel ? "rfordno" : "rfordered"}:${profileId}:${itemId}:${generation}`;
+}
+
+// A distinct namespace matters: deployed rfsnooze readers ignore extra fields.
+export function parseOrderedRefillCallback(data: unknown): OrderedRefillCallback | null {
+  if (typeof data !== "string") return null;
+  const [prefix, profile, item, generation, extra] = data.split(":");
+  if ((prefix !== "rfordered" && prefix !== "rfordno") || extra !== undefined ||
+    !/^[1-9]\d*$/.test(profile ?? "") || !/^[1-9]\d*$/.test(item ?? "") ||
+    !REFILL_GENERATION_PATTERN.test(generation ?? "")) return null;
+  const profileId = Number(profile);
+  const itemId = Number(item);
+  return Number.isSafeInteger(profileId) && Number.isSafeInteger(itemId)
+    ? { profileId, itemId, generation, cancel: prefix === "rfordno" }
+    : null;
 }
 
 // Parse a "rfsnooze:<profileId>:<itemId>" token. Malformed → null.

@@ -1,4 +1,4 @@
-import { messagePointerAt } from "@/lib/notifications/message-pointers";
+import { messagePointerAt, liveMessagePointers } from "@/lib/notifications/message-pointers";
 import { setProfileMutedForLogin } from "@/lib/settings";
 import {
   refillReceivedAction,
@@ -6,6 +6,7 @@ import {
   handleReceivedCallback,
   reconcileRefillReceipt,
   renderRefillMessage,
+  runRefills,
 } from "@/lib/notifications/refill";
 import { readRefillOffer } from "@/lib/notifications/offer-store";
 import { sendTelegramMessage } from "@/lib/notifications/telegram";
@@ -35,9 +36,10 @@ import {
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getProfileSetting } from "@/lib/settings";
+import { getProfileSetting, setProfileSetting, setTelegramBotConfig } from "@/lib/settings";
 import { preventiveSignalKey } from "@/lib/preventive-upcoming";
-import { refillSignalKey } from "@/lib/refill-nudge";
+import { refillSignalKey, refillMarkerKey, parseRefillMarker } from "@/lib/refill-nudge";
+import { orderedRefillToken } from "@/lib/notifications/refill-tokens";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import {
   CALLBACK_REGISTRY,
@@ -200,19 +202,30 @@ describe("preventive buttons route to the shared server functions", () => {
 
 // ---- Phase 3: refill ----
 describe("refill snooze button routes to the findings bus", () => {
-  it("📦 Ordered snoozes the refill:<id> finding 3 days out", async () => {
-    await handleCallbackQuery(
-      cq(`rfsnooze:${p.profileId}:${p.supplementId}`, OWN_CHAT)
-    );
-    const row = db
-      .prepare(
-        `SELECT snooze_until FROM upcoming_dismissals
-          WHERE profile_id = ? AND signal_key = ?`
-      )
-      .get(p.profileId, refillSignalKey(p.supplementId)) as
-      { snooze_until: string | null } | undefined;
-    expect(row?.snooze_until).toBe(shiftDateStr(today(p.profileId), 3));
-    expect(lastAnswerText()).toMatch(/3 days/);
+  it("delivers the promised follow-up after three local days, retries a failure, and spends it once", async () => {
+    const f = await orderedFixture();
+    const firstDate = today(f.profileId);
+    await handleCallbackQuery(f.tap);
+    expect(parseRefillMarker(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))))
+      .toMatchObject({ state: "requested", dueOn: shiftDateStr(firstDate, 3) });
+    const send = vi.mocked(sendMessageRaw);
+    send.mockClear();
+    await runRefills(f.profileId, shiftDateStr(firstDate, 2));
+    expect(send).not.toHaveBeenCalled();
+    vi.setSystemTime(new Date(`${shiftDateStr(firstDate, 3)}T12:00:00Z`));
+    send.mockRejectedValueOnce(new Error("synthetic delivery failure"));
+    expect(await runRefills(f.profileId, today(f.profileId))).toEqual({ failed: true });
+    await runRefills(f.profileId, today(f.profileId));
+    await runRefills(f.profileId, today(f.profileId));
+    expect(send).toHaveBeenCalledTimes(2);
+    const settled = getProfileSetting(f.profileId, refillMarkerKey(f.supplementId));
+    await handleCallbackQuery(f.tap);
+    expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(settled);
+    const fresh = liveMessagePointers(f.profileId).filter((pointer) => pointer.kind === "refill").at(-1)!;
+    const data = fresh.keyboard.flat().find((button) => button.callback_data?.startsWith("rfordered:"))!.callback_data!;
+    await handleCallbackQuery({ ...cq(data, OWN_CHAT), message: { ...f.tap.message, message_id: fresh.messageId } });
+    expect(parseRefillMarker(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))))
+      .toMatchObject({ state: "requested", dueOn: shiftDateStr(today(f.profileId), 3) });
   });
 
   it("a forged supplement id writes nothing (stale-item)", async () => {
@@ -1271,6 +1284,18 @@ describe("the sweep is never more generous than the handler (#4544)", () => {
   });
 });
 
+async function orderedFixture() {
+  const profile = seedProfile("Ordered", { quantityOnHand: 4 });
+  setProfileSetting(profile.profileId, "timezone", "UTC");
+  seedLoginTelegram(profile.profileId, OWN_CHAT);
+  setTelegramBotConfig({ telegramBotToken: "ordered-synthetic-token", telegramMode: "poll" });
+  await runRefills(profile.profileId, today(profile.profileId));
+  const pointer = liveMessagePointers(profile.profileId).find((p) => p.kind === "refill")!;
+  const data = pointer.keyboard.flat().find((button) => button.callback_data?.startsWith("rfordered:"))!.callback_data!;
+  const tap = { ...cq(data, OWN_CHAT), message: { message_id: pointer.messageId, chat: { id: OWN_CHAT } } };
+  return { ...profile, pointer, tap, data };
+}
+
 async function receivedFixture() {
   const profile = seedProfile("Received", { quantityOnHand: 4 });
   const loginId = seedLoginTelegram(profile.profileId, OWN_CHAT);
@@ -1521,18 +1546,22 @@ it("does not restore an Ordered item's row when another low item keeps the remin
   db.prepare(
     "INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort) VALUES (?, '1 tablet', 'morning', 'any', 0)"
   ).run(otherId);
+  for (const [id, g] of [[f.supplementId, "fixture0001"], [otherId, "fixture0002"]] as const)
+    setProfileSetting(f.profileId, refillMarkerKey(id), JSON.stringify({ v: 1, state: "sent", g, sentOn: today(f.profileId) }));
   const message = renderRefillMessage(
     [
       {
         id: f.supplementId,
         name: "First bottle",
         daysLeft: 4,
+        generation: "fixture0001",
         received: f.action,
       },
       {
         id: otherId,
         name: "Other bottle",
         daysLeft: 4,
+        generation: "fixture0002",
         received: refillReceivedAction(f.profileId, otherId),
       },
     ],
@@ -1545,7 +1574,7 @@ it("does not restore an Ordered item's row when another low item keeps the remin
   ))!;
   const origin = messagePointerAt(f.profileId, OWN_CHAT, messageId)!;
   await handleCallbackQuery({
-    ...cq(`rfsnooze:${f.profileId}:${f.supplementId}`, OWN_CHAT),
+    ...cq(orderedRefillToken(f.profileId, f.supplementId, "fixture0001"), OWN_CHAT),
     message: {
       message_id: messageId,
       chat: { id: OWN_CHAT },
@@ -1554,8 +1583,8 @@ it("does not restore an Ordered item's row when another low item keeps the remin
   });
   const after = messagePointerAt(f.profileId, OWN_CHAT, messageId)!;
   const tokens = after.keyboard.flat().map((button) => button.callback_data);
-  expect(tokens).toContain(`rfsnooze:${f.profileId}:${otherId}`);
-  expect(tokens).not.toContain(`rfsnooze:${f.profileId}:${f.supplementId}`);
+  expect(tokens).toContain(orderedRefillToken(f.profileId, otherId, "fixture0002"));
+  expect(tokens).not.toContain(orderedRefillToken(f.profileId, f.supplementId, "fixture0001"));
   expect(tokens).not.toContain(f.action.data);
   await reconcileRefillReceipt(f.profileId, after);
   expect(messagePointerAt(f.profileId, OWN_CHAT, messageId)!.keyboard).toEqual(

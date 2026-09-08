@@ -367,7 +367,7 @@ const attributedBuilders = [
   {
     label: "refill",
     build: (id: number) =>
-      renderRefillMessage([{ id: 1, name: "Vitamin D", daysLeft: 3 }], id),
+      renderRefillMessage([{ id: 1, name: "Vitamin D", daysLeft: 3, generation: "fixture0001" }], id),
     title: "🔄 Refill due: Vitamin D",
   },
   {

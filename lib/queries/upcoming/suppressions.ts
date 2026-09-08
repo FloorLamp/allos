@@ -5,7 +5,9 @@
 // profile-scoped (enforced by lib/__tests__/profile-scoping.test.ts and the
 // dynamic no-bleed guard in lib/__db_tests__/upcoming.scoping.test.ts).
 
-import { db, hoistedStatement } from "../../db";
+import { db, hoistedStatement, writeTx } from "../../db";
+import { cancelRefillRequest, refillMarkerKey } from "../../refill-nudge";
+import { setProfileSetting, deleteProfileSetting } from "../../settings";
 import { snapshotCached } from "../../read-snapshot";
 import { type SuppressionRecord } from "../../upcoming-suppress";
 import {
@@ -185,36 +187,60 @@ export const getFindingSuppressions = snapshotCached(
 
 // Snooze a finding until `until` (YYYY-MM-DD), clearing any dismiss — upserts on
 // the (profile_id, signal_key) unique index so re-snoozing just moves the date.
+const REFILL_MARKER = hoistedStatement(
+  "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
+);
+
+function cancelOrderedRefill(profileId: number, dedupeKey: string): void {
+  const match = /^refill:([1-9]\d*)$/.exec(dedupeKey);
+  if (!match) return;
+  const key = refillMarkerKey(Number(match[1]));
+  const raw = (REFILL_MARKER.get(profileId, key) as { value: string } | undefined)?.value;
+  const next = cancelRefillRequest(raw);
+  if (next === raw) return;
+  if (next == null) deleteProfileSetting(profileId, key);
+  else setProfileSetting(profileId, key, next);
+}
+
 export function snoozeFinding(
   profileId: number,
   dedupeKey: string,
   until: string
 ): void {
-  db.prepare(
+  writeTx(() => {
+    db.prepare(
     `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
        VALUES (?, ?, ?, NULL)
      ON CONFLICT(profile_id, signal_key)
        DO UPDATE SET snooze_until = excluded.snooze_until, dismissed_at = NULL`
-  ).run(profileId, dedupeKey, until);
+    ).run(profileId, dedupeKey, until);
+    cancelOrderedRefill(profileId, dedupeKey);
+  });
 }
 
 // Dismiss a finding (until restored), clearing any snooze so a dismiss always wins.
 // For a `biomarker-flag:` acknowledgment "until restored" is no longer the only end:
 // the next draw of that marker family re-arms it at the read above (#3225).
 export function dismissFinding(profileId: number, dedupeKey: string): void {
-  db.prepare(
+  writeTx(() => {
+    db.prepare(
     `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
        VALUES (?, ?, NULL, datetime('now'))
      ON CONFLICT(profile_id, signal_key)
        DO UPDATE SET dismissed_at = datetime('now'), snooze_until = NULL`
-  ).run(profileId, dedupeKey);
+    ).run(profileId, dedupeKey);
+    cancelOrderedRefill(profileId, dedupeKey);
+  });
 }
 
 // Restore a finding: drop its suppression row so it reappears immediately.
 export function restoreFinding(profileId: number, dedupeKey: string): void {
-  db.prepare(
+  writeTx(() => {
+    db.prepare(
     "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
-  ).run(profileId, dedupeKey);
+    ).run(profileId, dedupeKey);
+    cancelOrderedRefill(profileId, dedupeKey);
+  });
 }
 
 // ---- Name-keyed suppression lifecycle (issue #203) ----

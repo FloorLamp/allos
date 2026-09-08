@@ -59,7 +59,7 @@ import { recordDeliveryOutcome } from "@/lib/notifications/delivery-marker";
 import { ESCALATION_SUPPRESSION_POLICY } from "@/lib/notifications/escalation";
 import { isHiddenUnderPolicy } from "@/lib/lifecycle";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
-import { refillMarkerKey } from "@/lib/refill-nudge";
+import { refillMarkerKey, parseRefillMarker } from "@/lib/refill-nudge";
 import { getNotifySchedule } from "@/lib/settings";
 import { markDoseSkipped, recordPreventiveDone } from "@/lib/queries";
 import { buildWorkoutTargetReminder } from "@/lib/notifications/workouts";
@@ -252,7 +252,7 @@ describe("runRefills orchestrator", () => {
     expect(res.failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1); // one HA POST
     // Delivered → the item's low-supply episode marker is stamped with the date.
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBe(date);
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))).toMatchObject({ state: "sent", sentOn: date });
   });
 
   it("marker lifecycle: no longer low → stale marker CLEARED", async () => {
@@ -290,7 +290,7 @@ describe("runRefills orchestrator", () => {
     expect(getProfileSetting(p, refillMarkerKey(supp))).toBe("2020-01-01");
   });
 
-  it("delivery accounting: no channel configured → no marker, retries next tick", async () => {
+  it("delivery accounting: no channel configured → released attempt, retries next tick", async () => {
     const p = newProfile("RefillNoChannel");
     const supp = seedLowSupplement(p);
     const fetchMock = stubFetch();
@@ -298,8 +298,8 @@ describe("runRefills orchestrator", () => {
     const res = await runRefills(p, today(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
-    // No marker written, so the nudge is retried once a channel is configured.
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
+    // The failed attempt retains no delivered baseline and can be retried.
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))).toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
   });
 
   it("delivery accounting: one channel fails + one succeeds → marker set, failed aggregated", async () => {
@@ -314,11 +314,11 @@ describe("runRefills orchestrator", () => {
     // At least one channel delivered → the marker is set; the failed channel is
     // aggregated into the tick's exit signal.
     expect(res.failed).toBe(true);
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBe(date);
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))).toMatchObject({ state: "sent", sentOn: date });
     expect(fetchMock).toHaveBeenCalledTimes(2); // telegram + HA both attempted
   });
 
-  it("delivery accounting: all channels fail → no marker", async () => {
+  it("delivery accounting: all channels fail → retryable attempt", async () => {
     const p = newProfile("RefillAllFail");
     const supp = seedLowSupplement(p);
     configureHA(p);
@@ -327,8 +327,8 @@ describe("runRefills orchestrator", () => {
 
     const res = await runRefills(p, today(p));
     expect(res.failed).toBe(true);
-    // Nothing delivered → marker stays unset so the episode re-fires next tick.
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
+    // Nothing delivered → the claim is released without inventing a baseline.
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))).toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
   });
 });
 
@@ -424,7 +424,7 @@ describe("runPreventive orchestrator", () => {
     );
   });
 
-  it("delivery accounting: no channel configured → no marker, retries next tick", async () => {
+  it("delivery accounting: no channel configured → released attempt, retries next tick", async () => {
     const p = preventiveProfile("PrevNoChannel");
     const date = today(p);
     const fetchMock = stubFetch();
@@ -437,7 +437,7 @@ describe("runPreventive orchestrator", () => {
     ).toBeUndefined();
   });
 
-  it("delivery accounting: all channels fail → no marker", async () => {
+  it("delivery accounting: all channels fail → retryable attempt", async () => {
     const p = preventiveProfile("PrevAllFail");
     const date = today(p);
     configureHA(p);
@@ -524,7 +524,7 @@ describe("runEscalations orchestrator", () => {
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBeUndefined();
   });
 
-  it("delivery accounting: no channel configured → no marker, retries next tick", async () => {
+  it("delivery accounting: no channel configured → released attempt, retries next tick", async () => {
     const p = newProfile("EscNoChannel");
     const { doseId, date } = escalationFixture(p);
     const fetchMock = stubFetch();
