@@ -210,7 +210,7 @@ describe("the corpus is reachable by a documented seed (#3631)", () => {
    * dial on with the least other perturbation, which is what makes it the one worth
    * writing down. `sampleDials` is pure and its draw order is pinned (dials are
    * APPENDED, never inserted, scripts/seed-rng.ts), so this number is stable — but
-   * "stable" is a claim, and .claude/skills/ux-walkthrough/SKILL.md and
+   * "stable" is a claim, and .agents/skills/ux-walkthrough/SKILL.md and
    * scripts/seed-long-names.ts both print it to a human who will type it.
    */
   const CANONICAL_LONG_NAMES_SEED = 3;
@@ -230,7 +230,7 @@ describe("the corpus is reachable by a documented seed (#3631)", () => {
 
   it("is documented where the census reader and the census runner both look", () => {
     const skill = fs.readFileSync(
-      path.join(REPO, ".claude", "skills", "ux-walkthrough", "SKILL.md"),
+      path.join(REPO, ".agents", "skills", "ux-walkthrough", "SKILL.md"),
       "utf8"
     );
     expect(skill).toContain(`SEED_RNG=${CANONICAL_LONG_NAMES_SEED}`);
