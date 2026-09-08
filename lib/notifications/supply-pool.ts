@@ -44,7 +44,8 @@ import {
   POOL_REFILL_MARKER_PREFIX,
   type PoolRefillCandidate,
 } from "../refill-nudge";
-import { SUPPLIES_HREF } from "../hrefs";
+import { intakeSupplyHref } from "../hrefs";
+import { refillReceivedAction } from "./refill";
 import {
   getSetting,
   setSetting,
@@ -54,7 +55,7 @@ import {
 } from "../settings";
 import { managingLoginIdsForProfile } from "./managing-logins";
 import { dispatch } from "./index";
-import type { NotificationMessage } from "./types";
+import type { NotificationMessage, NotificationAction } from "./types";
 import { createLogger } from "../log";
 import { GLYPH } from "./glyphs";
 
@@ -73,7 +74,8 @@ interface LowPool {
 export function renderPoolRefillMessage(
   pools: readonly LowPool[],
   memberCounts: ReadonlyMap<number, number>,
-  deepLinkBase = ""
+  deepLinkBase = "",
+  received?: { poolId: number; action: NotificationAction | null; href: string }
 ): NotificationMessage {
   const head =
     pools.length === 1
@@ -89,9 +91,19 @@ export function renderPoolRefillMessage(
     title: `${GLYPH.resupply} Shared supply running low: ${head}`,
     // The preamble restated the title and the button beneath it (#1722 item 4).
     body: lines.join("\n"),
-    actions: base
-      ? [{ label: "Open the medicine cabinet", url: `${base}${SUPPLIES_HREF}` }]
-      : [],
+    actions: pools.flatMap((pool) => [
+      ...(received?.poolId === pool.id && received.action
+        ? [received.action]
+        : []),
+      ...(base
+        ? [
+            {
+              label: "Open refill form",
+              url: `${base}${received?.poolId === pool.id ? received.href : `/supplies/${pool.id}`}`,
+            },
+          ]
+        : []),
+    ]),
     kind: "refill",
   };
 }
@@ -181,14 +193,25 @@ export async function runPoolRefills(
       continue;
     }
 
-    const msg = renderPoolRefillMessage(
-      [low],
-      new Map([[low.id, pool.members.length]]),
-      getPublicUrl()
-    );
     let delivered = false;
     let attempted = false;
     for (const profileId of targets) {
+      const items = pool.members.filter(
+        (member) => member.profileId === profileId
+      );
+      const item = items.length === 1 ? items[0] : null;
+      const msg = renderPoolRefillMessage(
+        [low],
+        new Map([[low.id, pool.members.length]]),
+        getPublicUrl(),
+        item
+          ? {
+              poolId: low.id,
+              action: refillReceivedAction(profileId, item.itemId),
+              href: intakeSupplyHref(item.kind, item.itemId, true),
+            }
+          : undefined
+      );
       const results = await dispatch(profileId, msg);
       if (results.length === 0) continue; // no channel configured for this branch
       attempted = true;

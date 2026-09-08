@@ -1,3 +1,12 @@
+import {
+  refillReceivedAction,
+  handleReceivedReply,
+} from "@/lib/notifications/refill";
+import { readRefillOffer } from "@/lib/notifications/offer-store";
+import { sendTelegramMessage } from "@/lib/notifications/telegram";
+import { sendMessageRaw } from "@/lib/notifications/telegram-api";
+import { updateIntakeSupplyCount } from "@/lib/queries/intake/supply-pool";
+import { decrementSupply, incrementSupply } from "@/lib/queries/intake/refill";
 // DB INTEGRATION TIER — the two-way Telegram action buttons (issue #233) driven
 // end-to-end through handleCallbackQuery against the REAL query layer, with only
 // the Telegram network surface (answer/edit/send) stubbed. Proves each button's
@@ -1254,5 +1263,182 @@ describe("the sweep is never more generous than the handler (#4544)", () => {
     expect(STRICTNESS[forged]).toBeLessThan(
       STRICTNESS[pairs.find((p) => p.prefix === "hh")?.handler ?? "none"]
     );
+  });
+});
+
+async function receivedFixture() {
+  const profile = seedProfile("Received", { quantityOnHand: 4 });
+  seedLoginTelegram(profile.profileId, OWN_CHAT);
+  const action = refillReceivedAction(profile.profileId, profile.supplementId)!;
+  const messageId = await sendTelegramMessage(
+    OWN_CHAT,
+    { title: "Supply", body: "Running low", actions: [action], kind: "refill" },
+    profile.profileId
+  );
+  const offerId = Number(action.data!.split(":")[2]);
+  const open = {
+    ...cq(action.data!, OWN_CHAT),
+    from: { id: 71 },
+    message: { ...cq(action.data!, OWN_CHAT).message, message_id: messageId! },
+  };
+  return { ...profile, offerId, open, action };
+}
+
+function receiptReply(
+  f: Awaited<ReturnType<typeof receivedFixture>>,
+  amount: string,
+  messageId = 801
+) {
+  const offer = readRefillOffer(f.profileId, f.offerId)!.offer;
+  return {
+    message_id: messageId,
+    chat: { id: OWN_CHAT },
+    from: { id: 71 },
+    text: amount,
+    reply_to_message: {
+      message_id: offer.promptId,
+      text: `(refill:${f.profileId}:${f.offerId})`,
+    },
+  };
+}
+
+function receivedCount(f: Awaited<ReturnType<typeof receivedFixture>>) {
+  return (
+    db
+      .prepare(
+        "SELECT quantity_on_hand FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(f.profileId, f.supplementId) as { quantity_on_hand: number }
+  ).quantity_on_hand;
+}
+
+describe("Received receipt operation", () => {
+  it("asks first, keeps a partial refill warning, and never redirects an old reply to the next prompt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    expect(receivedCount(f)).toBe(4);
+    const oldReply = receiptReply(f, "2");
+    await handleReceivedReply(oldReply);
+    expect(receivedCount(f)).toBe(6);
+    expect(editTextMock.mock.calls.at(-1)?.[2]).toContain("running low");
+    const next = refillReceivedAction(f.profileId, f.supplementId)!;
+    expect(next.data).not.toBe(f.action.data);
+    await handleCallbackQuery({ ...f.open, id: "open-next", data: next.data });
+    expect(
+      readRefillOffer(f.profileId, Number(next.data!.split(":")[2]))!.offer
+        .state
+    ).toBe("pending");
+    await handleReceivedReply(oldReply);
+    await handleReceivedReply({ ...oldReply, message_id: 802 });
+    expect(receivedCount(f)).toBe(6);
+  });
+
+  it("claims concurrent opens before sending and does not reactivate a cancellation during delivery", async () => {
+    const f = await receivedFixture();
+    const send = vi.mocked(sendMessageRaw);
+    let release!: (id: number) => void;
+    send.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          release = resolve;
+        })
+    );
+    const first = handleCallbackQuery(f.open);
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const calls = send.mock.calls.length;
+    await handleCallbackQuery({ ...f.open, id: "second-open" });
+    expect(send.mock.calls.length).toBe(calls);
+    await handleCallbackQuery({
+      ...f.open,
+      id: "cancel-opening",
+      data: `rfcancel:${f.profileId}:${f.offerId}`,
+    });
+    release(9123);
+    await first;
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "canceled"
+    );
+    expect(receivedCount(f)).toBe(4);
+    await handleCallbackQuery(f.open);
+    expect(send.mock.calls.length).toBe(calls);
+  });
+
+  it("requires explicit cancellation after an unknown send outcome", async () => {
+    const f = await receivedFixture();
+    vi.mocked(sendMessageRaw).mockRejectedValueOnce(
+      new Error("synthetic transport uncertainty")
+    );
+    await handleCallbackQuery(f.open);
+    const calls = vi.mocked(sendMessageRaw).mock.calls.length;
+    await handleCallbackQuery(f.open);
+    expect(vi.mocked(sendMessageRaw).mock.calls.length).toBe(calls);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "sending"
+    );
+    await handleCallbackQuery({
+      ...f.open,
+      data: `rfcancel:${f.profileId}:${f.offerId}`,
+    });
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "canceled"
+    );
+    expect(refillReceivedAction(f.profileId, f.supplementId)!.data).not.toBe(
+      f.action.data
+    );
+  });
+
+  it("preserves pending receipts through dose decrement/Undo but invalidates an intentional recount ABA", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    decrementSupply(f.profileId, f.supplementId);
+    incrementSupply(f.profileId, f.supplementId);
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 4, 4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    const reply = receiptReply(f, "30");
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 8, 4);
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 4, 8);
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "invalidated"
+    );
+  });
+
+  it("refuses another sender and another quoted message without consuming the prompt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const reply = receiptReply(f, "30");
+    await handleReceivedReply({ ...reply, from: { id: 72 } });
+    await handleReceivedReply({
+      ...reply,
+      reply_to_message: { ...reply.reply_to_message, message_id: 999999 },
+    });
+    expect(receivedCount(f)).toBe(4);
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(34);
+  });
+
+  it("rolls stock and receipt state back together when completion persistence fails", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const reply = receiptReply(f, "30");
+    db.exec(`CREATE TEMP TRIGGER refuse_received_completion BEFORE UPDATE ON notify_offers
+      WHEN json_extract(NEW.payload, '$.state') = 'completed'
+      BEGIN SELECT RAISE(ABORT, 'synthetic completion failure'); END`);
+    try {
+      await expect(handleReceivedReply(reply)).rejects.toThrow(
+        "synthetic completion failure"
+      );
+    } finally {
+      db.exec("DROP TRIGGER refuse_received_completion");
+    }
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(34);
   });
 });

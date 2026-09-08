@@ -49,7 +49,7 @@ import { sqlNow } from "../clock";
 // one-tap (#3282, the substrate's first migration); the #2320 digest offer tail and
 // #3087's interaction provenance are the named future ones. Matching on it is what
 // stops one family from redeeming another's payload.
-export type OfferFamily = "usual-routine" | "stack-take";
+export type OfferFamily = "usual-routine" | "stack-take" | "refill";
 
 // Rows are pruned on the same horizon message pointers use — an offer is only ever
 // redeemed from a live message, so it can never usefully outlive one.
@@ -134,4 +134,140 @@ export function pruneNotifyOffers(profileId: number): number {
         WHERE profile_id = ? AND created_at < datetime(?, ?)`
     )
     .run(profileId, sqlNow(), `-${OFFER_RETENTION_DAYS} days`).changes;
+}
+
+// Refill offers are operations: their allocated identity survives every state change.
+// Unlike a content-deduped usual bundle, a terminal receipt can never be offered again.
+export interface RefillOffer {
+  itemId: number;
+  supplyId: number | null;
+  state:
+    | "available"
+    | "sending"
+    | "pending"
+    | "completed"
+    | "canceled"
+    | "invalidated";
+  predecessorId: number | null;
+  successorId?: number;
+  origin?: {
+    chatId: string;
+    messageId: number;
+    senderId: number;
+    callbackId: string;
+  };
+  defaultSize?: number | null;
+  promptId?: number;
+  result?: { fillSize: number; newQuantity: number; submissionId: string };
+}
+
+export function readRefillOffer(
+  profileId: number,
+  offerId: number
+): {
+  offer: RefillOffer;
+  createdAt: string;
+} | null {
+  const row = db
+    .prepare(
+      `SELECT payload, created_at FROM notify_offers
+    WHERE profile_id = ? AND family = 'refill' AND id = ?`
+    )
+    .get(profileId, offerId) as
+    { payload: string; created_at: string } | undefined;
+  return row
+    ? {
+        offer: JSON.parse(row.payload) as RefillOffer,
+        createdAt: row.created_at,
+      }
+    : null;
+}
+
+export function replaceRefillOffer(
+  profileId: number,
+  offerId: number,
+  previous: RefillOffer,
+  next: RefillOffer
+): boolean {
+  return (
+    db
+      .prepare(
+        `UPDATE notify_offers SET payload = ?
+    WHERE profile_id = ? AND family = 'refill' AND id = ? AND payload = ?`
+      )
+      .run(JSON.stringify(next), profileId, offerId, JSON.stringify(previous))
+      .changes === 1
+  );
+}
+
+export function refillOfferIsTerminal(offer: RefillOffer): boolean {
+  return (
+    offer.state === "completed" ||
+    offer.state === "canceled" ||
+    offer.state === "invalidated"
+  );
+}
+
+// Called under the stock reader's write transaction. One successor per predecessor,
+// including during concurrent message rebuilds; rendering retains the same identity.
+export function currentRefillOffer(
+  profileId: number,
+  itemId: number,
+  supplyId: number | null,
+  date: string
+): number {
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT id, payload FROM notify_offers
+      WHERE profile_id = ? AND family = 'refill' AND json_extract(payload, '$.itemId') = ?
+      ORDER BY id DESC LIMIT 1`
+      )
+      .get(profileId, itemId) as { id: number; payload: string } | undefined;
+    const prior = row ? (JSON.parse(row.payload) as RefillOffer) : null;
+    if (
+      row &&
+      prior &&
+      !refillOfferIsTerminal(prior) &&
+      prior.supplyId === supplyId
+    )
+      return row.id;
+    if (row && prior?.successorId) return prior.successorId;
+    const offer: RefillOffer = {
+      itemId,
+      supplyId,
+      state: "available",
+      predecessorId: row?.id ?? null,
+    };
+    const result = db
+      .prepare(
+        `INSERT INTO notify_offers (profile_id, family, date, payload, created_at)
+      VALUES (?, 'refill', ?, ?, ?)`
+      )
+      .run(profileId, date, JSON.stringify(offer), sqlNow());
+    const id = Number(result.lastInsertRowid);
+    if (row && prior)
+      replaceRefillOffer(profileId, row.id, prior, {
+        ...prior,
+        state: refillOfferIsTerminal(prior) ? prior.state : "invalidated",
+        successorId: id,
+      });
+    return id;
+  });
+}
+
+// Mutation owners call this inside their existing transaction. Dose adjustments do
+// not: a pending receipt adds to the then-current stock after ordinary consumption.
+export function invalidateRefillOffers(
+  profileId: number,
+  itemId: number,
+  supplyId: number | null
+): void {
+  db.prepare(
+    `UPDATE notify_offers SET payload = json_set(payload, '$.state', 'invalidated')
+    WHERE profile_id = ? AND family = 'refill'
+      AND json_extract(payload, '$.state') IN ('available', 'sending', 'pending')
+      AND (json_extract(payload, '$.itemId') = ? OR
+        (? IS NOT NULL AND json_extract(payload, '$.supplyId') = ?))`
+  ).run(profileId, itemId, supplyId, supplyId);
 }

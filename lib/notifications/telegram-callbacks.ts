@@ -1,3 +1,4 @@
+import { handleReceivedCallback } from "./refill";
 // Handles an inbound Telegram button tap ("✅ {name}") regardless of transport:
 // the webhook route and the getUpdates poller both delegate here, so both paths
 // get identical profile-scoping and verification.
@@ -424,6 +425,14 @@ export const CALLBACK_REGISTRY = [
     parse: parsePreventiveCallback,
     handle: handlePreventiveTap,
   }),
+
+  ...(["rfreceived", "rfconfirm", "rfcancel"] as const).map((prefix) =>
+    callbackEntry({
+      prefixes: [prefix],
+      parse: (data) => parseOfferCallback(data, prefix),
+      handle: handleReceivedCallback,
+    })
+  ),
 
   // Phase 3 (#233): refill-nudge "📦 Ordered — remind me in 3 days".
   callbackEntry({

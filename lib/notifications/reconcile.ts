@@ -1,3 +1,4 @@
+import { reconcileRefillReceipt } from "./refill";
 // Tick-time message reconciliation — the DB half (issue #1779).
 //
 // One sweep per profile per tick. It walks the live message pointers, asks each
@@ -1434,6 +1435,14 @@ async function reconcilePointer(
   td: string,
   result: ReconcileResult
 ): Promise<void> {
+  if (pointer.kind === "refill") {
+    const receipt = await reconcileRefillReceipt(profileId, pointer);
+    if (receipt !== "unhandled") {
+      if (receipt === "edited") result.edited++;
+      else result.skipped++;
+      return;
+    }
+  }
   // ── The prose-claim class (#1913 item 4) ──────────────────────────────
   //
   // Handled first and completely: a report's claims are its sentences, and the token

@@ -22,3 +22,19 @@ export function parseRefillCallback(data: unknown): RefillCallback | null {
   if (!profileId || !itemId) return null;
   return { profileId, itemId };
 }
+
+export function parseRefillReplyMarker(
+  text: string | undefined
+): { profileId: number; offerId: number } | null {
+  const match = text?.match(/\(refill:([1-9]\d*):([1-9]\d*)\)/);
+  return match
+    ? { profileId: Number(match[1]), offerId: Number(match[2]) }
+    : null;
+}
+
+export function parseReceivedAmount(text: string | undefined): number | null {
+  const value = text?.trim();
+  if (!value || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
