@@ -708,6 +708,37 @@ export function seedIntradayPanel(): void {
       "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, 74.2, 'manual')"
     ).run(idId, idQuiet);
 
+    // Doses is presence-gated by a taken log. Keep this on yesterday so today's
+    // two document ticks and the quiet day's body-only chart stay unchanged.
+    const doseName = "Intraday fixture dose";
+    db.prepare(
+      "DELETE FROM intake_items WHERE profile_id = ? AND name = ?"
+    ).run(idId, doseName);
+    const doseBornAt = idInstant(idPrev, "00:00");
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+          (profile_id, name, condition, obligation, active, source, created_at)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual', ?)`
+        )
+        .run(idId, doseName, doseBornAt).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+          (item_id, amount, time_of_day, food_timing, sort, created_at)
+         VALUES (?, '1 tablet', '08:00', 'any', 0, ?)`
+        )
+        .run(itemId, doseBornAt).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs
+        (dose_id, item_id, date, recorded_at, amount, status)
+       VALUES (?, ?, ?, ?, '1 tablet', 'taken')`
+    ).run(doseId, itemId, idPrev, idInstant(idPrev, "08:00"));
+
     seedMemberLogin(E2E_LOGIN_INTRADAY, idId, "write");
     console.log(
       `e2e: seeded intraday-panel fixture — ${E2E_LOGIN_INTRADAY} granted ${INTRADAY_PROFILE} (${idId}); intraday day ${idToday}, quiet day ${idQuiet} (#1068)`
