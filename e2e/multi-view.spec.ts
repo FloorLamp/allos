@@ -613,6 +613,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
     await page.goto("/training?tab=log&view=everyone&show=400");
     const sharedCard = page
+      .getByTestId("training-page")
       .getByTestId("history-row")
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
@@ -630,6 +631,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // one e2e/history-everyone.spec.ts pins for the other families. What must never
     // happen is two rows wearing the same name.
     const ownerCard = page
+      .getByTestId("training-page")
       .getByTestId("history-row")
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
     await expect(ownerCard).toBeVisible();
