@@ -4,8 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import OfferRow from "@/components/OfferRow";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import SegmentedControl from "@/components/SegmentedControl";
+import {
+  QuickEntryRow,
+  QuickEntryRowList,
+} from "@/components/quick-entry/QuickEntryRowList";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
 import { dosesPhrase } from "@/lib/usual-routine";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
@@ -196,61 +201,54 @@ export default function QuickDoseList({
           Nothing left to confirm.
         </p>
       ) : remaining.length > 0 ? (
-        <ul
-          data-testid="quick-entry-dose-list"
-          className="flex flex-col gap-1.5"
-        >
+        <QuickEntryRowList testId="quick-entry-dose-list">
           {remaining.map((dose) => (
-            <li
+            /* THE SLOT IS STATED ONCE, ON THE CONTROL THAT WRITES IT (#4753,
+               owner ruling 1). The row prints the dose name, so the payload is
+               when it was owed: `8:00am · [Take]`. */
+            <QuickEntryRow
               key={dose.doseId}
-              data-testid={`quick-entry-dose-${dose.doseId}`}
-              className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-slate-800 dark:text-slate-100">
-                  {dose.title}
-                </span>
-                {dose.detail && (
-                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                    {dose.detail}
-                  </span>
-                )}
-                {notes[occurrenceKey(today, dose.doseId)] && (
-                  <span
-                    data-testid={`quick-entry-dose-note-${dose.doseId}`}
-                    className="block text-xs font-medium text-rose-600 dark:text-rose-400"
-                  >
-                    {notes[occurrenceKey(today, dose.doseId)]}
-                  </span>
-                )}
-              </span>
-              {/* THE SLOT IS STATED ONCE, ON THE CONTROL THAT WRITES IT (#4753,
-                  owner ruling 1). This row prints the dose's NAME, so the
-                  non-redundant payload is WHEN it was owed — which sat in a span of
-                  its own beside the button, leaving the tap to be read as a bare
-                  "Mark taken". It is the chip's label now: `8:00am · [Take]`, the
-                  canvas's own `Midday · Take`, and the span is gone rather than
-                  duplicated. */}
-              <DoseStatusControl
-                doseId={dose.doseId}
-                taken={false}
-                skipped={false}
-                variant="pill"
-                payload={dose.dueText}
-                rowLeaves
-                profileId={subjectProfileId}
-                onSettled={(result) => {
-                  if (result.ok) markResolved(today, [dose.doseId]);
-                  else
-                    setNotes((prev) => ({
-                      ...prev,
-                      [occurrenceKey(today, dose.doseId)]: result.error,
-                    }));
-                }}
-              />
-            </li>
+              testId={`quick-entry-dose-${dose.doseId}`}
+              identity={dose.title}
+              facts={
+                <>
+                  {dose.detail && (
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">
+                      {dose.detail}
+                    </span>
+                  )}
+                  {notes[occurrenceKey(today, dose.doseId)] && (
+                    <span
+                      data-testid={`quick-entry-dose-note-${dose.doseId}`}
+                      className="block text-xs font-medium text-rose-600 dark:text-rose-400"
+                    >
+                      {notes[occurrenceKey(today, dose.doseId)]}
+                    </span>
+                  )}
+                </>
+              }
+              actions={
+                <DoseStatusControl
+                  doseId={dose.doseId}
+                  taken={false}
+                  skipped={false}
+                  variant="pill"
+                  payload={dose.dueText}
+                  rowLeaves
+                  profileId={subjectProfileId}
+                  onSettled={(result) => {
+                    if (result.ok) markResolved(today, [dose.doseId]);
+                    else
+                      setNotes((prev) => ({
+                        ...prev,
+                        [occurrenceKey(today, dose.doseId)]: result.error,
+                      }));
+                  }}
+                />
+              }
+            />
           ))}
-        </ul>
+        </QuickEntryRowList>
       ) : null}
       {day === today && prn && prn.meds.length > 0 && (
         <QuickLogPrnContent
@@ -312,9 +310,10 @@ function PastDayDoses({
         const heading = `${TIME_BUCKET_LABELS[slot.bucket]} stack (${ids.length})`;
         return (
           <section key={slot.bucket} className="mb-3 last:mb-0">
-            <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-              {TIME_BUCKET_LABELS[slot.bucket]}
-            </h3>
+            <CardSectionHeader
+              title={TIME_BUCKET_LABELS[slot.bucket]}
+              variant="label"
+            />
             {slot.doses.length > 1 && (
               <OfferRow
                 tone="brand"
@@ -342,55 +341,55 @@ function PastDayDoses({
                 </span>
               </OfferRow>
             )}
-            <ul className="flex flex-col gap-1.5">
+            <QuickEntryRowList testId={`quick-entry-dose-slot-${slot.bucket}`}>
               {slot.doses.map((dose) => (
-                <li
+                <QuickEntryRow
                   key={dose.doseId}
-                  data-testid={`quick-entry-dose-${dose.doseId}`}
-                  className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-slate-800 dark:text-slate-100">
-                      {dose.name}
-                    </span>
-                    {dose.detail && (
-                      <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                        {dose.detail}
-                      </span>
-                    )}
-                    {dose.amountAssumed ? (
-                      <span className="block text-xs text-slate-500 dark:text-slate-400">
-                        No amount was saved for this date. Using the oldest
-                        known amount.
-                      </span>
-                    ) : null}
-                    {notes[occurrenceKey(date, dose.doseId)] && (
-                      <span
-                        data-testid={`quick-entry-dose-note-${dose.doseId}`}
-                        className="block text-xs font-medium text-rose-600 dark:text-rose-400"
-                      >
-                        {notes[occurrenceKey(date, dose.doseId)]}
-                      </span>
-                    )}
-                  </span>
-                  <DoseStatusControl
-                    doseId={dose.doseId}
-                    date={date}
-                    taken={false}
-                    skipped={false}
-                    variant="pill"
-                    compact
-                    itemName={dose.name}
-                    rowLeaves
-                    profileId={subjectProfileId}
-                    onSettled={(result) => {
-                      if (result.ok) onResolved([dose.doseId]);
-                      else onNote(dose.doseId, result.error);
-                    }}
-                  />
-                </li>
+                  testId={`quick-entry-dose-${dose.doseId}`}
+                  identity={dose.name}
+                  facts={
+                    <>
+                      {dose.detail && (
+                        <span className="block text-xs text-slate-500 dark:text-slate-400">
+                          {dose.detail}
+                        </span>
+                      )}
+                      {dose.amountAssumed ? (
+                        <span className="block text-xs text-slate-500 dark:text-slate-400">
+                          No amount was saved for this date. Using the oldest
+                          known amount.
+                        </span>
+                      ) : null}
+                      {notes[occurrenceKey(date, dose.doseId)] && (
+                        <span
+                          data-testid={`quick-entry-dose-note-${dose.doseId}`}
+                          className="block text-xs font-medium text-rose-600 dark:text-rose-400"
+                        >
+                          {notes[occurrenceKey(date, dose.doseId)]}
+                        </span>
+                      )}
+                    </>
+                  }
+                  actions={
+                    <DoseStatusControl
+                      doseId={dose.doseId}
+                      date={date}
+                      taken={false}
+                      skipped={false}
+                      variant="pill"
+                      compact
+                      itemName={dose.name}
+                      rowLeaves
+                      profileId={subjectProfileId}
+                      onSettled={(result) => {
+                        if (result.ok) onResolved([dose.doseId]);
+                        else onNote(dose.doseId, result.error);
+                      }}
+                    />
+                  }
+                />
               ))}
-            </ul>
+            </QuickEntryRowList>
           </section>
         );
       })}

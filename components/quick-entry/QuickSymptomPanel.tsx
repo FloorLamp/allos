@@ -61,7 +61,7 @@ export default function QuickSymptomPanel({
   subjectProfileId?: number;
 }) {
   return (
-    <div className="space-y-3 py-1" data-testid="quick-symptom-panel">
+    <div className="space-y-3" data-testid="quick-symptom-panel">
       {trackingIllness.length > 0 && (
         <p
           data-testid="quick-symptom-tracking"

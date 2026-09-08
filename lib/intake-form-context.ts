@@ -28,10 +28,7 @@ export interface IntakeFormContext {
   // food-note age gate both read it, so a door that can render pediatric dosing cannot
   // also gate on an unknown age.
   pediatric: PediatricFormContext;
-  // The profile-local day, for the start-date seed. Its absence is not cosmetic — it
-  // decides whether the form posts `started_on` at all, and therefore which validation
-  // branch `addIntakeItem` takes. Hosts pass this through; a host that recomputes the
-  // day is the one way the seed and the staleness gate can disagree.
+  // The subject's local day for date-picker bounds and weight-staleness checks.
   todayStr: string;
 }
 
@@ -69,7 +66,7 @@ export function loadIntakeFormContext(
       status: c.status,
     })),
     pediatric,
-    // Start-date and weight-staleness checks share the subject's local day.
+    // Date bounds and weight-staleness checks share the subject's local day.
     todayStr: pediatric.today,
   };
 }

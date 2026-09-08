@@ -22,7 +22,7 @@
 // value already falls through to the default. Adding an alias would be a shim for
 // a link that already lands correctly, which is exactly what #1635 forbids.
 //
-import type { AppRoute } from "./hrefs";
+import { trainingTabHref, type AppRoute } from "./hrefs";
 
 export const TRENDS_TABS = ["overview", "nutrition", "insights"] as const;
 
@@ -78,11 +78,13 @@ export function retiredFitnessTabTarget(
 ): AppRoute | null {
   const raw = first(value);
   if (raw) {
-    if (raw === "fitness") return "/training?tab=analyze";
+    if (raw === "fitness") return trainingTabHref("analyze");
     if (isTrendsTab(raw) || TAB_ALIASES[raw]) return null;
   }
   const ftab = first(nested);
-  return ftab && RETIRED_FTABS.includes(ftab) ? "/training?tab=analyze" : null;
+  return ftab && RETIRED_FTABS.includes(ftab)
+    ? trainingTabHref("analyze")
+    : null;
 }
 
 export interface TrendsTabEntry {

@@ -280,16 +280,16 @@ describe("every add door feeds IntakeItemForm the same subject context (#4609)",
     expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
   });
 
-  // `todayStr` is not cosmetic: with it absent the form posts no `started_on`, and
-  // addIntakeItem skips its whole start-date branch on `formData.has("started_on")`.
+  // Both doors receive the local day for context, but neither may turn it into
+  // a start date the person has not stated.
   it.each(["medications", "illness"] as const)(
-    "%s: posts the subject's local day as the start date",
+    "%s: leaves an unstated start date unknown",
     async (door) => {
       addIntakeItem.mockClear();
       await openDoor(door, CHILD, "Tylenol");
       screen.getByRole("button", { name: "Add" }).click();
       await waitFor(() => expect(addIntakeItem).toHaveBeenCalledOnce());
-      expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBe(TODAY);
+      expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBeNull();
       cleanup();
     }
   );

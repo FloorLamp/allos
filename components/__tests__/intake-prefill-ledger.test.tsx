@@ -260,6 +260,27 @@ beforeEach(() => {
   prnSpy.calls.length = 0;
 });
 
+it("keeps an unknown start when obligation changes and the medication is saved", async () => {
+  mount("medication");
+  fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+    target: { value: "Longstanding medicine" },
+  });
+  openFact("importance");
+  for (const value of ["may", "must"]) {
+    fireEvent.change(screen.getByLabelText("Obligation"), {
+      target: { value },
+    });
+  }
+  openFact("stopDate");
+  const start = screen.getByLabelText(/Started on/) as HTMLInputElement;
+  expect(start.value).toBe("");
+  expect(start.required).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+  expect(actions.addIntakeItem.mock.calls[0]![0].get("started_on")).toBeNull();
+});
+
 describe("a formulation switch re-derives the product, never the person's numbers (#4665)", () => {
   // POSITIVE CONTROL. The same switch, on figures nobody typed, DOES write the child
   // label's preset — so the assertion below is about being touched, and not about a

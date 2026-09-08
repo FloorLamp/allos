@@ -1,3 +1,4 @@
+import { strengthAnalyzeHref } from "@/lib/hrefs";
 import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
 import { strengthLevelLabel } from "@/lib/strength-standards";
@@ -50,7 +51,7 @@ export default function StrengthStandardsLadder({
               <div key={exercise} data-testid="strength-ladder-row">
                 <div className="flex items-baseline justify-between gap-3 text-sm">
                   <Link
-                    href={`/training?tab=analyze&kind=strength&item=${encodeURIComponent(exercise)}`}
+                    href={strengthAnalyzeHref(exercise)}
                     className="font-semibold text-slate-800 hover:text-brand-700 hover:underline dark:text-slate-100 dark:hover:text-brand-400"
                   >
                     {exercise}

@@ -334,10 +334,8 @@ export default function IntakeItemForm({
   });
 
   // ---- UI-only state: not a fact about the item, so not in `state` ----
-  // A pick's own brand list narrowing the brand vocabulary, and the latch that says
-  // the person set the start date themselves (so an obligation flip stops moving it).
+  // A pick's own brand list narrows the brand vocabulary.
   const [brandNarrowing, setBrandNarrowing] = useState<string[] | null>(null);
-  const [startedOnTouched, setStartedOnTouched] = useState(false);
   // Selection-prefill bookkeeping (#846, #4665). ONE ledger answers "may I overwrite
   // this field?" for all seven seed paths, and marks everything it lets through: before
   // it there were four mechanisms and the places they disagreed were bugs. The rules
@@ -428,12 +426,7 @@ export default function IntakeItemForm({
   );
 
   function setObligation(next: IntakeObligation) {
-    patch({
-      obligation: next,
-      ...(!s && !startedOnTouched
-        ? { startedOn: next === "may" ? "" : todayStr }
-        : {}),
-    });
+    patch({ obligation: next });
   }
 
   // ---- Datasets for the derived kind ----
@@ -946,7 +939,6 @@ export default function IntakeItemForm({
     });
     rx.reset();
     setBrandNarrowing(null);
-    setStartedOnTouched(false);
     setFormulationSlug("");
     setSelectedPediatricBandMinLbs(null);
     setIngredientSeedNote(null);
@@ -1675,27 +1667,21 @@ export default function IntakeItemForm({
             <div>
               <label className="label" htmlFor={`intake-started-on-${fid}`}>
                 {state.obligation === "may" ? "Using since" : "Started on"}
-                {state.obligation === "may" && (
-                  <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
-                    (optional)
-                  </span>
-                )}
+                <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
+                  (optional)
+                </span>
               </label>
               <DateField
                 id={`intake-started-on-${fid}`}
                 value={state.startedOn}
                 onChange={(value) => {
                   patch({ startedOn: value });
-                  setStartedOnTouched(true);
                 }}
                 max={todayStr}
-                required={state.obligation !== "may"}
               />
-              {state.obligation === "may" && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Leave blank if you don’t know when you started using it.
-                </p>
-              )}
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Leave blank if you don’t know when you started using it.
+              </p>
             </div>
             {s && (
               <div>
