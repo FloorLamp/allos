@@ -760,20 +760,13 @@ describe("day rollover", () => {
 describe("a dose keyboard lives as long as the write core honors the tap (#2018)", () => {
   const D = "2020-03-04";
   const EVENING = `${D}T22:00:00Z`;
-  let priorNow: string | undefined;
 
   function at(instant: string): void {
-    process.env.ALLOS_TEST_NOW = instant;
+    vi.setSystemTime(new Date(instant));
   }
 
   beforeEach(() => {
-    priorNow = process.env.ALLOS_TEST_NOW;
     at(EVENING);
-  });
-
-  afterEach(() => {
-    if (priorNow === undefined) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = priorNow;
   });
 
   it("survives local midnight, and the tap it offers still logs to its own day", async () => {

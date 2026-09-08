@@ -8,7 +8,7 @@
 // mock object with fixed field values, so none of this function's own branches were
 // ever exercised.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import {
@@ -137,15 +137,8 @@ describe("measurementsQuickEntry (#4891)", () => {
   // shape #3573/#3836/#3901/#3884 exist to catch, per this repo's own dose-window
   // tests (past-dose-day.actions.test.ts).
   const NOW_ISO = "2026-08-28T10:30:00Z";
-  let priorNow: string | undefined;
-  beforeAll(() => {
-    priorNow = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = NOW_ISO;
-  });
-  afterAll(() => {
-    if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = priorNow;
-  });
+
+  beforeEach(() => vi.setSystemTime(new Date(NOW_ISO)));
 
   it.each([
     ["Pacific/Kiritimati", "2026-08-29"],

@@ -13,7 +13,7 @@
 // its own fixture first: the hint is asserted PRESENT before the correction is seeded and
 // ABSENT after, so a fixture that could never show the hint cannot pass by accident.
 
-import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
@@ -45,16 +45,9 @@ import { buildPracticeCorrectionRebuild } from "@/lib/notifications/practices";
 // fact rather than a race.
 const NOW_ISO = "2026-08-05T19:30:00Z"; // 21:30 local
 const TAP_ISO = "2026-08-05T19:02:00Z"; // 28 minutes ago — inside CORRECTION_FRESH_MIN
-let priorNow: string | undefined;
 
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = NOW_ISO;
-});
-
-afterEach(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
+  vi.setSystemTime(new Date(NOW_ISO));
 });
 
 const FOOD_HINT = "Ate earlier?";
