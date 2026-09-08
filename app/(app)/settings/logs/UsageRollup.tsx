@@ -1,3 +1,4 @@
+import { formatCount } from "@/lib/format-number";
 import type { UsageRollupRow, UsageStat } from "@/lib/ai-usage-rollup";
 import { totalStat } from "@/lib/ai-usage-rollup";
 import LogTable from "@/components/LogTable";
@@ -7,19 +8,15 @@ import LogTable from "@/components/LogTable";
 // see WHERE it goes. Tokens are labeled as tokens — no dollar math (the model is in
 // the log; prices drift). Server-rendered from the parsed AI log; static, no stream.
 
-function fmt(n: number): string {
-  return n.toLocaleString("en-US");
-}
-
 function statCells(s: UsageStat) {
   return (
     <>
       <td className="td whitespace-nowrap text-right tabular-nums">
-        {fmt(s.calls)}
+        {formatCount(s.calls)}
       </td>
       <td className="td whitespace-nowrap text-right tabular-nums text-slate-500 dark:text-slate-400">
         {s.tokensIn + s.tokensOut > 0
-          ? `${fmt(s.tokensIn)} / ${fmt(s.tokensOut)}`
+          ? `${formatCount(s.tokensIn)} / ${formatCount(s.tokensOut)}`
           : "—"}
       </td>
     </>
@@ -43,9 +40,10 @@ export default function UsageRollup({
           Token usage
         </h2>
         <span className="text-xs text-slate-500 dark:text-slate-400">
-          Today: {fmt(today.calls)} calls ·{" "}
-          {fmt(today.tokensIn + today.tokensOut)} tokens · 7 days:{" "}
-          {fmt(week.calls)} calls · {fmt(week.tokensIn + week.tokensOut)} tokens
+          Today: {formatCount(today.calls)} calls ·{" "}
+          {formatCount(today.tokensIn + today.tokensOut)} tokens · 7 days:{" "}
+          {formatCount(week.calls)} calls ·{" "}
+          {formatCount(week.tokensIn + week.tokensOut)} tokens
         </span>
       </div>
 
