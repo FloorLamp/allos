@@ -13,10 +13,10 @@
 //      re-counted when its hour comes round a second time.
 //   4. The day after a switch is ordinary.
 //
-// Every instant here is frozen through the clock seam (ALLOS_TEST_NOW, lib/clock.ts),
+// Every instant here is frozen through vi.setSystemTime,
 // because the whole subject is which wall clock a fixed instant reads on.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { lastNDates, minuteOfDayInTz } from "@/lib/date";
 import { localDayRange } from "@/lib/local-day-window";
@@ -69,15 +69,11 @@ const MORNING_MINUTE = 8 * 60;
 const EVENING_MINUTE = 20 * 60;
 
 function freeze(instant: string): void {
-  process.env.ALLOS_TEST_NOW = instant;
+  vi.setSystemTime(new Date(instant));
 }
 
 beforeEach(() => {
   freeze(SWITCH_INSTANT);
-});
-
-afterEach(() => {
-  delete process.env.ALLOS_TEST_NOW;
 });
 
 function makeProfile(name: string, tz: string): number {

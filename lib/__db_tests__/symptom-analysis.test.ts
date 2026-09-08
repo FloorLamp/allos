@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { logSymptomCore } from "@/lib/symptom-log-write";
@@ -18,16 +18,9 @@ import { shiftDateStr } from "@/lib/date";
 // 02:00 UTC on the first of March: a March day in UTC and still a February day twelve
 // hours west. The whole timezone question lives in that gap.
 const FROZEN_NOW = "2026-03-01T02:00:00.000Z";
-let previousNow: string | undefined;
 
 beforeEach(() => {
-  previousNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = FROZEN_NOW;
-});
-
-afterEach(() => {
-  if (previousNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = previousNow;
+  vi.setSystemTime(new Date(FROZEN_NOW));
 });
 
 function profile(timezone = "UTC"): number {

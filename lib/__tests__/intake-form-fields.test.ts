@@ -346,7 +346,7 @@ describe("the one intake seeding (#4664)", () => {
     expect(prn.startedOn).toBe("");
   });
 
-  it("lets a picked bottle answer the name, the strength and the link", () => {
+  it("lets a picked bottle answer the name and link without inventing a dose", () => {
     const fromBottle = intakeItemFormStateFrom({
       kind: "supplement",
       supply: {
@@ -358,7 +358,7 @@ describe("the one intake seeding (#4664)", () => {
       },
     });
     expect(fromBottle.name).toBe("Vitamin D3");
-    expect(fromBottle.doses[0].amount).toBe("5000 IU");
+    expect(fromBottle.doses).toEqual([]);
     expect(fromBottle.supplyId).toBe("11");
     // The kind's own default posture, not the medication one.
     expect(fromBottle.obligation).toBe("should");
@@ -444,17 +444,7 @@ describe("intake JSON payload parsing (#4666)", () => {
     const fd = new FormData();
     for (const key of ["doses", "pairs", "ingredients", "purposes"])
       fd.set(key, raw);
-    // A dose is always returned so an item is never left without a schedule entry.
-    expect(parseIntakeDoses(fd)).toEqual([
-      {
-        amount: null,
-        time_of_day: null,
-        food_timing: "any",
-        weekdays: null,
-        start_date: null,
-        end_date: null,
-      },
-    ]);
+    expect(parseIntakeDoses(fd)).toEqual([]);
     expect(parseIntakePairs(fd)).toEqual([]);
     expect(parseIntakeIngredients(fd)).toEqual({ ok: true, rows: [] });
     expect(parseIntakePurposes(fd)).toEqual([]);
