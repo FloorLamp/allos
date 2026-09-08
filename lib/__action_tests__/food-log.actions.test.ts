@@ -167,31 +167,26 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
   ])(
     "resolves local midnight in the profile timezone %s",
     async (_case, frozenNow, timezone) => {
-      const priorNow = process.env.ALLOS_TEST_NOW;
-      process.env.ALLOS_TEST_NOW = frozenNow;
-      try {
-        const login = createLogin();
-        const profile = createProfile(`stated-hour-${timezone}`, login.id);
-        setTimezone(profile.id, timezone);
-        actAs(login, profile);
-        const date = today(profile.id);
+      vi.setSystemTime(new Date(frozenNow));
 
-        await logFoodServing(
-          fd({ group_key: "fatty_fish", date, occurred_at: "00:00" })
-        );
+      const login = createLogin();
+      const profile = createProfile(`stated-hour-${timezone}`, login.id);
+      setTimezone(profile.id, timezone);
+      actAs(login, profile);
+      const date = today(profile.id);
 
-        const [event] = events(profile.id);
-        expect(event.time_source).toBe("stated");
-        // utcInstant, not toISOString: food_log_events.occurred_at stores the canonical
-        // second-resolution UTC instant (#2205), so the expectation names the same writer
-        // the action uses rather than a second serialization of it.
-        expect(event.occurred_at).toBe(
-          utcInstant(zonedWallTimeToUtc(timezone, date, "00:00")!)
-        );
-      } finally {
-        if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-        else process.env.ALLOS_TEST_NOW = priorNow;
-      }
+      await logFoodServing(
+        fd({ group_key: "fatty_fish", date, occurred_at: "00:00" })
+      );
+
+      const [event] = events(profile.id);
+      expect(event.time_source).toBe("stated");
+      // utcInstant, not toISOString: food_log_events.occurred_at stores the canonical
+      // second-resolution UTC instant (#2205), so the expectation names the same writer
+      // the action uses rather than a second serialization of it.
+      expect(event.occurred_at).toBe(
+        utcInstant(zonedWallTimeToUtc(timezone, date, "00:00")!)
+      );
     }
   );
 
@@ -205,14 +200,8 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
   // another day. Against the real clock this table would be green for most of the day
   // and red for the hours after midnight — the shape of failure that looks like flake.
   describe("the wire carries one shape and only one", () => {
-    let priorNow: string | undefined;
     beforeEach(() => {
-      priorNow = process.env.ALLOS_TEST_NOW;
-      process.env.ALLOS_TEST_NOW = "2026-07-08T21:30:00Z";
-      return () => {
-        if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-        else process.env.ALLOS_TEST_NOW = priorNow;
-      };
+      vi.setSystemTime(new Date("2026-07-08T21:30:00Z"));
     });
 
     it.each([
@@ -359,14 +348,9 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
   // Frozen so the stated hours are deterministic: 21:30 UTC — Evening under the
   // default 11:00/15:00 boundaries — with 19:00 already past and offerable.
   const NOW_ISO = "2026-07-08T21:30:00Z";
-  let priorNow: string | undefined;
+
   beforeEach(() => {
-    priorNow = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = NOW_ISO;
-    return () => {
-      if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = priorNow;
-    };
+    vi.setSystemTime(new Date(NOW_ISO));
   });
 
   function events(profileId: number) {

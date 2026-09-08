@@ -103,6 +103,7 @@ function renderCard(ingredients: IntakeItemIngredient[]) {
           takenDoseIds={new Set<number>()}
           skippedDoseIds={new Set<number>()}
           due={false}
+          dueDoseIds={[]}
           courses={[]}
           sideEffects={[]}
           strip={[]}

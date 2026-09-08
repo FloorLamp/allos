@@ -21,7 +21,7 @@
 // the dashboard's own comment gives: a recorded number catches drift, a backstop catches
 // the thing nobody thought to record.
 
-import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
@@ -69,7 +69,6 @@ vi.mock("@/lib/scope", async (importActual) =>
   )
 );
 
-const previousTestNow = process.env.ALLOS_TEST_NOW;
 const counts = new Map<string, number>();
 
 function newProfile(name: string): number {
@@ -124,8 +123,9 @@ function ctxFor(profileId: number): PersonaContext {
 }
 
 describe("/sleep route query budget (#3993)", () => {
+  beforeEach(() => vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z")));
   beforeAll(async () => {
-    process.env.ALLOS_TEST_NOW = "2026-08-18T13:00:00.000Z";
+    vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z"));
     session.loginId = (
       db
         .prepare(
@@ -147,11 +147,6 @@ describe("/sleep route query budget (#3993)", () => {
       counts.set(persona.name, trace.count());
     }
   }, 120_000);
-
-  afterAll(() => {
-    if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = previousTestNow;
-  });
 
   // Recorded per persona, the same discipline the dashboard manifest uses: a number that
   // moves is a conversation, not a value to bump. Measured on the merged tree.

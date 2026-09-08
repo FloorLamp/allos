@@ -46,6 +46,7 @@ const BOTTLES: SupplyOption[] = [
 
 const TRACKED_MEDICATION = {
   medication: { id: 7, name: "Aspirin", quantity_on_hand: 90 },
+  dueDoseIds: [],
   courses: [],
   sideEffects: [],
   initialAction: "edit",

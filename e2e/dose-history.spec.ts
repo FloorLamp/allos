@@ -37,6 +37,10 @@ test("dosage restructure keeps the taken history at its original amount", async 
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor1 = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor1.getByRole("button", { name: "Add dose", exact: true })
+  );
   await doseEditor1.getByLabel("Amount").first().fill("500 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Amount field in the scoped add modal
   await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Time-of-day field in the scoped add modal
   await addDialog
@@ -133,6 +137,10 @@ test("a supplement's dose history offers the medication row actions, and an edit
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor3 = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor3.getByRole("button", { name: "Add dose", exact: true })
+  );
   await doseEditor3.getByLabel("Amount").first().fill("250 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Amount field in the scoped add modal
   await doseEditor3.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Time-of-day field in the scoped add modal
   await closeEditor(page, addDialog);
@@ -252,6 +260,10 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor5 = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor5.getByRole("button", { name: "Add dose", exact: true })
+  );
   await doseEditor5.getByLabel("Amount").first().fill("125 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Amount field in the scoped add modal
   await doseEditor5.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Time-of-day field in the scoped add modal
   await closeEditor(page, addDialog);
@@ -358,6 +370,10 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await addDialog.getByLabel("Name").fill(name);
   const doseEditor = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor.getByRole("button", { name: "Add dose", exact: true })
+  );
   await doseEditor.getByLabel("Amount").first().fill("250 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Amount field in the scoped add modal
   await doseEditor.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first (only) dose's Time-of-day field in the scoped add modal
   await closeEditor(page, addDialog);

@@ -41,6 +41,9 @@ import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
+const dailyDose = JSON.stringify([
+  { amount: "1 serving", time_of_day: "Morning" },
+]);
 
 function itemRow(id: number) {
   return db
@@ -153,7 +156,12 @@ describe("addIntakeItem", () => {
   it("creates a manual-source supplement with a dose", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Creatine", condition: "daily", priority: "high" })
+      fd({
+        name: "Creatine",
+        condition: "daily",
+        priority: "high",
+        doses: dailyDose,
+      })
     );
 
     const items = getIntakeItems(profile.id);
@@ -162,7 +170,6 @@ describe("addIntakeItem", () => {
     expect(row.name).toBe("Creatine");
     expect(row.kind).toBe("supplement");
     expect(row.source).toBe("manual");
-    // parseDoses always yields at least one dose row.
     expect(getIntakeDoses(profile.id)).toHaveLength(1);
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
@@ -268,7 +275,12 @@ describe("toggleTaken refill invariant", () => {
   it("confirm decrements on-hand by qty_per_dose; untoggle re-increments", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Vitamin D", quantity_on_hand: 10, qty_per_dose: 2 })
+      fd({
+        name: "Vitamin D",
+        quantity_on_hand: 10,
+        qty_per_dose: 2,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(profile.id)[0].id;
     const doseId = getIntakeDoses(profile.id)[0].id;
@@ -292,7 +304,12 @@ describe("toggleTaken refill invariant", () => {
   it("preserves an untouched stale quantity but applies an intentional refill", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Metformin", quantity_on_hand: 30, qty_per_dose: 1 })
+      fd({
+        name: "Metformin",
+        quantity_on_hand: 30,
+        qty_per_dose: 1,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(profile.id)[0].id;
     const doseId = getIntakeDoses(profile.id)[0].id;
@@ -333,7 +350,12 @@ describe("toggleTaken refill invariant", () => {
     // Owner seeds a tracked supplement.
     const owner = seedActor();
     await addIntakeItem(
-      fd({ name: "Zinc", quantity_on_hand: 5, qty_per_dose: 1 })
+      fd({
+        name: "Zinc",
+        quantity_on_hand: 5,
+        qty_per_dose: 1,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(owner.profile.id)[0].id;
     const foreignDoseId = getIntakeDoses(owner.profile.id)[0].id;
@@ -353,7 +375,12 @@ describe("setDoseStatus tri-state + skip supply invariant (#232)", () => {
   async function seedTracked(qty = 10) {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Vitamin D", quantity_on_hand: qty, qty_per_dose: 2 })
+      fd({
+        name: "Vitamin D",
+        quantity_on_hand: qty,
+        qty_per_dose: 2,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(profile.id)[0].id;
     const doseId = getIntakeDoses(profile.id)[0].id;
