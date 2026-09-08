@@ -88,6 +88,7 @@ export default function SymptomRowControl({
       // move — raise, then lower back to where it started — is a different transition
       // and always lands.
       key: `${symptom}:${severity}->${next}`,
+      valueKey: `${date}:${symptom}`,
       from: severity,
       optimistic: lowering ? next : Math.max(severity, next),
       commit: onSeverity,
@@ -168,6 +169,7 @@ export default function SymptomRowControl({
     setEditing(false);
     await ledger.tap({
       key: `${symptom}:${prev}->clear`,
+      valueKey: `${date}:${symptom}`,
       from: prev,
       optimistic: 0,
       commit: onSeverity,

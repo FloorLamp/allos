@@ -92,6 +92,7 @@ export default function MobilityLogBar({
       // routine, and un-tapping a move you just tapped is a correction — neither is
       // the double-tap the cooldown exists to absorb.
       key: `${slug}:${wasOn ? "off" : "on"}`,
+      valueKey: today,
       from: selected,
       optimistic,
       commit: setSelected,
