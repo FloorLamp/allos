@@ -293,8 +293,10 @@ describe("PR → Finding adapters", () => {
     expect(cardioPrToFinding(speed, "km").dedupeKey).toBe(
       "pr:cardio:cycle:speed"
     );
-    expect(cardioPrToFinding(speed, "km").detail).toContain("km/h");
-    expect(cardioPrToFinding(duration, "km").detail).toContain("Row");
+    expect(cardioPrToFinding(speed, "km").detail).toBe("fastest Cycle at 30 km/h");
+    expect(cardioPrToFinding(duration, "km").detail).toBe("longest Row at 45 min");
+    expect(cardioPrToFinding(distance, "mi").detail).toBe("longest Run at 6.21 mi");
+    expect(cardioPrToFinding(speed, "mi").detail).toBe("fastest Cycle at 18.6 mi/h");
   });
 });
 

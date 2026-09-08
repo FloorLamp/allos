@@ -19,6 +19,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import path from "node:path";
+import webpush from "web-push";
 import { rawDb as db } from "@/lib/db";
 import {
   getLoginTelegram,
@@ -28,6 +29,7 @@ import {
   setProfileHomeAssistant,
   setSmtpConfig,
   setTelegramBotConfig,
+  setUnitPrefs,
 } from "@/lib/settings";
 import { dispatch, getNotifyError } from "@/lib/notifications";
 import {
@@ -61,11 +63,11 @@ vi.mock("web-push", () => ({
       privateKey: "vapid-private-0001",
     }),
     setVapidDetails: () => {},
-    sendNotification: async (sub: { endpoint: string }) => {
+    sendNotification: vi.fn(async (sub: { endpoint: string }, _payload: string) => {
       if (sub.endpoint.endsWith("/ok")) return;
       const status = sub.endpoint.endsWith("/gone") ? 410 : 500;
       throw Object.assign(new Error(`push ${status}`), { statusCode: status });
-    },
+    }),
   },
 }));
 
@@ -130,6 +132,55 @@ afterEach(() => {
 });
 
 describe("Telegram owners", () => {
+  it("renders for the shared chat's first owner and leaves an ownerless override canonical", async () => {
+    const p = newProfile("Distance owner chats");
+    const a = seedLoginTelegram(p, "units-shared");
+    const b = seedLoginTelegram(p, "units-shared");
+    const c = seedLoginTelegram(p, "units-own");
+    for (const [login, distanceUnit] of [[a, "mi"], [b, "km"], [c, "km"]] as const)
+      setUnitPrefs(login, { weightUnit: "kg", distanceUnit, temperatureUnit: "F" });
+    stubWire();
+    const msg = { title: "Recap", body: "canonical", kind: "recap" as const };
+    const bodyForDistanceUnit = vi.fn((unit: "km" | "mi") => `distance in ${unit}`);
+    await telegramChannel.send(p, msg, { bodyForDistanceUnit });
+    const wire = vi.mocked(fetch);
+    const bodies = wire.mock.calls.map(([, init]) => JSON.parse(init!.body as string));
+    expect(bodies.map((body) => [body.chat_id, body.text])).toEqual([
+      ["units-shared", expect.stringContaining("distance in mi")],
+      ["units-own", expect.stringContaining("distance in km")],
+    ]);
+    expect([a, b, c].map((login) => stateOf("telegram", login))).toEqual([
+      "delivering", "delivering", "delivering",
+    ]);
+    await telegramChannel.send(p, msg, {
+      bodyForDistanceUnit,
+      telegramChatIds: ["units-override"],
+    });
+    expect(JSON.parse(wire.mock.calls[2][1]!.body as string).text).toContain("canonical");
+    expect(bodyForDistanceUnit).toHaveBeenCalledTimes(2);
+  });
+
+  it("records a renderer failure for every shared owner while the other chat still delivers", async () => {
+    const p = newProfile("Distance render failure");
+    const a = seedLoginTelegram(p, "render-shared");
+    const b = seedLoginTelegram(p, "render-shared");
+    const c = seedLoginTelegram(p, "render-healthy");
+    setUnitPrefs(a, { weightUnit: "kg", distanceUnit: "mi", temperatureUnit: "F" });
+    const calls = stubWire();
+    await expect(telegramChannel.send(p, {
+      title: "Recap", body: "canonical", kind: "recap",
+    }, {
+      bodyForDistanceUnit: (unit) => {
+        if (unit === "mi") throw new Error("synthetic renderer failure");
+        return "metric detail";
+      },
+    })).rejects.toBeInstanceOf(PartialDeliveryError);
+    expect(calls.filter((url) => url.includes("sendMessage"))).toHaveLength(1);
+    expect([a, b, c].map((login) => stateOf("telegram", login))).toEqual([
+      "failing", "failing", "delivering",
+    ]);
+  });
+
   it("a fresh chat is Ready (no row); one send lands on EVERY login behind a shared chat; another chat's error survives it", async () => {
     const p = newProfile("Shared chat");
     const a = seedLoginTelegram(p, "chat-shared");
@@ -434,6 +485,37 @@ describe("Telegram owners", () => {
 });
 
 describe("Web Push owners", () => {
+  it("uses each subscription owner's units and isolates renderer failure", async () => {
+    ensureVapidKeys();
+    const p = newProfile("Push distance recipients");
+    const metric = newLogin();
+    const imperial = newLogin();
+    for (const [login, distanceUnit] of [[metric, "km"], [imperial, "mi"]] as const) {
+      db.prepare("INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')").run(login, p);
+      setUnitPrefs(login, { weightUnit: "kg", distanceUnit, temperatureUnit: "F" });
+      savePushSubscription(login, {
+        endpoint: `https://push.example/${login}/ok`, p256dh: "p256dh-0001", auth: "auth-0001",
+      });
+    }
+    const wire = vi.mocked(webpush.sendNotification);
+    wire.mockClear();
+    const msg = { title: "Recap", body: "canonical", kind: "recap" as const };
+    await dispatch(p, msg, { bodyForDistanceUnit: (unit) => `distance in ${unit}` });
+    expect(Object.fromEntries(wire.mock.calls.map(([sub, payload]) => [sub.endpoint, JSON.parse(String(payload)).body]))).toEqual({
+      [`https://push.example/${metric}/ok`]: "distance in km",
+      [`https://push.example/${imperial}/ok`]: "distance in mi",
+    });
+    wire.mockClear();
+    await dispatch(p, msg, { bodyForDistanceUnit: (unit) => {
+      if (unit === "mi") throw new Error("synthetic renderer failure");
+      return "metric detail";
+    } });
+    expect(wire).toHaveBeenCalledTimes(1);
+    expect([metric, imperial].map((login) => stateOf("push", login))).toEqual([
+      "delivering", "failing",
+    ]);
+  });
+
   it.each([
     {
       name: "partial success is Delivering",

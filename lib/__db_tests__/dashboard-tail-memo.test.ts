@@ -32,6 +32,7 @@ import {
   getScheduledAppointments,
 } from "@/lib/queries";
 import { getRecapCard } from "@/lib/notifications/recap-data";
+import { shiftDateStr } from "@/lib/date";
 
 vi.mock("@/lib/request-cache", async () =>
   (
@@ -140,6 +141,28 @@ describe("the dashboard tail memo is invalidated by commits (#5073)", () => {
         .lastInsertRowid
     );
     trace = installStatementTrace();
+  });
+
+  it("keeps two distance preferences separate at the same profile, weight and day", async () => {
+    freshProfile("Cardio memo units");
+    const day = today(profileId);
+    for (const [offset, km] of [[-9, 5], [0, 10]]) {
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, distance_km, duration_min)
+         VALUES (?, ?, 'cardio', 'Run', ?, 60)`
+      ).run(profileId, shiftDateStr(day, offset), km);
+    }
+    let metric = "";
+    let imperial = "";
+    await load(() => { metric = getRecapCard(profileId, "kg", "km").headline; });
+    await load(() => { imperial = getRecapCard(profileId, "kg", "mi").headline; });
+    expect(metric).toContain("longest Run at 10 km");
+    expect(imperial).toContain("longest Run at 6.21 mi");
+    const warm = await load(() => {
+      expect(getRecapCard(profileId, "kg", "km").headline).toBe(metric);
+      expect(getRecapCard(profileId, "kg", "mi").headline).toBe(imperial);
+    });
+    expect(warm).toBe(VERSION_READ);
   });
 
   // THE COLD COUNT IS THE CONTROL, and without it this whole file is vacuous: a memo
