@@ -238,7 +238,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
       db
         .prepare(
           `SELECT date, started_at FROM metric_samples
-            WHERE profile_id = ? AND metric = 'bristol_stool'
+            WHERE profile_id = ? AND metric = 'bristol_stool_type'
             ORDER BY id DESC LIMIT 1`
         )
         .get(p)
@@ -267,7 +267,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
       db
         .prepare(
           `SELECT COUNT(*) AS n FROM metric_samples
-            WHERE profile_id = ? AND metric = 'bristol_stool'`
+            WHERE profile_id = ? AND metric = 'bristol_stool_type'`
         )
         .get(p)
     ).toEqual({ n: 0 });
@@ -281,7 +281,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
       db
         .prepare(
           `SELECT date, started_at FROM metric_samples
-            WHERE profile_id = ? AND metric = 'bristol_stool'
+            WHERE profile_id = ? AND metric = 'bristol_stool_type'
             ORDER BY id DESC LIMIT 1`
         )
         .get(p)
@@ -299,7 +299,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
       {
         entry: "serving",
         groupKey: "berries",
-        mealSlot: "dinner",
+        mealSlot: "Evening",
         grams: null,
         eatenAt: null,
       },
@@ -321,7 +321,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
     ).toEqual({
       date,
       recorded_at: utcInstant(CAPTURE),
-      meal_slot: "dinner",
+      meal_slot: "Evening",
       occurred_at: null,
       time_source: null,
     });
@@ -347,7 +347,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
         db
           .prepare(
             `SELECT COUNT(*) AS n FROM metric_samples
-            WHERE profile_id = ? AND metric = 'bristol_stool'`
+            WHERE profile_id = ? AND metric = 'bristol_stool_type'`
           )
           .get(p)
       ).toEqual({ n: 0 });
