@@ -5,6 +5,7 @@ import {
   expectNoClippedContent,
   expectSvgTextInsidePlot,
   expectSvgTextLegible,
+  settledBoxes,
   touchPinch,
 } from "./helpers";
 import { E2E_LOGIN_INTRADAY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -213,10 +214,9 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
 
   // ── THE WINDOW THE ADD ROW WRITES INTO (#4950, as amended) ─────────────────
   //
-  // No mode, no chip to arm, no second selection rect: the chart's two existing
-  // interactions ARE the window. This is the browser-side proof of both, because both
-  // are gestures — a component test can hand the row a view, but only a browser can
-  // show that a drag on the plot produces one.
+  // No mode or chip to arm: a drag supplies a window and a tap pins a start.
+  // A component test can hand the row a view, but only a browser can show that
+  // these gestures survive release and reach the form behind a chip.
   //
   // Reads only, like the rest of this spec. What is asserted is the URL the chip mints
   // and the clocks the opened form holds; the door's own posting is pinned at the
@@ -273,7 +273,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
     }
   });
 
-  test("at full day the crosshair is a start alone, and the chip carries it", async ({
+  test("at full day a keyboard pin or touch tap supplies the start the chip carries", async ({
     browser,
   }) => {
     test.slow();
@@ -294,13 +294,35 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       await chart.getByTestId("intraday-svg").focus();
       await member.keyboard.press("Home");
       await member.keyboard.press("ArrowRight");
+      await member.keyboard.press("Enter");
       await expect(chart).toHaveAttribute("data-zoomed", "false");
 
       const label = appContent(member).getByTestId("history-add-label");
-      await expect(label).toHaveText(/^Add at \d{2}:\d{2}$/);
-      const from = (await label.textContent())!.replace("Add at ", "");
+      await expect(label).toHaveText("Add at 00:30");
+      await member.keyboard.press("Escape");
+      await expect(label).toHaveText("Add");
 
-      await appContent(member).getByTestId("history-add-practice").click();
+      // Real touch release also leaves the plot. The committed start must survive
+      // that pointerleave and the subsequent trip to the existing practice door.
+      const svg = chart.getByTestId("intraday-svg");
+      await svg.scrollIntoViewIfNeeded();
+      const [box] = await settledBoxes([svg]);
+      const geo = INTRADAY_VARIANTS.compact;
+      const pinX =
+        geo.padLeft +
+        (740 / 1440) * (geo.viewBoxWidth - geo.padLeft - geo.padRight);
+      await member.touchscreen.tap(
+        box.x + (pinX / geo.viewBoxWidth) * box.width,
+        box.y + ((geo.padTop + 2) / geo.viewBoxWidth) * box.width
+      );
+      await expect(label).toHaveText("Add at 12:20");
+      const selection = chart.getByTestId("intraday-selection");
+      await expect(selection).toBeVisible();
+      expect(Number(await selection.getAttribute("x"))).toBeCloseTo(pinX, 1);
+      const from = "12:20";
+      const practice = appContent(member).getByTestId("history-add-practice");
+      await expect(practice).toHaveAttribute("href", /[?&]from=12%3A20(?:&|$)/);
+      await practice.tap();
       await expect(member).toHaveURL(
         new RegExp(`from=${from.replace(":", "%3A")}`)
       );
