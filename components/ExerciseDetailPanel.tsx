@@ -11,7 +11,11 @@ import {
   strengthStandingPhrase,
   bodyweightMultiple,
 } from "@/lib/strength-standards";
-import { goalsForExercise, goalTargetValueText } from "@/lib/outcome-goals";
+import {
+  goalPct,
+  goalsForExercise,
+  goalTargetValueText,
+} from "@/lib/outcome-goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -213,7 +217,7 @@ export default function ExerciseDetailPanel({
           data-testid="exercise-last-trained"
         />
         {matchedGoals.map((g) => {
-          const pct = goalProgress?.[g.id]?.pct ?? 0;
+          const pct = goalPct(g, goalProgress?.[g.id]);
           // Scoped to this exercise already, so the value drops the name
           // prefix the cross-exercise goal cards keep (#2895).
           return (
@@ -222,8 +226,8 @@ export default function ExerciseDetailPanel({
               label="Goal"
               value={goalTargetValueText(g, wu) ?? g.title}
               href={trainingTabHref("plan", "goals")}
-              sub={`${pct}% complete`}
-              progress={pct}
+              sub={pct != null ? `${pct}% complete` : undefined}
+              progress={pct ?? undefined}
             />
           );
         })}

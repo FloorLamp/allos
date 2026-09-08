@@ -107,10 +107,9 @@ export function goalUpcomingDetail(
 }
 
 // The single "what percent complete is this goal?" computation, shared by every
-// surface that renders a goal percentage (the household card via goalHighlights,
-// the dashboard row via goalProgressStatement, and the training GoalsManager) so
-// they can never disagree (issue #307 — this was re-derived inline in three
-// places, and the goals page's auto-vs-manual test had drifted).
+// surface that renders a goal percentage so they can never disagree (issue #307 —
+// this was re-derived inline in three places, and the goals page's auto-vs-manual
+// test had drifted).
 //
 // A goal's percentage has one of three bases, in priority order:
 //   1. Derived progress — for exercise-linked, body-metric, and biomarker goals
