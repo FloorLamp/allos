@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledClickApplied,
+  settledFill,
+} from "./helpers";
 
 // Intake lifecycle stale-actor fixes (#2133/#2131). Both tests OWN their fixtures
 // (create-and-clean, unique names) so the shared seed profile is left as found.
@@ -140,10 +145,20 @@ test("a retired dose offers Restore in the edit form and rejoins the schedule (#
   const retired = doseEditor.getByTestId("retired-doses");
   await expect(retired).toBeVisible();
   await expect(retired).toContainText("500 mg · Evening");
-  await settledClick(page, page.getByTestId(`restore-dose-${doseId}`));
+  // Restoring the first live dose moves this item to a scheduled row. Wait for
+  // that server render, then reopen its editor to verify the saved dose.
+  await settledClickApplied(
+    page,
+    page.getByTestId(`restore-dose-${doseId}`),
+    row.filter({ hasText: "500 mg" })
+  );
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await openFact(page, "dose");
 
-  // Rendering from state: with nothing left to restore, the section is gone —
-  // and the restored dose joined the editable dose rows.
   await expect(page.getByTestId("retired-doses")).toHaveCount(0);
   await expect(
     page.getByTestId("intake-editor").getByRole("combobox", { name: "Amount" })
