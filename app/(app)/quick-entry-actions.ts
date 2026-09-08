@@ -308,7 +308,7 @@ export type QuickEntryData =
         capProgress: string | null;
       }[];
     }
-  | { form: "unavailable"; message: string };
+  | { form: "unavailable"; today: string; message: string };
 
 export async function loadQuickEntry(
   form: QuickEntryForm,
@@ -348,6 +348,7 @@ export async function loadQuickEntry(
   ) {
     return {
       form: "unavailable",
+      today: date,
       message: "That day is outside quick logging.",
     };
   }
@@ -360,6 +361,7 @@ export async function loadQuickEntry(
     if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "Food-group serving logging starts after the first year. Growth for this age lives in the Body and History views.",
       };
@@ -438,6 +440,7 @@ export async function loadQuickEntry(
     ) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "This profile has no tracked practices yet. Switch to it to start one.",
       };
@@ -458,6 +461,7 @@ export async function loadQuickEntry(
     if (isMinor(getProfileAge(profile.id))) {
       return {
         form: "unavailable",
+        today: date,
         message: "This isn't available for this profile.",
       };
     }
@@ -465,6 +469,7 @@ export async function loadQuickEntry(
     if (keys.length === 0) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "No substances tracked yet. Name one under Health record \u2192 Specialty \u2192 Substance use to log it from here.",
       };
@@ -495,6 +500,7 @@ export async function loadQuickEntry(
     if (subjectProfileId != null && subjectProfileId !== actingProfile.id) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "Period logging is a declaration by the profile acting — switch to this profile to log it.",
       };
@@ -505,6 +511,7 @@ export async function loadQuickEntry(
     if (!getNavRelevance(profile.id).cycle) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "Cycle tracking isn't set up for this profile. Turn it on by recording a period under Medical \u2192 Cycle.",
       };
@@ -615,7 +622,11 @@ export async function loadQuickEntry(
     prnMeds.length === 0 &&
     pastDays.every((day) => day.slots.length === 0)
   ) {
-    return { form: "unavailable", message: "No doses are due right now." };
+    return {
+      form: "unavailable",
+      today: date,
+      message: "No doses are due right now.",
+    };
   }
   return {
     form: "dose",

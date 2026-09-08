@@ -234,11 +234,12 @@ export default function QuickDoseList({
           ))}
         </QuickEntryRowList>
       ) : null}
-      {day === today && prn && prn.meds.length > 0 && (
+      {prn && prn.meds.length > 0 && (
         <QuickLogPrnContent
           {...prn}
           title={null}
           profileId={subjectProfileId}
+          date={day}
         />
       )}
     </div>

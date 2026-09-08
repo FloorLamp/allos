@@ -429,7 +429,6 @@ describe("SubstanceUnitControl is ONE row control", () => {
       profile_id: "42",
       substance: "nicotine",
       date: TODAY,
-      date_reach: "sheet",
     });
     const older = undoAnnouncements[0];
     expect(older).toMatchObject({

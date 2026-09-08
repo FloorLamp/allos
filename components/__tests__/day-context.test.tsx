@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import BoundedDaySwitcher from "@/components/BoundedDaySwitcher";
 import { DayContextProvider, useDayContext } from "@/components/DayContext";
@@ -104,6 +104,7 @@ describe("the shared bounded day context", () => {
   });
 
   it("drops a selected day when a later today moves it outside reach", () => {
+    const changed = vi.fn();
     function Draft() {
       const [value, setValue] = useState("");
       return (
@@ -120,6 +121,7 @@ describe("the shared bounded day context", () => {
         today={today}
         reach={SHEET_REACH}
         backing={{ kind: "state", initialDay: "2026-09-07" }}
+        onSelectedDayChange={changed}
       >
         <BoundedDaySwitcher />
         <CurrentDay />
@@ -145,6 +147,7 @@ describe("the shared bounded day context", () => {
     ).toBe("kept");
 
     view.rerender(renderToday("2026-09-09"));
+    expect(changed).toHaveBeenLastCalledWith("2026-09-07");
     expect(screen.getByTestId("current-day").textContent).toBe(
       "2026-09-07:past"
     );

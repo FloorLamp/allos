@@ -80,8 +80,12 @@ function renderSheet(actingProfileId = ACTING.id) {
   };
 }
 
-function unavailable(message: string) {
-  return { form: "unavailable" as const, message };
+function unavailable(message: string, today = MEASUREMENTS.defaultDate) {
+  return {
+    form: "unavailable" as const,
+    today,
+    message,
+  };
 }
 
 beforeEach(() => {
@@ -211,5 +215,95 @@ describe("the stall bound and Retry (#3416 proposal 3)", () => {
       ).toContain("recovered")
     );
     expect(loadQuickEntry).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("day request identity", () => {
+  it("retries the selected day after its gather rejects", async () => {
+    loadQuickEntry
+      .mockResolvedValueOnce(unavailable("today"))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(unavailable("recovered"));
+    renderSheet();
+    fireEvent.click(screen.getByText("open"));
+    await screen.findByTestId("bounded-day-switcher");
+
+    fireEvent.click(screen.getByTestId("day-context-1"));
+    await screen.findByTestId("quick-entry-error");
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "stool",
+      ACTING.id,
+      "2026-09-02",
+      "sheet"
+    );
+
+    fireEvent.click(screen.getByTestId("quick-entry-retry"));
+    await screen.findByTestId("quick-entry-unavailable");
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "stool",
+      ACTING.id,
+      "2026-09-02",
+      "sheet"
+    );
+  });
+
+  it("drops a late response for a day already left", async () => {
+    let resolveYesterday!: (value: ReturnType<typeof unavailable>) => void;
+    loadQuickEntry
+      .mockResolvedValueOnce(unavailable("today"))
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveYesterday = resolve))
+      )
+      .mockResolvedValueOnce(unavailable("two days ago"));
+    renderSheet();
+    fireEvent.click(screen.getByText("open"));
+    await screen.findByTestId("bounded-day-switcher");
+
+    fireEvent.click(screen.getByTestId("day-context-1"));
+    fireEvent.click(screen.getByTestId("day-context-2"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("quick-entry-unavailable").textContent
+      ).toContain("two days ago")
+    );
+    resolveYesterday(unavailable("late yesterday"));
+    await act(async () => {});
+    expect(screen.getByTestId("quick-entry-unavailable").textContent).toContain(
+      "two days ago"
+    );
+  });
+
+  it("gathers the reconciled day when midnight expires the cached selection", async () => {
+    loadQuickEntry
+      .mockResolvedValueOnce(unavailable("initial"))
+      .mockResolvedValueOnce(unavailable("selected"))
+      .mockResolvedValueOnce(
+        unavailable("old day after midnight", "2026-09-05")
+      )
+      .mockResolvedValueOnce(unavailable("reconciled", "2026-09-05"));
+    renderSheet();
+    fireEvent.click(screen.getByText("open"));
+    await screen.findByTestId("bounded-day-switcher");
+    fireEvent.click(screen.getByTestId("day-context-2"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("quick-entry-unavailable").textContent
+      ).toContain("selected")
+    );
+
+    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByText("open"));
+
+    await waitFor(() =>
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "stool",
+        ACTING.id,
+        "2026-09-05",
+        "sheet"
+      )
+    );
+    expect(
+      (await screen.findByTestId("quick-entry-unavailable")).textContent
+    ).toContain("reconciled");
   });
 });

@@ -349,8 +349,7 @@ export async function undoSubstanceUnitAction(
   if (substance === null) return { ok: false, error: "Unknown substance." };
   const hasEventId = formData.has("event_id");
   const hasDate = formData.has("date");
-  const sheetDate = formData.get("date_reach") === "sheet";
-  const exactReceipt = hasEventId || (hasDate && !sheetDate);
+  const exactReceipt = hasEventId || hasDate;
   const rawEventId = String(formData.get("event_id") ?? "").trim();
   const rawDate = String(formData.get("date") ?? "").trim();
   let expectedEventId: number | undefined;

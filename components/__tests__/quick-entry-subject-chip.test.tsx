@@ -19,6 +19,7 @@ import type { AppRoute } from "@/lib/hrefs";
 const loadQuickEntry = vi.hoisted(() =>
   vi.fn(async (form: QuickEntryForm, subjectProfileId?: number) => ({
     form: "unavailable" as const,
+    today: MEASUREMENTS.defaultDate,
     message: `loaded ${form} for ${subjectProfileId ?? "acting"}`,
   }))
 );

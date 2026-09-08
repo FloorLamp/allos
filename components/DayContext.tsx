@@ -4,7 +4,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -112,14 +114,19 @@ function StateDayContext({
       ? initialDay
       : today;
   if (reconciledDay !== day) setDay(reconciledDay);
+  const reportedDay = useRef(reconciledDay);
+  useLayoutEffect(() => {
+    if (reportedDay.current === reconciledDay) return;
+    reportedDay.current = reconciledDay;
+    onSelectedDayChange?.(reconciledDay);
+  }, [reconciledDay, onSelectedDayChange]);
   const select = useCallback(
     (nextDay: string) => {
       if (isWithinReach(reach, today, nextDay) && nextDay !== reconciledDay) {
         setDay(nextDay);
-        onSelectedDayChange?.(nextDay);
       }
     },
-    [reach, today, reconciledDay, onSelectedDayChange]
+    [reach, today, reconciledDay]
   );
   const value = useMemo(
     () =>

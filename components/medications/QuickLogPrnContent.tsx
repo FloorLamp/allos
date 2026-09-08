@@ -31,6 +31,7 @@ export default function QuickLogPrnContent({
   timeFormat,
   nowIso,
   pediatric,
+  date,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
@@ -58,6 +59,8 @@ export default function QuickLogPrnContent({
   // label band is evaluated at the tap rather than only inside the add form. Absent
   // for an adult profile, and every line below is what it always was.
   pediatric?: PediatricFormContext | null;
+  /** The owning quick-log surface's selected day. Other mounts keep their own day. */
+  date?: string;
 }) {
   // The frozen-clock seam (#1005): recorded_at is stamped through lib/clock, so the
   // elapsed-window "now" must come from the same source (a production no-op). A
@@ -94,6 +97,7 @@ export default function QuickLogPrnContent({
         compactActions={compact}
         tz={tz}
         pediatric={pediatric}
+        date={date}
       />
     );
   };

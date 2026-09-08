@@ -30,11 +30,13 @@ import type { OverlaySize } from "./overlay";
 import {
   DayContextBoundary,
   DayContextProvider,
+  useDayContext,
   useOptionalDayContext,
   type DayContextValue,
 } from "./DayContext";
 import BoundedDaySwitcher from "./BoundedDaySwitcher";
 import { SHEET_REACH } from "@/lib/log-manifest";
+import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -216,7 +218,7 @@ type QuickEntryBody = QuickEntryData | MeasurementsQuickEntry;
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; data: QuickEntryBody }
+  | { status: "ready"; data: QuickEntryBody; gatheredKey?: string }
   | { status: "error" };
 
 type SheetDayContext =
@@ -225,12 +227,7 @@ type SheetDayContext =
 
 function quickEntryToday(data: QuickEntryBody): string | null {
   if (data.form === "measurements") return data.defaultDate;
-  if (
-    data.form === "cycle" ||
-    data.form === "document" ||
-    data.form === "unavailable"
-  )
-    return null;
+  if (data.form === "cycle" || data.form === "document") return null;
   return data.today;
 }
 
@@ -295,7 +292,9 @@ export default function QuickEntryProvider({
   // paint as Alex's, and cleared whenever the ACTING profile changes (below) — the
   // same device-local wipe boundary ProfileSwitchWatcher enforces for the offline
   // read snapshots, extended to this in-memory one.
-  const lastGoodRef = useRef(new Map<string, QuickEntryData>());
+  const lastGoodRef = useRef(
+    new Map<string, { data: QuickEntryData; parts: DayContextParts }>()
+  );
   const priorActingProfileId = useRef(actingProfileId);
   useLayoutEffect(() => {
     if (priorActingProfileId.current !== actingProfileId) {
@@ -327,8 +326,18 @@ export default function QuickEntryProvider({
           inheritedDay?.parts.profileId === subjectId
             ? inheritedDay.parts.day
             : selectedDay;
+        const today = measurements.defaultDate;
+        const parts: DayContextParts =
+          inheritedDay?.parts.profileId === subjectId
+            ? inheritedDay.parts
+            : {
+                profileId: subjectId,
+                day: requestedDay ?? today,
+                reach: SHEET_REACH,
+              };
         setState({
           status: "ready",
+          gatheredKey: dayContextKey(parts),
           data:
             subjectId === actingProfileId
               ? {
@@ -337,11 +346,11 @@ export default function QuickEntryProvider({
                 }
               : {
                   form: "unavailable",
+                  today,
                   message:
                     "Switch to this profile to log measurements from the sheet.",
                 },
         });
-        const today = measurements.defaultDate;
         setSheetDay(
           inheritedDay?.parts.profileId === subjectId
             ? { kind: "inherited", value: inheritedDay }
@@ -354,22 +363,30 @@ export default function QuickEntryProvider({
         );
         return;
       }
-      const requestedDay =
-        inheritedDay?.parts.profileId === subjectId
-          ? inheritedDay.parts.day
-          : selectedDay;
-      const key = `${next}:${subjectId}:${requestedDay ?? "today"}`;
-      const cached = lastGoodRef.current.get(key);
-      if (inheritedDay?.parts.profileId === subjectId) {
-        setSheetDay({ kind: "inherited", value: inheritedDay });
+      const matchingInherited =
+        inheritedDay?.parts.profileId === subjectId ? inheritedDay : null;
+      const requestedDay = matchingInherited?.parts.day ?? selectedDay;
+      const requestedParts: DayContextParts | null = matchingInherited
+        ? matchingInherited.parts
+        : selectedDay
+          ? { profileId: subjectId, day: selectedDay, reach: SHEET_REACH }
+          : null;
+      const requestedKey = requestedParts
+        ? `${next}:${dayContextKey(requestedParts)}`
+        : null;
+      const cached = requestedKey
+        ? lastGoodRef.current.get(requestedKey)
+        : undefined;
+      if (matchingInherited) {
+        setSheetDay({ kind: "inherited", value: matchingInherited });
       } else if (cached) {
-        const cachedToday = quickEntryToday(cached);
+        const cachedToday = quickEntryToday(cached.data);
         if (cachedToday)
           setSheetDay({
             kind: "state",
-            profileId: subjectId,
+            profileId: cached.parts.profileId,
             today: cachedToday,
-            initialDay: requestedDay ?? cachedToday,
+            initialDay: cached.parts.day,
           });
       }
       // LAST-GOOD RENDER, REVALIDATE BEHIND IT (#3416 proposal 1). A held copy from
@@ -378,7 +395,13 @@ export default function QuickEntryProvider({
       // sheet already knows; the fetch below still runs regardless — the SAME one
       // gather an open always made (#3369: no extra query for having a cache).
       setState(
-        cached ? { status: "ready", data: cached } : { status: "loading" }
+        cached
+          ? {
+              status: "ready",
+              data: cached.data,
+              gatheredKey: dayContextKey(cached.parts),
+            }
+          : { status: "loading" }
       );
       // THE STALL BOUND (#3416 proposal 3): with no last-good to fall back on, a
       // gather that never settles must not leave "Loading…" up forever. ~10s, so a
@@ -397,21 +420,40 @@ export default function QuickEntryProvider({
         (data) => {
           if (stallTimer != null) clearTimeout(stallTimer);
           if (requestRef.current !== token) return;
-          lastGoodRef.current.set(key, data);
           const gatheredToday = quickEntryToday(data);
-          setSheetDay(
-            inheritedDay?.parts.profileId === subjectId
-              ? { kind: "inherited", value: inheritedDay }
-              : gatheredToday
-                ? {
-                    kind: "state",
+          if (gatheredToday) {
+            const parts =
+              requestedParts ??
+              ({
+                profileId: subjectId,
+                day: gatheredToday,
+                reach: SHEET_REACH,
+              } satisfies DayContextParts);
+            lastGoodRef.current.set(`${next}:${dayContextKey(parts)}`, {
+              data,
+              parts,
+            });
+            if (!matchingInherited)
+              setSheetDay({
+                kind: "state",
+                profileId: subjectId,
+                today: gatheredToday,
+                initialDay: parts.day,
+              });
+          }
+          setState({
+            status: "ready",
+            data,
+            gatheredKey: gatheredToday
+              ? dayContextKey(
+                  requestedParts ?? {
                     profileId: subjectId,
-                    today: gatheredToday,
-                    initialDay: requestedDay ?? gatheredToday,
+                    day: gatheredToday,
+                    reach: SHEET_REACH,
                   }
-                : null
-          );
-          setState({ status: "ready", data });
+                )
+              : undefined,
+          });
         },
         () => {
           if (stallTimer != null) clearTimeout(stallTimer);
@@ -441,10 +483,22 @@ export default function QuickEntryProvider({
       setSubject(resolvedSubject);
       setPickerOpen(false);
       setOpen(true);
-      setSheetDay(null);
-      loadFor(next, resolvedSubject, token, dayContext);
+      const reusableStateDay =
+        dayContext == null &&
+        sheetDay?.kind === "state" &&
+        sheetDay.profileId === resolvedSubject
+          ? sheetDay
+          : null;
+      if (!dayContext && !reusableStateDay) setSheetDay(null);
+      loadFor(
+        next,
+        resolvedSubject,
+        token,
+        dayContext,
+        reusableStateDay?.initialDay
+      );
     },
-    [actingProfileId, loadFor]
+    [actingProfileId, loadFor, sheetDay]
   );
 
   // Tapping the chip toggles the block; tapping it again while open closes it
@@ -502,6 +556,9 @@ export default function QuickEntryProvider({
     (day: string) => {
       if (form == null) return;
       const token = ++requestRef.current;
+      setSheetDay((current) =>
+        current?.kind === "state" ? { ...current, initialDay: day } : current
+      );
       loadFor(form, subject, token, null, day);
     },
     [form, subject, loadFor]
@@ -609,7 +666,7 @@ export default function QuickEntryProvider({
             {sheetDay?.kind === "inherited" ? (
               <DayContextBoundary value={sheetDay.value}>
                 <QuickEntryDayBody
-                  identity={`${subject}:${sheetDay.value.key}`}
+                  identity={`${form}:${subject}:${sheetDay.value.key}`}
                   form={form}
                   subject={subject}
                   state={state}
@@ -629,7 +686,11 @@ export default function QuickEntryProvider({
               >
                 <BoundedDaySwitcher />
                 <QuickEntryDayBody
-                  identity={`${subject}:${sheetDay.initialDay}`}
+                  identity={`${form}:${subject}:${dayContextKey({
+                    profileId: sheetDay.profileId,
+                    day: sheetDay.initialDay,
+                    reach: SHEET_REACH,
+                  })}`}
                   form={form}
                   subject={subject}
                   state={state}
@@ -672,6 +733,13 @@ function QuickEntryDayBody({
   form: QuickEntryForm;
   subject: number;
 }) {
+  const dayContext = useDayContext();
+  const currentState =
+    props.state.status === "ready" &&
+    props.state.gatheredKey != null &&
+    props.state.gatheredKey !== dayContext.key
+      ? ({ status: "loading" } as const)
+      : props.state;
   return (
     <div
       key={identity}
@@ -679,7 +747,7 @@ function QuickEntryDayBody({
       data-form={form}
       data-subject-profile-id={subject}
     >
-      <QuickEntryBody {...props} />
+      <QuickEntryBody {...props} state={currentState} />
     </div>
   );
 }

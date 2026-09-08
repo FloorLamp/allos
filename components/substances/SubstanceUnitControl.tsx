@@ -109,7 +109,6 @@ export default function SubstanceUnitControl({
         fd.set("substance", substance);
         if (date) {
           fd.set("date", date);
-          fd.set("date_reach", "sheet");
         }
         if (originProfileId != null)
           fd.set("profile_id", String(originProfileId));
