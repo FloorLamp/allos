@@ -47,7 +47,7 @@ import {
   releaseMessagePointerBody,
   type MessagePointer,
 } from "./message-pointers";
-import { messageBodyHash } from "./reconcile-core";
+import { keyboardTokens, messageBodyHash } from "./reconcile-core";
 import { composeForRebuild } from "./compose";
 import { deliveredKeyboard } from "./delivered-keyboard";
 import { getPoolView } from "../queries/intake/supply-pool";
@@ -303,6 +303,16 @@ export async function runRefills(
       );
     }
   });
+  if (results.length === 0)
+    log.info("refill nudge skipped: no channel", { profile: profileId });
+  if (delivered) {
+    for (const { item } of claimed)
+      log.info("refill nudge sent", {
+        profile: profileId,
+        item: item.name,
+        daysLeft: item.daysLeft,
+      });
+  }
   return { failed };
 }
 
@@ -1162,6 +1172,25 @@ export async function reconcileRefillReceipt(
   profileId: number,
   pointer: MessagePointer
 ): Promise<"unhandled" | "unchanged" | "edited"> {
+  const tokens = keyboardTokens([
+    ...pointer.receiptKeyboard,
+    ...pointer.keyboard,
+  ]);
+  const ownsOrderedReceipt = tokens.some((data) => {
+    const ordered = parseOrderedRefillCallback(data);
+    if (ordered?.profileId === profileId) return true;
+    const legacy = parseRefillCallback(data);
+    if (legacy?.profileId !== profileId) return false;
+    const marker = parseRefillMarker(
+      readRefillMarker(profileId, legacy.itemId)
+    );
+    return (
+      marker?.state === "confirm" && marker.sourcePointerId === pointer.id
+    );
+  });
+  // Ordinary legacy reminders retain the family's existing close/detail behavior.
+  // Callbacks enter the planner directly after their atomic state transition.
+  if (!receiptIds(tokens).length && !ownsOrderedReceipt) return "unhandled";
   const plan = planRefillReceipt(profileId, pointer);
   if (plan === "unhandled") return plan;
   if (!plan) return "unchanged";
