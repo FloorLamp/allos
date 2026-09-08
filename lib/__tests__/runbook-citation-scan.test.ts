@@ -36,11 +36,11 @@ function scannedFiles(): string[] {
   const work = readdirSync(path.join(REPO, "docs/orchestration"))
     .filter((name) => name.endsWith(".md"))
     .map((name) => path.posix.join("docs/orchestration", name));
-  const skills = readdirSync(path.join(REPO, ".claude/skills"), {
-    withFileTypes: true,
-  })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.posix.join(".claude/skills", entry.name, "SKILL.md"));
+  const skills = [".agents/skills", ".claude/skills"].flatMap((root) =>
+    readdirSync(path.join(REPO, root), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.posix.join(root, entry.name, "SKILL.md"))
+  );
   const scripts = readdirSync(path.join(REPO, "scripts/orchestration")).map(
     (name) => path.posix.join("scripts/orchestration", name)
   );
@@ -61,7 +61,7 @@ function scannedFiles(): string[] {
  */
 function pathRefs(text: string): string[] {
   const pattern =
-    /(?<![\w/.@-])((?:docs|scripts|lib|app|components|\.claude|\.github)\/[A-Za-z0-9_./*<>${}-]*[A-Za-z0-9_>}])/g;
+    /(?<![\w/.@-])((?:docs|scripts|lib|app|components|\.agents|\.claude|\.github)\/[A-Za-z0-9_./*<>${}-]*[A-Za-z0-9_>}])/g;
   const refs = new Set<string>();
   for (const match of text.matchAll(pattern)) {
     const raw = match[1].replace(/:\d+$/, "");
@@ -238,6 +238,7 @@ describe("runbook citation scan", () => {
 
   it("scans the whole runbook surface", () => {
     expect(files).toContain("docs/orchestration/review-merge.md");
+    expect(files).toContain(".agents/skills/orchestrate/SKILL.md");
     expect(files).toContain(".claude/skills/orchestrate/SKILL.md");
     expect(files).toContain("scripts/orchestration/merge-gate.mjs");
   });

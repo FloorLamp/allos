@@ -55,3 +55,12 @@ proportion to the change.
 - [Change and test policy](docs/change-policy.md) governs scope, new code, and
   test value. Implement the smallest complete change, then stop when the
   requested behavior and relevant checks pass.
+
+## Skills
+
+Shared workflows live in [.agents/skills](.agents/skills): `pm`, `orchestrate`,
+`needs-human`, `file-issue`, `reconcile-tracker`, and `ux-walkthrough`. Read the
+matching `SKILL.md` when assigned that role, even if the host does not discover
+skills automatically. `.claude/skills` contains thin Claude Code entrypoints to
+the same procedures. [Agent tools](docs/orchestration/environment.md#agent-tools)
+explains how to use the current host's capabilities without changing the workflow.
