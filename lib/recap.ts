@@ -75,12 +75,18 @@ import {
 import { robustEndpoints } from "./robust-stats";
 import { USUAL_KINDS, recordedUsual } from "./usual";
 import { prSetClause } from "./lifts";
+import { cardioPrPhrase, type CardioPR } from "./coaching/cardio";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";
 import { sriPresentation } from "./sleep-regularity";
 import { formatHm } from "./sleep-summary";
 import { NUTRIENT_LABELS, type NutrientKey } from "./nutrition-day";
-import type { WeekMode, WeekStart, WeightUnit } from "./settings";
+import type {
+  WeekMode,
+  WeekStart,
+  WeightUnit,
+  DistanceUnit,
+} from "./settings";
 import type { NotificationMessage } from "./notifications/types";
 import {
   formatEmphasizedLine,
@@ -222,11 +228,7 @@ export interface RecapNutrientDays {
   days: number;
 }
 
-// A personal record set inside the window (#3033) — the label plus, for a strength
-// record, the SET it was performed with. The set is what #1722's defect class was
-// about: `recentPRs` computes e1rm/weight/reps/kind and the recap kept only the
-// name. A cardio record carries no `set` — its value lives on a distance/pace
-// boundary this line does not cross yet, so it keeps its name alone.
+// A personal record with its performed set or canonical cardio measurements.
 export interface RecapPR {
   /** Display label, already load-context-composed ("Bench Press (Home rack)"). */
   label: string;
@@ -236,14 +238,23 @@ export interface RecapPR {
     reps: number;
     bodyweight: boolean;
   } | null;
+  cardio?: Omit<CardioPR, "activity" | "date"> | null;
 }
 
-// One PR as the recap states it — "Romanian Deadlift (Rep Trap Bar) at 100 kg × 5"
-// — through the SAME `prSetClause` the PR finding renders, so the summary and the
-// celebration can never spell one record two ways. Used by the PR line's notes AND
-// the headline's PR slot, which is what "never phrased by a second path" means.
-function recapPrPhrase(pr: RecapPR, wu: WeightUnit): string {
-  return pr.set ? `${pr.label} ${prSetClause(pr.set, wu)}` : pr.label;
+// Notes and headline share the same record detail. Strength keeps its performed
+// set; cardio uses the finding's exact phrase. Older label-only inputs stay honest.
+function recapPrPhrase(
+  pr: RecapPR,
+  wu: WeightUnit,
+  du: DistanceUnit,
+  headline = false
+): string {
+  if (pr.cardio) {
+    const phrase = cardioPrPhrase({ activity: pr.label, ...pr.cardio }, du);
+    return headline ? `a PR: ${phrase}` : phrase;
+  }
+  const label = headline ? `a ${pr.label} PR` : pr.label;
+  return pr.set ? `${label} ${prSetClause(pr.set, wu)}` : label;
 }
 
 // The window's food coverage and shape — never a serving total (#2396/#2178).
@@ -271,6 +282,7 @@ export interface RecapAdherenceDay {
 export interface RecapInput {
   today: string;
   weightUnit: WeightUnit;
+  distanceUnit?: DistanceUnit;
   // WHICH SCALE this recap speaks at (#2178). Omitted ⇒ "week", so every pre-#2178
   // caller is unchanged. Drives the period arithmetic, the "last week"/"last month"
   // comparison wording, and — through RECAP_LINE_MODEL — which lines are emitted at
@@ -293,8 +305,8 @@ export interface RecapInput {
   prevWorkouts: RecapWorkout[];
   // Personal records (strength + cardio) dated within the current window, in
   // `recentPRs` order (newest first, strength before cardio). Labels are short
-  // display names ("Bench press", "Running"); a strength record also carries the
-  // set it was performed with (#3033) so the line can state it.
+  // display names ("Bench press", "Running"); records carry their performed set
+  // or canonical cardio measurements so the line can state the detail.
   prs: RecapPR[];
   // IntakeItem/medication adherence over the window, or null when nothing was
   // due. `skipped` counts deliberate skips (#232), excluded from the percentage.
@@ -993,7 +1005,9 @@ export function buildRecap(input: RecapInput): Recap {
   // e1RM record reads as its weight × reps set, a bodyweight lift as reps alone,
   // and a top-weight record is labelled as the top set it is.
   if (input.prs.length > 0) {
-    const named = input.prs.slice(0, 3).map((p) => recapPrPhrase(p, wu));
+    const named = input.prs
+      .slice(0, 3)
+      .map((p) => recapPrPhrase(p, wu, input.distanceUnit ?? "km"));
     const extra = input.prs.length - 3;
     push({
       key: "prs",
@@ -1515,7 +1529,7 @@ export function buildRecap(input: RecapInput): Recap {
       headParts.push(
         countsAsRecordAt("prs", scale)
           ? `${input.prs.length} PR${input.prs.length === 1 ? "" : "s"}`
-          : `a ${pr.label} PR${pr.set ? ` ${prSetClause(pr.set, wu)}` : ""}`
+          : recapPrPhrase(pr, wu, input.distanceUnit ?? "km", true)
       );
     }
     // Slot 3 — one whole-period concern, from the declared concern registry. Its

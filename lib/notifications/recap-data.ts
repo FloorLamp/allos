@@ -100,7 +100,7 @@ import { illnessDaysInWindow } from "../illness-episode-store";
 import { getLatestFitnessAssessmentDate } from "../fitness-assessment";
 import { assembleFitnessCheckModel } from "../fitness-check-assemble";
 import { batteryCompletion } from "../fitness-outcome";
-import type { WeightUnit } from "../settings";
+import type { WeightUnit, DistanceUnit } from "../settings";
 import { dispatch } from "./index";
 import { recapMarkerKey } from "./send-markers";
 import { createLogger } from "../log";
@@ -276,7 +276,8 @@ export function gatherRecapInput(
   scale: RecapScale = "week",
   completed = false,
   asOf?: string,
-  forSend = false
+  forSend = false,
+  distanceUnit: DistanceUnit = "km"
 ): RecapInput {
   const td = asOf ?? today(profileId);
   // "This week" per the profile's week_mode for the 7-day recap (issue #223), so
@@ -354,11 +355,7 @@ export function gatherRecapInput(
           withinDays
         )
       : [];
-  // Carried WITH the set each record was performed with (#3033) — `recentPRs`
-  // computes e1rmKg/weightKg/reps/kind and the gather used to keep only the label,
-  // which was #1722's milestone-detail-thrown-away class on the recap's most-read
-  // line. A cardio PR keeps its name alone (its value lives on a distance/pace
-  // unit boundary this line does not cross).
+  // Preserve the first record per display label, including its canonical detail.
   const prs: RecapPR[] = [];
   const seen = new Set<string>();
   for (const p of strengthPRs) {
@@ -382,7 +379,15 @@ export function gatherRecapInput(
   for (const p of cardioPRs) {
     if (!seen.has(p.activity)) {
       seen.add(p.activity);
-      prs.push({ label: p.activity });
+      prs.push({
+        label: p.activity,
+        cardio: {
+          kind: p.kind,
+          distanceKm: p.distanceKm,
+          durationMin: p.durationMin,
+          speedKmh: p.speedKmh,
+        },
+      });
     }
   }
 
@@ -453,6 +458,7 @@ export function gatherRecapInput(
   return {
     today: td,
     weightUnit,
+    distanceUnit,
     scale,
     weekMode,
     weekStart,
@@ -604,11 +610,27 @@ export function gatherRecapInput(
 // the one you are living in, which rolls over on the clock rather than on a write.
 export const getRecapCard = commitCached(
   "recap.card",
-  (profileId: number, weightUnit: WeightUnit = "kg") =>
-    `${profileId}:${weightUnit}:${today(profileId)}`,
-  (profileId: number, weightUnit: WeightUnit = "kg"): Recap =>
+  (
+    profileId: number,
+    weightUnit: WeightUnit = "kg",
+    distanceUnit: DistanceUnit = "km"
+  ) =>
+    `${profileId}:${weightUnit}:${distanceUnit}:${today(profileId)}`,
+  (
+    profileId: number,
+    weightUnit: WeightUnit = "kg",
+    distanceUnit: DistanceUnit = "km"
+  ): Recap =>
     buildRecap(
-      gatherRecapInput(profileId, weightUnit, getRecapScale(profileId))
+      gatherRecapInput(
+        profileId,
+        weightUnit,
+        getRecapScale(profileId),
+        false,
+        undefined,
+        false,
+        distanceUnit
+      )
     )
 );
 
@@ -619,7 +641,7 @@ export function getScaleRecap(
   profileId: number,
   scale: RecapScale,
   weightUnit: WeightUnit = "kg",
-  opts?: { asOf?: string; forSend?: boolean }
+  opts?: { asOf?: string; forSend?: boolean; distanceUnit?: DistanceUnit }
 ): Recap {
   return buildRecap(
     gatherRecapInput(
@@ -628,7 +650,8 @@ export function getScaleRecap(
       scale,
       false,
       opts?.asOf,
-      opts?.forSend
+      opts?.forSend,
+      opts?.distanceUnit
     )
   );
 }

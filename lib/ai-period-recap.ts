@@ -145,19 +145,22 @@ async function narrate(opts: {
 
 // Generate (or fall back to) the AI period recap narrative for a profile. Gathers
 // the SAME rule-based recap the dashboard shows (getPeriodRecap), narrates over
-// it, and returns the text + anchor for storage. weightUnit resolves from the
-// login's preference when a loginId is given, else canonical kg.
+// it, and returns the text + anchor for storage. Units resolve from the login
+// when supplied; otherwise the narrative uses canonical kg/km.
 export async function generatePeriodRecap(
   profileId: number,
   period: PeriodRecapKind,
   loginId?: number,
   weightUnit?: WeightUnit
 ): Promise<GeneratedPeriodRecap> {
-  const wu: WeightUnit =
-    weightUnit ?? (loginId != null ? getUnitPrefs(loginId).weightUnit : "kg");
+  const units = loginId != null ? getUnitPrefs(loginId) : null;
+  const wu: WeightUnit = weightUnit ?? units?.weightUnit ?? "kg";
   // A stored narrative can leave through the recap send, so generate from its gated
   // facts; the in-app card renders deterministic cap facts beside the prose (#3909).
-  const recap = getScaleRecap(profileId, period, wu, { forSend: true });
+  const recap = getScaleRecap(profileId, period, wu, {
+    forSend: true,
+    distanceUnit: units?.distanceUnit,
+  });
   const offline = () => composeRecapNarrativeOffline(recap, period);
   // Nothing logged this period — don't burn a usage unit / API call on an empty
   // recap; the deterministic composer already says the right quiet thing.

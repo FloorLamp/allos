@@ -46,8 +46,7 @@ import type { AppRoute } from "./hrefs";
 import type { Reason } from "./reasons";
 import type { TrendItem } from "./trends-digest";
 import type { WeightUnit, DistanceUnit } from "./settings";
-import { fmtDistance, fmtKmh } from "./units";
-import { formatMinutes } from "./duration";
+import { cardioPrPhrase } from "./coaching/cardio";
 import {
   isSuppressed,
   itemSuppressionPolicy,
@@ -322,12 +321,7 @@ export function cardioPrToFinding(
   pr: CardioPR,
   distanceUnit: DistanceUnit
 ): Finding {
-  const clause =
-    pr.kind === "distance"
-      ? `longest ${pr.activity} at ${fmtDistance(pr.distanceKm, distanceUnit)}`
-      : pr.kind === "speed"
-        ? `fastest ${pr.activity} at ${fmtKmh(pr.speedKmh, distanceUnit)}`
-        : `longest ${pr.activity} at ${formatMinutes(pr.durationMin)}`;
+  const clause = cardioPrPhrase(pr, distanceUnit);
   // The case/space-folded activity identity `getCardioByActivity` groups on (#1931),
   // with the raw-name shape carried as the legacy dual-read key.
   const dedupeKey = prCardioDismissalKey(pr.activity, pr.kind);

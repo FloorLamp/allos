@@ -1177,7 +1177,7 @@ async function renderDashboard(
   // The recap gather is shared with the notification; each line becomes an atomic
   // dashboard statement with the stable `weekly-recap` presentation selector.
   const weeklyRecap = trainingRelevant
-    ? getRecapCard(profile.id, units.weightUnit)
+    ? getRecapCard(profile.id, units.weightUnit, units.distanceUnit)
     : null;
 
   // nutrition-today (#1221): today's protein against the goal band + the weekly average
