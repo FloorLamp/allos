@@ -47,6 +47,7 @@
 // travel are handled correctly: a 23:00-local bedtime is regular in clock time
 // even across a spring-forward, where the absolute duration of that night is 23h.
 
+import { mean, populationSd } from "./robust-stats";
 import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 import { recordedUsual, USUAL_KINDS } from "./usual";
 import { zoneOf, type ProfileDayZone } from "./travel-timezone";
@@ -554,13 +555,7 @@ function circularSdMinutes(values: number[]): number {
   if (values.length < 2) return 0;
   const mu = circularMeanMinutes(values);
   const dev = values.map((v) => signedDeltaMinutes(v, mu));
-  const m = dev.reduce((a, b) => a + b, 0) / dev.length;
-  const variance = dev.reduce((a, b) => a + (b - m) ** 2, 0) / dev.length;
-  return Math.sqrt(variance);
-}
-
-function mean(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0) / values.length;
+  return populationSd(dev);
 }
 
 // A recorded night reduced to its profile-local timing facts.

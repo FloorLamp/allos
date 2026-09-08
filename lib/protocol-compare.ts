@@ -11,6 +11,7 @@
 // already resolved in the profile's timezone (the tz-window convention — see
 // lib/date), so this file never touches a real clock and stays deterministic.
 
+import { mean, median } from "./robust-stats";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { displayUnit } from "./display-unit";
 import type { OutcomeDirection } from "./protocol-metrics";
@@ -84,25 +85,13 @@ export interface CompareOptions {
 
 export const DEFAULT_POOLED_MIN = 3;
 
-function mean(values: number[]): number | null {
-  if (values.length === 0) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
-}
-
 function statsFor(samples: OutcomeSample[]): WindowStats {
   const sorted = [...samples].sort((a, b) => a.date.localeCompare(b.date));
   const values = sorted.map((s) => s.value);
   return {
     n: values.length,
-    mean: mean(values),
-    median: median(values),
+    mean: values.length ? mean(values) : null,
+    median: values.length ? median(values) : null,
     from: sorted.length ? sorted[0].date : null,
     to: sorted.length ? sorted[sorted.length - 1].date : null,
   };

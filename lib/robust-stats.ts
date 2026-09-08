@@ -1,18 +1,17 @@
-// Robust (outlier-resistant) statistics for the Trends engines (issue #37). The
-// digest and the goal-ETA projection both used to trust every point equally — the
-// digest compared the literal first and last reading of a window (one noisy
-// endpoint defined the whole "trend"), and the projection fit a plain
-// least-squares line (a single spike bent the slope, and two good points plus one
-// outlier still produced a confident ETA). These helpers replace those fragile
-// summaries with median-based ones: a median endpoint smooths a noisy edge, and a
-// Theil–Sen slope (the median of all pairwise slopes) tolerates a minority of bad
-// points. Pure math, no dates beyond the shared day-offset helper, exhaustively
-// unit-tested in lib/__tests__/robust-stats.
-//
-// Everything here is O(n²) at worst (the pairwise slopes); the windowed series
-// these run over are at most a few hundred points, so that's comfortably cheap.
+// Shared numeric summaries. Callers own sample-size gates and rounding.
+// Theil–Sen slopes are O(n²), intended for bounded trend windows.
 
 import { daysBetweenDateStr } from "./date";
+
+// Arithmetic mean and population standard deviation return NaN for empty input.
+export function mean(values: readonly number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+export function populationSd(values: readonly number[]): number {
+  const average = mean(values);
+  return Math.sqrt(mean(values.map((value) => (value - average) ** 2)));
+}
 
 // Median of a numeric list. Sorts a copy (never mutates the input) and returns the
 // middle element for odd lengths, or the mean of the two middle elements for even
@@ -20,7 +19,8 @@ import { daysBetweenDateStr } from "./date";
 export function median(values: readonly number[]): number {
   const n = values.length;
   if (n === 0) return NaN;
-  const sorted = values.slice().sort((a, b) => a - b);
+  // Native numeric sorting avoids a JS comparator in dense sleep-window scans.
+  const sorted = Float64Array.from(values).sort();
   const mid = n >> 1;
   return n % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }

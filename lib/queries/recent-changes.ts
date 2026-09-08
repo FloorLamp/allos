@@ -16,6 +16,7 @@
 // The ranking, floors, cap and demotion live in lib/recent-changes.ts (pure). This
 // module only resolves the readers and the subject context, then hands over.
 
+import { mean } from "../robust-stats";
 import { today as todayFor } from "../db";
 import { db } from "../db";
 import { utcInstant, utcSqlString } from "../date";
@@ -278,9 +279,8 @@ function moodChanges(
   const priors = logs.filter((l) => l.date < windowStart);
   let shift = "";
   if (priors.length >= 3) {
-    const mean =
-      priors.reduce((s, l) => s + l.valence, 0) / Math.max(1, priors.length);
-    const delta = latest.valence - mean;
+    const baseline = mean(priors.map((log) => log.valence));
+    const delta = latest.valence - baseline;
     if (Math.abs(delta) >= MOOD_SHIFT_POINTS) {
       shift =
         delta > 0
