@@ -8,7 +8,7 @@
 // additive semantics. A test that only exercised the stated path could not tell a
 // working `at` from one that had quietly started stamping every tap.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { logStoolForm } from "@/app/(app)/stool-actions";
@@ -21,14 +21,9 @@ import { createLogin, createProfile, actAs, fd } from "./harness";
 // seconds are the part the key is built on. :07, deliberately not :00 — a stated time
 // lands on :00, so a zero here would make the two paths indistinguishable.
 const NOW_ISO = "2026-07-08T21:30:07Z";
-let priorNow: string | undefined;
+
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = NOW_ISO;
-  return () => {
-    if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = priorNow;
-  };
+  vi.setSystemTime(new Date(NOW_ISO));
 });
 
 function rows(profileId: number) {

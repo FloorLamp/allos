@@ -118,7 +118,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     expect(h?.href).toBe("/immunizations/influenza");
   });
 
-  it("a goal hit lands on the Goals tab, not the training hub's default tab", () => {
+  it("a goal hit lands directly on the Plan tab's goals section", () => {
     const p = newProfile("palette-goal");
     db.prepare(
       `INSERT INTO goals (profile_id, title, metric, target_value, status)
@@ -126,7 +126,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     ).run(p);
 
     expect(hit(p, "PHREF Squat", "goal", "PHREF Squat 100kg").href).toBe(
-      "/training?tab=goals"
+      "/training?tab=plan#goals"
     );
   });
 

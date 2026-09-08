@@ -8,7 +8,7 @@
 
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
@@ -234,7 +234,6 @@ const warmManifests = new Map<
 const personaProfileIds = new Map<string, number>();
 let switchedHouseholdManifest: DashboardPlacementCanvasProps["placements"] = [];
 let switchedHouseholdProfileId = 0;
-const previousTestNow = process.env.ALLOS_TEST_NOW;
 
 // A HOOK CEILING AS A MULTIPLE (#4002). The hook below builds every persona and
 // renders the dashboard once per persona; it carried a hard-coded `}, 120_000)` that
@@ -271,8 +270,9 @@ const EXPECTED_DOSE_SLOTS: Record<string, [string[], number]> = {
 };
 
 describe("actual atomic dashboard manifests", () => {
+  beforeEach(() => vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z")));
   beforeAll(async () => {
-    process.env.ALLOS_TEST_NOW = "2026-08-18T13:00:00.000Z";
+    vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z"));
     session.loginId = (
       db
         .prepare(
@@ -381,11 +381,6 @@ describe("actual atomic dashboard manifests", () => {
     await renderDashboard();
     hrWindowReads.set(HR_FIXTURE, windowsRead(trace));
   }, MANIFEST_HOOK_MS);
-
-  afterAll(() => {
-    if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = previousTestNow;
-  });
 
   for (const persona of PERSONAS) {
     it(`${persona.name}: matches semantic expectations and identity invariants`, () => {

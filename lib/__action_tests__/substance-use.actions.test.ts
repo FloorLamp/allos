@@ -28,6 +28,11 @@ import { updateFoodLogEvent } from "@/app/(app)/nutrition/actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
+import { logFoodServingCore } from "@/lib/food-log-write";
+import {
+  correctSubstanceEventCore,
+  logSubstanceUnitCore,
+} from "@/lib/substance-log-write";
 import {
   getAllSubstanceDailyTotals,
   getSubstanceDailyTotals,
@@ -243,9 +248,17 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     actAs(login, profile);
 
     const one = await logSubstanceUnitAction(fd({ substance: "alcohol" }));
-    expect(one).toEqual({ ok: true, weekCount: 1 });
+    expect(one).toMatchObject({
+      ok: true,
+      weekCount: 1,
+      date: today(profile.id),
+    });
     const two = await logSubstanceUnitAction(fd({ substance: "alcohol" }));
-    expect(two).toEqual({ ok: true, weekCount: 2 });
+    expect(two).toMatchObject({
+      ok: true,
+      weekCount: 2,
+      date: today(profile.id),
+    });
 
     // The SAME store Nutrition's one-tap bar reads (one ledger, two surfaces).
     const row = db
@@ -274,11 +287,19 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     const nicotineOne = await logSubstanceUnitAction(
       fd({ substance: "nicotine" })
     );
-    expect(nicotineOne).toEqual({ ok: true, weekCount: 1 });
+    expect(nicotineOne).toMatchObject({
+      ok: true,
+      weekCount: 1,
+      date: today(profile.id),
+    });
     const nicotineTwo = await logSubstanceUnitAction(
       fd({ substance: "nicotine" })
     );
-    expect(nicotineTwo).toEqual({ ok: true, weekCount: 2 });
+    expect(nicotineTwo).toMatchObject({
+      ok: true,
+      weekCount: 2,
+      date: today(profile.id),
+    });
 
     const nicotineRow = db
       .prepare(
@@ -298,6 +319,124 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
       fd({ substance: "nicotine" })
     );
     expect(nicotineUndone).toEqual({ ok: true, weekCount: 1 });
+  });
+
+  it.each(["alcohol", "nicotine"])(
+    "%s: an older log receipt undoes its exact event after a later log",
+    async (substance) => {
+      const login = createLogin();
+      const profile = createProfile(`su-exact-${substance}`, login.id);
+      actAs(login, profile);
+      const a = await logSubstanceUnitAction(fd({ substance }));
+      const b = await logSubstanceUnitAction(fd({ substance }));
+      if (!a.ok || !b.ok) throw new Error("fixtures did not log");
+
+      expect(
+        await undoSubstanceUnitAction(
+          fd({ substance, event_id: a.eventId, date: a.date })
+        )
+      ).toEqual({ ok: true, weekCount: 1 });
+      const rows = db
+        .prepare(
+          substance === "alcohol"
+            ? `SELECT id FROM food_log_events
+                WHERE profile_id = ? AND group_key = 'alcohol' ORDER BY id`
+            : `SELECT id FROM substance_log_events
+                WHERE profile_id = ? AND substance = 'nicotine' ORDER BY id`
+        )
+        .all(profile.id) as { id: number }[];
+      expect(rows).toEqual([{ id: b.eventId }]);
+    }
+  );
+
+  it("binds an exact receipt to its original date and refuses malformed, missing, moved, or foreign events", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-exact-refusals", login.id);
+    actAs(login, profile);
+    const td = today(profile.id);
+    const prior = shiftDateStr(td, -1);
+    const old = logSubstanceUnitCore(
+      profile.id,
+      "nicotine",
+      prior,
+      "quick-log"
+    );
+    if (old.kind !== "logged") throw new Error("fixture did not log");
+
+    // The receipt remains usable after the profile-local day has rolled over.
+    expect(
+      await undoSubstanceUnitAction(
+        fd({ substance: "nicotine", event_id: old.eventId, date: prior })
+      )
+    ).toEqual({ ok: true, weekCount: 0 });
+
+    const moved = logSubstanceUnitCore(
+      profile.id,
+      "nicotine",
+      prior,
+      "quick-log"
+    );
+    if (moved.kind !== "logged") throw new Error("fixture did not log");
+    expect(
+      correctSubstanceEventCore(profile.id, moved.eventId, { date: td })
+    ).toMatchObject({ kind: "updated", eventId: moved.eventId, date: td });
+
+    for (const receipt of [
+      { event_id: "bad", date: prior },
+      { event_id: "", date: prior },
+      { event_id: "   ", date: prior },
+      { date: prior },
+      { event_id: moved.eventId },
+      { event_id: moved.eventId, date: "bad" },
+      { event_id: moved.eventId, date: prior },
+      { event_id: 9_999_999, date: prior },
+    ]) {
+      expect(
+        await undoSubstanceUnitAction(fd({ substance: "nicotine", ...receipt }))
+      ).toMatchObject({ ok: false, error: "That use has changed." });
+    }
+    expect(
+      db
+        .prepare(
+          `SELECT id, date FROM substance_log_events
+            WHERE id = ? AND profile_id = ?`
+        )
+        .get(moved.eventId, profile.id)
+    ).toEqual({ id: moved.eventId, date: td });
+    expect(
+      db
+        .prepare(
+          `SELECT units FROM substance_daily_totals
+            WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
+        )
+        .get(profile.id, td)
+    ).toEqual({ units: 1 });
+
+    const foreignLogin = createLogin();
+    const foreign = createProfile("su-exact-foreign", foreignLogin.id);
+    const foreignEvent = logFoodServingCore(
+      foreign.id,
+      "alcohol",
+      prior,
+      "quick-log"
+    );
+    if (foreignEvent.kind !== "logged") throw new Error("fixture did not log");
+    expect(
+      await undoSubstanceUnitAction(
+        fd({
+          substance: "alcohol",
+          event_id: foreignEvent.eventId,
+          date: prior,
+        })
+      )
+    ).toMatchObject({ ok: false, error: "That use has changed." });
+    expect(
+      db
+        .prepare(
+          `SELECT id FROM food_log_events WHERE id = ? AND profile_id = ?`
+        )
+        .get(foreignEvent.eventId, foreign.id)
+    ).toEqual({ id: foreignEvent.eventId });
   });
 
   // #3279 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, DELIBERATELY. It used to post
@@ -326,11 +465,10 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     // and a later clean "Kratom" are ONE ledger row, not two neighbours.
     expect(
       await logSubstanceUnitAction(fd({ substance: "  Kratom " }))
-    ).toEqual({ ok: true, weekCount: 1 });
-    expect(await logSubstanceUnitAction(fd({ substance: "Kratom" }))).toEqual({
-      ok: true,
-      weekCount: 2,
-    });
+    ).toMatchObject({ ok: true, weekCount: 1, date: today(profile.id) });
+    expect(
+      await logSubstanceUnitAction(fd({ substance: "Kratom" }))
+    ).toMatchObject({ ok: true, weekCount: 2, date: today(profile.id) });
     const row = db
       .prepare(
         `SELECT substance, units FROM substance_daily_totals WHERE profile_id = ?`

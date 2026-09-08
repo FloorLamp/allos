@@ -23,9 +23,7 @@ import type { IntakeFormContext } from "@/lib/intake-form-context";
 // else. The form therefore KNEW the profile was a child — it drew the weight-band
 // dosing copy — while the food-note age gate ran on "unknown" and printed chronic-
 // alcohol counselling underneath it, on a six-year-old. Its stack-interaction and PGx
-// notices had nothing to check against, and without `todayStr` it posted no
-// `started_on` at all, which is what decides whether addIntakeItem validates a start
-// date. Everything looked complete.
+// notices had nothing to check against. Everything looked complete.
 //
 // So the door is the PARAMETER here and the context is held fixed: whatever the
 // /medications door renders from a context, the illness door must render from the same
@@ -280,17 +278,14 @@ describe("every add door feeds IntakeItemForm the same subject context (#4609)",
     expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
   });
 
-  // `todayStr` is not cosmetic: with it absent the form posts no `started_on`, and
-  // addIntakeItem skips its whole start-date branch on `formData.has("started_on")`.
-  it.each(DOORS)(
-    "%s: posts the subject's local day as the start date",
-    async (door) => {
-      addIntakeItem.mockClear();
-      await openDoor(door, CHILD, "Tylenol");
-      screen.getByRole("button", { name: "Add" }).click();
-      await waitFor(() => expect(addIntakeItem).toHaveBeenCalledOnce());
-      expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBe(TODAY);
-      cleanup();
-    }
-  );
+  // Both doors receive the local day for context, but neither may turn it into
+  // a start date the person has not stated.
+  it.each(DOORS)("%s: leaves an unstated start date unknown", async (door) => {
+    addIntakeItem.mockClear();
+    await openDoor(door, CHILD, "Tylenol");
+    screen.getByRole("button", { name: "Add" }).click();
+    await waitFor(() => expect(addIntakeItem).toHaveBeenCalledOnce());
+    expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBeNull();
+    cleanup();
+  });
 });

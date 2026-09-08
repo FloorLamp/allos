@@ -64,6 +64,11 @@ const curl = path.join(bin, "curl");
 fs.writeFileSync(
   curl,
   `#!/bin/sh
+if [ "\${MERGE_GATE_TEST_FAIL_GROUNDS:-}" = 1 ] && [ "$2" != "-w" ]; then
+  printf 'private child stdout: %s\\n' "$GH_TOKEN"
+  printf 'private child stderr: %s\\n' "$GH_TOKEN" >&2
+  exit 7
+fi
 # merge-gate's curl asks for the status code with -w, so every answer here is
 # body, newline, code — the shape curl() splits on its last newline.
 case "$*" in
@@ -116,6 +121,37 @@ it("reaches a verdict when the base comparison outgrows the exec default", () =>
   expect(run.stdout).toContain(`CI base IS main@${HEAD.slice(0, 8)}`);
   expect(run.stdout).toContain("GATE CLOSED");
 });
+
+it.each([
+  ["brief", "adversarial-review-brief.mjs", ["12", "--check"], 2],
+  ["gate", "merge-gate.mjs", ["12", "--session", "session_0test12"], 1],
+] as const)(
+  "keeps failed review transport credentials out of the %s output",
+  (_name, script, args, status) => {
+    const token = "review-transport-dummy-secret";
+    const run = spawnSync(
+      process.execPath,
+      [path.join(path.dirname(SCRIPT), script), ...args],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GH_TOKEN: token,
+          MERGE_GATE_TEST_FAIL_GROUNDS: "1",
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+      }
+    );
+    expect(run.status).toBe(status);
+    const output = `${run.stdout}\n${run.stderr}`;
+    expect(output).toContain(
+      "adversarial-review-brief: GET pulls/12 failed (curl exited 7)"
+    );
+    expect(output).not.toContain(token);
+    expect(output).not.toContain("Authorization: Bearer");
+    expect(output).not.toContain("private child");
+  }
+);
 
 it("turns a failed soft comparison into an unknown comparison verdict", () => {
   const run = spawnSync(

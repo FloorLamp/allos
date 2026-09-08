@@ -32,6 +32,7 @@ import {
   CARE_PLAN_REPRESENTATIVE_IDS,
 } from "./clinical";
 import {
+  trainingTabHref,
   clinicalResultDetailHref,
   encounterHref,
   episodeHref,
@@ -323,10 +324,7 @@ function goalHits(profileId: number, like: string): SearchHit[] {
     key: `goal:${r.id}`,
     title: r.title,
     subtitle: r.category ? `${r.category} · ${r.status}` : r.status,
-    // The Goals tab, not the Training hub's default Log tab (#1568) — `goals` is
-    // the tab vocabulary's own id (lib/training-tabs.ts), the same deep link the
-    // dashboard presentation and the goal-pacing finding use.
-    href: "/training?tab=goals",
+    href: trainingTabHref("plan", "goals"),
     date: null,
   }));
 }
@@ -1095,7 +1093,7 @@ const PAGES: {
   },
   {
     title: "Training history",
-    href: "/training?tab=log",
+    href: trainingTabHref("log"),
   },
   {
     title: "Training",

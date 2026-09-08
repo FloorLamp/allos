@@ -15,15 +15,7 @@
 //     pairing is the whole risk of the relocation — "the entry surface moved,
 //     storage did not" has to be a test, not a claim.
 
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  vi,
-  beforeAll,
-  afterAll,
-} from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
@@ -90,17 +82,8 @@ function sampleValue(profileId: number, metric: string): number | undefined {
 // `future` reason deterministic; it states a later hour of the pinned DAY instead,
 // which is the shape a real fast device clock produces anyway.
 const PINNED_NOW = "2026-05-20T09:00:00.000Z";
-let priorNow: string | undefined;
 
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = PINNED_NOW;
-});
-
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
+beforeEach(() => vi.setSystemTime(new Date(PINNED_NOW)));
 
 describe("addMeasurements — one form, three stores", () => {
   it("writes body composition, vitals and growth from a single submission", async () => {
@@ -513,9 +496,9 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
     });
     expect(revalidate).toHaveBeenCalled();
 
-    process.env.ALLOS_TEST_NOW = "2026-05-20T09:01:00.000Z";
+    vi.setSystemTime(new Date("2026-05-20T09:01:00.000Z"));
     await addMeasurements(fd({ date: DATE, hydration: "0.7" }));
-    process.env.ALLOS_TEST_NOW = PINNED_NOW;
+    vi.setSystemTime(new Date(PINNED_NOW));
     expect(
       db
         .prepare(

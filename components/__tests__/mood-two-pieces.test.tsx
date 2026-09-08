@@ -107,7 +107,10 @@ describe("the mood domain's two pieces", () => {
     const done = vi.fn();
     render(<MoodForm days={[EMPTY]} showCalm={false} onDone={done} />);
     fireEvent.click(screen.getByText("Details"));
-    expect(screen.getByRole("button", { name: "Energy: 1" })).toBeTruthy();
+    const energy = screen.getByRole("button", { name: "Energy: 1" });
+    expect(energy.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(energy);
+    expect(energy.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Work" })).toBeTruthy();
     expect(screen.getByLabelText("Note")).toBeTruthy();
     expect(screen.queryByText("Calm")).toBeNull();
