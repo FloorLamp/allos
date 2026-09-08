@@ -1,12 +1,9 @@
-// Adversarial-review lane: classify a PR and print an independent review brief.
+// Classify a PR and print an independent review brief.
 // Usage: node scripts/orchestration/adversarial-review-brief.mjs <pr-number> [--check] [--force]
-// --check prints evidence to stderr and returns only the classification code.
-// Default prints a brief for MANDATORY; --force prints one for any readable PR.
-// Exit codes: 0 MANDATORY, 1 ordinary, 2 cannot read/answer, 3 CONSULT.
-// CONSULT requires orchestrator judgment; failed or incomplete reads never mean ordinary.
-// High-stakes paths are declared here: data corruption, authorization, or safety signals.
+// --check: classification only; --force: brief for any readable PR.
+// Exits: 0 mandatory, 1 ordinary, 2 unable to decide, 3 consult (human judgment).
 
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { helpGuard } from "./usage.mjs";
@@ -488,25 +485,27 @@ function fail(what) {
 }
 
 function gh(token, pathname) {
-  let out;
-  try {
-    out = execFileSync(
-      "curl",
-      [
-        "-sS",
-        "-H",
-        `Authorization: Bearer ${token}`,
-        "-H",
-        "Accept: application/vnd.github+json",
-        `https://api.github.com/repos/FloorLamp/allos/${pathname}`,
-      ],
-      { encoding: "utf8", timeout: 30_000 }
-    );
-  } catch (err) {
-    fail(`GET ${pathname} failed (${err.message})`);
+  const run = spawnSync(
+    "curl",
+    [
+      "-sS",
+      "-H",
+      `Authorization: Bearer ${token}`,
+      "-H",
+      "Accept: application/vnd.github+json",
+      `https://api.github.com/repos/FloorLamp/allos/${pathname}`,
+    ],
+    { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "ignore"] }
+  );
+  if (run.error || run.status !== 0) {
+    // Child output and errors can contain credentials; report only the exit.
+    const reason = Number.isInteger(run.status)
+      ? `curl exited ${run.status}`
+      : "curl could not complete";
+    fail(`GET ${pathname} failed (${reason})`);
   }
   try {
-    return JSON.parse(out);
+    return JSON.parse(run.stdout);
   } catch {
     fail(`GET ${pathname} returned a non-JSON body`);
   }

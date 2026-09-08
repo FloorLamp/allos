@@ -17,7 +17,7 @@
 //
 // Fixtures are synthetic throwaway rows (per-file temp DB via setup.ts). No PHI.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -35,16 +35,8 @@ import {
 const LATE_EVENING = "2026-08-19T22:30:00.000Z";
 const LATE_EVENING_MINUTE = 22 * 60 + 30;
 
-let priorNow: string | undefined;
-
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = LATE_EVENING;
-});
-
-afterEach(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
+  vi.setSystemTime(new Date(LATE_EVENING));
 });
 
 function tap(profileId: number, group: string, date: string, hhmmss: string) {

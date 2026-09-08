@@ -59,6 +59,7 @@ import {
 import { practiceDisplayName, practiceIdentity } from "./practice";
 import type { DateRange } from "./timeline-format";
 import {
+  trainingTabHref,
   clinicalResultDetailHref,
   metricDetailHref,
   type AppRoute,
@@ -174,7 +175,7 @@ const METRIC_DEFS: MetricDef[] = [
     shortLabel: "Training Volume",
     unit: "",
     color: "#0ea5e9",
-    href: "/training?tab=analyze",
+    href: trainingTabHref("analyze"),
     decimals: 0,
     minPctChange: 0.15, // training volume swings hugely session-to-session
   },

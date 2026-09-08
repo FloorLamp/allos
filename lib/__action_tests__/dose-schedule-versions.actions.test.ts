@@ -20,7 +20,7 @@
 // version by design (the upsert), so a test about closing a version has to put real
 // days between them.
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
@@ -36,23 +36,16 @@ import { seedActor, fd } from "./harness";
 vi.mocked(revalidatePath);
 
 let profileId = 0;
-let priorNow: string | undefined;
 
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
   profileId = seedActor().profile.id;
   // UTC, so "the profile's day" and the frozen instant's day are the same string and
   // the assertions below are about versioning rather than about zone arithmetic.
   setTimezone(profileId, "UTC");
 });
 
-afterEach(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
-
 function setDay(dateISO: string): void {
-  process.env.ALLOS_TEST_NOW = `${dateISO}T12:00:00Z`;
+  vi.setSystemTime(new Date(`${dateISO}T12:00:00Z`));
 }
 
 const dose = (extra: Record<string, unknown> = {}) => ({

@@ -1,5 +1,6 @@
 "use server";
 
+import { onboardingStepHref } from "@/lib/hrefs";
 import { revalidateRoute } from "@/lib/revalidate";
 import { redirect } from "next/navigation";
 import {
@@ -60,7 +61,7 @@ import { DEFAULT_PROTEIN_GOAL_LEVEL } from "@/lib/protein";
 import type { Sex } from "@/lib/types";
 
 function onboardingError(message: string, step: OnboardingStep): never {
-  redirect(`/onboarding?step=${step}&error=${encodeURIComponent(message)}`);
+  redirect(onboardingStepHref(step, message));
 }
 
 export type OnboardingRoutineResult =
@@ -145,7 +146,7 @@ export async function saveOnboardingProfilePath(formData: FormData) {
   );
   revalidateRoute("/");
   revalidateRoute("/onboarding");
-  redirect("/onboarding?step=2");
+  redirect(onboardingStepHref(2));
 }
 
 export async function deferOnboarding() {
@@ -186,7 +187,7 @@ export async function saveOnboardingFocuses(formData: FormData) {
   });
   revalidateRoute("/");
   revalidateRoute("/onboarding");
-  redirect(`/onboarding?step=${state.basicsComplete ? 4 : 3}`);
+  redirect(onboardingStepHref(state.basicsComplete ? 4 : 3));
 }
 
 export async function continueOnboardingData() {
@@ -201,7 +202,7 @@ export async function continueOnboardingData() {
   );
   revalidateRoute("/");
   revalidateRoute("/onboarding");
-  redirect("/onboarding?step=5");
+  redirect(onboardingStepHref(5));
 }
 
 export async function saveOnboardingNotifications(formData: FormData) {
@@ -234,7 +235,7 @@ export async function saveOnboardingNotifications(formData: FormData) {
   });
   revalidateRoute("/");
   revalidateRoute("/onboarding");
-  redirect("/onboarding?step=6");
+  redirect(onboardingStepHref(6));
 }
 
 export async function saveOnboardingBasics(formData: FormData) {
@@ -309,7 +310,7 @@ export async function saveOnboardingBasics(formData: FormData) {
 
   revalidateRoute("/", "layout");
   revalidateRoute("/onboarding");
-  redirect("/onboarding?step=4");
+  redirect(onboardingStepHref(4));
 }
 
 export async function completeOnboarding() {

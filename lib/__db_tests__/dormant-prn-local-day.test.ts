@@ -1,19 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 
 const FROZEN_NOW = "2026-08-04T11:30:00.000Z";
-let previousNow: string | undefined;
 
 beforeEach(() => {
-  previousNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = FROZEN_NOW;
-});
-
-afterEach(() => {
-  if (previousNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = previousNow;
+  vi.setSystemTime(new Date(FROZEN_NOW));
 });
 
 function profile(timezone: string): number {

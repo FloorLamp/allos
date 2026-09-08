@@ -224,14 +224,9 @@ describe("restoreAdministrationLog returns a member to its stack row (#4328)", (
   // One composed tap, one minute: the clock is pinned so the three rows cannot straddle a
   // minute boundary and split the collapse on `hhmm` for a reason this test is not about.
   const NOW_ISO = "2026-06-15T08:12:00Z";
-  let priorNow: string | undefined;
+
   beforeEach(() => {
-    priorNow = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = NOW_ISO;
-  });
-  afterEach(() => {
-    if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = priorNow;
+    vi.setSystemTime(new Date(NOW_ISO));
   });
 
   // Three morning supplements of ONE routine, all born a month back so the day owes each.

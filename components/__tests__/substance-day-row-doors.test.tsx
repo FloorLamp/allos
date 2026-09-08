@@ -30,7 +30,12 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   setSubstanceTargetAction: vi.fn(),
   clearSubstanceTargetAction: vi.fn(),
 }));
-vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
+vi.mock("@/components/Toast", () => ({
+  useToast: () => vi.fn(),
+  useToastProfileScopeGetter: () => () => null,
+  useClaimToastKey: () => vi.fn(),
+  useDismissToast: () => vi.fn(),
+}));
 vi.mock("@/components/ConfirmDialog", () => ({
   useConfirm: () => vi.fn(),
   useConfirmOpen: () => false,

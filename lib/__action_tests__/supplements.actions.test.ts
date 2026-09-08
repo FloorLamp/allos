@@ -216,66 +216,52 @@ describe("addIntakeItem", () => {
     expect(getMedicationCourses(profile.id)[0].started_on).toBe("2025-02-03");
   });
 
-  it("keeps an as-needed start date optional and allows it to be cleared", async () => {
-    const { profile } = seedActor();
-    const added = await addIntakeItem(
-      fd({
-        name: "As-needed test medication",
-        kind: "medication",
-        obligation: "may",
-        started_on: "",
-      })
-    );
+  it.each(["may", "must"])(
+    "keeps a %s start date optional and allows it to be cleared",
+    async (obligation) => {
+      const { profile } = seedActor();
+      const added = await addIntakeItem(
+        fd({
+          name: "Test medication",
+          kind: "medication",
+          obligation,
+          started_on: "",
+        })
+      );
 
-    expect(added.ok).toBe(true);
-    const med = getIntakeItems(profile.id)[0];
-    let course = getMedicationCourses(profile.id)[0];
-    expect(course.started_on).toBeNull();
+      expect(added.ok).toBe(true);
+      const med = getIntakeItems(profile.id)[0];
+      let course = getMedicationCourses(profile.id)[0];
+      expect(course.started_on).toBeNull();
 
-    const dated = await updateIntakeItem(
-      fd({
-        id: med.id,
-        name: med.name,
-        kind: "medication",
-        obligation: "may",
-        course_id: course.id,
-        started_on: "2025-02-03",
-      })
-    );
-    expect(dated.ok).toBe(true);
-    course = getMedicationCourses(profile.id)[0];
-    expect(course.started_on).toBe("2025-02-03");
+      const dated = await updateIntakeItem(
+        fd({
+          id: med.id,
+          name: med.name,
+          kind: "medication",
+          obligation,
+          course_id: course.id,
+          started_on: "2025-02-03",
+        })
+      );
+      expect(dated.ok).toBe(true);
+      course = getMedicationCourses(profile.id)[0];
+      expect(course.started_on).toBe("2025-02-03");
 
-    const cleared = await updateIntakeItem(
-      fd({
-        id: med.id,
-        name: med.name,
-        kind: "medication",
-        obligation: "may",
-        course_id: course.id,
-        started_on: "",
-      })
-    );
-    expect(cleared.ok).toBe(true);
-    expect(getMedicationCourses(profile.id)[0].started_on).toBeNull();
-  });
-
-  it("still requires a start date for a scheduled medication", async () => {
-    const { profile } = seedActor();
-    const result = await addIntakeItem(
-      fd({
-        name: "Scheduled test medication",
-        kind: "medication",
-        started_on: "",
-      })
-    );
-
-    expect(result).toEqual({
-      ok: false,
-      error: "Enter a start date that isn't in the future.",
-    });
-    expect(getIntakeItems(profile.id)).toHaveLength(0);
-  });
+      const cleared = await updateIntakeItem(
+        fd({
+          id: med.id,
+          name: med.name,
+          kind: "medication",
+          obligation,
+          course_id: course.id,
+          started_on: "",
+        })
+      );
+      expect(cleared.ok).toBe(true);
+      expect(getMedicationCourses(profile.id)[0].started_on).toBeNull();
+    }
+  );
 });
 
 describe("toggleTaken refill invariant", () => {

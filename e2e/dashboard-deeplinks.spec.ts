@@ -205,9 +205,7 @@ test("a target-less Standing goal fact links to the goals surface (#1219)", asyn
       .filter({ hasText: "Feel better all around" });
     await expect(goalFact).toHaveAttribute("data-lane", "standing");
     const goalLink = goalFact.getByRole("link");
-    await expect(goalLink).toHaveAttribute("href", "/training?tab=goals");
-    // The retired name redirects to its canonical Plan URL (#2892): the href
-    // keeps its historic value, the landing carries the goals anchor.
+    await expect(goalLink).toHaveAttribute("href", "/training?tab=plan#goals");
     await followLink(page, goalLink, /\/training\?tab=plan#goals$/);
   } finally {
     await page.context().close();
