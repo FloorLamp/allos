@@ -1,3 +1,4 @@
+import { formatCount } from "./format-number";
 // The daily step target and its calm presence (#1723 part 2) — PURE. No DB, no clock.
 //
 // WHY THIS IS NEW MACHINERY. Steps sync and chart (`metric_samples.steps`, the Body
@@ -36,7 +37,7 @@ export const STEPS_STALE_AFTER_MIN = 180;
 
 // Thousands separators, matching how the Body card renders a step count.
 export function fmtSteps(n: number): string {
-  return Math.round(n).toLocaleString("en-US");
+  return formatCount(Math.round(n));
 }
 
 // The digest's Yesterday line (#1712's verdict pattern: state the comparison, don't

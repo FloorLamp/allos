@@ -328,18 +328,22 @@ test("the strength picker creates and selects a travel machine without losing th
     await page.getByTestId("strength-equipment-add").click();
     const quickAdd = page.getByTestId("strength-equipment-quickadd");
     await expect(quickAdd).toBeVisible();
-    // The category is defaulted from the lift's built-in variant ("Barbell Bench
-    // Press" → Barbell), so the traveller only has to type a name.
-    await expect(
-      page.getByTestId("strength-equipment-new-category")
-    ).toHaveValue("Barbell");
-
     await settledFill(
       page,
-      page.getByTestId("strength-equipment-new-name"),
+      quickAdd.getByLabel("Name", { exact: true }),
       gearName
     );
-    await settledClick(page, page.getByTestId("strength-equipment-new-save"));
+    await quickAdd.getByRole("button", { name: "Done", exact: true }).click();
+    await quickAdd
+      .getByRole("button", { name: "Barbell", exact: true })
+      .click();
+    await expect(quickAdd.getByLabel("Type", { exact: true })).toHaveValue(
+      "Barbell"
+    );
+    await settledClick(
+      page,
+      quickAdd.getByRole("button", { name: "Add", exact: true })
+    );
 
     // The created row is selected on the CURRENT part immediately — no reopen.
     const select = page.getByTestId("strength-equipment-select");
@@ -356,13 +360,14 @@ test("the strength picker creates and selects a travel machine without losing th
     await page.getByTestId("strength-equipment-add").click();
     await settledFill(
       page,
-      page.getByTestId("strength-equipment-new-name"),
+      quickAdd.getByLabel("Name", { exact: true }),
       gearName
     );
-    await settledClick(page, page.getByTestId("strength-equipment-new-save"));
-    await expect(
-      page.getByTestId("strength-equipment-new-error")
-    ).toContainText(gearName);
+    await settledClick(
+      page,
+      quickAdd.getByRole("button", { name: "Add", exact: true })
+    );
+    await expect(quickAdd.getByRole("alert")).toContainText(gearName);
     await expect(page.getByTestId("strength-equipment-quickadd")).toBeVisible();
     await expect(weight).toHaveValue("100");
 
@@ -387,14 +392,12 @@ test("the strength picker creates and selects a travel machine without losing th
     await page.goto("/equipment");
     const row = page.getByTestId("equipment-row").filter({ hasText: gearName });
     await expect(row).toBeVisible();
-    // Delete moved into the shared ⋯ menu (#1491): open the row's menu, then click
-    // the (portaled) Delete item.
-    // Client-only OverflowMenu toggle, so the click must land after hydration.
-    await hydratedClick(
+    await followLink(
       page,
-      row.getByRole("button", { name: "Equipment actions" })
+      row.getByRole("link", { name: gearName }),
+      /\/equipment\/\d+/
     );
-    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await hydratedClick(page, page.getByTestId("equipment-detail-delete"));
     await settledClick(
       page,
       page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })

@@ -533,38 +533,6 @@ export function getFoodDailyServingTotalsInRange(
     .all(profileId, from, to) as FoodDailyServingTotal[];
 }
 
-// This week's servings for a single group — the #580 food-habit target progress read,
-// routed through the SAME rollup entries so progress and the card can't disagree.
-export function getWeeklyServingsForGroup(
-  profileId: number,
-  groupKey: string,
-  weekStart: string = weekWindowStart(profileId)
-): number {
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(servings), 0) AS n FROM food_daily_totals
-        WHERE profile_id = ? AND date >= ? AND group_key = ?`
-    )
-    .get(profileId, weekStart, groupKey) as { n: number };
-  return row.n;
-}
-
-// The distinct dates this week a group was logged (servings > 0) — for a target framed
-// as "N days/week" rather than "N servings/week". Profile-scoped.
-export function getWeeklyDaysForGroup(
-  profileId: number,
-  groupKey: string,
-  weekStart: string = weekWindowStart(profileId)
-): number {
-  const row = db
-    .prepare(
-      `SELECT COUNT(DISTINCT date) AS n FROM food_daily_totals
-        WHERE profile_id = ? AND date >= ? AND group_key = ? AND servings > 0`
-    )
-    .get(profileId, weekStart, groupKey) as { n: number };
-  return row.n;
-}
-
 // Convenience: today's date for the acting profile (the logging bar's default day).
 export function foodLogToday(profileId: number): string {
   return today(profileId);

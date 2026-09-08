@@ -16,7 +16,7 @@ import MeasurementsQuickAdd, {
 // Desktop opens the shared measurements form in a modal; mobile deep links
 // open the global quick-entry overlay. The destination is fixed after hydration.
 export default function LogMeasurementsPanel(
-  props: Omit<MeasurementsQuickAddProps, "onSaved" | "headerSlot"> & {
+  props: Omit<MeasurementsQuickAddProps, "onSaved"> & {
     leftControl: ReactNode;
     centerControl: ReactNode;
   }
@@ -100,7 +100,6 @@ export default function LogMeasurementsPanel(
                 body one. A ?focus=/?new= deep link still wins over it. */}
             <MeasurementsQuickAdd
               {...measurementProps}
-              presentation="modal"
               defaultGroup="body"
               onSaved={() => setOpenOverride(false)}
             />

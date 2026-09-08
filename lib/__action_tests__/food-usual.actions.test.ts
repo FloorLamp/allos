@@ -114,26 +114,25 @@ describe("logUsualRoutine, food half", () => {
     expect(getUsualFoodOffer(profile.id, "Morning", anchor)).toEqual([]);
   });
 
-  it("writes only the intersection with the standing offer — a forged list lands nothing extra", async () => {
+  it("logs each offered group once from a repeated or forged list", async () => {
     const { profile, anchor } = seedUsualMorning("usual-forged");
     const res = await logUsualRoutine(
       fd({
         meal_slot: "Morning",
-        // Two groups that ARE offered, plus three that are not — a habitual group of
-        // another window, a group with no history at all, and a nonsense slug.
-        groups: "berries,fermented,alcohol,red_meat,not_a_group",
+        // Repeating an offered group must not add a serving; unoffered keys
+        // must not expand the bundle.
+        groups: "berries,fermented,berries,alcohol,red_meat,not_a_group",
       })
     );
 
+    expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([
+      { date: anchor, group_key: "berries", servings: 1 },
+      { date: anchor, group_key: "fermented", servings: 1 },
+    ]);
     expect(res.ok && res.groups.map((g) => g.groupKey)).toEqual([
       "berries",
       "fermented",
     ]);
-    expect(
-      servings(profile.id)
-        .filter((r) => r.date === anchor)
-        .map((r) => r.group_key)
-    ).toEqual(["berries", "fermented"]);
   });
 
   it("refuses when nothing in the submitted list is still offered", async () => {

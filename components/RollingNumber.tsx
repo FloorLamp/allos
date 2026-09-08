@@ -1,5 +1,7 @@
 "use client";
 
+import { formatCount } from "@/lib/format-number";
+
 import { useEffect, useState } from "react";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
@@ -101,7 +103,7 @@ export default function RollingNumber({
         className ? ` ${className}` : ""
       }`}
     >
-      {format ? format(value) : value.toLocaleString("en-US")}
+      {format ? format(value) : formatCount(value)}
     </span>
   );
 }

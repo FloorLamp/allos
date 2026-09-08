@@ -1,22 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
-import { formatRelativeTime, formatTimestampDisplay } from "@/lib/format-date";
+import { formatTimestampDisplay } from "@/lib/format-date";
+import { useRelativeLabel } from "@/components/useRelativeLabel";
 
-// The ONE timestamp treatment for a sync (#1772): the absolute local time AND the
-// relative one, together. The surfaces disagreed three ways — the setup pages printed
-// the raw SQLite value with a " UTC" suffix (`Last sync: 2026-08-01 09:14:22 UTC`),
-// which is neither the reader's clock nor their date shape; Review showed a
-// relative-only label, so two events five hours apart could both read "5 hours ago"
-// with no absolute time anywhere; and the grid card showed a third. Now every surface
-// renders this.
-//
-// Both halves come from the login's chosen date/time shape (#964/#1020). The relative
-// half refreshes every 30s so a page left open stays accurate, and
-// suppressHydrationWarning covers the server/client second-boundary race exactly as
-// <RelativeTime> does.
+// Sync status shows the absolute and live relative timestamp. Dense rows use
+// the relative label; day ledgers show the clock with its full stamp disclosed.
 export default function SyncTimestamp({
   value,
   className,
@@ -38,14 +28,7 @@ export default function SyncTimestamp({
   timeZone?: string;
 }) {
   const prefs = useFormatPrefs();
-  const [relative, setRelative] = useState(() => formatRelativeTime(value));
-
-  useEffect(() => {
-    const tick = () => setRelative(formatRelativeTime(value));
-    tick();
-    const id = setInterval(tick, 30_000);
-    return () => clearInterval(id);
-  }, [value]);
+  const relative = useRelativeLabel(value);
 
   const display = formatTimestampDisplay(
     value,
@@ -68,12 +51,8 @@ export default function SyncTimestamp({
         <time dateTime={machine} suppressHydrationWarning>
           {clockOnly ? clock : relative}
         </time>
-        {/* ONE PLACEMENT RULE FOR THE ABSOLUTE STAMP (#4419 rule 1). A ledger's TIME
-            column shows a clock with no date — its day header carries that — so this
-            surface's own full stamp is the disclosure, and it stays. A RELATIVE label
-            is a different case: the stamp it would disclose is already printed on the
-            status/detail surface the row sits on or links to, so a second copy per row
-            is the multiplied 34px button #3970 exists to remove, not a home. */}
+        {/* A clock-only row owns its full stamp. Relative-only rows link to
+            the status/detail surface that already owns it. */}
         {clockOnly ? <InfoTooltipIcon label={absolute} /> : null}
       </span>
     );
@@ -82,13 +61,7 @@ export default function SyncTimestamp({
   return (
     <time dateTime={machine} className={className} suppressHydrationWarning>
       {absolute}
-      {/* suppressHydrationWarning does NOT cascade: the <time>'s own flag
-              cannot cover text inside this child, so the relative half — whose
-              value moves with the real clock between server render and
-              hydration — needs its own. Without it a minute boundary crossed
-              in that gap is an uncaught React #418 that regenerates the whole
-              tree client-side (seen in #2839's CI browser logs on the
-              integrations surfaces, exactly where this component renders). */}
+      {/* Hydration suppression does not cascade from the parent time node. */}
       <span
         className="text-slate-500 dark:text-slate-400"
         suppressHydrationWarning

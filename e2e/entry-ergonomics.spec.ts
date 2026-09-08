@@ -1290,215 +1290,62 @@ test("a per-side lift saves each side's weight and reps from the shared band (#5
   }
 });
 
-test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
-  page,
-}) => {
-  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
+test.describe("activity save failure", () => {
+  // Network fault injection must reach Playwright's route handler. Service-worker
+  // requests can bypass it; worker behavior has dedicated offline/update specs.
+  // https://playwright.dev/docs/network#missing-network-events-and-service-workers
+  test.use({ serviceWorkers: "block" });
 
-  // The BEFORE reading for the row-absence assertion at the end (#4741). That claim
-  // used to be a closing COMMENT and CI contradicted it twice, so it is now a diff
-  // over the same snapshot the shared-profile guard reads.
-  const at = frozenNow();
-  const activitiesBefore = snapshotRecentActivities(at);
+  test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
+    page,
+  }) => {
+    await page.goto("/training?tab=log");
+    const at = frozenNow();
+    const activitiesBefore = snapshotRecentActivities(at);
 
-  // Force every saveActivity call to fail at the network layer. saveActivity runs
-  // as a Server Action — a POST to the page carrying a `next-action` header; the
-  // service worker passes non-GET straight through (public/sw.js), so this is an
-  // ordinary browser request page.route intercepts. We ABORT it (rather than
-  // fulfill a 500 — a non-flight body makes Next fall back to a full-page reload,
-  // which would unmount the form before the indicator paints); an aborted fetch
-  // rejects, so `await saveActivity()` throws into persist()'s failure handling.
-  // Aborting *every* such POST (not just the first) guarantees no later autosave
-  // can flip the form back to "Saved ✓". The #332 regression was that a save which
-  // didn't persist still advanced the form to "Saved ✓"; the fix must instead show
-  // the honest "Couldn’t save" indicator (the exact { ok: false } not-owned/invalid
-  // branches are pinned directly at the action tier — the single-profile e2e DB
-  // can't naturally produce a stale foreign id).
-  //
-  // AN ABORT MODELS A SAVE THAT DID NOT PERSIST, WHICH IS #332's SUBJECT — not a
-  // server that ANSWERS with a rejection. The two reach the form differently:
-  // `{ ok: false }` takes the `!res.ok` branch, an abort throws
-  // `TypeError: Failed to fetch` into the catch and is classified retriable
-  // (`activity-autosave-retriable`, measured on this case). Both end at
-  // `setStatus("error")`, so both raise this indicator — which is why the case is
-  // honest, and why the count below is what says the abort actually happened.
-  //
-  // WHAT THE HANDLER SAW, RECORDED AS IT RAN (#4741). This case has now reded three
-  // times on CI, twice on diffs that cannot reach a route handler, and never once on
-  // this box across 27 runs — so the one thing nobody has is the interception state
-  // inside the runner's browser. Playwright can be asked afterwards for the requests
-  // a PAGE made; it cannot be asked what THIS handler matched, which is the question.
-  // So every field below is written by the handler as it runs, and read at the moment
-  // the poll gives up. Do not delete it because the poll is green: green is when it
-  // costs nothing, and the one run it has to speak for is one nobody can watch.
-  let abortedActionPosts = 0;
-  let routeInstalled = false;
-  const seen = {
-    requests: 0,
-    posts: 0,
-    nextActionHeaders: 0,
-    postPaths: [] as string[],
-  };
-  // WHERE A REQUEST THAT NEVER ARRIVED ACTUALLY WENT (#4741, the fourth firing's
-  // instrument). `installed=true, requests seen=0` is the reading that killed every
-  // earlier hypothesis: the handler was reached by NOTHING — not the action POST, not
-  // a GET, not an RSC prefetch. A page that made no requests at all is not a page that
-  // made the wrong one, so the next question is not "did the discriminator match" but
-  // "was this handler even on the path the request took".
-  //
-  // `page.route` taps requests attributed to the PAGE. A page under a service worker
-  // can have its fetches attributed to the WORKER instead (`request.serviceWorker()`
-  // is non-null for those), and a page-scoped handler never sees them — which is the
-  // one shape that explains an installed handler hearing silence while the app plainly
-  // works. `public/sw.js` passes non-GET straight through, so the abort SHOULD be an
-  // ordinary browser request; that is the claim, and this is what tests it.
-  //
-  // So a second witness rides on the CONTEXT, which sees both kinds and can say which,
-  // and it is installed at the same moment as the page handler so the two counts cover
-  // the same window and can be compared as they stand. It only ever reads.
-  const contextSeen = {
-    requests: 0,
-    fromServiceWorker: 0,
-    posts: 0,
-    nextActionHeaders: 0,
-  };
-  page.context().on("request", (req) => {
-    contextSeen.requests += 1;
-    if (req.serviceWorker()) contextSeen.fromServiceWorker += 1;
-    if (req.method() === "POST") contextSeen.posts += 1;
-    if (req.headers()["next-action"]) contextSeen.nextActionHeaders += 1;
-  });
-
-  await page.route("**/*", async (route) => {
-    const req = route.request();
-    seen.requests += 1;
-    // Counted over EVERY method rather than only POST: an action arriving as
-    // something this discriminator rejects is a shape that would explain a miss, and
-    // a POST-scoped count could not tell that apart from no action at all.
-    const nextAction = Boolean(req.headers()["next-action"]);
-    if (nextAction) seen.nextActionHeaders += 1;
-    if (req.method() === "POST") {
-      seen.posts += 1;
-      seen.postPaths.push(new URL(req.url()).pathname);
-      if (nextAction) {
+    // Abort every save attempt, including autosave retries. A synthetic non-Flight
+    // 500 response can trigger navigation before the error indicator renders.
+    let abortedActionPosts = 0;
+    await page.route("**/*", async (route) => {
+      const req = route.request();
+      if (req.method() === "POST" && req.headers()["next-action"]) {
         abortedActionPosts += 1;
         await route.abort("failed");
         return;
       }
-    }
-    await route.continue();
-  });
-  routeInstalled = true;
+      await route.continue();
+    });
 
-  // Open a fresh create form and fill it enough to be savable (same flow as the
-  // est-calories spec — see its note on why fields are addressed by testid/role).
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Add activity" })
-    .click();
-  await page.getByPlaceholder(/What did you do/).fill("Running");
-  await page
-    .getByRole("listbox")
-    .getByRole("option", { name: "Running", exact: true })
-    .click();
-  // A duration makes the activity savable, so the debounced auto-save fires — and
-  // hits the aborted request.
-  await page.getByTestId("cardio-duration").fill("30");
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Add activity" })
+      .click();
+    await page.getByPlaceholder(/What did you do/).fill("Running");
+    await page
+      .getByRole("listbox")
+      .getByRole("option", { name: "Running", exact: true })
+      .click();
+    await page.getByTestId("cardio-duration").fill("30");
 
-  // THE FORCED FAILURE IS ASSERTED BEFORE ANYTHING IS CONCLUDED FROM IT (#4741).
-  // A forced failure that does not fire makes every assertion below it a claim
-  // about an ordinary successful save, and the case reads green or red for reasons
-  // that have nothing to do with #332. This is a PRESENCE assertion on a counter
-  // the route handler owns, so it is the same object the abort runs through, and
-  // its ceiling is free: waiting longer cannot invent a POST that was never made.
-  // It comes FIRST so that when this case reds, the report already says whether the
-  // interception applied — the question #4741 was opened to settle.
-  //
-  // The report is assembled INSIDE the polled function, so the failure prints the
-  // state at the poll's LAST READ rather than a reading taken afterwards.
-  //
-  // READ "installed" HONESTLY: `routeInstalled` is near-vacuous by construction —
-  // the `await page.route(...)` above precludes false — so it is there to be visibly
-  // true, not to discriminate. The halves that carry weight are `page.isClosed()`,
-  // which really can be false and takes the handler with it, and `requests`, which
-  // says whether an installed handler is still being REACHED. An installed handler
-  // that saw zero requests is the deaf case; one that saw dozens of them, none
-  // carrying a next-action header, is a different bug entirely — and today both
-  // print "Received: 0" and nothing else.
-  let interception = "the poll never read the handler";
-  const readAbortedActionPosts = () => {
-    interception =
-      `route handler installed=${routeInstalled && !page.isClosed()}; ` +
-      `requests seen=${seen.requests}, of them POSTs=${seen.posts}, ` +
-      `carrying a next-action header=${seen.nextActionHeaders}; ` +
-      `POST paths: ${seen.postPaths.join(" ") || "(none)"}`;
-    return abortedActionPosts;
-  };
-  try {
     await expect
-      .poll(readAbortedActionPosts, {
-        message:
-          "no Server Action POST was intercepted — the forced failure never fired, " +
-          "so nothing below this line is a test of #332 (see #4741)",
+      .poll(() => abortedActionPosts, {
+        message: "the forced Server Action failure must fire",
       })
       .toBeGreaterThan(0);
-  } catch (failure) {
-    // expect.poll's `message` is fixed when the assertion is CONSTRUCTED, so this is
-    // the only place the state at the miss can reach the failure line.
-    //
-    // The service-worker reading is taken HERE rather than inside the poll: whether a
-    // page is controlled is state that changes on the scale of a registration, not of
-    // a poll tick, and reading it every tick would put an evaluate into the very window
-    // whose quietness is the observation. If the page is gone, that is itself the
-    // answer and is printed as such rather than swallowed.
-    const controller = page.isClosed()
-      ? "unreadable — the page was closed"
-      : await page
-          .evaluate(() => {
-            const c = navigator.serviceWorker?.controller;
-            return c ? `${c.scriptURL} (${c.state})` : "none";
-          })
-          .catch((e: unknown) => `unreadable — ${(e as Error).message}`);
-    throw new Error(
-      `${(failure as Error).message}` +
-        `\n  interception at the moment of the miss: ${interception}` +
-        `\n  the context saw: requests=${contextSeen.requests}, ` +
-        `of them issued by a service worker=${contextSeen.fromServiceWorker}, ` +
-        `POSTs=${contextSeen.posts}, ` +
-        `carrying a next-action header=${contextSeen.nextActionHeaders}` +
-        `\n  this page's service-worker controller: ${controller}; ` +
-        `workers in this context=${page.context().serviceWorkers().length}`
-    );
-  }
+    // The active desktop indicator is visible; the mobile footer copy is hidden.
+    await expect(
+      page.locator('[aria-label="Couldn’t save"]:visible')
+    ).toBeVisible();
+    await expect(page.getByLabel("Saved", { exact: true })).toHaveCount(0);
 
-  // The failure must surface as the error indicator (SaveStatus, aria-label
-  // "Couldn’t save"), and the success check must never appear.
-  // Desktop renders the active indicator in the sticky header; the mobile
-  // footer copy remains in the DOM but is CSS-hidden at this breakpoint.
-  await expect(
-    page.locator('[aria-label="Couldn’t save"]:visible')
-  ).toBeVisible();
-  // EXACT: getByLabel matches accessible names by case-insensitive substring,
-  // so a bare "Saved" also matches any unrelated control whose label happens to
-  // contain the word — this pinned the autosave indicator only by luck.
-  await expect(page.getByLabel("Saved", { exact: true })).toHaveCount(0);
-
-  // NOTHING PERSISTED — ASSERTED, NOT ASSUMED (#4741). One reading, taken at a
-  // moment the two assertions above have made settled: the save has been attempted,
-  // intercepted and answered on screen. No poll — a retrying absence check would
-  // wait out exactly the window a late write lands in.
-  //
-  // It reuses the guard's own snapshot/diff rather than a second query, and does NOT
-  // repeat its repair: `noSharedProfileLeak` (e2e/fixtures.ts) already deletes ADDED
-  // rows in teardown. What this adds is ATTRIBUTION — the guard reads after the
-  // context is gone, and its message cannot say which of this file's two identical
-  // fixtures produced the row. "Running" + 30 min generates
-  // "Afternoon 30 Min Running Session" here, and the est-calories case above builds
-  // the same activity for real, so a bare guard failure names a title both cases mint.
-  expect(
-    diffRecentActivities(activitiesBefore, snapshotRecentActivities(at)).added,
-    "the save was forced to fail, so no activity row may exist (#332/#4741)"
-  ).toEqual([]);
+    // Read once after the failed save is acknowledged; polling absence could
+    // overlook a late write. The shared fixture owns cleanup if this fails.
+    expect(
+      diffRecentActivities(activitiesBefore, snapshotRecentActivities(at))
+        .added,
+      "the save was forced to fail, so no activity row may exist (#332/#4741)"
+    ).toEqual([]);
+  });
 });
 
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({
