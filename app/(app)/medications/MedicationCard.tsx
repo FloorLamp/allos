@@ -108,7 +108,7 @@ export default function MedicationCard({
   takenDoseIds,
   skippedDoseIds,
   due,
-  dueDoseIds = [],
+  dueDoseIds,
   courses,
   sideEffects,
   strip,
@@ -148,7 +148,7 @@ export default function MedicationCard({
   takenDoseIds: Set<number>;
   skippedDoseIds: Set<number>;
   due: boolean;
-  dueDoseIds?: number[];
+  dueDoseIds: number[];
   courses: MedicationCourse[];
   sideEffects: MedicationSideEffect[];
   // 14-day adherence strip + refill rate, threaded so the med card shows the same

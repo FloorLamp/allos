@@ -753,9 +753,9 @@ export default function IntakeItemForm({
         seed?.name ?? ""
       ),
     }));
-    if (seed) {
-      offerPrefill({ doseAmount: seed.amount });
-    } else {
+    if (seed?.amount) {
+      writePrefill(offerPrefill({ doseAmount: seed.amount }));
+    } else if (!seed) {
       // Unlinked: the bottle that stated this strength is gone.
       withdrawDoseSuggestion();
     }
