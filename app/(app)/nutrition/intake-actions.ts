@@ -926,7 +926,7 @@ export async function updateIntakeItem(
       (
         db
           .prepare(
-            `SELECT d.id, d.created_at, d.time_of_day, d.weekdays,
+            `SELECT d.id, d.created_at, d.amount, d.time_of_day, d.weekdays,
                     d.start_date, d.end_date
                FROM intake_item_doses d
                JOIN intake_items s ON s.id = d.item_id
@@ -967,11 +967,10 @@ export async function updateIntakeItem(
           id
         );
         keptIds.push(d.id);
-        // Effective-date the change (#1973). A dueness-relevant edit APPENDS a version
-        // effective today; every earlier day keeps resolving to the rule that was in
-        // force then, so the history is neither rewritten nor thrown away. A cosmetic
-        // edit (amount, food timing, sort) cannot reach `doseScheduleDiffers` and
-        // therefore cannot move an adherence boundary at all.
+        // Effective-date schedule and amount changes. Every earlier day keeps resolving
+        // to the facts that applied then. Food timing and sort remain cosmetic, and the
+        // separate updated_at rule above keeps amount-only edits from moving the slot's
+        // adherence boundary.
         const prior = priorSchedules.get(d.id);
         if (prior && doseScheduleDiffers(prior, d)) {
           const priorVersions = historyByDose.get(d.id);
@@ -985,7 +984,7 @@ export async function updateIntakeItem(
               owned.created_at ??
               "1970-01-01"
             ).slice(0, 10);
-            recordScheduleVersion(d.id, born, prior);
+            recordScheduleVersion(d.id, born, prior, false);
           }
           recordScheduleVersion(d.id, todayStr, d);
         }

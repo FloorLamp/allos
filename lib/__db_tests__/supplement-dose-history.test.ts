@@ -725,6 +725,34 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     };
   }
 
+  it("keeps a null log snapshot when no amount override is stated", () => {
+    const p = newProfile();
+    const { itemId, doseId } = seedSupplement(p);
+    const date = shiftDateStr(today(p), -4);
+    logHistoricalDose(
+      p,
+      itemId,
+      doseId,
+      at(date, "08:30"),
+      "temporary amount",
+      false,
+      "page"
+    );
+    const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
+    db.prepare("UPDATE intake_item_logs SET amount = NULL WHERE id = ?").run(
+      logId
+    );
+    db.prepare(
+      "UPDATE intake_item_doses SET amount = 'live 1000 mg' WHERE id = ?"
+    ).run(doseId);
+
+    expect(updateHistoricalDose(p, itemId, logId, date, null, null)).toEqual({
+      kind: "logged",
+      date,
+    });
+    expect(logRow(logId).amount).toBeNull();
+  });
+
   it("amending only the amount of a row with no stated instant changes the amount and NOTHING else", () => {
     const p = newProfile();
     const { itemId, doseId } = seedSupplement(p);

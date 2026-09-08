@@ -26,11 +26,12 @@ product given, the actual administration instant, and the recording instant.
 Multiple PRN administrations on one day remain distinct. Historical corrections
 must preserve the relevant occurrence and schedule meaning.
 
-`intake_dose_schedule_versions` provides effective-dated schedule history.
-`doseScheduleAsOf` judges a local day using the version in force then. Append a
-version only when schedule facts change, and load history once per profile/request
-or tick through the existing query path. Legacy dates without a pre-edit version
-cannot reconstruct facts the app never stored.
+`intake_dose_schedule_versions` provides effective-dated schedule and amount history.
+`doseScheduleAsOf` judges a local day using the version in force then, including the
+full stored amount string and whether that amount was captured or assumed. Append a
+version when schedule or amount facts change, and load history once per profile/request
+or tick through the existing query path. Before captured history begins, use the oldest
+known amount and state that it is assumed. Existing administration logs stay as written.
 
 Keep calendar cadence, situation conditions, dose slots, and obligation distinct.
 The pre-workout condition is about the day's situation; its send timing is a

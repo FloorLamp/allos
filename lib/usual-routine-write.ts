@@ -66,9 +66,8 @@
 //
 // TWO PROPERTIES THE DEEP DOOR HAS THAT THE STALE-TAP WRITER DOES NOT, both wanted:
 // a medication whose courses do not cover that day is refused `outside-course` rather
-// than written, and the amount snapshotted onto the row is the dose's CURRENT amount.
-// The second is a known, accepted cost until #3984 versions amounts — it is exactly what
-// the deep door does today, so it is not a new one.
+// than written, and the amount snapshotted onto the row is resolved for that day by the
+// same effective-dated dose history as its schedule.
 //
 // ── THE BUNDLE STATES NO EATING HOUR, ON ANY SURFACE (#4438, ruled 2026-09-02) ──
 //
@@ -201,8 +200,9 @@ function datedDoseWrite(
   const at = statedInstantOnDate(date, hhmm, tz);
   if (!at) return "stale-dose";
   return datedDoseOutcome(
-    // amountOverride null keeps the dose row's own amount, and supply moves exactly as
-    // the ±2 writer moves it — one tap is one tap, whichever writer it reaches.
+    // amountOverride null lets the writer resolve the amount for this target day, and
+    // supply moves exactly as the ±2 writer moves it — one tap is one tap whichever
+    // writer it reaches.
     logHistoricalDose(
       profileId,
       dose.itemId,
