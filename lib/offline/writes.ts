@@ -890,30 +890,18 @@ export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 
 export type MoodWriteSight = "saw-the-day" | "day-unseen";
 
-function moodUpsert(sight: MoodWriteSight) {
-  return sight === "day-unseen"
-    ? db.prepare(
-        `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
-         VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(profile_id, date) DO UPDATE SET
-           valence = excluded.valence,
-           energy = COALESCE(excluded.energy, mood_logs.energy),
-           anxiety = COALESCE(excluded.anxiety, mood_logs.anxiety),
-           factors = COALESCE(excluded.factors, mood_logs.factors),
-           notes = COALESCE(excluded.notes, mood_logs.notes),
-           updated_at = datetime('now')`
-      )
-    : db.prepare(
-        `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
-         VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(profile_id, date) DO UPDATE SET
-           valence = excluded.valence,
-           energy = excluded.energy,
-           anxiety = excluded.anxiety,
-           factors = excluded.factors,
-           notes = excluded.notes,
-           updated_at = datetime('now')`
-      );
+function moodUpsert() {
+  return db.prepare(
+    `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(profile_id, date) DO UPDATE SET
+       valence = excluded.valence,
+       energy = CASE ? WHEN 1 THEN COALESCE(excluded.energy, mood_logs.energy) ELSE excluded.energy END,
+       anxiety = CASE ? WHEN 1 THEN COALESCE(excluded.anxiety, mood_logs.anxiety) ELSE excluded.anxiety END,
+       factors = CASE ? WHEN 1 THEN COALESCE(excluded.factors, mood_logs.factors) ELSE excluded.factors END,
+       notes = CASE ? WHEN 1 THEN COALESCE(excluded.notes, mood_logs.notes) ELSE excluded.notes END,
+       updated_at = datetime('now')`
+  );
 }
 
 // Persist one daily wellbeing check-in — the SINGLE write core shared by the
@@ -953,14 +941,19 @@ export function upsertMoodLog(
   if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeMoodInput(raw);
   if ("error" in normalized) return false;
-  moodUpsert(sight).run(
+  const preserveUnseen = sight === "day-unseen" ? 1 : 0;
+  moodUpsert().run(
     profileId,
     date,
     normalized.valence,
     normalized.energy,
     normalized.anxiety,
     normalized.factors.length ? JSON.stringify(normalized.factors) : null,
-    normalized.note
+    normalized.note,
+    preserveUnseen,
+    preserveUnseen,
+    preserveUnseen,
+    preserveUnseen
   );
   resetMoodCheckinIgnored(profileId);
   return true;
