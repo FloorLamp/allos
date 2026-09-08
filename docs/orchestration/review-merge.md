@@ -2,6 +2,8 @@
 
 ## Review
 
+- Orchestrator reviews use `COMMENT`, never `APPROVE` or `REQUEST_CHANGES`.
+  State blockers explicitly in the comment and mark held work `parked`.
 - Read the full diff and the issue's complete comment thread.
 - Verify repository claims with searches and focused reads. Exercise the write
   path when the diff cannot demonstrate the behavior.
