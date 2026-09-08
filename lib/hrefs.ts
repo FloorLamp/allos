@@ -1,49 +1,12 @@
-// Semantic href helpers + the app-wide internal-route type alias (issue #285).
-//
-// Two things live here:
-//
-// 1. `AppRoute` — the single alias every href-carrying DATA MODEL field is typed
-//    with (`href: AppRoute`, not `href: string`). It resolves to Next's generated
-//    `Route` type (from `experimental`-graduated `typedRoutes`, enabled in
-//    next.config.js), so an invalid internal pathname stored in a model — the
-//    #283 dead-link class (`/goals`, `/medical` after a page was consolidated
-//    away) — becomes a `tsc` error. External URLs stay a plain `string`; only
-//    INTERNAL app routes are `AppRoute`.
-//
-//    THE ALIAS IS ONLY AS TYPED AS THE GENERATED TYPES ARE PRESENT (#2293).
-//    `Route<T>` carries the real route union when `.next/types/routes.d.ts`
-//    exists and falls back to `string & {}` when it does not — silently, with
-//    every dead literal accepted. `/.next/` and `next-env.d.ts` are both
-//    gitignored, so a fresh checkout has neither until something generates them.
-//    That is why `npm run typecheck` is `next typegen && tsc --noEmit` rather
-//    than bare `tsc`: typegen (~1s) materialises the union so the fast gate has
-//    the same teeth `npm run build` has. If a route literal ever stops being
-//    checked, look there first — the failure mode is silence, not an error.
-//
-//    Reversibility (issue #285 note): `typedRoutes` is young. If a Next upgrade
-//    breaks it, flip this ONE line to `export type AppRoute = string;` and every
-//    field degrades to a plain string without touching each interface.
-//
-// 2. The rule-carrying href HELPERS. The one-question-one-computation convention
-//    applied to links: a helper exists ONLY where the link encodes a RULE that is
-//    (or is about to be) duplicated — never a generator that just returns a static
-//    literal (a generator returning "/medical" is exactly as dead as the literal).
-//    Static/one-off links stay plain literals, now compile-checked and greppable.
-//
-// Two flavors of helper:
-//   - QUERY-RULE helpers (clinicalResultDetailHref, historyDayHref, dataSectionHref):
-//     encode a canonical-gating / param-shape rule shared by ≥2 surfaces.
-//   - DYNAMIC-ROUTE helpers (importHref, encounterHref, protocolHref,
-//     immunizationHref): a dynamic route like `/import/5` is NOT assignable to
-//     the field alias `AppRoute` (Next's `Route<string>` only admits static +
-//     query/hash routes — dynamic segments need the literal inferred). These
-//     helpers validate the pathname against the real route tree via a
-//     `Route<`/x/${…}`>` ANNOTATION (a removed `/x/[id]` page fails the build
-//     here — that's the point), then widen to `AppRoute` for storage in a field.
-//     Inline `<Link href={`/import/${id}`}>` in JSX needs no helper — Next infers
-//     and validates those directly.
+// Shared internal-route types and URL builders. AppRoute checks pathnames against
+// Next's generated routes; run `npm run typecheck` to generate those types first.
+// Query helpers own repeated parameter rules and constrain values that typedRoutes
+// cannot check. One-off static links can stay literals. Dynamic-route helpers
+// validate their template with Route<...> before widening it to AppRoute.
 
 import type { Route } from "next";
+import type { TrainingTab } from "./training-tabs";
+import type { OnboardingStep } from "./onboarding";
 import type { CardioMetric, RangeId } from "./analyze-view";
 import type { ExerciseCompareMetric } from "./queries/training/strength";
 import { continuousReadingSlug } from "./reading-cadence";
@@ -54,6 +17,17 @@ import type { IntakeItemKind } from "./types/intake";
 import type { HistoryFamily, HistoryKind } from "./history-format";
 
 export type AppRoute = Route;
+
+export function trainingTabHref(tab: TrainingTab, anchor?: string): AppRoute {
+  return `/training?tab=${tab}${anchor ? `#${encodeURIComponent(anchor)}` : ""}`;
+}
+
+export function onboardingStepHref(
+  step: OnboardingStep,
+  error?: string
+): AppRoute {
+  return `/onboarding?step=${step}${error ? `&error=${encodeURIComponent(error)}` : ""}`;
+}
 
 // --------------------------------------------------------------------------
 // Intake (supplements / medications) surface seam (issue #746)

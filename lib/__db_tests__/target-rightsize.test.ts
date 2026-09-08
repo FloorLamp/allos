@@ -234,7 +234,7 @@ describe("frequency-target right-sizing (#1670)", () => {
     expect(tierForDedupeKey(finding.dedupeKey)).toBe("coaching");
     expect(finding.title).toContain("Cardio");
     expect(finding.evidence).toContain("4 days");
-    expect(finding.actionHref).toBe("/training?tab=goals");
+    expect(finding.actionHref).toBe("/training?tab=plan#goals");
 
     expect(stopTrackingFrequencyTarget(pid, tid)).toBe("stopped");
     expect(

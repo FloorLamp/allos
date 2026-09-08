@@ -1,4 +1,4 @@
-import { MEDICATIONS_HREF, type AppRoute } from "./hrefs";
+import { trainingTabHref, MEDICATIONS_HREF, type AppRoute } from "./hrefs";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import { DIGEST_DEFAULT_MINUTE } from "./notifications/digest-schedule";
 import type { NotifySchedule } from "./settings/notifications";
@@ -126,7 +126,7 @@ export const ONBOARDING_FOCUS_DEFS: readonly OnboardingFocusDef[] = [
     label: "Track fitness and training",
     description: "Log a recent session and build useful history over time.",
     actionLabel: "Log a recent workout",
-    actionHref: "/training?tab=log",
+    actionHref: trainingTabHref("log"),
   },
   {
     id: "metrics-labs",

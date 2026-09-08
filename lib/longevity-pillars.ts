@@ -20,7 +20,7 @@ import {
   type FitnessPercentile,
 } from "./fitness-norms";
 import { bioAgeDeltaCompact, type BioAgeDelta } from "./bio-age";
-import type { AppRoute } from "./hrefs";
+import { strengthAnalyzeHref, type AppRoute } from "./hrefs";
 import {
   strengthLevelLabel,
   strengthTone,
@@ -356,23 +356,6 @@ export function pillarHref(key: PillarKey): AppRoute {
   return `/longevity#${PILLAR_ANCHOR[key]}`;
 }
 
-// The strength pillar's destination (#1921) — the Training → Analyze detail panel for the
-// lift the pillar NAMES, which renders the same LevelBadge and the standards table
-// highlighted at this lifter's row and level. `pillarHref` above stays the static map for
-// the pillars whose expansion is a page section; the strength pillar is the first whose
-// href is DATA, which `Pillar.href` has always supported per-pillar.
-//
-// The param is `item`, the in-app Analyze vocabulary (`exercise` is the alias the
-// notification "How to" button uses). The value must be the LOGGED exercise name: the
-// panel selects by exact match against the profile's own history and silently falls back
-// to its first lift otherwise, so sending the standards base name would land the reader
-// somewhere they then have to search — the defect restated, not fixed. No helper in
-// lib/hrefs: the literal owns no routing policy, matching lib/rule-findings' own
-// `exerciseHref` for the same destination.
-function strengthEvidenceHref(exercise: string): AppRoute {
-  return `/training?tab=analyze&kind=strength&item=${encodeURIComponent(exercise)}`;
-}
-
 export type PillarTone = "good" | "warn" | "bad" | "neutral";
 
 // The text twin of each tone's color (WCAG 1.4.1, issue #1220): a pillar's
@@ -501,7 +484,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       // The claim names a lift; the tap reaches THAT lift's evidence (#1921). The
       // explainer this used to point at is one hop away from there, and stays linked from
       // the Longevity fitness section.
-      href: strengthEvidenceHref(inputs.strength.exercise),
+      href: strengthAnalyzeHref(inputs.strength.exercise),
     });
   }
 
