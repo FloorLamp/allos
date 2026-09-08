@@ -46,9 +46,9 @@ describe("reserved-key discipline (#1073)", () => {
   it("labels the button with a leading glyph and the grams preset", () => {
     // #1822 item 6: this was the only button on the food keyboard with no glyph, so the
     // keyboard spoke two label grammars at once.
-    expect(proteinNudgeButtonLabel(30)).toBe("💪 ＋30g protein");
+    expect(proteinNudgeButtonLabel(30)).toBe("💪 30 g protein");
     expect(proteinNudgeButtonLabel(DEFAULT_PROTEIN_PRESET_GRAMS)).toBe(
-      "💪 ＋30g protein"
+      "💪 30 g protein"
     );
     expect(proteinNudgeButtonLabel(25).startsWith(PROTEIN_NUDGE_EMOJI)).toBe(
       true

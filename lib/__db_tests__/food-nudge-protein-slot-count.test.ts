@@ -1,15 +1,5 @@
-// DB INTEGRATION TIER — #1379: the food-nudge protein "+Xg" button carries the same "(n)"
-// suffix as every food-group sibling (REVERSING the original #1073 no-suffix decision).
-// Driven end-to-end through handleCallbackQuery against the REAL query layer, with only the
-// raw Telegram transport stubbed (the #454 guarded boundary), so the REBUILT keyboard this
-// test inspects is the genuine rendered output.
-//
-// #2019 changed what the number MEANS — every button's suffix is now the DAY total, since
-// a Telegram tap no longer asserts a meal and "this slot" would have to be re-derived — but
-// not that the protein button carries one. The count still comes off food_log_events, where
-// the reserved __protein__ key lives (it never reaches the food_daily_totals day counter), so it is
-// taps rather than grams; the day's grams stay on the nudge's protein line. The clock is
-// FROZEN (ALLOS_TEST_NOW) so the tap lands on a deterministic day.
+// Repeated protein taps rebuild the same offered amount while the recorded total grows.
+// Real callbacks, query layer and rendering; only Telegram transport is stubbed.
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
@@ -18,7 +8,7 @@ import { stubTelegramSends } from "./telegram-spies";
 // the edited keyboard this test inspects is the genuine rendered output.
 
 import { today } from "@/lib/db";
-import { currentFoodSlot } from "@/lib/queries";
+import { currentFoodSlot, getProteinTapsOnDate } from "@/lib/queries";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
   foodLogCallbackData,
@@ -47,7 +37,7 @@ function lastRebuiltKeyboard():
   return opts?.keyboard;
 }
 
-// The rendered TEXT of the rebuilt protein "+Xg" button (its callback_data starts
+// The rendered TEXT of the rebuilt protein button (its callback_data starts
 // foodprotein:), or undefined when the button isn't on the keyboard.
 function rebuiltProteinButtonLabel(): string | undefined {
   for (const row of lastRebuiltKeyboard() ?? []) {
@@ -122,8 +112,8 @@ afterAll(() => {
   else process.env.ALLOS_TEST_NOW = priorTestNow;
 });
 
-describe("protein '+Xg' button (n) suffix (#1379, day-scoped since #2019)", () => {
-  it("a protein tap → the rebuilt button carries (1); a second tap → (2)", async () => {
+describe("protein button after repeated taps", () => {
+  it("keeps the offered grams on the button as both taps are recorded", async () => {
     editTextMock.mockClear();
     // First tap: log 30 g in this slot, then rebuild.
     await handleCallbackQuery(
@@ -136,12 +126,10 @@ describe("protein '+Xg' button (n) suffix (#1379, day-scoped since #2019)", () =
         12
       )
     );
-    // The protein button is now on the rebuilt keyboard (the tap made the profile a protein
-    // tracker) and carries the day count (1) — the exact sibling suffix, not a bare button.
-    expect(rebuiltProteinButtonLabel()).toBe("💪 ＋30g protein (1)");
+    // The first tap makes the profile a protein tracker and brings its button into view.
+    expect(rebuiltProteinButtonLabel()).toBe("💪 30 g protein");
 
-    // A second tap the same day → the count ticks to (2) immediately (the rebuild re-reads
-    // the ledger, so a tap always acknowledges its own log).
+    // Another tap records another scoop without changing the next offered amount.
     await handleCallbackQuery(
       cqWithFoodButtons(
         foodProteinCallbackData(p.profileId, slot, t, 30),
@@ -152,6 +140,7 @@ describe("protein '+Xg' button (n) suffix (#1379, day-scoped since #2019)", () =
         12
       )
     );
-    expect(rebuiltProteinButtonLabel()).toBe("💪 ＋30g protein (2)");
+    expect(rebuiltProteinButtonLabel()).toBe("💪 30 g protein");
+    expect(getProteinTapsOnDate(p.profileId, t)).toBe(2);
   });
 });

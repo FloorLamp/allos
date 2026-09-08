@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { plainBody } from "@/lib/notifications/rich-text";
+import { plainBody, joinBody } from "@/lib/notifications/rich-text";
+import { renderFoodNudge } from "@/lib/notifications/food-format";
+import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import {
   renderWindowMessage,
   renderMergedIntakeMessage,
@@ -158,6 +160,48 @@ function entry(opts: {
     adherence: { ...NONE, ...opts.adherence },
   };
 }
+
+it("keeps logged totals and writes counts distinct in one message", () => {
+  const date = "2026-07-05";
+  const intake = renderWindow(
+    1,
+    "Morning",
+    date,
+    Array.from({ length: 3 }, (_, i) =>
+      entry({
+        doseId: i + 1,
+        itemId: i + 1,
+        name: `Dose ${i + 1}`,
+        stack: "Morning Smoothie",
+      })
+    )
+  );
+  const food = renderFoodNudge(
+    1,
+    "Morning",
+    date,
+    ["berries", PROTEIN_NUDGE_KEY],
+    new Map([
+      ["berries", 1],
+      [PROTEIN_NUDGE_KEY, 2],
+    ])
+  );
+  const message = {
+    ...intake,
+    body: joinBody([intake.body, food.body], "\n"),
+    actions: [...(intake.actions ?? []), ...(food.actions ?? [])],
+  };
+  expect(plainBody(message.body).match(/Berries ×1/g)).toHaveLength(1);
+  expect(
+    message.actions
+      .filter((a) =>
+        ["food:", "foodprotein:", "all:"].some((prefix) =>
+          a.data?.startsWith(prefix)
+        )
+      )
+      .map((a) => a.label)
+  ).toEqual(["✅ Morning Smoothie (3)", "🫐 Berries", "💪 30 g protein"]);
+});
 
 describe("renderWindowMessage", () => {
   const DATE = "2026-07-05";
