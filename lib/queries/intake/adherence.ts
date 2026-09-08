@@ -16,6 +16,7 @@ import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
   doseOnDay,
+  doseScheduleAsOf,
   type DoseCadence,
   type ItemCadence,
 } from "../../intake-cadence";
@@ -67,7 +68,7 @@ import { getEffectiveActiveSituations } from "../derived-situations";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import type { IntakeCondition, IntakeItemKind } from "../../types";
 import { intakeShortLabels } from "../../intake-short-name";
-import { getIntakeItems } from "./schedule";
+import { getDoseScheduleVersions, getIntakeItems } from "./schedule";
 import { DOSE_CONFIRM_UNDO, DOSE_RESOLUTION } from "@/lib/log-manifest";
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
@@ -323,6 +324,7 @@ function applyDoseStatusCore(
           DoseCadence)
       | undefined;
     if (!owned) return "stale-dose";
+    owned.versions = getDoseScheduleVersions(profileId).get(doseId);
     // A paused/stopped item keeps its buttons in old messages; refuse the write so a
     // lingering reminder can't silently log doses (and burn supply) for an item the user
     // has deliberately paused. The web control is only RENDERED for an active item, so
@@ -369,7 +371,10 @@ function applyDoseStatusCore(
     // Snapshot the dose amount at confirm time: history must keep showing what was
     // actually taken even after a later dosage edit rewrites the dose row. A skip
     // records no amount — nothing was consumed.
-    const amount = target === "taken" ? owned.amount : null;
+    const amount =
+      target === "taken"
+        ? (doseScheduleAsOf(owned, date).amount ?? null)
+        : null;
     if (!existing) {
       // `recorded_at` is immutable capture; `occurred_at` is the administration the
       // Taken action asserts. An offline replay may carry the captured administration
@@ -890,16 +895,18 @@ export function logHistoricalDose(
   return writeTx((tx): HistoricalDoseOutcome => {
     const dose = db
       .prepare(
-        `SELECT d.item_id, d.amount, s.obligation
+        `SELECT d.item_id, d.amount, d.time_of_day, d.weekdays,
+                d.start_date, d.end_date, s.obligation
            FROM intake_item_doses d
            JOIN intake_items s ON s.id = d.item_id
           WHERE d.id = ? AND d.item_id = ? AND d.retired = 0
             AND s.profile_id = ?`
       )
       .get(doseId, itemId, profileId) as
-      | { item_id: number; amount: string | null; obligation: IntakeObligation }
+      | ({ item_id: number; obligation: IntakeObligation } & DoseCadence)
       | undefined;
     if (!dose) return { kind: "stale-dose" };
+    dose.versions = getDoseScheduleVersions(profileId).get(doseId);
 
     const inCourse =
       !itemHasCourses(profileId, itemId) ||
@@ -968,7 +975,8 @@ export function logHistoricalDose(
       if (duplicate) return { kind: "duplicate" };
     }
 
-    const amount = amountOverride?.trim() || dose.amount;
+    const amount =
+      amountOverride?.trim() || doseScheduleAsOf(dose, date).amount || null;
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
       // transaction (Tx token), the DML lives with the invariant's owner.
@@ -1038,8 +1046,8 @@ export const logHistoricalDoseDeclares = DOSE_RESOLUTION;
 // which is the wrong question for a row that already exists: the schedule was retired,
 // but the dose was really taken and the ledger entry is still a fact. Same for a paused
 // item — pausing stops future dueness, it does not make past history unamendable. So
-// this SELECT joins intake_item_doses for its amount WITHOUT a retired predicate and
-// never looks at `s.active`.
+// this SELECT still joins the row to its dose WITHOUT a retired predicate and never
+// looks at `s.active`.
 //
 // THE SCHEDULE IS NEVER TOUCHED. The only rows this writes are the ledger row itself
 // and (for a `may` medication reaching back before its course) medication_courses.
@@ -1087,7 +1095,7 @@ export function updateHistoricalDose(
     const row = db
       .prepare(
         `SELECT l.dose_id, l.date AS old_date, l.amount,
-                d.amount AS dose_amount, s.obligation
+                s.obligation
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = l.item_id
@@ -1099,7 +1107,6 @@ export function updateHistoricalDose(
           dose_id: number;
           old_date: string;
           amount: string | null;
-          dose_amount: string | null;
           obligation: IntakeObligation;
         }
       | undefined;
@@ -1189,7 +1196,9 @@ export function updateHistoricalDose(
         return { kind: "outside-course" };
       }
     }
-    const amount = amountOverride?.trim() || row.dose_amount;
+    // Amendment starts from the administration snapshot, including a meaningful
+    // null; only a stated nonempty override replaces it.
+    const amount = amountOverride?.trim() || row.amount;
     db.prepare(
       `UPDATE intake_item_logs
           SET date = ?, occurred_at = ?, amount = ?

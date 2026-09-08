@@ -358,6 +358,12 @@ function PastDayDoses({
                         {dose.detail}
                       </span>
                     )}
+                    {dose.amountAssumed ? (
+                      <span className="block text-xs text-slate-500 dark:text-slate-400">
+                        No amount was saved for this date. Using the oldest
+                        known amount.
+                      </span>
+                    ) : null}
                     {notes[occurrenceKey(date, dose.doseId)] && (
                       <span
                         data-testid={`quick-entry-dose-note-${dose.doseId}`}

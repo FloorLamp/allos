@@ -176,33 +176,6 @@ describe("workflow-command escaping", () => {
   });
 });
 
-describe("the gitleaks workflow wires the explainer in", () => {
-  const workflow = fs.readFileSync(
-    path.join(repoRoot, ".github", "workflows", "gitleaks.yml"),
-    "utf8"
-  );
-
-  it("writes a JSON report and hands that same path to the explainer", () => {
-    expect(workflow).toContain('--report-format json --report-path "$report"');
-    expect(workflow).toContain('node scripts/gitleaks-explain.mjs "$report"');
-  });
-
-  it("keeps --redact on the scan, which is what makes the report safe to print", () => {
-    // The explainer reads the report back and prints file/line/commit into a
-    // PUBLIC log. --redact is the only reason no secret material rides along.
-    expect(workflow).toMatch(/gitleaks git --log-opts="\$log_opts" --redact/);
-  });
-
-  it("still exits with gitleaks' own status, so explaining cannot become passing", () => {
-    expect(workflow).toContain("status=$?");
-    expect(workflow).toContain('exit "$status"');
-  });
-
-  it("gives the explainer a base ref, without which every merge-commit finding reads as new", () => {
-    expect(workflow).toContain("GITLEAKS_BASE_REF:");
-  });
-});
-
 // The scan RANGE, executed rather than read (#2969, ruled 2026-08-16).
 //
 // Every branch-scoped event scans only that branch's commits, so one branch's

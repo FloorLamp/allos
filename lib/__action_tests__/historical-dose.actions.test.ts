@@ -42,6 +42,65 @@ function seedMedication(
 }
 
 describe("logHistoricalDose", () => {
+  it("uses the target day's amount unless the person enters an override", async () => {
+    const { profile } = seedActor();
+    const firstDate = shiftDateStr(today(profile.id), -5);
+    const overrideDate = shiftDateStr(today(profile.id), -4);
+    const { itemId, doseId } = seedMedication(profile.id, {
+      startedOn: shiftDateStr(firstDate, -1),
+    });
+    db.prepare(
+      `INSERT INTO intake_dose_schedule_versions
+         (dose_id, effective_from, amount, amount_captured, time_of_day)
+       VALUES (?, ?, '5 mg', 1, 'morning'),
+              (?, ?, '10 mg', 1, 'morning')`
+    ).run(doseId, firstDate, doseId, today(profile.id));
+    db.prepare(
+      "UPDATE intake_item_doses SET amount = '10 mg' WHERE id = ?"
+    ).run(doseId);
+
+    expect(
+      await logHistoricalDose(
+        fd({ id: itemId, dose_id: doseId, date: firstDate, time: "08:00" })
+      )
+    ).toEqual({ ok: true });
+    expect(
+      await logHistoricalDose(
+        fd({
+          id: itemId,
+          dose_id: doseId,
+          date: overrideDate,
+          time: "08:00",
+          amount: "7.5 mg",
+        })
+      )
+    ).toEqual({ ok: true });
+    expect(
+      db
+        .prepare(
+          "SELECT date, amount FROM intake_item_logs WHERE dose_id = ? ORDER BY date"
+        )
+        .all(doseId)
+    ).toEqual([
+      { date: firstDate, amount: "5 mg" },
+      { date: overrideDate, amount: "7.5 mg" },
+    ]);
+
+    db.prepare(
+      "UPDATE intake_item_doses SET amount = '20 mg' WHERE id = ?"
+    ).run(doseId);
+    expect(
+      db
+        .prepare(
+          "SELECT date, amount FROM intake_item_logs WHERE dose_id = ? ORDER BY date"
+        )
+        .all(doseId)
+    ).toEqual([
+      { date: firstDate, amount: "5 mg" },
+      { date: overrideDate, amount: "7.5 mg" },
+    ]);
+  });
+
   it("stores the posting web surface and demotes a forged provenance", async () => {
     const { profile } = seedActor();
     const date = shiftDateStr(today(profile.id), -2);
@@ -268,6 +327,68 @@ describe("logHistoricalDose", () => {
           .get(itemId) as { quantity_on_hand: number }
       ).quantity_on_hand
     ).toBe(10);
+  });
+
+  it("keeps each recorded amount unless the amendment states a replacement", async () => {
+    const { profile } = seedActor();
+    const currentDay = today(profile.id);
+    const dates = [
+      shiftDateStr(currentDay, -8),
+      shiftDateStr(currentDay, -7),
+      shiftDateStr(currentDay, -6),
+      shiftDateStr(currentDay, -5),
+    ] as const;
+    const { itemId, doseId } = seedMedication(profile.id, {
+      startedOn: shiftDateStr(dates[0], -1),
+    });
+    const amounts = [null, "captured 7 mg", "captured 9 mg", "captured 4 mg"];
+    const insert = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status)
+       VALUES (?, ?, ?, ?, 'taken')`
+    );
+    for (const [index, date] of dates.entries()) {
+      insert.run(doseId, itemId, date, amounts[index]);
+    }
+    db.prepare(
+      "UPDATE intake_item_doses SET amount = 'live 20 mg' WHERE id = ?"
+    ).run(doseId);
+
+    async function amend(index: number, amount?: string) {
+      const log = db
+        .prepare(
+          "SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseId, dates[index]) as { id: number };
+      return updateHistoricalDose(
+        fd({
+          id: itemId,
+          log_id: log.id,
+          date: dates[index],
+          time: "08:00",
+          amount,
+        })
+      );
+    }
+
+    expect([
+      await amend(0, ""),
+      await amend(1, "captured 7 mg"),
+      await amend(2, "stated 12 mg"),
+      await amend(3),
+    ]).toEqual([{ ok: true }, { ok: true }, { ok: true }, { ok: true }]);
+
+    expect(
+      db
+        .prepare(
+          "SELECT date, amount FROM intake_item_logs WHERE dose_id = ? ORDER BY date"
+        )
+        .all(doseId)
+    ).toEqual([
+      { date: dates[0], amount: null },
+      { date: dates[1], amount: "captured 7 mg" },
+      { date: dates[2], amount: "stated 12 mg" },
+      { date: dates[3], amount: "captured 4 mg" },
+    ]);
   });
 
   it("deleting history restores supply only when that dose originally adjusted it", async () => {

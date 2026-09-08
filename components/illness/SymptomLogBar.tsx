@@ -665,6 +665,7 @@ export default function SymptomLogBar({
       // move — raise, then lower back to where it started — is a different transition
       // and always lands.
       key: `${key}:${prev}->${severity}`,
+      valueKey: `${activeDate}:${key}`,
       from: prev,
       optimistic: Math.max(prev, severity),
       commit: (value) => setSeverity(key, value),

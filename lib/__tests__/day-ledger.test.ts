@@ -79,6 +79,7 @@ function pending(
     name: `Item ${doseId}`,
     detail: "1 capsule",
     stack,
+    amountAssumed: false,
   };
 }
 

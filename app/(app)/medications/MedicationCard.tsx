@@ -880,6 +880,7 @@ export default function MedicationCard({
               id: dose.id,
               amount: dose.amount,
               time_of_day: dose.time_of_day,
+              versions: dose.versions,
             }))}
             asNeeded={isOnDemand(s)}
             history={doseHistory}
