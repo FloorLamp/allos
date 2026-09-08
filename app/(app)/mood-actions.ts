@@ -37,13 +37,22 @@ export async function logMood(formData: FormData): Promise<FormResult> {
     return v === null || String(v).trim() === "" ? null : String(v).trim();
   };
 
-  const ok = upsertMoodLog(profileId, date, {
-    valence: String(formData.get("valence") ?? ""),
-    energy: opt("energy"),
-    anxiety: opt("anxiety"),
-    factors: formData.getAll("factors").map((f) => String(f)),
-    note: opt("note"),
-  });
+  const hasDayUnseen = formData.has("day_unseen");
+  if (hasDayUnseen && formData.get("day_unseen") !== "1")
+    return formError("Couldn't save that check-in — try again.");
+
+  const ok = upsertMoodLog(
+    profileId,
+    date,
+    {
+      valence: String(formData.get("valence") ?? ""),
+      energy: opt("energy"),
+      anxiety: opt("anxiety"),
+      factors: formData.getAll("factors").map((f) => String(f)),
+      note: opt("note"),
+    },
+    hasDayUnseen ? "day-unseen" : "saw-the-day"
+  );
   if (!ok) return formError("Couldn't save that check-in — try again.");
 
   revalidateRoute("/");

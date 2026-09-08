@@ -200,6 +200,71 @@ describe("logMood — dated backfill", () => {
     expect(getMoodOnDate(profile.id, old)?.valence).toBe(4);
   });
 
+  it("merges a blind check-in but keeps sighted intentional clears", async () => {
+    const login = createLogin();
+    const profile = createProfile("mood-blind-action", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    const full = fd({
+      date,
+      valence: 2,
+      energy: 1,
+      anxiety: 5,
+      note: "rough",
+    });
+    full.append("factors", "work");
+    expect(await logMood(full)).toEqual({ ok: true });
+
+    expect(await logMood(fd({ date, valence: 4, day_unseen: "1" }))).toEqual({
+      ok: true,
+    });
+    expect(getMoodOnDate(profile.id, date)).toMatchObject({
+      valence: 4,
+      energy: 1,
+      anxiety: 5,
+      factors: ["work"],
+      notes: "rough",
+    });
+
+    expect(await logMood(fd({ date, valence: 3 }))).toEqual({ ok: true });
+    expect(getMoodOnDate(profile.id, date)).toMatchObject({
+      valence: 3,
+      energy: null,
+      anxiety: null,
+      factors: [],
+      notes: null,
+    });
+  });
+
+  it.each(["", "0", "true", " 1 "])(
+    "refuses malformed blind marker %j without changing the row",
+    async (marker) => {
+      const login = createLogin();
+      const profile = createProfile(
+        `mood-marker-${JSON.stringify(marker)}`,
+        login.id
+      );
+      actAs(login, profile);
+      const date = today(profile.id);
+      expect(await logMood(fd({ date, valence: 2, energy: 4 }))).toEqual({
+        ok: true,
+      });
+      revalidate.mockClear();
+
+      expect(
+        await logMood(fd({ date, valence: 5, day_unseen: marker }))
+      ).toEqual({
+        ok: false,
+        error: "Couldn't save that check-in — try again.",
+      });
+      expect(getMoodOnDate(profile.id, date)).toMatchObject({
+        valence: 2,
+        energy: 4,
+      });
+      expect(revalidate).not.toHaveBeenCalled();
+    }
+  );
+
   it("refuses a future date — backfill is past-only", async () => {
     const login = createLogin();
     const profile = createProfile("mood-future", login.id);

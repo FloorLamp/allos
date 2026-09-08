@@ -23,6 +23,14 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { buildSnapshot, snapshotContext } from "@/lib/offline/snapshot-build";
+import type {
+  FoodQuickEntryAvailableSnapshot,
+  SnapshotEnvelope,
+} from "@/lib/offline/snapshots";
+import { FOOD_SLOTS } from "@/lib/food-slot";
+import { getFoodBarOrder } from "@/lib/queries";
+import { setProfileSetting } from "@/lib/settings";
+import { setStoredAge } from "@/lib/settings/profile-attrs";
 
 // A named third party, low-entropy per the fixture rules, and deliberately distinctive
 // so the whole-payload check below can look for it as a string.
@@ -112,5 +120,121 @@ describe("an offline snapshot stores only what /offline renders (#2908 R4)", () 
     for (const entry of entries) {
       expect(Object.keys(entry)).not.toContain("time");
     }
+  });
+});
+
+describe("the Food tally snapshot carries the bounded cold quick-entry read", () => {
+  it("projects one profile-day's catalog, rank, schedule and counts without events", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Cold Food A")
+        .lastInsertRowid
+    );
+    const otherProfileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Cold Food B")
+        .lastInsertRowid
+    );
+    const ctx = snapshotContext(profileId, 1);
+
+    setProfileSetting(profileId, "dietary_excluded_groups", '["red_meat"]');
+    setProfileSetting(profileId, "protein_quickadd_last", "28");
+    setProfileSetting(profileId, "notify_supp_morning_hour", "08:00");
+    setProfileSetting(profileId, "notify_supp_midday_hour", "12:00");
+    setProfileSetting(profileId, "notify_supp_evening_hour", "18:00");
+    setProfileSetting(otherProfileId, "dietary_excluded_groups", '["berries"]');
+    setProfileSetting(otherProfileId, "protein_quickadd_last", "99");
+
+    db.prepare(
+      `INSERT INTO food_daily_totals
+         (profile_id, date, group_key, servings) VALUES (?, ?, 'berries', 2)`
+    ).run(profileId, ctx.date);
+    db.prepare(
+      `INSERT INTO protein_daily_totals
+         (profile_id, date, grams) VALUES (?, ?, 42)`
+    ).run(profileId, ctx.date);
+    db.prepare(
+      `INSERT INTO food_log_events
+         (profile_id, group_key, date, recorded_at, meal_slot, notes)
+       VALUES (?, 'berries', ?, ?, 'Morning', ?),
+              (?, 'leafy_greens', ?, ?, 'Midday', ?)`
+    ).run(
+      profileId,
+      ctx.date,
+      `${ctx.date}T08:00:00Z`,
+      "device-only-row-must-not-ship",
+      profileId,
+      ctx.date,
+      `${ctx.date}T12:00:00Z`,
+      "second-device-only-row"
+    );
+    // Distinctive other-subject activity would perturb the order/counts if any gather
+    // forgot its profile_id predicate.
+    db.prepare(
+      `INSERT INTO food_daily_totals
+         (profile_id, date, group_key, servings) VALUES (?, ?, 'leafy_greens', 50)`
+    ).run(otherProfileId, ctx.date);
+
+    const snapshot = buildSnapshot(
+      "food-tallies",
+      ctx,
+      new Date(`${ctx.date}T13:30:00Z`)
+    ) as SnapshotEnvelope<"food-tallies">;
+    const data = snapshot.data;
+    expect(data.groups).toEqual([
+      { key: "berries", label: "Berries", servings: 2 },
+    ]);
+    expect(data.proteinGrams).toBe(42);
+    expect(data.quickEntry).toMatchObject({
+      available: true,
+      proteinPreset: 28,
+      excludedGroups: ["red_meat"],
+      slotBoundaries: { midday: 600, evening: 900 },
+      slotCounts: {
+        Morning: { berries: 1 },
+        Midday: { leafy_greens: 1 },
+        Evening: {},
+      },
+    });
+    expect(data.quickEntry?.available).toBe(true);
+    const quickEntry = data.quickEntry as FoodQuickEntryAvailableSnapshot;
+    for (const slot of FOOD_SLOTS) {
+      const expected = getFoodBarOrder(profileId, slot);
+      expect(quickEntry.rankedGroupSlugsBySlot[slot]).toEqual(
+        expected.groups.map((group) => group.slug)
+      );
+      expect(quickEntry.proteinRankBySlot[slot]).toBe(expected.proteinRank);
+    }
+    expect(JSON.stringify(snapshot)).not.toContain("device-only-row");
+    expect(snapshot.profileId).toBe(profileId);
+    expect(snapshot.capturedOn).toBe(ctx.date);
+  });
+
+  it("records infant quick entry as unavailable without erasing existing tallies", () => {
+    const profileId = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES (?)")
+        .run("Cold Food Infant").lastInsertRowid
+    );
+    setStoredAge(profileId, 0);
+    const ctx = snapshotContext(profileId, 1);
+    db.prepare(
+      `INSERT INTO food_daily_totals
+         (profile_id, date, group_key, servings) VALUES (?, ?, 'berries', 1)`
+    ).run(profileId, ctx.date);
+    db.prepare(
+      `INSERT INTO protein_daily_totals
+         (profile_id, date, grams) VALUES (?, ?, 12)`
+    ).run(profileId, ctx.date);
+
+    const snapshot = buildSnapshot(
+      "food-tallies",
+      ctx,
+      new Date(`${ctx.date}T13:30:00Z`)
+    ) as SnapshotEnvelope<"food-tallies">;
+    expect(snapshot.data).toEqual({
+      date: ctx.date,
+      groups: [{ key: "berries", label: "Berries", servings: 1 }],
+      proteinGrams: 12,
+      quickEntry: { available: false },
+    });
   });
 });

@@ -52,6 +52,13 @@ import { createLogin, createProfile, actAs, fd } from "./harness";
 // in Midway (−11). One instant, three different profile-local todays — which is what
 // makes the two zones DISCRIMINATING rather than decorative: 2026-08-26 is inside the
 // window for Midway and outside it for Kiritimati.
+async function readyQuickEntry(...args: Parameters<typeof loadQuickEntry>) {
+  const result = await loadQuickEntry(...args);
+  expect(result.kind).toBe("ready");
+  if (result.kind !== "ready") throw new Error("quick-entry read was refused");
+  return result.data;
+}
+
 const NOW_ISO = "2026-08-28T10:30:00Z";
 const ZONES = [
   {
@@ -284,7 +291,7 @@ describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
     // The instant's UTC day is the 28th; neither zone agrees with it, which is the
     // whole point of running the rest of this file twice.
     expect(localToday).not.toBe(NOW_ISO.slice(0, 10));
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     expect(data.form).toBe("dose");
     if (data.form !== "dose") return;
 
@@ -302,7 +309,7 @@ describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
 
   it("groups a past day by declared bucket and labels the first one Yesterday", async () => {
     const { doses } = seedProfile(`slots-${tz}`, tz);
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const yesterday = data.pastDays[0]!;
     expect(yesterday.date).toBe(shiftDateStr(localToday, -1));
@@ -523,7 +530,7 @@ describe("a past day is scored against the situations active THAT day (#654)", (
   }
 
   async function offeredOn(date: string): Promise<number[]> {
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") return [];
     const day = data.pastDays.find((d) => d.date === date);
     return (day?.slots ?? []).flatMap((slot) =>
@@ -548,7 +555,7 @@ describe("a past day is scored against the situations active THAT day (#654)", (
 
     // TODAY, on the other hand, genuinely does owe it — the same call, one day over,
     // proving the guard above is about the DAY and not about the item being invisible.
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     expect(data.doses.map((d) => d.doseId)).toContain(doseId);
   });
@@ -602,7 +609,7 @@ describe("a moved dose is filed under the slot it occupied that day (#1973)", ()
       `UPDATE intake_item_doses SET time_of_day = 'morning' WHERE id = ?`
     ).run(doseId);
 
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const day = data.pastDays.find((d) => d.date === yesterday)!;
     expect(day.slots.map((slot) => slot.bucket)).toEqual(["Evening"]);
@@ -697,7 +704,7 @@ function stripFor(
 
 describe("the sheet's offer agrees with the adherence strip, day for day", () => {
   async function offeredByDay(): Promise<Map<string, number[]>> {
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     const out = new Map<string, number[]>();
     if (data.form !== "dose") return out;
     out.set(
@@ -874,7 +881,7 @@ describe("a closed day's training is what the record says, not what a pattern pr
     expect(isPredictedWorkoutDay(profile.id, day)).toBe(true);
     expect(getActivitiesByDate(profile.id, day)).toEqual([]);
 
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const offered = (
       data.pastDays.find((d) => d.date === day)?.slots ?? []
@@ -894,7 +901,7 @@ describe("a closed day's training is what the record says, not what a pattern pr
 // BOTH harms this PR exists to fix, from one abandoned session.
 describe("an abandoned draft is not a training day on a closed day (#3189)", () => {
   async function offeredOn(date: string): Promise<number[]> {
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") return [];
     const day = data.pastDays.find((d) => d.date === date);
     return (day?.slots ?? []).flatMap((slot) =>
@@ -974,7 +981,7 @@ describe("a logged dose proves it existed, and the clamp gives way to it", () =>
 
     // And the sheet offers it, as it always did: a log IS proof the dose existed, and
     // clamping the day away would CONCEAL a dose that was genuinely owed.
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const offered = (
       data.pastDays.find((d) => d.date === day)?.slots ?? []
