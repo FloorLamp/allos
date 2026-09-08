@@ -16,6 +16,8 @@ import { useQuickEntryRow } from "@/components/quick-entry/QuickEntryRowList";
 import {
   logSubstanceUnitAction,
   undoSubstanceUnitAction,
+  type SubstanceCountResult,
+  type SubstanceLogResult,
 } from "@/app/(app)/medical/substance-use/actions";
 
 // THE SUBSTANCE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), named by
@@ -99,14 +101,14 @@ export default function SubstanceUnitControl({
     // own key, so a correction straight after a log is not absorbed by it.
     await ledger.tap({
       key: kind,
-      write: () => {
+      write: async (): Promise<SubstanceLogResult | SubstanceCountResult> => {
         const fd = stampLoggedVia(new FormData());
         fd.set("substance", substance);
         if (originProfileId != null)
           fd.set("profile_id", String(originProfileId));
         return kind === "log"
-          ? logSubstanceUnitAction(fd)
-          : undoSubstanceUnitAction(fd);
+          ? await logSubstanceUnitAction(fd)
+          : await undoSubstanceUnitAction(fd);
       },
       settle: (result) => {
         if (!result.ok) {
