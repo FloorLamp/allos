@@ -5,6 +5,8 @@ import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { substanceDef } from "@/lib/substance-use";
+import { LabeledVerbChip } from "@/components/OfferRow";
+import { useQuickEntryRow } from "@/components/quick-entry/QuickEntryRowList";
 import {
   logSubstanceUnitAction,
   undoSubstanceUnitAction,
@@ -50,6 +52,7 @@ export default function SubstanceUnitControl({
   const stampLoggedVia = useLoggedViaStamp();
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(weekCount);
+  const inQuickEntryRow = useQuickEntryRow();
 
   async function tap(kind: "log" | "undo"): Promise<void> {
     setError(null);
@@ -86,17 +89,33 @@ export default function SubstanceUnitControl({
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn"
-          disabled={ledger.blocked("log")}
-          onClick={() => void tap("log")}
-          data-testid={`${testIdPrefix}-log-${substance}`}
-        >
-          {ledger.pending("log")
-            ? "Logging…"
-            : substanceDef(substance).logLabel}
-        </button>
+        {inQuickEntryRow ? (
+          <LabeledVerbChip
+            label={
+              substanceDef(substance).unitSingular === "drink"
+                ? "Standard drink"
+                : "Use"
+            }
+            verb={ledger.pending("log") ? "Logging…" : "Log"}
+            tone="neutral"
+            disabled={ledger.blocked("log")}
+            onAct={() => void tap("log")}
+            ariaLabel={substanceDef(substance).logLabel}
+            testId={`${testIdPrefix}-log-${substance}`}
+          />
+        ) : (
+          <button
+            type="button"
+            className="btn"
+            disabled={ledger.blocked("log")}
+            onClick={() => void tap("log")}
+            data-testid={`${testIdPrefix}-log-${substance}`}
+          >
+            {ledger.pending("log")
+              ? "Logging…"
+              : substanceDef(substance).logLabel}
+          </button>
+        )}
         <button
           type="button"
           className="btn-ghost"

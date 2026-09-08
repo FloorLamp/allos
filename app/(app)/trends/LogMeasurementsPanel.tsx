@@ -54,7 +54,7 @@ function desktopSnapshot(): boolean {
 const serverDesktopSnapshot = () => false;
 
 export default function LogMeasurementsPanel(
-  props: Omit<MeasurementsQuickAddProps, "onSaved" | "headerSlot"> & {
+  props: Omit<MeasurementsQuickAddProps, "onSaved"> & {
     leftControl: ReactNode;
     centerControl: ReactNode;
   }
@@ -142,7 +142,6 @@ export default function LogMeasurementsPanel(
                 body one. A ?focus=/?new= deep link still wins over it. */}
             <MeasurementsQuickAdd
               {...measurementProps}
-              presentation="modal"
               defaultGroup="body"
               onSaved={() => setOpenOverride(false)}
             />

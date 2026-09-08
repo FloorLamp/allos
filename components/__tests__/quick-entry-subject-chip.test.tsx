@@ -65,6 +65,7 @@ function Opener() {
         open for Mia
       </button>
       <button onClick={() => open("stool")}>open with no subject</button>
+      <button onClick={() => open("food")}>open food</button>
     </>
   );
 }
@@ -93,6 +94,14 @@ function renderSheet(writableProfiles: SessionProfile[]) {
 }
 
 describe("the quick-log sheet's subject chip (#4932)", () => {
+  it("keeps the host title visible for food", async () => {
+    renderSheet([ACTING]);
+    fireEvent.click(screen.getByText("open food"));
+    expect(
+      await screen.findByRole("heading", { name: "Log food" })
+    ).toBeTruthy();
+  });
+
   it("defaults to the opener's subject when one is passed", async () => {
     renderSheet([ACTING, MIA, SAM]);
     fireEvent.click(screen.getByText("open for Mia"));

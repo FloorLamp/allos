@@ -5,6 +5,7 @@ import { logMood } from "@/app/(app)/mood-actions";
 import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
 import MoodValencePicker from "@/components/MoodValencePicker";
+import IconButton from "@/components/IconButton";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -53,27 +54,19 @@ function ScaleRow({
 }) {
   return (
     <fieldset className="flex flex-wrap items-center gap-2">
-      <legend className="w-16 text-xs text-slate-500 dark:text-slate-400">
-        {name}
-      </legend>
+      <legend className="label w-16">{name}</legend>
       <span className="text-xs text-slate-400">{lowLabel}</span>
       <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((score) => (
-          <button
+          <IconButton
             key={score}
-            type="button"
             data-testid={`${testPrefix}-${score}`}
-            aria-label={`${name}: ${score}`}
-            aria-pressed={value === score}
+            label={`${name}: ${score}`}
+            pressed={value === score}
             onClick={() => onPick(score)}
-            className={`h-8 w-8 rounded-full border text-xs ${
-              value === score
-                ? "border-brand-500 bg-brand-100 font-semibold text-brand-700 dark:bg-brand-900 dark:text-brand-300"
-                : "border-slate-300 text-slate-500 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-800"
-            }`}
           >
             {score}
-          </button>
+          </IconButton>
         ))}
       </div>
       <span className="text-xs text-slate-400">{highLabel}</span>

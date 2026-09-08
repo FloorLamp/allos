@@ -108,6 +108,29 @@ describe("LabeledVerbChip", () => {
     expect(verb.tagName).toBe("SPAN");
     expect(verb.getAttribute("tabindex")).toBeNull();
   });
+
+  it("lets an editable label disclose its editor without stealing the write", () => {
+    const onLabel = vi.fn();
+    const { onAct } = mount({
+      testId: "write",
+      labelAction: {
+        onAct: onLabel,
+        ariaLabel: "Adjust duration",
+        expanded: false,
+        controls: "duration-editor",
+        testId: "label",
+      },
+    });
+    const label = screen.getByTestId("label");
+    const write = screen.getByTestId("write");
+    expect(label.getAttribute("aria-expanded")).toBe("false");
+    expect(label.getAttribute("aria-controls")).toBe("duration-editor");
+    fireEvent.click(label);
+    expect(onLabel).toHaveBeenCalledOnce();
+    expect(onAct).not.toHaveBeenCalled();
+    fireEvent.click(write);
+    expect(onAct).toHaveBeenCalledOnce();
+  });
 });
 
 describe("OfferRow", () => {

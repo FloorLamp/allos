@@ -377,9 +377,8 @@ describe("SubstanceUnitControl is ONE row control", () => {
       screen.getByTestId("quick-entry-substance-cap-progress-nicotine")
         .textContent
     ).toBe("2 of 7 this week.");
-    expect(
-      screen.getByTestId("quick-entry-substance-log-nicotine")
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Log a use" })).toBeTruthy();
+    // Kept until the log result carries an exact event id for a toast-bound inverse.
     expect(
       screen.getByTestId("quick-entry-substance-undo-nicotine")
     ).toBeTruthy();

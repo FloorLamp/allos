@@ -93,8 +93,8 @@ change its flex layout at another breakpoint. Footer spacing belongs to the
 body because the host draws no footer.
 
 For a form used both on a page and inside a dialog, reuse an existing chrome
-switch: `presentation="modal"` in `MeasurementsQuickAdd`, `embedded` in encounter,
-appointment, and dietary-preference forms, or `compact` in `PracticeEditor`.
+switch such as `embedded` in encounter, appointment, and dietary-preference forms,
+or `compact` in `PracticeEditor`.
 Do not rename working props or introduce another spelling. A dialog-only form
 needs no switch.
 
