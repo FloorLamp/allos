@@ -30,7 +30,7 @@ import {
   setDigestTailPointer,
   setFoodNudgePointer,
 } from "../settings";
-import { today } from "../db";
+import { today, writeTx } from "../db";
 import { now } from "../clock";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
@@ -64,6 +64,7 @@ import {
 } from "./pointer-rotation";
 import {
   claimMessagePointerClose,
+  claimMessagePointerBody,
   forgetMessagePointerAt,
   liveMessagePointersForKind,
   messagePointerAt,
@@ -634,7 +635,7 @@ export async function sendTelegramMessage(
   chatId: string | number,
   msg: NotificationMessage,
   subject: TelegramSendSubject
-): Promise<void> {
+): Promise<number | undefined> {
   // COMPOSED HERE, NOT BY THE CALLER (#4538). Every send through this function is a
   // reply to something the reader just did, so `telegram-command` is a property of the
   // send path rather than of each mint site. Attribution follows the DECLARED SUBJECT
@@ -653,6 +654,7 @@ export async function sendTelegramMessage(
     composed,
     subject === CHAT_WIDE
   );
+  return messageId != null && messageId > 0 ? messageId : undefined;
 }
 
 // Resolve a declared subject to the profile the pointer is scoped by. A CHAT_WIDE send
@@ -693,7 +695,8 @@ export async function rebuildMessage(
   profileId: number,
   chatId: number | string,
   messageId: number,
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  canFinalize?: () => boolean
 ): Promise<void> {
   // THE HOST-INHERITED BUNDLE SURVIVES THE REBUILD, REDUCED (#2460). The composed
   // one-tap decorates a host message the builders know nothing about, so every one of
@@ -720,13 +723,23 @@ export async function rebuildMessage(
   // The chat is now showing this keyboard, so the pointer says so — through the same
   // `deliveredKeyboard` the send records, so a rebuilt pointer and a sent one are the
   // same shape and the sweep cannot tell which wrote it.
-  syncMessagePointerKeyboard(
-    ownerId,
-    chatId,
-    messageId,
-    deliveredKeyboard(attributed),
-    attributed.kind === "food" ? messageBodyHash(attributed) : undefined
-  );
+  writeTx(() => {
+    if (canFinalize && !canFinalize()) {
+      const current = messagePointerAt(ownerId, chatId, messageId);
+      if (current)
+        claimMessagePointerBody(ownerId, current.id, current.bodyHash, "");
+      return;
+    }
+    syncMessagePointerKeyboard(
+      ownerId,
+      chatId,
+      messageId,
+      deliveredKeyboard(attributed),
+      attributed.kind === "food" || attributed.kind === "refill"
+        ? messageBodyHash(attributed)
+        : undefined
+    );
+  });
 }
 
 // Replace a consumed message's text with a closing line and drop all buttons. The

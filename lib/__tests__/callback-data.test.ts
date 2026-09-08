@@ -45,7 +45,11 @@ import {
   parseOfferCallback,
 } from "../notifications/offer-tokens";
 import { parsePreventiveCallback } from "../notifications/preventive-tokens";
-import { parseRefillCallback } from "../notifications/refill-tokens";
+import {
+  parseRefillCallback,
+  parseReceivedAmount,
+  parseRefillReplyMarker,
+} from "../notifications/refill-tokens";
 import { parseEscalationCallback } from "../notifications/escalation-tokens";
 
 describe("parseTakeCallback", () => {
@@ -829,5 +833,21 @@ describe("which dose answers must be dismissed rather than glanced at", () => {
     expect(tapLogged("logged-off-day")).toBe(true);
     expect(tapAnswerNeedsDismissal("logged-off-day", "take")).toBe(true);
     expect(tapAnswerNeedsDismissal("logged-off-day", "skip")).toBe(true);
+  });
+});
+
+describe("Received reply input", () => {
+  it.each(["", "0", "-1", "Infinity", "2 bottles", "1,000", "2e3", "1 2"])(
+    "refuses the whole ambiguous or nonpositive input %s",
+    (text) => {
+      expect(parseReceivedAmount(text)).toBeNull();
+    }
+  );
+  it("accepts an explicit positive amount and preserves the named operation", () => {
+    expect(parseReceivedAmount(" 30.5 ")).toBe(30.5);
+    expect(parseRefillReplyMarker("How many arrived? (refill:7:12)")).toEqual({
+      profileId: 7,
+      offerId: 12,
+    });
   });
 });

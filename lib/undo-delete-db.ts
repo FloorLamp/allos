@@ -1,3 +1,5 @@
+import { invalidateRefillOffers } from "./notifications/offer-store";
+import { invalidatePoolRefillOffers } from "./queries/intake/supply-pool";
 // Undo / soft-delete for destructive row deletes (issue #30) — the IMPURE half.
 //
 // Wires the pure kind registry (lib/undo-delete.ts) to SQLite: capture-on-delete,
@@ -273,6 +275,9 @@ export function captureDelete(
     // side effects). Centralized here so both delete paths — deleteIntakeItem and the
     // Data → Manage bulk delete — inherit it.
     if (spec.ownedTable === "intake_items") {
+      const supplyId = rootRow.supply_id as number | null;
+      if (supplyId != null) invalidatePoolRefillOffers(supplyId);
+      invalidateRefillOffers(profileId, rootId, supplyId);
       db.prepare(
         `UPDATE protocols SET intake_item_id = NULL
           WHERE intake_item_id = ? AND profile_id = ?`

@@ -136,6 +136,9 @@ const PREFIX_TABLE = [
 
   // Refill nudge (#233 phase 3): logging the refill in the app ends the shortage.
   { prefix: "rfsnooze", family: "refill" },
+  { prefix: "rfreceived", family: "refill" },
+  { prefix: "rfconfirm", family: "refill" },
+  { prefix: "rfcancel", family: "refill" },
 
   // Symptom follow-up (#859): the day's symptom logged in the app answers the ask.
   { prefix: "symp", family: "symptom" },
