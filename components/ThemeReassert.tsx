@@ -1,5 +1,7 @@
 "use client";
 
+import { MEDIA_QUERIES } from "@/lib/media-queries";
+
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { createLogger } from "@/lib/log";
@@ -61,7 +63,7 @@ export default function ThemeReassert() {
       // The boot script's exact computation, from the one module that owns it.
       dark = isDarkTheme({
         stored: localStorage.getItem(THEME_STORAGE_KEY),
-        prefersDark: window.matchMedia("(prefers-color-scheme: dark)").matches,
+        prefersDark: window.matchMedia(MEDIA_QUERIES.dark).matches,
       });
     } catch {
       // Storage blocked entirely — the boot script's own catch posture.

@@ -1,5 +1,7 @@
 "use client";
 
+import { MEDIA_QUERIES } from "@/lib/media-queries";
+
 import Link from "next/link";
 import {
   useEffect,
@@ -163,7 +165,7 @@ function Strip({
     if (
       presentation?.mobileLayout !== "scroll" ||
       typeof window.matchMedia !== "function" ||
-      window.matchMedia("(min-width: 768px)").matches
+      window.matchMedia(MEDIA_QUERIES.md).matches
     )
       return;
     const strip = stripRef.current;
