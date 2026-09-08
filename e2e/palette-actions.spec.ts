@@ -365,6 +365,7 @@ test("a supplement's first palette refill opens its fill size and adds to stock"
     const input = await openCommandPalette(page);
     await settledFill(page, input, name);
     const hit = page
+      .getByRole("listbox", { name: "Results", exact: true })
       .getByTestId("palette-group-supplement")
       .getByRole("listitem")
       .filter({ hasText: name });

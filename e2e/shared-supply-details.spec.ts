@@ -4,6 +4,7 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import {
+  appContent,
   hydratedClick,
   settledClick,
   settledFill,
@@ -206,13 +207,16 @@ test("a supply link retains its subject and opens one editor for a paused split-
   }
   try {
     await page.goto(`/nutrition?tab=supplements&item=${itemId}&fact=supply`);
-    await expect(page.getByTestId("intake-subject-name")).toHaveText(
-      subjectName
-    );
+    await expect(
+      appContent(page).getByTestId("intake-subject-name")
+    ).toHaveText(subjectName);
     await expect(
       page.getByRole("dialog", { name: `Edit ${name}` })
     ).toHaveCount(0);
-    await settledClick(page, page.getByTestId("intake-switch-profile"));
+    await settledClick(
+      page,
+      appContent(page).getByTestId("intake-switch-profile")
+    );
     const editor = page.getByRole("dialog", {
       name: `Edit ${name}`,
       exact: true,
@@ -227,7 +231,9 @@ test("a supply link retains its subject and opens one editor for a paused split-
       editor.getByRole("button", { name: "Cancel", exact: true })
     );
     await expect(editor).toHaveCount(0);
-    const rows = page.getByTestId("supplement-row").filter({ hasText: name });
+    const rows = appContent(page)
+      .getByTestId("supplement-row")
+      .filter({ hasText: name });
     await expect(rows).toHaveCount(2);
     await expect(rows.getByTestId("intake-item-name")).toHaveText([name, name]);
   } finally {
