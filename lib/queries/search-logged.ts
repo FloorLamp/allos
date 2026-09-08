@@ -1,48 +1,14 @@
-// SEARCH INTO THE RECORD (#5006) — the seven row-only Logs kinds, as ONE search group.
-//
-// The record's other domains are ENTITIES with a page of their own, so a hit lands on
-// that page. These seven are ROWS: a serving, a dose, a session, a symptom-day, a
-// check-in, a reading, a night. They have no page, and #3958 already gave every one of
-// them a stable address — `/history?day=<day>&kind=<kind>` opens the day scoped to the
-// kind, and the row carries `id={timelineEntryAnchorId(row.id)}` — so the hit's href is
-// that address with the row's own anchor as the fragment. No new route, no new page.
-//
-// ONE GROUP, CAPPED AT FIVE ACROSS ALL SEVEN KINDS (owner ruling, 2026-09-04). Every
-// hit carries the single `logged` domain and names its kind in the SUBTITLE
-// (`<kind> · <date>`), so the palette shows the five newest rows you logged whatever
-// mix of kinds they are — not five of each. Each source still reads its own five
-// newest, which is enough: no row outside a source's newest five can be inside the
-// union's newest five. The ranker does the rest (`rankAndGroup`, lib/search-rank.ts),
-// sorting the union date-first and slicing to five.
-//
-// ONE SHAPE, SEVEN DECLARATIONS. Every source hands back the same `LoggedEntry`
-// (the record row's own id, its title, the profile-local day it is filed under) and
-// declares only what differs: the kind, the noun its subtitle names, and the read that
-// finds it. `loggedHit` builds the hit — key, subtitle, href, date — once, for all
-// seven, so an eighth kind is a table row and not a seventh copy of one idea.
-//
-// THE ENTRY ID IS THE RECORD'S, NOT A NEW ONE. `dose:<id>`, `food:<id>`,
-// `practice:<id>`, `symptom:<day>:<symptom>`, `mood:<id>`, `body:<column>:<id>`,
-// `sleep:<wakeDay>` are the ids lib/history.ts composes its rows with, and the anchor
-// is built from them by the same `timelineEntryAnchorId` the row's `id=` is built with.
-// A spelling that drifts here is a link that scrolls nowhere, which is why
-// lib/__db_tests__/search-logged-kinds.test.ts resolves every href against the gather's
-// own rows rather than against a re-typed string.
-//
-// EVERY READ IS PROFILE-SCOPED IN SQL, spelled `profile_id = ?` in the statement text
-// (the dose ledger through its parent `intake_items`, which is where a dose log's owner
-// lives) — never filtered afterwards in TypeScript. The day view is acting-profile-only
-// by ruling, and these hits are doors onto it.
+// Bounded, profile-scoped logged-entry search. Each source reads its five newest
+// matches; the ranker caps the combined group. Keys and links reuse history row IDs.
 
-import { db, today } from "../db";
+import { db } from "../db";
 import { zonedDateParts } from "../date";
 import { getTimezone } from "../settings";
-import { getDisplayFormatPrefs } from "../settings/display";
 import {
-  DEFAULT_FORMAT_PREFS,
-  formatMonthDay,
-  type DisplayFormatPrefs,
-} from "../format-date";
+  searchDayText,
+  subtitleOf,
+  type SearchDisplay,
+} from "../search-projections";
 import { historyHref, type AppRoute } from "../hrefs";
 import { timelineEntryAnchorId } from "../timeline-format";
 import { normalizePracticeName } from "../practice";
@@ -358,61 +324,32 @@ const LOGGED_SOURCES: readonly LoggedSource[] = [
 
 // The one mapping: a record row in, a palette hit out.
 //
-// THE SUBTITLE'S DATE IS DISPLAY COPY, so it is rendered in the login's date shape and
-// never as the stored `YYYY-MM-DD` (#3492/#3545 — a storage-format date in user copy).
-// The issue pins the SHAPE `<kind> · <date>`, which "Practice · Aug 31" satisfies and
-// the machine spelling does not. `formatMonthDay` is the vocabulary entry for a dense
-// in-app label, and its auto-year rule is what puts the year on last year's session
-// and leaves it off this morning's. The hit's `date` field keeps the ISO day — that
-// one is machine-read (the recency tiebreak), never printed.
+// Display dates follow the reader; the ISO day remains the ranking key.
 function loggedHit(
   source: LoggedSource,
   entry: LoggedEntry,
-  display: Display
+  display: SearchDisplay
 ): SearchHit {
   const day = historyHref({ day: entry.day, kind: source.kind });
   return {
     domain: "logged",
     key: `logged:${entry.entryId}`,
     title: entry.title,
-    subtitle: `${source.noun} · ${formatMonthDay(entry.day, display.prefs, {
-      today: display.today,
-    })}`,
+    subtitle: subtitleOf([source.noun, searchDayText(entry.day, display)]),
     // The day view, scoped to the kind, scrolled to this row.
     href: `${day}#${timelineEntryAnchorId(entry.entryId)}` as AppRoute,
     date: entry.day,
   };
 }
 
-/** What the subtitle's date needs to read in the login's own shape. */
-interface Display {
-  prefs: DisplayFormatPrefs;
-  today: string;
-}
-
-/**
- * Every logged-kind hit for one query, acting profile only.
- *
- * Seven statements, each `LIMIT 5` and each capped again after any in-memory fan-out,
- * so the whole group costs a bounded seven reads however dense the record is. Up to 35
- * candidates come back; the ranker keeps the five newest of them.
- *
- * `loginId` is the acting login, for the date shape its owner chose. `null` is the
- * documented login-less channel (a retrieval with a profile but no reader in context):
- * the default shape, declared at the call site rather than defaulted silently.
- */
+// The fan-out supplies the reader preferences and profile-local today once.
 export function loggedEntryHits(
   profileId: number,
   query: string,
   like: string,
-  loginId: number | null
+  display: SearchDisplay
 ): SearchHit[] {
   const q: LoggedQuery = { query, like };
-  const display: Display = {
-    prefs:
-      loginId == null ? DEFAULT_FORMAT_PREFS : getDisplayFormatPrefs(loginId),
-    today: today(profileId),
-  };
   return LOGGED_SOURCES.flatMap((source) =>
     source
       .read(profileId, q)

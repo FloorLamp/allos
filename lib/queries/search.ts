@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, today } from "../db";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
 import { getProfileAge, getTimezone } from "../settings";
 import { dateFromCreatedAt } from "../timeline-format";
@@ -58,13 +58,18 @@ import {
   equipmentHitText,
   genomicHitText,
   imagingHitText,
-  isoDay,
+  isoDay as isoDate,
+  searchDayText,
+  subtitleOf,
+  type SearchDisplay,
   likePattern,
   practiceHitText,
   protocolHitText,
   providerHitText,
   skinHitText,
 } from "../search-projections";
+import { getDisplayFormatPrefs } from "../settings/display";
+import { DEFAULT_FORMAT_PREFS } from "../format-date";
 import { loggedEntryHits } from "./search-logged";
 import { getProviderRecordCounts } from "./providers";
 import { getPracticeSearchRows } from "./wellness";
@@ -103,14 +108,11 @@ import { trainingActivityPageHref } from "../hrefs";
 const PER_DOMAIN_CAP = 5;
 const CANDIDATE_LIMIT = 25;
 
-// Trim a stored datetime ("2026-07-06 12:00:00") down to its ISO date part for
-// the recency tiebreak. Delegates to the pure projection helper so a hit's `date`
-// and the date printed in its subtitle are trimmed by ONE function.
-function isoDate(value: string | null): string | null {
-  return isoDay(value);
-}
-
-function clinicalResultHits(profileId: number, like: string): SearchHit[] {
+function clinicalResultHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   // One row per distinct canonical clinical result. Only canonical-named records are
   // returned because the detail page (/results/clinical-results/view) resolves its series by
   // canonical_name alone — a raw, uncanonicalized name has no viewable
@@ -142,7 +144,7 @@ function clinicalResultHits(profileId: number, like: string): SearchHit[] {
     title: r.title,
     subtitle:
       [r.value, displayUnit(r.unit)].filter(Boolean).join(" ").trim() ||
-      isoDate(r.date),
+      searchDayText(r.date, display),
     href: clinicalResultDetailHref(r.title),
     date: isoDate(r.date),
     // "Add result" — navigate to the add form prefilled with this analyte (#662).
@@ -150,7 +152,11 @@ function clinicalResultHits(profileId: number, like: string): SearchHit[] {
   }));
 }
 
-function documentHits(profileId: number, like: string): SearchHit[] {
+function documentHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, filename, doc_type, source, document_date, uploaded_at
@@ -187,7 +193,10 @@ function documentHits(profileId: number, like: string): SearchHit[] {
       domain: "document",
       key: `document:${r.id}`,
       title,
-      subtitle: title !== r.filename ? r.filename : (r.doc_type ?? date),
+      subtitle:
+        title !== r.filename
+          ? r.filename
+          : (r.doc_type ?? searchDayText(date, display)),
       href: importHref(r.id),
       date,
     };
@@ -195,7 +204,11 @@ function documentHits(profileId: number, like: string): SearchHit[] {
 }
 
 // Activity search is a profile-owned data surface; every type is age-neutral.
-function activityHits(profileId: number, like: string): SearchHit[] {
+function activityHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, title, type, date, components
@@ -216,7 +229,10 @@ function activityHits(profileId: number, like: string): SearchHit[] {
     domain: "activity",
     key: `activity:${r.id}`,
     title: r.title,
-    subtitle: `${r.type[0].toUpperCase()}${r.type.slice(1)} · ${r.date}`,
+    subtitle: subtitleOf([
+      `${r.type[0].toUpperCase()}${r.type.slice(1)}`,
+      searchDayText(r.date, display),
+    ]),
     // Every session has one canonical record page (#2870/#3061), so search never
     // needs a cycling branch or a date-filter fallback.
     href: trainingActivityPageHref(r.id),
@@ -261,7 +277,11 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
   }));
 }
 
-function immunizationHits(profileId: number, query: string): SearchHit[] {
+function immunizationHits(
+  profileId: number,
+  query: string,
+  display: SearchDisplay
+): SearchHit[] {
   // Stored `vaccine` is a short catalog code (e.g. "influenza", "dtap"), so a
   // raw LIKE on it misses human queries. Pull the recent scoped set and filter
   // in JS on the human display name (+ notes). Immunization rows are few, so a
@@ -284,17 +304,17 @@ function immunizationHits(profileId: number, query: string): SearchHit[] {
     notes: string | null;
   }[];
   return rows
-    .map((r) => ({ r, display: vaccineDisplayName(r.vaccine) }))
+    .map((r) => ({ r, name: vaccineDisplayName(r.vaccine) }))
     .filter(
-      ({ r, display }) =>
-        matchTier(display, query) > 0 ||
+      ({ r, name }) =>
+        matchTier(name, query) > 0 ||
         (r.notes ? matchTier(r.notes, query) > 0 : false)
     )
-    .map(({ r, display }) => ({
+    .map(({ r, name }) => ({
       domain: "immunization" as const,
       key: `immunization:${r.id}`,
-      title: display,
-      subtitle: r.dose_label ? `${r.dose_label} · ${r.date}` : r.date,
+      title: name,
+      subtitle: subtitleOf([r.dose_label, searchDayText(r.date, display)]),
       // The per-vaccine page (#1568) — dose history, schedule assessment, titers
       // and overrides for THIS vaccine — instead of the immunizations list hub.
       href: immunizationHref(r.vaccine),
@@ -341,7 +361,11 @@ function goalHits(profileId: number, like: string): SearchHit[] {
 // GLOBAL providers registry; the row itself is still scoped by its parent's
 // profile_id, so the scoping rule holds.
 
-function conditionHits(profileId: number, like: string): SearchHit[] {
+function conditionHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   // De-duplicated across documents (#134): only representative rows, so two
   // overlapping CCDs collapse to ONE hit (its profile_id bind comes first).
   const rows = db
@@ -364,9 +388,7 @@ function conditionHits(profileId: number, like: string): SearchHit[] {
     domain: "condition",
     key: `condition:${r.id}`,
     title: r.name,
-    subtitle: r.onset_date
-      ? `${r.status} · ${isoDate(r.onset_date)}`
-      : r.status,
+    subtitle: subtitleOf([r.status, searchDayText(r.onset_date, display)]),
     href: "/records/problems/conditions",
     date: isoDate(r.onset_date),
   }));
@@ -412,7 +434,11 @@ function allergyHits(profileId: number, like: string): SearchHit[] {
   }));
 }
 
-function procedureHits(profileId: number, like: string): SearchHit[] {
+function procedureHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   // De-duplicated across documents (#134): representative rows only, so the
   // per-document duplicates two overlapping CCDs produce collapse to ONE hit.
   const rows = db
@@ -435,13 +461,17 @@ function procedureHits(profileId: number, like: string): SearchHit[] {
     domain: "procedure",
     key: `procedure:${r.id}`,
     title: r.name,
-    subtitle: isoDate(r.date) ?? r.code,
+    subtitle: searchDayText(r.date, display) ?? r.code,
     href: "/records/history/procedures",
     date: isoDate(r.date),
   }));
 }
 
-function encounterHits(profileId: number, like: string): SearchHit[] {
+function encounterHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   // Match the visit type/reason/diagnoses/notes and the attending provider's name.
   // Constrained to representative rows so the per-document duplicates two overlapping
   // CCDs produce collapse to ONE hit (its profile_id bind comes first).
@@ -478,10 +508,11 @@ function encounterHits(profileId: number, like: string): SearchHit[] {
   }[];
   return rows.map((r) => {
     const title = r.type || r.reason || "Visit";
-    const subtitle =
-      [title !== r.reason ? r.reason : null, r.provider, isoDate(r.date)]
-        .filter(Boolean)
-        .join(" · ") || null;
+    const subtitle = subtitleOf([
+      title !== r.reason ? r.reason : null,
+      r.provider,
+      searchDayText(r.date, display),
+    ]);
     return {
       domain: "encounter" as const,
       key: `encounter:${r.id}`,
@@ -565,7 +596,11 @@ function familyHistoryHits(profileId: number, like: string): SearchHit[] {
   }));
 }
 
-function carePlanHits(profileId: number, like: string): SearchHit[] {
+function carePlanHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, description, category, status, planned_date
@@ -586,16 +621,21 @@ function carePlanHits(profileId: number, like: string): SearchHit[] {
     domain: "care-plan" as const,
     key: `care-plan:${r.id}`,
     title: r.description,
-    subtitle:
-      [r.category, r.status, isoDate(r.planned_date)]
-        .filter(Boolean)
-        .join(" · ") || null,
+    subtitle: subtitleOf([
+      r.category,
+      r.status,
+      searchDayText(r.planned_date, display),
+    ]),
     href: "/records/care/overview",
     date: isoDate(r.planned_date),
   }));
 }
 
-function careGoalHits(profileId: number, like: string): SearchHit[] {
+function careGoalHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, description, status, target_date
@@ -615,8 +655,7 @@ function careGoalHits(profileId: number, like: string): SearchHit[] {
     domain: "care-goal" as const,
     key: `care-goal:${r.id}`,
     title: r.description,
-    subtitle:
-      [r.status, isoDate(r.target_date)].filter(Boolean).join(" · ") || null,
+    subtitle: subtitleOf([r.status, searchDayText(r.target_date, display)]),
     href: "/records/care/overview",
     date: isoDate(r.target_date),
   }));
@@ -698,7 +737,11 @@ function providerHits(profileId: number, like: string): SearchHit[] {
 
 // Imaging studies (#702). `modality` is stored as its enum code ("mri", "x-ray"), and
 // LIKE is case-insensitive for ASCII, so a typed "MRI" reaches it directly.
-function imagingHits(profileId: number, like: string): SearchHit[] {
+function imagingHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, modality, body_region, laterality, study_date,
@@ -738,7 +781,7 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
   return rows.map((r) => ({
     domain: "imaging" as const,
     key: `imaging:${r.id}`,
-    ...imagingHitText(r),
+    ...imagingHitText(r, display),
     // Results › Imaging renders the study list with no per-row anchor, so the tab
     // route is the most precise destination the row supports.
     href: "/results/imaging",
@@ -748,7 +791,11 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
 
 // Genomic variants (#709). Matches the gene, the call (genotype/star allele), the
 // variant id, the lab, and the report's own interpretation text.
-function genomicHits(profileId: number, like: string): SearchHit[] {
+function genomicHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, gene, variant, genotype, star_allele, zygosity, significance,
@@ -791,7 +838,7 @@ function genomicHits(profileId: number, like: string): SearchHit[] {
   return rows.map((r) => ({
     domain: "genomic" as const,
     key: `genomic:${r.id}`,
-    ...genomicHitText(r),
+    ...genomicHitText(r, display),
     href: "/results/genomics",
     date: isoDate(r.report_date),
   }));
@@ -799,7 +846,11 @@ function genomicHits(profileId: number, like: string): SearchHit[] {
 
 // Dental procedures and findings (#705). The tooth designation is searchable as
 // typed ("14" or "#14"), and the CDT code is matched for the people who know it.
-function dentalHits(profileId: number, like: string): SearchHit[] {
+function dentalHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, name, status, tooth, surface, procedure_date, finding
@@ -836,7 +887,7 @@ function dentalHits(profileId: number, like: string): SearchHit[] {
   return rows.map((r) => ({
     domain: "dental" as const,
     key: `dental:${r.id}`,
-    ...dentalHitText(r),
+    ...dentalHitText(r, display),
     href: "/records/specialty/dental",
     date: isoDate(r.procedure_date),
   }));
@@ -854,7 +905,11 @@ function dentalHits(profileId: number, like: string): SearchHit[] {
 // Lesion rows are few, so a capped fetch is the honest cheap answer.
 const SKIN_LESION_SCAN_LIMIT = 300;
 
-function skinHits(profileId: number, query: string): SearchHit[] {
+function skinHits(
+  profileId: number,
+  query: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, label, body_region, body_side, size_mm, status,
@@ -900,7 +955,7 @@ function skinHits(profileId: number, query: string): SearchHit[] {
     hits.push({
       domain: "skin",
       key: `skin:${identity}`,
-      ...skinHitText(head, group.length),
+      ...skinHitText(head, display, group.length),
       href: "/records/specialty/skin",
       date: isoDate(head.observed_date),
     });
@@ -910,7 +965,11 @@ function skinHits(profileId: number, query: string): SearchHit[] {
 
 // Illness episodes (#856): the situation name, the user's note, and the outcome
 // annotation are what someone types ("when was her flu?", "how did that cold go?").
-function episodeHits(profileId: number, like: string): SearchHit[] {
+function episodeHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, situation, start_date, end_date, outcome
@@ -932,7 +991,7 @@ function episodeHits(profileId: number, like: string): SearchHit[] {
   return rows.map((r) => ({
     domain: "episode" as const,
     key: `episode:${r.id}`,
-    ...episodeHitText(r),
+    ...episodeHitText(r, display),
     // The episode detail page (#856) — its ledger, fever curve, and linked visits.
     href: episodeHref(r.id),
     date: isoDate(r.start_date),
@@ -941,7 +1000,11 @@ function episodeHits(profileId: number, like: string): SearchHit[] {
 
 // Protocols (#344): "what protocol was I running in March" — the name, the notes,
 // and the situation the protocol activates.
-function protocolHits(profileId: number, like: string): SearchHit[] {
+function protocolHits(
+  profileId: number,
+  like: string,
+  display: SearchDisplay
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, name, start_date, end_date, situation
@@ -963,7 +1026,7 @@ function protocolHits(profileId: number, like: string): SearchHit[] {
   return rows.map((r) => ({
     domain: "protocol" as const,
     key: `protocol:${r.id}`,
-    ...protocolHitText(r),
+    ...protocolHitText(r, display),
     href: protocolHref(r.id),
     date: isoDate(r.start_date),
   }));
@@ -973,13 +1036,17 @@ function protocolHits(profileId: number, like: string): SearchHit[] {
 // weekly target and its logged sessions, so the reader folds spellings first
 // (getPracticeSearchRows) and the query is matched against the resolved display name
 // in JS — the same reason immunizations filter on their display name.
-function practiceHits(profileId: number, query: string): SearchHit[] {
+function practiceHits(
+  profileId: number,
+  query: string,
+  display: SearchDisplay
+): SearchHit[] {
   return getPracticeSearchRows(profileId)
     .filter((row) => matchTier(row.name, query) > 0)
     .map((row) => ({
       domain: "practice" as const,
       key: `practice:${row.identity}`,
-      ...practiceHitText(row),
+      ...practiceHitText(row, display),
       // The Wellness page renders one card per practice with no per-practice route.
       href: "/wellness",
       date: row.lastUsed,
@@ -1248,9 +1315,7 @@ function pageHits(
 export function searchAll(
   profileId: number,
   rawQuery: string,
-  // The acting login, for the date shape its owner chose (the logged rows' subtitles
-  // are the only display copy this fan-out composes). `null` is the documented
-  // login-less channel: a profile in context but no reader, so the default shape.
+  // Explicit null denotes a login-less channel using the default display shape.
   loginId: number | null
 ): SearchGroup[] {
   // Cap length defensively: a search box never needs more, and it bounds the
@@ -1258,40 +1323,45 @@ export function searchAll(
   const query = rawQuery.trim().slice(0, 100);
   if (query.length < 1) return [];
   const like = likePattern(query);
+  const display: SearchDisplay = {
+    prefs:
+      loginId == null ? DEFAULT_FORMAT_PREFS : getDisplayFormatPrefs(loginId),
+    today: today(profileId),
+  };
   const age = getProfileAge(profileId);
   const trainingRelevant = isTrainingRelevant(age);
   const hits: SearchHit[] = [
-    ...clinicalResultHits(profileId, like),
-    ...imagingHits(profileId, like),
-    ...genomicHits(profileId, like),
-    ...documentHits(profileId, like),
-    ...conditionHits(profileId, like),
+    ...clinicalResultHits(profileId, like, display),
+    ...imagingHits(profileId, like, display),
+    ...genomicHits(profileId, like, display),
+    ...documentHits(profileId, like, display),
+    ...conditionHits(profileId, like, display),
     ...allergyHits(profileId, like),
-    ...procedureHits(profileId, like),
-    ...immunizationHits(profileId, query),
-    ...encounterHits(profileId, like),
+    ...procedureHits(profileId, like, display),
+    ...immunizationHits(profileId, query, display),
+    ...encounterHits(profileId, like, display),
     ...appointmentHits(profileId, like),
     ...providerHits(profileId, like),
-    ...episodeHits(profileId, like),
-    ...dentalHits(profileId, like),
-    ...skinHits(profileId, query),
+    ...episodeHits(profileId, like, display),
+    ...dentalHits(profileId, like, display),
+    ...skinHits(profileId, query, display),
     ...supplementHits(profileId, like),
     // Own recorded protocols always match (#3133): a profile's own data is
     // never filtered from that profile (#3067) — the adult-only line gates
     // protocol creation, not this read.
-    ...protocolHits(profileId, like),
-    ...practiceHits(profileId, query),
+    ...protocolHits(profileId, like, display),
+    ...practiceHits(profileId, query, display),
     ...equipmentHits(profileId, like),
     ...familyHistoryHits(profileId, like),
-    ...carePlanHits(profileId, like),
-    ...careGoalHits(profileId, like),
+    ...carePlanHits(profileId, like, display),
+    ...careGoalHits(profileId, like, display),
     ...pageHits(query, trainingRelevant, !isMinor(age)),
-    ...activityHits(profileId, like),
+    ...activityHits(profileId, like, display),
     // THE RECORD'S OWN ROWS (#5006): seven bounded reads, one per row-only Logs kind,
     // each landing on the day view scrolled to the entry rather than on a hub. The
     // static list entries above ("Food history", "Dose history") stay and stay last —
     // `page` is the final domain — so a query matching both shows the entries first.
-    ...loggedEntryHits(profileId, query, like, loginId),
+    ...loggedEntryHits(profileId, query, like, display),
     ...(trainingRelevant ? goalHits(profileId, like) : []),
   ];
 
