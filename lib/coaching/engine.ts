@@ -37,7 +37,7 @@ import { parkedDisclosureLines } from "../weather-training";
 import type { WeatherTrainingContext } from "../workout-recommendation";
 import type { EquipmentAvailability } from "../equipment-availability";
 import type { TemperatureUnit, WeightUnit } from "../settings";
-import type { AppRoute } from "../hrefs";
+import { strengthAnalyzeHref, trainingTabHref, type AppRoute } from "../hrefs";
 import { type MuscleRegion } from "../lifts";
 import {
   contextualNextSet,
@@ -969,9 +969,7 @@ function strengthExerciseRec(
     title: `Train ${exercise.exercise}`,
     detail: nextSet ? `${nextSet.rationale}. ${reason}` : reason,
     tone: "action",
-    actionHref: `/training?tab=analyze&kind=strength&item=${encodeURIComponent(
-      exercise.exercise
-    )}`,
+    actionHref: strengthAnalyzeHref(exercise.exercise),
     actionLabel: "View details",
     ...(nextSet ? { target: nextSetText(nextSet, wu) } : {}),
     ...(focus.length ? { focus } : {}),
@@ -1016,7 +1014,7 @@ export function intensityRecommendation(
     detail: `${split.hardPct}% of your recent training time was hard (above the aerobic threshold); a polarized 80/20 base keeps most of it easy. Swap a hard session for easy Zone 2 to build aerobic volume without the fatigue.`,
     tone: "caution",
     // #3512: Fitness retired into Analyze; keep the stable moved-section anchor.
-    actionHref: "/training?tab=analyze#zones",
+    actionHref: trainingTabHref("analyze", "zones"),
     actionLabel: "See HR zones",
   };
 }

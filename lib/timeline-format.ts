@@ -1,6 +1,7 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
 import { OTHER_PANEL, panelLabel, parsePanelId } from "./biomarker-panels";
 import {
+  trainingTabHref,
   clinicalResultDetailHref,
   dataSectionHref,
   importHref,
@@ -331,7 +332,7 @@ export const TIMELINE_EMPTY_ACTIONS: ReadonlyArray<{
   href: AppRoute;
   label: string;
 }> = [
-  { href: "/training?tab=log", label: "Log an activity" },
+  { href: trainingTabHref("log"), label: "Log an activity" },
   { href: "/trends#body", label: "Add a body metric" },
   { href: dataSectionHref("import"), label: "Import a document" },
 ];

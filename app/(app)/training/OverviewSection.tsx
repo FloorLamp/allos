@@ -1,3 +1,4 @@
+import { trainingTabHref } from "@/lib/hrefs";
 import DestinationLink from "@/components/DestinationLink";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import {
@@ -565,7 +566,7 @@ export default async function OverviewSection() {
           <CardSectionHeader title="Weekly targets" variant="label">
             {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
             <DestinationLink
-              href="/training?tab=plan#targets"
+              href={trainingTabHref("plan", "targets")}
               className="text-xs text-link"
             >
               Edit targets
@@ -679,7 +680,7 @@ export default async function OverviewSection() {
             action={
               cardioPrs.length > PR_CAP ? (
                 <DestinationLink
-                  href="/training?tab=analyze"
+                  href={trainingTabHref("analyze")}
                   data-testid="overview-cardio-prs-all"
                   className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
                 >
