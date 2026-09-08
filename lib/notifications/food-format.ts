@@ -5,7 +5,7 @@
 // hands the ranked list + today's serving counts here. One tap on a group button
 // logs one serving; unlike a dose reminder the buttons are NOT consumed (you can eat
 // several servings / several groups), so a rebuild after a tap keeps every button
-// and only refreshes the per-button count + the tally line.
+// and refreshes the tally line.
 
 import {
   foodGroupBySlug,
@@ -70,7 +70,7 @@ export function foodLogCallbackData(
   return `food:${profileId}:${window}:${date}:${slug}`;
 }
 
-// The protein "+Xg" quick-log button token (#1073):
+// The protein quick-log button token (#1073):
 //   foodprotein:<profileId>:<window>:<date>:<grams>
 // Mirrors the food-log token (profileId is a cross-check; window + date let a late tap
 // rebuild the right message and log to the right day); grams is the last-used scoop preset
@@ -258,7 +258,7 @@ function rowFor(index: number): string {
 
 // The day-total tally line (#1016): groups with a positive count TODAY, most-logged first
 // (name breaks ties), labeled so a slot-framed message makes clear the tally answers "where
-// am I on the DAY" (the buttons answer "what have I had this SLOT"): "✅ Today: Leafy greens
+// am I on the DAY" (the buttons offer another serving): "✅ Today: Leafy greens
 // ×2 · Berries ×1". Reads the DAY counter (food_daily_totals via getFoodServingsOnDate), never the
 // slot counts. Empty string when nothing's been logged yet today (the caller shows the
 // prompt instead). The reserved __protein__ key can't appear (it never lands in food_daily_totals),
@@ -316,7 +316,7 @@ export interface FoodNudgeRenderOpts {
   // How many ranked buttons to show (#1075 progressive expansion). Defaults to
   // FOOD_QUICK_COUNT so every existing send starts compact; "Show more" bumps it.
   visibleCount?: number;
-  // Grams for the "+Xg protein" button label (#1073) — the profile's last-used scoop
+  // Grams for the protein button label (#1073) — the profile's last-used scoop
   // preset. Only used when the reserved __protein__ key falls within the visible window.
   proteinPresetGrams?: number;
   // The eating-time correction rows (#2019), already derived from ledger state by the
@@ -368,9 +368,9 @@ export interface FoodNudgeRenderOpts {
 }
 
 // Build the food-log nudge for a window from the profile's RANKED keys (all of them,
-// staples first, possibly including the reserved __protein__ pseudo-group, #1073), the
-// SLOT-scoped per-group counts (#1016 button "(n)" suffix), and the DAY-total counts (the
-// tally line). Renders the top `visibleCount` (default FOOD_QUICK_COUNT) ranked keys
+// staples first, possibly including the reserved __protein__ pseudo-group, #1073) and
+// day-total counts (the tally line). Renders the top `visibleCount` ranked keys
+// (default FOOD_QUICK_COUNT)
 // as quick-log buttons — a food group logs one serving, the __protein__ key logs the grams
 // preset — plus a view-control row carrying "➕ Show more" while ranked keys remain below
 // the fold (#1075) and "➖ Show less" once the keyboard is expanded past the compact
@@ -382,15 +382,7 @@ export function renderFoodNudge(
   // Ranked keys: catalog food-group slugs, possibly with the reserved __protein__ pseudo-
   // group at its ranked position (#1073).
   rankedKeys: string[],
-  // Day-total per-group counts — BOTH the button "(n)" suffix and the "✅ Today:" tally.
-  //
-  // THE SUFFIX USED TO BE SLOT-SCOPED (#1016) and #2019 retired that meaning. The slot it
-  // counted was derived at read time from the tap instant, which is precisely the guess
-  // #2019 removes: with the nudge's window no longer written onto the event as a declared
-  // meal, a "this slot" count would have to re-derive one, and a tap landing minutes past
-  // a boundary would tick nobody's button. The DAY total is a number the ledger can always
-  // answer, it is the number the tally line already states, and it is what "(2)" most
-  // naturally reads as on a button you have pressed twice today.
+  // Day-total per-group counts for the tally; buttons state what the tap writes.
   dayServings: Map<string, number>,
   opts: FoodNudgeRenderOpts = {}
 ): NotificationMessage {
@@ -400,24 +392,10 @@ export function renderFoodNudge(
 
   const actions: NotificationAction[] = [];
   visible.forEach((key, i) => {
-    // The reserved protein pseudo-group (#1073) → the "+Xg protein" button (its own token,
-    // its own write core). It carries the SAME "(n)" suffix as every food-group sibling
-    // (issue #1379, REVERSING the original #1073 no-suffix decision): a bare button was
-    // the only count-less one on the keyboard and read as inconsistency — a user who
-    // tapped +Xg twice saw every OTHER button acknowledge its taps and this one not. The
-    // count is "n protein logs today" (not grams) — the DAY total, exactly as the
-    // sibling buttons count since #2019 retired the slot-scoped suffix — so the keyboard
-    // has one count language; the day's total grams stay on their own protein line (the
-    // two express taps vs grams). The count needs no window derivation: a protein tap
-    // writes a __protein__ row to food_log_events (addProteinGramsCore), the caller
-    // counts those taps off that ledger (getProteinTapsOnDate) and merges them into the
-    // `dayServings` map every button reads, and the callback rebuild re-reads it so a
-    // tap ticks its own button immediately.
+    // Protein has its own token and write core; its label names the offered grams.
     if (isProteinNudgeKey(key)) {
-      const base = proteinNudgeButtonLabel(presetGrams);
-      const n = dayServings.get(key) ?? 0;
       actions.push({
-        label: n > 0 ? `${base} (${n})` : base,
+        label: proteinNudgeButtonLabel(presetGrams),
         data: foodProteinCallbackData(profileId, window, date, presetGrams),
         row: rowFor(i),
       });
@@ -425,7 +403,6 @@ export function renderFoodNudge(
     }
     const g = foodGroupBySlug(key);
     if (!g) return; // a retired/unknown slug can't render a button (belt; rankedKeys are catalog)
-    const n = dayServings.get(key) ?? 0;
     // The catalog glyph leads the label (#1710) and the SHORT catalog name follows —
     // the same abbreviation vocabulary the tally and the Trends day-history chips
     // use, which is what keeps a half-width button ("🍬 Sweets") from truncating
@@ -434,7 +411,7 @@ export function renderFoodNudge(
     const short = foodGroupShortName(key);
     const name = emoji ? `${emoji} ${short}` : short;
     actions.push({
-      label: n > 0 ? `${name} (${n})` : name,
+      label: name,
       data: foodLogCallbackData(profileId, window, date, key),
       row: rowFor(i),
     });
