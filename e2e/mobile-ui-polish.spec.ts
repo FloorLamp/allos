@@ -494,6 +494,10 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
     const addDialog = page.getByRole("dialog", { name: "Add supplement" });
     await addDialog.getByLabel("Name").fill(NAME);
     const doseEditor1 = await openFact(page, "dose", addDialog);
+    await hydratedClick(
+      page,
+      doseEditor1.getByRole("button", { name: "Add dose", exact: true })
+    );
     await doseEditor1.getByLabel("Amount").first().fill("1 tab"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Amount field in the scoped add modal
     await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the first dose's Time-of-day field in the scoped add modal
     await closeEditor(page, addDialog);

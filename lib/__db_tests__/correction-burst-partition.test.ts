@@ -15,15 +15,7 @@
 // the real callback dispatcher and the real builders, with only the raw Telegram
 // transport stubbed — a renderer-only fix fails the write-isolation cases.
 
-import {
-  beforeAll,
-  beforeEach,
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
@@ -74,24 +66,17 @@ beforeAll(() => stubTelegramSends());
 // One frozen morning in Berlin (UTC+2 in August) — the owner's report is two dose
 // reminders from last night, both answered the next morning minutes apart.
 const MORNING_ISO = "2026-08-05T05:30:00Z";
-let priorNow: string | undefined;
 
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = MORNING_ISO;
+  vi.setSystemTime(new Date(MORNING_ISO));
   setTelegramBotConfig({
     telegramBotToken: "bot-for-tests",
     telegramMode: "poll",
   });
 });
 
-afterEach(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
-
 function setNow(iso: string): void {
-  process.env.ALLOS_TEST_NOW = iso;
+  vi.setSystemTime(new Date(iso));
 }
 
 function newProfile(name: string): number {
@@ -145,7 +130,7 @@ function seedDose(
   return { itemId, doseId };
 }
 
-// `recorded_at` is written by SQL's real clock (the ALLOS_TEST_NOW freeze deliberately
+// `recorded_at` is written by SQL's real clock (the Date freeze deliberately
 // does not reach it), so burst spacing is pinned by stamping it explicitly after the
 // real write path has created the row.
 function stampDoseTap(logId: number, isoUtc: string): void {

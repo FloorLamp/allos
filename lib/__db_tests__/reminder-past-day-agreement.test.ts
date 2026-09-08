@@ -22,7 +22,7 @@
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone, switchProfileTimezone } from "@/lib/settings";
@@ -177,10 +177,6 @@ describe("a past day's Morning window, both seams (#4019/#4011)", () => {
 // Both directions are pinned here because a change that "reconciled" the two gates
 // would satisfy either one alone.
 describe("a past-day log overrules the clock, not the schedule (#3997)", () => {
-  afterEach(() => {
-    delete process.env.ALLOS_TEST_NOW;
-  });
-
   it("does not re-admit a dose the schedule says the day never owed", () => {
     const p = newProfile();
     const yesterday = shiftDateStr(today(p), -1);
@@ -198,7 +194,7 @@ describe("a past-day log overrules the clock, not the schedule (#3997)", () => {
   it("does re-admit a dose whose slot the wall clock jumped over", () => {
     // 14:00 UTC is 10:00 in New York and 23:00 in Tokyo — the same calendar date in
     // both, so flying east erases the 20:00 Evening slot without moving the day.
-    process.env.ALLOS_TEST_NOW = "2026-05-01T14:00:00Z";
+    vi.setSystemTime(new Date("2026-05-01T14:00:00Z"));
     const p = newProfile("America/New_York");
     const switchDay = today(p);
     const itemId = Number(
@@ -223,7 +219,7 @@ describe("a past-day log overrules the clock, not the schedule (#3997)", () => {
     switchProfileTimezone(p, "Asia/Tokyo", "America/New_York");
 
     // The next day, rebuilding the switch day's message — the late-tap shape.
-    process.env.ALLOS_TEST_NOW = "2026-05-02T11:00:00Z";
+    vi.setSystemTime(new Date("2026-05-02T11:00:00Z"));
     const rebuilt = collectWindowDoses(p, "Evening", switchDay);
     expect(rebuilt.map((e) => [e.item.name, e.taken])).toEqual([
       ["Evening med", true],

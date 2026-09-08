@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 import { medicationList, medicationRow } from "./med-card-helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -188,7 +188,12 @@ test("Nutrition is a Day | Manage tab umbrella (#746/#3987)", async ({
     "missing"
   );
   const dose = await openFact(page, "dose", addDialog);
-  await expect(dose.getByLabel("Amount").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: first basic dose row in the scoped modal
+  await expect(dose.getByLabel("Amount")).toHaveCount(0);
+  await hydratedClick(
+    page,
+    dose.getByRole("button", { name: "Add dose", exact: true })
+  );
+  await expect(dose.getByLabel("Amount")).toBeVisible();
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Close" }).click();
 

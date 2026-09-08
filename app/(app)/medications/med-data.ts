@@ -8,8 +8,7 @@
 
 import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import {
-  getIntakeDoses,
-  getRetiredDoses,
+  getIntakeDosesForHistory,
   getTakenDoseTimes,
   getSkippedDoseIds,
   getIntakeAdherenceEvidence,
@@ -75,7 +74,9 @@ import {
 import { getTimezone, type WeightUnit } from "@/lib/settings";
 import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
+  doseDueOn,
   isDueOn,
+  isOnDemand,
   isPostWorkoutReady,
   heldBySituation,
 } from "@/lib/intake-schedule";
@@ -104,7 +105,6 @@ import {
   type DormantPrnInput,
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
-import { isOnDemand } from "@/lib/intake-schedule";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import { dateFromCreatedAt } from "@/lib/timeline-format";
 
@@ -125,6 +125,8 @@ export interface MedCardData {
   // REPLACES the per-item refill badge, carrying the POOLED days-left.
   poolChip: PoolChipData | null;
   due: boolean;
+  // Individually due today; item-level dueness cannot distinguish sibling rows.
+  dueDoseIds: number[];
   pairs: IntakePair[];
   prnDayLabel: string | null;
   // Today's as-needed administrations with their ledger ids and snapshotted amounts,
@@ -159,7 +161,7 @@ export interface MedCardData {
 }
 
 // The adherence inputs that do not depend on the WINDOW being scored — the workout-day
-// set and the situation-history resolver. The 14-day strip on every card and the
+// set, dose history and the situation-history resolver. The 14-day strip and the
 // detail page's 35-day month calendar need exactly these, so the board gather resolves
 // them ONCE and the calendar reads them back (#2114) instead of re-running
 // getActivityDates + getActiveSituations + getSituationEvents on the same request.
@@ -168,6 +170,7 @@ export interface MedCardData {
 // boundary. Nothing forwards `MedicationsData` wholesale to a client component — the
 // client rows take `MedCardData` — and this stays true by that convention.
 export interface MedicationAdherenceInputs {
+  historyDosesByItem: Map<number, IntakeDose[]>;
   workoutDays: Set<string>;
   situationsOn: (date: string) => Set<string>;
 }
@@ -228,18 +231,18 @@ export function loadMedicationsData(
   // and the pediatric figures for its own mounts.
   const intakeForm = loadIntakeFormContext(profileId, weightUnit);
   const intakeItems = intakeForm.allIntakeItems;
-  const doses = getIntakeDoses(profileId);
+  const historyDosesByItem = new Map<number, IntakeDose[]>();
   const dosesByItem = new Map<number, IntakeDose[]>();
-  for (const d of doses) {
-    const arr = dosesByItem.get(d.item_id) ?? [];
-    arr.push(d);
-    dosesByItem.set(d.item_id, arr);
-  }
   const retiredByItem = new Map<number, IntakeDose[]>();
-  for (const d of getRetiredDoses(profileId)) {
-    const arr = retiredByItem.get(d.item_id) ?? [];
-    arr.push(d);
-    retiredByItem.set(d.item_id, arr);
+  for (const d of getIntakeDosesForHistory(profileId)) {
+    const history = historyDosesByItem.get(d.item_id) ?? [];
+    history.push(d);
+    historyDosesByItem.set(d.item_id, history);
+    // Historical adherence includes retired rows; current controls cannot act on them.
+    const currentOrRetired = d.retired ? retiredByItem : dosesByItem;
+    const rows = currentOrRetired.get(d.item_id) ?? [];
+    rows.push(d);
+    currentOrRetired.set(d.item_id, rows);
   }
 
   // The loader's day, not a second today() call (#4609). This is the todayStr handed
@@ -442,7 +445,7 @@ export function loadMedicationsData(
       sideEffects: sideEffectsByItem.get(med.id) ?? [],
       strip: intakeAdherenceStrip(
         med,
-        medDoses,
+        historyDosesByItem.get(med.id) ?? [],
         dates,
         workoutDays,
         situationsOn,
@@ -453,6 +456,9 @@ export function loadMedicationsData(
       refillRate: refillRates.get(med.id) ?? null,
       poolChip: poolChips.get(med.id) ?? null,
       due: medDue(med),
+      dueDoseIds: med.active
+        ? medDoses.filter((dose) => doseDueOn(med, dose, ctx)).map((d) => d.id)
+        : [],
       pairs: pairsFor(med.id),
       prnDayLabel: prn.label,
       prnAdministrations: prn.administrations,
@@ -599,7 +605,7 @@ export function loadMedicationsData(
     dormantPrn,
     dismissedDormantPrn,
     byId,
-    adherenceInputs: { workoutDays, situationsOn },
+    adherenceInputs: { historyDosesByItem, workoutDays, situationsOn },
   };
 }
 
@@ -669,7 +675,7 @@ export function getMedicationAdherenceCalendar(
   );
   const strip = intakeAdherenceStrip(
     card.med,
-    card.doses,
+    data.adherenceInputs.historyDosesByItem.get(itemId) ?? [],
     dates,
     data.adherenceInputs.workoutDays,
     data.adherenceInputs.situationsOn,

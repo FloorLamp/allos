@@ -309,6 +309,7 @@ export default async function MedicationDetailPage(props: {
               takenDoseIds={data.taken}
               skippedDoseIds={data.skipped}
               due={m.due}
+              dueDoseIds={m.dueDoseIds}
               courses={m.courses}
               sideEffects={m.sideEffects}
               strip={m.strip}

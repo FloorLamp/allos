@@ -226,24 +226,19 @@ describe("the slot-boundary refresh keeps ⚙️ Tune (#2890)", () => {
   });
 
   it("uses the clock seam for the rendered slot time", async () => {
-    const priorNow = process.env.ALLOS_TEST_NOW;
-    try {
-      process.env.ALLOS_TEST_NOW = "2026-08-18T07:30:00Z";
-      const pid = newProfile("Frozen Farah");
-      const chat = "5553085";
-      seedLoginTelegram(pid, chat);
-      seedOfferedItem(pid, "Calcium (clock seam)");
-      pointerAt(pid, chat, "07:30");
+    // Keep the override distinct from Date so a bare Date in refresh fails here.
+    process.env.ALLOS_TEST_NOW = "2026-08-18T07:30:00Z";
+    const pid = newProfile("Frozen Farah");
+    const chat = "5553085";
+    seedLoginTelegram(pid, chat);
+    seedOfferedItem(pid, "Calcium (clock seam)");
+    pointerAt(pid, chat, "07:30");
 
-      await refreshDigestOfferTail(pid);
-      expect(editKeyboardMock).not.toHaveBeenCalled();
+    await refreshDigestOfferTail(pid);
+    expect(editKeyboardMock).not.toHaveBeenCalled();
 
-      process.env.ALLOS_TEST_NOW = "2026-08-18T23:30:00Z";
-      await refreshDigestOfferTail(pid);
-      expect(editKeyboardMock).toHaveBeenCalledTimes(1);
-    } finally {
-      if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = priorNow;
-    }
+    process.env.ALLOS_TEST_NOW = "2026-08-18T23:30:00Z";
+    await refreshDigestOfferTail(pid);
+    expect(editKeyboardMock).toHaveBeenCalledTimes(1);
   });
 });

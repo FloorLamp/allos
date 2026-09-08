@@ -48,6 +48,7 @@ const BOTTLES: SupplyOption[] = [
 const TRACKED_MEDICATION = {
   intakeContext: intakeFormContext("2026-09-01"),
   medication: { id: 7, name: "Aspirin", quantity_on_hand: 90 },
+  dueDoseIds: [],
   courses: [],
   sideEffects: [],
   initialAction: "edit",
