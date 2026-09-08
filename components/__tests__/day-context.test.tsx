@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { useState } from "react";
 import BoundedDaySwitcher from "@/components/BoundedDaySwitcher";
 import { DayContextProvider, useDayContext } from "@/components/DayContext";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
@@ -99,6 +100,53 @@ describe("the shared bounded day context", () => {
     view.rerender(renderDay("2026-09-06"));
     expect(screen.getByTestId("current-day").textContent).toBe(
       "2026-09-06:past"
+    );
+  });
+
+  it("drops a selected day when a later today moves it outside reach", () => {
+    function Draft() {
+      const [value, setValue] = useState("");
+      return (
+        <input
+          aria-label="Draft"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      );
+    }
+    const renderToday = (today: string) => (
+      <DayContextProvider
+        profileId={7}
+        today={today}
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: "2026-09-07" }}
+      >
+        <BoundedDaySwitcher />
+        <CurrentDay />
+        <Draft />
+      </DayContextProvider>
+    );
+    const view = render(renderToday("2026-09-07"));
+    fireEvent.click(screen.getByTestId("day-context-1"));
+    expect(screen.getByTestId("current-day").textContent).toBe(
+      "2026-09-06:past"
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Draft" }), {
+      target: { value: "kept" },
+    });
+
+    view.rerender(renderToday("2026-09-08"));
+    // Yesterday advanced, but the selected day is still inside the two-day reach.
+    expect(screen.getByTestId("current-day").textContent).toBe(
+      "2026-09-06:past"
+    );
+    expect(
+      (screen.getByRole("textbox", { name: "Draft" }) as HTMLInputElement).value
+    ).toBe("kept");
+
+    view.rerender(renderToday("2026-09-09"));
+    expect(screen.getByTestId("current-day").textContent).toBe(
+      "2026-09-07:past"
     );
   });
 });

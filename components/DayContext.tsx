@@ -73,6 +73,16 @@ function StateDayContext({
   const [day, setDay] = useState(() =>
     isWithinReach(reach, today, initialDay) ? initialDay : today
   );
+  // A selected day can age out when the profile's calendar advances. Reconcile in
+  // this render so no consumer observes the expired value. Do not key the subtree on
+  // `today`: when the selected day remains reachable it is the same context, and a
+  // pending draft beneath it must keep its identity.
+  const reconciledDay = isWithinReach(reach, today, day)
+    ? day
+    : isWithinReach(reach, today, initialDay)
+      ? initialDay
+      : today;
+  if (reconciledDay !== day) setDay(reconciledDay);
   const select = useCallback(
     (nextDay: string) => {
       if (isWithinReach(reach, today, nextDay)) setDay(nextDay);
@@ -80,8 +90,9 @@ function StateDayContext({
     [reach, today]
   );
   const value = useMemo(
-    () => valueFor(profileId, today, reach, day, "state", select, null),
-    [profileId, today, reach, day, select]
+    () =>
+      valueFor(profileId, today, reach, reconciledDay, "state", select, null),
+    [profileId, today, reach, reconciledDay, select]
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
