@@ -69,10 +69,11 @@ export default function SubstanceUnitControl({
       },
       settle: (result) => {
         if (!result.ok) {
-          setError(result.error);
+          if (isCurrent()) setError(result.error);
           // Nothing was written, so the tap stays immediately retryable.
           return { kind: "rollback" };
         }
+        if (!isCurrent()) return { kind: "keep" };
         setCount(result.weekCount);
         return { kind: "keep" };
       },
