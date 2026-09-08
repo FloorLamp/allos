@@ -1,4 +1,6 @@
 "use client";
+
+import { MEDIA_QUERIES } from "@/lib/media-queries";
 import { LoggedViaSurface, useLoggedVia } from "@/components/LoggedViaSurface";
 import { stampWebOrigin, type WebLoggedVia } from "@/lib/logged-via";
 
@@ -798,7 +800,7 @@ export default function ActivityEditorProvider({
       setOpen(false);
       return true;
     },
-    () => !window.matchMedia("(min-width: 640px)").matches
+    () => !window.matchMedia(MEDIA_QUERIES.sm).matches
   );
   useEffect(() => {
     markEditorLinkFollowedRef.current = markEditorLinkFollowed;

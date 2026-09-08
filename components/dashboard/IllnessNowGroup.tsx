@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import {
   IconVirus,
@@ -13,6 +13,7 @@ import {
   type EpisodeCollapsedStatus,
 } from "@/lib/illness-episode-format";
 import type { AppRoute } from "@/lib/hrefs";
+import { useMediaQuery } from "@/components/useMediaQuery";
 
 // One patient's cockpit descriptor. `body` is the server-rendered full cockpit
 // (IllnessCockpitBody) — passed as a node so the SAME component serves every cockpit and
@@ -46,18 +47,6 @@ export interface IllnessContextCockpit {
     factKey: string;
     groupKey: string;
   } | null;
-}
-
-const XL_QUERY = "(min-width: 1280px)";
-
-function subscribeToXl(onChange: () => void) {
-  const query = window.matchMedia(XL_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
-function getXlSnapshot() {
-  return window.matchMedia(XL_QUERY).matches;
 }
 
 // The illness context group (issue #858): a Now member that renders every accessible
@@ -96,7 +85,7 @@ export default function IllnessNowGroup({
   );
   const [collapsedAdditionalActiveKeys, setCollapsedAdditionalActiveKeys] =
     useState<ReadonlySet<string>>(() => new Set());
-  const isXl = useSyncExternalStore(subscribeToXl, getXlSnapshot, () => false);
+  const isXl = useMediaQuery("xl");
 
   if (cockpits.length === 0) return null;
 

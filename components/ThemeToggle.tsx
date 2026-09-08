@@ -1,5 +1,7 @@
 "use client";
 
+import { MEDIA_QUERIES } from "@/lib/media-queries";
+
 import { useEffect, useSyncExternalStore } from "react";
 import {
   isDarkTheme,
@@ -47,7 +49,7 @@ function subscribeToTheme(onChange: () => void): () => void {
 function apply(theme: Theme) {
   const dark = isDarkTheme({
     stored: theme,
-    prefersDark: window.matchMedia("(prefers-color-scheme: dark)").matches,
+    prefersDark: window.matchMedia(MEDIA_QUERIES.dark).matches,
   });
   document.documentElement.classList.toggle("dark", dark);
 }
@@ -106,7 +108,7 @@ export default function ThemeToggle({ bare = false }: { bare?: boolean }) {
 
   useEffect(() => {
     // Keep "system" in sync if the OS preference changes while the app is open.
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const mq = window.matchMedia(MEDIA_QUERIES.dark);
     const onChange = () => {
       if (
         normalizeThemeChoice(localStorage.getItem(THEME_STORAGE_KEY)) ===
