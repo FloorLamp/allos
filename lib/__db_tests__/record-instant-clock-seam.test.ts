@@ -209,6 +209,7 @@ describe("offline food replay judges a statement on the seam's clock (#2287)", (
           eatenAt: statedAt,
         },
         p,
+        true,
         clockNow()
       )
     );

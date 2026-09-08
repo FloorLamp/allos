@@ -1411,6 +1411,7 @@ export default function FoodLogBar({
       },
       commit,
       write: async () => {
+        if (capturedDayContext) await capturedDayContext.writeToken;
         if (typeof navigator !== "undefined" && navigator.onLine === false) {
           if (delta === -1) return { kind: "offline-undo" };
           return (await queueOffline())

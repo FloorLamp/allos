@@ -43,6 +43,8 @@ import {
   STALE_QUEUED_DOSE_REASON,
   type QueuedIntent,
 } from "@/lib/offline/queue";
+import { dayContextKey } from "@/lib/day-context-key";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 let seq = 0;
 
@@ -113,9 +115,20 @@ const DATE = today(1);
 function doseIntent(
   flow: "dose" | "skip-dose",
   doseId: number,
-  opts: { date?: string; clientTakenAt?: string; key?: string } = {}
+  opts: {
+    date?: string;
+    clientTakenAt?: string;
+    key?: string;
+    isPrimaryDay?: boolean;
+    profileId?: number;
+  } = {}
 ): QueuedIntent {
   const date = opts.date ?? DATE;
+  const parts = {
+    profileId: opts.profileId ?? 1,
+    day: date,
+    reach: TAP_REACH["dose-day"],
+  };
   return {
     key: opts.key ?? `dose-intent-${++seq}-${Date.now()}`,
     flow,
@@ -125,6 +138,16 @@ function doseIntent(
       doseId,
       ...(opts.clientTakenAt ? { clientTakenAt: opts.clientTakenAt } : {}),
     },
+    ...(opts.isPrimaryDay === undefined
+      ? {}
+      : {
+          profileId: parts.profileId,
+          dayContext: {
+            parts,
+            key: dayContextKey(parts),
+            isPrimaryDay: opts.isPrimaryDay,
+          },
+        }),
   };
 }
 
@@ -484,6 +507,25 @@ describe("escalationAckState status-awareness (#280)", () => {
 });
 
 describe("offline dose replay rides the shared write cores (#1427)", () => {
+  it("never invents an instant for a captured nonprimary day that is current at replay", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
+    const doseId = seedDose(itemId, "1 cap");
+    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "08:15")!;
+
+    expect(
+      applyIntent(
+        profileId,
+        doseIntent("dose", doseId, {
+          clientTakenAt: tapped.toISOString(),
+          isPrimaryDay: false,
+          profileId,
+        })
+      )
+    ).toEqual({ status: "done" });
+    expect(occurredAt(doseId, DATE)).toBeNull();
+  });
+
   it("stamps the CAPTURED tap time, snapshots the amount, and decrements supply once", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
@@ -497,7 +539,11 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
     expect(
       applyIntent(
         profileId,
-        doseIntent("dose", doseId, { clientTakenAt: tapped.toISOString() })
+        doseIntent("dose", doseId, {
+          clientTakenAt: tapped.toISOString(),
+          isPrimaryDay: true,
+          profileId,
+        })
       )
     ).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)).toEqual({ amount: "2 caps", status: "taken" });

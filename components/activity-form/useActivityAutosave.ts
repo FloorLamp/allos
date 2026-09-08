@@ -337,6 +337,7 @@ export function useActivityAutosave({
       let saved = false;
       if (mountedRef.current) setStatus("saving");
       try {
+        if (queueCapture) await queueCapture.writeToken;
         const res = await saveActivity(attemptedFormData);
         // Nothing persisted (invalid title/date or an id the active profile doesn't
         // own — e.g. after a profile switch). Do NOT advance savedSigRef: the form

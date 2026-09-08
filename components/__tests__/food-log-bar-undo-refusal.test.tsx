@@ -93,6 +93,7 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
     enqueue: vi.fn(async () => "kept" as const),
     flush: vi.fn(async () => {}),
   }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 
 const DATE = "2026-08-24";
@@ -208,6 +209,9 @@ function SlotProjectionProbe() {
 
 function barTree({
   profileId = 7,
+  subjectProfileId = undefined as number | undefined,
+  today = DATE,
+  timeZone = "UTC",
   day = DAY,
   days = undefined as FoodLogDay[] | undefined,
   proteinQuickAdd = undefined as React.ComponentProps<
@@ -230,7 +234,7 @@ function barTree({
 } = {}) {
   const offered = days ?? [day];
   return (
-    <TimezoneProvider tz="UTC">
+    <TimezoneProvider tz={timeZone}>
       <ActiveProfileProvider profileId={profileId}>
         <ConfirmProvider>
           <ToastProvider>
@@ -243,18 +247,19 @@ function barTree({
             )}
             <FoodSelectedDateProvider
               key={providerKey}
-              today={DATE}
+              today={today}
               days={offered}
             >
               <FoodLogBar
                 key={barKey}
-                today={DATE}
+                today={today}
                 days={offered}
                 groupsBySlot={GROUPS}
                 slot={slot}
                 slotBoundaries={{ midday: 660, evening: 900 }}
                 dayLedger={ledgerFor(day)}
                 proteinQuickAdd={proteinQuickAdd}
+                subjectProfileId={subjectProfileId}
                 showDayContext={showDayContext}
               />
               {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
@@ -338,6 +343,28 @@ function deferred<T>() {
 }
 
 describe("FoodLogBar projection publication", () => {
+  it("uses the selected subject's zone for the visible Now statement", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-24T12:30:00.000Z"));
+    try {
+      mountBar({
+        subjectProfileId: 8,
+        timeZone: "Pacific/Honolulu",
+      });
+      fireEvent.click(screen.getByTestId("food-when-now"));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+
+      const sent = actions.logFoodServing.mock.calls[0][0] as FormData;
+      expect(sent.get("date")).toBe(DATE);
+      expect(sent.get("profile_id")).toBe("8");
+      expect(sent.get("occurred_at")).toBe("02:30");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("retires the private header and leaves one quiet day total under sheet rows", () => {
     mountBar({
       showDayContext: false,

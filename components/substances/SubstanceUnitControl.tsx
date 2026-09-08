@@ -19,6 +19,8 @@ import {
   type SubstanceCountResult,
   type SubstanceLogResult,
 } from "@/app/(app)/medical/substance-use/actions";
+import { useTimeStatement } from "@/components/TimeStatement";
+import { useOptionalDayContext } from "@/components/DayContext";
 
 // THE SUBSTANCE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), named by
 // `LOG_MANIFEST.substance.pieces.rowControl`: the unit tap, its undo and the #998 cap
@@ -64,6 +66,14 @@ export default function SubstanceUnitControl({
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(weekCount);
   const inQuickEntryRow = useQuickEntryRow();
+  const dayContext = useOptionalDayContext();
+  const writeDate = dayContext?.parts.day ?? date;
+  const statement = useTimeStatement({
+    shown: inQuickEntryRow && writeDate != null,
+    day: writeDate ?? "",
+    timeLabel: "Time used",
+    testId: `${testIdPrefix}-when-${substance}`,
+  });
   const announceUndoable = useUndoableAction();
   const getToastProfileScope = useToastProfileScopeGetter();
   const claimToastKey = useClaimToastKey();
@@ -82,10 +92,12 @@ export default function SubstanceUnitControl({
       for (const [key, owner] of receiptOwners) dismissToast(key, owner);
       receiptOwners.clear();
     };
-  }, [dismissToast, subjectProfileId, substance, date]);
+  }, [dismissToast, subjectProfileId, substance, writeDate]);
 
   async function tap(kind: "log" | "undo"): Promise<void> {
     setError(null);
+    const stated = statement.at;
+    const statedInstant = statement.instant;
     const originGeneration = generationRef.current;
     const originScope = getToastProfileScope();
     const originProfileId = subjectProfileId ?? originScope?.profileId;
@@ -107,9 +119,11 @@ export default function SubstanceUnitControl({
       write: async (): Promise<SubstanceLogResult | SubstanceCountResult> => {
         const fd = stampLoggedVia(new FormData());
         fd.set("substance", substance);
-        if (date) {
-          fd.set("date", date);
+        if (writeDate) {
+          fd.set("date", writeDate);
         }
+        if (kind === "log" && statedInstant)
+          fd.set("stated_at", statedInstant);
         if (originProfileId != null)
           fd.set("profile_id", String(originProfileId));
         return kind === "log"
@@ -123,6 +137,7 @@ export default function SubstanceUnitControl({
           return { kind: "rollback" };
         }
         if (!isCurrent()) return { kind: "keep" };
+        if (kind === "log") statement.spend(stated);
         setCount(result.weekCount);
         if (
           kind === "log" &&
@@ -193,7 +208,7 @@ export default function SubstanceUnitControl({
             }
             verb={ledger.pending("log") ? "Logging…" : "Log"}
             tone="neutral"
-            disabled={ledger.blocked("log")}
+              disabled={ledger.blocked("log")}
             onAct={() => void tap("log")}
             ariaLabel={substanceDef(substance).logLabel}
             testId={`${testIdPrefix}-log-${substance}`}
@@ -222,7 +237,9 @@ export default function SubstanceUnitControl({
             Undo today
           </button>
         ) : null}
+        {statement.door}
       </div>
+      {statement.reveal}
       {capProgress ? (
         <p
           className={`text-sm ${

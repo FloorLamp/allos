@@ -9,6 +9,7 @@ import { logStoolForm } from "@/app/(app)/stool-actions";
 import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { microMotionPlan } from "@/lib/micro-motion";
+import { useOptionalDayContext } from "@/components/DayContext";
 
 // THE STOOL DOMAIN'S ROW CONTROL (#4424 ruling 7), named by
 // `LOG_MANIFEST.stool.pieces.rowControl`: the Bristol Stool Form Scale as seven one-tap
@@ -62,6 +63,11 @@ export default function StoolTypeControl({
   // takes is not "the value this tap fired from" — a sibling type's reading may have
   // landed meanwhile — and that judgement is the pipeline's now.
   const pipeline = useWritePipeline<"stool-form", number>("stool-form");
+  const dayContext = useOptionalDayContext();
+  const writeDate = dayContext?.parts.day ?? today;
+  const isPrimaryDay = dayContext
+    ? dayContext.parts.day === dayContext.today
+    : true;
   const [count, setCount] = useState(todayCount);
   const reducedMotion = usePrefersReducedMotion();
   const settlePlan = microMotionPlan("settle", reducedMotion);
@@ -74,7 +80,8 @@ export default function StoolTypeControl({
   // (#2785's grain argument). A day EARLIER than today is the record's door, not this
   // tap's (`TAP_REACH`).
   const statement = useTimeStatement({
-    day: today,
+    day: writeDate,
+    required: !isPrimaryDay,
     timeLabel: "Time it happened",
     testId: "stool-when",
   });
@@ -105,6 +112,7 @@ export default function StoolTypeControl({
     // The statement THIS tap consumes, read once — both as the wall time it posts and
     // as the value the spend below compares against.
     const stated = statement.at;
+    if (!isPrimaryDay && !stated) return;
     const result = await pipeline.run({
       key: String(type),
       // OPTIMISTIC, THEN THE SERVER'S OWN TOTAL. The count stays this surface's state;
@@ -116,6 +124,7 @@ export default function StoolTypeControl({
       // so an untouched sheet posts precisely the body it always posted (#3273).
       fields: {
         type: String(type),
+        date: writeDate,
         ...(stated ? { at: stated } : {}),
         ...(subjectProfileId != null
           ? { profile_id: String(subjectProfileId) }
@@ -168,7 +177,7 @@ export default function StoolTypeControl({
           : {
               kind: "capture",
               flow: "stool",
-              date: today,
+              date: writeDate,
               payload: { type, at: stated },
               keptMessage: "Saved offline — will sync when you reconnect.",
             },
@@ -187,6 +196,7 @@ export default function StoolTypeControl({
             type="button"
             data-testid={`stool-type-${t.type}`}
             onClick={() => void tap(t.type)}
+            disabled={!isPrimaryDay && !statement.at}
             aria-label={`Type ${t.type}, ${t.description}`}
             className="group relative flex flex-col items-center gap-1 px-1 py-2 text-slate-700 dark:text-slate-200"
           >

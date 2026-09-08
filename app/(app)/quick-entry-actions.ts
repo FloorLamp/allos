@@ -334,11 +334,14 @@ export async function loadQuickEntry(
   const date = today(profile.id);
   const selectedDateReach =
     selectedReach === "dated" &&
-    (form === "food" || form === "mood" || form === "symptom")
+    (form === "food" ||
+      form === "mood" ||
+      form === "practice" ||
+      form === "symptom" ||
+      form === "stool" ||
+      form === "substance")
       ? ({ kind: "dated" } as const)
-      : form === "practice"
-        ? TAP_REACH["practice-session"]
-        : form === "dose"
+      : form === "dose"
           ? TAP_REACH["dose-day"]
           : SHEET_REACH;
   if (

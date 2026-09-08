@@ -116,7 +116,8 @@ function applyDoseIntent(
   profileId: number,
   flow: "dose" | "skip-dose",
   payload: DosePayload,
-  date: string
+  date: string,
+  capturedPrimary?: boolean
 ): { status: "done" | "rejected"; reason?: string } {
   const doseId = payload?.doseId;
   if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
@@ -139,8 +140,10 @@ function applyDoseIntent(
   const outcome =
     flow === "dose"
       ? markDoseTaken(profileId, doseId, null, date, OFFLINE_REPLAY, {
-          takenAt: capturedOnRowDate
-            ? capturedTakenAt
+          takenAt: capturedPrimary === false
+            ? null
+            : capturedOnRowDate
+              ? capturedTakenAt
             : date === todayStr
               ? (capturedTakenAt ?? undefined)
               : null,
@@ -1401,6 +1404,8 @@ export function applyIntent(
   if (contextRefusal) {
     return { status: "rejected", reason: contextRefusal };
   }
+  const capturedPrimary =
+    "dayContext" in intent ? intent.dayContext?.isPrimaryDay : undefined;
   let outcome: ReplayOutcome = { status: "rejected" };
   // Set by a flow that APPLIED while refusing a stated time (#2296) — carried out on
   // the "done" outcome below, never on a rejection (the two mean opposite things: one
@@ -1419,7 +1424,8 @@ export function applyIntent(
         profileId,
         intent.flow,
         intent.payload as DosePayload,
-        intent.date
+        intent.date,
+        capturedPrimary
       );
       if (applied.status === "rejected") {
         outcome = applied;
@@ -1459,11 +1465,33 @@ export function applyIntent(
       });
     } else if (intent.flow === "stool") {
       const p = intent.payload as StoolPayload;
+      const statedAt = normalizeClockTime(p?.at);
+      if (capturedPrimary === false) {
+        const verdict = statedAt
+          ? judgeStatedAt(
+              statedInstantOnDate(
+                intent.date,
+                statedAt,
+                getTimezone(profileId)
+              ),
+              getTimezone(profileId),
+              intent.date,
+              clockNow()
+            )
+          : null;
+        if (verdict?.kind !== "accepted") {
+          outcome = {
+            status: "rejected",
+            reason: "Choose a time for a stool entry on a past day.",
+          };
+          return;
+        }
+      }
       const applied = logBristolStool(
         profileId,
         intent.date,
         p?.type,
-        typeof p?.at === "string" ? p.at : null,
+        statedAt,
         new Date(resolveCapturedInstant(intent.capturedAt, clockNow()))
       );
       ok = applied.wrote;
@@ -1549,6 +1577,7 @@ export function applyIntent(
       // from the write core, which now takes any real past day like every other core,
       // so asking the core would silently land a stale capture on a closed day.
       if (
+        capturedPrimary === undefined &&
         !isWithinTapReach("practice-session", today(profileId), intent.date)
       ) {
         outcome = {
@@ -1558,6 +1587,37 @@ export function applyIntent(
         };
         return;
       }
+      const normalizedEnd = normalizeClockTime(p?.endTime);
+      if (capturedPrimary === false) {
+        const verdict = normalizedEnd
+          ? judgeStatedAt(
+              statedInstantOnDate(
+                intent.date,
+                normalizedEnd,
+                getTimezone(profileId)
+              ),
+              getTimezone(profileId),
+              intent.date,
+              clockNow()
+            )
+          : null;
+        if (verdict?.kind !== "accepted") {
+          outcome = {
+            status: "rejected",
+            reason: "Choose an end time for a practice on a past day.",
+          };
+          return;
+        }
+      }
+      const capturedInstant = new Date(
+        resolveCapturedInstant(intent.capturedAt, clockNow())
+      );
+      const endTime =
+        normalizedEnd
+          ? normalizedEnd
+          : capturedPrimary === true
+            ? zonedDateParts(getTimezone(profileId), capturedInstant).hhmm
+            : undefined;
       const applied = logPracticeSessionForDay(
         profileId,
         name,
@@ -1571,6 +1631,7 @@ export function applyIntent(
           // this path states nothing rather than stating something false. It states no
           // end either — the queue carries a practice DAY, never a window (#3142).
           startTime: null,
+          endTime,
         }
       );
       if (applied.kind === "invalid-date") {

@@ -234,7 +234,8 @@ describe("offline replay — the mood flow (#28/#992)", () => {
       "mood",
       "2026-07-11",
       { valence: 4, energy: null, anxiety: null, factors: [], note: null },
-      p
+      p,
+      false
     );
     expect(applyIntent(p, intent)).toEqual({ status: "done" });
     expect(alreadyReplayed(p, intent.key)).toBe(true);
@@ -249,7 +250,8 @@ describe("offline replay — the mood flow (#28/#992)", () => {
       "mood",
       "2026-07-11",
       { valence: 9, energy: null, anxiety: null, factors: [], note: null },
-      p
+      p,
+      false
     );
     expect(applyIntent(p, intent)).toEqual({ status: "rejected" });
     expect(alreadyReplayed(p, intent.key)).toBe(false);

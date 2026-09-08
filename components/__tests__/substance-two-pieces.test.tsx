@@ -11,6 +11,7 @@ import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
 import QuickSubstanceList from "@/components/quick-entry/QuickSubstanceList";
 import { MAX_SUBSTANCE_ENTRY_AMOUNT, substanceDef } from "@/lib/substance-use";
 import type { UndoAnnouncement } from "@/components/useUndoableAction";
+import { DayContextProvider } from "@/components/DayContext";
 
 // THE SUBSTANCE DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.substance.pieces`).
 //
@@ -461,6 +462,45 @@ describe("SubstanceUnitControl is ONE row control", () => {
     expect(screen.getByTestId("substance-undo-nicotine")).toBeTruthy();
     expect(undoAnnouncements).toHaveLength(2);
     vi.useRealTimers();
+  });
+
+  it("posts the selected day and an optional stated instant from its clock door", async () => {
+    render(
+      <DayContextProvider
+        profileId={42}
+        today={TODAY}
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: FOUND_DAY }}
+      >
+        <QuickSubstanceList
+          date={FOUND_DAY}
+          substances={[
+            {
+              key: "nicotine",
+              label: "Nicotine",
+              logLabel: "Log a use",
+              capProgress: null,
+            },
+          ]}
+          subjectProfileId={42}
+        />
+      </DayContextProvider>
+    );
+    const log = screen.getByTestId("quick-entry-substance-log-nicotine");
+    expect(log.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(
+      screen.getByTestId("quick-entry-substance-when-nicotine-toggle")
+    );
+    fireEvent.change(
+      screen.getByTestId("quick-entry-substance-when-nicotine-time"),
+      { target: { value: "09:15" } }
+    );
+    await act(async () => fireEvent.click(log));
+    expect(payload("log")).toMatchObject({
+      profile_id: "42",
+      date: FOUND_DAY,
+      stated_at: `${FOUND_DAY}T09:15:00.000Z`,
+    });
   });
 
   it("invalidates a sheet receipt when its subject changes", async () => {

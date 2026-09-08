@@ -97,6 +97,7 @@ export function useTimeStatement({
   testId,
   tz: tzProp,
   disabled = false,
+  required = false,
 }: {
   // Rule 2 — the ONE expression the render and the write both read.
   shown?: boolean;
@@ -125,6 +126,9 @@ export function useTimeStatement({
   // The TARGET profile's zone where a host logs for someone else.
   tz?: string;
   disabled?: boolean;
+  // A nonprimary quick-log cannot infer an instant from the current tap. Keep the
+  // statement visible and remove the close door so a past-day write must state one.
+  required?: boolean;
 }): TimeStatement {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
@@ -148,6 +152,10 @@ export function useTimeStatement({
     if (proposalChanged && proposed !== null) setOpen(true);
   }
 
+  const effectiveOpen = shown && (required || open);
+  // Collapsing an optional statement has always kept its stated value armed; the
+  // disclosure controls visibility, not whether the value is posted. Required
+  // statements only change visibility by keeping the disclosure open.
   const at = shown ? statedHhmm(when.statedAt, tz) || null : null;
   // The revealed control itself, WITHOUT surrounding spacing — where it sits in a
   // layout is the host's, which is the whole reason a host renders this piece rather
@@ -155,7 +163,7 @@ export function useTimeStatement({
   // shared control renders a FIXED day as text and offers no picker, so no mount can
   // state a day through it however it is hosted.
   const reveal =
-    shown && open ? (
+    effectiveOpen ? (
       <>
         {/* `WhenControl` names its time input `{testId}-time`, which is what this
             points at — one label, visible and associated, rather than a second
@@ -186,14 +194,14 @@ export function useTimeStatement({
           ? seedWhen(day, null, tz)
           : prev
       ),
-    open,
-    setOpen,
+    open: effectiveOpen,
+    setOpen: (next) => setOpen(required ? true : next),
     reveal,
     // THE STANDARD 34px ICON BUTTON (#3938's control box). `dose-action-styles` is
     // already the shared language of these rows — practices and protocols import it
     // beside medications — so the door wears the same box as the action it sits
     // against rather than a fifth one.
-    door: shown ? (
+    door: shown && !required ? (
       <button
         type="button"
         data-testid={`${testId}-toggle`}

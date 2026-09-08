@@ -11,13 +11,16 @@
 // a (practice, day) that ALREADY holds a session is a no-op, proven by logging from
 // "another device" between capture and replay.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { applyIntent } from "@/lib/offline/writes";
+import { alreadyReplayed, applyIntent } from "@/lib/offline/writes";
 import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import { logPracticeSession } from "@/lib/practice-log";
 import { getPracticeDayCount } from "@/lib/queries/wellness";
 import { practiceIdentity } from "@/lib/practice";
+import { setTimezone } from "@/lib/settings";
+import { shiftDateStr } from "@/lib/date";
+import { TIER_FROZEN_INSTANT } from "./frozen-clock";
 
 const PRACTICE = "Sauna";
 
@@ -29,6 +32,7 @@ function newProfile(name: string): number {
 }
 
 function practiceIntent(profileId: number, date: string) {
+  const isPrimaryDay = date === today(profileId);
   return buildIntent(
     "practice",
     date,
@@ -36,12 +40,16 @@ function practiceIntent(profileId: number, date: string) {
       practice: PRACTICE,
       identity: practiceIdentity(PRACTICE),
       durationMin: 20,
+      ...(isPrimaryDay ? {} : { endTime: "09:00" }),
     },
-    profileId
+    profileId,
+    isPrimaryDay
   );
 }
 
 describe("applyIntent — practice (#2908)", () => {
+  afterEach(() => vi.setSystemTime(TIER_FROZEN_INSTANT));
+
   it("replays a queued tap into one session, and a second flush of the same key is a duplicate", () => {
     const p = newProfile("practice-replay");
     const date = today(p);
@@ -89,13 +97,87 @@ describe("applyIntent — practice (#2908)", () => {
     expect(getPracticeDayCount(p, PRACTICE, date)).toBe(1);
   });
 
-  it("dead-letters an entry too old to log automatically", () => {
+  it("keeps an old dated capture eligible when its visible end time was stated", () => {
     const p = newProfile("practice-stale");
     const intent = practiceIntent(p, "2000-01-01");
     const outcome = applyIntent(p, intent);
-    expect(outcome.status).toBe("rejected");
-    expect(outcome.reason).toMatch(/too old/);
-    expect(getPracticeDayCount(p, PRACTICE, "2000-01-01")).toBe(0);
+    expect(outcome).toEqual({ status: "done" });
+    expect(getPracticeDayCount(p, PRACTICE, "2000-01-01")).toBe(1);
+  });
+
+  it("keeps a primary tap's T1 end minute when replay crosses midnight", () => {
+    const p = newProfile("practice-primary-instant");
+    setTimezone(p, "UTC");
+    const tappedAt = new Date("2026-08-29T23:50:00.000Z");
+    vi.setSystemTime(tappedAt);
+    const date = today(p);
+    const intent = buildIntent(
+      "practice",
+      date,
+      {
+        practice: PRACTICE,
+        identity: practiceIdentity(PRACTICE),
+        durationMin: null,
+      },
+      p,
+      true,
+      tappedAt
+    );
+
+    vi.setSystemTime(new Date("2026-08-30T00:10:00.000Z"));
+    expect(applyIntent(p, intent)).toEqual({ status: "done" });
+    expect(
+      db
+        .prepare(
+          "SELECT date, end_time FROM practice_logs WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+        )
+        .get(p)
+    ).toEqual({ date, end_time: "23:50" });
+  });
+
+  it("requires and preserves the visible end minute for a nonprimary day", () => {
+    const p = newProfile("practice-nonprimary-instant");
+    const date = shiftDateStr(today(p), -1);
+    const base = {
+      practice: PRACTICE,
+      identity: practiceIdentity(PRACTICE),
+      durationMin: null,
+    };
+
+    for (const endTime of [undefined, "", "25:00"]) {
+      const intent = buildIntent(
+        "practice",
+        date,
+        { ...base, ...(endTime === undefined ? {} : { endTime }) },
+        p,
+        false
+      );
+      expect(applyIntent(p, intent)).toEqual({
+        status: "rejected",
+        reason: "Choose an end time for a practice on a past day.",
+      });
+      expect(alreadyReplayed(p, intent.key)).toBe(false);
+    }
+    expect(getPracticeDayCount(p, PRACTICE, date)).toBe(0);
+    expect(
+      applyIntent(
+        p,
+        buildIntent(
+          "practice",
+          date,
+          { ...base, endTime: "09:00" },
+          p,
+          false
+        )
+      )
+    ).toEqual({ status: "done" });
+    expect(
+      db
+        .prepare(
+          "SELECT date, end_time FROM practice_logs WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+        )
+        .get(p)
+    ).toEqual({ date, end_time: "09:00" });
   });
 
   it("rejects a shapeless payload rather than writing", () => {

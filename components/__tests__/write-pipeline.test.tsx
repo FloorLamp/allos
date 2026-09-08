@@ -63,6 +63,7 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
         isPrimaryDay: true,
       },
       capturedAt,
+      writeToken: Promise.resolve(0),
     }),
 }));
 

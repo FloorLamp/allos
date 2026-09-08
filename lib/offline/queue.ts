@@ -399,6 +399,9 @@ export interface PracticePayload {
   // The session's duration in minutes, when the surface captured one. Null/absent when
   // the tap made no statement about it — never a fabricated default.
   durationMin?: number | null;
+  // A visible end-time statement for a historical day, or the subject-local T1
+  // minute for a primary-day offline tap. Absent only on legacy captures.
+  endTime?: string | null;
 }
 
 export interface StoolPayload {
@@ -483,6 +486,8 @@ export interface QueuedDayContext {
 export interface QueuedCapture {
   readonly dayContext: QueuedDayContext;
   readonly capturedAt: Date;
+  /** Existing device-write generation, started at T1 and spent after any failure. */
+  readonly writeToken: Promise<number>;
 }
 
 export type QueuedDayContextInput =
@@ -499,12 +504,13 @@ export type QueuedDayContextInput =
 export function captureQueuedDayContext(
   activeProfileId: number,
   input: QueuedDayContextInput,
-  capturedAt: Date = new Date()
+  capturedAt: Date = new Date(),
+  writeToken: Promise<number> = Promise.resolve(-1)
 ): QueuedCapture | null {
   if ("parts" in input) {
     return input.parts.profileId === activeProfileId &&
       input.key === dayContextKey(input.parts)
-      ? { dayContext: input, capturedAt }
+      ? { dayContext: input, capturedAt, writeToken }
       : null;
   }
   const parts = {
@@ -519,6 +525,7 @@ export function captureQueuedDayContext(
       isPrimaryDay: input.isPrimaryDay,
     },
     capturedAt,
+    writeToken,
   };
 }
 

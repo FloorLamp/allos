@@ -243,7 +243,10 @@ export default function MoodForm({
         from: valence,
         optimistic: nextValence,
         commit: setValence,
-        write: () => logMood(payload(target, next)),
+        write: async () => {
+          if (capturedContext) await capturedContext.writeToken;
+          return logMood(payload(target, next));
+        },
         settle: (result) => {
           if (!result.ok) {
             setError(result.error);
@@ -281,6 +284,7 @@ export default function MoodForm({
     );
     setError(null);
     try {
+      if (capturedContext) await capturedContext.writeToken;
       const result = await logMood(payload(target, next));
       if (!result.ok) {
         setError(result.error);

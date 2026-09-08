@@ -111,8 +111,9 @@ describe("captureQueuedDayContext", () => {
   it("keeps the complete context and original tap timestamp", () => {
     const tappedAt = new Date("2026-09-03T23:59:59.000Z");
     const source = context("2026-09-03", 7);
-    const captured = captureQueuedDayContext(7, source, tappedAt);
-    expect(captured).toEqual({ dayContext: source, capturedAt: tappedAt });
+    const writeToken = Promise.resolve(7);
+    const captured = captureQueuedDayContext(7, source, tappedAt, writeToken);
+    expect(captured).toEqual({ dayContext: source, capturedAt: tappedAt, writeToken });
   });
 
   it("accepts canonical equality and refuses profile or key disagreement", () => {

@@ -34,13 +34,14 @@ export function buildIntent(
   date: string,
   payload: IntentPayload,
   profileId: number,
+  isPrimaryDay: boolean,
   now?: Date
 ): QueuedIntent {
   const parts = { profileId, day: date, reach: reachForFlow(flow) };
   return buildStampedIntent(
     flow,
     payload,
-    { parts, key: dayContextKey(parts), isPrimaryDay: true },
+    { parts, key: dayContextKey(parts), isPrimaryDay },
     now
   );
 }

@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
+import { DayContextProvider } from "@/components/DayContext";
 
 // THE MEASUREMENTS FORM'S SUBJECT SIGNAL (#4932 postmortem).
 //
@@ -45,7 +46,10 @@ const record = (name: string) => (fd: FormData) => {
 };
 
 const mocks = vi.hoisted(() => ({
-  enqueue: vi.fn(async () => "kept" as const),
+  enqueueWithReceipt: vi.fn(async () => ({
+    key: "queued-key",
+    outcome: "kept" as const,
+  })),
 }));
 
 vi.mock("@/app/(app)/trends/measurement-actions", () => ({
@@ -59,7 +63,20 @@ vi.mock("@/components/Toast", () => ({
   useToast: () => (text: string) => toasts.push(text),
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
+  useOfflineQueue: () => ({ enqueueWithReceipt: mocks.enqueueWithReceipt }),
+  useQueuedDayContextCapture: () => (
+    date: string,
+    reach: unknown,
+    capturedAt = new Date()
+  ) => ({
+    dayContext: {
+      parts: { profileId: ACTING, day: date, reach },
+      key: "test-context",
+      isPrimaryDay: true,
+    },
+    capturedAt,
+    writeToken: Promise.resolve(0),
+  }),
 }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -80,8 +97,11 @@ function setOnline(value: boolean): () => void {
 beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
-  mocks.enqueue.mockClear();
-  mocks.enqueue.mockResolvedValue("kept");
+  mocks.enqueueWithReceipt.mockClear();
+  mocks.enqueueWithReceipt.mockResolvedValue({
+    key: "queued-key",
+    outcome: "kept",
+  });
   Element.prototype.scrollIntoView ??= () => {};
   vi.stubGlobal(
     "ResizeObserver",
@@ -134,7 +154,7 @@ describe("the measurements form's subject signal (#4932 postmortem)", () => {
           "You're offline — reconnect to save these measurements."
         )
       ).toBeTruthy();
-      expect(mocks.enqueue).not.toHaveBeenCalled();
+      expect(mocks.enqueueWithReceipt).not.toHaveBeenCalled();
       expect(posted.addMeasurements).toBeUndefined();
       expect(toasts).toEqual([]);
     } finally {
@@ -149,15 +169,50 @@ describe("the measurements form's subject signal (#4932 postmortem)", () => {
     const restore = setOnline(false);
     try {
       await weighIn(undefined);
-      expect(mocks.enqueue).toHaveBeenCalledWith(
+      expect(mocks.enqueueWithReceipt).toHaveBeenCalledWith(
         "body-metric",
-        "2026-05-20",
-        expect.objectContaining({ weight: "80" })
+        expect.objectContaining({ weight: "80" }),
+        expect.objectContaining({
+          dayContext: expect.objectContaining({
+            parts: expect.objectContaining({ day: "2026-05-20" }),
+          }),
+        })
       );
       expect(posted.addMeasurements).toBeUndefined();
       expect(toasts).toEqual(["Saved offline — will sync when you reconnect."]);
     } finally {
       restore();
     }
+  });
+});
+
+describe("measurements mounted under a day context", () => {
+  it("uses the host day as its fixed posted day even when shell bounds are stale", async () => {
+    const hostDay = "2026-05-21";
+    render(
+      <DayContextProvider
+        profileId={ACTING}
+        today={hostDay}
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: hostDay }}
+      >
+        <MeasurementsQuickAdd
+          defaultDate="2026-05-20"
+          maxDate="2026-05-20"
+          weightUnit="kg"
+          defaultGroup="body"
+          profileId={ACTING}
+        />
+      </DayContextProvider>
+    );
+
+    expect(screen.getByTestId("m-date").tagName).toBe("SPAN");
+    fireEvent.change(screen.getByLabelText("Weight"), {
+      target: { value: "80" },
+    });
+    await act(async () =>
+      fireEvent.submit(screen.getByTestId("measurements-quick-add"))
+    );
+    expect(posted.addMeasurements[0].get("date")).toBe(hostDay);
   });
 });

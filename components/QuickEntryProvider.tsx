@@ -41,6 +41,7 @@ import { shiftDateStr } from "@/lib/date";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { TimezoneProvider } from "./TimezoneProvider";
+import { useTimezone } from "./TimezoneProvider";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -903,6 +904,7 @@ function QuickEntryBody({
   subjectProfileId?: number;
 }) {
   const dayContext = useOptionalDayContext();
+  const subjectTimeZone = useTimezone();
   if (state.status === "loading") {
     return (
       <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
@@ -1001,7 +1003,7 @@ function QuickEntryBody({
           today={data.today}
           profileToday={profileToday ?? data.today}
           doses={data.doses}
-          prn={data.prn}
+          prn={{ ...data.prn, tz: subjectTimeZone }}
           pastDays={data.pastDays}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
@@ -1084,7 +1086,7 @@ function QuickEntryBody({
           customNames={data.customNames}
           rankedKeys={data.rankedKeys}
           temperatureUnit={data.temperatureUnit}
-          timeZone={data.timeZone}
+          timeZone={subjectTimeZone}
           textIntakeEnabled={data.textIntakeEnabled}
           trackingIllness={data.trackingIllness}
           subjectProfileId={subjectProfileId}

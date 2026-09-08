@@ -91,6 +91,14 @@ export interface OfflineQueueApi {
     payload: IntentPayload,
     capture: QueuedCapture
   ) => Promise<DeviceWriteOutcome>;
+  // The composite measurements form keeps the first intent's exact key so a refused
+  // second enqueue can distinguish a surviving partial save from a session wipe.
+  enqueueWithReceipt: (
+    flow: FlowKind,
+    payload: IntentPayload,
+    capture: QueuedCapture,
+    priorIntentKey?: string
+  ) => Promise<{ readonly key: string; readonly outcome: DeviceWriteOutcome }>;
   // Mint the immutable context stamp synchronously at the tap. The provider owns the
   // active profile identity; callers supply the existing offer's reach and the
   // DayContext-owned primacy rather than reconstructing either after a failed request.
@@ -372,19 +380,38 @@ export default function OfflineQueueProvider({
     }
   }, [toast, refreshCount, refreshRejected, announceSynced]);
 
-  const enqueue = useCallback(
-    async (flow: FlowKind, payload: IntentPayload, capture: QueuedCapture) => {
+  const enqueueWithReceipt = useCallback(
+    async (
+      flow: FlowKind,
+      payload: IntentPayload,
+      capture: QueuedCapture,
+      priorIntentKey?: string
+    ) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
-      const outcome = await enqueueIntent(
-        buildIntent(flow, payload, capture.dayContext, capture.capturedAt)
+      const intent = buildIntent(
+        flow,
+        payload,
+        capture.dayContext,
+        capture.capturedAt
       );
-      if (outcome !== "kept") return outcome;
+      const outcome = await enqueueIntent(
+        intent,
+        await capture.writeToken,
+        priorIntentKey
+      );
+      if (outcome !== "kept") return { key: intent.key, outcome };
       await refreshCount();
       void registerBackgroundSync();
-      return "kept";
+      return { key: intent.key, outcome };
     },
     [refreshCount]
+  );
+
+  const enqueue = useCallback(
+    async (flow: FlowKind, payload: IntentPayload, capture: QueuedCapture) =>
+      (await enqueueWithReceipt(flow, payload, capture)).outcome,
+    [enqueueWithReceipt]
   );
 
   const captureDayContext = useCallback(
@@ -392,7 +419,12 @@ export default function OfflineQueueProvider({
       input: QueuedDayContextInput,
       capturedAt: Date = new Date()
     ): QueuedCapture | null =>
-      captureQueuedDayContext(activeProfileId, input, capturedAt),
+      captureQueuedDayContext(
+        activeProfileId,
+        input,
+        capturedAt,
+        captureWriteToken()
+      ),
     [activeProfileId]
   );
 
@@ -464,7 +496,14 @@ export default function OfflineQueueProvider({
 
   return (
     <OfflineQueueContext.Provider
-      value={{ activeProfileId, pending, enqueue, captureDayContext, flush }}
+      value={{
+        activeProfileId,
+        pending,
+        enqueue,
+        enqueueWithReceipt,
+        captureDayContext,
+        flush,
+      }}
     >
       {children}
       {rejected.length > 0 && (

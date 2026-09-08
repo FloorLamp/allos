@@ -241,6 +241,10 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       offlineDecision: OfflineDecision | undefined,
       capturedContext: QueuedCapture | null
     ): Promise<Attempted<V>> => {
+      // Resolve the existing write-gate generation before starting the slow action.
+      // A later profile switch/logout then invalidates the exact token this tap spends
+      // if the request fails and falls back to IndexedDB.
+      if (capturedContext) await capturedContext.writeToken;
       const online =
         typeof navigator === "undefined" || navigator.onLine !== false;
       if (!online && offlineDecision) {

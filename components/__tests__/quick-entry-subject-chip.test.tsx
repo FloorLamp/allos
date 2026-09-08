@@ -6,7 +6,10 @@ import QuickEntryProvider, {
 } from "@/components/QuickEntryProvider";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
-import { DayContextProvider } from "@/components/DayContext";
+import {
+  DayContextProvider,
+  ProfileDaysBoundary,
+} from "@/components/DayContext";
 import type { AppRoute } from "@/lib/hrefs";
 
 // COMPONENT TIER — the quick-log sheet's title-row subject chip (#4932): defaulting
@@ -57,6 +60,18 @@ const MEASUREMENTS = {
   showHeadCirc: false,
 };
 
+const CLOCKS = new Map([
+  [ACTING.id, { today: "2026-09-03", timeZone: "UTC" }],
+  [MIA.id, { today: "2026-09-03", timeZone: "Pacific/Honolulu" }],
+  [SAM.id, { today: "2026-09-04", timeZone: "Pacific/Kiritimati" }],
+]);
+
+function WithClocks({ children }: { children: React.ReactNode }) {
+  return (
+    <ProfileDaysBoundary clocks={CLOCKS}>{children}</ProfileDaysBoundary>
+  );
+}
+
 // Opens a form via the real context, so every assertion below drives the API a
 // real opener (the dock, a subject-scoped panel) would call — never a shortcut
 // into the provider's internals.
@@ -84,15 +99,17 @@ function OpenMeasurementsFor({ subjectId }: { subjectId: number }) {
 
 function renderSheet(writableProfiles: SessionProfile[]) {
   return render(
-    <ToastProvider>
-      <QuickEntryProvider
-        measurements={MEASUREMENTS}
-        writableProfiles={writableProfiles}
-        actingProfileId={ACTING.id}
-      >
-        <Opener />
-      </QuickEntryProvider>
-    </ToastProvider>
+    <WithClocks>
+      <ToastProvider>
+        <QuickEntryProvider
+          measurements={MEASUREMENTS}
+          writableProfiles={writableProfiles}
+          actingProfileId={ACTING.id}
+        >
+          <Opener />
+        </QuickEntryProvider>
+      </ToastProvider>
+    </WithClocks>
   );
 }
 
@@ -107,16 +124,17 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
 
   it("captures a dated route at the opener boundary", async () => {
     render(
-      <DayContextProvider
-        profileId={ACTING.id}
-        today="2026-09-07"
-        reach={{ kind: "dated" }}
-        backing={{
-          kind: "url",
-          day: "2026-08-20",
-          hrefForDay: (day) => `/history?day=${day}` as AppRoute,
-        }}
-      >
+      <WithClocks>
+        <DayContextProvider
+          profileId={ACTING.id}
+          today="2026-09-07"
+          reach={{ kind: "dated" }}
+          backing={{
+            kind: "url",
+            day: "2026-08-20",
+            hrefForDay: (day) => `/history?day=${day}` as AppRoute,
+          }}
+        >
         <ToastProvider>
           <QuickEntryProvider
             measurements={MEASUREMENTS}
@@ -126,7 +144,8 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
             <Opener />
           </QuickEntryProvider>
         </ToastProvider>
-      </DayContextProvider>
+        </DayContextProvider>
+      </WithClocks>
     );
 
     fireEvent.click(screen.getByText("open food"));
@@ -265,15 +284,17 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
 
   it("measurements renders unavailable for a chosen non-acting subject (#4091's gather has no per-subject version)", async () => {
     render(
-      <ToastProvider>
-        <QuickEntryProvider
-          measurements={MEASUREMENTS}
-          writableProfiles={[ACTING, MIA]}
-          actingProfileId={ACTING.id}
-        >
-          <OpenMeasurementsFor subjectId={MIA.id} />
-        </QuickEntryProvider>
-      </ToastProvider>
+      <WithClocks>
+        <ToastProvider>
+          <QuickEntryProvider
+            measurements={MEASUREMENTS}
+            writableProfiles={[ACTING, MIA]}
+            actingProfileId={ACTING.id}
+          >
+            <OpenMeasurementsFor subjectId={MIA.id} />
+          </QuickEntryProvider>
+        </ToastProvider>
+      </WithClocks>
     );
     fireEvent.click(screen.getByText("open measurements"));
     const unavailable = await screen.findByTestId("quick-entry-unavailable");

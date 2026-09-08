@@ -52,6 +52,7 @@ import {
 } from "./measurement-actions";
 import { whenOnDay } from "@/lib/stated-time";
 import { DATED_REACH } from "@/lib/log-manifest";
+import { useOptionalDayContext } from "@/components/DayContext";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
@@ -290,8 +291,10 @@ export default function MeasurementsQuickAdd({
   subjectProfileId,
 }: MeasurementsQuickAddProps) {
   const toast = useToast();
-  const { enqueue } = useOfflineQueue();
+  const { enqueueWithReceipt } = useOfflineQueue();
   const captureDayContext = useQueuedDayContextCapture();
+  const dayContext = useOptionalDayContext();
+  const ownedDate = dayContext?.parts.day ?? null;
   const formRef = useRef<HTMLFormElement>(null);
   // Which surface this sitting was entered on (#3087): the Trends panel, a metric
   // detail page, or the quick-log sheet — three mountings of this one form.
@@ -304,8 +307,13 @@ export default function MeasurementsQuickAdd({
   // (or null — the control never defaults it to now).
   const tz = useTimezone();
   const [when, setWhen] = useState<WhenValue>(() =>
-    whenOnDay(defaultDate, tz, defaultStatedAt)
+    whenOnDay(ownedDate ?? defaultDate, tz, defaultStatedAt)
   );
+  const [seenOwnedDate, setSeenOwnedDate] = useState(ownedDate);
+  if (ownedDate !== null && seenOwnedDate !== ownedDate) {
+    setSeenOwnedDate(ownedDate);
+    setWhen(whenOnDay(ownedDate, tz));
+  }
   // The night's two clocks (#1851, #4976), controlled the same way `when` is —
   // `TimeRangeFields` posts them through its own hidden inputs (`bed_time`/
   // `wake_time`, unchanged names), so the write below reads the pair exactly as
@@ -417,7 +425,9 @@ export default function MeasurementsQuickAdd({
       const v = formData.get(k);
       return v === null || String(v).trim() === "" ? null : String(v);
     };
-    const date = String(formData.get("date") ?? "").trim();
+    const date =
+      ownedDate ?? String(formData.get("date") ?? "").trim();
+    formData.set("date", date);
     const capturedDayContext = captureDayContext(date, DATED_REACH);
     // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile.
     // `subjectProfileId` present means a non-acting subject was chosen; stamp it
@@ -607,22 +617,26 @@ export default function MeasurementsQuickAdd({
     > => {
       if (hasGrowth || hasComposition || (hasWaist && (!hasBody || hasVitals)))
         return "unqueueable";
-      let keptBody = false;
+      let keptBodyKey: string | null = null;
       if (hasBody) {
         if (!capturedDayContext) return "refused";
-        const kept = await enqueue("body-metric", {
-          weight: String(body.weight ?? ""),
-          weightUnit,
-          bodyFatPct: body.bodyFatPct,
-          restingHr: body.restingHr,
-          notes: body.notes,
-          // The sitting's stated time travels with the queued intent (#2235):
-          // an offline weigh-in keeps its statement, and an explicitly-empty
-          // Time still clears — same trichotomy the online action posts.
-          occurredAt: s("occurred_at"),
-        }, capturedDayContext);
-        if (kept !== "kept") return "refused";
-        keptBody = true;
+        const receipt = await enqueueWithReceipt(
+          "body-metric",
+          {
+            weight: String(body.weight ?? ""),
+            weightUnit,
+            bodyFatPct: body.bodyFatPct,
+            restingHr: body.restingHr,
+            notes: body.notes,
+            // The sitting's stated time travels with the queued intent (#2235):
+            // an offline weigh-in keeps its statement, and an explicitly-empty
+            // Time still clears — same trichotomy the online action posts.
+            occurredAt: s("occurred_at"),
+          },
+          capturedDayContext
+        );
+        if (receipt.outcome !== "kept") return "refused";
+        keptBodyKey = receipt.key;
       }
       if (hasWaist) {
         const form = formRef.current;
@@ -645,12 +659,17 @@ export default function MeasurementsQuickAdd({
         // empty Time replays as "no time" — the same trichotomy the online
         // action reads off the same hidden field.
         if (!capturedDayContext) return "refused";
-        const kept = await enqueue("vitals", {
-          ...vitals,
-          occurredAt: s("occurred_at"),
-        }, capturedDayContext);
-        if (kept !== "kept") {
-          if (keptBody && kept === "failed") {
+        const receipt = await enqueueWithReceipt(
+          "vitals",
+          {
+            ...vitals,
+            occurredAt: s("occurred_at"),
+          },
+          capturedDayContext,
+          keptBodyKey ?? undefined
+        );
+        if (receipt.outcome !== "kept") {
+          if (keptBodyKey && receipt.outcome === "failed") {
             // The body intent is durable but the vitals are not. Keep the refused
             // half (and its shared date/time) ready for retry while removing every
             // field another body intent would duplicate (#3830).
@@ -696,6 +715,7 @@ export default function MeasurementsQuickAdd({
     }
     let saved: MeasurementsSaveResult;
     try {
+      if (capturedDayContext) await capturedDayContext.writeToken;
       saved = await addMeasurements(stampLoggedVia(formData));
     } catch (err) {
       if (
@@ -1220,7 +1240,12 @@ export default function MeasurementsQuickAdd({
           (temperature, peak flow) into it, and the write boundary carries it to
           body_metrics and medical_records `occurred_at` and the peak-flow
           sample's own instant alike. */}
-      <input type="hidden" name="date" value={when.date} readOnly />
+      <input
+        type="hidden"
+        name="date"
+        value={ownedDate ?? when.date}
+        readOnly
+      />
       <input
         type="hidden"
         name="occurred_at"
@@ -1233,8 +1258,11 @@ export default function MeasurementsQuickAdd({
           mode="state"
           grain="minute"
           value={when}
-          onChange={setWhen}
-          maxDate={maxDate}
+          onChange={(next) =>
+            setWhen(ownedDate ? { ...next, date: ownedDate } : next)
+          }
+          minDate={ownedDate ?? undefined}
+          maxDate={ownedDate ?? maxDate}
           testId="m"
           dateLabel="Date"
           timeLabel="Time taken (optional)"

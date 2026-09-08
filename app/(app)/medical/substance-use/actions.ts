@@ -11,7 +11,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../../gate-item";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
-import { isWithinReach, SHEET_REACH } from "@/lib/log-manifest";
+import { isPastWriteAccepted } from "@/lib/log-manifest";
 import { now } from "@/lib/clock";
 import { judgeStatedAt } from "@/lib/stated-time";
 import { getTimezone } from "@/lib/settings";
@@ -221,14 +221,22 @@ export async function logSubstanceUnitAction(
   const date = quickEntryDate(profileId, formData);
   if (date == null)
     return { ok: false, error: "That day is outside quick logging." };
-  return logOneUnit(profileId, substance, date, webOrigin(formData));
+  return logOneUnit(
+    profileId,
+    substance,
+    date,
+    webOrigin(formData),
+    statedUseInstant(profileId, date, formData)
+  );
 }
 
 function quickEntryDate(profileId: number, formData: FormData): string | null {
   const profileToday = today(profileId);
   const raw = String(formData.get("date") ?? "").trim();
   if (raw === "") return profileToday;
-  return isWithinReach(SHEET_REACH, profileToday, raw) ? raw : null;
+  return isRealIsoDate(raw) && isPastWriteAccepted(profileToday, raw)
+    ? raw
+    : null;
 }
 
 // The surface this post came from, defaulting to the substance page's own form when
@@ -255,12 +263,27 @@ function logOneUnit(
   date: string,
   // The mounting surface, read off the post (#3087): the substance row is offered on
   // its own page AND in the quick-log sheet, so the action cannot know which it is.
-  loggedVia: WebLoggedVia
+  loggedVia: WebLoggedVia,
+  statedAt: string | null = null
 ): SubstanceLogResult {
   const outcome =
     substanceDef(substance).ledger === "food-log"
-      ? logFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, date, loggedVia)
-      : logSubstanceUnitCore(profileId, substance, date, loggedVia);
+      ? logFoodServingCore(
+          profileId,
+          ALCOHOL_FOOD_GROUP,
+          date,
+          loggedVia,
+          undefined,
+          statedAt ? { eatenAt: statedAt, source: "stated" } : undefined
+        )
+      : logSubstanceUnitCore(
+          profileId,
+          substance,
+          date,
+          loggedVia,
+          undefined,
+          statedAt
+        );
   if (outcome.kind !== "logged")
     return { ok: false, error: "Couldn't log that." };
   revalidateSubstanceUse();

@@ -46,6 +46,7 @@ import {
 } from "@/app/(app)/wellness/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { TAP_REACH } from "@/lib/log-manifest";
+import { useOptionalDayContext } from "@/components/DayContext";
 
 // Shared one-tap "Log session" control for a wellness practice (#1259). Logs a session for
 // TODAY through the shared write core and answers from its typed outcome — NEVER an
@@ -173,6 +174,8 @@ export default function LogPracticeButton({
   // — it mounts the FORM (#3143 extracted it), which is why it could be named here
   // while never posting a tap. Upcoming's row took its place for real (#4424).
   const stampLoggedVia = useLoggedViaStamp();
+  const dayContext = useOptionalDayContext();
+  const writeDate = dayContext?.parts.day ?? today;
   // EVERY WRITE THIS CONTROL POSTS NAMES ITS SUBJECT (ruling 4), including the live
   // lifecycle's two: a mount that could log a household member's session while
   // starting the ACTING profile's would be the cross-profile leak the ruling exists to
@@ -237,6 +240,9 @@ export default function LogPracticeButton({
   // derives elapsed time from its two taps, so leaving this input beside End would show
   // a value that the action deliberately ignores.
   const durationShown = inlineDuration && !live;
+  const isPrimaryDay = dayContext
+    ? dayContext.isPrimaryDay
+    : writeDate === profileToday;
   // WHERE the value is shown is a second question, and only the chip row has two
   // answers to it: its pill's LABEL states the duration at all times and its editor
   // opens beneath the row on demand, so the tap may post what the label says whether or
@@ -249,7 +255,8 @@ export default function LogPracticeButton({
   // time from its two taps — can neither show the statement nor post one.
   const statement = useTimeStatement({
     shown: inlineWhen && !live,
-    day: today,
+    day: writeDate,
+    required: !isPrimaryDay,
     // SHORT, because it is a VISIBLE field label now (#4384 fix 3) and this row is one
     // of several on a phone-width sheet. The sentence it replaces was an `aria-label`
     // nobody could see; what disambiguates the rows is the practice's own heading
@@ -274,7 +281,7 @@ export default function LogPracticeButton({
 
   function report(outcome: PracticeLogOutcome) {
     if (outcome.kind === "logged") {
-      if (outcome.date === today) {
+      if (outcome.date === writeDate) {
         setCount(outcome.count);
         setLastTime(null);
       }
@@ -289,19 +296,20 @@ export default function LogPracticeButton({
   // is exactly what makes the offline capture safe without the #2007 confirm, since
   // there is no server to ask.
   async function queueOffline(
-    capturedContext: QueuedCapture | null
+    capturedContext: QueuedCapture | null,
+    payload: {
+      practice: string;
+      identity: string;
+      durationMin: number | null;
+      endTime: string | null;
+    }
   ): Promise<void> {
-    const mins = durationShown ? durationValue() : null;
     if (!capturedContext) {
       toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
       return;
     }
     const kept =
-      (await enqueue("practice", {
-        practice,
-        identity: practiceIdentity(practice),
-        durationMin: mins,
-      }, capturedContext)) === "kept";
+      (await enqueue("practice", payload, capturedContext)) === "kept";
     // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
     // IndexedDB to queue into — and the toast below promises the tap will sync. Nothing
     // contradicts that promise afterwards: no badge, no dead-letter entry, no replay. The
@@ -321,9 +329,22 @@ export default function LogPracticeButton({
     // absorbed silently, and — checked here rather than inside `tap` — never
     // escalated into a dialog the user did not ask for.
     if (ledger.blocked()) return;
+    const tappedAt = new Date();
+    const stated = statement.at;
+    const payload = {
+      practice,
+      identity: practiceIdentity(practice),
+      durationMin: durationShown ? durationValue() : null,
+      endTime: stated,
+    };
+    if (!isPrimaryDay && !stated) {
+      toast("Add the time this session ended.", { tone: "error" });
+      return;
+    }
     const capturedContext = captureDayContext(
-      today,
-      TAP_REACH["practice-session"]
+      writeDate,
+      TAP_REACH["practice-session"],
+      tappedAt
     );
     // Offline, a second same-day tap enqueues NOTHING: the replay would no-op it, and
     // a queue badge counting an entry that will never become a session is its own small
@@ -342,15 +363,15 @@ export default function LogPracticeButton({
         );
         return;
       }
-      await queueOffline(capturedContext);
+      await queueOffline(capturedContext, payload);
       return;
     }
     // Layer 3. `count` is TODAY's by the prop's contract, so a non-zero count is a
     // session already logged on `today`; the shared decision owns what that means.
     const asks = shouldConfirmRelog({
       affordance: ledger.affordance,
-      lastLoggedDate: count > 0 ? today : null,
-      today,
+      lastLoggedDate: count > 0 ? writeDate : null,
+      today: writeDate,
     });
     if (
       asks &&
@@ -363,19 +384,20 @@ export default function LogPracticeButton({
       return;
     // The statement THIS tap consumes, read once — both as the wall time it posts and
     // as the value the spend below compares against.
-    const stated = statement.at;
     await ledger.tap({
-      write: () => {
+      write: async () => {
+        if (capturedContext) await capturedContext.writeToken;
         const fd = stampLoggedVia(subject(new FormData()));
         fd.set("practice", practice);
         fd.set("intent", "finished");
+        fd.set("date", writeDate);
         // Only where the stepper is rendered, and only when it holds a value: the tap
         // may write a duration the user SAW, never the seeded-for-the-modal state.
         // The intent is the statement: the server stamps the end tap and derives a
         // start only from the visible usual duration. Client clock fields never cross
         // this boundary.
-        const mins = durationShown ? durationValue() : null;
-        if (mins != null) fd.set("duration_min", String(mins));
+        if (payload.durationMin != null)
+          fd.set("duration_min", String(payload.durationMin));
         // Only where the control is rendered AND a time was stated. The field's
         // ABSENCE is what tells the write core to stamp the tap instant (#2204 part
         // 2), so an untouched surface posts exactly the body it posted before.
@@ -400,7 +422,7 @@ export default function LogPracticeButton({
           count === 0 &&
           subjectProfileId == null
         ) {
-          void queueOffline(capturedContext);
+          void queueOffline(capturedContext, payload);
           return { kind: "keep" };
         }
         toast("Couldn't log that session. Try again.");
@@ -410,7 +432,7 @@ export default function LogPracticeButton({
   }
 
   async function onStart() {
-    if (pending || live) return;
+    if (pending || live || !isPrimaryDay) return;
     setPending(true);
     const fd = stampLoggedVia(subject(new FormData()));
     fd.set("practice", practice);
@@ -588,27 +610,29 @@ export default function LogPracticeButton({
             {/* The duration label opens its editor while the verb writes. Both halves
                 use the shared labeled-verb primitive, so this row does not maintain a
                 second two-part pill. */}
-            <LabeledVerbChip
-              label={durationLabel}
-              verb="Start"
-              tone="neutral"
-              disabled={pending}
-              onAct={onStart}
-              testId="practice-start-button"
-              ariaLabel={`Start a ${practice} session, ${durationLabel}`}
-              labelAction={{
-                onAct: () => setDurationOpen((open) => !open),
-                ariaLabel: `Adjust the duration of this ${practice} session`,
-                expanded: durationOpen,
-                controls: "practice-duration-editor",
-                testId: "practice-duration-toggle",
-              }}
-            />
+            {isPrimaryDay ? (
+              <LabeledVerbChip
+                label={durationLabel}
+                verb="Start"
+                tone="neutral"
+                disabled={pending}
+                onAct={onStart}
+                testId="practice-start-button"
+                ariaLabel={`Start a ${practice} session, ${durationLabel}`}
+                labelAction={{
+                  onAct: () => setDurationOpen((open) => !open),
+                  ariaLabel: `Adjust the duration of this ${practice} session`,
+                  expanded: durationOpen,
+                  controls: "practice-duration-editor",
+                  testId: "practice-duration-toggle",
+                }}
+              />
+            ) : null}
             <LabeledVerbChip
               label="Just finished"
               verb="Log"
               tone="neutral"
-              disabled={pending || ledger.blocked()}
+              disabled={pending || ledger.blocked() || (!isPrimaryDay && !statement.at)}
               onAct={onFinished}
               testId="practice-log-button"
               ariaLabel={
@@ -621,24 +645,26 @@ export default function LogPracticeButton({
           </>
         ) : (
           <>
+            {isPrimaryDay ? (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={onStart}
+                data-testid="practice-start-button"
+                aria-label={`Start a ${practice} session`}
+                className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
+              >
+                <IconPlayerPlay
+                  className="h-3.5 w-3.5"
+                  stroke={2.5}
+                  aria-hidden
+                />
+                Start
+              </button>
+            ) : null}
             <button
               type="button"
-              disabled={pending}
-              onClick={onStart}
-              data-testid="practice-start-button"
-              aria-label={`Start a ${practice} session`}
-              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
-            >
-              <IconPlayerPlay
-                className="h-3.5 w-3.5"
-                stroke={2.5}
-                aria-hidden
-              />
-              Start
-            </button>
-            <button
-              type="button"
-              disabled={pending || ledger.blocked()}
+              disabled={pending || ledger.blocked() || (!isPrimaryDay && !statement.at)}
               onClick={onFinished}
               data-testid="practice-log-button"
               // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
@@ -700,8 +726,8 @@ export default function LogPracticeButton({
         >
           <PracticeSessionForm
             practices={[practice]}
-            today={today}
-            date={initialDetailsDate ?? today}
+            today={profileToday}
+            date={initialDetailsDate ?? writeDate}
             defaultDurationMin={durationValue()}
             minDate={detailsMinDate}
             maxDate={detailsMaxDate}
@@ -709,7 +735,7 @@ export default function LogPracticeButton({
             onSaved={(logged) => {
               // The form owns its own confirmation; what the BUTTON still owns is the
               // day's count on the line beside it, which only a same-day log moves.
-              if (logged && logged.date === today) {
+              if (logged && logged.date === writeDate) {
                 setCount(logged.count);
                 setLastTime(null);
               }

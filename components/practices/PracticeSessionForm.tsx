@@ -155,7 +155,7 @@ export default function PracticeSessionForm({
         if (outcome.kind !== "updated") {
           setError(
             outcome.kind === "invalid-date"
-              ? "Choose a date within 30 days of today."
+              ? "Choose today or an earlier date."
               : "Couldn't find that session."
           );
           return;

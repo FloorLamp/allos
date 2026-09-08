@@ -127,6 +127,21 @@ export function gateAllows(
   return gate.generation === token;
 }
 
+/**
+ * Foreground-facing answer for a write that carried a token across asynchronous work.
+ * Only a session close proves the queue was wiped. A generation mismatch with an open
+ * session is a fence (for example a profile transition, or a narrower snapshot wipe),
+ * so this write was refused but an earlier queue write may still be present.
+ */
+export function gateWriteOutcome(
+  gate: WriteGate,
+  lane: WriteLane,
+  token: number
+): DeviceWriteOutcome {
+  if (gateAllows(gate, lane, token)) return "kept";
+  return gate.sessionClosed ? "closed" : "failed";
+}
+
 function readGate(store: IDBObjectStore): Promise<WriteGate> {
   return new Promise((resolve, reject) => {
     const req = store.get(GATE_KEY);
@@ -161,31 +176,66 @@ export async function captureWriteToken(): Promise<number> {
  * `token` — checked in the SAME transaction, so no wipe can interleave between the
  * check and the put. Answers whether it actually wrote.
  */
+async function runGuardedWrite(
+  stores: readonly string[],
+  lane: WriteLane,
+  token: number,
+  work: (tx: IDBTransaction) => void,
+  classifyRefusal?: (
+    tx: IDBTransaction,
+    outcome: Exclude<DeviceWriteOutcome, "kept">
+  ) => Promise<Exclude<DeviceWriteOutcome, "kept">>
+): Promise<DeviceWriteOutcome> {
+  if (!hasIndexedDB()) return "failed";
+  try {
+    const db = await openDb();
+    const tx = db.transaction([META_STORE, ...stores], "readwrite");
+    const gate = await readGate(tx.objectStore(META_STORE));
+    const outcome = gateWriteOutcome(gate, lane, token);
+    if (outcome !== "kept") {
+      const refusal = classifyRefusal
+        ? await classifyRefusal(tx, outcome)
+        : outcome;
+      tx.abort();
+      db.close();
+      return refusal;
+    }
+    work(tx);
+    await done(tx);
+    db.close();
+    return "kept";
+  } catch {
+    // A quota failure, a blocked open, or our own abort — the device simply does not
+    // keep this copy, which is every caller's existing degraded path.
+    return "failed";
+  }
+}
+
 export async function guardedWrite(
   stores: readonly string[],
   lane: WriteLane,
   token: number,
   work: (tx: IDBTransaction) => void
 ): Promise<boolean> {
-  if (!hasIndexedDB()) return false;
-  try {
-    const db = await openDb();
-    const tx = db.transaction([META_STORE, ...stores], "readwrite");
-    const gate = await readGate(tx.objectStore(META_STORE));
-    if (!gateAllows(gate, lane, token)) {
-      tx.abort();
-      db.close();
-      return false;
-    }
-    work(tx);
-    await done(tx);
-    db.close();
-    return true;
-  } catch {
-    // A quota failure, a blocked open, or our own abort — the device simply does not
-    // keep this copy, which is every caller's existing degraded path.
-    return false;
-  }
+  return (await runGuardedWrite(stores, lane, token, work)) === "kept";
+}
+
+/**
+ * A write that began before asynchronous work and still needs the foreground
+ * caller's refusal cause. Only an actual session close reports `closed`; an open
+ * generation mismatch reports `failed` because it does not prove this store was wiped.
+ */
+export async function guardedWriteWithOutcome(
+  stores: readonly string[],
+  lane: WriteLane,
+  token: number,
+  work: (tx: IDBTransaction) => void,
+  classifyRefusal?: (
+    tx: IDBTransaction,
+    outcome: Exclude<DeviceWriteOutcome, "kept">
+  ) => Promise<Exclude<DeviceWriteOutcome, "kept">>
+): Promise<DeviceWriteOutcome> {
+  return runGuardedWrite(stores, lane, token, work, classifyRefusal);
 }
 
 /**
