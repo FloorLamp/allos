@@ -39,7 +39,6 @@ import {
   equipmentHref,
   immunizationHref,
   importHref,
-  intakeHref,
   intakeSupplyHref,
   medicationHref,
   nutritionTabHref,
