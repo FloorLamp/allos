@@ -11,7 +11,6 @@ import {
   getIntakeDoseHistory,
   resolveMedicationAcrossProfiles,
   encounterForRecord,
-  getConditions,
   episodesForMedication,
 } from "@/lib/queries";
 import { encounterHref } from "@/lib/hrefs";
@@ -190,12 +189,6 @@ export default async function MedicationDetailPage(props: {
   // entity, so its own encounter link is the sole source (no source_record_id chain).
   const prescribedAt = encounterForRecord(profileId, "medication", m.med.id);
   const illnessEpisodes = episodesForMedication(profileId, m.med.id);
-  // Conditions for the "For condition…" indication picker (#1052) on the edit form.
-  const medConditions = getConditions(profileId).map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-  }));
   const situationOptions = mergedSituationOptions(getSituations(profileId)).map(
     (o) => o.name
   );
@@ -308,12 +301,10 @@ export default async function MedicationDetailPage(props: {
               </div>
             ) : null}
             <MedicationCard
+              intakeContext={data.intakeContext}
               medication={m.med}
               doses={m.doses}
               retiredDoses={m.retiredDoses}
-              allIntakeItems={data.allIntakeItems}
-              stackItems={data.stackItems}
-              pgxVariants={data.pgxVariants}
               pairs={m.pairs}
               takenDoseIds={data.taken}
               skippedDoseIds={data.skipped}
@@ -324,7 +315,6 @@ export default async function MedicationDetailPage(props: {
               strip={m.strip}
               refillRate={m.refillRate}
               poolChip={m.poolChip}
-              todayStr={data.todayStr}
               nowIso={data.nowIso}
               suppressedFoodKeys={data.suppressedFoodKeys}
               prnDayLabel={m.prnDayLabel}
@@ -333,8 +323,6 @@ export default async function MedicationDetailPage(props: {
               prnRedoseLine={m.prnRedoseLine}
               prnRedosePrimary={m.prnRedosePrimary}
               monitoringLabs={m.monitoringLabs}
-              pediatric={data.pediatric}
-              age={data.age}
               adherenceCalendar={calendar}
               takenDoseTimes={m.takenDoseTimes}
               timezone={data.tz}
@@ -344,7 +332,6 @@ export default async function MedicationDetailPage(props: {
               canWrite={canWrite}
               subjectProfileId={subjectProfileId}
               initialAction={initialAction}
-              conditions={medConditions}
               ingredients={m.ingredients}
             />
           </IntakeOptionsProvider>

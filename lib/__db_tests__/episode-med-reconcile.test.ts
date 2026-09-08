@@ -139,9 +139,9 @@ describe("episode-end → accept → med leaves Current; restart revives (#880)"
     // Before: ibuprofen is a current, active med in the interaction stack.
     const before = loadMedicationsData(p);
     expect(before.current.some((m) => m.med.id === ibuprofen)).toBe(true);
-    expect(before.stackItems.find((s) => s.id === ibuprofen)?.active).toBe(
-      true
-    );
+    expect(
+      before.intakeContext.stackItems.find((s) => s.id === ibuprofen)?.active
+    ).toBe(true);
 
     // Accept the suggestion: end the episode AND close the ibuprofen course.
     const outcome = endEpisodeWithMedReconciliation(p, episodeId, [ibuprofen]);
@@ -162,16 +162,16 @@ describe("episode-end → accept → med leaves Current; restart revives (#880)"
     const after = loadMedicationsData(p);
     expect(after.current.some((m) => m.med.id === ibuprofen)).toBe(false);
     expect(after.past.some((m) => m.med.id === ibuprofen)).toBe(true);
-    expect(after.stackItems.find((s) => s.id === ibuprofen)?.active).toBe(
-      false
-    );
+    expect(
+      after.intakeContext.stackItems.find((s) => s.id === ibuprofen)?.active
+    ).toBe(false);
 
     // Restart (the next illness): a NEW open course, active again → back in Current.
     restartMedicationCourse(p, ibuprofen, today(p));
     const revived = loadMedicationsData(p);
     expect(revived.current.some((m) => m.med.id === ibuprofen)).toBe(true);
-    expect(revived.stackItems.find((s) => s.id === ibuprofen)?.active).toBe(
-      true
-    );
+    expect(
+      revived.intakeContext.stackItems.find((s) => s.id === ibuprofen)?.active
+    ).toBe(true);
   });
 });
