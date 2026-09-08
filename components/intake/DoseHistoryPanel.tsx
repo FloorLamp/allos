@@ -51,6 +51,9 @@ export interface DoseHistoryEntry {
 // not write on its own.
 type BackfillView = { kind: "offers" } | { kind: "form"; date?: string };
 
+const ASSUMED_AMOUNT_COPY =
+  "No amount was saved for this date. Using the oldest known amount.";
+
 // A live (non-retired) dose row the backfill form may log against.
 export interface DoseHistoryDose {
   id: number;
@@ -334,20 +337,25 @@ export default function DoseHistoryPanel({
               never a mixed list. */}
           {offeredDays.map((date) => {
             const offer = offerOn(date);
+            const offerLabel = `${formatLongDate(date, formatPrefs)} · ${offer.promise}`;
             return soleDose ? (
               <div key={date} className="min-w-0">
                 <LabeledVerbChip
                   tone="neutral"
                   testId="dose-backfill-offer"
-                  label={`${formatLongDate(date, formatPrefs)} · ${offer.promise}`}
+                  label={offerLabel}
                   verb="Log"
+                  ariaLabel={
+                    offer.amountAssumed
+                      ? `${offerLabel} · Log. ${ASSUMED_AMOUNT_COPY}`
+                      : undefined
+                  }
                   disabled={ledger.blocked(date)}
                   onAct={() => logMissedDay(date)}
                 />
                 {offer.amountAssumed ? (
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    No amount was saved for this date. Using the oldest known
-                    amount.
+                    {ASSUMED_AMOUNT_COPY}
                   </p>
                 ) : null}
               </div>
