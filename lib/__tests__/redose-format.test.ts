@@ -16,71 +16,98 @@ import type { RedoseStatus } from "@/lib/prn-redose";
 import { prnDayExposure } from "@/lib/prn-redose";
 
 describe("redoseNoticeMessage", () => {
-  it("renders the issue's example phrasing", () => {
-    const m = redoseNoticeMessage({
-      name: "Ibuprofen",
-      sinceHours: 6,
-      lastClock: "4:02pm",
-      countInWindow: 2,
-      maxDailyCount: 4,
+  const example = {
+    name: "Ibuprofen",
+    amount: "100 mg",
+    product: "Children's oral suspension (100 mg / 5 mL)",
+    sinceHours: 7,
+    lastClock: "12:30am",
+    countInWindow: 1,
+    maxDailyCount: 4,
+  };
+
+  it("renders the owner's notice without repeating its medication or subject", () => {
+    expect(redoseNoticeMessage(example)).toEqual({
+      title: "💊 Ibuprofen · 100 mg / 5 mL",
+      body: "Last dose: 12:30am (7 hours ago).\n1 of 4 doses in the past 24 hours.",
     });
-    expect(m.title).toBe("💊 Redose window open: Ibuprofen");
-    expect(m.body).toBe(
-      "6h since Ibuprofen (4:02pm) — your minimum interval has passed · 2 of 4 in 24h."
-    );
   });
 
-  // #1721: the notice is safety-adjacent and lands in shared household chats, where
-  // "whose ibuprofen interval passed?" must be answerable from the message itself.
-  // Same self-attribution convention as refill/preventive/illness-care.
-  it("names the subject profile in the title", () => {
-    const m = redoseNoticeMessage({
-      name: "Ibuprofen",
-      profileName: "Ada",
-      sinceHours: 6,
-      lastClock: "4:02pm",
-      countInWindow: 2,
-      maxDailyCount: 4,
+  it.each([
+    [1, 1, 1, "1 hour", "1 of 1 dose"],
+    [1.5, 2, 4, "1 hour 30 minutes", "2 of 4 doses"],
+    [1 / 60, 1, null, "1 minute", "1 dose"],
+    [0.75, 2, null, "45 minutes", "2 doses"],
+  ])(
+    "spells elapsed and count units (%s hours, %s of %s)",
+    (sinceHours, countInWindow, maxDailyCount, elapsed, count) => {
+      const message = redoseNoticeMessage({
+        ...example,
+        sinceHours,
+        countInWindow,
+        maxDailyCount,
+      });
+      expect(message.body).toBe(
+        `Last dose: 12:30am (${elapsed} ago).\n${count} in the past 24 hours.`
+      );
+    }
+  );
+
+  it.each(["Jul 14, 2026 at 12:30am", "00:30"])(
+    "preserves supplied date and clock context: %s",
+    (lastClock) => {
+      expect(redoseNoticeMessage({ ...example, lastClock }).body).toContain(
+        `Last dose: ${lastClock} (7 hours ago).`
+      );
+    }
+  );
+
+  it("keeps a missing clock and product absent", () => {
+    expect(
+      redoseNoticeMessage({
+        ...example,
+        lastClock: "",
+        amount: null,
+        product: null,
+      })
+    ).toEqual({
+      title: "💊 Ibuprofen",
+      body: "Last dose: 7 hours ago.\n1 of 4 doses in the past 24 hours.",
     });
-    expect(m.title).toBe("💊 Redose window open: Ada — Ibuprofen");
   });
 
-  it("leaves the title unattributed when no profile name is given", () => {
-    const m = redoseNoticeMessage({
-      name: "Ibuprofen",
-      profileName: "  ",
-      sinceHours: 6,
-      lastClock: "",
-      countInWindow: 1,
-      maxDailyCount: 4,
+  it("names an arming sibling without claiming the current dose was administered", () => {
+    const message = redoseNoticeMessage({
+      ...example,
+      name: "Ibuprofen Rx",
+      amount: "600 mg",
+      product: null,
+      sinceName: "Ibuprofen OTC",
     });
-    expect(m.title).toBe("💊 Redose window open: Ibuprofen");
+    expect(message).toEqual({
+      title: "💊 Ibuprofen Rx · 600 mg",
+      body: "Last dose: Ibuprofen OTC · 12:30am (7 hours ago).\n1 of 4 doses in the past 24 hours.",
+    });
   });
 
-  it("drops the clock parenthetical when unknown, never says 'you can take more'", () => {
-    const m = redoseNoticeMessage({
-      name: "Tylenol",
-      sinceHours: 4,
-      lastClock: "",
-      countInWindow: 1,
-      maxDailyCount: 6,
-    });
-    expect(m.body).not.toMatch(/\(/);
-    expect(m.body.toLowerCase()).not.toContain("you can");
-  });
-
-  it("includes the saved formulation in the notice body", () => {
-    const m = redoseNoticeMessage({
-      name: "Acetaminophen",
-      amount: "160 mg",
-      product: "Children's oral suspension (160 mg / 5 mL)",
-      sinceHours: 4,
-      lastClock: "5:00 PM",
-      countInWindow: 1,
-      maxDailyCount: 5,
-    });
-    expect(m.body).toContain("Acetaminophen · 160 mg / 5 mL");
-  });
+  it.each([
+    [["800 mg", "400 mg"], 6, "1200 of 2400 mg"],
+    [["800 mg", "1 tablet"], null, "at least 800 of 2400 mg"],
+  ] as const)(
+    "retains the calculated mg basis for %j",
+    (amounts, maxDailyCount, text) => {
+      const message = redoseNoticeMessage({
+        ...example,
+        maxDailyCount,
+        exposure: prnDayExposure({
+          amounts: [...amounts],
+          maxDailyAmountMg: 2400,
+          maxDailyCount,
+        }),
+      });
+      expect(message.body.split("\n")[1]).toBe(`${text} in the past 24 hours.`);
+    }
+  );
 });
 
 describe("redoseCardLabel", () => {
@@ -480,7 +507,7 @@ describe("prnOverMaxDetail (#1854)", () => {
         maxDailyCount: 6,
       }),
     });
-    expect(m.body).toContain("800 of 2400 mg in 24h");
+    expect(m.body).toContain("800 of 2400 mg in the past 24 hours");
   });
 });
 

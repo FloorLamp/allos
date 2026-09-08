@@ -10,7 +10,15 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { setProfileHomeAssistant, getProfileSetting } from "@/lib/settings";
+import {
+  setProfileHomeAssistant,
+  getProfileSetting,
+  setTimezone,
+  setTelegramBotConfig,
+} from "@/lib/settings";
+import { seedLoginTelegram } from "./fixtures";
+import { rebuildMessage } from "@/lib/notifications/telegram";
+import { redoseNoticeMessage } from "@/lib/redose-format";
 import { utcSqlString } from "@/lib/date";
 import { runRedoseNotices, redoseMarkerKey } from "@/lib/notifications/redose";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
@@ -113,13 +121,13 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    const r1 = await runRedoseNotices(p, "RedoseFire", date, now);
+    const r1 = await runRedoseNotices(p, date, now);
     expect(r1.failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1); // one HA POST
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBe(String(adminId));
 
     // Second tick, same state → one-shot already fired → NO send, marker unchanged.
-    const r2 = await runRedoseNotices(p, "RedoseFire", date, now);
+    const r2 = await runRedoseNotices(p, date, now);
     expect(r2.failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBe(String(adminId));
@@ -134,7 +142,7 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "RedoseEarly", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
   });
@@ -148,7 +156,7 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "RedoseStale", date, now, 5);
+    await runRedoseNotices(p, date, now, 5);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
   });
@@ -166,7 +174,7 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "RedoseMax", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
   });
@@ -180,14 +188,14 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "RedoseRearm", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBe(String(first));
 
     // A newer administration (still past the interval, count 2 < max) re-arms it.
     const second = logAdmin(itemId, doseId, date, 6.5, now);
     expect(second).toBeGreaterThan(first);
-    await runRedoseNotices(p, "RedoseRearm", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBe(String(second));
   });
@@ -201,7 +209,7 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "RedoseNoOptIn", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
   });
@@ -216,15 +224,12 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "RedoseNoInterval", date, now);
+    await runRedoseNotices(p, date, now);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
   });
 
-  // #1721: the two dispatch-path builders (redose, post-workout) never met the
-  // tick's prefixMessage and named nobody. In a two-profile household chat a
-  // safety-adjacent "whose ibuprofen interval passed?" must be answerable from the
-  // message itself — every other dispatch-path builder already self-attributes.
+  // The shared composer supplies the subject once on non-Telegram channels too.
   it("names the subject profile in a multi-profile instance (#1721)", async () => {
     const p = newProfile("Ada");
     newProfile("Bo"); // a second data subject in the same instance
@@ -235,10 +240,63 @@ describe("runRedoseNotices orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    await runRedoseNotices(p, "Ada", date, now);
+    await runRedoseNotices(p, date, now);
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(payload.title).toContain("Ada");
+    expect(payload.title).toBe("[Ada] 💊 Ibuprofen (test) · 200 mg");
     expect(payload.kind).toBe("redose");
+  });
+
+  it("sends and rebuilds the owner example with one shared subject and Log dose", async () => {
+    const p = newProfile("Dune");
+    setTimezone(p, "UTC");
+    vi.setSystemTime(new Date("2026-09-08T07:30:00Z"));
+    const now = new Date();
+    const date = today(p);
+    const { itemId, doseId } = seedRedoseMed(p);
+    db.prepare(
+      "UPDATE intake_items SET name = ?, product = ? WHERE id = ? AND profile_id = ?"
+    ).run("Ibuprofen", "Children's oral suspension (100 mg / 5 mL)", itemId, p);
+    db.prepare("UPDATE intake_item_doses SET amount = ? WHERE id = ?").run(
+      "100 mg",
+      doseId
+    );
+    logAdmin(itemId, doseId, date, 7, now);
+    const chat = "5555578";
+    seedLoginTelegram(p, chat);
+    setTelegramBotConfig({
+      telegramBotToken: "redose-test",
+      telegramMode: "poll",
+    });
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: true,
+            result: { message_id: 5578 },
+          }),
+          { status: 200 }
+        )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runRedoseNotices(p, date, now);
+    const sent = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(sent.text).toBe(
+      "<b>[Dune] 💊 Ibuprofen · 100 mg / 5 mL</b>\nLast dose: 12:30am (7 hours ago).\n1 of 4 doses in the past 24 hours."
+    );
+    expect(sent.reply_markup.inline_keyboard[0][0].text).toBe("💊 Log dose");
+    const message = redoseNoticeMessage({
+      name: "Ibuprofen",
+      amount: "100 mg",
+      product: "Children's oral suspension (100 mg / 5 mL)",
+      sinceHours: 7,
+      lastClock: "12:30am",
+      countInWindow: 1,
+      maxDailyCount: 4,
+    });
+    await rebuildMessage(p, chat, 5578, { ...message, kind: "redose" });
+    const rebuilt = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body));
+    expect(rebuilt.text).toBe(sent.text);
   });
 
   it("no channel configured ⇒ no marker, retries next tick", async () => {
@@ -249,7 +307,7 @@ describe("runRedoseNotices orchestrator", () => {
     const adminId = logAdmin(itemId, doseId, date, 6, now);
     const fetchMock = stubFetch();
 
-    const r = await runRedoseNotices(p, "RedoseNoChannel", date, now);
+    const r = await runRedoseNotices(p, date, now);
     expect(r.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
@@ -257,12 +315,7 @@ describe("runRedoseNotices orchestrator", () => {
     // The bounded retry band is one hour later. A channel that appears in between can
     // recover this window, but no later tick can resurrect it indefinitely.
     configureHA(p);
-    await runRedoseNotices(
-      p,
-      "RedoseNoChannel",
-      date,
-      new Date(now.getTime() + 3_600_000)
-    );
+    await runRedoseNotices(p, date, new Date(now.getTime() + 3_600_000));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBe(String(adminId));
   });
