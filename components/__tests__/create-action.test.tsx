@@ -344,3 +344,20 @@ describe("CreateAction", () => {
     });
   });
 });
+
+it("places a compact page's return link before its title", () => {
+  render(
+    <PageHeader
+      title="History"
+      compactBelowSm
+      back={{ href: "/history?kind=dose", destination: "History" }}
+    />
+  );
+  const back = screen.getByRole("link", { name: "History" });
+  expect(back.getAttribute("href")).toBe("/history?kind=dose");
+  expect(
+    back.compareDocumentPosition(
+      screen.getByRole("heading", { name: "History" })
+    ) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+});

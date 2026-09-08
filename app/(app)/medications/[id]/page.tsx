@@ -43,7 +43,6 @@ import { isOnDemand } from "@/lib/intake-schedule";
 import EpisodeLinks from "@/components/EpisodeLinks";
 import IntakeWarnings from "@/components/IntakeWarnings";
 import { intakeWarningsForItem } from "@/lib/intake-warning-surface";
-import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -241,14 +240,13 @@ export default async function MedicationDetailPage(props: {
                   testIdPrefix="medication"
                 />
               </div>
-            ) : (
-              <BackLink
-                href={MEDICATIONS_HREF}
-                label="Back to medications"
-                className="mb-2"
-              />
-            )}
+            ) : null}
             <PageHeader
+              back={
+                crossProfile
+                  ? undefined
+                  : { href: MEDICATIONS_HREF, destination: "Medications" }
+              }
               title={m.med.name}
               subtitle={m.med.brand ?? undefined}
             />

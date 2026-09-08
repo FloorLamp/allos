@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import BackLink from "@/components/BackLink";
 import PageContainer from "@/components/PageContainer";
 import { PageHeader } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
@@ -31,8 +30,8 @@ export default async function FitnessCheckPage() {
     // each one's title painted through its category chip. ONE container owns the
     // page width; the view below carries none.
     <PageContainer width="wide" className="mx-auto">
-      <BackLink href="/training" label="Training" />
       <PageHeader
+        back={{ href: "/training", destination: "Training" }}
         title="Fitness check"
         subtitle="Record and re-check the tests behind your fitness age."
       />

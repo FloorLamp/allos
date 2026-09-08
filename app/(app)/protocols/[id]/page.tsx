@@ -41,7 +41,6 @@ import PageContainer from "@/components/PageContainer";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import ProtocolLogButton from "../ProtocolLogButton";
-import BackLink from "@/components/BackLink";
 import {
   updateProtocol,
   updateProtocolOutcomes,
@@ -170,8 +169,6 @@ export default async function ProtocolDetailPage(props: {
       className="mx-auto"
       data-testid="protocol-detail-page"
     >
-      <BackLink href="/longevity#protocols" label="Back to protocols" />
-
       <div className="space-y-6">
         {/* The edit form's situation picker reads the SAME merged vocabulary the
             supplement and medication forms do (#1676). */}

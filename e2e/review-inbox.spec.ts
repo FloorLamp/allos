@@ -349,7 +349,7 @@ test.describe("Data → Review import inbox", () => {
     // followLink retries past it (#889 sweep; replaces the hand-rolled toPass).
     await followLink(page, docLink, /\/import\/\d+/);
     await expect(
-      page.getByRole("link", { name: "Back to Review" })
+      page.getByRole("main").getByRole("link", { name: "Review", exact: true })
     ).toBeVisible({ timeout: 15_000 });
     // The detail page reconciles the SAME two numbers (#1339/#221): the snapshot
     // vs what remains, naming why the rows are gone — not the bare, contradictory

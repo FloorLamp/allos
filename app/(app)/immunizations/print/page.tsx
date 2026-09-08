@@ -23,11 +23,7 @@ export default async function ImmunizationPrintPage() {
   return (
     <div data-testid="immunization-print">
       <div className="mb-3 flex items-center justify-between print:hidden">
-        <BackLink
-          href={IMMUNIZATIONS_HREF}
-          label="Back to immunizations"
-          className=""
-        />
+        <BackLink href={IMMUNIZATIONS_HREF} destination="Immunizations" />
         <PrintButton label="Print record" />
       </div>
       <div className="card">
