@@ -17,7 +17,7 @@ import {
 // reassignment during render is a side effect (and `react-hooks/globals` says so), and
 // clicking is what the chart's own gestures do anyway.
 function Driver() {
-  const { setView, setCursor } = useIntradayInteraction();
+  const { setView, setCursor, setPin } = useIntradayInteraction();
   return (
     <>
       <button
@@ -28,15 +28,14 @@ function Driver() {
         data-testid="drive-zoom-empty"
         onClick={() => setView({ from: 0, to: 0 })}
       />
-      <button
-        data-testid="drive-cursor"
-        onClick={() => setCursor(19 * 60 + 10)}
-      />
+      <button data-testid="drive-cursor" onClick={() => setCursor(20 * 60)} />
+      <button data-testid="drive-pin" onClick={() => setPin(19 * 60 + 10)} />
+      <button data-testid="drive-leave" onClick={() => setCursor(null)} />
     </>
   );
 }
 
-const drive = (what: "zoom" | "zoom-empty" | "cursor") =>
+const drive = (what: "zoom" | "zoom-empty" | "cursor" | "pin" | "leave") =>
   fireEvent.click(screen.getByTestId(`drive-${what}`));
 
 const CHIPS = [
@@ -84,14 +83,21 @@ describe("the add row and the chart's window", () => {
     }
   });
 
-  it("names the crosshair as a start alone at full day, with no end", () => {
+  it("names the pinned start and keeps hover out of the label and hrefs", () => {
     render(row());
     drive("cursor");
-    expect(screen.getByTestId("history-add-label").textContent).toBe(
-      "Add at 19:10"
-    );
+    const label = screen.getByTestId("history-add-label");
+    expect(label.textContent).toBe("Add");
+    expect(href("practice")).not.toContain("from=");
+    drive("pin");
+    expect(label.textContent).toBe("Add at 19:10");
     expect(href("practice")).toContain("from=19%3A10");
     expect(href("practice")).not.toContain("to=");
+    drive("leave");
+    expect(label.textContent).toBe("Add at 19:10");
+    expect(href("practice")).toContain("from=19%3A10");
+    // Explicitly requested by #5386 for the clock-bearing label.
+    expect(label.classList.contains("tabular-nums")).toBe(true);
   });
 
   it("keeps the page's own params, and only ADDS the window to them", () => {

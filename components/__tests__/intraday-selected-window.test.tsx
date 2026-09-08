@@ -1,9 +1,15 @@
-import { cleanup, render, type RenderResult } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  type RenderResult,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import IntradayChart from "@/components/IntradayChart";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import type { IntradayModel } from "@/lib/intraday";
 import { parseIntradayWindow } from "@/lib/intraday-window";
+import { intradayGeometry, projectMinute } from "@/lib/intraday-layout";
 
 // A window stated in the URL is DRAWN by the chart (#4950).
 //
@@ -57,7 +63,10 @@ const selection = (result: RenderResult) =>
     '[data-variant="wide"] [data-testid="intraday-selection"]'
   );
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("the chart draws the window the URL states", () => {
   it("draws nothing when no window is stated", () => {
@@ -105,4 +114,45 @@ describe("the chart draws the window the URL states", () => {
       fromMinutes.getAttribute("width")
     );
   });
+
+  it.each(["pointercancel", "pointerout"])(
+    "%s aborts a drag without replacing the pinned start or committing a zoom",
+    (abort) => {
+      const result = render(chart(null));
+      const svg = result.container.querySelector<SVGSVGElement>(
+        '[data-variant="wide"] [data-testid="intraday-svg"]'
+      )!;
+      fireEvent.keyDown(svg, { key: "Home" });
+      fireEvent.keyDown(svg, { key: "ArrowRight" });
+      fireEvent.keyDown(svg, { key: "Enter" });
+      const pinnedX = selection(result)!.getAttribute("x");
+
+      // jsdom has no layout or native pointer gestures. Supply the existing
+      // geometry solely to exercise cancellation; browser tests own real taps.
+      const geo = intradayGeometry(MODEL, "wide");
+      vi.spyOn(svg, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 0, geo.viewBoxWidth, geo.height)
+      );
+      const pointer = (type: string, minute: number) =>
+        fireEvent(
+          svg,
+          Object.assign(
+            new MouseEvent(type, {
+              bubbles: true,
+              clientX: projectMinute(geo, minute),
+              clientY: (geo.padTop + geo.axisY) / 2,
+              button: 0,
+            }),
+            { pointerId: 1, isPrimary: true }
+          )
+        );
+      pointer("pointerdown", 600);
+      pointer("pointermove", 620);
+      expect(selection(result)!.getAttribute("x")).not.toBe(pinnedX);
+      pointer(abort, 620);
+      pointer("pointerup", 620);
+      expect(svg.parentElement?.getAttribute("data-zoomed")).toBe("false");
+      expect(selection(result)!.getAttribute("x")).toBe(pinnedX);
+    }
+  );
 });
