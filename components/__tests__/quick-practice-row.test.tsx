@@ -237,8 +237,16 @@ describe("the row follows the server's session rather than a copy of it", () => 
       expect(loadQuickEntry).toHaveBeenCalledWith("practice", undefined);
       expect(facts()).toBe("1 today · 1 of 3–5 this week");
       expect(screen.queryByTestId("practice-end-button")).toBeNull();
-      expect(screen.getByTestId("practice-start-button")).toBeTruthy();
-      expect(screen.getByTestId("practice-log-button")).toBeTruthy();
+      expect(
+        screen.getByRole("button", {
+          name: "Start a Red light therapy session, 15 min",
+        })
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", {
+          name: "Just finished another Red light therapy session — 1 already logged today",
+        })
+      ).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
