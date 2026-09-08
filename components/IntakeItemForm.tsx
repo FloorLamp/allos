@@ -769,11 +769,7 @@ export default function IntakeItemForm({
   function selectPediatricBand(band: PediatricBand) {
     setSelectedPediatricBandMinLbs(band.minLbs);
     markTouched("doseAmount");
-    patch((current) => ({
-      doses: current.doses.map((dose, index) =>
-        index === 0 ? { ...dose, amount: formulationDoseAmount(band.mg) } : dose
-      ),
-    }));
+    writePrefill({ doseAmount: formulationDoseAmount(band.mg) });
   }
 
   // ---- The rule sentences decide the fields they own ----

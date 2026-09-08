@@ -454,6 +454,26 @@ const dosedAt = () => ({
     .map((radio) => (radio as HTMLInputElement).value),
 });
 
+it("records an explicit pediatric band after a new weight withdraws the offered dose", async () => {
+  mount("medication", CHILD_ON_PICK);
+  await pickName(ACETAMINOPHEN);
+  openFact("dose");
+  expect(dosedAt()).toEqual({ amount: "240 mg", bands: ["36"] });
+
+  await updateDosingWeight("10");
+  expect(dosedAt()).toEqual({ amount: "", bands: [] });
+
+  const firstBand = within(
+    screen.getByTestId("pediatric-band-picker")
+  ).getAllByRole("radio")[0];
+  fireEvent.click(firstBand);
+  expect(dosedAt()).toEqual({ amount: "160 mg", bands: ["24"] });
+
+  // The explicit choice is now the caregiver's amount, not the new weight's offer.
+  await updateDosingWeight("22");
+  expect(textbox("Amount").value).toBe("160 mg");
+});
+
 describe("a pick that lands after a weight update doses against the new weight (#5443)", () => {
   it.each([
     // new weight, kg | amount after the confirm lands | band selected
