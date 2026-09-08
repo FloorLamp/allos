@@ -144,7 +144,7 @@ describe("applyIntent — practice (#2908)", () => {
       durationMin: null,
     };
 
-    for (const endTime of [undefined, "", "25:00"]) {
+    for (const endTime of [undefined, null, "", "25:00"]) {
       const intent = buildIntent(
         "practice",
         date,
