@@ -62,6 +62,11 @@ import {
 import { totp, TOTP_STEP_SECONDS } from "@/lib/totp";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { recordAudit } from "@/lib/audit";
+import { usesRealElapsedTime } from "./frozen-clock";
+
+usesRealElapsedTime(
+  "Session timestamps and browser cookie lifetimes share SQLite's real clock."
+);
 
 const STEP_MS = TOTP_STEP_SECONDS * 1000;
 
