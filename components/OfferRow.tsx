@@ -147,7 +147,7 @@ export function LabeledVerbChip({
   const pill = labelAction ? (
     <span
       data-fact-chip="pill"
-      className="chip-offer inline-flex items-stretch text-sm"
+      className="chip-offer inline-flex items-stretch border-0 text-sm ring-1 ring-inset ring-(--border)"
     >
       <button
         type="button"
@@ -158,7 +158,7 @@ export function LabeledVerbChip({
         aria-controls={labelAction.controls}
         data-testid={labelAction.testId}
         data-fact-chip="tiled"
-        className="rounded-s-full px-3 transition hover:bg-(--ghost-hover) disabled:opacity-50"
+        className="min-h-(--control-box) rounded-s-full px-3 transition hover:bg-(--ghost-hover) disabled:opacity-50"
       >
         {label}
       </button>
@@ -170,7 +170,7 @@ export function LabeledVerbChip({
         data-testid={testId}
         data-chip-verb={verb}
         data-fact-chip="tiled"
-        className={`shrink-0 rounded-e-full px-2.5 text-xs font-semibold transition disabled:opacity-50 ${OFFER_VERB_TONE[tone]}`}
+        className={`min-h-(--control-box) shrink-0 rounded-e-full px-2.5 text-xs font-semibold transition disabled:opacity-50 ${OFFER_VERB_TONE[tone]}`}
         {...data}
       >
         {verb}
