@@ -1,38 +1,16 @@
 "use client";
-import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState } from "react";
 import { IconPlus, IconMinus } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import {
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-  shouldQueueOffline,
-} from "@/lib/offline/queue";
+import { useWritePipeline } from "@/components/useWritePipeline";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import RollingNumber from "@/components/RollingNumber";
-import {
-  addProteinGrams,
-  undoProteinGrams,
-  type ProteinLogResult,
-} from "./actions";
+import { addProteinGrams, undoProteinGrams } from "./actions";
 
-// Protein-grams quick-add (issue #824), modeled on the one-tap food-serving bar
-// (FoodLogBar): a single number control that SUMS into the day's manual-protein total.
-// Protein powder / shakes have no food-group catalog home (a `protein_shake` group would
-// double-count the milk/eggs), so this is the shake path — the direct-grams `logged`
-// basis that adds to the food-group estimated floor on the adequacy card above.
-//
-// The number in the box is the delta for BOTH buttons (the FoodLogBar +/- idiom): "+"
-// adds it to the day, "−" removes it. Optimistic local total, a Server Action per tap,
-// reconciled to the server's authoritative total (#748 item 2) so a failed write can't
-// leave a phantom gram count — through the shared `useOptimisticLedger` (#2041), which
-// also carries the post-success cooldown that absorbs a double-tap (#2007 layer 1).
-// Protein grams are ADDITIVE and declare no expected interval, so a repeat tap a moment
-// later still lands and NEVER raises a confirm. The box pre-fills with the last-used amount (scoop sizes
-// repeat). The control renders as a peer to the food-group rows: direct gram entry
-// belongs in the logging flow, while nutrient gauges remain read-only analysis.
+// Direct protein grams contribute to the day's manual total. The typed amount is
+// the delta for both add and remove; it is not an inverse of a stored serving.
+// The pipeline owns transport, queue capture, and optimistic settlement.
 
 export default function ProteinQuickAdd({
   today,
@@ -47,133 +25,68 @@ export default function ProteinQuickAdd({
   // The profile's last-used amount (repeated scoop size), or null if never logged.
   lastPreset: number | null;
 }) {
-  // The surface this scoop control is mounted on (#3087): the Food tab's own row,
-  // or the quick-log sheet's ranked-in protein control.
-  const stampLoggedVia = useLoggedViaStamp();
   const [total, setTotal] = useState(initialGrams);
   const [amount, setAmount] = useState<string>(
     lastPreset != null ? String(lastPreset) : ""
   );
-  // TYPED GRAMS SURVIVE A DAY MOVE (#4934). The bar used to mount this control under
-  // `key={activeDate}`, so moving the day picker destroyed the field's DOM node and
-  // threw away whatever the person had typed, with no warning. Nothing is remounted
-  // now, so `amount` persists and the tap logs against the day now shown (`today` is
-  // the selected day, read at tap time). Only the day's own datum is re-seeded — the
-  // logged total in the readout — because that belongs to the day, not to the typist.
-  // A prop-keyed derived-state repair, applied during render (the RestTimer idiom)
-  // rather than in an effect that would paint the previous day's total first.
+  // Keep typed grams when the selected day changes; only its displayed total resets.
   const [seededDay, setSeededDay] = useState(today);
   if (seededDay !== today) {
     setSeededDay(today);
     setTotal(initialGrams);
   }
   const toast = useToast();
-  // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
-  const { enqueue } = useOfflineQueue();
-  const ledger = useOptimisticLedger<number>("protein-grams");
+  const pipeline = useWritePipeline<"protein-grams", number>("protein-grams");
 
   const grams = Number(amount);
-  const busy = ledger.pending("add") || ledger.pending("undo");
+  const busy = pipeline.pending("add") || pipeline.pending("undo");
   const canSubmit = Number.isFinite(grams) && grams > 0 && !busy;
-
-  // Whether the tap reached a write at all, and what the write said. Modeled instead
-  // of branching mid-flight so the ledger sees ONE settlement per tap. "refused" is
-  // the queue declining the capture (#3038): nothing was kept, so it settles as a
-  // rollback, never a phantom total.
-  type ProteinTap =
-    | { kind: "queued" }
-    | { kind: "refused" }
-    | { kind: "offline-undo" }
-    | { kind: "wrote"; res: ProteinLogResult };
 
   async function apply(delta: 1 | -1) {
     if (!(Number.isFinite(grams) && grams > 0)) {
       toast("Enter a protein amount in grams.", { tone: "error" });
       return;
     }
-    // Queue an ADD tap while offline (#1596): the captured grams + day replay
-    // through the same write core on reconnect, so a post-shake log with no
-    // signal never fails; the optimistic total stands in until then. UNDO stays
-    // online-only — a decrement is not a capture (lib/offline/queue.ts scope
-    // comment) — so an offline "−" rolls back with an honest message.
-    const queueOffline = async (): Promise<boolean> => {
-      const kept =
-        (await enqueue("food", today, {
-          entry: "protein",
-          groupKey: null,
-          mealSlot: null,
-          grams,
-        })) === "kept";
-      // The device can refuse the capture (#3038) — say so in the shared sentence
-      // and report it, so the caller rolls the optimistic total back.
-      if (!kept) {
-        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
-        return false;
-      }
-      toast("Saved offline — will sync when you reconnect.");
-      return true;
-    };
-    const undoNeedsConnection = () => {
-      toast("You're offline — removing protein needs a connection.", {
-        tone: "error",
-      });
-    };
-    await ledger.tap<ProteinTap>({
-      // The key names the WRITE: an immediate correction with "−" is a different
-      // write from the "+" that preceded it and must not be absorbed by its cooldown.
+    await pipeline.run({
       key: delta === 1 ? "add" : "undo",
-      valueKey: today,
-      from: total,
-      // Optimistic: reflect the change immediately (clamped at zero on remove).
-      optimistic: Math.max(0, total + delta * grams),
-      commit: setTotal,
-      write: async () => {
-        if (typeof navigator !== "undefined" && navigator.onLine === false) {
-          if (delta === -1) return { kind: "offline-undo" };
-          return (await queueOffline())
-            ? { kind: "queued" }
-            : { kind: "refused" };
-        }
-        const fd = stampLoggedVia(new FormData());
-        fd.set("grams", String(grams));
-        fd.set("date", today);
-        return {
-          kind: "wrote",
-          res:
-            delta === 1
-              ? await addProteinGrams(fd)
-              : await undoProteinGrams(fd),
-        };
+      fields: { grams: String(grams), date: today },
+      action: delta === 1 ? addProteinGrams : undoProteinGrams,
+      optimistic: {
+        key: today,
+        from: total,
+        to: Math.max(0, total + delta * grams),
+        commit: setTotal,
       },
-      settle: (out) => {
-        if (out.kind === "queued") return { kind: "keep" };
-        // Refused capture: queueOffline already said so; the total rolls back.
-        if (out.kind === "refused") return { kind: "rollback" };
-        if (out.kind === "offline-undo") {
-          undoNeedsConnection();
-          return { kind: "rollback" };
-        }
-        // Reconcile with the server's authoritative daily total.
-        if (out.res.ok) return { kind: "adopt", value: out.res.grams };
-        toast(out.res.error || "Couldn't save that — try again.", {
-          tone: "error",
-        });
-        return { kind: "rollback" };
-      },
-      onError: async (err) => {
-        // Connection dropped mid-tap — queue an add instead of a false failure.
-        if (shouldQueueOffline(navigator.onLine !== false, err)) {
-          if (delta === 1) {
-            return (await queueOffline())
-              ? { kind: "keep" }
-              : { kind: "rollback" };
-          }
-          undoNeedsConnection();
-          return { kind: "rollback" };
-        }
-        toast("Couldn't save that — try again.", { tone: "error" });
-        return { kind: "rollback" };
-      },
+      settle: (res) =>
+        res.ok
+          ? { wrote: true, value: res.grams, announce: "silent" }
+          : {
+              wrote: false,
+              announce: {
+                message: res.error || "Couldn't save that — try again.",
+                tone: "error",
+                undo: null,
+              },
+            },
+      offline: () =>
+        delta === 1
+          ? {
+              kind: "capture",
+              flow: "food",
+              date: today,
+              payload: {
+                entry: "protein",
+                groupKey: null,
+                mealSlot: null,
+                grams,
+              },
+              keptMessage: "Saved offline — will sync when you reconnect.",
+            }
+          : {
+              kind: "refuse",
+              message: "You're offline — removing protein needs a connection.",
+            },
+      failureMessage: "Couldn't save that — try again.",
     });
   }
 

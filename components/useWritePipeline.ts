@@ -117,6 +117,8 @@ export interface OptimisticValue<V> {
   // The displayed value as it stands BEFORE this tap. Read at the tap, so it is the
   // surface's own state and not a re-derivation.
   readonly from: V;
+  // Identify separate displayed values, such as totals for different days.
+  readonly key?: string;
   // How this tap makes it look, painted before the request leaves.
   readonly to: V;
   // Writes a value into the surface's own state. The surface keeps its state where it
@@ -272,7 +274,7 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       let outcome: Attempted<V> = { result: "nothing" };
       await ledger.tap({
         key: spec.key,
-        valueKey: "",
+        valueKey: projection?.key ?? "",
         from: projection?.from,
         optimistic: projection?.to,
         commit: projection?.commit,

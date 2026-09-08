@@ -18,6 +18,9 @@ import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 import { dateStrInTz } from "@/lib/date";
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
+import ProteinQuickAdd from "@/app/(app)/nutrition/ProteinQuickAdd";
+import MobilityLogBar from "@/app/(app)/training/MobilityLogBar";
+import { MOBILITY_MOVES } from "@/lib/mobility-moves";
 
 // THE FOUR CLASSES THE PIPELINE MAKES UNREPRESENTABLE (#3276's 2026-08-31 amendment).
 // Each was measured live on main, one surface at a time, because the step is
@@ -27,7 +30,23 @@ import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 // The runtime half is below; the compile-time half is `useTypeCheckedGuards`, which is
 // checked by `npm run typecheck` and asserts nothing at runtime by design.
 
-const mocks = vi.hoisted(() => ({ toast: vi.fn(), enqueue: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  toast: vi.fn(),
+  enqueue: vi.fn(),
+  proteinAdd: vi.fn(),
+  proteinRemove: vi.fn(),
+  mobilityAdd: vi.fn(),
+  mobilityRemove: vi.fn(),
+}));
+vi.mock("@/app/(app)/nutrition/actions", () => ({
+  addProteinGrams: mocks.proteinAdd,
+  undoProteinGrams: mocks.proteinRemove,
+}));
+vi.mock("@/app/(app)/training/mobility-actions", () => ({
+  logMobilityMove: mocks.mobilityAdd,
+  unlogMobilityMove: mocks.mobilityRemove,
+  setMobilityDuration: vi.fn(),
+}));
 
 vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
@@ -588,6 +607,101 @@ describe("ledger rollback values", () => {
     }
   );
 });
+
+describe.each(["protein", "mobility"] as const)(
+  "%s pipeline adoption",
+  (kind) => {
+    const day = "2026-09-01";
+    const moves = MOBILITY_MOVES.slice(0, 2);
+    const addId =
+      kind === "protein"
+        ? "protein-quickadd-add"
+        : `mobility-move-${moves[0].slug}`;
+    const removeId = kind === "protein" ? "protein-quickadd-undo" : addId;
+    const totalId =
+      kind === "protein" ? "protein-quickadd-grams" : "mobility-move-total";
+    const add = kind === "protein" ? mocks.proteinAdd : mocks.mobilityAdd;
+    const remove =
+      kind === "protein" ? mocks.proteinRemove : mocks.mobilityRemove;
+    const amount = kind === "protein" ? "75" : "2 moves today";
+    const queued = kind === "protein" ? "25" : "1 move today";
+    const fields =
+      kind === "protein" ? { grams: "25" } : { move: moves[0].slug };
+    const payload =
+      kind === "protein"
+        ? { entry: "protein", groupKey: null, mealSlot: null, grams: 25 }
+        : { move: moves[0].slug };
+
+    function mount() {
+      render(
+        <LoggedViaSurface value="quick-log">
+          {kind === "protein" ? (
+            <ProteinQuickAdd today={day} initialGrams={0} lastPreset={25} />
+          ) : (
+            <MobilityLogBar
+              today={day}
+              initialMoves={[]}
+              initialDurationMin={null}
+              moves={moves}
+            />
+          )}
+        </LoggedViaSurface>
+      );
+    }
+    beforeEach(() => {
+      vi.clearAllMocks();
+      add.mockReset();
+      remove.mockReset();
+      mocks.enqueue.mockResolvedValue("kept");
+    });
+
+    it("posts the domain payload, adopts the server value, and rolls back a refused removal", async () => {
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+      add.mockResolvedValue(
+        kind === "protein"
+          ? { ok: true, grams: 75 }
+          : { ok: true, session: { moves: moves.map((move) => move.slug) } }
+      );
+      remove.mockResolvedValue({ ok: false, error: "Removal refused" });
+      mount();
+      await act(async () => screen.getByTestId(addId).click());
+      expect(
+        Object.fromEntries((add.mock.calls[0][0] as FormData).entries())
+      ).toMatchObject({
+        ...fields,
+        date: day,
+        [LOGGED_VIA_FIELD]: "quick-log",
+      });
+      expect(screen.getByTestId(totalId).textContent).toBe(amount);
+      await act(async () => screen.getByTestId(removeId).click());
+      expect(mocks.toast).toHaveBeenCalledWith("Removal refused", {
+        tone: "error",
+      });
+      expect(screen.getByTestId(totalId).textContent).toBe(amount);
+    });
+
+    it("keeps the domain capture offline and refuses its removal without queueing an inverse", async () => {
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+      add.mockRejectedValue(new TypeError("Failed to fetch"));
+      remove.mockRejectedValue(new TypeError("Failed to fetch"));
+      mount();
+      await act(async () => screen.getByTestId(addId).click());
+      expect(mocks.enqueue).toHaveBeenCalledWith(
+        kind === "protein" ? "food" : "mobility",
+        day,
+        payload
+      );
+      expect(screen.getByTestId(totalId).textContent).toBe(queued);
+      await act(async () => screen.getByTestId(removeId).click());
+      expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId(totalId).textContent).toBe(queued);
+      expect(mocks.toast).toHaveBeenLastCalledWith(
+        expect.stringContaining("needs a connection"),
+        { tone: "error" }
+      );
+    });
+  }
+);
 
 // ── THE COMPILE-TIME HALF ────────────────────────────────────────────────────
 //
