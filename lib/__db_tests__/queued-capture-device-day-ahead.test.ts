@@ -250,8 +250,10 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
     const date = shiftDateStr(today(p), -1);
 
     for (const at of [undefined, null, "", "25:00"]) {
-      const payload = at === undefined ? { type: 4 } : { type: 4, at };
-      const intent = buildIntent("stool", date, payload, p, false);
+      const intent =
+        at === undefined
+          ? buildIntent("stool", date, { type: 4 }, p, false)
+          : buildIntent("stool", date, { type: 4, at }, p, false);
       expect(applyIntent(p, intent)).toEqual({
         status: "rejected",
         reason: "Choose a time for a stool entry on a past day.",
