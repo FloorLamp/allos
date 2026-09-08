@@ -335,25 +335,22 @@ export default function DoseHistoryPanel({
           {offeredDays.map((date) => {
             const offer = offerOn(date);
             return soleDose ? (
-              <LabeledVerbChip
-                key={date}
-                tone="neutral"
-                testId="dose-backfill-offer"
-                label={
-                  <span>
-                    <span>{`${formatLongDate(date, formatPrefs)} · ${offer.promise}`}</span>
-                    {offer.amountAssumed ? (
-                      <span className="block text-xs font-normal">
-                        No amount was saved for this date. Using the oldest
-                        known amount.
-                      </span>
-                    ) : null}
-                  </span>
-                }
-                verb="Log"
-                disabled={ledger.blocked(date)}
-                onAct={() => logMissedDay(date)}
-              />
+              <div key={date} className="min-w-0">
+                <LabeledVerbChip
+                  tone="neutral"
+                  testId="dose-backfill-offer"
+                  label={`${formatLongDate(date, formatPrefs)} · ${offer.promise}`}
+                  verb="Log"
+                  disabled={ledger.blocked(date)}
+                  onAct={() => logMissedDay(date)}
+                />
+                {offer.amountAssumed ? (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    No amount was saved for this date. Using the oldest known
+                    amount.
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <OfferRow
                 key={date}
