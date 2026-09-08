@@ -8,6 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuickPracticeList from "@/components/quick-entry/QuickPracticeList";
+import { DayContextProvider } from "@/components/DayContext";
+import { SHEET_REACH } from "@/lib/log-manifest";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 
 // ── THE SHEET'S PRACTICE ROW, AND THE STATE IT USED TO LIE ABOUT (#5431) ─────
@@ -187,6 +189,29 @@ describe("the sheet's practice row states one thing at a time", () => {
     expect(screen.getByTestId("practice-duration-toggle").textContent).toBe(
       "min"
     );
+  });
+
+  it("labels a cached prior-day count from the live profile day", () => {
+    render(
+      <DayContextProvider
+        profileId={1}
+        today="2026-09-07"
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: TODAY }}
+      >
+        <QuickPracticeList
+          practices={[{ ...RED_LIGHT, todayCount: 1, countThisWeek: 1 }]}
+          today={TODAY}
+        />
+      </DayContextProvider>
+    );
+
+    expect(facts()).toBe("1 yesterday · 1 of 3–5 this week");
+    expect(
+      screen.getByRole("button", {
+        name: "Just finished another Red light therapy session — 1 already logged yesterday",
+      })
+    ).toBeTruthy();
   });
 });
 

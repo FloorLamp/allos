@@ -11,6 +11,7 @@ import QuickEntryProvider, {
   useQuickEntry,
 } from "@/components/QuickEntryProvider";
 import type { SessionProfile } from "@/lib/auth";
+import { ProfileDaysBoundary } from "@/components/DayContext";
 
 // COMPONENT TIER — #3416/#4454, the sheet's offline OPEN path: last-good render
 // with a revalidate behind it, a failed revalidate keeping what is already shown, a
@@ -52,32 +53,34 @@ function Sheet({ actingProfileId = ACTING.id }: { actingProfileId?: number }) {
   );
 }
 
-function renderSheet(actingProfileId = ACTING.id) {
-  const utils = render(
+function renderSheet(
+  actingProfileId = ACTING.id,
+  liveToday = MEASUREMENTS.defaultDate,
+  authKey = "login:session"
+) {
+  const surface = (id: number, day: string, identity: string) => (
     <ToastProvider>
-      <QuickEntryProvider
-        measurements={MEASUREMENTS}
-        writableProfiles={[ACTING]}
-        actingProfileId={actingProfileId}
-      >
-        <Sheet actingProfileId={actingProfileId} />
-      </QuickEntryProvider>
+      <ProfileDaysBoundary days={new Map([[id, day]])}>
+        <QuickEntryProvider
+          key={`${identity}:${id}`}
+          measurements={MEASUREMENTS}
+          writableProfiles={[ACTING]}
+          actingProfileId={id}
+        >
+          <Sheet actingProfileId={id} />
+        </QuickEntryProvider>
+      </ProfileDaysBoundary>
     </ToastProvider>
   );
+  const utils = render(surface(actingProfileId, liveToday, authKey));
   return {
     ...utils,
     rerenderWithActing: (id: number) =>
-      utils.rerender(
-        <ToastProvider>
-          <QuickEntryProvider
-            measurements={MEASUREMENTS}
-            writableProfiles={[ACTING]}
-            actingProfileId={id}
-          >
-            <Sheet actingProfileId={id} />
-          </QuickEntryProvider>
-        </ToastProvider>
-      ),
+      utils.rerender(surface(id, liveToday, authKey)),
+    rerenderWithDay: (day: string) =>
+      utils.rerender(surface(actingProfileId, day, authKey)),
+    rerenderWithAuth: (identity: string) =>
+      utils.rerender(surface(actingProfileId, liveToday, identity)),
   };
 }
 
@@ -180,6 +183,20 @@ describe("last-good render, revalidate behind it (#3416 proposal 1)", () => {
       ).toContain("v2")
     );
   });
+
+  it("a new authenticated session cannot reuse the prior session's cache", async () => {
+    loadQuickEntry.mockResolvedValueOnce(unavailable("old session"));
+    const { rerenderWithAuth } = renderSheet();
+    fireEvent.click(screen.getByText("open"));
+    await screen.findByTestId("quick-entry-unavailable");
+    fireEvent.click(screen.getByText("close"));
+
+    rerenderWithAuth("next-login:next-session");
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    fireEvent.click(screen.getByText("open"));
+
+    expect(screen.getByTestId("quick-entry-loading")).not.toBeNull();
+  });
 });
 
 describe("the stall bound and Retry (#3416 proposal 3)", () => {
@@ -220,7 +237,7 @@ describe("the stall bound and Retry (#3416 proposal 3)", () => {
 });
 
 describe("day request identity", () => {
-  it("reopens an undated form on the last server-known today, not the prior selection", async () => {
+  it("reopens an undated form daylessly, not on the prior selection", async () => {
     loadQuickEntry
       .mockResolvedValueOnce(unavailable("today"))
       .mockResolvedValueOnce(unavailable("past"))
@@ -241,7 +258,7 @@ describe("day request identity", () => {
     expect(loadQuickEntry).toHaveBeenLastCalledWith(
       "stool",
       ACTING.id,
-      MEASUREMENTS.defaultDate,
+      undefined,
       "sheet"
     );
     expect(
@@ -318,16 +335,18 @@ describe("day request identity", () => {
   });
 
   it("gathers the reconciled day when midnight expires the cached selection", async () => {
+    let resolveOld!: (value: ReturnType<typeof unavailable>) => void;
     loadQuickEntry
       .mockResolvedValueOnce(unavailable("initial"))
-      .mockResolvedValueOnce(
-        unavailable("old day after midnight", "2026-09-05")
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveOld = resolve))
       )
       .mockResolvedValueOnce(unavailable("reconciled", "2026-09-05"));
-    renderSheet();
+    const { rerenderWithDay } = renderSheet();
     fireEvent.click(screen.getByText("open"));
     await screen.findByTestId("bounded-day-switcher");
     fireEvent.click(screen.getByTestId("day-context-2"));
+    rerenderWithDay("2026-09-05");
 
     await waitFor(() =>
       expect(loadQuickEntry).toHaveBeenLastCalledWith(
@@ -337,8 +356,70 @@ describe("day request identity", () => {
         "sheet"
       )
     );
+    resolveOld(unavailable("old day after midnight", "2026-09-05"));
     expect(
       (await screen.findByTestId("quick-entry-unavailable")).textContent
     ).toContain("reconciled");
+  });
+
+  it("keeps an in-reach cached prior day while a new dayless bootstrap runs", async () => {
+    let resolveRefresh!: (value: ReturnType<typeof unavailable>) => void;
+    loadQuickEntry
+      .mockResolvedValueOnce(unavailable("September 3"))
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveRefresh = resolve))
+      );
+    const { rerenderWithDay } = renderSheet();
+    fireEvent.click(screen.getByText("open"));
+    await screen.findByTestId("quick-entry-unavailable");
+    fireEvent.click(screen.getByText("close"));
+
+    rerenderWithDay("2026-09-04");
+    fireEvent.click(screen.getByText("open"));
+
+    expect(screen.getByTestId("quick-entry-unavailable").textContent).toContain(
+      "September 3"
+    );
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "stool",
+      ACTING.id,
+      undefined,
+      "sheet"
+    );
+    expect(
+      screen.getByTestId("day-context-1").getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(screen.getByTestId("day-context-1").textContent).toBe("Yesterday");
+    resolveRefresh(unavailable("September 4", "2026-09-04"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("day-context-0").getAttribute("aria-pressed")
+      ).toBe("true")
+    );
+  });
+
+  it("restarts a dayless bootstrap whose response crossed local midnight", async () => {
+    let resolveOld!: (value: ReturnType<typeof unavailable>) => void;
+    loadQuickEntry
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveOld = resolve))
+      )
+      .mockResolvedValueOnce(unavailable("new day", "2026-09-04"));
+    const { rerenderWithDay } = renderSheet();
+    fireEvent.click(screen.getByText("open"));
+    rerenderWithDay("2026-09-04");
+
+    resolveOld(unavailable("old day", "2026-09-03"));
+
+    await waitFor(() => expect(loadQuickEntry).toHaveBeenCalledTimes(2));
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "stool",
+      ACTING.id,
+      undefined,
+      "sheet"
+    );
+    expect(
+      (await screen.findByTestId("quick-entry-unavailable")).textContent
+    ).toContain("new day");
   });
 });

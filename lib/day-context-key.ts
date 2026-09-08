@@ -7,10 +7,9 @@
 // is being asked to prevent — so the identity is named once, here, and both sides
 // import it rather than inventing a spelling apiece.
 //
-// THE CONTRACT THIS SERVES IS PROPOSED AND UNANSWERED. #5211's 2026-09-05 comment puts
-// four clauses to the #3416 lane; nothing has answered yet. This module deliberately
-// carries only the first — no provider, no context, no React, no state — so amending
-// the rest costs one file and blocks nobody in the meantime.
+// This module carries only the canonical identity — no provider, no context, no React,
+// no state. Cache and replay owners store the parts beside the opaque key when they
+// need either representation.
 import type { TapReach } from "./log-manifest";
 
 // The reach vocabulary is the manifest's, re-exported under its own name rather than

@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,12 +30,16 @@ import {
   DayContextBoundary,
   DayContextProvider,
   useDayContext,
+  useLiveProfileDays,
   useOptionalDayContext,
   type DayContextValue,
 } from "./DayContext";
 import BoundedDaySwitcher from "./BoundedDaySwitcher";
-import { SHEET_REACH } from "@/lib/log-manifest";
+import { isWithinReach, SHEET_REACH } from "@/lib/log-manifest";
 import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
+import { shiftDateStr } from "@/lib/date";
+import { formatWeekdayDate } from "@/lib/format-date";
+import { useFormatPrefs } from "./FormatPrefsProvider";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -223,12 +226,65 @@ type LoadState =
 
 type SheetDayContext =
   | { kind: "inherited"; value: DayContextValue }
-  | { kind: "state"; profileId: number; today: string; initialDay: string };
+  | { kind: "state"; parts: DayContextParts };
+
+type LoadRequest =
+  | { kind: "dayless" }
+  | { kind: "inherited"; value: DayContextValue }
+  | { kind: "selected"; parts: DayContextParts };
+
+interface HostView {
+  state: LoadState;
+  sheetDay: SheetDayContext | null;
+  request: LoadRequest | null;
+}
+
+interface CachedEntry {
+  data: QuickEntryData;
+  parts: DayContextParts;
+  key: string;
+}
 
 function quickEntryToday(data: QuickEntryBody): string | null {
   if (data.form === "measurements") return data.defaultDate;
   if (data.form === "cycle" || data.form === "document") return null;
   return data.today;
+}
+
+function contextDayLabel(
+  day: string,
+  today: string,
+  prefs: ReturnType<typeof useFormatPrefs>
+) {
+  if (day === today) return "Today";
+  if (day === shiftDateStr(today, -1)) return "Yesterday";
+  return formatWeekdayDate(day, prefs);
+}
+
+function withLiveDayLabels(
+  data: QuickEntryBody,
+  today: string,
+  prefs: ReturnType<typeof useFormatPrefs>
+): QuickEntryBody {
+  const label = (date: string) => contextDayLabel(date, today, prefs);
+  switch (data.form) {
+    case "food":
+    case "mood":
+      return {
+        ...data,
+        days: data.days.map((day) => ({ ...day, label: label(day.date) })),
+      };
+    case "dose":
+      return {
+        ...data,
+        pastDays: data.pastDays.map((day) => ({
+          ...day,
+          label: label(day.date),
+        })),
+      };
+    default:
+      return data;
+  }
 }
 
 // The stall bound a cold "Loading…" may sit under before the sheet admits the
@@ -260,18 +316,25 @@ export default function QuickEntryProvider({
   actingProfileId: number;
 }) {
   const toast = useToast();
+  const formatPrefs = useFormatPrefs();
+  const liveProfileDays = useLiveProfileDays();
+  const liveProfileDaysRef = useRef(liveProfileDays);
+  liveProfileDaysRef.current = liveProfileDays;
   const [open, setOpen] = useState(false);
   // The form is RETAINED after close so the panel keeps its content through the
   // sheet's exit animation instead of blanking on the way out.
   const [form, setForm] = useState<QuickEntryForm | null>(null);
   const [prefill, setPrefill] = useState<QuickEntryPrefill | null>(null);
-  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [host, setHost] = useState<HostView>({
+    state: { status: "loading" },
+    sheetDay: null,
+    request: null,
+  });
   // The sheet's chosen subject (#4932) — never null once a form has opened: it
   // resolves to the opener's subject, else the acting profile, on every open. Never
   // persisted past close (Out of scope, #4932): the NEXT open recomputes it fresh,
   // it is not read back in.
   const [subject, setSubject] = useState(actingProfileId);
-  const [sheetDay, setSheetDay] = useState<SheetDayContext | null>(null);
   // The "Who is this for?" block (#4932). Toggled by the chip; nothing else opens
   // it and it never opens on its own.
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -283,38 +346,46 @@ export default function QuickEntryProvider({
     ++requestRef.current;
     setOpen(false);
     setPickerOpen(false);
+    setHost((current) => ({ ...current, request: null }));
   }, []);
 
-  // LAST-GOOD, PER (FORM, SUBJECT) (#3416/#4454). Held in a ref, not state: it is
+  // LAST-GOOD, PER CANONICAL DAY CONTEXT (#3416/#4454). Held in a ref, not state: it is
   // read synchronously inside `loadFor` and never itself drives a render — only the
-  // `ready`/`error` state transitions below do. Keyed on the subject (#4932's Refs:
-  // "the subject joins #3416's snapshot key") so a cached read for Mia can never
-  // paint as Alex's, and cleared whenever the ACTING profile changes (below) — the
-  // same device-local wipe boundary ProfileSwitchWatcher enforces for the offline
-  // read snapshots, extended to this in-memory one.
-  const lastGoodRef = useRef(
-    new Map<string, { data: QuickEntryData; parts: DayContextParts }>()
-  );
-  const priorActingProfileId = useRef(actingProfileId);
-  useLayoutEffect(() => {
-    if (priorActingProfileId.current !== actingProfileId) {
-      priorActingProfileId.current = actingProfileId;
-      lastGoodRef.current.clear();
-    }
-  }, [actingProfileId]);
+  // `ready`/`error` state transitions below do. The form prefixes `dayContextKey`,
+  // whose parts include subject, day, and reach. The keyed layout mount supplies the
+  // acting-profile and authentication invalidation boundary.
+  const lastGoodRef = useRef(new Map<string, CachedEntry>());
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
   // subject parameter and one gate; no second copy of the gather per subject").
   // Reused by a fresh open, a mid-sheet subject switch AND a retry (below), so none
   // of the three can diverge into its own reader of the same form.
   const loadFor = useCallback(
-    (
+    function runLoad(
       next: QuickEntryForm,
       subjectId: number,
       token: number,
-      inheritedDay?: DayContextValue | null,
-      selectedDay?: string
-    ) => {
+      request: LoadRequest
+    ) {
+      const hasDayContext = next !== "cycle" && next !== "document";
+      const requestMatchesSubject =
+        request.kind === "dayless" ||
+        (request.kind === "inherited"
+          ? request.value.parts.profileId === subjectId
+          : request.parts.profileId === subjectId);
+      const effectiveRequest: LoadRequest =
+        hasDayContext && requestMatchesSubject ? request : { kind: "dayless" };
+      const requestedParts =
+        effectiveRequest.kind === "inherited"
+          ? effectiveRequest.value.parts
+          : effectiveRequest.kind === "selected"
+            ? effectiveRequest.parts
+            : null;
+      const matchingInherited =
+        effectiveRequest.kind === "inherited" && requestedParts
+          ? effectiveRequest.value
+          : null;
+
       // NO ROUND TRIP for measurements — the props are already here (#4091), and
       // that gather is resolved for the ACTING profile only (no subject-keyed
       // version exists). #4932 invariant 2: a form that cannot follow the subject
@@ -322,108 +393,127 @@ export default function QuickEntryProvider({
       // chosen subject other than the acting profile gets that instead of the
       // wrong person's age gates and defaults.
       if (next === "measurements") {
-        const requestedDay =
-          inheritedDay?.parts.profileId === subjectId
-            ? inheritedDay.parts.day
-            : selectedDay;
-        const today = measurements.defaultDate;
-        const parts: DayContextParts =
-          inheritedDay?.parts.profileId === subjectId
-            ? inheritedDay.parts
-            : {
-                profileId: subjectId,
-                day: requestedDay ?? today,
-                reach: SHEET_REACH,
-              };
-        setState({
-          status: "ready",
-          gatheredKey: dayContextKey(parts),
-          data:
-            subjectId === actingProfileId
-              ? {
-                  ...measurements,
-                  defaultDate: requestedDay ?? measurements.defaultDate,
-                }
-              : {
-                  form: "unavailable",
-                  today,
-                  message:
-                    "Switch to this profile to log measurements from the sheet.",
-                },
+        const today =
+          liveProfileDaysRef.current.get(subjectId) ?? measurements.defaultDate;
+        const parts: DayContextParts = requestedParts ?? {
+          profileId: subjectId,
+          day: today,
+          reach: SHEET_REACH,
+        };
+        setHost({
+          request: effectiveRequest,
+          sheetDay: matchingInherited
+            ? { kind: "inherited", value: matchingInherited }
+            : { kind: "state", parts },
+          state: {
+            status: "ready",
+            gatheredKey: dayContextKey(parts),
+            data:
+              subjectId === actingProfileId
+                ? { ...measurements, defaultDate: parts.day }
+                : {
+                    form: "unavailable",
+                    today,
+                    message:
+                      "Switch to this profile to log measurements from the sheet.",
+                  },
+          },
         });
-        setSheetDay(
-          inheritedDay?.parts.profileId === subjectId
-            ? { kind: "inherited", value: inheritedDay }
-            : {
-                kind: "state",
-                profileId: subjectId,
-                today,
-                initialDay: requestedDay ?? today,
-              }
-        );
         return;
       }
-      const hasDayContext = next !== "cycle" && next !== "document";
-      const matchingInherited =
-        hasDayContext && inheritedDay?.parts.profileId === subjectId
-          ? inheritedDay
-          : null;
-      const requestedDay = matchingInherited?.parts.day ?? selectedDay;
-      const requestedParts: DayContextParts | null = matchingInherited
-        ? matchingInherited.parts
-        : selectedDay
-          ? { profileId: subjectId, day: selectedDay, reach: SHEET_REACH }
-          : null;
       const requestedKey = requestedParts
         ? `${next}:${dayContextKey(requestedParts)}`
         : null;
+      const liveToday =
+        liveProfileDaysRef.current.get(subjectId) ??
+        (subjectId === actingProfileId ? measurements.defaultDate : undefined);
+      let fallback: CachedEntry | undefined;
+      if (liveToday) {
+        for (let ago = 0; ago <= SHEET_REACH.back; ago += 1) {
+          const parts = {
+            profileId: subjectId,
+            day: shiftDateStr(liveToday, -ago),
+            reach: SHEET_REACH,
+          } satisfies DayContextParts;
+          const entry = lastGoodRef.current.get(
+            `${next}:${dayContextKey(parts)}`
+          );
+          // Only a response gathered as its profile's current day may become a
+          // dayless fallback. An explicitly selected past day remains cached for
+          // that exact selection but never becomes the next open's default.
+          if (entry && quickEntryToday(entry.data) === entry.parts.day) {
+            fallback = entry;
+            break;
+          }
+        }
+      }
       const cached = requestedKey
         ? lastGoodRef.current.get(requestedKey)
-        : undefined;
-      if (matchingInherited) {
-        setSheetDay({ kind: "inherited", value: matchingInherited });
-      } else if (cached) {
-        const cachedToday = quickEntryToday(cached.data);
-        if (cachedToday)
-          setSheetDay({
-            kind: "state",
-            profileId: cached.parts.profileId,
-            today: cachedToday,
-            initialDay: cached.parts.day,
-          });
-      }
+        : fallback &&
+            liveToday &&
+            isWithinReach(SHEET_REACH, liveToday, fallback.parts.day)
+          ? fallback
+          : undefined;
+      const initialSheetDay: SheetDayContext | null = !hasDayContext
+        ? null
+        : matchingInherited
+          ? { kind: "inherited", value: matchingInherited }
+          : requestedParts
+            ? { kind: "state", parts: requestedParts }
+            : cached
+              ? { kind: "state", parts: cached.parts }
+              : null;
       // LAST-GOOD RENDER, REVALIDATE BEHIND IT (#3416 proposal 1). A held copy from
       // an earlier successful open of this SAME (form, subject) pair renders
       // immediately instead of a loading state that would be a lie about what the
       // sheet already knows; the fetch below still runs regardless — the SAME one
       // gather an open always made (#3369: no extra query for having a cache).
-      setState(
-        cached
-          ? {
-              status: "ready",
-              data: cached.data,
-              gatheredKey: dayContextKey(cached.parts),
-            }
-          : { status: "loading" }
-      );
+      setHost({
+        request: effectiveRequest,
+        sheetDay: initialSheetDay,
+        state: cached
+          ? { status: "ready", data: cached.data, gatheredKey: cached.key }
+          : { status: "loading" },
+      });
       // THE STALL BOUND (#3416 proposal 3): with no last-good to fall back on, a
       // gather that never settles must not leave "Loading…" up forever. ~10s, so a
       // slow-but-real network still finishes ahead of it in the ordinary case.
       const stallTimer = cached
         ? null
         : setTimeout(() => {
-            if (requestRef.current === token) setState({ status: "error" });
+            if (requestRef.current === token)
+              setHost((current) => ({
+                ...current,
+                state: { status: "error" },
+              }));
           }, QUICK_ENTRY_LOAD_TIMEOUT_MS);
       void loadQuickEntry(
         next,
         subjectId,
-        requestedDay,
-        inheritedDay?.parts.reach.kind === "dated" ? "dated" : "sheet"
+        requestedParts?.day,
+        matchingInherited?.parts.reach.kind === "dated" ? "dated" : "sheet"
       ).then(
         (data) => {
           if (stallTimer != null) clearTimeout(stallTimer);
           if (requestRef.current !== token) return;
           const gatheredToday = hasDayContext ? quickEntryToday(data) : null;
+          const responseLiveToday =
+            liveProfileDaysRef.current.get(subjectId) ??
+            (subjectId === actingProfileId
+              ? measurements.defaultDate
+              : undefined);
+          if (
+            effectiveRequest.kind === "dayless" &&
+            gatheredToday &&
+            responseLiveToday &&
+            responseLiveToday !== gatheredToday
+          ) {
+            const nextToken = ++requestRef.current;
+            runLoad(next, subjectId, nextToken, { kind: "dayless" });
+            return;
+          }
+          let nextSheetDay: SheetDayContext | null = null;
+          let gatheredKey: string | undefined;
           if (gatheredToday) {
             const parts =
               requestedParts ??
@@ -432,30 +522,21 @@ export default function QuickEntryProvider({
                 day: gatheredToday,
                 reach: SHEET_REACH,
               } satisfies DayContextParts);
-            lastGoodRef.current.set(`${next}:${dayContextKey(parts)}`, {
+            const key = dayContextKey(parts);
+            lastGoodRef.current.set(`${next}:${key}`, {
               data,
               parts,
+              key,
             });
-            if (!matchingInherited)
-              setSheetDay({
-                kind: "state",
-                profileId: subjectId,
-                today: gatheredToday,
-                initialDay: parts.day,
-              });
+            gatheredKey = key;
+            nextSheetDay = matchingInherited
+              ? { kind: "inherited", value: matchingInherited }
+              : { kind: "state", parts };
           }
-          setState({
-            status: "ready",
-            data,
-            gatheredKey: gatheredToday
-              ? dayContextKey(
-                  requestedParts ?? {
-                    profileId: subjectId,
-                    day: gatheredToday,
-                    reach: SHEET_REACH,
-                  }
-                )
-              : undefined,
+          setHost({
+            request: effectiveRequest,
+            sheetDay: nextSheetDay,
+            state: { status: "ready", data, gatheredKey },
           });
         },
         () => {
@@ -465,7 +546,11 @@ export default function QuickEntryProvider({
           // SHOWN (#3416 proposal 1) — the person is mid-use of a form that just
           // proved it still has yesterday's answer; only a COLD failure (nothing
           // cached yet) reaches the error state.
-          if (!cached) setState({ status: "error" });
+          if (!cached)
+            setHost((current) => ({
+              ...current,
+              state: { status: "error" },
+            }));
         }
       );
     },
@@ -486,25 +571,16 @@ export default function QuickEntryProvider({
       setSubject(resolvedSubject);
       setPickerOpen(false);
       setOpen(true);
-      const knownStateToday =
-        dayContext == null &&
-        next !== "cycle" &&
-        next !== "document" &&
-        sheetDay?.kind === "state" &&
-        sheetDay.profileId === resolvedSubject
-          ? { ...sheetDay, initialDay: sheetDay.today }
-          : null;
-      if (!dayContext || next === "cycle" || next === "document")
-        setSheetDay(knownStateToday);
       loadFor(
         next,
         resolvedSubject,
         token,
-        next === "cycle" || next === "document" ? null : dayContext,
-        knownStateToday?.initialDay
+        dayContext
+          ? { kind: "inherited", value: dayContext }
+          : { kind: "dayless" }
       );
     },
-    [actingProfileId, loadFor, sheetDay]
+    [actingProfileId, loadFor]
   );
 
   // Tapping the chip toggles the block; tapping it again while open closes it
@@ -526,8 +602,7 @@ export default function QuickEntryProvider({
       setSubject(profileId);
       setPrefill(null);
       const token = ++requestRef.current;
-      setSheetDay(null);
-      loadFor(form, profileId, token);
+      loadFor(form, profileId, token, { kind: "dayless" });
       const name = writableProfiles.find((p) => p.id === profileId)?.name;
       toast(
         name
@@ -544,14 +619,8 @@ export default function QuickEntryProvider({
   const retry = useCallback(() => {
     if (form == null) return;
     const token = ++requestRef.current;
-    loadFor(
-      form,
-      subject,
-      token,
-      sheetDay?.kind === "inherited" ? sheetDay.value : null,
-      sheetDay?.kind === "state" ? sheetDay.initialDay : undefined
-    );
-  }, [form, subject, loadFor, sheetDay]);
+    loadFor(form, subject, token, host.request ?? { kind: "dayless" });
+  }, [form, subject, loadFor, host.request]);
 
   const api = useMemo<QuickEntryHostApi>(
     () => ({ open: openForm, close }),
@@ -562,13 +631,39 @@ export default function QuickEntryProvider({
     (day: string) => {
       if (form == null) return;
       const token = ++requestRef.current;
-      setSheetDay((current) =>
-        current?.kind === "state" ? { ...current, initialDay: day } : current
-      );
-      loadFor(form, subject, token, null, day);
+      loadFor(form, subject, token, {
+        kind: "selected",
+        parts: { profileId: subject, day, reach: SHEET_REACH },
+      });
     },
     [form, subject, loadFor]
   );
+
+  const state = useMemo(() => {
+    const liveToday = liveProfileDays.get(subject) ?? measurements.defaultDate;
+    return host.state.status === "ready"
+      ? {
+          ...host.state,
+          data: withLiveDayLabels(host.state.data, liveToday, formatPrefs),
+        }
+      : host.state;
+  }, [
+    host.state,
+    liveProfileDays,
+    subject,
+    measurements.defaultDate,
+    formatPrefs,
+  ]);
+  const sheetDay = host.sheetDay;
+  const subjectToday = liveProfileDays.get(subject) ?? measurements.defaultDate;
+  const inheritedDayValue =
+    sheetDay?.kind === "inherited"
+      ? {
+          ...sheetDay.value,
+          today: subjectToday,
+          isPrimaryDay: sheetDay.value.parts.day === subjectToday,
+        }
+      : null;
 
   const sheet = form ? SHEET[form] : null;
   // The subject to POST (#4932): explicit only when it differs from the acting
@@ -669,10 +764,10 @@ export default function QuickEntryProvider({
             {/* Keyed on the subject (#4932): switching who this is for remounts the
                 body fresh, which is what actually discards a staged, half-typed
                 entry rather than leaving it to paint under the new subject's name. */}
-            {sheetDay?.kind === "inherited" ? (
-              <DayContextBoundary value={sheetDay.value}>
+            {inheritedDayValue ? (
+              <DayContextBoundary value={inheritedDayValue}>
                 <QuickEntryDayBody
-                  identity={`${form}:${subject}:${sheetDay.value.key}`}
+                  identity={`${form}:${inheritedDayValue.key}`}
                   form={form}
                   subject={subject}
                   state={state}
@@ -684,19 +779,15 @@ export default function QuickEntryProvider({
               </DayContextBoundary>
             ) : sheetDay?.kind === "state" ? (
               <DayContextProvider
-                profileId={sheetDay.profileId}
-                today={sheetDay.today}
+                profileId={sheetDay.parts.profileId}
+                today={subjectToday}
                 reach={SHEET_REACH}
-                backing={{ kind: "state", initialDay: sheetDay.initialDay }}
+                backing={{ kind: "state", initialDay: sheetDay.parts.day }}
                 onSelectedDayChange={selectSheetDay}
               >
                 <BoundedDaySwitcher />
                 <QuickEntryDayBody
-                  identity={`${form}:${subject}:${dayContextKey({
-                    profileId: sheetDay.profileId,
-                    day: sheetDay.initialDay,
-                    reach: SHEET_REACH,
-                  })}`}
+                  identity={`${form}:${dayContextKey(sheetDay.parts)}`}
                   form={form}
                   subject={subject}
                   state={state}
@@ -812,6 +903,7 @@ function QuickEntryBody({
 
   const data = state.data;
   const selectedDay = dayContext?.parts.day;
+  const profileToday = dayContext?.today ?? quickEntryToday(data);
   switch (data.form) {
     case "measurements":
       return (
@@ -838,9 +930,12 @@ function QuickEntryBody({
       // logs however many servings they mean to and dismisses the sheet. (Its
       // taps already refresh the page behind, so "stay put" still holds.)
       return (
-        <FoodProjectionProvider today={data.today} days={data.days}>
+        <FoodProjectionProvider
+          today={profileToday ?? data.today}
+          days={data.days}
+        >
           <FoodLogBar
-            today={data.today}
+            today={profileToday ?? data.today}
             days={data.days}
             groupsBySlot={data.groupsBySlot}
             proteinRankBySlot={data.proteinRankBySlot}
@@ -871,7 +966,7 @@ function QuickEntryBody({
     case "dose":
       return (
         <QuickDoseList
-          today={data.today}
+          today={profileToday ?? data.today}
           doses={data.doses}
           prn={data.prn}
           pastDays={data.pastDays}

@@ -219,6 +219,72 @@ describe("the mood domain's two pieces", () => {
     expect(done).toHaveBeenCalledOnce();
   });
 
+  it("freezes the whole dated statement until a delayed write rolls back", async () => {
+    let rejectWrite!: (error: unknown) => void;
+    logMoodReply = () =>
+      new Promise<{ ok: true }>((_, reject) => {
+        rejectWrite = reject;
+      });
+    enqueueReply = "closed";
+    render(
+      <DayContextProvider
+        profileId={1}
+        today={EMPTY.date}
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: EMPTY.date }}
+      >
+        <MoodForm days={[EMPTY]} showCalm />
+      </DayContextProvider>
+    );
+    fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(screen.getByRole("button", { name: "Energy: 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Calm: 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "keep this detail" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+
+    expect(posted.logMood).toHaveLength(1);
+    for (const control of [
+      screen.getByRole("button", { name: "Mood: Great" }),
+      screen.getByRole("button", { name: "Energy: 5" }),
+      screen.getByRole("button", { name: "Calm: 5" }),
+      screen.getByRole("button", { name: "Work" }),
+      screen.getByLabelText("Note"),
+    ]) {
+      expect(control.matches(":disabled")).toBe(true);
+    }
+    fireEvent.submit(screen.getByTestId("mood-form"));
+    expect(posted.logMood).toHaveLength(1);
+
+    await act(async () => rejectWrite(new TypeError("Failed to fetch")));
+
+    expect(
+      screen
+        .getByRole("button", { name: "Mood: Good" })
+        .getAttribute("aria-pressed")
+    ).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: "Energy: 3" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: "Calm: 4" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Work" }).getAttribute("aria-pressed")
+    ).toBe("true");
+    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe(
+      "keep this detail"
+    );
+    expect(screen.getByTestId("mood-form")).toBeTruthy();
+  });
+
   it("writes only the selected shared-context day without private day chips", async () => {
     render(
       <DayContextProvider

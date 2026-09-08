@@ -2409,6 +2409,15 @@ export default function FoodLogBar({
                 </Disclosure>
               )}
             </div>
+            {!showDayContext && (
+              <p
+                data-testid="food-sheet-day-total"
+                className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+              >
+                {dayTotal} {dayTotal === 1 ? "serving" : "servings"} logged this
+                day
+              </p>
+            )}
           </AddDoor>
         </section>
         {nutrientSummary}

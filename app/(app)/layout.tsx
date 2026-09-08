@@ -126,6 +126,10 @@ export default async function AppLayout({
   const writableProfiles = scope.profiles.filter(
     (p) => scope.access.get(p.id) === "write"
   );
+  const quickEntryProfileTimeZones = writableProfiles.map((p) => ({
+    profileId: p.id,
+    timeZone: getTimezone(p.id),
+  }));
   // Own-profile link (#1013): the acting profile's subject name when the login is
   // acting as someone OTHER than its own profile (null when acting as self / no
   // own-profile set). Threaded to the live workout editor + dock — the fastest-
@@ -323,8 +327,13 @@ export default async function AppLayout({
                   except the measurements props, resolved HERE (#4091) because a
                   Server Action cannot be on the critical path of a surface people
                   are expected to reach with no connection. */}
-                  <RouteDayContext profileId={profile.id} timeZone={timezone}>
+                  <RouteDayContext
+                    profileId={profile.id}
+                    timeZone={timezone}
+                    profileTimeZones={quickEntryProfileTimeZones}
+                  >
                     <QuickEntryProvider
+                      key={`${login.id}:${session.deviceSessionKey}:${scope.actingProfileId}`}
                       measurements={measurementsQuickEntry(
                         login.id,
                         profile.id

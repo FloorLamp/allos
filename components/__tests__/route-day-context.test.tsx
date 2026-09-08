@@ -2,7 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useState } from "react";
 import RouteDayContext from "@/components/RouteDayContext";
-import { useOptionalDayContext } from "@/components/DayContext";
+import {
+  useLiveProfileDays,
+  useOptionalDayContext,
+} from "@/components/DayContext";
 import FoodSuggestionsLayout, {
   useFoodSelectedDate,
 } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
@@ -21,6 +24,15 @@ function Probe() {
   return (
     <output data-testid="route-day">
       {day ? `${day.parts.day}:${day.backing}` : "undated"}
+    </output>
+  );
+}
+
+function ProfileDayProbe({ profileId }: { profileId: number }) {
+  const days = useLiveProfileDays();
+  return (
+    <output data-testid={`profile-day-${profileId}`}>
+      {days.get(profileId)}
     </output>
   );
 }
@@ -139,6 +151,31 @@ it("refreshes the route day when a persistent layout crosses local midnight", ()
 
   act(() => vi.advanceTimersByTime(1_100));
   expect(screen.getByTestId("route-day").textContent).toBe("2026-09-08:url");
+});
+
+it("owns one live clock for authorized subjects on opposite calendar days", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-07T09:59:59.000Z"));
+  render(
+    <RouteDayContext
+      profileId={7}
+      timeZone="UTC"
+      profileTimeZones={[
+        { profileId: 7, timeZone: "UTC" },
+        { profileId: 8, timeZone: "Pacific/Kiritimati" },
+      ]}
+    >
+      <ProfileDayProbe profileId={7} />
+      <ProfileDayProbe profileId={8} />
+    </RouteDayContext>
+  );
+
+  expect(screen.getByTestId("profile-day-7").textContent).toBe("2026-09-07");
+  expect(screen.getByTestId("profile-day-8").textContent).toBe("2026-09-07");
+
+  act(() => vi.advanceTimersByTime(1_100));
+  expect(screen.getByTestId("profile-day-7").textContent).toBe("2026-09-07");
+  expect(screen.getByTestId("profile-day-8").textContent).toBe("2026-09-08");
 });
 
 it("rearms through a local midnight gap until the calendar day changes", () => {

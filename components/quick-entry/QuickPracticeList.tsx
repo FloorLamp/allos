@@ -5,6 +5,9 @@ import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import PracticeEditor from "@/app/(app)/wellness/PracticeEditor";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
 import { useOptionalDayContext } from "@/components/DayContext";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { shiftDateStr } from "@/lib/date";
+import { formatWeekdayDate } from "@/lib/format-date";
 import { practiceRowFacts, practiceRunningFacts } from "@/lib/practice";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 import {
@@ -85,6 +88,14 @@ export default function QuickPracticeList({
   subjectProfileId?: number;
 }) {
   const dayContext = useOptionalDayContext();
+  const prefs = useFormatPrefs();
+  const profileToday = dayContext?.today ?? today;
+  const dayLabel =
+    today === profileToday
+      ? "Today"
+      : today === shiftDateStr(profileToday, -1)
+        ? "Yesterday"
+        : formatWeekdayDate(today, prefs);
   const [rows, setRows] = useState(practices);
   // Follow the gather whenever the sheet hands down a new one — the same server-wins
   // discipline the row control keeps over its own count.
@@ -170,12 +181,15 @@ export default function QuickPracticeList({
                   )
                 ) : (
                   <>
-                    {facts.today && (
+                    {practice.todayCount > 0 && (
                       <span data-testid="practice-today-count">
-                        {facts.today}
+                        {practice.todayCount}{" "}
+                        {dayLabel === "Today" || dayLabel === "Yesterday"
+                          ? dayLabel.toLowerCase()
+                          : `on ${dayLabel}`}
                       </span>
                     )}
-                    {facts.today ? " · " : null}
+                    {practice.todayCount > 0 ? " · " : null}
                     {facts.week}
                   </>
                 )}
@@ -186,6 +200,8 @@ export default function QuickPracticeList({
                 practice={practice.name}
                 todayCount={practice.todayCount}
                 today={today}
+                profileToday={profileToday}
+                dayLabel={dayLabel}
                 defaultDurationMin={practice.previousDurationMin}
                 liveSession={practice.liveSession}
                 inlineDuration

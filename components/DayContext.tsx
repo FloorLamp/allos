@@ -37,6 +37,28 @@ export interface DayContextValue {
 }
 
 const Context = createContext<DayContextValue | null>(null);
+const ProfileDaysContext = createContext<ReadonlyMap<number, string> | null>(
+  null
+);
+const EMPTY_PROFILE_DAYS = new Map<number, string>();
+
+export function ProfileDaysBoundary({
+  days,
+  children,
+}: {
+  days: ReadonlyMap<number, string>;
+  children: ReactNode;
+}) {
+  return (
+    <ProfileDaysContext.Provider value={days}>
+      {children}
+    </ProfileDaysContext.Provider>
+  );
+}
+
+export function useLiveProfileDays(): ReadonlyMap<number, string> {
+  return useContext(ProfileDaysContext) ?? EMPTY_PROFILE_DAYS;
+}
 
 export function DayContextBoundary({
   value,

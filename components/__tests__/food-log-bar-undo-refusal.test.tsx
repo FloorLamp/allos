@@ -338,10 +338,25 @@ function deferred<T>() {
 }
 
 describe("FoodLogBar projection publication", () => {
-  it("leaves the sheet's shared day control as the only day header", () => {
-    mountBar({ showDayContext: false });
+  it("retires the private header and leaves one quiet day total under sheet rows", () => {
+    mountBar({
+      showDayContext: false,
+      day: {
+        ...DAY,
+        counts: { cruciferous: 3 },
+        slotCounts: {
+          Morning: {},
+          Midday: { cruciferous: 3 },
+          Evening: {},
+        },
+      },
+    });
     expect(screen.queryByTestId("food-log-context")).toBeNull();
     expect(screen.getByTestId("food-log-bar")).not.toBeNull();
+    expect(screen.getAllByTestId("food-sheet-day-total")).toHaveLength(1);
+    expect(screen.getByTestId("food-sheet-day-total").textContent).toBe(
+      "3 servings logged this day"
+    );
   });
 
   beforeEach(() => {

@@ -64,6 +64,8 @@ export default function LogPracticeButton({
   todayCount,
   atCeiling = false,
   today,
+  profileToday = today,
+  dayLabel = "Today",
   defaultDurationMin = null,
   liveSession = null,
   showDetails = false,
@@ -88,6 +90,10 @@ export default function LogPracticeButton({
   atCeiling?: boolean;
   // The acting profile's today (YYYY-MM-DD).
   today: string;
+  // The live profile day and the selected day's display label. They can differ on
+  // a dated sheet, where the count and write still belong to `today`.
+  profileToday?: string;
+  dayLabel?: string;
   // The duration the controls START at — `practiceDurationPrefill` server-side, never
   // re-derived here. Null means blank, and blank is a real answer.
   defaultDurationMin?: number | null;
@@ -268,7 +274,7 @@ export default function LogPracticeButton({
       }
       onServerRead?.();
     }
-    toast(practiceLogOutcomeText(outcome, today));
+    toast(practiceLogOutcomeText(outcome, profileToday));
   }
 
   // Park this tap for replay (#2908). DAY-IDEMPOTENT by construction: the replay
@@ -315,7 +321,9 @@ export default function LogPracticeButton({
       subjectProfileId == null
     ) {
       if (count > 0) {
-        toast("Already logged today — it'll sync when you're back online.");
+        toast(
+          `Already logged ${dayLabel.toLowerCase()} — it'll sync when you're back online.`
+        );
         return;
       }
       await queueOffline();
@@ -590,7 +598,7 @@ export default function LogPracticeButton({
               ariaLabel={
                 count === 0
                   ? `Just finished a ${practice} session`
-                  : `Just finished another ${practice} session — ${count} already logged today`
+                  : `Just finished another ${practice} session — ${count} already logged ${dayLabel.toLowerCase()}`
               }
             />
             {statement.door}
@@ -624,7 +632,7 @@ export default function LogPracticeButton({
               aria-label={
                 count === 0
                   ? `Just finished a ${practice} session`
-                  : `Just finished another ${practice} session — ${count} already logged today`
+                  : `Just finished another ${practice} session — ${count} already logged ${dayLabel.toLowerCase()}`
               }
               className={`${DOSE_ACTION_LABEL} ${
                 primaryTone === "neutral"
