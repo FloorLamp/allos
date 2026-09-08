@@ -4,6 +4,9 @@ import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
+import { DayContextProvider, useDayContext } from "@/components/DayContext";
+import BoundedDaySwitcher from "@/components/BoundedDaySwitcher";
+import { SHEET_REACH } from "@/lib/log-manifest";
 
 const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
@@ -86,21 +89,39 @@ const PAST_DAYS = [
   { date: "2026-08-26", label: "Wed, Aug 26", slots: [] },
 ];
 
-function renderSheet() {
+function DoseHarness({ onDone }: { onDone: () => void }) {
+  const day = useDayContext();
+  return (
+    <>
+      <BoundedDaySwitcher />
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={day.parts.day}
+        doses={[
+          {
+            doseId: DAILY_DOSE,
+            title: "Creatine",
+            detail: null,
+            dueText: "8:00am",
+          },
+        ]}
+        pastDays={PAST_DAYS}
+        onDone={onDone}
+      />
+    </>
+  );
+}
+
+function renderSheet(onDone = vi.fn()) {
   return render(
-    <QuickDoseList
+    <DayContextProvider
+      profileId={1}
       today={TODAY}
-      doses={[
-        {
-          doseId: DAILY_DOSE,
-          title: "Creatine",
-          detail: null,
-          dueText: "8:00am",
-        },
-      ]}
-      pastDays={PAST_DAYS}
-      onDone={vi.fn()}
-    />
+      reach={SHEET_REACH}
+      backing={{ kind: "state", initialDay: TODAY }}
+    >
+      <DoseHarness onDone={onDone} />
+    </DayContextProvider>
   );
 }
 
@@ -263,7 +284,7 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
 
   it("offers exactly the days the server sent, today first", () => {
     renderSheet();
-    const labels = within(screen.getByTestId("quick-entry-dose-day-toggle"))
+    const labels = within(screen.getByTestId("bounded-day-switcher"))
       .getAllByRole("button")
       .map((b) => b.textContent);
     // Exact list, not a count and not a lower bound: a fourth day and a missing
@@ -371,22 +392,7 @@ describe("one schedule row on several days is several occurrences", () => {
 
   it("logging yesterday's dose leaves TODAY's identical dose still due", async () => {
     const onDone = vi.fn();
-    render(
-      <QuickDoseList
-        today={TODAY}
-        doses={[
-          {
-            doseId: DAILY_DOSE,
-            title: "Creatine",
-            detail: null,
-            dueText: "8:00am",
-          },
-        ]}
-        pastDays={PAST_DAYS}
-        onDone={onDone}
-      />
-    );
-
+    renderSheet(onDone);
     fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
     const day = screen.getByTestId("quick-entry-dose-day");
     await act(async () => {

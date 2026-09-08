@@ -14,6 +14,9 @@ import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import DayLedger from "@/app/(app)/nutrition/DayLedger";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
+import { DayContextProvider, useDayContext } from "@/components/DayContext";
+import BoundedDaySwitcher from "@/components/BoundedDaySwitcher";
+import { SHEET_REACH } from "@/lib/log-manifest";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
@@ -555,35 +558,53 @@ describe("one dose row control, any writable day (#4424 ruling 3)", () => {
 });
 
 describe("the quick sheet mounts the same control on both of its arms", () => {
+  function SheetBody() {
+    const day = useDayContext();
+    return (
+      <>
+        <BoundedDaySwitcher />
+        <QuickDoseList
+          today={TODAY}
+          selectedDay={day.parts.day}
+          doses={[
+            { doseId: 41, title: "Creatine", detail: null, dueText: "8:00am" },
+          ]}
+          pastDays={[
+            {
+              date: YESTERDAY,
+              label: "Yesterday",
+              slots: [
+                {
+                  bucket: "Morning",
+                  doses: [
+                    {
+                      doseId: 41,
+                      name: "Creatine",
+                      detail: "5 g",
+                      stack: null,
+                      amountAssumed: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ]}
+          onDone={vi.fn()}
+        />
+      </>
+    );
+  }
+
   function renderSheet() {
     return render(
-      <QuickDoseList
+      <DayContextProvider
+        profileId={1}
         today={TODAY}
-        doses={[
-          { doseId: 41, title: "Creatine", detail: null, dueText: "8:00am" },
-        ]}
-        pastDays={[
-          {
-            date: YESTERDAY,
-            label: "Yesterday",
-            slots: [
-              {
-                bucket: "Morning",
-                doses: [
-                  {
-                    doseId: 41,
-                    name: "Creatine",
-                    detail: "5 g",
-                    stack: null,
-                    amountAssumed: false,
-                  },
-                ],
-              },
-            ],
-          },
-        ]}
-        onDone={vi.fn()}
-      />
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: TODAY }}
+      >
+        <SheetBody />
+      </DayContextProvider>
     );
   }
 
