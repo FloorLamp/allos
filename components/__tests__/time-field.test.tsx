@@ -1,9 +1,12 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
+import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
 import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
+import { TimezoneProvider } from "@/components/TimezoneProvider";
+import { WeekStartProvider } from "@/components/WeekStartProvider";
 import type { TimeFormat } from "@/lib/format-date";
 
 // `DirtyFormProvider` calls `useRouter().refresh` when a form releases into an
@@ -505,5 +508,62 @@ describe("TimeField — the dirty-form registry (#4976)", () => {
     expect(dirty()).toBe("1");
     fireEvent.change(field(), { target: { value: "09:00" } });
     expect(dirty()).toBe("0");
+  });
+});
+
+function mountNamedDate(initial = "2026-03-15") {
+  render(
+    <TimezoneProvider tz="UTC">
+      <WeekStartProvider weekStart={0}>
+        <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat: "24h" }}>
+          <DirtyFormProvider>
+            <form>
+              <DateField name="date" defaultValue={initial} data-testid="df" />
+              <input type="hidden" name="record_id" defaultValue="1" />
+            </form>
+          </DirtyFormProvider>
+        </FormatPrefsProvider>
+      </WeekStartProvider>
+    </TimezoneProvider>
+  );
+  return {
+    field: () => screen.getByTestId("df") as HTMLInputElement,
+    dirty: () => screen.getByTestId("dirty-form-registry").dataset.dirty,
+  };
+}
+
+describe("DateField — the dirty-form registry (#4986)", () => {
+  it("tracks a manual date-only edit and becomes clean at the original date", () => {
+    const { field, dirty } = mountNamedDate();
+    expect(dirty()).toBe("0");
+    fireEvent.focus(field());
+    expect(screen.getByTestId("date-field-calendar")).toBeTruthy();
+    expect(dirty()).toBe("0");
+
+    fireEvent.change(field(), { target: { value: "2026-03-16" } });
+    expect(dirty()).toBe("1");
+    fireEvent.change(field(), { target: { value: "2026-03-15" } });
+    expect(dirty()).toBe("0");
+  });
+
+  it("tracks a calendar-only edit while opening the calendar stays clean", () => {
+    const { dirty } = mountNamedDate();
+    fireEvent.click(screen.getByRole("button", { name: "Open calendar" }));
+    expect(dirty()).toBe("0");
+    fireEvent.click(screen.getByLabelText("March 16, 2026"));
+    expect(dirty()).toBe("1");
+  });
+
+  it("keeps ordinary hidden plumbing excluded", () => {
+    const { field, dirty } = mountNamedDate();
+    const recordId = document.querySelector<HTMLInputElement>(
+      'input[name="record_id"]'
+    )!;
+    fireEvent.input(recordId, { target: { value: "2" } });
+    expect(dirty()).toBe("0");
+
+    fireEvent.focus(field());
+    fireEvent.change(field(), { target: { value: "2026-03-16" } });
+    expect(dirty()).toBe("1");
   });
 });
