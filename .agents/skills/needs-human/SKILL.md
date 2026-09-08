@@ -103,8 +103,6 @@ Per question:
 
 ## 4. Record — rulings live where implementers read
 
-An answer nobody recorded is a question that will be asked again.
-
 - **Issue-shaped answers** go in the ISSUE BODY as a dated block
   (`**Owner ruling (YYYY-MM-DD)**`) with the reasoning. Superseded prose is
   struck INLINE (`~~old~~ **struck by owner ruling, date**: what governs
