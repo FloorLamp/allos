@@ -18,7 +18,7 @@
 // what belongs here is the writer's behaviour against a real settings store, and the
 // two readers disagreeing about the same stored row on purpose.
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   getTimezone,
@@ -36,14 +36,10 @@ const HONOLULU = "Pacific/Honolulu";
 
 // Every instant is stated, never sampled: the subject is which record an instant lands
 // in the history as.
-const realNow = process.env.ALLOS_TEST_NOW;
+
 function freeze(iso: string): void {
-  process.env.ALLOS_TEST_NOW = iso;
+  vi.setSystemTime(new Date(iso));
 }
-afterEach(() => {
-  if (realNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = realNow;
-});
 
 // A profile with NO zone of its own — it is inheriting the instance default, which is
 // the state every fixture, every onboarding answer and every freshly created profile

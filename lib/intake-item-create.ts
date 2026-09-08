@@ -85,7 +85,7 @@ export type IntakeItemProvenance =
  * A new medication's initial course. Required for a medication and unspellable for a
  * supplement, because "a medication with no course" is the state every course reader
  * has to special-case.
- *   • `open`   — this core opens it (the form's start date, or the import's fallback).
+ *   • `open`   — this core opens it with a stated or unknown start.
  *   • `caller` — the caller writes the DERIVED courses itself (an import whose source
  *                carried explicit periods), inside this same transaction.
  */
@@ -93,8 +93,6 @@ export type InitialMedicationCourse =
   | {
       kind: "open";
       startedOn: string | null;
-      // Keep an UNKNOWN start unknown rather than defaulting it to the created day.
-      preserveUnknownStart?: boolean;
       attribution?: CourseAttribution;
     }
   | { kind: "caller" };
@@ -384,7 +382,6 @@ export function createIntakeItemCore(
       profileId,
       itemId,
       input.course.startedOn,
-      input.course.preserveUnknownStart ?? false,
       input.course.attribution
     );
   }

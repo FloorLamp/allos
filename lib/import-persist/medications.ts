@@ -269,7 +269,7 @@ export function persistExtractedMedications(
       course:
         courses.length > 0
           ? { kind: "caller" }
-          : { kind: "open", startedOn: null, attribution },
+          : { kind: "open", startedOn: presDate, attribution },
     });
     if (!created.ok) {
       // Unreachable by construction — parsePrescription's cleaned name is documented

@@ -107,24 +107,20 @@ describe("logMedicationAdministration action (#797)", () => {
     const itemId = seedPrnMed(profile.id);
     // Frozen at midday so "now" and the stated 00:01 are hours apart — a real run
     // straddling midnight could otherwise land both inside the dedup window.
-    const prev = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = `${today(profile.id)}T12:00:00Z`;
-    try {
-      expect(
-        (await logMedicationAdministration(fd({ id: itemId, offset: "now" })))
-          .ok
-      ).toBe(true);
-      expect(
-        (
-          await logMedicationAdministration(
-            fd({ id: itemId, offset: "custom", time: "00:01" })
-          )
-        ).ok
-      ).toBe(true);
-    } finally {
-      if (prev == null) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = prev;
-    }
+
+    vi.setSystemTime(new Date(`${today(profile.id)}T12:00:00Z`));
+
+    expect(
+      (await logMedicationAdministration(fd({ id: itemId, offset: "now" }))).ok
+    ).toBe(true);
+    expect(
+      (
+        await logMedicationAdministration(
+          fd({ id: itemId, offset: "custom", time: "00:01" })
+        )
+      ).ok
+    ).toBe(true);
+
     expect(adminRows(itemId)).toBe(2);
     expect(onHand(itemId)).toBe(8);
   });
