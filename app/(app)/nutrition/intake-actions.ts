@@ -342,12 +342,9 @@ function fields(formData: FormData, todayStr: string) {
   const startDateError =
     kind === "medication" &&
     hasStartedOn &&
-    ((!isOnDemand && !startedOnRaw) ||
-      (!!startedOnRaw &&
-        (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
-      ? isOnDemand
-        ? "Enter a valid start date that isn't in the future."
-        : "Enter a start date that isn't in the future."
+    !!startedOnRaw &&
+    (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)
+      ? "Enter a valid start date that isn't in the future."
       : null;
   return {
     hasStartedOn,
@@ -686,16 +683,10 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
             maxDailyAmountMg: f.maxDailyAmountMg,
             redoseNotice: f.redoseNotice,
             // Ensure-course-on-create: a new medication opens an initial course on the
-            // chosen date (today for quick-add).
+            // stated date, or with an unknown start when the field is blank.
             course: {
               kind: "open",
-              startedOn: f.hasStartedOn
-                ? f.startedOnRaw || null
-                : f.isOnDemand
-                  ? null
-                  : todayStr,
-              preserveUnknownStart:
-                f.isOnDemand && (!f.hasStartedOn || !f.startedOnRaw),
+              startedOn: f.startedOnRaw || null,
             },
           }
         : { ...base, kind: "supplement" }
@@ -1009,15 +1000,9 @@ export async function updateIntakeItem(
     reconcilePurposes(id, ownedPurposes(profile.id, purposes));
     // Ensure-course invariant: if this row is (or just became) a
     // medication, make sure it has at least one course. No-op when it already has
-    // one or is a supplement. Uses the created_at-date fallback (no explicit start
-    // date on an edit).
+    // one or is a supplement. A missing start remains unknown.
     if (f.kind === "medication") {
-      ensureMedicationCourse(
-        profile.id,
-        id,
-        f.hasStartedOn ? f.startedOnRaw || null : null,
-        !!f.isOnDemand && f.hasStartedOn && !f.startedOnRaw
-      );
+      ensureMedicationCourse(profile.id, id, f.startedOnRaw || null);
       if (f.hasStartedOn && hasCourseId) {
         // Through the course core (#2132) inside THIS transaction (the Tx token) — the
         // course was validated above, so a refusal here is unreachable.

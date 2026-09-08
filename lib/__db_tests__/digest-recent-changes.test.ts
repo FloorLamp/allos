@@ -190,6 +190,59 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     expect(out.lines).toEqual([]);
   });
 
+  it("separates a row being added from a medication course actually starting", () => {
+    const pid = newProfile("Medication Morgan");
+    const td = today(pid);
+    const yd = shiftDateStr(td, -1);
+    const insert = db.prepare(
+      `INSERT INTO intake_items (profile_id, name, kind, created_at)
+       VALUES (?, ?, 'medication', ?)`
+    );
+    const unknownId = Number(
+      insert.run(pid, "Longstanding medicine", `${td} 08:00:00`).lastInsertRowid
+    );
+    const knownId = Number(
+      insert.run(pid, "New medicine", `${td} 09:00:00`).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on) VALUES (?, NULL), (?, ?)`
+    ).run(unknownId, knownId, yd);
+
+    const collected = collectRecentChanges(pid, { sinceDays: 1, today: td });
+    expect(
+      collected.changes
+        .filter((change) => change.category === "intake")
+        .map(({ id, date, text }) => ({ id, date, text }))
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          id: `intake-added:${unknownId}`,
+          date: td,
+          text: "🔁 Added Longstanding medicine",
+        },
+        {
+          id: `intake-added:${knownId}`,
+          date: td,
+          text: "🔁 Added New medicine",
+        },
+        {
+          id: expect.stringMatching(/^intake-started:/),
+          date: yd,
+          text: "🔁 Started New medicine",
+        },
+      ])
+    );
+    expect(collected.lines.join("\n")).not.toContain(
+      "Started Longstanding medicine"
+    );
+
+    const digest = buildDigest(gatherDigestInput(pid, "Medication Morgan"));
+    const digestLines =
+      digest?.sections.flatMap((section) => section.lines.map(plainBody)) ?? [];
+    expect(digestLines).toContain("🔁 Added Longstanding medicine");
+    expect(digestLines).toContain("🔁 Started New medicine");
+  });
+
   it("respects the window edge — a change two days old is out at 24h, in at 7 days", () => {
     const pid = newProfile("Edge Edwards");
     const td = today(pid);
