@@ -416,7 +416,7 @@ describe("buildRecap", () => {
       "longest Row at 1h 30m",
     ],
   ] as const)(
-    "carries %s record detail through notes and headline in each distance unit",
+    "carries %s detail through notes, headline and saved-narrative supplement in each unit",
     (kind, label, distanceKm, durationMin, speedKmh, km, mi) => {
       for (const [distanceUnit, phrase] of [
         ["km", km],
@@ -436,6 +436,11 @@ describe("buildRecap", () => {
           null,
         ]);
         expect(recap.headline).toContain(`a PR: ${phrase}`);
+        const narrative = "Your week included steady training.";
+        const message = renderRecapMessage(recap, "Ada", narrative)!;
+        expect(plainBody(message.body)).toContain(
+          `${narrative}\n\n• Cardio PRs — ${phrase}`
+        );
       }
     }
   );
@@ -635,6 +640,61 @@ describe("renderRecapMessage", () => {
     expect(plainBody(msg.body)).toContain("A strong week");
     // The narrative supersedes the bullet lines.
     expect(plainBody(msg.body)).not.toContain("• Workouts:");
+  });
+
+  it("keeps the overall three-record cap before adding cardio facts to a narrative", () => {
+    const prs: RecapInput["prs"] = [
+      { label: "Bench press" },
+      {
+        label: "Run",
+        cardio: {
+          kind: "distance",
+          distanceKm: 10,
+          durationMin: 0,
+          speedKmh: 0,
+        },
+      },
+      {
+        label: "Cycle",
+        cardio: { kind: "speed", distanceKm: 0, durationMin: 0, speedKmh: 30 },
+      },
+      {
+        label: "Row",
+        cardio: {
+          kind: "duration",
+          distanceKm: 0,
+          durationMin: 90,
+          speedKmh: 0,
+        },
+      },
+    ];
+    const input = baseInput({
+      workouts: [{ date: "2026-07-08", type: "strength" }],
+      distanceUnit: "mi",
+      prs,
+    });
+    const narrative = "Your week included steady cardio and strength work.";
+    const message = renderRecapMessage(buildRecap(input), "Ada", narrative)!;
+    expect(plainBody(message.body)).toBe(
+      `Jul 3 – Jul 9\n${narrative}\n\n• Cardio PRs — longest Run at 6.21 mi · fastest Cycle at 18.6 mi/h`
+    );
+
+    // Strength and legacy label-only records still occupy the cap. Neither
+    // missing measurements nor a measured cardio record fourth adds a claim.
+    const withoutVisibleCardio = buildRecap({
+      ...input,
+      prs: [
+        { label: "Bench press" },
+        { label: "Squat" },
+        { label: "Run" },
+        prs[3],
+      ],
+    });
+    expect(
+      plainBody(
+        renderRecapMessage(withoutVisibleCardio, "Ada", narrative)!.body
+      )
+    ).toBe(`Jul 3 – Jul 9\n${narrative}`);
   });
 
   it("falls back to bullets when the narrative is empty/whitespace", () => {

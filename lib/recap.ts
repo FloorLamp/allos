@@ -736,6 +736,8 @@ export interface Recap {
   // is nothing to report.
   headline: string;
   lines: RecapLine[];
+  // Cardio details from the same first three PRs, for the saved-narrative supplement.
+  cardioPrNotes: string[];
   // True when the period had no workouts, no adherence, and no weight readings — the
   // caller then skips the notification (the widget still renders a quiet nudge).
   isEmpty: boolean;
@@ -999,10 +1001,14 @@ export function buildRecap(input: RecapInput): Recap {
   // homogeneous repeating tail, #2391), through the shared `prSetClause`, so an
   // e1RM record reads as its weight × reps set, a bodyweight lift as reps alone,
   // and a top-weight record is labelled as the top set it is.
+  const visiblePRs = input.prs.slice(0, 3);
+  const cardioPrNotes = visiblePRs.flatMap((pr) =>
+    pr.cardio ? [recapPrPhrase(pr, wu, input.distanceUnit ?? "km")] : []
+  );
   if (input.prs.length > 0) {
-    const named = input.prs
-      .slice(0, 3)
-      .map((p) => recapPrPhrase(p, wu, input.distanceUnit ?? "km"));
+    const named = visiblePRs.map((p) =>
+      recapPrPhrase(p, wu, input.distanceUnit ?? "km")
+    );
     const extra = input.prs.length - 3;
     push({
       key: "prs",
@@ -1540,7 +1546,15 @@ export function buildRecap(input: RecapInput): Recap {
   }
   const headline = isEmpty ? "" : headParts.join(", ");
 
-  return { scale, start: win.start, end: win.end, headline, lines, isEmpty };
+  return {
+    scale,
+    start: win.start,
+    end: win.end,
+    headline,
+    lines,
+    cardioPrNotes,
+    isEmpty,
+  };
 }
 
 // The window label — "Jul 3 – Jul 9" — rendered through the login's date-format
@@ -1590,6 +1604,7 @@ export function pickRecapNarrative(
 // carry several. When a stored recap `narrative` is supplied (#421), it replaces
 // the bare "• label: value" bullets — the narrative already reads over the same
 // facts; the bullets are the fallback when no narrative has been generated.
+// A bounded cardio facts line supplies recipient units beside unchanged prose.
 export function renderRecapMessage(
   recap: Recap,
   profileName: string,
@@ -1630,7 +1645,21 @@ export function renderRecapMessage(
       "\n"
     );
   const lines: MessageBody[] = narr
-    ? [narr]
+    ? [
+        joinBody(
+          [
+            narr,
+            recap.cardioPrNotes.length
+              ? formatMessageLine({
+                  glyph: GLYPH.bullet,
+                  head: "Cardio PRs",
+                  notes: recap.cardioPrNotes,
+                })
+              : null,
+          ],
+          "\n\n"
+        ),
+      ]
     : [
         ...(recap.headline
           ? [formatMessageLine({ head: recap.headline })]
