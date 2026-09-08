@@ -26,6 +26,11 @@ An absent, already consumed, or wrong-profile token returns false.
 Restore generally inserts new ids and remaps child foreign keys. It reconciles
 external links whose targets disappeared, adopts live roots when declared keys
 collide, reverses captured activity merges, and removes re-import tombstones.
+Equipment restores its original id, preserving its load lane. Its captured set,
+session, protocol, and goal rows survive deletion; restore reconnects only their
+still-null equipment links, preserving later assignments and other edits. Deleted
+linked rows are not recreated. The capture also retains the PR dismissals removed
+by the delete; a newer dismissal with the same key wins on restore.
 Registry counter entries restore the removed increment rather than overwrite a
 whole day. The administration restore also reconciles its supply decrement.
 Use these existing paths when adding a surface or kind.

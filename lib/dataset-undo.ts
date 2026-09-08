@@ -65,6 +65,7 @@ type KindsRootedAt<T extends UndoRootTable> = {
 }[UndoKind];
 
 export const DATASET_UNDO_KIND = {
+  equipment: "equipment",
   activities: "activity",
   body_metrics: "body-metric",
   medical_records: "clinical-observation",

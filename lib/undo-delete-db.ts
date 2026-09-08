@@ -51,6 +51,7 @@ import { nullEncounterLinks } from "./queries/visit-links";
 import { practiceIdentity } from "./practice";
 import { TRASH_EXCLUDED_KINDS, TRASH_EXCLUDED_PLACEHOLDERS } from "./trash";
 import { detachConditionIntakeLinks } from "./condition-delete";
+import { cleanupOrphanPrDismissals } from "./queries/upcoming/suppressions";
 
 // A captured counter row's identity values BESIDE profile_id and date, positional to the
 // ledger's `keyColumns` (i.e. the `CounterSpec.key` order minus `date`). Read straight
@@ -70,6 +71,7 @@ function counterKeyValues(
 // there through the pure lib/trash.ts derivation, behind the same gates as every
 // other (app) surface.
 const KIND_LABELS: Record<string, string> = {
+  equipment: "equipment",
   activity: "activity",
   "body-metric": "body metric",
   "clinical-observation": "clinical observation",
@@ -252,26 +254,33 @@ export function captureDelete(
     const rows: Record<string, Row[]> = { [root.entity]: [rootRow] };
     for (const child of spec.entities.slice(1)) {
       const binds = Array.from({ length: child.childBinds ?? 1 }, () => rootId);
+      const columns = child.repoint ? `id, ${child.repoint.column}` : "*";
       rows[child.entity] =
         capturedChildren?.[child.entity] ??
         (db
-          .prepare(`SELECT * FROM ${child.table} WHERE ${child.childWhere}`)
+          .prepare(
+            `SELECT ${columns} FROM ${child.table} WHERE ${child.childWhere}`
+          )
           .all(...binds) as Row[]);
     }
 
-    const payload = serializePayload(kind, rows, merge);
-    const info = db
-      .prepare(
-        `INSERT INTO deleted_rows (profile_id, kind, label, payload) VALUES (?, ?, ?, ?)`
-      )
-      .run(profileId, kind, KIND_LABELS[kind] ?? kind, payload);
+    for (const child of spec.entities.slice(1)) {
+      if (!child.repoint) continue;
+      const { column, scopeWhere } = child.repoint;
+      const detach = db.prepare(
+        `UPDATE ${child.table} SET ${column} = NULL
+            WHERE id = ? AND ${column} = ? AND ${scopeWhere}`
+      );
+      for (const row of rows[child.entity])
+        detach.run(row.id, rootId, profileId);
+    }
 
     // Detach INBOUND references before the root delete (row-ops null-out rule): a
     // protocol can link an intake item as its intervention (protocols.intake_item_id,
     // issue #660) — a real FK with no ON DELETE action — so the DELETE below would
     // throw while a protocol still points at this supplement/medication. Null it in
     // the same transaction; the protocol survives, its intervention link is honestly
-    // gone (not restored on undo, like the sibling equipment_id/supply-decrement
+    // gone (not restored on undo, like the supply-decrement
     // side effects). Centralized here so both delete paths — deleteIntakeItem and the
     // Data → Manage bulk delete — inherit it.
     if (spec.ownedTable === "intake_items") {
@@ -301,7 +310,7 @@ export function captureDelete(
     // (migration 057) with no ON DELETE. NULL those links first (degrading the
     // follow-up to a generic care-plan item, keeping any resolution's outcome text) so
     // the medical_records DELETE below can't trip the care_plan_items FK. Not restored
-    // on undo (like the equipment_id / supply-decrement side effects) — the reading
+    // on undo (like the supply-decrement side effects) — the reading
     // returns, its follow-up linkage stays honestly gone.
     if (spec.ownedTable === "medical_records") {
       unlinkFollowUpsForClinicalObservation(profileId, rootId);
@@ -410,6 +419,20 @@ export function captureDelete(
       profileId
     );
 
+    if (kind === "equipment")
+      rows.dismissals = cleanupOrphanPrDismissals(profileId);
+
+    const info = db
+      .prepare(
+        `INSERT INTO deleted_rows (profile_id, kind, label, payload) VALUES (?, ?, ?, ?)`
+      )
+      .run(
+        profileId,
+        kind,
+        KIND_LABELS[kind] ?? kind,
+        serializePayload(kind, rows, merge)
+      );
+
     // Re-import tombstone (#507/#508): when the deleted root is a source-owned row
     // (a Strava/HC activity, an imported scale reading, an imported vital), record its
     // natural key so the next rolling-window resync doesn't resurrect it. No-op for a
@@ -476,6 +499,18 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       const map = new Map<number, number>();
       idMaps[entity.entity] = map;
       const captured = payload.rows[entity.entity] ?? [];
+      if (entity.repoint) {
+        const { column, scopeWhere } = entity.repoint;
+        const reconnect = db.prepare(
+          `UPDATE ${entity.table} SET ${column} = ?
+            WHERE id = ? AND ${column} IS NULL AND ${scopeWhere}`
+        );
+        for (const row of captured) {
+          const restored = remapRow(row, idMaps, entity.fks);
+          reconnect.run(restored[column], row.id, profileId);
+        }
+        continue;
+      }
       // A day COUNTER (#2038): give back the one tick the delete took, rather than
       // re-inserting the captured row whole — the day may have gained or lost other
       // servings in the meantime and they are none of this undo's business. Only when
@@ -550,7 +585,7 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
         // window can re-take a deleted imported row's key. Adopt the live row rather
         // than aborting the whole restore on the index — the #509 treatment, declared
         // as data because these tables are not sync-tombstoned.
-        if (isRoot && typeof oldId === "number") {
+        if (entity.uniqueKey && typeof oldId === "number") {
           const liveId = liveRowIdForUniqueKey(profileId, entity, row);
           if (liveId !== null) {
             map.set(oldId, liveId);
@@ -558,6 +593,7 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
           }
         }
         const toInsert = remapRow(row, idMaps, entity.fks, entity.keyRefs);
+        if (entity.preserveId) toInsert.id = oldId;
         // A practice target captured before migration 123 has no persisted
         // scope_identity. Rebuild it from the same domain identity before restore
         // so legacy undo payloads satisfy the new database invariant.

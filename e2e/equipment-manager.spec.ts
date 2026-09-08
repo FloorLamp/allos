@@ -1,6 +1,9 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
+import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { loginAs } from "./nav";
-import { appContent, hydratedClick, followLink } from "./helpers";
+import { appContent, hydratedClick, followLink, settledClick } from "./helpers";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The equipment MANAGER (issue #391), now hosted on the top-level /equipment
@@ -73,46 +76,93 @@ test.describe("Equipment manager (#391)", () => {
     ).toContainText(/20\s*(kg|lb)/);
   });
 
-  test("deleting a referenced implement nulls the link and the logged set still renders", async ({
+  test("equipment Undo survives navigation and restores the original detail and usage", async ({
     page,
   }) => {
     test.slow();
-
-    // The seeded "E2E Delete Bar" is referenced by a logged strength set (see
-    // seed-events). Delete it; the confirm dialog's own button is scoped to the
-    // dialog so it can't be confused with the row's Delete icon. Guarded so a CI
-    // retry (which reuses the DB where the bar is already gone) is a no-op.
-    await page.goto("/equipment");
-    const row = page
-      .getByTestId("equipment-row")
-      .filter({ hasText: "E2E Delete Bar" });
-    if (await row.count()) {
+    const name = "Equipment manager undo bar";
+    const title = "Equipment manager undo session";
+    const db = new Database(workerDbPath());
+    db.pragma("busy_timeout = 5000");
+    db.pragma("foreign_keys = ON");
+    function cleanup() {
+      // Only this test's rows, including a capture left by an interrupted attempt.
+      deleteActivitiesTitled(title);
+      db.prepare("DELETE FROM equipment WHERE profile_id = 1 AND name = ?").run(
+        name
+      );
+      db.prepare(
+        "DELETE FROM deleted_rows WHERE profile_id = 1 AND kind = 'equipment' AND json_extract(payload, '$.rows.equipment[0].name') = ?"
+      ).run(name);
+    }
+    try {
+      cleanup();
+      const equipmentId = Number(
+        db
+          .prepare(
+            "INSERT INTO equipment (profile_id, name, category) VALUES (1, ?, 'Barbell')"
+          )
+          .run(name).lastInsertRowid
+      );
+      const activityId = Number(
+        db
+          .prepare(
+            "INSERT INTO activities (profile_id, date, type, title, equipment_id) VALUES (1, '2026-08-01', 'strength', ?, ?)"
+          )
+          .run(title, equipmentId).lastInsertRowid
+      );
+      db.prepare(
+        "INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, equipment_id) VALUES (?, 'Barbell Bench Press', 1, 60, 5, ?)"
+      ).run(activityId, equipmentId);
+      const detail = `/equipment/${equipmentId}`;
+      await page.goto(detail);
+      await expect(
+        appContent(page).getByTestId("equipment-stat-sessions")
+      ).toContainText("1");
+      await appContent(page).getByTestId("equipment-detail-delete").click();
+      await settledClick(
+        page,
+        page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Delete", exact: true })
+      );
+      await expect(page).toHaveURL(/\/equipment$/);
+      await expect(
+        page.getByText(`Deleted ${name}`, { exact: true })
+      ).toBeVisible();
+      await expect(
+        appContent(page).getByTestId("equipment-row").filter({ hasText: name })
+      ).toHaveCount(0);
+      expect(
+        db
+          .prepare(
+            "SELECT equipment_id FROM exercise_sets WHERE activity_id = ?"
+          )
+          .get(activityId)
+      ).toEqual({ equipment_id: null });
+      await page.getByRole("button", { name: "Undo", exact: true }).click();
+      const row = appContent(page)
+        .getByTestId("equipment-row")
+        .filter({ hasText: name });
+      await expect(row).toBeVisible();
+      await expect(
+        row.getByRole("link", { name, exact: true })
+      ).toHaveAttribute("href", detail);
       await followLink(
         page,
-        row.getByRole("link", { name: /E2E Delete Bar/ }),
-        /\/equipment\/\d+/
+        row.getByRole("link", { name, exact: true }),
+        new RegExp(`${detail}$`)
       );
-      await appContent(page).getByTestId("equipment-detail-delete").click();
-      await page
-        .getByRole("dialog")
-        .getByRole("button", { name: "Delete" })
-        .click();
-      await expect(page.getByText("Deleted E2E Delete Bar")).toBeVisible();
       await expect(
-        page.getByTestId("equipment-row").filter({ hasText: "E2E Delete Bar" })
-      ).toHaveCount(0);
+        appContent(page).getByTestId("equipment-stat-sessions")
+      ).toContainText("1");
+      await expect(
+        appContent(page).getByTestId("equipment-session-link")
+      ).toHaveText(title);
+    } finally {
+      cleanup();
+      db.close();
     }
-
-    // The strength session that referenced the deleted bar still renders on the
-    // Training Log — the set's equipment_id was detached, not cascade-dropped.
-    await page.goto("/training?tab=log");
-    await expect(
-      // eslint-disable-next-line no-restricted-properties -- first-ok: the session THIS spec created (unique name); asserts its set survived the equipment delete
-      page
-        .getByTestId("history-row")
-        .filter({ hasText: "E2E Equipment Delete Session" })
-        .first()
-    ).toBeVisible();
   });
 
   test("a minor can open the Equipment registry by direct URL", async ({
