@@ -15,6 +15,7 @@ import { invalidateRefillOffers } from "../../notifications/offer-store";
 // Server Actions in app/(app)/supplies/actions.ts own the whole gate.
 
 import { db, writeTx } from "../../db";
+import { sqlNow } from "../../clock";
 import { profileIdsIn, type AuthorizedProfileIds } from "../../cross-profile";
 import {
   daysOfSupplyForPool,
@@ -534,8 +535,8 @@ function updateSharedSupplyCount(
   if (!row || (onlyUntracked && row.quantity_on_hand != null)) return null;
   const quantity = resolveOnHandWrite(submitted, loaded, row.quantity_on_hand);
   db.prepare(
-    "UPDATE shared_supplies SET quantity_on_hand = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(quantity, supplyId);
+    "UPDATE shared_supplies SET quantity_on_hand = ?, updated_at = ? WHERE id = ?"
+  ).run(quantity, sqlNow(), supplyId);
   if (submitted !== loaded) invalidatePoolRefillOffers(supplyId);
   return { quantity };
 }

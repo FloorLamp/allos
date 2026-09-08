@@ -44,7 +44,7 @@ import {
   POOL_REFILL_MARKER_PREFIX,
   type PoolRefillCandidate,
 } from "../refill-nudge";
-import { intakeSupplyHref } from "../hrefs";
+import { intakeSupplyHref, sharedSupplyHref } from "../hrefs";
 import { refillReceivedAction } from "./refill";
 import {
   getSetting,
@@ -99,7 +99,7 @@ export function renderPoolRefillMessage(
         ? [
             {
               label: "Open refill form",
-              url: `${base}${received?.poolId === pool.id ? received.href : `/supplies/${pool.id}`}`,
+              url: `${base}${received?.poolId === pool.id ? received.href : sharedSupplyHref(pool.id)}`,
             },
           ]
         : []),

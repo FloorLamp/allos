@@ -428,6 +428,16 @@ export async function handleReceivedCallback(
         cq.id,
         "This receipt is already open or no longer available."
       );
+      const current = readRefillOffer(token.profileId, token.offerId)?.offer;
+      if (
+        current &&
+        (current.state === "sending" || current.state === "pending") &&
+        receiptAuthorized(token.profileId, chat) &&
+        current.origin?.chatId === chat &&
+        current.origin.messageId === messageId &&
+        current.origin.senderId === senderId
+      )
+        await refreshReceipt(token.profileId, token.offerId);
       return;
     }
     await answerCallbackQuery(cq.id, "How many arrived?");
@@ -437,35 +447,36 @@ export async function handleReceivedCallback(
         receiptPrompt(token.profileId, token.offerId, claimed),
         token.profileId
       );
-      if (promptId == null) return;
-      const activated = writeTx(() => {
-        const row = readRefillOffer(token.profileId, token.offerId);
-        if (
-          !row ||
-          row.offer.state !== "sending" ||
-          !hasRefillToken(
-            token.profileId,
-            chat,
-            promptId,
-            offerCallback("rfcancel", token.profileId, token.offerId)
+      if (promptId != null) {
+        const activated = writeTx(() => {
+          const row = readRefillOffer(token.profileId, token.offerId);
+          if (
+            !row ||
+            row.offer.state !== "sending" ||
+            !hasRefillToken(
+              token.profileId,
+              chat,
+              promptId,
+              offerCallback("rfcancel", token.profileId, token.offerId)
+            )
           )
-        )
-          return false;
-        return replaceRefillOffer(token.profileId, token.offerId, row.offer, {
-          ...row.offer,
-          state: "pending",
-          promptId,
-        });
-      });
-      if (!activated) {
-        const current = readRefillOffer(token.profileId, token.offerId);
-        if (current && refillOfferIsTerminal(current.offer))
-          await rebuildMessage(
-            token.profileId,
-            chat,
+            return false;
+          return replaceRefillOffer(token.profileId, token.offerId, row.offer, {
+            ...row.offer,
+            state: "pending",
             promptId,
-            receiptPrompt(token.profileId, token.offerId, current.offer)
-          );
+          });
+        });
+        if (!activated) {
+          const current = readRefillOffer(token.profileId, token.offerId);
+          if (current && refillOfferIsTerminal(current.offer))
+            await rebuildMessage(
+              token.profileId,
+              chat,
+              promptId,
+              receiptPrompt(token.profileId, token.offerId, current.offer)
+            );
+        }
       }
     } catch (error) {
       log.info("refill prompt delivery uncertain", {
@@ -477,7 +488,7 @@ export async function handleReceivedCallback(
     return;
   }
   const cancel = cq.data?.startsWith("rfcancel:") ?? false;
-  const text = settleReceived(
+  const outcome = settleReceived(
     token.profileId,
     token.offerId,
     chat,
@@ -486,8 +497,8 @@ export async function handleReceivedCallback(
     cq.id,
     cancel ? "cancel" : "confirm"
   );
-  await answerCallbackQuery(cq.id, text);
-  await refreshReceipt(token.profileId, token.offerId);
+  await answerCallbackQuery(cq.id, outcome.text);
+  if (outcome.refresh) await refreshReceipt(token.profileId, token.offerId);
 }
 
 function settleReceived(
@@ -498,7 +509,7 @@ function settleReceived(
   senderId: number,
   submissionId: string,
   answer: "cancel" | "confirm" | { amount: string | undefined }
-): string {
+): { text: string; refresh: boolean } {
   return writeTx(() => {
     const row = readRefillOffer(profileId, offerId);
     const offer = row?.offer;
@@ -509,21 +520,25 @@ function settleReceived(
       offer.origin.chatId !== chatId ||
       offer.origin.senderId !== senderId
     )
-      return "This receipt is no longer available.";
+      return { text: "This receipt is no longer available.", refresh: false };
     const fromPrompt = offer.promptId === messageId;
     const cancelFromOrigin =
       answer === "cancel" && offer.origin.messageId === messageId;
     if (!fromPrompt && !cancelFromOrigin)
-      return "Reply to the original receipt prompt.";
+      return { text: "Reply to the original receipt prompt.", refresh: false };
     if (offer.state === "completed" && offer.result)
-      return `Already recorded: ${receiptText(offer.result)}`;
-    if (refillOfferIsTerminal(offer)) return "This receipt is closed.";
+      return {
+        text: `Already recorded: ${receiptText(offer.result)}`,
+        refresh: true,
+      };
+    if (refillOfferIsTerminal(offer))
+      return { text: "This receipt is closed.", refresh: false };
     if (answer === "cancel") {
       replaceRefillOffer(profileId, offerId, offer, {
         ...offer,
         state: "canceled",
       });
-      return "Receipt canceled.";
+      return { text: "Receipt canceled.", refresh: true };
     }
     if (
       offer.state !== "pending" ||
@@ -535,13 +550,16 @@ function settleReceived(
         offerCallback("rfcancel", profileId, offerId)
       )
     )
-      return "This receipt is no longer available.";
+      return { text: "This receipt is no longer available.", refresh: false };
     const amount =
       answer === "confirm"
         ? (offer.defaultSize ?? null)
         : parseReceivedAmount(answer.amount);
     if (amount == null || !Number.isFinite(amount) || amount <= 0)
-      return "Enter a positive number of units, such as 90.";
+      return {
+        text: "Enter a positive number of units, such as 90.",
+        refresh: false,
+      };
     const result = refillSupply(
       profileId,
       offer.itemId,
@@ -549,7 +567,10 @@ function settleReceived(
       offer.supplyId
     );
     if (result.kind !== "refilled")
-      return "This supply changed. Open its refill form.";
+      return {
+        text: "This supply changed. Open its refill form.",
+        refresh: false,
+      };
     // The refill owner invalidates sibling offers, including this pending row. Under
     // this same lock only the winning submission may replace its own row with a receipt.
     const current = readRefillOffer(profileId, offerId)!.offer;
@@ -562,7 +583,7 @@ function settleReceived(
         submissionId,
       },
     });
-    return receiptText({ ...result, submissionId });
+    return { text: receiptText({ ...result, submissionId }), refresh: true };
   });
 }
 
@@ -594,7 +615,7 @@ export async function handleReceivedReply(
   )
     return true;
   if (!receiptAuthorized(token.profileId, String(chatId))) return true;
-  const text = settleReceived(
+  const outcome = settleReceived(
     token.profileId,
     token.offerId,
     String(chatId),
@@ -605,10 +626,10 @@ export async function handleReceivedReply(
   );
   await sendTelegramMessage(
     chatId,
-    { title: "Supply receipt", body: text },
+    { title: "Supply receipt", body: outcome.text },
     token.profileId
   );
-  await refreshReceipt(token.profileId, token.offerId);
+  if (outcome.refresh) await refreshReceipt(token.profileId, token.offerId);
   return true;
 }
 
@@ -640,6 +661,10 @@ export async function reconcileRefillReceipt(
     .flat()
     .flatMap((b) => (b.callback_data ? [b.callback_data] : []));
   const ids = receiptIds(tokens);
+  const liveTokens = pointer.keyboard
+    .flat()
+    .flatMap((b) => (b.callback_data ? [b.callback_data] : []));
+  const liveIds = new Set(receiptIds(liveTokens));
   if (!ids.length) return "unhandled";
   const plan = writeTx(() => {
     const currentPointer = messagePointerAt(
@@ -683,6 +708,10 @@ export async function reconcileRefillReceipt(
         const low = pool
           ? pool.low
           : isLowSupply(days, DEFAULT_LOW_SUPPLY_DAYS);
+        const liveOffer = offers.some(
+          (it) => liveIds.has(it.id) && it.row!.offer.itemId === itemId
+        );
+        if (low && !liveOffer) continue;
         lines.push(
           `${stock.name}: ${stock.quantity ?? "No count"}${stock.quantity == null ? "" : " on hand"}${low ? ` · ≈${days} days left (running low)` : ""}`
         );
@@ -692,11 +721,15 @@ export async function reconcileRefillReceipt(
             !refillOfferIsTerminal(it.row!.offer) &&
             it.row!.offer.state !== "available"
         );
-        if (low || pending) {
+        if (liveOffer && (low || pending)) {
           const action = refillReceivedAction(profileId, itemId);
           if (action) actions.push({ ...action, row: `rf:${itemId}` });
         }
-        if (low && stock.supplyId == null)
+        if (
+          low &&
+          stock.supplyId == null &&
+          liveTokens.includes(`rfsnooze:${profileId}:${itemId}`)
+        )
           actions.push({
             label: `${GLYPH.ordered} Ordered — remind me in 3 days`,
             data: `rfsnooze:${profileId}:${itemId}`,
@@ -746,8 +779,18 @@ export async function reconcileRefillReceipt(
     return { message, keyboard, bodyHash, watched, witness };
   });
   if (!plan) return "unchanged";
-  const current = () =>
-    receiptWitness(profileId, plan.watched) === plan.witness;
+  const current = () => {
+    const claimed = messagePointerAt(
+      profileId,
+      pointer.chatId,
+      pointer.messageId
+    );
+    return (
+      claimed?.version === JSON.stringify(plan.keyboard) &&
+      claimed.bodyHash === plan.bodyHash &&
+      receiptWitness(profileId, plan.watched) === plan.witness
+    );
+  };
   try {
     await rebuildMessage(
       profileId,

@@ -11,7 +11,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { setTelegramBotConfig, setLoginTelegram } from "@/lib/settings";
+import {
+  setTelegramBotConfig,
+  setLoginTelegram,
+  setPublicUrl,
+} from "@/lib/settings";
 import {
   createSharedSupply,
   linkItemToPool,
@@ -291,4 +295,54 @@ describe("suppression + episode lifecycle", () => {
     await runPoolRefills((p) => today(p), alwaysWaking);
     expect(telegramSends(mock)).toHaveLength(1);
   });
+});
+
+it("keeps an ambiguous pool linked to its actual cabinet anchor without choosing a member's amount", async () => {
+  const t = tag();
+  const profileId = newProfile(`Two bottles ${t}`);
+  const loginId = newLogin(`two_bottles_${t}`);
+  grant(loginId, profileId);
+  setLoginTelegram(loginId, {
+    telegramEnabled: true,
+    telegramChatId: `55503${t}`,
+  });
+  const supplyId = createSharedSupply(
+    {
+      name: `Ambiguous pool ${t}`,
+      strength: null,
+      form: null,
+      lowSupplyDays: null,
+      notes: null,
+    },
+    4
+  );
+  linkedItem(profileId, `Morning item ${t}`, supplyId);
+  linkedItem(profileId, `Evening item ${t}`, supplyId);
+  setPublicUrl("https://example.test");
+  const sent: {
+    reply_markup?: {
+      inline_keyboard: { callback_data?: string; url?: string }[][];
+    };
+  }[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: unknown, options: RequestInit) => {
+      sent.push(JSON.parse(String(options.body)));
+      return Response.json({ ok: true, result: { message_id: 9001 } });
+    })
+  );
+  try {
+    await runPoolRefills(today, alwaysWaking);
+    const buttons = sent.flatMap(
+      (message) => message.reply_markup?.inline_keyboard.flat() ?? []
+    );
+    expect(
+      buttons.some((button) => button.callback_data?.startsWith("rfreceived:"))
+    ).toBe(false);
+    expect(buttons.map((button) => button.url)).toContain(
+      `https://example.test/supplies#supply-${supplyId}`
+    );
+  } finally {
+    setPublicUrl("");
+  }
 });
