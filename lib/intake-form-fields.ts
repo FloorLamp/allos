@@ -549,11 +549,9 @@ export function intakeItemFormStateFrom(seed: {
       item?.indication_condition_id != null
         ? String(item.indication_condition_id)
         : "",
-    // An as-needed item has no start date to volunteer; everything else starts today
-    // unless a course states otherwise.
-    startedOn:
-      seed.course?.started_on ??
-      (item?.obligation === "may" ? "" : (seed.todayStr ?? "")),
+    // A medication start is stated or absent. Creating the row today does not mean
+    // the person started taking it today.
+    startedOn: seed.course?.started_on ?? "",
     endDate: seed.course?.stopped_on ?? "",
     courseId: seed.course?.id ?? null,
     cadence: {
