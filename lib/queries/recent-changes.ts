@@ -18,7 +18,7 @@
 
 import { mean } from "../robust-stats";
 import { today as todayFor } from "../db";
-import { db } from "../db";
+import { db, hoistedStatement } from "../db";
 import { utcInstant, utcSqlString } from "../date";
 import {
   applyRecentChangeDemotion,
@@ -301,6 +301,24 @@ function moodChanges(
   ];
 }
 
+// One read for both intake events; retain added-first ordering before ranking.
+const INTAKE_CHANGES_STMT = hoistedStatement(
+  `SELECT id, name, 'added' AS event, date(created_at) AS date,
+          created_at AS sort_at, NULL AS course_sort
+     FROM intake_items
+    WHERE profile_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
+    UNION ALL
+   SELECT c.id, ii.name, 'started' AS event, c.started_on AS date,
+          c.started_on AS sort_at, c.id AS course_sort
+     FROM medication_courses c
+     JOIN intake_items ii ON ii.id = c.item_id
+    WHERE ii.profile_id = ?
+      AND ii.kind = 'medication'
+      AND c.started_on IS NOT NULL
+      AND c.started_on >= ? AND c.started_on <= ?
+    ORDER BY event, sort_at DESC, course_sort DESC`
+);
+
 // THE collector. Auth-blind, profileId-first, composing existing readers only.
 export function collectRecentChanges(
   profileId: number,
@@ -411,49 +429,25 @@ export function collectRecentChanges(
   // and #1463's implementer note is explicit that a missing timestamp means the
   // event kind waits for one rather than being guessed from row state.
   if (on("intake")) {
-    const added = db
-      .prepare(
-        `SELECT id, name, kind, date(created_at) AS added
-           FROM intake_items
-          WHERE profile_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
-          ORDER BY created_at DESC`
-      )
-      .all(profileId, windowStart, today) as {
+    const events = INTAKE_CHANGES_STMT.all(
+      profileId,
+      windowStart,
+      today,
+      profileId,
+      windowStart,
+      today
+    ) as {
       id: number;
       name: string;
-      kind: string;
-      added: string;
+      event: "added" | "started";
+      date: string;
     }[];
-    for (const it of added) {
+    for (const row of events) {
       changes.push({
-        id: `intake-added:${it.id}`,
+        id: `intake-${row.event}:${row.id}`,
         category: "intake",
-        date: it.added,
-        text: `${GLYPH.changed} Added ${it.name}`,
-      });
-    }
-    const started = db
-      .prepare(
-        `SELECT c.id, ii.name, c.started_on AS started
-           FROM medication_courses c
-           JOIN intake_items ii ON ii.id = c.item_id
-          WHERE ii.profile_id = ?
-            AND ii.kind = 'medication'
-            AND c.started_on IS NOT NULL
-            AND c.started_on >= ? AND c.started_on <= ?
-          ORDER BY c.started_on DESC, c.id DESC`
-      )
-      .all(profileId, windowStart, today) as {
-      id: number;
-      name: string;
-      started: string;
-    }[];
-    for (const course of started) {
-      changes.push({
-        id: `intake-started:${course.id}`,
-        category: "intake",
-        date: course.started,
-        text: `${GLYPH.changed} Started ${course.name}`,
+        date: row.date,
+        text: `${GLYPH.changed} ${row.event === "added" ? "Added" : "Started"} ${row.name}`,
       });
     }
   }
