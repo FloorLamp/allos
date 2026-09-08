@@ -21,7 +21,7 @@ export function goalItems(profileId: number): UpcomingItem[] {
       // with the same title are told apart, and the band stops mixing "Goal
       // deadline" with a raw user-cased word (#2615 item 4).
       detail: goalUpcomingDetail(g),
-      href: "/training?tab=goals",
+      href: trainingTabHref("plan", "goals"),
       dueDate: g.target_date,
     }));
 }
@@ -455,7 +455,7 @@ import {
   weeklyTargetPaceLine,
   type FrequencyScopeKind,
 } from "../../frequency-targets";
-import { nutritionTabHref, type AppRoute } from "../../hrefs";
+import { trainingTabHref, nutritionTabHref, type AppRoute } from "../../hrefs";
 import { practiceSignalKey } from "../../practice";
 import { getRoutineCycleStatus } from "../../routines";
 import type { DistanceUnit } from "../../settings";

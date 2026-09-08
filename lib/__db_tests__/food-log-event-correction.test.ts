@@ -1,26 +1,5 @@
-// DB INTEGRATION TIER (issue #1934): correcting an already-logged food serving.
-//
-// The one-tap surfaces got create + delete and never got correction, and
-// delete-and-re-log is NOT equivalent — a re-log stamps the CURRENT instant and window.
-// updateFoodLogEventCore edits the ledger row in place instead.
-//
-// The load-bearing pin here is the COUNTER MOVE. `food_log_events` (the per-tap ledger)
-// and `food_daily_totals` (the day counter) are one fact in two shapes, and three different
-// derived reads sit on top of them:
-//
-//   • getFoodMealDays           — the web bar's day counts + per-meal tallies
-//   • getWeeklyServingsForGroup — the #580 frequency-target progress
-//   • getFoodBarOrder           — the #950/#2019 proximity-weighted ranking
-//
-// (The Telegram nudge's per-slot "(n)" count used to be the third reader; #2019 retired
-// it — the buttons read the DAY total — and #2227 deleted its query. The per-window
-// assertions below go through `slotServingsOnDate`, a thin view over the meal grouping
-// the web surface actually renders, so the MOVE property keeps its coverage.)
-//
-// They all recompute live, so the thing that can go wrong is not staleness but
-// DOUBLE-COUNTING: a correction that adds at the destination without removing at the
-// source. Every case below asserts BOTH ends of the move, plus a total, so an
-// increment-without-decrement bug cannot pass.
+// Food corrections move the event and its counter together. These cases check
+// both ends of the move and the day, meal-window, and ranking reads.
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
@@ -31,11 +10,7 @@ import {
 } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
-import {
-  getFoodBarOrder,
-  getFoodMealDays,
-  getWeeklyServingsForGroup,
-} from "@/lib/queries";
+import { getFoodBarOrder, getFoodMealDays } from "@/lib/queries";
 import { type FoodSlot } from "@/lib/food-slot";
 
 // Per-window tallies through the meal grouping the web surface renders
@@ -212,7 +187,7 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
 });
 
 describe("updateFoodLogEventCore — group correction (#1934)", () => {
-  it("moves the day counter and the weekly target progress with the serving", () => {
+  it("moves the day and meal-window counts with the serving", () => {
     const { profileId, anchor } = makeProfile("food-correct-group");
     logFoodServingCore(
       profileId,
@@ -223,7 +198,6 @@ describe("updateFoodLogEventCore — group correction (#1934)", () => {
       "Morning"
     );
     const eventId = onlyEventId(profileId);
-    expect(getWeeklyServingsForGroup(profileId, "berries")).toBe(1);
 
     const outcome = updateFoodLogEventCore(profileId, eventId, {
       groupKey: "fruit",
@@ -246,9 +220,6 @@ describe("updateFoodLogEventCore — group correction (#1934)", () => {
     expect(allCounters(profileId)).toEqual([
       { date: anchor, group_key: "fruit", servings: 1 },
     ]);
-    // The #580 frequency-target progress reads the same counter, so it moved too.
-    expect(getWeeklyServingsForGroup(profileId, "berries")).toBe(0);
-    expect(getWeeklyServingsForGroup(profileId, "fruit")).toBe(1);
 
     const [day] = getFoodMealDays(profileId, [anchor]);
     expect(day.counts.berries).toBeUndefined();

@@ -36,6 +36,9 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
  * escape in new code where you can: it produces the identical byte at runtime and
  * leaves the FILE plain text, so no sweep loses sight of it.
  */
+const PNG_EVIDENCE =
+  "binary PNG evidence for a reviewed before/after comparison";
+
 const DELIBERATE_NULS: Record<string, string> = {
   "lib/__db_tests__/api-portals-route.test.ts":
     "joins a response body's strings on NUL so a disclosure assertion cannot match across two adjacent fields",
@@ -55,6 +58,23 @@ const DELIBERATE_NULS: Record<string, string> = {
     "composite key: issue file and citation path",
   "scripts/phi-scan.ts":
     "a placeholder sentinel, held while a glob's `**` is rewritten, that no glob can itself contain",
+  "screenshots/5521/after/dose-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/dose-390.png": PNG_EVIDENCE,
+  "screenshots/5521/after/measurements-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/measurements-390.png": PNG_EVIDENCE,
+  "screenshots/5521/after/mood-1280-bottom-reach.png": PNG_EVIDENCE,
+  "screenshots/5521/after/mood-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/mood-390.png": PNG_EVIDENCE,
+  "screenshots/5521/after/practice-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/practice-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/dose-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/dose-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/measurements-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/measurements-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/mood-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/mood-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/practice-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/practice-390.png": PNG_EVIDENCE,
 };
 
 function trackedFiles(): string[] {

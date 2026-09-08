@@ -1,3 +1,4 @@
+import { formatCount } from "./format-number";
 // Shared chart-value display rounding (issue #403). A biomarker chart point is a
 // bare unit conversion (e.g. 103 mg/dL → 5.716552154288337 mmol/L), fine as the
 // domain input recharts maps to a pixel, but wrong to render verbatim: the axis
@@ -28,5 +29,5 @@ export function roundChartValue(value: number, decimals?: number): number {
 // differently on the server than in the browser (see lib/__tests__/date-locale-guard).
 export function groupChartValue(value: number, decimals?: number): string {
   const n = roundChartValue(value, decimals);
-  return Number.isFinite(n) ? n.toLocaleString("en-US") : String(n);
+  return Number.isFinite(n) ? formatCount(n) : String(n);
 }

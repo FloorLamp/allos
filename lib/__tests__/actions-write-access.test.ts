@@ -323,7 +323,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/supplies/actions.ts",
     fn: "linkItemAction",
-    why: "#1374: links a NON-active profile's item into a shared bottle; gates via requireItemWriteAccess(itemId) → requireProfileWriteAccess(itemProfileId), so the item's own profile authorizes it",
+    why: "#1374/#5122: changes both sides of a membership; requireItemWriteAccess(itemId) authorizes the item and requirePoolWriteAccess(supplyId) requires write access to at least one existing bottle member before the link core runs",
   },
   {
     file: "app/(app)/supplies/actions.ts",

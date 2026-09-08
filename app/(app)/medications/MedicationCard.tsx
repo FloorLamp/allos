@@ -1,5 +1,7 @@
 "use client";
 
+import { formatList } from "@/lib/format-number";
+
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -51,6 +53,7 @@ import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import IngredientsDisclosure from "@/components/intake/IngredientsDisclosure";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
+import { prnLabelIdentityFor } from "@/lib/prn-defaults";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import RxOtcBadge from "@/components/RxOtcBadge";
@@ -548,11 +551,13 @@ export default function MedicationCard({
           >
             {canConfirm ? (
               <QuickLogPrnControl
-                identity={{
+                identity={prnLabelIdentityFor({
                   name: s.name,
+                  supplyId: s.supply_id,
+                  supplyName: s.supply_name,
                   rxcui: s.rxcui,
                   rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
-                }}
+                })}
                 itemId={s.id}
                 name={s.name}
                 doseAmount={doses[0]?.amount ?? null}
@@ -774,11 +779,7 @@ export default function MedicationCard({
             >
               <div className="section-label">Monitoring</div>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {s.name} may need periodic{" "}
-                {new Intl.ListFormat("en", {
-                  style: "long",
-                  type: "conjunction",
-                }).format(monitoringLabs)}{" "}
+                {s.name} may need periodic {formatList(monitoringLabs)}{" "}
                 monitoring. Ask your prescriber which tests you need and how
                 often.
               </p>

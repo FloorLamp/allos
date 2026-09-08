@@ -2,10 +2,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 
-// The blood-pressure cell asks the grid for two tracks because it holds two
-// controls. The WIDTHS those produce are measured where widths exist —
-// e2e/measurements-form-layout.spec.ts — because a jsdom tree has no layout and a
-// class assertion is all this tier can honestly make about a span.
+// Shared form-body behavior. Rendered width coverage lives in
+// e2e/measurements-form-layout.spec.ts.
 
 vi.mock("@/app/(app)/trends/measurement-actions", () => ({
   addMeasurements: async () => ({}),

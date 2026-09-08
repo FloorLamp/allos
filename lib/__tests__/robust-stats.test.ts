@@ -1,11 +1,24 @@
 import { describe, it, expect } from "vitest";
 import {
+  mean,
+  populationSd,
   median,
   medianAbsoluteDeviation,
   pairwiseSlopesPerDay,
   theilSenSlopePerDay,
   robustEndpoints,
 } from "../robust-stats";
+
+describe("numeric summaries", () => {
+  it.each([
+    { values: [], average: NaN, sd: NaN },
+    { values: [7], average: 7, sd: 0 },
+    { values: [8, 2, 6, 4], average: 5, sd: Math.sqrt(5) },
+  ])("summarizes $values", ({ values, average, sd }) => {
+    expect(mean(values)).toBe(average);
+    expect(populationSd(values)).toBe(sd);
+  });
+});
 
 describe("median", () => {
   it("returns the middle element for odd lengths", () => {

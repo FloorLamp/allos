@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { IconPlus } from "@tabler/icons-react";
@@ -8,51 +8,13 @@ import ModalShell from "@/components/ModalShell";
 import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { deepLinkFieldId } from "@/lib/measurements-deeplink";
 import { useHydrated } from "@/components/useHydrated";
+import { useMediaQuery } from "@/components/useMediaQuery";
 import MeasurementsQuickAdd, {
   type MeasurementsQuickAddProps,
 } from "./MeasurementsQuickAdd";
 
-// The body census on-page logging affordance (issue #1486).
-//
-// The tab is a READING surface. It used to open with up to three full entry forms
-// stacked above the first chart — the #1067 chip collapse softened that on a phone,
-// but the forms were still there, mid-scroll, on every visit. The owner decision:
-//
-//   • DESKTOP — one quiet "+ Log" button that opens the combined form in the
-//     standard modal shell. Logging is deliberate; reading is not.
-//   • MOBILE  — NO on-page form at all. The phone's logging path is the global
-//     quick-log sheet / quick-entry overlay (#1467/#1468), which is one tap from
-//     anywhere and returns you to where you were. A second, page-local copy of the
-//     same form would be exactly the duplication that rule exists to prevent.
-//
-// The form itself is authored ONCE (MeasurementsQuickAdd) and mounted here and in
-// the overlay — never hand-mirrored into a `hidden md:*` / `md:hidden` pair.
-//
-// ── Deep links ───────────────────────────────────────────────────────────────
-// `?focus=blood-pressure` / `?new=weight` (and friends) must still land the user in
-// a focused field on BOTH viewports, and the two viewports need different things to
-// happen: desktop opens the modal, mobile opens the overlay. That is a genuine
-// BEHAVIOUR fork (open which surface), not a layout fork, so it is resolved once on
-// mount with matchMedia rather than by rendering two copies of anything. The
-// breakpoint string matches Tailwind's `md`.
-const DESKTOP_QUERY = "(min-width: 768px)";
-
-function subscribeDesktop(onChange: () => void): () => void {
-  if (typeof window === "undefined" || !window.matchMedia) return () => {};
-  const query = window.matchMedia(DESKTOP_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
-function desktopSnapshot(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    !!window.matchMedia?.(DESKTOP_QUERY).matches
-  );
-}
-
-const serverDesktopSnapshot = () => false;
-
+// Desktop opens the shared measurements form in a modal; mobile deep links
+// open the global quick-entry overlay. The destination is fixed after hydration.
 export default function LogMeasurementsPanel(
   props: Omit<MeasurementsQuickAddProps, "onSaved"> & {
     leftControl: ReactNode;
@@ -71,11 +33,7 @@ export default function LogMeasurementsPanel(
   const [openOverride, setOpenOverride] = useState<boolean | null>(null);
   const { open: openQuickEntry } = useQuickEntry();
   const hydrated = useHydrated();
-  const desktop = useSyncExternalStore(
-    subscribeDesktop,
-    desktopSnapshot,
-    serverDesktopSnapshot
-  );
+  const desktop = useMediaQuery("md");
   // Freeze the responsive destination at the first hydrated snapshot. Rotating a
   // phone after its quick-entry overlay opens must not also produce the desktop
   // modal for the same deep link.

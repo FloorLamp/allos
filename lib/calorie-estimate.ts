@@ -1,3 +1,4 @@
+import { formatCount } from "./format-number";
 // Pure activity calorie ESTIMATOR (issue #151).
 //
 // Imported activities carry device-measured energy; manual ones don't. This module
@@ -239,7 +240,7 @@ export function formatActivityCalories(
   display: ActivityCalorieDisplay | null
 ): string | null {
   if (!display) return null;
-  const value = display.kcal.toLocaleString("en-US");
+  const value = formatCount(display.kcal);
   return display.estimated ? `≈ ${value} kcal` : `${value} kcal`;
 }
 
@@ -263,5 +264,5 @@ export function totalEstimatedKcal(
 // marks it as an estimate wherever it renders. Returns null (no chip) for a null.
 export function formatEstimatedKcal(kcal: number | null): string | null {
   if (kcal == null || kcal <= 0) return null;
-  return `≈ ${Math.round(kcal).toLocaleString("en-US")} kcal`;
+  return `≈ ${formatCount(Math.round(kcal))} kcal`;
 }

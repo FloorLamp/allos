@@ -526,7 +526,6 @@ describe("destructive icon-only buttons are recoverable", () => {
   // tap is recoverable whether or not the tooltip was ever readable.
   const CONFIRMS = [
     "components/RecordTable.tsx",
-    "components/EquipmentManager.tsx",
     "app/(app)/encounters/AppointmentList.tsx",
     "app/(app)/immunizations/VaccineDoseHistory.tsx",
     "components/practices/PracticeSessionHistory.tsx",

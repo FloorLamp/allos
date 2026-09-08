@@ -51,6 +51,11 @@ const editorHost = read(EDITOR_HOST_MODULE);
 // importing the component has no reason to add itself.
 const CONSUMERS = [
   {
+    name: "equipment create and edit",
+    chips: "components/EquipmentForm.tsx",
+    host: "components/EquipmentForm.tsx",
+  },
+  {
     name: "the one intake form (#3216)",
     chips: "components/intake/IntakeFactRow.tsx",
     host: "components/IntakeItemForm.tsx",

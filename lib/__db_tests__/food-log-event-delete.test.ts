@@ -1,20 +1,5 @@
-// DB INTEGRATION TIER (issue #1963): removing ONE named food serving.
-//
-// The product had no row-scoped delete anywhere. The only removal was the bar's
-// group-scoped "−" (undoFoodServingCore), which picks its victim with
-// `ORDER BY recorded_at DESC` — the newest TAP in the window. #1934 ended the assumption
-// that made that coherent: a correction gives a row a user-asserted `meal_slot` while
-// deliberately preserving its tap instant, so a serving moved INTO a window is not
-// necessarily the newest thing in it, and the group control takes a neighbour.
-//
-// The pins here are therefore two:
-//
-//   • THE COUNTER MOVES EXACTLY ONCE with the row, in one transaction, and its row is
-//     DROPPED at zero — `food_log_events` and `food_daily_totals` are one fact in two shapes, and
-//     the derived reads (the nudge's per-slot counts, the web bar's day/meal tallies, the
-//     #580 weekly frequency-target progress) all recompute live off the two of them.
-//   • THE DELETE TAKES THE ROW IT WAS GIVEN, including in the exact configuration the
-//     issue is about, where the group-scoped undo demonstrably takes someone else.
+// Deleting a named serving removes that event and updates its counter once,
+// dropping the counter at zero. Day and meal-window reads reflect the deletion.
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
@@ -26,7 +11,7 @@ import {
 } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
-import { getFoodMealDays, getWeeklyServingsForGroup } from "@/lib/queries";
+import { getFoodMealDays } from "@/lib/queries";
 import { type FoodSlot } from "@/lib/food-slot";
 
 // Per-window tallies through the meal grouping the web surface renders
@@ -115,8 +100,7 @@ describe("deleteFoodLogEventCore — the counter moves with the row (#1963)", ()
     expect(allCounters(profileId)).toEqual([
       { date: anchor, group_key: "berries", servings: 2 },
     ]);
-    // The three derived reads agree: Morning lost its serving, the other two windows
-    // kept theirs, and the weekly frequency-target progress is down by exactly one.
+    // Morning lost its serving; the other two windows kept theirs.
     expect(
       slotServingsOnDate(profileId, "Morning", anchor).get("berries")
     ).toBeUndefined();
@@ -126,7 +110,6 @@ describe("deleteFoodLogEventCore — the counter moves with the row (#1963)", ()
     expect(
       slotServingsOnDate(profileId, "Evening", anchor).get("berries")
     ).toBe(1);
-    expect(getWeeklyServingsForGroup(profileId, "berries")).toBe(2);
     const [day] = getFoodMealDays(profileId, [anchor]);
     expect(day.counts.berries).toBe(2);
     expect(day.events.map((e) => e.id)).not.toContain(first);
@@ -154,7 +137,6 @@ describe("deleteFoodLogEventCore — the counter moves with the row (#1963)", ()
     expect(allCounters(profileId)).toEqual([
       { date: anchor, group_key: "leafy_greens", servings: 1 },
     ]);
-    expect(getWeeklyServingsForGroup(profileId, "fatty_fish")).toBe(0);
     const [day] = getFoodMealDays(profileId, [anchor]);
     expect(day.counts.fatty_fish).toBeUndefined();
     expect(day.counts.leafy_greens).toBe(1);

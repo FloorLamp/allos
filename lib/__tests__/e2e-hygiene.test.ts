@@ -266,8 +266,6 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "drug-interactions.spec.ts": 1,
   "entry-ergonomics.spec.ts": 1,
   "episode-med-reconcile.spec.ts": 1,
-  "equipment-lifecycle.spec.ts": 3,
-  "equipment-manager.spec.ts": 1,
   "food-log-correction.spec.ts": 3,
   "genomics.spec.ts": 2,
   "goal-metric-switch.spec.ts": 1,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Equipment } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
@@ -105,8 +105,22 @@ export function useActivityParts({
   fillSets: (pi: number, fill: SetFill) => void;
   applyPlateBuild: (total: number, barId: number | null) => void;
 } {
-  const [parts, setParts] = useState<PartEntry[]>(() =>
+  const [parts, setPartsState] = useState<PartEntry[]>(() =>
     initialPartsFromSeed(seed, units, isKnown)
+  );
+  // Normalize the complete result of every parts transition. Editor lifetime is a
+  // property of the resulting part, so topology changes and exported setter users
+  // must pass through the same boundary as set-value edits.
+  const setParts = useCallback<Dispatch<SetStateAction<PartEntry[]>>>(
+    (update) =>
+      setPartsState((prev) => {
+        const next = typeof update === "function" ? update(prev) : update;
+        const latched = next.map(latchVaried);
+        return latched.every((part, index) => part === next[index])
+          ? next
+          : latched;
+      }),
+    []
   );
   const [plateTarget, setPlateTarget] = useState<PlateTarget | null>(null);
 
@@ -249,13 +263,13 @@ export function useActivityParts({
       prev.map((p, idx) => {
         if (idx !== pi) return p;
         const shared = sharedLoadSets(p.sets);
-        return latchVaried({
+        return {
           ...p,
           sets: p.sets.map((s, j) => {
             const selected = si === "all" ? shared.includes(s) : j === si;
             return selected ? { ...s, ...patch } : s;
           }),
-        });
+        };
       })
     );
   }
@@ -335,9 +349,7 @@ export function useActivityParts({
     if (fill.source === "session") {
       setParts((prev) =>
         prev.map((part, idx) =>
-          idx === pi
-            ? latchVaried({ ...part, sets: sets.map(asPlan), perSide })
-            : part
+          idx === pi ? { ...part, sets: sets.map(asPlan), perSide } : part
         )
       );
       return;
@@ -361,7 +373,7 @@ export function useActivityParts({
           warmup: row.warmup,
           rpe: row.rpe,
         });
-        return latchVaried({
+        return {
           ...part,
           sets: untouched
             ? part.sets.map((s, j) => (j === li ? land(s) : s))
@@ -373,7 +385,7 @@ export function useActivityParts({
             !part.toFailure
               ? String(targetReps)
               : part.targetReps,
-        });
+        };
       })
     );
   }

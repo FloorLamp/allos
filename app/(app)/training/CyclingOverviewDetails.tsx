@@ -1,3 +1,4 @@
+import { formatCount } from "@/lib/format-number";
 import Link from "next/link";
 import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
@@ -20,8 +21,8 @@ import { formatMinutes } from "@/lib/duration";
 
 function elevation(valueM: number, unit: DistanceUnit): string {
   return unit === "mi"
-    ? `${Math.round(valueM * 3.28084).toLocaleString("en-US")} ft`
-    : `${Math.round(valueM).toLocaleString("en-US")} m`;
+    ? `${formatCount(Math.round(valueM * 3.28084))} ft`
+    : `${formatCount(Math.round(valueM))} m`;
 }
 
 function elapsed(seconds: number): string {
@@ -143,7 +144,7 @@ export default function CyclingOverviewDetails({
                 label="Mechanical work"
                 value={
                   rollup.totals.kilojoules > 0
-                    ? `${Math.round(rollup.totals.kilojoules).toLocaleString("en-US")} kJ`
+                    ? `${formatCount(Math.round(rollup.totals.kilojoules))} kJ`
                     : "—"
                 }
               />
@@ -459,7 +460,7 @@ export default function CyclingOverviewDetails({
           title="Heart-rate distribution"
           // This card is windowed where the totals above are all-time, so it names
           // the days it counted rather than letting the section imply every ride.
-          description={`${zoneTotal.toLocaleString("en-US")} recorded minutes inside ${noun} windows, over the ${data.zoneWindow.weeks} weeks through ${formatMonthDay(data.zoneWindow.through, formatPrefs)}.`}
+          description={`${formatCount(zoneTotal)} recorded minutes inside ${noun} windows, over the ${data.zoneWindow.weeks} weeks through ${formatMonthDay(data.zoneWindow.through, formatPrefs)}.`}
           className="lg:col-span-2"
           data-testid="cycling-heart-rate-zones"
         >
@@ -534,7 +535,7 @@ export default function CyclingOverviewDetails({
                   Training load
                 </h3>
                 <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                  {Math.round(totalLoad).toLocaleString("en-US")} total
+                  {formatCount(Math.round(totalLoad))} total
                 </span>
               </div>
               <div className="mt-3">

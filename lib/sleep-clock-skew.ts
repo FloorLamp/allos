@@ -30,6 +30,7 @@
 //
 // Pure — no DB, no clock. The gather is lib/queries/sleep-clock-skew.ts.
 
+import { median } from "./robust-stats";
 import { parseInstant, parseUtcSql, utcInstant } from "./date";
 import type { CanonicalInstant } from "./temporal-types";
 import { FRAGMENT_MERGE_GAP_MAX_MIN } from "./sleep-regularity";
@@ -176,25 +177,6 @@ const SEARCH_RADIUS_MS = 12 * 60 * MINUTE_MS;
 // wide — and the window itself is session-width, so the comparison stays apples to
 // apples whatever the session's length.
 const SEARCH_STEP_MS = 15 * MINUTE_MS;
-
-// SORTED WITHOUT A COMPARATOR (#5035). `[...values].sort((a, b) => a - b)` calls a JS
-// closure at every comparison, and this median runs once per quarter-hour window across
-// a whole day — the profile in #5035 put roughly half the detector's self time in that
-// comparator alone, and removing it is worth more than any change to the algorithm
-// around it.
-//
-// `Float64Array#sort` sorts numerically ascending with no comparator, which is the same
-// order `(a, b) => a - b` produces for every value that can reach here: `bpm` is checked
-// with `Number.isFinite` at intake, so there is no NaN to sort differently and no
-// `undefined` to sort last. The values themselves are unchanged, so the even-count
-// average of the two middle elements is the same double it always was.
-function median(values: number[]): number {
-  const sorted = Float64Array.from(values).sort();
-  const mid = sorted.length >> 1;
-  return sorted.length % 2 === 1
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
-}
 
 // The median and mean bpm over [from, to), or null when the window's coverage is too
 // thin to carry a claim. Coverage is measured against the window's OWN width in

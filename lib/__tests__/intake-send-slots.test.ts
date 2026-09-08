@@ -83,6 +83,7 @@ function item(
     quantity_on_hand: null,
     qty_per_dose: 1,
     supply_id: null,
+    supply_name: null,
     last_fill_size: null,
     kind,
     prescriber: null,

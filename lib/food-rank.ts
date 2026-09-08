@@ -15,7 +15,7 @@
 // the pre-#950 ranking. Ranking is presentation-only; every catalog group still appears
 // exactly once (#559 — context gates order, never what CAN be logged).
 
-import { decayedWeight } from "./decay";
+import { decayWeights } from "./rank-by-frequency";
 import { clockDistanceMin } from "./food-slot";
 
 export interface FoodOccurrence {
@@ -163,19 +163,6 @@ function slotAbsence(slotWeight: number, overallWeight: number): boolean {
 // beside the six. Same count, same head of the same list, one control that is a button in
 // a chat and a stepper on a page.
 export const FOOD_QUICK_COUNT = 6;
-
-function decayWeights(
-  occ: FoodOccurrence[],
-  today: string,
-  halfLifeDays?: number
-): Map<string, number> {
-  const w = new Map<string, number>();
-  for (const o of occ) {
-    const add = (o.weight ?? 1) * decayedWeight(o.date, today, halfLifeDays);
-    w.set(o.name, (w.get(o.name) ?? 0) + add);
-  }
-  return w;
-}
 
 // ---- Slot signal by PROXIMITY, not by bucket (issue #2019) ----
 

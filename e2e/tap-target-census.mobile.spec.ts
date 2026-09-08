@@ -4,7 +4,7 @@ import { E2E_LOGIN_SICK_SELF } from "./logins/illness";
 import { E2E_LOGIN_MULTI } from "./logins/household";
 import { E2E_LOGIN_SHELL, SHELL_DOSE_ITEM } from "./logins/metrics";
 import { E2E_MEMBER_PASSWORD } from "./logins/shared";
-import { hydratedClick, openMobileDrawer } from "./helpers";
+import { hydratedClick, openMobileDrawer, settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import {
   CONTROL_BOX_PX,
@@ -100,30 +100,30 @@ async function expectRenderedTargetsDisjoint(name: string, row: Locator) {
   const targets = row.locator("button");
   const count = await targets.count();
   expect(count, `${name} must exercise adjacent targets`).toBeGreaterThan(1);
+  const controls = Array.from({ length: count }, (_, index) =>
+    targets.nth(index)
+  );
+  const rendered = await settledBoxes(controls);
   const boxes = await Promise.all(
-    Array.from({ length: count }, async (_, index) => {
-      const target = targets.nth(index);
-      const box = await target.boundingBox();
+    controls.map(async (target, index) => {
+      const box = rendered[index];
       const reach = await reachOf(target);
-      return box === null
-        ? null
-        : {
-            x: box.x - reach.inline,
-            y: box.y - reach.block,
-            width: box.width + 2 * reach.inline,
-            height: box.height + 2 * reach.block,
-          };
+      return {
+        x: box.x - reach.inline,
+        y: box.y - reach.block,
+        width: box.width + 2 * reach.inline,
+        height: box.height + 2 * reach.block,
+      };
     })
   );
   for (let left = 0; left < boxes.length; left += 1) {
-    expect(boxes[left], name).not.toBeNull();
     expect(
-      boxes[left]!.height + TAP_FLOOR_FLOAT_EPSILON_PX,
+      boxes[left].height + TAP_FLOOR_FLOAT_EPSILON_PX,
       `${name} target ${left} effective height`
     ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     for (let right = left + 1; right < boxes.length; right += 1) {
-      const a = boxes[left]!;
-      const b = boxes[right]!;
+      const a = boxes[left];
+      const b = boxes[right];
       const overlapX =
         Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
       const overlapY =

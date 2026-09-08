@@ -448,9 +448,9 @@ export const sharesLoad = (p: Pick<PartEntry, "sets" | "perSide">) => {
         shownLoad(s, "weightRight") === shownLoad(sets[0], "weightRight"))
   );
 };
-// Sets that arrive or are filled at differing loads keep their own weights from then
-// on; every writer that puts values into a part's sets says so here, so the grid's
-// render never has to write state to remember what it showed.
+// Once a part's editable loads differ, it keeps its own weights from then on. The
+// parts-state owner applies this after every complete transition, so value and
+// topology changes cannot disagree about the editor's lifetime.
 export const latchVaried = (p: PartEntry): PartEntry =>
   p.varied || sharesLoad(p) ? p : { ...p, varied: true };
 

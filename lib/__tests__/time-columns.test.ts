@@ -1,3 +1,4 @@
+import { stripComments } from "./strip-comments";
 // PURE TIER — the declared temporal-column index (issue #2205 phase 3).
 //
 // Two jobs, both of them ratchets:
@@ -415,12 +416,6 @@ describe("the retired dose timestamp spelling (#4347)", () => {
     );
   });
 });
-
-function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
 
 const camel = (snake: string): string =>
   snake.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
