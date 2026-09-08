@@ -30,8 +30,11 @@ import {
   getPrnIntakeItemsForQuickLog,
   getPrnMedicationsForQuickLog,
   getIntakeDoseHistory,
+  createSharedSupply,
+  linkItemToPool,
 } from "@/lib/queries";
 import type { IntakeItem } from "@/lib/types";
+import { prnDefaultsFor } from "@/lib/prn-defaults";
 
 // A minimal daily supplement for the pure strip computation (isDueOn reads only
 // condition / situation / obligation).
@@ -365,6 +368,50 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
       rxcui: "99999",
       rxcuiIngredients: ["161", "2670"],
     });
+  });
+
+  it("reads the linked bottle name into the shared PRN label matcher", () => {
+    const { profileId, itemId } = seedPrnMed(10);
+    db.prepare(
+      "UPDATE intake_items SET name = ?, rxcui = NULL, rxcui_ingredients = NULL WHERE id = ?"
+    ).run("Acetaminophen", itemId);
+    const supplyId = createSharedSupply(
+      {
+        name: "Acetaminophen with Codeine",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      10
+    );
+    linkItemToPool(profileId, itemId, supplyId);
+
+    const combination = getPrnMedicationsForQuickLog(profileId)[0];
+    expect(combination.identity.name).toBe("Acetaminophen with Codeine");
+    expect(prnDefaultsFor(combination.identity)).toBeNull();
+
+    db.prepare("UPDATE shared_supplies SET name = ? WHERE id = ?").run(
+      "Tylenol",
+      supplyId
+    );
+    db.prepare("UPDATE intake_items SET name = ? WHERE id = ?").run(
+      "Child's fever medicine",
+      itemId
+    );
+    const supported = getPrnMedicationsForQuickLog(profileId)[0];
+    expect(supported.identity.name).toBe("Tylenol");
+    expect(prnDefaultsFor(supported.identity)?.slug).toBe("acetaminophen");
+
+    db.prepare(
+      "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ? WHERE id = ?"
+    ).run("5640", JSON.stringify(["5640"]), itemId);
+    db.prepare("UPDATE shared_supplies SET name = ? WHERE id = ?").run(
+      "Acetaminophen with Codeine",
+      supplyId
+    );
+    const resolved = getPrnMedicationsForQuickLog(profileId)[0];
+    expect(prnDefaultsFor(resolved.identity)?.slug).toBe("ibuprofen");
   });
 
   it("surfaces may intake items with safe quick-log labels and excludes ineligible rows", () => {

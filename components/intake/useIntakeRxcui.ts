@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   lookupRxcui,
   lookupRxcuiIngredients,
@@ -9,12 +9,9 @@ import { parseRxcuiIngredients, dominantRxNormCandidate } from "@/lib/rxnorm";
 
 // Shared RxNorm confirm state for BOTH intake forms (#846, extracted from the former
 // IntakeItemForm). Owns the cached concept id (#144) + its resolved active-ingredient
-// CUIs (#279), the candidate list, and the lookup/confirm handlers. The form threads
-// `rxcui`/`rxcuiIngredients` into its hidden fields and the interaction notices, so
-// the ONE matching computation drives both forms identically (the cross-kind rule).
-// A code this form actually confirmed, with the active-ingredient CUIs that resolved
-// with it (#279). Returned rather than only stored, so a caller that needs the code it
-// just confirmed reads it from the confirm instead of from a render that predates it.
+// CUIs (#279), and the complete lookup → confirmation lifetime. A new product or
+// operation invalidates every pending stage before it can publish identity or prefill.
+// The form owns its dose ledger; it receives only current identity completions.
 export interface ConfirmedRxcui {
   rxcui: string;
   rxcuiIngredients: string[] | null;
@@ -27,18 +24,17 @@ export interface RxcuiState {
   loading: boolean;
   error: string | null;
   find: (name: string) => Promise<void>;
-  confirm: (code: string) => Promise<ConfirmedRxcui | null>;
-  // Auto-confirm the RxNorm code for a catalog pick (#851 item 7): look up candidates
-  // and adopt an UNAMBIGUOUS top match; surface an ambiguous list for a manual pick;
-  // degrade silently offline / on no match. Never auto-confirms an ambiguous candidate.
-  // Resolves to the confirmed code, or null when nothing was confirmed (no match,
-  // ambiguous, offline) or a newer confirm superseded this one.
-  autoConfirm: (name: string) => Promise<ConfirmedRxcui | null>;
+  confirm: (code: string) => Promise<void>;
+  // Current completion only. Null means a current no-match/offline/ambiguous
+  // lookup; an invalidated operation never calls onResolved. The callback runs
+  // inside the final validity check so no awaited result can become stale first.
+  autoConfirm: (
+    name: string,
+    onResolved: (confirmed: ConfirmedRxcui | null) => void
+  ) => Promise<void>;
   clear: () => void;
-  // A name edit invalidates a previously-confirmed code (and its ingredients).
-  onNameChange: () => void;
-  // Full reset for an add-form after a successful save.
-  reset: () => void;
+  // Replace identity when restoring a draft, or clear it for a blank form.
+  reset: (identity?: ConfirmedRxcui | null) => void;
 }
 
 export function useIntakeRxcui(initial?: {
@@ -58,41 +54,63 @@ export function useIntakeRxcui(initial?: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Latest confirmed code — guards the async ingredient resolve against a stale
-  // response landing after the user cleared or re-confirmed a different code.
-  const rxcuiRef = useRef<string | null>(initial?.rxcui ?? null);
-  function apply(code: string | null, ingredients: string[] | null) {
-    rxcuiRef.current = code;
-    setRxcui(code);
-    setRxcuiIngredients(ingredients);
-  }
+  const revision = useRef(0);
+  useEffect(
+    () => () => {
+      ++revision.current;
+    },
+    []
+  );
 
-  async function confirm(code: string): Promise<ConfirmedRxcui | null> {
-    apply(code, null);
+  function reset(identity: ConfirmedRxcui | null = null) {
+    ++revision.current;
+    setRxcui(identity?.rxcui ?? null);
+    setRxcuiIngredients(identity?.rxcuiIngredients ?? null);
     setCandidates(null);
     setError(null);
+    setLoading(false);
+  }
+
+  function begin(): number {
+    reset();
+    return revision.current;
+  }
+
+  // Auto-confirm carries the SAME revision through this stage; calling the public
+  // confirm here would start a different operation. Code equality cannot guard an
+  // older request for the same code after the product has changed away and back.
+  async function resolveIngredients(
+    code: string,
+    operation: number
+  ): Promise<ConfirmedRxcui | null> {
+    setRxcui(code);
     let ingredients: string[] = [];
     try {
       ingredients = await lookupRxcuiIngredients(code);
     } catch {
-      // Keep product-rxcui + name matching.
+      // Keep current product-CUI/name matching when decomposition is unavailable.
     }
-    // A newer confirm already owns the field; this answer is about a code nobody holds.
-    if (rxcuiRef.current !== code) return null;
-    if (ingredients.length > 0) setRxcuiIngredients(ingredients);
-    return {
+    if (revision.current !== operation) return null;
+    const confirmed = {
       rxcui: code,
       rxcuiIngredients: ingredients.length > 0 ? ingredients : null,
     };
+    setRxcuiIngredients(confirmed.rxcuiIngredients);
+    return confirmed;
+  }
+
+  async function confirm(code: string): Promise<void> {
+    await resolveIngredients(code, begin());
   }
 
   async function find(name: string) {
+    const operation = begin();
     const term = name.trim();
     if (!term) return;
     setLoading(true);
-    setError(null);
     try {
       const found = await lookupRxcui(term);
+      if (revision.current !== operation) return;
       setCandidates(found);
       if (found.length === 0) {
         setError(
@@ -100,49 +118,34 @@ export function useIntakeRxcui(initial?: {
         );
       }
     } catch {
+      if (revision.current !== operation) return;
       setError("Couldn't reach the RxNorm lookup. You can still save.");
       setCandidates([]);
     } finally {
-      setLoading(false);
+      if (revision.current === operation) setLoading(false);
     }
   }
 
-  // Auto-confirm on a catalog pick (#851 item 7). Runs the same lookup as `find`, but
-  // instead of always surfacing candidates it silently CONFIRMS an unambiguous top
-  // match (single candidate / dominant score) and only surfaces the list when it's
-  // ambiguous. Any timeout/offline/no-match degrades silently — the manual "Find
-  // RxNorm code" affordance stays available. Never confirms an ambiguous candidate.
-  async function autoConfirm(name: string): Promise<ConfirmedRxcui | null> {
+  async function autoConfirm(
+    name: string,
+    onResolved: (confirmed: ConfirmedRxcui | null) => void
+  ): Promise<void> {
+    const operation = begin();
     const term = name.trim();
-    if (!term) return null;
+    let confirmed: ConfirmedRxcui | null = null;
     try {
-      const found = await lookupRxcui(term);
-      if (found.length === 0) return null; // silent degrade (offline / no match)
+      const found = term ? await lookupRxcui(term) : [];
+      if (revision.current !== operation) return;
       const dominant = dominantRxNormCandidate(found);
-      if (dominant) return await confirm(dominant);
-      setCandidates(found); // ambiguous → manual pick
-      return null;
+      if (dominant) confirmed = await resolveIngredients(dominant, operation);
+      else if (found.length) setCandidates(found);
     } catch {
-      // Silent degrade — keep name-only matching; the manual affordance remains.
-      return null;
+      // A CURRENT offline lookup retains name-only fallback. An obsolete one
+      // cannot seed its old name, just as it cannot publish an old code.
     }
-  }
-
-  function clear() {
-    apply(null, null);
-    setCandidates(null);
-  }
-
-  function onNameChange() {
-    if (rxcuiRef.current) apply(null, null);
-    setCandidates(null);
-    setError(null);
-  }
-
-  function reset() {
-    apply(null, null);
-    setCandidates(null);
-    setError(null);
+    // Keep the callback outside the transport catch: an application error must
+    // not run the prefill twice by being mistaken for an offline lookup.
+    if (revision.current === operation) onResolved(confirmed);
   }
 
   return {
@@ -154,8 +157,7 @@ export function useIntakeRxcui(initial?: {
     find,
     confirm,
     autoConfirm,
-    clear,
-    onNameChange,
+    clear: () => reset(),
     reset,
   };
 }

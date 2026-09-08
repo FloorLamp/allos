@@ -43,12 +43,16 @@ export default function SharedSupplyPicker({
   onPickSupply?: (supply: SupplyOption | null) => void;
 }) {
   const initialChoice = supplyId;
-  // In edit mode the saved item/link tuple owns this local draft. Create mode uses
-  // one stable key so its seeded bottle remains entirely user-controlled.
+  // Edit mode needs a pending choice until Apply succeeds. A create has no separate
+  // link transaction, so the form's persisted supplyId is its single choice owner.
   const savedLinkKey = itemId
     ? `${itemId}:${supplyId}:${supplyName ?? ""}`
     : "create";
-  const [choice, setChoice] = useResettableState(initialChoice, savedLinkKey);
+  const [pendingChoice, setPendingChoice] = useResettableState(
+    initialChoice,
+    savedLinkKey
+  );
+  const choice = itemId ? pendingChoice : supplyId;
   const [newName, setNewName] = useState(itemName);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -78,7 +82,6 @@ export default function SharedSupplyPicker({
           value={choice}
           onChange={(e) => {
             const next = e.target.value;
-            setChoice(next);
             onPickSupply?.(options.find((o) => String(o.id) === next) ?? null);
           }}
         >
@@ -182,7 +185,7 @@ export default function SharedSupplyPicker({
           value={choice}
           disabled={pending}
           onChange={(e) => {
-            setChoice(e.target.value);
+            setPendingChoice(e.target.value);
             setError(null);
             setSuccess(null);
           }}

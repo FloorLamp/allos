@@ -11,7 +11,23 @@ Use the shared intake form. The entry point owns the kind; naming and product
 selection do not silently change it. Present the selected facts with focused
 editors and submit the complete form state so hidden editors do not drop values.
 Formulation/concentration must come from an explicit product choice before an
-amount can be expressed in mL.
+amount can be expressed in mL. `prnDefaultsFor` offers single-ingredient label
+figures only: a complete single-ingredient CUI identity matches by
+`ingredientCuiKey`; without one, the name must equal a curated synonym. Listed
+composition, multiple ingredient CUIs, and unresolved qualifiers such as a strength
+suffix refuse the label. Unknown qualifiers stay in picked names; only exact catalog
+pick names and labels can canonicalize them. Ingredient-level interaction and fever
+classification still include combination products. A name, composition, or
+confirmed-code change withdraws only the prior suggestion-owned dose; saved and
+caregiver-edited amounts stay.
+For name-only PRN label matching, a linked bottle's `supply_name` is the product
+name; an unlinked item falls back to its own display name. Linking never overwrites
+that display name or the person's dose amount.
+`useIntakeRxcui` owns one revision across name lookup and ingredient confirmation.
+A new identity operation, clear, composition edit, draft restore, reset, or unmount
+retires every pending response, including a lookup for the same code. Only a current
+completion can seed the form; a current offline/no-match result retains name-only
+fallback. Restoring a draft restores its code and treats its dose as personal input.
 
 Prefer confirmed ingredient/product identity where available and preserve the
 distinction between confirmed identity and a name-only match. Editing identity

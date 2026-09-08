@@ -170,7 +170,7 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await quickAdd.getByLabel("Name").fill("Hydrocortisone");
     await expect(
       quickAdd.getByTestId("medication-pediatric-no-chart")
-    ).toContainText("No pediatric label weight-band chart");
+    ).toContainText("No pediatric dose chart is available for this product.");
 
     await quickAdd.getByLabel("Name").fill("Acetaminophen");
     // Portaled listbox (#3271) — resolved from the page, not the panel.
