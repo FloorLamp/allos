@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SupplyOption } from "@/lib/supply-product";
@@ -45,6 +46,7 @@ const BOTTLES: SupplyOption[] = [
 ];
 
 const TRACKED_MEDICATION = {
+  intakeContext: intakeFormContext("2026-09-01"),
   medication: { id: 7, name: "Aspirin", quantity_on_hand: 90 },
   courses: [],
   sideEffects: [],
@@ -151,19 +153,12 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
   const action = vi.fn(async (_data: FormData) => ({ ok: true as const }));
   const common = {
     action,
-    allIntakeItems: [],
-    stackItems: [],
-    pgxVariants: [],
+    intakeContext: intakeFormContext("2026-09-01"),
   };
   const supplement = <AddSupplementModal {...common} />;
   const form =
     kind === "medication" ? (
-      <MedicationAddWorkspace
-        {...common}
-        subtitle=""
-        todayStr="2026-09-01"
-        conditions={[]}
-      />
+      <MedicationAddWorkspace {...common} subtitle="" />
     ) : (
       <CreateAction
         declaration={{ kind: "supplement", control: supplement }}

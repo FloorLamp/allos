@@ -1,16 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type {
-  IntakeItem,
-  IntakeDose,
-  IntakePair,
-  IntakeConditionOption,
-} from "@/lib/types";
+import type { IntakeItem, IntakeDose, IntakePair } from "@/lib/types";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import type { IntakeItemPurpose } from "@/lib/intake-purposes";
-import type { InteractionItem } from "@/lib/drug-interactions";
-import type { PgxVariantInput } from "@/lib/pgx";
 import {
   CONDITION_LABELS,
   FOOD_TIMING_HINTS,
@@ -28,7 +21,9 @@ import {
 import type { PoolChipData } from "@/lib/queries/intake";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 import ModalShell from "@/components/ModalShell";
+import { pediatricAgeYears } from "@/lib/prn-dosing";
 import FoodGuidance from "@/components/FoodGuidance";
 import DoseHistoryPanel, {
   type DoseHistoryEntry,
@@ -67,14 +62,11 @@ export default function EditableSupplementRow({
   isTaken,
   isSkipped,
   doses,
+  intakeContext,
   retiredDoses = [],
-  allIntakeItems,
-  stackItems,
-  pgxVariants,
   pairs,
   ingredients = [],
   purposes = [],
-  purposeConditions = [],
   purposeBiomarkers = [],
   strip,
   refillRate,
@@ -105,18 +97,15 @@ export default function EditableSupplementRow({
   isTaken?: boolean;
   isSkipped?: boolean;
   doses: IntakeDose[];
+  intakeContext: IntakeFormContext;
   // Retired doses of this item (#2131), for the edit form's Restore affordance.
   retiredDoses?: IntakeDose[];
-  allIntakeItems: { id: number; name: string }[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
   pairs: IntakePair[];
   // This item's label composition (#2856): the "What's in this" disclosure below and
   // the edit form's repeater. Empty for the ordinary single-substance item.
   ingredients?: IntakeItemIngredient[];
   // Purpose links and their picker sources (#2857), passed straight to the edit form.
   purposes?: IntakeItemPurpose[];
-  purposeConditions?: IntakeConditionOption[];
   purposeBiomarkers?: string[];
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
@@ -356,6 +345,7 @@ export default function EditableSupplementRow({
             name={s.name}
             rxcui={s.rxcui}
             rxcuiIngredients={s.rxcui_ingredients}
+            age={pediatricAgeYears(intakeContext.pediatric)}
             suppressedFoodKeys={suppressedFoodKeys}
           />
           <AdherenceSummaryLine strip={strip} noteworthyOnly />
@@ -407,18 +397,15 @@ export default function EditableSupplementRow({
             className="min-h-0 overflow-y-auto px-1"
           >
             <IntakeItemForm
+              intakeContext={intakeContext}
               action={updateIntakeItem}
               kind="supplement"
               item={s}
               doses={doses}
               ingredients={ingredients}
               purposes={purposes}
-              conditions={purposeConditions}
               biomarkers={purposeBiomarkers}
               retiredDoses={retiredDoses}
-              allIntakeItems={allIntakeItems}
-              stackItems={stackItems}
-              pgxVariants={pgxVariants}
               pairs={pairs}
               activityScheduleAvailable={activityScheduleAvailable}
               onDone={() => setEditing(false)}

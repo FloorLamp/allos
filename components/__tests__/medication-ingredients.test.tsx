@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { IntakeItem } from "@/lib/types";
@@ -96,9 +97,7 @@ function renderCard(ingredients: IntakeItemIngredient[]) {
         <MedicationCard
           medication={AMOXICILLIN}
           doses={[]}
-          allIntakeItems={[]}
-          stackItems={[]}
-          pgxVariants={[]}
+          intakeContext={intakeFormContext("2026-03-02")}
           pairs={[]}
           takenDoseIds={new Set<number>()}
           skippedDoseIds={new Set<number>()}
@@ -107,7 +106,6 @@ function renderCard(ingredients: IntakeItemIngredient[]) {
           sideEffects={[]}
           strip={[]}
           refillRate={null}
-          todayStr="2026-03-02"
           nowIso="2026-03-02T13:20:00Z"
           timezone="UTC"
           historyMaxDate="2026-03-02"

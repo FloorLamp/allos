@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   act,
@@ -135,12 +136,10 @@ function mount(
           <MedicationAddWorkspace
             subtitle=""
             action={actions.addIntakeItem}
-            allIntakeItems={[]}
-            stackItems={[]}
-            pgxVariants={[]}
-            conditions={[]}
-            pediatric={pediatric}
-            todayStr={TODAY}
+            intakeContext={intakeFormContext(
+              TODAY,
+              pediatric ? { pediatric } : {}
+            )}
           />
         ) : (
           <CreateAction
@@ -149,9 +148,10 @@ function mount(
               control: (
                 <AddSupplementModal
                   action={actions.addIntakeItem}
-                  allIntakeItems={[]}
-                  stackItems={[]}
-                  pgxVariants={[]}
+                  intakeContext={intakeFormContext(
+                    TODAY,
+                    pediatric ? { pediatric } : {}
+                  )}
                 />
               ),
             }}
