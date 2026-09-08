@@ -325,8 +325,8 @@ const textOf = (v: unknown): string => (typeof v === "string" ? v : "");
 const isoDateOrNull = (v: unknown): string | null =>
   typeof v === "string" && isRealIsoDate(v) ? v : null;
 
-// Parse the doses JSON the form submits. Always returns at least one dose so an item
-// is never left without a schedule entry. normalizeWeekdays drops anything out of
+// Parse the doses JSON the form submits. An empty list remains empty: a dose row exists
+// only after the person states one. normalizeWeekdays drops anything out of
 // range and canonicalizes the order (#1602), so an equivalent re-submission stores
 // identically and a no-op edit never looks like a change.
 export function parseIntakeDoses(formData: FormData): CollapsibleDose[] {
@@ -341,18 +341,7 @@ export function parseIntakeDoses(formData: FormData): CollapsibleDose[] {
     start_date: isoDateOrNull(d.start_date),
     end_date: isoDateOrNull(d.end_date),
   }));
-  return rows.length
-    ? rows
-    : [
-        {
-          amount: null,
-          time_of_day: null,
-          food_timing: "any",
-          weekdays: null,
-          start_date: null,
-          end_date: null,
-        },
-      ];
+  return rows;
 }
 
 // A submitted pair: the relationship from the edited item to another of this
@@ -469,16 +458,7 @@ export function emptyIntakeItemFormState(
     endDate: "",
     courseId: null,
     cadence: emptyIntakeCadence(),
-    doses: [
-      {
-        amount: "",
-        time_of_day: "",
-        food_timing: "any",
-        weekdays: [],
-        start_date: "",
-        end_date: "",
-      },
-    ],
+    doses: [],
     pairs: [],
     ingredients: [],
     purposes: [],
@@ -585,18 +565,17 @@ export function intakeItemFormStateFrom(seed: {
           : "",
       anchorDate: item?.cadence_anchor_date ?? "",
     },
-    doses:
-      seed.doses && seed.doses.length
-        ? seed.doses.map((d) => ({
-            id: d.id,
-            amount: d.amount ?? "",
-            time_of_day: d.time_of_day ?? "",
-            food_timing: d.food_timing,
-            weekdays: sortedWeekdays(d.weekdays),
-            start_date: d.start_date ?? "",
-            end_date: d.end_date ?? "",
-          }))
-        : [{ ...blank.doses[0], amount: supplySeed?.amount ?? "" }],
+    doses: seed.doses
+      ? seed.doses.map((d) => ({
+          id: d.id,
+          amount: d.amount ?? "",
+          time_of_day: d.time_of_day ?? "",
+          food_timing: d.food_timing,
+          weekdays: sortedWeekdays(d.weekdays),
+          start_date: d.start_date ?? "",
+          end_date: d.end_date ?? "",
+        }))
+      : [],
     pairs: [...(seed.pairs ?? [])],
     ingredients: [...(seed.ingredients ?? [])],
     purposes: [...(seed.purposes ?? [])],

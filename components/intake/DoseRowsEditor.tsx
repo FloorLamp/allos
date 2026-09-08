@@ -28,8 +28,8 @@ export interface DoseState {
   end_date: string;
 }
 
-export const emptyDose = (): DoseState => ({
-  amount: "",
+export const emptyDose = (amount = ""): DoseState => ({
+  amount,
   time_of_day: "",
   food_timing: "any",
   weekdays: [],
@@ -50,6 +50,8 @@ export default function DoseRowsEditor({
   singleAmountOnly = false,
   weekStart = 0,
   hideFoodTiming = false,
+  newDoseAmount = "",
+  onAddDose,
 }: {
   doses: DoseState[];
   setDoses: Dispatch<SetStateAction<DoseState[]>>;
@@ -60,6 +62,10 @@ export default function DoseRowsEditor({
   // field is the drift the merge removes, so the form that owns the sentence hides
   // the per-row select and the sentence writes every row.
   hideFoodTiming?: boolean;
+  // A selected bottle may suggest its strength when the person adds a real row.
+  // Keeping it here avoids minting a row solely to carry the suggestion.
+  newDoseAmount?: string;
+  onAddDose?: () => void;
   // The profile's first day of the week, so the per-dose chips are ordered exactly
   // like every other calendar surface.
   weekStart?: number;
@@ -74,7 +80,7 @@ export default function DoseRowsEditor({
   }
 
   if (singleAmountOnly) {
-    const d = doses[0] ?? emptyDose();
+    const d = doses[0] ?? emptyDose(newDoseAmount);
     return (
       <div className="sm:col-span-2" data-testid="prn-dose-row">
         <div className="mb-2 section-label">Dose</div>
@@ -244,7 +250,11 @@ export default function DoseRowsEditor({
       </div>
       <button
         type="button"
-        onClick={() => setDoses((ds) => [...ds, emptyDose()])}
+        onClick={() =>
+          onAddDose
+            ? onAddDose()
+            : setDoses((ds) => [...ds, emptyDose(newDoseAmount)])
+        }
         className="btn-ghost btn-sm mt-2"
       >
         <IconPlus className="h-4 w-4" stroke={2} aria-hidden="true" />

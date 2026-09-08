@@ -197,6 +197,10 @@ function openFact(key: string) {
     fireEvent.click(screen.getByTestId("intake-fact-more"));
     fireEvent.click(screen.getByTestId(`intake-more-${key}`));
   }
+  // New scheduled items begin with no dose row. Tests that operate a dose field state
+  // that intent through the shipped Add dose control before editing the row.
+  if (key === "dose" && !screen.queryByRole("combobox", { name: "Amount" }))
+    fireEvent.click(screen.getByRole("button", { name: "Add dose" }));
 }
 
 const redoseFigures = () => ({
@@ -670,7 +674,27 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     expect(saved.get("name")).toBe("Acetaminophen");
     expect(saved.get("supply_id")).toBe("99");
     expect(saved.get("rxcui")).toBe("");
-    expect(JSON.parse(String(saved.get("doses")))[0].amount).toBe("");
+    expect(JSON.parse(String(saved.get("doses")))).toEqual([]);
+  });
+
+  it("submits no dose row until one is added", async () => {
+    mount("supplement");
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Plain supplement" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+    const saved = actions.addIntakeItem.mock.calls[0]![0];
+    expect(JSON.parse(String(saved.get("doses")))).toEqual([]);
+  });
+
+  it("submits a nonblank dose offered by an explicit medication pick", async () => {
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+    const saved = actions.addIntakeItem.mock.calls[0]![0];
+    expect(JSON.parse(String(saved.get("doses")))[0]?.amount).toBe("240 mg");
   });
 
   it("uses a supported bottle name when the item display name differs", async () => {

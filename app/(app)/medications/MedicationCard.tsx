@@ -108,6 +108,7 @@ export default function MedicationCard({
   takenDoseIds,
   skippedDoseIds,
   due,
+  dueDoseIds = [],
   courses,
   sideEffects,
   strip,
@@ -147,6 +148,7 @@ export default function MedicationCard({
   takenDoseIds: Set<number>;
   skippedDoseIds: Set<number>;
   due: boolean;
+  dueDoseIds?: number[];
   courses: MedicationCourse[];
   sideEffects: MedicationSideEffect[];
   // 14-day adherence strip + refill rate, threaded so the med card shows the same
@@ -623,38 +625,40 @@ export default function MedicationCard({
 
         {/* Today's dose check-offs — a SCHEDULED med only (PRN uses the block above),
           when it's current and due. */}
-        {current && due && !isOnDemand(s) && doses.length > 0 && (
+        {current && due && !isOnDemand(s) && dueDoseIds.length > 0 && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="scheduled-today"
           >
             <div className="mb-2 section-label">Today</div>
             <div className="space-y-2">
-              {doses.map((dose) => (
-                <ScheduledDoseAction
-                  key={dose.id}
-                  doseId={dose.id}
-                  doseLabel={
-                    formatMedicationDoseLine({
-                      amount: null,
-                      timeOfDay: dose.time_of_day,
-                      asNeeded: false,
-                      timeFormat: formatPrefs.timeFormat,
-                    }) || ""
-                  }
-                  taken={takenDoseIds.has(dose.id)}
-                  skipped={skippedDoseIds.has(dose.id)}
-                  readOnly={!canConfirm}
-                  profileId={subjectProfileId}
-                  tz={timezone}
-                  takenTime={formatGivenAtClockWithRelativeAge(
-                    timezone,
-                    takenDoseTimes[dose.id],
-                    formatPrefs.timeFormat,
-                    new Date(nowIso)
-                  )}
-                />
-              ))}
+              {doses
+                .filter((dose) => dueDoseIds.includes(dose.id))
+                .map((dose) => (
+                  <ScheduledDoseAction
+                    key={dose.id}
+                    doseId={dose.id}
+                    doseLabel={
+                      formatMedicationDoseLine({
+                        amount: null,
+                        timeOfDay: dose.time_of_day,
+                        asNeeded: false,
+                        timeFormat: formatPrefs.timeFormat,
+                      }) || ""
+                    }
+                    taken={takenDoseIds.has(dose.id)}
+                    skipped={skippedDoseIds.has(dose.id)}
+                    readOnly={!canConfirm}
+                    profileId={subjectProfileId}
+                    tz={timezone}
+                    takenTime={formatGivenAtClockWithRelativeAge(
+                      timezone,
+                      takenDoseTimes[dose.id],
+                      formatPrefs.timeFormat,
+                      new Date(nowIso)
+                    )}
+                  />
+                ))}
             </div>
           </div>
         )}

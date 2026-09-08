@@ -87,7 +87,7 @@ export default function EditableSupplementRow({
   activityScheduleAvailable = true,
 }: {
   supplement: IntakeItem;
-  dose: IntakeDose;
+  dose?: IntakeDose;
   /**
    * TODAY'S RESOLUTION, ONLY WHERE THIS ROW IS THE ONE STATING IT (#3987).
    *
@@ -145,9 +145,9 @@ export default function EditableSupplementRow({
   const s = supplement;
 
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
-  const foodHint = FOOD_TIMING_HINTS[dose.food_timing];
+  const foodHint = dose ? FOOD_TIMING_HINTS[dose.food_timing] : null;
   const multi = doses.length > 1;
-  const schedule = stackSchedule(s, dose).label;
+  const schedule = dose ? stackSchedule(s, dose).label : "Not scheduled";
   // The refill "≈N days left" badge is the shared RefillBadge formatter (#38/#301),
   // rendered identically here and on the medication card (#747 parity).
 
@@ -193,16 +193,17 @@ export default function EditableSupplementRow({
                 {s.stack}
               </span>
             )}
-            {poolChip ? (
-              <SharedSupplyChip pool={poolChip} />
-            ) : (
-              <RefillBadge
-                quantityOnHand={s.quantity_on_hand}
-                qtyPerDose={s.qty_per_dose}
-                refillRate={refillRate}
-                doseCount={doses.length}
-              />
-            )}
+            {dose &&
+              (poolChip ? (
+                <SharedSupplyChip pool={poolChip} />
+              ) : (
+                <RefillBadge
+                  quantityOnHand={s.quantity_on_hand}
+                  qtyPerDose={s.qty_per_dose}
+                  refillRate={refillRate}
+                  doseCount={doses.length}
+                />
+              ))}
             {s.critical === 1 && (
               <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                 Escalates
@@ -220,7 +221,7 @@ export default function EditableSupplementRow({
             two would be the duplication #3987 retired. A paused item has none either,
             matching setDoseStatus's own refusals. The logged day is TODAY: a tap says
             "I took this now", it never claims the item was scheduled. */}
-          {!!s.active && isTaken !== undefined && (
+          {!!s.active && dose && isTaken !== undefined && (
             <DoseStatusControl
               doseId={dose.id}
               taken={isTaken}
@@ -247,17 +248,19 @@ export default function EditableSupplementRow({
                 >
                   Edit
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setShowHistory((open) => !open);
-                    close();
-                  }}
-                  className={MENU_ITEM}
-                >
-                  {showHistory ? "Hide dose history" : "Dose history"}
-                </button>
+                {dose && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowHistory((open) => !open);
+                      close();
+                    }}
+                    className={MENU_ITEM}
+                  >
+                    {showHistory ? "Hide dose history" : "Dose history"}
+                  </button>
+                )}
                 {/* STATE-NAMED transition (#2133): the form posts the state this render
                   promised (`to`), and the toast words come from the write's OUTCOME —
                   a stale row's tap gets the typed refusal ("Already paused…"), never
@@ -329,7 +332,7 @@ export default function EditableSupplementRow({
             data-testid="supplement-dose-brand"
             className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400"
           >
-            {[dose.amount, schedule, subline]
+            {[dose?.amount, schedule, subline]
               .filter((part): part is string => !!part)
               .map((part, index) => (
                 <span key={part} className="flex items-center gap-2">
@@ -358,13 +361,13 @@ export default function EditableSupplementRow({
             rxcuiIngredients={s.rxcui_ingredients}
             suppressedFoodKeys={suppressedFoodKeys}
           />
-          <AdherenceSummaryLine strip={strip} noteworthyOnly />
+          {dose && <AdherenceSummaryLine strip={strip} noteworthyOnly />}
         </div>
         {/* Dose history is a DISCLOSURE inside the row, not a modal: the ⋯ row
           actions portal above the page but below a modal backdrop, so a menu
           rendered inside a dialog would be unclickable. Inline also matches the
           medication card, which renders the same panel in place. */}
-        {showHistory && (
+        {dose && showHistory && (
           <div
             data-testid="supplement-dose-history-panel"
             className="col-span-2 col-start-1 row-start-3 mt-3 min-w-0 border-t border-black/5 pt-3 dark:border-white/5"

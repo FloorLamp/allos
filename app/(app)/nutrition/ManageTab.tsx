@@ -417,6 +417,13 @@ export default async function ManageTab({
   // Monday, its 2.5 mg row is not), so the due/not-scheduled split has to be made at the
   // row level or an alternating pair would show both amounts every day.
   const activeSupplementItems = itemsFor((s) => !isMed(s) && !!s.active);
+  const doseLessSupplements = supplementItems.filter(
+    (s) =>
+      !!s.active && !isHeld(s) && (dosesBySupp.get(s.id)?.length ?? 0) === 0
+  );
+  const heldDoseLessSupplements = supplementItems.filter(
+    (s) => !!s.active && isHeld(s) && (dosesBySupp.get(s.id)?.length ?? 0) === 0
+  );
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
   // NO "NOT SCHEDULED" FOLD (#3987). It used to hold everything the CURRENT DAY did
   // not owe — an off-cadence row, a `may` item, a rest-day one — which was a day
@@ -430,6 +437,9 @@ export default async function ManageTab({
   // was not on screen. An item you own is not a secondary state. Held and Paused
   // still fold below, because those genuinely are.
   const paused = itemsFor((s) => !isMed(s) && !s.active);
+  const pausedDoseLessSupplements = supplementItems.filter(
+    (s) => !s.active && (dosesBySupp.get(s.id)?.length ?? 0) === 0
+  );
 
   // Medications render on their own page (#746); this tab is supplements only, so
   // the `isMed` predicate below simply excludes them from every list here.
@@ -679,6 +689,30 @@ export default async function ManageTab({
       />
     );
   };
+  const renderDoseLessRow = (supplement: IntakeItem) => (
+    <EditableSupplementRow
+      key={`item-${supplement.id}`}
+      supplement={supplement}
+      doses={[]}
+      allIntakeItems={intakeItems}
+      stackItems={stackItems}
+      pgxVariants={pgxVariants}
+      pairs={pairsFor(supplement.id)}
+      ingredients={ingredientsBySupp.get(supplement.id) ?? []}
+      purposes={purposesBySupp.get(supplement.id) ?? []}
+      purposeConditions={purposeConditions}
+      purposeBiomarkers={purposeBiomarkers}
+      strip={[]}
+      refillRate={null}
+      poolChip={null}
+      suppressedFoodKeys={suppressedFoodKeys}
+      doseHistory={[]}
+      historyMaxDate={todayStr}
+      defaultHistoryTime={hhmm}
+      historyWindowDays={DOSE_HISTORY_DAYS}
+      activityScheduleAvailable={activityScheduleAvailable}
+    />
+  );
 
   // THE DAILY SCHEDULE RETIRES HERE (#3987 phase 1). Its whole job — what this day
   // owes, what has been taken, what was skipped, in time buckets, with a seven-day
@@ -703,9 +737,11 @@ export default async function ManageTab({
   );
   const secondarySchedule = (
     <>
-      {heldItems.length > 0 && (
+      {heldItems.length + heldDoseLessSupplements.length > 0 && (
         <section data-testid="held-section">
-          <h3 className="section-label">Held ({heldItems.length})</h3>
+          <h3 className="section-label">
+            Held ({heldItems.length + heldDoseLessSupplements.length})
+          </h3>
           <div className="mt-2 space-y-3">
             {heldItems.map((item) => (
               <div
@@ -718,17 +754,29 @@ export default async function ManageTab({
                 {renderRow(item)}
               </div>
             ))}
+            {heldDoseLessSupplements.map((supplement) => (
+              <div
+                key={`held-item-${supplement.id}`}
+                data-testid={`held-item-${supplement.id}`}
+              >
+                <span className="badge mb-1 inline-block bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  Held — {supplement.pause_situation} active
+                </span>
+                {renderDoseLessRow(supplement)}
+              </div>
+            ))}
           </div>
         </section>
       )}
 
-      {paused.length > 0 && (
+      {paused.length + pausedDoseLessSupplements.length > 0 && (
         <Disclosure>
           <summary className="fold-control section-label">
-            Paused ({paused.length})
+            Paused ({paused.length + pausedDoseLessSupplements.length})
           </summary>
           <div className="mt-2 space-y-3">
             {paused.map((item) => renderRow(item))}
+            {pausedDoseLessSupplements.map(renderDoseLessRow)}
           </div>
         </Disclosure>
       )}
@@ -950,16 +998,18 @@ export default async function ManageTab({
                   an item that way and then looks for its row. It is still a fold —
                   labelled, counted, collapsible, remembered — it just does not start
                   by hiding what you own. */}
-                {unscheduledItems.length > 0 && (
+                {unscheduledItems.length + doseLessSupplements.length > 0 && (
                   <Disclosure open className="mt-4">
                     <summary className="fold-control section-label">
-                      Not scheduled ({unscheduledItems.length})
+                      Not scheduled (
+                      {unscheduledItems.length + doseLessSupplements.length})
                     </summary>
                     <div
                       data-testid="supplement-unscheduled"
                       className="mt-2 space-y-3"
                     >
                       {unscheduledItems.map((item) => renderRow(item))}
+                      {doseLessSupplements.map(renderDoseLessRow)}
                     </div>
                   </Disclosure>
                 )}

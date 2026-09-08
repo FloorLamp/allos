@@ -209,6 +209,20 @@ function calendarTheOldWay(
 }
 
 describe("getMedicationAdherenceCalendar reads the board gather (#2114)", () => {
+  it("identifies only the timed due row beside an untimed sibling", () => {
+    const profileId = makeProfile("Detail Gather Timed");
+    const { itemId, doseId } = addScheduledMed(profileId, "Mixed schedule");
+    db.prepare(
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '2 tablets', NULL, 'any', 1)`
+    ).run(itemId);
+
+    const card = loadMedicationsData(profileId).byId.get(itemId);
+    expect(card?.due).toBe(true);
+    expect(card?.dueDoseIds).toEqual([doseId]);
+  });
+
   it("produces the calendar the independent gather produced", () => {
     const { profileId, itemId } = seedDetailFixture("Detail Gather Sam");
     const data = loadMedicationsData(profileId);

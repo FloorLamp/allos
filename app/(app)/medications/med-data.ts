@@ -74,7 +74,9 @@ import {
 import { getTimezone, getProfileAge, type WeightUnit } from "@/lib/settings";
 import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
+  doseDueOn,
   isDueOn,
+  isOnDemand,
   isPostWorkoutReady,
   heldBySituation,
 } from "@/lib/intake-schedule";
@@ -104,7 +106,6 @@ import {
   type DormantPrnInput,
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
-import { isOnDemand } from "@/lib/intake-schedule";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import { dateFromCreatedAt } from "@/lib/timeline-format";
 
@@ -125,6 +126,8 @@ export interface MedCardData {
   // REPLACES the per-item refill badge, carrying the POOLED days-left.
   poolChip: PoolChipData | null;
   due: boolean;
+  // Individually due today; item-level dueness cannot distinguish sibling rows.
+  dueDoseIds: number[];
   pairs: IntakePair[];
   prnDayLabel: string | null;
   // Today's as-needed administrations with their ledger ids and snapshotted amounts,
@@ -459,6 +462,9 @@ export function loadMedicationsData(
       refillRate: refillRates.get(med.id) ?? null,
       poolChip: poolChips.get(med.id) ?? null,
       due: medDue(med),
+      dueDoseIds: med.active
+        ? medDoses.filter((dose) => doseDueOn(med, dose, ctx)).map((d) => d.id)
+        : [],
       pairs: pairsFor(med.id),
       prnDayLabel: prn.label,
       prnAdministrations: prn.administrations,
