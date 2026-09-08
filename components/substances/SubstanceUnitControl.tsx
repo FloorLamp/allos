@@ -44,7 +44,6 @@ export default function SubstanceUnitControl({
   capAttention = false,
   testIdPrefix,
   subjectProfileId,
-  date,
 }: {
   substance: string;
   weekCount?: number;
@@ -56,8 +55,6 @@ export default function SubstanceUnitControl({
   // profile. Posted as `profile_id` and re-gated by the action's own
   // `gateItemProfile` call.
   subjectProfileId?: number;
-  /** Selected quick-entry day. Other mounts omit it and keep today. */
-  date?: string;
 }) {
   const ledger = useOptimisticLedger("substance-unit");
   const stampLoggedVia = useLoggedViaStamp();
@@ -82,7 +79,7 @@ export default function SubstanceUnitControl({
       for (const [key, owner] of receiptOwners) dismissToast(key, owner);
       receiptOwners.clear();
     };
-  }, [dismissToast, subjectProfileId, substance, date]);
+  }, [dismissToast, subjectProfileId, substance]);
 
   async function tap(kind: "log" | "undo"): Promise<void> {
     setError(null);
@@ -107,9 +104,6 @@ export default function SubstanceUnitControl({
       write: async (): Promise<SubstanceLogResult | SubstanceCountResult> => {
         const fd = stampLoggedVia(new FormData());
         fd.set("substance", substance);
-        if (date) {
-          fd.set("date", date);
-        }
         if (originProfileId != null)
           fd.set("profile_id", String(originProfileId));
         return kind === "log"

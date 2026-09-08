@@ -195,9 +195,9 @@ export function getMedicationSideEffects(
 // action and the import persist). The course upholds active=1 ⇔ an open course:
 // it's left OPEN only when the med is active, and CLOSED (stopped_on = its start
 // date) when the med is already paused (active=0) — so flipping a PAUSED
-// supplement to a medication lands it in Past, not Current. started_on normally
-// falls back to the med's created_at date when the caller has no better start date;
-// manual PRN entry can explicitly preserve an unknown (NULL) start instead. A single
+// supplement to a medication lands it in Past, not Current. A null started_on always
+// means unknown. An inactive item with no stated start gets no invented course; it
+// remains Past, and an explicit Restart can open a dated course later. A single
 // INSERT...SELECT that is:
 //   - profile-scoped (references intake_items WHERE profile_id = ?),
 //   - a no-op unless the row is a medication with NO existing course,
@@ -207,38 +207,34 @@ export function ensureMedicationCourse(
   profileId: number,
   itemId: number,
   startedOn: string | null,
-  preserveUnknownStart = false,
   attribution?: CourseAttribution
 ): void {
   db.prepare(
     `INSERT INTO medication_courses
        (item_id, started_on, stopped_on, prescriber, provider_id, dose_snapshot,
         created_at)
-       SELECT ii.id,
-              CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END,
+       SELECT ii.id, ?,
               CASE WHEN ii.active = 1
                    THEN NULL
-                   ELSE CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END
+                   ELSE ?
               END,
               ?, ?, ?,
               datetime('now')
          FROM intake_items ii
         WHERE ii.id = ? AND ii.profile_id = ? AND ii.kind = 'medication'
+          AND (ii.active = 1 OR ? IS NOT NULL)
           AND NOT EXISTS (
             SELECT 1 FROM medication_courses c WHERE c.item_id = ii.id
           )`
   ).run(
-    preserveUnknownStart ? 1 : 0,
-    startedOn,
-    startedOn,
-    preserveUnknownStart ? 1 : 0,
     startedOn,
     startedOn,
     attribution?.prescriber ?? null,
     attribution?.providerId ?? null,
     attribution?.doseSnapshot ?? null,
     itemId,
-    profileId
+    profileId,
+    startedOn
   );
 }
 

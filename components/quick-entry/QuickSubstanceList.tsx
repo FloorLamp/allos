@@ -37,12 +37,10 @@ export interface QuickSubstanceRow {
 export default function QuickSubstanceList({
   substances,
   subjectProfileId,
-  date,
 }: {
   substances: QuickSubstanceRow[];
   // The quick-log sheet's chosen subject (#4932), when it is not the acting profile.
   subjectProfileId?: number;
-  date: string;
 }) {
   return (
     <QuickEntryRowList testId="quick-entry-substance-list">
@@ -57,7 +55,6 @@ export default function QuickSubstanceList({
               capProgress={substance.capProgress}
               testIdPrefix="quick-entry-substance"
               subjectProfileId={subjectProfileId}
-              date={date}
             />
           }
         />
