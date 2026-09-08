@@ -126,7 +126,8 @@ const ACETAMINOPHEN = "Acetaminophen (Tylenol)";
 function mount(
   kind: "medication" | "supplement",
   pediatric?: PediatricFormContext,
-  drafts = false
+  drafts = false,
+  initialSupply: SupplyOption | null = null
 ) {
   const content = (
     <ToastProvider>
@@ -141,6 +142,7 @@ function mount(
             conditions={[]}
             pediatric={pediatric}
             todayStr={TODAY}
+            initialSupply={initialSupply}
           />
         ) : (
           <CreateAction
@@ -168,11 +170,14 @@ function mount(
       content
     )
   );
-  fireEvent.click(
-    screen.getByTestId(
-      kind === "medication" ? "medication-add-toggle" : "supplement-add-toggle"
-    )
-  );
+  if (!initialSupply)
+    fireEvent.click(
+      screen.getByTestId(
+        kind === "medication"
+          ? "medication-add-toggle"
+          : "supplement-add-toggle"
+      )
+    );
   return view;
 }
 
@@ -197,6 +202,10 @@ function openFact(key: string) {
     fireEvent.click(screen.getByTestId("intake-fact-more"));
     fireEvent.click(screen.getByTestId(`intake-more-${key}`));
   }
+  // New scheduled items begin with no dose row. Tests that operate a dose field state
+  // that intent through the shipped Add dose control before editing the row.
+  if (key === "dose" && !screen.queryByRole("combobox", { name: "Amount" }))
+    fireEvent.click(screen.getByRole("button", { name: "Add dose" }));
 }
 
 const redoseFigures = () => ({
@@ -445,6 +454,26 @@ const dosedAt = () => ({
     .map((radio) => (radio as HTMLInputElement).value),
 });
 
+it("records an explicit pediatric band after a new weight withdraws the offered dose", async () => {
+  mount("medication", CHILD_ON_PICK);
+  await pickName(ACETAMINOPHEN);
+  openFact("dose");
+  expect(dosedAt()).toEqual({ amount: "240 mg", bands: ["36"] });
+
+  await updateDosingWeight("10");
+  expect(dosedAt()).toEqual({ amount: "", bands: [] });
+
+  const firstBand = within(
+    screen.getByTestId("pediatric-band-picker")
+  ).getAllByRole("radio")[0];
+  fireEvent.click(firstBand);
+  expect(dosedAt()).toEqual({ amount: "160 mg", bands: ["24"] });
+
+  // The explicit choice is now the caregiver's amount, not the new weight's offer.
+  await updateDosingWeight("22");
+  expect(textbox("Amount").value).toBe("160 mg");
+});
+
 describe("a pick that lands after a weight update doses against the new weight (#5443)", () => {
   it.each([
     // new weight, kg | amount after the confirm lands | band selected
@@ -685,7 +714,74 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     expect(saved.get("name")).toBe("Acetaminophen");
     expect(saved.get("supply_id")).toBe("99");
     expect(saved.get("rxcui")).toBe("");
-    expect(JSON.parse(String(saved.get("doses")))[0].amount).toBe("");
+    expect(JSON.parse(String(saved.get("doses")))).toEqual([]);
+  });
+
+  it("submits no dose row until one is added", async () => {
+    mount("supplement");
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Plain supplement" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+    const saved = actions.addIntakeItem.mock.calls[0]![0];
+    expect(JSON.parse(String(saved.get("doses")))).toEqual([]);
+  });
+
+  it("submits a nonblank dose offered by an explicit medication pick", async () => {
+    mount("medication", CHILD_ON_PICK);
+    await pickName(ACETAMINOPHEN);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+    const saved = actions.addIntakeItem.mock.calls[0]![0];
+    expect(JSON.parse(String(saved.get("doses")))[0]?.amount).toBe("240 mg");
+  });
+
+  it("submits the visible PRN amount from an initial shared bottle", async () => {
+    mount("medication", undefined, false, {
+      id: 22,
+      name: "Ibuprofen",
+      strength: "200 mg",
+      form: "tablet",
+      siblingKind: "medication",
+    });
+    openFact("dose");
+    expect(textbox("Amount").value).toBe("200 mg");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(actions.addIntakeItem).toHaveBeenCalledOnce());
+    const saved = actions.addIntakeItem.mock.calls[0]![0];
+    expect(JSON.parse(String(saved.get("doses")))[0]?.amount).toBe("200 mg");
+  });
+
+  it("does not claim or clear a manual amount when a bottle is linked then unlinked", async () => {
+    actions.listSharedSupplyOptions.mockResolvedValue([
+      {
+        id: 98,
+        name: "Ibuprofen",
+        strength: "200 mg",
+        form: "tablet",
+        siblingKind: "medication",
+      },
+    ]);
+    mount("medication");
+    await pickName(ACETAMINOPHEN);
+    openFact("dose");
+    fireEvent.change(textbox("Amount"), { target: { value: "12.5 mg" } });
+
+    openFact("more");
+    fireEvent.click(screen.getByTestId("intake-more-supply"));
+    fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
+      target: { value: "98" },
+    });
+    openFact("dose");
+    expect(textbox("Amount").value).toBe("12.5 mg");
+
+    openFact("supply");
+    fireEvent.change(screen.getByTestId("shared-supply-new-item-select"), {
+      target: { value: "" },
+    });
+    openFact("dose");
+    expect(textbox("Amount").value).toBe("12.5 mg");
   });
 
   it("uses a supported bottle name when the item display name differs", async () => {

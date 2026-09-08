@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
-import { settledClick, settledFill, settledSelect } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  settledSelect,
+} from "./helpers";
 
 // The product-fact exchange between a shared bottle and an intake item (#1705).
 //
@@ -24,6 +29,10 @@ test("a bottle made from an item inherits its name and strength", async ({
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await settledFill(page, addDialog.getByLabel("Name"), itemName);
   const doseEditor1 = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor1.getByRole("button", { name: "Add dose", exact: true })
+  );
   await settledFill(page, doseEditor1.getByLabel("Amount"), strength);
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
@@ -76,6 +85,10 @@ test("adding a bottle for another person prefills its facts and links on save", 
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await settledFill(page, addDialog.getByLabel("Name"), seedName);
   const doseEditor2 = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor2.getByRole("button", { name: "Add dose", exact: true })
+  );
   await settledFill(page, doseEditor2.getByLabel("Amount"), strength);
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
@@ -114,6 +127,11 @@ test("adding a bottle for another person prefills its facts and links on save", 
   const seeded = page.getByRole("dialog", { name: "Add supplement" });
   await expect(seeded.getByLabel("Name")).toHaveValue(bottleName);
   const doseEditor3 = await openFact(page, "dose", seeded);
+  await expect(doseEditor3.getByLabel("Amount")).toHaveCount(0);
+  await hydratedClick(
+    page,
+    doseEditor3.getByRole("button", { name: "Add dose", exact: true })
+  );
   await expect(doseEditor3.getByLabel("Amount")).toHaveValue(strength);
   await closeEditor(page, seeded);
   // The bottle is a stated FACT of this item, on the chip row, before anything is

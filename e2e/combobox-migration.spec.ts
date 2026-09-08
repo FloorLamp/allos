@@ -265,6 +265,10 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     await expect(addCard).toBeVisible();
 
     const doseEditor = await openFact(page, "dose", addCard);
+    await hydratedClick(
+      page,
+      doseEditor.getByRole("button", { name: "Add dose", exact: true })
+    );
     const amount = doseEditor.getByLabel("Amount");
     // getByLabel("Amount") must resolve to exactly the input — the Clear button that
     // appears once the field has a value must NOT also claim the "Amount" label (the
