@@ -23,7 +23,7 @@ import { execFileSync } from "node:child_process";
  * default rather than forgotten.
  */
 const NON_PRODUCTION =
-  /^(e2e\/|.*__tests__\/|.*\.(test|spec)\.[cm]?[jt]sx?$|docs\/|scripts\/|\.claude\/|\.github\/|lib\/release-notes\.json$|package(-lock)?\.json$|.*\.md$)/;
+  /^(e2e\/|.*__tests__\/|.*\.(test|spec)\.[cm]?[jt]sx?$|docs\/|scripts\/|\.claude\/|\.agents\/skills\/|\.github\/|lib\/release-notes\.json$|package(-lock)?\.json$|.*\.md$)/;
 
 const RECORD = "\x01";
 const FIELDS = "\x02";

@@ -4,6 +4,50 @@ Use the [change and test policy](../change-policy.md) to keep work and verificat
 focused. These are repository defaults within the session's instructions,
 authorization, and available tools.
 
+## Agent tools
+
+The shared skills in `.agents/skills` describe roles and outcomes, not a required
+agent vendor. Codex discovers that directory; `.claude/skills` supplies Claude
+Code entrypoints with its tool metadata. Other hosts can read the shared skill
+directly through `AGENTS.md`. Maintain procedures only in the shared skill.
+
+Inspect the current session's actual capabilities before adapting a workflow:
+
+- Use its worker tools for bounded delegated work and its session/task tools to
+  coordinate separately authorized orchestrators. Reuse existing workers and
+  preserve the actual IDs returned by that host. Neither a GitHub author nor an
+  empty local roster establishes who owns another session's work.
+- Inherit the user's configured model unless they requested a model override.
+  Available agent slots, machine capacity, and review capacity are separate limits.
+- Ask owner questions through the available interaction tool, within its question
+  limit, or in ordinary conversation. An asynchronous question parks only the
+  dependent work; elapsed time is never an answer.
+- Use the host's supported scheduler for authorized future check-ins and its
+  direct messaging facility for an authorized relay. Verify the target and actual
+  scheduled state. If durable scheduling is unavailable, report that limitation
+  while continuing current work; do not invent a trigger or claim a future wake.
+- Use installed CLI/API tools under the GitHub policy below. A missing tool name
+  from another host is not itself a blocker. A capability or permission that is
+  actually absent blocks only operations that require it.
+
+Claude Code's `allowed-tools` metadata belongs to its entrypoints; it does not
+grant tools or permissions to another host. A restricted host grant still applies
+when a shared skill describes an equivalent operation. Do not broaden a confined
+writer to bypass its refusal.
+
+For Codex, workers, separate tasks, and automations are distinct capabilities;
+creating a user-owned task is not a substitute for an internal worker. For Claude
+Remote, a scheduled relay must target the existing `persistent_session_id`;
+`fire_trigger` can create another session and is not a direct-message substitute.
+Use only APIs actually available in the current session.
+
+Some legacy scripts still recognize only Claude session trailers/PR footers or
+process ancestry. Missing attribution from another host remains UNKNOWN, never
+an ownership grant. Check actual task state, branch claims and PRs; use the
+existing explicit adoption path only after resolving ownership. Do not fabricate
+a Claude session ID to satisfy a script. Skills portability does not imply these
+legacy parsers can identify every host.
+
 ## Environment
 
 - Resolve the `.nvmrc` Node major with
@@ -51,10 +95,12 @@ expand tool grants or override session instructions or an approval rejection.
 - Public repository reads can often run unauthenticated. Missing write credentials
   do not by themselves block gathering. Report endpoint refusals and rate limits;
   if search is unavailable, list the relevant collection and filter locally.
-- Writers use the named `GH_TOKEN` or `GITHUB_TOKEN` variables. Read-only tooling
-  may use `host.mjs`'s `gh auth token` fallback. Never print tokens or search the
-  filesystem or environment for credentials. Follow [recovery](recovery.md) when
-  authorized access is unavailable.
+- Use the transport's configured authentication: an already-authenticated `gh api`
+  can perform authorized writes without exporting a token. Helpers that require
+  `GH_TOKEN` or `GITHUB_TOKEN` retain their own credential contract; an unset
+  variable alone does not establish that all write access is absent. Never print
+  tokens or search the filesystem or environment for credentials. Follow
+  [recovery](recovery.md) when authorized access is actually unavailable.
 - Respect sandbox and approval refusals. Follow the session's escalation process;
   do not switch verbs or transports to evade a denial.
 - Open the sole landing candidate ready for review (`"draft": false`). Keep

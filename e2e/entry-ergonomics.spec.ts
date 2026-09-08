@@ -1168,6 +1168,57 @@ test("remaining sets share a weight until Vary opens per-set editing", async ({
     await page.keyboard.type("8");
     await expect(form.getByTestId("set2-reps")).toHaveValue("");
 
+    // A recorded load and the remaining plans still share one readable schema.
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const weightHeading = form.getByTestId("weight-column-heading");
+      await expect(weightHeading).toBeVisible();
+      const [weightLabel, weightField, repsLabel, ...rows] = await settledBoxes(
+        [
+          weightHeading,
+          form.getByTestId("set1-weight-stepper"),
+          form.getByTestId("reps-column-heading"),
+          ...[1, 2, 3].map((n) =>
+            form
+              .getByTestId(`set-row-${n}`)
+              .getByTestId(n === 1 ? "set1-reps-stepper" : "reps-stepper")
+          ),
+          form.getByTestId("set-vary-2"),
+          form.getByTestId("set-confirm-2"),
+          form
+            .getByTestId("set-options-2")
+            .getByRole("button", { name: "Mark warmup set", exact: true }),
+          form.getByTestId("set-remove-2"),
+        ]
+      );
+      const [reps1, reps2, reps3, vary, confirm, warmup, remove] = rows;
+      for (const [heading, field] of [
+        [weightLabel, weightField],
+        [repsLabel, reps1],
+        [repsLabel, reps2],
+        [repsLabel, reps3],
+      ]) {
+        expect(
+          Math.abs(heading.x + heading.width / 2 - (field.x + field.width / 2)),
+          `mixed set column at ${width}px`
+        ).toBeLessThanOrEqual(1);
+      }
+      // Confirm, warmup and remove belong to one action band, clear of Vary.
+      const actions = [confirm, warmup, remove];
+      expect(Math.max(...actions.map((b) => b.y))).toBeLessThan(
+        Math.min(...actions.map((b) => b.y + b.height))
+      );
+      for (const action of actions) {
+        expect(
+          action.x >= vary.x + vary.width ||
+            vary.x >= action.x + action.width ||
+            action.y >= vary.y + vary.height ||
+            vary.y >= action.y + action.height,
+          `Vary overlaps a set action at ${width}px`
+        ).toBe(true);
+      }
+    }
+
     // Real keystrokes catch an editor that unmounts after the first change.
     await weight.focus();
     await weight.press("ControlOrMeta+A");

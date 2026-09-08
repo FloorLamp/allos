@@ -1,25 +1,14 @@
-// Low-supply refill nudge. Once per hour per profile, checks
-// every tracked (quantity_on_hand set) active item's remaining days of supply and,
-// when one drops to/below the refill threshold, sends a single "refill due" nudge
-// over the profile's own channel. The days-of-supply arithmetic is the pure
-// lib/refill; this file is the DB gather + dedup + send, mirroring ./escalate.
-//
-// Dedup semantics — "once per low-supply EPISODE", not once per day:
-//   - notify_last_refill_<itemId> is set (to the send date) once a nudge
-//     goes out, and suppresses further nudges while the item stays low.
-//   - The marker is CLEARED the moment the item is no longer low (refilled above
-//     the threshold, or quantity tracking turned off / the item paused), so the next
-//     time it runs low a fresh nudge fires. Without this the marker would silence it
-//     forever. The clear is self-healing: markedIds is the FULL set of live markers
-//     (not just the current candidates), so planRefillNudges sweeps a marker whose
-//     item has left the tracked set entirely (issue #325).
+// Private-stock refill reminders share the finding's suppression and episode
+// marker. An explicit Ordered request earns one later delivery without changing
+// ordinary episode deduplication. Received keeps its separate additive stock core.
 
+import { randomBytes } from "node:crypto";
 import { getIntakeItems, getRefillRates } from "../queries";
 import { isPushedIntake } from "../intake-schedule";
 import { intakeSupplyHref } from "../hrefs";
-import { db, today, writeTx } from "../db";
+import { db, today, writeTx, hoistedStatement } from "../db";
 import { now } from "../clock";
-import { parseUtcSql } from "../date";
+import { parseUtcSql, shiftDateStr } from "../date";
 import { refillSupply } from "../queries/intake/refill";
 import type { IntakeItemKind } from "../types";
 import { getProfilesByTelegramChatId } from "../settings";
@@ -36,14 +25,29 @@ import {
   parseOfferCallback,
   type OfferCallback,
 } from "./offer-tokens";
-import { parseReceivedAmount, parseRefillReplyMarker } from "./refill-tokens";
+import {
+  parseReceivedAmount,
+  parseRefillReplyMarker,
+  parseRefillCallback,
+  parseOrderedRefillCallback,
+  orderedRefillToken,
+  type RefillCallback,
+  type OrderedRefillCallback,
+} from "./refill-tokens";
+import {
+  removeRowContaining,
+  refillAnswerText,
+  type RefillTapOutcome,
+} from "./callback-data";
+import { NOTIFICATION_DISPATCH_TIMEOUT_MS } from "./dispatch-deadline";
 import {
   messagePointerAt,
   claimMessagePointerKeyboard,
   releaseMessagePointerKeyboard,
+  releaseMessagePointerBody,
   type MessagePointer,
 } from "./message-pointers";
-import { messageBodyHash } from "./reconcile-core";
+import { keyboardTokens, messageBodyHash } from "./reconcile-core";
 import { composeForRebuild } from "./compose";
 import { deliveredKeyboard } from "./delivered-keyboard";
 import { getPoolView } from "../queries/intake/supply-pool";
@@ -55,7 +59,7 @@ import {
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
 import type { TapWrote } from "./callback-data";
-import { getFindingSuppressions } from "../queries/upcoming";
+import { getFindingSuppressions, snoozeFinding } from "../queries/upcoming";
 import {
   daysOfSupplyLeft,
   isLowSupply,
@@ -68,6 +72,10 @@ import {
   refillIdFromMarker,
   REFILL_MARKER_PREFIX,
   type RefillCandidate,
+  type RefillDeliveryState,
+  parseRefillMarker,
+  refillAttemptDue,
+  cancelRefillRequest,
 } from "../refill-nudge";
 import { isSuppressed } from "../upcoming-suppress";
 import {
@@ -87,6 +95,7 @@ interface LowItem {
   id: number;
   name: string;
   daysLeft: number;
+  generation: string;
   kind?: IntakeItemKind;
   received?: NotificationAction | null;
 }
@@ -115,7 +124,7 @@ export function renderRefillMessage(
     const perItem: NotificationAction[] = [
       {
         label: `${GLYPH.ordered} Ordered — remind me in 3 days`,
-        data: `rfsnooze:${profileId}:${it.id}`,
+        data: orderedRefillToken(profileId, it.id, it.generation),
         row,
       },
     ];
@@ -138,104 +147,171 @@ export function renderRefillMessage(
   };
 }
 
-// Send any due low-supply nudges for one profile. Returns whether a send failed
-// (aggregated into the tick's exit code). Never throws for an ordinary send
-// failure. `date` is the profile-local date, used as the dedup marker value.
+const REFILL_MARKER = hoistedStatement(
+  "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
+);
+
+function readRefillMarker(
+  profileId: number,
+  itemId: number
+): string | undefined {
+  return (
+    REFILL_MARKER.get(profileId, refillMarkerKey(itemId)) as
+      { value: string } | undefined
+  )?.value;
+}
+
+// Claims cover dispatch's complete deadline, with the existing claim margin.
+const REFILL_CLAIM_MS = NOTIFICATION_DISPATCH_TIMEOUT_MS + 30_000;
+const newRefillGeneration = () => randomBytes(8).toString("base64url");
+
+function refillCandidates(
+  profileId: number
+): (RefillCandidate & { kind: IntakeItemKind })[] {
+  const rates = getRefillRates(profileId);
+  return getIntakeItems(profileId)
+    .filter(
+      (item) =>
+        item.active &&
+        item.quantity_on_hand != null &&
+        item.supply_id == null &&
+        isPushedIntake(item)
+    )
+    .map((item) => {
+      const daysLeft = daysOfSupplyLeft(
+        item.quantity_on_hand,
+        item.qty_per_dose,
+        rates.get(item.id)?.dosesPerDay ?? 0
+      );
+      return {
+        id: item.id,
+        name: item.name,
+        kind: item.kind,
+        daysLeft,
+        low: isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS),
+      };
+    });
+}
+
+// The synchronous claim and post-await comparison share the existing episode
+// marker. No transaction spans transport, and a newer user transition always wins.
 export async function runRefills(
   profileId: number,
   date: string
 ): Promise<{ failed: boolean }> {
-  // Only active items that opted into quantity tracking — and only ones that may ride
-  // a PUSH surface at all (#1505). A refill nudge IS a push, so the SAME shared
-  // predicate the Upcoming refill items and the dose reminders consult gates it here:
-  // a `may` supplement's supply state stays visible on the Supplements page,
-  // it just never nudges. Medications remain in the safety tier regardless.
-  const tracked = getIntakeItems(profileId).filter(
-    (s) => s.active && s.quantity_on_hand != null && isPushedIntake(s)
-  );
-  if (tracked.length === 0) return { failed: false };
-
-  // doses/day comes from the shared getRefillRates: the ACTUAL taken-log rate
-  // (confirmed doses over the trailing window) once the item has enough history,
-  // else the scheduled-dose-count estimate. A workout-only / situational
-  // supplement no longer reads as daily, so the nudge stops firing weeks early.
-  const rates = getRefillRates(profileId);
-
-  const candidates: RefillCandidate[] = tracked.map((s) => {
-    const daysLeft = daysOfSupplyLeft(
-      s.quantity_on_hand,
-      s.qty_per_dose,
-      rates.get(s.id)?.dosesPerDay ?? 0
+  const claimed = writeTx(() => {
+    const candidates = refillCandidates(profileId);
+    const suppressions = getFindingSuppressions(profileId);
+    const markedIds = getProfileSettingKeysWithPrefix(
+      profileId,
+      REFILL_MARKER_PREFIX
+    )
+      .map(refillIdFromMarker)
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const suppressedIds = new Set(
+      candidates
+        .filter((item) => {
+          const record = suppressions.get(refillSignalKey(item.id));
+          return record != null && isSuppressed(record, date);
+        })
+        .map((item) => item.id)
     );
-    return {
-      id: s.id,
-      name: s.name,
-      daysLeft,
-      low: isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS),
-    };
+    const { toClear } = planRefillNudges(candidates, markedIds, suppressedIds);
+    for (const id of toClear)
+      deleteProfileSetting(profileId, refillMarkerKey(id));
+
+    const out: {
+      item: LowItem;
+      raw: string;
+      state: Extract<RefillDeliveryState, { state: "attempt" }>;
+    }[] = [];
+    for (const item of candidates) {
+      if (!item.low || item.daysLeft == null) continue;
+      const raw = readRefillMarker(profileId, item.id);
+      const marker = parseRefillMarker(raw);
+      const dueOn =
+        marker?.state === "requested" || marker?.state === "attempt"
+          ? marker.dueOn
+          : null;
+      if (dueOn != null) {
+        const suppression = suppressions.get(refillSignalKey(item.id));
+        if (
+          suppression?.snooze_until !== dueOn ||
+          suppression.dismissed_at != null
+        ) {
+          const baseline = cancelRefillRequest(raw);
+          if (baseline == null)
+            deleteProfileSetting(profileId, refillMarkerKey(item.id));
+          else setProfileSetting(profileId, refillMarkerKey(item.id), baseline);
+          continue;
+        }
+      }
+      if (
+        suppressedIds.has(item.id) ||
+        !refillAttemptDue(marker, date, now().getTime())
+      )
+        continue;
+      const state: Extract<RefillDeliveryState, { state: "attempt" }> = {
+        v: 1,
+        state: "attempt",
+        g: newRefillGeneration(),
+        sentOn:
+          marker?.state === "requested" || marker?.state === "attempt"
+            ? marker.sentOn
+            : null,
+        dueOn,
+        claimUntil: now().getTime() + REFILL_CLAIM_MS,
+      };
+      const next = JSON.stringify(state);
+      const received = refillReceivedAction(profileId, item.id);
+      setProfileSetting(profileId, refillMarkerKey(item.id), next);
+      out.push({
+        item: {
+          ...item,
+          daysLeft: item.daysLeft,
+          generation: state.g,
+          received,
+        },
+        raw: next,
+        state,
+      });
+    }
+    return out;
   });
-
-  // Route the nudge through the shared findings-suppression bus (#227): a refill
-  // dismissed/snoozed on the Upcoming page (keyed by the identical `refill:<id>`
-  // signal) is held out of the push too. `date` is the profile-local today.
-  const suppressions = getFindingSuppressions(profileId);
-  // The FULL set of live episode markers — NOT just the ids among `candidates` — so a
-  // marker whose item has left the tracked set (paused / quantity tracking turned off)
-  // still reaches planRefillNudges' self-healing clear (issue #325). Mirrors the
-  // preventive nudge's getProfileSettingKeysWithPrefix read.
-  const markedIds = getProfileSettingKeysWithPrefix(
-    profileId,
-    REFILL_MARKER_PREFIX
-  )
-    .map(refillIdFromMarker)
-    .filter((id) => Number.isInteger(id) && id > 0);
-  const suppressedIds = candidates
-    .filter((c) => {
-      const rec = suppressions.get(refillSignalKey(c.id));
-      return rec != null && isSuppressed(rec, date);
-    })
-    .map((c) => c.id);
-
-  const { toSend, toClear } = planRefillNudges(
-    candidates,
-    markedIds,
-    suppressedIds
-  );
-
-  // End any recovered/untracked episodes first — cheap, and never depends on a send.
-  for (const id of toClear)
-    deleteProfileSetting(profileId, refillMarkerKey(id));
-
-  if (toSend.length === 0) return { failed: false };
-
+  if (!claimed.length) return { failed: false };
   const results = await dispatch(
     profileId,
     renderRefillMessage(
-      toSend.map((item) => ({
-        ...item,
-        kind: refillStock(profileId, item.id)?.kind,
-        received: refillReceivedAction(profileId, item.id),
-      })),
+      claimed.map(({ item }) => item),
       profileId,
       getPublicUrl()
     )
   );
-  if (results.length === 0) {
-    // No channel configured — leave markers unset so it can send once configured.
-    log.info("refill nudge skipped: no channel", { profile: profileId });
-    return { failed: false };
-  }
-  const delivered = results.some((r) => r.ok);
+  const delivered = results.some((r) => r.ok && r.delivered);
   const failed = results.some((r) => !r.ok);
+  writeTx(() => {
+    for (const attempt of claimed) {
+      if (readRefillMarker(profileId, attempt.item.id) !== attempt.raw)
+        continue;
+      const next: RefillDeliveryState = delivered
+        ? { v: 1, state: "sent", g: attempt.state.g, sentOn: date }
+        : { ...attempt.state, claimUntil: null };
+      setProfileSetting(
+        profileId,
+        refillMarkerKey(attempt.item.id),
+        JSON.stringify(next)
+      );
+    }
+  });
+  if (results.length === 0)
+    log.info("refill nudge skipped: no channel", { profile: profileId });
   if (delivered) {
-    for (const it of toSend) {
-      setProfileSetting(profileId, refillMarkerKey(it.id), date);
+    for (const { item } of claimed)
       log.info("refill nudge sent", {
         profile: profileId,
-        item: it.name,
-        daysLeft: it.daysLeft,
+        item: item.name,
+        daysLeft: item.daysLeft,
       });
-    }
   }
   return { failed };
 }
@@ -655,21 +731,246 @@ function receiptWitness(profileId: number, ids: number[]): string {
   return JSON.stringify(ids.map((id) => [id, readRefillOffer(profileId, id)]));
 }
 
+function currentOrderedActions(
+  profileId: number,
+  itemId: number,
+  pointer: MessagePointer,
+  liveTokens: readonly string[],
+  receivedStarted: boolean
+): NotificationAction[] {
+  if (receivedStarted) return [];
+  const marker = parseRefillMarker(readRefillMarker(profileId, itemId));
+  const legacy = `rfsnooze:${profileId}:${itemId}`;
+  const receipt = pointer.receiptKeyboard
+    .flat()
+    .map((button) => button.callback_data);
+  const row = `rf:${itemId}`;
+  if (
+    marker?.state === "confirm" &&
+    marker.sourcePointerId === pointer.id &&
+    receipt.includes(legacy)
+  ) {
+    const data = orderedRefillToken(profileId, itemId, marker.g);
+    if (!liveTokens.includes(legacy) && !liveTokens.includes(data)) return [];
+    return [
+      { label: "Remind in 3 days", data, row },
+      {
+        label: "Cancel",
+        data: orderedRefillToken(profileId, itemId, marker.g, true),
+        row,
+      },
+    ];
+  }
+  if (marker?.state === "sent" || marker?.state === "attempt") {
+    const data = orderedRefillToken(profileId, itemId, marker.g);
+    if (liveTokens.includes(data) && receipt.includes(data))
+      return [
+        { label: `${GLYPH.ordered} Ordered — remind me in 3 days`, data, row },
+      ];
+  }
+  if (
+    marker?.state === "legacy" &&
+    liveTokens.includes(legacy) &&
+    receipt.includes(legacy)
+  ) {
+    const suppression = getFindingSuppressions(profileId).get(
+      refillSignalKey(itemId)
+    );
+    if (!suppression || !isSuppressed(suppression, today(profileId)))
+      return [
+        {
+          label: `${GLYPH.ordered} Ordered — remind me in 3 days`,
+          data: legacy,
+          row,
+        },
+      ];
+  }
+  return [];
+}
+
+export async function handleOrderedRefillCallback(
+  cq: TelegramCallbackQuery,
+  token: RefillCallback | OrderedRefillCallback
+): Promise<TapWrote> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  if (chatId == null || messageId == null || !cq.data) {
+    await answerCallbackQuery(cq.id, refillAnswerText("stale-item"));
+    return;
+  }
+  const chat = String(chatId);
+  const result = writeTx(() => {
+    if (!receiptAuthorized(token.profileId, chat)) return null;
+    const pointer = messagePointerAt(token.profileId, chat, messageId);
+    if (!pointer || pointer.kind !== "refill") return null;
+    if (
+      !refillCandidates(token.profileId).some(
+        (item) => item.id === token.itemId && item.low
+      )
+    )
+      return null;
+    const liveTokens = pointer.keyboard
+      .flat()
+      .flatMap((button) =>
+        button.callback_data ? [button.callback_data] : []
+      );
+    const receivedStarted = receiptIds(liveTokens).some((id) => {
+      const offer = readRefillOffer(token.profileId, id)?.offer;
+      return offer?.itemId === token.itemId && offer.state !== "available";
+    });
+    const actions = currentOrderedActions(
+      token.profileId,
+      token.itemId,
+      pointer,
+      liveTokens,
+      receivedStarted
+    );
+    const raw = readRefillMarker(token.profileId, token.itemId);
+    const marker = parseRefillMarker(raw);
+    let consume: string | undefined;
+    let retry = false;
+    let outcome: RefillTapOutcome;
+    if (!("generation" in token)) {
+      const legacy = `rfsnooze:${token.profileId}:${token.itemId}`;
+      if (cq.data !== legacy) return null;
+      if (
+        marker?.state === "confirm" &&
+        marker.sourcePointerId === pointer.id &&
+        actions.length
+      ) {
+        retry = true;
+      } else {
+        if (
+          marker?.state !== "legacy" ||
+          !actions.some((a) => a.data === legacy)
+        )
+          return null;
+        const next: RefillDeliveryState = {
+          v: 1,
+          state: "confirm",
+          g: newRefillGeneration(),
+          sentOn: marker.sentOn,
+          sourcePointerId: pointer.id,
+        };
+        setProfileSetting(
+          token.profileId,
+          refillMarkerKey(token.itemId),
+          JSON.stringify(next)
+        );
+      }
+      outcome = "confirmation";
+    } else {
+      if (
+        !marker ||
+        !("g" in marker) ||
+        marker.g !== token.generation ||
+        !liveTokens.includes(cq.data!) ||
+        !actions.some((action) => action.data === cq.data)
+      )
+        return null;
+      consume = cq.data;
+      if (token.cancel) {
+        if (marker.state !== "confirm") return null;
+        setProfileSetting(
+          token.profileId,
+          refillMarkerKey(token.itemId),
+          marker.sentOn
+        );
+        outcome = "cancelled";
+      } else {
+        if (
+          marker.state !== "sent" &&
+          marker.state !== "attempt" &&
+          marker.state !== "confirm"
+        )
+          return null;
+        const dueOn = shiftDateStr(today(token.profileId), 3);
+        snoozeFinding(token.profileId, refillSignalKey(token.itemId), dueOn);
+        const next: RefillDeliveryState = {
+          v: 1,
+          state: "requested",
+          g: marker.g,
+          sentOn: marker.sentOn ?? pointer.date,
+          dueOn,
+        };
+        setProfileSetting(
+          token.profileId,
+          refillMarkerKey(token.itemId),
+          JSON.stringify(next)
+        );
+        outcome = "snoozed";
+      }
+    }
+    const plan = planRefillReceipt(token.profileId, pointer, consume, retry);
+    if (!plan || plan === "unhandled")
+      throw new Error(
+        "The refill reminder changed before it could be updated."
+      );
+    // A committed user operation keeps its token claim even if the wire outcome is unknown.
+    plan.keepClaim = true;
+    return { pointer, plan, outcome };
+  });
+  if (!result) {
+    await answerCallbackQuery(cq.id, refillAnswerText("stale-item"));
+    if (!("generation" in token) && receiptAuthorized(token.profileId, chat)) {
+      const stock = refillStock(token.profileId, token.itemId);
+      const base = getPublicUrl().replace(/\/$/, "");
+      if (stock && base)
+        await sendTelegramMessage(
+          chat,
+          {
+            title: "Refill reminder",
+            body: "This reminder is out of date. Open the current refill form.",
+            actions: [
+              {
+                label: "Open refill form",
+                url: `${base}${intakeSupplyHref(stock.kind, token.itemId, true)}`,
+              },
+            ],
+          },
+          token.profileId
+        );
+    }
+    return;
+  }
+  try {
+    await answerCallbackQuery(cq.id, refillAnswerText(result.outcome));
+  } finally {
+    // A failed acknowledgement must not strand the committed keyboard claim.
+    await applyRefillReceiptPlan(token.profileId, result.pointer, result.plan);
+  }
+  return result.outcome === "snoozed" ? token.profileId : undefined;
+}
+
 // Refill edits also depend on an operation generation. Gather, witness and pointer
 // claim share the lock; an awaited edit cannot finalize a superseded operation.
-export async function reconcileRefillReceipt(
+function planRefillReceipt(
   profileId: number,
-  pointer: MessagePointer
-): Promise<"unhandled" | "unchanged" | "edited"> {
+  pointer: MessagePointer,
+  consumeToken?: string,
+  force = false
+) {
   const tokens = [...pointer.receiptKeyboard, ...pointer.keyboard]
     .flat()
     .flatMap((b) => (b.callback_data ? [b.callback_data] : []));
   const ids = receiptIds(tokens);
-  const liveTokens = pointer.keyboard
+  const visibleKeyboard = consumeToken
+    ? removeRowContaining(pointer.keyboard, consumeToken)
+    : pointer.keyboard;
+  const liveTokens = visibleKeyboard
     .flat()
     .flatMap((b) => (b.callback_data ? [b.callback_data] : []));
   const liveIds = new Set(receiptIds(liveTokens));
-  if (!ids.length) return "unhandled";
+  const orderedItems = [
+    ...new Set(
+      tokens.flatMap((data) => {
+        const parsed =
+          parseOrderedRefillCallback(data) ?? parseRefillCallback(data);
+        return parsed?.profileId === profileId ? [parsed.itemId] : [];
+      })
+    ),
+  ];
+  if (!ids.length && !orderedItems.length) return "unhandled" as const;
   const plan = writeTx(() => {
     const currentPointer = messagePointerAt(
       profileId,
@@ -692,8 +993,18 @@ export async function reconcileRefillReceipt(
     if (prompt)
       message = receiptPrompt(profileId, prompt.id, prompt.row!.offer);
     else {
-      const itemIds = [...new Set(offers.map((it) => it.row!.offer.itemId))];
+      const itemIds = [
+        ...new Set([
+          ...offers.map((it) => it.row!.offer.itemId),
+          ...orderedItems,
+        ]),
+      ];
       const rates = getRefillRates(profileId);
+      const orderable = new Set(
+        refillCandidates(profileId)
+          .filter((item) => item.low)
+          .map((item) => item.id)
+      );
       const lines: string[] = [];
       const actions: NotificationAction[] = [];
       for (const itemId of itemIds) {
@@ -715,10 +1026,25 @@ export async function reconcileRefillReceipt(
         const liveOffer = offers.some(
           (it) => liveIds.has(it.id) && it.row!.offer.itemId === itemId
         );
-        if (low && !liveOffer) continue;
+        const ordered =
+          low && stock.supplyId == null && orderable.has(itemId)
+            ? currentOrderedActions(
+                profileId,
+                itemId,
+                pointer,
+                liveTokens,
+                offers.some(
+                  (it) =>
+                    liveIds.has(it.id) &&
+                    it.row!.offer.itemId === itemId &&
+                    it.row!.offer.state !== "available"
+                )
+              )
+            : [];
         lines.push(
           `${stock.name}: ${stock.quantity ?? "No count"}${stock.quantity == null ? "" : " on hand"}${low ? ` · ≈${days} days left (running low)` : ""}`
         );
+        if (low && !liveOffer && !ordered.length) continue;
         const pending = offers.find(
           (it) =>
             it.row!.offer.itemId === itemId &&
@@ -729,16 +1055,7 @@ export async function reconcileRefillReceipt(
           const action = refillReceivedAction(profileId, itemId);
           if (action) actions.push({ ...action, row: `rf:${itemId}` });
         }
-        if (
-          low &&
-          stock.supplyId == null &&
-          liveTokens.includes(`rfsnooze:${profileId}:${itemId}`)
-        )
-          actions.push({
-            label: `${GLYPH.ordered} Ordered — remind me in 3 days`,
-            data: `rfsnooze:${profileId}:${itemId}`,
-            row: `rf:${itemId}`,
-          });
+        actions.push(...ordered);
         const base = getPublicUrl().replace(/\/$/, "");
         if (base)
           actions.push({
@@ -761,6 +1078,7 @@ export async function reconcileRefillReceipt(
       composeForRebuild(profileId, message, pointer)
     );
     if (
+      !force &&
       JSON.stringify(keyboard) === pointer.version &&
       bodyHash === pointer.bodyHash
     )
@@ -769,7 +1087,10 @@ export async function reconcileRefillReceipt(
       message.actions?.flatMap((a) => (a.data ? [a.data] : [])) ?? []
     );
     const watched = [...new Set([...ids, ...nextIds])];
-    const witness = receiptWitness(profileId, watched);
+    const witness = JSON.stringify([
+      receiptWitness(profileId, watched),
+      orderedItems.map((id) => [id, readRefillMarker(profileId, id)]),
+    ]);
     if (
       !claimMessagePointerKeyboard(
         profileId,
@@ -780,9 +1101,29 @@ export async function reconcileRefillReceipt(
       )
     )
       return null;
-    return { message, keyboard, bodyHash, watched, witness };
+    return {
+      message,
+      keyboard,
+      bodyHash,
+      watched,
+      orderedItems,
+      witness,
+      keepClaim: consumeToken != null,
+    };
   });
-  if (!plan) return "unchanged";
+  return plan;
+}
+
+type RefillEditPlan = Exclude<
+  ReturnType<typeof planRefillReceipt>,
+  null | "unhandled"
+>;
+
+async function applyRefillReceiptPlan(
+  profileId: number,
+  pointer: MessagePointer,
+  plan: RefillEditPlan
+): Promise<void> {
   const current = () => {
     const claimed = messagePointerAt(
       profileId,
@@ -792,7 +1133,10 @@ export async function reconcileRefillReceipt(
     return (
       claimed?.version === JSON.stringify(plan.keyboard) &&
       claimed.bodyHash === plan.bodyHash &&
-      receiptWitness(profileId, plan.watched) === plan.witness
+      JSON.stringify([
+        receiptWitness(profileId, plan.watched),
+        plan.orderedItems.map((id) => [id, readRefillMarker(profileId, id)]),
+      ]) === plan.witness
     );
   };
   try {
@@ -805,7 +1149,11 @@ export async function reconcileRefillReceipt(
     );
   } catch (error) {
     writeTx(() => {
-      if (current())
+      if (!current()) return;
+      if (plan.keepClaim) {
+        // Keep consumed tokens retired, but let the next sweep retry the body.
+        releaseMessagePointerBody(profileId, pointer.id, plan.bodyHash, null);
+      } else
         releaseMessagePointerKeyboard(
           profileId,
           pointer.id,
@@ -818,5 +1166,32 @@ export async function reconcileRefillReceipt(
   }
   // A lost generation keeps its claimed keyboard only as a retry target. The next
   // sweep derives the new generation and repairs the message; no old ID reactivates.
+}
+
+export async function reconcileRefillReceipt(
+  profileId: number,
+  pointer: MessagePointer
+): Promise<"unhandled" | "unchanged" | "edited"> {
+  const tokens = keyboardTokens([
+    ...pointer.receiptKeyboard,
+    ...pointer.keyboard,
+  ]);
+  const ownsOrderedReceipt = tokens.some((data) => {
+    const ordered = parseOrderedRefillCallback(data);
+    if (ordered?.profileId === profileId) return true;
+    const legacy = parseRefillCallback(data);
+    if (legacy?.profileId !== profileId) return false;
+    const marker = parseRefillMarker(
+      readRefillMarker(profileId, legacy.itemId)
+    );
+    return marker?.state === "confirm" && marker.sourcePointerId === pointer.id;
+  });
+  // Ordinary legacy reminders retain the family's existing close/detail behavior.
+  // Callbacks enter the planner directly after their atomic state transition.
+  if (!receiptIds(tokens).length && !ownsOrderedReceipt) return "unhandled";
+  const plan = planRefillReceipt(profileId, pointer);
+  if (plan === "unhandled") return plan;
+  if (!plan) return "unchanged";
+  await applyRefillReceiptPlan(profileId, pointer, plan);
   return "edited";
 }
