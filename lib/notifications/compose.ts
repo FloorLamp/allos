@@ -15,10 +15,13 @@
 // is a total function of its arguments, so a rebuild is keyboard-identical to its send
 // while the state it names still stands.
 
+import { today } from "../db";
+import type { MessagePointer } from "./message-pointers";
 import { prefixForProfile } from "./attribution";
 import { withChatOrigin, type ChatOrigin } from "./chat-origin";
 import {
   attachUsualRoutine,
+  attachmentOnKeyboard,
   type UsualRoutineAttachment,
 } from "./usual-routine-attach";
 import { dispatchableUsual } from "./usual-routine-plan";
@@ -51,4 +54,22 @@ export function composeForSend(
   usual: UsualRoutineAttachment | null = null
 ): NotificationMessage {
   return composeMessage(msg, prefixForProfile(profileId), origin, usual);
+}
+
+// Hash comparisons and delivery use the same stored subject and live attachment.
+// Pointer lookup and callback authorization remain at the request boundary.
+export function composeForRebuild(
+  profileId: number,
+  msg: NotificationMessage,
+  pointer: MessagePointer | null
+): NotificationMessage {
+  const ownerId = pointer?.profileId ?? profileId;
+  return composeMessage(
+    msg,
+    pointer?.chatWide ? "" : prefixForProfile(profileId),
+    null,
+    pointer
+      ? attachmentOnKeyboard(ownerId, pointer.keyboard, today(ownerId))
+      : null
+  );
 }

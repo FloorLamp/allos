@@ -1,10 +1,4 @@
-// DB INTEGRATION TIER — the food-log nudge GATHER (issues #682, #1016) over a realistic
-// fixture. buildFoodNudge is the gather half (DB reads → the pure renderer): it must lead
-// with the profile's most-eaten groups (the SAME recency-decayed ranking the web log bar
-// uses — one computation, #591), carry DAY-total button counts (#1016's slot scoping was
-// retired with the read-time window derivation it depended on, #2019) beside the "Today:"
-// tally, and hide entirely for an infant profile (the life-stage gate). The
-// pure render/token half is covered in lib/__tests__/food-nudge.test.ts.
+// Real food-nudge gather: ranked buttons offer servings, and the tally states day totals.
 
 import { plainBody } from "@/lib/notifications/rich-text";
 import { describe, it, expect, beforeAll } from "vitest";
@@ -39,14 +33,14 @@ beforeAll(() => {
 });
 
 describe("buildFoodNudge", () => {
-  it("leads with the most-eaten group and carries DAY counts + the DAY tally", () => {
+  it("leads with the most-eaten group and states its day total in the tally", () => {
     const msg = buildFoodNudge(p.profileId, "Morning", t);
     expect(msg).not.toBeNull();
     const logButtons = (msg!.actions ?? []).filter((a) =>
       a.data?.startsWith("food:")
     );
-    // First button is the heavily-logged group, carrying its day count (4).
-    expect(logButtons[0].label).toBe("🥬 Greens (4)");
+    // The most-logged group leads without repeating the tally on its button.
+    expect(logButtons[0].label).toBe("🥬 Greens");
     expect(logButtons[0].data).toBe(
       `food:${p.profileId}:Morning:${t}:leafy_greens`
     );
@@ -56,16 +50,13 @@ describe("buildFoodNudge", () => {
     expect(msg!.kind).toBe("food");
   });
 
-  it("carries the SAME count on every window's nudge — the count is the day (#2019)", () => {
-    // The suffix no longer means "in this window", so a morning habit reads 4 on the
-    // midday nudge too. That is the point: the count agrees with the tally beside it and
-    // never depends on re-deriving which meal a serving belonged to.
+  it("keeps the same serving label in a later window", () => {
     const msg = buildFoodNudge(p.profileId, "Midday", t);
     const leafy = (msg!.actions ?? []).find((a) =>
       a.data?.endsWith(":leafy_greens")
     );
     // Labels lead with the catalog glyph (#1710) and the SHORT catalog name.
-    expect(leafy?.label).toBe("🥬 Greens (4)");
+    expect(leafy?.label).toBe("🥬 Greens");
     expect(plainBody(msg!.body)).toContain("✅ Today: 🥬 Greens ×4");
   });
 
@@ -117,13 +108,13 @@ describe("capped groups rank on frecency alone (#1980 reversal pin)", () => {
     logFoodServingCore(c.profileId, "berries", ct, "page", `${ct}T08:30:00Z`);
   });
 
-  it("the top-usage capped group LEADS the visible keyboard, count intact", () => {
+  it("the top-usage capped group leads the visible keyboard", () => {
     const msg = buildFoodNudge(c.profileId, "Morning", ct)!;
     const labels = (msg.actions ?? [])
       .filter((a) => a.data?.startsWith("food:"))
       .map((a) => a.label);
-    expect(labels[0]).toBe("🍷 Alcohol (6)");
-    expect(labels[1]).toBe("🫐 Berries (1)");
+    expect(labels[0]).toBe("🍷 Alcohol");
+    expect(labels[1]).toBe("🫐 Berries");
   });
 
   it("ranks the same way in EVERY slot — the tier is never consulted", () => {
@@ -156,7 +147,7 @@ describe("capped groups rank on frecency alone (#1980 reversal pin)", () => {
       const alcohol = (wide.actions ?? []).find((a) =>
         a.data?.endsWith(":alcohol")
       );
-      expect(alcohol?.label).toBe("🍷 Alcohol (6)");
+      expect(alcohol?.label).toBe("🍷 Alcohol");
     } finally {
       setProfileSetting(c.profileId, "dietary_excluded_groups", "[]");
     }
@@ -169,7 +160,7 @@ describe("capped groups rank on frecency alone (#1980 reversal pin)", () => {
 // hourly tick started REBUILDING past-day nudges — and every figure on that render was
 // read for the message's day except one. `getProteinToday` resolved `today()` inside
 // itself, so a D−1 message was repainted with the CURRENT day's grams and the CURRENT
-// day's "goal reached" verdict, beside a tally and button counts that were correct.
+// day's "goal reached" verdict, beside the correct day tally.
 //
 // That is a false health claim in the notification tier, it persists (`food` is
 // `reissuable: false`, so the message stays live until the next food nudge — for ever if

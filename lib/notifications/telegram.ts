@@ -40,7 +40,7 @@ import {
   type NotificationChannel,
   type NotificationMessage,
 } from "./types";
-import { composeMessage } from "./compose";
+import { composeForRebuild, composeMessage } from "./compose";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
 import { resolveTelegramChats, resolveTelegramRecipients } from "./fan-out";
@@ -73,7 +73,6 @@ import {
   type MessagePointer,
 } from "./message-pointers";
 import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
-import { attachmentOnKeyboard } from "./usual-routine-attach";
 import { messageBodyHash, reconcileClosingText } from "./reconcile-core";
 import { classifyTelegramFailure } from "./telegram-error";
 
@@ -260,7 +259,7 @@ function recordPointer(
   // digest's every button is declared inert — an offer tail and a ⚙️ Tune control claim
   // nothing — so the keyboard test that gates every other pointer would have skipped the
   // one message whose CLAIMS ARE ITS SENTENCES. `prose` also decides whether a body hash
-  // is worth storing: nothing else reads one.
+  // is worth storing. Food also compares its tally independently of its keyboard.
   const prose = proseReconcilerFor(msg.kind);
   if (keyboard.length === 0 && !prose) return;
   recordMessagePointer({
@@ -271,7 +270,7 @@ function recordPointer(
     chatWide,
     date: today(profileId),
     keyboard,
-    bodyHash: prose ? messageBodyHash(msg) : null,
+    bodyHash: prose || msg.kind === "food" ? messageBodyHash(msg) : null,
     // The TITLE AS DELIVERED, attribution prefix and all (#1822 item 7). Recorded for
     // exactly the reason the keyboard is: this is the only moment anyone holds it, and
     // a reconcile close that replaces the whole text must be able to say what it closed
@@ -713,14 +712,7 @@ export async function rebuildMessage(
   // off the tapped token or the pointer and applied.
   const pointer = rebuildPointer(profileId, chatId, messageId);
   const ownerId = pointer?.profileId ?? profileId;
-  const attributed = composeMessage(
-    msg,
-    pointer?.chatWide ? "" : prefixForProfile(profileId),
-    null,
-    pointer
-      ? attachmentOnKeyboard(ownerId, pointer.keyboard, today(ownerId))
-      : null
-  );
+  const attributed = composeForRebuild(profileId, msg, pointer);
   await editMessageTextRaw(chatId, messageId, renderMessageHtml(attributed), {
     keyboard: messageKeyboard(attributed),
     parseMode: "HTML",
@@ -732,7 +724,8 @@ export async function rebuildMessage(
     ownerId,
     chatId,
     messageId,
-    deliveredKeyboard(attributed)
+    deliveredKeyboard(attributed),
+    attributed.kind === "food" ? messageBodyHash(attributed) : undefined
   );
 }
 
