@@ -664,15 +664,12 @@ test.describe("a dialog body cannot be parked sideways (#3360)", () => {
     // for a reason that had nothing to do with the sheet, and only went red once
     // CI happened to be past the mount. A race that resolves toward the EMPTY DOM
     // is the worst kind: it fails toward green, so the spec reports success
-    // without ever having looked at the thing it names (#3384). These two waits
-    // are the assertion's precondition, not scenery.
-    const context = sheet.getByTestId("food-log-context");
-    await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
-    await expect(context).toBeVisible();
+    // without ever having looked at the thing it names (#3384). Waiting for the
+    // mounted logger is the assertion's precondition.
+    const logger = sheet.getByTestId("food-log-bar");
+    await expect(logger).toBeVisible();
 
-    // Nothing to scroll to, because the mounted body fits: FoodLogBar's bleed is
-    // scoped to the `md:sticky` widths where it earns its keep, and the tap
-    // extension on its flush-right control has the room it needs.
+    // The mounted body fits without horizontal overflow.
     expect(
       await scrollableBy(content),
       await overflowStory(content)
@@ -681,11 +678,10 @@ test.describe("a dialog body cannot be parked sideways (#3360)", () => {
     // written: `scrollLeft = 999` leaves it at 0.
     expect(await parkSideways(content)).toBe(0);
 
-    // The consequence the owner reported, stated as the thing they saw: the header
-    // block is inside the sheet's box, not hanging off its left edge.
-    const [contextBox, contentBox] = await settledBoxes([context, content]);
-    expect(contextBox.x).toBeGreaterThanOrEqual(contentBox.x - 1);
-    expect(await overhangWithin(context, content)).toBeLessThanOrEqual(1);
+    // The logger stays inside the sheet's box, including its left edge.
+    const [loggerBox, contentBox] = await settledBoxes([logger, content]);
+    expect(loggerBox.x).toBeGreaterThanOrEqual(contentBox.x - 1);
+    expect(await overhangWithin(logger, content)).toBeLessThanOrEqual(1);
   });
 
   test("a dialog hosting a deliberately over-wide child still refuses", async ({
