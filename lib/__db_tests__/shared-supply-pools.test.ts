@@ -27,7 +27,8 @@ import {
   refillSupply,
 } from "@/lib/queries";
 import { collectUpcoming } from "@/lib/queries/upcoming";
-import { poolRefillSignalKey } from "@/lib/refill-nudge";
+import { setProfileSetting, getProfileSetting } from "@/lib/settings";
+import { poolRefillSignalKey, refillMarkerKey } from "@/lib/refill-nudge";
 import { seedProfile, type SeededProfile } from "./fixtures";
 import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
@@ -404,7 +405,15 @@ describe("row-ops side-state on unlink and delete", () => {
     );
     const s = addItem(alice.profileId, "POOLA Solo Pool Med", 1, null);
     linkItemToPool(alice.profileId, s.itemId, soloPool);
+    setProfileSetting(
+      alice.profileId,
+      refillMarkerKey(s.itemId),
+      today(alice.profileId)
+    );
     expect(deleteSharedSupply(soloPool)).toEqual([s.itemId]);
+    expect(
+      getProfileSetting(alice.profileId, refillMarkerKey(s.itemId))
+    ).toBeUndefined();
     expect(getSharedSupply(soloPool)).toBe(null);
     expect(itemQty(s.itemId)).toBe(44);
 
@@ -452,7 +461,15 @@ describe("row-ops side-state on unlink and delete", () => {
     );
     const a = addItem(alice.profileId, "POOLA Orphan Med", 1, null);
     linkItemToPool(alice.profileId, a.itemId, supplyId);
+    setProfileSetting(
+      alice.profileId,
+      refillMarkerKey(a.itemId),
+      today(alice.profileId)
+    );
     unlinkItemFromPool(alice.profileId, a.itemId);
+    expect(
+      getProfileSetting(alice.profileId, refillMarkerKey(a.itemId))
+    ).toBeUndefined();
     const pool = getPoolView(supplyId);
     expect(pool).toBeTruthy();
     expect(pool?.orphaned).toBe(true);
@@ -750,4 +767,48 @@ describe("the offerable-bottle rule matches the cabinet's own list", () => {
         .sort()
     );
   });
+});
+
+it("keeps private Ordered through a dose and partial refill, but retires it on a stock-identity round trip", () => {
+  const a = addItem(alice.profileId, "Private Ordered", 1, 4);
+  const b = addItem(bruno.profileId, "Other Ordered", 1, 4);
+  const marker = JSON.stringify({
+    v: 1,
+    state: "requested",
+    g: "fixture0001",
+    sentOn: today(alice.profileId),
+    dueOn: today(alice.profileId),
+  });
+  setProfileSetting(alice.profileId, refillMarkerKey(a.itemId), marker);
+  setProfileSetting(bruno.profileId, refillMarkerKey(b.itemId), marker);
+  markDoseTaken(
+    alice.profileId,
+    a.doseId,
+    null,
+    today(alice.profileId),
+    "page"
+  );
+  refillSupply(alice.profileId, a.itemId, 1);
+  expect(itemQty(a.itemId)).toBe(4);
+  expect(getProfileSetting(alice.profileId, refillMarkerKey(a.itemId))).toBe(
+    marker
+  );
+  const pool = createSharedSupply(
+    {
+      name: "Ordered pool",
+      strength: null,
+      form: null,
+      lowSupplyDays: null,
+      notes: null,
+    },
+    4
+  );
+  linkItemToPool(alice.profileId, a.itemId, pool);
+  unlinkItemFromPool(alice.profileId, a.itemId);
+  expect(
+    getProfileSetting(alice.profileId, refillMarkerKey(a.itemId))
+  ).toBeUndefined();
+  expect(getProfileSetting(bruno.profileId, refillMarkerKey(b.itemId))).toBe(
+    marker
+  );
 });

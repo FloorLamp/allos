@@ -1,4 +1,4 @@
-import { handleReceivedCallback } from "./refill";
+import { handleReceivedCallback, handleOrderedRefillCallback } from "./refill";
 // Handles an inbound Telegram button tap ("✅ {name}") regardless of transport:
 // the webhook route and the getUpdates poller both delegate here, so both paths
 // get identical profile-scoping and verification.
@@ -11,7 +11,6 @@ import {
   recordPreventiveDone,
   setPreventiveOverride,
   snoozeFinding,
-  intakeItemExists,
   getDoseEscalateChatId,
   escalationAckState,
   endLivePracticeSession,
@@ -49,7 +48,6 @@ import { logFoodServingCore } from "../food-log-write";
 import { addProteinGramsCore } from "../protein-daily-totals-write";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
-import { refillSignalKey } from "../refill-nudge";
 import { escalationMarkerKey } from "./escalate";
 import { resolveHouseholdTapAccess } from "./household-round-access";
 import { householdMemberLabel } from "./household-round";
@@ -61,7 +59,6 @@ import {
   type FoodOptInCallback,
   type FoodProteinCallback,
   type PreventiveTapOutcome,
-  type RefillTapOutcome,
   type HouseholdDoseCallback,
   type TakeCallback,
   type TapWrote,
@@ -110,7 +107,6 @@ import {
   type StillGoingCallback,
   preventiveAnswerText,
   preventiveCloseText,
-  refillAnswerText,
   removeButton,
   removeRowContaining,
   replacementWithTitle,
@@ -126,7 +122,10 @@ import {
   parsePreventiveCallback,
   type PreventiveCallback,
 } from "./preventive-tokens";
-import { parseRefillCallback, type RefillCallback } from "./refill-tokens";
+import {
+  parseRefillCallback,
+  parseOrderedRefillCallback,
+} from "./refill-tokens";
 import {
   parseEscalationCallback,
   type EscalationCallback,
@@ -242,7 +241,6 @@ function offDayCadence(
 // isn't urgent, so a short reprieve without losing it. Refill "📦 Ordered" snoozes
 // 3 days (a reorder's typical lead time; matches the button label).
 const PREVENTIVE_SNOOZE_DAYS = 7;
-const REFILL_SNOOZE_DAYS = 3;
 
 // ── ONE TAP, ONE SWEEP (#3933) ───────────────────────────────────────────────
 //
@@ -438,7 +436,13 @@ export const CALLBACK_REGISTRY = [
   callbackEntry({
     prefixes: ["rfsnooze"],
     parse: parseRefillCallback,
-    handle: handleRefillTap,
+    handle: handleOrderedRefillCallback,
+  }),
+
+  callbackEntry({
+    prefixes: ["rfordered", "rfordno"],
+    parse: parseOrderedRefillCallback,
+    handle: handleOrderedRefillCallback,
   }),
 
   // Phase 2 (#233): missed-dose escalation (✅ Confirmed taken / 👍 I'm on it).
@@ -821,49 +825,6 @@ async function handlePreventiveTap(
   // A rule the catalog no longer knows wrote nothing; the other three arms each
   // recorded one (a done, an override, a snooze).
   return outcome.kind === "unknown-rule" ? undefined : profileId;
-}
-
-// Apply a refill tap: verify the item is still the profile's (a forged id →
-// stale-item, nothing written), else snooze its `refill:<id>` finding on the
-// shared bus (#227), the same fact a page snooze writes.
-function applyRefillTap(
-  profileId: number,
-  rf: RefillCallback
-): RefillTapOutcome {
-  if (!intakeItemExists(profileId, rf.itemId)) return "stale-item";
-  snoozeFinding(
-    profileId,
-    refillSignalKey(rf.itemId),
-    shiftDateStr(today(profileId), REFILL_SNOOZE_DAYS)
-  );
-  return "snoozed";
-}
-
-// Handle a refill-nudge "📦 Ordered" tap. Same profile resolution + row-consume
-// discipline as the preventive handler.
-async function handleRefillTap(
-  cq: TelegramCallbackQuery,
-  rf: RefillCallback
-): Promise<TapWrote> {
-  const chatId = cq.message?.chat?.id;
-  const profileId =
-    chatId != null
-      ? resolveTapProfile(rf, getProfilesByTelegramChatId(String(chatId)))
-      : null;
-  if (profileId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
-    return;
-  }
-  const outcome = applyRefillTap(profileId, rf);
-  await answerCallbackQuery(cq.id, refillAnswerText(outcome));
-  await consumeRow(
-    profileId,
-    cq,
-    outcome === "snoozed"
-      ? `Refill reminder snoozed ${GLYPH.ordered}`
-      : OUTDATED_MESSAGE_TEXT
-  );
-  return outcome === "snoozed" ? profileId : undefined;
 }
 
 // Handle a missed-dose escalation button (#233's caregiver two-way). AUTHORIZE by
