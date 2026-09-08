@@ -63,6 +63,10 @@ import { arguedExclusion, type ArguedExclusion } from "@/lib/loggable-domains";
 // The one logging manifest (#4425). Pure and type-only-importing itself, so reading it
 // here keeps this module's runtime-dependency-free contract.
 import { LOG_MANIFEST } from "@/lib/log-manifest";
+import type {
+  DayContextKey,
+  DayContextParts,
+} from "@/lib/day-context-key";
 
 export type FlowKind =
   | "dose"
@@ -441,7 +445,7 @@ export function chunkIntents<T>(
 // server records in `replayed_keys` to guarantee exactly-once. `date` is the
 // captured local date (YYYY-MM-DD) the write lands on; `capturedAt` is the full
 // client timestamp (diagnostics only). `flow` discriminates the payload.
-export interface QueuedIntent {
+interface QueuedIntentBase {
   key: string;
   flow: FlowKind;
   date: string;
@@ -455,7 +459,11 @@ export interface QueuedIntent {
   // queued before this field shipped has no profileId, and the replay route falls
   // back to the active profile for those legacy entries (there's no other profile to
   // attribute them to). Every intent built by buildIntent going forward carries it.
-  profileId?: number;
+  // The exact day offer under which this write was captured (#5211). Optional only
+  // for intents stored by an older build; every new `buildIntent` call must provide
+  // the whole stamp. Parts stay beside their opaque canonical key so replay can
+  // verify the identity without trying to parse it, while `isPrimaryDay` preserves
+  // whether the selected subject's day was live when the person acted.
   // How many times a flush reached the server and got a retryable "error" for this
   // intent (issue #475 point 3). Absent/0 on a fresh enqueue. Once it hits
   // MAX_REPLAY_ATTEMPTS the intent is reclassified as rejected (moved to the
@@ -463,6 +471,21 @@ export interface QueuedIntent {
   // badge forever with no explanation.
   attempts?: number;
 }
+
+export interface QueuedDayContext {
+  readonly parts: DayContextParts;
+  readonly key: DayContextKey;
+  readonly isPrimaryDay: boolean;
+}
+
+// A new intent carries the profile and its day context as one stamp. The second arm
+// represents stored legacy entries only: profile attribution shipped before day
+// context, so it may be present there, while a partial new context has no type.
+export type QueuedIntent = QueuedIntentBase &
+  (
+    | { readonly profileId: number; readonly dayContext: QueuedDayContext }
+    | { readonly profileId?: number; readonly dayContext?: never }
+  );
 
 // A uuid for the idempotency key. Prefers crypto.randomUUID (all evergreen
 // browsers + Node 24); falls back to a random-hex composition where it's absent so
@@ -486,18 +509,18 @@ export function newIdempotencyKey(): string {
 // capture timestamp. `now` is injectable for tests.
 export function buildIntent(
   flow: FlowKind,
-  date: string,
   payload: IntentPayload,
-  profileId: number,
+  dayContext: QueuedDayContext,
   now: Date = new Date()
 ): QueuedIntent {
   return {
     key: newIdempotencyKey(),
     flow,
-    date,
+    date: dayContext.parts.day,
     capturedAt: now.toISOString(),
     payload,
-    profileId,
+    profileId: dayContext.parts.profileId,
+    dayContext,
     attempts: 0,
   };
 }

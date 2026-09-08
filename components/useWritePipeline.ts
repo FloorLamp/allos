@@ -2,7 +2,11 @@
 
 import { useCallback } from "react";
 import { useToast } from "@/components/Toast";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+  type QueuedCapture,
+} from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import type { StampedFormData } from "@/lib/logged-via";
@@ -17,6 +21,7 @@ import {
 import type { ArguedExclusion } from "@/lib/loggable-domains";
 import type { OneTapAffordance } from "@/lib/one-tap";
 import type { UndoOffer } from "@/lib/undo-offer";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 // THE ONE CLIENT WRITE PIPELINE (#3276). Ten surfaces hand-wired the same commit dance
 // — stamp the surface, try the action, read the typed outcome, fall back to the queue,
@@ -162,6 +167,7 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
   const toast = useToast();
   const announceUndoable = useUndoableAction();
   const { enqueue } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   const stampLoggedVia = useLoggedViaStamp();
   const ledger = useOptimisticLedger<V>(affordance);
 
@@ -189,17 +195,28 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
   // produce (`shouldQueueOffline` — #2912's classifier: `__NEXT_ERROR_CODE` for the
   // stale-action signature, plus the TypeError a dropped fetch throws).
   const capture = useCallback(
-    async (decision: OfflineDecision): Promise<WriteResult> => {
+    async (
+      decision: OfflineDecision,
+      capturedContext: QueuedCapture | null
+    ): Promise<WriteResult> => {
       if (decision.kind === "attempt") return "nothing";
       if (decision.kind === "refuse") {
         say({ message: decision.message, tone: "error", undo: null });
+        return "nothing";
+      }
+      if (!capturedContext) {
+        say({
+          message: OFFLINE_CAPTURE_REFUSED_MESSAGE,
+          tone: "error",
+          undo: null,
+        });
         return "nothing";
       }
       // READ THE ANSWER (#3038): the device can refuse the capture — logged out, or no
       // IndexedDB to queue into — and promising a sync that will never happen is worse
       // than the missing save, because nothing later contradicts it.
       const kept =
-        (await enqueue(decision.flow, decision.date, decision.payload)) ===
+        (await enqueue(decision.flow, decision.payload, capturedContext)) ===
         "kept";
       if (!kept) {
         say({
@@ -220,18 +237,18 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
   const attempt = useCallback(
     async <R>(
       spec: WriteSpec<A, R, V>,
-      tappedAt: Date
+      tappedAt: Date,
+      offlineDecision: OfflineDecision | undefined,
+      capturedContext: QueuedCapture | null
     ): Promise<Attempted<V>> => {
-      const offline = spec.offline as
-        ((at: Date) => OfflineDecision) | undefined;
       const online =
         typeof navigator === "undefined" || navigator.onLine !== false;
-      if (!online && offline) {
-        const decision = offline(tappedAt);
+      if (!online && offlineDecision) {
+        const decision = offlineDecision;
         // `attempt` falls through to the network on purpose — a cross-profile write has
         // no offline path but is still worth trying, and a failure is reported below.
         if (decision.kind !== "attempt")
-          return { result: await capture(decision) };
+          return { result: await capture(decision, capturedContext) };
       }
 
       const formData = stampLoggedVia(new FormData());
@@ -242,10 +259,13 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
         result = await spec.action(formData);
       } catch (error) {
         // A dropped connection uses the same capture or refusal as offline preflight.
-        if (offline && shouldQueueOffline(navigator.onLine !== false, error)) {
-          const decision = offline(tappedAt);
+        if (
+          offlineDecision &&
+          shouldQueueOffline(navigator.onLine !== false, error)
+        ) {
+          const decision = offlineDecision;
           if (decision.kind !== "attempt")
-            return { result: await capture(decision) };
+            return { result: await capture(decision, capturedContext) };
         }
         say({ message: spec.failureMessage, tone: "error", undo: null });
         return { result: "nothing" };
@@ -263,8 +283,21 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
     async <R>(spec: WriteSpec<A, R, V>): Promise<WriteResult> => {
       if (ledger.blocked(spec.key)) return "nothing";
       // Stamped up front: everything below — the round trip, its failure, the queue
-      // write — happens after the moment the user acted.
+      // write — happens after the moment the user acted. Evaluate the offline branch
+      // once here as well: a mutable form or selected day may change while an online
+      // action is in flight, and its failure still belongs to this tap's payload.
       const tappedAt = new Date();
+      const offline = spec.offline as
+        ((at: Date) => OfflineDecision) | undefined;
+      const offlineDecision = offline?.(tappedAt);
+      let capturedContext: QueuedCapture | null = null;
+      if (offlineDecision?.kind === "capture") {
+        capturedContext = captureDayContext(
+          offlineDecision.date,
+          TAP_REACH[affordance],
+          tappedAt
+        );
+      }
       const projection = spec.optimistic;
       // Held in a local rather than read off `tap`'s return so the ledger sees exactly
       // one settlement and the caller sees exactly one answer.
@@ -276,7 +309,12 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
         optimistic: projection?.to,
         commit: projection?.commit,
         write: async () => {
-          outcome = await attempt(spec, tappedAt);
+          outcome = await attempt(
+            spec,
+            tappedAt,
+            offlineDecision,
+            capturedContext
+          );
         },
         settle: () => {
           if (outcome.result === "nothing") return { kind: "rollback" };
@@ -292,7 +330,13 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       });
       return outcome.result;
     },
-    [attempt, ledger, say]
+    [
+      affordance,
+      attempt,
+      captureDayContext,
+      ledger,
+      say,
+    ]
   );
 
   return {

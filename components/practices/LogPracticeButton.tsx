@@ -15,7 +15,11 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+  type QueuedCapture,
+} from "@/components/OfflineQueueProvider";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
@@ -41,6 +45,7 @@ import {
   startPracticeLive,
 } from "@/app/(app)/wellness/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 // Shared one-tap "Log session" control for a wellness practice (#1259). Logs a session for
 // TODAY through the shared write core and answers from its typed outcome — NEVER an
@@ -181,6 +186,7 @@ export default function LogPracticeButton({
   const confirm = useConfirm();
   const ledger = useOptimisticLedger("practice-session");
   const { enqueue } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   const [pending, setPending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(defaultDetailsOpen);
   const [count, setCount] = useState(todayCount);
@@ -282,14 +288,20 @@ export default function LogPracticeButton({
   // already logged from another device is a no-op rather than a second session — which
   // is exactly what makes the offline capture safe without the #2007 confirm, since
   // there is no server to ask.
-  async function queueOffline(): Promise<void> {
+  async function queueOffline(
+    capturedContext: QueuedCapture | null
+  ): Promise<void> {
     const mins = durationShown ? durationValue() : null;
+    if (!capturedContext) {
+      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+      return;
+    }
     const kept =
-      (await enqueue("practice", today, {
+      (await enqueue("practice", {
         practice,
         identity: practiceIdentity(practice),
         durationMin: mins,
-      })) === "kept";
+      }, capturedContext)) === "kept";
     // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
     // IndexedDB to queue into — and the toast below promises the tap will sync. Nothing
     // contradicts that promise afterwards: no badge, no dead-letter entry, no replay. The
@@ -309,6 +321,10 @@ export default function LogPracticeButton({
     // absorbed silently, and — checked here rather than inside `tap` — never
     // escalated into a dialog the user did not ask for.
     if (ledger.blocked()) return;
+    const capturedContext = captureDayContext(
+      today,
+      TAP_REACH["practice-session"]
+    );
     // Offline, a second same-day tap enqueues NOTHING: the replay would no-op it, and
     // a queue badge counting an entry that will never become a session is its own small
     // lie. The narrowing is enforced here, not merely documented.
@@ -326,7 +342,7 @@ export default function LogPracticeButton({
         );
         return;
       }
-      await queueOffline();
+      await queueOffline(capturedContext);
       return;
     }
     // Layer 3. `count` is TODAY's by the prop's contract, so a non-zero count is a
@@ -384,7 +400,7 @@ export default function LogPracticeButton({
           count === 0 &&
           subjectProfileId == null
         ) {
-          void queueOffline();
+          void queueOffline(capturedContext);
           return { kind: "keep" };
         }
         toast("Couldn't log that session. Try again.");

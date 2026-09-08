@@ -51,6 +51,15 @@ vi.mock("@/app/(app)/training/mobility-actions", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
+  useQueuedDayContextCapture: () =>
+    (date: string, reach: object, capturedAt: Date = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: `context:${date}`,
+        isPrimaryDay: true,
+      },
+      capturedAt,
+    }),
 }));
 
 // The REAL ledger, the REAL surface context and the REAL undo wiring run here: a
@@ -177,11 +186,12 @@ describe("the client write pipeline (#3276)", () => {
       const after = Date.now();
 
       expect(result).toBe("captured");
-      const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+      const [flow, payload, capture] = mocks.enqueue.mock.calls[0]!;
       expect(flow).toBe("dose");
       expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
       expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
-      expect(date).toBe(
+      expect(capture.capturedAt.toISOString()).toBe(payload.clientTakenAt);
+      expect(capture.dayContext.parts.day).toBe(
         dateStrInTz(PROFILE_TZ, new Date(payload.clientTakenAt))
       );
       expect(mocks.toast).toHaveBeenCalledWith(
@@ -208,8 +218,9 @@ describe("the client write pipeline (#3276)", () => {
       })
     );
 
-    const [, , payload] = mocks.enqueue.mock.calls[0]!;
+    const [, payload, capture] = mocks.enqueue.mock.calls[0]!;
     expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(actionRanAt);
+    expect(capture.capturedAt.toISOString()).toBe(payload.clientTakenAt);
     expect(
       Date.now() - Date.parse(payload.clientTakenAt)
     ).toBeGreaterThanOrEqual(25);
@@ -690,8 +701,12 @@ describe.each(["protein", "mobility"] as const)(
         await act(async () => screen.getByTestId(addId).click());
         expect(mocks.enqueue).toHaveBeenCalledWith(
           kind === "protein" ? "food" : "mobility",
-          day,
-          payload
+          payload,
+          expect.objectContaining({
+            dayContext: expect.objectContaining({
+              parts: expect.objectContaining({ day }),
+            }),
+          })
         );
         expect(screen.getByTestId(totalId).textContent).toBe(queued);
         await act(async () => screen.getByTestId(removeId).click());

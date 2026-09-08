@@ -7,7 +7,10 @@ import { IconChevronDown } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useToast } from "@/components/Toast";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+} from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
 import WeightField from "@/components/vitals/WeightField";
@@ -48,6 +51,7 @@ import {
   type MeasurementsSaveResult,
 } from "./measurement-actions";
 import { whenOnDay } from "@/lib/stated-time";
+import { DATED_REACH } from "@/lib/log-manifest";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
@@ -287,6 +291,7 @@ export default function MeasurementsQuickAdd({
 }: MeasurementsQuickAddProps) {
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   const formRef = useRef<HTMLFormElement>(null);
   // Which surface this sitting was entered on (#3087): the Trends panel, a metric
   // detail page, or the quick-log sheet — three mountings of this one form.
@@ -413,6 +418,7 @@ export default function MeasurementsQuickAdd({
       return v === null || String(v).trim() === "" ? null : String(v);
     };
     const date = String(formData.get("date") ?? "").trim();
+    const capturedDayContext = captureDayContext(date, DATED_REACH);
     // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile.
     // `subjectProfileId` present means a non-acting subject was chosen; stamp it
     // so `addMeasurements`'s `gateItemProfile` re-gates THAT profile rather than
@@ -603,7 +609,8 @@ export default function MeasurementsQuickAdd({
         return "unqueueable";
       let keptBody = false;
       if (hasBody) {
-        const kept = await enqueue("body-metric", date, {
+        if (!capturedDayContext) return "refused";
+        const kept = await enqueue("body-metric", {
           weight: String(body.weight ?? ""),
           weightUnit,
           bodyFatPct: body.bodyFatPct,
@@ -613,7 +620,7 @@ export default function MeasurementsQuickAdd({
           // an offline weigh-in keeps its statement, and an explicitly-empty
           // Time still clears — same trichotomy the online action posts.
           occurredAt: s("occurred_at"),
-        });
+        }, capturedDayContext);
         if (kept !== "kept") return "refused";
         keptBody = true;
       }
@@ -637,10 +644,11 @@ export default function MeasurementsQuickAdd({
         // (#2154): a queued evening BP keeps its statement, and an explicitly
         // empty Time replays as "no time" — the same trichotomy the online
         // action reads off the same hidden field.
-        const kept = await enqueue("vitals", date, {
+        if (!capturedDayContext) return "refused";
+        const kept = await enqueue("vitals", {
           ...vitals,
           occurredAt: s("occurred_at"),
-        });
+        }, capturedDayContext);
         if (kept !== "kept") {
           if (keptBody && kept === "failed") {
             // The body intent is durable but the vitals are not. Keep the refused

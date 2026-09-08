@@ -17,8 +17,11 @@ import {
   MOOD_CHECKIN,
   STOOL_MOVEMENT_LOG,
   isPastWriteAccepted,
+  isWithinReach,
   isWithinTapReach,
+  type TapReach,
 } from "@/lib/log-manifest";
+import { dayContextKey } from "@/lib/day-context-key";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -1311,6 +1314,78 @@ export interface ReplayOutcome {
   timeNotice?: StatedTimeRefusal;
 }
 
+function queuedReach(value: unknown): TapReach | null {
+  if (!value || typeof value !== "object") return null;
+  const reach = value as Record<string, unknown>;
+  if (reach.kind === "today" || reach.kind === "dated") {
+    return { kind: reach.kind };
+  }
+  if (
+    reach.kind !== "bounded" ||
+    !Number.isInteger(reach.back) ||
+    Number(reach.back) < 0 ||
+    !Number.isInteger(reach.forward) ||
+    Number(reach.forward) < 0 ||
+    typeof reach.reason !== "string" ||
+    !/^#\d+$/.test(String(reach.ref ?? ""))
+  ) {
+    return null;
+  }
+  return reach as unknown as TapReach;
+}
+
+// A wholly absent context is an intent written by an older build. Once any stamp is
+// present it must be complete and self-consistent: replay never fills in a missing
+// member from the surrounding envelope. Current reach is checked separately from the
+// captured primacy, which remains historical provenance rather than being recomputed.
+function replayContextRefusal(
+  profileId: number,
+  intent: QueuedIntent
+): string | null {
+  if (!("dayContext" in intent)) return null;
+  const raw = intent.dayContext as unknown;
+  if (!raw || typeof raw !== "object")
+    return "The entry's day context was malformed.";
+  const context = raw as Record<string, unknown>;
+  const rawParts = context.parts;
+  if (
+    !rawParts ||
+    typeof rawParts !== "object" ||
+    typeof context.key !== "string" ||
+    typeof context.isPrimaryDay !== "boolean"
+  ) {
+    return "The entry's day context was malformed.";
+  }
+  const parts = rawParts as Record<string, unknown>;
+  const reach = queuedReach(parts.reach);
+  if (
+    !Number.isInteger(parts.profileId) ||
+    Number(parts.profileId) <= 0 ||
+    typeof parts.day !== "string" ||
+    !isRealIsoDate(parts.day) ||
+    !reach
+  ) {
+    return "The entry's day context was malformed.";
+  }
+  const canonicalParts = {
+    profileId: Number(parts.profileId),
+    day: parts.day,
+    reach,
+  };
+  if (
+    intent.profileId !== profileId ||
+    canonicalParts.profileId !== profileId ||
+    canonicalParts.day !== intent.date ||
+    context.key !== dayContextKey(canonicalParts)
+  ) {
+    return "The entry's day context no longer matches this write.";
+  }
+  if (!isWithinReach(reach, today(profileId), intent.date)) {
+    return "The entry's captured day is no longer available for this action.";
+  }
+  return null;
+}
+
 // Apply one queued intent for `profileId`, exactly once. The idempotency-key check
 // and the write run in ONE transaction: a key already present short-circuits to
 // "duplicate"; a rejected payload commits nothing and records no key; a successful
@@ -1322,6 +1397,10 @@ export function applyIntent(
   profileId: number,
   intent: QueuedIntent
 ): ReplayOutcome {
+  const contextRefusal = replayContextRefusal(profileId, intent);
+  if (contextRefusal) {
+    return { status: "rejected", reason: contextRefusal };
+  }
   let outcome: ReplayOutcome = { status: "rejected" };
   // Set by a flow that APPLIED while refusing a stated time (#2296) — carried out on
   // the "done" outcome below, never on a rejection (the two mean opposite things: one

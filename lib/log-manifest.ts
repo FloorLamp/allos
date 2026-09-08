@@ -141,6 +141,8 @@ export type TapReach =
       readonly ref: IssueRef;
     };
 
+export const DATED_REACH = { kind: "dated" } as const satisfies TapReach;
+
 // What the domain does with a time somebody STATES ("Happened earlier?", a
 // backfilled reading's clock). `judged` runs the one acceptance gate
 // (`judgeStatedAt`, lib/stated-time.ts) and reports its refusal; `none` means the
@@ -813,8 +815,8 @@ export function isPastWriteAccepted(todayStr: string, date: string): boolean {
 // `bounded` reach cannot be declared without the argument for its size.
 export const TAP_REACH = {
   // The nutrition bar and the `/history` door both stand on a day and post it.
-  "food-serving": { kind: "dated" },
-  "protein-grams": { kind: "dated" },
+  "food-serving": DATED_REACH,
+  "protein-grams": DATED_REACH,
   "food-usual": {
     kind: "bounded",
     back: USUAL_BACKFILL_WINDOW_DAYS,
@@ -861,33 +863,19 @@ export const TAP_REACH = {
     ref: "#3936",
   },
   // The audited deep door, and the ruling's named model for what a DATED surface is.
-  "dose-backfill": { kind: "dated" },
-  "mood-valence": {
-    kind: "bounded",
-    back: 2,
-    forward: 0,
-    reason:
-      "The reach of the day CHIPS — Today, Yesterday, and the day before (#2128) — which is all this tap can state. Past-only because a check-in cannot be pre-logged. The core takes any past day like every other; a dated mood form (#4427) would reach further without touching this.",
-    ref: "#2128",
-  },
-  "practice-session": {
-    kind: "bounded",
-    back: 30,
-    forward: 0,
-    reason:
-      "The reach of the wellness page's log launcher, whose `minDate` is this many days back: a reader reconciling a month of sittings is the ordinary case. Past-only at the offer even though the retired core bound was symmetric — the launcher never offered a future day.",
-    ref: "#2908",
-  },
+  "dose-backfill": DATED_REACH,
+  "mood-valence": DATED_REACH,
+  "practice-session": DATED_REACH,
   // The symptom bar is mounted on dated surfaces — `/history`'s day view passes the
   // day being read — so its taps are dated writes. This row is the ruling's answer
   // to this lane's blocker, declared rather than left implicit.
-  "symptom-severity": { kind: "dated" },
+  "symptom-severity": DATED_REACH,
   // Taps whose action stamps the profile's today and offer no day to state.
-  "substance-unit": { kind: "today" },
-  "prn-dose": { kind: "today" },
+  "substance-unit": DATED_REACH,
+  "prn-dose": DATED_REACH,
   "mobility-move": { kind: "today" },
   "period-lifecycle": { kind: "today" },
-  "stool-form": { kind: "today" },
+  "stool-form": DATED_REACH,
   "medication-refill": { kind: "today" },
 } as const satisfies Record<OneTapAffordance, TapReach>;
 

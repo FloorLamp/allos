@@ -23,6 +23,13 @@ import {
   type QueuedIntent,
   type ReplayResult,
 } from "@/lib/offline/queue";
+import { dayContextKey } from "@/lib/day-context-key";
+import { DATED_REACH } from "@/lib/log-manifest";
+
+function context(date: string, profileId = 1) {
+  const parts = { profileId, day: date, reach: DATED_REACH } as const;
+  return { parts, key: dayContextKey(parts), isPrimaryDay: true };
+}
 
 // Pure decision logic for the offline write queue (issue #28). The IndexedDB glue
 // (queue-db) and the server writes (writes.ts) are exercised by the e2e; this covers
@@ -42,7 +49,12 @@ describe("newIdempotencyKey", () => {
 describe("buildIntent", () => {
   it("stamps a fresh key + capture timestamp + the capturing profile, and carries the payload/date", () => {
     const now = new Date("2026-02-03T14:30:00.000Z");
-    const intent = buildIntent("dose", "2026-02-03", { doseId: 7 }, 5, now);
+    const intent = buildIntent(
+      "dose",
+      { doseId: 7 },
+      context("2026-02-03", 5),
+      now
+    );
     expect(intent.flow).toBe("dose");
     expect(intent.date).toBe("2026-02-03");
     expect(intent.capturedAt).toBe("2026-02-03T14:30:00.000Z");
@@ -55,7 +67,6 @@ describe("buildIntent", () => {
   it("gives distinct keys to two intents built back-to-back", () => {
     const a = buildIntent(
       "vitals",
-      "2026-01-01",
       {
         systolic: "120",
         diastolic: "80",
@@ -70,11 +81,10 @@ describe("buildIntent", () => {
         chairStand: null,
         balance: null,
       },
-      1
+      context("2026-01-01")
     );
     const b = buildIntent(
       "vitals",
-      "2026-01-01",
       {
         systolic: "121",
         diastolic: "81",
@@ -89,7 +99,7 @@ describe("buildIntent", () => {
         chairStand: null,
         balance: null,
       },
-      1
+      context("2026-01-01")
     );
     expect(a.key).not.toBe(b.key);
   });
@@ -345,7 +355,6 @@ describe("describeIntent (issue #475)", () => {
   it("names the flow + captured date so the user can recognise a dropped entry", () => {
     const i = buildIntent(
       "body-metric",
-      "2026-07-10",
       {
         weight: "80",
         weightUnit: "kg",
@@ -353,7 +362,7 @@ describe("describeIntent (issue #475)", () => {
         restingHr: null,
         notes: null,
       },
-      1
+      context("2026-07-10")
     );
     expect(describeIntent(i)).toBe("Body metric · 2026-07-10");
   });
@@ -519,7 +528,6 @@ describe("set/food intent shapes (#1596)", () => {
   it("a set intent carries the captured form fields and describes as a workout", () => {
     const intent = buildIntent(
       "set",
-      "2026-07-15",
       {
         fields: {
           type: "strength",
@@ -531,7 +539,7 @@ describe("set/food intent shapes (#1596)", () => {
           components: "[]",
         },
       },
-      7
+      context("2026-07-15", 7)
     );
     expect(intent.profileId).toBe(7);
     expect(describeIntent(intent)).toBe("Workout session · 2026-07-15");
@@ -540,21 +548,19 @@ describe("set/food intent shapes (#1596)", () => {
   it("a food intent discriminates serving vs protein and describes as a food log", () => {
     const serving = buildIntent(
       "food",
-      "2026-07-15",
       {
         entry: "serving",
         groupKey: "vegetables",
         mealSlot: "Morning",
         grams: null,
       },
-      7
+      context("2026-07-15", 7)
     );
     expect(describeIntent(serving)).toBe("Food log · 2026-07-15");
     const protein = buildIntent(
       "food",
-      "2026-07-15",
       { entry: "protein", groupKey: null, mealSlot: null, grams: 30 },
-      7
+      context("2026-07-15", 7)
     );
     expect(protein.payload).toEqual({
       entry: "protein",
@@ -570,9 +576,8 @@ describe("dose intent shape (#1427)", () => {
     const tappedAt = "2026-07-15T10:30:00.000Z";
     const intent = buildIntent(
       "dose",
-      "2026-07-15",
       { doseId: 42, clientTakenAt: tappedAt },
-      7
+      context("2026-07-15", 7)
     );
     expect(intent.flow).toBe("dose");
     expect(intent.payload).toEqual({ doseId: 42, clientTakenAt: tappedAt });
@@ -581,7 +586,11 @@ describe("dose intent shape (#1427)", () => {
   });
 
   it("stays valid without the timestamp (an intent queued before it shipped)", () => {
-    const legacy = buildIntent("dose", "2026-07-15", { doseId: 42 }, 7);
+    const legacy = buildIntent(
+      "dose",
+      { doseId: 42 },
+      context("2026-07-15", 7)
+    );
     expect(legacy.payload).toEqual({ doseId: 42 });
   });
 });

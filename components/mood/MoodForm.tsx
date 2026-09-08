@@ -7,7 +7,11 @@ import Disclosure from "@/components/Disclosure";
 import { useOptionalDayContext } from "@/components/DayContext";
 import MoodValencePicker from "@/components/MoodValencePicker";
 import IconButton from "@/components/IconButton";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+  type QueuedCapture,
+} from "@/components/OfflineQueueProvider";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
@@ -23,6 +27,7 @@ import {
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import SubmitButton from "@/components/SubmitButton";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 export interface MoodFormValue {
   valence: number;
@@ -103,6 +108,7 @@ export default function MoodForm({
   const toast = useToast();
   const dayContext = useOptionalDayContext();
   const { enqueue } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   const ledger = useOptimisticLedger<number | null>("mood-valence");
   const day =
     days.find((entry) => entry.date === dayContext?.parts.day) ?? days[0];
@@ -179,7 +185,8 @@ export default function MoodForm({
   async function queueIfOffline(
     err: unknown,
     target: MoodFormDay,
-    next: MoodFormValue
+    next: MoodFormValue,
+    capturedContext: QueuedCapture | null
   ): Promise<"not-offline" | "refused" | "queued"> {
     // The queue is stamped to the acting profile and carries no subject. A record-row
     // correction posts its subject and therefore must fail honestly rather than queue
@@ -194,14 +201,15 @@ export default function MoodForm({
       return "not-offline";
     }
     let outcome: "kept" | "closed" | "failed";
+    if (!capturedContext) return "refused";
     try {
-      outcome = await enqueue("mood", target.date, {
+      outcome = await enqueue("mood", {
         valence: next.valence,
         energy: next.energy,
         anxiety: next.anxiety,
         factors: next.factors,
         note: next.notes,
-      });
+      }, capturedContext);
     } catch {
       outcome = "failed";
     }
@@ -225,6 +233,10 @@ export default function MoodForm({
     }
     if (!beginWrite()) return;
     const next = draft(nextValence);
+    const capturedContext = captureDayContext(
+      target.date,
+      TAP_REACH["mood-valence"]
+    );
     void ledger
       .tap({
         key: `${target.date}:${nextValence}:${entryVersion}`,
@@ -241,7 +253,12 @@ export default function MoodForm({
           return { kind: "keep" };
         },
         onError: async (err) => {
-          const queued = await queueIfOffline(err, target, next);
+          const queued = await queueIfOffline(
+            err,
+            target,
+            next,
+            capturedContext
+          );
           if (queued === "queued") {
             complete(target, nextValence);
             return { kind: "keep" };
@@ -258,6 +275,10 @@ export default function MoodForm({
     if (!day || valence == null || !beginWrite()) return;
     const target = day;
     const next = draft(valence);
+    const capturedContext = captureDayContext(
+      target.date,
+      TAP_REACH["mood-valence"]
+    );
     setError(null);
     try {
       const result = await logMood(payload(target, next));
@@ -267,7 +288,12 @@ export default function MoodForm({
       }
       complete(target, valence);
     } catch (err) {
-      const queued = await queueIfOffline(err, target, next);
+      const queued = await queueIfOffline(
+        err,
+        target,
+        next,
+        capturedContext
+      );
       if (queued === "queued") complete(target, valence);
       else if (queued === "not-offline")
         setError("Couldn't save that check-in — try again.");

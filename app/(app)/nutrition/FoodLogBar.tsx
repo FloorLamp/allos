@@ -73,7 +73,10 @@ import { microMotionPlan } from "@/lib/micro-motion";
 import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+} from "@/components/OfflineQueueProvider";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
@@ -106,6 +109,7 @@ import DayLedger from "./DayLedger";
 import ProteinQuickAdd from "./ProteinQuickAdd";
 import type { LedgerGroup } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 // Where one corrected serving landed, with the server's authoritative counts for that
 // coordinate. Named off the action's result so the bar and the write core can never
@@ -511,6 +515,7 @@ export default function FoodLogBar({
   };
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   // The shared one-tap ledger (#2041): optimistic bump, rollback, and adoption of
   // the server's authoritative counts. A serving is ADDITIVE and declares no
   // expected interval, so repeats never raise a confirm; #3611 keys each add tap
@@ -1233,6 +1238,10 @@ export default function FoodLogBar({
     onMutationStarted?: (epoch: number) => void,
     existingReceiptOwner?: symbol
   ): Promise<boolean> {
+    const capturedDayContext = captureDayContext(
+      activeDate,
+      TAP_REACH["food-serving"]
+    );
     const noticeScope = currentReceiptProfileScope();
     const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
@@ -1291,8 +1300,9 @@ export default function FoodLogBar({
     const queueOffline = async (): Promise<boolean> => {
       if (subjectProfileId != null && subjectProfileId !== activeProfileId)
         return false;
+      if (!capturedDayContext) return false;
       const kept =
-        (await enqueue("food", activeDate, {
+        (await enqueue("food", {
           entry: "serving",
           groupKey: slug,
           // This is the fallback declaration, not an echo of a stated instant. If
@@ -1306,7 +1316,7 @@ export default function FoodLogBar({
           // rather than trusting it, and an unusable one costs the statement, never the
           // serving.
           eatenAt: statedAt,
-        })) === "kept";
+        }, capturedDayContext)) === "kept";
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {
