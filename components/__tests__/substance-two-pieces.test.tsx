@@ -51,6 +51,7 @@ let logResult:
   eventId: 41,
   date: "2026-08-20",
 };
+let logReply = async () => logResult;
 let updateResult: { kind: string; eventId?: number; date?: string } = {
   kind: "updated",
   eventId: 4,
@@ -68,7 +69,7 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   },
   logSubstanceUnitAction: async (fd: FormData) => {
     record("log")(fd);
-    return logResult;
+    return logReply();
   },
   undoSubstanceUnitAction: async (fd: FormData) => {
     record("undo")(fd);
@@ -124,6 +125,7 @@ beforeEach(() => {
     eventId: 41,
     date: TODAY,
   };
+  logReply = async () => logResult;
 });
 
 function openForm(row?: typeof ROW, substance = "nicotine"): void {
@@ -454,7 +456,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
     vi.useRealTimers();
   });
 
-  it("invalidates a sheet receipt when its subject or acting scope changes", async () => {
+  it("invalidates a sheet receipt when its subject changes", async () => {
     const view = render(
       <QuickSubstanceList
         substances={[
@@ -491,9 +493,77 @@ describe("SubstanceUnitControl is ONE row control", () => {
     expect(await receipt.undo?.run()).toEqual({ ok: false, reason: "changed" });
     expect(posted.undo).toBeUndefined();
     expect(dismissedToastKeys).toContain(receipt.key);
+  });
 
+  it("suppresses a stale completion and invalidates a fresh receipt when the acting scope changes", async () => {
+    let finishLog!: (result: typeof logResult) => void;
+    logReply = () =>
+      new Promise<typeof logResult>((resolve) => {
+        finishLog = resolve;
+      });
+    const view = render(
+      <QuickSubstanceList
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={42}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Log a use" }));
     toastScope = { profileId: 8, token: 12 };
-    expect(undoAnnouncements.at(-1)?.undo?.isCurrent?.()).toBe(false);
+    view.rerender(
+      <QuickSubstanceList
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={42}
+      />
+    );
+    await act(async () =>
+      finishLog({ ok: false, error: "Couldn't log that." })
+    );
+    expect(undoAnnouncements).toHaveLength(0);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Log a use" }).hasAttribute("disabled")
+    ).toBe(false);
+
+    logReply = async () => ({
+      ok: true,
+      weekCount: 3,
+      eventId: 43,
+      date: TODAY,
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
+    );
+    const current = undoAnnouncements[0];
+    expect(current.undo?.isCurrent?.()).toBe(true);
+    toastScope = { profileId: 9, token: 13 };
+    view.rerender(
+      <QuickSubstanceList
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={42}
+      />
+    );
+    expect(current.undo?.isCurrent?.()).toBe(false);
   });
 });
 

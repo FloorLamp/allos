@@ -109,12 +109,12 @@ export default function SubstanceUnitControl({
           : undoSubstanceUnitAction(fd);
       },
       settle: (result) => {
-        if (!isCurrent()) return { kind: "keep" };
         if (!result.ok) {
-          setError(result.error);
+          if (isCurrent()) setError(result.error);
           // Nothing was written, so the tap stays immediately retryable.
           return { kind: "rollback" };
         }
+        if (!isCurrent()) return { kind: "keep" };
         setCount(result.weekCount);
         if (
           kind === "log" &&
