@@ -165,13 +165,14 @@ describe("a glyph control reveals its own accessible name (#4511)", () => {
   });
 
   it("rides the declared motion, and gives a reduced-motion viewer the state alone", () => {
-    render(<Subject />);
+    const view = render(<Subject />);
     fireEvent.pointerEnter(screen.getByTestId("subject"), {
       pointerType: "mouse",
     });
     // The vocabulary's own class, not a hand-rolled transition (#2654).
     expect(tooltip()?.className).toContain("motion-promote");
 
+    view.unmount();
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: query.includes("prefers-reduced-motion"),
       media: query,
@@ -179,7 +180,7 @@ describe("a glyph control reveals its own accessible name (#4511)", () => {
       removeEventListener: () => {},
     }));
     render(<Subject label="Remove set" />);
-    const [, reduced] = screen.getAllByRole("button");
+    const reduced = screen.getByRole("button");
     fireEvent.pointerEnter(reduced, { pointerType: "mouse" });
     const panels = screen.getAllByRole("tooltip");
     const quiet = panels[panels.length - 1];

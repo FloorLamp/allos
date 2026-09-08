@@ -1,3 +1,4 @@
+import { mean, populationSd } from "../robust-stats";
 import { today } from "../db";
 import { commitCached } from "../commit-cache";
 import { localDayOf } from "../local-day-window";
@@ -65,21 +66,6 @@ import { getWeatherDay } from "./weather-situations";
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
 const RECOVERY_BASELINE_DAYS = 30;
-
-function mean(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((s, v) => s + v, 0) / values.length;
-}
-
-// Population standard deviation of the baseline window, used as the personal
-// variability the coaching engine widens its rest-nudge thresholds by (#44 item
-// 3a). Needs at least two points to mean anything; returns undefined otherwise so
-// the caller omits the field and the engine falls back to its fixed threshold.
-function spread(values: number[]): number | undefined {
-  if (values.length < 2) return undefined;
-  const m = mean(values);
-  return Math.sqrt(mean(values.map((v) => (v - m) ** 2)));
-}
 
 // Last night's MAIN overnight sleep (minutes) and the recent baseline, or null
 // when no sleep has been synced. Reads the per-night MAIN-session durations
@@ -149,7 +135,8 @@ export function sleepSignalResolver(
     const prior = nights.slice(0, -1);
     const baseNights = prior.length ? prior : nights;
     const baselineMin = mean(baseNights.map((n) => n.value));
-    const baselineSpreadMin = spread(prior.map((n) => n.value));
+    const baselineSpreadMin =
+      prior.length >= 2 ? populationSd(prior.map((n) => n.value)) : undefined;
     return {
       lastNightMin,
       baselineMin,
@@ -177,7 +164,8 @@ export function getRestingHrSignal(profileId: number): RestingHrSignal | null {
   const recent = points[points.length - 1].value;
   const prior = points.slice(0, -1);
   const baseline = mean((prior.length ? prior : points).map((p) => p.value));
-  const baselineSpreadBpm = spread(prior.map((p) => p.value));
+  const baselineSpreadBpm =
+    prior.length >= 2 ? populationSd(prior.map((p) => p.value)) : undefined;
   return {
     recent,
     baseline,
