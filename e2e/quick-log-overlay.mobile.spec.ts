@@ -1368,8 +1368,16 @@ for (const viewport of [
       async function openFood() {
         const input = await openCommandPalette(page);
         await settledFill(page, input, "food");
-        await hydratedClick(page, page.getByTestId("palette-action-log-food"));
-        const sheet = page.getByTestId("quick-entry-sheet");
+        await hydratedClick(
+          page,
+          page
+            .getByRole("listbox", { name: "Results" })
+            .getByTestId("palette-action-log-food")
+        );
+        const sheet = page.getByRole("dialog", {
+          name: "Log food",
+          exact: true,
+        });
         await expect(sheet.getByTestId("protein-quickadd-total")).toBeVisible();
         return sheet;
       }
