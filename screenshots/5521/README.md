@@ -14,5 +14,9 @@ viewports before and after the presentation changes.
 The after capture batch passed for all eight images. A separate browser probe
 measured both split practice controls at 34 px and reached each control
 independently with a touch five pixels beyond its visible block edge, exercising
-the shared 46 px coarse-pointer target. The final full overlay test file and
+the shared 46 px coarse-pointer target. The Mood comparisons wait for the
+animated Details frame to reach the bottom of its content. The supplementary
+`after/mood-1280-bottom-reach.png` shows Note and Save after that measured wait;
+the enabled Save was inside the viewport and all clipping ancestors and was the
+element returned by center hit testing. The final full overlay test file and
 recorded repository gates are tracked separately from this visual evidence.
