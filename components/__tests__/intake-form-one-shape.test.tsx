@@ -320,14 +320,14 @@ describe("the form holds its posted facts in one shape (#4664)", () => {
 
   // AND A COUNT, because the scan above is by field NAME and the old form held `rx`
   // in a hook called `rxFlag` — a per-field hook under another spelling would walk
-  // straight past it. Thirteen: the one posted state, and twelve hooks that are not
+  // straight past it. Twelve: the one posted state, and eleven hooks that are not
   // facts about the item (the open panel's add-mode flag, the offered bottles, the
-  // brand narrowing, the start-date latch, the linked bottle's label, the prefill
-  // ledger, the formulation slug, the selected weight band, the pediatric context,
-  // the ingredient seed note, the rule sentences, and the error). This number moves
-  // only when someone has decided a new hook is one of those.
-  it("declares one hook for the facts and twelve that are not facts", () => {
-    expect(stateHooks(FORM_SOURCE).length).toBe(13);
+  // brand narrowing, the start-date latch, the prefill ledger, the formulation slug,
+  // the selected weight band, the pediatric context, the ingredient seed note, the
+  // rule sentences, and the error). This number moves only when someone has decided
+  // a new hook is one of those.
+  it("declares one hook for the facts and eleven that are not facts", () => {
+    expect(stateHooks(FORM_SOURCE).length).toBe(12);
     expect(stateHooks(FORM_SOURCE)).toContain("state");
   });
 });
