@@ -380,22 +380,18 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     const doseId = seedDose(itemId);
 
     const frozen = new Date(Date.now() + 2 * 60 * 60 * 1000);
-    const previous = process.env.ALLOS_TEST_NOW;
+
     process.env.ALLOS_TEST_NOW = utcInstant(frozen);
-    try {
-      const tapped = new Date(frozen.getTime() - 60_000);
-      // The tap's own profile-local day — the day the log is attributed to, and what
-      // the guard's second rule compares against (#94 attribution, untouched here).
-      const date = zonedDateParts(getTimezone(profile.id), tapped).date;
-      const { body } = await replay([
-        doseIntent(doseId, profile.id, date, tapped.toISOString()),
-      ]);
-      expect(body.results?.[0].status).toBe("done");
-      expect(logFor(doseId, date)?.occurred_at).toBe(utcInstant(tapped));
-    } finally {
-      if (previous === undefined) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = previous;
-    }
+
+    const tapped = new Date(frozen.getTime() - 60_000);
+    // The tap's own profile-local day — the day the log is attributed to, and what
+    // the guard's second rule compares against (#94 attribution, untouched here).
+    const date = zonedDateParts(getTimezone(profile.id), tapped).date;
+    const { body } = await replay([
+      doseIntent(doseId, profile.id, date, tapped.toISOString()),
+    ]);
+    expect(body.results?.[0].status).toBe("done");
+    expect(logFor(doseId, date)?.occurred_at).toBe(utcInstant(tapped));
   });
 
   it("surfaces paused-item and retired-dose refusals with their reasons", async () => {

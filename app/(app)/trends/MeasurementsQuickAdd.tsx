@@ -43,7 +43,6 @@ import {
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import InlineError from "@/components/InlineError";
-import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   addMeasurements,
   type MeasurementsSaveResult,
@@ -1192,11 +1191,6 @@ export default function MeasurementsQuickAdd({
     sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],
   };
 
-  // The surrounding host owns the title; this body supplies its help text.
-  const about = metric
-    ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
-    : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings.";
-
   return (
     <form
       id="measurements-quick-add"
@@ -1208,8 +1202,6 @@ export default function MeasurementsQuickAdd({
       data-life-stage={showGrowth ? "minor" : "adult"}
     >
       <input type="hidden" name="weight_unit" value={weightUnit} />
-      <InfoTooltipIcon label={about} data-testid="measurements-help" />
-
       {/* The submission's one date + one optional Time (#2235 decision 3): the
           shared WhenControl owns the pair (ids m-date / m-time from its testId),
           and the hidden pair below is what actually posts — so the Server Action

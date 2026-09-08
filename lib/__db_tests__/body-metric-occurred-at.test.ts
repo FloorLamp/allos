@@ -22,10 +22,9 @@
 // names `occurred_at` — updated deliberately by the migration PR (#2246), its one
 // legitimate edit path — so this file asserts behavior, not schema.
 //
-// All fixtures SYNTHETIC; dates sit in the past so the acceptance gate's future
-// check (real clock — the db tier does not freeze time) can never fire.
+// Synthetic dates are judged against the test's frozen Date.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, vi, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import {
   insertBodyMetric,
@@ -108,16 +107,10 @@ beforeAll(() => {
 // `future` reason deterministic; it states a later hour of the pinned DAY instead,
 // which is the shape a real fast device clock produces anyway.
 const PINNED_NOW = "2026-05-20T09:00:00.000Z";
-let priorNow: string | undefined;
 
+beforeEach(() => vi.setSystemTime(new Date(PINNED_NOW)));
 beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = PINNED_NOW;
-});
-
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
+  vi.setSystemTime(new Date(PINNED_NOW));
 });
 
 describe("the manual submission core (insertBodyMetric)", () => {

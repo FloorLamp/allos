@@ -106,8 +106,7 @@ describe("logBristolStool — instant grain", () => {
     // resolution they would not line up, and a genuine second reading forty seconds
     // after the first would vanish with the surviving row looking perfectly normal.
     //
-    // Asserted through the stated-time door, because this file pins the clock seam
-    // (ALLOS_TEST_NOW, above) and it cannot advance to demonstrate it.
+    // Use the stated-time door to distinguish the writes under the tier clock freeze.
     const date = today(profileId);
     expect(logBristolStool(profileId, date, 3, "09:00")).toEqual({
       wrote: true,

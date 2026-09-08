@@ -30,7 +30,7 @@
 //
 // SYNTHETIC ONLY: a fictional traveller, invented step counts, no PHI.
 
-import { describe, it, expect, beforeAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
@@ -57,12 +57,8 @@ const HONOLULU = "Pacific/Honolulu";
 const SWITCH_INSTANT = "2026-05-01T23:00:00Z";
 
 function freeze(instant: string): void {
-  process.env.ALLOS_TEST_NOW = instant;
+  vi.setSystemTime(new Date(instant));
 }
-
-afterEach(() => {
-  delete process.env.ALLOS_TEST_NOW;
-});
 
 let profileId: number;
 
