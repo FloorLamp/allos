@@ -381,7 +381,6 @@ export default function HistoryAddDoor({
         return (
           <MeasurementsQuickAdd
             {...vocabulary.measurements}
-            presentation="modal"
             // The record's `body` rows ARE `body_metrics` (`bodyMetricMeasures` fans
             // weight, body fat and resting HR onto the feed), so the door opens on the
             // group holding them rather than on the form's own default.

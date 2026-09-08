@@ -20,7 +20,7 @@ export default function MetricMeasurementPanel({
   subtitle,
   headerAction,
   ...props
-}: Omit<MeasurementsQuickAddProps, "metric" | "onSaved" | "headerSlot"> & {
+}: Omit<MeasurementsQuickAddProps, "metric" | "onSaved"> & {
   metric: MeasurementEntryMetric;
   label: string;
   title: string;
@@ -70,7 +70,6 @@ export default function MetricMeasurementPanel({
             <MeasurementsQuickAdd
               {...props}
               metric={{ key: metric, label }}
-              presentation="modal"
               onSaved={() => setOpen(false)}
             />
           </div>
