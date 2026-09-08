@@ -252,7 +252,10 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
     for (const at of [undefined, null, "", "25:00"]) {
       const intent =
         at === undefined
-          ? buildIntent("stool", date, { type: 4 }, p, false)
+          ? ({
+              ...buildIntent("stool", date, { type: 4, at: null }, p, false),
+              payload: { type: 4 },
+            } as never)
           : buildIntent("stool", date, { type: 4, at }, p, false);
       expect(applyIntent(p, intent)).toEqual({
         status: "rejected",
