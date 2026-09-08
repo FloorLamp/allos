@@ -6,6 +6,8 @@ import QuickEntryProvider, {
 } from "@/components/QuickEntryProvider";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
+import { DayContextProvider } from "@/components/DayContext";
+import type { AppRoute } from "@/lib/hrefs";
 
 // COMPONENT TIER — the quick-log sheet's title-row subject chip (#4932): defaulting
 // per opener, the toggle, and a subject switch discarding what the previous subject
@@ -100,6 +102,42 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     expect(
       await screen.findByRole("heading", { name: "Log food" })
     ).toBeTruthy();
+  });
+
+  it("captures a dated route at the opener boundary", async () => {
+    render(
+      <DayContextProvider
+        profileId={ACTING.id}
+        today="2026-09-07"
+        reach={{ kind: "dated" }}
+        backing={{
+          kind: "url",
+          day: "2026-08-20",
+          hrefForDay: (day) => `/history?day=${day}` as AppRoute,
+        }}
+      >
+        <ToastProvider>
+          <QuickEntryProvider
+            measurements={MEASUREMENTS}
+            writableProfiles={[ACTING]}
+            actingProfileId={ACTING.id}
+          >
+            <Opener />
+          </QuickEntryProvider>
+        </ToastProvider>
+      </DayContextProvider>
+    );
+
+    fireEvent.click(screen.getByText("open food"));
+    await waitFor(() =>
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "food",
+        ACTING.id,
+        "2026-08-20",
+        "dated"
+      )
+    );
+    expect(screen.queryByTestId("bounded-day-switcher")).toBeNull();
   });
 
   it("defaults to the opener's subject when one is passed", async () => {
