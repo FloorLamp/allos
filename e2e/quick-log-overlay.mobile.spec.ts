@@ -1047,6 +1047,14 @@ test("switching profiles clears the originating food receipt and cannot target i
         .getByTestId("profile-switcher-panel")
         .getByTestId(`switch-to-${sharedId}`)
     );
+    // The POST can finish before React applies the new profile's keyed layout.
+    // Wait on the persistent desktop identity before opening its new drawer;
+    // otherwise the old drawer can satisfy the opener and then be unmounted.
+    await expect(
+      page
+        .locator('aside:not([role="dialog"])')
+        .getByTestId("profile-identity-bar")
+    ).toHaveAttribute("data-acting-profile-id", String(sharedId));
     await expect(page.locator('[data-toast-key^="food-serving:"]')).toHaveCount(
       0
     );
