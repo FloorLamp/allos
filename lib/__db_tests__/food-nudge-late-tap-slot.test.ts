@@ -1,7 +1,7 @@
 // A late Telegram tap records its eating instant without asserting the nudge's meal slot.
 // Real callbacks and rendering run against the database; only Telegram transport is stubbed.
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
@@ -151,19 +151,13 @@ const NUDGE_WINDOW: FoodNudgeWindow = "Morning";
 
 let p: SeededProfile;
 let t: string;
-let priorTestNow: string | undefined;
 
+beforeEach(() => vi.setSystemTime(new Date(FROZEN)));
 beforeAll(() => {
-  priorTestNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = FROZEN;
+  vi.setSystemTime(new Date(FROZEN));
   p = seedProfile("food-late-tap");
   t = today(p.profileId);
   seedLoginTelegram(p.profileId, CHAT);
-});
-
-afterAll(() => {
-  if (priorTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorTestNow;
 });
 
 describe("a Telegram food tap outside the nudge's window (#1704)", () => {

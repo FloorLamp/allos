@@ -20,7 +20,7 @@
 //
 // SYNTHETIC ONLY: fictional profiles, invented sleep minutes, no PHI.
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
@@ -45,12 +45,8 @@ const NIGHT_END = "2026-05-02T06:30:00Z";
 const NIGHT_MIN = 510;
 
 function freeze(instant: string): void {
-  process.env.ALLOS_TEST_NOW = instant;
+  vi.setSystemTime(new Date(instant));
 }
-
-afterEach(() => {
-  delete process.env.ALLOS_TEST_NOW;
-});
 
 function newProfile(name: string, tz: string): number {
   const id = Number(

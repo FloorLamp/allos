@@ -1,7 +1,7 @@
 // Repeated protein taps rebuild the same offered amount while the recorded total grows.
 // Real callbacks, query layer and rendering; only Telegram transport is stubbed.
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 // Stub the RAW transport, keeping the chokepoint (rebuildMessage) + render helpers REAL so
@@ -96,20 +96,14 @@ const FROZEN = "2026-07-15T20:30:00Z";
 let p: SeededProfile;
 let t: string;
 let slot: FoodNudgeWindow;
-let priorTestNow: string | undefined;
 
+beforeEach(() => vi.setSystemTime(new Date(FROZEN)));
 beforeAll(() => {
-  priorTestNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = FROZEN;
+  vi.setSystemTime(new Date(FROZEN));
   p = seedProfile("food-nudge-slot");
   t = today(p.profileId);
   slot = currentFoodSlot(p.profileId) as FoodNudgeWindow;
   seedLoginTelegram(p.profileId, CHAT);
-});
-
-afterAll(() => {
-  if (priorTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorTestNow;
 });
 
 describe("protein button after repeated taps", () => {

@@ -11,7 +11,7 @@
 // this week (#3573, #3836, #3901, #3884): "yesterday" is a profile-local day, never
 // `Date.now() - 86400000`.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setActiveSituations, setTimezone } from "@/lib/settings";
@@ -66,15 +66,7 @@ const ZONES = [
   },
 ] as const;
 
-let priorNow: string | undefined;
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = NOW_ISO;
-});
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
+beforeEach(() => vi.setSystemTime(new Date(NOW_ISO)));
 
 function seedDose(
   profileId: number,
@@ -218,76 +210,71 @@ function resolve(
 }
 
 it("records the amount in force on the selected past day", async () => {
-  const previousNow = process.env.ALLOS_TEST_NOW;
-  try {
-    process.env.ALLOS_TEST_NOW = "2026-08-26T12:00:00Z";
-    const login = createLogin();
-    const profile = createProfile("historical-amount", login.id);
-    actAs(login, profile);
-    setTimezone(profile.id, "UTC");
-    await addIntakeItem(
-      fd({
-        name: "Historical amount",
-        doses: JSON.stringify([
-          {
-            amount: "500 mg",
-            time_of_day: "Morning",
-            food_timing: "any",
-            weekdays: [],
-            start_date: "",
-            end_date: "",
-          },
-        ]),
-      })
-    );
-    const itemId = Number(
-      (
-        db.prepare("SELECT MAX(id) AS id FROM intake_items").get() as {
-          id: number;
-        }
-      ).id
-    );
-    const doseId = Number(
-      (
-        db
-          .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
-          .get(itemId) as { id: number }
-      ).id
-    );
+  vi.setSystemTime(new Date("2026-08-26T12:00:00Z"));
+  const login = createLogin();
+  const profile = createProfile("historical-amount", login.id);
+  actAs(login, profile);
+  setTimezone(profile.id, "UTC");
+  await addIntakeItem(
+    fd({
+      name: "Historical amount",
+      doses: JSON.stringify([
+        {
+          amount: "500 mg",
+          time_of_day: "Morning",
+          food_timing: "any",
+          weekdays: [],
+          start_date: "",
+          end_date: "",
+        },
+      ]),
+    })
+  );
+  const itemId = Number(
+    (
+      db.prepare("SELECT MAX(id) AS id FROM intake_items").get() as {
+        id: number;
+      }
+    ).id
+  );
+  const doseId = Number(
+    (
+      db
+        .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+        .get(itemId) as { id: number }
+    ).id
+  );
 
-    process.env.ALLOS_TEST_NOW = "2026-08-28T12:00:00Z";
-    await updateIntakeItem(
-      fd({
-        id: itemId,
-        name: "Historical amount",
-        doses: JSON.stringify([
-          {
-            id: doseId,
-            amount: "1000 mg",
-            time_of_day: "Morning",
-            food_timing: "any",
-            weekdays: [],
-            start_date: "",
-            end_date: "",
-          },
-        ]),
-      })
-    );
+  vi.setSystemTime(new Date("2026-08-28T12:00:00Z"));
+  await updateIntakeItem(
+    fd({
+      id: itemId,
+      name: "Historical amount",
+      doses: JSON.stringify([
+        {
+          id: doseId,
+          amount: "1000 mg",
+          time_of_day: "Morning",
+          food_timing: "any",
+          weekdays: [],
+          start_date: "",
+          end_date: "",
+        },
+      ]),
+    })
+  );
 
-    const date = "2026-08-27";
-    expect(await resolve(date, "taken", [doseId])).toMatchObject({ ok: true });
-    expect(
-      (
-        db
-          .prepare(
-            "SELECT amount FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-          )
-          .get(doseId, date) as { amount: string }
-      ).amount
-    ).toBe("500 mg");
-  } finally {
-    process.env.ALLOS_TEST_NOW = previousNow;
-  }
+  const date = "2026-08-27";
+  expect(await resolve(date, "taken", [doseId])).toMatchObject({ ok: true });
+  expect(
+    (
+      db
+        .prepare(
+          "SELECT amount FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseId, date) as { amount: string }
+    ).amount
+  ).toBe("500 mg");
 });
 
 describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {

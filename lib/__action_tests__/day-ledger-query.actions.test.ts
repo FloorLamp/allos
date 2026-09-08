@@ -12,7 +12,7 @@
 // names, because where a case came from is part of what it teaches. They are the
 // reproductions of what they broke, unchanged except in ATTACK #5, whose quoted `FoodTab`
 // expression had to be updated to the fixed one — the claim it makes is the same.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -25,15 +25,8 @@ import { buildDayLedger, stackLabel, type LedgerStack } from "@/lib/day-ledger";
 import { createLogin, createProfile, actAs } from "./harness";
 
 const NOW_ISO = "2026-08-28T10:30:00Z";
-let priorNow: string | undefined;
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = NOW_ISO;
-});
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
+
+beforeEach(() => vi.setSystemTime(new Date(NOW_ISO)));
 
 function seedDose(
   profileId: number,
@@ -86,12 +79,12 @@ describe("ATTACK #1 — two taps of one routine in one bucket, minutes apart", (
     // an open dose on twice.
     const first = newBundle();
     const second = newBundle();
-    process.env.ALLOS_TEST_NOW = "2026-08-28T07:07:10Z";
+    vi.setSystemTime(new Date("2026-08-28T07:07:10Z"));
     for (const s of seeded.slice(0, 2))
       markDoseTaken(profile.id, s.doseId, s.itemId, date, "page", {
         bundleId: first,
       });
-    process.env.ALLOS_TEST_NOW = "2026-08-28T10:07:20Z";
+    vi.setSystemTime(new Date("2026-08-28T10:07:20Z"));
     for (const s of seeded.slice(2, 4))
       markDoseTaken(profile.id, s.doseId, s.itemId, date, "page", {
         bundleId: second,
@@ -142,10 +135,10 @@ describe("ATTACK #1 — two taps of one routine in one bucket, minutes apart", (
       seedDose(profile.id, `Solo ${n}`, "Morning stack")
     );
 
-    process.env.ALLOS_TEST_NOW = "2026-08-28T07:07:10Z";
+    vi.setSystemTime(new Date("2026-08-28T07:07:10Z"));
     markDoseTaken(profile.id, seeded[0].doseId, seeded[0].itemId, date, "page");
     markDoseTaken(profile.id, seeded[1].doseId, seeded[1].itemId, date, "page");
-    process.env.ALLOS_TEST_NOW = "2026-08-28T10:07:20Z";
+    vi.setSystemTime(new Date("2026-08-28T10:07:20Z"));
     markDoseTaken(profile.id, seeded[2].doseId, seeded[2].itemId, date, "page");
     markDoseTaken(profile.id, seeded[3].doseId, seeded[3].itemId, date, "page");
 
@@ -193,7 +186,7 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
     // than left to a shared minute: three bare confirms are three taps now, and this
     // case is about what an amendment does to a real composed write.
     const tap = newBundle();
-    process.env.ALLOS_TEST_NOW = "2026-08-28T08:07:00Z";
+    vi.setSystemTime(new Date("2026-08-28T08:07:00Z"));
     for (const member of [a, b, c])
       markDoseTaken(profile.id, member.doseId, member.itemId, date, "page", {
         bundleId: tap,
@@ -274,7 +267,7 @@ describe("ATTACK #3 — a retired dose's past-day bucket", () => {
       `UPDATE intake_item_doses SET time_of_day = 'evening' WHERE id = ?`
     ).run(d.doseId);
 
-    process.env.ALLOS_TEST_NOW = "2026-08-28T20:00:00Z";
+    vi.setSystemTime(new Date("2026-08-28T20:00:00Z"));
     markDoseTaken(profile.id, d.doseId, d.itemId, yesterday, "page");
     db.prepare(
       `UPDATE intake_item_doses SET time_of_day = 'morning' WHERE id = ?`
@@ -403,7 +396,7 @@ describe("the stated-vs-logged split", () => {
     setTimezone(profile.id, "America/New_York");
     const date = today(profile.id);
     const d = seedDose(profile.id, "Stated D", "Morning stack");
-    process.env.ALLOS_TEST_NOW = "2026-08-28T13:40:00Z";
+    vi.setSystemTime(new Date("2026-08-28T13:40:00Z"));
     markDoseTaken(profile.id, d.doseId, d.itemId, date, "page");
     // Somebody named the administration instant: 07:15 local, four hours before filing.
     db.prepare(
@@ -425,7 +418,7 @@ describe("the stated-vs-logged split", () => {
     setTimezone(profile.id, "America/New_York");
     const date = today(profile.id);
     const d = seedDose(profile.id, "Logged D", "Morning stack");
-    process.env.ALLOS_TEST_NOW = "2026-08-28T13:40:00Z";
+    vi.setSystemTime(new Date("2026-08-28T13:40:00Z"));
     markDoseTaken(profile.id, d.doseId, d.itemId, date, "page");
     db.prepare(
       `UPDATE intake_item_logs SET occurred_at = NULL WHERE dose_id = ? AND date = ?`
@@ -448,7 +441,7 @@ describe("skipped rows", () => {
     setTimezone(profile.id, "UTC");
     const date = today(profile.id);
     const d = seedDose(profile.id, "Skipped D", "Morning stack");
-    process.env.ALLOS_TEST_NOW = "2026-08-28T09:00:00Z";
+    vi.setSystemTime(new Date("2026-08-28T09:00:00Z"));
     markDoseSkipped(profile.id, d.doseId, d.itemId, date, "page");
     // No app surface writes a reason today (it arrives with out-of-band writes), so it
     // is set directly — the reader's job is to carry whatever the column holds.
@@ -472,7 +465,7 @@ describe("profile scoping", () => {
     setTimezone(theirs.id, "UTC");
     const date = today(theirs.id);
     const other = seedDose(theirs.id, "Their dose", "Morning stack");
-    process.env.ALLOS_TEST_NOW = "2026-08-28T09:00:00Z";
+    vi.setSystemTime(new Date("2026-08-28T09:00:00Z"));
     markDoseTaken(theirs.id, other.doseId, other.itemId, date, "page");
 
     actAs(login, mine);

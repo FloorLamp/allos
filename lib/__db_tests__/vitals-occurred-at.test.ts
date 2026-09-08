@@ -36,7 +36,7 @@
 // because the judged cases state a wall time on a `today()`-derived day, which is
 // past in the evening and future at lunchtime.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { insertVitals } from "@/lib/offline/writes";
 import { upsertVitals, type NormVital } from "@/lib/integrations/normalize";
@@ -50,14 +50,10 @@ import { shiftDateStr } from "@/lib/date";
 // Late on its own UTC day, so every wall time stated below has already happened (the
 // lib/__db_tests__/bristol-stool-write.test.ts precedent; these profiles are UTC).
 const PINNED_NOW = "2026-08-31T22:00:00.000Z";
-let priorNow: string | undefined;
+
+beforeEach(() => vi.setSystemTime(new Date(PINNED_NOW)));
 beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = PINNED_NOW;
-});
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
+  vi.setSystemTime(new Date(PINNED_NOW));
 });
 
 let profileId: number;

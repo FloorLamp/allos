@@ -32,7 +32,7 @@
 // measured over, which is what the floor test below is for: four censuses shipped blind
 // to part of their population on 2026-09-04 alone.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
@@ -58,7 +58,6 @@ import { runInTickScope } from "@/lib/tick-cache";
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import { installStatementTrace } from "@/lib/__db_tests__/dashboard-render-harness";
 
-const previousTestNow = process.env.ALLOS_TEST_NOW;
 const digestCounts = new Map<string, number>();
 const recapCounts = new Map<string, number>();
 
@@ -113,11 +112,12 @@ function ctxFor(profileId: number): PersonaContext {
 }
 
 describe("notification tick gather query budget (#5199)", () => {
+  beforeEach(() => vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z")));
   beforeAll(async () => {
     // The instant the two route budgets pin, for the same reason: a recap's week window
     // is a different number of days on a different weekday, so an unpinned clock would
     // move these counts by the day of the week rather than by anything in the code.
-    process.env.ALLOS_TEST_NOW = "2026-08-18T13:00:00.000Z";
+    vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z"));
     const trace = installStatementTrace({});
     for (const persona of PERSONAS) {
       const profileId = newProfile(`tick:${persona.name}`);
@@ -146,11 +146,6 @@ describe("notification tick gather query budget (#5199)", () => {
       );
     }
   }, 300_000);
-
-  afterAll(() => {
-    if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = previousTestNow;
-  });
 
   // Recorded per persona and per gather, measured on the merged tree. A number that
   // moves is a conversation, not a value to bump — the discipline the dashboard manifest
