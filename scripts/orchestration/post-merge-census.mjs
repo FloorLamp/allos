@@ -84,6 +84,7 @@ function isKnownNonRuntime(file) {
   return (
     file.endsWith(".md") ||
     file.startsWith(".claude/") ||
+    file.startsWith(".agents/skills/") ||
     file.startsWith(".github/") ||
     file.startsWith("docs/") ||
     file.startsWith("e2e/") ||

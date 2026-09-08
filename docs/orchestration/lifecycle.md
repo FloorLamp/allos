@@ -39,7 +39,7 @@ For an authorized live session:
 - Run one adversarial audit of the previous day's merges per session-day. Attach
   verified findings to the introducing mechanism under the filing bar below.
 - After a UI-affecting merge, run the seeded post-merge census while its context is
-  fresh. The [walkthrough guide](../../.claude/skills/ux-walkthrough/SKILL.md)
+  fresh. The [walkthrough guide](../../.agents/skills/ux-walkthrough/SKILL.md)
   owns the command, coverage limits, and evidence review.
 - Evaluate Dependabot minors under the normal green-head merge requirements;
   send majors through `dependabot-eval-brief.mjs` within a day.
@@ -59,7 +59,7 @@ Otherwise attach it to the existing mechanism or owning task: scan gaps to their
 adopter, harness details to the harness issue, and flakes to their cause.
 
 Lanes return findings rather than filing. The orchestrator checks current scope,
-duplicates, and [filing instructions](../../.claude/skills/file-issue/SKILL.md)
+duplicates, and [filing instructions](../../.agents/skills/file-issue/SKILL.md)
 before any authorized tracker write. Keep `parked` and status reports consistent.
 
 ## Status pulse

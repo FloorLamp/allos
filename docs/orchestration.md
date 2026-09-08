@@ -31,7 +31,7 @@ Read the procedure needed for the current task:
 - [Orchestrators on one repo](orchestration/multi-orchestrator.md): slices, fences,
   and release-note ownership.
 
-The [orchestration sequence](../.claude/skills/orchestrate/SKILL.md) connects these
+The [orchestration sequence](../.agents/skills/orchestrate/SKILL.md) connects these
 procedures for a live session. Start each authorized check-in with:
 
 ```bash
