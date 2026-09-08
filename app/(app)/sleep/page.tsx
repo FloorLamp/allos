@@ -27,7 +27,10 @@ import {
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { formatClockMinutes, formatRelativeTime } from "@/lib/format-date";
 import { sriPresentation } from "@/lib/sleep-regularity";
-import { PillarToneBadge, PILLAR_TONE_CLASS } from "@/components/dashboard/HealthspanPillarPresentation";
+import {
+  PillarToneBadge,
+  PILLAR_TONE_CLASS,
+} from "@/components/dashboard/HealthspanPillarPresentation";
 import { PageHeader } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import SleepHero from "./SleepHero";
@@ -267,7 +270,9 @@ export default async function SleepPage() {
                   data-testid="sri-insight"
                 >
                   {sleepRegInsight.detail}{" "}
-                  <Link href="/sleep" className="text-link">Review sleep</Link>
+                  <Link href="/sleep" className="text-link">
+                    Review sleep
+                  </Link>
                 </p>
               )}
               {sleepRegTrend.length > 1 && (

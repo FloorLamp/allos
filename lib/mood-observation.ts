@@ -151,7 +151,9 @@ export function decideSleepMoodBridge(
 
   return {
     dedupeKey: sleepMoodSignalKey(monthAnchor),
-    title: input.regularityDrop ? "Sleep regularity and low mood" : "Sleep and mood moved together",
+    title: input.regularityDrop
+      ? "Sleep regularity and low mood"
+      : "Sleep and mood moved together",
     detail:
       (input.regularityDrop
         ? `Your mood check-ins have been low; based on sleep readings through ${input.regularityDrop.through}, ${sleepFact} `

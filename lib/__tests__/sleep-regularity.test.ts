@@ -354,25 +354,40 @@ describe("sustained sleep regularity drop", () => {
     [85, 3, null],
     [78, 2, null],
     [78, 0, null],
-  ] as const)("compares the endpoint %s with %s during samples", (last, count, points) => {
-    const comparison = compareOutcomePooled({
-      key: "index:sri", label: "SRI", direction: "higher_better",
-      samples: [
-        ...[1, 2, 3].map((day) => ({ date: `2026-06-0${day}`, value: 93 })),
-        ...[4, 5, 6].slice(0, count).map((day) => ({ date: `2026-06-0${day}`, value: last })),
-      ],
-    }, [{ start: "2026-06-04", end: "2026-06-06" }]);
-    const drop = decideSleepRegularityDrop(comparison);
-    expect(drop?.points ?? null).toBe(points);
-    if (drop) {
-      expect(sleepRegularityDropDetail(drop, "2026-06-06")).toBe(
-        "Sleep regularity dropped about 15 points over the last four weeks."
+  ] as const)(
+    "compares the endpoint %s with %s during samples",
+    (last, count, points) => {
+      const comparison = compareOutcomePooled(
+        {
+          key: "index:sri",
+          label: "SRI",
+          direction: "higher_better",
+          samples: [
+            ...[1, 2, 3].map((day) => ({ date: `2026-06-0${day}`, value: 93 })),
+            ...[4, 5, 6]
+              .slice(0, count)
+              .map((day) => ({ date: `2026-06-0${day}`, value: last })),
+          ],
+        },
+        [{ start: "2026-06-04", end: "2026-06-06" }]
       );
-      expect(sleepRegularityDropDetail(drop, "2026-06-10", { name: "Travel", start: "2026-06-04" })).toBe(
-        "Sleep regularity dropped about 15 points over the last four weeks, based on readings through 2026-06-06; your Travel started on 2026-06-04."
-      );
+      const drop = decideSleepRegularityDrop(comparison);
+      expect(drop?.points ?? null).toBe(points);
+      if (drop) {
+        expect(sleepRegularityDropDetail(drop, "2026-06-06")).toBe(
+          "Sleep regularity dropped about 15 points over the last four weeks."
+        );
+        expect(
+          sleepRegularityDropDetail(drop, "2026-06-10", {
+            name: "Travel",
+            start: "2026-06-04",
+          })
+        ).toBe(
+          "Sleep regularity dropped about 15 points over the last four weeks, based on readings through 2026-06-06; your Travel started on 2026-06-04."
+        );
+      }
     }
-  });
+  );
 });
 
 // ── Main overnight sleep vs naps (issue #1118) ───────────────────────────────

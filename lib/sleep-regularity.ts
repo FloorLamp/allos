@@ -817,7 +817,8 @@ export function decideSleepRegularityDrop(
     comparison.lastDelta == null ||
     comparison.intervention.to == null ||
     comparison.lastDelta > -SRI_DROP_POINTS
-  ) return null;
+  )
+    return null;
   return {
     points: -comparison.lastDelta,
     through: comparison.intervention.to,
@@ -829,9 +830,8 @@ export function sleepRegularityDropDetail(
   today: string,
   situation?: { name: string; start: string }
 ): string {
-  const provenance = drop.through < today
-    ? `, based on readings through ${drop.through}`
-    : "";
+  const provenance =
+    drop.through < today ? `, based on readings through ${drop.through}` : "";
   // The magnitude belongs to the trailing comparison. A declared episode is
   // context, never a claim that its differently sized window caused that change.
   const context = situation

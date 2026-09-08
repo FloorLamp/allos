@@ -10,7 +10,10 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone, setProfileSetting } from "@/lib/settings";
 import { getSleepRegularity } from "@/lib/queries/sleep";
-import { getSleepRegularityDrop, getSituationImpacts } from "@/lib/queries/situation-impact";
+import {
+  getSleepRegularityDrop,
+  getSituationImpacts,
+} from "@/lib/queries/situation-impact";
 import {
   buildMoodFindings,
   buildSleepMoodBridgeFindings,
@@ -160,7 +163,12 @@ describe("buildSleepMoodBridgeFindings — the co-occurrence bridge (#992)", () 
 });
 
 // Actual session windows keep duration steady while their clock times alternate.
-function seedRegularity(profileId: number, anchor: string, oldest: number, shiftedDays = 28) {
+function seedRegularity(
+  profileId: number,
+  anchor: string,
+  oldest: number,
+  shiftedDays = 28
+) {
   setTimezone(profileId, "UTC");
   for (let ago = oldest; ago >= 0; ago--) {
     const date = shiftDateStr(anchor, -ago);
@@ -169,10 +177,11 @@ function seedRegularity(profileId: number, anchor: string, oldest: number, shift
       ? `${date}T03:00:00Z`
       : `${shiftDateStr(date, -1)}T23:00:00Z`;
     const end = `${date}T${shifted ? "11" : "07"}:00:00Z`;
-    db.prepare(`INSERT INTO metric_samples
+    db.prepare(
+      `INSERT INTO metric_samples
       (profile_id, source, metric, date, started_at, ended_at, value)
-      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 480)`)
-      .run(profileId, date, start, end);
+      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 480)`
+    ).run(profileId, date, start, end);
   }
 }
 
@@ -184,33 +193,54 @@ describe("shared SRI drop in the Sleep note and existing mood bridge", () => {
     seedRegularity(p, anchor, 69, 48);
     const drop = getSleepRegularityDrop(p, anchor)!;
     expect(drop.points).toBeGreaterThan(10);
-    expect(drop.detail).toBe(`Sleep regularity dropped about ${Math.round(drop.points)} points over the last four weeks.`);
+    expect(drop.detail).toBe(
+      `Sleep regularity dropped about ${Math.round(drop.points)} points over the last four weeks.`
+    );
     expect(buildSleepMoodBridgeFindings(p, anchor)).toEqual([]);
     seedMoodRun(p, anchor, 10, 2);
     const bridge = buildSleepMoodBridgeFindings(p, anchor)[0];
-    expect(bridge.detail).toContain(`regularity dropped about ${Math.round(drop.points)} points`);
+    expect(bridge.detail).toContain(
+      `regularity dropped about ${Math.round(drop.points)} points`
+    );
     expect(bridge.detail).toContain(`through ${drop.through}`);
     expect(bridge.title).toBe("Sleep regularity and low mood");
 
     const travelStart = shiftDateStr(anchor, -20);
-    setProfileSetting(p, "situation_events", JSON.stringify([
-      { date: travelStart, situation: "Travel", change: "start" },
-      // A more recent one-day episode does not pass the engine sample gate.
-      { date: anchor, situation: "High stress", change: "start" },
-    ]));
-    expect(getSleepRegularityDrop(p, anchor)?.detail).toContain(`; your Travel started on ${travelStart}.`);
+    setProfileSetting(
+      p,
+      "situation_events",
+      JSON.stringify([
+        { date: travelStart, situation: "Travel", change: "start" },
+        // A more recent one-day episode does not pass the engine sample gate.
+        { date: anchor, situation: "High stress", change: "start" },
+      ])
+    );
+    expect(getSleepRegularityDrop(p, anchor)?.detail).toContain(
+      `; your Travel started on ${travelStart}.`
+    );
 
     // A sufficient, flat short episode is context, not a second drop detector.
     const flatStart = shiftDateStr(anchor, -6);
-    setProfileSetting(p, "situation_events", JSON.stringify([
-      { date: travelStart, situation: "Travel", change: "start" },
-      { date: flatStart, situation: "High stress", change: "start" },
-    ]));
-    const flatImpact = getSituationImpacts(p, anchor, "kg").find((impact) => impact.situation === "High stress");
-    expect(flatImpact?.outcomes.find((outcome) => outcome.key === "index:sri")?.meanDelta).toBeCloseTo(0, 8);
+    setProfileSetting(
+      p,
+      "situation_events",
+      JSON.stringify([
+        { date: travelStart, situation: "Travel", change: "start" },
+        { date: flatStart, situation: "High stress", change: "start" },
+      ])
+    );
+    const flatImpact = getSituationImpacts(p, anchor, "kg").find(
+      (impact) => impact.situation === "High stress"
+    );
+    expect(
+      flatImpact?.outcomes.find((outcome) => outcome.key === "index:sri")
+        ?.meanDelta
+    ).toBeCloseTo(0, 8);
     const context = getSleepRegularityDrop(p, anchor)!;
     expect(context.points).toBe(drop.points);
-    expect(context.detail).toContain(`; your High stress started on ${flatStart}.`);
+    expect(context.detail).toContain(
+      `; your High stress started on ${flatStart}.`
+    );
   });
 
   it("refuses the private exact-anchor result when the baseline series is insufficient", () => {

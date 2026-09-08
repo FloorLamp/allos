@@ -317,13 +317,29 @@ describe("declaredSituationNames + formatters", () => {
 });
 
 it("compares the retired Travel fixture through an equal-length episode window", () => {
-  const series = flatSeries({
-    "2026-06-01": 90, "2026-06-02": 88, "2026-06-03": 91, "2026-06-04": 89, "2026-06-05": 92,
-    "2026-06-11": 70, "2026-06-12": 68, "2026-06-13": 71, "2026-06-14": 69, "2026-06-15": 72,
-  }, { label: "SRI", direction: "higher_better" });
+  const series = flatSeries(
+    {
+      "2026-06-01": 90,
+      "2026-06-02": 88,
+      "2026-06-03": 91,
+      "2026-06-04": 89,
+      "2026-06-05": 92,
+      "2026-06-11": 70,
+      "2026-06-12": 68,
+      "2026-06-13": 71,
+      "2026-06-14": 69,
+      "2026-06-15": 72,
+    },
+    { label: "SRI", direction: "higher_better" }
+  );
   const impact = buildSituationImpact({
-    situation: "Travel", series: [series],
-    windows: situationWindows("Travel", [ev("2026-06-10", "Travel", "start")], "2026-06-18"),
+    situation: "Travel",
+    series: [series],
+    windows: situationWindows(
+      "Travel",
+      [ev("2026-06-10", "Travel", "start")],
+      "2026-06-18"
+    ),
   });
   expect(impact?.outcomes[0].meanDelta).toBe(-20);
   expect(impactChipLabel(impact!.outcomes[0])).toBe("SRI −20");

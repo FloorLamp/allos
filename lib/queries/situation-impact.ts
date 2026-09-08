@@ -103,16 +103,22 @@ export function getSleepRegularityDrop(profileId: number, today: string) {
   const series = resolveOutcomeSeries(profileId, "index:sri", "kg");
   if (!series) return null;
   const window = { start: shiftDateStr(today, -27), end: today };
-  const drop = decideSleepRegularityDrop(compareOutcomePooled(series, [window]));
+  const drop = decideSleepRegularityDrop(
+    compareOutcomePooled(series, [window])
+  );
   if (!drop) return null;
 
   const events = getSituationEvents(profileId);
   const episodes = declaredSituationNames(events)
-    .flatMap((name) => situationWindows(name, events, today).map((w) => ({ name, ...w })))
+    .flatMap((name) =>
+      situationWindows(name, events, today).map((w) => ({ name, ...w }))
+    )
     .filter((w) => w.start <= window.end && w.end >= window.start)
-    .sort((a, b) => b.start.localeCompare(a.start) || a.name.localeCompare(b.name));
-  const situation = episodes.find((episode) =>
-    !compareOutcomePooled(series, [episode]).insufficient
+    .sort(
+      (a, b) => b.start.localeCompare(a.start) || a.name.localeCompare(b.name)
+    );
+  const situation = episodes.find(
+    (episode) => !compareOutcomePooled(series, [episode]).insufficient
   );
   return { ...drop, detail: sleepRegularityDropDetail(drop, today, situation) };
 }

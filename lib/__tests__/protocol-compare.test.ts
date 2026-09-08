@@ -285,7 +285,9 @@ describe("outcome metric keys", () => {
 // Endpoint change must not replace the existing descriptive window statistics.
 it("retains the last observed rolling index while its means lag the slide", () => {
   const series: OutcomeSeries = {
-    key: "index:sri", label: "SRI", direction: "higher_better",
+    key: "index:sri",
+    label: "SRI",
+    direction: "higher_better",
     samples: [
       { date: "2026-06-06", value: 78 },
       { date: "2026-06-01", value: 90 },
@@ -295,12 +297,30 @@ it("retains the last observed rolling index while its means lag the slide", () =
       { date: "2026-06-02", value: 90 },
     ],
   };
-  const comparison = compareOutcomePooled(series, [{ start: "2026-06-04", end: "2026-06-06" }]);
-  expect(comparison.baseline).toEqual({ n: 3, mean: 91, median: 90, last: 93, from: "2026-06-01", to: "2026-06-03" });
-  expect(comparison.intervention).toEqual({ n: 3, mean: 88, median: 93, last: 78, from: "2026-06-04", to: "2026-06-06" });
+  const comparison = compareOutcomePooled(series, [
+    { start: "2026-06-04", end: "2026-06-06" },
+  ]);
+  expect(comparison.baseline).toEqual({
+    n: 3,
+    mean: 91,
+    median: 90,
+    last: 93,
+    from: "2026-06-01",
+    to: "2026-06-03",
+  });
+  expect(comparison.intervention).toEqual({
+    n: 3,
+    mean: 88,
+    median: 93,
+    last: 78,
+    from: "2026-06-04",
+    to: "2026-06-06",
+  });
   expect(comparison.lastDelta).toBe(-15);
   expect(comparison.meanDelta).toBe(-3);
   expect(comparison.medianDelta).toBe(3);
   expect(comparison.betterness).toBe("worse");
-  expect(comparison.framing).toBe("SRI −3 across 1 window (n=3 during vs 3 baseline).");
+  expect(comparison.framing).toBe(
+    "SRI −3 across 1 window (n=3 during vs 3 baseline)."
+  );
 });
