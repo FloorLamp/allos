@@ -1049,6 +1049,7 @@ function QuickEntryBody({
       return (
         <QuickSubstanceList
           substances={data.substances}
+          date={selectedDay ?? data.today}
           subjectProfileId={subjectProfileId}
         />
       );

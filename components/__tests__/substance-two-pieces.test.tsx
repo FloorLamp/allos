@@ -402,6 +402,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
     vi.useFakeTimers();
     render(
       <QuickSubstanceList
+        date={FOUND_DAY}
         substances={[
           {
             key: "nicotine",
@@ -421,9 +422,15 @@ describe("SubstanceUnitControl is ONE row control", () => {
       screen.queryByTestId("quick-entry-substance-undo-nicotine")
     ).toBeNull();
 
+    logResult = { ok: true, weekCount: 3, eventId: 41, date: FOUND_DAY };
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
     );
+    expect(payload("log")).toMatchObject({
+      profile_id: "42",
+      substance: "nicotine",
+      date: FOUND_DAY,
+    });
     const older = undoAnnouncements[0];
     expect(older).toMatchObject({
       message: "Use logged.",
@@ -433,20 +440,20 @@ describe("SubstanceUnitControl is ONE row control", () => {
     expect(claimedToastKeys).toEqual([older.key]);
 
     await act(async () => vi.advanceTimersByTimeAsync(2_001));
-    logResult = { ok: true, weekCount: 4, eventId: 42, date: TODAY };
+    logResult = { ok: true, weekCount: 4, eventId: 42, date: FOUND_DAY };
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
     );
     expect(undoAnnouncements).toHaveLength(2);
     expect(undoAnnouncements[1].key).not.toBe(older.key);
 
-    logResult = { ok: true, weekCount: 3, eventId: 42, date: TODAY };
+    logResult = { ok: true, weekCount: 3, eventId: 42, date: FOUND_DAY };
     expect(await older.undo?.run()).toEqual({ ok: true });
     expect(payload("undo")).toMatchObject({
       profile_id: "42",
       substance: "nicotine",
       event_id: "41",
-      date: TODAY,
+      date: FOUND_DAY,
     });
 
     cleanup();
@@ -459,6 +466,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
   it("invalidates a sheet receipt when its subject changes", async () => {
     const view = render(
       <QuickSubstanceList
+        date={TODAY}
         substances={[
           {
             key: "nicotine",
@@ -478,6 +486,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
 
     view.rerender(
       <QuickSubstanceList
+        date={TODAY}
         substances={[
           {
             key: "nicotine",
@@ -503,6 +512,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
       });
     const view = render(
       <QuickSubstanceList
+        date={TODAY}
         substances={[
           {
             key: "nicotine",
@@ -518,6 +528,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
     toastScope = { profileId: 8, token: 12 };
     view.rerender(
       <QuickSubstanceList
+        date={TODAY}
         substances={[
           {
             key: "nicotine",
@@ -552,6 +563,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
     toastScope = { profileId: 9, token: 13 };
     view.rerender(
       <QuickSubstanceList
+        date={TODAY}
         substances={[
           {
             key: "nicotine",
