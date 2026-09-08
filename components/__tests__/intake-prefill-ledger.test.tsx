@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   act,
@@ -136,12 +137,10 @@ function mount(
           <MedicationAddWorkspace
             subtitle=""
             action={actions.addIntakeItem}
-            allIntakeItems={[]}
-            stackItems={[]}
-            pgxVariants={[]}
-            conditions={[]}
-            pediatric={pediatric}
-            todayStr={TODAY}
+            intakeContext={intakeFormContext(
+              TODAY,
+              pediatric ? { pediatric } : {}
+            )}
             initialSupply={initialSupply}
           />
         ) : (
@@ -151,9 +150,10 @@ function mount(
               control: (
                 <AddSupplementModal
                   action={actions.addIntakeItem}
-                  allIntakeItems={[]}
-                  stackItems={[]}
-                  pgxVariants={[]}
+                  intakeContext={intakeFormContext(
+                    TODAY,
+                    pediatric ? { pediatric } : {}
+                  )}
                 />
               ),
             }}
@@ -269,11 +269,17 @@ beforeEach(() => {
   prnSpy.calls.length = 0;
 });
 
-it("saves a must-take medication after its optional start is left blank", async () => {
+it("keeps an unknown start when obligation changes and the medication is saved", async () => {
   mount("medication");
   fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
     target: { value: "Longstanding medicine" },
   });
+  openFact("importance");
+  for (const value of ["may", "must"]) {
+    fireEvent.change(screen.getByLabelText("Obligation"), {
+      target: { value },
+    });
+  }
   openFact("stopDate");
   const start = screen.getByLabelText(/Started on/) as HTMLInputElement;
   expect(start.value).toBe("");

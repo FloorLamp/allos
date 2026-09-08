@@ -32,7 +32,10 @@ import {
   getPrnMedicationsForQuickLog,
   getMedicationFamilyStates,
 } from "@/lib/queries";
-import { loadIntakeFormContext } from "@/lib/intake-form-context";
+import {
+  loadIntakeFormContext,
+  type IntakeFormContext,
+} from "@/lib/intake-form-context";
 import {
   ceilingWindowEndMinute,
   effectiveMaxDailyCount,
@@ -50,8 +53,6 @@ import { activeByKey } from "@/lib/findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
-import { type InteractionItem } from "@/lib/drug-interactions";
-import { type PgxVariantInput } from "@/lib/pgx";
 import {
   partitionMedications,
   type MedicationWithHistory,
@@ -70,7 +71,7 @@ import {
   zonedDateParts,
   parseUtcSql,
 } from "@/lib/date";
-import { getTimezone, getProfileAge, type WeightUnit } from "@/lib/settings";
+import { getTimezone, type WeightUnit } from "@/lib/settings";
 import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
   doseDueOn,
@@ -79,7 +80,6 @@ import {
   isPostWorkoutReady,
   heldBySituation,
 } from "@/lib/intake-schedule";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type {
   MedicationCourse,
   MedicationSideEffect,
@@ -184,15 +184,9 @@ export interface MedicationsData {
   // The profile's local wall clock (HH:MM) at load, so the Today panel can flag a
   // past-bucket unresolved dose in the profile's timezone (#852 item 1).
   nowHhmm: string;
-  // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so a
-  // child never sees an age-gated food note (alcohol → adult). Null when unknown.
-  age: number | null;
   taken: Set<number>;
   skipped: Set<number>;
-  allIntakeItems: IntakeItem[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
-  pediatric: PediatricFormContext;
+  intakeContext: IntakeFormContext;
   suppressedFoodKeys: string[];
   interactionWarnings: ReturnType<typeof getInteractionWarnings>;
   pgxWarnings: ReturnType<typeof getPgxWarnings>;
@@ -596,13 +590,9 @@ export function loadMedicationsData(
     tz,
     nowIso: nowInstant.toISOString(),
     nowHhmm: hhmm,
-    age: getProfileAge(profileId),
     taken,
     skipped,
-    allIntakeItems: intakeItems,
-    stackItems: intakeForm.stackItems,
-    pgxVariants: intakeForm.pgxVariants,
-    pediatric: intakeForm.pediatric,
+    intakeContext: intakeForm,
     suppressedFoodKeys,
     interactionWarnings,
     pgxWarnings,
