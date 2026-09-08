@@ -467,7 +467,8 @@ export function preventiveCloseText(outcome: PreventiveTapOutcome): string {
 
 // The REFILL-SNOOZE token lives in ./refill-tokens (#2961 step 2).
 
-export type RefillTapOutcome = "snoozed" | "confirmation" | "cancelled" | "stale-item";
+export type RefillTapOutcome =
+  "snoozed" | "confirmation" | "cancelled" | "stale-item";
 
 export function refillAnswerText(outcome: RefillTapOutcome): string {
   if (outcome === "confirmation") return "Confirm a reminder in 3 days below.";

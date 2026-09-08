@@ -47,7 +47,8 @@ import {
 import { parsePreventiveCallback } from "../notifications/preventive-tokens";
 import {
   parseRefillCallback,
-  parseOrderedRefillCallback, orderedRefillToken,
+  parseOrderedRefillCallback,
+  orderedRefillToken,
   parseReceivedAmount,
   parseRefillReplyMarker,
 } from "../notifications/refill-tokens";
@@ -520,13 +521,25 @@ describe("parseRefillCallback", () => {
 
 describe("generation-bound Ordered tokens", () => {
   it("uses a distinct bounded namespace that the deployed snooze parser refuses", () => {
-    const data = orderedRefillToken(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, "fixture0001");
+    const data = orderedRefillToken(
+      Number.MAX_SAFE_INTEGER,
+      Number.MAX_SAFE_INTEGER,
+      "fixture0001"
+    );
     expect(callbackDataFits(data)).toBe(true);
     expect(parseRefillCallback(data)).toBeNull();
-    expect(parseOrderedRefillCallback(data)).toEqual({ profileId: Number.MAX_SAFE_INTEGER, itemId: Number.MAX_SAFE_INTEGER, generation: "fixture0001", cancel: false });
+    expect(parseOrderedRefillCallback(data)).toEqual({
+      profileId: Number.MAX_SAFE_INTEGER,
+      itemId: Number.MAX_SAFE_INTEGER,
+      generation: "fixture0001",
+      cancel: false,
+    });
     expect(parseOrderedRefillCallback(`${data}:extra`)).toBeNull();
     expect(parseOrderedRefillCallback("rfordered:1:2:short")).toBeNull();
-    expect(parseOrderedRefillCallback(orderedRefillToken(1, 2, "fixture0001", true))?.cancel).toBe(true);
+    expect(
+      parseOrderedRefillCallback(orderedRefillToken(1, 2, "fixture0001", true))
+        ?.cancel
+    ).toBe(true);
   });
 });
 

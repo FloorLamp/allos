@@ -154,25 +154,49 @@ export function parseRefillMarker(raw: string | undefined): RefillMarker {
     const value: unknown = JSON.parse(raw);
     if (value && typeof value === "object" && "v" in value && value.v === 1) {
       const row = value as Record<string, unknown>;
-      const date = (v: unknown): v is string => typeof v === "string" && isRealIsoDate(v);
+      const date = (v: unknown): v is string =>
+        typeof v === "string" && isRealIsoDate(v);
       if (typeof row.g !== "string" || !REFILL_GENERATION_PATTERN.test(row.g))
         return { state: "invalid" };
       const base = { v: 1 as const, g: row.g };
       if (row.state === "sent" && date(row.sentOn))
         return { ...base, state: "sent", sentOn: row.sentOn };
       if (row.state === "requested" && date(row.sentOn) && date(row.dueOn))
-        return { ...base, state: "requested", sentOn: row.sentOn, dueOn: row.dueOn };
-      if (row.state === "attempt" &&
-          (row.sentOn === null || date(row.sentOn)) &&
-          (row.dueOn === null || date(row.dueOn)) &&
-          (row.dueOn === null || row.sentOn !== null) &&
-          (row.claimUntil === null ||
-            (typeof row.claimUntil === "number" && Number.isFinite(row.claimUntil))))
-        return { ...base, state: "attempt", sentOn: row.sentOn, dueOn: row.dueOn, claimUntil: row.claimUntil };
-      if (row.state === "confirm" && date(row.sentOn) &&
-          typeof row.sourcePointerId === "number" &&
-          Number.isSafeInteger(row.sourcePointerId) && row.sourcePointerId > 0)
-        return { ...base, state: "confirm", sentOn: row.sentOn, sourcePointerId: row.sourcePointerId };
+        return {
+          ...base,
+          state: "requested",
+          sentOn: row.sentOn,
+          dueOn: row.dueOn,
+        };
+      if (
+        row.state === "attempt" &&
+        (row.sentOn === null || date(row.sentOn)) &&
+        (row.dueOn === null || date(row.dueOn)) &&
+        (row.dueOn === null || row.sentOn !== null) &&
+        (row.claimUntil === null ||
+          (typeof row.claimUntil === "number" &&
+            Number.isFinite(row.claimUntil)))
+      )
+        return {
+          ...base,
+          state: "attempt",
+          sentOn: row.sentOn,
+          dueOn: row.dueOn,
+          claimUntil: row.claimUntil,
+        };
+      if (
+        row.state === "confirm" &&
+        date(row.sentOn) &&
+        typeof row.sourcePointerId === "number" &&
+        Number.isSafeInteger(row.sourcePointerId) &&
+        row.sourcePointerId > 0
+      )
+        return {
+          ...base,
+          state: "confirm",
+          sentOn: row.sentOn,
+          sourcePointerId: row.sourcePointerId,
+        };
     }
   } catch {
     // A corrupt marker must not turn into an unmarked send opportunity.
@@ -180,19 +204,28 @@ export function parseRefillMarker(raw: string | undefined): RefillMarker {
   return { state: "invalid" };
 }
 
-export function refillAttemptDue(marker: RefillMarker, date: string, at: number): boolean {
+export function refillAttemptDue(
+  marker: RefillMarker,
+  date: string,
+  at: number
+): boolean {
   if (marker == null) return true;
   if (marker.state === "requested") return date >= marker.dueOn;
-  return marker.state === "attempt" &&
+  return (
+    marker.state === "attempt" &&
     (marker.claimUntil == null || marker.claimUntil <= at) &&
-    (marker.dueOn == null || date >= marker.dueOn);
+    (marker.dueOn == null || date >= marker.dueOn)
+  );
 }
 
 // Later ordinary intent retires the token without re-arming a delivered episode.
 // Null sentOn is no prior settled/accepted baseline, not proof of zero contact.
-export function cancelRefillRequest(raw: string | undefined): string | undefined {
+export function cancelRefillRequest(
+  raw: string | undefined
+): string | undefined {
   const marker = parseRefillMarker(raw);
-  if (!marker || marker.state === "invalid" || marker.state === "legacy") return raw;
+  if (!marker || marker.state === "invalid" || marker.state === "legacy")
+    return raw;
   return marker.sentOn ?? undefined;
 }
 

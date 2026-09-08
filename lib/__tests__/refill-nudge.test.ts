@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   planRefillNudges,
-  parseRefillMarker, refillAttemptDue, cancelRefillRequest,
+  parseRefillMarker,
+  refillAttemptDue,
+  cancelRefillRequest,
   refillSignalKey,
   refillMarkerKey,
   refillIdFromMarker,
@@ -219,24 +221,40 @@ describe("leftRefillTrackedSet (#325)", () => {
   });
 });
 
-
 describe("explicit refill delivery state", () => {
-  const requested = { v: 1, state: "requested", g: "fixture0001", sentOn: "2026-09-08", dueOn: "2026-09-11" };
+  const requested = {
+    v: 1,
+    state: "requested",
+    g: "fixture0001",
+    sentOn: "2026-09-08",
+    dueOn: "2026-09-11",
+  };
   it("allows only a due request while ordinary restored episodes stay spent", () => {
     const marker = parseRefillMarker(JSON.stringify(requested));
     expect(refillAttemptDue(marker, "2026-09-10", 0)).toBe(false);
     expect(refillAttemptDue(marker, "2026-09-11", 0)).toBe(true);
     const cancelled = cancelRefillRequest(JSON.stringify(requested));
     expect(cancelled).toBe("2026-09-08");
-    expect(refillAttemptDue(parseRefillMarker(cancelled), "2026-09-11", 0)).toBe(false);
+    expect(
+      refillAttemptDue(parseRefillMarker(cancelled), "2026-09-11", 0)
+    ).toBe(false);
   });
 
   it("blocks a live claim, recovers an expired claim and preserves no-baseline cancellation", () => {
-    const raw = JSON.stringify({ v: 1, state: "attempt", g: "fixture0001", sentOn: null, dueOn: null, claimUntil: 150000 });
+    const raw = JSON.stringify({
+      v: 1,
+      state: "attempt",
+      g: "fixture0001",
+      sentOn: null,
+      dueOn: null,
+      claimUntil: 150000,
+    });
     const marker = parseRefillMarker(raw);
     expect(refillAttemptDue(marker, "2026-09-08", 149999)).toBe(false);
     expect(refillAttemptDue(marker, "2026-09-08", 150000)).toBe(true);
     expect(cancelRefillRequest(raw)).toBeUndefined();
-    expect(refillAttemptDue(parseRefillMarker("broken"), "2026-09-08", 150000)).toBe(false);
+    expect(
+      refillAttemptDue(parseRefillMarker("broken"), "2026-09-08", 150000)
+    ).toBe(false);
   });
 });

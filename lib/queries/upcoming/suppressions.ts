@@ -195,7 +195,9 @@ function cancelOrderedRefill(profileId: number, dedupeKey: string): void {
   const match = /^refill:([1-9]\d*)$/.exec(dedupeKey);
   if (!match) return;
   const key = refillMarkerKey(Number(match[1]));
-  const raw = (REFILL_MARKER.get(profileId, key) as { value: string } | undefined)?.value;
+  const raw = (
+    REFILL_MARKER.get(profileId, key) as { value: string } | undefined
+  )?.value;
   const next = cancelRefillRequest(raw);
   if (next === raw) return;
   if (next == null) deleteProfileSetting(profileId, key);
@@ -209,7 +211,7 @@ export function snoozeFinding(
 ): void {
   writeTx(() => {
     db.prepare(
-    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
        VALUES (?, ?, ?, NULL)
      ON CONFLICT(profile_id, signal_key)
        DO UPDATE SET snooze_until = excluded.snooze_until, dismissed_at = NULL`
@@ -224,7 +226,7 @@ export function snoozeFinding(
 export function dismissFinding(profileId: number, dedupeKey: string): void {
   writeTx(() => {
     db.prepare(
-    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
        VALUES (?, ?, NULL, datetime('now'))
      ON CONFLICT(profile_id, signal_key)
        DO UPDATE SET dismissed_at = datetime('now'), snooze_until = NULL`
@@ -237,7 +239,7 @@ export function dismissFinding(profileId: number, dedupeKey: string): void {
 export function restoreFinding(profileId: number, dedupeKey: string): void {
   writeTx(() => {
     db.prepare(
-    "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+      "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
     ).run(profileId, dedupeKey);
     cancelOrderedRefill(profileId, dedupeKey);
   });

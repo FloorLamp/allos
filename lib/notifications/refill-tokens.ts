@@ -14,17 +14,29 @@ export interface OrderedRefillCallback extends RefillCallback {
   cancel: boolean;
 }
 
-export function orderedRefillToken(profileId: number, itemId: number, generation: string, cancel = false): string {
+export function orderedRefillToken(
+  profileId: number,
+  itemId: number,
+  generation: string,
+  cancel = false
+): string {
   return `${cancel ? "rfordno" : "rfordered"}:${profileId}:${itemId}:${generation}`;
 }
 
 // A distinct namespace matters: deployed rfsnooze readers ignore extra fields.
-export function parseOrderedRefillCallback(data: unknown): OrderedRefillCallback | null {
+export function parseOrderedRefillCallback(
+  data: unknown
+): OrderedRefillCallback | null {
   if (typeof data !== "string") return null;
   const [prefix, profile, item, generation, extra] = data.split(":");
-  if ((prefix !== "rfordered" && prefix !== "rfordno") || extra !== undefined ||
-    !/^[1-9]\d*$/.test(profile ?? "") || !/^[1-9]\d*$/.test(item ?? "") ||
-    !REFILL_GENERATION_PATTERN.test(generation ?? "")) return null;
+  if (
+    (prefix !== "rfordered" && prefix !== "rfordno") ||
+    extra !== undefined ||
+    !/^[1-9]\d*$/.test(profile ?? "") ||
+    !/^[1-9]\d*$/.test(item ?? "") ||
+    !REFILL_GENERATION_PATTERN.test(generation ?? "")
+  )
+    return null;
   const profileId = Number(profile);
   const itemId = Number(item);
   return Number.isSafeInteger(profileId) && Number.isSafeInteger(itemId)
