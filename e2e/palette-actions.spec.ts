@@ -1,7 +1,8 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { closeEditor } from "./intake-form-helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import { withVisitFact } from "./visit-form-helpers";
 
@@ -342,4 +343,68 @@ test.describe("command palette — the keyboard copy survives from md up (#3423)
     expect(box!.width).toBeLessThan(viewport.width);
     expect(box!.height).toBeLessThan(viewport.height);
   });
+});
+
+test("a supplement's first palette refill opens its fill size and adds to stock", async ({
+  page,
+}) => {
+  const db = new Database(DB_PATH);
+  db.pragma("busy_timeout = 5000");
+  const name = "Palette first refill (e2e)";
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+    (profile_id, name, kind, active, quantity_on_hand, qty_per_dose)
+    VALUES (1, ?, 'supplement', 1, 4, 1)`
+      )
+      .run(name).lastInsertRowid
+  );
+  try {
+    await page.goto("/upcoming");
+    const input = await openCommandPalette(page);
+    await settledFill(page, input, name);
+    const hit = page
+      .getByTestId("palette-group-supplement")
+      .getByRole("listitem")
+      .filter({ hasText: name });
+    await expect(hit).toHaveCount(1);
+    await settledClick(page, hit.getByTestId("palette-hit-action-refill"));
+    await expect(page).toHaveURL(
+      new RegExp(`item=${itemId}&fact=supply&refill=1`)
+    );
+    const editor = page.getByRole("dialog", {
+      name: `Edit ${name}`,
+      exact: true,
+    });
+    await expect(editor).toHaveCount(1);
+    await expect(
+      editor.getByLabel("Quantity on hand", { exact: true })
+    ).toHaveValue("4");
+    const size = editor.getByLabel("Fill size (units)");
+    await expect(size).toBeVisible();
+    await settledFill(page, size, "30");
+    await settledClick(page, editor.getByTestId("refill-confirm"));
+    await expect
+      .poll(() =>
+        db
+          .prepare(
+            "SELECT quantity_on_hand, last_fill_size FROM intake_items WHERE id = ? AND profile_id = 1"
+          )
+          .get(itemId)
+      )
+      .toEqual({ quantity_on_hand: 34, last_fill_size: 30 });
+    await expect(
+      editor.getByLabel("Quantity on hand", { exact: true })
+    ).toHaveValue("34");
+    await closeEditor(page, editor);
+    await expect(editor.getByTestId("intake-fact-supply")).toContainText(
+      "34 on hand"
+    );
+  } finally {
+    db.prepare("DELETE FROM intake_items WHERE id = ? AND profile_id = 1").run(
+      itemId
+    );
+    db.close();
+  }
 });
