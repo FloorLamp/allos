@@ -75,6 +75,10 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
   return tab === "food" ? "/nutrition" : `/nutrition?tab=${tab}`;
 }
 
+export function nutritionDayHref(date: string): AppRoute {
+  return `/nutrition?date=${encodeURIComponent(date)}` as AppRoute;
+}
+
 // The standalone Medications page (#746) — medications left the old combined
 // intake surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";

@@ -5,6 +5,7 @@ import SidebarContent from "@/components/SidebarContent";
 import CommandPalette from "@/components/CommandPalette";
 import ActivityEditorProvider from "@/components/ActivityEditorProvider";
 import QuickEntryProvider from "@/components/QuickEntryProvider";
+import RouteDayContext from "@/components/RouteDayContext";
 import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import PullToRefresh from "@/components/PullToRefresh";
 import QuickShortcutHandler from "@/components/QuickShortcutHandler";
@@ -322,65 +323,69 @@ export default async function AppLayout({
                   except the measurements props, resolved HERE (#4091) because a
                   Server Action cannot be on the critical path of a surface people
                   are expected to reach with no connection. */}
-                  <QuickEntryProvider
-                    measurements={measurementsQuickEntry(login.id, profile.id)}
-                    writableProfiles={writableProfiles}
-                    actingProfileId={scope.actingProfileId}
-                  >
-                    <ActivityEditorProvider
-                      units={units}
-                      suggestions={suggestions}
-                      history={exerciseHistory}
-                      equipment={equipment}
-                      recentActivityEquipment={recentActivityEquipment}
-                      bodyweightKg={bodyweightKg}
-                      trainingRelevant={trainingRelevant}
-                      strengthTrainingAvailable={strengthTrainingAvailable}
-                      lastActivity={lastActivity}
-                      deloadContext={deloadContext}
-                      recoveringContext={recoveringContext}
-                      plateauHints={plateauHints}
-                      rpeTracking={rpeTracking}
-                      presence={presence}
-                      liveEditData={liveEditData}
-                      liveStartEpochMs={liveStartEpochMs}
-                      subjectName={actingSubjectName}
+                  <RouteDayContext profileId={profile.id} timeZone={timezone}>
+                    <QuickEntryProvider
+                      measurements={measurementsQuickEntry(
+                        login.id,
+                        profile.id
+                      )}
+                      writableProfiles={writableProfiles}
+                      actingProfileId={scope.actingProfileId}
                     >
-                      {/* The phone chrome's shared open/closed state (#2651):
+                      <ActivityEditorProvider
+                        units={units}
+                        suggestions={suggestions}
+                        history={exerciseHistory}
+                        equipment={equipment}
+                        recentActivityEquipment={recentActivityEquipment}
+                        bodyweightKg={bodyweightKg}
+                        trainingRelevant={trainingRelevant}
+                        strengthTrainingAvailable={strengthTrainingAvailable}
+                        lastActivity={lastActivity}
+                        deloadContext={deloadContext}
+                        recoveringContext={recoveringContext}
+                        plateauHints={plateauHints}
+                        rpeTracking={rpeTracking}
+                        presence={presence}
+                        liveEditData={liveEditData}
+                        liveStartEpochMs={liveStartEpochMs}
+                        subjectName={actingSubjectName}
+                      >
+                        {/* The phone chrome's shared open/closed state (#2651):
                       the drawer and the log sheet each have two triggers now —
                       the top bar's hamburger and caret, and the dock's More slot
                       and puck — and the two bars sit in different subtrees. */}
-                      <MobileChromeProvider>
-                        <div className="flex min-h-screen">
-                          <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-(--nav) p-4 md:flex print:hidden dark:border-white/5">
-                            <SidebarContent
-                              active={session.profile}
-                              username={login.username}
-                              // The scope's DISAMBIGUATED set (#534) — two accessible
-                              // profiles can share a name, and the bar/panel must name
-                              // a specific one.
-                              profiles={scope.profiles}
-                              viewIds={scope.viewIds}
-                              readOnlyIds={readOnlyIds}
-                              adultContentAvailable={adultContentAvailable}
-                              trainingRelevant={trainingRelevant}
-                              isAdmin={isAdmin}
-                              multiProfile={multiProfile}
-                              foodLoggingRelevant={foodLoggingRelevant}
-                              hasIntakeItems={hasIntakeItems}
-                              relevance={relevance}
-                              reviewCount={reviewCount}
-                              readOnly={readOnly}
-                              whatsNewUnseen={whatsNewUnseen}
-                              substanceRelevant={substanceRelevant}
-                              logHabitDays={logHabitDays}
-                            />
-                          </aside>
-                          {/* clip (not hidden) so it doesn't force overflow-y to auto, which
+                        <MobileChromeProvider>
+                          <div className="flex min-h-screen">
+                            <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-(--nav) p-4 md:flex print:hidden dark:border-white/5">
+                              <SidebarContent
+                                active={session.profile}
+                                username={login.username}
+                                // The scope's DISAMBIGUATED set (#534) — two accessible
+                                // profiles can share a name, and the bar/panel must name
+                                // a specific one.
+                                profiles={scope.profiles}
+                                viewIds={scope.viewIds}
+                                readOnlyIds={readOnlyIds}
+                                adultContentAvailable={adultContentAvailable}
+                                trainingRelevant={trainingRelevant}
+                                isAdmin={isAdmin}
+                                multiProfile={multiProfile}
+                                foodLoggingRelevant={foodLoggingRelevant}
+                                hasIntakeItems={hasIntakeItems}
+                                relevance={relevance}
+                                reviewCount={reviewCount}
+                                readOnly={readOnly}
+                                whatsNewUnseen={whatsNewUnseen}
+                                substanceRelevant={substanceRelevant}
+                                logHabitDays={logHabitDays}
+                              />
+                            </aside>
+                            {/* clip (not hidden) so it doesn't force overflow-y to auto, which
             turns <main> into a scroll container and breaks position:sticky inside it.
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
-                          {/* FIRST-PAINT CLEARANCE ONLY (#4102, #4282). Without this the first line
+                            {/* FIRST-PAINT CLEARANCE ONLY (#4102, #4282). Without this the first line
             of every page would print under the status bar, which is what
             `viewportFit: cover` means. It is PADDING, so it positions and paints
             nothing: content scrolls under the notch, and #4282 ruled that IS
@@ -388,8 +393,8 @@ export default async function AppLayout({
             `top-edge-safe` (app/globals.css) itself; the token rather than a
             second `env()` for the reason the page gutter is one.
             Below `md` only: the desktop shell never paid this. */}
-                          <main className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0">
-                            {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN
+                            <main className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0">
+                              {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN
                     IT (#4102). It was built for the phone top bar's hide-on-scroll
                     (issue #1416), and that bar has retired: the dock is the phone's
                     one chrome, so below `md` this element is EMPTY on every page
@@ -397,9 +402,9 @@ export default async function AppLayout({
                     page pixel at the viewport top. It still earns its place on the
                     pages that do register one — a page-owned strip that hides and
                     reveals as one unit, mounted standalone. */}
-                            <ShellChrome />
+                              <ShellChrome />
 
-                            {/* max(padding, safe-area inset) keeps content clear of the
+                              {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover).
               Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
@@ -411,82 +416,83 @@ export default async function AppLayout({
               from a COPY of the expression is one edit away from under-cancelling a
               notched side. `--page-gutter-left` / `--page-gutter-right` live in
               app/globals.css, with the `md` step to 1.25rem. */}
-                            <div
-                              data-testid="app-content-container"
-                              className="mx-auto pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pl-(--page-gutter-left) pr-(--page-gutter-right) md:pt-8 md:pb-[max(2rem,env(safe-area-inset-bottom))] 3xl:max-w-[110rem]"
-                            >
-                              {/* This slot is OnboardingReturnBanner's alone again
+                              <div
+                                data-testid="app-content-container"
+                                className="mx-auto pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pl-(--page-gutter-left) pr-(--page-gutter-right) md:pt-8 md:pb-[max(2rem,env(safe-area-inset-bottom))] 3xl:max-w-[110rem]"
+                              >
+                                {/* This slot is OnboardingReturnBanner's alone again
                             (#1795). The deploy notice used to render here too, as a
                             second surface for the event the service worker's update
                             bar already owns — one deploy, two notices, two reload
                             buttons. There is one now, and it is the bar mounted by
                             ServiceWorkerRegister in the root layout. */}
-                              <OnboardingReturnBanner
-                                show={showOnboardingReturn}
-                              />
-                              <TravelTimezoneBanner
-                                ownProfile={ownProfileActing}
-                                profileZone={timezone}
-                                homeZone={travelHomeZone}
-                                dismissedZone={travelDismissedZone}
-                              />
-                              {children}
-                            </div>
-                          </main>
-                        </div>
-                        {/* The phone's nav drawer and quick-log sheet (#2746/#4102).
+                                <OnboardingReturnBanner
+                                  show={showOnboardingReturn}
+                                />
+                                <TravelTimezoneBanner
+                                  ownProfile={ownProfileActing}
+                                  profileZone={timezone}
+                                  homeZone={travelHomeZone}
+                                  dismissedZone={travelDismissedZone}
+                                />
+                                {children}
+                              </div>
+                            </main>
+                          </div>
+                          {/* The phone's nav drawer and quick-log sheet (#2746/#4102).
                       It renders NO chrome — both are overlays, opened from the
                       dock — so it sits here as a sibling of <main> rather than
                       inside <ShellChrome>, which exists to hide a sticky bar that
                       no longer exists. */}
-                        <MobileNav
-                          active={session.profile}
-                          username={login.username}
-                          profiles={scope.profiles}
-                          viewIds={scope.viewIds}
-                          readOnlyIds={readOnlyIds}
-                          adultContentAvailable={adultContentAvailable}
-                          trainingRelevant={trainingRelevant}
-                          isAdmin={isAdmin}
-                          multiProfile={multiProfile}
-                          foodLoggingRelevant={foodLoggingRelevant}
-                          hasIntakeItems={hasIntakeItems}
-                          relevance={relevance}
-                          reviewCount={reviewCount}
-                          readOnly={readOnly}
-                          whatsNewUnseen={whatsNewUnseen}
-                          substanceRelevant={substanceRelevant}
-                          logHabitDays={logHabitDays}
-                        />
-                        {/* The bottom dock (#2651) — mobile widths only, and a
+                          <MobileNav
+                            active={session.profile}
+                            username={login.username}
+                            profiles={scope.profiles}
+                            viewIds={scope.viewIds}
+                            readOnlyIds={readOnlyIds}
+                            adultContentAvailable={adultContentAvailable}
+                            trainingRelevant={trainingRelevant}
+                            isAdmin={isAdmin}
+                            multiProfile={multiProfile}
+                            foodLoggingRelevant={foodLoggingRelevant}
+                            hasIntakeItems={hasIntakeItems}
+                            relevance={relevance}
+                            reviewCount={reviewCount}
+                            readOnly={readOnly}
+                            whatsNewUnseen={whatsNewUnseen}
+                            substanceRelevant={substanceRelevant}
+                            logHabitDays={logHabitDays}
+                          />
+                          {/* The bottom dock (#2651) — mobile widths only, and a
                       SIBLING of <main> rather than a child of <ShellChrome>: that
                       wrapper transforms itself to hide on scroll, and a
                       transformed ancestor re-parents `position: fixed` to itself,
                       which would slide the dock off the bottom of the screen with
                       whatever the chrome is hiding. */}
-                        <MobileDock trainingRelevant={trainingRelevant} />
-                      </MobileChromeProvider>
-                      <CommandPalette
-                        profileName={session.profile.name}
-                        weightUnit={units.weightUnit}
-                      />
-                      {/* PWA home-screen shortcuts land here (#1424): reads
+                          <MobileDock trainingRelevant={trainingRelevant} />
+                        </MobileChromeProvider>
+                        <CommandPalette
+                          profileName={session.profile.name}
+                          weightUnit={units.weightUnit}
+                        />
+                        {/* PWA home-screen shortcuts land here (#1424): reads
                       `?quick=` and opens the SAME activity editor / quick-entry
                       overlay / palette the sheet does. Beside CommandPalette so
                       it sits inside both contexts it dispatches into, and
                       viewport-agnostic — the shortcut URL is an ordinary link. */}
-                      <QuickShortcutHandler
-                        cycleRelevant={relevance.cycle}
-                        substanceRelevant={substanceRelevant}
-                      />
-                      <ExtractionToaster profileId={profile.id} />
-                      <ImportJobsToaster profileId={profile.id} />
-                      {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
+                        <QuickShortcutHandler
+                          cycleRelevant={relevance.cycle}
+                          substanceRelevant={substanceRelevant}
+                        />
+                        <ExtractionToaster profileId={profile.id} />
+                        <ImportJobsToaster profileId={profile.id} />
+                        {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
                       listens to nothing in a browser tab, where the browser's own
                       refresh already exists. */}
-                      <PullToRefresh />
-                    </ActivityEditorProvider>
-                  </QuickEntryProvider>
+                        <PullToRefresh />
+                      </ActivityEditorProvider>
+                    </QuickEntryProvider>
+                  </RouteDayContext>
                 </OfflineQueueProvider>
               </DirtyFormProvider>
             </ActiveProfileProvider>

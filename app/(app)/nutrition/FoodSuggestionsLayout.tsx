@@ -8,12 +8,14 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { useRouter } from "next/navigation";
 import { IconChevronDown, IconSparkles } from "@tabler/icons-react";
 import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import type { FoodSlot } from "@/lib/food-slot";
 import ModalShell from "@/components/ModalShell";
 import InsightLauncher from "@/components/InsightLauncher";
 import type { FoodLogDay } from "./FoodLogBar";
+import { nutritionDayHref } from "@/lib/hrefs";
 
 type CountsByDate = Record<string, Record<string, number>>;
 type SlotCountsByDate = Record<
@@ -28,7 +30,7 @@ export interface FoodProjectionState {
 
 interface FoodSelectedDateContextValue {
   activeDate: string;
-  setActiveDate: Dispatch<SetStateAction<string>>;
+  setActiveDate: (date: string) => void;
   countsByDate: CountsByDate;
   slotCountsByDate: SlotCountsByDate;
   // Daily and per-meal counts are one projection. A correction moves one event
@@ -163,12 +165,12 @@ function FoodSuggestionsLayoutForProfile({
   suggestionContent,
   suggestionCount,
 }: FoodSuggestionsLayoutProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const initialDateInRange =
     initialDate != null && days.some((day) => day.date === initialDate);
-  const [activeDate, setActiveDate] = useState(
-    initialDateInRange ? initialDate : today
-  );
+  const activeDate = initialDateInRange ? initialDate : today;
+  const setActiveDate = (date: string) => router.push(nutritionDayHref(date));
   const [projection, setProjection] = useState<FoodProjectionState>(() => ({
     countsByDate: Object.fromEntries(days.map((day) => [day.date, day.counts])),
     slotCountsByDate: Object.fromEntries(
