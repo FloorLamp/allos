@@ -231,11 +231,10 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
       page,
       page.getByTestId(`quick-entry-substance-log-${NAME}`)
     );
-    const logged = page.getByTestId("toast").filter({ hasText: "Use logged." });
+    const toasts = page.getByTestId("toast");
+    const logged = toasts.filter({ hasText: "Use logged." });
     await settledClick(page, logged.getByRole("button", { name: "Undo" }));
-    await expect(
-      page.getByTestId("toast").filter({ hasText: "Use undone." })
-    ).toBeVisible();
+    await expect(toasts.filter({ hasText: "Use undone." })).toBeVisible();
     await page.goto("/records/specialty/substance-use");
     await expect(
       page.getByTestId(`substance-week-count-${NAME}`)
