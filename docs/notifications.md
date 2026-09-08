@@ -71,11 +71,10 @@ send a test. HA can use the received reminder for a speaker announcement, lights
 or another household automation. The body can contain medication names and other
 health details.
 
-Use the [Home Assistant setup and recipes](home-assistant-notifications.md) for
-payloads and configuration. This shipped channel sends from Allos to HA. The
+Use the [Home Assistant guide](home-assistant-notifications.md) for the payload
+and an announcement example. This shipped channel sends from Allos to HA. The
 reverse endpoint for logging a dose from HA is still a
-[proposal](home-assistant-spec.md); the confirmation part of that recipe will not
-work until it is implemented.
+[proposal](home-assistant-spec.md).
 
 ## Choose who receives reminders
 

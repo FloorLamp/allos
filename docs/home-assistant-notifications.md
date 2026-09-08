@@ -1,59 +1,44 @@
-# Home Assistant as a notification channel
+# Home Assistant notifications
 
-Status: **shipped**. The separate
-[HA → Allos appliance endpoints](home-assistant-spec.md) remain unbuilt.
+Status: shipped, Allos → Home Assistant.
 
-This is the **Allos → Home Assistant** direction: a third dispatch channel
-beside Telegram and Web Push that POSTs each reminder to a Home Assistant
-**webhook**, so an HA automation can present it with what only HA knows — _who
-is home, and which room_. The household wins this unlocks:
-
-- **Kitchen-speaker TTS dose announcements** when the person is actually in the
-  kitchen — the accessibility path for a household member who will never install
-  Telegram (the grandparent case).
-- **Escalation theatrics** — a critical dose left unconfirmed flashes lights or
-  announces on the caregiver's floor. Allos's escalation engine already decides
-  _when_; HA becomes its loudest _how_.
-- **Presence-aware delivery** — hold an announcement until someone is home, or
-  suppress the phone push once the wall panel has already spoken.
+Allos sends reminders to a profile's Home Assistant webhook. HA can announce
+messages or control lights using its own automations. Scheduling, recipient
+selection, and message-kind controls are covered in [Notifications](notifications.md).
+HA → Allos dose confirmation remains an [unbuilt proposal](home-assistant-spec.md).
 
 ## Setup
 
-Per person, under **Settings → Notifications → Home Assistant**:
+For the selected profile, open **Settings → Notifications → Home Assistant**:
 
-1. **Enable** the channel.
-2. Paste the **webhook URL**. In HA, an automation with a **Webhook** trigger
-   gets a URL of the form `http(s)://<host>:8123/api/webhook/<webhook_id>` — no
-   custom component or HACS install needed.
-3. Optionally set a **shared secret**. Allos sends it as the
-   `X-Allos-Webhook-Secret` header; your HA automation can reject any call that
-   doesn't carry it (HA webhook ids are already capability URLs, so this is
-   belt-and-suspenders).
-4. **Send test** to verify the wiring.
+1. Create an HA webhook automation with an unpredictable, private webhook ID.
+   Allow POST requests and keep `local_only: true` for a local Allos instance.
+2. Enable the Allos channel and enter the webhook URL:
+   `http(s)://<host>:8123/api/webhook/<webhook_id>`.
+3. Select reminder kinds in the **HA** column of **Message kinds**, then use
+   **Send test** and inspect the HA automation trace.
 
-**Which reminder kinds** Home Assistant announces (a household may want doses
-announced but not weekly recaps) is the **HA** column of the _Message kinds_
-table further down the same page — one row per kind, alongside the Telegram and
-Web Push columns. The box in the column header turns the whole column on or off
-at once; safety reminders keep their own boxes and are never swept by it.
+The payload can contain medication names and other health details. Use HTTPS
+when sending between networks, and choose speakers/displays with that visibility
+in mind. HA authenticates its built-in webhook by the private webhook ID; follow
+[HA's webhook guidance](https://www.home-assistant.io/docs/automation/trigger/#webhook-trigger)
+for network access and credential handling.
 
-> **PHI posture.** The webhook body contains medication names (in
-> `title`/`body`) and typically travels LAN-to-LAN. Use an **`https`** HA URL
-> when the two instances are not co-located, and set a shared secret. This is a
-> _delivery_ channel only — snooze/dismiss (the "dismiss once, silence
-> everywhere" bus) and the safety-tier rules apply _upstream_, so a suppressed
-> reminder never reaches HA either.
+Allos optionally sends `X-Allos-Webhook-Secret`. HA's built-in trigger does not
+expose request headers to templates, so `trigger.headers` cannot validate it.
+Use that extra secret only with a receiver or proxy that checks the header before
+forwarding. See [available webhook variables](https://www.home-assistant.io/docs/automation/templating/#webhook).
 
 ## Payload
 
-Allos `POST`s this JSON (a stable, additive-only shape):
+Allos POSTs JSON with these fields:
 
 ```json
 {
   "title": "💊 Morning supplements",
   "body": "Vitamin D 2000 IU\nMagnesium 200 mg",
   "kind": "dose",
-  "profile": "Grandpa",
+  "profile": "Example Person",
   "profile_id": 2,
   "doses": [{ "dose_id": 41, "date": "2026-07-11", "action": "taken" }],
   "dose_ids": [41],
@@ -62,150 +47,55 @@ Allos `POST`s this JSON (a stable, additive-only shape):
 }
 ```
 
-- `kind` is a machine-readable classification: `dose`, `escalation`, `refill`,
-  `preventive`, `workout`, `digest`, `upcoming`, `weekly-recap`, `milestone`,
-  `test`, or `other`. Route/announce by it.
-- `doses` lists the **actionable** doses (ids only, never names) so an
-  automation can wire a voice/button confirmation back to Allos's `POST /dose`
-  endpoint (issue #235, PR 3): `{ doseId, date, action: "taken" | "skipped" }`.
-  `dose_ids` is the deduped id list for convenience.
-- `links` holds any PHI-free deep-link URL the reminder offers (e.g. the refill
-  form).
+- `title` and `body` are display text; `profile` names the tracked person.
+- `kind` selects the reminder category, such as `dose`, `escalation`, `refill`,
+  `digest`, or `test`. The [notification vocabulary](../lib/notifications/types.ts)
+  owns the complete set.
+- `doses` describes available take/skip actions, deduplicated by dose and action;
+  it does not mean those actions happened. `dose_ids` contains unique dose IDs.
+  These fields do not enable an inbound confirmation endpoint.
+- `links` contains the reminder's navigation URLs. `sent_at` is the send instant.
 
-In an HA webhook automation the body is available as `{{ trigger.json }}` and
-the headers as `{{ trigger.headers }}`.
+The [payload builder](../lib/notifications/home-assistant-core.ts) owns this
+additive response shape. HA templates read its body through `trigger.json`.
 
-## Recipe 1 — kitchen TTS dose announcement + confirm back to `/dose`
+## Example: announce reminders
 
-> **Requires unshipped PR 3.** The confirm-back half of this recipe POSTs to
-> `POST /api/integrations/home-assistant/dose`, an actuation endpoint that
-> **does not exist yet** — it's part of the HA→Allos appliance work tracked in
-> [#235](https://github.com/FloorLamp/allos/issues/235) (its "PR 3"), specced in
-> [`home-assistant-spec.md`](home-assistant-spec.md) but **not built**. Building
-> this automation today, the `allos_log_dose` rest_command will 404. The
-> **announce** half (the outbound webhook that speaks the reminder) works now
-> with the shipped notification channel; only the log-back-to-`/dose` call is
-> blocked until PR 3 lands.
-
-Announce dose reminders on a speaker **only when someone is in the kitchen**,
-and expose a physical/voice confirmation that logs the dose back in Allos. Uses
-HA `!secret` references so no token lands in a shared config.
-
-`configuration.yaml` (or a `packages/` file):
+Add this automation to `configuration.yaml` or a package. Put your private webhook
+ID under `allos_webhook_id` in HA's `secrets.yaml`; replace the TTS and speaker
+entities with your own. The example accepts dose reminders and Allos's test message.
+It uses HA's [TTS speak action](https://www.home-assistant.io/integrations/tts/).
 
 ```yaml
-rest_command:
-  allos_log_dose:
-    # Allos's actuation endpoint (issue #235). Requires a token with allow_actions.
-    url: "https://allos.example.lan/api/integrations/home-assistant/dose"
-    method: POST
-    headers:
-      authorization: !secret allos_token_grandpa
-      content-type: "application/json"
-    payload: '{"doseId": {{ dose_id }}, "date": "{{ date }}", "action": "taken"}'
-
 automation:
-  - alias: "Allos: announce doses in the kitchen"
-    trigger:
-      - platform: webhook
+  - alias: "Allos: announce dose reminders"
+    triggers:
+      - trigger: webhook
         webhook_id: !secret allos_webhook_id
         allowed_methods: [POST]
         local_only: true
-    # Only announce dose reminders, and only if the shared secret matches.
-    condition:
+    conditions:
       - condition: template
-        value_template: >
-          {{ trigger.json.kind == 'dose'
-             and trigger.headers['x-allos-webhook-secret'] ==
-          states('input_text.allos_secret') }}
-      - condition: state
-        entity_id: binary_sensor.kitchen_occupancy
-        state: "on"
-    action:
-      - service: tts.speak
+        value_template: "{{ trigger.json.kind in ['dose', 'test'] }}"
+    actions:
+      - action: tts.speak
         target:
           entity_id: tts.home_assistant_cloud
         data:
           media_player_entity_id: media_player.kitchen_speaker
           message: >
-            {{ trigger.json.profile }}, it's time for your {{ trigger.json.title
-            }}. {{ trigger.json.body }}
-      # Stash the first actionable dose so a follow-up confirmation can log it.
-      - service: input_number.set_value
-        target:
-          entity_id: input_number.allos_pending_dose
-        data:
-          value: "{{ trigger.json.doses[0].dose_id if trigger.json.doses else 0 }}"
-      - service: input_text.set_value
-        target:
-          entity_id: input_text.allos_pending_date
-        data:
-          value: "{{ trigger.json.doses[0].date if trigger.json.doses else '' }}"
-
-  # A confirmation source: an NFC tag on the pill organizer, a nightstand Zigbee
-  # button, or a voice assistant intent. Tapping it logs the pending dose as taken.
-  - alias: "Allos: confirm pending dose taken"
-    trigger:
-      - platform: tag
-        tag_id: pill-organizer-grandpa
-    condition:
-      - condition: numeric_state
-        entity_id: input_number.allos_pending_dose
-        above: 0
-    action:
-      - service: rest_command.allos_log_dose
-        data:
-          dose_id: "{{ states('input_number.allos_pending_dose') | int }}"
-          date: "{{ states('input_text.allos_pending_date') }}"
-      - service: input_number.set_value
-        target:
-          entity_id: input_number.allos_pending_dose
-        data:
-          value: 0
+            {{ trigger.json.profile }}. {{ trigger.json.title }}.
+            {{ trigger.json.body }}
 ```
 
-> Allos's `/dose` returns the same **outcome union** the Telegram buttons use
-> (`logged | skipped | already-taken | already-skipped | stale-dose | inactive`),
-> so a stale/duplicate tap can never falsely confirm a dose — surface
-> `resp.status` in the automation if you want spoken feedback.
+Adapt the receiving automation to route `kind == 'escalation'` to the appropriate
+speaker or light action. A presence condition can restrict where HA announces a
+message; it does not change delivery through Allos's other channels.
 
-## Recipe 2 — escalation lights / floor announcement
+## Other household surfaces
 
-A **missed-dose escalation** (`kind == "escalation"`) is the loud one: flash the
-caregiver-floor lights and announce it everywhere, regardless of presence.
-
-```yaml
-automation:
-  - alias: "Allos: escalate a missed dose"
-    trigger:
-      - platform: webhook
-        webhook_id: !secret allos_webhook_id
-        allowed_methods: [POST]
-        local_only: true
-    condition:
-      - condition: template
-        value_template: "{{ trigger.json.kind == 'escalation' }}"
-    action:
-      - service: notify.all_speakers
-        data:
-          message: >
-            Attention: {{ trigger.json.profile }} — {{ trigger.json.body }}
-      - service: light.turn_on
-        target:
-          entity_id: light.upstairs_hall
-        data:
-          flash: long
-          color_name: red
-```
-
-## Free wins that need no new automation
-
-- **Appointments in HA natively** — HA's calendar integration consumes Allos's
-  token-authed `.ics` feed directly
-  (**Data → Import → Calendar feed**),
-  giving appointment cards and native "time to leave" automations.
-- **Emergency card on a wall panel** — open Allos's public share link
-  (`/share/*`) in a browser tab or a panel action that navigates to it. Do not
-  use an HA webpage/iframe card: `/share/*` keeps `frame-ancestors 'none'`, and
-  its refusal is silent, so the browser substitutes its own page. Anyone at the
-  panel can read the public link — that's the point of an emergency card.
+- The calendar feed under **Data → Import → Calendar feed** can supply appointments
+  to HA's calendar integration.
+- Open an emergency share link in a browser tab or panel navigation action.
+  Share pages prohibit framing, so an iframe card cannot embed them. Anyone with
+  access to the public link can read its contents.
