@@ -117,6 +117,8 @@ export interface OptimisticValue<V> {
   // The displayed value as it stands BEFORE this tap. Read at the tap, so it is the
   // surface's own state and not a re-derivation.
   readonly from: V;
+  // Identify separate displayed values, such as totals for different days.
+  readonly key?: string;
   // How this tap makes it look, painted before the request leaves.
   readonly to: V;
   // Writes a value into the surface's own state. The surface keeps its state where it
@@ -239,13 +241,10 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       try {
         result = await spec.action(formData);
       } catch (error) {
-        // Only the CAPTURE arm applies here. The pre-flight decision answers "the
-        // browser says we are offline"; this one answers "the request died", where the
-        // surface's own failure sentence is what every adopted site has always said —
-        // the refusal copy is about a state the user is in, not about a dropped fetch.
+        // A dropped connection uses the same capture or refusal as offline preflight.
         if (offline && shouldQueueOffline(navigator.onLine !== false, error)) {
           const decision = offline(tappedAt);
-          if (decision.kind === "capture")
+          if (decision.kind !== "attempt")
             return { result: await capture(decision) };
         }
         say({ message: spec.failureMessage, tone: "error", undo: null });
@@ -272,7 +271,7 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       let outcome: Attempted<V> = { result: "nothing" };
       await ledger.tap({
         key: spec.key,
-        valueKey: "",
+        valueKey: projection?.key ?? "",
         from: projection?.from,
         optimistic: projection?.to,
         commit: projection?.commit,
