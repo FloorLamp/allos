@@ -1,6 +1,6 @@
 {
   "active-sessions.spec.ts": 2,
-  "activity-equipment.spec.ts": 62,
+  "activity-equipment.spec.ts": 57,
   "activity-page.spec.ts": 48,
   "adherence-patterns.spec.ts": 2,
   "advance-directives.spec.ts": 12,
@@ -108,7 +108,7 @@
   "entry-vocabularies.spec.ts": 5,
   "episode-med-reconcile.spec.ts": 2,
   "episode-page-fold.mobile.spec.ts": 7,
-  "equipment-lifecycle.spec.ts": 7,
+  "equipment-lifecycle.spec.ts": 4,
   "equipment-manager.spec.ts": 4,
   "equipment-registry.spec.ts": 7,
   "errors-log-access.spec.ts": 2,

@@ -17,7 +17,6 @@ const ROOT_FILES = new Set(["page.tsx", "layout.tsx"]);
 // New undeclared pages and stale entries fail; adopting one is a layout decision.
 const UNDECLARED_PAGE_WIDTHS = new Set<string>([
   "app/(app)/appointments/page.tsx",
-  "app/(app)/equipment/page.tsx",
   "app/(app)/household/page.tsx",
   "app/(app)/immunizations/[vaccine]/page.tsx",
   "app/(app)/immunizations/print/page.tsx",
