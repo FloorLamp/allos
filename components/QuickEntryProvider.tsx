@@ -581,6 +581,27 @@ export default function QuickEntryProvider({
           return;
         }
         if (requestRef.current !== recoveryToken) return;
+        const recoveryLiveToday =
+          liveProfileClocksRef.current.get(subjectId)?.today;
+        if (!recoveryLiveToday) {
+          clearLastGood();
+          return;
+        }
+        if (
+          (effectiveRequest.kind === "dayless" &&
+            recoveryLiveToday !== requestLiveToday) ||
+          (effectiveRequest.kind !== "dayless" &&
+            !isWithinReach(
+              requestParts.reach,
+              recoveryLiveToday,
+              requestParts.day
+            ))
+        ) {
+          expired = true;
+          const nextToken = ++requestRef.current;
+          runLoad(next, subjectId, nextToken, { kind: "dayless" });
+          return;
+        }
         const copy = quickEntryOffline(
           next,
           requestParts,

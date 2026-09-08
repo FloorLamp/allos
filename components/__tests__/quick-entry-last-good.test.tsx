@@ -161,6 +161,43 @@ function renderSheet(
   };
 }
 
+function renderInheritedSheet(
+  inheritedDay: string,
+  liveToday = MEASUREMENTS.defaultDate
+) {
+  const surface = (day: string) => (
+    <ToastProvider>
+      <ProfileDaysBoundary
+        clocks={new Map([[ACTING.id, { today: day, timeZone: "UTC" }]])}
+      >
+        <DayContextProvider
+          profileId={ACTING.id}
+          today={day}
+          reach={{ kind: "dated" }}
+          backing={{
+            kind: "url",
+            day: inheritedDay,
+            hrefForDay: (nextDay) => `/history?day=${nextDay}` as AppRoute,
+          }}
+        >
+          <QuickEntryProvider
+            measurements={MEASUREMENTS}
+            writableProfiles={[ACTING]}
+            actingProfileId={ACTING.id}
+          >
+            <Sheet />
+          </QuickEntryProvider>
+        </DayContextProvider>
+      </ProfileDaysBoundary>
+    </ToastProvider>
+  );
+  const utils = render(surface(liveToday));
+  return {
+    ...utils,
+    rerenderWithDay: (day: string) => utils.rerender(surface(day)),
+  };
+}
+
 function ready<T>(data: T) {
   return { kind: "ready" as const, data };
 }
@@ -887,6 +924,82 @@ describe("day request identity", () => {
 });
 
 describe("midnight fallback integration", () => {
+  it("restarts a dayless device recovery that crosses live midnight", async () => {
+    let resolveSnapshots!: (snapshots: AnySnapshot[]) => void;
+    allSnapshots.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveSnapshots = resolve))
+    );
+    loadQuickEntry
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(unavailable("new day", "2026-09-04"));
+    const { rerenderWithDay } = renderSheet(ACTING.id, "2026-09-03");
+
+    fireEvent.click(screen.getByText("open dose"));
+    await waitFor(() => expect(allSnapshots).toHaveBeenCalledOnce());
+    rerenderWithDay("2026-09-04");
+    resolveSnapshots([doseSnapshot("2026-09-03")]);
+
+    await waitFor(() => expect(loadQuickEntry).toHaveBeenCalledTimes(2));
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "dose",
+      ACTING.id,
+      undefined,
+      "sheet"
+    );
+    expect(
+      (await screen.findByTestId("quick-entry-unavailable")).textContent
+    ).toContain("new day");
+    expect(screen.queryByText("Device dose")).toBeNull();
+  });
+
+  it.each(["selected", "inherited"] as const)(
+    "keeps an in-reach %s day through a device recovery that crosses midnight",
+    async (requestKind) => {
+      let resolveSnapshots!: (snapshots: AnySnapshot[]) => void;
+      allSnapshots.mockImplementationOnce(
+        () => new Promise((resolve) => (resolveSnapshots = resolve))
+      );
+      const selectedDay = "2026-09-02";
+
+      if (requestKind === "selected") {
+        loadQuickEntry
+          .mockResolvedValueOnce(dueDose("2026-09-03"))
+          .mockRejectedValueOnce(new Error("offline"));
+        const { rerenderWithDay } = renderSheet(ACTING.id, "2026-09-03");
+        fireEvent.click(screen.getByText("open dose"));
+        await screen.findByTestId("bounded-day-switcher");
+        fireEvent.click(screen.getByTestId("day-context-1"));
+        await waitFor(() => expect(allSnapshots).toHaveBeenCalledOnce());
+        rerenderWithDay("2026-09-04");
+      } else {
+        loadQuickEntry.mockRejectedValueOnce(new Error("offline"));
+        const { rerenderWithDay } = renderInheritedSheet(
+          selectedDay,
+          "2026-09-03"
+        );
+        fireEvent.click(screen.getByText("open dose"));
+        await waitFor(() => expect(allSnapshots).toHaveBeenCalledOnce());
+        rerenderWithDay("2026-09-04");
+      }
+
+      resolveSnapshots([doseSnapshot(selectedDay)]);
+
+      expect(await screen.findByText("Device dose")).toBeTruthy();
+      expect(loadQuickEntry).toHaveBeenCalledTimes(
+        requestKind === "selected" ? 2 : 1
+      );
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "dose",
+        ACTING.id,
+        selectedDay,
+        requestKind === "selected" ? "sheet" : "dated"
+      );
+      expect(screen.getByTestId("dose-control-probe").dataset.date).toBe(
+        selectedDay
+      );
+    }
+  );
+
   it("keeps a reachable prior-day dose row and gives its control the explicit day", async () => {
     loadQuickEntry
       .mockResolvedValueOnce(dueDose("2026-09-03"))

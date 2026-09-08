@@ -217,6 +217,64 @@ describe("the mood domain's two pieces", () => {
     expect(done).toHaveBeenCalledOnce();
   });
 
+  it("accepts an intentional identical History entry after the form resets", async () => {
+    const saved = vi.fn();
+    const view = render(
+      <MoodForm
+        days={[EMPTY]}
+        showCalm={false}
+        repeatAfterSave
+        onSaved={saved}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(screen.getByRole("button", { name: "Energy: 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "the row just saved" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    view.rerender(
+      <MoodForm
+        days={[
+          {
+            ...EMPTY,
+            mood: {
+              valence: 4,
+              energy: 3,
+              anxiety: null,
+              factors: ["work"],
+              notes: "the row just saved",
+            },
+          },
+        ]}
+        showCalm={false}
+        repeatAfterSave
+        onSaved={saved}
+      />
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Energy: 3" })
+        .getAttribute("aria-pressed")
+    ).toBe("false");
+    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe(
+      ""
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+
+    expect(posted.logMood).toHaveLength(2);
+    expect(Object.fromEntries(posted.logMood[1])).not.toHaveProperty("energy");
+    expect(Object.fromEntries(posted.logMood[1])).not.toHaveProperty("note");
+    expect(saved).toHaveBeenCalledTimes(2);
+  });
+
   it("freezes the whole dated statement and retains it after a delayed refusal", async () => {
     let rejectWrite!: (error: unknown) => void;
     logMoodReply = () =>

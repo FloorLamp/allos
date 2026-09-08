@@ -56,6 +56,7 @@ type MoodTouchAction = {
 
 interface MoodAttempt {
   readonly id: number;
+  readonly ledgerKey: string;
   readonly date: string;
   readonly label: string;
   readonly values: MoodFormValue;
@@ -74,6 +75,7 @@ interface MoodControllerState {
   readonly complete: boolean;
   readonly error: MoodError;
   readonly attempt: MoodAttempt | null;
+  readonly version: number;
 }
 
 type MoodControllerAction =
@@ -96,6 +98,14 @@ const UNTOUCHED: MoodTouched = {
   anxiety: false,
   factors: false,
   notes: false,
+};
+
+const ALL_TOUCHED: MoodTouched = {
+  valence: true,
+  energy: true,
+  anxiety: true,
+  factors: true,
+  notes: true,
 };
 
 function rowValues(row: MoodFormDay | undefined): MoodDraftValues {
@@ -122,6 +132,7 @@ function initialController(
     complete,
     error: null,
     attempt: null,
+    version: 0,
   };
 }
 
@@ -200,10 +211,14 @@ function moodController(
       return {
         ...state,
         values: rowValues(undefined),
-        touched: UNTOUCHED,
+        // A repeat History entry starts from an intentionally blank local draft.
+        // Own those blanks so the refresh triggered by the prior save cannot refill
+        // them from the row that was just written.
+        touched: ALL_TOUCHED,
         complete: true,
         error: null,
         attempt: null,
+        version: state.version + 1,
       };
   }
 }
@@ -379,7 +394,9 @@ export default function MoodForm({
   }
 
   function submit(nextValence: number): void {
-    if (controller.date == null || writing.current || ledger.blocked()) return;
+    if (controller.date == null || writing.current) return;
+    const ledgerKey = `${controller.date}:${nextValence}:${controller.version}`;
+    if (ledger.blocked(ledgerKey)) return;
     if (mode === "edit") {
       dispatch({ kind: "touch", field: "valence", value: nextValence });
     }
@@ -391,6 +408,7 @@ export default function MoodForm({
     };
     const attempt: MoodAttempt = {
       id: ++attemptId.current,
+      ledgerKey,
       date: controller.date,
       label: controller.label,
       values,
@@ -403,6 +421,7 @@ export default function MoodForm({
     dispatch({ kind: "start", attempt });
     void ledger
       .tap({
+        key: attempt.ledgerKey,
         write: async () => {
           if (attempt.capture) await attempt.capture.writeToken;
           return logMood(payload(attempt));
