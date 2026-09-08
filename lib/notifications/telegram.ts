@@ -40,7 +40,11 @@ import {
   type NotificationChannel,
   type NotificationMessage,
 } from "./types";
-import { composeForRebuild, composeMessage } from "./compose";
+import {
+  composeForRebuild,
+  composeMessage,
+  withRecipientDistanceUnit,
+} from "./compose";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
 import { resolveTelegramChats, resolveTelegramRecipients } from "./fan-out";
@@ -153,9 +157,11 @@ export const telegramChannel: NotificationChannel = {
       chats.map(async ({ chatId, loginIds }) => {
         // An explicit override names no login; recordedSend's empty owner list
         // records nothing. A managed shared chat records every mapped login.
-        const messageId = await recordedSend("telegram", loginIds, () =>
-          sendMessageRaw(chatId, msg)
-        );
+        let recipientMessage = msg;
+        const messageId = await recordedSend("telegram", loginIds, () => {
+          recipientMessage = withRecipientDistanceUnit(msg, loginIds[0], opts);
+          return sendMessageRaw(chatId, recipientMessage);
+        });
         // Set before bookkeeping: this chat already holds the message.
         delivered = true;
         const track = async () => {
@@ -164,13 +170,16 @@ export const telegramChannel: NotificationChannel = {
               profileId,
               chatId,
               messageId,
-              msg
+              recipientMessage
             );
-            if (msg.kind === "digest" && msg.actions?.length)
+            if (
+              recipientMessage.kind === "digest" &&
+              recipientMessage.actions?.length
+            )
               recordDigestTailPointer(profileId, chatId, messageId);
           }
           // Overrides still have a subject and need stale keyboards tracked.
-          await trackDelivered(profileId, chatId, messageId, msg);
+          await trackDelivered(profileId, chatId, messageId, recipientMessage);
         };
         // A bookkeeping failure remains this recipient's outcome and cannot stop
         // the next recipient's tracking. allSettled observes each returned promise.

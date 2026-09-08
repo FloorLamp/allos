@@ -102,6 +102,7 @@ import { assembleFitnessCheckModel } from "../fitness-check-assemble";
 import { batteryCompletion } from "../fitness-outcome";
 import type { WeightUnit, DistanceUnit } from "../settings";
 import { dispatch } from "./index";
+import type { MessageBody } from "./rich-text";
 import { recapMarkerKey } from "./send-markers";
 import { createLogger } from "../log";
 
@@ -708,9 +709,8 @@ export async function runRecap(
   // The SAME `date` the plan above was decided on, not a second `today()` read.
   // `forSend` (#3900): this gather's output leaves the app, so it is the one that asks
   // the substance consent — the card and the AI narrative gather the same facts without.
-  const recap = buildRecap(
-    gatherRecapInput(profileId, "kg", scale, true, date, true)
-  );
+  const input = gatherRecapInput(profileId, "kg", scale, true, date, true);
+  const recap = buildRecap(input);
   // Surface the stored AI recap narrative when one exists for this window (#421).
   // READ-ONLY — the tick must never call Claude (quota atomicity assumes a single
   // AI-calling process); it only SELECTs a narrative the web process already
@@ -721,14 +721,34 @@ export async function runRecap(
     getRecentPeriodRecaps(profileId, [scale], 5),
     recap
   );
-  const msg = renderRecapMessage(recap, profileName, narrative, getPublicUrl());
+  const publicUrl = getPublicUrl();
+  const msg = renderRecapMessage(recap, profileName, narrative, publicUrl);
   if (!msg) {
     spend();
     log.info("recap: nothing to send", { profile: profileId, scale });
     return { failed: false };
   }
 
-  const results = await dispatch(profileId, msg);
+  // Gather once; only canonical cardio measurements change spelling by recipient.
+  // The existing scheduled strength/body-weight unit remains kg.
+  const bodies = new Map<DistanceUnit, MessageBody>([["km", msg.body]]);
+  const bodyForDistanceUnit = (distanceUnit: DistanceUnit): MessageBody => {
+    const cached = bodies.get(distanceUnit);
+    if (cached != null) return cached;
+    const body = renderRecapMessage(
+      buildRecap({ ...input, distanceUnit }),
+      profileName,
+      narrative,
+      publicUrl
+    )!.body;
+    bodies.set(distanceUnit, body);
+    return body;
+  };
+  const results = await dispatch(
+    profileId,
+    msg,
+    input.prs.some((pr) => pr.cardio) ? { bodyForDistanceUnit } : undefined
+  );
   if (results.length === 0) {
     // No channel configured — leave unmarked so it can send once configured.
     return { failed: false };
