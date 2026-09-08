@@ -226,22 +226,20 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
       page.getByTestId("quick-entry-substance-nicotine")
     ).toHaveCount(0);
 
-    // BOTH TAPS, because the row IS the domain's shared row control since #4424 —
-    // the sheet used to offer a log and no undo, so a mis-tap had to be carried to
-    // another page. Asserted as the pair rather than as the new button alone: a mount
-    // that drew one of them and not the other is the per-mount field set the ruling
-    // forbids.
-    await expect(
-      page.getByTestId(`quick-entry-substance-undo-${NAME}`)
-    ).toBeVisible();
+    // The sheet's correction lives in the successful write's toast (#5521).
     await settledClick(
       page,
       page.getByTestId(`quick-entry-substance-log-${NAME}`)
     );
+    const logged = page.getByTestId("toast").filter({ hasText: "Use logged." });
+    await settledClick(page, logged.getByRole("button", { name: "Undo" }));
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Use undone." })
+    ).toBeVisible();
     await page.goto("/records/specialty/substance-use");
     await expect(
       page.getByTestId(`substance-week-count-${NAME}`)
-    ).toContainText("2");
+    ).toContainText("1");
   });
 
   test("a substance with an opted-in cap carries its progress line beside the tap", async () => {
