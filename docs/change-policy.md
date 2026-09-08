@@ -57,6 +57,10 @@ Do not add tests or guards asserting on ESLint/Vitest/TypeScript configuration,
 `package.json`, `.nvmrc`, workflow definitions, gate trigger/skip sets, or Node
 flags. Run the configuration instead of maintaining a second copy in assertions.
 
+A test may execute configuration or query a real tool's resolved behavior. It
+must not read configuration files and restate their text, keys, flags, lists, or
+wiring as assertions.
+
 The only existing dev-config exceptions are the `ci-skip-set` and
 `db-gate-trigger-set` count ratchets. Their limits may only decrease in the change
 that removes an entry. Keep them as counts, with no per-file list or import graph;

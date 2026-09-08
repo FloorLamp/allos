@@ -877,6 +877,7 @@ export default async function ManageTab({
                     id: dose.id,
                     amount: dose.amount,
                     timeOfDay: dose.time_of_day,
+                    versions: dose.versions,
                   })),
                 }))}
               initialDate={acceptedBackfillDate}

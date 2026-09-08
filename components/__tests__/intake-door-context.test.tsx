@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
+import {
+  lookupRxcui,
+  lookupRxcuiIngredients,
+} from "@/app/(app)/nutrition/intake-actions";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -200,6 +205,80 @@ describe("every add door feeds IntakeItemForm the same subject context (#4609)",
       cleanup();
     }
   );
+
+  it.each([
+    ["Acetaminophen (with Codeine)", false],
+    ["Acetaminophen (with Codeine)", true],
+    ["Tylenol / 可待因", false],
+  ] as const)(
+    "refuses %s and withdraws only its prior offer (manual: %s)",
+    async (name, manual) => {
+      await openDoor("medications", CHILD, "Acetaminophen");
+      await act(async () => {
+        fireEvent.keyDown(screen.getByRole("combobox", { name: "Name" }), {
+          key: "Enter",
+        });
+      });
+      fireEvent.click(screen.getByTestId("intake-fact-dose"));
+      expect(screen.getByTestId("pediatric-band-picker")).toBeTruthy();
+      const amount = () =>
+        screen.getByRole("combobox", { name: "Amount" }) as HTMLInputElement;
+      expect(amount().value).toBe("240 mg");
+      if (manual) fireEvent.change(amount(), { target: { value: "180 mg" } });
+      fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+        target: { value: name },
+      });
+      // Commit and settle the free-text pick: a refused chart must also withdraw
+      // the old automatic dose, while a caregiver's own amount remains theirs.
+      await act(async () => {
+        fireEvent.keyDown(screen.getByRole("combobox", { name: "Name" }), {
+          key: "Enter",
+        });
+      });
+      expect(
+        screen.getByTestId("medication-pediatric-no-chart").textContent
+      ).toContain("ask a pharmacist");
+      expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+      expect(screen.queryByTestId("pediatric-suggestion")).toBeNull();
+      expect(amount().value).toBe(manual ? "180 mg" : "");
+      expect(screen.getByTestId("interaction-notice").textContent).toContain(
+        "Warfarin"
+      );
+      expect(
+        (screen.getByRole("combobox", { name: "Name" }) as HTMLInputElement)
+          .value
+      ).toBe(name);
+    }
+  );
+
+  it("withdraws the label offer when a confirmed product has multiple ingredients", async () => {
+    await openDoor("medications", CHILD, "Acetaminophen");
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("combobox", { name: "Name" }), {
+        key: "Enter",
+      });
+    });
+    expect(screen.getByTestId("intake-fact-dose").textContent).toContain(
+      "240 mg"
+    );
+    vi.mocked(lookupRxcui).mockResolvedValueOnce([
+      { rxcui: "99999", name: "Acetaminophen / codeine", score: 100 },
+    ]);
+    vi.mocked(lookupRxcuiIngredients).mockResolvedValueOnce(["161", "2670"]);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("rxcui-lookup"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("rxcui-use-99999"));
+    });
+    expect(screen.getByTestId("medication-pediatric-no-chart")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("intake-fact-dose"));
+    expect(
+      (screen.getByRole("combobox", { name: "Amount" }) as HTMLInputElement)
+        .value
+    ).toBe("");
+    expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
+  });
 
   // `todayStr` is not cosmetic: with it absent the form posts no `started_on`, and
   // addIntakeItem skips its whole start-date branch on `formData.has("started_on")`.

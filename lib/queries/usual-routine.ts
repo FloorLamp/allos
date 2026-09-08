@@ -98,6 +98,7 @@ export interface PendingDayDose extends UsualRoutineDose {
   // window no longer reaches (#4305) and takes the profile's own declared hour over the
   // hour the tap happened to land on.
   timeOfDay: string | null;
+  amountAssumed: boolean;
 }
 
 // ── WHAT THIS FUNCTION CONSULTS, AND HOW EACH INPUT TREATS `date` ────────────
@@ -148,10 +149,9 @@ export interface PendingDayDose extends UsualRoutineDose {
 //   condition / situation /   CURRENT-STATE, no dated source. Same for the strip.
 //   pause_situation
 //   dose.retired              CURRENT-STATE — a bare flag, no `retired_at`.
-//   amount / product          CURRENT-STATE — the version table carries time_of_day,
-//                             weekdays and the validity dates, NOT the amount, so a
-//                             catch-up records today's. The audited backfill core has
-//                             the same property.
+//   amount                    date-resolved — selected from the same dose version as
+//                             the schedule; prehistory carries an explicit assumption.
+//   product                   CURRENT-STATE — no dated source exists.
 //   timezone                  CURRENT zone, applied to stored UTC created_at stamps.
 //   suppression               ABSENT — deliberate: this rides the offer contract, which
 //                             does not filter it. `collectDueDosesNow` (today's list in
@@ -281,16 +281,18 @@ export function pendingDayDoses(
     // by definition, so the strip's "a log overrules the clock" carve-out is already
     // satisfied above.
     if (isExcused(dose.time_of_day ?? null, date)) continue;
+    const schedule = doseScheduleAsOf(dose, date);
     out.push({
       bucket: doseBucketOn(dose, date),
-      timeOfDay: doseScheduleAsOf(dose, date).time_of_day ?? null,
+      timeOfDay: schedule.time_of_day ?? null,
+      amountAssumed: schedule.amountAssumed,
       doseId: dose.id,
       itemId: item.id,
       name: item.name,
       detail:
         item.kind === "medication"
-          ? formatMedicationDoseProduct(dose.amount, item.product)
-          : dose.amount,
+          ? formatMedicationDoseProduct(schedule.amount, item.product)
+          : (schedule.amount ?? null),
       // The item's stack label (#3098), feeding the label compression in
       // `usualRoutinePhrase` when the whole rider shares one.
       stack: item.stack,

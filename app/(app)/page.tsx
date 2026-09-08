@@ -1,3 +1,4 @@
+import { formatCount } from "@/lib/format-number";
 import { cloneElement, type ReactElement } from "react";
 import { redirect } from "next/navigation";
 import { now as clockNow } from "@/lib/clock";
@@ -2475,12 +2476,12 @@ async function renderDashboard(
         value:
           stepsSummary.today == null
             ? "No steps logged yet today"
-            : stepsSummary.today.toLocaleString("en-US"),
+            : formatCount(stepsSummary.today),
         detail:
           [
             stepsSummary.average7 == null
               ? null
-              : `Prior 7 days · ${stepsSummary.average7.toLocaleString("en-US")} steps a day`,
+              : `Prior 7 days · ${formatCount(stepsSummary.average7)} steps a day`,
             // Absent for most of the day BY DESIGN (#3258): the summary withholds it
             // until today can be compared, so the row states the neutral average alone
             // rather than a percentage that was only ever counting the hours.
@@ -2509,7 +2510,7 @@ async function renderDashboard(
         stale: false,
         name: `Steps, today and the prior ${STEPS_TRAILING_DAYS} days`,
         pointLabel: (point) =>
-          `${point.value.toLocaleString("en-US")} steps · ${formatLongDate(point.date, formatPrefs)}`,
+          `${formatCount(point.value)} steps · ${formatLongDate(point.date, formatPrefs)}`,
         loneCaption: `Single reading · ${formatLongDate(on, formatPrefs)}`,
       },
     });

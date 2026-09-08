@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
+import { appContent, hydratedClick, followLink } from "./helpers";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The equipment MANAGER (issue #391), now hosted on the top-level /equipment
@@ -9,7 +10,7 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // set references (the link nulls, no FK 500, history survives — the #342
 // side-state rule), and age-neutral access for a minor profile.
 test.describe("Equipment manager (#391)", () => {
-  test("add an implement with its own weight — listed with the weight unit", async ({
+  test("add and edit equipment from the catalog and detail page", async ({
     page,
   }) => {
     // Local `next dev` compiles the equipment route on first hit.
@@ -27,6 +28,10 @@ test.describe("Equipment manager (#391)", () => {
     await page.getByLabel("Name").fill(name);
     // The equipment-weight label carries the login's unit — match it
     // unit-agnostically.
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Equipment weight", exact: true })
+      .click();
     await page.getByLabel(/Equipment weight/).fill("15");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Equipment added")).toBeVisible();
@@ -38,6 +43,34 @@ test.describe("Equipment manager (#391)", () => {
     // Renders on the save action's revalidated tree — a cold shard can outrun the default 5s (imaging/#1306 precedent).
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText(/15\s*(kg|lb)/);
+
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Equipment actions" })
+    );
+    await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+    const edit = page.getByRole("dialog", { name: "Edit equipment" });
+    await edit.getByRole("button", { name: /^15 (kg|lb)$/ }).click();
+    await edit.getByLabel(/Equipment weight/).fill("16");
+    await edit.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(row).toContainText(/16\s*(kg|lb)/);
+
+    await followLink(page, row.getByRole("link", { name }), /\/equipment\/\d+/);
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await edit.getByRole("button", { name, exact: true }).click();
+    const renamed = `${name} renamed`;
+    await edit.getByLabel("Name", { exact: true }).fill(renamed);
+    await edit.getByRole("button", { name: "Done", exact: true }).click();
+    await edit.getByRole("button", { name: /^16 (kg|lb)$/ }).click();
+    await edit.getByLabel(/Equipment weight/).fill("20");
+    await edit.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: renamed, exact: true })
+    ).toBeVisible();
+    await page.goto("/equipment");
+    await expect(
+      appContent(page).getByTestId("equipment-row").filter({ hasText: renamed })
+    ).toContainText(/20\s*(kg|lb)/);
   });
 
   test("deleting a referenced implement nulls the link and the logged set still renders", async ({
@@ -54,9 +87,12 @@ test.describe("Equipment manager (#391)", () => {
       .getByTestId("equipment-row")
       .filter({ hasText: "E2E Delete Bar" });
     if (await row.count()) {
-      // Delete moved into the shared ⋯ menu (#1491): open the row's menu first.
-      await row.getByRole("button", { name: "Equipment actions" }).click();
-      await page.getByRole("menuitem", { name: "Delete" }).click();
+      await followLink(
+        page,
+        row.getByRole("link", { name: /E2E Delete Bar/ }),
+        /\/equipment\/\d+/
+      );
+      await appContent(page).getByTestId("equipment-detail-delete").click();
       await page
         .getByRole("dialog")
         .getByRole("button", { name: "Delete" })

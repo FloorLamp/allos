@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { IconClock } from "@tabler/icons-react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import { useCompactViewport } from "@/components/useCompactViewport";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -286,16 +287,7 @@ export default function TimeField({
         aria-label="Open time picker"
         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-600 disabled:opacity-40 dark:text-slate-400 dark:hover:text-slate-300"
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="h-4 w-4"
-        >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 7v5l3 2" strokeLinecap="round" />
-        </svg>
+        <IconClock className="h-4 w-4" aria-hidden="true" />
       </button>
 
       <AnchoredPanel

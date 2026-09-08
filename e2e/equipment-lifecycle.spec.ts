@@ -41,6 +41,8 @@ test("retire and restore equipment from the manager (#341)", async ({
   await page.getByLabel("Name").fill("E2E Trap Bar");
   // The expanded category set is grouped; Kettlebell is one of the new strength
   // options, proving the enum expansion reached the UI.
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Barbell", exact: true }).click();
   await page.getByLabel("Type").selectOption("Kettlebell");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Equipment added")).toBeVisible();
@@ -52,10 +54,8 @@ test("retire and restore equipment from the manager (#341)", async ({
   await expect(row).toHaveAttribute("data-retired", "0");
 
   // Retire it — the row stays listed (history-preserving) but flips to retired and
-  // shows the badge. Row actions live in the shared ⋯ menu (#1491): open it,
-  // then click the (portaled) Retire item.
-  await row.getByRole("button", { name: "Equipment actions" }).click();
-  await page.getByTestId("equipment-retire-toggle").click();
+  // shows the badge. Retire is the row’s one direct lifecycle control.
+  await row.getByTestId("equipment-retire-toggle").click();
   await expect(page.getByText("Retired E2E Trap Bar")).toBeVisible();
   const retiredRow = page
     .getByTestId("equipment-row")
@@ -67,8 +67,7 @@ test("retire and restore equipment from the manager (#341)", async ({
   await expect(retiredRow.getByText("Retired")).toBeVisible();
 
   // Restore it.
-  await retiredRow.getByRole("button", { name: "Equipment actions" }).click();
-  await page.getByTestId("equipment-retire-toggle").click();
+  await retiredRow.getByTestId("equipment-retire-toggle").click();
   await expect(page.getByText("Restored E2E Trap Bar")).toBeVisible();
   await expect(
     page.getByTestId("equipment-row").filter({ hasText: "E2E Trap Bar" })
@@ -106,8 +105,7 @@ test("a stale page's retire tap renders the typed refusal (#2138)", async ({
 
   // The stale row still offers "Retire". The tap lands on the CAS, which refuses,
   // and the refusal is toasted — nothing claims a flip that did not happen.
-  await row.getByRole("button", { name: "Equipment actions" }).click();
-  await page.getByTestId("equipment-retire-toggle").click();
+  await row.getByTestId("equipment-retire-toggle").click();
   await expect(
     page.getByText("That equipment is already retired.")
   ).toBeVisible({ timeout: 15_000 });

@@ -1,334 +1,59 @@
-"use client";
-
-import { useId, useState, useTransition } from "react";
-import { IconPlus, IconX } from "@tabler/icons-react";
-import DestinationLink from "@/components/DestinationLink";
-import {
-  SectionCreateHeader,
-  useCreateActionLabel,
-} from "@/components/CreateAction";
-import OverflowMenu, {
-  MENU_ITEM,
-  MENU_ITEM_DANGER,
-} from "@/components/OverflowMenu";
 import type { Equipment, EquipmentKind } from "@/lib/types";
-import { EQUIPMENT_CATEGORIES, kindOf } from "@/lib/types";
+import { kindOf } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
-import { kgTo, toKg, round, stripNegative } from "@/lib/units";
-import { EmptyState } from "@/components/ui";
-import { useToast } from "@/components/Toast";
-import { useConfirm } from "@/components/ConfirmDialog";
 import { equipmentHref } from "@/lib/hrefs";
-import {
-  createEquipmentAction,
-  updateEquipmentAction,
-  deleteEquipmentAction,
-  setEquipmentRetiredAction,
-} from "@/app/(app)/equipment/actions";
+import { CATALOGS } from "@/components/catalog";
+import { EmptyState } from "./ui";
+import { SectionCreateHeader } from "./CreateAction";
+import CatalogEditor from "./CatalogEditor";
+import CatalogRow from "./CatalogRow";
+import CatalogLifecycleControl from "./CatalogLifecycleControl";
 
-// Per-equipment usage summary (issue #343): the count of sessions this gear was
-// used in, for the index badge. Full stats (Σ volume/distance, last used, trend)
-// live on the detail page — this is just the at-a-glance count.
-export interface EquipmentUsageBadge {
-  sessions: number;
-}
-
-export function EquipmentCreateControl({
-  onActivate,
-}: {
-  onActivate: () => void;
-}) {
-  const label = useCreateActionLabel();
-  return (
-    <button
-      type="button"
-      onClick={onActivate}
-      className="btn inline-flex items-center gap-1"
-    >
-      <IconPlus className="h-4 w-4" stroke={2.5} /> {label}
-    </button>
-  );
-}
-
-interface Draft {
-  name: string;
-  weight: string; // in display unit, free text
-  category: string;
-}
-
-// New equipment defaults to Barbell (the common case + only type with a plate
-// builder); the user can switch it.
-const emptyDraft = (strengthTrainingAvailable: boolean): Draft => ({
-  name: "",
-  weight: "",
-  category: strengthTrainingAvailable ? "Barbell" : "Bike",
-});
-
-// The <select> option groups, in kind order. The DB CHECK (migration 018) is the
-// source of truth for the value set; kindOf() places each into its group.
 const KIND_LABELS: { kind: EquipmentKind; label: string }[] = [
   { kind: "strength", label: "Strength" },
   { kind: "cardio", label: "Cardio" },
   { kind: "recovery", label: "Recovery" },
   { kind: "other", label: "Other" },
 ];
-const categoryGroups = (strengthTrainingAvailable: boolean) =>
-  KIND_LABELS.filter(
-    ({ kind }) => strengthTrainingAvailable || kind !== "strength"
-  )
-    .map(({ kind, label }) => ({
-      label,
-      options: EQUIPMENT_CATEGORIES.filter((c) => kindOf(c) === kind),
-    }))
-    .filter((g) => g.options.length > 0);
-
-function toDraft(e: Equipment, unit: WeightUnit): Draft {
-  return {
-    name: e.name,
-    weight:
-      e.weight_kg != null ? String(round(kgTo(e.weight_kg, unit), 2)) : "",
-    // The DB converged to the fixed set (migration 018), so category is already a
-    // valid option or NULL; fall back to Barbell only for a null.
-    category: e.category ?? "Barbell",
-  };
-}
 
 export default function EquipmentManager({
   equipment,
   unit,
-  usage = {},
+  usage,
   creationAvailable = true,
   strengthTrainingAvailable = true,
 }: {
   equipment: Equipment[];
   unit: WeightUnit;
-  // equipment id → usage badge; a missing id means "never used" (no badge).
-  usage?: Record<number, EquipmentUsageBadge>;
-  // Existing registry rows stay readable and editable when the workout product
-  // stands down, but no new activity gear is offered through early childhood.
+  usage: Record<number, { sessions: number }>;
   creationAvailable?: boolean;
   strengthTrainingAvailable?: boolean;
 }) {
-  const toast = useToast();
-  const confirm = useConfirm();
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<Draft>(() =>
-    emptyDraft(strengthTrainingAvailable)
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function startAdd() {
-    setError(null);
-    setEditingId(null);
-    setDraft(emptyDraft(strengthTrainingAvailable));
-    setAdding(true);
-  }
-
-  function startEdit(e: Equipment) {
-    setError(null);
-    setAdding(false);
-    setEditingId(e.id);
-    setDraft(toDraft(e, unit));
-  }
-
-  function cancel() {
-    setAdding(false);
-    setEditingId(null);
-    setError(null);
-  }
-
-  function payload() {
-    const trimmed = draft.weight.trim();
-    const num = trimmed === "" ? null : Number(trimmed);
-    const weight_kg =
-      num != null && Number.isFinite(num) ? toKg(num, unit) : null;
-    return {
-      name: draft.name,
-      weight_kg,
-      category: draft.category,
-    };
-  }
-
-  function save() {
-    if (!draft.name.trim()) {
-      setError("Give the equipment a name.");
-      return;
-    }
-    const w = draft.weight.trim();
-    if (w !== "" && (!Number.isFinite(Number(w)) || Number(w) < 0)) {
-      setError("Equipment weight must be 0 or more.");
-      return;
-    }
-    setError(null);
-    startTransition(async () => {
-      const res =
-        editingId != null
-          ? await updateEquipmentAction(editingId, payload())
-          : await createEquipmentAction(payload());
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      const wasEditing = editingId != null;
-      cancel();
-      toast(wasEditing ? "Equipment updated" : "Equipment added");
-    });
-  }
-
-  async function remove(e: Equipment) {
-    const ok = await confirm({
-      title: "Delete equipment",
-      message: `Delete “${e.name}”? Logged sets keep their weights but lose the implement label.`,
-      confirmLabel: "Delete",
-      danger: true,
-    });
-    if (!ok) return;
-    startTransition(async () => {
-      // Typed outcome rendered (#2138): a forged/stale id reports its refusal in
-      // the error tone instead of confirming a delete that did not happen.
-      const res = await deleteEquipmentAction(e.id);
-      if (editingId === e.id) cancel();
-      if (!res.ok) {
-        toast(res.error, { tone: "error" });
-        return;
-      }
-      toast(`Deleted ${e.name}`);
-    });
-  }
-
-  // Split active/retired, then group active rows by kind so the index reads as an
-  // organized inventory rather than a flat list (issue #343). Retired gear drops
-  // to its own trailing section (still listed — it labels old history).
-  const active = equipment.filter((e) => !e.retired);
-  const retired = equipment.filter((e) => e.retired);
-  const activeGroups = KIND_LABELS.filter(
+  const catalog = CATALOGS.equipment;
+  const groups = KIND_LABELS.filter(
     ({ kind }) => strengthTrainingAvailable || kind !== "strength"
-  )
-    .map(({ kind, label }) => ({
-      label,
-      rows: active.filter((e) => kindOf(e.category) === kind),
-    }))
-    .filter((g) => g.rows.length > 0);
-
-  const row = (e: Equipment) => (
-    <li
-      key={e.id}
-      data-testid="equipment-row"
-      data-retired={e.retired ? "1" : "0"}
-      className="flex items-center justify-between gap-3 py-3"
-    >
-      <div className={`min-w-0 ${e.retired ? "opacity-60" : ""}`}>
-        <div className="flex flex-wrap items-center gap-2">
-          <DestinationLink
-            href={equipmentHref(e.id)}
-            className="group inline-flex items-center gap-0.5 font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-          >
-            {e.name}
-          </DestinationLink>
-          {e.category && (
-            <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {e.category}
-            </span>
-          )}
-          {usage[e.id] && usage[e.id].sessions > 0 ? (
-            <span
-              data-testid="equipment-usage"
-              className="badge bg-brand-50 tabular-nums text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-            >
-              {usage[e.id].sessions}{" "}
-              {usage[e.id].sessions === 1 ? "session" : "sessions"}
-            </span>
-          ) : null}
-          {e.retired ? (
-            <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-              Retired
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          {e.weight_kg != null
-            ? `${round(kgTo(e.weight_kg, unit), 2)} ${unit}`
-            : "weight not set"}
-        </div>
-      </div>
-      {/* Row actions in the shared ⋯ menu (#1491 item 9 — was a hand-rolled
-          inline pencil/archive/trash trio, the exact clone the row-action scan
-          now blocks). Same three actions, same handlers. */}
-      <div className="flex shrink-0 items-center">
-        <OverflowMenu
-          kind="Equipment"
-          itemName={e.name}
-          open={menuOpenId === e.id}
-          onOpenChange={(open) => setMenuOpenId(open ? e.id : null)}
-        >
-          {({ close, runAction }) => (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={pending}
-                onClick={() => {
-                  startEdit(e);
-                  close();
-                }}
-                className={MENU_ITEM}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={pending}
-                data-testid="equipment-retire-toggle"
-                onClick={() => {
-                  // The shared MenuActionResult plumbing (#2138): the action posts
-                  // the state this render promised, and a typed refusal ("already
-                  // retired", "not found") toasts in the error tone instead of
-                  // being papered over with the success message.
-                  if (editingId === e.id) cancel();
-                  void runAction(
-                    () => setEquipmentRetiredAction(e.id, !e.retired),
-                    new FormData(),
-                    e.retired ? `Restored ${e.name}` : `Retired ${e.name}`
-                  );
-                }}
-                className={MENU_ITEM}
-              >
-                {e.retired ? "Restore" : "Retire"}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={pending}
-                onClick={() => {
-                  close();
-                  void remove(e);
-                }}
-                className={MENU_ITEM_DANGER}
-              >
-                Delete
-              </button>
-            </>
-          )}
-        </OverflowMenu>
-      </div>
-    </li>
-  );
-
+  ).map(({ kind, label }) => ({
+    label,
+    rows: equipment.filter((e) => !e.retired && kindOf(e.category) === kind),
+  }));
+  groups.push({ label: "Retired", rows: equipment.filter((e) => e.retired) });
   return (
-    <div className="card max-w-2xl space-y-4">
+    <div className="card space-y-4">
       <SectionCreateHeader
         title="Your equipment"
         createAction={{
           kind: "equipment",
-          available: creationAvailable && !adding && editingId == null,
-          control: <EquipmentCreateControl onActivate={startAdd} />,
+          available: creationAvailable,
+          control: (
+            <CatalogEditor
+              create
+              title="Add equipment"
+              Form={catalog.Form}
+              formProps={{ unit, strengthTrainingAvailable }}
+            />
+          ),
         }}
       />
-
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {!creationAvailable
           ? "Existing equipment stays here with its activity history."
@@ -336,21 +61,7 @@ export default function EquipmentManager({
             ? "Name a bar, implement, or recovery device to tag your sessions with it. Logged weights are always the total load; equipment weight here is only a reference."
             : "Name cardio gear or a recovery device to tag activities with it."}
       </p>
-
-      {(adding || editingId != null) && (
-        <EquipmentForm
-          draft={draft}
-          setDraft={setDraft}
-          unit={unit}
-          onSave={save}
-          onCancel={cancel}
-          pending={pending}
-          error={error}
-          strengthTrainingAvailable={strengthTrainingAvailable}
-        />
-      )}
-
-      {equipment.length === 0 && !adding ? (
+      {equipment.length === 0 ? (
         <EmptyState
           message={
             !creationAvailable
@@ -361,125 +72,50 @@ export default function EquipmentManager({
           }
         />
       ) : (
-        <div className="space-y-4">
-          {activeGroups.map((g) => (
-            <div key={g.label}>
-              <h3 className="mb-1 section-label">{g.label}</h3>
+        groups
+          .filter((g) => g.rows.length)
+          .map((group) => (
+            <div key={group.label}>
+              <h3 className="mb-1 section-label">{group.label}</h3>
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {g.rows.map(row)}
-              </ul>
-            </div>
-          ))}
-          {retired.length > 0 && (
-            <div>
-              <h3 className="mb-1 section-label">Retired</h3>
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {retired.map(row)}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EquipmentForm({
-  draft,
-  setDraft,
-  unit,
-  onSave,
-  onCancel,
-  pending,
-  error,
-  strengthTrainingAvailable,
-}: {
-  draft: Draft;
-  setDraft: (d: Draft) => void;
-  unit: WeightUnit;
-  onSave: () => void;
-  onCancel: () => void;
-  pending: boolean;
-  error: string | null;
-  strengthTrainingAvailable: boolean;
-}) {
-  // The form renders for add AND per-row edit, so label association needs
-  // instance-unique ids (getByLabel in the e2e spec, screen readers generally).
-  const uid = useId();
-  return (
-    <div className="space-y-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor={`${uid}-name`}>
-            Name
-          </label>
-          <input
-            id={`${uid}-name`}
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            placeholder={strengthTrainingAvailable ? "Trap bar" : "Bike"}
-            className="input"
-            autoFocus
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor={`${uid}-weight`}>
-            Equipment weight ({unit})
-          </label>
-          <input
-            id={`${uid}-weight`}
-            value={draft.weight}
-            onChange={(e) =>
-              setDraft({ ...draft, weight: stripNegative(e.target.value) })
-            }
-            inputMode="decimal"
-            placeholder="optional"
-            className="input"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor={`${uid}-category`}>
-            Type
-          </label>
-          <select
-            id={`${uid}-category`}
-            value={draft.category}
-            onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-            className="input"
-          >
-            {categoryGroups(strengthTrainingAvailable).map((g) => (
-              <optgroup key={g.label} label={g.label}>
-                {g.options.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                {group.rows.map((item) => (
+                  <CatalogRow
+                    key={item.id}
+                    name={item.name}
+                    href={equipmentHref(item.id)}
+                    facts={catalog.facts(
+                      item,
+                      unit,
+                      usage[item.id]?.sessions ?? 0
+                    )}
+                    kind={catalog.label}
+                    inactive={!!item.retired}
+                    inactiveLabel={catalog.lifecycle.past}
+                    testId="equipment-row"
+                    editor={{
+                      Form: catalog.Form,
+                      title: "Edit equipment",
+                      formProps: {
+                        equipment: item,
+                        unit,
+                        strengthTrainingAvailable,
+                      },
+                    }}
+                    control={
+                      <CatalogLifecycleControl
+                        name={item.name}
+                        inactive={!!item.retired}
+                        lifecycle={catalog.lifecycle}
+                        action={catalog.setInactive.bind(null, item.id)}
+                        testId="equipment-retire-toggle"
+                      />
+                    }
+                  />
                 ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-      </div>
-      {error && (
-        <p className="text-sm text-rose-500 dark:text-rose-400">{error}</p>
+              </ul>
+            </div>
+          ))
       )}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={pending}
-          className="btn"
-        >
-          {pending ? "Saving…" : "Save"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={pending}
-          className="btn-ghost inline-flex items-center gap-1"
-        >
-          <IconX className="h-4 w-4" /> Cancel
-        </button>
-      </div>
     </div>
   );
 }

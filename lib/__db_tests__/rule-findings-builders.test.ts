@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr, startOfWeekStr, daysBetweenDateStr } from "@/lib/date";
+import { shiftDateStr, startOfWeekStr } from "@/lib/date";
 import {
   buildAdherencePatternFindings,
   buildTrainingObservationFindings,
@@ -37,11 +37,12 @@ import {
   mobilitySuggestSignalKey,
   FLEXIBILITY_REGION,
 } from "@/lib/mobility-suggest";
-import { setFitnessRetestCadenceDays, setStoredAge } from "@/lib/settings";
 import {
-  muscleVolumeSignalKey,
-  MIN_BAND_HISTORY_WEEKS,
-} from "@/lib/muscle-volume-bands";
+  setFitnessRetestCadenceDays,
+  setStoredAge,
+  setWeekStart,
+} from "@/lib/settings";
+import { muscleVolumeSignalKey } from "@/lib/muscle-volume-bands";
 import { periodontalObservationKey } from "@/lib/oral-health-observation";
 import { foodSuggestSignalKey, foodReduceSignalKey } from "@/lib/food-suggest";
 import { foodHabitSignalKey } from "@/lib/food-habit";
@@ -381,24 +382,25 @@ describe("buildMuscleVolumeFindings — below-band shortfall (#742)", () => {
     expect(rolled).toContain(f.dedupeKey);
   });
 
-  it("COLD START: emits nothing with fewer than the min distinct training weeks", () => {
-    const { profileId, anchor } = makeProfile("volume-742-coldstart");
+  it.each([
+    { weekStart: 0, findings: 0 },
+    { weekStart: 1, findings: 1 },
+  ] as const)(
+    "uses profile week start $weekStart for the cold-start history gate",
+    ({ weekStart, findings }) => {
+      const { profileId, anchor } = makeProfile("volume-742-coldstart");
+      setWeekStart(profileId, weekStart);
+      // The most recent Monday and preceding Sunday stay inside the history
+      // window on every run. They span two weeks only for the Monday-start profile.
+      const monday = startOfWeekStr(anchor, 1);
+      logStrengthSets(profileId, monday, -1, "Lateral Raise", 1);
+      logStrengthSets(profileId, monday, 0, "Lateral Raise", 2);
 
-    // Two same-week sessions of the same under-floor lift: side-delts is clearly
-    // below its band, but the profile has only ONE distinct training week — an
-    // unanswered question, not "everything below target" (#719). The second session
-    // lands on anchor's week start (countDistinctWeeks buckets by Sunday-week), so it
-    // stays in the SAME week even on a Sunday run — a fixed `anchor - 1` would cross
-    // into the previous week and clear the cold-start gate, leaking a finding (#990).
-    const sameWeekOffset =
-      daysBetweenDateStr(anchor, startOfWeekStr(anchor, 0)) ?? 0;
-    logStrengthSets(profileId, anchor, 0, "Lateral Raise", 2);
-    logStrengthSets(profileId, anchor, sameWeekOffset, "Lateral Raise", 1);
-    // Sanity: this fixture is one week of history, below the gate.
-    expect(MIN_BAND_HISTORY_WEEKS).toBeGreaterThan(1);
-
-    expect(buildMuscleVolumeFindings(profileId, anchor)).toEqual([]);
-  });
+      expect(buildMuscleVolumeFindings(profileId, monday)).toHaveLength(
+        findings
+      );
+    }
+  );
 });
 
 // ---- #433: goal pacing feeds the deduped daily series, not raw all-source ---

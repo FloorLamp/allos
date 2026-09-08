@@ -116,7 +116,14 @@ caller handles it, such as by successfully capturing an offline write.
 The hook absorbs taps while writing and during `POST_SUCCESS_COOLDOWN_MS` after
 success. This is a UI debounce, not a persistence gate. Surfaces with an optimistic
 count can absorb silently; those without one can disable through `blocked()`.
-Use separate keys for independent writes, including an undo beside a log action.
+Use separate write keys for independent actions, including an undo beside a log.
+When several actions change one displayed value, give their taps the same
+`valueKey` (the pipeline's `optimistic.key`). A pipeline with one displayed value
+can omit that key. Rollback uses
+the last accepted
+or queued value, rather than an earlier tap's snapshot. Different symptoms or days
+need distinct value keys. The baseline refreshes from the surface only while that
+value has no writes in flight.
 
 Repeat semantics determine whether a cadence confirmation applies:
 

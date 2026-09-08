@@ -119,6 +119,7 @@
 // Pure: no DB, no clock, no I/O. The gathering half is lib/queries/paired-observations.ts
 // and the finding half is buildPairedObservationFindings (lib/rule-findings.ts).
 
+import { mean } from "./robust-stats";
 import { daysBetweenDateStr } from "./date";
 import { formatMinutes } from "./duration";
 import { metricDetailHref, type AppRoute } from "./hrefs";
@@ -426,10 +427,6 @@ export interface PairedObservationVerdict {
   detail: string;
   withArm: PairedArm;
   withoutArm: PairedArm;
-}
-
-function mean(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
 function round(value: number, decimals: number): number {

@@ -1,5 +1,7 @@
 "use client";
 
+import { MEDIA_QUERIES } from "@/lib/media-queries";
+
 import { useRef } from "react";
 import { createPortal } from "react-dom";
 import SidebarContent from "@/components/SidebarContent";
@@ -176,7 +178,7 @@ export default function MobileNav({
       // The drawer IS the phone's navigation — the portal below is `md:hidden`,
       // so opening it on a wide touchscreen would lock the page's scroll behind
       // an overlay nobody can see.
-      if (window.matchMedia("(min-width: 768px)").matches) return;
+      if (window.matchMedia(MEDIA_QUERIES.md).matches) return;
       setOpen(true);
     },
   });

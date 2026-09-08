@@ -8,26 +8,16 @@ import { regionsForMove } from "@/lib/mobility-coverage";
 import type { MuscleRegion } from "@/lib/lifts";
 import { useToast } from "@/components/Toast";
 import Chip from "@/components/Chip";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import {
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-  shouldQueueOffline,
-} from "@/lib/offline/queue";
+import { useWritePipeline } from "@/components/useWritePipeline";
 import {
   logMobilityMove,
   unlogMobilityMove,
   setMobilityDuration,
 } from "./mobility-actions";
 
-// One-tap mobility logger (issue #840), the movement analog of the FoodLogBar. A move is
-// a TOGGLE — present or absent in today's session, never a count (no per-move sets/weights,
-// the habit-tier "one move = one tap" model). Toggling reconciles its optimistic selection
-// with the server's authoritative session move list (the food-log #748 item 2 pattern),
-// through the shared `useOptimisticLedger` (#2041) — which also absorbs the second half of
-// a double-tap (#2007 layer 1). The toggle is IDEMPOTENT (set semantics), so it never
-// confirms: the worst a genuine repeat can do is put the move back where it already was.
-// Moves are grouped head-to-toe by their primary region so the bar reads like a routine.
+// Mobility taps toggle membership in the day's session. The pipeline reconciles
+// with the server's move list and can queue additions; removals require a connection.
+// Group moves head-to-toe by their primary region.
 
 const REGION_ORDER: MuscleRegion[] = [
   "Shoulders",
@@ -65,8 +55,9 @@ export default function MobilityLogBar({
     initialDurationMin != null ? String(initialDurationMin) : ""
   );
   const toast = useToast();
-  const { enqueue } = useOfflineQueue();
-  const ledger = useOptimisticLedger<Set<string>>("mobility-move");
+  const pipeline = useWritePipeline<"mobility-move", Set<string>>(
+    "mobility-move"
+  );
 
   const sections = useMemo(() => {
     const byRegion = new Map<MuscleRegion, MobilityMove[]>();
@@ -87,66 +78,45 @@ export default function MobilityLogBar({
     const optimistic = new Set(selected);
     if (wasOn) optimistic.delete(slug);
     else optimistic.add(slug);
-    await ledger.tap({
-      // Per MOVE and per direction: tapping a second move immediately is an ordinary
-      // routine, and un-tapping a move you just tapped is a correction — neither is
-      // the double-tap the cooldown exists to absorb.
+    await pipeline.run({
       key: `${slug}:${wasOn ? "off" : "on"}`,
-      from: selected,
-      optimistic,
-      commit: setSelected,
-      write: () => {
-        const fd = stampLoggedVia(new FormData());
-        fd.set("move", slug);
-        fd.set("date", today);
-        return wasOn ? unlogMobilityMove(fd) : logMobilityMove(fd);
+      fields: { move: slug, date: today },
+      action: wasOn ? unlogMobilityMove : logMobilityMove,
+      optimistic: {
+        key: today,
+        from: selected,
+        to: optimistic,
+        commit: setSelected,
       },
-      settle: (res) => {
-        // Reconcile with the server's authoritative move list.
-        if (res.ok)
-          return { kind: "adopt", value: new Set<string>(res.session.moves) };
-        toast(res.error || "Couldn't save that move — try again.", {
-          tone: "error",
-        });
-        return { kind: "rollback" };
-      },
-      onError: async (err) => {
-        // The ON tap is a pure capture — set-add per (profile, date, move), the
-        // idempotence the offline queue's own admission criterion names — so an
-        // offline tap QUEUES (#2130) and the optimistic chip stands in until
-        // replay. The OFF tap is a removal against whatever session stands at
-        // replay time (the documented "−" exclusion in lib/offline/queue.ts),
-        // so it still fails honestly instead of pretending.
-        if (
-          !wasOn &&
-          shouldQueueOffline(
-            typeof navigator === "undefined" ? true : navigator.onLine,
-            err
-          )
-        ) {
-          const kept =
-            (await enqueue("mobility", today, { move: slug })) === "kept";
-          // The device refused the capture (#3038): nothing queued, so the chip
-          // rolls back rather than standing in for a write that never happened.
-          if (!kept) {
-            toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
-            return { kind: "rollback" };
-          }
-          toast("Saved offline — will sync when you reconnect.");
-          return { kind: "keep" };
-        }
-        toast(
-          wasOn &&
-            shouldQueueOffline(
-              typeof navigator === "undefined" ? true : navigator.onLine,
-              err
-            )
-            ? "You're offline — removing a move needs a connection."
-            : "Couldn't save that move — try again.",
-          { tone: "error" }
-        );
-        return { kind: "rollback" };
-      },
+      settle: (res) =>
+        res.ok
+          ? {
+              wrote: true,
+              value: new Set(res.session.moves),
+              announce: "silent",
+            }
+          : {
+              wrote: false,
+              announce: {
+                message: res.error || "Couldn't save that move — try again.",
+                tone: "error",
+                undo: null,
+              },
+            },
+      offline: () =>
+        wasOn
+          ? {
+              kind: "refuse",
+              message: "You're offline — removing a move needs a connection.",
+            }
+          : {
+              kind: "capture",
+              flow: "mobility",
+              date: today,
+              payload: { move: slug },
+              keptMessage: "Saved offline — will sync when you reconnect.",
+            },
+      failureMessage: "Couldn't save that move — try again.",
     });
   }
 

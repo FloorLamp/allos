@@ -113,8 +113,8 @@ const CREATINE = {
   asNeeded: false,
   courseBound: false,
   doses: [
-    { id: 11, label: "5 g · Morning", amount: "5 g" },
-    { id: 12, label: "5 g · Evening", amount: "5 g" },
+    { id: 11, amount: "5 g", time_of_day: "Morning" },
+    { id: 12, amount: "5 g", time_of_day: "Evening" },
   ],
 };
 const MAGNESIUM = {
@@ -122,12 +122,20 @@ const MAGNESIUM = {
   name: "Magnesium",
   asNeeded: false,
   courseBound: false,
-  doses: [{ id: 21, label: "200 mg · Before sleep", amount: "200 mg" }],
+  doses: [{ id: 21, amount: "200 mg", time_of_day: "Before sleep" }],
 };
 
 beforeEach(() => {
   posted.length = 0;
   vi.clearAllMocks();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
   mocks.logHistoricalDose.mockImplementation(async (fd: FormData) => {
     posted.push(fd);
     return { ok: true };
@@ -260,6 +268,142 @@ describe("one dose form, add and edit, one layout (#4424 ruling 1)", () => {
     );
     expect(screen.queryByTestId("historical-dose-item-picker")).toBeNull();
   });
+
+  it("defaults the amount by date without clobbering a manual edit", () => {
+    render(
+      <HistoricalDoseForm
+        items={[
+          {
+            ...MAGNESIUM,
+            doses: [
+              {
+                ...MAGNESIUM.doses[0]!,
+                amount: "1000 mg",
+                versions: [
+                  {
+                    effective_from: YESTERDAY,
+                    amount: "500 mg",
+                    amount_captured: 1,
+                  },
+                  {
+                    effective_from: TODAY,
+                    amount: "1000 mg",
+                    amount_captured: 1,
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        initialDate="2026-08-26"
+        maxDate={TODAY}
+        defaultTime="08:00"
+        onDone={vi.fn()}
+      />
+    );
+
+    const amount = screen.getByLabelText("Amount") as HTMLInputElement;
+    expect(amount.value).toBe("500 mg");
+    expect(
+      screen.getByText(
+        "No amount was saved for this date. Using the oldest known amount."
+      )
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Date and time taken" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "August 28, 2026" }));
+    expect(amount.value).toBe("1000 mg");
+    expect(
+      screen.queryByText(
+        "No amount was saved for this date. Using the oldest known amount."
+      )
+    ).toBeNull();
+
+    fireEvent.change(amount, { target: { value: "750 mg" } });
+    fireEvent.click(screen.getByRole("button", { name: "August 27, 2026" }));
+    expect(amount.value).toBe("750 mg");
+  });
+
+  it("keeps a saved null snapshot blank when an existing log opens", async () => {
+    render(
+      <HistoricalDoseForm
+        items={[CREATINE]}
+        maxDate={TODAY}
+        defaultTime="08:00"
+        editing={{
+          logId: 99,
+          doseId: 11,
+          date: YESTERDAY,
+          statedAt: null,
+          amount: null,
+        }}
+        onDone={vi.fn()}
+      />
+    );
+
+    expect((screen.getByLabelText("Amount") as HTMLInputElement).value).toBe(
+      ""
+    );
+    await submitForm();
+    expect(fields().amount).toBe("");
+  });
+
+  it("formats every dose option from the selected day's facts", () => {
+    render(
+      <HistoricalDoseForm
+        items={[
+          {
+            ...CREATINE,
+            doses: [
+              {
+                id: 11,
+                amount: "1000 mg",
+                time_of_day: "Evening",
+                versions: [
+                  {
+                    effective_from: YESTERDAY,
+                    amount: "500 mg",
+                    time_of_day: "Morning",
+                    amount_captured: 1,
+                  },
+                  {
+                    effective_from: TODAY,
+                    amount: "1000 mg",
+                    time_of_day: "Evening",
+                    amount_captured: 1,
+                  },
+                ],
+              },
+              CREATINE.doses[1]!,
+            ],
+          },
+        ]}
+        initialDate={YESTERDAY}
+        maxDate={TODAY}
+        defaultTime="08:00"
+        onDone={vi.fn()}
+      />
+    );
+
+    const picker = screen.getByRole("combobox", {
+      name: "Scheduled dose",
+    }) as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.textContent)).toEqual([
+      "500 mg · Morning",
+      "5 g · Evening",
+    ]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Date and time taken" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "August 28, 2026" }));
+    expect([...picker.options].map((option) => option.textContent)).toEqual([
+      "1000 mg · Evening",
+      "5 g · Evening",
+    ]);
+  });
 });
 
 const DUE_DOSE = {
@@ -270,9 +414,10 @@ const DUE_DOSE = {
   stack: null,
   bucket: "Morning" as const,
   timeOfDay: "Morning",
+  amountAssumed: false,
 };
 
-function ledgerGroups(): LedgerGroup[] {
+function ledgerGroups(dueDose = DUE_DOSE): LedgerGroup[] {
   return [
     {
       bucket: "Morning",
@@ -283,7 +428,7 @@ function ledgerGroups(): LedgerGroup[] {
           kind: "due",
           id: "due:Morning",
           bucket: "Morning",
-          doses: [DUE_DOSE],
+          doses: [dueDose],
         },
         {
           kind: "dose",
@@ -309,11 +454,11 @@ function ledgerGroups(): LedgerGroup[] {
 // The bucket's due row is a disclosure; its dose rows — the ones that carry a control
 // — only exist once it is open, so a fixture that never expands it can never reach the
 // state these assertions are about.
-function renderLedger(date: string) {
+function renderLedger(date: string, dueDose = DUE_DOSE) {
   const view = render(
     <DayLedger
       date={date}
-      groups={ledgerGroups()}
+      groups={ledgerGroups(dueDose)}
       doseWritable
       prefs={{ timeFormat: "24h", dateFormat: "iso" }}
       keepApart={[]}
@@ -329,6 +474,22 @@ function renderLedger(date: string) {
 }
 
 describe("one dose row control, any writable day (#4424 ruling 3)", () => {
+  it("states when a past-day amount uses the oldest known value", () => {
+    renderLedger(YESTERDAY, {
+      ...DUE_DOSE,
+      detail: "500 mg",
+      amountAssumed: true,
+    });
+
+    const due = screen.getByTestId(`ledger-due-dose-${DUE_DOSE.doseId}`);
+    expect(within(due).getByText("500 mg")).toBeTruthy();
+    expect(
+      within(due).getByText(
+        "No amount was saved for this date. Using the oldest known amount."
+      )
+    ).toBeTruthy();
+  });
+
   // THE LEDGER PICKED A CONTROL PER ROW ON `isToday`. Both days render the same one
   // now, so the assertion is a COMPARISON between two real renders rather than a count
   // against a constant: whatever the tri-state offers today, a day inside the window
@@ -409,7 +570,13 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
               {
                 bucket: "Morning",
                 doses: [
-                  { doseId: 41, name: "Creatine", detail: "5 g", stack: null },
+                  {
+                    doseId: 41,
+                    name: "Creatine",
+                    detail: "5 g",
+                    stack: null,
+                    amountAssumed: false,
+                  },
                 ],
               },
             ],
@@ -758,6 +925,17 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
     );
   });
 
+  it("refuses an adolescent's chart lookup while keeping the prescribed dose", () => {
+    row({ ...CHILD, ageMonths: 192, weightKg: 60 }, { doseAmount: "600 mg" });
+    expect(screen.getByTestId("prn-band-refusal").textContent).toContain(
+      "under 12 years"
+    );
+    expect(screen.queryByTestId("prn-band-basis")).toBeNull();
+    expect(screen.getByTestId("prn-log-now").getAttribute("aria-label")).toBe(
+      "Take Ibuprofen · 600 mg"
+    );
+  });
+
   // THE POSITIVE CONTROL for the criterion that matters most. Same row, same stored
   // dose, four subjects that must all be the row that shipped — no band line, no
   // refusal, the item's own figure. The mL case is the third falsified example: a
@@ -987,14 +1165,6 @@ describe("the dose-history panel collects its subject's wall clock (#4693)", () 
       dispatchEvent: () => false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })) as any;
-    vi.stubGlobal(
-      "ResizeObserver",
-      class ResizeObserver {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      }
-    );
   });
   afterEach(() => vi.useRealTimers());
 

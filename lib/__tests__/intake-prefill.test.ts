@@ -173,19 +173,23 @@ describe("resolveIntakePrefill — the medication vocabulary", () => {
     expect(pf.writes.minIntervalHours).toBe(6);
   });
 
-  it("a child band refusal (no weight) prefills no dose, never the adult figure", () => {
-    const pf = medication(blank, {
-      ageMonths: 24,
-      weightKg: null,
-      weightDate: null,
-      weightUnit: "lb",
-      today: "2026-07-16",
-    });
-    expect(pf.writes.doseAmount).toBeUndefined();
-    expect(pf.ledger.suggested.has("doseAmount")).toBe(false);
-    // Interval/max (age-independent label facts) still prefill.
-    expect(pf.writes.minIntervalHours).toBe(6);
-  });
+  it.each([
+    { ageMonths: 24, weightKg: null, weightDate: null },
+    { ageMonths: 192, weightKg: 60, weightDate: "2026-07-16" },
+  ])(
+    "a child band refusal prefills no dose at $ageMonths months",
+    (context) => {
+      const pf = medication(blank, {
+        ...context,
+        weightUnit: "lb",
+        today: "2026-07-16",
+      });
+      expect(pf.writes.doseAmount).toBeUndefined();
+      expect(pf.ledger.suggested.has("doseAmount")).toBe(false);
+      // Interval/max (age-independent label facts) still prefill.
+      expect(pf.writes.minIntervalHours).toBe(6);
+    }
+  );
 });
 
 describe("resolveIntakePrefill — the supplement catalog vocabulary", () => {

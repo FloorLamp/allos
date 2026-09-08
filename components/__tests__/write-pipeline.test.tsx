@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import {
@@ -7,10 +13,14 @@ import {
   type WriteResult,
   type WriteSpec,
 } from "@/components/useWritePipeline";
+import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
 import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 import { dateStrInTz } from "@/lib/date";
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
+import ProteinQuickAdd from "@/app/(app)/nutrition/ProteinQuickAdd";
+import MobilityLogBar from "@/app/(app)/training/MobilityLogBar";
+import { MOBILITY_MOVES } from "@/lib/mobility-moves";
 
 // THE FOUR CLASSES THE PIPELINE MAKES UNREPRESENTABLE (#3276's 2026-08-31 amendment).
 // Each was measured live on main, one surface at a time, because the step is
@@ -20,7 +30,23 @@ import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 // The runtime half is below; the compile-time half is `useTypeCheckedGuards`, which is
 // checked by `npm run typecheck` and asserts nothing at runtime by design.
 
-const mocks = vi.hoisted(() => ({ toast: vi.fn(), enqueue: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  toast: vi.fn(),
+  enqueue: vi.fn(),
+  proteinAdd: vi.fn(),
+  proteinRemove: vi.fn(),
+  mobilityAdd: vi.fn(),
+  mobilityRemove: vi.fn(),
+}));
+vi.mock("@/app/(app)/nutrition/actions", () => ({
+  addProteinGrams: mocks.proteinAdd,
+  undoProteinGrams: mocks.proteinRemove,
+}));
+vi.mock("@/app/(app)/training/mobility-actions", () => ({
+  logMobilityMove: mocks.mobilityAdd,
+  unlogMobilityMove: mocks.mobilityRemove,
+  setMobilityDuration: vi.fn(),
+}));
 
 vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
@@ -516,6 +542,169 @@ describe("the optimistic value a quick-log tap moves (#3728)", () => {
     expect(shown()).toBe(1);
   });
 });
+
+describe("ledger rollback values", () => {
+  it.each(["adopt", "keep", "rollback"] as const)(
+    "uses the baseline after a sibling %s and isolates another value",
+    async (kind) => {
+      const { result } = renderHook(() =>
+        useOptimisticLedger<number>("symptom-severity")
+      );
+      const values: Record<string, number> = { headache: 0, cough: 7 };
+      const refused = gate();
+      const dropped = gate();
+      const tap = (
+        key: string,
+        valueKey: string,
+        to: number,
+        write: () => Promise<boolean>
+      ) =>
+        result.current.tap({
+          key,
+          valueKey,
+          from: values[valueKey],
+          optimistic: to,
+          commit: (value) => {
+            values[valueKey] = value;
+          },
+          write,
+          settle: (ok) =>
+            ok
+              ? kind === "adopt"
+                ? { kind, value: to }
+                : { kind }
+              : { kind: "rollback" },
+        });
+      let first!: Promise<unknown>;
+      let other!: Promise<unknown>;
+      await act(async () => {
+        first = tap("headache:raise", "headache", 1, async () => {
+          await refused.promise;
+          return false;
+        });
+        other = tap("cough:raise", "cough", 8, async () => {
+          await dropped.promise;
+          throw new Error("connection lost");
+        });
+        await tap("headache:correct", "headache", 2, async () => true);
+      });
+      const expected = kind === "rollback" ? 0 : 2;
+      expect(values.headache).toBe(expected);
+      await act(async () => {
+        refused.open();
+        await first;
+        dropped.open();
+        await other;
+      });
+      expect(values).toEqual({ headache: expected, cough: 7 });
+
+      // A correction outside the ledger becomes the baseline once this value is idle.
+      values.headache = 9;
+      await act(async () => {
+        await tap("headache:retry", "headache", 10, async () => false);
+      });
+      expect(values.headache).toBe(9);
+    }
+  );
+});
+
+describe.each(["protein", "mobility"] as const)(
+  "%s pipeline adoption",
+  (kind) => {
+    const day = "2026-09-01";
+    const moves = MOBILITY_MOVES.slice(0, 2);
+    const addId =
+      kind === "protein"
+        ? "protein-quickadd-add"
+        : `mobility-move-${moves[0].slug}`;
+    const removeId = kind === "protein" ? "protein-quickadd-undo" : addId;
+    const totalId =
+      kind === "protein" ? "protein-quickadd-grams" : "mobility-move-total";
+    const add = kind === "protein" ? mocks.proteinAdd : mocks.mobilityAdd;
+    const remove =
+      kind === "protein" ? mocks.proteinRemove : mocks.mobilityRemove;
+    const amount = kind === "protein" ? "75" : "2 moves today";
+    const queued = kind === "protein" ? "25" : "1 move today";
+    const fields =
+      kind === "protein" ? { grams: "25" } : { move: moves[0].slug };
+    const payload =
+      kind === "protein"
+        ? { entry: "protein", groupKey: null, mealSlot: null, grams: 25 }
+        : { move: moves[0].slug };
+
+    function mount() {
+      render(
+        <LoggedViaSurface value="quick-log">
+          {kind === "protein" ? (
+            <ProteinQuickAdd today={day} initialGrams={0} lastPreset={25} />
+          ) : (
+            <MobilityLogBar
+              today={day}
+              initialMoves={[]}
+              initialDurationMin={null}
+              moves={moves}
+            />
+          )}
+        </LoggedViaSurface>
+      );
+    }
+    beforeEach(() => {
+      vi.clearAllMocks();
+      add.mockReset();
+      remove.mockReset();
+      mocks.enqueue.mockResolvedValue("kept");
+    });
+
+    it("posts the domain payload, adopts the server value, and rolls back a refused removal", async () => {
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+      add.mockResolvedValue(
+        kind === "protein"
+          ? { ok: true, grams: 75 }
+          : { ok: true, session: { moves: moves.map((move) => move.slug) } }
+      );
+      remove.mockResolvedValue({ ok: false, error: "Removal refused" });
+      mount();
+      await act(async () => screen.getByTestId(addId).click());
+      expect(
+        Object.fromEntries((add.mock.calls[0][0] as FormData).entries())
+      ).toMatchObject({
+        ...fields,
+        date: day,
+        [LOGGED_VIA_FIELD]: "quick-log",
+      });
+      expect(screen.getByTestId(totalId).textContent).toBe(amount);
+      await act(async () => screen.getByTestId(removeId).click());
+      expect(mocks.toast).toHaveBeenCalledWith("Removal refused", {
+        tone: "error",
+      });
+      expect(screen.getByTestId(totalId).textContent).toBe(amount);
+    });
+
+    it.each([false, true])(
+      "keeps a disconnected capture and refuses its inverse (navigator online: %s)",
+      async (online) => {
+        vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(online);
+        add.mockRejectedValue(new TypeError("Failed to fetch"));
+        remove.mockRejectedValue(new TypeError("Failed to fetch"));
+        mount();
+        await act(async () => screen.getByTestId(addId).click());
+        expect(mocks.enqueue).toHaveBeenCalledWith(
+          kind === "protein" ? "food" : "mobility",
+          day,
+          payload
+        );
+        expect(screen.getByTestId(totalId).textContent).toBe(queued);
+        await act(async () => screen.getByTestId(removeId).click());
+        expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId(totalId).textContent).toBe(queued);
+        expect(mocks.toast).toHaveBeenLastCalledWith(
+          expect.stringContaining("needs a connection"),
+          { tone: "error" }
+        );
+      }
+    );
+  }
+);
 
 // ── THE COMPILE-TIME HALF ────────────────────────────────────────────────────
 //

@@ -152,7 +152,7 @@ export function logUsualFoodCore(
       // whole breakfast down with it. `logUsualRoutineCore` writes the grams through
       // `addProteinGramsCore`, the one protein write path (#221), as a sibling of this
       // transaction exactly as the dose half is.
-      const toLog = named.filter(
+      const toLog = [...new Set(named)].filter(
         (groupKey) => offered.has(groupKey) && !isProteinNudgeKey(groupKey)
       );
       // A plain RETURN is correct here and only here: nothing has been written yet, so

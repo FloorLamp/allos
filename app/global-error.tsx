@@ -1,5 +1,7 @@
 "use client";
 
+import { MEDIA_QUERIES } from "@/lib/media-queries";
+
 import { useEffect, useState } from "react";
 import { errorCardPalette, isDarkTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 import {
@@ -216,12 +218,12 @@ function detectDark(): boolean {
   try {
     return isDarkTheme({
       stored: localStorage.getItem(THEME_STORAGE_KEY),
-      prefersDark: window.matchMedia("(prefers-color-scheme: dark)").matches,
+      prefersDark: window.matchMedia(MEDIA_QUERIES.dark).matches,
     });
   } catch {
     // Storage denied — the media query alone is still a better guess than "light".
     try {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
+      return window.matchMedia(MEDIA_QUERIES.dark).matches;
     } catch {
       return false;
     }

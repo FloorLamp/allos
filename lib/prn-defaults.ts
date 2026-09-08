@@ -11,6 +11,23 @@ import { ingredientCuiKey, type MedFamilyItem } from "./medication-family";
 
 type PrnItem = Omit<MedFamilyItem, "id">;
 
+// The item keeps its display name when it links to a shared bottle, but the bottle
+// owns what the product is. Project that split once before label matching so every
+// live and persisted surface asks the matcher about the same product name.
+export function prnLabelIdentityFor(
+  item: PrnItem & {
+    supplyId: number | string | null;
+    supplyName: string | null;
+  }
+): PrnItem {
+  const { supplyId, supplyName, ...identity } = item;
+  const linked = supplyId != null && String(supplyId).trim() !== "";
+  return {
+    ...identity,
+    name: supplyName ?? (linked ? "" : identity.name),
+  };
+}
+
 // Re-export the entry + sub-types from their framework home (lib/datasets/prn-defaults
 // .ts) so the existing consumer import paths (`@/lib/prn-defaults`) are unchanged.
 export type {

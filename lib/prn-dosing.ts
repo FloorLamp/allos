@@ -1,19 +1,5 @@
-// Pure PEDIATRIC label-dosing lookup (issue #798). No DB/network, so it lives in the
-// pure test tier (lib/__tests__/prn-dosing.test.ts). Given a curated ingredient entry
-// (lib/prn-defaults) plus the child's AGE and latest RECORDED weight, reproduce the
-// OTC label's weight-band chart — an informational lookup, NEVER a mg/kg computation.
-//
-// Design discipline (issue #798, kept apart from any dosing calculation):
-//   • WEIGHT BANDS ONLY. bandForWeightLbs picks the label band for the weight; a
-//     weight between two label bands lands conservatively on the LOWER (lower-dose)
-//     band, and a weight below the smallest band is a refusal, never an extrapolation.
-//   • HARD AGE GATES as refusals. Below the ingredient's minAgeMonths the result is
-//     the label's own "ask a doctor" text, not a scaled dose.
-//   • mg is canonical; mL only through a user-PICKED formulation/concentration.
-//   • WEIGHT FRESHNESS. A weight older than an age-scaled threshold prompts to update
-//     it BEFORE any band is suggested (kids grow; a stale band under-doses).
-//   • The band amount is a SUGGESTION to confirm, carrying the label caveat — never
-//     silently applied (that confirm is the liability line).
+// Reproduce a curated pediatric label chart within its age range, using a fresh
+// recorded weight. Refusals never offer a dose; mL requires a selected concentration.
 
 import { prnDefaultsFor } from "./prn-defaults";
 import { parseAmountMg } from "./prn-redose";
@@ -45,11 +31,7 @@ export interface PediatricFormContext {
 // paths from drifting onto different age gates.
 export const PEDIATRIC_MAX_AGE_MONTHS = 216; // 18 years
 
-// THE ONE SPELLING of "is this profile a child for label-dosing purposes" (#4672). It
-// was written out three times — twice in the intake form and once privately here — and
-// three copies of an age gate is three chances for one of them to drift past the
-// label's own boundary. Takes the AGE rather than the context: the caller that has a
-// context reads the months off it, and a primitive cannot be aliased by anything.
+// Profile age tier controls medication surfaces; each chart owns its age range.
 export function isChildProfileAge(
   ageMonths: number | null | undefined
 ): boolean {
@@ -246,6 +228,12 @@ export function pediatricDoseSuggestion(input: {
   if (isPediatricAgeGated(ped, input.ageMonths)) {
     return { kind: "ask-doctor", reason: ped.ageGateText };
   }
+  if (input.ageMonths >= ped.maxAgeMonths) {
+    return {
+      kind: "ask-doctor",
+      reason: `The available package-label chart is for children under ${ped.maxAgeMonths / 12} years, so no dose band is suggested. Check the product label and ask a clinician or pharmacist before use.`,
+    };
+  }
   if (input.weightKg == null || !(input.weightKg > 0)) {
     return { kind: "need-weight" };
   }
@@ -292,35 +280,8 @@ export function pediatricDoseSuggestion(input: {
   };
 }
 
-// The dose amount a formulation implies for a given milligram figure. It lives beside
-// the band lookup because it is the band's ONE spelling as a stored string: the add
-// form writes it into `intake_item_doses.amount`, the dose row offers it, and #4713's
-// administration record stores it — one function, so those three can never disagree.
-//
-// THE VOLUME IS NOT STORED HERE, and that is the whole decision. #3216 asks a
-// formulation switch to re-derive the dose "volume-first with strength equivalence",
-// and a suspension's dose really is a volume — but the volume is already DERIVED at
-// every display boundary by `formatMedicationDoseProduct`, which scales the product's
-// concentration to the selected milligrams and renders "240 mg / 7.5 mL". So the
-// switch re-derives `product`, and the amount stays milligrams.
-//
-// WHAT A VOLUME-LEADING AMOUNT WOULD COST. `parseAmountMg` (#1854) is anchored at a
-// leading number + mass unit, so it reads "240 mg / 7.5 mL" perfectly well — an
-// mg-leading string with the volume appended is NOT the hazard. The hazard is the
-// literal reading of "volume-first": "7.5 mL (240 mg)" and "7.5 mL" both parse to
-// null. And `prnDayExposure` treats an unreadable amount as a reason to abandon the
-// milligram basis — `PrnExposureBasis` flips from "mg" to "count", so a confirmed
-// mg/day ceiling silently stops being a mg/day ceiling and becomes a dose count.
-// That would land on a child's liquid medicine, which is the single case where the
-// milligram ceiling matters most (200 mg and 800 mg of the same ingredient are the
-// same "dose" and four times the exposure). Nothing surfaces the downgrade.
-//
-// Storing BOTH would also put one datum in two columns, free to drift the moment
-// someone edits one, and make `formatMedicationDoseProduct` render the concentration
-// twice ("240 mg / 7.5 mL · 160 mg / 5 mL").
-//
-// The band PICKER still shows the volume beside each band — there it is a label the
-// person reads before measuring, not a value the row stores.
+// Store milligrams so exposure accounting retains its mg/day basis. Presentation
+// derives volume from the selected product's concentration; do not store it twice.
 export function formulationDoseAmount(mg: number): string {
   return `${mg} mg`;
 }

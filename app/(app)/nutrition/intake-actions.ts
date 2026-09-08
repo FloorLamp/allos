@@ -5,6 +5,7 @@ import {
   requireSession,
 } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
+import { requirePoolWriteAccess } from "../supplies/access";
 import {
   LOGGED_VIA_FIELD,
   parseWebOrigin,
@@ -611,6 +612,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     const scope = await requireScope();
     if (!isLinkableSupply(scope.ids, postedSupplyId))
       return formError("Couldn't find that shared bottle.");
+    await requirePoolWriteAccess(postedSupplyId);
     supplyId = postedSupplyId;
   }
   if (f.startDateError) return formError(f.startDateError);
@@ -926,7 +928,7 @@ export async function updateIntakeItem(
       (
         db
           .prepare(
-            `SELECT d.id, d.created_at, d.time_of_day, d.weekdays,
+            `SELECT d.id, d.created_at, d.amount, d.time_of_day, d.weekdays,
                     d.start_date, d.end_date
                FROM intake_item_doses d
                JOIN intake_items s ON s.id = d.item_id
@@ -967,11 +969,10 @@ export async function updateIntakeItem(
           id
         );
         keptIds.push(d.id);
-        // Effective-date the change (#1973). A dueness-relevant edit APPENDS a version
-        // effective today; every earlier day keeps resolving to the rule that was in
-        // force then, so the history is neither rewritten nor thrown away. A cosmetic
-        // edit (amount, food timing, sort) cannot reach `doseScheduleDiffers` and
-        // therefore cannot move an adherence boundary at all.
+        // Effective-date schedule and amount changes. Every earlier day keeps resolving
+        // to the facts that applied then. Food timing and sort remain cosmetic, and the
+        // separate updated_at rule above keeps amount-only edits from moving the slot's
+        // adherence boundary.
         const prior = priorSchedules.get(d.id);
         if (prior && doseScheduleDiffers(prior, d)) {
           const priorVersions = historyByDose.get(d.id);
@@ -985,7 +986,7 @@ export async function updateIntakeItem(
               owned.created_at ??
               "1970-01-01"
             ).slice(0, 10);
-            recordScheduleVersion(d.id, born, prior);
+            recordScheduleVersion(d.id, born, prior, false);
           }
           recordScheduleVersion(d.id, todayStr, d);
         }
@@ -1166,16 +1167,15 @@ export async function setDoseStatus(
       // instant: the day is this action's (`date`), so anchoring the two here is what
       // makes them one claim — a client that sent a resolved instant could contradict
       // the row it lands on. Only a `taken` states an administration; a skip and a
-      // clear assert none. A malformed or non-existent local time resolves to null and
-      // the row keeps the tap instant, which is the same fallback a refused capture
-      // takes.
+      // clear assert none. An unstated or invalid time keeps the tap instant today,
+      // while a past-day row keeps its instant unknown, matching resolveDayDoses.
       takenAt:
         target === "taken"
           ? (statedInstantOnDate(
               date,
               String(formData.get("at") ?? ""),
               getTimezone(profileId)
-            ) ?? undefined)
+            ) ?? (date === localToday ? undefined : null))
           : undefined,
     }
   );

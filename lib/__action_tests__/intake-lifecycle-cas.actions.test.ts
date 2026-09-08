@@ -29,6 +29,7 @@ import {
   unretireDose,
 } from "@/lib/queries";
 import { doseOnDay } from "@/lib/intake-cadence";
+import { invalidateDoseScheduleVersions } from "@/lib/queries/intake/schedule";
 import { shiftDateStr } from "@/lib/date";
 import { seedActor, fd } from "./harness";
 
@@ -150,6 +151,12 @@ describe("dose retire → restore lifecycle (#2131)", () => {
     );
     const suppId = getIntakeItems(profile.id)[0].id;
     const [morning, evening] = getIntakeDoses(profile.id);
+    db.prepare(
+      `UPDATE intake_dose_schedule_versions
+          SET amount_captured = 0
+        WHERE dose_id = ?`
+    ).run(morning.id);
+    invalidateDoseScheduleVersions(profile.id);
     // Log the morning dose so removing it retires (rather than deletes) it.
     await toggleTaken(fd({ dose_id: morning.id }));
     await updateIntakeItem(
@@ -184,6 +191,15 @@ describe("dose retire → restore lifecycle (#2131)", () => {
     )!;
     expect(doseOnDay(retiredView, todayStr)).toBe(false);
     expect(doseOnDay(retiredView, shiftDateStr(todayStr, -1))).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT amount, amount_captured
+             FROM intake_dose_schedule_versions
+            WHERE dose_id = ? ORDER BY effective_from, id`
+        )
+        .all(morning.id)
+    ).toEqual([{ amount: "500 mg", amount_captured: 0 }]);
 
     const res = await restoreDose(fd({ dose_id: morning.id }));
     expect(res.ok).toBe(true);
@@ -199,6 +215,15 @@ describe("dose retire → restore lifecycle (#2131)", () => {
       (d) => d.id === morning.id
     )!;
     expect(doseOnDay(restoredView, todayStr)).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT amount, amount_captured
+             FROM intake_dose_schedule_versions
+            WHERE dose_id = ? ORDER BY effective_from, id`
+        )
+        .all(morning.id)
+    ).toEqual([{ amount: "500 mg", amount_captured: 0 }]);
     // The taken history was never rewritten by either transition.
     expect(
       (

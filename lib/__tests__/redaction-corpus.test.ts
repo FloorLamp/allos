@@ -4,34 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { redactSecrets, VENDOR_SECRET_PREFIXES } from "../error-log-format";
 
-// THE OVER-REDACTION CORPUS (#2965, required by the #3000 review).
-//
-// The vendor-prefix list in `error-log-format.ts` is a DENYLIST, which is the
-// design #2955 deliberately replaced. It was granted as an exception on one
-// stated exception — now a four-condition rule, whose second condition requires
-// a long body with a digit so an all-letter prose continuation is not a match.
-// Until now that condition was a COMMENT. Nothing executed it, so the sole
-// guardrail the exception rests on could not fail.
-//
-// This executes it, against the app's own vocabulary rather than against a
-// hand-picked handful: every string leaf and key from the 30 dataset JSONs,
-// the canonical result definitions and the exercise guides, plus every
-// identifier-shaped token in `lib/` and `scripts/`. ~67k distinct strings in
-// ~2s, and the assertion is that redaction is the IDENTITY on all of them but a
-// listed few.
-//
-// WHY IDENTITY RATHER THAN A LIVE DIFF AGAINST `origin/main`. The review that
-// required this ran the corpus through both trees and compared. A repo test
-// cannot: `main` moves, and re-importing another checkout's module from a test
-// is slow and fragile. Identity is the stronger and more durable form — it
-// catches over-redaction whoever introduced it — which is why the pre-existing
-// difference below has to be written down instead of silently subtracted.
-//
-// TEST FILES ARE NOT VOCABULARY and are excluded from the token scan. They
-// deliberately contain prefix- and credential-shaped strings, because they are
-// this rule's own POSITIVE fixtures; feeding those back in as "benign app
-// vocabulary" would make this corpus assert that the redaction rule does not
-// work.
+// Exercise redaction against dataset vocabulary and production identifier tokens.
+// Ordinary words must survive; credential-shaped URL values are intentionally masked.
+// Test fixtures are excluded because they deliberately contain credentials.
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -155,9 +130,12 @@ describe("redactSecrets over the app's own vocabulary (#2965 guardrail)", () => 
     expect(corpus).toContain("profile_id"); // an identifier token from lib/
   });
 
-  it("leaves every string in it byte-identical, but the recorded few", () => {
+  it("leaves non-URL vocabulary byte-identical, but the recorded few", () => {
     const mutated: string[] = [];
     for (const s of corpus) {
+      // URL identifiers are intentionally masked even in public citations. Their
+      // boundaries belong to error-log-format.test.ts; keep them below for idempotence.
+      if (/^https?:\/\//i.test(s)) continue;
       if (redactSecrets(s) !== s) mutated.push(s);
     }
     // EXACT, in both directions. An unrecorded mutation is over-redaction in a

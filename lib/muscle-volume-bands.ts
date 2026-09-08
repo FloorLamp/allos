@@ -55,6 +55,7 @@ import {
   type MuscleRegion,
 } from "./lifts";
 import { startOfWeekStr } from "./date";
+import type { WeekStart } from "./settings";
 import { SECONDARY_CREDIT } from "./muscle-coverage";
 
 // Re-export so a reader of the bands has the counting convention (and its sourced
@@ -200,14 +201,10 @@ export const BAND_HISTORY_WINDOW_DAYS = 56;
 // least that shows a repeated pattern rather than a single lopsided week.
 export const MIN_BAND_HISTORY_WEEKS = 2;
 
-/**
- * Count the distinct (week-start-keyed) weeks that contain at least one of the given
- * strength-session dates — the cold-start history signal. `weekStart` follows the
- * profile's week convention but the count is robust to the choice.
- */
+/** Count distinct training weeks using the profile's week convention. */
 export function countDistinctWeeks(
   dates: readonly string[],
-  weekStart = 0
+  weekStart: WeekStart
 ): number {
   const weeks = new Set<string>();
   for (const d of dates) weeks.add(startOfWeekStr(d, weekStart));

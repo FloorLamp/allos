@@ -18,7 +18,7 @@ import AddTrainingActivityButton from "@/app/(app)/training/AddTrainingActivityB
 import ProtocolFormModal from "@/app/(app)/protocols/ProtocolFormModal";
 import { GoalCreateControl } from "@/app/(app)/training/GoalsManager";
 import { RoutineCreateControl } from "@/app/(app)/training/RoutinesManager";
-import { EquipmentCreateControl } from "@/components/EquipmentManager";
+import { CatalogCreateControl } from "@/components/CatalogEditor";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 
 const UnopenedForm = vi.hoisted(() => () => null);
@@ -278,7 +278,7 @@ describe("CreateAction", () => {
         },
         {
           kind: "equipment",
-          control: <EquipmentCreateControl onActivate={vi.fn()} />,
+          control: <CatalogCreateControl onActivate={vi.fn()} />,
         },
         {
           kind: "supplement",

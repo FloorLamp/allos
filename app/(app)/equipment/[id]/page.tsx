@@ -23,17 +23,15 @@ import { dateFromCreatedAt } from "@/lib/timeline-format";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import EquipmentTrend from "@/components/EquipmentTrend";
+import { CATALOGS } from "@/components/catalog";
+import CatalogEditor from "@/components/CatalogEditor";
+import CatalogLifecycleControl from "@/components/CatalogLifecycleControl";
 import EquipmentDetailActions from "@/components/EquipmentDetailActions";
 import BackLink from "@/components/BackLink";
 import { StatBox } from "@/components/StatBox";
 
 export const dynamic = "force-dynamic";
 
-// Equipment detail (issue #343): a single piece of gear's identity + the usage
-// payoff (sessions, last used, Σ volume lifted, Σ distance for shoes/bikes) with a
-// small trend chart, plus the retire/delete lifecycle. Scoped by (profile, id) so
-// a guessed id from another profile 404s. The usage comes from the SAME
-// profile-scoped read the index badges use (one computation, two formatters).
 export default async function EquipmentDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
@@ -43,6 +41,7 @@ export default async function EquipmentDetailPage(props: {
   const equipment = id ? getEquipmentById(profile.id, id) : undefined;
   if (!equipment) notFound();
 
+  const catalog = CATALOGS.equipment;
   const kind = kindOf(equipment.category);
   const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   if (
@@ -61,8 +60,6 @@ export default async function EquipmentDetailPage(props: {
   const totalVolumeKg = usage?.totalVolumeKg ?? 0;
   const totalDistanceKm = usage?.totalDistanceKm ?? 0;
 
-  // A cardio implement (bike/shoes) shows distance; everything else shows lifted
-  // volume as its primary "how much" stat.
   const showsDistance = kind === "cardio" && totalDistanceKm > 0;
   const trendPoints = showsDistance
     ? sessions.map((s) => kmTo(s.distanceKm, units.distanceUnit))
@@ -126,11 +123,6 @@ export default async function EquipmentDetailPage(props: {
         />
         <StatBox
           label="Added"
-          // WHICH day, then how it reads (#3573). `equipment.created_at` is an
-          // instant; this printed its first ten characters, which is the UTC day.
-          // A bike added at 17:00 in UTC−08:00 read as Added tomorrow. The fallback
-          // is `null`, which formatRecordDate renders as "—": a stamp that will not
-          // parse has no day, and "—" is what this tile already says for absent.
           value={formatRecordDate(
             dateFromCreatedAt(equipment.created_at, getTimezone(profile.id)),
             "—",
@@ -211,11 +203,26 @@ export default async function EquipmentDetailPage(props: {
       ) : null}
 
       <div className="mt-6 border-t border-black/5 pt-4 dark:border-white/10">
-        <EquipmentDetailActions
-          id={equipment.id}
-          name={equipment.name}
-          retired={!!equipment.retired}
-        />
+        <EquipmentDetailActions id={equipment.id} name={equipment.name}>
+          <CatalogEditor
+            title="Edit equipment"
+            Form={catalog.Form}
+            formProps={{
+              equipment,
+              unit: units.weightUnit,
+              strengthTrainingAvailable: isStrengthTrainingRelevant(
+                getProfileAge(profile.id)
+              ),
+            }}
+          />
+          <CatalogLifecycleControl
+            name={equipment.name}
+            inactive={!!equipment.retired}
+            lifecycle={catalog.lifecycle}
+            action={catalog.setInactive.bind(null, equipment.id)}
+            testId="equipment-detail-retire"
+          />
+        </EquipmentDetailActions>
       </div>
     </PageContainer>
   );

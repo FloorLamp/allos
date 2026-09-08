@@ -62,7 +62,11 @@ import {
 } from "@/lib/medication-info";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
-import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
+import {
+  prnDefaultsFor,
+  prnLabelIdentityFor,
+  redoseLabelDefaults,
+} from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {
   formulationDoseAmount,
@@ -288,23 +292,43 @@ export default function IntakeItemForm({
   // is one pick, not a form plus a disclosure. Create mode only — an existing item
   // links and unlinks through SharedSupplyPicker, whose separate-submit, one-way
   // count-migration design this does not touch.
-  const [bottles, setBottles] = useState<SupplyOption[]>(
+  const [availableBottles, setAvailableBottles] = useState<SupplyOption[]>(
     initialSupply ? [initialSupply] : []
   );
   useEffect(() => {
     let live = true;
     void listSharedSupplyOptions().then((options) => {
-      const offered = bottlesForKindDoor(options, lockedKind);
-      const linkedId = s?.supply_id ?? initialSupply?.id;
-      const linked = options.find((option) => option.id === linkedId);
-      if (linked && !offered.some((option) => option.id === linked.id))
-        offered.unshift(linked);
-      if (live) setBottles(offered);
+      if (live) setAvailableBottles(options);
     });
     return () => {
       live = false;
     };
-  }, [s, initialSupply, lockedKind]);
+  }, []);
+
+  // The link ID is the durable owner. Bottle rows are loaded reference data: filter
+  // what this kind-locked door may offer, but keep the currently linked bottle as a
+  // fact after draft restore even if its siblings would filter it from new choices.
+  const bottles = useMemo(() => {
+    const offered = bottlesForKindDoor(availableBottles, lockedKind);
+    const linked = availableBottles.find(
+      (option) => String(option.id) === state.supplyId
+    );
+    return linked && !offered.some((option) => option.id === linked.id)
+      ? [linked, ...offered]
+      : offered;
+  }, [availableBottles, lockedKind, state.supplyId]);
+  const selectedSupplyName = useMemo(() => {
+    if (!state.supplyId) return null;
+    const loaded = availableBottles.find(
+      (option) => String(option.id) === state.supplyId
+    );
+    if (loaded) return loaded.name;
+    if (String(s?.supply_id ?? "") === state.supplyId)
+      return s?.supply_name ?? null;
+    if (String(initialSupply?.id ?? "") === state.supplyId)
+      return initialSupply?.name ?? null;
+    return null;
+  }, [availableBottles, initialSupply, s, state.supplyId]);
   const rx = useIntakeRxcui(s);
 
   const kind = lockedKind;
@@ -319,9 +343,6 @@ export default function IntakeItemForm({
   // the person set the start date themselves (so an obligation flip stops moving it).
   const [brandNarrowing, setBrandNarrowing] = useState<string[] | null>(null);
   const [startedOnTouched, setStartedOnTouched] = useState(false);
-  const [supplyLabel, setSupplyLabel] = useState<string | null>(
-    s?.supply_name ?? initialSupply?.name ?? null
-  );
   // Selection-prefill bookkeeping (#846, #4665). ONE ledger answers "may I overwrite
   // this field?" for all seven seed paths, and marks everything it lets through: before
   // it there were four mechanisms and the places they disagreed were bugs. The rules
@@ -421,16 +442,29 @@ export default function IntakeItemForm({
   }
 
   // ---- Datasets for the derived kind ----
+  const prnIdentity = useMemo(
+    () =>
+      prnLabelIdentityFor({
+        name: state.name,
+        supplyId: state.supplyId,
+        supplyName: selectedSupplyName,
+        rxcui: rx.rxcui,
+        rxcuiIngredients: rx.rxcuiIngredients,
+      }),
+    [
+      state.name,
+      state.supplyId,
+      selectedSupplyName,
+      rx.rxcui,
+      rx.rxcuiIngredients,
+    ]
+  );
   const prnDefaults = useMemo(
     () =>
-      isMed && state.name.trim()
-        ? prnDefaultsFor({
-            name: state.name,
-            rxcui: rx.rxcui,
-            rxcuiIngredients: rx.rxcuiIngredients,
-          })
+      isMed && ingredientsAreEmpty(state.ingredients)
+        ? prnDefaultsFor(prnIdentity)
         : null,
-    [isMed, state.name, rx.rxcui, rx.rxcuiIngredients]
+    [isMed, prnIdentity, state.ingredients]
   );
   const catalogEntry = CATALOG_BY_NAME.get(state.name.trim().toLowerCase());
   // One call site each for the two suggestion lists #846 found teaching wrong.
@@ -534,7 +568,9 @@ export default function IntakeItemForm({
     const mg =
       pediatricResult?.kind === "dose"
         ? pediatricResult.mg
-        : (prnDefaults?.adult.doseMgLow ?? null);
+        : pediatricResult
+          ? null
+          : (prnDefaults?.adult.doseMgLow ?? null);
     // Everything here follows from the PRODUCT, so it is an offer like any other: the
     // ledger refuses whichever figures the person set themselves, and marks the rest.
     writePrefill(
@@ -556,13 +592,26 @@ export default function IntakeItemForm({
   // supplement catalog entries and the household's bottles; each used to have its own
   // seeding code, and the two that were not `resolveIntakePrefill` wrote values without
   // marking them. Now every arm builds a source and hands it to the one resolver.
-  //
-  // Generation-guarded because the medication arm awaits its own RxNorm confirm: a
-  // second pick during that wait owns the form, and the first must not land on top of it.
-  const pickGeneration = useRef(0);
+
+  // A dose offered for the previous product has no authority over a new identity.
+  // The ledger distinguishes that offer from a saved or caregiver-edited amount.
+  function withdrawDoseSuggestion() {
+    if (!ledgerRef.current.suggested.has("doseAmount")) return;
+    patch((current) => ({
+      doses: current.doses.map((dose, index) =>
+        index === 0 ? { ...dose, amount: "" } : dose
+      ),
+    }));
+    setLedger(withdrawPrefill(ledgerRef.current, "doseAmount"));
+  }
+
+  function changeProductIdentity() {
+    rx.clear();
+    withdrawDoseSuggestion();
+  }
 
   async function onPickName(picked: string, query?: string) {
-    const generation = ++pickGeneration.current;
+    changeProductIdentity();
     setSelectedPediatricBandMinLbs(null);
     setFormulationSlug("");
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
@@ -571,6 +620,8 @@ export default function IntakeItemForm({
     const bottle = bottleForOptionLabel(bottles, picked);
     const bottleSeed = bottle ? itemSeedFromPool(bottle) : null;
     const pickedName = bottleSeed ? bottleSeed.name : picked;
+    const pickedSupplyId = bottle ? String(bottle.id) : state.supplyId;
+    const pickedSupplyName = bottle?.name ?? selectedSupplyName;
     if (bottle) {
       onPickSupply(bottle);
     }
@@ -605,19 +656,25 @@ export default function IntakeItemForm({
     // used to be resolved here from `rx.rxcui` as it stood before the pick — a value the
     // confirm had not produced yet — and resolved again by the `prnDefaults` memo once
     // it landed: two computations of one fact, one of them reading a stale code (#4665).
-    const confirmed = await rx.autoConfirm(generic);
-    if (pickGeneration.current !== generation) return;
-    seedFromPick(
-      withBottle({
-        vocabulary: "medication",
-        info: getMedicationInfo(generic),
-        prn: prnDefaultsFor({
-          name: generic,
-          rxcui: confirmed?.rxcui ?? null,
-          rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
-        }),
-      })
-    );
+    await rx.autoConfirm(generic, (confirmed) => {
+      seedFromPick(
+        withBottle({
+          vocabulary: "medication",
+          info: getMedicationInfo(generic),
+          prn: ingredientsAreEmpty(state.ingredients)
+            ? prnDefaultsFor(
+                prnLabelIdentityFor({
+                  name: generic,
+                  supplyId: pickedSupplyId,
+                  supplyName: pickedSupplyName,
+                  rxcui: confirmed?.rxcui ?? null,
+                  rxcuiIngredients: confirmed?.rxcuiIngredients ?? null,
+                })
+              )
+            : null,
+        })
+      );
+    });
   }
 
   // What a pick writes, once the ledger has said which parts of the offer it may.
@@ -654,6 +711,7 @@ export default function IntakeItemForm({
   // this item's own save. The door's locked kind already scoped which bottles were
   // offered, so a bottle never changes the form's kind.
   function onPickSupply(supply: SupplyOption | null): void {
+    changeProductIdentity();
     const seed = supply ? itemSeedFromPool(supply) : null;
     const previous = seededRef.current;
     // The NAME is product identity rather than a label figure, so it keeps the pool's
@@ -668,15 +726,9 @@ export default function IntakeItemForm({
     }));
     if (seed) {
       writePrefill(offerPrefill({ doseAmount: seed.amount }));
-    } else if (ledgerRef.current.suggested.has("doseAmount")) {
-      // Unlinked: the bottle that stated this strength is gone, so the offer goes with
-      // it. A figure the person typed is theirs and is never withdrawn.
-      patch((current) => ({
-        doses: current.doses.map((d, i) =>
-          i === 0 ? { ...d, amount: "" } : d
-        ),
-      }));
-      setLedger(withdrawPrefill(ledgerRef.current, "doseAmount"));
+    } else {
+      // Unlinked: the bottle that stated this strength is gone.
+      withdrawDoseSuggestion();
     }
     onLinkSupply(supply);
     seededRef.current = seed;
@@ -684,9 +736,12 @@ export default function IntakeItemForm({
 
   function onLinkSupply(supply: SupplyOption | null): void {
     patch({ supplyId: supply ? String(supply.id) : "" });
-    setSupplyLabel(supply?.name ?? null);
-    if (supply && !bottles.some((option) => option.id === supply.id))
-      setBottles([...bottles, supply]);
+    if (supply)
+      setAvailableBottles((current) =>
+        current.some((option) => option.id === supply.id)
+          ? current
+          : [...current, supply]
+      );
   }
 
   function selectPediatricBand(band: PediatricBand) {
@@ -779,7 +834,7 @@ export default function IntakeItemForm({
     brand: state.brand,
     product: state.product,
     stack: state.stack,
-    supplyLabel,
+    supplyLabel: selectedSupplyName,
     quantityOnHand: state.quantityOnHand,
     stopDate: state.endDate,
     ingredientCount: state.ingredients.filter((g) => g.name.trim()).length,
@@ -807,6 +862,18 @@ export default function IntakeItemForm({
     // to be a fan-out of 27 setters, where a field left out was silently dropped on
     // Resume — the person's own answer, gone, with nothing to see.
     onRestore: (d) => {
+      rx.reset(
+        d.state.rxcui
+          ? {
+              rxcui: d.state.rxcui,
+              rxcuiIngredients: d.state.rxcuiIngredients,
+            }
+          : null
+      );
+      // A restored amount is the person's saved draft fact, including a blank they
+      // may have deliberately cleared. The draft does not retain suggestion
+      // provenance, so restore it as touched; a genuinely new form stays empty below.
+      setLedger(touchPrefill(emptyPrefillLedger(), "doseAmount"));
       setState(d.state);
       setRules(d.rules ?? []);
       setFormulationSlug(d.formulationSlug ?? "");
@@ -886,7 +953,6 @@ export default function IntakeItemForm({
     rx.reset();
     setBrandNarrowing(null);
     setStartedOnTouched(false);
-    setSupplyLabel(null);
     setFormulationSlug("");
     setSelectedPediatricBandMinLbs(null);
     setIngredientSeedNote(null);
@@ -949,14 +1015,24 @@ export default function IntakeItemForm({
               setFormulationSlug("");
               setSelectedPediatricBandMinLbs(null);
             }
+            changeProductIdentity();
             patch({ name: v });
-            rx.onNameChange();
           }}
           onPick={onPickName}
           options={nameOptions}
           placeholder={affordances.namePlaceholder}
         />
-        <RxNormAffordance name={state.name} rx={rx} />
+        <RxNormAffordance
+          name={state.name}
+          rx={{
+            ...rx,
+            confirm: (code) => {
+              withdrawDoseSuggestion();
+              return rx.confirm(code);
+            },
+            clear: changeProductIdentity,
+          }}
+        />
         {isChildProfile &&
         state.name.trim() &&
         isMed &&
@@ -965,8 +1041,8 @@ export default function IntakeItemForm({
             data-testid="medication-pediatric-no-chart"
             className="mt-1 text-xs text-slate-500 dark:text-slate-400"
           >
-            No pediatric label weight-band chart is available for this
-            medication.
+            No pediatric dose chart is available for this product. Check the
+            package or ask a pharmacist for the child’s dose.
           </p>
         ) : null}
         {medInfo && (
@@ -1147,15 +1223,8 @@ export default function IntakeItemForm({
                             doseAmount: formulationDoseAmount(nextResult.mg),
                           })
                         );
-                      } else if (nextResult.kind !== "dose" && offered) {
-                        patch((current) => ({
-                          doses: current.doses.map((dose, index) =>
-                            index === 0 ? { ...dose, amount: "" } : dose
-                          ),
-                        }));
-                        setLedger(
-                          withdrawPrefill(ledgerRef.current, "doseAmount")
-                        );
+                      } else if (nextResult.kind !== "dose") {
+                        withdrawDoseSuggestion();
                       }
                     }}
                   />
@@ -1599,7 +1668,7 @@ export default function IntakeItemForm({
             item={s}
             bottles={bottles}
             supplyId={state.supplyId}
-            supplyName={supplyLabel}
+            supplyName={selectedSupplyName}
             onPickSupply={s ? onLinkSupply : onPickSupply}
             quantityOnHand={state.quantityOnHand}
             setQuantityOnHand={(quantityOnHand) => patch({ quantityOnHand })}
@@ -1673,14 +1742,15 @@ export default function IntakeItemForm({
             ) : (
               <IngredientsEditor
                 rows={state.ingredients}
-                setRows={(update) =>
+                setRows={(update) => {
+                  changeProductIdentity();
                   patch((current) => ({
                     ingredients:
                       typeof update === "function"
                         ? update(current.ingredients)
                         : update,
-                  }))
-                }
+                  }));
+                }}
                 seedNote={ingredientSeedNote}
               />
             )}

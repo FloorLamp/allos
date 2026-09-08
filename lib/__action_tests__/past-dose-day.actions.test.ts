@@ -40,7 +40,12 @@ import {
 } from "@/lib/queries";
 import { getIntakeDoses } from "@/lib/queries/intake/schedule";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
-import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
+import {
+  addIntakeItem,
+  resolveDayDoses,
+  setDoseStatus,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 // 10:30 UTC on the 28th is 00:30 on the 29th in Kiritimati (+14) and 23:30 on the 27th
@@ -49,8 +54,16 @@ import { createLogin, createProfile, actAs, fd } from "./harness";
 // window for Midway and outside it for Kiritimati.
 const NOW_ISO = "2026-08-28T10:30:00Z";
 const ZONES = [
-  { tz: "Pacific/Kiritimati", localToday: "2026-08-29" },
-  { tz: "Pacific/Midway", localToday: "2026-08-27" },
+  {
+    tz: "Pacific/Kiritimati",
+    localToday: "2026-08-29",
+    statedPastInstant: "2026-08-27T17:05:00Z",
+  },
+  {
+    tz: "Pacific/Midway",
+    localToday: "2026-08-27",
+    statedPastInstant: "2026-08-26T18:05:00Z",
+  },
 ] as const;
 
 let priorNow: string | undefined;
@@ -186,6 +199,16 @@ function bundlesOn(profileId: number, date: string): (string | null)[] {
   ).map((r) => r.bundle_id);
 }
 
+function occurredAt(doseId: number, date: string): string | null {
+  return (
+    db
+      .prepare(
+        "SELECT occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, date) as { occurred_at: string | null }
+  ).occurred_at;
+}
+
 function resolve(
   date: string,
   status: "taken" | "skipped",
@@ -194,7 +217,80 @@ function resolve(
   return resolveDayDoses(fd({ date, status, dose_ids: doseIds.join(",") }));
 }
 
-describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
+it("records the amount in force on the selected past day", async () => {
+  const previousNow = process.env.ALLOS_TEST_NOW;
+  try {
+    process.env.ALLOS_TEST_NOW = "2026-08-26T12:00:00Z";
+    const login = createLogin();
+    const profile = createProfile("historical-amount", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    await addIntakeItem(
+      fd({
+        name: "Historical amount",
+        doses: JSON.stringify([
+          {
+            amount: "500 mg",
+            time_of_day: "Morning",
+            food_timing: "any",
+            weekdays: [],
+            start_date: "",
+            end_date: "",
+          },
+        ]),
+      })
+    );
+    const itemId = Number(
+      (
+        db.prepare("SELECT MAX(id) AS id FROM intake_items").get() as {
+          id: number;
+        }
+      ).id
+    );
+    const doseId = Number(
+      (
+        db
+          .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+          .get(itemId) as { id: number }
+      ).id
+    );
+
+    process.env.ALLOS_TEST_NOW = "2026-08-28T12:00:00Z";
+    await updateIntakeItem(
+      fd({
+        id: itemId,
+        name: "Historical amount",
+        doses: JSON.stringify([
+          {
+            id: doseId,
+            amount: "1000 mg",
+            time_of_day: "Morning",
+            food_timing: "any",
+            weekdays: [],
+            start_date: "",
+            end_date: "",
+          },
+        ]),
+      })
+    );
+
+    const date = "2026-08-27";
+    expect(await resolve(date, "taken", [doseId])).toMatchObject({ ok: true });
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT amount FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+          )
+          .get(doseId, date) as { amount: string }
+      ).amount
+    ).toBe("500 mg");
+  } finally {
+    process.env.ALLOS_TEST_NOW = previousNow;
+  }
+});
+
+describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
   it("resolves the profile's local today and offers exactly the accepted days", async () => {
     const { profile } = seedProfile(`offer-${tz}`, tz);
     expect(today(profile.id)).toBe(localToday);
@@ -299,6 +395,45 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
       )
       .get(doses.creatine, localToday) as { occurred_at: string | null };
     expect(row.occurred_at).not.toBeNull();
+  });
+
+  it("gives unstated row and bulk taps the same instant semantics", async () => {
+    const { doses } = seedProfile(`instant-pair-${tz}`, tz);
+    const past = shiftDateStr(localToday, -1);
+
+    expect(
+      await setDoseStatus(
+        fd({ dose_id: doses.creatine, date: past, status: "taken" })
+      )
+    ).toMatchObject({ ok: true });
+    expect(await resolve(past, "taken", [doses.collagen])).toMatchObject({
+      ok: true,
+    });
+    expect(occurredAt(doses.creatine, past)).toBeNull();
+    expect(occurredAt(doses.collagen, past)).toBeNull();
+
+    expect(
+      await setDoseStatus(
+        fd({ dose_id: doses.creatine, date: localToday, status: "taken" })
+      )
+    ).toMatchObject({ ok: true });
+    expect(await resolve(localToday, "taken", [doses.collagen])).toMatchObject({
+      ok: true,
+    });
+    expect(occurredAt(doses.creatine, localToday)).toBe(NOW_ISO);
+    expect(occurredAt(doses.collagen, localToday)).toBe(NOW_ISO);
+
+    expect(
+      await setDoseStatus(
+        fd({
+          dose_id: doses.melatonin,
+          date: past,
+          status: "taken",
+          at: "07:05",
+        })
+      )
+    ).toMatchObject({ ok: true });
+    expect(occurredAt(doses.melatonin, past)).toBe(statedPastInstant);
   });
 
   it("refuses a day past the window, and the CORE would refuse it too", async () => {

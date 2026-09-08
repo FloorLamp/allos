@@ -179,7 +179,7 @@ import {
   medicationDuplicationNote,
 } from "./medication-family";
 import type { FoodSuggestion } from "./food-suggest";
-import type { WeightUnit } from "./settings";
+import { getWeekStart, type WeightUnit } from "./settings";
 import {
   detectPushPullImbalance,
   detectStaleExercises,
@@ -1372,7 +1372,10 @@ export function buildMuscleVolumeFindings(
     sets: c.sets,
   }));
   // Cold-start signal: distinct strength-training weeks in the trailing scan.
-  const historyWeeks = countDistinctWeeks(datedExercises.map((d) => d.date));
+  const historyWeeks = countDistinctWeeks(
+    datedExercises.map((d) => d.date),
+    getWeekStart(profileId)
+  );
   return detectVolumeShortfalls(inputs, {
     historyWeeks,
     deloadActive: isRoutineDeloadWeek(profileId, today),

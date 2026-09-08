@@ -90,11 +90,13 @@ describe("bandPresentation — one palette, one entry per verdict", () => {
 describe("countDistinctWeeks — the cold-start history signal", () => {
   it("counts distinct week-start keys, not raw dates", () => {
     // Two dates in the same week + one in another → 2 distinct weeks.
-    expect(countDistinctWeeks(["2026-07-13", "2026-07-15", "2026-07-06"])).toBe(
-      2
-    );
-    expect(countDistinctWeeks([])).toBe(0);
-    expect(countDistinctWeeks(["2026-07-15", "2026-07-15"])).toBe(1);
+    expect(
+      countDistinctWeeks(["2026-07-13", "2026-07-15", "2026-07-06"], 0)
+    ).toBe(2);
+    expect(countDistinctWeeks([], 0)).toBe(0);
+    expect(countDistinctWeeks(["2026-07-15", "2026-07-15"], 0)).toBe(1);
+    expect(countDistinctWeeks(["2026-08-30", "2026-08-31"], 0)).toBe(1);
+    expect(countDistinctWeeks(["2026-08-30", "2026-08-31"], 1)).toBe(2);
   });
 });
 

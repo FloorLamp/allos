@@ -23,8 +23,15 @@ import { db, today, writeTx, type Tx } from "../../db";
 import { casUpdate, readForUpdate } from "../../tx";
 import { sqlNow } from "../../clock";
 import { shiftDateStr } from "../../date";
-import type { DoseSchedule } from "../../intake-cadence";
-import { invalidateDoseScheduleVersions } from "./schedule";
+import {
+  doseScheduleAsOf,
+  type DoseCadence,
+  type DoseSchedule,
+} from "../../intake-cadence";
+import {
+  getDoseScheduleVersions,
+  invalidateDoseScheduleVersions,
+} from "./schedule";
 import type { FoodTiming } from "../../types";
 
 // Record ONE version of a dose's schedule, effective from a profile-local calendar day
@@ -42,9 +49,12 @@ import type { FoodTiming } from "../../types";
 const insertScheduleVersionStmt = () =>
   db.prepare(
     `INSERT INTO intake_dose_schedule_versions
-       (dose_id, effective_from, time_of_day, weekdays, start_date, end_date, created_at)
-     VALUES (?,?,?,?,?,?,?)
+       (dose_id, effective_from, amount, amount_captured, time_of_day,
+        weekdays, start_date, end_date, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?)
      ON CONFLICT(dose_id, effective_from) DO UPDATE SET
+       amount      = excluded.amount,
+       amount_captured = excluded.amount_captured,
        time_of_day = excluded.time_of_day,
        weekdays    = excluded.weekdays,
        start_date  = excluded.start_date,
@@ -55,11 +65,14 @@ const insertScheduleVersionStmt = () =>
 export function recordScheduleVersion(
   doseId: number,
   effectiveFrom: string,
-  schedule: DoseSchedule
+  schedule: DoseSchedule,
+  amountCaptured = true
 ): void {
   insertScheduleVersionStmt().run(
     doseId,
     effectiveFrom,
+    schedule.amount ?? null,
+    amountCaptured ? 1 : 0,
     schedule.time_of_day ?? null,
     schedule.weekdays ?? null,
     schedule.start_date ?? null,
@@ -79,7 +92,7 @@ export function recordScheduleVersion(
 function closedWindow(
   schedule: Pick<
     DoseSchedule,
-    "time_of_day" | "weekdays" | "start_date" | "end_date"
+    "amount" | "time_of_day" | "weekdays" | "start_date" | "end_date"
   >,
   transitionDay: string
 ): DoseSchedule {
@@ -89,6 +102,7 @@ function closedWindow(
       ? schedule.end_date
       : dayBefore;
   return {
+    amount: schedule.amount ?? null,
     time_of_day: schedule.time_of_day ?? null,
     weekdays: schedule.weekdays ?? null,
     start_date: schedule.start_date ?? null,
@@ -98,6 +112,7 @@ function closedWindow(
 
 interface DoseScheduleRow {
   id: number;
+  amount: string | null;
   time_of_day: string | null;
   weekdays: string | null;
   start_date: string | null;
@@ -123,7 +138,7 @@ export function retireRemovedDoses(
   const placeholders = kept.map(() => "?").join(",");
   const toRetire = db
     .prepare(
-      `SELECT d.id, d.time_of_day, d.weekdays, d.start_date, d.end_date
+      `SELECT d.id, d.amount, d.time_of_day, d.weekdays, d.start_date, d.end_date
          FROM intake_item_doses d
          JOIN intake_items s ON s.id = d.item_id
         WHERE d.item_id = ? AND s.profile_id = ? AND d.retired = 0
@@ -132,6 +147,7 @@ export function retireRemovedDoses(
                        WHERE l.dose_id = d.id)`
     )
     .all(itemId, profileId, ...kept) as DoseScheduleRow[];
+  const histories = getDoseScheduleVersions(profileId);
   for (const d of toRetire) {
     casUpdate(
       tx,
@@ -150,7 +166,16 @@ export function retireRemovedDoses(
     // Close the dueness window as of the retire day (#1973 append-only): without this,
     // a later restore would re-judge the retired gap by the pre-retire rule and invent
     // misses retroactively.
-    recordScheduleVersion(d.id, todayStr, closedWindow(d, todayStr));
+    const current = doseScheduleAsOf(
+      { ...d, versions: histories.get(d.id) } satisfies DoseCadence,
+      todayStr
+    );
+    recordScheduleVersion(
+      d.id,
+      todayStr,
+      closedWindow(current, todayStr),
+      !current.amountAssumed
+    );
   }
   const deleted = db
     .prepare(
@@ -237,6 +262,11 @@ export function unretireDose(
     );
     if (res.kind === "stale") return { kind: "not-retired" };
     const todayStr = today(profileId);
+    const history = getDoseScheduleVersions(profileId).get(doseId);
+    const current = doseScheduleAsOf(
+      { ...row, versions: history } satisfies DoseCadence,
+      todayStr
+    );
     // LEGACY gap closure: a dose retired before closing-versions shipped has no version
     // ending its window, so the retired gap would resolve to the pre-retire rule and
     // read as missed. Append-only backfill: close the window from the day after its
@@ -276,18 +306,33 @@ export function unretireDose(
       );
       const from = lastLog?.d ? shiftDateStr(lastLog.d, 1) : null;
       if (from && from < todayStr) {
-        recordScheduleVersion(doseId, from, closedWindow(row, from));
+        const beforeGap = doseScheduleAsOf(
+          { ...row, versions: history } satisfies DoseCadence,
+          from
+        );
+        recordScheduleVersion(
+          doseId,
+          from,
+          closedWindow(beforeGap, from),
+          !beforeGap.amountAssumed
+        );
       }
     }
     // Dueness resumes TODAY: the dose's own live rule, effective from the restore day.
     // (On a same-day retire→restore this upserts over the closing version, so the day
     // is simply due again.)
-    recordScheduleVersion(doseId, todayStr, {
-      time_of_day: row.time_of_day,
-      weekdays: row.weekdays,
-      start_date: row.start_date,
-      end_date: row.end_date,
-    });
+    recordScheduleVersion(
+      doseId,
+      todayStr,
+      {
+        amount: row.amount,
+        time_of_day: row.time_of_day,
+        weekdays: row.weekdays,
+        start_date: row.start_date,
+        end_date: row.end_date,
+      },
+      !current.amountAssumed
+    );
     const { retired: _r, ...dose } = row;
     return { kind: "restored", dose };
   });
