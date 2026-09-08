@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -36,6 +36,9 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
  * escape in new code where you can: it produces the identical byte at runtime and
  * leaves the FILE plain text, so no sweep loses sight of it.
  */
+const PNG_EVIDENCE =
+  "binary PNG evidence for a reviewed before/after comparison";
+
 const DELIBERATE_NULS: Record<string, string> = {
   "lib/__db_tests__/api-portals-route.test.ts":
     "joins a response body's strings on NUL so a disclosure assertion cannot match across two adjacent fields",
@@ -55,6 +58,23 @@ const DELIBERATE_NULS: Record<string, string> = {
     "composite key: issue file and citation path",
   "scripts/phi-scan.ts":
     "a placeholder sentinel, held while a glob's `**` is rewritten, that no glob can itself contain",
+  "screenshots/5521/after/dose-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/dose-390.png": PNG_EVIDENCE,
+  "screenshots/5521/after/measurements-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/measurements-390.png": PNG_EVIDENCE,
+  "screenshots/5521/after/mood-1280-bottom-reach.png": PNG_EVIDENCE,
+  "screenshots/5521/after/mood-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/mood-390.png": PNG_EVIDENCE,
+  "screenshots/5521/after/practice-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/after/practice-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/dose-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/dose-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/measurements-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/measurements-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/mood-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/mood-390.png": PNG_EVIDENCE,
+  "screenshots/5521/before/practice-1280.png": PNG_EVIDENCE,
+  "screenshots/5521/before/practice-390.png": PNG_EVIDENCE,
 };
 
 function trackedFiles(): string[] {
@@ -76,12 +96,10 @@ function nulOffsets(absolutePath: string): number[] {
   return offsets;
 }
 
-function census(files: string[], root = REPO): Map<string, number[]> {
+function census(files: string[]): Map<string, number[]> {
   const found = new Map<string, number[]>();
   for (const relative of files) {
-    if (relative.startsWith("screenshots/") && relative.endsWith(".png"))
-      continue;
-    const offsets = nulOffsets(path.join(root, relative));
+    const offsets = nulOffsets(path.join(REPO, relative));
     if (offsets.length > 0) found.set(relative, offsets);
   }
   return found;
@@ -136,14 +154,5 @@ describe("the census's reach", () => {
     const escaped = write("escaped.ts", 'const sep = "\\u0000";\n');
     expect(nulOffsets(escaped)).toEqual([]);
     expect(readFileSync(escaped, "utf8")).toContain("\\u0000");
-  });
-
-  it("skips PNG evidence under screenshots but still scans text beside it", () => {
-    mkdirSync(path.join(dir, "screenshots"));
-    write("screenshots/evidence.png", `PNG${NUL}`);
-    write("screenshots/notes.txt", `notes${NUL}`);
-    expect([
-      ...census(["screenshots/evidence.png", "screenshots/notes.txt"], dir),
-    ]).toEqual([["screenshots/notes.txt", [5]]]);
   });
 });
