@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { logMood } from "@/app/(app)/mood-actions";
 import Chip from "@/components/Chip";
 import Disclosure from "@/components/Disclosure";
+import { useOptionalDayContext } from "@/components/DayContext";
 import MoodValencePicker from "@/components/MoodValencePicker";
 import IconButton from "@/components/IconButton";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
@@ -100,10 +101,12 @@ export default function MoodForm({
   onCancel?: () => void;
 }) {
   const toast = useToast();
+  const dayContext = useOptionalDayContext();
   const { enqueue } = useOfflineQueue();
   const ledger = useOptimisticLedger<number | null>("mood-valence");
-  const [selected, setSelected] = useState(0);
-  const initial = days[0]?.mood;
+  const day =
+    days.find((entry) => entry.date === dayContext?.parts.day) ?? days[0];
+  const initial = day?.mood;
   const [valence, setValence] = useState<number | null>(
     initial?.valence ?? null
   );
@@ -117,20 +120,6 @@ export default function MoodForm({
   const [error, setError] = useState<string | null>(null);
   const [entryVersion, setEntryVersion] = useState(0);
   const writing = useRef(false);
-
-  const day = days[selected];
-
-  function pickDay(index: number): void {
-    if (index === selected) return;
-    const mood = days[index]?.mood;
-    setSelected(index);
-    setValence(mood?.valence ?? null);
-    setEnergy(mood?.energy ?? null);
-    setAnxiety(mood?.anxiety ?? null);
-    setFactors(mood?.factors ?? []);
-    setNote(mood?.notes ?? "");
-    setError(null);
-  }
 
   function draft(nextValence: number): MoodFormValue {
     return {
@@ -313,26 +302,6 @@ export default function MoodForm({
         data-testid="mood-form-controls"
         disabled={busy}
       >
-        {days.length > 1 ? (
-          // A wrapping strip of box-height chips: `gap-3.5` where the reach exists, so
-          // two extended targets on adjacent lines never own the same point (#4035's
-          // measurement — `gap-3` against 6px per side lands on exactly zero margin).
-          <div className="flex flex-wrap items-center gap-1.5 pointer-coarse:gap-3.5">
-            {days.map((entry, index) => (
-              <Chip
-                key={entry.date}
-                role="filter"
-                pressed={index === selected}
-                testId={`quick-mood-day-${index}`}
-                data={{ "data-date": entry.date }}
-                onClick={() => pickDay(index)}
-              >
-                {entry.label}
-              </Chip>
-            ))}
-          </div>
-        ) : null}
-
         <div className="flex flex-wrap items-center gap-2">
           <MoodValencePicker
             value={valence}

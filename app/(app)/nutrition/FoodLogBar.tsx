@@ -250,6 +250,7 @@ export default function FoodLogBar({
   ledgerDoor,
   dayLedger,
   subjectProfileId,
+  showDayContext = true,
 }: {
   // The acting profile's today (YYYY-MM-DD) and bounded recent meal history.
   today: string;
@@ -324,6 +325,8 @@ export default function FoodLogBar({
   // separate from the acting profile, and a replay of somebody else's serving
   // must never land on the wrong person.
   subjectProfileId?: number;
+  /** The sheet already renders its owning DayContext control above this body. */
+  showDayContext?: boolean;
 }) {
   const {
     activeDate,
@@ -2122,15 +2125,17 @@ export default function FoodLogBar({
 
   return (
     <div>
-      <IntakeContextBar
-        ledgerDoor={ledgerDoor}
-        today={today}
-        days={days}
-        value={activeDate}
-        onChange={setActiveDate}
-        context={{ label: activeSlot, value: activeSlot }}
-        servings={dayTotal}
-      />
+      {showDayContext ? (
+        <IntakeContextBar
+          ledgerDoor={ledgerDoor}
+          today={today}
+          days={days}
+          value={activeDate}
+          onChange={setActiveDate}
+          context={{ label: activeSlot, value: activeSlot }}
+          servings={dayTotal}
+        />
+      ) : null}
       <div data-testid="food-log-bar" className="space-y-5">
         {/* THE DAY, STATED ONCE (#3987). The Meals cards and the LOGGED-TODAY list
             below them were two full renderings of the same servings, adjacent; both

@@ -226,6 +226,7 @@ function barTree({
         observeCurrent: (scope: ProfileToastScope | null) => void;
       }
     | undefined,
+  showDayContext = true,
 } = {}) {
   const offered = days ?? [day];
   return (
@@ -254,6 +255,7 @@ function barTree({
                 slotBoundaries={{ midday: 660, evening: 900 }}
                 dayLedger={ledgerFor(day)}
                 proteinQuickAdd={proteinQuickAdd}
+                showDayContext={showDayContext}
               />
               {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
               {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
@@ -336,6 +338,12 @@ function deferred<T>() {
 }
 
 describe("FoodLogBar projection publication", () => {
+  it("leaves the sheet's shared day control as the only day header", () => {
+    mountBar({ showDayContext: false });
+    expect(screen.queryByTestId("food-log-context")).toBeNull();
+    expect(screen.getByTestId("food-log-bar")).not.toBeNull();
+  });
+
   beforeEach(() => {
     window.matchMedia = mediaQuery;
     vi.stubGlobal(

@@ -363,8 +363,11 @@ export default function QuickEntryProvider({
         );
         return;
       }
+      const hasDayContext = next !== "cycle" && next !== "document";
       const matchingInherited =
-        inheritedDay?.parts.profileId === subjectId ? inheritedDay : null;
+        hasDayContext && inheritedDay?.parts.profileId === subjectId
+          ? inheritedDay
+          : null;
       const requestedDay = matchingInherited?.parts.day ?? selectedDay;
       const requestedParts: DayContextParts | null = matchingInherited
         ? matchingInherited.parts
@@ -420,7 +423,7 @@ export default function QuickEntryProvider({
         (data) => {
           if (stallTimer != null) clearTimeout(stallTimer);
           if (requestRef.current !== token) return;
-          const gatheredToday = quickEntryToday(data);
+          const gatheredToday = hasDayContext ? quickEntryToday(data) : null;
           if (gatheredToday) {
             const parts =
               requestedParts ??
@@ -483,19 +486,22 @@ export default function QuickEntryProvider({
       setSubject(resolvedSubject);
       setPickerOpen(false);
       setOpen(true);
-      const reusableStateDay =
+      const knownStateToday =
         dayContext == null &&
+        next !== "cycle" &&
+        next !== "document" &&
         sheetDay?.kind === "state" &&
         sheetDay.profileId === resolvedSubject
-          ? sheetDay
+          ? { ...sheetDay, initialDay: sheetDay.today }
           : null;
-      if (!dayContext && !reusableStateDay) setSheetDay(null);
+      if (!dayContext || next === "cycle" || next === "document")
+        setSheetDay(knownStateToday);
       loadFor(
         next,
         resolvedSubject,
         token,
-        dayContext,
-        reusableStateDay?.initialDay
+        next === "cycle" || next === "document" ? null : dayContext,
+        knownStateToday?.initialDay
       );
     },
     [actingProfileId, loadFor, sheetDay]
@@ -858,6 +864,7 @@ function QuickEntryBody({
                 : undefined
             }
             subjectProfileId={subjectProfileId}
+            showDayContext={false}
           />
         </FoodProjectionProvider>
       );

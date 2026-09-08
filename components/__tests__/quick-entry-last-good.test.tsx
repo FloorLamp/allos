@@ -46,6 +46,7 @@ function Sheet({ actingProfileId = ACTING.id }: { actingProfileId?: number }) {
   return (
     <>
       <button onClick={() => open("stool")}>open</button>
+      <button onClick={() => open("cycle")}>open cycle</button>
       <button onClick={close}>close</button>
     </>
   );
@@ -219,6 +220,49 @@ describe("the stall bound and Retry (#3416 proposal 3)", () => {
 });
 
 describe("day request identity", () => {
+  it("reopens an undated form on the last server-known today, not the prior selection", async () => {
+    loadQuickEntry
+      .mockResolvedValueOnce(unavailable("today"))
+      .mockResolvedValueOnce(unavailable("past"))
+      .mockResolvedValueOnce(unavailable("today refreshed"));
+    renderSheet();
+    fireEvent.click(screen.getByText("open"));
+    await screen.findByTestId("bounded-day-switcher");
+    fireEvent.click(screen.getByTestId("day-context-1"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("quick-entry-unavailable").textContent
+      ).toContain("past")
+    );
+
+    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByText("open"));
+
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "stool",
+      ACTING.id,
+      MEASUREMENTS.defaultDate,
+      "sheet"
+    );
+    expect(
+      screen.getByTestId("day-context-0").getAttribute("aria-pressed")
+    ).toBe("true");
+  });
+
+  it("does not expose a past-day context for a today-bound lifecycle", async () => {
+    loadQuickEntry.mockResolvedValueOnce(unavailable("cycle unavailable"));
+    renderSheet();
+    fireEvent.click(screen.getByText("open cycle"));
+    await screen.findByTestId("quick-entry-unavailable");
+    expect(screen.queryByTestId("bounded-day-switcher")).toBeNull();
+    expect(loadQuickEntry).toHaveBeenCalledWith(
+      "cycle",
+      ACTING.id,
+      undefined,
+      "sheet"
+    );
+  });
+
   it("retries the selected day after its gather rejects", async () => {
     loadQuickEntry
       .mockResolvedValueOnce(unavailable("today"))
@@ -276,7 +320,6 @@ describe("day request identity", () => {
   it("gathers the reconciled day when midnight expires the cached selection", async () => {
     loadQuickEntry
       .mockResolvedValueOnce(unavailable("initial"))
-      .mockResolvedValueOnce(unavailable("selected"))
       .mockResolvedValueOnce(
         unavailable("old day after midnight", "2026-09-05")
       )
@@ -285,14 +328,6 @@ describe("day request identity", () => {
     fireEvent.click(screen.getByText("open"));
     await screen.findByTestId("bounded-day-switcher");
     fireEvent.click(screen.getByTestId("day-context-2"));
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("quick-entry-unavailable").textContent
-      ).toContain("selected")
-    );
-
-    fireEvent.click(screen.getByText("close"));
-    fireEvent.click(screen.getByText("open"));
 
     await waitFor(() =>
       expect(loadQuickEntry).toHaveBeenLastCalledWith(
