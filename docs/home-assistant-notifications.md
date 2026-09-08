@@ -1,10 +1,7 @@
 # Home Assistant as a notification channel
 
-Status: **shipped** · Issue:
-[#248](https://github.com/FloorLamp/allos/issues/248) · Related:
-[#235](https://github.com/FloorLamp/allos/issues/235) (the HA→Allos appliance
-endpoints this complements; its [spec](home-assistant-spec.md) open question 6
-pointed here)
+Status: **shipped**. The separate
+[HA → Allos appliance endpoints](home-assistant-spec.md) remain unbuilt.
 
 This is the **Allos → Home Assistant** direction: a third dispatch channel
 beside Telegram and Web Push that POSTs each reminder to a Home Assistant
