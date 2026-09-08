@@ -72,7 +72,7 @@
   "data-quality.spec.ts": 1,
   "date-format-coherence.spec.ts": 4,
   "date-time-format-prefs.spec.ts": 8,
-  "day-history-backfill.spec.ts": 10,
+  "day-history-backfill.spec.ts": 8,
   "day-ledger.spec.ts": 41,
   "demo.spec.ts": 7,
   "dental.spec.ts": 4,
