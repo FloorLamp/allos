@@ -168,7 +168,7 @@ describe("emailChannel.send end-to-end (capture)", () => {
     }
     setUnitPrefs(a, { weightUnit: "kg", distanceUnit: "mi", temperatureUnit: "F" });
     const units: string[] = [];
-    await emailChannel.send(p, { title: "Recap", body: "canonical", kind: "recap" }, {
+    await emailChannel.send(p, { title: "Recap", body: "canonical", kind: "weekly-recap" }, {
       bodyForDistanceUnit: (unit) => { units.push(unit); return `distance in ${unit}`; },
     });
     const mails = capturedMails();
@@ -188,7 +188,7 @@ describe("emailChannel.send end-to-end (capture)", () => {
     }
     setUnitPrefs(failed, { weightUnit: "kg", distanceUnit: "mi", temperatureUnit: "F" });
     const outcome = await emailChannel.send(p, {
-      title: "Recap", body: "canonical", kind: "recap",
+      title: "Recap", body: "canonical", kind: "weekly-recap",
     }, { bodyForDistanceUnit: (unit) => {
       if (unit === "mi") throw new Error("synthetic renderer failure");
       return "metric detail";

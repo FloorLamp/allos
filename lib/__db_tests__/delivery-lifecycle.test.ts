@@ -140,7 +140,7 @@ describe("Telegram owners", () => {
     for (const [login, distanceUnit] of [[a, "mi"], [b, "km"], [c, "km"]] as const)
       setUnitPrefs(login, { weightUnit: "kg", distanceUnit, temperatureUnit: "F" });
     stubWire();
-    const msg = { title: "Recap", body: "canonical", kind: "recap" as const };
+    const msg = { title: "Recap", body: "canonical", kind: "weekly-recap" as const };
     const bodyForDistanceUnit = vi.fn((unit: "km" | "mi") => `distance in ${unit}`);
     await telegramChannel.send(p, msg, { bodyForDistanceUnit });
     const wire = vi.mocked(fetch);
@@ -168,7 +168,7 @@ describe("Telegram owners", () => {
     setUnitPrefs(a, { weightUnit: "kg", distanceUnit: "mi", temperatureUnit: "F" });
     const calls = stubWire();
     await expect(telegramChannel.send(p, {
-      title: "Recap", body: "canonical", kind: "recap",
+      title: "Recap", body: "canonical", kind: "weekly-recap",
     }, {
       bodyForDistanceUnit: (unit) => {
         if (unit === "mi") throw new Error("synthetic renderer failure");
@@ -499,7 +499,7 @@ describe("Web Push owners", () => {
     }
     const wire = vi.mocked(webpush.sendNotification);
     wire.mockClear();
-    const msg = { title: "Recap", body: "canonical", kind: "recap" as const };
+    const msg = { title: "Recap", body: "canonical", kind: "weekly-recap" as const };
     await dispatch(p, msg, { bodyForDistanceUnit: (unit) => `distance in ${unit}` });
     expect(Object.fromEntries(wire.mock.calls.map(([sub, payload]) => [sub.endpoint, JSON.parse(String(payload)).body]))).toEqual({
       [`https://push.example/${metric}/ok`]: "distance in km",
