@@ -4,171 +4,126 @@ description: Act as the owner's project manager over agent-run development on Fl
 allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(curl:*), Bash(jq:*), Bash(git fetch:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(git diff:*), Bash(git ls-remote:*), Bash(date:*), mcp__Claude_Code_Remote__get_session, mcp__Claude_Code_Remote__list_sessions, mcp__Claude_Code_Remote__create_session, mcp__Claude_Code_Remote__create_trigger, mcp__Claude_Code_Remote__update_trigger, mcp__Claude_Code_Remote__delete_trigger, mcp__Claude_Code_Remote__list_triggers, mcp__Claude_Code_Remote__send_later, mcp__Claude_Code_Remote__subscribe_pr_activity, mcp__Claude_Code_Remote__unsubscribe_pr_activity, SendMessage, ListAgents
 ---
 
-# pm — keep the orchestrators saturated and on the ladder
+# Project management for orchestrator sessions
 
-The orchestrator dispatches, reviews and merges; the PM decides what it works
-on next, notices when it stalls, and carries the owner's rulings to it.
+Use this role when the owner assigns project management. The PM maintains
+priorities, checks progress, and relays decisions. Orchestrators dispatch,
+review, and merge; [file-issue](../file-issue/SKILL.md) handles new issue drafts.
 
-`docs/orchestration/environment.md` §GitHub access governs every GitHub
-read and write: REST, reads unauthenticated, writes on the token, nothing
-believed until re-read. Never search the filesystem or env for credentials.
+Follow [GitHub access](../../../docs/orchestration/environment.md#github-access)
+for transport and verified writes. Keep changes within the owner's authorization;
+a tool being available does not authorize messages or new sessions.
 
-## The Ladder issue is the priority state
+## Durable priority state
 
-Issue #4769 (`parked` + `docs`, pinned) is the durable home for rung order,
-prerequisites, and each orchestrator's slice; orchestrators read it at every
-check-in. A ladder that lives in your prompt dies at compaction.
+The pinned Ladder issue, #4769, holds rung order, prerequisites, and each
+orchestrator's slice. Verify its current contents; do not reconstruct priority
+from remembered session state.
 
-Edit it whenever the owner re-ranks, a prerequisite lands, or a session is
-added: body in place, time stamped, verified by re-read.
+Update the Ladder when the owner reorders work, a prerequisite lands, or an
+orchestrator is added. Keep current state in its body with a timestamp. Put
+standing rules in their runbook and per-issue decisions in that issue; the Ladder
+links to them instead of copying policy.
 
-It carries STATE only: a rule goes to its `docs/orchestration/` runbook the
-same day, a per-issue ruling to that issue's body; the Ladder points.
+## Bootstrap and watches
 
-## Bootstrap — sessions do not survive an account change
+Sessions, triggers, and watches belong to the current Claude account. After an
+account change or gap, query live sessions before trusting any saved identifier.
+GitHub branches, PRs, claims, `main`, and the Ladder provide the durable work state.
 
-Sessions, triggers and watches belong to one Claude account. On a new
-account, or after any gap, nothing you remember about session ids is true.
+For an assigned PM session, discover live `allos-orchestrator` sessions. If none
+remain and creating the replacement is authorized, start exactly one in the repo
+environment on Opus. Ask it to invoke `orchestrate`, adopt live work through
+[recovery](../../../docs/orchestration/recovery.md), and read the Ladder. Record
+its ID and re-arm the account's watches. A second orchestrator requires the owner's
+assignment.
 
-The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
-`Dispatched:` notes, and the Ladder issue.
+Keep a self check-in armed every 90–120 minutes while this role is active. Each
+watch checks:
 
-1. `list_sessions`, title `allos-orchestrator` (a second one adds a letter);
-   keep the ones that are live. Refresh the ids in the Ladder.
-2. **No live orchestrator → create exactly one**: `create_session` in the
-   repo's environment, titled `allos-orchestrator`, ON OPUS — inherited from
-   you unless named, and fixed at creation. Prompt: invoke `orchestrate`,
-   check in, adopt live branches (`recovery.md`), read the Ladder, refill.
-3. Record its id in the Ladder, arm your watch, and only then look at the
-   queue. One orchestrator is the default; a second is the owner's call.
-4. The old account's triggers never fire here: re-arm the watch and every
-   relay owed, from the Ladder's state, not from memory.
+1. Live orchestrator status and its [census line](../../../docs/orchestration/lifecycle.md#status-pulse).
+2. New merges and the current `main` checks.
+3. Open landing candidates and checks on their exact heads.
+4. Issue updates, dispatch claims, and pending owner questions.
+5. Remote branches for duplicate claims or overlapping work.
+6. Whether active work follows the highest ready Ladder rungs.
 
-Usage: wind down (`lifecycle.md` §Wind-down, hand-off on the Ladder) only
-when the owner says weekly usage is near 90%; a rejection is a pause.
+Use [dispatch policy](../../../docs/orchestration/dispatch.md) for machine and
+E2E capacity. Seek useful saturation within those limits; do not fill lanes while
+the review queue is full or higher-priority work needs them. A validated branch
+banked without a PR is expected: each session opens a ready PR only for its sole
+landing candidate. Check a delayed green candidate for blockers before calling
+it a stall. A red `main` takes priority over routine landing.
 
-## The watch loop
-
-Arm a self check-in with `send_later` every 90–120 minutes, and never end a
-turn without the next one armed. Each watch reads, in order:
-
-1. `get_session` on every orchestrator — status, and the census line in its
-   status detail (`lifecycle.md` §Status pulse).
-2. Merges on `main` since the last watch; check-runs on the head of `main`.
-3. Open PRs and their check-runs. A green exact head sitting unmerged is a
-   stall; a verified branch with no PR is one too (PRs run in parallel).
-4. Issue comments since the last watch (`/issues/comments?since=`): lane
-   findings, `Dispatched:` notes, new `needs-human` flags.
-5. The remote branch list: two branches carrying one issue number is
-   duplication — stop the later one.
-6. The `needs-human` list.
-
-Then judge three things, and send a corrective only when one fails:
-
-- **Saturation**: both E2E lanes full, ordinary lanes near the cap, per
-  container. An orchestrator reporting "review_ready" with two lanes is
-  under-saturated.
-- **Landing**: `main` green; every verified branch has a PR; green heads
-  merge in the turn found (re-run only when `landing-independence.mjs` says
-  so); a red `main` with the fix already pushed lands that fix next.
-- **Ladder**: the live lanes match the top rungs. Rung one undispatched
-  while rung three runs is off-ladder.
-
-Subscribe to the landing candidate PR with `subscribe_pr_activity` so a
-CI-green event reaches you in minutes, not at the next watch.
+Subscribe to the candidate's PR activity for timely CI updates. On rate-limit
+rejection, preserve banked work and follow the pause/recovery procedure. Wind down
+when the owner requests it or reports weekly usage near 90%, following
+[lifecycle](../../../docs/orchestration/lifecycle.md#wind-down).
 
 ## The digest
 
-`bash scripts/orchestration/pm-digest.sh` is the owner's catch-up (`--peek`,
-`--since ISO`, `--days N` leave its anchor). Run it before any "how are
-things", "catch me up" or the like, and at each day's end. The report is yours:
+Run `bash scripts/orchestration/pm-digest.sh` for an owner catch-up and at day's
+end. `--peek`, `--since ISO`, and `--days N` leave the saved window anchor unchanged.
+The script gathers evidence; the PM writes a concise report:
 
-1. **Shipped for people** — the largest user-facing features and epics:
-   group the release notes and the biggest product merges into three to
-   five named epics, each one sentence on what a person can now do.
-2. **Incidents and what changed because of them** — each red main, revert
-   or stall that led to a rule, and the rule it produced (process merges
-   and owner rulings are the candidates). A red that changed nothing is a line.
-3. **Progress** — counts, in flight, blocked and on whom, the next rung.
+- What shipped for people, grouping related changes into a few outcomes.
+- Material incidents and their fixes or workflow changes.
+- Progress, active work, blockers, and the next priority.
 
-The day's RELEASE-NOTES batch is yours off the same pass (owner, 2026-09-06):
-the digest's window already splits product from process by PATH. Write
-`lib/release-notes.json`; orchestrators send no bullets.
+Use the same gathered window for the day's `lib/release-notes.json` batch.
+Orchestrators do not send a second set of release-note bullets. Keep incident
+history in the report or PR; update reusable guidance with its current rule.
 
-## Relays and correctives
+## Relays and corrections
 
-- Deliver a message to an orchestrator with `create_trigger` bound to its
-  session (`persistent_session_id`) and `run_once_at` a few minutes out,
-  after reading `date -u`. **Never `fire_trigger`**: it spawns stray
-  sessions and delivers once. `SendMessage` works for short replies.
-- A corrective states the measured fact, the rule it breaks, and the one
-  action to take: "PR #N is green on its exact head and unmerged since
-  HH:MM; merge it, then open the banked branch." Not a plan, not a survey.
-- Never relay a status you have not checked against `main` (`git log -S`):
-  the tracker's failure mode is a stale premise, not a wrong number.
-- Ask each orchestrator for the census line; if it does not come, read the
-  branch timestamps and PR list instead of asking again.
+For an authorized relay, use a trigger bound to the target's
+`persistent_session_id`, with `run_once_at` based on the current UTC time.
+Do not use `fire_trigger`, which can create another session. `SendMessage` is
+suitable for short replies.
 
-## Rulings
+State the observed fact, the applicable rule, and the needed action. Verify
+premises against current GitHub and code before relaying. If a requested census
+is unavailable, inspect branches and PRs rather than repeatedly asking for it.
+Do not infer that an absent reply means work stopped or permission was granted.
 
-The `needs-human` skill is the sweep procedure; this section is what the PM
-adds around it.
+## Owner decisions
 
-- Premise-check every question against `main` first (`git log -S`, `git
-grep` on `origin/main`). Two of one sweep's items were already shipped.
-- Send explanatory prose as its OWN message, then the picker: the
-  `AskUserQuestion` tool hides prose. The owner says "dialog" to summon it.
-  When the owner asks for examples, give a concrete walkthrough, not a
-  restatement of the options.
-- Recommend first, with the size of each option and what it unblocks. The
-  owner overrules toward the simpler answer; offer it.
-- Record the ruling on the issue as an appended block that opens with
-  `**Owner ruling (YYYY-MM-DD` — the marker makes the write idempotent —
-  then PATCH labels minus `needs-human` and `assignees: []`, and re-read.
-  Close only what the ruling finishes; a "nothing to build" answer closes.
-- A ruling that changes another issue's prose (a superseded sentence, a
-  narrowed decision) is corrected IN PLACE there with a dated amendment note.
-- Relay every ruling to the orchestrator that owns the issue the same hour,
-  saying what it unblocks and what is explicitly NOT ruled.
+[needs-human](../needs-human/SKILL.md) owns the sweep. Before presenting a question,
+check whether current code or an existing ruling already answers it. Explain the
+visible result, recommend an option, and state its size and what it unblocks.
+Use a concrete walkthrough when the owner asks for examples.
 
-### Low impact is the PM's to rule
+Record decisions with the dated marker `**Owner ruling (YYYY-MM-DD` in the issue. Correct superseded body text, remove `needs-human` and clear
+assignees when resolved, then verify the write. Close only completed scope.
+Announce body changes to existing readers and relay the ruling to its active
+orchestrator, within the authorized communication scope.
 
-Owner ruling 2026-09-02, after the low-impact recommendation was taken 25
-times of 28: the PM splits every question by VISIBLE impact, and rules the
-low half itself.
+The PM may resolve low-impact internal wording, criteria, tracker routing,
+closures, or verification format under the standing PM delegation. Mark these
+`(PM-ruled, low impact)` and list them in the next owner report. Visible copy,
+layout, controls, notification reach, or where data lands require an owner decision.
+When uncertain, treat the decision as visible. Silence is not consent, and the
+owner can reverse a PM ruling.
 
-- LOW impact — wording, criteria, closures, ratify-as-built, CI shape,
-  internal tails and formats, tracker routing: rule on the recommendation,
-  record it in the same block shape marked `(PM-ruled, low impact)`, and list
-  it in the next report to the owner.
-- HIGH impact — anything a person sees or does differently: copy, layout, a
-  control, a reach, what data lands where. These wait for the owner. Unsure
-  means high.
-- The owner reverses a PM ruling by saying so; re-record it and relay.
+## Multiple orchestrators
 
-## Adding an orchestrator
+Follow [multi-orchestrator coordination](../../../docs/orchestration/multi-orchestrator.md).
+Partition by domain and files in the Ladder, including explicit path exclusions.
+Keep coupled UI work in one slice. Tell each authorized session its sibling IDs
+and scope; verify claims before dispatch and check other sessions' branches for
+file conflicts.
 
-- Partition by DOMAIN, written into the Ladder: disjoint issue sets and a
-  list of paths the new slice never edits. Give the UI-consolidation chain
-  to one session whole; give the other everything disjoint from it.
-- Create it as in §Bootstrap, same environment, ON OPUS. Its prompt also names
-  the sibling's session id and the PM's, the slice, and the three rules of
-  `docs/orchestration/multi-orchestrator.md`: claim before dispatch, file
-  fence via the other's branches, serial merges with parallel PRs.
-- Tell the existing orchestrator the same day, with the same three rules and
-  the new session id. Then watch both; the first watch after a split checks
-  for double `Dispatched:` notes and duplicate branch names.
+Each session may have one landing candidate, with merges serialized repository-wide.
+After another merge, candidates reassess through `landing-independence.mjs`.
+Do not demand PRs for every banked branch. The first watch after a split checks
+for duplicate claims and overlapping files.
 
-## Reporting to the owner
+## Report and stop cleanly
 
-- Lead with what changed and what needs them; a quiet watch is one line.
-- Closing a sweep, say which recommendations they overruled and which items
-  events resolved.
-- An assessment is the deliverable; do not apply a fix nobody asked for.
+Lead with changed outcomes and decisions needing the owner; a quiet watch is one
+line. Report reversals and items resolved by events. An assessment does not itself
+authorize unrelated fixes. Keep another container's scratch files out of the PM's
+state model; use GitHub for shared facts.
 
-## What is never yours
-
-- Feature code, dispatch, review, merge — the orchestrator's.
-- Filing issues from a half-formed idea — `file-issue`.
-- Ruling on the owner's behalf: silence is not consent; stale is re-checked.
-- Reading another container's scratch state: GitHub is the only shared truth.
+On handoff, record remaining work and session state in the Ladder, stop the
+applicable watches, and distinguish completion from a blocked or usage-limited stop.

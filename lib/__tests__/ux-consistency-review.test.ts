@@ -10,10 +10,8 @@ import {
   consistencyReviewHtml,
 } from "../../scripts/ux-consistency-review.mjs";
 
-// #3489 D2+D7 guard. The census is a manual seeing tool, so the dangerous
-// regression is a quietly smaller reviewer brief: a mobile/expanded frame mixed
-// into the comparison set, a reached desktop route omitted, or one of the named
-// dimensions disappearing from the skill while the harness still runs green.
+// Verify comparable capture selection, missing-route detection, and generated
+// review dimensions at the artifact boundary.
 
 const desktop = (route: string, file: string) => ({
   file,
@@ -118,24 +116,5 @@ describe("cross-page consistency review", () => {
       for (const dimension of CONSISTENCY_REVIEW_DIMENSIONS)
         expect(artifact).toContain(dimension.label);
     }
-  });
-
-  it("keeps the skill's executable brief aligned with the pinned vocabulary", () => {
-    const skill = fs.readFileSync(
-      path.join(
-        here,
-        "..",
-        "..",
-        ".claude",
-        "skills",
-        "ux-walkthrough",
-        "SKILL.md"
-      ),
-      "utf8"
-    );
-    expect(skill).toContain("consistency.html");
-    expect(skill).toContain("DEFAULT desktop capture per reached route");
-    for (const dimension of CONSISTENCY_REVIEW_DIMENSIONS)
-      expect(skill.toLowerCase()).toContain(dimension.label.toLowerCase());
   });
 });

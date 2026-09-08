@@ -1,73 +1,14 @@
-// UX walkthrough harness — a SEEING tool, not a test tier.
+// Capture real app journeys for visual review on a scratch database.
+// Procedure, data shapes, coverage limits, and artifact interpretation:
+// .claude/skills/ux-walkthrough/SKILL.md
 //
-// Drives the real app through the first-run journeys (fresh-install onboarding,
-// invite-another-user) in headless Chromium and saves a screenshot at every step,
-// so a human (or agent) can review the actual experience end-to-end. It asserts
-// nothing and is deliberately not part of any CI tier: journey *assertions* belong
-// in e2e/onboarding.spec.ts and e2e/email-auth.spec.ts under the hygiene rules;
-// this script trades that rigor for a linear, screenshot-per-step narrative
-// against a from-scratch install (which the seeded e2e fixture never shows).
+//   node scripts/ux-walkthrough.mjs --serve onboarding invite
+//   UX_SEED=1 UX_ROUTES=/training node scripts/ux-walkthrough.mjs --serve pages
 //
-// Setup (run against a scratch DB, NEVER a real data/allos.db):
-//
-//   ALLOS_DB_PATH=/tmp/ux-walkthrough.db \
-//   ADMIN_USERNAME=admin ADMIN_PASSWORD=first-boot-pw-1 \
-//   EMAIL_TEST_CAPTURE=/tmp/ux-mail.jsonl \
-//   PORT=3111 npm run dev
-//
-//   node scripts/ux-walkthrough.mjs onboarding invite pages workflows
-//
-// Or let the harness own the server lifecycle (scratch DB, boot, poll-ready,
-// teardown; UX_SEED=1 seeds first for a data-rich census, UX_SEED=thin seeds and
-// trims to a week, UX_SEED=dirty pins import residue + long names, and
-// UX_SEED=one-cycle pins the one-completed-cycle honesty boundary):
-//
-//   node scripts/ux-walkthrough.mjs --serve onboarding pages
-//
-// Journeys: `onboarding` (fresh-install wizard, admin), `invite` (email invite →
-// set-password → member first sign-in), `pages` (screenshot every
-// app/(app) route at desktop AND mobile widths — the visual census; dynamic
-// `[param]` routes census one representative instance each, see
-// scripts/ux-census-routes.mjs), `workflows`
-// (quick-log starter set: search, activity, check-in, food, weight, medication),
-// `live` (live workout mode: start → set → finish → verify), `dismiss` (dismiss
-// a finding, verify it stays dismissed across reload), `dose` (confirm a dose,
-// verify persistence), `profiles` (switch acting profile + the read-only member
-// experience), `upload` (medical document upload, offline path). Run
-// `onboarding` first on a fresh DB — it saves the admin session the later
-// journeys reuse. Every run writes an index.html contact sheet next to the
-// shots.
-//
-// Mobile audit (#1510): the `pages` census also records per-route DOM metrics
-// (height, first-data offset, table/form/menu counts, h1-scale headings, a
-// findings-flood heuristic) into metrics.json; `workflows` (+ dose/dismiss/
-// profiles) records tap costs (taps vs typed inputs, span per action; reach
-// costs driven through the mobile drawer) into taps.json. Both feed a ranked
-// audit.md, and `--baseline <prior shots dir>` diffs a previous run —
-// firstData/height growth >15% flags a route, ANY +1 tap flags an action.
-//
-// Geometry probes (#3489): the same census visit also MEASURES RENDERED BOXES —
-// elements whose box exits the viewport horizontally, and rows whose interactive
-// controls differ in height by more than 2px. Both land in metrics.json and as the
-// first two ranked tables in audit.md. The rule is scripts/ux-geometry-census.mjs
-// (shared with the guard that proves it can see); the point is that a contact
-// sheet cannot show a 4px height difference or a chevron one pixel off-screen, so
-// the classes behind #3478/#3481/#3486 were invisible to a census made of pictures.
-//
-// Notes discovered the hard way:
-//   - EMAIL_TEST_CAPTURE (lib/email.ts) is the deterministic mailbox: every send
-//     appends a JSON line there instead of hitting SMTP, so the invite journey
-//     runs without a relay. SMTP host/port/from still must be CONFIGURED (any
-//     fake values) plus the public URL, or the invite affordance stays hidden —
-//     the script does that itself on Settings → Server.
-//   - The first request after `next dev` compiles middleware + page and can take
-//     minutes on a slow filesystem; the script waits, but don't kill it early.
-//   - Full Chromium is auto-detected under PLAYWRIGHT_BROWSERS_PATH. UX_CHROMIUM
-//     remains the explicit override when a different executable is required.
-//
-// Env knobs: UX_BASE (default http://localhost:3111), UX_SHOTS (default
-// data/ux-shots — under gitignored /data), UX_ADMIN_USER / UX_ADMIN_PASS
-// (default admin / first-boot-pw-1, match the dev-server env above).
+// --serve owns and cleans up its private DB and server; never use production data.
+// Captures remain in UX_SHOTS (default data/ux-shots). Use a distinct directory
+// for each run. --baseline <prior shots dir> compares matching states.
+// Journey assertions belong in the existing E2E tier.
 
 import fs from "node:fs";
 import path from "node:path";

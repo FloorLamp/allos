@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
-import { setAmount } from "./intake-form-helpers";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { medicationRow } from "./med-card-helpers";
 import { workerDbPath } from "./worker-env";
 
@@ -63,7 +63,14 @@ test("a just-added medication shows no adherence percentage, not 0% (#1442)", as
   const addCard = panel.getByTestId("intake-item-form");
   await expect(addCard).toBeVisible();
   await addCard.getByLabel("Name").fill(name);
-  await setAmount(page, "200 mg", panel);
+  const doseEditor = await openFact(page, "dose", panel);
+  await hydratedClick(
+    page,
+    doseEditor.getByRole("button", { name: "Add dose", exact: true })
+  );
+  await doseEditor.getByLabel("Amount").fill("200 mg");
+  await doseEditor.getByLabel("Time of day").selectOption("Morning");
+  await closeEditor(page, panel);
   // Scheduled, not as-needed — a PRN med is never due, which would hide the adherence
   // line for an unrelated reason and make this test prove nothing.
   await expect(addCard.getByTestId("intake-fact-importance")).not.toContainText(

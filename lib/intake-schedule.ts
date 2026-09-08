@@ -248,7 +248,17 @@ export function doseDueOn(
   ctx: IntakeDayContext
 ): boolean {
   if (!isDueOn(item, ctx)) return false;
+  if (!doseScheduledOn(dose, ctx.date)) return false;
   return doseOnDay(dose, ctx.date);
+}
+
+const statesTime = (timeOfDay: string | null | undefined): boolean =>
+  !!timeOfDay?.trim();
+
+// A scheduled dose states a time in the version that governed this profile-local day.
+// The current row alone cannot answer a past day after a schedule change.
+export function doseScheduledOn(dose: DoseCadence, dateISO: string): boolean {
+  return statesTime(doseScheduleAsOf(dose, dateISO).time_of_day);
 }
 
 // The TIME BUCKET a dose occupied on a given day (#1973) — `timeBucket` over the
@@ -644,7 +654,7 @@ export function stackSchedule(
   );
   const say = (lead: string) => [lead, ...rule].join(" · ");
   if (isOnDemand(item)) return { scheduled: true, label: say("Anytime") };
-  if (!(dose.time_of_day ?? "").trim())
+  if (!statesTime(dose.time_of_day))
     return { scheduled: false, label: say("Not scheduled") };
   return {
     scheduled: true,
