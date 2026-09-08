@@ -3,6 +3,7 @@ import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
+  appContent,
   hydratedClick,
   settledCheck,
   settledClick,
@@ -36,7 +37,24 @@ async function pickInstrument(page: Page, key: "PHQ-9" | "GAD-7" | "EPDS") {
   await hydratedClick(page, page.getByTestId(`instrument-select-${key}`));
 }
 
+async function showAllScores(page: Page, recordedId?: number) {
+  // The action response can precede React applying the new history and toggle.
+  if (recordedId !== undefined) {
+    await expect(
+      appContent(page).getByTestId(`instrument-reading-${recordedId}`)
+    ).toBeVisible();
+  }
+  const toggle = appContent(page).getByTestId("instrument-history-toggle");
+  if (
+    (await toggle.isVisible()) &&
+    (await toggle.getAttribute("aria-expanded")) === "false"
+  ) {
+    await hydratedClick(page, toggle);
+  }
+}
+
 async function openScreening(page: Page) {
+  await showAllScores(page);
   const form = page.getByTestId("instruments-form");
   if (!(await form.isVisible().catch(() => false))) {
     await hydratedClick(
@@ -153,7 +171,38 @@ test.describe("mental-health instruments (#716)", () => {
     await expect(page.getByTestId("instrument-band")).toContainText("Mild");
 
     await settledClick(page, page.getByTestId("instrument-submit"));
+    await showAllScores(page, maxScoreId());
     await expect(rows).toHaveCount(before + 1);
+
+    const id = maxScoreId();
+    const row = appContent(page).getByTestId(`instrument-reading-${id}`);
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Reading actions" })
+    );
+    await hydratedClick(
+      page,
+      page.getByRole("menuitem", { name: "Correct", exact: true })
+    );
+    await settledFill(
+      page,
+      row.getByTestId(`instrument-reading-total-${id}`),
+      "12"
+    );
+    await settledClick(
+      page,
+      row
+        .getByTestId(`instrument-reading-edit-form-${id}`)
+        .getByRole("button", { name: "Save" })
+    );
+    await expect(
+      row.getByTestId(`instrument-reading-error-${id}`)
+    ).toContainText("comes from those answers");
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Cancel", exact: true })
+    );
+    await expect(row).toContainText("9 · Mild");
   });
 
   test("in-app EPDS offers each item its OWN options and bands the published cut-off", async () => {
@@ -182,6 +231,7 @@ test.describe("mental-health instruments (#716)", () => {
     );
 
     await settledClick(page, page.getByTestId("instrument-submit"));
+    await showAllScores(page, maxScoreId());
     await expect(rows).toHaveCount(before + 1);
   });
 
@@ -192,6 +242,7 @@ test.describe("mental-health instruments (#716)", () => {
     await answerAll(page, 9, 3);
     await expect(page.getByTestId("instrument-band")).toContainText("Severe");
     await settledClick(page, page.getByTestId("instrument-submit"));
+    await showAllScores(page, maxScoreId());
 
     const crisis = page.getByTestId("instrument-crisis-line");
     await expect(crisis).toBeVisible();
@@ -220,6 +271,7 @@ test.describe("mental-health instruments (#716)", () => {
     await pickInstrument(page, "GAD-7");
     await enterOutsideTotal(page, "6");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
+    await showAllScores(page, maxScoreId());
 
     await expect(rows).toHaveCount(before + 1);
   });
@@ -253,6 +305,7 @@ test.describe("correcting a recorded score (#1396)", () => {
     const beforeId = maxScoreId();
     await enterOutsideTotal(page, "21");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
+    await showAllScores(page, maxScoreId());
 
     const id = await recordedScoreId(rows, beforeCount, beforeId);
     const row = page.getByTestId(`instrument-reading-${id}`);
@@ -315,6 +368,7 @@ test.describe("correcting a recorded score (#1396)", () => {
     const beforeId = maxScoreId();
     await enterOutsideTotal(page, "4");
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
+    await showAllScores(page, maxScoreId());
 
     const id = await recordedScoreId(rows, beforeCount, beforeId);
     const row = page.getByTestId(`instrument-reading-${id}`);
