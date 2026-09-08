@@ -8,8 +8,7 @@
 
 import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import {
-  getIntakeDoses,
-  getRetiredDoses,
+  getIntakeDosesForHistory,
   getTakenDoseTimes,
   getSkippedDoseIds,
   getIntakeAdherenceEvidence,
@@ -33,7 +32,10 @@ import {
   getPrnMedicationsForQuickLog,
   getMedicationFamilyStates,
 } from "@/lib/queries";
-import { loadIntakeFormContext } from "@/lib/intake-form-context";
+import {
+  loadIntakeFormContext,
+  type IntakeFormContext,
+} from "@/lib/intake-form-context";
 import {
   ceilingWindowEndMinute,
   effectiveMaxDailyCount,
@@ -51,8 +53,6 @@ import { activeByKey } from "@/lib/findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
-import { type InteractionItem } from "@/lib/drug-interactions";
-import { type PgxVariantInput } from "@/lib/pgx";
 import {
   partitionMedications,
   type MedicationWithHistory,
@@ -71,14 +71,15 @@ import {
   zonedDateParts,
   parseUtcSql,
 } from "@/lib/date";
-import { getTimezone, getProfileAge, type WeightUnit } from "@/lib/settings";
+import { getTimezone, type WeightUnit } from "@/lib/settings";
 import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import {
+  doseDueOn,
   isDueOn,
+  isOnDemand,
   isPostWorkoutReady,
   heldBySituation,
 } from "@/lib/intake-schedule";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type {
   MedicationCourse,
   MedicationSideEffect,
@@ -104,7 +105,6 @@ import {
   type DormantPrnInput,
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
-import { isOnDemand } from "@/lib/intake-schedule";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import { dateFromCreatedAt } from "@/lib/timeline-format";
 
@@ -125,6 +125,8 @@ export interface MedCardData {
   // REPLACES the per-item refill badge, carrying the POOLED days-left.
   poolChip: PoolChipData | null;
   due: boolean;
+  // Individually due today; item-level dueness cannot distinguish sibling rows.
+  dueDoseIds: number[];
   pairs: IntakePair[];
   prnDayLabel: string | null;
   // Today's as-needed administrations with their ledger ids and snapshotted amounts,
@@ -159,7 +161,7 @@ export interface MedCardData {
 }
 
 // The adherence inputs that do not depend on the WINDOW being scored — the workout-day
-// set and the situation-history resolver. The 14-day strip on every card and the
+// set, dose history and the situation-history resolver. The 14-day strip and the
 // detail page's 35-day month calendar need exactly these, so the board gather resolves
 // them ONCE and the calendar reads them back (#2114) instead of re-running
 // getActivityDates + getActiveSituations + getSituationEvents on the same request.
@@ -168,6 +170,7 @@ export interface MedCardData {
 // boundary. Nothing forwards `MedicationsData` wholesale to a client component — the
 // client rows take `MedCardData` — and this stays true by that convention.
 export interface MedicationAdherenceInputs {
+  historyDosesByItem: Map<number, IntakeDose[]>;
   workoutDays: Set<string>;
   situationsOn: (date: string) => Set<string>;
 }
@@ -181,15 +184,9 @@ export interface MedicationsData {
   // The profile's local wall clock (HH:MM) at load, so the Today panel can flag a
   // past-bucket unresolved dose in the profile's timezone (#852 item 1).
   nowHhmm: string;
-  // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so a
-  // child never sees an age-gated food note (alcohol → adult). Null when unknown.
-  age: number | null;
   taken: Set<number>;
   skipped: Set<number>;
-  allIntakeItems: IntakeItem[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
-  pediatric: PediatricFormContext;
+  intakeContext: IntakeFormContext;
   suppressedFoodKeys: string[];
   interactionWarnings: ReturnType<typeof getInteractionWarnings>;
   pgxWarnings: ReturnType<typeof getPgxWarnings>;
@@ -234,18 +231,18 @@ export function loadMedicationsData(
   // and the pediatric figures for its own mounts.
   const intakeForm = loadIntakeFormContext(profileId, weightUnit);
   const intakeItems = intakeForm.allIntakeItems;
-  const doses = getIntakeDoses(profileId);
+  const historyDosesByItem = new Map<number, IntakeDose[]>();
   const dosesByItem = new Map<number, IntakeDose[]>();
-  for (const d of doses) {
-    const arr = dosesByItem.get(d.item_id) ?? [];
-    arr.push(d);
-    dosesByItem.set(d.item_id, arr);
-  }
   const retiredByItem = new Map<number, IntakeDose[]>();
-  for (const d of getRetiredDoses(profileId)) {
-    const arr = retiredByItem.get(d.item_id) ?? [];
-    arr.push(d);
-    retiredByItem.set(d.item_id, arr);
+  for (const d of getIntakeDosesForHistory(profileId)) {
+    const history = historyDosesByItem.get(d.item_id) ?? [];
+    history.push(d);
+    historyDosesByItem.set(d.item_id, history);
+    // Historical adherence includes retired rows; current controls cannot act on them.
+    const currentOrRetired = d.retired ? retiredByItem : dosesByItem;
+    const rows = currentOrRetired.get(d.item_id) ?? [];
+    rows.push(d);
+    currentOrRetired.set(d.item_id, rows);
   }
 
   // The loader's day, not a second today() call (#4609). This is the todayStr handed
@@ -448,7 +445,7 @@ export function loadMedicationsData(
       sideEffects: sideEffectsByItem.get(med.id) ?? [],
       strip: intakeAdherenceStrip(
         med,
-        medDoses,
+        historyDosesByItem.get(med.id) ?? [],
         dates,
         workoutDays,
         situationsOn,
@@ -459,6 +456,9 @@ export function loadMedicationsData(
       refillRate: refillRates.get(med.id) ?? null,
       poolChip: poolChips.get(med.id) ?? null,
       due: medDue(med),
+      dueDoseIds: med.active
+        ? medDoses.filter((dose) => doseDueOn(med, dose, ctx)).map((d) => d.id)
+        : [],
       pairs: pairsFor(med.id),
       prnDayLabel: prn.label,
       prnAdministrations: prn.administrations,
@@ -590,13 +590,9 @@ export function loadMedicationsData(
     tz,
     nowIso: nowInstant.toISOString(),
     nowHhmm: hhmm,
-    age: getProfileAge(profileId),
     taken,
     skipped,
-    allIntakeItems: intakeItems,
-    stackItems: intakeForm.stackItems,
-    pgxVariants: intakeForm.pgxVariants,
-    pediatric: intakeForm.pediatric,
+    intakeContext: intakeForm,
     suppressedFoodKeys,
     interactionWarnings,
     pgxWarnings,
@@ -609,7 +605,7 @@ export function loadMedicationsData(
     dormantPrn,
     dismissedDormantPrn,
     byId,
-    adherenceInputs: { workoutDays, situationsOn },
+    adherenceInputs: { historyDosesByItem, workoutDays, situationsOn },
   };
 }
 
@@ -679,7 +675,7 @@ export function getMedicationAdherenceCalendar(
   );
   const strip = intakeAdherenceStrip(
     card.med,
-    card.doses,
+    data.adherenceInputs.historyDosesByItem.get(itemId) ?? [],
     dates,
     data.adherenceInputs.workoutDays,
     data.adherenceInputs.situationsOn,

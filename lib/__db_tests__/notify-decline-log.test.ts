@@ -73,7 +73,7 @@ describe("a tick that declines every send (#2209)", () => {
 
     // No channel configured for this profile at all — dispatch() fans out to
     // nothing, so the orchestrator declines.
-    const res = await runRefills(p, "DeclineLog", date);
+    const res = await runRefills(p, date);
     expect(res.failed).toBe(false);
 
     // 1. THE MARKER IS UNTOUCHED. This is what lets the nudge retry once a channel
@@ -97,7 +97,7 @@ describe("a tick that declines every send (#2209)", () => {
     const date = today(p);
     beginNotifyRun();
 
-    await runRefills(p, "DeclineGroup", date);
+    await runRefills(p, date);
 
     const runs = groupNotifyRuns(readNotifyEvents().events).filter(
       (r) => r.profileId === p
@@ -115,7 +115,7 @@ describe("a tick that declines every send (#2209)", () => {
     const date = today(p);
     beginNotifyRun();
 
-    await runRefills(p, "QuietRun", date);
+    await runRefills(p, date);
     // Stand in for scripts/notify.ts's per-profile marker line.
     const { createLogger } = await import("@/lib/log");
     createLogger("notify").info("profile evaluated", {
@@ -148,7 +148,7 @@ describe("the sink never fails the tick (#2209 constraint 1)", () => {
       throw new Error("ENOSPC: no space left on device");
     });
 
-    const res = await runRefills(p, "SinkDown", date);
+    const res = await runRefills(p, date);
 
     // The tick's own behavior is untouched: it did not throw, it reported no
     // failure, and it still declined to stamp the marker.
@@ -170,7 +170,7 @@ describe("the sink never fails the tick (#2209 constraint 1)", () => {
       throw new Error("EROFS: read-only file system");
     });
 
-    await expect(runRefills(p, "SinkDownSend", date)).resolves.toEqual({
+    await expect(runRefills(p, date)).resolves.toEqual({
       failed: false,
     });
     expect(getProfileSetting(p, refillMarkerKey(supp))).toBe("2020-01-01");

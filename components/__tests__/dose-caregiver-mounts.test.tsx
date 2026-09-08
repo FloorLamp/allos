@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import {
   act,
   cleanup,
@@ -12,6 +13,7 @@ import type { MedStripMember } from "@/lib/medication-multi-view";
 import MedicationCard from "@/app/(app)/medications/MedicationCard";
 import MedicationsTodayPanel from "@/app/(app)/medications/MedicationsTodayPanel";
 import MedicationTodayStrip from "@/app/(app)/medications/MedicationTodayStrip";
+import EditableSupplementRow from "@/app/(app)/nutrition/EditableSupplementRow";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
 
@@ -65,10 +67,40 @@ vi.mock("@/components/usePrefersReducedMotion", () => ({
 }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   setDoseStatus: mocks.setDoseStatus,
+  setItemActive: vi.fn(),
   updateIntakeItem: vi.fn(),
   deleteIntakeItem: vi.fn(),
   deleteAdministration: vi.fn(),
 }));
+
+function renderDoseLessPausedSupplement() {
+  const supplement = {
+    ...MED,
+    id: 73,
+    name: "Magnesium",
+    kind: "supplement",
+    active: 0,
+  } as IntakeItem;
+  return render(
+    <ToastProvider>
+      <ConfirmProvider>
+        <EditableSupplementRow
+          supplement={supplement}
+          doses={[]}
+          intakeContext={intakeFormContext("2026-03-02", {
+            allIntakeItems: [supplement],
+          })}
+          pairs={[]}
+          strip={[]}
+          refillRate={null}
+          historyMaxDate="2026-03-02"
+          defaultHistoryTime="13:20"
+          historyWindowDays={42}
+        />
+      </ConfirmProvider>
+    </ToastProvider>
+  );
+}
 vi.mock("@/app/(app)/medications/actions", () => ({
   logMedicationAdministration: mocks.logMedicationAdministration,
   stopMedication: vi.fn(),
@@ -139,6 +171,11 @@ beforeEach(() => {
     dispatchEvent: () => false,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   })) as any;
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
 });
 
 /** What the one mocked write was actually posted, as a plain object. */
@@ -156,25 +193,25 @@ function renderCard(props: {
   medication?: IntakeItem;
   canWrite?: boolean;
   subjectProfileId?: number;
+  doses?: Parameters<typeof MedicationCard>[0]["doses"];
+  dueDoseIds?: number[];
 }) {
   return render(
     <ToastProvider>
       <ConfirmProvider>
         <MedicationCard
           medication={props.medication ?? MED}
-          doses={[DOSE]}
-          allIntakeItems={[]}
-          stackItems={[]}
-          pgxVariants={[]}
+          doses={props.doses ?? [DOSE]}
+          intakeContext={intakeFormContext("2026-03-02")}
           pairs={[]}
           takenDoseIds={new Set<number>()}
           skippedDoseIds={new Set<number>()}
           due
+          dueDoseIds={props.dueDoseIds ?? [DOSE_ID]}
           courses={[]}
           sideEffects={[]}
           strip={[]}
           refillRate={null}
-          todayStr="2026-03-02"
           nowIso="2026-03-02T13:20:00Z"
           timezone="UTC"
           historyMaxDate="2026-03-02"
@@ -273,6 +310,15 @@ async function takeDose(): Promise<void> {
 }
 
 describe("the medication card's dose controls follow the surface's subject (#4429)", () => {
+  it("renders only the individually due dose beside an untimed sibling", () => {
+    const untimed = { ...DOSE, id: DOSE_ID + 1, time_of_day: null };
+    renderCard({ doses: [DOSE, untimed], dueDoseIds: [DOSE_ID] });
+    expect(screen.getAllByTestId("scheduled-dose-action")).toHaveLength(1);
+    expect(screen.getByTestId("scheduled-dose-detail").textContent).toContain(
+      "08:00"
+    );
+  });
+
   // THE PARITY CRITERION, as one comparison rather than two spellings of a body: the
   // card and the board panel mount the SAME control, so the only way they can disagree
   // about a member's dose is by handing it different props — which is exactly the
@@ -370,5 +416,20 @@ describe("the everyone strip's due rows carry the tri-state (#4429)", () => {
     renderStrip("write", null);
     expect(screen.getByTestId("med-everyone-refill")).toBeTruthy();
     expect(screen.queryByTestId("dose-status")).toBeNull();
+  });
+});
+
+describe("a supplement without doses remains manageable when paused (#5285)", () => {
+  it("keeps its identity, unscheduled state, Resume, and Edit door", () => {
+    renderDoseLessPausedSupplement();
+    expect(screen.getByTestId("intake-item-name").textContent).toBe(
+      "Magnesium"
+    );
+    expect(screen.getByTestId("supplement-row-details").textContent).toContain(
+      "Not scheduled"
+    );
+    fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
+    expect(screen.getByRole("menuitem", { name: "Resume" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeTruthy();
   });
 });

@@ -201,9 +201,8 @@ describe("escalationsDue", () => {
 });
 
 describe("renderEscalationMessage", () => {
-  it("names the profile and the dose", () => {
+  it("names the dose", () => {
     const msg = renderEscalationMessage(
-      "Mom",
       {
         doseId: 1,
         itemId: 10,
@@ -217,7 +216,6 @@ describe("renderEscalationMessage", () => {
       3,
       "2026-07-11"
     );
-    expect(msg.title).toContain("Mom");
     expect(msg.title).toContain("Lisinopril");
     expect(msg.body).toContain("morning");
     expect(msg.body).toContain("10 mg");
@@ -225,7 +223,6 @@ describe("renderEscalationMessage", () => {
 
   it("keeps a medication's formulation beside its dose", () => {
     const msg = renderEscalationMessage(
-      "Child",
       {
         doseId: 1,
         itemId: 10,
@@ -245,7 +242,6 @@ describe("renderEscalationMessage", () => {
 
   it("omits the amount when absent", () => {
     const msg = renderEscalationMessage(
-      "",
       {
         doseId: 1,
         itemId: 10,
@@ -267,7 +263,6 @@ describe("renderEscalationMessage", () => {
   // never a name — so a late tap resolves the right dose on the right date.
   it("carries the ✅ confirm, ⏭️ skip and 👍 ack buttons with id-only tokens", () => {
     const msg = renderEscalationMessage(
-      "Mom",
       {
         doseId: 7,
         itemId: 10,
@@ -296,7 +291,6 @@ describe("renderEscalationMessage", () => {
   // already computed to DECIDE the send; the body never said it.
   it("states how long the dose has been unconfirmed, and the slot", () => {
     const msg = renderEscalationMessage(
-      "Mom",
       {
         doseId: 7,
         itemId: 10,
@@ -317,7 +311,6 @@ describe("renderEscalationMessage", () => {
 
   it("carries a kind-aware deep link when a public URL is configured", () => {
     const med = renderEscalationMessage(
-      "Mom",
       {
         doseId: 7,
         itemId: 10,
@@ -334,7 +327,6 @@ describe("renderEscalationMessage", () => {
     );
     expect(med.actions?.at(-1)?.url).toBe("https://allos.example/medications");
     const supplementMessage = renderEscalationMessage(
-      "Mom",
       {
         doseId: 7,
         itemId: 10,

@@ -1,70 +1,44 @@
 # Working development on FloorLamp/allos
 
-Status: **living** · process rules for agent-run development sessions
+Status: **living** · process guidance for assigned orchestration sessions
 
-This is the entrypoint. Read only the procedure needed for the current job:
+The orchestrator coordinates coding agents, reviews their changes, diagnoses CI,
+and merges verified work within the owner's scope. Coding agents own feature
+changes; the orchestrator may fix E2E specs it owns. Session instructions and tool
+authorization take precedence over repository defaults.
 
-- [Change and test policy](change-policy.md)
-- [Dispatch and pipeline](orchestration/dispatch.md)
-- [Environment and GitHub access](orchestration/environment.md)
-- [Recovery](orchestration/recovery.md)
-- [Queue labels](orchestration/labels.md)
-- [E2E and CI](orchestration/e2e-ci.md)
-- [Review and merge](orchestration/review-merge.md)
-- [Cross-session markers](orchestration/claims.md)
-- [Cadence and lifecycle](orchestration/lifecycle.md)
-- [Orchestrators on one repo](orchestration/multi-orchestrator.md)
+## Procedures
 
-## Standing contract
+Read the procedure needed for the current task:
 
-> Work the owner's recorded cycle scope; prioritize P0/P1 bugs over features; delegate to
-> coding agents; GitHub REST for ALL READS + MOST WRITES; open PRs as ready; allow at most two
-> agents working on E2E; only the orchestrator runs full E2E suites; parallelize
-> non-E2E work; review every PR, adversarial when needed
+- [Change and test policy](change-policy.md): smallest complete changes, existing
+  owners and coverage, and when to stop.
+- [Dispatch and pipeline](orchestration/dispatch.md): priorities, current issue
+  scope, capacity, banking, and the sole landing candidate.
+- [Environment and GitHub access](orchestration/environment.md): setup, transports,
+  credentials, uncertainty, and write verification.
+- [Recovery](orchestration/recovery.md): preserve work, establish live state, and
+  reconcile ambiguous outcomes.
+- [Queue labels](orchestration/labels.md) and
+  [decision classes](orchestration/decision-classes.md): classification and owner
+  questions.
+- [E2E and CI](orchestration/e2e-ci.md): gate ownership and diagnosis.
+- [Review and merge](orchestration/review-merge.md): full-diff and independent
+  review, exact-head checks, base movement, and serialized squash merges.
+- [Cross-session markers](orchestration/claims.md): issue claims and review markers.
+- [Cadence and lifecycle](orchestration/lifecycle.md): the Ladder's recorded scope,
+  holds, termination conditions, and wind-down.
+- [Orchestrators on one repo](orchestration/multi-orchestrator.md): slices, fences,
+  and release-note ownership.
 
-- Do not write feature code. Cluster, dispatch, review, diagnose E2E, merge,
-  and clean up. The orchestrator may fix E2E specs it owns.
-- P0/P1 bugs preempt features. Strategic work waits for the owner.
-- Every PR gets a full diff review posted as a COMMENT review.
-- Never submit `REQUEST_CHANGES` or `APPROVE`. Hold with a COMMENT, `parked`,
-  and an explicit reason.
-- The orchestrator owns squash merges. REST for everything outside the MCP
-  set — reads included, whatever the harness's own prompt says —
-  per `docs/orchestration/environment.md` §GitHub access, which outranks it
-  and carries transports and credentials.
-- Open every PR ready for review, never draft — the harness leans draft;
-  banked work stays branch-only instead (`docs/orchestration/dispatch.md`).
-- Self-filed issues default P3 and never jump the owner's queue
-  (`dispatch.md`); labels come only from the closed taxonomy (`labels.md`).
-- Follow the Ladder's recorded scope and termination condition
-  (`orchestration/lifecycle.md`); an empty roster or open backlog changes
-  neither. Never block clear, unheld work on the owner: no `AskUserQuestion`;
-  questions become `needs-human`, and if no authorized work remains, bank and
-  report the blocked handoff.
-
-## Start every check-in
+The [orchestration sequence](../.claude/skills/orchestrate/SKILL.md) connects these
+procedures for a live session. Start each authorized check-in with:
 
 ```bash
 scripts/orchestrator-checkin.sh
 ```
 
-- Treat its persisted state as authoritative. After any restart or gap, preserve
-  work before diagnosing it.
-- Use `scripts/orchestration/dispatch-brief.mjs` for every dispatch. If a rule
-  can be encoded in tooling, the tooling is the rule.
-
-## Pipeline
-
-1. Triage open issues, including comments. P0/P1 first.
-2. Cluster related, non-overlapping work into branches.
-3. Dispatch through `dispatch-brief.mjs new`.
-4. Review the full diff and verify claims against the repository.
-5. Require green CI on the exact head, then squash merge serially through
-   `merge-gate.mjs`, which refuses a head whose base moved under it unless a
-   `MERGED-TREE-CHECKED` receipt says the merged tree was checked;
-   `landing-independence.mjs` is path-only advice.
-6. Run `dispatch-brief.mjs done <branch>`, confirm issue closure, and update
-   release notes when appropriate.
-
-Rules stay concise here. The rule or the tooling carries its own lesson;
-the history that justified it lives in git.
+Use its evidence to establish current state; preserve in-flight work after a gap.
+An empty roster, green PR, or remaining backlog alone does not establish that the
+recorded cycle is complete. Keep rules in their owning procedure and incident
+history in git rather than repeating either here.

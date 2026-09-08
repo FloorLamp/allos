@@ -51,20 +51,17 @@ interface LowItem {
   daysLeft: number;
 }
 
-// The refill nudge. Names the profile (a shared/caregiver chat may carry several
-// profiles) and lists each low item with its remaining days. Each item gets a
+// The refill nudge lists each low item with its remaining days. Each item gets a
 // "📦 Ordered — remind me in 3 days" button (issue #233) that snoozes its
 // `refill:<id>` finding on the shared bus (#227), plus — when a public URL is
 // configured — a deep link to the refill form (a real "mark refilled" needs an
 // amount, which a button handles badly, so the form is the actuator). One row per
 // item so a snooze consumes just that item.
 export function renderRefillMessage(
-  profileName: string,
   items: LowItem[],
   profileId: number,
   deepLinkBase = ""
 ): NotificationMessage {
-  const who = profileName ? `${profileName} — ` : "";
   const head =
     items.length === 1 ? items[0].name : `${items.length} items running low`;
   // "≈5 days left" gains its meaning (#1722 item 4): five days is only news against
@@ -94,7 +91,7 @@ export function renderRefillMessage(
     return perItem;
   });
   return {
-    title: `${GLYPH.resupply} Refill due: ${who}${head}`,
+    title: `${GLYPH.resupply} Refill due: ${head}`,
     body: lines.join("\n"),
     actions,
     kind: "refill",
@@ -106,7 +103,6 @@ export function renderRefillMessage(
 // failure. `date` is the profile-local date, used as the dedup marker value.
 export async function runRefills(
   profileId: number,
-  profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
   // Only active items that opted into quantity tracking — and only ones that may ride
@@ -174,7 +170,7 @@ export async function runRefills(
 
   const results = await dispatch(
     profileId,
-    renderRefillMessage(profileName, toSend, profileId, getPublicUrl())
+    renderRefillMessage(toSend, profileId, getPublicUrl())
   );
   if (results.length === 0) {
     // No channel configured — leave markers unset so it can send once configured.

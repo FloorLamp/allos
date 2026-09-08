@@ -713,6 +713,10 @@ test("a refused dose tap settles READY AGAIN — the retry it asks for is not ab
   const addCard = page.getByRole("dialog", { name: "Add supplement" });
   await addCard.getByLabel("Name").fill(name);
   const doseEditor1 = await openFact(page, "dose", addCard);
+  await hydratedClick(
+    page,
+    doseEditor1.getByRole("button", { name: "Add dose", exact: true })
+  );
   await doseEditor1.getByLabel("Amount").first().fill("10 mg"); // eslint-disable-line no-restricted-properties -- first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
   await doseEditor1.getByLabel("Time of day").first().selectOption("Morning"); // eslint-disable-line no-restricted-properties -- first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
   await closeEditor(page, addCard);

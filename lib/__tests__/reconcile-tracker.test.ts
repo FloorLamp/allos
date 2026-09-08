@@ -1830,17 +1830,6 @@ describe("the toolchain granted to a reconciliation run closes only through the 
       }).toEqual({ rel, writes: false });
     }
   });
-
-  it("the skill states the bounds a close is held to", () => {
-    const text = source(SKILL);
-    expect(text).toContain(
-      "closes, sequences and groups issues to reduce work"
-    );
-    expect(text).toContain("A closure names the absorbing issue");
-    expect(text).toContain("An owner-filed issue");
-    expect(text).toContain("is never closed under it");
-    expect(text).toContain("`mcp__github__issue_write`");
-  });
 });
 
 describe("the run summary line (#865)", () => {

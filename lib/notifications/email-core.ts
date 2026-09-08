@@ -1,23 +1,7 @@
-// Email notification channel — the PURE half (issue #1855). Message → mail
-// composition, the per-login content-mode contract, recipient dedup, and the
-// deliverable-kind rule. No DB, no network — unit-tested in
-// lib/__tests__/email-notify-core.test.ts. The DB reads + the actual send live in
-// ./email; the wire itself stays behind the ONE lib/email.ts chokepoint (#985).
-//
-// THE PHI DECISION (owner ruling on #1855, 2026-08-01): email is the leakiest
-// channel — relayed, stored, often synced to third-party inboxes — so what a
-// notification email may CARRY is a per-login choice between two modes, and the
-// default is the safe one:
-//
-//   - "content-free" (DEFAULT): the mail says something needs attention and where
-//     to look, and NOTHING else. Structurally enforced: contentFreeEmail() does not
-//     even accept the message, so no code path can leak a title, a body line, a
-//     medication name, or a profile name into it.
-//   - "full": the mail carries the same words every other channel renders
-//     (plainBody parity, #1720), plus the message's deep-link actions as plain
-//     links. Chosen per LOGIN, only by that login's own explicit tap on the
-//     Settings control — nothing else may ever widen the default (the ruling's
-//     load-bearing sentence, mirrored by dedupeEmailRecipients below).
+// Pure email composition and recipient deduplication. Content-free is the
+// default; its builder accepts no message. Full content requires login consent,
+// and a shared address keeps the more restrictive surviving recipient choice.
+// See docs/internals/email.md. Transport remains in lib/email.ts.
 
 import type {
   NotificationAction,
