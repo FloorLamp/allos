@@ -41,6 +41,17 @@ vi.mock("@/components/Toast", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: async () => enqueueReply }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: date === "2026-08-20",
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 vi.mock("@/components/ConfirmDialog", () => ({
   useConfirm: () => async () => true,
@@ -246,7 +257,7 @@ describe("the mood domain's two pieces", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
 
-    expect(posted.logMood).toHaveLength(1);
+    await waitFor(() => expect(posted.logMood).toHaveLength(1));
     for (const control of [
       screen.getByRole("button", { name: "Mood: Great" }),
       screen.getByRole("button", { name: "Energy: 5" }),

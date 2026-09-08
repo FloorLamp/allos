@@ -26,6 +26,17 @@ vi.mock("@/components/LoggedViaSurface", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: date === "2026-08-28",
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 // The ledger stands in for the real one, but its `tap` RUNS the write and settles it —
 // a `tap: vi.fn()` stub would make every click a no-op and quietly pass any assertion
@@ -135,28 +146,35 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("queues the tap instant and confirms the offline capture", async () => {
-    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
-    mocks.enqueue.mockResolvedValue("kept");
-    const before = Date.now();
-    renderSheet();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00.000Z`));
+    try {
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+      mocks.enqueue.mockResolvedValue("kept");
+      const before = Date.now();
+      renderSheet();
 
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("dose-take"));
-    });
-    const after = Date.now();
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("dose-take"));
+      });
+      const after = Date.now();
 
-    expect(mocks.setDoseStatus).not.toHaveBeenCalled();
-    const [kind, date, payload] = mocks.enqueue.mock.calls[0]!;
-    expect({ kind, doseId: payload.doseId }).toEqual({
-      kind: "dose",
-      doseId: DAILY_DOSE,
-    });
-    expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
-    expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
-    expect(date).toBe(dateStrInTz(DEFAULT_TZ, new Date(payload.clientTakenAt)));
-    expect(mocks.toast).toHaveBeenCalledWith(
-      "Dose saved offline — will sync when you reconnect."
-    );
+      expect(mocks.setDoseStatus).not.toHaveBeenCalled();
+      const [kind, payload, capture] = mocks.enqueue.mock.calls[0]!;
+      expect({ kind, doseId: payload.doseId }).toEqual({
+        kind: "dose",
+        doseId: DAILY_DOSE,
+      });
+      expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
+      expect(capture.dayContext.parts.day).toBe(TODAY);
+      expect(capture.capturedAt.toISOString()).toBe(payload.clientTakenAt);
+      expect(mocks.toast).toHaveBeenCalledWith(
+        "Dose saved offline — will sync when you reconnect."
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the typed online refusal and does not queue it", async () => {
@@ -201,7 +219,8 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
         fireEvent.click(screen.getByTestId("dose-take"));
       });
 
-      const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+      const [flow, payload, capture] = mocks.enqueue.mock.calls[0]!;
+      const date = capture.dayContext.parts.day;
       expect(flow).toBe("dose");
       expect(date).toBe(TODAY);
       expect(dateStrInTz(DEFAULT_TZ, new Date(payload.clientTakenAt))).toBe(
@@ -249,7 +268,8 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
         fireEvent.click(screen.getByTestId("dose-take"));
       });
 
-      const [flow, date] = mocks.enqueue.mock.calls[0]!;
+      const [flow, , capture] = mocks.enqueue.mock.calls[0]!;
+      const date = capture.dayContext.parts.day;
       expect({ flow, date }).toEqual({ flow: "dose", date: day });
     } finally {
       vi.useRealTimers();
@@ -275,7 +295,8 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
     });
 
     expect(mocks.setDoseStatus).not.toHaveBeenCalled();
-    const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+    const [flow, payload, capture] = mocks.enqueue.mock.calls[0]!;
+    const date = capture.dayContext.parts.day;
     expect(flow).toBe("dose");
     expect(date).toBe("2026-08-27");
     expect(payload.doseId).toBe(DAILY_DOSE);
