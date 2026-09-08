@@ -391,7 +391,7 @@ test("sleep regularity changes its visible band and shows one sustained-drop not
     await page.reload();
     await expect(card.getByTestId("pillar-tone-badge")).toBeVisible();
     await expect(card.getByTestId("pillar-tone-badge")).toHaveText("Poor");
-    await expect(value).toHaveAttribute("title", "variable");
+    await expect(card.getByText("Sleep timing is variable.")).toBeVisible();
     expect(
       await value.evaluate((node) => getComputedStyle(node).color)
     ).not.toBe(steadyColor);

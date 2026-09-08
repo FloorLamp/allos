@@ -250,14 +250,14 @@ export default async function SleepPage() {
                 <div
                   className={`text-3xl font-bold ${PILLAR_TONE_CLASS[sleepRegDisplay.tone]}`}
                   data-testid="sri-value"
-                  title={sleepRegDisplay.qualifier}
                 >
                   {sleepRegDisplay.text}
                 </div>
                 <PillarToneBadge tone={sleepRegDisplay.tone} />
               </div>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                SRI ranges from −100 to 100; higher is steadier. Bedtime ±
+                Sleep timing is {sleepRegDisplay.qualifier}. SRI ranges from
+                −100 to 100; higher is steadier. Bedtime ±
                 {sleepReg.bedtimeSdMin} min, wake ±{sleepReg.waketimeSdMin} min
                 {sleepReg.socialJetlagMin != null
                   ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
