@@ -1,285 +1,143 @@
 # Trash (recently deleted)
 
-Status: shipped
+Data → Trash (`/data?section=trash`) lists restorable deletes for one profile.
+Its Restore button uses the same `undoDelete` action as the undo toast. See the
+[undo contract](undo-contract.md) for client offers, timing, and refusal handling.
 
-Data → Trash (`/data?section=trash`, issue #2013) is the rendered view over the
-restorable capture every destructive row delete has written into `deleted_rows`
-since #30.
+## Owners
 
-## What this is, and what it is not
+| Concern                                                   | Owner                                              |
+| --------------------------------------------------------- | -------------------------------------------------- |
+| Capture kinds, children, foreign keys, and collision keys | `lib/undo-delete.ts`                               |
+| Capture, restore, expiry sweep, and manual purge          | `lib/undo-delete-db.ts`                            |
+| Display derivation and excluded kinds                     | `lib/trash.ts`                                     |
+| Profile-scoped list and count                             | `lib/queries/trash.ts`                             |
+| Restore authorization                                     | `app/(app)/undo-actions.ts`                        |
+| Trash UI and purge actions                                | `app/(app)/data/TrashList.tsx`, `trash-actions.ts` |
+| Retention limits and storage                              | `lib/retention.ts`, `lib/settings/server.ts`       |
 
-It is **a read model plus a window plus two purges**. It is emphatically **not a
-second restore engine.** All of the hard machinery already existed:
+## Capture and restore
 
-| Concern         | Owner                                                                                         | Note                                                                                                                                                                                                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Capture         | `captureDelete` (`lib/undo-delete-db.ts`) over the pure kind registry in `lib/undo-delete.ts` | root row + cascade children + video clip rows + (since #1847) clinical children and lesion photo rows + (since #2124) symptom-day photo rows, one transaction with the delete                                                                                        |
-| Restore         | `restoreDeletedRow`                                                                           | new ids, external-FK reconciliation (#202/#375), merge inversion (#199/#200), re-import tombstone removal (#200)                                                                                                                                                     |
-| Retention purge | `sweepDeletedRows`                                                                            | one call per hourly notify tick, global, unlinks orphaned clip files (#1290) and lesion + symptom photos with their derived thumbnail siblings (#1847/#2124)                                                                                                         |
-| Auth            | `requireProfileWriteAccess(capture's profile)` + profile-scoped SQL                           | the restore gates the profile the CAPTURE carries (#2104), resolved from the holding row via `deletedRowProfile` — not the acting profile, which a multi-view delete need not match; the `profile_id` filter in `restoreDeletedRow` stays as the anti-replay compare |
+`captureDelete` snapshots the root and declared children into `deleted_rows` in
+one transaction with the delete. The holding row's id is the undo token.
+`restoreDeletedRow` consumes that token atomically with restoring the capture.
+An absent, already consumed, or wrong-profile token returns false.
 
-The Trash adds: `lib/trash.ts` (pure derivation), `lib/queries/trash.ts` (the
-list), `purgeDeletedRow` / `emptyTrash` (`lib/undo-delete-db.ts`), the section
-under `app/(app)/data/`, and the admin retention setting.
+Restore generally inserts new ids and remaps child foreign keys. It reconciles
+external links whose targets disappeared, adopts live roots when declared keys
+collide, reverses captured activity merges, and removes re-import tombstones.
+Registry counter entries restore the removed increment rather than overwrite a
+whole day. The administration restore also reconciles its supply decrement.
+Use these existing paths when adding a surface or kind.
 
-**Restore goes through the existing core.** The Restore button calls
-`undoDelete` — the same Server Action the 15-second toast calls — which calls
-`restoreDeletedRow`. There is one restore path, and adding a surface did not
-create a second one.
+Authorization follows the capture's owner: `undoDelete` resolves
+`deletedRowProfile(undoId)`, calls `requireProfileWriteAccess(owner)`, then passes
+that owner to the profile-scoped restore. The active profile can differ from the
+capture's profile after a multi-profile delete. Keep both the authorization gate
+and the SQL profile filter.
 
-## The retention window
+## Retention and permanent deletion
 
-Instance policy, so **global settings, admin-gated** — the `audit_events`
-precedent (#98) exactly:
+Retention is an instance setting, stored under `trash_retention_days`: default
+30 days, clamped to 1–365 days. `saveTrashRetention` requires an administrator;
+the control lives under Settings → Server → Advanced. The hourly notify tick
+calls `sweepDeletedRows(getTrashRetentionDays())`; its argument is days.
 
-- `DEFAULT_TRASH_RETENTION_DAYS = 30`, `MIN/MAX = 1 / 365`,
-  `clampTrashRetentionDays()` in `lib/retention.ts`
-- `getTrashRetentionDays()` / `setTrashRetentionDays()` in
-  `lib/settings/server.ts` over the global `trash_retention_days` key — a
-  settings key, no migration
-- `TrashRetentionSettings` under Settings → Server → Advanced;
-  `saveTrashRetention` gates on `requireAdmin()`. Navigation placement never
-  replaces that gate.
-- The hourly tick calls `sweepDeletedRows(getTrashRetentionDays())`
+Deleted content remains in the database and captured media remains on disk until
+purged. Retention is a sweep threshold, not an exact deletion deadline: the list
+can show a capture expiring today until maintenance removes it. The setting's
+help text must explain what is retained.
 
-### The unit is days, everywhere
+| Operation                            | Scope and result                                           |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `sweepDeletedRows(maxAgeDays)`       | Instance-wide expiry maintenance; returns rows removed     |
+| `purgeDeletedRow(profileId, undoId)` | One eligible capture; returns `purged` or `gone`           |
+| `emptyTrash(profileId)`              | That profile's eligible captures; returns the actual count |
 
-`sweepDeletedRows` used to take `maxAgeHours = 24`, which every call site read
-as "one day" anyway. It now takes `maxAgeDays`, defaulting to the shipped
-policy, and builds its cutoff through `daysAgoModifier`. There is exactly one
-unit in the function and the parameter name says which; the DB-tier call sites
-that passed `24` now pass `1`.
+The manual actions require write access to the active profile. A read-only user
+may view Trash but cannot purge it. The UI reports `gone` when another restore,
+purge, or sweep already consumed a token.
 
-## The cost, stated plainly
+All three purges use `capturedFilesOf` → `unlinkPurgedFiles`. Media cleanup runs
+after the holding-row deletion; manual purges commit their transaction before
+unlinking. Filesystem cleanup is best effort and uses the domain's path-contained
+unlink helpers.
 
-`deleted_rows.payload` holds the deleted row's content, and captured video clips
-stay on disk until purge. A 30-day default means **deleted health data and clips
-persist 30× longer than they did under the old 24h window.** The PHI posture is
-unchanged — the payload never leaves the same SQLite file, the same trust
-boundary as the row it came from — but "I deleted this" meaning "gone within a
-day" and meaning "gone within a month" are different promises.
+- Video cleanup considers both the clip and poster, retaining paths still
+  referenced by a live video row.
+- Photo cleanup retains a live photo's files. Otherwise it removes the stored
+  image and its thumbnail: use the captured thumbnail path when present, or
+  derive it with `thumbSiblingPath`.
+- Live-reference checks matter because a re-upload can reuse a content-named file.
 
-Two things follow, and both are implemented:
+## What belongs in Trash
 
-1. The setting's help text says what the window actually holds — the deleted
-   row's full content **and any video clips captured with it** — not merely "how
-   long trash keeps things".
-2. **Delete permanently** is what makes 30 days acceptable rather than merely
-   longer, so it is one tap on the row, not buried behind Empty trash.
+Registry delete captures and bespoke `administration` captures appear in Trash.
+`TRASH_EXCLUDED_KINDS` excludes bulk corrections and sleep re-times from the list,
+count, and both manual purges. Those captures undo edits to rows that still exist;
+emptying Trash must preserve their undo offers. The expiry sweep still removes
+expired captures of these kinds.
 
-## The two purges
+The registry is the authoritative list of supported deletes. Keep these domain
+boundaries when extending it:
 
-Both route through the **same file-unlinking path** the expiry sweep uses
-(`capturedFilesOf` → `unlinkPurgedFiles`, which fans out to the clip half and,
-since #1847, the photo half). A permanent delete that removed only the
-`deleted_rows` row would leak the captured media onto disk with nothing left
-pointing at them — the #1290 leak, re-opened by hand.
-
-The photo half has one rule the clip half does not need: **the thumbnail is a
-derived sibling.** `lesion_photos` (and `symptom_photos`) carry no `thumb_path`
-column — since the photo core landed (#1844 phase 3) the thumbnail lives beside
-the stored file under `thumbSiblingPath`. A purge that reclaimed `stored_path`
-alone would leave the thumbnail of a deleted dermatology close-up on disk
-indefinitely, so `unlinkPurgedPhotoFiles` derives and unlinks it too, behind the
-same "skip anything a live row still references" guard (content-hash naming means
-a re-upload can share the file).
-
-- `purgeDeletedRow(profileId, undoId)` → `{ kind: "purged" | "gone" }`. "Gone"
-  is a real state (another tab, the tick, an already-taken restore) and the row
-  renders it rather than claiming a purge it did not perform.
-- `emptyTrash(profileId)` → the number purged. **Profile-scoped, deliberately**,
-  unlike `sweepDeletedRows`: the sweep is instance maintenance over an expired
-  window; this is one person saying "clear mine", and emptying a household
-  member's captures on your tap would be someone else's data disappearing.
-
-The unlink runs **after** the transaction commits — the row delete is
-authoritative, and best-effort filesystem work must never hold the write lock.
+- Clinical captures include allergy reactions and lesion photos. External
+  document, visit, and provider links are reconciled on restore. Declared
+  `external_id` keys allow adoption after reprocessing; snapshots preserve
+  fields such as a condition's `edited` flag.
+- Inbound links detached during deletion stay cleared on restore. Examples are
+  a condition's intake links, a lesion's care-plan links, and a visit's inbound
+  encounter links. Immunization dismissal cleanup is also not inverted.
+- Medical-document deletion includes files, extracted rows, accounting, and
+  deduplication across tables. It is not a registered undoable root; adding one
+  registry entry would not capture that operation.
+- `deleteReadingAt` captures whole-row deletes across its stores. Clearing one
+  of several body measurements, or clearing mood energy/calm, leaves the row
+  and produces no delete token. Deleting mood valence captures the whole
+  check-in, including its note and factors.
+- A `symptom-day` capture includes its photos and leaves their files for restore
+  or purge. Symptom videos bind to the profile/day/symptom rather than the log
+  id; deleting a symptom log does not delete or capture those clips. Deleting a
+  custom symptom returns a batch of per-day tokens.
+- Data → Manage uses `DATASET_UNDO_KIND` for bulk-delete capture. Read that
+  mapping alongside the kind registry; not every undoable kind is a deletable
+  dataset. Shared inbound detachment belongs in the capture path so bulk and
+  individual deletes agree.
 
 ## Rendering
 
-`deleted_rows.label` is a deliberately generic, non-PHI kind descriptor
-("activity", "body metric") — enough to _count_ a trash, not to _choose_ from
-one. The identifying content lives in `payload`, so `lib/trash.ts` reads a
-title/date/note out of the captured ROOT row. That means the Trash renders PHI
-and sits behind the same session gate as every other `(app)` surface, with free
-text through `<NotesText>`.
+`deleted_rows.label` is a generic kind descriptor. Identifying titles, dates,
+and notes come from the captured root's payload, so Trash renders health data
+behind the authenticated, profile-scoped boundary. Render free text through
+`NotesText`.
 
-- Payload parsing is **lenient**, not `parsePayload`: the bespoke
-  `administration` capture (#851 item 11) is a real, restorable holding row
-  whose payload is not a registry payload, and a Trash that threw on it would
-  hide a row the user can still restore. Anything unreadable degrades to "no
-  derived content", never to an exception.
-- **Restore re-inserts with new ids.** Nothing here presents the captured row id
-  as stable or links to a pre-restore route. The only id an entry carries is the
-  holding row's — the undo token.
-- **The delete is an instant; the row prints a day (#3546).** `deleted_at` is a
-  UTC stamp and the subtitle names a calendar day, so the two are different
-  questions and the conversion needs the profile's timezone. It used to be done
-  with `deletedAt.slice(0, 10)` — the UTC day — which stamped an 18:00 delete in
-  UTC−07:00 with _tomorrow_, beside a retention countdown computed from the
-  instant and therefore right. `trashEntry` now resolves it once, through
-  `dateFromCreatedAt` (`lib/timeline-format.ts`), with the zone `listTrash` reads
-  for the profile. `TrashEntry` carries **only** the resulting
-  `deletedOnDay` — the raw instant is not on the entry at all, so the surface
-  cannot truncate what it cannot see. Anything that genuinely needs the instant
-  reads `TrashCapture.deletedAt`.
+Display parsing is lenient: bespoke or unreadable payloads fall back to the
+kind label without hiding the holding row. This does not relax restore parsing.
+Entries carry the holding-row id, never a stable destination for the old root id.
 
-## The clinical kinds (#1847)
+Keep three time concepts separate:
 
-For its whole life the registry covered activities, weigh-ins, biomarker
-readings, supplements, practices and food servings — every low-stakes row — while
-the medical passport deleted for good. `allergy`, `condition`, `immunization`,
-`skin-lesion` and `visit` close that inversion. What each capture carries beyond
-its root row:
+- `TrashEntry.date` is the captured row's own storage day, selected through
+  `DATE_COLUMNS`. Unsupported shapes become null; format this day before
+  passing it to `trashEntryHeadline`.
+- `deletedOnDay` comes from the deletion instant through `dateFromCreatedAt`
+  using the profile timezone resolved by `listTrash`. Do not truncate UTC to
+  obtain the displayed local day.
+- Expiry uses the deletion instant plus the configured day duration, rounded up
+  for the countdown. `TrashCapture.deletedAt` retains the raw instant.
 
-| Kind           | Children                                                | Reconciled links                | Side effects NOT inverted                                                      |
-| -------------- | ------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------ |
-| `allergy`      | `allergy_reactions` (ON DELETE CASCADE)                 | document / visit / provider     | —                                                                              |
-| `condition`    | —                                                       | document / visit                | shared same-profile intake-link detach; neither link is restored (#2857/#3648) |
-| `immunization` | —                                                       | visit / provider                | `sweepImmunizationDismissals` (#376)                                           |
-| `skin-lesion`  | `lesion_photos` (explicit — `lesion_id` has no cascade) | document / visit / provider     | `care_plan_items` follow-up links (#700)                                       |
-| `visit`        | —                                                       | document / clinician / facility | every inbound `encounter_id` (#288/#1050/#1053)                                |
+## Existing verification
 
-**`medical_documents` is the one root of the issue's six that is still NOT
-undoable.** A document delete is not one row: it is the file, the extracted rows
-across every table the import writes, the reassignment and extracted-count
-accounting that must stay consistent with it, and the per-document dedupe. That
-is a capture design of its own, not another registry entry, so #1847 stays open
-for it.
+Start with `lib/__tests__/trash.test.ts` and `retention.test.ts` for display
+fallbacks, dates, expiry, and the excluded-kind list.
+`lib/__db_tests__/trash.test.ts` covers retention, restore, exclusions, and
+profile-scoped purges;
+`lib/__action_tests__/trash.actions.test.ts` exercises the write boundaries.
 
-Three things worth naming:
+For capture or media changes, use the existing DB suites for `undo-delete`,
+`clinical-undo`, `video-write`, `symptom-episode-photo-links`, `reading-writes`,
+and `mood-log-store`.
 
-- **`conditions.edited` rides in the snapshot.** A hand-corrected
-  episode-promoted condition restores still edit-LOCKED, so the next episode
-  transition holds out of it instead of reverting the correction.
-- **The lesion's photo FILES are deliberately left on disk** by the delete (the
-  `activity_videos` posture, #1224) so a restore re-points at them. The purge is
-  where they are reclaimed.
-- **A declared `uniqueKey`** (`external_id` on all four roots) lets restore ADOPT
-  a live row that re-took the captured key — a document reprocess inside the
-  window — instead of aborting the whole undo on the partial unique index. It is
-  the registry-declared twin of the `liveRowIdForCapturedRoot` (#509) treatment
-  for sync-tombstoned roots.
-
-Inbound null-outs stay uninverted on purpose, matching the three documented
-siblings (`protocols.intake_item_id`, the medical-record follow-up links, and
-`intake_items.source_record_id`): the clinical row comes back, the other row's
-link stays honestly cleared.
-
-`allergies`, `conditions`, `immunizations` and `encounters` are also deletable
-datasets, so `DATASET_UNDO_KIND` maps them and the Data → Manage bulk delete
-captures each selected row. For `encounters` that mapping does more than add an
-Undo: the inbound detach lives in `captureDelete` now, so bulk-deleting a LINKED
-visit works at all — it used to throw on the FK, exactly as a bulk-deleted
-condition a medication treated did before #1847. `skin_lesions` is not a
-deletable dataset, so its kind is reachable only from the row menu.
-
-## The readings table and the symptom-day (#2123/#2124)
-
-Two more inversions of the same shape, both inside a single control.
-
-`deleteReadingAt` (`lib/reading-writes.ts`) is the ONE editability contract, and
-it deleted by STORE: `body_metrics` and `medical_records` captured, while
-`metric_samples` and the mood check-in were removed outright. So the identical
-⋯ → Delete row offered Undo for weight and blood pressure and nothing for HRV,
-height, steps, waist, lean mass or a mood rating. `metric-sample` and `mood-log`
-end that; every store in that contract captures now. The one branch that still
-answers with no token is `body_metrics`, and not because of its store: a row
-there carries up to three measures, so removing one of several NULLs a column
-rather than deleting a row, and a column clear is not a capture. The same
-distinction runs through mood — deleting VALENCE drops the whole check-in (note
-and factors included) and captures; clearing energy or calm nulls one column of
-a row that stays and does not.
-
-`symptom-day` (#2124) is the one that reached off-DB. The symptom bar's one-tap
-× ran `deletePhotosForSymptomLog`, which unlinked every bound photo FILE before
-the row went — no confirm, no undo, and a rash series a caregiver took to show a
-doctor was simply gone. The kind captures the log row plus its `symptom_photos`
-children (explicit, because `symptom_log_id` carries no cascade — the
-`skin-lesion` shape) and leaves the files alone; the purge reclaims them. That is
-what finally makes `PHOTO_FILE_TABLES`' long-declared `symptom_photos` entry
-reachable. The × stays ONE TAP deliberately: a confirm on every symptom clear is
-the wrong tax, and undo-after-the-fact is the calmer contract. The whole-custom-
-symptom delete returns the #202 token BATCH instead, one per removed day.
-
-`symptom_videos` is deliberately NOT captured. A clip binds to the DAY
-(profile, date, symptom) and carries no `symptom_log_id`, so the live delete has
-never taken one — capturing it would mean DELETING it, widening what the ×
-destroys in the name of making the × reversible. `VIDEO_FILE_TABLES`' `symptom`
-branch therefore stays unreachable, honestly, until a kind actually deletes a
-symptom clip.
-
-Both new roots plus `symptom_logs` are deletable datasets, so all three are
-mapped in `DATASET_UNDO_KIND`. That mapping forced the 1:1 rule in
-`lib/__tests__/dataset-undo.test.ts` to ask its real question. It read
-`deleteExplicitly` as a proxy for "convention sibling", which held only while
-every explicit child WAS one; a photo series is deleted explicitly for a purely
-physical reason (no ON DELETE on the FK) while being selected by
-`<fk> = <root id>` and remapped onto the root on restore. The rule now excludes a
-counter, and an explicit child with NO fk to the root — not `deleteExplicitly`
-itself.
-
-## What `deleted_rows` holds that the Trash does not list
-
-The table has three writers; only two capture a deleted row.
-
-`captureDelete` (the kind registry) and the `administration` ledger capture are
-both restored by `restoreDeletedRow`, and both appear.
-
-A **bulk correction** (#1603) snapshots the _inverse of an edit_ into the same
-store to reuse its purge timer. It is not a deleted row, its undo is
-`undoBulkCorrection` (a guarded per-row UPDATE that skips rows changed since and
-reports how many), and it already has its own affordance on Data → Review.
-Listing it under "Recently deleted" would misname it and offer a Restore button
-that cannot work; Empty trash would silently destroy an undo still visible
-elsewhere. So `TRASH_EXCLUDED_KIND` keeps it out of the list **and** out of both
-by-hand purges — the expiry sweep still takes it, on its own schedule.
-
-## Tests
-
-- Pure — `lib/__tests__/retention.test.ts` (clamp floor/ceiling/garbage),
-  `lib/__tests__/trash.test.ts` (headline derivation, expiry math, lenient
-  payload handling, the excluded kind, and the delete instant's profile-local
-  day — every fixture there straddles a midnight in one direction or the other,
-  because an instant at midday agrees in every zone within eleven hours of UTC
-  and so is green under the bug).
-- DB — `lib/__db_tests__/trash.test.ts`: the sweep honours the configured window
-  rather than a hardcoded day; permanent delete removes only that capture;
-  Empty trash clears the acting profile's rows and leaves another profile's
-  intact; restore-from-Trash is the same core as undo.
-  `lib/__db_tests__/video-write.test.ts` covers the clip unlink on both the
-  sweep and the by-hand purge; `lib/__db_tests__/clinical-undo.test.ts` covers
-  the five clinical kinds' capture/restore fidelity and the photo unlink on all
-  three purge paths (including the "an undone delete keeps its files" case).
-  `lib/__db_tests__/symptom-episode-photo-links.test.ts` covers the symptom-day
-  round trip, the batch the custom-symptom wipe returns, and the purge branch
-  that had no kind to reach it; `lib/__db_tests__/reading-writes.test.ts` and
-  `lib/__db_tests__/mood-log-store.test.ts` cover the two readings-table stores,
-  including the tombstone going down with the capture and back up with the
-  restore, and the natural-key ADOPTIONS the new `uniqueKey`s resolve.
-- Server action — `lib/__action_tests__/clinical-undo.actions.test.ts`: each of
-  the five clinical deletes answers `{ undoId, error? }` and REFUSES an id that is
-  not the acting profile's rather than reporting a delete it did not perform.
-- E2E — `e2e/trash.spec.ts`: delete a row, let the toast go, open
-  `/data?section=trash`, restore it, assert it is back on its own surface. Its
-  last three tests run on two DEDICATED profiles ~25 hours apart
-  (`e2e/logins/trash.ts`, seeded by `e2e/seed/trash.ts`), for two reasons that
-  turn out to be one: **Empty trash** deletes every capture on the acting
-  profile, so on the shared admin profile it destroyed rows the spec never
-  created (#868's fixture-ownership rule, #3547) — a spec now owns the whole bin
-  it empties, and one test proves the control does not reach the other profile's
-  captures. And the **profile-local day** (#3546) cannot be observed on a
-  pin-following profile at all: `e2e/pinned-timezone.ts` puts local time at
-  13:mm precisely so the local date always equals the frozen instant's UTC date.
-  A capture planted at 11:30 UTC — the one hour that has rolled over at UTC+13
-  and not yet at UTC−12 — renders a different day on each profile, and the UTC
-  day the truncation printed on neither. Because that test empties nothing
-  shared, seeding `deleted_rows` in the shared fixture is viable again; whether
-  to do it is a separate call.
-  `e2e/clinical-undo.spec.ts`: delete an allergy, a lesion and a visit in the UI
-  and Undo, proving the graded manifestations and the photo series come back too
-  — and that the visit's detached reading stays detached.
-  `e2e/undo-delete.spec.ts` drives the HRV readings row (the store that also
-  carries the re-import tombstone); `e2e/symptom-photo-link.spec.ts` clears a
-  symptom-day carrying a photo and proves Undo brings the series back bound to
-  the restored log.
+`e2e/trash.spec.ts` covers restoring after the toast is gone, local deletion days,
+and profile-isolated emptying. Its dedicated profiles own the bins they empty;
+preserve that ownership when extending destructive browser cases.
