@@ -18,7 +18,7 @@
 // Fixtures are synthetic throwaway rows (per-file temp DB via setup.ts). No PHI.
 
 import type { ReactElement } from "react";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -96,7 +96,6 @@ vi.mock("@/lib/recommendation-engine", async (importActual) => {
 // 22:30 local for a UTC profile: past the 21:00 close of the last meal-reminder window,
 // with ninety minutes of the Evening FOOD window still to run.
 const LATE_EVENING = "2026-08-19T22:30:00.000Z";
-const previousTestNow = process.env.ALLOS_TEST_NOW;
 
 function tap(profileId: number, group: string, date: string, hhmmss: string) {
   db.prepare(
@@ -112,8 +111,9 @@ function tap(profileId: number, group: string, date: string, hhmmss: string) {
 let placements: DashboardPlacementCanvasProps["placements"] = [];
 
 describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
+  beforeEach(() => vi.setSystemTime(new Date(LATE_EVENING)));
   beforeAll(async () => {
-    process.env.ALLOS_TEST_NOW = LATE_EVENING;
+    vi.setSystemTime(new Date(LATE_EVENING));
     session.loginId = (
       db
         .prepare(
@@ -157,11 +157,6 @@ describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
     expect(canvas.type).toBe(DashboardPlacementCanvas);
     placements = canvas.props.placements;
   }, 120_000);
-
-  afterAll(() => {
-    if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = previousTestNow;
-  });
 
   it("places the Evening usual-routine candidate rather than dropping it", () => {
     const routine = placements.find((placement) =>
