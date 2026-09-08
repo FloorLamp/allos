@@ -1,6 +1,7 @@
 "use client";
 
 import Chip from "@/components/Chip";
+import type { IntakeCadenceDraft } from "@/lib/intake-form-fields";
 import DateField from "@/components/DateField";
 import { WEEKDAYS_SHORT, weekdayOrder } from "@/lib/date";
 import {
@@ -20,20 +21,6 @@ import {
 // price of a control most people cannot fill in correctly. Rolling intervals ("72h
 // after the LAST application") are deliberately out: dueness as a function of log
 // history is a feedback loop, and it slots into this same field later.
-export interface CadenceState {
-  kind: CadenceKind;
-  weekdays: number[];
-  intervalDays: string;
-  anchorDate: string;
-}
-
-export const emptyCadence = (): CadenceState => ({
-  kind: "daily",
-  weekdays: [],
-  intervalDays: "",
-  anchorDate: "",
-});
-
 // Weekday toggle chips, shared by the item cadence and the per-dose row override so a
 // weekday means the same thing (and is picked the same way) in both places. Ordered by
 // the profile's first-day-of-week for the same reason every other calendar surface is.
@@ -86,11 +73,11 @@ export default function CadenceEditor({
   onChange,
   weekStart = 0,
 }: {
-  value: CadenceState;
-  onChange: (next: CadenceState) => void;
+  value: IntakeCadenceDraft;
+  onChange: (next: IntakeCadenceDraft) => void;
   weekStart?: number;
 }) {
-  const set = (patch: Partial<CadenceState>) =>
+  const set = (patch: Partial<IntakeCadenceDraft>) =>
     onChange({ ...value, ...patch });
   return (
     <div className="sm:col-span-2" data-testid="cadence-editor">

@@ -722,7 +722,12 @@ export async function updateIntakeItem(
   const get = (k: IntakeField) => formData.get(k);
   const has = (k: IntakeField) => formData.has(k);
   const id = Number(get("id"));
-  if (!id) return formError("Couldn't find that supplement.");
+  const missingItem = formError(
+    get("kind") === "medication"
+      ? "Couldn't find that medication."
+      : "Couldn't find that supplement."
+  );
+  if (!id) return missingItem;
   const name = String(get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const todayStr = today(profile.id);
@@ -1068,7 +1073,7 @@ export async function updateIntakeItem(
       "Workout-based supplement schedules aren't available for this profile's age."
     );
   }
-  if (!result) return formError("Couldn't find that supplement.");
+  if (!result) return missingItem;
   revalidateIntake();
   return formOk();
 }

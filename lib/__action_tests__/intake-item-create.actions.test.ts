@@ -317,6 +317,20 @@ describe("the item form's create writes the whole column set", () => {
 // ── The edit, against the create ────────────────────────────────────────────
 
 describe("the EDIT leaves the same shape the CREATE would", () => {
+  it.each(["medication", "supplement"] as const)(
+    "names a missing %s for both absent and unknown ids",
+    async (kind) => {
+      seedActor();
+      for (const id of ["", "999999999"]) {
+        expect(
+          await updateIntakeItem(
+            fd({ id, kind, name: "Missing intake fixture" })
+          )
+        ).toEqual({ ok: false, error: `Couldn't find that ${kind}.` });
+      }
+    }
+  );
+
   it("a medication's stack is nulled by the edit too, however the field arrives", async () => {
     // A row's shape must not depend on which door touched it last. `stack` is a
     // SUPPLEMENT affordance (intakeKindAffordances), and the create nulls it for a
