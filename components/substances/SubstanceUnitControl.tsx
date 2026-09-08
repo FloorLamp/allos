@@ -8,6 +8,8 @@ import { substanceDef } from "@/lib/substance-use";
 import {
   logSubstanceUnitAction,
   undoSubstanceUnitAction,
+  type SubstanceCountResult,
+  type SubstanceLogResult,
 } from "@/app/(app)/medical/substance-use/actions";
 
 // THE SUBSTANCE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), named by
@@ -58,14 +60,14 @@ export default function SubstanceUnitControl({
     // own key, so a correction straight after a log is not absorbed by it.
     await ledger.tap({
       key: kind,
-      write: () => {
+      write: async (): Promise<SubstanceLogResult | SubstanceCountResult> => {
         const fd = stampLoggedVia(new FormData());
         fd.set("substance", substance);
         if (subjectProfileId != null)
           fd.set("profile_id", String(subjectProfileId));
         return kind === "log"
-          ? logSubstanceUnitAction(fd)
-          : undoSubstanceUnitAction(fd);
+          ? await logSubstanceUnitAction(fd)
+          : await undoSubstanceUnitAction(fd);
       },
       settle: (result) => {
         if (!result.ok) {
