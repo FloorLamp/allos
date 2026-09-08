@@ -7,11 +7,13 @@ import {
   reconcileRefillReceipt,
   renderRefillMessage,
   runRefills,
+  handleOrderedRefillCallback,
 } from "@/lib/notifications/refill";
 import { readRefillOffer } from "@/lib/notifications/offer-store";
 import { sendTelegramMessage } from "@/lib/notifications/telegram";
 import { sendMessageRaw } from "@/lib/notifications/telegram-api";
 import { updateIntakeSupplyCount } from "@/lib/queries/intake/supply-pool";
+import { dismissFinding, restoreFinding } from "@/lib/queries/upcoming";
 import { decrementSupply, incrementSupply } from "@/lib/queries/intake/refill";
 // DB INTEGRATION TIER — the two-way Telegram action buttons (issue #233) driven
 // end-to-end through handleCallbackQuery against the REAL query layer, with only
@@ -39,7 +41,7 @@ import { shiftDateStr } from "@/lib/date";
 import { getProfileSetting, setProfileSetting, setTelegramBotConfig } from "@/lib/settings";
 import { preventiveSignalKey } from "@/lib/preventive-upcoming";
 import { refillSignalKey, refillMarkerKey, parseRefillMarker } from "@/lib/refill-nudge";
-import { orderedRefillToken } from "@/lib/notifications/refill-tokens";
+import { orderedRefillToken, parseOrderedRefillCallback } from "@/lib/notifications/refill-tokens";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import {
   CALLBACK_REGISTRY,
@@ -1680,3 +1682,106 @@ it.each(["foreign", "muted"])(
     );
   }
 );
+
+
+async function legacyOrderedFixture() {
+  const f = await receivedFixture();
+  const data = `rfsnooze:${f.profileId}:${f.supplementId}`;
+  setProfileSetting(f.profileId, refillMarkerKey(f.supplementId), today(f.profileId));
+  const message = { title: "Refill due", body: "First bottle is running low.", kind: "refill" as const,
+    actions: [{ label: "Ordered", data, row: "old-refill" }, { ...f.action, row: "old-refill" }] };
+  const messageId = (await sendTelegramMessage(OWN_CHAT, message, f.profileId))!;
+  return { ...f, data, message, tap: { ...cq(data, OWN_CHAT), message: { message_id: messageId, chat: { id: OWN_CHAT } } } };
+}
+
+it("legacy confirmation survives failed edit, binds its source, and only the new confirmation requests a reminder", async () => {
+  const f = await legacyOrderedFixture();
+  const token = { profileId: f.profileId, itemId: f.supplementId };
+  editTextMock.mockRejectedValueOnce(new Error("synthetic edit failure"));
+  await expect(handleOrderedRefillCallback(f.tap, token)).rejects.toThrow("synthetic edit failure");
+  const pending = getProfileSetting(f.profileId, refillMarkerKey(f.supplementId));
+  const pointer = messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!;
+  expect(pointer.bodyHash).toBeNull();
+  const confirm = pointer.keyboard.flat().find((button) => button.callback_data?.startsWith("rfordered:"))!.callback_data!;
+  const cancel = pointer.keyboard.flat().find((button) => button.callback_data?.startsWith("rfordno:"))!.callback_data!;
+  expect(db.prepare("SELECT 1 FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?")
+    .get(f.profileId, refillSignalKey(f.supplementId))).toBeUndefined();
+  await reconcileRefillReceipt(f.profileId, pointer);
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(pending);
+  expect(messagePointerAt(f.profileId, OWN_CHAT, pointer.messageId)!.bodyHash).not.toBeNull();
+  const otherId = (await sendTelegramMessage(OWN_CHAT, f.message, f.profileId))!;
+  await handleOrderedRefillCallback({ ...f.tap, data: confirm, message: { ...f.tap.message, message_id: otherId } }, parseOrderedRefillCallback(confirm)!);
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(pending);
+  await handleOrderedRefillCallback({ ...f.tap, data: cancel }, parseOrderedRefillCallback(cancel)!);
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(today(f.profileId));
+  const freshTap = { ...f.tap, message: { ...f.tap.message, message_id: otherId } };
+  await handleOrderedRefillCallback(freshTap, token);
+  const fresh = messagePointerAt(f.profileId, OWN_CHAT, otherId)!;
+  const freshData = fresh.keyboard.flat().find((button) => button.callback_data?.startsWith("rfordered:"))!.callback_data!;
+  await handleOrderedRefillCallback({ ...freshTap, data: freshData }, parseOrderedRefillCallback(freshData)!);
+  expect(parseRefillMarker(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))))
+    .toMatchObject({ state: "requested", dueOn: shiftDateStr(today(f.profileId), 3) });
+});
+
+it.each(["acknowledgement", "edit"])("keeps accepted Ordered truthful and recoverable after failed %s", async (failure) => {
+  const f = await orderedFixture();
+  editTextMock.mockClear();
+  if (failure === "acknowledgement") answerMock.mockRejectedValueOnce(new Error("synthetic acknowledgement failure"));
+  else editTextMock.mockRejectedValueOnce(new Error("synthetic edit failure"));
+  await expect(handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!)).rejects.toThrow(`synthetic ${failure} failure`);
+  const accepted = getProfileSetting(f.profileId, refillMarkerKey(f.supplementId));
+  expect(parseRefillMarker(accepted)).toMatchObject({ state: "requested" });
+  await reconcileRefillReceipt(f.profileId, messagePointerAt(f.profileId, OWN_CHAT, f.pointer.messageId)!);
+  expect(lastEditedText()).toContain("4 on hand");
+  expect(lastEditedText()).not.toContain("no longer available");
+  expect(messagePointerAt(f.profileId, OWN_CHAT, f.pointer.messageId)!.keyboard.flat()
+    .some((button) => button.callback_data === f.data)).toBe(false);
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(accepted);
+});
+
+it("a Received operation wins over a pending legacy-confirmation edit before pointer refresh", async () => {
+  const f = await legacyOrderedFixture();
+  let release!: () => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>((resolve) => { entered = resolve; });
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  editTextMock.mockImplementationOnce(async () => { entered(); await hold; });
+  const pending = handleOrderedRefillCallback(f.tap, { profileId: f.profileId, itemId: f.supplementId });
+  await waiting;
+  try {
+    await handleReceivedCallback({ ...f.tap, data: f.action.data, from: { id: 71 } },
+      { profileId: f.profileId, offerId: f.offerId });
+    const current = messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!;
+    expect(current.keyboard.flat().some((button) => button.callback_data?.startsWith("rfordered:"))).toBe(false);
+    release();
+    await pending;
+    expect(messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!.version).toBe(current.version);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe("pending");
+  } finally { release(); await pending; }
+});
+
+it("rolls back Ordered suppression and marker if the final pointer claim fails", async () => {
+  const f = await orderedFixture();
+  const original = getProfileSetting(f.profileId, refillMarkerKey(f.supplementId));
+  db.exec(`CREATE TEMP TRIGGER fail_ordered_pointer BEFORE UPDATE ON notify_messages
+    WHEN OLD.id = ${f.pointer.id} BEGIN SELECT RAISE(ABORT, 'synthetic pointer failure'); END`);
+  try {
+    await expect(handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!)).rejects.toThrow("synthetic pointer failure");
+  } finally { db.exec("DROP TRIGGER fail_ordered_pointer"); }
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(original);
+  expect(messagePointerAt(f.profileId, OWN_CHAT, f.pointer.messageId)!.version).toBe(f.pointer.version);
+  expect(db.prepare("SELECT 1 FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?")
+    .get(f.profileId, refillSignalKey(f.supplementId))).toBeUndefined();
+});
+
+it("ordinary cancellation and restore keep an explicitly accepted episode spent", async () => {
+  const f = await orderedFixture();
+  await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+  dismissFinding(f.profileId, refillSignalKey(f.supplementId));
+  restoreFinding(f.profileId, refillSignalKey(f.supplementId));
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(today(f.profileId));
+  const send = vi.mocked(sendMessageRaw);
+  send.mockClear();
+  await runRefills(f.profileId, shiftDateStr(today(f.profileId), 3));
+  expect(send).not.toHaveBeenCalled();
+});

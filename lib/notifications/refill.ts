@@ -36,6 +36,7 @@ import {
   messagePointerAt,
   claimMessagePointerKeyboard,
   releaseMessagePointerKeyboard,
+  releaseMessagePointerBody,
   type MessagePointer,
 } from "./message-pointers";
 import { messageBodyHash } from "./reconcile-core";
@@ -731,9 +732,25 @@ export async function handleOrderedRefillCallback(
     plan.keepClaim = true;
     return { pointer, plan, outcome };
   });
-  await answerCallbackQuery(cq.id, refillAnswerText(result?.outcome ?? "stale-item"));
-  if (!result) return;
-  await applyRefillReceiptPlan(token.profileId, result.pointer, result.plan);
+  if (!result) {
+    await answerCallbackQuery(cq.id, refillAnswerText("stale-item"));
+    if (!("generation" in token) && receiptAuthorized(token.profileId, chat)) {
+      const stock = refillStock(token.profileId, token.itemId);
+      const base = getPublicUrl().replace(/\/$/, "");
+      if (stock && base) await sendTelegramMessage(chat, {
+        title: "Refill reminder",
+        body: "This reminder is out of date. Open the current refill form.",
+        actions: [{ label: "Open refill form", url: `${base}${intakeSupplyHref(stock.kind, token.itemId, true)}` }],
+      }, token.profileId);
+    }
+    return;
+  }
+  try {
+    await answerCallbackQuery(cq.id, refillAnswerText(result.outcome));
+  } finally {
+    // A failed acknowledgement must not strand the committed keyboard claim.
+    await applyRefillReceiptPlan(token.profileId, result.pointer, result.plan);
+  }
   return result.outcome === "snoozed" ? token.profileId : undefined;
 }
 
@@ -809,10 +826,10 @@ function planRefillReceipt(
           ? currentOrderedActions(profileId, itemId, pointer, liveTokens,
               offers.some((it) => liveIds.has(it.id) && it.row!.offer.itemId === itemId && it.row!.offer.state !== "available"))
           : [];
-        if (low && !liveOffer && !ordered.length) continue;
         lines.push(
           `${stock.name}: ${stock.quantity ?? "No count"}${stock.quantity == null ? "" : " on hand"}${low ? ` · ≈${days} days left (running low)` : ""}`
         );
+        if (low && !liveOffer && !ordered.length) continue;
         const pending = offers.find(
           (it) =>
             it.row!.offer.itemId === itemId &&
@@ -895,8 +912,11 @@ async function applyRefillReceiptPlan(profileId: number, pointer: MessagePointer
     );
   } catch (error) {
     writeTx(() => {
-      if (!plan.keepClaim && current())
-        releaseMessagePointerKeyboard(
+      if (!current()) return;
+      if (plan.keepClaim) {
+        // Keep consumed tokens retired, but let the next sweep retry the body.
+        releaseMessagePointerBody(profileId, pointer.id, plan.bodyHash, null);
+      } else releaseMessagePointerKeyboard(
           profileId,
           pointer.id,
           plan.keyboard,

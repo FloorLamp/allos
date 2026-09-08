@@ -32,6 +32,7 @@ import {
   setWeekMode,
   setWeekStart,
   setStoredAge,
+  setLoginTelegramDisabledKinds,
 } from "@/lib/settings";
 import {
   runRecap,
@@ -51,7 +52,7 @@ import {
   type ReviewCadence,
 } from "@/lib/recap-scale";
 import { recapMarkerKey } from "@/lib/notifications/send-markers";
-import { runRefills } from "@/lib/notifications/refill";
+import { runRefills, handleOrderedRefillCallback } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
 import { getNotifyError } from "@/lib/notifications";
@@ -59,7 +60,10 @@ import { recordDeliveryOutcome } from "@/lib/notifications/delivery-marker";
 import { ESCALATION_SUPPRESSION_POLICY } from "@/lib/notifications/escalation";
 import { isHiddenUnderPolicy } from "@/lib/lifecycle";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
-import { refillMarkerKey, parseRefillMarker } from "@/lib/refill-nudge";
+import { refillMarkerKey, refillSignalKey, parseRefillMarker } from "@/lib/refill-nudge";
+import { liveMessagePointers } from "@/lib/notifications/message-pointers";
+import { parseOrderedRefillCallback } from "@/lib/notifications/refill-tokens";
+import { dismissFinding, restoreFinding } from "@/lib/queries/upcoming";
 import { getNotifySchedule } from "@/lib/settings";
 import { markDoseSkipped, recordPreventiveDone } from "@/lib/queries";
 import { buildWorkoutTargetReminder } from "@/lib/notifications/workouts";
@@ -332,6 +336,132 @@ describe("runRefills orchestrator", () => {
   });
 });
 
+describe("Ordered delivery claims", () => {
+  it("does not spend a healthy disabled-channel no-op", async () => {
+    const p = newProfile("RefillDisabled");
+    const item = seedLowSupplement(p);
+    const login = configureTelegram(p);
+    setLoginTelegramDisabledKinds(login, ["refill"]);
+    const fetchMock = stubFetch();
+    await runRefills(p, today(p));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(item))))
+      .toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
+    setLoginTelegramDisabledKinds(login, []);
+    await runRefills(p, today(p));
+    expect(fetchMock).toHaveBeenCalled();
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(item))))
+      .toMatchObject({ state: "sent" });
+  });
+
+  it("elects one live claimant, recovers expiry, and rejects the old completion", async () => {
+    const p = newProfile("RefillClaim");
+    const item = seedLowSupplement(p);
+    configureHA(p);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const hold = new Promise<void>((resolve) => { release = resolve; });
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    fetchMock.mockImplementationOnce(async () => { entered(); await hold; return new Response(null, { status: 200 }); });
+    vi.stubGlobal("fetch", fetchMock);
+    const first = runRefills(p, today(p));
+    await waiting;
+    try {
+      await runRefills(p, today(p));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(new Date(Date.now() + 151000));
+      await runRefills(p, today(p));
+      const newer = getProfileSetting(p, refillMarkerKey(item));
+      expect(parseRefillMarker(newer)).toMatchObject({ state: "sent" });
+      release();
+      await first;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(getProfileSetting(p, refillMarkerKey(item))).toBe(newer);
+    } finally { release(); await first; }
+  });
+
+  it("accepts Ordered from actual delivery before the other channel settles", async () => {
+    const p = newProfile("RefillEarlyTap");
+    const item = seedLowSupplement(p);
+    configureHA(p);
+    configureTelegram(p);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const hold = new Promise<void>((resolve) => { release = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+      if (String(url).includes("api.telegram.org")) return jsonResponse({ ok: true, result: { message_id: 21001 } });
+      entered(); await hold; return new Response(null, { status: 200 });
+    }));
+    const first = runRefills(p, today(p));
+    await waiting;
+    try {
+      await vi.waitFor(() => expect(liveMessagePointers(p).some((pointer) => pointer.kind === "refill")).toBe(true));
+      const pointer = liveMessagePointers(p).find((pointer) => pointer.kind === "refill")!;
+      const data = pointer.keyboard.flat().find((b) => b.callback_data?.startsWith("rfordered:"))!.callback_data!;
+      await handleOrderedRefillCallback({ id: "early-ordered", data,
+        message: { message_id: pointer.messageId, chat: { id: pointer.chatId } } }, parseOrderedRefillCallback(data)!);
+      const requested = getProfileSetting(p, refillMarkerKey(item));
+      expect(parseRefillMarker(requested)).toMatchObject({ state: "requested", dueOn: shiftDateStr(today(p), 3) });
+      release(); await first;
+      expect(getProfileSetting(p, refillMarkerKey(item))).toBe(requested);
+    } finally { release(); await first; }
+  });
+
+  it("keeps a partial-only delivery retryable but accepts its proved Ordered receipt", async () => {
+    const p = newProfile("RefillPartialReceipt");
+    const item = seedLowSupplement(p);
+    configureTelegram(p, "555071");
+    seedLoginTelegram(p, "555072");
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { chat_id?: string };
+      return body.chat_id === "555072"
+        ? jsonResponse({ ok: false, description: "synthetic second-chat failure" })
+        : jsonResponse({ ok: true, result: { message_id: 21002 } });
+    }));
+    expect(await runRefills(p, today(p))).toEqual({ failed: true });
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(item))))
+      .toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
+    const pointer = liveMessagePointers(p).find((pointer) => pointer.kind === "refill")!;
+    const data = pointer.keyboard.flat().find((b) => b.callback_data?.startsWith("rfordered:"))!.callback_data!;
+    await handleOrderedRefillCallback({ id: "partial-ordered", data,
+      message: { message_id: pointer.messageId, chat: { id: pointer.chatId } } }, parseOrderedRefillCallback(data)!);
+    expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(item))))
+      .toMatchObject({ state: "requested", sentOn: pointer.date });
+  });
+
+  it.each([false, true])("ordinary cancellation before settlement invents no baseline (receipt=%s)", async (withReceipt) => {
+    const p = newProfile("RefillCancelAttempt");
+    const item = seedLowSupplement(p);
+    configureHA(p);
+    if (withReceipt) configureTelegram(p);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const hold = new Promise<void>((resolve) => { release = resolve; });
+    let haCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+      if (String(url).includes("api.telegram.org")) return jsonResponse({ ok: true, result: { message_id: 21003 } });
+      haCalls++;
+      if (haCalls === 1) { entered(); await hold; }
+      return new Response(null, { status: 200 });
+    }));
+    const first = runRefills(p, today(p));
+    await waiting;
+    try {
+      if (withReceipt) await vi.waitFor(() => expect(liveMessagePointers(p).some((pointer) => pointer.kind === "refill")).toBe(true));
+      dismissFinding(p, refillSignalKey(item));
+      restoreFinding(p, refillSignalKey(item));
+      release(); await first;
+      expect(getProfileSetting(p, refillMarkerKey(item))).toBeUndefined();
+      await runRefills(p, today(p));
+      expect(haCalls).toBe(2);
+      expect(parseRefillMarker(getProfileSetting(p, refillMarkerKey(item)))).toMatchObject({ state: "sent" });
+    } finally { release(); await first; }
+  });
+});
+
 // =====================================================================
 // runPreventive — bus-gated nudge, per-item markers (#665)
 // =====================================================================
@@ -424,7 +554,7 @@ describe("runPreventive orchestrator", () => {
     );
   });
 
-  it("delivery accounting: no channel configured → released attempt, retries next tick", async () => {
+  it("delivery accounting: no channel configured → no marker, retries next tick", async () => {
     const p = preventiveProfile("PrevNoChannel");
     const date = today(p);
     const fetchMock = stubFetch();
@@ -437,7 +567,7 @@ describe("runPreventive orchestrator", () => {
     ).toBeUndefined();
   });
 
-  it("delivery accounting: all channels fail → retryable attempt", async () => {
+  it("delivery accounting: all channels fail → no marker", async () => {
     const p = preventiveProfile("PrevAllFail");
     const date = today(p);
     configureHA(p);
@@ -524,7 +654,7 @@ describe("runEscalations orchestrator", () => {
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBeUndefined();
   });
 
-  it("delivery accounting: no channel configured → released attempt, retries next tick", async () => {
+  it("delivery accounting: no channel configured → no marker, retries next tick", async () => {
     const p = newProfile("EscNoChannel");
     const { doseId, date } = escalationFixture(p);
     const fetchMock = stubFetch();
