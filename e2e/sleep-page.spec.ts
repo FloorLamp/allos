@@ -138,7 +138,7 @@ interface SleepEditFixture {
 // copied into the per-test login.
 function createSleepEditFixture(
   testInfo: TestInfo,
-  purpose: "edit" | "add" | "delete"
+  purpose: "edit" | "add" | "delete" | "regularity"
 ): SleepEditFixture {
   const handle = new Database(DB_PATH);
   handle.pragma("busy_timeout = 5000");
@@ -305,6 +305,78 @@ function destroySleepEditFixture(fixture: SleepEditFixture): void {
     handle.close();
   }
 }
+
+// The browser must show different bands when actual sleep timing changes.
+// Reuse this file's isolated profile and cleanup; comparison arithmetic is covered
+// in the pure/DB tiers, while computed color and the single note are visible here.
+test("sleep regularity changes its visible band and shows one sustained-drop note", async ({
+  browser,
+}, testInfo) => {
+  const fixture = createSleepEditFixture(testInfo, "regularity");
+  const date = frozenNow().toISOString().slice(0, 10);
+  const zone = pinnedTimezone(frozenNow().toISOString()).zone;
+  const travelStart = shiftDateStr(date, -20);
+  const seed = (variable: boolean) => {
+    const handle = new Database(DB_PATH);
+    handle.pragma("busy_timeout = 5000");
+    try {
+      handle.transaction(() => {
+        handle.prepare("DELETE FROM metric_samples WHERE profile_id = ?").run(fixture.profileId);
+        const insert = handle.prepare(`INSERT INTO metric_samples
+          (profile_id, source, metric, date, started_at, ended_at, value)
+          VALUES (?, 'oura', 'sleep_min', ?, ?, ?, 480)`);
+        for (let ago = 69; ago >= 0; ago--) {
+          const wakeDay = shiftDateStr(date, -ago);
+          const shifted = variable && ago < 28 && ago % 2 === 0;
+          insert.run(fixture.profileId, wakeDay,
+            zonedWallTimeToUtc(zone, shifted ? wakeDay : shiftDateStr(wakeDay, -1), shifted ? "03:00" : "23:00")!.toISOString(),
+            zonedWallTimeToUtc(zone, wakeDay, shifted ? "11:00" : "07:00")!.toISOString());
+        }
+        handle.prepare(`INSERT INTO profile_settings (profile_id, key, value)
+          VALUES (?, 'situation_events', ?)
+          ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`)
+          .run(fixture.profileId, JSON.stringify([
+            { date: travelStart, situation: "Travel", change: "start" },
+          ]));
+      }).immediate();
+    } finally {
+      handle.close();
+    }
+  };
+  let page: Page | null = null;
+  try {
+    seed(false);
+    page = await loginAs(browser, {
+      username: fixture.username,
+      password: E2E_MEMBER_PASSWORD,
+    }, { timezoneId: zone });
+    await page.goto("/sleep");
+    const card = page.getByRole("main").getByTestId("sleep-regularity");
+    const value = card.getByTestId("sri-value");
+    await expect(value).toBeVisible();
+    await expect(value).toHaveText("SRI 100");
+    await expect(card.getByTestId("pillar-tone-badge")).toBeVisible();
+    await expect(card.getByTestId("pillar-tone-badge")).toHaveText("Good");
+    const steadyColor = await value.evaluate((node) => getComputedStyle(node).color);
+    await expect(card.getByTestId("sri-insight")).toHaveCount(0);
+
+    seed(true);
+    await page.reload();
+    await expect(card.getByTestId("pillar-tone-badge")).toBeVisible();
+    await expect(card.getByTestId("pillar-tone-badge")).toHaveText("Poor");
+    await expect(value).toHaveAttribute("title", "variable");
+    expect(await value.evaluate((node) => getComputedStyle(node).color)).not.toBe(steadyColor);
+    const insight = card.getByTestId("sri-insight");
+    await expect(insight).toHaveCount(1);
+    await expect(insight).toBeVisible();
+    await expect(insight).toContainText("Sleep regularity dropped");
+    await expect(insight).toContainText(`your Travel started on ${travelStart}`);
+    await expect(insight.getByRole("link", { name: "Review sleep" })).toHaveAttribute("href", "/sleep");
+  } finally {
+    await page?.context().close();
+    destroySleepEditFixture(fixture);
+  }
+});
 
 // Flip a Settings → Preferences select and wait for the autosave to LAND. The card
 // shows a "Saved" check only after the Server Action's write commits, so gating on
