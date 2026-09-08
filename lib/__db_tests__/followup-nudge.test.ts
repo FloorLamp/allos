@@ -93,31 +93,27 @@ describe("runFollowUpNudges — two-send cadence at the tick level (#1866)", () 
     const fetchMock = stubFetch();
 
     // Crossing: the first (and only) send today, marker stamped with the date.
-    expect((await runFollowUpNudges(p, "FUN", now)).failed).toBe(false);
+    expect((await runFollowUpNudges(p, now)).failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBe(now);
 
     // Same day again + every day up to the repeat threshold: nothing.
-    await runFollowUpNudges(p, "FUN", now);
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, 1));
-    await runFollowUpNudges(
-      p,
-      "FUN",
-      shiftDateStr(now, FOLLOWUP_REPEAT_DAYS - 1)
-    );
+    await runFollowUpNudges(p, now);
+    await runFollowUpNudges(p, shiftDateStr(now, 1));
+    await runFollowUpNudges(p, shiftDateStr(now, FOLLOWUP_REPEAT_DAYS - 1));
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // Weeks later: exactly ONE repeat, appended to the marker.
     const repeatDay = shiftDateStr(now, FOLLOWUP_REPEAT_DAYS);
-    await runFollowUpNudges(p, "FUN", repeatDay);
+    await runFollowUpNudges(p, repeatDay);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBe(
       `${now},${repeatDay}`
     );
 
     // Then nothing further, ever — however overdue it stays.
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, 100));
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, 400));
+    await runFollowUpNudges(p, shiftDateStr(now, 100));
+    await runFollowUpNudges(p, shiftDateStr(now, 400));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -126,7 +122,7 @@ describe("runFollowUpNudges — two-send cadence at the tick level (#1866)", () 
     const now = today(p);
     const cpId = trackOverdueFollowUp(p, now);
     const fetchMock = stubFetch();
-    expect((await runFollowUpNudges(p, "FUN", now)).failed).toBe(false);
+    expect((await runFollowUpNudges(p, now)).failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBeUndefined();
   });
@@ -146,7 +142,7 @@ describe("safety contract: dismiss never silences; snooze freezes (#1866 req 4)"
     dismissFinding(p, item!.key);
 
     const fetchMock = stubFetch();
-    await runFollowUpNudges(p, "FUN", now);
+    await runFollowUpNudges(p, now);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -158,14 +154,14 @@ describe("safety contract: dismiss never silences; snooze freezes (#1866 req 4)"
     snoozeFinding(p, `${FOLLOWUP_PREFIX}${cpId}`, shiftDateStr(now, 7));
 
     const fetchMock = stubFetch();
-    await runFollowUpNudges(p, "FUN", now);
+    await runFollowUpNudges(p, now);
     expect(fetchMock).not.toHaveBeenCalled();
     // Frozen, not cleared: no marker was written.
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBeUndefined();
 
     // The snooze expires → the held first send goes out.
     const after = shiftDateStr(now, 7);
-    await runFollowUpNudges(p, "FUN", after);
+    await runFollowUpNudges(p, after);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBe(after);
   });
@@ -181,7 +177,7 @@ describe("the terminator ends the escalation permanently (#1866 req 2)", () => {
     const cpId = (created as { carePlanItemId: number }).carePlanItemId;
 
     const fetchMock = stubFetch();
-    await runFollowUpNudges(p, "FUN", now);
+    await runFollowUpNudges(p, now);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // Decline: "discussed, not doing it."
@@ -200,14 +196,14 @@ describe("the terminator ends the escalation permanently (#1866 req 2)", () => {
     expect(followUpItems(p, now).some((i) => i.key.endsWith(`:${cpId}`))).toBe(
       false
     );
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, 1));
+    await runFollowUpNudges(p, shiftDateStr(now, 1));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBeUndefined();
 
     // RE-DETECTION: ticks keep re-running long past every cadence boundary —
     // the declined follow-up stays silent forever.
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, FOLLOWUP_REPEAT_DAYS));
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, 200));
+    await runFollowUpNudges(p, shiftDateStr(now, FOLLOWUP_REPEAT_DAYS));
+    await runFollowUpNudges(p, shiftDateStr(now, 200));
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // A DELIBERATE re-track of the same source is a NEW chain node — a new
@@ -217,7 +213,7 @@ describe("the terminator ends the escalation permanently (#1866 req 2)", () => {
     expect(retracked.kind).toBe("created");
     const newId = (retracked as { carePlanItemId: number }).carePlanItemId;
     expect(newId).not.toBe(cpId);
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, 201));
+    await runFollowUpNudges(p, shiftDateStr(now, 201));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBeUndefined();
     expect(getProfileSetting(p, followUpNudgeMarkerKey(newId))).toBeDefined();
@@ -229,7 +225,7 @@ describe("the terminator ends the escalation permanently (#1866 req 2)", () => {
     const now = today(p);
     const cpId = trackOverdueFollowUp(p, now);
     const fetchMock = stubFetch();
-    await runFollowUpNudges(p, "FUN", now);
+    await runFollowUpNudges(p, now);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const settled = settleFollowUpCore(
@@ -241,7 +237,7 @@ describe("the terminator ends the escalation permanently (#1866 req 2)", () => {
       now
     );
     expect(settled.kind).toBe("settled");
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, FOLLOWUP_REPEAT_DAYS));
+    await runFollowUpNudges(p, shiftDateStr(now, FOLLOWUP_REPEAT_DAYS));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -256,22 +252,19 @@ describe("message rendering", () => {
       reasons: [],
     };
     const first = renderFollowUpNudgeMessage(
-      "Norton",
       item,
       "first",
       "https://example.test"
     );
     expect(first.kind).toBe("followup");
-    expect(first.title).toContain(
-      "Overdue follow-up: Norton — Follow-up CT chest"
-    );
+    expect(first.title).toContain("Overdue follow-up: Follow-up CT chest");
     expect(first.body).toContain("Was due 2026-03-15.");
     expect(first.body).toContain("6 mm RLL nodule");
     expect(first.actions).toEqual([
       { label: "Open Upcoming", url: "https://example.test/upcoming" },
     ]);
 
-    const repeat = renderFollowUpNudgeMessage("Norton", item, "repeat", "");
+    const repeat = renderFollowUpNudgeMessage(item, "repeat", "");
     expect(repeat.body).toContain("Final reminder");
     // No public URL ⇒ no url action (a relative URL can't be a button).
     expect(repeat.actions).toEqual([]);

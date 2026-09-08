@@ -63,12 +63,10 @@ const log = createLogger("notify");
 // channel-neutral (#1718 — it names no button any channel strips); the only
 // affordance is a deep link to Upcoming, where the terminator controls live.
 export function renderFollowUpNudgeMessage(
-  profileName: string,
   item: Pick<UpcomingItem, "title" | "detail" | "dueDate" | "reasons">,
   stage: FollowUpNudgeStage,
   deepLinkBase = ""
 ): NotificationMessage {
-  const who = profileName ? `${profileName} — ` : "";
   const lines: string[] = [];
   if (item.dueDate) lines.push(`Was due ${item.dueDate}.`);
   if (item.detail) lines.push(item.detail);
@@ -82,7 +80,7 @@ export function renderFollowUpNudgeMessage(
     ? [{ label: "Open Upcoming", url: `${base}/upcoming` }]
     : [];
   return {
-    title: `${GLYPH.clinical} Overdue follow-up: ${who}${item.title}`,
+    title: `${GLYPH.clinical} Overdue follow-up: ${item.title}`,
     body: lines.join("\n"),
     actions,
     kind: "followup",
@@ -95,7 +93,6 @@ export function renderFollowUpNudgeMessage(
 // overdue/suppression evaluation day.
 export async function runFollowUpNudges(
   profileId: number,
-  profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
   // The SAME computation the Upcoming page and dashboard render. Overdue = the items the
@@ -168,7 +165,7 @@ export async function runFollowUpNudges(
     if (!item) continue;
     const results = await dispatch(
       profileId,
-      renderFollowUpNudgeMessage(profileName, item, s.stage, base)
+      renderFollowUpNudgeMessage(item, s.stage, base)
     );
     if (results.length === 0) {
       // No channel configured — leave markers unset so it can send once configured.

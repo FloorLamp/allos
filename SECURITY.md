@@ -1,238 +1,149 @@
-# Security Policy
+# Security policy
 
-## Reporting a vulnerability
+## Report a vulnerability
 
-Please report security vulnerabilities **privately**. Do **not** open a public
-GitHub issue for a security bug — public issues are visible to everyone and can
-expose users before a fix is available.
+Report security bugs privately through the repository's **Security → Advisories →
+Report a vulnerability** form. Include impact, reproduction steps or a proof of
+concept, affected routes/versions/configuration, and suggested remediation.
+Use synthetic or redacted data; never include real health records or credentials.
 
-To report a vulnerability, use GitHub's private advisory workflow:
+We will acknowledge reports, provide progress updates, and credit reporters who
+wish to be named after a fix is released. Authentication, profile isolation,
+uploads, file serving, and medical-data disclosure are especially relevant.
 
-1. Go to the repository's **Security** tab.
-2. Select **Advisories → Report a vulnerability**.
+Allos is a rolling release. Security fixes land on `main`; self-hosters should
+track it or the latest published container image. Older commits and tags do not
+receive separate patches.
 
-This opens a private channel visible only to the maintainers. Please include:
+## Access boundaries
 
-- a description of the issue and its potential impact,
-- steps to reproduce (a proof of concept if possible),
-- affected routes, versions, or configuration, and
-- any suggested remediation.
+A login is an authentication identity; a profile is a data subject. Enforcement
+belongs at server request boundaries and in scoped data access. UI visibility and
+middleware's cookie-presence check are not authorization.
 
-We will acknowledge your report, keep you updated on our progress, and credit
-you (if you wish) once a fix is released.
+[Authentication](lib/auth.ts) resolves live sessions and current grants. Members
+can reach granted profiles; admins have access to all profiles. A `read` grant
+permits profile reads, exports, and prints; a `write` grant also permits changes.
+Profile-owned queries must scope to the authorized profile or authorized set,
+including child-table joins. Follow [library ownership rules](lib/AGENTS.md).
 
-## Supported versions
+Use the guard matching the resource:
 
-Allos is developed as a rolling release. Security fixes are applied to the
-`main` branch, and self-hosters should track `main` (or the latest published
-container image) to receive them. Older commits and tags are not separately
-patched.
+| Resource                      | Boundary                                                               |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| Active profile write          | `requireWriteAccess()`                                                 |
+| Another profile's write       | `requireProfileWriteAccess(profileId)`                                 |
+| Own login security settings   | `requireLoginWriteAccess()` or the action's explicit credential checks |
+| Administrative family changes | `requireAdmin()`                                                       |
+| Token-authenticated route     | Validate its token and current scope at that route's boundary          |
 
-## Scope
+Uploads, AI extraction, and minting new profile access are writes. Read-only
+members may still manage their own login credentials. Demo restrictions are
+additional checks; an apparent write grant does not override them. See
+[API tokens](docs/api-tokens.md) for their supported endpoints and live-grant rules.
 
-Because Allos stores personal health information (PHI), we are especially
-interested in reports involving authentication/session handling, profile data
-isolation (cross-profile data access), file upload/serving, and any path that
-could leak stored medical data. Please never include real PHI in a report — use
-synthetic or redacted data to demonstrate an issue.
+Existing guards and tests cover specific paths; their presence does not prove
+that every query or action is safe. Review the actual path and scope when changing
+access. Use the [change and test policy](docs/change-policy.md) for focused
+verification, avoiding duplicate scanners and assertions of documentation wording.
 
-## Audit logging
+## Sessions and credentials
 
-Allos keeps a durable audit log (the `audit_events` table) recording **who did
-what to whose data**, reviewable by an admin under **Settings → Audit**. Each
-event stores a timestamp, the acting login (null for unauthenticated events such
-as a failed login or a public share-link view), the active profile being acted
-on, an action (e.g. `login.success`, `profile.switch`, `medical-file.view`,
-`medical-document.upload`/`delete`, `share-link.create`/`revoke`/`view`,
-`grant.update`, `login.create`/`delete`, `login.password-reset`,
-`login.2fa-enable`/`2fa-disable`/`2fa-failure`/`2fa-recovery-used`/`2fa-bypass`),
-and short coarse identifiers (record/file/login ids, a username, a grant diff).
+[Session cookies](lib/session-cookie.ts) are `HttpOnly`, `SameSite=Lax`, and
+`Path=/`, with no `Domain`. Production uses Secure `__Host-ht_session`; development
+uses `ht_session`. The database stores a hash of the random session token and
+keeps the active profile server-side.
 
-What is recorded:
+Sessions have a 30-day sliding expiry and a 90-day absolute ceiling from creation,
+enforced by session lookup and purge. Browser-cookie renewal follows the shared
+slide policy; activity cannot extend the absolute ceiling.
 
-- **Authentication** — login success/failure/throttle (username only, **never**
-  the password), logout, own-password change, and admin password resets.
-- **Two-factor (2FA)** — enrolling/disabling TOTP, a failed second-factor code at
-  login (username only, **never** the code), a one-time recovery code being
-  redeemed, and any `ALLOS_DISABLE_2FA` bootstrap-recovery bypass.
-- **PHI access** — medical-file downloads and public share-link views (by file
-  or link **id**, never the file contents or the raw share token).
-- **Admin/family changes** — profile create/delete, login create/delete, and
-  grant-matrix changes.
+[Password validation](lib/password-strength.ts) runs offline. User-set passwords
+must be 10–200 characters and use at least two of lowercase, uppercase, digits,
+and symbols. For usernames of at least three characters, the case-insensitive
+check rejects either value containing the other. Passwords are hashed through
+[the shared password owner](lib/password.ts).
 
-The `detail` and `target` fields hold **identifiers only — never medical
-content**. Records are retained **24 months** by default (admin-configurable —
-`DEFAULT_AUDIT_RETENTION_MONTHS` in `lib/retention.ts`) and pruned by the hourly
-maintenance tick. The log spans every profile, so the viewer is **admin-only**;
-login/profile ids are kept even after the referent is deleted (no foreign key),
-so the trail survives account deletion. A `grant.update` event's `detail` records
-the profile-id diff **including the access level** (e.g. `+2:read`, `~3:write`,
-`-4`), so a change from read-only to read/write is itself auditable.
+### Two-factor authentication
 
-## Access control
+Logins can enable TOTP in **Settings → Account & security**. Enrollment requires a
+verified code and shows eight one-time recovery codes once. TOTP uses a 30-second
+step, six digits, SHA-1, and a ±1-step verification window; the stored last-used
+step prevents replay. Owners are [totp.ts](lib/totp.ts) and
+[two-factor.ts](lib/two-factor.ts).
 
-Access is enforced on the **server**, never by the UI. Two independent checks
-gate every request:
+After a correct password, an enabled login receives a five-minute challenge token
+in a separate hardened cookie. It receives a session only after the second factor
+succeeds. Login failures share the password lockout machinery. Recovery codes are
+stored as SHA-256 hashes and consumed once; the TOTP secret remains on the login
+row. Protect the database and its backups accordingly.
 
-- **Profile isolation.** Every profile-owned table carries a `profile_id`, and
-  every query filtering it is scoped to the acting profile — a member only ever
-  sees the profiles granted to them (admins see all). A pure source-scanning test
-  fails the build if an owned-table query omits `profile_id`.
-- **Grant level (read vs write).** Each `login_profiles` grant carries an
-  `access` level — `write` (read + edit — the default and historical behavior) or
-  `read` (view-only). A member acting on a read-only-granted profile may browse
-  everything but **cannot mutate**: every mutating Server Action calls
-  `requireWriteAccess()` (in `lib/auth.ts`), which resolves the session and
-  redirects a read-only grant before any write runs. Admins bypass grants and are
-  always read/write. Uploads and AI extraction are writes (blocked); creating a
-  share link or an outbound calendar/ingest token is a write (it mints new access,
-  so it is blocked); reads, exports, and prints are allowed. A source-scanning
-  test (`lib/__tests__/actions-write-access.test.ts`) fails the build if a
-  mutating action forgets the guard — the check can't silently regress as new
-  actions are added. Hidden edit affordances in the UI are a convenience only; the
-  server guard is the authority.
+Disabling 2FA requires the current password plus a valid TOTP or recovery code.
+Regenerating recovery codes also requires a valid second factor. Administrative
+family actions require an admin session but do not request a fresh per-action
+second factor.
 
-## Hardening posture
+For operator recovery, `ALLOS_DISABLE_2FA=<username>` accepts a comma-separated,
+case-insensitive username list and bypasses those logins' second-factor step.
+Password verification still applies, and the bypass is logged and audited.
+This override does not clear enrollment or bypass the credential checks for
+changing it. Remove the override once a working second factor is restored.
 
-### Response headers
+## Audit trail
 
-Every response carries a baseline set of security headers, configured globally in
-`next.config.js` (`headers()`) and applied to every route (pages and API/route
-handlers alike):
+**Settings → Audit** is admin-only and reads the global `audit_events` table.
+[The event vocabulary](lib/audit-actions.ts) includes authentication, second-factor,
+session-revocation, medical-file access, share-link, profile, login, and grant
+changes. It is not a log of every profile read.
 
-- `Strict-Transport-Security: max-age=15552000; includeSubDomains` — 180-day
-  HSTS. **No `preload`** on purpose: a self-hoster may run plain-HTTP internal
-  subdomains, and the public preload list is an irreversible commitment we won't
-  make on their behalf.
-- `X-Frame-Options: DENY` — clickjacking defense for legacy browsers; CSP-aware
-  browsers get the same guarantee from the enforced CSP's
-  `frame-ancestors 'none'` directive (see the next section — the CSP itself is
-  emitted per-request by `middleware.ts`, not by `next.config.js`, so the policy
-  has exactly one source). One route is `SAMEORIGIN` instead — see
-  `frame-ancestors` below.
-- `X-Content-Type-Options: nosniff`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
-  — denies browser features the app never uses.
+Events store time, acting login/profile when available, action, and coarse target
+and detail identifiers. Never log passwords, second-factor codes, raw tokens, or
+medical content. Grant diffs include access levels, so read-to-write changes remain
+visible. IDs have no foreign keys, preserving the trail after account deletion.
 
-Public share links (`/share/*`) layer **stricter** values on top in
-`middleware.ts` (`withShareHeaders`): `Referrer-Policy: no-referrer`,
-`Cache-Control: no-store, must-revalidate`, and `X-Robots-Tag: noindex, nofollow`
-so a sensitive, unauthenticated passport is never cached or indexed. Middleware
-runs per-request and its values override the global defaults for that route.
+[Audit writes](lib/audit.ts) are best effort: failures are logged without failing
+the user's request. The maintenance tick prunes events using the admin-configured
+retention window, defaulting to [24 months](lib/retention.ts). Protect and back up
+the database using the [backup guide](docs/backups.md).
 
-### Content-Security-Policy (enforced, nonce-based)
+## Browser response policy
 
-The full CSP is **enforced** — there is no report-only header anymore. (Rollout
-history: #21 shipped the policy report-only, #624 enforced the non-script
-directives, and #595 completed the graduation to the nonce-based policy below.)
+[next.config.js](next.config.js) supplies global headers: 180-day HSTS with
+`includeSubDomains` and no preload, `X-Frame-Options: DENY`, `nosniff`,
+`strict-origin-when-cross-origin`, and a Permissions Policy disabling camera,
+microphone, geolocation, payment, and USB browser APIs.
 
-The policy has a **single source**: `lib/csp.ts` builds the header string, and
-`middleware.ts` generates a fresh per-request nonce and stamps the
-`Content-Security-Policy` header on every response — `next.config.js`
-deliberately declares no CSP header at all, so the policy cannot drift between
-two files.
+Public `/share/*` responses additionally receive `no-store, must-revalidate`,
+`no-referrer`, and `noindex, nofollow`. Both middleware and the final configured
+route-header boundary carry these values so document-cache handling does not
+replace the intended share policy.
 
-Enforced directives in production:
+[The CSP builder](lib/csp.ts) owns the enforced policy;
+[middleware](middleware.ts) adds it to matched responses with a fresh request
+nonce. The matcher excludes Next static/image/data assets and the streaming Fitbit
+Takeout import endpoint. Those exclusions do not remove the route's own
+authorization requirements.
 
-- `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
-  `form-action 'self'`
-- `frame-ancestors 'none'` — clickjacking defense, mirroring
-  `X-Frame-Options: DENY`. **One exception:** `/medical/file/*` gets
-  `frame-ancestors 'self'` (and `X-Frame-Options: SAMEORIGIN`), because the
-  import review page previews a stored PDF by framing that route from the same
-  origin. `'self'` admits same-origin ancestors only, so no other site can frame
-  any route of this app, this one included.
-- `img-src 'self' data: blob:` — same-origin images plus data-URI icons and
-  blob: crop previews
-- `connect-src 'self'` — same-origin fetch/SSE only
-- `script-src 'self' 'nonce-<per-request>'` — **no `'unsafe-inline'`**. The
-  nonce admits the two inline bootstrap scripts (Next's own, which Next stamps
-  from the request-header CSP, and the theme-boot script, which reads the
-  `x-nonce` request header); every other script is a same-origin chunk covered
-  by `'self'`. `'strict-dynamic'` is deliberately not used — every script this
-  app serves is same-origin, so `'self'` + nonce is both sufficient and less
-  fragile.
-- `style-src 'self' 'unsafe-inline'` — the **one deliberate residual**:
-  Tailwind's utility layer and Next both emit inline `<style>` with no per-style
-  nonce hook, so inline _style_ (a far weaker vector than inline script) is
-  accepted as a decided, documented exception rather than an oversight.
+Production permits same-origin scripts plus nonced inline bootstrap scripts,
+without `unsafe-inline` or `unsafe-eval` for scripts. Development relaxes scripts
+for hot reload. Styles retain `unsafe-inline` for the current rendering pipeline.
+The remaining directives restrict resources, connections, form destinations, and
+base URLs; read the builder for exact values.
 
-In development (`next dev` only), `script-src` relaxes to
-`'self' 'unsafe-inline' 'unsafe-eval'` with no nonce token, because React Fast
-Refresh and the error overlay require it; production builds never carry this
-relaxation.
+Framing is denied except for `/medical/file/*`, which allows same-origin ancestors
+and uses `X-Frame-Options: SAMEORIGIN` for stored PDF previews. Other origins remain
+excluded. Keep this path decision shared between CSP and the frame header.
 
-### Session cookie
+## Medical uploads and downloads
 
-The session cookie uses the `__Host-` name prefix in production
-(`__Host-ht_session`), which a browser only accepts when the cookie is Secure,
-`Path=/`, and has no `Domain` — hardening it against subdomain cookie injection.
-Over plain-HTTP dev the plain name (`ht_session`) is used, since the prefix
-requires Secure. The cookie stays `HttpOnly` + `SameSite=Lax`.
+[Upload validation](lib/file-sniff.ts) derives MIME from recognized content bytes
+and rejects contradictions with the declared file family. Text and unrecognized
+formats fall back to attachment-only types; structured health records also pass
+through their parser. Magic-byte recognition is not a guarantee that a file is
+harmless.
 
-### Two-factor authentication (TOTP)
-
-Each login may optionally enable **TOTP two-factor authentication** (RFC 6238:
-30-second step, 6 digits, SHA-1) under **Settings → Account & security**. Enrollment
-generates a secret shown as an `otpauth://` URI + manual base32 key; the login
-must verify one code to activate, at which point **8 one-time recovery codes** are
-shown **once**. 2FA is strongly recommended for admins.
-
-- **Login flow.** When a password verifies for a 2FA-enabled login, **no session
-  is created**. Instead a short-lived (5-minute) server-side _challenge_ row is
-  written and its random token set as a separate, `__Host-`-hardened cookie — this
-  is deliberately **not** a half-authenticated session. The second-factor step
-  reads that cookie, verifies a TOTP (or a recovery code) — **rate-limited through
-  the same lockout machinery as passwords** — and only then mints the real session
-  and deletes the challenge.
-- **Replay guard.** The last accepted TOTP step is stored per login; a code (or an
-  older code still inside the ±1 verification window) cannot be reused once spent.
-- **Storage.** The TOTP secret lives on the `logins` row. Recovery codes are stored
-  only as their **SHA-256** (they are high-entropy random tokens, like session /
-  share-link tokens, so a fast hash is appropriate — scrypt buys nothing for
-  non-guessable secrets) and each is single-use.
-- **Disabling** 2FA requires the current password **and** a valid code, so a
-  walked-up open session alone can't strip the second factor off.
-- **Bootstrap recovery.** If an admin loses their authenticator (and their recovery
-  codes), the operator can set the env var **`ALLOS_DISABLE_2FA=<username>`**
-  (comma-separated for several). At the next login that username's second-factor
-  step is **skipped**; the bypass is logged loudly and written to the audit log
-  (`login.2fa-bypass`). Remove the env var and re-enroll once access is restored.
-  This is the documented escape hatch that prevents a permanent lock-out.
-
-### Absolute session lifetime
-
-Sessions use a **30-day sliding** expiry (each use re-extends it), so an active
-session never expired on its own. On top of that there is now a hard **90-day
-absolute ceiling** measured from `created_at`: regardless of how recently a session
-was used, once it is 90 days old it stops resolving (enforced in the session lookup
-and the purge) and the user must re-authenticate (password + 2FA). This bounds the
-lifetime of a stolen-but-active session cookie.
-
-### Password strength
-
-Passwords must be at least **10 characters** and use at least **two character
-classes** (lower / upper / digit / symbol), and may not contain the username. The
-check (`lib/password-strength.ts`) is pure, offline, and dependency-free (no
-`zxcvbn`, no network egress — suitable for an air-gapped self-host), and is applied
-everywhere a password is set: admin create/reset and self-service change.
-
-### Deferred: step-up re-auth for admin family actions
-
-A **step-up re-auth** (a fresh 2FA code) on sensitive Family admin actions — grant
-changes, login create/delete, password resets — is **not yet implemented**. Those
-actions are already gated by `requireAdmin()` and, for a 2FA-enabled admin, sit
-behind the full second-factor login. Threading a per-action fresh-code challenge
-through the Family UI is tracked as a follow-up; see the PR for issue #23.
-
-### Upload content validation
-
-Uploaded medical files are validated by their **magic bytes**, not the
-client-declared `file.type` (`lib/file-sniff.ts`). On upload the server sniffs the
-content, stores a byte-derived `mime_type`, and rejects a file whose contents
-contradict its name/extension (a `.pdf` that isn't a PDF); text formats with no
-reliable magic (CSV/plain text) fall back to an attachment-only type. The
-file-serve route then echoes that trusted, byte-derived type as the Content-Type
-and only renders a small allowlist inline (alongside `X-Content-Type-Options:
-nosniff`), so a mislabeled upload can't be served as an inline, executable type.
+[The medical-file route](<app/(app)/medical/file/[id]/route.ts>) checks the live
+session, scopes the record to its active profile, and confines its stored path to
+the medical upload directory. It serves only a small MIME allowlist inline and
+forces other types to download with `nosniff`. Existing rows retain their stored
+MIME; serving does not re-sniff or retroactively validate old uploads.
