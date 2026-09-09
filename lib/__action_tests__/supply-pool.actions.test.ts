@@ -51,6 +51,13 @@ function supplyIdOf(itemId: number): number | null {
       .get(itemId) as { s: number | null }
   ).s;
 }
+function poolCount(): number {
+  return (
+    db.prepare("SELECT COUNT(*) AS n FROM shared_supplies").get() as {
+      n: number;
+    }
+  ).n;
+}
 function itemQty(itemId: number): number | null {
   return (
     db
@@ -205,6 +212,23 @@ describe("link / unlink membership gates", () => {
     // The count moved INTO the pool, one-way — the item keeps no second copy.
     expect(getSharedSupply(supplyId as number)?.quantity_on_hand).toBe(90);
     expect(itemQty(a)).toBe(null);
+  });
+
+  // #5122 (owner ruling 2026-09-09): a bottle with no member cannot be created by
+  // ANYONE, so the admin — the most privileged caller there is — is refused too, and
+  // the refusal names the way in. The invariant is that every bottle has a member from
+  // birth; without it a member-less row can be minted that only an admin can ever see.
+  it("refuses a bottle with no member, admin included, and writes nothing", async () => {
+    const t = tag();
+    const admin = createLogin({ role: "admin", username: `e_${t}` });
+    const p = createProfile(`Ada Lovelace ${t}`);
+    actAs(admin, p);
+    const before = poolCount();
+
+    const res = await createPoolAction(fd({ name: `Orphan ${t}` }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/from an item/);
+    expect(poolCount()).toBe(before);
   });
 
   it("refuses every pool mutation for an item the caller can't write", async () => {
