@@ -213,8 +213,13 @@ const redoseFigures = () => ({
   max: (screen.getByTestId("redose-max") as HTMLInputElement).value,
 });
 
-/** Switch the formulation chip row to `slug`. */
+/**
+ * Switch the formulation chip row to `slug`. The row is a DERIVED ROW INSIDE THE DOSE
+ * EDITOR (#3216 ruling 2, moved there by #5301), so this opens that fact first — it
+ * used to stand above the chips, stating the same product the dose chip states.
+ */
 function pickFormulation(slug: string) {
+  openFact("dose");
   const pill = screen
     .getAllByTestId("intake-formulation-choice")
     .find((el) => el.getAttribute("data-slug") === slug);
@@ -223,6 +228,30 @@ function pickFormulation(slug: string) {
 }
 
 const PEDIATRIC_SLUG = "childrens_susp_160_5";
+const PEDIATRIC_LABEL = "Children's oral suspension (160 mg / 5 mL)";
+
+/**
+ * What the RxNorm fact states on the CLOSED form: the confirmed code, or null when
+ * none is confirmed (#5301). The affordance used to stand under the name field and
+ * survive an open editor; it is a chip now, and the row and an editor are never both
+ * on screen, so this closes whatever is open — the gesture a reader makes to see the
+ * summary.
+ */
+function rxnormCode(): string | null {
+  const done = screen.queryByTestId("intake-editor-done");
+  if (done) fireEvent.click(done);
+  const chip = screen.queryByTestId("intake-fact-rxnorm");
+  if (!chip || chip.getAttribute("data-fact-state") !== "stated") return null;
+  return chip.textContent ?? "";
+}
+
+/** Open the RxNorm editor. Opening the chip IS the lookup (#5301). */
+async function openRxnorm(): Promise<void> {
+  // NOT inside `act`: a nested act defers the click's own flush, so the chip row would
+  // still be replaced by the previous editor when the chip is queried.
+  openFact("rxnorm");
+  await act(async () => {});
+}
 
 /**
  * Hold the RxNorm confirm open, so a pick can be inspected in the window where its own
@@ -301,6 +330,7 @@ describe("a formulation switch re-derives the product, never the person's number
     // The adult label figures arrived as a suggestion from the pick itself.
     expect(redoseFigures()).toEqual({ interval: "4", max: "6" });
     pickFormulation(PEDIATRIC_SLUG);
+    openFact("timing");
     await waitFor(() =>
       expect(redoseFigures()).toEqual({ interval: "4", max: "5" })
     );
@@ -320,11 +350,16 @@ describe("a formulation switch re-derives the product, never the person's number
 
     pickFormulation(PEDIATRIC_SLUG);
 
-    // The switch still happened — the product line follows the chip — but it did not
-    // reach past the product to the caregiver's own numbers.
+    // The switch still happened — the dose chip states the chosen product, which is
+    // where the summary says which formulation this is (#5301) — but it did not reach
+    // past the product to the caregiver's own numbers.
+    fireEvent.click(screen.getByTestId("intake-editor-done"));
     await waitFor(() =>
-      expect(screen.getByTestId("intake-pediatric-context")).toBeTruthy()
+      expect(screen.getByTestId("intake-fact-dose").textContent).toContain(
+        PEDIATRIC_LABEL
+      )
     );
+    openFact("timing");
     expect(redoseFigures()).toEqual({ interval: "8", max: "2" });
   });
 });
@@ -523,12 +558,12 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         "value",
         "Vicodin"
       );
-      expect(screen.queryByTestId("rxcui-current")).toBeNull();
       expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
       expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
         "value",
         ""
       );
+      expect(rxnormCode()).toBeNull();
     }
   );
 
@@ -537,12 +572,12 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     mount("medication", CHILD_ON_PICK);
     await pickName(ACETAMINOPHEN);
     await pickName("Ibuprofen (Advil, Motrin)");
+    expect(rxnormCode()).toContain("5640");
     openFact("dose");
-    expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
     expect(dosedAt().amount).toBe("150 mg");
     await act(async () => old.resolve());
-    expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
     expect(dosedAt().amount).toBe("150 mg");
+    expect(rxnormCode()).toContain("5640");
   });
 
   it.each(["resolve", "reject"] as const)(
@@ -552,14 +587,12 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       mount("medication", CHILD_ON_PICK);
       const name = screen.getByRole("combobox", { name: "Name" });
       fireEvent.change(name, { target: { value: "Acetaminophen" } });
-      fireEvent.click(screen.getByTestId("rxcui-lookup"));
+      await openRxnorm();
       fireEvent.change(name, { target: { value: "Ibuprofen" } });
       const current = deferLookup();
-      fireEvent.click(screen.getByTestId("rxcui-lookup"));
+      await openRxnorm();
       await act(async () => old[settle]());
-      expect(screen.getByTestId("rxcui-lookup").textContent).toBe(
-        "Looking up…"
-      );
+      expect(screen.getByTestId("rxcui-loading")).toBeTruthy();
       expect(screen.queryByTestId("rxcui-candidates")).toBeNull();
       expect(screen.queryByText(/Couldn't reach the RxNorm lookup/)).toBeNull();
       await act(async () => current.resolve());
@@ -583,8 +616,8 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     openFact("dose");
     expect(dosedAt().amount).toBe("240 mg");
     await act(async () => release(["161", "2670"]));
-    expect(screen.getByTestId("rxcui-current").textContent).toContain("161");
     expect(dosedAt().amount).toBe("240 mg");
+    expect(rxnormCode()).toContain("161");
   });
 
   it.each(["no match", "offline"])(
@@ -596,8 +629,8 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       mount("medication", CHILD_ON_PICK);
       await pickName(ACETAMINOPHEN);
       openFact("dose");
-      expect(screen.queryByTestId("rxcui-current")).toBeNull();
       expect(dosedAt().amount).toBe("240 mg");
+      expect(rxnormCode()).toBeNull();
     }
   );
 
@@ -613,7 +646,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
       target: { value: "Acetaminophen" },
     });
-    await act(async () => fireEvent.click(screen.getByTestId("rxcui-lookup")));
+    await openRxnorm();
     await act(async () => fireEvent.click(screen.getByTestId("rxcui-use-161")));
     openFact("composition");
     fireEvent.click(screen.getByTestId("add-ingredients"));
@@ -621,7 +654,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       target: { value: "Codeine" },
     });
     await act(async () => release(["161"]));
-    expect(screen.queryByTestId("rxcui-current")).toBeNull();
+    expect(rxnormCode()).toBeNull();
   });
 
   it("clearing a confirmed code invalidates its pending ingredient response and prefill", async () => {
@@ -634,11 +667,12 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
     );
     mount("medication", CHILD_ON_PICK);
     await pickName(ACETAMINOPHEN);
+    await openRxnorm();
     fireEvent.click(screen.getByTestId("rxcui-clear"));
     await act(async () => release(["161"]));
     openFact("dose");
-    expect(screen.queryByTestId("rxcui-current")).toBeNull();
     expect(dosedAt().amount).toBe("");
+    expect(rxnormCode()).toBeNull();
   });
 
   it.each(["name", "supply"])(
@@ -669,12 +703,9 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         });
       }
       await act(async () => old.resolve());
+      if (door === "name") expect(rxnormCode()).toContain("99999");
+      else expect(rxnormCode()).toBeNull();
       openFact("dose");
-      if (door === "name")
-        expect(screen.getByTestId("rxcui-current").textContent).toContain(
-          "99999"
-        );
-      else expect(screen.queryByTestId("rxcui-current")).toBeNull();
       expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
         "value",
         ""
@@ -852,11 +883,7 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       });
       if (confirmedIngredient) {
         await pickName(ACETAMINOPHEN);
-        await waitFor(() =>
-          expect(screen.getByTestId("rxcui-current").textContent).toContain(
-            "161"
-          )
-        );
+        await waitFor(() => expect(rxnormCode()).toContain("161"));
       } else await act(async () => {});
       openFact("dose");
       fireEvent.change(screen.getByRole("combobox", { name: "Amount" }), {
@@ -894,9 +921,8 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         expect(
           screen.getByTestId("pediatric-suggestion").textContent
         ).toContain("Acetaminophen");
-        expect(screen.getByTestId("rxcui-current").textContent).toContain(
-          "161"
-        );
+        expect(rxnormCode()).toContain("161");
+        openFact("dose");
       }
       expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
         "value",
@@ -965,18 +991,21 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
         "value",
         "Ibuprofen"
       );
-      expect(screen.getByTestId("rxcui-current").textContent).toContain("5640");
+      expect(rxnormCode()).toContain("5640");
+      openFact("dose");
       expect(dosedAt().amount).toBe(restoredAmount);
       // A later supported pick may replace product identity, but not the personal amount
       // restored from the draft.
       await pickName(ACETAMINOPHEN);
-      expect(screen.getByTestId("rxcui-current").textContent).toContain("161");
+      expect(rxnormCode()).toContain("161");
+      openFact("dose");
       expect(dosedAt().amount).toBe(restoredAmount);
       // The current name-only fallback offers the same label dose and is refused by the
       // same restored ownership.
       actions.lookupRxcui.mockResolvedValueOnce([]);
       await pickName(ACETAMINOPHEN);
-      expect(screen.queryByTestId("rxcui-current")).toBeNull();
+      expect(rxnormCode()).toBeNull();
+      openFact("dose");
       expect(dosedAt().amount).toBe(restoredAmount);
       fireEvent.click(screen.getByTestId("intake-editor-done"));
       expect(screen.getByTestId("intake-fact-dose").textContent).not.toContain(
@@ -1012,13 +1041,13 @@ describe("product identity owns every pending RxNorm stage (#5518)", () => {
       { rxcui: "99999", name: "Acetaminophen with Codeine", score: 100 },
     ]);
     actions.lookupRxcuiIngredients.mockResolvedValueOnce(["161", "2670"]);
-    await act(async () => fireEvent.click(screen.getByTestId("rxcui-lookup")));
+    await openRxnorm();
     await act(async () =>
       fireEvent.click(screen.getByTestId("rxcui-use-99999"))
     );
     await act(async () => old.resolve());
+    expect(rxnormCode()).toContain("99999");
     openFact("dose");
-    expect(screen.getByTestId("rxcui-current").textContent).toContain("99999");
     expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Amount" })).toHaveProperty(
       "value",
