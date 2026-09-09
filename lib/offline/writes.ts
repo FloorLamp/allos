@@ -17,8 +17,11 @@ import {
   MOOD_CHECKIN,
   STOOL_MOVEMENT_LOG,
   isPastWriteAccepted,
+  isWithinReach,
   isWithinTapReach,
+  type TapReach,
 } from "@/lib/log-manifest";
+import { dayContextKey } from "@/lib/day-context-key";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -113,7 +116,8 @@ function applyDoseIntent(
   profileId: number,
   flow: "dose" | "skip-dose",
   payload: DosePayload,
-  date: string
+  date: string,
+  capturedPrimary?: boolean
 ): { status: "done" | "rejected"; reason?: string } {
   const doseId = payload?.doseId;
   if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
@@ -136,11 +140,14 @@ function applyDoseIntent(
   const outcome =
     flow === "dose"
       ? markDoseTaken(profileId, doseId, null, date, OFFLINE_REPLAY, {
-          takenAt: capturedOnRowDate
-            ? capturedTakenAt
-            : date === todayStr
-              ? (capturedTakenAt ?? undefined)
-              : null,
+          takenAt:
+            capturedPrimary === false
+              ? null
+              : capturedOnRowDate
+                ? capturedTakenAt
+                : date === todayStr
+                  ? (capturedTakenAt ?? undefined)
+                  : null,
         })
       : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);
   return classifyDoseReplay(flow, outcome);
@@ -881,6 +888,22 @@ export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
 
+export type MoodWriteSight = "saw-the-day" | "day-unseen";
+
+function moodUpsert() {
+  return db.prepare(
+    `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(profile_id, date) DO UPDATE SET
+       valence = excluded.valence,
+       energy = CASE ? WHEN 1 THEN COALESCE(excluded.energy, mood_logs.energy) ELSE excluded.energy END,
+       anxiety = CASE ? WHEN 1 THEN COALESCE(excluded.anxiety, mood_logs.anxiety) ELSE excluded.anxiety END,
+       factors = CASE ? WHEN 1 THEN COALESCE(excluded.factors, mood_logs.factors) ELSE excluded.factors END,
+       notes = CASE ? WHEN 1 THEN COALESCE(excluded.notes, mood_logs.notes) ELSE excluded.notes END,
+       updated_at = datetime('now')`
+  );
+}
+
 // Persist one daily wellbeing check-in — the SINGLE write core shared by the
 // dashboard card's server action, the offline replay, and the Telegram check-in
 // button, all running the same pure normalizeMoodInput guard. IDEMPOTENT PER DAY:
@@ -908,7 +931,8 @@ export function upsertMoodLog(
     anxiety?: unknown;
     factors?: unknown;
     note?: unknown;
-  }
+  },
+  sight: MoodWriteSight = "saw-the-day"
 ): boolean {
   // The shared date invariant (#4425). The CHIP tap's ±2 reach lives in `TAP_REACH`
   // where the offer is; the core takes any real past day, which is also what lets the
@@ -917,24 +941,19 @@ export function upsertMoodLog(
   if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeMoodInput(raw);
   if ("error" in normalized) return false;
-  db.prepare(
-    `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
-     VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT(profile_id, date) DO UPDATE SET
-       valence = excluded.valence,
-       energy = excluded.energy,
-       anxiety = excluded.anxiety,
-       factors = excluded.factors,
-       notes = excluded.notes,
-       updated_at = datetime('now')`
-  ).run(
+  const preserveUnseen = sight === "day-unseen" ? 1 : 0;
+  moodUpsert().run(
     profileId,
     date,
     normalized.valence,
     normalized.energy,
     normalized.anxiety,
     normalized.factors.length ? JSON.stringify(normalized.factors) : null,
-    normalized.note
+    normalized.note,
+    preserveUnseen,
+    preserveUnseen,
+    preserveUnseen,
+    preserveUnseen
   );
   resetMoodCheckinIgnored(profileId);
   return true;
@@ -1311,6 +1330,78 @@ export interface ReplayOutcome {
   timeNotice?: StatedTimeRefusal;
 }
 
+function queuedReach(value: unknown): TapReach | null {
+  if (!value || typeof value !== "object") return null;
+  const reach = value as Record<string, unknown>;
+  if (reach.kind === "today" || reach.kind === "dated") {
+    return { kind: reach.kind };
+  }
+  if (
+    reach.kind !== "bounded" ||
+    !Number.isInteger(reach.back) ||
+    Number(reach.back) < 0 ||
+    !Number.isInteger(reach.forward) ||
+    Number(reach.forward) < 0 ||
+    typeof reach.reason !== "string" ||
+    !/^#\d+$/.test(String(reach.ref ?? ""))
+  ) {
+    return null;
+  }
+  return reach as unknown as TapReach;
+}
+
+// A wholly absent context is an intent written by an older build. Once any stamp is
+// present it must be complete and self-consistent: replay never fills in a missing
+// member from the surrounding envelope. Current reach is checked separately from the
+// captured primacy, which remains historical provenance rather than being recomputed.
+function replayContextRefusal(
+  profileId: number,
+  intent: QueuedIntent
+): string | null {
+  if (!("dayContext" in intent)) return null;
+  const raw = intent.dayContext as unknown;
+  if (!raw || typeof raw !== "object")
+    return "The entry's day context was malformed.";
+  const context = raw as Record<string, unknown>;
+  const rawParts = context.parts;
+  if (
+    !rawParts ||
+    typeof rawParts !== "object" ||
+    typeof context.key !== "string" ||
+    typeof context.isPrimaryDay !== "boolean"
+  ) {
+    return "The entry's day context was malformed.";
+  }
+  const parts = rawParts as Record<string, unknown>;
+  const reach = queuedReach(parts.reach);
+  if (
+    !Number.isInteger(parts.profileId) ||
+    Number(parts.profileId) <= 0 ||
+    typeof parts.day !== "string" ||
+    !isRealIsoDate(parts.day) ||
+    !reach
+  ) {
+    return "The entry's day context was malformed.";
+  }
+  const canonicalParts = {
+    profileId: Number(parts.profileId),
+    day: parts.day,
+    reach,
+  };
+  if (
+    intent.profileId !== profileId ||
+    canonicalParts.profileId !== profileId ||
+    canonicalParts.day !== intent.date ||
+    context.key !== dayContextKey(canonicalParts)
+  ) {
+    return "The entry's day context no longer matches this write.";
+  }
+  if (!isWithinReach(reach, today(profileId), intent.date)) {
+    return "The entry's captured day is no longer available for this action.";
+  }
+  return null;
+}
+
 // Apply one queued intent for `profileId`, exactly once. The idempotency-key check
 // and the write run in ONE transaction: a key already present short-circuits to
 // "duplicate"; a rejected payload commits nothing and records no key; a successful
@@ -1322,6 +1413,12 @@ export function applyIntent(
   profileId: number,
   intent: QueuedIntent
 ): ReplayOutcome {
+  const contextRefusal = replayContextRefusal(profileId, intent);
+  if (contextRefusal) {
+    return { status: "rejected", reason: contextRefusal };
+  }
+  const capturedPrimary =
+    "dayContext" in intent ? intent.dayContext?.isPrimaryDay : undefined;
   let outcome: ReplayOutcome = { status: "rejected" };
   // Set by a flow that APPLIED while refusing a stated time (#2296) — carried out on
   // the "done" outcome below, never on a rejection (the two mean opposite things: one
@@ -1340,7 +1437,8 @@ export function applyIntent(
         profileId,
         intent.flow,
         intent.payload as DosePayload,
-        intent.date
+        intent.date,
+        capturedPrimary
       );
       if (applied.status === "rejected") {
         outcome = applied;
@@ -1371,20 +1469,51 @@ export function applyIntent(
       if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else if (intent.flow === "mood") {
       const p = intent.payload as MoodPayload;
-      ok = upsertMoodLog(profileId, intent.date, {
-        valence: p.valence,
-        energy: p.energy,
-        anxiety: p.anxiety,
-        factors: p.factors,
-        note: p.note,
-      });
+      if (p.dayUnseen !== undefined && p.dayUnseen !== true) {
+        outcome = { status: "rejected" };
+        return;
+      }
+      ok = upsertMoodLog(
+        profileId,
+        intent.date,
+        {
+          valence: p.valence,
+          energy: p.energy,
+          anxiety: p.anxiety,
+          factors: p.factors,
+          note: p.note,
+        },
+        p.dayUnseen === true ? "day-unseen" : "saw-the-day"
+      );
     } else if (intent.flow === "stool") {
       const p = intent.payload as StoolPayload;
+      const statedAt = normalizeClockTime(p?.at);
+      if (capturedPrimary === false) {
+        const verdict = statedAt
+          ? judgeStatedAt(
+              statedInstantOnDate(
+                intent.date,
+                statedAt,
+                getTimezone(profileId)
+              ),
+              getTimezone(profileId),
+              intent.date,
+              clockNow()
+            )
+          : null;
+        if (verdict?.kind !== "accepted") {
+          outcome = {
+            status: "rejected",
+            reason: "Choose a time for a stool entry on a past day.",
+          };
+          return;
+        }
+      }
       const applied = logBristolStool(
         profileId,
         intent.date,
         p?.type,
-        typeof p?.at === "string" ? p.at : null,
+        statedAt,
         new Date(resolveCapturedInstant(intent.capturedAt, clockNow()))
       );
       ok = applied.wrote;
@@ -1470,6 +1599,7 @@ export function applyIntent(
       // from the write core, which now takes any real past day like every other core,
       // so asking the core would silently land a stale capture on a closed day.
       if (
+        capturedPrimary === undefined &&
         !isWithinTapReach("practice-session", today(profileId), intent.date)
       ) {
         outcome = {
@@ -1479,6 +1609,36 @@ export function applyIntent(
         };
         return;
       }
+      const normalizedEnd = normalizeClockTime(p?.endTime);
+      if (capturedPrimary === false) {
+        const verdict = normalizedEnd
+          ? judgeStatedAt(
+              statedInstantOnDate(
+                intent.date,
+                normalizedEnd,
+                getTimezone(profileId)
+              ),
+              getTimezone(profileId),
+              intent.date,
+              clockNow()
+            )
+          : null;
+        if (verdict?.kind !== "accepted") {
+          outcome = {
+            status: "rejected",
+            reason: "Choose an end time for a practice on a past day.",
+          };
+          return;
+        }
+      }
+      const capturedInstant = new Date(
+        resolveCapturedInstant(intent.capturedAt, clockNow())
+      );
+      const endTime = normalizedEnd
+        ? normalizedEnd
+        : capturedPrimary === true
+          ? zonedDateParts(getTimezone(profileId), capturedInstant).hhmm
+          : undefined;
       const applied = logPracticeSessionForDay(
         profileId,
         name,
@@ -1492,6 +1652,7 @@ export function applyIntent(
           // this path states nothing rather than stating something false. It states no
           // end either — the queue carries a practice DAY, never a window (#3142).
           startTime: null,
+          endTime,
         }
       );
       if (applied.kind === "invalid-date") {

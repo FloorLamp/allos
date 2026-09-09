@@ -4,7 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import PracticeEditor from "@/app/(app)/wellness/PracticeEditor";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
+import { useOptionalDayContext } from "@/components/DayContext";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { shiftDateStr } from "@/lib/date";
+import { formatWeekdayDate } from "@/lib/format-date";
 import { practiceRowFacts, practiceRunningFacts } from "@/lib/practice";
+import { clearLastGood } from "@/lib/offline/quick-entry-read";
 import type { TrackedPractice } from "@/lib/queries/wellness";
 import {
   QuickEntryRow,
@@ -83,6 +88,15 @@ export default function QuickPracticeList({
   // subject, so this is only ever passed alongside a non-empty `practices`.
   subjectProfileId?: number;
 }) {
+  const dayContext = useOptionalDayContext();
+  const prefs = useFormatPrefs();
+  const profileToday = dayContext?.today ?? today;
+  const dayLabel =
+    today === profileToday
+      ? "Today"
+      : today === shiftDateStr(profileToday, -1)
+        ? "Yesterday"
+        : formatWeekdayDate(today, prefs);
   const [rows, setRows] = useState(practices);
   // Follow the gather whenever the sheet hands down a new one — the same server-wins
   // discipline the row control keeps over its own count.
@@ -93,15 +107,26 @@ export default function QuickPracticeList({
   }
 
   const reread = useCallback(() => {
-    void loadQuickEntry("practice", subjectProfileId).then(
-      (data) => {
+    void loadQuickEntry(
+      "practice",
+      subjectProfileId,
+      today,
+      dayContext?.parts.reach.kind === "dated" ? "dated" : "sheet"
+    ).then(
+      (result) => {
+        if (result.kind === "refused") {
+          setRows([]);
+          clearLastGood();
+          return;
+        }
+        const data = result.data;
         if (data.form === "practice") setRows(data.practices);
       },
       // A dropped read leaves the rows exactly as they were. Nothing here is a write,
       // so there is no promise to walk back and nothing to say.
       () => {}
     );
-  }, [subjectProfileId]);
+  }, [subjectProfileId, today, dayContext?.parts.reach.kind]);
 
   // THE EARLIEST DERIVED END ON SCREEN. One timer for the list: whichever row completes
   // first, the re-read that follows re-derives the next.
@@ -163,12 +188,15 @@ export default function QuickPracticeList({
                   )
                 ) : (
                   <>
-                    {facts.today && (
+                    {practice.todayCount > 0 && (
                       <span data-testid="practice-today-count">
-                        {facts.today}
+                        {practice.todayCount}{" "}
+                        {dayLabel === "Today" || dayLabel === "Yesterday"
+                          ? dayLabel.toLowerCase()
+                          : `on ${dayLabel}`}
                       </span>
                     )}
-                    {facts.today ? " · " : null}
+                    {practice.todayCount > 0 ? " · " : null}
                     {facts.week}
                   </>
                 )}
@@ -179,6 +207,8 @@ export default function QuickPracticeList({
                 practice={practice.name}
                 todayCount={practice.todayCount}
                 today={today}
+                profileToday={profileToday}
+                dayLabel={dayLabel}
                 defaultDurationMin={practice.previousDurationMin}
                 liveSession={practice.liveSession}
                 inlineDuration

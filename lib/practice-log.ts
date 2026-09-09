@@ -12,7 +12,6 @@ import { shiftDateStr, zonedDateParts } from "./date";
 import {
   PRACTICE_LIVE_TAP,
   PRACTICE_SESSION_LOG,
-  TAP_REACH,
   isPastWriteAccepted,
 } from "./log-manifest";
 import { now, sqlNow } from "./clock";
@@ -42,13 +41,6 @@ import {
   liveSessionOf,
 } from "./queries/wellness";
 import { ADMIN_DEDUP_WINDOW_SEC } from "./queries/intake/adherence";
-
-// THE LAUNCHER'S REACH, not the domain's (owner ruling 2026-08-31). This was a ±30
-// bound inside the write cores; it is now what the wellness page's log launcher
-// OFFERS — its `minDate` — while the cores below take any real past day like every
-// other domain's. Declared in `TAP_REACH` (#4425) and read from it here, so the offer
-// and the number can never disagree.
-export const PRACTICE_LOG_DATE_WINDOW_DAYS = TAP_REACH["practice-session"].back;
 
 // The shared invariant, wearing the practice name: any real past day, never the
 // future. It replaces BOTH the old ±30 log bound and the edit bound that accepted a
@@ -100,8 +92,8 @@ function tapInstant(profileId: number, date: string): string | null {
 // three, and keeps the timezone authority server-side (#450) — a device clock is not
 // the profile's clock.
 //
-// The stamp is bounded to the profile's TODAY. A late correction inside the 30-day
-// window is a statement about a past day, and "now" is not that day's instant; those
+// The stamp is bounded to the profile's TODAY. A late correction on a past day is a
+// statement about that day, and "now" is not that day's instant; those
 // rows stay null rather than acquiring a fabricated one.
 export function logPracticeSession(
   profileId: number,
@@ -228,7 +220,11 @@ export function logPracticeSessionForDay(
   practice: string,
   date: string,
   loggedVia: LoggedVia,
-  opts: { startTime?: string | null; durationMin?: number | null } = {}
+  opts: {
+    startTime?: string | null;
+    endTime?: string | null;
+    durationMin?: number | null;
+  } = {}
 ): PracticeDayLogOutcome {
   const name = normalizePracticeName(practice);
   if (!name || !isPracticeDateAccepted(profileId, date)) {

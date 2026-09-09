@@ -12,6 +12,7 @@
 // server's own word rather than by a timer or by a bare status code.
 
 import { clearEmergencyPayload } from "@/components/emergency-offline";
+import { clearLastGood } from "@/lib/offline/quick-entry-read";
 import { clearQueue } from "@/lib/offline/queue-db";
 import { reopenForFailedLogout } from "@/lib/offline/write-gate";
 
@@ -55,6 +56,7 @@ const PROBE_TIMEOUT_MS = 5_000;
  */
 export async function wipeDeviceForSignOut(): Promise<void> {
   clearEmergencyPayload();
+  clearLastGood();
   try {
     await Promise.race([
       clearQueue(),

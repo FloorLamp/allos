@@ -48,6 +48,7 @@ vi.mock("@/components/LoggedViaSurface", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 // The ledger stands in for the real one, but its `tap` RUNS the write and settles it —
 // a `tap: vi.fn()` stub would make every click a no-op and quietly pass any assertion

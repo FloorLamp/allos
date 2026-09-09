@@ -34,7 +34,8 @@ import {
   getMetricSeriesBySourceInRange,
 } from "@/lib/queries";
 import { applyIntent, insertVitals } from "@/lib/offline/writes";
-import { buildIntent, type VitalsPayload } from "@/lib/offline/queue";
+import type { VitalsPayload } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import { setTimezone } from "@/lib/settings";
 import SourceComparison from "@/app/(app)/trends/SourceComparison";
 import SleepPage from "@/app/(app)/sleep/page";
@@ -515,7 +516,8 @@ describe("a night typed offline replays as the night it was (#1851)", () => {
           temperature: null,
           tempUnit: null,
         } as VitalsPayload,
-        id
+        id,
+        false
       );
       expect(applyIntent(id, intent).status).toBe("done");
       expect(rowsOn(id, "2026-05-14")[0]).toMatchObject({
@@ -550,7 +552,8 @@ describe("a night typed offline replays as the night it was (#1851)", () => {
         "vitals",
         "2026-05-14",
         { ...base, bedTime: "23:00", wakeTime } as VitalsPayload,
-        id
+        id,
+        false
       );
       expect(applyIntent(id, intent).status).toBe("done");
     }

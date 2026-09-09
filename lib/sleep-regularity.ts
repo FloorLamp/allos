@@ -47,7 +47,8 @@
 // travel are handled correctly: a 23:00-local bedtime is regular in clock time
 // even across a spring-forward, where the absolute duration of that night is 23h.
 
-import { mean, populationSd } from "./robust-stats";
+import type { OutcomeComparison } from "./protocol-compare";
+import { populationSd } from "./robust-stats";
 import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 import { recordedUsual, USUAL_KINDS } from "./usual";
 import { zoneOf, type ProfileDayZone } from "./travel-timezone";
@@ -799,45 +800,42 @@ export function sriTrend(
   return out;
 }
 
-// A dated situation transition (mirrors lib/trend-annotations.SituationEvent) —
-// the subset this module reads to relate an SRI change to a travel window.
-export interface SituationChange {
-  date: string; // YYYY-MM-DD
-  situation: string;
-  change: "start" | "stop";
+// A trailing index's endpoint detects a sustained slide that its window mean
+// smooths away. Materiality belongs to this note, not the comparison engine.
+export const SRI_DROP_POINTS = 10;
+
+export interface SleepRegularityDrop {
+  points: number;
+  through: string;
 }
 
-// Insight hook (#160): detect a sleep-regularity DROP coinciding with a travel
-// situation. Pure and conservative — it fires only on a "clean" signal (a clear
-// drop across a travel-start boundary that has enough nights on each side) and
-// returns null otherwise, so the caller either shows the note or shows nothing.
-//
-// `dropPoints` is the minimum SRI drop (window-mean after vs before the travel
-// start) worth surfacing; `sideNights` is the minimum trend points required on
-// each side of the boundary to trust the comparison.
-export function regularityTravelInsight(
-  trend: { date: string; sri: number }[],
-  situations: SituationChange[],
-  opts: { dropPoints?: number; sideNights?: number } = {}
-): string | null {
-  const dropPoints = opts.dropPoints ?? 10;
-  const sideNights = opts.sideNights ?? 5;
-  if (trend.length < sideNights * 2) return null;
+export function decideSleepRegularityDrop(
+  comparison: OutcomeComparison
+): SleepRegularityDrop | null {
+  if (
+    comparison.insufficient ||
+    comparison.lastDelta == null ||
+    comparison.intervention.to == null ||
+    comparison.lastDelta > -SRI_DROP_POINTS
+  )
+    return null;
+  return {
+    points: -comparison.lastDelta,
+    through: comparison.intervention.to,
+  };
+}
 
-  // Most recent travel "start" the trend actually straddles.
-  const travelStarts = situations
-    .filter((s) => s.change === "start" && /travel/i.test(s.situation))
-    .map((s) => s.date)
-    .sort();
-  for (let i = travelStarts.length - 1; i >= 0; i--) {
-    const boundary = travelStarts[i];
-    const before = trend.filter((p) => p.date < boundary).map((p) => p.sri);
-    const after = trend.filter((p) => p.date >= boundary).map((p) => p.sri);
-    if (before.length < sideNights || after.length < sideNights) continue;
-    const drop = mean(before) - mean(after);
-    if (drop >= dropPoints) {
-      return `Sleep regularity dropped ${Math.round(drop)} points since your travel on ${boundary}.`;
-    }
-  }
-  return null;
+export function sleepRegularityDropDetail(
+  drop: SleepRegularityDrop,
+  today: string,
+  situation?: { name: string; start: string }
+): string {
+  const provenance =
+    drop.through < today ? `, based on readings through ${drop.through}` : "";
+  // The magnitude belongs to the trailing comparison. A declared episode is
+  // context, never a claim that its differently sized window caused that change.
+  const context = situation
+    ? `; your ${situation.name} started on ${situation.start}`
+    : "";
+  return `Sleep regularity dropped about ${Math.round(drop.points)} points over the last four weeks${provenance}${context}.`;
 }

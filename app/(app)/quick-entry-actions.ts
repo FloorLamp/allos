@@ -1,17 +1,14 @@
 "use server";
 
-import { requireSession } from "@/lib/auth";
+import { requireSession, type CurrentSession } from "@/lib/auth";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { gateSubjectProfile } from "./gate-item";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
-import { shiftDateStr, zonedDateParts } from "@/lib/date";
+import { isRealIsoDate, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
-import {
-  getExcludedFoodGroups,
-  getProfileAge,
-} from "@/lib/settings/profile-attrs";
-import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import {
@@ -20,20 +17,14 @@ import {
 } from "@/lib/cycle-plausibility";
 import {
   collectDueDosesNow,
-  currentFoodSlot,
-  getFoodMealDays,
   type FoodMealEvent,
-  getFoodBarOrder,
   getMoodOnDate,
   getPediatricFormContext,
   getPrnMedicationsForQuickLog,
-  getProteinDailyGrams,
-  getProteinQuickAddPreset,
   getTrackedPractices,
   type TrackedPractice,
   type PrnMedForQuickLog,
 } from "@/lib/queries";
-import { MOOD_LOG_DATE_WINDOW_DAYS, moodBackfillLabel } from "@/lib/mood";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
 import { formatWeekdayDate } from "@/lib/format-date";
@@ -46,12 +37,7 @@ import {
 import { upcomingDueText } from "@/lib/upcoming";
 import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import type { FoodGroup } from "@/lib/food-groups";
-import {
-  FOOD_SLOTS,
-  type FoodSlot,
-  type FoodSlotBoundaries,
-} from "@/lib/food-slot";
-import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
+import type { FoodSlot, FoodSlotBoundaries } from "@/lib/food-slot";
 import type { TemperatureUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import { getBristolReadings } from "@/lib/queries/bristol-stool";
@@ -71,6 +57,8 @@ import {
 } from "@/lib/queries/symptoms";
 import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
+import { isWithinReach, SHEET_REACH, TAP_REACH } from "@/lib/log-manifest";
+import { gatherQuickEntryFood } from "@/lib/quick-entry-food";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -168,9 +156,10 @@ export type QuickEntryData =
       // completeness), so nothing is lost: this compact overlay just doesn't offer a
       // gram box to someone with no scoop size to re-offer.
       proteinRankBySlot: Record<FoodSlot, number | null>;
-      // Today's manual-protein total + the last-used amount, for the ranked protein
-      // control. Null preset ⇒ untracked ⇒ no control (proteinRankBySlot is all null).
-      proteinToday: number;
+      // The requested day's manual-protein total + the last-used amount, for the
+      // ranked protein control. Null preset ⇒ untracked ⇒ no control
+      // (proteinRankBySlot is all null).
+      proteinGrams: number;
       proteinPreset: number | null;
       excludedGroups: string[];
       slot: FoodSlot;
@@ -187,7 +176,7 @@ export type QuickEntryData =
       // TODAY's offer, unchanged: the arrived-slot due-now slice. An evening dose is
       // still not "due right now" in the morning.
       doses: QuickEntryDose[];
-      prn: QuickEntryPrn;
+      prn?: QuickEntryPrn;
       // The recent-past days the sheet may switch to (#3936), newest first — exactly
       // `doseLogDays(today)` minus today, so the switcher offers precisely the window
       // the write cores accept. A day with nothing left to log is still LISTED (with
@@ -221,6 +210,7 @@ export type QuickEntryData =
       // check-in so the face row mirrors the selected day. Gathered ON OPEN so a
       // sheet opened after midnight can't offer yesterday's "today".
       form: "mood";
+      today: string;
       days: {
         date: string;
         label: string;
@@ -233,6 +223,9 @@ export type QuickEntryData =
         } | null;
       }[];
       showCalm: boolean;
+      // Set only by device recovery in the client host. A Server Action result has
+      // seen the authoritative row and therefore always leaves this absent.
+      dayUnseen?: true;
     }
   | {
       // The well-day symptom bar (#4064) — the SAME props the dashboard's own mount
@@ -299,6 +292,7 @@ export type QuickEntryData =
       //     a profile that opted into no cap can receive no cap framing here, and
       //     nothing in this payload could manufacture one.
       form: "substance";
+      today: string;
       substances: {
         key: string;
         label: string;
@@ -306,7 +300,11 @@ export type QuickEntryData =
         capProgress: string | null;
       }[];
     }
-  | { form: "unavailable"; message: string };
+  | { form: "unavailable"; today: string; message: string };
+
+export type QuickEntryLoadResult =
+  | { kind: "ready"; data: QuickEntryData }
+  | { kind: "refused"; reason: "session" | "subject" };
 
 export async function loadQuickEntry(
   form: QuickEntryForm,
@@ -319,62 +317,111 @@ export async function loadQuickEntry(
   // every WRITE the mounted forms post still re-gates itself through
   // gateItemProfile, which is what keeps this a read-only allowlist entry in
   // actions-write-access.test.ts.
-  subjectProfileId?: number
+  subjectProfileId?: number,
+  selectedDay?: string,
+  selectedReach: "sheet" | "dated" = "sheet"
+): Promise<QuickEntryLoadResult> {
+  let session: CurrentSession;
+  let profileId: number;
+  try {
+    session = await requireSession();
+  } catch (error) {
+    if (isRedirectError(error)) return { kind: "refused", reason: "session" };
+    throw error;
+  }
+  if (subjectProfileId != null && subjectProfileId !== session.profile.id) {
+    try {
+      profileId = await gateSubjectProfile(subjectProfileId);
+    } catch (error) {
+      if (isRedirectError(error)) return { kind: "refused", reason: "subject" };
+      throw error;
+    }
+  } else {
+    profileId = session.profile.id;
+  }
+  return {
+    kind: "ready",
+    data: await gatherQuickEntry(
+      form,
+      session,
+      profileId,
+      subjectProfileId,
+      selectedDay,
+      selectedReach
+    ),
+  };
+}
+
+async function gatherQuickEntry(
+  form: QuickEntryForm,
+  session: CurrentSession,
+  profileId: number,
+  subjectProfileId?: number,
+  selectedDay?: string,
+  selectedReach: "sheet" | "dated" = "sheet"
 ): Promise<QuickEntryData> {
-  const { login, profile: actingProfile } = await requireSession();
-  const profileId =
-    subjectProfileId != null && subjectProfileId !== actingProfile.id
-      ? await gateSubjectProfile(subjectProfileId)
-      : actingProfile.id;
+  const { login, profile: actingProfile } = session;
   const profile = { id: profileId };
   const date = today(profile.id);
+  const selectedDateReach =
+    selectedReach === "dated" &&
+    (form === "food" ||
+      form === "mood" ||
+      form === "practice" ||
+      form === "symptom" ||
+      form === "stool" ||
+      form === "substance")
+      ? ({ kind: "dated" } as const)
+      : form === "dose"
+        ? TAP_REACH["dose-day"]
+        : SHEET_REACH;
+  if (
+    selectedDay != null &&
+    (!isRealIsoDate(selectedDay) ||
+      !isWithinReach(selectedDateReach, date, selectedDay))
+  ) {
+    return {
+      form: "unavailable",
+      today: date,
+      message: "That day is outside quick logging.",
+    };
+  }
+  const requestedDate = selectedDay ?? date;
 
   if (form === "food") {
-    // The same gate the Food tab applies server-side (#591): below one year the
-    // adult food-group catalog is meaningless, so say so instead of rendering an
-    // empty logger.
-    if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
+    const food = gatherQuickEntryFood(profile.id, {
+      loginId: login.id,
+      today: date,
+      requestedDate,
+      now: clockNow(),
+    });
+    if (!food.available) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "Food-group serving logging starts after the first year. Growth for this age lives in the Body and History views.",
       };
     }
-    const yesterday = shiftDateStr(date, -1);
-    const days = getFoodMealDays(profile.id, [date, yesterday]).map((day) => ({
-      ...day,
-      label: day.date === date ? "Today" : "Yesterday",
-    }));
-    // The SAME slot derivation that orders the catalog, so the bar's slot chip
-    // and its row order agree here exactly as they do on the page (#950).
-    const slot = currentFoodSlot(profile.id);
-    // THE ranking (#1980) — the same call the Food tab and the Telegram nudge make, so
-    // the sheet can never offer a different order than the page it opened over.
-    const orderBySlot = Object.fromEntries(
-      FOOD_SLOTS.map((meal) => [meal, getFoodBarOrder(profile.id, meal)])
-    ) as Record<FoodSlot, ReturnType<typeof getFoodBarOrder>>;
     return {
       form: "food",
       today: date,
-      days,
-      groupsBySlot: Object.fromEntries(
-        FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].groups])
-      ) as Record<FoodSlot, FoodGroup[]>,
-      proteinRankBySlot: Object.fromEntries(
-        FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
-      ) as Record<FoodSlot, number | null>,
-      proteinToday: getProteinDailyGrams(profile.id, date),
-      proteinPreset: getProteinQuickAddPreset(profile.id),
-      excludedGroups: getExcludedFoodGroups(profile.id),
-      slot,
-      slotBoundaries: profileFoodSlotBoundaries(profile.id),
+      days: food.days,
+      groupsBySlot: food.groupsBySlot,
+      proteinRankBySlot: food.proteinRankBySlot,
+      proteinGrams: food.grams,
+      proteinPreset: food.preset,
+      excludedGroups: food.exclusions,
+      slot: food.slot,
+      slotBoundaries: food.boundaries,
     };
   }
 
   if (form === "stool") {
     return {
       form: "stool",
-      todayCount: getBristolReadings(profile.id, date, date).length,
+      todayCount: getBristolReadings(profile.id, requestedDate, requestedDate)
+        .length,
       today: date,
     };
   }
@@ -401,7 +448,7 @@ export async function loadQuickEntry(
     // practice on the wrong person, so that one shape earns the unavailable state;
     // logging an EXISTING tracked practice does not (`logPractice` already follows
     // the subject through `gateItemProfile`).
-    const practices = getTrackedPractices(profile.id, date);
+    const practices = getTrackedPractices(profile.id, requestedDate);
     if (
       practices.length === 0 &&
       subjectProfileId != null &&
@@ -409,6 +456,7 @@ export async function loadQuickEntry(
     ) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "This profile has no tracked practices yet. Switch to it to start one.",
       };
@@ -429,6 +477,7 @@ export async function loadQuickEntry(
     if (isMinor(getProfileAge(profile.id))) {
       return {
         form: "unavailable",
+        today: date,
         message: "This isn't available for this profile.",
       };
     }
@@ -436,12 +485,14 @@ export async function loadQuickEntry(
     if (keys.length === 0) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "No substances tracked yet. Name one under Health record \u2192 Specialty \u2192 Substance use to log it from here.",
       };
     }
     return {
       form: "substance",
+      today: date,
       substances: keys.map((key) => {
         const week = getSubstanceWeekState(profile.id, key);
         return {
@@ -465,6 +516,7 @@ export async function loadQuickEntry(
     if (subjectProfileId != null && subjectProfileId !== actingProfile.id) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "Period logging is a declaration by the profile acting — switch to this profile to log it.",
       };
@@ -475,6 +527,7 @@ export async function loadQuickEntry(
     if (!getNavRelevance(profile.id).cycle) {
       return {
         form: "unavailable",
+        today: date,
         message:
           "Cycle tracking isn't set up for this profile. Turn it on by recording a period under Medical \u2192 Cycle.",
       };
@@ -492,28 +545,30 @@ export async function loadQuickEntry(
   if (form === "mood") {
     // Today plus the #2128 backfill window, through the same read the dashboard
     // card's server mount uses — one gather shape, two surfaces.
-    const days = Array.from(
-      { length: MOOD_LOG_DATE_WINDOW_DAYS + 1 },
-      (_, offset) => {
-        const day = offset === 0 ? date : shiftDateStr(date, -offset);
-        const logged = getMoodOnDate(profile.id, day);
-        return {
-          date: day,
-          label: moodBackfillLabel(offset),
-          mood: logged
-            ? {
-                valence: logged.valence,
-                energy: logged.energy,
-                anxiety: logged.anxiety,
-                factors: logged.factors,
-                notes: logged.notes,
-              }
-            : null,
-        };
-      }
-    );
+    const days = [requestedDate].map((day) => {
+      const logged = getMoodOnDate(profile.id, day);
+      return {
+        date: day,
+        label:
+          day === date
+            ? "Today"
+            : day === shiftDateStr(date, -1)
+              ? "Yesterday"
+              : formatWeekdayDate(day, getDisplayFormatPrefs(login.id)),
+        mood: logged
+          ? {
+              valence: logged.valence,
+              energy: logged.energy,
+              anxiety: logged.anxiety,
+              factors: logged.factors,
+              notes: logged.notes,
+            }
+          : null,
+      };
+    });
     return {
       form: "mood",
+      today: date,
       days,
       showCalm: isAnxietyScaleRelevant(profile.id),
     };
@@ -527,8 +582,8 @@ export async function loadQuickEntry(
     return {
       form: "symptom",
       today: date,
-      severities: getSymptomSeveritiesOnDate(profile.id, date),
-      notes: getSymptomNotesOnDate(profile.id, date),
+      severities: getSymptomSeveritiesOnDate(profile.id, requestedDate),
+      notes: getSymptomNotesOnDate(profile.id, requestedDate),
       customNames: getCustomSymptomNames(profile.id),
       rankedKeys: getSymptomLogOrder(profile.id),
       temperatureUnit: getUnitPrefs(login.id).temperatureUnit,
@@ -583,7 +638,11 @@ export async function loadQuickEntry(
     prnMeds.length === 0 &&
     pastDays.every((day) => day.slots.length === 0)
   ) {
-    return { form: "unavailable", message: "No doses are due right now." };
+    return {
+      form: "unavailable",
+      today: date,
+      message: "No doses are due right now.",
+    };
   }
   return {
     form: "dose",

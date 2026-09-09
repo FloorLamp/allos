@@ -4,11 +4,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import { upsertMoodLog } from "@/lib/offline/writes";
-import {
-  decideMoodKeep,
-  isMoodDateAccepted,
-  MOOD_DATE_OUT_OF_WINDOW_ERROR,
-} from "@/lib/mood";
+import { decideMoodKeep } from "@/lib/mood";
 import {
   getMoodCheckinIgnored,
   getProfileMoodCheckin,
@@ -33,31 +29,30 @@ export async function logMood(formData: FormData): Promise<FormResult> {
 
   const rawDate = String(formData.get("date") ?? "").trim();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today(profileId);
-  // WINDOWS BIND OFFERS, NOT THE DOMAIN (#4425). Quick-log day chips remain bounded
-  // for stale-tap protection; the record's dated form can state any real past day,
-  // like every other `/history` add/correction door. Both land through the same core.
-  const dated = formData.get("date_reach") === "dated";
-  const accepted = dated
-    ? isPastWriteAccepted(today(profileId), date)
-    : isMoodDateAccepted(today(profileId), date);
-  if (!accepted) {
-    return formError(
-      dated ? "Choose today or an earlier date." : MOOD_DATE_OUT_OF_WINDOW_ERROR
-    );
-  }
+  if (!isPastWriteAccepted(today(profileId), date))
+    return formError("Choose today or an earlier date.");
 
   const opt = (k: string): string | null => {
     const v = formData.get(k);
     return v === null || String(v).trim() === "" ? null : String(v).trim();
   };
 
-  const ok = upsertMoodLog(profileId, date, {
-    valence: String(formData.get("valence") ?? ""),
-    energy: opt("energy"),
-    anxiety: opt("anxiety"),
-    factors: formData.getAll("factors").map((f) => String(f)),
-    note: opt("note"),
-  });
+  const hasDayUnseen = formData.has("day_unseen");
+  if (hasDayUnseen && formData.get("day_unseen") !== "1")
+    return formError("Couldn't save that check-in — try again.");
+
+  const ok = upsertMoodLog(
+    profileId,
+    date,
+    {
+      valence: String(formData.get("valence") ?? ""),
+      energy: opt("energy"),
+      anxiety: opt("anxiety"),
+      factors: formData.getAll("factors").map((f) => String(f)),
+      note: opt("note"),
+    },
+    hasDayUnseen ? "day-unseen" : "saw-the-day"
+  );
   if (!ok) return formError("Couldn't save that check-in — try again.");
 
   revalidateRoute("/");

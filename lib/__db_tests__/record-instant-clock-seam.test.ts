@@ -14,7 +14,7 @@ import { finishWorkoutSession } from "@/lib/workout-finish";
 import { upsertActivities } from "@/lib/integrations/normalize";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import { applyIntent } from "@/lib/offline/writes";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import { EPISODE_BOUNDS } from "@/lib/open-episode";
 
 const STALE_MIN = EPISODE_BOUNDS.workout.staleMin;
@@ -209,6 +209,7 @@ describe("offline food replay judges a statement on the seam's clock (#2287)", (
           eatenAt: statedAt,
         },
         p,
+        true,
         clockNow()
       )
     );

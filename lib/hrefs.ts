@@ -45,8 +45,21 @@ export function onboardingStepHref(
 export const NUTRITION_TABS = ["food", "supplements"] as const;
 export type NutritionTab = (typeof NUTRITION_TABS)[number];
 
+export function parseNutritionTab(
+  value: string | string[] | undefined
+): NutritionTab {
+  const first = Array.isArray(value) ? value[0] : value;
+  return NUTRITION_TABS.includes(first as NutritionTab)
+    ? (first as NutritionTab)
+    : "food";
+}
+
 export function nutritionTabHref(tab: NutritionTab): AppRoute {
   return tab === "food" ? "/nutrition" : `/nutrition?tab=${tab}`;
+}
+
+export function nutritionDayHref(date: string): AppRoute {
+  return `/nutrition?date=${encodeURIComponent(date)}` as AppRoute;
 }
 
 // The standalone Medications page (#746) — medications left the old combined

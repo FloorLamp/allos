@@ -227,13 +227,13 @@ test("each set groups its identity and options above its values at 390px (#1612)
     expect(b.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
   }
 
-  // The remaining plan states its load and unit above the rows. The phone schema
-  // keeps reps visible without detached Set / Options headings.
+  // The remaining plan states its load above the rows; confirmed sets also need
+  // a Weight heading beside Reps. Set / Options stay off the phone schema.
   const headings = page.getByTestId("set-column-headings");
   await expect(page.getByTestId("exercise-weight")).toContainText(
     /^Remaining weight \((kg|lb)\)/
   );
-  await expect(headings.getByTestId("weight-column-heading")).toHaveCount(0);
+  await expect(headings.getByTestId("weight-column-heading")).toBeVisible();
   await expect(headings.getByTestId("reps-column-heading")).toBeVisible();
   // The desktop table furniture is not rendered on a phone (the headings stay in
   // the DOM for `sm` and up, so this asserts they are not SHOWN).

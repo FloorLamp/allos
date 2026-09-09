@@ -2,7 +2,7 @@
 
 Use these questions when an issue's requirements leave a meaningful choice.
 Investigate the current code and recorded rulings before asking the owner. The
-[filing procedure](../../.claude/skills/file-issue/SKILL.md) owns issue preparation;
+[filing procedure](../../.agents/skills/file-issue/SKILL.md) owns issue preparation;
 [dispatch](dispatch.md) owns readiness and dependencies. Follow the
 [change and test policy](../change-policy.md): ask only what affects the result,
 and keep the evidence concise.

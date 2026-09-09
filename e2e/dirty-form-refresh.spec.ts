@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { shiftDateStr } from "@/lib/date";
 import { hydratedClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import {
@@ -282,7 +283,7 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     await expect(dialog.getByTestId("visit-fact-when")).toContainText("14:30");
   });
 
-  test("a poll that observes a finished job does not repaint the tree under a dirty form", async ({
+  test("a poll that observes a finished job waits for a date-only edit (#4986)", async ({
     page,
   }) => {
     test.slow();
@@ -299,11 +300,17 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
-    // This test fills and empties the same field repeatedly, so its editor stays open
-    // throughout; the closed-panel case is pinned by the test above.
-    await openVisitFact(dialog, "reason");
-    const title = dialog.getByLabel("Reason / title");
-    await settledFill(page, title, MARKER);
+    // Only the date changes; touching a named text field would hide a missing
+    // DateField bridge. Its visible input formats the canonical hidden value.
+    await openVisitFact(dialog, "when");
+    const date = dialog.getByLabel("Date", { exact: true });
+    const canonicalDate = dialog.locator('input[name="date"]');
+    const originalDate = await canonicalDate.inputValue();
+    const editedDate = shiftDateStr(frozenNow().toISOString().slice(0, 10), 2);
+    await hydratedClick(page, date);
+    await expect(registry).toHaveAttribute("data-dirty", "0");
+    await date.fill(editedDate);
+    await page.keyboard.press("Escape");
     await expect(registry).toHaveAttribute("data-dirty", "1");
 
     // Two background events at once, which is the realistic shape: the extraction
@@ -328,13 +335,14 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     await expect(registry).toHaveAttribute("data-owed", "1");
     await expect(registry).toHaveAttribute("data-refreshes", "0");
     await expect(behind).toHaveCount(0);
+    await expect(canonicalDate).toHaveValue(editedDate);
 
     // The user finishes with the field (undone, not submitted — this test never
     // writes through the UI). The owed repaint lands, once, CARRYING the new row:
     // deferred was never dropped, and what finally arrives is current data rather
     // than a replay of the moment that asked for it.
-    await title.fill("");
-    await title.blur();
+    await date.fill(originalDate);
+    await date.blur();
     await expect(registry).toHaveAttribute("data-dirty", "0");
     await expect(registry).toHaveAttribute("data-refreshes", "1");
     await expect(registry).toHaveAttribute("data-owed", "0");

@@ -9,7 +9,7 @@ import {
   getSleepDurationTrend,
   getSleepRegularity,
   getSleepRegularityTrend,
-  getSleepRegularityInsight,
+  getSleepRegularityDrop,
   getSleepConsistency,
   getSleepStageComposition,
   getNapHistory,
@@ -27,6 +27,10 @@ import {
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { formatClockMinutes, formatRelativeTime } from "@/lib/format-date";
 import { sriPresentation } from "@/lib/sleep-regularity";
+import {
+  PillarToneBadge,
+  PILLAR_TONE_CLASS,
+} from "@/components/dashboard/HealthspanPillarPresentation";
 import { PageHeader } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import SleepHero from "./SleepHero";
@@ -94,7 +98,7 @@ export default async function SleepPage() {
     date: r.date,
     value: r.sri,
   }));
-  const sleepRegInsight = getSleepRegularityInsight(profile.id);
+  const sleepRegInsight = getSleepRegularityDrop(profile.id, todayStr);
   const consistency = getSleepConsistency(profile.id);
   const stages = getSleepStageComposition(profile.id, 90).map((r) => ({
     date: r.date,
@@ -242,14 +246,18 @@ export default async function SleepPage() {
                   SRI · last {sleepReg.nights} nights
                 </span>
               </div>
-              <div
-                className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
-                data-testid="sri-value"
-              >
-                {sleepRegDisplay.text}
+              <div className="flex items-baseline gap-2">
+                <div
+                  className={`text-3xl font-bold ${PILLAR_TONE_CLASS[sleepRegDisplay.tone]}`}
+                  data-testid="sri-value"
+                >
+                  {sleepRegDisplay.text}
+                </div>
+                <PillarToneBadge tone={sleepRegDisplay.tone} />
               </div>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                SRI ranges from −100 to 100; higher is steadier. Bedtime ±
+                Sleep timing is {sleepRegDisplay.qualifier}. SRI ranges from
+                −100 to 100; higher is steadier. Bedtime ±
                 {sleepReg.bedtimeSdMin} min, wake ±{sleepReg.waketimeSdMin} min
                 {sleepReg.socialJetlagMin != null
                   ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
@@ -261,7 +269,10 @@ export default async function SleepPage() {
                   className="mt-2 rounded-sm bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
                   data-testid="sri-insight"
                 >
-                  {sleepRegInsight}
+                  {sleepRegInsight.detail}{" "}
+                  <Link href="/sleep" className="text-link">
+                    Review sleep
+                  </Link>
                 </p>
               )}
               {sleepRegTrend.length > 1 && (

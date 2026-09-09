@@ -136,6 +136,8 @@ const PREFIX_TABLE = [
 
   // Refill nudge (#233 phase 3): logging the refill in the app ends the shortage.
   { prefix: "rfsnooze", family: "refill" },
+  { prefix: "rfordered", family: "refill" },
+  { prefix: "rfordno", family: "refill" },
   { prefix: "rfreceived", family: "refill" },
   { prefix: "rfconfirm", family: "refill" },
   { prefix: "rfcancel", family: "refill" },
@@ -366,7 +368,7 @@ export const RECONCILE_DATE_GUARD: Record<
   },
   refill: {
     guard: "none",
-    why: "rfsnooze carries an item id. A shortage is a standing state rather than a day, and the snooze runs from today; the dead predicate ends the message when the supply is no longer low.",
+    why: "Ordered carries an item id and delivery generation; legacy rfsnooze requires a fresh confirmation. A shortage is a standing state rather than a day, and the snooze runs from today; the dead predicate ends the message when the supply is no longer low.",
   },
   symptom: {
     guard: "none",

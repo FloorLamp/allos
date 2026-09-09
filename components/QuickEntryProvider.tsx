@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Component,
+  Suspense,
   createContext,
   useCallback,
   useContext,
@@ -8,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import dynamic from "next/dynamic";
 import { IconChevronDown } from "@tabler/icons-react";
@@ -18,7 +21,7 @@ import { useToast } from "./Toast";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
-import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
+import { FoodProjectionProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import {
   loadQuickEntry,
   type QuickEntryData,
@@ -27,6 +30,32 @@ import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import type { QuickEntryForm, QuickEntryPrefill } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
 import type { OverlaySize } from "./overlay";
+import {
+  DayContextBoundary,
+  DayContextProvider,
+  useLiveProfileClocks,
+  useOptionalDayContext,
+  type DayContextValue,
+} from "./DayContext";
+import BoundedDaySwitcher from "./BoundedDaySwitcher";
+import { isWithinReach, SHEET_REACH } from "@/lib/log-manifest";
+import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
+import { shiftDateStr } from "@/lib/date";
+import { formatRelativeTime, formatWeekdayDate } from "@/lib/format-date";
+import { useFormatPrefs } from "./FormatPrefsProvider";
+import { TimezoneProvider } from "./TimezoneProvider";
+import { useTimezone } from "./TimezoneProvider";
+import {
+  captureLastGoodToken,
+  clearLastGood,
+  quickEntryOffline,
+  recallLastGood,
+  rememberLastGood,
+  subscribeLastGoodInvalidation,
+} from "@/lib/offline/quick-entry-read";
+import { allIntents } from "@/lib/offline/queue-db";
+import { allSnapshots } from "@/lib/offline/snapshot-db";
+import { wipeDeviceForSignOut } from "./device-wipe";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -36,35 +65,38 @@ import type { OverlaySize } from "./overlay";
 // practice button's modal and date field) that no page-load should pay for. Both are
 // only rendered AFTER `loadQuickEntry` resolves, so the chunk fetch overlaps a round
 // trip that was already happening and costs nothing perceptible.
-const UploadForm = dynamic(() => import("./UploadForm"));
-const QuickPracticeList = dynamic(
-  () => import("./quick-entry/QuickPracticeList")
-);
-// Same rule, third body (#1892): the period panel drags in the shared offer button
-// and, through it, the cycle Server Actions' client references. Static-importing it
-// would put that on the initial JS of EVERY route — including routes with no cycle
-// surface at all — which is exactly the promise this host makes above. Hydration
-// latency is not free: a wider hydration window is what turns a pre-hydration
-// `.fill()` on a controlled input into a silently stale save (see settledFill in
-// e2e/helpers.ts), so the cost of breaking this rule is paid by other pages' flakes.
-const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
-// Same rule, fourth body (#2130): the mood check-in drags in the shared ledger
-// hook and the mood action's client reference; loaded only once opened.
-const MoodForm = dynamic(() => import("./mood/MoodForm"));
-// Same rule, fifth body (#2785): the stool picker drags in the shared ledger hook,
-// the seven inline glyphs and the stool action's client reference; loaded on open.
-const StoolTypeControl = dynamic(() => import("./stool/StoolTypeControl"));
-// Same rule, sixth body (#3327): the substance list drags in the shared ledger hook
-// and the substance action's client reference; loaded on open.
-const QuickSubstanceList = dynamic(
-  () => import("./quick-entry/QuickSubstanceList")
-);
-// Same rule, seventh body (#4064), and the heaviest of them: the symptom bar drags in
-// the shared combobox, the optimistic ledger, the undo toast lifecycle and five symptom
-// actions' client references. Loaded on open, after the gather it needs anyway.
-const QuickSymptomPanel = dynamic(
-  () => import("./quick-entry/QuickSymptomPanel")
-);
+function loadBodies(attempt: number) {
+  return {
+    attempt,
+    UploadForm: dynamic(() => import("./UploadForm")),
+    QuickPracticeList: dynamic(() => import("./quick-entry/QuickPracticeList")),
+    QuickCyclePanel: dynamic(() => import("./quick-entry/QuickCyclePanel")),
+    MoodForm: dynamic(() => import("./mood/MoodForm")),
+    StoolTypeControl: dynamic(() => import("./stool/StoolTypeControl")),
+    QuickSubstanceList: dynamic(
+      () => import("./quick-entry/QuickSubstanceList")
+    ),
+    QuickSymptomPanel: dynamic(() => import("./quick-entry/QuickSymptomPanel")),
+  };
+}
+
+type Bodies = ReturnType<typeof loadBodies>;
+
+class BodyBoundary extends Component<
+  { children: ReactNode; onRetry: () => void },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <QuickEntryError onRetry={this.props.onRetry} />;
+  }
+}
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -125,18 +157,38 @@ interface QuickEntryApi {
   close: () => void;
 }
 
+interface QuickEntryHostApi extends QuickEntryApi {
+  open: (
+    form: QuickEntryForm,
+    prefill?: QuickEntryPrefill,
+    subjectProfileId?: number,
+    dayContext?: DayContextValue | null
+  ) => void;
+}
+
 // The prefill vocabulary lives beside the form vocabulary in lib/quick-log.ts
 // (#2184: the palette's registry speaks it too); re-exported here for callers
 // that reach it through the overlay host.
 export type { QuickEntryPrefill };
 
-const Ctx = createContext<QuickEntryApi | null>(null);
+const Ctx = createContext<QuickEntryHostApi | null>(null);
 
 export function useQuickEntry(): QuickEntryApi {
   const ctx = useContext(Ctx);
+  const dayContext = useOptionalDayContext();
   if (!ctx)
     throw new Error("useQuickEntry must be used within a QuickEntryProvider");
-  return ctx;
+  return useMemo(
+    () => ({
+      close: ctx.close,
+      open: (
+        form: QuickEntryForm,
+        prefill?: QuickEntryPrefill,
+        subjectProfileId?: number
+      ) => ctx.open(form, prefill, subjectProfileId, dayContext),
+    }),
+    [ctx, dayContext]
+  );
 }
 
 // The sheet's visible and accessible name per form, and how wide its panel gets
@@ -188,8 +240,127 @@ type QuickEntryBody = QuickEntryData | MeasurementsQuickEntry;
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; data: QuickEntryBody }
+  | {
+      status: "ready";
+      data: QuickEntryBody;
+      gatheredKey?: string;
+      sight: "read" | "device";
+      asOf: string | null;
+    }
   | { status: "error" };
+
+type SheetDayContext =
+  | { kind: "inherited"; value: DayContextValue }
+  | { kind: "state"; parts: DayContextParts };
+
+type LoadRequest =
+  | { kind: "dayless" }
+  | { kind: "inherited"; value: DayContextValue }
+  | { kind: "selected"; parts: DayContextParts };
+
+interface HostView {
+  state: LoadState;
+  sheetDay: SheetDayContext | null;
+  request: LoadRequest | null;
+}
+
+export type QuickEntryRemountCause = "payload" | "context";
+
+export function remounts(
+  currentForm: QuickEntryBody["form"],
+  nextForm: QuickEntryBody["form"],
+  cause: QuickEntryRemountCause
+): boolean {
+  if (cause === "context") return true;
+  switch (currentForm) {
+    case "food":
+    case "measurements":
+    case "dose":
+    case "practice":
+    case "cycle":
+    case "mood":
+    case "stool":
+    case "substance":
+    case "symptom":
+    case "document":
+    case "unavailable":
+      return currentForm !== nextForm;
+    default: {
+      const exhaustive: never = currentForm;
+      return exhaustive;
+    }
+  }
+}
+
+function asOfCopy(fetchedAt: string | Date, why: string): string {
+  return `As of ${formatRelativeTime(
+    typeof fetchedAt === "string" ? fetchedAt : fetchedAt.toISOString()
+  )} — ${why}`;
+}
+
+function QuickEntryError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div data-testid="quick-entry-error">
+      <p role="alert" className={QUIET_STATE_CLASS}>
+        Couldn&apos;t open that form.
+      </p>
+      <button
+        type="button"
+        data-testid="quick-entry-retry"
+        onClick={onRetry}
+        className="btn-ghost mt-2"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+function quickEntryToday(data: QuickEntryBody): string | null {
+  if (data.form === "measurements") return data.defaultDate;
+  if (data.form === "cycle" || data.form === "document") return null;
+  return data.today;
+}
+
+function contextDayLabel(
+  day: string,
+  today: string,
+  prefs: ReturnType<typeof useFormatPrefs>
+) {
+  if (day === today) return "Today";
+  if (day === shiftDateStr(today, -1)) return "Yesterday";
+  return formatWeekdayDate(day, prefs);
+}
+
+function withLiveDayLabels(
+  data: QuickEntryBody,
+  today: string,
+  prefs: ReturnType<typeof useFormatPrefs>
+): QuickEntryBody {
+  const label = (date: string) => contextDayLabel(date, today, prefs);
+  switch (data.form) {
+    case "food":
+      return {
+        ...data,
+        days: data.days.map((day) => ({ ...day, label: label(day.date) })),
+      };
+    case "mood":
+      return {
+        ...data,
+        days: data.days.map((day) => ({ ...day, label: label(day.date) })),
+      };
+    case "dose":
+      return {
+        ...data,
+        pastDays: data.pastDays.map((day) => ({
+          ...day,
+          label: label(day.date),
+        })),
+      };
+    default:
+      return data;
+  }
+}
 
 // The stall bound a cold "Loading…" may sit under before the sheet admits the
 // gather is not coming back (#3416 proposal 3) — long enough that an ordinary slow
@@ -220,12 +391,20 @@ export default function QuickEntryProvider({
   actingProfileId: number;
 }) {
   const toast = useToast();
+  const formatPrefs = useFormatPrefs();
+  const liveProfileClocks = useLiveProfileClocks();
+  const liveProfileClocksRef = useRef(liveProfileClocks);
+  liveProfileClocksRef.current = liveProfileClocks;
   const [open, setOpen] = useState(false);
   // The form is RETAINED after close so the panel keeps its content through the
   // sheet's exit animation instead of blanking on the way out.
   const [form, setForm] = useState<QuickEntryForm | null>(null);
   const [prefill, setPrefill] = useState<QuickEntryPrefill | null>(null);
-  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [host, setHost] = useState<HostView>({
+    state: { status: "loading" },
+    sheetDay: null,
+    request: null,
+  });
   // The sheet's chosen subject (#4932) — never null once a form has opened: it
   // resolves to the opener's subject, else the acting profile, on every open. Never
   // persisted past close (Out of scope, #4932): the NEXT open recomputes it fresh,
@@ -237,87 +416,317 @@ export default function QuickEntryProvider({
   // Ignore a response that lost its race — tapping weight then dose before the
   // first gather returns must not paint the weight form into the dose sheet.
   const requestRef = useRef(0);
+  const [bodies, setBodies] = useState(() => loadBodies(0));
 
-  const close = useCallback(() => {
-    setOpen(false);
-    setPickerOpen(false);
+  useLayoutEffect(() => {
+    const invalidate = () => {
+      ++requestRef.current;
+      setOpen(false);
+      setPickerOpen(false);
+      setHost({
+        state: { status: "loading" },
+        sheetDay: null,
+        request: null,
+      });
+    };
+    return subscribeLastGoodInvalidation(invalidate);
   }, []);
 
-  // LAST-GOOD, PER (FORM, SUBJECT) (#3416/#4454). Held in a ref, not state: it is
-  // read synchronously inside `loadFor` and never itself drives a render — only the
-  // `ready`/`error` state transitions below do. Keyed on the subject (#4932's Refs:
-  // "the subject joins #3416's snapshot key") so a cached read for Mia can never
-  // paint as Alex's, and cleared whenever the ACTING profile changes (below) — the
-  // same device-local wipe boundary ProfileSwitchWatcher enforces for the offline
-  // read snapshots, extended to this in-memory one.
-  const lastGoodRef = useRef(new Map<string, QuickEntryData>());
-  const priorActingProfileId = useRef(actingProfileId);
   useLayoutEffect(() => {
-    if (priorActingProfileId.current !== actingProfileId) {
-      priorActingProfileId.current = actingProfileId;
-      lastGoodRef.current.clear();
-    }
+    clearLastGood();
   }, [actingProfileId]);
+
+  const close = useCallback(() => {
+    ++requestRef.current;
+    setOpen(false);
+    setPickerOpen(false);
+    setHost((current) => ({ ...current, request: null }));
+  }, []);
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
   // subject parameter and one gate; no second copy of the gather per subject").
   // Reused by a fresh open, a mid-sheet subject switch AND a retry (below), so none
   // of the three can diverge into its own reader of the same form.
   const loadFor = useCallback(
-    (next: QuickEntryForm, subjectId: number, token: number) => {
-      // NO ROUND TRIP for measurements — the props are already here (#4091), and
-      // that gather is resolved for the ACTING profile only (no subject-keyed
-      // version exists). #4932 invariant 2: a form that cannot follow the subject
-      // end to end shows the unavailable shape rather than a partial context, so a
-      // chosen subject other than the acting profile gets that instead of the
-      // wrong person's age gates and defaults.
-      if (next === "measurements") {
-        setState({
-          status: "ready",
-          data:
-            subjectId === actingProfileId
-              ? measurements
-              : {
-                  form: "unavailable",
-                  message:
-                    "Switch to this profile to log measurements from the sheet.",
-                },
+    function runLoad(
+      next: QuickEntryForm,
+      subjectId: number,
+      token: number,
+      request: LoadRequest
+    ) {
+      const hasDayContext = next !== "cycle" && next !== "document";
+      const requestMatchesSubject =
+        request.kind === "dayless" ||
+        (request.kind === "inherited"
+          ? request.value.parts.profileId === subjectId
+          : request.parts.profileId === subjectId);
+      const effectiveRequest: LoadRequest =
+        hasDayContext && requestMatchesSubject ? request : { kind: "dayless" };
+      const requestedParts =
+        effectiveRequest.kind === "inherited"
+          ? effectiveRequest.value.parts
+          : effectiveRequest.kind === "selected"
+            ? effectiveRequest.parts
+            : null;
+      const matchingInherited =
+        effectiveRequest.kind === "inherited" && requestedParts
+          ? effectiveRequest.value
+          : null;
+      const requestLiveClock = liveProfileClocksRef.current.get(subjectId);
+      if (!requestLiveClock) {
+        setHost({
+          request: effectiveRequest,
+          sheetDay: null,
+          state: { status: "error" },
         });
         return;
       }
-      const key = `${next}:${subjectId}`;
-      const cached = lastGoodRef.current.get(key);
-      // LAST-GOOD RENDER, REVALIDATE BEHIND IT (#3416 proposal 1). A held copy from
-      // an earlier successful open of this SAME (form, subject) pair renders
-      // immediately instead of a loading state that would be a lie about what the
-      // sheet already knows; the fetch below still runs regardless — the SAME one
-      // gather an open always made (#3369: no extra query for having a cache).
-      setState(
-        cached ? { status: "ready", data: cached } : { status: "loading" }
-      );
-      // THE STALL BOUND (#3416 proposal 3): with no last-good to fall back on, a
-      // gather that never settles must not leave "Loading…" up forever. ~10s, so a
-      // slow-but-real network still finishes ahead of it in the ordinary case.
-      const stallTimer = cached
+      const requestLiveToday = requestLiveClock.today;
+      const requestParts: DayContextParts = requestedParts ?? {
+        profileId: subjectId,
+        day: requestLiveToday,
+        reach: SHEET_REACH,
+      };
+      const requestKey = dayContextKey(requestParts);
+
+      if (next === "measurements") {
+        const parts = requestParts;
+        setHost({
+          request: effectiveRequest,
+          sheetDay: matchingInherited
+            ? { kind: "inherited", value: matchingInherited }
+            : { kind: "state", parts },
+          state: {
+            status: "ready",
+            gatheredKey: requestKey,
+            sight: "read",
+            asOf: null,
+            data:
+              subjectId === actingProfileId
+                ? { ...measurements, defaultDate: parts.day }
+                : {
+                    form: "unavailable",
+                    today: requestLiveToday,
+                    message:
+                      "Switch to this profile to log measurements from the sheet.",
+                  },
+          },
+        });
+        return;
+      }
+
+      let held = requestedParts
+        ? recallLastGood(requestParts, next)
+        : undefined;
+      if (!held && effectiveRequest.kind === "dayless") {
+        for (let ago = 0; ago <= SHEET_REACH.back; ago += 1) {
+          const candidate = {
+            profileId: subjectId,
+            day: shiftDateStr(requestLiveToday, -ago),
+            reach: SHEET_REACH,
+          } satisfies DayContextParts;
+          const entry = recallLastGood(candidate, next);
+          if (
+            entry &&
+            (!hasDayContext || quickEntryToday(entry.data) === entry.parts.day)
+          ) {
+            held = entry;
+            break;
+          }
+        }
+      }
+      if (
+        effectiveRequest.kind === "dayless" &&
+        held &&
+        !isWithinReach(SHEET_REACH, requestLiveToday, held.parts.day)
+      ) {
+        held = undefined;
+      }
+      const shownParts = held?.parts ?? requestParts;
+      const shownKey = dayContextKey(shownParts);
+      const initialSheetDay: SheetDayContext | null = !hasDayContext
         ? null
-        : setTimeout(() => {
-            if (requestRef.current === token) setState({ status: "error" });
-          }, QUICK_ENTRY_LOAD_TIMEOUT_MS);
-      void loadQuickEntry(next, subjectId).then(
-        (data) => {
-          if (stallTimer != null) clearTimeout(stallTimer);
-          if (requestRef.current !== token) return;
-          lastGoodRef.current.set(key, data);
-          setState({ status: "ready", data });
+        : matchingInherited
+          ? { kind: "inherited", value: matchingInherited }
+          : { kind: "state", parts: shownParts };
+      setHost({
+        request: effectiveRequest,
+        sheetDay: initialSheetDay,
+        state: held
+          ? {
+              status: "ready",
+              data: held.data,
+              gatheredKey: shownKey,
+              sight: "read",
+              asOf: null,
+            }
+          : { status: "loading" },
+      });
+
+      const cacheToken = captureLastGoodToken();
+      let expired = false;
+      const current = () => requestRef.current === token && !expired;
+      const recover = async (recoveryToken: number) => {
+        const recoveryNow = new Date();
+        let snapshots: Awaited<ReturnType<typeof allSnapshots>>;
+        let intents: Awaited<ReturnType<typeof allIntents>>;
+        try {
+          [snapshots, intents] = await Promise.all([
+            allSnapshots(),
+            allIntents(),
+          ]);
+        } catch {
+          if (requestRef.current === recoveryToken)
+            setHost((view) => ({ ...view, state: { status: "error" } }));
+          return;
+        }
+        if (requestRef.current !== recoveryToken) return;
+        const recoveryLiveToday =
+          liveProfileClocksRef.current.get(subjectId)?.today;
+        if (!recoveryLiveToday) {
+          clearLastGood();
+          return;
+        }
+        if (
+          (effectiveRequest.kind === "dayless" &&
+            recoveryLiveToday !== requestLiveToday) ||
+          (effectiveRequest.kind !== "dayless" &&
+            !isWithinReach(
+              requestParts.reach,
+              recoveryLiveToday,
+              requestParts.day
+            ))
+        ) {
+          expired = true;
+          const nextToken = ++requestRef.current;
+          runLoad(next, subjectId, nextToken, { kind: "dayless" });
+          return;
+        }
+        const copy = quickEntryOffline(
+          next,
+          requestParts,
+          actingProfileId,
+          snapshots,
+          intents,
+          recoveryNow
+        );
+        setHost({
+          request: effectiveRequest,
+          sheetDay: copy ? initialSheetDay : null,
+          state: copy
+            ? {
+                status: "ready",
+                data: copy.data,
+                gatheredKey: requestKey,
+                sight: "device",
+                asOf:
+                  copy.fetchedAt == null
+                    ? copy.says
+                    : asOfCopy(copy.fetchedAt, copy.says),
+              }
+            : { status: "error" },
+        });
+      };
+      const expire = () => {
+        if (!current()) return;
+        expired = true;
+        const recoveryToken = ++requestRef.current;
+        if (held) {
+          setHost({
+            request: effectiveRequest,
+            sheetDay: initialSheetDay,
+            state: {
+              status: "ready",
+              data: held.data,
+              gatheredKey: shownKey,
+              sight: "read",
+              asOf: asOfCopy(held.fetchedAt, "couldn't refresh."),
+            },
+          });
+        } else {
+          void recover(recoveryToken);
+        }
+      };
+      const stallTimer = setTimeout(expire, QUICK_ENTRY_LOAD_TIMEOUT_MS);
+
+      void loadQuickEntry(
+        next,
+        subjectId,
+        requestedParts?.day,
+        matchingInherited?.parts.reach.kind === "dated" ? "dated" : "sheet"
+      ).then(
+        (result) => {
+          clearTimeout(stallTimer);
+          if (!current()) return;
+          if (result.kind === "refused") {
+            // The server answered the authorization question. Do not reinterpret
+            // that refusal as a dead link and paint device data under it.
+            if (result.reason === "session") void wipeDeviceForSignOut();
+            else clearLastGood();
+            return;
+          }
+          const data = result.data;
+          const gatheredToday = hasDayContext ? quickEntryToday(data) : null;
+          const responseLiveToday =
+            liveProfileClocksRef.current.get(subjectId)?.today;
+          if (!responseLiveToday) {
+            clearLastGood();
+            return;
+          }
+          if (
+            effectiveRequest.kind === "dayless" &&
+            gatheredToday &&
+            responseLiveToday !== requestLiveToday &&
+            responseLiveToday !== gatheredToday
+          ) {
+            expired = true;
+            const nextToken = ++requestRef.current;
+            runLoad(next, subjectId, nextToken, { kind: "dayless" });
+            return;
+          }
+          if (
+            effectiveRequest.kind === "dayless" &&
+            gatheredToday &&
+            !isWithinReach(SHEET_REACH, responseLiveToday, gatheredToday)
+          ) {
+            expire();
+            return;
+          }
+          let nextSheetDay: SheetDayContext | null = null;
+          let gatheredKey: string | undefined;
+          const gatheredParts = gatheredToday
+            ? (requestedParts ?? {
+                profileId: subjectId,
+                day: gatheredToday,
+                reach: SHEET_REACH,
+              })
+            : !hasDayContext
+              ? requestParts
+              : null;
+          if (gatheredParts) {
+            gatheredKey = dayContextKey(gatheredParts);
+            rememberLastGood(cacheToken, gatheredParts, next, data);
+          }
+          if (gatheredToday && gatheredParts) {
+            nextSheetDay = matchingInherited
+              ? { kind: "inherited", value: matchingInherited }
+              : { kind: "state", parts: gatheredParts };
+          }
+          setHost({
+            request: effectiveRequest,
+            sheetDay: nextSheetDay,
+            state: {
+              status: "ready",
+              data,
+              gatheredKey,
+              sight: "read",
+              asOf: null,
+            },
+          });
         },
         () => {
-          if (stallTimer != null) clearTimeout(stallTimer);
-          if (requestRef.current !== token) return;
-          // A FAILED REVALIDATE BEHIND A LAST-GOOD RENDER KEEPS WHAT IS ALREADY
-          // SHOWN (#3416 proposal 1) — the person is mid-use of a form that just
-          // proved it still has yesterday's answer; only a COLD failure (nothing
-          // cached yet) reaches the error state.
-          if (!cached) setState({ status: "error" });
+          clearTimeout(stallTimer);
+          expire();
         }
       );
     },
@@ -328,7 +737,8 @@ export default function QuickEntryProvider({
     (
       next: QuickEntryForm,
       nextPrefill?: QuickEntryPrefill,
-      subjectProfileId?: number
+      subjectProfileId?: number,
+      dayContext?: DayContextValue | null
     ) => {
       const token = ++requestRef.current;
       const resolvedSubject = subjectProfileId ?? actingProfileId;
@@ -337,7 +747,14 @@ export default function QuickEntryProvider({
       setSubject(resolvedSubject);
       setPickerOpen(false);
       setOpen(true);
-      loadFor(next, resolvedSubject, token);
+      loadFor(
+        next,
+        resolvedSubject,
+        token,
+        dayContext
+          ? { kind: "inherited", value: dayContext }
+          : { kind: "dayless" }
+      );
     },
     [actingProfileId, loadFor]
   );
@@ -361,12 +778,12 @@ export default function QuickEntryProvider({
       setSubject(profileId);
       setPrefill(null);
       const token = ++requestRef.current;
-      loadFor(form, profileId, token);
+      loadFor(form, profileId, token, { kind: "dayless" });
       const name = writableProfiles.find((p) => p.id === profileId)?.name;
       toast(
         name
-          ? `Switched — now logging for ${name}. Anything typed for the last person was discarded.`
-          : "Switched who this is for. Anything typed for the last person was discarded."
+          ? `Switched — now logging for ${name}.`
+          : "Switched who this is for."
       );
     },
     [subject, form, loadFor, writableProfiles, toast]
@@ -377,14 +794,49 @@ export default function QuickEntryProvider({
   // closing it. No-op once the sheet has no form (already closed).
   const retry = useCallback(() => {
     if (form == null) return;
+    setBodies((current) => loadBodies(current.attempt + 1));
     const token = ++requestRef.current;
-    loadFor(form, subject, token);
-  }, [form, subject, loadFor]);
+    loadFor(form, subject, token, host.request ?? { kind: "dayless" });
+  }, [form, subject, loadFor, host.request]);
 
-  const api = useMemo<QuickEntryApi>(
+  const api = useMemo<QuickEntryHostApi>(
     () => ({ open: openForm, close }),
     [openForm, close]
   );
+
+  const selectSheetDay = useCallback(
+    (day: string) => {
+      if (form == null) return;
+      const token = ++requestRef.current;
+      loadFor(form, subject, token, {
+        kind: "selected",
+        parts: { profileId: subject, day, reach: SHEET_REACH },
+      });
+    },
+    [form, subject, loadFor]
+  );
+
+  const state = useMemo(() => {
+    const liveToday = liveProfileClocks.get(subject)?.today;
+    if (!liveToday) return { status: "error" } as const;
+    return host.state.status === "ready"
+      ? {
+          ...host.state,
+          data: withLiveDayLabels(host.state.data, liveToday, formatPrefs),
+        }
+      : host.state;
+  }, [host.state, liveProfileClocks, subject, formatPrefs]);
+  const sheetDay = host.sheetDay;
+  const subjectClock = liveProfileClocks.get(subject);
+  const subjectToday = subjectClock?.today;
+  const inheritedDayValue =
+    sheetDay?.kind === "inherited" && subjectToday
+      ? {
+          ...sheetDay.value,
+          today: subjectToday,
+          isPrimaryDay: sheetDay.value.parts.day === subjectToday,
+        }
+      : null;
 
   const sheet = form ? SHEET[form] : null;
   // The subject to POST (#4932): explicit only when it differs from the acting
@@ -461,7 +913,7 @@ export default function QuickEntryProvider({
   return (
     <Ctx.Provider value={api}>
       {children}
-      {sheet && (
+      {sheet && form && (
         <BottomSheet
           open={open}
           onClose={close}
@@ -485,24 +937,136 @@ export default function QuickEntryProvider({
             {/* Keyed on the subject (#4932): switching who this is for remounts the
                 body fresh, which is what actually discards a staged, half-typed
                 entry rather than leaving it to paint under the new subject's name. */}
-            <div
-              key={subject}
-              data-testid="quick-entry-body"
-              data-form={form}
-              data-subject-profile-id={subject}
-            >
-              <QuickEntryBody
-                state={state}
-                prefill={prefill}
-                onDone={close}
-                onRetry={retry}
-                subjectProfileId={subjectId}
-              />
-            </div>
+            {subjectClock ? (
+              <TimezoneProvider tz={subjectClock.timeZone}>
+                {inheritedDayValue ? (
+                  <DayContextBoundary value={inheritedDayValue}>
+                    <QuickEntryBodyMount
+                      identity={inheritedDayValue.key}
+                      form={form}
+                      subject={subject}
+                      state={state}
+                      bodies={bodies}
+                      prefill={prefill}
+                      onDone={close}
+                      onRetry={retry}
+                      subjectProfileId={subjectId}
+                    />
+                  </DayContextBoundary>
+                ) : sheetDay?.kind === "state" ? (
+                  <DayContextProvider
+                    profileId={sheetDay.parts.profileId}
+                    today={subjectClock.today}
+                    reach={SHEET_REACH}
+                    backing={{ kind: "state", initialDay: sheetDay.parts.day }}
+                    onSelectedDayChange={selectSheetDay}
+                  >
+                    <BoundedDaySwitcher />
+                    <QuickEntryBodyMount
+                      identity={dayContextKey(sheetDay.parts)}
+                      form={form}
+                      subject={subject}
+                      state={state}
+                      bodies={bodies}
+                      prefill={prefill}
+                      onDone={close}
+                      onRetry={retry}
+                      subjectProfileId={subjectId}
+                    />
+                  </DayContextProvider>
+                ) : (
+                  <QuickEntryBodyMount
+                    identity={`${subject}:unscoped`}
+                    form={form}
+                    subject={subject}
+                    state={state}
+                    bodies={bodies}
+                    prefill={prefill}
+                    onDone={close}
+                    onRetry={retry}
+                    subjectProfileId={subjectId}
+                  />
+                )}
+              </TimezoneProvider>
+            ) : (
+              <p role="alert" className={QUIET_STATE_CLASS}>
+                Couldn&apos;t open that form.
+              </p>
+            )}
           </LoggedViaSurface>
         </BottomSheet>
       )}
     </Ctx.Provider>
+  );
+}
+
+function QuickEntryBodyMount({
+  identity,
+  form,
+  subject,
+  ...props
+}: React.ComponentProps<typeof QuickEntryBody> & {
+  identity: string;
+  form: QuickEntryForm;
+  subject: number;
+}) {
+  const dayContext = useOptionalDayContext();
+  const currentState =
+    dayContext &&
+    props.state.status === "ready" &&
+    props.state.gatheredKey != null &&
+    props.state.gatheredKey !== dayContext.key
+      ? ({ status: "loading" } as const)
+      : props.state;
+  const nextForm =
+    currentState.status === "ready" ? currentState.data.form : null;
+  const [mount, setMount] = useState({
+    form: nextForm,
+    identity,
+    generation: 0,
+  });
+  if (
+    nextForm != null &&
+    (mount.form !== nextForm || mount.identity !== identity)
+  ) {
+    const cause: QuickEntryRemountCause =
+      mount.identity === identity ? "payload" : "context";
+    setMount({
+      form: nextForm,
+      identity,
+      generation:
+        mount.form == null || remounts(mount.form, nextForm, cause)
+          ? mount.generation + 1
+          : mount.generation,
+    });
+  }
+  return (
+    <div
+      key={mount.generation}
+      data-testid="quick-entry-body"
+      data-form={form}
+      data-subject-profile-id={subject}
+      data-body-sight={
+        currentState.status === "ready" ? currentState.sight : undefined
+      }
+    >
+      {currentState.status === "ready" && currentState.asOf ? (
+        <p data-testid="quick-entry-asof" className={QUIET_STATE_CLASS}>
+          {currentState.asOf}
+        </p>
+      ) : null}
+      <BodyBoundary key={props.bodies.attempt} onRetry={props.onRetry}>
+        <Suspense
+          fallback={
+            <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
+              Loading…
+            </p>
+          }
+        >
+          <QuickEntryBody {...props} state={currentState} />
+        </Suspense>
+      </BodyBoundary>
+    </div>
   );
 }
 
@@ -512,6 +1076,7 @@ function QuickEntryBody({
   onDone,
   onRetry,
   subjectProfileId,
+  bodies,
 }: {
   state: LoadState;
   prefill: QuickEntryPrefill | null;
@@ -526,7 +1091,10 @@ function QuickEntryBody({
   // follow a subject — measurements, cycle — `loadFor`/`loadQuickEntry` already
   // turned a non-acting subject into the `unavailable` case above this switch).
   subjectProfileId?: number;
+  bodies: Bodies;
 }) {
+  const dayContext = useOptionalDayContext();
+  const subjectTimeZone = useTimezone();
   if (state.status === "loading") {
     return (
       <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
@@ -535,29 +1103,21 @@ function QuickEntryBody({
     );
   }
   if (state.status === "error") {
-    return (
-      <div data-testid="quick-entry-error">
-        {/* #3416 proposal 3: the copy stops instructing "close this and try
-            again" — the button does the trying. A stalled gather (past
-            QUICK_ENTRY_LOAD_TIMEOUT_MS) reaches here exactly like a hard
-            rejection; both are the same "try again" ask to the person looking
-            at the sheet. */}
-        <p role="alert" className={QUIET_STATE_CLASS}>
-          Couldn&apos;t open that form.
-        </p>
-        <button
-          type="button"
-          data-testid="quick-entry-retry"
-          onClick={onRetry}
-          className="btn-ghost mt-2"
-        >
-          Retry
-        </button>
-      </div>
-    );
+    return <QuickEntryError onRetry={onRetry} />;
   }
 
   const data = state.data;
+  const selectedDay = dayContext?.parts.day;
+  const profileToday = dayContext?.today ?? quickEntryToday(data);
+  const {
+    UploadForm,
+    QuickPracticeList,
+    QuickCyclePanel,
+    MoodForm,
+    StoolTypeControl,
+    QuickSubstanceList,
+    QuickSymptomPanel,
+  } = bodies;
   switch (data.form) {
     case "measurements":
       return (
@@ -584,9 +1144,12 @@ function QuickEntryBody({
       // logs however many servings they mean to and dismisses the sheet. (Its
       // taps already refresh the page behind, so "stay put" still holds.)
       return (
-        <FoodSelectedDateProvider today={data.today} days={data.days}>
+        <FoodProjectionProvider
+          today={profileToday ?? data.today}
+          days={data.days}
+        >
           <FoodLogBar
-            today={data.today}
+            today={profileToday ?? data.today}
             days={data.days}
             groupsBySlot={data.groupsBySlot}
             proteinRankBySlot={data.proteinRankBySlot}
@@ -602,24 +1165,29 @@ function QuickEntryBody({
               // own to post (invariant 2), while the serving rows beside it do.
               data.proteinPreset != null && subjectProfileId == null
                 ? {
-                    initialGramsByDate: { [data.today]: data.proteinToday },
+                    initialGramsByDate: {
+                      [selectedDay ?? data.today]: data.proteinGrams,
+                    },
                     lastPreset: data.proteinPreset,
                   }
                 : undefined
             }
             subjectProfileId={subjectProfileId}
+            showDayContext={false}
           />
-        </FoodSelectedDateProvider>
+        </FoodProjectionProvider>
       );
     case "dose":
       return (
         <QuickDoseList
           today={data.today}
+          profileToday={profileToday ?? data.today}
           doses={data.doses}
-          prn={data.prn}
+          prn={data.prn ? { ...data.prn, tz: subjectTimeZone } : undefined}
           pastDays={data.pastDays}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
+          selectedDay={selectedDay ?? data.today}
         />
       );
     case "cycle":
@@ -632,12 +1200,13 @@ function QuickEntryBody({
       return <QuickCyclePanel state={data.state} onDone={onDone} />;
     case "mood":
       // The SAME MoodValencePicker + logMood write the dashboard card runs, with
-      // the #2128 day chips — a second mounting context, never a second write
-      // path. A successful tap closes (a check-in is a transaction with an end).
+      // the shared sheet day above — a second mounting context, never a second
+      // write path. A successful tap closes (a check-in is a transaction with an end).
       return (
         <MoodForm
           days={data.days}
           showCalm={data.showCalm}
+          dayUnseen={data.dayUnseen}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
         />
@@ -656,7 +1225,7 @@ function QuickEntryBody({
       return (
         <QuickPracticeList
           practices={data.practices}
-          today={data.today}
+          today={selectedDay ?? data.today}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
         />
@@ -669,7 +1238,7 @@ function QuickEntryBody({
       return (
         <StoolTypeControl
           todayCount={data.todayCount}
-          today={data.today}
+          today={selectedDay ?? data.today}
           subjectProfileId={subjectProfileId}
         />
       );
@@ -680,6 +1249,7 @@ function QuickEntryBody({
       return (
         <QuickSubstanceList
           substances={data.substances}
+          date={selectedDay ?? data.today}
           subjectProfileId={subjectProfileId}
         />
       );
@@ -691,13 +1261,13 @@ function QuickEntryBody({
       // taps revalidate behind the sheet, so "stay where you were" still holds.
       return (
         <QuickSymptomPanel
-          today={data.today}
+          today={selectedDay ?? data.today}
           severities={data.severities}
           notes={data.notes}
           customNames={data.customNames}
           rankedKeys={data.rankedKeys}
           temperatureUnit={data.temperatureUnit}
-          timeZone={data.timeZone}
+          timeZone={subjectTimeZone}
           textIntakeEnabled={data.textIntakeEnabled}
           trackingIllness={data.trackingIllness}
           subjectProfileId={subjectProfileId}

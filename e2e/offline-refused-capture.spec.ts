@@ -3,6 +3,7 @@ import { closeEditor, openFact } from "./intake-form-helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
+  appContent,
   comboboxRows,
   expandLedgerDueGroups,
   hydratedClick,
@@ -19,10 +20,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import {
-  MEASUREMENTS_PARTIAL_REFUSED_MESSAGE,
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-} from "@/lib/offline/queue";
+import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 
 // #3038: no quick-log surface may toast "saved offline" over a write the device
 // REFUSED to keep. `enqueue` answers whether the capture was kept, and it is
@@ -34,7 +32,7 @@ import {
 // the surface must
 //   • say the ONE shared sentence (OFFLINE_CAPTURE_REFUSED_MESSAGE),
 //   • never claim "saved offline",
-//   • roll its optimistic state back (no phantom count, chip, or closed sheet),
+//   • roll back committed-state claims while retaining retryable drafts,
 //   • and leave no pending badge — nothing was queued, so nothing may claim it.
 //
 // POSITIVE EVIDENCE, per surface: the refused toast can only come from the
@@ -63,59 +61,79 @@ async function breakIndexedDB(page: Page): Promise<void> {
 
 const SAVED_OFFLINE = /saved offline/i;
 
-// Refuse ONE of the two writes a measurements sitting makes (#3118), which
-// `breakIndexedDB` cannot do: it removes storage entirely, so both halves refuse
-// together and the surface is right to say nothing was saved. The failure the issue
-// describes is storage dying BETWEEN the two puts, and it has TWO causes that differ
-// in what the device is left holding. This is the QUOTA one: it throws on the vitals
-// intent's write and only that one, so `guardedWriteNow` catches it and answers
-// "failed" exactly as it does for a real QuotaExceededError — the body intent stays in
-// the store. `wipeInTheGap` below is the other cause, where it does not.
-async function refuseVitalsWrites(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+// Force storage failures inside the real transaction. A second-put exception must
+// abort the first put too; returning a refusal alone does not roll IndexedDB back.
+async function failMeasurementBatch(
+  page: Page,
+  failure: "first put" | "second put" | "request error" | "transaction abort"
+): Promise<void> {
+  await page.addInitScript((failure) => {
     const put = IDBObjectStore.prototype.put;
     IDBObjectStore.prototype.put = function (
       this: IDBObjectStore,
       value: unknown,
       key?: IDBValidKey
     ): IDBRequest<IDBValidKey> {
-      if ((value as { flow?: string } | null)?.flow === "vitals") {
+      const flow = (value as { flow?: string } | null)?.flow;
+      if (
+        (failure === "first put" && flow === "body-metric") ||
+        (failure === "second put" && flow === "vitals")
+      ) {
+        (
+          window as Window & { measurementFaultReached?: string }
+        ).measurementFaultReached = failure;
         throw new DOMException("forced by a spec", "QuotaExceededError");
       }
-      return put.call(this, value as never, key);
+      const request = put.call(this, value as never, key);
+      if (flow === "vitals") {
+        (
+          window as Window & { measurementFaultReached?: string }
+        ).measurementFaultReached = failure;
+        if (failure === "request error") {
+          // The put and duplicate add are real requests. ConstraintError aborts
+          // asynchronously after both intent puts have been scheduled.
+          this.add(value);
+        } else if (failure === "transaction abort") {
+          this.transaction.abort();
+        }
+      }
+      return request;
     };
-  });
+  }, failure);
 }
 
-// The OTHER cause of a gap between the two enqueues (#3118, and the one the partial
-// sentence must NOT claim a save for): a logout in another tab landing in it.
-//
-// `clearQueue` (lib/offline/queue-db.ts) clears the intents store and closes the device
-// write gate in ONE transaction, deliberately, so that no writer anywhere can believe it
-// may write into data that is already gone. This performs exactly that transaction body
-// right after the body intent's own put, in that same transaction — the same COMMITTED
-// end state as a real wipe landing in the gap, without needing a second tab and a real
-// logout POST inside a 200ms window. The vitals enqueue then opens its own transaction,
-// reads a closed gate, and is refused — while the body intent it would be reported
-// alongside no longer exists.
-async function wipeInTheGap(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const put = IDBObjectStore.prototype.put;
+// Install only after the form is ready. The capture token is read first; a gate
+// mutation then takes the transaction lock before the queue writer can start.
+async function changeGateBeforeBatch(
+  page: Page,
+  change: "profile" | "logout" | "reopen-same-session" | "reopen-new-session"
+): Promise<void> {
+  await page.evaluate((change) => {
+    const transaction = IDBDatabase.prototype.transaction;
     let done = false;
-    IDBObjectStore.prototype.put = function (
-      this: IDBObjectStore,
-      value: unknown,
-      key?: IDBValidKey
-    ): IDBRequest<IDBValidKey> {
-      const req = put.call(this, value as never, key);
+    IDBDatabase.prototype.transaction = function (
+      this: IDBDatabase,
+      stores: string | string[],
+      mode?: IDBTransactionMode,
+      options?: IDBTransactionOptions
+    ): IDBTransaction {
       if (
         !done &&
-        (value as { flow?: string } | null)?.flow === "body-metric"
+        mode === "readwrite" &&
+        Array.from(typeof stores === "string" ? [stores] : stores).includes(
+          "intents"
+        )
       ) {
         done = true;
-        const tx = this.transaction;
-        tx.objectStore("intents").clear();
-        const meta = tx.objectStore("meta");
+        const gateTx = transaction.call(this, ["meta", "intents"], "readwrite");
+        (
+          window as Window & { measurementGateChanged?: Promise<boolean> }
+        ).measurementGateChanged = new Promise((resolve, reject) => {
+          gateTx.oncomplete = () => resolve(true);
+          gateTx.onabort = () => reject(gateTx.error);
+        });
+        if (change !== "profile") gateTx.objectStore("intents").clear();
+        const meta = gateTx.objectStore("meta");
         const read = meta.get("device-writes");
         read.onsuccess = () => {
           const gate = (read.result as Record<string, unknown>) ?? {};
@@ -123,11 +141,102 @@ async function wipeInTheGap(page: Page): Promise<void> {
             ...gate,
             key: "device-writes",
             generation: Number(gate.generation ?? 0) + 1,
-            sessionClosed: true,
+            sessionClosed: change === "logout",
+            ...(change === "reopen-new-session"
+              ? { sessionKey: "e2e-new-session-after-wipe" }
+              : {}),
           });
         };
       }
-      return req;
+      return transaction.call(this, stores, mode, options);
+    };
+  }, change);
+}
+
+// The actual capture read sees a closed gate. Reopen with the same generation
+// immediately after that read, before any fallback write can acquire its lock.
+async function reopenAfterClosedCapture(
+  page: Page,
+  newSession: boolean
+): Promise<void> {
+  await page.evaluate(async (newSession) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("allos-offline", 5);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("meta", "readwrite");
+      const meta = tx.objectStore("meta");
+      const read = meta.get("device-writes");
+      read.onsuccess = () =>
+        meta.put({ ...read.result, key: "device-writes", sessionClosed: true });
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error);
+    });
+    const get = IDBObjectStore.prototype.get;
+    let done = false;
+    IDBObjectStore.prototype.get = function (
+      this: IDBObjectStore,
+      key: IDBValidKey | IDBKeyRange
+    ): IDBRequest {
+      const request = get.call(this, key);
+      if (
+        !done &&
+        this.name === "meta" &&
+        key === "device-writes" &&
+        this.transaction.mode === "readonly"
+      ) {
+        done = true;
+        request.addEventListener("success", () => {
+          const tx = db.transaction("meta", "readwrite");
+          tx.objectStore("meta").put({
+            ...request.result,
+            sessionClosed: false,
+            ...(newSession
+              ? { sessionKey: "e2e-new-session-after-closed-capture" }
+              : {}),
+          });
+          (
+            window as Window & { measurementGateReopened?: Promise<boolean> }
+          ).measurementGateReopened = new Promise((resolve, reject) => {
+            tx.oncomplete = () => {
+              db.close();
+              resolve(true);
+            };
+            tx.onabort = () => reject(tx.error);
+          });
+        });
+      }
+      return request;
+    };
+  }, newSession);
+}
+
+// A reader scheduled after the first put waits for the complete batch. With the
+// former two-enqueue implementation this reader would observe just the body row.
+async function observeMeasurementCommit(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (
+      this: IDBObjectStore,
+      value: unknown,
+      key?: IDBValidKey
+    ): IDBRequest<IDBValidKey> {
+      const request = put.call(this, value as never, key);
+      if ((value as { flow?: string } | null)?.flow === "body-metric") {
+        const read = this.transaction.db
+          .transaction("intents", "readonly")
+          .objectStore("intents")
+          .getAll();
+        (
+          window as Window & { measurementBatchRead?: Promise<number> }
+        ).measurementBatchRead = new Promise((resolve, reject) => {
+          read.onsuccess = () => resolve(read.result.length);
+          read.onerror = () => reject(read.error);
+        });
+      }
+      return request;
     };
   });
 }
@@ -135,9 +244,9 @@ async function wipeInTheGap(page: Page): Promise<void> {
 // How many intents the device is actually holding. The badge answers the same question
 // for the cases where a queue exists to render one, but a wipe leaves no provider state
 // to disagree with — so the store itself is asked.
-async function queuedIntentCount(page: Page): Promise<number> {
+async function queuedIntentCount(page: Page, flow?: string): Promise<number> {
   return page.evaluate(
-    () =>
+    (flow) =>
       new Promise<number>((resolve) => {
         const open = indexedDB.open("allos-offline", 5);
         open.onsuccess = () => {
@@ -147,12 +256,18 @@ async function queuedIntentCount(page: Page): Promise<number> {
             .objectStore("intents")
             .getAll();
           req.onsuccess = () => {
-            resolve((req.result as unknown[]).length);
+            const rows = req.result as { flow: string }[];
+            resolve(
+              flow
+                ? rows.filter((row) => row.flow === flow).length
+                : rows.length
+            );
             db.close();
           };
         };
         open.onerror = () => resolve(-1);
-      })
+      }),
+    flow
   );
 }
 
@@ -239,9 +354,9 @@ function dropActivitiesCreatedAfter(since: number): void {
 const REFUSED_FLUSH_SETTLE_MS = 3_000;
 
 async function expectRefusedOnly(page: Page): Promise<void> {
-  await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(
+    page.getByRole("status").getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(SAVED_OFFLINE)).toHaveCount(0);
   // Nothing was queued, so nothing may count itself pending.
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
@@ -310,147 +425,194 @@ test("a refused measurements save says so and claims nothing", async ({
 
   await expectRefusedOnly(page);
   // The form stays open for the retry, with no success toast and no inline
-  // error contradicting the sentence. (The fields themselves clear either way:
-  // React resets a form after its action, refused or not.)
+  // error contradicting the sentence.
   await expect(form).toBeVisible();
   await expect(page.getByText(/Measurements saved/)).toHaveCount(0);
   await context.setOffline(false);
 });
 
-// #3118: the ONE partial shape the #3114 rule leaves open. The body half is enqueued
-// first and a refusal there stops the vitals enqueue, so "kept the body, refused the
-// vitals" is the only way half a sitting can reach the queue — and before this fix the
-// screen showed the pending badge "1 queued offline" AND the shared sentence saying
-// the entry was not saved. Re-entering the whole sitting, as that sentence instructs,
-// duplicates the weight: intents are uuid-keyed, so a re-entry is a distinct write.
-test("a measurements save whose vitals half is refused says which half it kept", async ({
-  page,
-  context,
-}) => {
-  await refuseVitalsWrites(page);
-  await page.goto("/trends");
-  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
-  const form = page.getByTestId("measurements-quick-add");
-  await expect(form).toBeVisible();
-  await openMeasurementGroup(page, "body");
-  await openMeasurementGroup(page, "vitals");
-  await openMeasurementGroup(page, "sleep");
+// #3118 permits atomic capture. Either failure keeps the entire sitting ready
+// to retry; no queue reader or user should see a saved body with refused vitals.
+for (const failure of [
+  "first put",
+  "second put",
+  "request error",
+  "transaction abort",
+] as const) {
+  test(`a measurements ${failure} failure retains the whole sitting and queues neither half`, async ({
+    page,
+    context,
+  }) => {
+    await failMeasurementBatch(page, failure);
+    await page.goto("/trends");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    await openMeasurementGroup(page, "body");
+    await openMeasurementGroup(page, "vitals");
+    await openMeasurementGroup(page, "sleep");
 
-  await context.setOffline(true);
-  await form.getByLabel("Weight", { exact: true }).fill("81.4");
-  await form.getByLabel("Body Fat", { exact: true }).fill("22.5");
-  await form.getByLabel("Resting Heart Rate", { exact: true }).fill("61");
-  await form.getByLabel("Notes", { exact: true }).fill("after breakfast");
-  const refusedVitals =
-    "systolic=118 diastolic=76 glucose=5.6 spo2=98 temperature=98.6 sleep_hours=7.5 bed_time=22:30 wake_time=06:30 hrv=42 respiratory_rate=14 peak_flow=450"
-      .split(" ")
-      .map((pair) => pair.split("=") as [string, string]);
-  // bed_time / wake_time are named on TimeField's hidden siblings now (#4976),
-  // fillable by name only for the plain inputs below — the pair itself lives
-  // behind the visible Bed time / Wake time labels TimeRangeFields draws. Reach
-  // those two through the label the way `m-time` already does two lines down;
-  // the retention check after the refused save still reads both by name below,
-  // since `toHaveValue` (unlike `fill`) never requires the element visible.
-  for (const [name, value] of refusedVitals) {
-    if (name === "bed_time" || name === "wake_time") continue;
-    await form.locator(`[name="${name}"]`).fill(value);
-  }
-  await form.getByLabel("Bed time", { exact: true }).fill("22:30");
-  await form.getByLabel("Wake time", { exact: true }).fill("06:30");
-  await form.getByLabel("Glucose unit").selectOption("mmol/L");
-  await form.getByTestId("m-time").fill("08:15");
-  await form.getByRole("button", { name: "Save measurements" }).click();
+    await context.setOffline(true);
+    const body = [
+      ["Weight", "81.4"],
+      ["Body Fat", "22.5"],
+      ["Resting Heart Rate", "61"],
+      ["Notes", "after breakfast"],
+    ] as const;
+    for (const [label, value] of body)
+      await form.getByLabel(label, { exact: true }).fill(value);
+    const vitals =
+      "systolic=118 diastolic=76 glucose=5.6 spo2=98 temperature=98.6 sleep_hours=7.5 bed_time=22:30 wake_time=06:30 hrv=42 respiratory_rate=14 peak_flow=450"
+        .split(" ")
+        .map((pair) => pair.split("=") as [string, string]);
+    for (const [name, value] of vitals) {
+      if (name === "bed_time" || name === "wake_time") continue;
+      await form.locator(`[name="${name}"]`).fill(value);
+    }
+    await form.getByLabel("Bed time", { exact: true }).fill("22:30");
+    await form.getByLabel("Wake time", { exact: true }).fill("06:30");
+    await form.getByLabel("Glucose unit").selectOption("mmol/L");
+    await form.getByTestId("m-time").fill("08:15");
+    await form.getByRole("button", { name: "Save measurements" }).click();
 
-  // The sentence states the partial truth, and the shared one — which would be a lie
-  // about the weight — does not appear beside it.
-  await expect(
-    page.getByText(MEASUREMENTS_PARTIAL_REFUSED_MESSAGE)
-  ).toBeVisible({
-    timeout: 15_000,
+    await expectRefusedOnly(page);
+    expect(
+      await page.evaluate(
+        () =>
+          (window as Window & { measurementFaultReached?: string })
+            .measurementFaultReached
+      ),
+      "the intended storage fault was reached"
+    ).toBe(failure);
+    expect(await queuedIntentCount(page), "atomic batch rolled back").toBe(0);
+    for (const [label, value] of body)
+      await expect(form.getByLabel(label, { exact: true })).toHaveValue(value);
+    for (const [name, value] of vitals)
+      await expect(form.locator(`[name="${name}"]`)).toHaveValue(value);
+    await expect(form.getByLabel("Glucose unit")).toHaveValue("mmol/L");
+    await expect(form.getByTestId("m-time")).toHaveValue("08:15");
+    await context.setOffline(false);
   });
-  await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toHaveCount(0);
-  await expect(page.getByText(SAVED_OFFLINE)).toHaveCount(0);
-  // …and the badge is the thing it must agree with: the body half really IS queued,
-  // which is what makes the shared sentence wrong here rather than merely blunt.
-  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
-    /1 queued offline/
-  );
+}
 
-  // The form must agree with the partial sentence too: the body half is already
-  // durable in the queue, so retaining it would let a retry enqueue a second
-  // uuid-keyed weigh-in. Only the refused vitals remain for the next save.
-  await expect(form.getByLabel("Weight", { exact: true })).toHaveValue("");
-  await expect(form.getByLabel("Body Fat", { exact: true })).toHaveValue("");
-  await expect(
-    form.getByLabel("Resting Heart Rate", { exact: true })
-  ).toHaveValue("");
-  await expect(form.getByLabel("Notes", { exact: true })).toHaveValue("");
-  for (const [name, value] of refusedVitals) {
-    await expect(form.locator(`[name="${name}"]`)).toHaveValue(value);
-  }
-  await expect(form.getByLabel("Glucose unit")).toHaveValue("mmol/L");
-  await expect(form.getByTestId("m-time")).toHaveValue("08:15");
+for (const change of [
+  "profile",
+  "logout",
+  "reopen-same-session",
+  "reopen-new-session",
+  "closed-capture-reopen-same-session",
+  "closed-capture-reopen-new-session",
+] as const) {
+  test(`a measurements save across ${change} retains both halves and queues neither`, async ({
+    page,
+    context,
+  }) => {
+    await page.goto("/trends");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    await openMeasurementGroup(page, "body");
+    await openMeasurementGroup(page, "vitals");
+    await context.setOffline(true);
+    if (
+      change === "closed-capture-reopen-same-session" ||
+      change === "closed-capture-reopen-new-session"
+    ) {
+      await reopenAfterClosedCapture(
+        page,
+        change === "closed-capture-reopen-new-session"
+      );
+    } else {
+      await changeGateBeforeBatch(page, change);
+    }
+    await form.getByLabel("Weight", { exact: true }).fill("81.4");
+    await form.getByLabel("Systolic", { exact: true }).fill("118");
+    await form.getByLabel("Diastolic", { exact: true }).fill("76");
+    await form.getByRole("button", { name: "Save measurements" }).click();
 
-  // RECONNECTING WITH THE REPLAY ROUTE SHUT, which is not fussiness in either
-  // direction. Every other test here can go online freely because it refused BOTH
-  // halves and has nothing queued; this one holds a REAL body-metric intent that
-  // would land a weigh-in on the shared fixture profile the moment the flush ran. And
-  // simply staying offline is not an option: e2e-hygiene's offline-navigation rule
-  // reads the window as running to the END OF THE FILE when a spec never comes back,
-  // so an unclosed window swallows every later test's `goto` — the guard being right.
-  // So: block the flush, come back online, and let the intent die with the context.
-  await page.route("**/api/offline-replay", (route) => route.abort());
-  await context.setOffline(false);
-  // Still queued, so nothing reached the server — a presence assertion, which is the
-  // honest shape here: waiting longer cannot make a badge that was cleared reappear.
-  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
-    /1 queued offline/
-  );
-});
+    await expectRefusedOnly(page);
+    if (
+      change === "closed-capture-reopen-same-session" ||
+      change === "closed-capture-reopen-new-session"
+    ) {
+      expect(
+        await page.evaluate(
+          () =>
+            (window as Window & { measurementGateReopened?: Promise<boolean> })
+              .measurementGateReopened
+        ),
+        "the gate really reopened after the closed capture read"
+      ).toBe(true);
+    } else {
+      expect(
+        await page.evaluate(
+          () =>
+            (window as Window & { measurementGateChanged?: Promise<boolean> })
+              .measurementGateChanged
+        ),
+        "the gate mutation committed before the writer"
+      ).toBe(true);
+    }
+    expect(await queuedIntentCount(page), "stale capture refused").toBe(0);
+    await expect(form.getByLabel("Weight", { exact: true })).toHaveValue(
+      "81.4"
+    );
+    await expect(form.getByLabel("Systolic", { exact: true })).toHaveValue(
+      "118"
+    );
+    await expect(form.getByLabel("Diastolic", { exact: true })).toHaveValue(
+      "76"
+    );
+    await context.setOffline(false);
+  });
+}
 
-// #3118's OTHER cause, and the one that decides which sentence is honest. Here the
-// vitals half is refused BY THE CLOSED GATE, which only `clearQueue` ever closes — and
-// it clears the intents store in the same transaction, so the body half the surface
-// would be claiming is already gone. "Body measurements were saved" would send someone
-// back to re-enter the vitals alone and quietly lose the weigh-in, which is a worse
-// trade than the duplicate the partial sentence exists to prevent. The shared sentence
-// is simply true here, and the empty store is what makes it true.
-test("a measurements save whose vitals half is refused by a logout wipe claims no half", async ({
+test("a measurements batch becomes visible together and clears the saved sitting", async ({
   page,
   context,
 }) => {
-  await wipeInTheGap(page);
+  await observeMeasurementCommit(page);
   await page.goto("/trends");
-  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
-  const form = page.getByTestId("measurements-quick-add");
-  await expect(form).toBeVisible();
+  await hydratedClick(
+    page,
+    appContent(page).getByTestId("log-measurements-toggle")
+  );
+  const form = page
+    .getByRole("dialog", { name: "Log measurements", exact: true })
+    .getByTestId("measurements-quick-add");
   await openMeasurementGroup(page, "body");
   await openMeasurementGroup(page, "vitals");
-
   await context.setOffline(true);
   await form.getByLabel("Weight", { exact: true }).fill("81.4");
   await form.getByLabel("Systolic", { exact: true }).fill("118");
   await form.getByLabel("Diastolic", { exact: true }).fill("76");
   await form.getByRole("button", { name: "Save measurements" }).click();
 
-  // The shared sentence, no "saved offline", and no badge — expectRefusedOnly's three.
-  await expectRefusedOnly(page);
-  // …and NOT the partial one, which would be a claim about a weight the wipe took.
-  await expect(
-    page.getByText(MEASUREMENTS_PARTIAL_REFUSED_MESSAGE)
-  ).toHaveCount(0);
-  // The durable truth the sentence now matches: the device is holding nothing.
-  expect(await queuedIntentCount(page), "queued intents").toBe(0);
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /2 queued offline/
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        (window as Window & { measurementBatchRead?: Promise<number> })
+          .measurementBatchRead
+    ),
+    "reader scheduled after the first put sees the complete pair"
+  ).toBe(2);
+  expect(await queuedIntentCount(page, "body-metric")).toBe(1);
+  expect(await queuedIntentCount(page, "vitals")).toBe(1);
+  await expect(form.getByLabel("Weight", { exact: true })).toHaveValue("");
+  await expect(form.getByLabel("Systolic", { exact: true })).toHaveValue("");
+  await expect(form.getByLabel("Diastolic", { exact: true })).toHaveValue("");
+  // Keep successful fixture intents from replaying into the shared profile.
+  await page.route("**/api/offline-replay", (route) => route.abort());
   await context.setOffline(false);
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /2 queued offline/
+  );
 });
 
-// THE LINE THAT CHOOSES BETWEEN THE TWO SENTENCES, observed. Every other measurements
-// case here either fills Weight (so a refusal returns at the body branch, before that
-// line) or is the partial case itself — so `keptBody ? "partial" : "refused"` could be
-// mutated to a bare "partial" and the file stayed green. A vitals-only sitting is the
-// case that reaches the line with nothing kept: no body half was ever enqueued, so
-// naming one is a claim about a write that does not exist.
-test("a refused vitals-only sitting says nothing was saved, not that the body half was", async ({
+test("a refused vitals-only sitting reports the shared refusal", async ({
   page,
   context,
 }) => {
@@ -467,9 +629,6 @@ test("a refused vitals-only sitting says nothing was saved, not that the body ha
   await form.getByRole("button", { name: "Save measurements" }).click();
 
   await expectRefusedOnly(page);
-  await expect(
-    page.getByText(MEASUREMENTS_PARTIAL_REFUSED_MESSAGE)
-  ).toHaveCount(0);
   await context.setOffline(false);
 });
 
@@ -508,7 +667,7 @@ test("a refused mobility-move tap says so and un-presses the chip", async ({
   }
 });
 
-test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet open", async ({
+test("a refused quick-entry mood tap retains its draft and error without claiming a save", async ({
   page,
   context,
 }) => {
@@ -522,8 +681,7 @@ test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet op
   const checkin = page.getByTestId("mood-form");
   await expect(checkin).toBeVisible();
 
-  // Tap a face that is not already the stored rating, so the rollback below is
-  // observable as its own state change.
+  // Choose a different face so keeping this unsaved draft is observable.
   const face2 = checkin.getByTestId("quick-mood-tap-2");
   const face3 = checkin.getByTestId("quick-mood-tap-3");
   const face =
@@ -533,9 +691,12 @@ test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet op
   await face.click();
 
   await expectRefusedOnly(page);
-  // The face rolled back, and the sheet stayed open — closing it is this
-  // surface's claim that the check-in landed.
-  await expect(face).toHaveAttribute("aria-pressed", "false");
+  // The controller keeps the failed attempt ready to retry; the persistent error
+  // and open sheet distinguish that draft from a saved check-in.
+  await expect(face).toHaveAttribute("aria-pressed", "true");
+  await expect(checkin.getByRole("alert")).toHaveText(
+    OFFLINE_CAPTURE_REFUSED_MESSAGE
+  );
   await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
   await context.setOffline(false);
   await page.keyboard.press("Escape");

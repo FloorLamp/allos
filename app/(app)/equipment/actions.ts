@@ -110,7 +110,7 @@ export async function updateEquipmentAction(
 // stale and should re-render into the state that actually holds.
 export async function deleteEquipmentAction(
   id: number
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; undoId: number } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
   const outcome = deleteEquipment(profile.id, id);
   refresh();
@@ -120,7 +120,7 @@ export async function deleteEquipmentAction(
       error: "Couldn't find that equipment — it may already be deleted.",
     };
   }
-  return { ok: true };
+  return { ok: true, undoId: outcome.undoId };
 }
 
 // Soft-retire / un-retire (issue #341): the reversible alternative to delete that

@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { compareOutcomePooled } from "../protocol-compare";
 import {
   computeSleepRegularity,
   sriTrend,
-  regularityTravelInsight,
+  decideSleepRegularityDrop,
+  sleepRegularityDropDetail,
   mainSleepSession,
   mainSleepPeriod,
   napSessions,
@@ -346,47 +348,46 @@ describe("sriTrend builds once and scores many", () => {
   });
 });
 
-describe("regularityTravelInsight", () => {
-  const beforeTravel = [
-    { date: "2026-06-01", sri: 90 },
-    { date: "2026-06-02", sri: 88 },
-    { date: "2026-06-03", sri: 91 },
-    { date: "2026-06-04", sri: 89 },
-    { date: "2026-06-05", sri: 92 },
-  ];
-  const afterTravel = [
-    { date: "2026-06-11", sri: 70 },
-    { date: "2026-06-12", sri: 68 },
-    { date: "2026-06-13", sri: 71 },
-    { date: "2026-06-14", sri: 69 },
-    { date: "2026-06-15", sri: 72 },
-  ];
-
-  it("flags a clean regularity drop across a travel-start boundary", () => {
-    const note = regularityTravelInsight(
-      [...beforeTravel, ...afterTravel],
-      [{ date: "2026-06-10", situation: "Travel", change: "start" }]
-    );
-    expect(note).toContain("Sleep regularity dropped");
-    expect(note).toContain("2026-06-10");
-  });
-
-  it("returns null without a travel situation", () => {
-    expect(
-      regularityTravelInsight([...beforeTravel, ...afterTravel], [])
-    ).toBeNull();
-  });
-
-  it("returns null when the drop is too small to be worth surfacing", () => {
-    const flat = beforeTravel.concat(
-      afterTravel.map((p) => ({ ...p, sri: p.sri + 18 }))
-    );
-    expect(
-      regularityTravelInsight(flat, [
-        { date: "2026-06-10", situation: "Travel", change: "start" },
-      ])
-    ).toBeNull();
-  });
+describe("sustained sleep regularity drop", () => {
+  it.each([
+    [78, 3, 15],
+    [85, 3, null],
+    [78, 2, null],
+    [78, 0, null],
+  ] as const)(
+    "compares the endpoint %s with %s during samples",
+    (last, count, points) => {
+      const comparison = compareOutcomePooled(
+        {
+          key: "index:sri",
+          label: "SRI",
+          direction: "higher_better",
+          samples: [
+            ...[1, 2, 3].map((day) => ({ date: `2026-06-0${day}`, value: 93 })),
+            ...[4, 5, 6]
+              .slice(0, count)
+              .map((day) => ({ date: `2026-06-0${day}`, value: last })),
+          ],
+        },
+        [{ start: "2026-06-04", end: "2026-06-06" }]
+      );
+      const drop = decideSleepRegularityDrop(comparison);
+      expect(drop?.points ?? null).toBe(points);
+      if (drop) {
+        expect(sleepRegularityDropDetail(drop, "2026-06-06")).toBe(
+          "Sleep regularity dropped about 15 points over the last four weeks."
+        );
+        expect(
+          sleepRegularityDropDetail(drop, "2026-06-10", {
+            name: "Travel",
+            start: "2026-06-04",
+          })
+        ).toBe(
+          "Sleep regularity dropped about 15 points over the last four weeks, based on readings through 2026-06-06; your Travel started on 2026-06-04."
+        );
+      }
+    }
+  );
 });
 
 // ── Main overnight sleep vs naps (issue #1118) ───────────────────────────────
