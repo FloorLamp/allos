@@ -21,8 +21,11 @@ import {
   declineMedPrescriber,
   linkMedIndication,
   declineMedIndication,
+  setStoredDoseAmount,
 } from "@/lib/queries";
+import { standingDoseUpdateOffer } from "@/lib/prn-dose-band-offer";
 import { DORMANT_PRN_PREFIX } from "@/lib/dormant-prn";
+import { parseDoseBandUpdateKey } from "@/lib/dismissal-keys";
 import { createMedicationShareLink } from "@/lib/share-links-db";
 import { expiresAtFor } from "@/lib/share-links";
 import { recordAudit } from "@/lib/audit";
@@ -534,5 +537,106 @@ export async function declineIndicationLink(
     return formError("Couldn't read that suggestion.");
   declineMedIndication(profile.id, medId, conditionId);
   revalidateRoute("/medications");
+  return formOk();
+}
+
+// ---- The child dose-band update offer (issue #5538) ------------------------
+//
+// A growing child crosses a label weight band and the item's stored dose goes stale:
+// the row states the current band while every tap still records the old figure. The
+// ruling is to follow the current weight and ASK — one offer on the dose row, one tap
+// to accept, one to decline. Accepting rewrites the item's stored dose ONCE, so every
+// later tap records the new figure; declining writes no health data and no dose amount,
+// only the decline itself, on the same suppression bus every other offer answers on.
+// The Take chip stays one tap and neither answer gates it.
+//
+// BOTH TAPS RE-DERIVE THE OFFER FIRST (`standingDoseUpdateOffer`) and refuse a key the
+// current band no longer agrees with, so a card left open cannot write a figure nobody
+// is being shown — the re-check `answerOffer` makes for a family's trigger.
+//
+// The gate follows the SUBJECT, like the dose write one screen up: the illness cockpit
+// answers for a household member without switching profiles — so each tap carries the
+// #31 cross-profile gate itself rather than delegating it, the shape the dose write
+// beside it already has.
+const DOSE_UPDATE_STALE =
+  "That dose band has moved — reload the page to see the current one.";
+
+// The offer as the server still sees it, or a refusal. Both taps resolve their answer
+// through this so neither can act on a key the current band no longer agrees with.
+function standingOffer(
+  profileId: number,
+  key: string
+): { itemId: number; storedAmount: string; bandAmount: string } | null {
+  const parsed = parseDoseBandUpdateKey(key);
+  if (!parsed) return null;
+  const offer = standingDoseUpdateOffer(profileId, parsed.itemId);
+  return offer?.key === key ? { itemId: parsed.itemId, ...offer } : null;
+}
+
+// Every reader of the stored amount, in the same pass. The Today row and the
+// medications list row print it from different queries, so revalidating only the block
+// the offer sits in would leave a caregiver tapping "Take 100 mg" under "updated to
+// 150 mg". The item's own page prints it too, and Upcoming lists the decline.
+function revalidateStoredDose(itemId: number): void {
+  revalidateRoute("/medications");
+  revalidateRoute(`/medications/${itemId}`);
+  revalidateRoute("/nutrition");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
+}
+
+/** The Yes tap: the item's stored dose, rewritten once to the current band figure. */
+export async function acceptDoseBandUpdate(
+  formData: FormData
+): Promise<FormResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const offer = standingOffer(
+    profileId,
+    String(formData.get("dedupe_key") ?? "").trim()
+  );
+  if (!offer) return formError(DOSE_UPDATE_STALE);
+  const outcome = setStoredDoseAmount(
+    profileId,
+    offer.itemId,
+    offer.storedAmount,
+    offer.bandAmount
+  );
+  if (outcome.kind === "not-found")
+    return formError("Couldn't find that medication.");
+  if (outcome.kind === "stale") return formError(DOSE_UPDATE_STALE);
+  revalidateStoredDose(offer.itemId);
+  return formOk();
+}
+
+/**
+ * The No tap: the decline, and nothing else. It goes on the suppression bus under the
+ * offer's own anchored key, so the offer stays away until the band moves to a
+ * different figure — and a person can find it by name in Snoozed & dismissed and undo
+ * it there. An UNRECORDED decline is byte-identical to never having asked, which is
+ * why this writes at all.
+ */
+export async function declineDoseBandUpdate(
+  formData: FormData
+): Promise<FormResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const key = String(formData.get("dedupe_key") ?? "").trim();
+  const offer = standingOffer(profileId, key);
+  if (!offer) return formError(DOSE_UPDATE_STALE);
+  dismissFinding(profileId, key);
+  revalidateStoredDose(offer.itemId);
   return formOk();
 }

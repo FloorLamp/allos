@@ -15,6 +15,7 @@ export function intakeFormContext(
       weightDate: null,
       weightUnit: "kg",
       today: todayStr,
+      declinedDoseUpdates: [],
     },
     todayStr,
     ...overrides,
