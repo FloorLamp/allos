@@ -6,7 +6,10 @@ import type { AppRoute } from "@/lib/hrefs";
 import { now as clockNow } from "@/lib/clock";
 import { prnRowStatus } from "@/lib/redose-format";
 import type { TimeFormat } from "@/lib/format-date";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
+import {
+  doseUpdateOfferSeat,
+  type PediatricFormContext,
+} from "@/lib/prn-dosing";
 import Disclosure from "@/components/Disclosure";
 
 // PRN (as-needed) medication quick-log content (#797). The one-tap
@@ -79,6 +82,12 @@ export default function QuickLogPrnContent({
   // The window math is the shared prnQuickLogRedoseStatus (#221): this content, the
   // medications list and the Telegram `/dose` list all read one gate, so "the
   // interval alone answers when the next dose is OK" can't drift between them.
+  // ONE OFFER PER SURFACE (#5538): whichever of this content's rows would first offer
+  // to update a stale stored dose gets the seat, and the rest render as they always did.
+  const offerSeatId = doseUpdateOfferSeat(
+    meds.map((m) => ({ ...m, name: m.displayName ?? m.name })),
+    pediatric
+  );
   const visibleMeds = compact ? meds.slice(0, 3) : meds;
   const remainingMeds = compact ? meds.slice(3) : [];
   const medControl = (m: PrnMedForQuickLog) => {
@@ -100,6 +109,7 @@ export default function QuickLogPrnContent({
         compactActions={compact}
         tz={tz}
         pediatric={pediatric}
+        offerSeat={m.id === offerSeatId}
         date={date}
         onLogged={onLogged}
       />

@@ -4,6 +4,7 @@ import {
   MIN_TRASH_RETENTION_DAYS,
   MAX_TRASH_RETENTION_DAYS,
 } from "@/lib/retention";
+import Button from "@/components/Button";
 import { saveTrashRetention } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -63,15 +64,13 @@ export default function TrashRetentionSettings({ days }: { days: number }) {
             className="input"
           />
         </div>
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={status.pending}
-          className="btn"
           data-testid="trash-retention-save"
         >
           Save
-        </button>
+        </Button>
       </div>
     </div>
   );

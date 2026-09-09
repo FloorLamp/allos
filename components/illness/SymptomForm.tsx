@@ -6,6 +6,7 @@ import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { SYMPTOM_SEVERITY_LEVELS, severityLabelFor } from "@/lib/symptoms";
 import { editSymptom, logSymptom } from "@/app/(app)/symptom-actions";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
 // THE SYMPTOM DOMAIN'S ONE FORM (#4424 ruling 1), named by
@@ -165,9 +166,7 @@ export default function SymptomForm({
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
-        <button className="btn-ghost" type="button" onClick={onCancel}>
-          Cancel
-        </button>
+        <Button onClick={onCancel}>Cancel</Button>
       </div>
     </form>
   );

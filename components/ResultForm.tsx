@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import DateField from "./DateField";
 import EditLockNotice from "./EditLockNotice";
+import Button from "./Button";
 import SubmitButton from "./SubmitButton";
 import Combobox from "./Combobox";
 import ProviderCombobox from "./ProviderCombobox";
@@ -435,11 +436,7 @@ export default function ResultForm({
         <SubmitButton pendingLabel="Saving…" variant="primary">
           {editing ? "Save" : "Save result"}
         </SubmitButton>
-        {editing && onDone && (
-          <button type="button" onClick={onDone} className="btn-ghost">
-            Cancel
-          </button>
-        )}
+        {editing && onDone && <Button onClick={onDone}>Cancel</Button>}
       </div>
       {/* Edit-lock badge + resume affordance for a hand-edited imported reading
           (#659): only source-owned rows (external_id set) carry the lock. */}

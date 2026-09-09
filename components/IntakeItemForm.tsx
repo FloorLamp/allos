@@ -79,7 +79,6 @@ import {
   defaultFormulationSlug,
   formulationChoices,
   formulationRedosePreset,
-  pediatricContextLine,
 } from "@/lib/intake-formulations";
 import {
   applyPrefill,
@@ -135,7 +134,7 @@ import type {
 import { requireIntakeFormKind } from "@/lib/intake-form-kind";
 import OfferInPlace from "@/components/OfferInPlace";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
-import Disclosure from "@/components/Disclosure";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 const CATALOG_BY_NAME = new Map(
   SUPPLEMENT_CATALOG.map((c) => [c.name.toLowerCase(), c])
@@ -550,14 +549,6 @@ export default function IntakeItemForm({
   const redoseDefaults = prnDefaults
     ? redoseLabelDefaults(prnDefaults, isChildProfile)
     : null;
-  // The educational "what is this drug" explainer, matched from the name. Passive
-  // context beside the field it explains — it is not a fact being saved, so it is not
-  // a chip.
-  const medInfo = useMemo(
-    () => (isMed ? getMedicationInfo(state.name) : null),
-    [isMed, state.name]
-  );
-
   // ---- Formulation (decision 2) ----
   const choices = useMemo(
     () => (affordances.pediatric ? formulationChoices(prnDefaults) : []),
@@ -856,7 +847,12 @@ export default function IntakeItemForm({
 
   const summary = intakeFactSummary({
     kind,
+    // The name the field above states. No chip may echo it (#5301).
+    name: state.name,
     amount: state.doses[0]?.amount ?? "",
+    // A PEDIATRIC pick names its product; the adult tier's own label is the strength
+    // the amount already states, so it says nothing here and `product` carries the
+    // stored formulation instead (see `formulationOf` in lib/intake-facts.ts).
     formulationLabel: activeChoice?.pediatric ? activeChoice.label : "",
     extraDoses: state.doses.slice(1).map((d) => ({
       amount: d.amount,
@@ -877,6 +873,7 @@ export default function IntakeItemForm({
       cadence_anchor_date: state.cadence.anchorDate,
     }),
     rx: state.rx,
+    rxcui: rx.rxcui ?? "",
     prescriber: state.prescriber,
     indication:
       conditions.find((c) => String(c.id) === state.indicationConditionId)
@@ -1084,84 +1081,7 @@ export default function IntakeItemForm({
           placeholder={affordances.namePlaceholder}
           autoFocus={autoFocusName}
         />
-        <RxNormAffordance
-          name={state.name}
-          rx={{
-            ...rx,
-            confirm: (code) => {
-              withdrawDoseSuggestion();
-              return rx.confirm(code);
-            },
-            clear: changeProductIdentity,
-          }}
-        />
-        {isChildProfile &&
-        state.name.trim() &&
-        isMed &&
-        !prnDefaults?.pediatric ? (
-          <p
-            data-testid="medication-pediatric-no-chart"
-            className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-          >
-            No pediatric dose chart is available for this product. Check the
-            package or ask a pharmacist for the child’s dose.
-          </p>
-        ) : null}
-        {medInfo && (
-          <dl
-            data-testid="medication-info-preview"
-            className="mt-3 space-y-1 text-sm"
-          >
-            <div>
-              <dt className="section-label">Category</dt>
-              <dd className="mt-0.5 font-medium text-slate-700 dark:text-slate-200">
-                {medInfo.drug_class ?? "Medication"}
-              </dd>
-            </div>
-            <div>
-              <dt className="section-label">Description</dt>
-              <dd className="mt-0.5 leading-relaxed text-slate-500 dark:text-slate-400">
-                {medInfo.description}
-              </dd>
-            </div>
-          </dl>
-        )}
       </div>
-
-      {choices.length > 0 && (
-        <div
-          data-testid="intake-formulation-row"
-          className="flex flex-wrap items-center gap-1.5 sm:col-span-2"
-        >
-          <span className="text-sm text-slate-500 dark:text-slate-400">
-            Form
-          </span>
-          <FilterPills
-            mode="button"
-            layout="wrap"
-            label="Form"
-            value={activeSlug}
-            onSelect={pickFormulation}
-            options={choices.map((choice) => ({
-              value: choice.slug,
-              label: choice.label,
-              testId: "intake-formulation-choice",
-              data: {
-                "data-slug": choice.slug || DEFAULT_FORMULATION_SLUG,
-              },
-            }))}
-          />
-        </div>
-      )}
-
-      {pediatricContextLine(activeChoice, isChildProfile) && (
-        <p
-          data-testid="intake-pediatric-context"
-          className="text-xs text-slate-500 sm:col-span-2 dark:text-slate-400"
-        >
-          {pediatricContextLine(activeChoice, isChildProfile)}
-        </p>
-      )}
 
       {/* Safety surfacing never drops: the stack-interaction, PGx and food notices
           render as a passive line before Save, whichever editor is open. */}
@@ -1207,6 +1127,10 @@ export default function IntakeItemForm({
           openEditor={openPanel}
           onOpen={(key, focusKey) => {
             setRulesStartOnMenu(false);
+            // OPENING THE RxNORM CHIP IS THE LOOKUP (#5301): the chip replaced the
+            // text button that used to be the trigger, and its editor has nothing to
+            // state until one has run. A confirmed code is not looked up again.
+            if (key === "rxnorm" && !rx.rxcui) void rx.find(state.name);
             setOpenPanel(key, focusKey);
           }}
           onAddRule={(focusKey) => {
@@ -1257,6 +1181,49 @@ export default function IntakeItemForm({
       case "dose":
         return (
           <>
+            {/* THE FORMULATION, AS #3216 RULING 2 ASKED: a derived chip row inside the
+                editor for the fact it changes (#5301). It shipped as a labelled button
+                group above the chips, stating the product the dose chip already did. */}
+            {choices.length > 0 && (
+              <div
+                data-testid="intake-formulation-row"
+                className="flex flex-wrap items-center gap-1.5 sm:col-span-2"
+              >
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  Form
+                </span>
+                <FilterPills
+                  mode="button"
+                  layout="wrap"
+                  label="Form"
+                  value={activeSlug}
+                  onSelect={pickFormulation}
+                  options={choices.map((choice) => ({
+                    value: choice.slug,
+                    label: choice.label,
+                    testId: "intake-formulation-choice",
+                    data: {
+                      "data-slug": choice.slug || DEFAULT_FORMULATION_SLUG,
+                    },
+                  }))}
+                />
+              </div>
+            )}
+            {/* The other #798 refusal, where the label's verdicts are read (#5301):
+                `pediatricRefusal` below refuses a figure the chart HAS, this says the
+                chart does not exist. Mutually exclusive by construction. */}
+            {isChildProfile &&
+            state.name.trim() &&
+            isMed &&
+            !prnDefaults?.pediatric ? (
+              <p
+                data-testid="medication-pediatric-no-chart"
+                className="text-sm text-amber-700 sm:col-span-2 dark:text-amber-300"
+              >
+                No pediatric dose chart is available for this product. Check the
+                package or ask a pharmacist for the child’s dose.
+              </p>
+            ) : null}
             {pediatricResult && pediatricResult.kind !== "no-pediatric" && (
               <section
                 data-testid="pediatric-suggestion"
@@ -1326,8 +1293,6 @@ export default function IntakeItemForm({
                     selectedBandMinLbs={selectedPediatricBandMinLbs}
                     currentAmount={state.doses[0]?.amount ?? ""}
                     onBandSelect={selectPediatricBand}
-                    onFormulationChange={pickFormulation}
-                    hideFormulationSelect
                   />
                 )}
               </section>
@@ -1396,9 +1361,6 @@ export default function IntakeItemForm({
                       </option>
                     ))}
                 </select>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Only on certain days? Add a “Take only when…” rule instead.
-                </p>
               </div>
             )}
             <CadenceEditor
@@ -1411,8 +1373,13 @@ export default function IntakeItemForm({
                 className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <div className="flex items-center gap-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
                     Redose reminder (optional)
+                    {/* The group's mechanics at its own label (#3970): three standing
+                        lines and a disclosure, over two fields and a checkbox. */}
+                    <InfoTooltipIcon
+                      label={`After a logged dose, one reminder when the minimum interval passes. Fill in both the interval and a maximum to turn it on; leave them blank for no reminder.${prnDefaults ? ` Label source: ${prnDefaults.source}.` : ""}`}
+                    />
                   </div>
                   {redoseDefaults && (
                     <button
@@ -1437,25 +1404,6 @@ export default function IntakeItemForm({
                     </button>
                   )}
                 </div>
-                {/* One-line explainer (#851 item 5); the fuller confirm-discipline
-                    text lives behind the disclosure. A <details> can't nest in a <p>. */}
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Reminds you when the minimum interval has passed — set from
-                  the label.
-                </p>
-                <Disclosure className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  <summary className="fold-control text-brand-700 hover:underline dark:text-brand-400">
-                    How it works
-                  </summary>
-                  <p className="mt-1">
-                    After a dose is logged you get a one-time reminder when the
-                    minimum interval passes (e.g. {`"`}6h since Ibuprofen — 2 of
-                    4 in 24h{`"`}). These are YOUR confirmed numbers —
-                    pre-filled from the label as a suggestion, never applied on
-                    their own; leave them blank for no reminder.
-                    {prnDefaults && ` Label source: ${prnDefaults.source}.`}
-                  </p>
-                </Disclosure>
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="label" htmlFor={`redose-interval-${fid}`}>
@@ -1496,8 +1444,12 @@ export default function IntakeItemForm({
                     />
                   </div>
                   <div>
-                    <label className="label" htmlFor={`redose-max-mg-${fid}`}>
+                    <label
+                      className="label flex items-center gap-1"
+                      htmlFor={`redose-max-mg-${fid}`}
+                    >
                       Maximum mg in 24 hours
+                      <InfoTooltipIcon label="Sums the logged dose amounts across same-ingredient items; leave it blank to count doses instead." />
                     </label>
                     <input
                       id={`redose-max-mg-${fid}`}
@@ -1512,10 +1464,6 @@ export default function IntakeItemForm({
                       className="input"
                       placeholder="e.g. 1200"
                     />
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Sums the logged dose amounts across same-ingredient items;
-                      leave blank to count doses instead.
-                    </p>
                   </div>
                 </div>
                 <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -1528,9 +1476,6 @@ export default function IntakeItemForm({
                   />
                   Remind me when the redose window opens
                 </label>
-                <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
-                  Requires both interval and maximum-dose fields above.
-                </p>
               </div>
             )}
           </>
@@ -1753,6 +1698,20 @@ export default function IntakeItemForm({
           </>
         );
 
+      case "rxnorm":
+        return (
+          <RxNormAffordance
+            rx={{
+              ...rx,
+              confirm: (code) => {
+                withdrawDoseSuggestion();
+                return rx.confirm(code);
+              },
+              clear: changeProductIdentity,
+            }}
+          />
+        );
+
       case "supply":
         return (
           <RefillTracking
@@ -1815,8 +1774,12 @@ export default function IntakeItemForm({
             </div>
             {s && (
               <div>
-                <label className="label" htmlFor={`intake-ended-on-${fid}`}>
+                <label
+                  className="label flex items-center gap-1"
+                  htmlFor={`intake-ended-on-${fid}`}
+                >
                   Stop date (optional)
+                  <InfoTooltipIcon label="Set the day you stopped to move it to Past. Clear it to make it active again." />
                 </label>
                 <DateField
                   id={`intake-ended-on-${fid}`}
@@ -1826,10 +1789,6 @@ export default function IntakeItemForm({
                   max={todayStr}
                   data-testid="med-end-date"
                 />
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Set the day you stopped to move it to Past. Clear it to make
-                  it active again.
-                </p>
               </div>
             )}
           </>

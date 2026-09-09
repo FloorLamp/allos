@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { appContent, hydratedClick } from "./helpers";
 import { openProtocolFact } from "./protocol-form-helpers";
 import { openVisitFact } from "./visit-form-helpers";
 // Form hygiene at desktop width (issue #1450, clusters A and B).
@@ -13,12 +13,20 @@ import { openVisitFact } from "./visit-form-helpers";
 //      rather than "finish the form first" — while the admin Delete buttons
 //      hand-rolled a different grey, so one page family carried two treatments.
 //
+// B's bearer MOVED with #4978 slice 2. The census's example was Family's
+// "Create login"; that mount is now the typed secondary, because a settings
+// GROUP route hosts many independent card commits and spends its one primary on
+// none of them. Measuring the disabled treatment there would prove nothing about
+// B: a control that is never filled cannot have its fill faded. The disabled
+// primary this pins is therefore /settings/tokens' mint commit — the same shape
+// (a required field left empty) and the paint the defect is actually about.
+//
 // The assertions are structural, never pixel snapshots: "does the rendered text
 // fit the box that holds it" and "does the disabled button use the single
 // primitive treatment", both read from computed style at run time.
 //
-// Fixture hygiene (#868): nothing here writes a record. The Family assertions
-// read the create-login form's INITIAL (empty, therefore disabled) state without
+// Fixture hygiene (#868): nothing here writes a record. The token assertions
+// read the mint form's INITIAL (empty, therefore disabled) state without
 // submitting it, and the date assertion fills a form field it never saves.
 
 // Width of `text` when painted in `el`'s own font, measured in-page with canvas.
@@ -47,15 +55,15 @@ async function textFitsControl(page: Page, selector: string): Promise<boolean> {
 test("a disabled primary button uses the one accessible disabled treatment (#1450 B)", async ({
   page,
 }) => {
-  await page.goto("/settings/family");
+  await page.goto("/settings/tokens");
 
-  // Create login starts disabled (no username, no password) — the exact state the
-  // census screenshotted as washed-out green.
-  const createLogin = page.getByRole("button", { name: "Create login" });
-  await expect(createLogin).toBeVisible();
-  await expect(createLogin).toBeDisabled();
+  // The mint commit starts disabled (no token name) — the exact state the census
+  // screenshotted as washed-out green, on the surface that now carries the fill.
+  const createToken = appContent(page).getByTestId("api-token-create");
+  await expect(createToken).toBeVisible();
+  await expect(createToken).toBeDisabled();
 
-  const style = await createLogin.evaluate((el) => {
+  const style = await createToken.evaluate((el) => {
     const s = getComputedStyle(el);
     return {
       opacity: s.opacity,
@@ -75,7 +83,7 @@ test("a disabled primary button uses the one accessible disabled treatment (#145
 
   // And the text actually meets AA against its own background, which
   // white-on-washed-green did not.
-  const ratio = await createLogin.evaluate((el) => {
+  const ratio = await createToken.evaluate((el) => {
     const s = getComputedStyle(el);
     // Tailwind 4 authors palette colors in CSS Color 4 (lab/oklch), so let the
     // browser rasterize either legacy rgb() or modern color syntax to sRGB
@@ -103,14 +111,28 @@ test("a disabled primary button uses the one accessible disabled treatment (#145
   });
   expect(ratio).toBeGreaterThanOrEqual(4.5);
 
-  // ONE treatment, not two: the admin Delete button in the same page family
-  // resolves to the same disabled surface rather than its own grey.
+  // ONE treatment, not two: the admin row control over on Family resolves to the
+  // same disabled surface rather than its own grey.
+  //
+  // WHAT THIS HALF PROVES CHANGED WITH #4978 SLICE 4, so the comment changes with
+  // it. It used to be a CROSS-FAMILY check — the Family control was still a raw
+  // `btn-ghost`, so the two families had to agree on the disabled surface for as
+  // long as both were mounted. Slice 4 converted that row, and both controls are
+  // now the primitive. What is left is the check that survives the convergence and
+  // is worth more once the raw family is gone: the rank paints are scoped away from
+  // the disabled treatment (`button-control-primary` / `-danger` are
+  // `:not(:disabled)`), so a DISABLED primary must resolve to exactly the muted
+  // surface a plain secondary does. Unscope either utility and this reddens with a
+  // saturated fill on the left of the comparison — which is #1450 B's own defect,
+  // restated on the primitive that inherited it.
+  await page.goto("/settings/family");
   // eslint-disable-next-line no-restricted-properties -- first-ok: spec asserts the shared disabled treatment on any one instance of this repeated admin row control
-  const deleteLogin = page
+  const signOutDevices = page
     .getByRole("button", { name: "Sign out devices" })
     .first();
-  if (await deleteLogin.isDisabled()) {
-    const ghost = await deleteLogin.evaluate(
+  await expect(signOutDevices).toBeVisible();
+  if (await signOutDevices.isDisabled()) {
+    const ghost = await signOutDevices.evaluate(
       (el) => getComputedStyle(el).backgroundColor
     );
     expect(ghost).toBe(style.backgroundColor);

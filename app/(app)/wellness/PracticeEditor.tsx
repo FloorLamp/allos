@@ -6,6 +6,7 @@ import Combobox from "@/components/Combobox";
 import { PRACTICE_STARTER_LIST } from "@/lib/practice";
 import { useFocusFormOnParam } from "@/components/useFocusFormOnParam";
 import { savePractice } from "./actions";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
 export default function PracticeEditor({
@@ -115,11 +116,7 @@ export default function PracticeEditor({
         <SubmitButton variant="primary" disabled={pending}>
           {pending ? "Saving…" : targetId == null ? "Save" : "Save changes"}
         </SubmitButton>
-        {onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
+        {onDone && <Button onClick={onDone}>Cancel</Button>}
       </div>
       {error && (
         <p
