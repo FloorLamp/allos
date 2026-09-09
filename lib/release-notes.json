@@ -1,6 +1,586 @@
 {
   "days": [
     {
+      "date": "2026-09-09",
+      "entries": [
+        {
+          "pr": 5445,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Heart-rate and glucose days follow your recorded time-zone changes",
+          "issues": [3428]
+        },
+        {
+          "pr": 5428,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "Enable morning digests and Sunday recaps from Telegram settings",
+          "issues": [4840]
+        },
+        {
+          "pr": 5458,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Practice logging uses compact rows with duration and weekly totals",
+          "issues": [5431]
+        },
+        {
+          "pr": 5458,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Quicklogger practice rows update when a session starts or finishes",
+          "issues": [5431]
+        },
+        {
+          "pr": 5462,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Dose suggestions use a child's latest weight, even after a slow lookup",
+          "issues": [5443]
+        },
+        {
+          "pr": 5462,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Suggested dose intervals are marked on the timing chip",
+          "issues": [4672]
+        },
+        {
+          "pr": 5466,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Exercise names become editable headings instead of permanent search fields",
+          "issues": [5370]
+        },
+        {
+          "pr": 5466,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Workout history starts with the last session; expand to see older sessions",
+          "issues": [5370]
+        },
+        {
+          "pr": 5471,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Substance logging explains missing entries and unrecognized substances",
+          "issues": [5351, 5380]
+        },
+        {
+          "pr": 5455,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Telegram can finish a workout at the end time suggested by your heart rate",
+          "issues": [5194]
+        },
+        {
+          "pr": 5473,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Workout delete controls turn red only on hover or keyboard focus",
+          "issues": [5376]
+        },
+        {
+          "pr": 5430,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Event pages link your race or meet to the activities recorded that day",
+          "issues": [3285]
+        },
+        {
+          "pr": 5430,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Imported Strava races link to matching events while preserving your choices",
+          "issues": [3285]
+        },
+        {
+          "pr": 5480,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Add photos to workouts and events; event pages include linked workout photos",
+          "issues": [3285]
+        },
+        {
+          "pr": 5467,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Fever alerts lead with the action to take and avoid repeating the reading",
+          "issues": []
+        },
+        {
+          "pr": 5467,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Illness summaries state the last high temperature and its age once",
+          "issues": []
+        },
+        {
+          "pr": 5467,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Next-dose countdowns show hours and minutes instead of decimal hours",
+          "issues": []
+        },
+        {
+          "pr": 5494,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Choose a symptom and its severity before saving it",
+          "issues": [4752]
+        },
+        {
+          "pr": 5501,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Cleanup errors no longer delay pending post-workout messages",
+          "issues": [5351]
+        },
+        {
+          "pr": 5502,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Immunization schedule tips stay dismissed after Escape and scrolling",
+          "issues": []
+        },
+        {
+          "pr": 5504,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Illness logs and dose times follow the day selected on the card",
+          "issues": [5489, 5490]
+        },
+        {
+          "pr": 5504,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Fever dose offers keep the temperature reading’s accepted time",
+          "issues": [5489]
+        },
+        {
+          "pr": 5514,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Supplement calendars use consistent symbols for pending and not-due days",
+          "issues": []
+        },
+        {
+          "pr": 5517,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "Expired import previews ask for a new preview before saving",
+          "issues": []
+        },
+        {
+          "pr": 5512,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "See children’s weight-band guidance and update weight while logging a dose",
+          "issues": [4713]
+        },
+        {
+          "pr": 5523,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Illness cards keep one panel open at a time",
+          "issues": [5487]
+        },
+        {
+          "pr": 5523,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Illness updates identify the worsening symptom without repeating status",
+          "issues": [5488]
+        },
+        {
+          "pr": 5523,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Expanded dose details show when the last dose was taken",
+          "issues": [5488]
+        },
+        {
+          "pr": 5525,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Temperature saves preserve medication drafts and clear old fever offers",
+          "issues": []
+        },
+        {
+          "pr": 5528,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "One failed Telegram chat no longer blocks other caregivers’ reminders",
+          "issues": [5470]
+        },
+        {
+          "pr": 5529,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Combination medicines no longer show single-ingredient dose charts",
+          "issues": []
+        },
+        {
+          "pr": 5531,
+          "kind": "fix",
+          "category": "Security",
+          "title": "Upload-token descriptions now explain the information tokens can read",
+          "issues": []
+        },
+        {
+          "pr": 5532,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Opening the current page no longer leaves “Still loading” stuck onscreen",
+          "issues": []
+        },
+        {
+          "pr": 5530,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Changing the next set’s weight preserves weights on completed sets",
+          "issues": [5484]
+        },
+        {
+          "pr": 5535,
+          "kind": "fix",
+          "category": "History",
+          "title": "Restore older substance logs from Trash with their recorded uses and notes",
+          "issues": [5406]
+        },
+        {
+          "pr": 5541,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Children’s dose charts stay within the ages listed on the package",
+          "issues": [5539]
+        },
+        {
+          "pr": 5550,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A rejected log no longer replaces a different value you already saved",
+          "issues": [5279]
+        },
+        {
+          "pr": 5547,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Past dose logs use historical amounts and retain amounts when corrected",
+          "issues": [3984]
+        },
+        {
+          "pr": 5552,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Past-day doses without a stated time no longer receive today’s timestamp",
+          "issues": [4779]
+        },
+        {
+          "pr": 5551,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Offline removal messages explain why protein and mobility logs stay unchanged",
+          "issues": []
+        },
+        {
+          "pr": 5553,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Children’s dose guidance follows the linked bottle, even after renaming",
+          "issues": [5518]
+        },
+        {
+          "pr": 5560,
+          "kind": "security",
+          "category": "Medications",
+          "title": "Adding someone to a shared bottle now requires access to that bottle",
+          "issues": [5122]
+        },
+        {
+          "pr": 5563,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Calendar, clock and theme controls use matching icons",
+          "issues": [5188]
+        },
+        {
+          "pr": 5567,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Rename equipment and change its weight from its detail page",
+          "issues": [5238]
+        },
+        {
+          "pr": 5569,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Muscle-volume insights count training weeks using your chosen week start",
+          "issues": [4553]
+        },
+        {
+          "pr": 5571,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "A usual-food tap records each offered food group only once",
+          "issues": []
+        },
+        {
+          "pr": 5543,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Keep keyboard focus when editing loads after removing the last planned set",
+          "issues": [5534]
+        },
+        {
+          "pr": 5576,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Unstated medication start dates stay blank when adding or importing",
+          "issues": [5229]
+        },
+        {
+          "pr": 5576,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Recent changes distinguish adding a medication from starting its course",
+          "issues": [5229]
+        },
+        {
+          "pr": 5577,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Quicklogger forms share compact rows and a single heading",
+          "issues": [5521]
+        },
+        {
+          "pr": 5577,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Undo a quick-logged substance use without removing later entries",
+          "issues": [5521]
+        },
+        {
+          "pr": 5579,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Summary numbers use equal-width digits for easier comparison",
+          "issues": [3918]
+        },
+        {
+          "pr": 5581,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Scheduled doses without a stated time no longer count as missed",
+          "issues": [5285]
+        },
+        {
+          "pr": 5581,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Save medications and supplements without inventing a dose",
+          "issues": [5285]
+        },
+        {
+          "pr": 5584,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Notifications name the person once; new chat-wide messages keep their scope",
+          "issues": [4789]
+        },
+        {
+          "pr": 5585,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Supplement food guidance now respects the selected person’s age",
+          "issues": [4791]
+        },
+        {
+          "pr": 5586,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Telegram food buttons keep daily counts in the tally, beside their meaning",
+          "issues": [5107]
+        },
+        {
+          "pr": 5586,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Telegram food totals refresh after servings are logged elsewhere",
+          "issues": [5107]
+        },
+        {
+          "pr": 5587,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Questionnaire history shows five recent entries, with more on demand",
+          "issues": [3960]
+        },
+        {
+          "pr": 5589,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Redose reminders separate the product, last dose and past-24-hour total",
+          "issues": [5578]
+        },
+        {
+          "pr": 5591,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Manage supply from medication details and supplement rows",
+          "issues": [5121]
+        },
+        {
+          "pr": 5591,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Refill in one tap using your previous amount, or set a first fill size",
+          "issues": [5121]
+        },
+        {
+          "pr": 5592,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "Record a delivery from Telegram refill reminders with Received",
+          "issues": [5580, 5121]
+        },
+        {
+          "pr": 5590,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Failed Health Connect syncs retain the count of records already skipped",
+          "issues": [4892]
+        },
+        {
+          "pr": 5596,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Training Log filters preserve the people, day and history you selected",
+          "issues": [4901]
+        },
+        {
+          "pr": 5595,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Quicklogger forms keep the selected person and day throughout a log",
+          "issues": [5211, 4932]
+        },
+        {
+          "pr": 5595,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Quicklogger food totals follow the day you select",
+          "issues": [5521, 5211]
+        },
+        {
+          "pr": 5595,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Offline measurements save together or keep the whole form for retry",
+          "issues": [4932]
+        },
+        {
+          "pr": 5599,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Undo equipment deletion and restore its surviving workout and plan links",
+          "issues": [5232]
+        },
+        {
+          "pr": 5600,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Background refreshes preserve edits to a date field",
+          "issues": [4986]
+        },
+        {
+          "pr": 5601,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Exercise goals without readings no longer show zero-percent progress",
+          "issues": [5437]
+        },
+        {
+          "pr": 5603,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Planned and completed sets keep aligned weights, reps and row controls",
+          "issues": [5597]
+        },
+        {
+          "pr": 5604,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Ordered refill reminders follow up after the promised three days",
+          "issues": [5593]
+        },
+        {
+          "pr": 5605,
+          "kind": "feature",
+          "category": "History",
+          "title": "Pin a start time on the day chart without hover moving the Add row",
+          "issues": [5386]
+        },
+        {
+          "pr": 5606,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Open supported Quicklogger forms offline using saved device data",
+          "issues": [3416]
+        },
+        {
+          "pr": 5606,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Retry failed Quicklogger loads without losing edited mood entries",
+          "issues": [3416]
+        },
+        {
+          "pr": 5607,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Sleep regularity ratings agree across pages",
+          "issues": [5157]
+        },
+        {
+          "pr": 5607,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Sleep-regularity decline notices require enough comparison history",
+          "issues": [5157]
+        },
+        {
+          "pr": 5612,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Recaps show cardio record details in each recipient’s distance units",
+          "issues": [3119]
+        },
+        {
+          "pr": 5616,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Keep Quicklogger drafts when returning to the menu or switching forms",
+          "issues": [3274]
+        },
+        {
+          "pr": 5619,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Hour and minute wheels wrap in either direction",
+          "issues": [5594]
+        },
+        {
+          "pr": 5619,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "An unset time picker suggests the selected person’s current local time",
+          "issues": [4947]
+        }
+      ],
+      "operatorNotes": []
+    },
+    {
       "date": "2026-09-06",
       "entries": [
         {
