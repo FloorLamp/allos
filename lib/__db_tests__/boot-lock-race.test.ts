@@ -333,7 +333,7 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
     // and the runtime busy_timeout is restored AFTER the boot completes.
     const lockIdx = src.indexOf("acquireBootLock(");
     const migrateIdx = src.indexOf("runMigrations(db)");
-    const bootTasksIdx = src.indexOf("bootTasks(db)");
+    const bootTasksIdx = src.indexOf("bootTasks(trackedDatabase(db))");
     const runtimeIdx = src.indexOf('pragma("busy_timeout = 10000")');
     expect(lockIdx).toBeGreaterThan(-1);
     expect(migrateIdx).toBeGreaterThan(-1);

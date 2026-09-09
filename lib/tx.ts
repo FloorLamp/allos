@@ -18,8 +18,8 @@
 //     (a weight entry, a food serving) and cores that own their own accounting (the
 //     day-counter ledger) do not need them and should not adopt them.
 
-import type { Statement } from "better-sqlite3";
 import type { Tx } from "./db";
+import type { SqlStatement } from "./write-revision";
 
 // What a compare-and-swap actually did. `stale` means the WHERE's expectation no longer
 // held when the UPDATE ran — the caller maps it to its domain's typed refusal
@@ -32,7 +32,7 @@ export type CasOutcome =
 // the write it guards, so the row cannot change between the check and the swap.
 export function readForUpdate<T>(
   _tx: Tx,
-  stmt: Statement,
+  stmt: SqlStatement,
   ...params: unknown[]
 ): T | undefined {
   return stmt.get(...params) as T | undefined;
@@ -45,7 +45,7 @@ export function readForUpdate<T>(
 // returning every matching row.
 export function readAllForUpdate<T>(
   _tx: Tx,
-  stmt: Statement,
+  stmt: SqlStatement,
   ...params: unknown[]
 ): T[] {
   return stmt.all(...params) as T[];
@@ -57,7 +57,7 @@ export function readAllForUpdate<T>(
 // anything but 1 as impossible-by-construction once `applied`.
 export function casUpdate(
   _tx: Tx,
-  stmt: Statement,
+  stmt: SqlStatement,
   ...params: unknown[]
 ): CasOutcome {
   const { changes } = stmt.run(...params);

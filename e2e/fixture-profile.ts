@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { SqlPrepare } from "../lib/write-revision";
 import { seedStandardMetricSaves } from "../lib/standard-metric-seeds";
 
 // THE e2e fixture-profile constructor (#1487, rendering half).
@@ -31,10 +31,7 @@ import { seedStandardMetricSaves } from "../lib/standard-metric-seeds";
 //
 // Kept in a PLAIN module (no @playwright/test import) for the same reason
 // e2e/fixture-logins.ts is: the tsx seeder and the specs both import it.
-export function createFixtureProfile(
-  db: Pick<Database.Database, "prepare">,
-  name: string
-): number {
+export function createFixtureProfile(db: SqlPrepare, name: string): number {
   const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
@@ -46,7 +43,7 @@ export function createFixtureProfile(
 // Same, for a fixture that pins its profile's ID (the household fixtures reserve
 // id 2). Returns the id it was given.
 export function createFixtureProfileWithId(
-  db: Pick<Database.Database, "prepare">,
+  db: SqlPrepare,
   id: number,
   name: string
 ): number {
@@ -76,10 +73,7 @@ export function createFixtureProfileWithId(
 //     switch-back happened to land first (`main` fails the same way, less often).
 //   • grants go too, since a login may not point at a profile that no longer exists.
 // The order matters: every reference is cleared before the row it points at.
-export function destroyFixtureProfile(
-  db: Pick<Database.Database, "prepare">,
-  profileId: number
-): void {
+export function destroyFixtureProfile(db: SqlPrepare, profileId: number): void {
   db.prepare(
     "UPDATE sessions SET active_profile_id = NULL WHERE active_profile_id = ?"
   ).run(profileId);

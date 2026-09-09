@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, it, vi, beforeEach } from "vitest";
-import { db, reopenDatabaseForTests } from "@/lib/db";
+import { rawDb, reopenDatabaseForTests } from "@/lib/db";
 import {
   adminLoginId,
   allProfileIds,
@@ -158,6 +158,6 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
       JSON.stringify(profile)
     );
     // The handle on the copy is released so the script can remove it.
-    db.close();
+    rawDb.close();
   }, 300_000);
 });

@@ -13,12 +13,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { makeTmpDir } from "@/lib/__tests__/tmp-dir";
 import { toKg } from "@/lib/units";
-import { rawDb as db, writeTx } from "@/lib/db";
+import { db as requestDb, rawDb as db, writeTx } from "@/lib/db";
 import {
   upsertBodyMetrics,
   type NormBodyMetric,
 } from "@/lib/integrations/normalize";
 import { backfillBodyMetricInstants } from "@/lib/integrations/body-metric-instant-backfill";
+import { readDataWriteRevision } from "@/lib/write-revision";
 
 const SOURCE = "health-connect";
 const DAY = "2026-06-15";
@@ -181,7 +182,7 @@ describe("archive backfill (#3950 — while the archive still exists)", () => {
   }
 
   function runBackfill() {
-    return backfillBodyMetricInstants(db, () => "UTC", root);
+    return backfillBodyMetricInstants(requestDb, () => "UTC", root);
   }
 
   const payloadFor = (kg: number) =>
@@ -190,9 +191,16 @@ describe("archive backfill (#3950 — while the archive still exists)", () => {
   it("dates a row written before the columns existed", () => {
     put([row({ weight_kg: toKg(80, "kg") })]);
     archive("health-connect-aaa111.json", payloadFor(80));
+    const before = readDataWriteRevision(requestDb);
     const tally = runBackfill();
     expect(stored()).toMatchObject({ weight_kg: 80, weight_at: MORNING });
     expect(tally.filled).toBe(1);
+    expect(readDataWriteRevision(requestDb)).toBe(before + 1);
+
+    // The archive is safe to revisit, and an already-filled row is a signal no-op.
+    const after = readDataWriteRevision(requestDb);
+    expect(runBackfill().filled).toBe(0);
+    expect(readDataWriteRevision(requestDb)).toBe(after);
   });
 
   it("DECLINES when the stored value has since moved on", () => {
