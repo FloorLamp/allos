@@ -16,11 +16,7 @@ import {
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
-import {
-  closeEditor,
-  openFact,
-  setObligation,
-} from "./intake-form-helpers";
+import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import type { QuickLogId } from "@/lib/quick-log";
 import {

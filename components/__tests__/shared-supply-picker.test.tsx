@@ -191,9 +191,7 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
   if (kind === "medication")
     await waitFor(() =>
       expect(
-        screen
-          .getByTestId("intake-fact-rxnorm")
-          .getAttribute("data-fact-state")
+        screen.getByTestId("intake-fact-rxnorm").getAttribute("data-fact-state")
       ).toBe("stated")
     );
   screen.getByRole("button", { name: "Add" }).click();
