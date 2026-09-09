@@ -15,11 +15,13 @@ import {
 import { getPublicUrl } from "../settings/server";
 import { createLogger } from "../log";
 import type {
+  DispatchOptions,
   NotificationChannel,
   NotificationKind,
   NotificationMessage,
 } from "./types";
 import { managingLoginIdsForProfile } from "./managing-logins";
+import { withRecipientDistanceUnit } from "./compose";
 import { isKindEnabled } from "./home-assistant-core";
 import {
   composeNotificationEmail,
@@ -93,19 +95,20 @@ export function resolveEmailRecipients(
 /** How many addresses actually received it — 0 when there was nobody to write to. */
 async function sendToRecipients(
   recipients: EmailRecipient[],
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  opts?: DispatchOptions
 ): Promise<number> {
   if (recipients.length === 0) return 0;
   const publicUrl = getPublicUrl();
   let ok = 0;
   const errors: string[] = [];
   for (const r of recipients) {
-    const mail = composeNotificationEmail(
-      msg,
-      r.fullContent ? "full" : "content-free",
-      publicUrl
-    );
     try {
+      const mail = composeNotificationEmail(
+        r.fullContent ? withRecipientDistanceUnit(msg, r.loginId, opts) : msg,
+        r.fullContent ? "full" : "content-free",
+        publicUrl
+      );
       await sendEmail({
         to: r.address,
         subject: mail.subject,
@@ -135,7 +138,11 @@ export const emailChannel: NotificationChannel = {
       (r) => r.loginId
     );
   },
-  async send(profileId: number, msg: NotificationMessage) {
+  async send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ) {
     // A button-only kind (food nudge, mood check-in) would arrive as words about
     // buttons email strips — a no-op success, exactly like Web Push (#692).
     if (!isEmailDeliverableKind(msg.kind)) {
@@ -151,7 +158,8 @@ export const emailChannel: NotificationChannel = {
     // Recipient-level like Web Push: a throw here means no address took it.
     const reached = await sendToRecipients(
       resolveEmailRecipients(profileId, msg.kind ?? "other"),
-      msg
+      msg,
+      opts
     );
     return { delivered: reached > 0 };
   },

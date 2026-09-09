@@ -25,7 +25,8 @@ import {
   type UsualRoutineAttachment,
 } from "./usual-routine-attach";
 import { dispatchableUsual } from "./usual-routine-plan";
-import type { NotificationMessage } from "./types";
+import type { DispatchOptions, NotificationMessage } from "./types";
+import { getUnitPrefs } from "../settings";
 
 // The composition, given an ALREADY-DERIVED prefix. Pure, so the render tier can pin it
 // without a database and the one caller that decides its own prefix — a CHAT_WIDE send,
@@ -72,4 +73,18 @@ export function composeForRebuild(
       ? attachmentOnKeyboard(ownerId, pointer.keyboard, today(ownerId))
       : null
   );
+}
+
+// Applied after channel recipient/consent gates. Ownerless destinations keep the
+// canonical body, and the already-composed envelope is never composed a second time.
+export function withRecipientDistanceUnit(
+  msg: NotificationMessage,
+  loginId: number | undefined,
+  opts?: DispatchOptions
+): NotificationMessage {
+  if (!opts?.bodyForDistanceUnit || loginId == null) return msg;
+  return {
+    ...msg,
+    body: opts.bodyForDistanceUnit(getUnitPrefs(loginId).distanceUnit),
+  };
 }
