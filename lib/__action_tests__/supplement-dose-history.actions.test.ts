@@ -250,52 +250,43 @@ describe("updateHistoricalDose action — supplements", () => {
   // the app's own timestamps. This pins the wiring (the call site's clock choice),
   // where lib/__tests__/dose-log-window-clock.test.ts pins the predicate.
   it("accepts an entry at the app's own now while the frozen clock leads real time", async () => {
-    const previous = process.env.ALLOS_TEST_NOW;
     // ~52 min ahead: the skew an in-band nudge to next-midnight+30 produces at 23:38Z.
     process.env.ALLOS_TEST_NOW = new Date(
       Date.now() + 52 * 60_000
     ).toISOString();
-    try {
-      const { profile } = seedActor();
-      const { itemId, doseId } = seedSupplement(profile.id);
-      const { date, hhmm } = zonedDateParts(
-        getTimezone(profile.id),
-        clockNow()
-      );
 
-      const logged = await logHistoricalDose(
-        fd({ id: itemId, dose_id: doseId, date, time: hhmm, amount: "15 mg" })
-      );
-      expect(logged.ok).toBe(true);
-      const logId = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0]
-        .id;
+    const { profile } = seedActor();
+    const { itemId, doseId } = seedSupplement(profile.id);
+    const { date, hhmm } = zonedDateParts(getTimezone(profile.id), clockNow());
 
-      const amended = await updateHistoricalDose(
-        fd({ id: itemId, log_id: logId, date, time: hhmm, amount: "45 mg" })
-      );
-      expect(amended.ok).toBe(true);
-      expect(
-        getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0].amount
-      ).toBe("45 mg");
+    const logged = await logHistoricalDose(
+      fd({ id: itemId, dose_id: doseId, date, time: hhmm, amount: "15 mg" })
+    );
+    expect(logged.ok).toBe(true);
+    const logId = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0].id;
 
-      // The #797 forgery rule still bites, measured on that same app clock.
-      expect(
-        await updateHistoricalDose(
-          fd({
-            id: itemId,
-            log_id: logId,
-            date: shiftDateStr(date, 1),
-            time: hhmm,
-          })
-        )
-      ).toEqual({
-        ok: false,
-        error: "Choose a date and time that are not in the future.",
-      });
-    } finally {
-      if (previous === undefined) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = previous;
-    }
+    const amended = await updateHistoricalDose(
+      fd({ id: itemId, log_id: logId, date, time: hhmm, amount: "45 mg" })
+    );
+    expect(amended.ok).toBe(true);
+    expect(
+      getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0].amount
+    ).toBe("45 mg");
+
+    // The #797 forgery rule still bites, measured on that same app clock.
+    expect(
+      await updateHistoricalDose(
+        fd({
+          id: itemId,
+          log_id: logId,
+          date: shiftDateStr(date, 1),
+          time: hhmm,
+        })
+      )
+    ).toEqual({
+      ok: false,
+      error: "Choose a date and time that are not in the future.",
+    });
   });
 
   it("reports stale for a log this profile doesn't own", async () => {

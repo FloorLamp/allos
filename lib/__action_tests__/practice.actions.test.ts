@@ -10,7 +10,7 @@
 //     write core is profileId-first, so this is a named case, not new code),
 //   - deleteProfile's OWNED_TABLES sweep clears practice_logs.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -515,14 +515,9 @@ describe("practice writes gate the ROW's profile (#4424 ruling 7)", () => {
 // statement. Only the first is the untouched one-tap path.
 describe("logPractice — the stated session time (#3273)", () => {
   const NOW_ISO = "2026-07-08T21:30:00Z";
-  let priorNow: string | undefined;
+
   beforeEach(() => {
-    priorNow = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = NOW_ISO;
-    return () => {
-      if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = priorNow;
-    };
+    vi.setSystemTime(new Date(NOW_ISO));
   });
 
   function logged(profileId: number) {

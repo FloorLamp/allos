@@ -4,8 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import PracticeEditor from "@/app/(app)/wellness/PracticeEditor";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
+import { useOptionalDayContext } from "@/components/DayContext";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { shiftDateStr } from "@/lib/date";
+import { formatWeekdayDate } from "@/lib/format-date";
 import { practiceRowFacts, practiceRunningFacts } from "@/lib/practice";
+import { clearLastGood } from "@/lib/offline/quick-entry-read";
 import type { TrackedPractice } from "@/lib/queries/wellness";
+import {
+  QuickEntryRow,
+  QuickEntryRowList,
+} from "@/components/quick-entry/QuickEntryRowList";
 
 // The quick-entry overlay's PRACTICE form (issue #1633): every tracked wellness
 // practice, each one tap from logging today's session.
@@ -79,6 +88,15 @@ export default function QuickPracticeList({
   // subject, so this is only ever passed alongside a non-empty `practices`.
   subjectProfileId?: number;
 }) {
+  const dayContext = useOptionalDayContext();
+  const prefs = useFormatPrefs();
+  const profileToday = dayContext?.today ?? today;
+  const dayLabel =
+    today === profileToday
+      ? "Today"
+      : today === shiftDateStr(profileToday, -1)
+        ? "Yesterday"
+        : formatWeekdayDate(today, prefs);
   const [rows, setRows] = useState(practices);
   // Follow the gather whenever the sheet hands down a new one — the same server-wins
   // discipline the row control keeps over its own count.
@@ -89,15 +107,26 @@ export default function QuickPracticeList({
   }
 
   const reread = useCallback(() => {
-    void loadQuickEntry("practice", subjectProfileId).then(
-      (data) => {
+    void loadQuickEntry(
+      "practice",
+      subjectProfileId,
+      today,
+      dayContext?.parts.reach.kind === "dated" ? "dated" : "sheet"
+    ).then(
+      (result) => {
+        if (result.kind === "refused") {
+          setRows([]);
+          clearLastGood();
+          return;
+        }
+        const data = result.data;
         if (data.form === "practice") setRows(data.practices);
       },
       // A dropped read leaves the rows exactly as they were. Nothing here is a write,
       // so there is no promise to walk back and nothing to say.
       () => {}
     );
-  }, [subjectProfileId]);
+  }, [subjectProfileId, today, dayContext?.parts.reach.kind]);
 
   // THE EARLIEST DERIVED END ON SCREEN. One timer for the list: whichever row completes
   // first, the re-read that follows re-derives the next.
@@ -139,22 +168,15 @@ export default function QuickPracticeList({
   }
 
   return (
-    <ul
-      data-testid="quick-entry-practice-list"
-      className="divide-y divide-(--border) overflow-hidden rounded-lg border border-(--border) bg-surface"
-    >
+    <QuickEntryRowList testId="quick-entry-practice-list">
       {rows.map((practice) => {
         const facts = practiceRowFacts(practice);
         return (
-          <li
+          <QuickEntryRow
             key={practice.identity}
-            data-testid={`quick-entry-practice-${practice.identity}`}
-            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="font-medium text-slate-800 dark:text-slate-100">
-                {practice.name}
-              </div>
+            testId={`quick-entry-practice-${practice.identity}`}
+            identity={practice.name}
+            facts={
               <div
                 className="mt-0.5 text-sm text-slate-500 dark:text-slate-400"
                 data-testid="practice-row-facts"
@@ -166,42 +188,39 @@ export default function QuickPracticeList({
                   )
                 ) : (
                   <>
-                    {facts.today && (
+                    {practice.todayCount > 0 && (
                       <span data-testid="practice-today-count">
-                        {facts.today}
+                        {practice.todayCount}{" "}
+                        {dayLabel === "Today" || dayLabel === "Yesterday"
+                          ? dayLabel.toLowerCase()
+                          : `on ${dayLabel}`}
                       </span>
                     )}
-                    {facts.today ? " · " : null}
+                    {practice.todayCount > 0 ? " · " : null}
                     {facts.week}
                   </>
                 )}
               </div>
-            </div>
-            {/* No `showDetails`: the expanded date/time/duration form is a modal, and
-                stacking one over this sheet is not what a one-tap surface is for; the
-                Wellness card keeps that path.
-
-                `inlineDuration` is the OTHER answer to the same objection (#2204). "20
-                min sauna" vs "5 min" is most of what a practice log means, and the one
-                surface that promised the fastest way to record one was the surface that
-                threw it away. The pill's label arrives already holding this practice's
-                last logged duration, so accepting it costs nothing and the tap is still
-                one tap; the editor it opens is a control, not a form. */}
-            <LogPracticeButton
-              practice={practice.name}
-              todayCount={practice.todayCount}
-              today={today}
-              defaultDurationMin={practice.previousDurationMin}
-              liveSession={practice.liveSession}
-              inlineDuration
-              inlineWhen
-              chipRow
-              onServerRead={reread}
-              subjectProfileId={subjectProfileId}
-            />
-          </li>
+            }
+            actions={
+              <LogPracticeButton
+                practice={practice.name}
+                todayCount={practice.todayCount}
+                today={today}
+                profileToday={profileToday}
+                dayLabel={dayLabel}
+                defaultDurationMin={practice.previousDurationMin}
+                liveSession={practice.liveSession}
+                inlineDuration
+                inlineWhen
+                chipRow
+                onServerRead={reread}
+                subjectProfileId={subjectProfileId}
+              />
+            }
+          />
         );
       })}
-    </ul>
+    </QuickEntryRowList>
   );
 }

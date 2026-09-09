@@ -82,25 +82,24 @@ test("dated entry destinations preserve their own bounds and prefill the day (#2
   await expect(page).toHaveURL(/\/training\?tab=log$/);
 });
 
-test("bounded destinations explain an out-of-range day instead of misdating it (#2420)", async ({
+test("dated Food and Practice destinations accept days beyond their former launcher bounds (#5211)", async ({
   page,
 }) => {
   const today = frozenNow().toISOString().slice(0, 10);
   const oldFoodDate = shiftDateStr(today, -7);
   const oldPracticeDate = shiftDateStr(today, -31);
 
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/nutrition?tab=food&date=${oldFoodDate}`);
-  await expect(page.getByTestId("food-date-bound-note")).toContainText(
-    "previous six days"
-  );
-  await expect(page.getByTestId("food-day-today")).toHaveAttribute(
+  await expect(page.getByTestId(`food-day-${oldFoodDate}`)).toHaveAttribute(
     "aria-pressed",
     "true"
   );
 
   await page.goto(`/wellness?log=${oldPracticeDate}`);
-  await expect(page.getByTestId("practice-backfill-launcher")).toContainText(
-    "previous 30 days"
+  const details = page.getByTestId("practice-log-details");
+  await expect(details).toBeVisible();
+  await expect(details.locator('input[name="date"]')).toHaveValue(
+    oldPracticeDate
   );
-  await expect(page.getByTestId("practice-log-details")).toHaveCount(0);
 });

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { ZipBuilder } from "@/lib/zip-write";
 import {
@@ -609,8 +609,8 @@ describe("Fitbit Takeout import", () => {
       ])
     );
 
-    db.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
-    db.exec(`
+    rawDb.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
+    rawDb.exec(`
       CREATE TRIGGER fitbit_partial_failure_test
       BEFORE INSERT ON activities
       WHEN NEW.profile_id = ${partialProfile}
@@ -681,7 +681,7 @@ describe("Fitbit Takeout import", () => {
         { target_table: "activities", disposition: "inserted" },
       ]);
     } finally {
-      db.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
+      rawDb.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
       fs.rmSync(partialArchive, { force: true });
     }
   });

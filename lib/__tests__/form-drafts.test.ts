@@ -6,6 +6,7 @@ import {
   draftKey,
   draftSig,
   fieldMultimap,
+  hasDraftRevision,
   isDraftExpired,
   shouldOfferDraft,
   shouldPersistDraft,
@@ -16,6 +17,7 @@ import {
   captureUnsavedWork,
   hasUnsavedWork,
   markUnsavedWork,
+  releaseUnsavedWork,
   resetUnsavedWork,
   subscribeUnsavedWork,
   type ResumePointer,
@@ -39,7 +41,7 @@ function draft(over: Partial<FormDraft> = {}): FormDraft {
     fields,
     extra: null,
     ...over,
-  };
+  } as FormDraft;
 }
 
 describe("draftKey", () => {
@@ -62,6 +64,26 @@ describe("draftKey", () => {
     expect(
       draftKey({ profileId: 1, formKey: "supplement", recordId: 7 })
     ).not.toBe(draftKey({ profileId: 1, formKey: "medication", recordId: 7 }));
+  });
+});
+
+describe("draft revision ownership", () => {
+  it("matches both writer and revision and preserves legacy or partial rows", () => {
+    const expected = { writerId: "writer-a", revision: 2 };
+    expect(hasDraftRevision(draft(expected), expected)).toBe(true);
+    expect(
+      hasDraftRevision(draft({ writerId: "writer-a", revision: 3 }), expected)
+    ).toBe(false);
+    expect(
+      hasDraftRevision(draft({ writerId: "writer-b", revision: 2 }), expected)
+    ).toBe(false);
+    expect(hasDraftRevision(draft(), expected)).toBe(false);
+    expect(
+      hasDraftRevision(
+        draft({ writerId: "writer-a" } as Partial<FormDraft>),
+        expected
+      )
+    ).toBe(false);
   });
 });
 
@@ -265,6 +287,21 @@ describe("unsaved-work registry (#1700 reads what #1699 writes)", () => {
       true
     );
     expect(hasUnsavedWork()).toBe(true);
+    resetUnsavedWork();
+  });
+
+  it("a stale form cannot release a key a newer mount now owns", () => {
+    resetUnsavedWork();
+    const key = "1:medication:new";
+    const first = { capture: async () => null };
+    const newer = { capture: async () => null };
+    markUnsavedWork(key, true, first);
+    markUnsavedWork(key, true, newer);
+
+    expect(releaseUnsavedWork(key, first)).toBe(false);
+    expect(hasUnsavedWork()).toBe(true);
+    expect(releaseUnsavedWork(key, newer)).toBe(true);
+    expect(hasUnsavedWork()).toBe(false);
     resetUnsavedWork();
   });
 });

@@ -28,7 +28,7 @@ export default function QuickCyclePanel({
 }) {
   const open = state.openPeriodId != null;
   return (
-    <div className="space-y-3 py-2" data-testid="quick-cycle-panel">
+    <div className="space-y-3" data-testid="quick-cycle-panel">
       {/* Three sentences, in order of what is true (#2801): the derived state line; the
           pause, when a recorded pregnancy or postmenopausal status means no cycle day
           applies; and only otherwise the "nothing logged yet" prompt, which would

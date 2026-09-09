@@ -235,22 +235,18 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
 // pushed hours ahead of the SERVER'S OWN NOW, so the captured instant lands beyond the
 // skew window. That offset is anchored on `frozenNow()` — the instant the app's clock
 // seam actually answers (#2287) — rather than on the runner's wall clock, so this test
-// measures a DEVICE divergence and never the suite's own real-vs-frozen gap. Twelve
+// measures a DEVICE divergence and never the suite's own real-vs-frozen gap. Eight
 // hours is far past any run's own duration, so WHICH rule fires ("future", checked
 // first) is deterministic.
 //
-// SINCE #3273 THE CLOCK IS SET BEFORE THE STATEMENT, and that is the same defect one
-// step earlier. The bar now states through the shared when-control, which offers the
-// hours of a day and resolves them against the BROWSER's clock — so a device that
-// believes it is already tomorrow offers this day's late hours as though they were
-// past, and the capture carries an instant hours beyond the server's now. Setting the
-// clock after the fill would prove nothing now: the fill happens at fill time and the
-// user can see the absolute time it produced.
-const FAST_CLOCK_MS = 12 * 60 * 60_000;
+// Set the clock before the statement: the shared when-control offers hours against
+// the browser's clock. Keep the device on the same day so the live DayContext still
+// captures a valid serving day; crossing midnight would also test future-day refusal.
+const FAST_CLOCK_MS = 8 * 60 * 60_000;
 // An hour the fast-clocked browser believes is behind it and the server knows is
-// ahead: local time is pinned to 13:mm, so 23:00 today is ~10 hours in the server's
-// future while the +12h device reads the day as already over.
-const FAST_CLOCK_HOUR = "23:00";
+// ahead: local time is pinned to 13:mm, so 20:00 today is ~7 hours in the server's
+// future while the +8h device reads 21:mm on that same day.
+const FAST_CLOCK_HOUR = "20:00";
 
 test("a fast device clock keeps the serving and the sync SAYS the time wasn't recorded (#2296)", async ({
   page,

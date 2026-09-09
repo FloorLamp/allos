@@ -1,30 +1,13 @@
-// Does this PR need its CI re-run before it can merge? (plain Node, no deps)
-//
-// Merges are serial; PRs are not. Every merge stales the CI of every other
-// open PR, and re-running each one serialises the day at ~16 minutes a merge.
-// The runbook's escape has always been "write down why the two file sets
-// cannot interact"; this script writes it down. Exit 0 means the candidate's
-// changed paths are disjoint from everything that landed on main since its CI
-// base, and neither side touched a shared file (landing-independence-core.mjs
-// lists them) — merge on the checks it has. Exit 1 means rebase and re-run.
-//
-// Reads: unauthenticated REST for the PR head (environment.md §GitHub access)
-// and git against origin — it fetches main and the head itself.
-//
-// THROUGH `curl`, NOT `fetch`. Node's fetch ignores HTTP(S)_PROXY and the
-// managed environments route GitHub through an agent proxy, which answers it
-// 403 while curl to the identical URL gets 200 — merge-gate.mjs and
-// ci-watch.mjs both say so and this script did not. It therefore returned
-// exit 2, "could not judge", on EVERY invocation here: safe in direction, and
-// it meant the re-run exemption this script exists to grant was unavailable
-// the whole time. A tool that cannot read fails closed and looks like a tool
-// with nothing to say.
+// Advise whether a PR's changed paths overlap changes since its checked base.
+// Path independence is not a semantic proof; docs/orchestration/review-merge.md
+// owns merged-tree verification and merge requirements.
 //
 // Usage:
 //   node scripts/orchestration/landing-independence.mjs <pr-number> [--repo owner/name]
 //
-// Exit codes: 0 independent (or nothing landed) · 1 not independent ·
-//   2 could not judge (PR unreadable, fetch failed).
+// Reads the PR through REST/curl and fetches main and the head for comparison.
+// Exit codes: 0 independent (or nothing landed), 1 not independent,
+// 2 could not judge. Never treat an unreadable PR or failed fetch as independent.
 
 import { execFileSync } from "node:child_process";
 import { helpGuard } from "./usage.mjs";

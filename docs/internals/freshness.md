@@ -1,210 +1,120 @@
-# Internals: the shared freshness vocabulary
+# Freshness and dormancy
 
-"Is this dated reading still current?" is ONE question. Several domains ask it
-over different clocks, and before #2023/#2025 each answered it locally — the
-fitness check compared `ageDays > cadenceDays` inline, the biomarker retest
-classifier compared `daysBetween(...) > retestIntervalDays(...)`, and the two had
-independently chosen the same boundary and different words for the result.
+[lib/freshness.ts](../../lib/freshness.ts) owns the age comparison and counting
+vocabulary. Domain adapters choose the interval and exemptions; surfaces choose
+wording. Reuse those owners instead of calculating staleness in a component.
 
-`lib/freshness.ts` owns the decision and the counting vocabulary. Each domain
-keeps what is genuinely its own: **which interval applies** and **which readings
-are exempt from having a clock at all**.
+## Shared decision
 
-## The vocabulary
+`freshnessState(ageDays, intervalDays, { exempt })` returns:
 
-```ts
-type FreshnessState = "current" | "due" | "not-applicable";
-```
+| State            | Meaning                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| `current`        | The age is at or below the applicable interval.                                                            |
+| `due`            | The age is strictly greater than the interval. The reading remains real data.                              |
+| `not-applicable` | The reading is exempt, the age is missing/nonfinite, or the interval is missing, nonfinite or nonpositive. |
 
-- `current` — measured within its interval.
-- `due` — measured, past its interval. Still real data; no longer something a
-  surface may present as today's value.
-- `not-applicable` — no clock applies: no date, no interval, or the domain
-  exempted the reading (a value that cannot change has no retest clock).
+A reading exactly one interval old is current. Do not fold `not-applicable` into
+`due`: an immutable attribute has no retest clock, and an unmeasured test is not
+an overdue reading. `DormancyState` owns the word "absent"; a candidate or
+presentation state that merely does not apply is `not-applicable`.
 
-`not-applicable` is never folded into `due`. An immutable blood type is not
-overdue and an unmeasured fitness test is not stale; collapsing the two is how a
-surface grows a phantom backlog.
+`freshnessAgeDays(date, today)` returns the signed difference in whole days, or
+`null` for absent/unparseable dates. Date-based callers supply the profile-local
+day. An adapter may preserve different parsing behavior: the biomarker retest
+adapter uses its existing `daysBetween`, which treats an unparseable nonempty
+date as zero days. Do not describe every adapter as rejecting malformed dates.
 
-Boundary: **stale strictly after the interval** (`age > interval`). A reading
-taken exactly one interval ago is current and comes due tomorrow. This is the
-biomarker retest clock's long-standing boundary, which the vocabulary was
-extracted from.
+`tallyFreshness` returns `{ current, due, notApplicable }`.
+`hasNoCurrentReading(tally)` means exactly `current === 0`; it does not establish
+that any reading is overdue.
 
-`FreshnessTally` (`{ current, due, notApplicable }`) is the counting shape every
-consuming aggregate reports in, so "3 of 12 based on older results" and "2 tests
-want a re-check" are the same arithmetic.
+## Different uses of the comparison
 
-## Tenants
+| Policy             | Question                                                 | Consequence                                                                               |
+| ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Retest clock       | Is a measured result past its retest interval?           | Domain logic may produce a retest finding or reminder.                                    |
+| Presentation floor | May the latest reading be framed as current?             | Show its age or as-of date; the floor itself does not hide the value or create reminders. |
+| Dormancy           | Has a previously recorded domain stopped receiving data? | Replace an empty, window-bounded presentation with a dated statement and an action.       |
 
-| Tenant                                                                      | Interval                                                                            | Exemptions                                                                                                    |
-| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Biomarkers — `biomarkerRetestStatus` (`lib/reference-range/qualitative.ts`) | the analyte's curated `retest_days`, else the flat default                          | genomics, non-lab categories, durable immune positives (#516), immutable attributes (#548), QC metrics (#687) |
-| Fitness check — `lib/fitness-freshness.ts` via `buildFitnessCheckModel`     | the test's DECLARED policy: the profile's retest cadence, or a per-test fixed clock | an unmeasured test (no reading to date)                                                                       |
-| Longevity's optimal-biomarker pillar                                        | —                                                                                   | consumes the biomarker adapter above; mints nothing                                                           |
-| Recent labs (`lib/recent-labs.ts`)                                          | the flat `RECENT_LAB_STALE_DAYS` presentation floor (#1216)                         | none — an undatable reading is `not-applicable`, never fresh                                                  |
-| Latest vitals (`lib/vitals-latest.ts`)                                      | the per-quantity presentation floor: resting HR 14 days, blood pressure 180 (#2303) | none — an undatable reading is `not-applicable`, never due                                                    |
-| Trends chart cards (`lib/trend-metric-freshness.ts`)                        | the per-metric presentation floor, total over `TrendMetricSlug` (#2615)             | none — an undatable reading is `not-applicable`, never due                                                    |
-| BMI's paired height (`lib/growth-series.ts`, #2646)                         | `PAIRED_HEIGHT_INTERVAL_DAYS` by LIFE STAGE: 92 days infant, 183 child/adolescent   | adults and older adults, and an unknown birthdate — no clock, so an old height still pairs                    |
+A vital can be exempt from the lab retest clock while still needing an as-of
+statement. Presentation floors are surface policy, not profile settings or a
+reason to emit an Upcoming item, nudge or notification.
 
-A tenant **adapts** onto the shared decision. It does not fork it, and it does
-not re-derive "is this stale" in a component.
+## Existing adapters
 
-The BMI tenant is the one whose reading is an **input** rather than a result.
-`bmiSeriesDatePaired` pairs each weigh-in with the height in effect on or before it
-(#407, so early history is not inflated by a recent height); #2646 bounds how far
-back "in effect" may reach, because BMI is kg/m² and a months-old height turns a
-growing child's growth into apparent fatness — always in that direction. A `due`
-verdict drops the point rather than plotting a wrong one, and `not-applicable` (an
-adult, or an unknown age) is the KEEP case, which is exactly why it must never fold
-into `due`. Age is resolved as of the weigh-in, never today (#2090).
+| Owner                                                               | Interval and scope                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Biomarker retest status](../../lib/reference-range/qualitative.ts) | Curated positive `retest_days`, otherwise the [retest default](../../lib/reference-range/retest.ts). Exempts genomics and non-lab categories (`reference`, `vitals`, `instrument`, `derived`), plus recognized durable immune positives, immutable attributes and QC results. Missing dates are `not-applicable`. |
+| [Fitness freshness](../../lib/fitness-freshness.ts)                 | Declared per battery test: profile retest cadence for performed protocols; fixed clocks for body fat (60 days) and resting HR (30 days). An undeclared key falls back to profile cadence; the existing completeness check detects missing declarations.                                                           |
+| [Recent labs](../../lib/recent-labs.ts)                             | A 365-day presentation floor. An undatable reading is not fresh.                                                                                                                                                                                                                                                  |
+| [Latest vitals](../../lib/vitals-latest.ts)                         | Presentation floors of 14 days for resting HR and 180 for blood pressure, resolved separately for each quantity.                                                                                                                                                                                                  |
+| [Trend metrics](../../lib/trend-metric-freshness.ts)                | `TREND_METRIC_PRESENTATION_FLOORS` is total over `TrendMetricSlug`. Systolic, diastolic and resting-HR entries reuse the vital policies by reference.                                                                                                                                                             |
+| [BMI paired height](../../lib/growth-series.ts)                     | `PAIRED_HEIGHT_INTERVAL_DAYS`: 92 days for infants; 183 for early childhood, children and adolescents; no clock for adults, older adults or an unknown birthdate.                                                                                                                                                 |
 
-`BiomarkerRetestStatus` is an alias of `FreshnessState`, so biomarker readings
-and fitness tests can be tallied with the same counter.
+BMI uses freshness to validate an input. Each weigh-in pairs with the height in
+effect on or before that date, with life stage resolved at the weigh-in. A `due`
+height drops the BMI point; `not-applicable` permits the pairing. This is separate
+from a presentation floor, which changes the framing of an existing value.
 
-## Retest clocks and presentation floors are different questions
+## Presentation and aggregates
 
-The last two tenants ask something the first three do not. "Should this be
-re-tested?" and "may this surface present this reading as your CURRENT value?"
-are separate questions over the same substrate, and for a vital they resolve
-differently: `biomarkerRetestStatus` returns `not-applicable` for
-`category === "vitals"` on stated grounds — physiologic vitals are monitored, not
-redrawn on a yearly cadence, and nobody schedules a temperature retest — and that
-is right. A glance dashboard still may not render a four-year-old blood pressure
-as a headline number with a trend arrow.
+Keep provenance with old readings. Latest-vital models retain a reading past its
+presentation floor and suppress its trend direction unless freshness is
+`current`; dormancy is a separate later decision. Trends chart cards use an
+as-of date when the headline reading is old.
 
-So a **presentation floor** is glance-framing policy for one surface. It decides
-FRAMING, never visibility; it never creates a nudge, an Upcoming row, or a
-notification; and it is not per-profile or configurable, exactly as #1216's round
-365 is not. It resolves through `freshnessState` like every other tenant, so the
-repo holds one staleness decision rather than one per card.
+Fitness current-coverage copy uses `coverage.fresh`; `measuredCount` includes
+historical readings. The [Longevity optimal-biomarker pillar](../../lib/longevity-pillars.ts)
+consumes the biomarker adapter. Its tone becomes neutral when no reading is
+current **and at least one is due**. Unknown freshness alone does not trigger
+that stale-data treatment. Keep these distinctions when changing aggregate copy.
 
-`TREND_METRIC_PRESENTATION_FLOORS` (#2615) is the third, and it is where the
-per-quantity argument earns a registry: a fortnight-old body temperature is
-history and a fortnight-old adult height is simply your height, so one global
-number would have to be wrong for one of them. It is a `Record` over
-`TrendMetricSlug`, so a new metric is a **compile error** rather than a silent
-default — the `missingFreshnessPolicies` discipline expressed as a type. The three
-quantities that already had a floor (`systolic`, `diastolic`, `resting-hr`) take
-`VITAL_PRESENTATION_FLOORS` **by reference**, never a copied number, so two
-registries cannot come to disagree about how old a blood pressure may be.
+## Dormancy
 
-## What is deliberately NOT here
+[lib/domain-dormancy.ts](../../lib/domain-dormancy.ts) owns the declarations and
+maps the shared verdict to `absent`, `current` or `dormant`. A missing or
+unparseable last-record date maps to `absent`. A valid date becomes `dormant`
+strictly after the domain's interval; equality remains `current`.
 
-**Phrasing.** "Retest due", "wants a re-check" and "based on older results" are
-each their own surface's copy over the same three states. A shared verdict does
-not mean shared wording — the Longevity pillar's neutral "all based on older
-results" and the Fitness header's "2 want a re-check" say different things to
-different people about the same underlying state.
+| Domain         | Dormant after | Declared render window |
+| -------------- | ------------- | ---------------------- |
+| Sleep          | 90 days       | 1 day                  |
+| Weight         | 90 days       | 90 days                |
+| Blood pressure | 365 days      | 365 days               |
+| Resting HR     | 90 days       | 90 days                |
 
-## The honesty rule both consumers hang on it
+Blood pressure and resting HR are independent domains. Silence in one must not
+collapse the other. Their presentation floors apply before dormancy: resting HR
+can be old after 14 days but does not become dormant until after 90.
 
-`hasNoCurrentReading(tally)` — an aggregate with nothing current may not be
-presented as current.
+`collapseAfterDays` must be at least `renderWindowDays`, so collapse cannot hide
+values that the section would still render. `dormancyWindowConflicts()` checks
+those declarations; it does not prove that every caller honors its stated
+window. Recent labs are excluded because their latest values remain visible at
+any age. Hiding those values would need a separate design that keeps them
+reachable.
 
-- The optimal-biomarker pillar renders **neutral** with "based on older results"
-  instead of a green share (`lib/longevity-pillars.ts`, `optimalTone`).
-- The Fitness check's completion copy counts `coverage.fresh`, not
-  `coverage.measured`, and names the stale remainder separately.
-- The two glance cards keep the reading at full prominence and change what the
-  line under it says: an amber age statement plus a `title` explaining the tint,
-  and — on Latest vitals — no trend arrow, since an arrow is a claim about now.
-- A Trends body-census chart card keeps its headline number and adds an **as-of
-  stamp** naming the day it was read (#2615). The number is the latest reading
-  there is; what it may no longer imply is that it is today's.
+The [dashboard](<../../app/(app)/page.tsx>) emits a dormant Standing candidate in
+place of the domain's current presentation. Sleep and weight use
+`dormantRecordLine` with an age in days. Both vital rows prefer
+`dormantRecordSince` with the source month/year, falling back to a day count.
+These statements describe the record and elapsed time, without claiming why
+logging stopped or what happened to the person's health.
 
-Both keep the underlying values visible with their provenance. The fix is what
-the aggregate CLAIMS, never what it hides.
+Keep history and the relevant logging action reachable from the dormant
+presentation. Obligations such as doses, refills and care follow-ups bypass
+dormancy and retain their normal placement.
 
-## Dormancy is a third question (#2652)
+## Extending a domain
 
-`lib/domain-dormancy.ts` asks something neither of the above asks: **has this
-domain stopped arriving?** It is a claim about the PIPELINE, not about a reading,
-and it is the only one of the three with a consequence in HEIGHT.
-
-|                    | asks                           | consequence                             |
-| ------------------ | ------------------------------ | --------------------------------------- |
-| Retest clock       | should this be re-tested?      | a finding, a nudge                      |
-| Presentation floor | may this read as my value NOW? | an as-of stamp; the value stays put     |
-| **Dormancy**       | has anything arrived at all?   | the section spends one line, not a card |
-
-Three states, and the third exists so the first two cannot be conflated:
-
-```ts
-type DormancyState = "absent" | "current" | "dormant";
-```
-
-- `absent` — nothing has EVER been recorded. The onboarding case, with its own
-  first-run copy. `not-applicable` from `freshnessState` maps here, never to
-  `dormant`: telling somebody with a year of weigh-ins that they have never
-  weighed themselves is the defect this exists to remove, and the dashboard's
-  weight card did exactly that, because its own render window is 90 days and an
-  empty window read as an empty domain.
-- `current` — something arrived inside the interval.
-- `dormant` — something did arrive, and then stopped.
-
-The DECISION is still `freshnessState`'s, so the boundary is the shared one
-(dormant strictly after the interval). What each domain supplies is its interval
-and the noun its line uses.
-
-**Intervals.** 90 days by owner ruling (2026-08-13), declared per domain with a
-completeness test.
-
-**Where dormancy STOPS, and this is the hard bound.** A presentation floor exists
-precisely so a stale value can stay on screen honestly — "still your latest reading,
-but not a current one" — and the doctrine above says the fix is what an aggregate
-CLAIMS, never what it hides. So a section that is showing a real value under a floor
-may never be collapsed. Dormancy is available only where there is nothing to hide: a
-section whose populated render is **window-bounded**, and which therefore already shows
-nothing once its domain goes quiet. `DormancyDeclaration.renderWindowDays` names that
-window and `dormancyWindowConflicts()` is empty by construction, so a domain cannot be
-added whose interval elapses while its section could still be rendering points.
-
-The domains are **weight** (a 90-day chart), **sleep** (last night), and the two vital
-quantities — **blood-pressure** and **resting-hr** — at a year each (#3226). The vitals
-rows joined by SATISFYING the bound rather than by being excused from it: past
-`VITAL_DORMANCY_DAYS` the row renders no value, so its window and its interval are the
-same number and the collapse hides nothing. The year sits far outside each quantity's own
-presentation floor (180 days, 14 days), so the amber as-of treatment still owns the entire
-span where a reading is merely old; dormancy begins only past the point where the number
-has stopped describing the body. The two quantities are separate domains so one going
-quiet cannot collapse the other.
-
-`recent-labs` remains an exemption: its readout renders the latest row of every biomarker
-at any age, so it is not window-bounded and a collapse would hide values. Collapsing it
-would need a FOLD that keeps its rows reachable in place (the #2685 URL-state pattern),
-not a line.
-
-**Which sentence a dormant line uses.** The record and how long, always — but the unit
-follows the interval. A 90-day domain says days ("No weigh-in recorded in 150 days"); a
-year-scale one says the source month ("No blood pressure recorded since Mar 2022"),
-because "in 1,642 days" is a duration no reader can hold. Same claim, same ledger noun,
-legible unit.
-
-**What a dormant line may say.** The RECORD, and how long — "No weigh-in recorded
-in 150 days". Never the body, and never a guess at why: a domain is quiet either
-because nothing was logged or because nothing happened, and only the first is
-knowable from here.
-
-**What dormancy may never do.** Change reach. The collapsed line carries the fix and
-everything it replaced is one tap away. Nothing is removed by adaptation. Anything
-carrying an obligation never collapses as dormant: doses, refills, and care follow-ups
-enter the dashboard as atomic candidates whose placement is not data-aware.
-
-**Tenants.** The dashboard's atomic candidate builders (`lib/dashboard-candidates/`).
-When a domain supports dormancy, the page resolves `dormancyState` from its last
-record and emits either current reading candidates or one dormant Standing candidate.
-Obligations bypass dormancy and keep their normal placement.
-
-## Adding a tenant
-
-1. Resolve the interval that applies to your reading, and declare it — a
-   registry keyed by identity beats a magic number at the call site, and a
-   completeness test over that registry beats a documented default nobody
-   re-reads (`missingFreshnessPolicies` is the fitness example).
-2. Decide your domain's exemptions and pass them as `exempt`. Never encode
-   another domain's exemptions here.
-3. Call `freshnessState`, tally with `tallyFreshness`, and phrase the result in
-   your own surface's words.
-4. If your aggregate can render "current"-shaped copy, gate it on
-   `hasNoCurrentReading`.
+- Find its existing adapter and declare the interval there. Reuse existing
+  policy types and tables; do not introduce a new registry or scanner merely
+  to add a caller.
+- Resolve profile-local dates and domain exemptions before calling the shared
+  decision. Keep retest policy, presentation framing and dormancy separate.
+- Reuse the tally for aggregates, preserving unknown and exempt readings as
+  distinct from overdue ones.
+- Verify the boundary, exemptions and visible consequence with existing
+  coverage first. Follow the [change and test policy](../change-policy.md)
+  before adding tests.

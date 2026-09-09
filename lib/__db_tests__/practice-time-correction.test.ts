@@ -88,7 +88,6 @@ beforeAll(() => stubTelegramSends());
 const answer = vi.mocked(answerCallbackQuery);
 const editText = vi.mocked(editMessageTextRaw);
 const FILE_NOW_ISO = "2026-08-05T12:00:00Z"; // 14:00 in Berlin
-let priorFileNow: string | undefined;
 
 function makeProfile(name: string, tz = "Europe/Berlin"): number {
   const id = Number(
@@ -150,14 +149,8 @@ function lastLogId(profileId: number): number {
 }
 
 beforeEach(() => {
-  priorFileNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = FILE_NOW_ISO;
+  vi.setSystemTime(new Date(FILE_NOW_ISO));
   answer.mockClear();
-});
-
-afterEach(() => {
-  if (priorFileNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorFileNow;
 });
 
 describe("a practice tap can be re-timed", () => {
@@ -574,11 +567,9 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
   // far enough into the week that a 3×/week floor with nothing logged is behind
   // (#4758: three to do, two days left). A Wed/Sat habit is still HELD here.
   const NOW_ISO = "2026-06-19T06:00:00Z";
-  let priorNow: string | undefined;
 
   beforeEach(() => {
-    priorNow = process.env.ALLOS_TEST_NOW;
-    process.env.ALLOS_TEST_NOW = NOW_ISO;
+    vi.setSystemTime(new Date(NOW_ISO));
     setTelegramBotConfig({
       telegramBotToken: "bot for tests 12",
       telegramMode: "poll",
@@ -587,13 +578,11 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
   });
 
   afterEach(() => {
-    if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = priorNow;
     setPublicUrl("");
   });
 
   function setNow(iso: string): void {
-    process.env.ALLOS_TEST_NOW = iso;
+    vi.setSystemTime(new Date(iso));
   }
 
   // History for the rhythm inference, stamped as if it were WRITTEN back then. A bare

@@ -1,6 +1,6 @@
 import TabFirstPage from "@/components/TabFirstPage";
 import { NUTRITION_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
-import { NUTRITION_TABS, type NutritionTab } from "@/lib/hrefs";
+import { parseNutritionTab } from "@/lib/hrefs";
 import { isRealIsoDate } from "@/lib/date";
 import FoodTab from "./FoodTab";
 import ManageTab from "./ManageTab";
@@ -17,18 +17,11 @@ export const dynamic = "force-dynamic";
 // (vitamin D drops) are real, so the Supplements tab is always reachable and the nav
 // entry stays visible when the profile tracks any intake item.
 
-function parseTab(value: string | string[] | undefined): NutritionTab {
-  const first = Array.isArray(value) ? value[0] : value;
-  return NUTRITION_TABS.includes(first as NutritionTab)
-    ? (first as NutritionTab)
-    : "food";
-}
-
 export default async function NutritionPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const searchParams = await props.searchParams;
-  const tab = parseTab(searchParams.tab);
+  const tab = parseNutritionTab(searchParams.tab);
 
   // `?supply=` (#1705) is the cabinet's "Add for another person" deep link. Parsed here
   // with the tab, resolved (and access-checked) inside the tab that uses it.
@@ -41,6 +34,9 @@ export default async function NutritionPage(props: {
     tab === "supplements" ? (
       <ManageTab
         supplyId={Number(rawSupply ?? 0)}
+        itemId={Number(one(searchParams.item) ?? 0)}
+        supplyFact={one(searchParams.fact) === "supply"}
+        initialRefill={one(searchParams.refill) === "1"}
         backfillDate={isRealIsoDate(rawBackfill) ? rawBackfill : undefined}
       />
     ) : (

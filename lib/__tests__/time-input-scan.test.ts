@@ -596,6 +596,7 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
       "components/medications/ScheduledDoseAction.tsx",
       "components/practices/LogPracticeButton.tsx",
       "components/stool/StoolTypeControl.tsx",
+      "components/substances/SubstanceUnitControl.tsx",
     ]);
   });
 

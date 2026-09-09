@@ -11,7 +11,7 @@
 // outcome that is never a blanket success, and dedup that is per profile.
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { POST } from "@/app/api/documents/route";
 import { GET } from "@/app/api/documents/profiles/route";
 import { revokeApiToken } from "@/lib/api-tokens";
@@ -115,7 +115,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  db.exec("DELETE FROM medical_documents");
+  rawDb.exec("DELETE FROM medical_documents");
 });
 
 describe("POST /api/documents — authentication", () => {
@@ -215,11 +215,11 @@ describe("POST /api/documents — scope", () => {
       "wrong-scope",
       "upload:documents"
     );
-    db.pragma("ignore_check_constraints = ON");
+    rawDb.pragma("ignore_check_constraints = ON");
     db.prepare(
       "UPDATE api_tokens SET scope = 'read:documents' WHERE id = ?"
     ).run(minted.id);
-    db.pragma("ignore_check_constraints = OFF");
+    rawDb.pragma("ignore_check_constraints = OFF");
 
     const res = await POST(
       uploadRequest(minted.token, writeProfile, [

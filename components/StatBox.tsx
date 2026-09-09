@@ -3,18 +3,9 @@ import { goalBarClass } from "@/lib/outcome-goals";
 import { PendingTextLink } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
-// A labelled stat box: an uppercase label over a bold value, with optional
-// sub-text, link, label badge, and a goal-style progress bar.
-//
-// THE BLESSED STAT TILE (#3475). "Uppercase label over a bold value" had grown
-// three treatments — this box's borderless literal tint, a page-local BORDERED
-// `rounded-lg border bg-surface` tile on /medical/cycles, and the longevity
-// pillar boxes. This component is the tier the others fold into, and the box it
-// draws is the `stat-tile` utility in app/globals.css: tokened fill (`--ghost`,
-// so dark mode comes for free instead of being maintained by hand as
-// `bg-slate-50 dark:bg-ink-900`) and the SURFACE radius, because a tile holds
-// content and is not a control. A new stat grid renders this rather than
-// re-deciding either.
+// A labelled reading with optional detail, link, badge, and progress.
+// Cards use stat-tile's themed fill and surface radius. Both card and plain
+// groups give values tabular figures so changing digits keep their width.
 export function StatBox({
   label,
   value,
@@ -29,9 +20,7 @@ export function StatBox({
   label: string;
   value: string;
   sub?: ReactNode;
-  // When set, the value links to it (e.g. the training log entry of the last session).
-  // An INTERNAL app route, so it is `AppRoute` (issue #285): a consolidated-away
-  // training log route becomes a build error here rather than a shipped dead link.
+  // Optional app destination for the value.
   href?: AppRoute;
   // Optional chip shown next to the label (e.g. a "PR" marker).
   badge?: ReactNode;
@@ -54,16 +43,9 @@ export function StatBox({
         {label}
         {badge}
       </dt>
-      <dd className="mt-0.5 flex items-center font-semibold text-slate-800 dark:text-slate-100">
+      <dd className="mt-0.5 flex items-center font-semibold tabular-nums text-slate-800 dark:text-slate-100">
         {href ? (
-          // A raw <a> to an INTERNAL route was a full document load out of the
-          // app shell (#2983) — the same defect as the training overview's
-          // "next workout" CTA, and this tile is a door into a session's
-          // canonical activity page. The
-          // value is the tile's only text, so it is also the pending slot. The
-          // announcement names the TILE, lower-cased to match the shipped
-          // convention ("Opening 5s best"): the box cannot name what is at the
-          // other end, and the number alone would announce nothing.
+          // Announce the label while opening; a number alone has no context.
           <PendingTextLink
             href={href}
             label={label.toLowerCase()}

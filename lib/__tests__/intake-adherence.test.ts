@@ -314,7 +314,8 @@ describe("intakeAdherenceStrip", () => {
 
   // Doses with no stored created_at: no known lifetime bound, so the whole window
   // is in scope. The lifetime clamp gets its own describe block below.
-  const doses = (...ids: number[]) => ids.map((id) => ({ id }));
+  const doses = (...ids: number[]) =>
+    ids.map((id) => ({ id, time_of_day: "Morning" }));
   const TZ = "UTC";
 
   it("exposes STRIP_DAYS = 14", () => {
@@ -343,6 +344,22 @@ describe("intakeAdherenceStrip", () => {
       { date: "d1", state: "partial" },
       { date: "d2", state: "missed" },
     ]);
+  });
+
+  it("excludes an untimed sibling from the denominator", () => {
+    const strip = intakeAdherenceStrip(
+      supp(),
+      [
+        { id: 1, time_of_day: "Morning" },
+        { id: 2, time_of_day: null },
+      ],
+      ["d0"],
+      new Set(),
+      () => new Set(),
+      indexTakenByDose([{ dose_id: 1, date: "d0", status: "taken" }]),
+      TZ
+    );
+    expect(strip).toEqual([{ date: "d0", state: "taken" }]);
   });
 
   it("marks a date na when the supplement is not due (rest-day on a workout day)", () => {
@@ -478,7 +495,7 @@ describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
   ) =>
     intakeAdherenceStrip(
       supp,
-      doses,
+      doses.map((dose) => ({ ...dose, time_of_day: "Morning" })),
       DATES,
       new Set(),
       () => new Set(),

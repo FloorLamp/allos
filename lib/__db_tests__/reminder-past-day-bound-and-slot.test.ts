@@ -21,7 +21,7 @@
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone, switchProfileTimezone } from "@/lib/settings";
@@ -46,10 +46,7 @@ const CREATION_DAY_IN_NY = "2026-04-25";
 let seq = 0;
 
 beforeEach(() => {
-  process.env.ALLOS_TEST_NOW = NOW;
-});
-afterEach(() => {
-  delete process.env.ALLOS_TEST_NOW;
+  vi.setSystemTime(new Date(NOW));
 });
 
 function newProfile(tz: string): number {
@@ -251,12 +248,12 @@ describe("#3990 — a re-timed dose keeps its closed-day send slot", () => {
   });
 
   it("also judges travel excusal against that historical slot", () => {
-    process.env.ALLOS_TEST_NOW = "2026-04-25T14:00:00Z";
+    vi.setSystemTime(new Date("2026-04-25T14:00:00Z"));
     const profileId = newProfile(NY);
     const switchDay = today(profileId);
     seedRetimedDose(profileId, "2026-04-26");
     switchProfileTimezone(profileId, TOKYO, NY);
-    process.env.ALLOS_TEST_NOW = "2026-04-26T11:00:00Z";
+    vi.setSystemTime(new Date("2026-04-26T11:00:00Z"));
 
     // The eastward switch skipped the old Evening slot. The current Morning slot
     // must neither re-file the dose nor erase that historical excusal.

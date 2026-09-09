@@ -36,7 +36,11 @@ import {
   type LogSegmentId,
   type SegmentLogDays,
 } from "@/lib/log-sheet";
-import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
+import {
+  type QuickEntryForm,
+  type QuickLogIcon,
+  type QuickLogItem,
+} from "@/lib/quick-log";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import type { WebLoggedVia } from "@/lib/logged-via";
 import { microMotionPlan } from "@/lib/micro-motion";
@@ -137,6 +141,7 @@ const SHEET_ROW_CLASS =
 export default function QuickLogMenu({
   open,
   onRun,
+  onOpenOverlay,
   cycleRelevant = true,
   substanceRelevant = false,
   logHabitDays = null,
@@ -149,6 +154,9 @@ export default function QuickLogMenu({
   // alone, not stack over a sheet that has finished its job); the desktop panel
   // passes nothing and stays open across logs.
   onRun?: () => void;
+  // The phone sheet keeps overlay forms inside its current visit. Other hosts
+  // omit this and retain the existing close-then-open behavior.
+  onOpenOverlay?: (form: QuickEntryForm, trigger: HTMLButtonElement) => void;
   // The #1042 `cycle` relevance bit, resolved once by the app layout — the SAME bit
   // gating the Cycle nav entry and dashboard control atom (#1892).
   cycleRelevant?: boolean;
@@ -204,7 +212,11 @@ export default function QuickLogMenu({
   const reduceMotion = usePrefersReducedMotion();
   const arrivePlan = microMotionPlan("arrive", reduceMotion);
 
-  function run(item: QuickLogItem) {
+  function run(item: QuickLogItem, trigger: HTMLButtonElement) {
+    if (item.target.kind === "overlay" && onOpenOverlay) {
+      onOpenOverlay(item.target.form, trigger);
+      return;
+    }
     // Tell the host first. In the sheet that is a close, and the close and the
     // open land in one tick while the sheet's exit animation keeps it mounted,
     // so the two surfaces' body-scroll locks OVERLAP and release in FIFO order
@@ -275,9 +287,12 @@ export default function QuickLogMenu({
                     // Names come from the SAME due items the count used to summarize;
                     // the row still opens the list and confirms nothing itself.
                     label={dueDoseChipLabel(context.dueDoses)!}
-                    onClick={() => {
-                      onRun?.();
-                      openQuickEntry("dose");
+                    onClick={(trigger) => {
+                      if (onOpenOverlay) onOpenOverlay("dose", trigger);
+                      else {
+                        onRun?.();
+                        openQuickEntry("dose");
+                      }
                     }}
                   />
                 )}
@@ -340,7 +355,7 @@ export default function QuickLogMenu({
                 label={
                   item.target.kind === "live" ? workoutOffer.label : item.label
                 }
-                onClick={() => run(item)}
+                onClick={(trigger) => run(item, trigger)}
               />
             </li>
           ))}
@@ -371,7 +386,7 @@ function SheetRow({
   testId: string;
   icon: QuickLogIcon;
   label: string;
-  onClick: () => void;
+  onClick: (trigger: HTMLButtonElement) => void;
   workoutOffer?: string;
 }) {
   const Icon = ICONS[icon];
@@ -380,7 +395,7 @@ function SheetRow({
       type="button"
       data-testid={testId}
       data-workout-offer={workoutOffer}
-      onClick={onClick}
+      onClick={(event) => onClick(event.currentTarget)}
       className={SHEET_ROW_CLASS}
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">

@@ -1,3 +1,4 @@
+import { reconcileRefillReceipt } from "./refill";
 // Tick-time message reconciliation — the DB half (issue #1779).
 //
 // One sweep per profile per tick. It walks the live message pointers, asks each
@@ -26,8 +27,8 @@
 //
 // Each predicate reads the SAME computation that composed the send: `collectWindowDoses`
 // for a dose session, `behindPractices` for a practice shortfall, `getWorkoutPresence`
-// for a live draft. The one family that re-RENDERS (food, whose button labels carry the
-// counts) calls the same `buildFoodNudge` the send called, then edits only if the render
+// for a live draft. Food calls the same `buildFoodNudge` the send called and compares
+// both the keyboard and tally, then edits only if the render
 // actually differs — so an unchanged tick still performs zero Telegram calls.
 //
 // ── OVERLAPPING TICKS ────────────────────────────────────────────────────────
@@ -89,9 +90,9 @@ import { type IntakeSendSlot } from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { getRecentFoodTaps } from "../queries/nutrition";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
-import { composeForSend } from "./compose";
+import { composeForRebuild } from "./compose";
 import { now as clockNow } from "../clock";
-import { correctionBursts, correctionTokenAnchor } from "../correction-time";
+import { correctionTokenAnchor } from "../correction-time";
 import {
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
@@ -99,12 +100,9 @@ import {
   openPickerAnchor,
   type CorrectionPrefixes,
 } from "./correction-rows";
-import {
-  getPracticeCorrectionBursts,
-  openPracticeSessionIds,
-} from "../queries";
+import { getRecentPracticeTaps, openPracticeSessionIds } from "../queries";
 import { parseStillGoingCallback } from "./callback-data";
-import { getDoseCorrectionBursts } from "../queries/intake/adherence";
+import { getRecentDoseTaps } from "../queries/intake/adherence";
 import {
   countVisibleFoodButtons,
   FOOD_NUDGE_WINDOWS,
@@ -145,7 +143,7 @@ import {
   claimMessagePointerBody,
   claimMessagePointerClose,
   claimMessagePointerKeyboard,
-  correctionMessageBinding,
+  messageCorrectionBursts,
   releaseMessagePointerBody,
   dropMessagePointer,
   liveMessagePointers,
@@ -162,6 +160,7 @@ import {
 } from "./usual-routine-attach";
 import { pruneNotifyOffers } from "./offer-store";
 import { messageKeyboard } from "./telegram-render";
+import { deliveredKeyboard } from "./delivered-keyboard";
 import {
   closeMessage,
   rebuildMessage,
@@ -424,13 +423,16 @@ const intakeDose: FamilyReconciler = {
       tokens,
       DOSE_TIME_PREFIXES,
       new Set(
-        getDoseCorrectionBursts(
+        messageCorrectionBursts(
           profileId,
+          "dose",
+          getRecentDoseTaps(profileId, clockNow(), true),
           clockNow(),
-          correctionMessageBinding(profileId, "dose", {
+          {
             chatId: p.chatId,
             messageId: p.messageId,
-          })
+          },
+          slotSessionForKeyboard
         ).map((b) => b.fromId)
       )
     );
@@ -506,12 +508,14 @@ const intakeDose: FamilyReconciler = {
     const doseIds: number[] = [];
     const slots: IntakeSendSlot[] = [];
     let date: string | null = null;
-    for (const t of tokens) {
+    for (const t of [...tokens, ...keyboardTokens(p.receiptKeyboard)]) {
       const f = fields(t);
       if (f[0] === "take" || f[0] === "skip") {
+        if (Number(f[1]) !== profileId || f[4] !== p.date) continue;
         if (Number(f[2])) doseIds.push(Number(f[2]));
         date ??= f[4] ?? null;
       } else if (f[0] === "all") {
+        if (Number(f[1]) !== profileId || f[3] !== p.date) continue;
         slots.push(f[2] as IntakeSendSlot);
         date ??= f[3] ?? null;
       }
@@ -710,10 +714,9 @@ const householdRound: FamilyReconciler = {
 };
 
 // ── food (class 2: additive) ─────────────────────────────────────────────────
-// The buttons never lie — another serving is always loggable — but their labels carry
-// the day's counts ("Leafy greens (2)") and the body carries the tally. So this family
-// kills nothing and instead RE-RENDERS from the same builder; the sweep edits only when
-// the render actually differs from what was delivered.
+// Another serving is always loggable, while the body carries the changing tally.
+// This family rebuilds from the same builder and compares both body and keyboard,
+// so a changed total is refreshed even when the offered buttons stay identical.
 //
 // EXPANSION IS THE USER'S (#1807). The re-render must derive its visible count from the
 // LIVE keyboard, exactly as the tap handlers do — the pointer's stored blob is the only
@@ -733,13 +736,16 @@ const food: FamilyReconciler = {
       tokens,
       FOOD_TIME_PREFIXES,
       new Set(
-        correctionBursts(
+        messageCorrectionBursts(
+          profileId,
+          "food",
           getRecentFoodTaps(profileId, clockNow()),
           clockNow(),
-          correctionMessageBinding(profileId, "food", {
+          {
             chatId: p.chatId,
             messageId: p.messageId,
-          })
+          },
+          slotSessionForKeyboard
         ).map((b) => b.fromId)
       )
     );
@@ -780,10 +786,13 @@ const food: FamilyReconciler = {
       const anchor = openPickerAnchor(tokens, FOOD_TIME_PREFIXES);
       const picker =
         anchor != null
-          ? correctionBursts(
+          ? messageCorrectionBursts(
+              profileId,
+              "food",
               getRecentFoodTaps(profileId, now),
               now,
-              correctionMessageBinding(profileId, "food", ref)
+              ref,
+              slotSessionForKeyboard
             ).find((b) => b.fromId === anchor)
           : undefined;
       // Preserves whichever keyboard minted this message (#3087): the tick's own
@@ -1137,13 +1146,16 @@ const practice: FamilyReconciler = {
       tokens,
       PRACTICE_TIME_PREFIXES,
       new Set(
-        getPracticeCorrectionBursts(
+        messageCorrectionBursts(
           profileId,
+          "practice",
+          getRecentPracticeTaps(profileId, clockNow(), true),
           clockNow(),
-          correctionMessageBinding(profileId, "practice", {
+          {
             chatId: p.chatId,
             messageId: p.messageId,
-          })
+          },
+          slotSessionForKeyboard
         ).map((b) => b.fromId)
       )
     );
@@ -1435,6 +1447,14 @@ async function reconcilePointer(
   td: string,
   result: ReconcileResult
 ): Promise<void> {
+  if (pointer.kind === "refill") {
+    const receipt = await reconcileRefillReceipt(profileId, pointer);
+    if (receipt !== "unhandled") {
+      if (receipt === "edited") result.edited++;
+      else result.skipped++;
+      return;
+    }
+  }
   // ── The prose-claim class (#1913 item 4) ──────────────────────────────
   //
   // Handled first and completely: a report's claims are its sentences, and the token
@@ -1501,6 +1521,10 @@ async function reconcilePointer(
   // end state converges, but the rate-limit budget this sweep's zero-call steady
   // state exists to protect is spent twice. The compare-and-swap on the pointer's
   // stored blob lets exactly one pass through; the loser skips without a call.
+  const bodyChange =
+    plan.kind === "rebuild" && plan.bodyHash
+      ? { previous: pointer.bodyHash, next: plan.bodyHash }
+      : undefined;
   const claimed =
     plan.kind === "close"
       ? claimMessagePointerClose(profileId, pointer.id, pointer.version)
@@ -1508,7 +1532,8 @@ async function reconcilePointer(
           profileId,
           pointer.id,
           pointer.version,
-          plan.keyboard
+          plan.keyboard,
+          bodyChange
         );
   if (!claimed) {
     result.skipped++;
@@ -1567,7 +1592,8 @@ async function reconcilePointer(
               profileId,
               pointer.id,
               plan.keyboard,
-              pointer.version
+              pointer.version,
+              bodyChange
             );
       log.info("message reconcile deferred (transient, pointer kept)", {
         profile: profileId,
@@ -1649,7 +1675,7 @@ async function reconcileProse(
   // the "[Name] " label alone and every multi-profile digest would draw one edit that
   // changed nothing. The RAW message still goes to `rebuildMessage`, which composes it
   // there, exactly once.
-  const hash = messageBodyHash(composeForSend(profileId, rebuilt));
+  const hash = messageBodyHash(composeForRebuild(profileId, rebuilt, pointer));
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
   // an hourly sweep over the most-read message in the app off the rate limiter.
   if (pointer.bodyHash === hash) return;
@@ -1726,7 +1752,12 @@ function withStandingUsual(
 type EditPlan =
   | { kind: "close"; text: string }
   | { kind: "keyboard"; keyboard: InlineKeyboard }
-  | { kind: "rebuild"; message: NotificationMessage; keyboard: InlineKeyboard };
+  | {
+      kind: "rebuild";
+      message: NotificationMessage;
+      keyboard: InlineKeyboard;
+      bodyHash?: string;
+    };
 
 function planEdit(
   profileId: number,
@@ -1736,6 +1767,45 @@ function planEdit(
   decision: ReconcileDecision
 ): EditPlan | null {
   if (decision.action === "close") {
+    // A usual tap on the food host can resolve every All/take button here before
+    // this dose host has ever rendered its bundle correction. Give the native
+    // rebuild that one transition, but retain ordinary resolved/expired closure
+    // unless a proven current bundle actually receives a correction control.
+    if (decision.reason === "resolved" && reconciler === intakeDose) {
+      const bundleAnchors = new Set(
+        messageCorrectionBursts(
+          profileId,
+          "dose",
+          [],
+          clockNow(),
+          { chatId: pointer.chatId, messageId: pointer.messageId },
+          slotSessionForKeyboard
+        )
+          .filter((burst) => burst.bundle != null)
+          .map((burst) => burst.fromId)
+      );
+      if (bundleAnchors.size > 0) {
+        const rebuilt = withStandingUsual(
+          profileId,
+          pointer,
+          intakeDose.rebuild?.(profileId, tokens, pointer) ?? null
+        );
+        if (rebuilt) {
+          const keyboard = deliveredKeyboard(
+            composeForRebuild(profileId, rebuilt, pointer)
+          );
+          const hasBundleControl = keyboardTokens(keyboard).some((token) => {
+            const anchor = correctionTokenAnchor(token, [
+              DOSE_TIME_PREFIXES.chip,
+              DOSE_TIME_PREFIXES.at,
+            ]);
+            return anchor != null && bundleAnchors.has(anchor);
+          });
+          if (hasBundleControl)
+            return { kind: "rebuild", message: rebuilt, keyboard };
+        }
+      }
+    }
     // The close NAMES ITS SUBJECT (#1822 item 7): the pointer recorded the delivered
     // title line at send time, attribution prefix included, so replacing the whole text
     // no longer leaves an orphan bubble in a shared chat. A pointer without one (recorded
@@ -1765,9 +1835,8 @@ function planEdit(
     return { kind: "keyboard", keyboard: decision.keyboard };
   }
   if (decision.action === "none") {
-    // The additive class still re-renders: its buttons never die, but their labels
-    // carry counts that do. Gated on the render actually DIFFERING from what was
-    // delivered, so a quiet tick stays at zero calls.
+    // The food tally changes independently of its buttons. Older food pointers have
+    // no body hash: refresh once to establish it, then quiet ticks make no calls.
     if (!reconciler?.rebuild) return null;
     const rebuilt = withStandingUsual(
       profileId,
@@ -1776,9 +1845,16 @@ function planEdit(
     );
     if (!rebuilt) return null;
     const keyboard = messageKeyboard(rebuilt);
-    if (JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard))
+    const bodyHash =
+      pointer.kind === "food"
+        ? messageBodyHash(composeForRebuild(profileId, rebuilt, pointer))
+        : undefined;
+    if (
+      JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard) &&
+      (bodyHash === undefined || bodyHash === pointer.bodyHash)
+    )
       return null;
-    return { kind: "rebuild", message: rebuilt, keyboard };
+    return { kind: "rebuild", message: rebuilt, keyboard, bodyHash };
   }
   // Partial resolution. A family with a rebuilder re-renders the whole message from
   // current state (the same computation the tap rebuild runs); everything else has
@@ -1793,6 +1869,10 @@ function planEdit(
       kind: "rebuild",
       message: rebuilt,
       keyboard: messageKeyboard(rebuilt),
+      bodyHash:
+        pointer.kind === "food"
+          ? messageBodyHash(composeForRebuild(profileId, rebuilt, pointer))
+          : undefined,
     };
   }
   return { kind: "keyboard", keyboard: decision.keyboard };

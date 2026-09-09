@@ -29,6 +29,7 @@ import {
   useState,
 } from "react";
 import { useIntradayInteraction } from "@/components/IntradayInteraction";
+import { snapToBucket } from "@/lib/intraday-window";
 import ActivityIcon from "@/components/ActivityIcon";
 import { chartDash } from "@/components/chart-scaffold";
 import { useResettableState } from "@/components/useResettableState";
@@ -244,8 +245,13 @@ function IntradayDrawing({
 }) {
   // Shared with the day page's add row when a provider is above (#4950); private
   // otherwise, so a chart mounted on its own still zooms and scrubs.
-  const { view, setView, cursor, setCursor } = useIntradayInteraction();
-  const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
+  const { view, setView, cursor, setCursor, pin, setPin } =
+    useIntradayInteraction();
+  const [drag, setDrag] = useState<{
+    from: number;
+    to: number;
+    pinEligible: boolean;
+  } | null>(null);
   const fineRequestKey = useMemo(
     () =>
       view && model.hr && wantsFineDetail(view)
@@ -370,6 +376,24 @@ function IntradayDrawing({
     const userX = ((clientX - rect.left) / rect.width) * geo.viewBoxWidth;
     return minuteAtX(geo, userX);
   };
+  const isPinPointer = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (
+      !event.isPrimary ||
+      event.button !== 0 ||
+      (event.target instanceof Element && event.target.closest("a"))
+    )
+      return false;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const x = ((event.clientX - rect.left) / rect.width) * geo.viewBoxWidth;
+    const y = ((event.clientY - rect.top) / rect.height) * geo.height;
+    return (
+      x >= geo.plotLeft &&
+      x <= geo.plotRight &&
+      y >= geo.padTop &&
+      y <= geo.axisY
+    );
+  };
 
   const applyZoom = useCallback(
     (from: number, to: number) => {
@@ -378,18 +402,20 @@ function IntradayDrawing({
       if (hi - lo < MIN_ZOOM_MINUTES) return;
       setView({ from: Math.floor(lo), to: Math.ceil(hi) });
       setCursor(null);
-      // The two setters are `useState`'s and referentially stable for this component's
+      setPin(null);
+      // The setters are `useState`'s and referentially stable for this component's
       // life, whether they arrive through the provider or from the local fallback — so
       // listing them satisfies the rule without ever re-creating these callbacks, and the
       // effect below that depends on `applyZoom` keeps its identity.
     },
-    [setView, setCursor]
+    [setView, setCursor, setPin]
   );
 
   const resetZoom = useCallback(() => {
     setView(null);
     setCursor(null);
-  }, [setView, setCursor]);
+    setPin(null);
+  }, [setView, setCursor, setPin]);
 
   // ── Wheel and trackpad (#4852) ───────────────────────────────────────────
   // Registered by hand, NOT as an `onWheel` prop: React attaches wheel at the root
@@ -471,7 +497,7 @@ function IntradayDrawing({
       setPinching(pinch.current != null);
       return;
     }
-    setDrag({ from: minute, to: minute });
+    setDrag({ from: minute, to: minute, pinEligible: isPinPointer(event) });
     setCursor(minute);
   };
 
@@ -506,16 +532,22 @@ function IntradayDrawing({
   const onPointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
     const wasPinching = pinch.current != null;
     releasePointer(event.pointerId);
-    setDrag((current) => {
-      if (
-        !wasPinching &&
-        current &&
-        Math.abs(current.to - current.from) >= MIN_ZOOM_MINUTES
-      ) {
-        applyZoom(current.from, current.to);
-      }
-      return null;
-    });
+    setDrag(null);
+    if (wasPinching || !drag) return;
+    const minute = minuteAtClientX(event.clientX);
+    if (minute == null) return;
+    if (Math.abs(minute - drag.from) >= MIN_ZOOM_MINUTES) {
+      applyZoom(drag.from, minute);
+    } else if (!zoomed && drag.pinEligible && isPinPointer(event)) {
+      const chosen = snapToBucket(minute);
+      setPin((current) => (current === chosen ? null : chosen));
+    }
+  };
+
+  const abortPointer = (event: React.PointerEvent<SVGSVGElement>) => {
+    releasePointer(event.pointerId);
+    setCursor(null);
+    setDrag(null);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<SVGSVGElement>) => {
@@ -532,9 +564,21 @@ function IntradayDrawing({
     } else if (event.key === "End") {
       event.preventDefault();
       setCursor(geo.view.to);
-    } else if (event.key === "Escape" && zoomed) {
+    } else if (
+      event.key === "Enter" &&
+      event.target === event.currentTarget &&
+      !zoomed &&
+      cursor != null
+    ) {
+      event.preventDefault();
+      setPin(snapToBucket(cursor));
+    } else if (
+      event.key === "Escape" &&
+      (zoomed || pin != null || cursor != null)
+    ) {
       event.preventDefault();
       resetZoom();
+      setDrag(null);
     }
   };
 
@@ -542,18 +586,19 @@ function IntradayDrawing({
   // Tolerance follows the DRAWN resolution: the reading has to belong to the
   // pointer's minute, so a scrub over a wear gap reports no reading rather than
   // the value from the other side of it.
+  const readoutMinute = cursor ?? pin;
   const reading =
-    cursor == null
+    readoutMinute == null
       ? null
-      : nearestHrPoint(segments, cursor, fine ? FINE_GAP_MINUTES : 5);
+      : nearestHrPoint(segments, readoutMinute, fine ? FINE_GAP_MINUTES : 5);
   const zone = reading
     ? zone2Position(reading.bpm, model.hr?.zone2 ?? null)
     : null;
   const readout =
-    cursor == null
+    readoutMinute == null
       ? ""
       : [
-          clock(cursor),
+          clock(readoutMinute),
           reading ? `${Math.round(reading.bpm)} bpm` : "no reading",
           zone,
         ]
@@ -575,7 +620,8 @@ function IntradayDrawing({
         to: selectedWindow.to ?? selectedWindow.from,
       }
     : null;
-  const dragSpan = liveDrag ?? statedSpan;
+  const dragSpan =
+    liveDrag ?? (pin == null ? statedSpan : { from: pin, to: pin });
 
   return (
     <div
@@ -607,12 +653,8 @@ function IntradayDrawing({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onPointerLeave={(event) => {
-          releasePointer(event.pointerId);
-          setCursor(null);
-          setDrag(null);
-        }}
+        onPointerCancel={abortPointer}
+        onPointerLeave={abortPointer}
         onKeyDown={onKeyDown}
       >
         {expectedSleepBand && (

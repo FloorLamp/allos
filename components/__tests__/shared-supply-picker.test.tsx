@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SupplyOption } from "@/lib/supply-product";
@@ -45,7 +46,9 @@ const BOTTLES: SupplyOption[] = [
 ];
 
 const TRACKED_MEDICATION = {
+  intakeContext: intakeFormContext("2026-09-01"),
   medication: { id: 7, name: "Aspirin", quantity_on_hand: 90 },
+  dueDoseIds: [],
   courses: [],
   sideEffects: [],
   initialAction: "edit",
@@ -151,19 +154,12 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
   const action = vi.fn(async (_data: FormData) => ({ ok: true as const }));
   const common = {
     action,
-    allIntakeItems: [],
-    stackItems: [],
-    pgxVariants: [],
+    intakeContext: intakeFormContext("2026-09-01"),
   };
   const supplement = <AddSupplementModal {...common} />;
   const form =
     kind === "medication" ? (
-      <MedicationAddWorkspace
-        {...common}
-        subtitle=""
-        todayStr="2026-09-01"
-        conditions={[]}
-      />
+      <MedicationAddWorkspace {...common} subtitle="" />
     ) : (
       <CreateAction
         declaration={{ kind: "supplement", control: supplement }}
@@ -233,11 +229,12 @@ it("updates the supply fact after edit apply without changing item identity (#46
   fireEvent.click(screen.getByTestId("shared-supply-apply"));
   await screen.findByText("Linked to “Ibuprofen”.");
   expect(
-    screen
-      .getByLabelText("Quantity on hand")
-      .closest("[aria-hidden]")
-      ?.getAttribute("aria-hidden")
-  ).toBe("true");
+    (
+      screen.getByRole("spinbutton", {
+        name: "Shared bottle count",
+      }) as HTMLInputElement
+    ).value
+  ).toBe("");
   fireEvent.click(screen.getByTestId("intake-editor-done"));
 
   expect(screen.getByTestId("intake-fact-supply").textContent).toContain(

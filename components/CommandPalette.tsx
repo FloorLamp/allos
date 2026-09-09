@@ -269,8 +269,13 @@ export default function CommandPalette({
     if (!open) return;
     let cancelled = false;
     void loadQuickEntry("practice").then(
-      (data) => {
+      (result) => {
         if (cancelled) return;
+        if (result.kind === "refused") {
+          setPractices([]);
+          return;
+        }
+        const data = result.data;
         setPractices(
           data.form === "practice"
             ? data.practices.map((p) => ({
@@ -441,7 +446,13 @@ export default function CommandPalette({
           );
           if (!res.ok) return;
         } else if (action.kind === "refill") {
+          if (action.supplyId !== undefined)
+            fd.set("supply_id", String(action.supplyId ?? ""));
           const res = await refillMedication(fd);
+          if (!res.ok && res.kind === "needs-size" && action.href) {
+            go(action.href);
+            return;
+          }
           toast(res.ok ? "Refill recorded" : res.error, {
             tone: res.ok ? "success" : "error",
           });

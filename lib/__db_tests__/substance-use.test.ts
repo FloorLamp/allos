@@ -405,6 +405,62 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
     expect(left.n).toBe(0);
   });
 
+  it("an exact undo removes its older event after a later use without touching the later use", () => {
+    const p = newProfile("SU exact undo");
+    const td = today(p);
+    const a = logSubstanceUnitCore(
+      p,
+      "nicotine",
+      td,
+      "quick-log",
+      `${td}T09:00:00Z`
+    );
+    const b = logSubstanceUnitCore(
+      p,
+      "nicotine",
+      td,
+      "quick-log",
+      `${td}T10:00:00Z`
+    );
+    if (a.kind !== "logged" || b.kind !== "logged")
+      throw new Error("fixtures did not log");
+
+    expect(undoSubstanceUnitCore(p, "nicotine", td, a.eventId)).toEqual({
+      kind: "undone",
+      units: 1,
+      substance: "nicotine",
+    });
+    expect(
+      db
+        .prepare(
+          `SELECT id FROM substance_log_events
+            WHERE profile_id = ? AND substance = ? AND date = ? ORDER BY id`
+        )
+        .all(p, "nicotine", td)
+    ).toEqual([{ id: b.eventId }]);
+
+    const other = newProfile("SU exact undo other");
+    for (const eventId of [a.eventId, 9_999_999]) {
+      expect(undoSubstanceUnitCore(p, "nicotine", td, eventId)).toEqual({
+        kind: "changed",
+        units: 1,
+        substance: "nicotine",
+      });
+    }
+    expect(undoSubstanceUnitCore(other, "nicotine", td, b.eventId)).toEqual({
+      kind: "changed",
+      units: 0,
+      substance: "nicotine",
+    });
+    expect(
+      db
+        .prepare(
+          `SELECT id FROM substance_log_events WHERE profile_id = ? ORDER BY id`
+        )
+        .all(p)
+    ).toEqual([{ id: b.eventId }]);
+  });
+
   // #3279 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, DELIBERATELY. The "caffeine" case
   // stood for a forged key writing nothing; the vocabulary is open now, so caffeine is a
   // custom substance and this ledger is where it belongs. Alcohol's refusal is untouched

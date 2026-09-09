@@ -33,7 +33,8 @@ import {
 } from "../../dose-log-window";
 import { judgeStatedAt } from "../../stated-time";
 import {
-  burstFrom,
+  restampBurst,
+  type RestampSelection,
   correctionBursts,
   CORRECTION_FRESH_MIN,
   type CorrectionBurst,
@@ -2393,6 +2394,7 @@ export function getOfferedIntakeForSlot(
 // administration instant. Corrections never renew the tap window (#2206, #2876).
 export interface DoseTapRow {
   id: number;
+  bundleId?: string | null;
   tapAt: string;
   statedAt: string | null;
   // Which message's tap wrote this row (#2264) — the burst's attribution; null for a
@@ -2423,7 +2425,7 @@ export function getRecentDoseTaps(
     .prepare(
       `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
               l.recorded_at AS tapAt, l.occurred_at AS statedAt,
-              l.notify_message_id AS messageRef, s.name AS name
+              l.notify_message_id AS messageRef, l.bundle_id AS bundleId, s.name AS name
          FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.item_id
@@ -2441,6 +2443,7 @@ export function getRecentDoseTaps(
     tapAt: string;
     statedAt: string | null;
     messageRef: number | null;
+    bundleId: string | null;
     name: string;
   }[];
   const out: DoseTapRow[] = [];
@@ -2455,6 +2458,7 @@ export function getRecentDoseTaps(
       tapAt: tap.toISOString(),
       statedAt: given ? given.toISOString() : null,
       messageRef: r.messageRef,
+      bundleId: r.bundleId,
       label: r.name,
       doseId: r.doseId,
       date: r.date,
@@ -2524,7 +2528,7 @@ export type DoseRestampOutcome =
 //     through the resolver's own floor rather than through idempotence.
 export function restampDoseLogsCore(
   profileId: number,
-  fromLogId: number,
+  fromLogId: RestampSelection,
   resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null,
   // The tap-time binding, re-evaluated INSIDE this write transaction (#3092 follow-up).
   // The handler's own check runs before its write call, but an `await` separates the
@@ -2540,22 +2544,28 @@ export function restampDoseLogsCore(
       .prepare(
         `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
                 l.recorded_at AS tapAt, l.occurred_at AS statedAt,
-                l.notify_message_id AS messageRef, s.name AS name
+                l.notify_message_id AS messageRef, l.bundle_id AS bundleId, s.name AS name
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = d.item_id
-          WHERE s.profile_id = ? AND l.id >= ? AND l.status = 'taken'
+          WHERE s.profile_id = ? AND ${typeof fromLogId === "number" ? "l.id >= ?" : "l.id IN (SELECT value FROM json_each(?))"} AND l.status = 'taken'
             AND l.occurred_at IS NOT NULL
           ORDER BY l.recorded_at, l.id
-          LIMIT 200`
+          ${typeof fromLogId === "number" ? "LIMIT 200" : ""}`
       )
-      .all(profileId, fromLogId) as {
+      .all(
+        profileId,
+        typeof fromLogId === "number"
+          ? fromLogId
+          : JSON.stringify(fromLogId.ids)
+      ) as {
       id: number;
       doseId: number;
       date: string;
       tapAt: string;
       statedAt: string | null;
       messageRef: number | null;
+      bundleId: string | null;
       name: string;
     }[];
     const taps: {
@@ -2567,6 +2577,8 @@ export function restampDoseLogsCore(
       const tap = parseUtcSql(r.tapAt);
       if (!tap) continue;
       const given = r.statedAt ? parseUtcSql(r.statedAt) : null;
+      if (typeof fromLogId !== "number" && !given)
+        return { kind: "no-burst" as const };
       taps.push({
         row: r,
         tapAt: tap.toISOString(),
@@ -2574,7 +2586,7 @@ export function restampDoseLogsCore(
       });
     }
     const byId = new Map(taps.map((t) => [t.row.id, t]));
-    const burst = burstFrom(
+    const burst = restampBurst(
       taps.map((t) => ({
         id: t.row.id,
         tapAt: t.tapAt,
@@ -2583,6 +2595,7 @@ export function restampDoseLogsCore(
         // provenance the renderer partitioned by, so a chip re-stamps exactly the
         // rows whose correction row it was.
         messageRef: t.row.messageRef,
+        bundleId: t.row.bundleId,
         label: t.row.name,
       })),
       fromLogId

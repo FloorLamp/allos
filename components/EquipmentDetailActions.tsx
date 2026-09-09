@@ -4,7 +4,7 @@ import { useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { IconTrash } from "@tabler/icons-react";
 import Button from "./Button";
-import { useToast } from "@/components/Toast";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { deleteEquipmentAction } from "@/app/(app)/equipment/actions";
 
@@ -18,7 +18,7 @@ export default function EquipmentDetailActions({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const toast = useToast();
+  const undoable = useUndoableDelete();
   const confirm = useConfirm();
   const [pending, startTransition] = useTransition();
 
@@ -32,12 +32,13 @@ export default function EquipmentDetailActions({
     if (!ok) return;
     startTransition(async () => {
       const res = await deleteEquipmentAction(id);
-      if (!res.ok) {
-        toast(res.error, { tone: "error" });
-        return;
-      }
-      toast(`Deleted ${name}`);
-      router.push("/equipment");
+      await undoable(
+        async () =>
+          res.ok ? { undoId: res.undoId } : { undoId: null, error: res.error },
+        new FormData(),
+        { deletedMessage: `Deleted ${name}` }
+      );
+      if (res.ok) router.push("/equipment");
     });
   }
 

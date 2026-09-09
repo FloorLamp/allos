@@ -51,6 +51,8 @@ const SCANNED_DIRS = ["app", "components"];
  * because the user did anything — so each must ask the registry.
  */
 const CHROME_CALL_SITES = [
+  // Poll noticed that another request or process committed application data.
+  "components/DataFreshnessWatcher.tsx",
   // Post-sync repaint after the offline queue replays through /api/offline-replay.
   "components/OfflineQueueProvider.tsx",
   // Poll noticed a paste/CSV import job finish.

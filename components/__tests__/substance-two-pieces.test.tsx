@@ -10,6 +10,8 @@ import SubstanceForm from "@/components/substances/SubstanceForm";
 import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
 import QuickSubstanceList from "@/components/quick-entry/QuickSubstanceList";
 import { MAX_SUBSTANCE_ENTRY_AMOUNT, substanceDef } from "@/lib/substance-use";
+import type { UndoAnnouncement } from "@/components/useUndoableAction";
+import { DayContextProvider } from "@/components/DayContext";
 
 // THE SUBSTANCE DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.substance.pieces`).
 //
@@ -37,10 +39,20 @@ let addResult: { kind: string; id?: number; capProgress?: string | null } = {
   id: 1,
   capProgress: null,
 };
-let logResult: { ok: boolean; weekCount?: number; error?: string } = {
+let logResult:
+  | {
+      ok: true;
+      weekCount: number;
+      eventId: number;
+      date: string;
+    }
+  | { ok: false; error: string; weekCount?: number } = {
   ok: true,
   weekCount: 3,
+  eventId: 41,
+  date: "2026-08-20",
 };
+let logReply = async () => logResult;
 let updateResult: { kind: string; eventId?: number; date?: string } = {
   kind: "updated",
   eventId: 4,
@@ -58,7 +70,7 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   },
   logSubstanceUnitAction: async (fd: FormData) => {
     record("log")(fd);
-    return logResult;
+    return logReply();
   },
   undoSubstanceUnitAction: async (fd: FormData) => {
     record("undo")(fd);
@@ -67,8 +79,25 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
 }));
 
 const toasts: string[] = [];
+const undoAnnouncements: UndoAnnouncement[] = [];
+const claimedToastKeys: string[] = [];
+const dismissedToastKeys: string[] = [];
+let toastScope: { profileId: number; token: number } | null = {
+  profileId: 7,
+  token: 11,
+};
+const getToastScope = () => toastScope;
+const claimToastKey = (key: string) => claimedToastKeys.push(key);
+const dismissToastKey = (key: string) => dismissedToastKeys.push(key);
 vi.mock("@/components/Toast", () => ({
   useToast: () => (text: string) => toasts.push(text),
+  useToastProfileScopeGetter: () => getToastScope,
+  useClaimToastKey: () => claimToastKey,
+  useDismissToast: () => dismissToastKey,
+}));
+vi.mock("@/components/useUndoableAction", () => ({
+  useUndoableAction: () => (announcement: UndoAnnouncement) =>
+    undoAnnouncements.push(announcement),
 }));
 
 const TODAY = "2026-08-20";
@@ -82,12 +111,22 @@ const ROW = {
 };
 
 beforeEach(() => {
+  cleanup();
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
+  undoAnnouncements.length = 0;
+  claimedToastKeys.length = 0;
+  dismissedToastKeys.length = 0;
+  toastScope = { profileId: 7, token: 11 };
   addResult = { kind: "added", id: 1, capProgress: null };
   updateResult = { kind: "updated", eventId: 4, date: "2026-08-18" };
-  logResult = { ok: true, weekCount: 3 };
-  cleanup();
+  logResult = {
+    ok: true,
+    weekCount: 3,
+    eventId: 41,
+    date: TODAY,
+  };
+  logReply = async () => logResult;
 });
 
 function openForm(row?: typeof ROW, substance = "nicotine"): void {
@@ -360,9 +399,11 @@ describe("SubstanceUnitControl is ONE row control", () => {
   // THE REACH, at the sheet. The record's card is driven by e2e/substance-use.spec.ts;
   // this is the surface the cap line had to keep on the way through the convergence,
   // and the one that gained the undo it used to send people to another page for.
-  it("is what the quick-log sheet's row mounts, cap line and both taps", () => {
+  it("gives each sheet log its exact-event undo while the page keeps its legacy control", async () => {
+    vi.useFakeTimers();
     render(
       <QuickSubstanceList
+        date={FOUND_DAY}
         substances={[
           {
             key: "nicotine",
@@ -371,6 +412,7 @@ describe("SubstanceUnitControl is ONE row control", () => {
             capProgress: "2 of 7 this week.",
           },
         ]}
+        subjectProfileId={42}
       />
     );
     expect(
@@ -378,11 +420,202 @@ describe("SubstanceUnitControl is ONE row control", () => {
         .textContent
     ).toBe("2 of 7 this week.");
     expect(
-      screen.getByTestId("quick-entry-substance-log-nicotine")
-    ).toBeTruthy();
+      screen.queryByTestId("quick-entry-substance-undo-nicotine")
+    ).toBeNull();
+
+    logResult = { ok: true, weekCount: 3, eventId: 41, date: FOUND_DAY };
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
+    );
+    expect(payload("log")).toMatchObject({
+      profile_id: "42",
+      substance: "nicotine",
+      date: FOUND_DAY,
+    });
+    const older = undoAnnouncements[0];
+    expect(older).toMatchObject({
+      message: "Use logged.",
+      profileId: 7,
+      profileToken: 11,
+    });
+    expect(claimedToastKeys).toEqual([older.key]);
+
+    await act(async () => vi.advanceTimersByTimeAsync(2_001));
+    logResult = { ok: true, weekCount: 4, eventId: 42, date: FOUND_DAY };
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
+    );
+    expect(undoAnnouncements).toHaveLength(2);
+    expect(undoAnnouncements[1].key).not.toBe(older.key);
+
+    logResult = { ok: true, weekCount: 3, eventId: 42, date: FOUND_DAY };
+    expect(await older.undo?.run()).toEqual({ ok: true });
+    expect(payload("undo")).toMatchObject({
+      profile_id: "42",
+      substance: "nicotine",
+      event_id: "41",
+      date: FOUND_DAY,
+    });
+
+    cleanup();
+    control(null, 2);
+    expect(screen.getByTestId("substance-undo-nicotine")).toBeTruthy();
+    expect(undoAnnouncements).toHaveLength(2);
+    vi.useRealTimers();
+  });
+
+  it("posts the selected day and an optional stated instant from its clock door", async () => {
+    render(
+      <DayContextProvider
+        profileId={42}
+        today={TODAY}
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: FOUND_DAY }}
+      >
+        <QuickSubstanceList
+          date={FOUND_DAY}
+          substances={[
+            {
+              key: "nicotine",
+              label: "Nicotine",
+              logLabel: "Log a use",
+              capProgress: null,
+            },
+          ]}
+          subjectProfileId={42}
+        />
+      </DayContextProvider>
+    );
+    const log = screen.getByTestId("quick-entry-substance-log-nicotine");
+    expect(log.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(
+      screen.getByTestId("quick-entry-substance-when-nicotine-toggle")
+    );
+    fireEvent.change(
+      screen.getByTestId("quick-entry-substance-when-nicotine-time"),
+      { target: { value: "09:15" } }
+    );
+    await act(async () => fireEvent.click(log));
+    expect(payload("log")).toMatchObject({
+      profile_id: "42",
+      date: FOUND_DAY,
+      stated_at: `${FOUND_DAY}T09:15:00.000Z`,
+    });
+  });
+
+  it("invalidates a sheet receipt when its subject changes", async () => {
+    const view = render(
+      <QuickSubstanceList
+        date={TODAY}
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={42}
+      />
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
+    );
+    const receipt = undoAnnouncements[0];
+    expect(receipt.undo?.isCurrent?.()).toBe(true);
+
+    view.rerender(
+      <QuickSubstanceList
+        date={TODAY}
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={43}
+      />
+    );
+    expect(receipt.undo?.isCurrent?.()).toBe(false);
+    expect(await receipt.undo?.run()).toEqual({ ok: false, reason: "changed" });
+    expect(posted.undo).toBeUndefined();
+    expect(dismissedToastKeys).toContain(receipt.key);
+  });
+
+  it("suppresses a stale completion and invalidates a fresh receipt when the acting scope changes", async () => {
+    let finishLog!: (result: typeof logResult) => void;
+    logReply = () =>
+      new Promise<typeof logResult>((resolve) => {
+        finishLog = resolve;
+      });
+    const view = render(
+      <QuickSubstanceList
+        date={TODAY}
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={42}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Log a use" }));
+    toastScope = { profileId: 8, token: 12 };
+    view.rerender(
+      <QuickSubstanceList
+        date={TODAY}
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={42}
+      />
+    );
+    await act(async () =>
+      finishLog({ ok: false, error: "Couldn't log that." })
+    );
+    expect(undoAnnouncements).toHaveLength(0);
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(
-      screen.getByTestId("quick-entry-substance-undo-nicotine")
-    ).toBeTruthy();
+      screen.getByRole("button", { name: "Log a use" }).hasAttribute("disabled")
+    ).toBe(false);
+
+    logReply = async () => ({
+      ok: true,
+      weekCount: 3,
+      eventId: 43,
+      date: TODAY,
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
+    );
+    const current = undoAnnouncements[0];
+    expect(current.undo?.isCurrent?.()).toBe(true);
+    toastScope = { profileId: 9, token: 13 };
+    view.rerender(
+      <QuickSubstanceList
+        date={TODAY}
+        substances={[
+          {
+            key: "nicotine",
+            label: "Nicotine",
+            logLabel: "Log a use",
+            capProgress: null,
+          },
+        ]}
+        subjectProfileId={42}
+      />
+    );
+    expect(current.undo?.isCurrent?.()).toBe(false);
   });
 });
 

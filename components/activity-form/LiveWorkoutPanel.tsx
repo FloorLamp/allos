@@ -4,6 +4,7 @@ import { IconBolt, IconFlagCheck } from "@tabler/icons-react";
 import RestTimer from "./RestTimer";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useWakeLock } from "@/components/useWakeLock";
+import { useRestNotification } from "@/components/useRestNotification";
 import { subjectActionLabel } from "@/lib/own-profile";
 
 // The live-mode control panel (issue #340), pinned above the shared ActivityForm.
@@ -28,6 +29,7 @@ export default function LiveWorkoutPanel({
   // when that isn't the login's own profile, name it on the live control strip so a
   // set logged in the wrong record is caught at the point of action.
   const { subjectName, minimized } = useActivityEditor();
+  const restNotification = useRestNotification();
 
   // Keep the screen awake for the phone-at-the-gym surface — the shared hook (#1275).
   // Only while the session is actually on screen (#1422): minimizing to the dock keeps
@@ -59,7 +61,43 @@ export default function LiveWorkoutPanel({
           {subjectActionLabel("Finish workout", subjectName)}
         </button>
       </div>
-      <RestTimer exercise={leadExercise} autoStartKey={restStartKey} />
+      <RestTimer
+        exercise={leadExercise}
+        autoStartKey={restStartKey}
+        onHiddenComplete={restNotification.notify}
+      />
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Tell me when rest ends</p>
+          <p
+            className="text-xs text-slate-500 dark:text-slate-400"
+            role="status"
+          >
+            {restNotification.status}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn-ghost shrink-0"
+          disabled={!restNotification.optedIn && !restNotification.canEnable}
+          onClick={
+            restNotification.optedIn
+              ? restNotification.disable
+              : restNotification.enable
+          }
+          aria-label={
+            restNotification.optedIn
+              ? "Disable rest notifications"
+              : "Enable rest notifications"
+          }
+        >
+          {restNotification.optedIn
+            ? "Disable"
+            : restNotification.enabling
+              ? "Enabling…"
+              : "Enable"}
+        </button>
+      </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Log each set below — the rest timer starts when you add the next set.
         Tap Finish to stamp your end time.

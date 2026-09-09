@@ -1,3 +1,4 @@
+import { trainingTabHref } from "@/lib/hrefs";
 import DestinationLink from "@/components/DestinationLink";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import {
@@ -19,7 +20,7 @@ import {
   getStrengthLadder,
   getWorkoutPresence,
   getActivitiesSince,
-  getCardioZoneCoverage,
+  getTrainingZoneData,
   getSportByActivity,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -215,11 +216,10 @@ export default async function OverviewSection() {
       })),
     todayStr
   );
-  const cardioZones = getCardioZoneCoverage(
-    profile.id,
-    weekDays.start,
-    weekDays.end
-  );
+  const trainingZones = getTrainingZoneData(profile.id, 1, {
+    start: weekDays.start,
+    end: weekDays.end,
+  });
   const vo2Percentile =
     fitnessModel?.results.find((result) => result.key === "vo2max")
       ?.percentile ?? null;
@@ -565,7 +565,7 @@ export default async function OverviewSection() {
           <CardSectionHeader title="Weekly targets" variant="label">
             {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
             <DestinationLink
-              href="/training?tab=plan#targets"
+              href={trainingTabHref("plan", "targets")}
               className="text-xs text-link"
             >
               Edit targets
@@ -634,7 +634,7 @@ export default async function OverviewSection() {
             </>
           ) : suite === "endurance" ? (
             <EnduranceDepthSuite
-              zones={cardioZones}
+              zones={trainingZones}
               form={enduranceOverview}
               vo2={vo2Percentile}
               distanceUnit={du}
@@ -679,7 +679,7 @@ export default async function OverviewSection() {
             action={
               cardioPrs.length > PR_CAP ? (
                 <DestinationLink
-                  href="/training?tab=analyze"
+                  href={trainingTabHref("analyze")}
                   data-testid="overview-cardio-prs-all"
                   className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
                 >

@@ -18,8 +18,8 @@ import type { FormResult } from "@/lib/types";
 //
 // TWO BUTTONS, NEVER A TOGGLE. A toggle would imply a state that already exists; these
 // are a question with two answers, and the answer that is NOT given leaves everything
-// exactly as it was. Both carry the offer's key and nothing else, so the write is
-// bound to the offer the user actually saw.
+// exactly as it was. The key binds the offer; a count offer also carries the stated
+// count and displayed stock identity.
 export default function OfferControls({
   dedupeKey,
   accept,
@@ -27,6 +27,7 @@ export default function OfferControls({
   acceptAction,
   declineAction,
   outcomeTestId,
+  fields,
 }: {
   /** The suppression-bus key this offer lives under — the action's only token. */
   dedupeKey: string;
@@ -35,6 +36,7 @@ export default function OfferControls({
   acceptAction: (formData: FormData) => Promise<FormResult>;
   declineAction: (formData: FormData) => Promise<FormResult>;
   outcomeTestId: string;
+  fields?: Record<string, string>;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export default function OfferControls({
     setError(null);
     const fd = new FormData();
     fd.set("dedupe_key", dedupeKey);
+    for (const [key, value] of Object.entries(fields ?? {})) fd.set(key, value);
     startTransition(async () => {
       const res = await action(fd);
       if (!res.ok) setError(res.error);

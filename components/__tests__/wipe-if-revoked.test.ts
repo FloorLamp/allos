@@ -22,6 +22,13 @@ vi.mock("@/lib/offline/write-gate", () => ({
 
 import { clearQueue } from "@/lib/offline/queue-db";
 import { wipeIfRevoked } from "../device-wipe";
+import {
+  captureLastGoodToken,
+  clearLastGood,
+  recallLastGood,
+  rememberLastGood,
+} from "@/lib/offline/quick-entry-read";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 // `clearQueue` is the wipe's own single transaction — it clears every store AND closes
 // the device write gate — so counting its calls is counting wipes.
@@ -37,7 +44,10 @@ function answer(status: number, body: unknown): Response {
   } as unknown as Response;
 }
 
-beforeEach(() => wipes.mockClear());
+beforeEach(() => {
+  wipes.mockClear();
+  clearLastGood();
+});
 
 describe("wipeIfRevoked (#3053)", () => {
   it.each([
@@ -62,5 +72,24 @@ describe("wipeIfRevoked (#3053)", () => {
   ])("%s → wipes: %j", async (_name, status, body, wiped) => {
     expect(await wipeIfRevoked(answer(status, body))).toBe(wiped);
     expect(wipes).toHaveBeenCalledTimes(wiped ? 1 : 0);
+  });
+
+  it("clears the live quick-entry cache through the actual revoked-session wipe", async () => {
+    const parts = {
+      profileId: 1,
+      day: "2026-09-08",
+      reach: TAP_REACH["mood-valence"],
+    };
+    rememberLastGood(captureLastGoodToken(), parts, "mood", {
+      form: "unavailable",
+      today: parts.day,
+      message: "held",
+    });
+    expect(recallLastGood(parts, "mood")).toBeDefined();
+
+    expect(
+      await wipeIfRevoked(answer(401, { ok: false, error: "revoked" }))
+    ).toBe(true);
+    expect(recallLastGood(parts, "mood")).toBeUndefined();
   });
 });

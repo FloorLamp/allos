@@ -14,7 +14,7 @@
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import {
   loadMedicationsData,
   getMedicationAdherenceCalendar,
@@ -37,6 +37,8 @@ import {
   stripWithoutTrailingPending,
 } from "@/lib/intake-adherence";
 import { buildAdherenceCalendar } from "@/lib/adherence-calendar";
+import { invalidateDoseScheduleVersions } from "@/lib/queries/intake/schedule";
+import { up as retireBlankDoses } from "@/lib/migrations/versions/20260908-retire-blank-intake-doses";
 
 // Statement counting (the #885 shape, as tick-scoped-gathers.test.ts uses it): the
 // query layer prepares its SQL inline on every call, so counting prepares of a
@@ -209,6 +211,75 @@ function calendarTheOldWay(
 }
 
 describe("getMedicationAdherenceCalendar reads the board gather (#2114)", () => {
+  it("identifies only the timed due row beside an untimed sibling", () => {
+    const profileId = makeProfile("Detail Gather Timed");
+    const { itemId, doseId } = addScheduledMed(profileId, "Mixed schedule");
+    db.prepare(
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '2 tablets', NULL, 'any', 1)`
+    ).run(itemId);
+
+    const card = loadMedicationsData(profileId).byId.get(itemId);
+    expect(card?.due).toBe(true);
+    expect(card?.dueDoseIds).toEqual([doseId]);
+  });
+
+  it("keeps earlier adherence after retiring a currently blank dose", () => {
+    const profileId = makeProfile("Historical dose");
+    const { itemId, doseId } = addScheduledMed(
+      profileId,
+      "Historical medicine"
+    );
+    const now = today(profileId);
+    const past = shiftDateStr(now, -1);
+    const start = shiftDateStr(now, -2);
+    db.prepare("UPDATE intake_items SET created_at = ? WHERE id = ?").run(
+      `${start} 00:00:00`,
+      itemId
+    );
+    db.prepare(
+      `UPDATE intake_item_doses
+      SET time_of_day = NULL, amount = NULL, created_at = ? WHERE id = ?`
+    ).run(`${start} 00:00:00`, doseId);
+    db.prepare(
+      `INSERT INTO intake_dose_schedule_versions
+      (dose_id, effective_from, time_of_day, amount, amount_captured)
+      VALUES (?, ?, 'Morning', '250 mg', 1), (?, ?, NULL, NULL, 1)`
+    ).run(doseId, start, doseId, now);
+    db.prepare(
+      `INSERT INTO intake_item_logs
+      (dose_id, item_id, date, status, amount, recorded_at)
+      VALUES (?, ?, ?, 'taken', 'recorded 250 mg', ?)`
+    ).run(doseId, itemId, past, `${past}T08:00:00Z`);
+    invalidateDoseScheduleVersions(profileId);
+
+    const before = loadMedicationsData(profileId);
+    expect(
+      before.byId.get(itemId)?.strip.find((d) => d.date === past)?.state
+    ).toBe("taken");
+    const calendarBefore = getMedicationAdherenceCalendar(
+      profileId,
+      before,
+      itemId
+    );
+    expect(
+      calendarBefore.weeks.flat().find((d) => d.date === past)?.state
+    ).toBe("taken");
+
+    retireBlankDoses(rawDb);
+
+    const after = loadMedicationsData(profileId);
+    const card = after.byId.get(itemId)!;
+    expect(card.strip).toEqual(before.byId.get(itemId)!.strip);
+    expect(getMedicationAdherenceCalendar(profileId, after, itemId)).toEqual(
+      calendarBefore
+    );
+    expect(card.doses).toEqual([]);
+    expect(card.dueDoseIds).toEqual([]);
+    expect(card.retiredDoses.map((d) => d.id)).toEqual([doseId]);
+  });
+
   it("produces the calendar the independent gather produced", () => {
     const { profileId, itemId } = seedDetailFixture("Detail Gather Sam");
     const data = loadMedicationsData(profileId);

@@ -31,6 +31,13 @@ import {
 import { setProfileSetting } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
+async function readyQuickEntry(...args: Parameters<typeof loadQuickEntry>) {
+  const result = await loadQuickEntry(...args);
+  expect(result.kind).toBe("ready");
+  if (result.kind !== "ready") throw new Error("quick-entry read was refused");
+  return result.data;
+}
+
 // A recorded period `startAgo`..`endAgo` days before this profile's today (endAgo null =
 // still open). Direct insert so a test can set up a state the guarded actions refuse to
 // produce — the point of a stale-tap test is a world the surface could not have made.
@@ -88,7 +95,7 @@ describe("the quick-log sheet's period overlay (#1892/#1506)", () => {
       getForecastSuspension(profileId)
     );
 
-    const data = await loadQuickEntry("cycle");
+    const data = await readyQuickEntry("cycle");
     expect(data.form).toBe("cycle");
     if (data.form !== "cycle") return;
     // Verbatim: the object the overlay renders equals the object the page renders.
@@ -98,7 +105,7 @@ describe("the quick-log sheet's period overlay (#1892/#1506)", () => {
 
   it("offers the START verb to a relevant profile with NO history — the state that used to show nothing", async () => {
     makeCycleRelevant(profileId);
-    const data = await loadQuickEntry("cycle");
+    const data = await readyQuickEntry("cycle");
     expect(data.form).toBe("cycle");
     if (data.form !== "cycle") return;
     expect(data.state.stateLine).toBeNull();
@@ -115,7 +122,7 @@ describe("the quick-log sheet's period overlay (#1892/#1506)", () => {
       "birthdate",
       shiftDateStr(today(profileId), -365 * 30)
     );
-    const data = await loadQuickEntry("cycle");
+    const data = await readyQuickEntry("cycle");
     expect(data.form).toBe("unavailable");
     if (data.form !== "unavailable") return;
     expect(data.message).toMatch(/Cycle/);
@@ -123,7 +130,7 @@ describe("the quick-log sheet's period overlay (#1892/#1506)", () => {
 
   it("data wins: a profile with a recorded period keeps the offer regardless of sex", async () => {
     seedPeriod(profileId, 20, 16);
-    const data = await loadQuickEntry("cycle");
+    const data = await readyQuickEntry("cycle");
     expect(data.form).toBe("cycle");
     if (data.form !== "cycle") return;
     expect(cycleOffer(data.state)?.label).toBe(START_PERIOD_LABEL);

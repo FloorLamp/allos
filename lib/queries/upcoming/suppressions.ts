@@ -5,7 +5,9 @@
 // profile-scoped (enforced by lib/__tests__/profile-scoping.test.ts and the
 // dynamic no-bleed guard in lib/__db_tests__/upcoming.scoping.test.ts).
 
-import { db, hoistedStatement } from "../../db";
+import { db, hoistedStatement, writeTx } from "../../db";
+import { cancelRefillRequest, refillMarkerKey } from "../../refill-nudge";
+import { setProfileSetting, deleteProfileSetting } from "../../settings";
 import { snapshotCached } from "../../read-snapshot";
 import { type SuppressionRecord } from "../../upcoming-suppress";
 import {
@@ -25,6 +27,7 @@ import {
   biomarkerFamilyKey,
 } from "../medical";
 import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
+import type { Row } from "../../undo-delete";
 
 // The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
 // for O(1) lookup during filtering. This is the shared read behind BOTH the
@@ -184,36 +187,62 @@ export const getFindingSuppressions = snapshotCached(
 
 // Snooze a finding until `until` (YYYY-MM-DD), clearing any dismiss — upserts on
 // the (profile_id, signal_key) unique index so re-snoozing just moves the date.
+const REFILL_MARKER = hoistedStatement(
+  "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
+);
+
+function cancelOrderedRefill(profileId: number, dedupeKey: string): void {
+  const match = /^refill:([1-9]\d*)$/.exec(dedupeKey);
+  if (!match) return;
+  const key = refillMarkerKey(Number(match[1]));
+  const raw = (
+    REFILL_MARKER.get(profileId, key) as { value: string } | undefined
+  )?.value;
+  const next = cancelRefillRequest(raw);
+  if (next === raw) return;
+  if (next == null) deleteProfileSetting(profileId, key);
+  else setProfileSetting(profileId, key, next);
+}
+
 export function snoozeFinding(
   profileId: number,
   dedupeKey: string,
   until: string
 ): void {
-  db.prepare(
-    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
+  writeTx(() => {
+    db.prepare(
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
        VALUES (?, ?, ?, NULL)
      ON CONFLICT(profile_id, signal_key)
        DO UPDATE SET snooze_until = excluded.snooze_until, dismissed_at = NULL`
-  ).run(profileId, dedupeKey, until);
+    ).run(profileId, dedupeKey, until);
+    cancelOrderedRefill(profileId, dedupeKey);
+  });
 }
 
 // Dismiss a finding (until restored), clearing any snooze so a dismiss always wins.
 // For a `biomarker-flag:` acknowledgment "until restored" is no longer the only end:
 // the next draw of that marker family re-arms it at the read above (#3225).
 export function dismissFinding(profileId: number, dedupeKey: string): void {
-  db.prepare(
-    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
+  writeTx(() => {
+    db.prepare(
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
        VALUES (?, ?, NULL, datetime('now'))
      ON CONFLICT(profile_id, signal_key)
        DO UPDATE SET dismissed_at = datetime('now'), snooze_until = NULL`
-  ).run(profileId, dedupeKey);
+    ).run(profileId, dedupeKey);
+    cancelOrderedRefill(profileId, dedupeKey);
+  });
 }
 
 // Restore a finding: drop its suppression row so it reappears immediately.
 export function restoreFinding(profileId: number, dedupeKey: string): void {
-  db.prepare(
-    "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
-  ).run(profileId, dedupeKey);
+  writeTx(() => {
+    db.prepare(
+      "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+    ).run(profileId, dedupeKey);
+    cancelOrderedRefill(profileId, dedupeKey);
+  });
 }
 
 // ---- Name-keyed suppression lifecycle (issue #203) ----
@@ -301,7 +330,7 @@ export function cleanupOrphanBiomarkerKeyedState(profileId: number): void {
 // no `pr:` suppression rows at all — the overwhelmingly common case — so the seams
 // that call this on every activity save don't pay for a history scan.
 // Profile-scoped; safe to call repeatedly (idempotent).
-export function cleanupOrphanPrDismissals(profileId: number): void {
+export function cleanupOrphanPrDismissals(profileId: number): Row[] {
   const stored = (
     db
       .prepare(
@@ -312,7 +341,7 @@ export function cleanupOrphanPrDismissals(profileId: number): void {
       signal_key: string;
     }[]
   ).map((r) => r.signal_key);
-  if (stored.length === 0) return;
+  if (stored.length === 0) return [];
 
   // Every rep-bearing, non-warmup set — exactly the rows strengthSetRows feeds the PR
   // engine, so a set the records are computed from is a set that keeps its key alive.
@@ -339,12 +368,15 @@ export function cleanupOrphanPrDismissals(profileId: number): void {
   const liveCardio = cardioActivityIdentities(profileId);
 
   const lost = prDismissalKeysLosingBacking(stored, liveStrength, liveCardio);
-  if (lost.length === 0) return;
+  if (lost.length === 0) return [];
   const placeholders = lost.map(() => "?").join(",");
-  db.prepare(
-    `DELETE FROM upcoming_dismissals
-      WHERE profile_id = ? AND signal_key IN (${placeholders})`
-  ).run(profileId, ...lost);
+  // Delete callers can retain precisely this side-state in their undo capture.
+  return db
+    .prepare(
+      `DELETE FROM upcoming_dismissals
+      WHERE profile_id = ? AND signal_key IN (${placeholders}) RETURNING *`
+    )
+    .all(profileId, ...lost) as Row[];
 }
 
 // Every cardio activity identity the profile has logged: top-level `cardio` rows by

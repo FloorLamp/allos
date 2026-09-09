@@ -16,6 +16,7 @@ vi.mock("@/components/ConfirmDialog", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 vi.mock("@/components/LoggedViaSurface", () => ({

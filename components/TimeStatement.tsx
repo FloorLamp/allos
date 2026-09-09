@@ -97,6 +97,7 @@ export function useTimeStatement({
   testId,
   tz: tzProp,
   disabled = false,
+  required = false,
 }: {
   // Rule 2 — the ONE expression the render and the write both read.
   shown?: boolean;
@@ -125,6 +126,9 @@ export function useTimeStatement({
   // The TARGET profile's zone where a host logs for someone else.
   tz?: string;
   disabled?: boolean;
+  // A nonprimary quick-log cannot infer an instant from the current tap. Keep the
+  // statement visible and remove the close door so a past-day write must state one.
+  required?: boolean;
 }): TimeStatement {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
@@ -148,35 +152,38 @@ export function useTimeStatement({
     if (proposalChanged && proposed !== null) setOpen(true);
   }
 
+  const effectiveOpen = shown && (required || open);
+  // Collapsing an optional statement has always kept its stated value armed; the
+  // disclosure controls visibility, not whether the value is posted. Required
+  // statements only change visibility by keeping the disclosure open.
   const at = shown ? statedHhmm(when.statedAt, tz) || null : null;
   // The revealed control itself, WITHOUT surrounding spacing — where it sits in a
   // layout is the host's, which is the whole reason a host renders this piece rather
   // than `node`. `minDate === maxDate` is the day clause above made structural: the
   // shared control renders a FIXED day as text and offers no picker, so no mount can
   // state a day through it however it is hosted.
-  const reveal =
-    shown && open ? (
-      <>
-        {/* `WhenControl` names its time input `{testId}-time`, which is what this
+  const reveal = effectiveOpen ? (
+    <>
+      {/* `WhenControl` names its time input `{testId}-time`, which is what this
             points at — one label, visible and associated, rather than a second
             spelling of the accessible name the control already carries. */}
-        <label className="label" htmlFor={`${testId}-time`}>
-          {timeLabel}
-        </label>
-        <WhenControl
-          mode="state"
-          grain="minute"
-          value={when}
-          onChange={setWhen}
-          tz={tz}
-          minDate={day}
-          maxDate={day}
-          timeLabel={timeLabel}
-          disabled={disabled}
-          testId={testId}
-        />
-      </>
-    ) : null;
+      <label className="label" htmlFor={`${testId}-time`}>
+        {timeLabel}
+      </label>
+      <WhenControl
+        mode="state"
+        grain="minute"
+        value={when}
+        onChange={setWhen}
+        tz={tz}
+        minDate={day}
+        maxDate={day}
+        timeLabel={timeLabel}
+        disabled={disabled}
+        testId={testId}
+      />
+    </>
+  ) : null;
   return {
     at,
     instant: at ? when.statedAt : null,
@@ -186,26 +193,27 @@ export function useTimeStatement({
           ? seedWhen(day, null, tz)
           : prev
       ),
-    open,
-    setOpen,
+    open: effectiveOpen,
+    setOpen: (next) => setOpen(required ? true : next),
     reveal,
     // THE STANDARD 34px ICON BUTTON (#3938's control box). `dose-action-styles` is
     // already the shared language of these rows — practices and protocols import it
     // beside medications — so the door wears the same box as the action it sits
     // against rather than a fifth one.
-    door: shown ? (
-      <button
-        type="button"
-        data-testid={`${testId}-toggle`}
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        aria-label={HAPPENED_EARLIER}
-        className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
-      >
-        <IconClock className="h-4 w-4" stroke={2} />
-        <span className="sr-only">{HAPPENED_EARLIER}</span>
-      </button>
-    ) : null,
+    door:
+      shown && !required ? (
+        <button
+          type="button"
+          data-testid={`${testId}-toggle`}
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          aria-label={HAPPENED_EARLIER}
+          className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
+        >
+          <IconClock className="h-4 w-4" stroke={2} />
+          <span className="sr-only">{HAPPENED_EARLIER}</span>
+        </button>
+      ) : null,
   };
 }

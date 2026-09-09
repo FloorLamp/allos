@@ -32,13 +32,14 @@ import {
   CARE_PLAN_REPRESENTATIVE_IDS,
 } from "./clinical";
 import {
+  trainingTabHref,
   clinicalResultDetailHref,
   encounterHref,
   episodeHref,
   equipmentHref,
   immunizationHref,
   importHref,
-  intakeHref,
+  intakeSupplyHref,
   medicationHref,
   nutritionTabHref,
   protocolHref,
@@ -243,11 +244,12 @@ function activityHits(
 function supplementHits(profileId: number, like: string): SearchHit[] {
   const rows = db
     .prepare(
-      `SELECT id, name, active, kind, quantity_on_hand
-         FROM intake_items
-        WHERE profile_id = ?
-          AND (name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
-        ORDER BY active DESC, name
+      `SELECT i.id, i.name, i.active, i.kind, i.supply_id,
+              CASE WHEN i.supply_id IS NOT NULL THEN s.quantity_on_hand ELSE i.quantity_on_hand END AS quantity_on_hand
+         FROM intake_items i LEFT JOIN shared_supplies s ON s.id = i.supply_id
+        WHERE i.profile_id = ?
+          AND (i.name LIKE ? ESCAPE '\\' OR i.notes LIKE ? ESCAPE '\\')
+        ORDER BY i.active DESC, i.name
         LIMIT ?`
     )
     .all(profileId, like, like, CANDIDATE_LIMIT) as {
@@ -256,24 +258,26 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     active: number;
     kind: IntakeItemKind;
     quantity_on_hand: number | null;
+    supply_id: number | null;
   }[];
   return rows.map((r) => ({
     domain: "supplement",
     key: `supplement:${r.id}`,
     title: r.name,
     subtitle: r.active ? "Active" : "Inactive",
-    // A medication has a real per-record detail page (#817), so the hit lands ON
-    // the med rather than the daily list (#1568). A supplement has no per-item
-    // page — it keeps the kind-level surface intakeHref resolves (#746).
-    href: r.kind === "medication" ? medicationHref(r.id) : intakeHref(r.kind),
+    // Medication detail and the exact supplement supply editor are their item doors.
+    href:
+      r.kind === "medication"
+        ? medicationHref(r.id)
+        : intakeSupplyHref(r.kind, r.id),
     date: null,
-    // Contextual actions on a FOUND medication (#662): log a dose, and refill when
-    // it tracks supply. Supplements get none (issue-scoped to meds/appt/clinical result).
-    ...(r.kind === "medication"
-      ? {
-          actions: medicationHitActions(r.id, r.quantity_on_hand != null),
-        }
-      : {}),
+    // Carry the displayed stock identity to the refill action’s write boundary.
+    actions: medicationHitActions(
+      r.id,
+      r.quantity_on_hand != null,
+      r.kind,
+      r.supply_id
+    ),
   }));
 }
 
@@ -343,10 +347,7 @@ function goalHits(profileId: number, like: string): SearchHit[] {
     key: `goal:${r.id}`,
     title: r.title,
     subtitle: r.category ? `${r.category} · ${r.status}` : r.status,
-    // The Goals tab, not the Training hub's default Log tab (#1568) — `goals` is
-    // the tab vocabulary's own id (lib/training-tabs.ts), the same deep link the
-    // dashboard presentation and the goal-pacing finding use.
-    href: "/training?tab=goals",
+    href: trainingTabHref("plan", "goals"),
     date: null,
   }));
 }
@@ -1162,7 +1163,7 @@ const PAGES: {
   },
   {
     title: "Training history",
-    href: "/training?tab=log",
+    href: trainingTabHref("log"),
   },
   {
     title: "Training",

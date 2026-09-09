@@ -1,3 +1,4 @@
+import { onboardingStepHref } from "@/lib/hrefs";
 import Link from "next/link";
 import { IconCheck, IconLock } from "@tabler/icons-react";
 import DestinationIndicator from "@/components/DestinationIndicator";
@@ -101,7 +102,7 @@ function OnboardingProgress({
             <li key={label} className="h-11">
               {itemStep <= unlockedStep ? (
                 <Link
-                  href={`/onboarding?step=${itemStep}`}
+                  href={onboardingStepHref(itemStep)}
                   aria-current={itemStep === step ? "step" : undefined}
                   aria-label={`${itemStep < unlockedStep ? "Completed" : "Available"} step ${itemStep}: ${label}`}
                   className="flex h-full items-center rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400/50"
@@ -148,7 +149,7 @@ function WizardActions({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href={`/onboarding?step=${backStep}`} className="btn-ghost">
+        <Link href={onboardingStepHref(backStep)} className="btn-ghost">
           Back
         </Link>
         <div data-testid="onboarding-primary-action" className="grid w-36">

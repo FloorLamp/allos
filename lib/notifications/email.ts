@@ -1,23 +1,8 @@
-// Email notification channel (issue #1855) — the fourth delivery channel beside
-// Telegram, Web Push, and Home Assistant. The DB reads + the send loop; every
-// composition/content decision is pure and lives in ./email-core, and the wire
-// itself stays behind the ONE lib/email.ts chokepoint (#985) — this module never
-// imports nodemailer.
-//
-// SCOPE: the channel belongs to the LOGIN (#1072 — a person with an inbox), and a
-// per-profile event fans out to the managing logins exactly like Telegram: explicit
-// grants + own profile, never admin-bypass-all, minus the per-(login, profile)
-// mute. The ADDRESS is `logins.email` (migration 064) — the one address the login
-// already has for auth mail — so there is no second "notification address" store.
-//
-// PHI: what a mail may carry is the per-login content mode (email-core header;
-// owner ruling on #1855). Default is content-free; only the login's own Settings
-// tap widens it.
-//
-// RETRY POSTURE (#2121/#2157): none of email's own. A failed send throws, dispatch
-// records the channel failed, the slot marker stays unset, and the shared
-// attempt-band budget retries ONCE an hour later — an hour outlives an SMTP
-// greylist, so the shared budget serves email as-is (no email-specific counter).
+// Email delivery resolves managing logins, applies channel/kind/mute preferences,
+// and deduplicates addresses through email-core. Each recipient gets an outcome;
+// partial success delivers the channel, while all-attempts-failed throws.
+// Composition lives in email-core, transport in lib/email.ts, and retry policy
+// in shared dispatch. See docs/internals/email.md for the full contract.
 
 import { db } from "../db";
 import { sendEmail } from "../email";
@@ -30,11 +15,13 @@ import {
 import { getPublicUrl } from "../settings/server";
 import { createLogger } from "../log";
 import type {
+  DispatchOptions,
   NotificationChannel,
   NotificationKind,
   NotificationMessage,
 } from "./types";
 import { managingLoginIdsForProfile } from "./managing-logins";
+import { withRecipientUnits } from "./compose";
 import { isKindEnabled } from "./home-assistant-core";
 import {
   composeNotificationEmail,
@@ -108,19 +95,20 @@ export function resolveEmailRecipients(
 /** How many addresses actually received it — 0 when there was nobody to write to. */
 async function sendToRecipients(
   recipients: EmailRecipient[],
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  opts?: DispatchOptions
 ): Promise<number> {
   if (recipients.length === 0) return 0;
   const publicUrl = getPublicUrl();
   let ok = 0;
   const errors: string[] = [];
   for (const r of recipients) {
-    const mail = composeNotificationEmail(
-      msg,
-      r.fullContent ? "full" : "content-free",
-      publicUrl
-    );
     try {
+      const mail = composeNotificationEmail(
+        r.fullContent ? withRecipientUnits(msg, r.loginId, opts) : msg,
+        r.fullContent ? "full" : "content-free",
+        publicUrl
+      );
       await sendEmail({
         to: r.address,
         subject: mail.subject,
@@ -150,7 +138,11 @@ export const emailChannel: NotificationChannel = {
       (r) => r.loginId
     );
   },
-  async send(profileId: number, msg: NotificationMessage) {
+  async send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ) {
     // A button-only kind (food nudge, mood check-in) would arrive as words about
     // buttons email strips — a no-op success, exactly like Web Push (#692).
     if (!isEmailDeliverableKind(msg.kind)) {
@@ -166,7 +158,8 @@ export const emailChannel: NotificationChannel = {
     // Recipient-level like Web Push: a throw here means no address took it.
     const reached = await sendToRecipients(
       resolveEmailRecipients(profileId, msg.kind ?? "other"),
-      msg
+      msg,
+      opts
     );
     return { delivered: reached > 0 };
   },

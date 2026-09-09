@@ -574,12 +574,7 @@ describe("a redose notice tap records telegram-nudge", () => {
        VALUES (?, ?, ?, ?, 'taken', 'page')`
     ).run(doseId, itemId, today(profileId), "2026-06-17 07:00:00");
 
-    await runRedoseNotices(
-      profileId,
-      "LV3087-redose",
-      today(profileId),
-      new Date()
-    );
+    await runRedoseNotices(profileId, today(profileId), new Date());
     const notice = sentTo(CHAT).find((s) =>
       (s.msg.actions ?? []).some((a) => a.data?.startsWith("redose:"))
     );

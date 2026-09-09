@@ -23,6 +23,7 @@ import {
   closeSnapshots,
   defaultGate,
   gateAllows,
+  gateWriteOutcome,
   openSessionAs,
   openSessionForDocument,
   openSnapshots,
@@ -141,6 +142,31 @@ describe("gateAllows — the one decision every device-local PHI write asks", ()
     );
     expect(gateAllows(gate, "snapshots", at(gate))).toBe(false);
     expect(gateAllows(gate, "queue", at(gate))).toBe(true);
+  });
+});
+
+describe("a tokened foreground write's refusal cause", () => {
+  it("reports closed only when the session close proves the queue was wiped", () => {
+    const before = openFor(THIS_SESSION);
+    const closed = closeAt(before);
+
+    expect(gateWriteOutcome(closed, "queue", at(before))).toBe("closed");
+  });
+
+  it("reports an open generation fence as failed without claiming queue loss", () => {
+    const before = defaultGate();
+    const after = bumpGeneration(before);
+
+    expect(gateWriteOutcome(after, "queue", at(before))).toBe("failed");
+    expect(gateWriteOutcome(after, "queue", at(after))).toBe("kept");
+  });
+
+  it("treats an unreadable capture token as failure rather than a wipe", () => {
+    expect(gateWriteOutcome(defaultGate(), "queue", -1)).toBe("failed");
+    expect(gateWriteOutcome(closeAt(), "queue", -1)).toBe("failed");
+    expect(
+      gateWriteOutcome(openFor(NEXT_SESSION, closeAt()), "queue", -1)
+    ).toBe("failed");
   });
 });
 

@@ -5,10 +5,16 @@
 // comparisons between different clocks.
 //
 // The late wall time supports same-day statements while leaving more than the
-// stated-time future skew before midnight. ALLOS_TEST_NOW is for cross-process
-// tests; it must not override this tier's per-test Date control.
+// stated-time future skew before midnight. SQLite can trail it by up to 23h50m;
+// the full positive-gap range has not been measured. Use the real-clock opt-out
+// for JS/SQL expiry comparisons instead of assuming a smaller gap.
+// Ordinary fixtures use vi.setSystemTime. Only tests contrasting the app clock
+// with Date should set the cross-process ALLOS_TEST_NOW override explicitly.
 
 import { afterAll, beforeAll, beforeEach, vi } from "vitest";
+
+// Clear inherited overrides before spec modules and their fixtures load.
+delete process.env.ALLOS_TEST_NOW;
 
 // Late enough for ordinary same-day fixtures, with room to test future-time refusal.
 export const FROZEN_WALL_TIME_UTC = "23:50:00.000Z";
@@ -28,6 +34,7 @@ export const TIER_FROZEN_INSTANT = frozenInstantForDay(
 );
 
 function freeze(): void {
+  delete process.env.ALLOS_TEST_NOW;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(TIER_FROZEN_INSTANT);
 }
@@ -42,7 +49,10 @@ beforeEach(freeze);
 // reverse): the tier setup's own teardown — temp-directory discard, and the next
 // file's reseed — is back on the real clock before it runs. lib/__tests__/tmp-dir.ts
 // unlinks by mtime AGE, and a frozen Date would mis-age every entry it considers.
-afterAll(() => vi.useRealTimers());
+afterAll(() => {
+  delete process.env.ALLOS_TEST_NOW;
+  vi.useRealTimers();
+});
 
 /**
  * Declare that this spec needs REAL elapsed time, and opt it out of the tier freeze.

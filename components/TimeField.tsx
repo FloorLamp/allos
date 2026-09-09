@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { IconClock } from "@tabler/icons-react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import { useCompactViewport } from "@/components/useCompactViewport";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { zonedDateParts } from "@/lib/date";
 import {
   formatClock,
   parseClockHhmm,
@@ -21,8 +30,9 @@ import {
 // handed an AM/PM widget.
 //
 // SEMANTICS-FREE, exactly like `DateField`. Value in, value out: canonical 24h
-// "HH:MM" or "" for "no time". The pair rules — never default to now, the "Now"
-// offer, re-anchoring, bounds, `timeRequired` — stay `WhenControl`'s (#2236).
+// "HH:MM" or "" for "no time". Opening proposes a clock position without
+// recording it. The pair rules — the "Now" offer, re-anchoring, bounds and
+// `timeRequired` — stay `WhenControl`'s (#2236).
 //
 // TYPE OR PICK. The text field accepts either clock ("19:30", "7:30pm") and the
 // shorthand around them ("630", "6p", "1124p") through `parseTypedClock`, and
@@ -48,6 +58,7 @@ import {
 export default function TimeField({
   value,
   onChange,
+  tz: tzProp,
   required = false,
   disabled = false,
   id,
@@ -59,6 +70,7 @@ export default function TimeField({
   /** Canonical 24h "HH:MM", or "" for "no time". */
   value: string;
   onChange: (next: string) => void;
+  tz?: string;
   required?: boolean;
   disabled?: boolean;
   id?: string;
@@ -74,7 +86,23 @@ export default function TimeField({
   "data-testid"?: string;
 }) {
   const { timeFormat } = useFormatPrefs();
-  const [open, setOpen] = useState(false);
+  const contextTz = useTimezone();
+  const tz = tzProp ?? contextTz;
+  const [{ open, proposal }, setPicker] = useState({
+    open: false,
+    proposal: "",
+  });
+  const setOpen = useCallback(
+    (next: boolean) => {
+      const proposed =
+        next && !open ? zonedDateParts(tz, new Date()).hhmm : null;
+      setPicker((current) => ({
+        open: next,
+        proposal: proposed ?? current.proposal,
+      }));
+    },
+    [open, tz]
+  );
   // What the field shows WHILE IT IS BEING TYPED INTO. The parent holds only
   // canonical "HH:MM", so "7:3" has nowhere to live there — and re-rendering the
   // half-typed text from a value that has not moved would fight the typist.
@@ -165,7 +193,7 @@ export default function TimeField({
     }
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [open, compact]);
+  }, [open, compact, setOpen]);
 
   return (
     <div
@@ -217,8 +245,8 @@ export default function TimeField({
         // ±1 MINUTE ON THE ARROWS, the segment stepping the native control had.
         // The field owns no day (that is `WhenControl`'s, #2236), so 23:59 wraps
         // to 00:00 rather than reaching for tomorrow. An empty or unparseable
-        // field steps NOWHERE: seeding a time from the clock is the one thing
-        // this component never does. `Home`/`End` are left to the wheel's own
+        // field steps NOWHERE: a wheel's opening proposal is not a recorded time.
+        // `Home`/`End` are left to the wheel's own
         // columns. Clearing the draft is what makes the step visible — the text
         // it was typed as has just stopped being what the field holds.
         onKeyDown={(e) => {
@@ -308,7 +336,14 @@ export default function TimeField({
         backdrop={false}
         escapeLayer
       >
-        {() => <TimeWheel value={value} onChange={onChange} />}
+        {() => (
+          <TimeWheel
+            value={value}
+            onChange={onChange}
+            proposal={proposal}
+            open={open}
+          />
+        )}
       </AnchoredPanel>
     </div>
   );
@@ -353,6 +388,8 @@ const PAD_PX = (WHEEL_PX - CELL_PX) / 2;
  * above a frame budget and below a deliberate pause.
  */
 const SETTLE_MS = 120;
+/** Whole cycles leave the same native-scroll runway on each side of a column. */
+const RUNWAY_ROWS = 120;
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -360,19 +397,21 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 export function TimeWheel({
   value,
   onChange,
+  proposal,
+  open,
 }: {
   value: string;
   onChange: (next: string) => void;
+  proposal: string;
+  open: boolean;
 }) {
   const { timeFormat } = useFormatPrefs();
   const twelve = timeFormat === "12h";
   const hhmm = parseClockHhmm(value);
-  // An unset wheel RESTS at the top of each column and marks nothing selected —
-  // it never proposes a time (#2053). Picking any column composes the whole
-  // value from where the others are resting, which is the honest reading of
-  // "the user chose this minute".
-  const h24 = hhmm ? Number(hhmm.slice(0, 2)) : 0;
-  const minute = hhmm ? hhmm.slice(3) : "00";
+  // Position is a proposal until a choice is made; a stated midnight still wins.
+  const shown = hhmm ?? proposal;
+  const h24 = Number(shown.slice(0, 2));
+  const minute = shown.slice(3);
   const meridiem = h24 >= 12 ? "PM" : "AM";
   const hour = twelve ? pad2(h24 % 12 === 0 ? 12 : h24 % 12) : pad2(h24);
 
@@ -413,6 +452,8 @@ export function TimeWheel({
       <WheelColumn
         label="Hour"
         testId="time-wheel-hour"
+        open={open}
+        cyclic
         options={
           twelve
             ? Array.from({ length: 12 }, (_, i) => pad2(i + 1))
@@ -425,6 +466,8 @@ export function TimeWheel({
       <WheelColumn
         label="Minute"
         testId="time-wheel-minute"
+        open={open}
+        cyclic
         options={Array.from({ length: 60 }, (_, i) => pad2(i))}
         value={minute}
         selected={hhmm !== null}
@@ -434,6 +477,7 @@ export function TimeWheel({
         <WheelColumn
           label="AM or PM"
           testId="time-wheel-meridiem"
+          open={open}
           options={["AM", "PM"]}
           value={meridiem}
           selected={hhmm !== null}
@@ -451,39 +495,154 @@ function WheelColumn({
   value,
   selected,
   onSelect,
+  open,
+  cyclic = false,
 }: {
   label: string;
   testId: string;
   options: string[];
   value: string;
-  /** Whether the field HAS a time — an unset wheel rests without a selection. */
+  /** Position is not selection when the field has no stated time. */
   selected: boolean;
   onSelect: (next: string) => void;
+  open: boolean;
+  cyclic?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const id = useId();
   const index = Math.max(0, options.indexOf(value));
-  // A flick in progress owns the scroll offset; re-parking mid-momentum would
-  // yank the column out from under the finger.
-  const flicking = useRef(false);
+  const sideCopies = cyclic ? Math.ceil(RUNWAY_ROWS / options.length) : 0;
+  const middle = sideCopies * options.length;
+  const rows = (2 * sideCopies + 1) * options.length;
+  const [center, setCenter] = useState(middle + index);
+  const gesture = useRef<
+    | { phase: "idle" | "armed" | "scrolling"; top: number }
+    | { phase: "choice"; top: number; target: number }
+  >({
+    phase: "idle",
+    top: 0,
+  });
+  const contacts = useRef(0);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A timer can run after a sibling commits but before passive effects. Read
+  // the committed clock composition, never the callback that armed the timer.
+  const latest = useRef({ options, value, selected, onSelect, open, cyclic });
+  useLayoutEffect(() => {
+    latest.current = { options, value, selected, onSelect, open, cyclic };
+  }, [options, value, selected, onSelect, open, cyclic]);
 
-  // Park the column on its value — on open, and whenever the value moves from
-  // anywhere but this column's own scroll. `scrollTop = index * CELL_PX` puts
-  // that cell on the centre line, because the spacers are exactly half a wheel.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || flicking.current) return;
-    el.scrollTop = index * CELL_PX;
-  }, [index]);
+  useLayoutEffect(() => {
+    if (!open) {
+      if (settle.current) clearTimeout(settle.current);
+      settle.current = null;
+      gesture.current.phase = "idle";
+      contacts.current = 0;
+      return;
+    }
+    if (!ref.current || gesture.current.phase !== "idle") return;
+    ref.current.scrollTop = (middle + index) * CELL_PX;
+    gesture.current.top = ref.current.scrollTop;
+    setCenter(middle + index);
+  }, [index, middle, open]);
 
   useEffect(
     () => () => void (settle.current && clearTimeout(settle.current)),
     []
   );
 
+  const queueSettle = () => {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => {
+      settle.current = null;
+      if (contacts.current || gesture.current.phase === "idle") return;
+      const current = gesture.current;
+      gesture.current = { phase: "idle", top: current.top };
+      if (current.phase !== "scrolling" && current.phase !== "choice") return;
+      const el = ref.current;
+      const live = latest.current;
+      if (!el || !live.open) return;
+      const count = live.options.length;
+      const physical =
+        current.phase === "choice"
+          ? current.target / CELL_PX
+          : Math.round(el.scrollTop / CELL_PX);
+      const logical = live.cyclic
+        ? ((physical % count) + count) % count
+        : Math.min(count - 1, Math.max(0, physical));
+      const parked = live.cyclic
+        ? Math.ceil(RUNWAY_ROWS / count) * count + logical
+        : logical;
+      // Residual native scrolling cannot replace an explicit choice. Ordinary
+      // flicks keep their fractional offset when returning to the middle cycle.
+      if (current.phase === "choice") el.scrollTop = parked * CELL_PX;
+      else el.scrollTop += (parked - physical) * CELL_PX;
+      gesture.current.top = el.scrollTop;
+      setCenter(parked);
+      if (
+        current.phase !== "choice" &&
+        (!live.selected || live.options[logical] !== live.value)
+      )
+        live.onSelect(live.options[logical]);
+    }, SETTLE_MS);
+  };
+
+  const choose = (physical: number) => {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = null;
+    // Keep the target through native continuation and defer layout parking.
+    gesture.current = {
+      phase: "choice",
+      top: physical * CELL_PX,
+      target: physical * CELL_PX,
+    };
+    const live = latest.current;
+    const logical =
+      ((physical % live.options.length) + live.options.length) %
+      live.options.length;
+    if (ref.current) {
+      ref.current.focus({ preventScroll: true });
+      ref.current.scrollTop = physical * CELL_PX;
+      gesture.current.top = ref.current.scrollTop;
+    }
+    setCenter(physical);
+    if (!live.selected || live.options[logical] !== live.value)
+      live.onSelect(live.options[logical]);
+    // A same-offset choice may emit no scroll event to start finalization.
+    queueSettle();
+  };
+
   const move = (to: number) => {
-    const next = options[Math.min(options.length - 1, Math.max(0, to))];
-    if (next !== value) onSelect(next);
+    const logical = cyclic
+      ? ((to % options.length) + options.length) % options.length
+      : Math.min(options.length - 1, Math.max(0, to));
+    const copy = Math.max(
+      0,
+      Math.min(2 * sideCopies, Math.round((center - logical) / options.length))
+    );
+    choose(copy * options.length + logical);
+  };
+
+  const arm = () => {
+    if (
+      gesture.current.phase === "idle" ||
+      gesture.current.phase === "choice"
+    ) {
+      // Native scrolling may move the offset before this input is delivered.
+      // Keep the last observed or parked position until its scroll event.
+      gesture.current = { phase: "armed", top: gesture.current.top };
+    }
+  };
+
+  const touchContacts = (event: React.TouchEvent<HTMLDivElement>) => {
+    // touches covers the whole surface; targetTouches only one row. Original
+    // targets inside THIS column keep sibling columns' contacts independent.
+    contacts.current = Array.from(event.touches).filter(
+      (touch) =>
+        touch.target instanceof Node &&
+        event.currentTarget.contains(touch.target)
+    ).length;
+    if (contacts.current) arm();
+    else if (gesture.current.phase !== "idle") queueSettle();
   };
 
   return (
@@ -491,24 +650,37 @@ function WheelColumn({
       ref={ref}
       role="listbox"
       aria-label={label}
+      aria-activedescendant={`${id}-${((center % options.length) + options.length) % options.length}`}
       tabIndex={0}
       data-testid={testId}
-      onScroll={() => {
-        flicking.current = true;
-        if (settle.current) clearTimeout(settle.current);
-        settle.current = setTimeout(() => {
-          flicking.current = false;
-          const el = ref.current;
-          if (!el) return;
-          const i = Math.min(
-            options.length - 1,
-            Math.max(0, Math.round(el.scrollTop / CELL_PX))
-          );
-          // Only a MOVE is a choice. Parking the column on its own value fires a
-          // scroll event too, and committing that would make opening the picker
-          // look like using it.
-          if (options[i] !== value) onSelect(options[i]);
-        }, SETTLE_MS);
+      onPointerDown={() => ref.current?.focus({ preventScroll: true })}
+      onTouchStart={touchContacts}
+      onTouchEnd={touchContacts}
+      onTouchCancel={touchContacts}
+      onWheel={() => {
+        arm();
+        queueSettle();
+      }}
+      onScroll={(event) => {
+        setCenter(
+          Math.max(
+            0,
+            Math.min(
+              rows - 1,
+              Math.round(event.currentTarget.scrollTop / CELL_PX)
+            )
+          )
+        );
+        if (gesture.current.phase !== "idle") {
+          if (gesture.current.phase !== "choice") {
+            const top = event.currentTarget.scrollTop;
+            if (top !== gesture.current.top)
+              gesture.current.phase = "scrolling";
+          }
+          queueSettle();
+        }
+        // Even residual choice scrolling updates observation, not its target.
+        gesture.current.top = event.currentTarget.scrollTop;
       }}
       onKeyDown={(e) => {
         const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
@@ -523,37 +695,30 @@ function WheelColumn({
           move(options.length - 1);
         }
       }}
-      // `snap-y snap-mandatory` on the scroller and `snap-center` on the cells is
-      // the whole mechanism. The edge fades below are paint only.
       className="relative snap-y snap-mandatory overflow-y-auto overscroll-contain rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
       style={{ height: WHEEL_PX, scrollbarWidth: "none" }}
     >
       <div style={{ height: PAD_PX }} aria-hidden />
-      {options.map((option) => {
+      {Array.from({ length: rows }, (_, physical) => {
+        const logical = physical % options.length;
+        const option = options[logical];
+        const copy = Math.max(
+          0,
+          Math.min(
+            2 * sideCopies,
+            Math.round((center - logical) / options.length)
+          )
+        );
+        const exposed = physical === copy * options.length + logical;
         const isValue = selected && option === value;
         return (
-          <button
-            key={option}
-            type="button"
-            role="option"
-            aria-selected={isValue}
-            tabIndex={-1}
-            onClick={() => {
-              // A TAP IS THE EXPLICIT CHOICE AND OUTRANKS A SCROLL IN FLIGHT.
-              // The parking effect above stands down while `flicking`, so a row
-              // tapped mid-momentum left the column resting where the flick put
-              // it — and the pending settle then committed THAT over the row the
-              // finger hit. Cancelling the settle, clearing the flag and parking
-              // the column here makes the tap authoritative. Parking explicitly
-              // rather than leaving it to the effect also covers tapping the row
-              // that is ALREADY the value, where the index never changes and the
-              // effect would never run.
-              if (settle.current) clearTimeout(settle.current);
-              flicking.current = false;
-              if (ref.current)
-                ref.current.scrollTop = options.indexOf(option) * CELL_PX;
-              onSelect(option);
-            }}
+          <div
+            key={physical}
+            id={exposed ? `${id}-${logical}` : undefined}
+            role={exposed ? "option" : undefined}
+            aria-hidden={exposed ? undefined : true}
+            aria-selected={exposed ? isValue : undefined}
+            onClick={() => choose(physical)}
             style={{ height: CELL_PX }}
             className={`flex w-14 snap-center items-center justify-center text-base tabular-nums transition ${
               isValue
@@ -562,7 +727,7 @@ function WheelColumn({
             }`}
           >
             {option}
-          </button>
+          </div>
         );
       })}
       <div style={{ height: PAD_PX }} aria-hidden />

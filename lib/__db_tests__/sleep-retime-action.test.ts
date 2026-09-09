@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { shiftDateStr, utcInstant } from "@/lib/date";
 import { setProfileSetting } from "@/lib/settings/kv";
@@ -93,8 +93,8 @@ const rowOf = (id: number) =>
   };
 
 beforeEach(() => {
-  db.exec("DELETE FROM metric_samples");
-  db.exec("DELETE FROM hr_minutes");
+  rawDb.exec("DELETE FROM metric_samples");
+  rawDb.exec("DELETE FROM hr_minutes");
   const actor = seedActor({ profileName: "RETIME ACTION" });
   profileId = actor.profile.id;
   setTimezone(profileId, "UTC");

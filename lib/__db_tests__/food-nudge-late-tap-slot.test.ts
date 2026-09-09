@@ -1,26 +1,7 @@
-// DB INTEGRATION TIER — #1704, as #2019 re-settled it: a Telegram food tap keeps its "(n)"
-// button count even when the tap lands OUTSIDE the nudge's own window.
-//
-// THE SYMPTOM IS THE SAME; THE MECHANISM CHANGED, AND THE OLD ONE IS GONE. The nudge bakes
-// its window into every callback token at SEND time. Originally the rebuild asked the
-// slot-count query (getFoodSlotServingsOnDate, since deleted by #2227) for THAT window
-// while the event's own window was re-derived from the tap instant, so opening the
-// morning nudge at lunch rendered n = 0. #1704 fixed that by writing the token's window
-// onto the row as an explicit `meal_slot`.
-//
-// #2019 REVERSED that write: the nudge's window is the NUDGE naming itself, not the user
-// declaring a meal, and with a real `occurred_at` on the row the meal is derived from when the
-// serving was eaten (so a later correction MOVES it, which a frozen assertion would not).
-// The suffix became the DAY total in the same change — a number the ledger can always
-// answer, with no window derivation anywhere in it. So the reported symptom stays fixed,
-// and this file pins the new mechanism as well as the guarantee.
-//
-// Driven end-to-end through handleCallbackQuery against the REAL query layer, with only
-// the raw Telegram transport stubbed (the #454 guarded boundary), so the rebuilt keyboard
-// asserted here is the genuine rendered output. The clock is FROZEN, and the nudge's window
-// is chosen to DISAGREE with the tap instant's — that mismatch is the whole point.
+// A late Telegram tap records its eating instant without asserting the nudge's meal slot.
+// Real callbacks and rendering run against the database; only Telegram transport is stubbed.
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
@@ -170,19 +151,13 @@ const NUDGE_WINDOW: FoodNudgeWindow = "Morning";
 
 let p: SeededProfile;
 let t: string;
-let priorTestNow: string | undefined;
 
+beforeEach(() => vi.setSystemTime(new Date(FROZEN)));
 beforeAll(() => {
-  priorTestNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = FROZEN;
+  vi.setSystemTime(new Date(FROZEN));
   p = seedProfile("food-late-tap");
   t = today(p.profileId);
   seedLoginTelegram(p.profileId, CHAT);
-});
-
-afterAll(() => {
-  if (priorTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorTestNow;
 });
 
 describe("a Telegram food tap outside the nudge's window (#1704)", () => {
@@ -190,7 +165,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     expect(currentFoodSlot(p.profileId)).not.toBe(NUDGE_WINDOW);
   });
 
-  it("renders (1) on the tapped button, from the DAY total rather than a window", async () => {
+  it("records the eating instant and keeps the serving button available", async () => {
     editTextMock.mockClear();
     await handleCallbackQuery(
       cqForWindow(
@@ -215,9 +190,8 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
       slotServingsOnDate(p.profileId, NUDGE_WINDOW, t).get("berries")
     ).toBeUndefined();
 
-    // And the button carries its count regardless — the reported symptom, fixed by a
-    // count that never asks which window the serving belongs to.
-    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries (1)");
+    // The button continues to offer one serving.
+    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries");
   });
 
   it("leaves the DAY tally alone — logging was always right, only the count disagreed", () => {
@@ -242,7 +216,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     // window on the row and would have led there instead.
   });
 
-  it("a second tap on the same stale nudge ticks the count to (2)", async () => {
+  it("a second tap on the same stale nudge records another serving", async () => {
     editTextMock.mockClear();
     await handleCallbackQuery(
       cqForWindow(
@@ -253,7 +227,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
         t
       )
     );
-    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries (2)");
+    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries");
     expect(storedSlots(p.profileId, t, "berries")).toEqual([null, null]);
   });
 
@@ -270,8 +244,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     );
     // The reserved __protein__ row rides the identical columns: no asserted meal, and the
     // tap's own instant as the eating time — which is what makes protein DISTRIBUTION
-    // computable from this ledger. Its BUTTON count is covered by
-    // food-nudge-protein-slot-count.test.ts, on a nudge whose window is the current one.
+    // computable from this ledger.
     expect(storedSlots(p.profileId, t, PROTEIN_NUDGE_KEY)).toEqual([null]);
     expect(storedEatenAt(p.profileId, t, PROTEIN_NUDGE_KEY)).toEqual([
       utcInstant(new Date(FROZEN)),

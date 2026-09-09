@@ -43,7 +43,10 @@ import {
   STREAM_OFFBOARD_PREFIX,
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
-import { OFFER_ASKED_PREFIX } from "./dismissal-keys";
+import {
+  OFFER_ASKED_PREFIX,
+  TRACK_SUPPLY_ASKED_PREFIX,
+} from "./dismissal-keys";
 
 /**
  * How a dismissal key is protected from re-attaching to a subject the user never
@@ -348,6 +351,11 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // statement about the topic that should outlive any particular hr_minutes row. A
     // NEW provider or a NEW stream mints a different key, so a second wearable gets
     // its own offer rather than inheriting this silence.
+  },
+  {
+    prefix: TRACK_SUPPLY_ASKED_PREFIX,
+    keyClass: "id-keyed",
+    shape: "`<intakeItemId>` (one supply offer per item)",
   },
   {
     prefix: OFFER_ASKED_PREFIX,

@@ -1,33 +1,9 @@
-// DB INTEGRATION TIER — the record instant is stamped by the CLOCK SEAM, not by
-// SQL's own clock (issue #2287).
-//
-// THE DEFECT THESE PIN. `lib/clock.ts` is the app's one notion of "now", and the e2e
-// suite freezes it. `lib/e2e-freeze-instant.ts` then NUDGES that frozen instant
-// forward across UTC midnight for a run starting inside its hazard window, so for
-// those runs the seam leads real time by 30–60 minutes. Any value SQL stamps itself
-// (`datetime('now')`, or a column DEFAULT that reads it) is on the real clock, and
-// every comparison between the two answers by the size of that gap rather than by
-// the data. Two consequences were reproduced end-to-end before this change:
-//
-//   • `activities.created_at` / `updated_at` are what `computeWorkoutPresence`
-//     subtracts from the seam's now to decide whether a live draft has gone quiet.
-//     Stamped by SQL, a draft saved SECONDS ago read as 58 minutes quiet — past
-//     STALE_MIN (45) — and the dock rendered "Still working out? Finish or discard".
-//   • the offline food replay judged a queued eating-time statement against a bare
-//     `new Date()` while the statement itself had been resolved against the seam (the
-//     e2e fixture puts the BROWSER on the frozen clock too), so the gate — `judgeEatenAt`
-//     since #2296 — refused a seconds-old statement as 58 minutes in the FUTURE and
-//     `food_log_events.time_source` landed NULL instead of 'stated'. Since #2296 that
-//     refusal is also SPOKEN, so a spurious one now misinforms the user rather than
-//     merely losing a minute: it blames a device clock the app itself had moved.
-//
-// The tests below reproduce that gap DIRECTLY — freeze the seam ahead of real time,
-// exactly as the nudge does — rather than asserting an equality that would still hold
-// if a writer went back to SQL's clock. A regression fails them at any hour.
-//
-// Every value is synthetic (fake profiles, a fictional draft title, berries).
+// Record timestamps and captured-time validation use the app clock.
+// ALLOS_TEST_NOW deliberately leads the tier's frozen Date by 58 minutes, so a
+// bare Date or SQLite timestamp cannot satisfy the app-clock contract by accident.
+// Ordinary fixtures use vi.setSystemTime; this file needs two different clocks.
 
-import { afterEach, beforeEach, describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { utcSqlString } from "@/lib/date";
@@ -38,7 +14,7 @@ import { finishWorkoutSession } from "@/lib/workout-finish";
 import { upsertActivities } from "@/lib/integrations/normalize";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import { applyIntent } from "@/lib/offline/writes";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import { EPISODE_BOUNDS } from "@/lib/open-episode";
 
 const STALE_MIN = EPISODE_BOUNDS.workout.staleMin;
@@ -49,21 +25,10 @@ import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 // cannot pass by luck.
 const NUDGE_GAP_MIN = 58;
 
-let priorNow: string | undefined;
-
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  // Freeze the seam AHEAD of real time, the way #1464's nudge does inside its hazard
-  // window. Anchored on the real clock (not a fixed literal) so the divergence is a
-  // real one at whatever hour the suite runs.
   process.env.ALLOS_TEST_NOW = new Date(
     Date.now() + NUDGE_GAP_MIN * 60_000
   ).toISOString();
-});
-
-afterEach(() => {
-  if (priorNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
 });
 
 function newProfile(name: string): number {
@@ -202,9 +167,7 @@ describe("activities record instants come off the clock seam (#2287)", () => {
   });
 
   it("a seconds-old live draft is NOT stale while the seam leads real time", () => {
-    // The reproduction itself: with the seam 58 minutes ahead of the real clock, a
-    // draft written and read in the same breath used to answer `quietMin ≈ 58`,
-    // past STALE_MIN (45), and raise the dock's "Still working out?" branch.
+    // A timestamp from either other clock would make this new draft look stale.
     const p = newProfile("seam-presence");
     const created = saveActivityCore(
       p,
@@ -246,6 +209,7 @@ describe("offline food replay judges a statement on the seam's clock (#2287)", (
           eatenAt: statedAt,
         },
         p,
+        true,
         clockNow()
       )
     );

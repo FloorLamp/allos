@@ -16,6 +16,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { shiftDateStr } from "@/lib/date";
 import { db, today } from "@/lib/db";
 import { deleteEquipment } from "@/lib/equipment";
+import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import { recentPRs, recentCardioPRs } from "@/lib/coaching";
 import {
   cardioPrToFinding,
@@ -330,13 +331,47 @@ describe("the regression this issue exists for (#1931)", () => {
       homeId,
       "1rm"
     );
+    const hotelWeightKey = prStrengthDismissalKey(
+      "Machine Chest Press",
+      machineId,
+      "weight"
+    );
     dismissFinding(p, hotelKey);
+    dismissFinding(p, hotelWeightKey);
     dismissFinding(p, homeKey);
+    const original = db
+      .prepare(
+        "SELECT signal_key, snooze_until, dismissed_at, created_at FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+      )
+      .get(p, hotelKey);
 
     // Deleting the hotel machine moves its sets to the unassigned lane, so the hotel
     // LANE no longer exists — its dismissal must not outlive it and wait for the id
     // to be reissued.
-    deleteEquipment(p, machineId);
+    const removed = deleteEquipment(p, machineId);
+    if (removed.kind !== "deleted") throw new Error("Equipment delete failed");
     expect(storedPrKeys(p)).toEqual([homeKey]);
+    // A newer statement at the same key wins over the captured dismissal.
+    db.prepare(
+      "INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until) VALUES (?, ?, '2099-01-01')"
+    ).run(p, hotelWeightKey);
+    expect(restoreDeletedRow(p, removed.undoId)).toBe(true);
+    expect(
+      db
+        .prepare(
+          "SELECT signal_key, snooze_until, dismissed_at, created_at FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+        )
+        .get(p, hotelKey)
+    ).toEqual(original);
+    expect(
+      db
+        .prepare(
+          "SELECT snooze_until, dismissed_at FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+        )
+        .get(p, hotelWeightKey)
+    ).toEqual({ snooze_until: "2099-01-01", dismissed_at: null });
+    expect(storedPrKeys(p)).toEqual(
+      expect.arrayContaining([hotelKey, hotelWeightKey, homeKey])
+    );
   });
 });
