@@ -185,7 +185,7 @@ describe("activity timer completion", () => {
     }
   );
 
-  it("nudges unpainted remaining time, pauses it, restarts the target and cancels on Reset", () => {
+  it("nudges unpainted remaining time, pauses it, resumes the paused remainder and cancels on Reset", () => {
     const audio = stubAudio();
     startRest();
     const readout = screen.getByTestId("rest-remaining");
@@ -201,8 +201,15 @@ describe("activity timer completion", () => {
       vi.advanceTimersByTime(1000);
     });
     expect(readout.textContent).toBe("1:05");
+    // Play continues the number on the face (the owner's #3700 ruling retired
+    // the restart-at-target Play this line used to pin), and the two and a half
+    // minutes spent paused took nothing off it: the resumed deadline is built
+    // from the paused remainder, so it drains from 1:05 rather than from 1:30
+    // or from a deadline that kept running.
     fireEvent.click(screen.getByRole("button", { name: "Start rest timer" }));
-    expect(readout.textContent).toBe("1:30");
+    expect(readout.textContent).toBe("1:05");
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(readout.textContent).toBe("0:35");
     fireEvent.click(screen.getByRole("button", { name: "Reset rest timer" }));
     act(() => {
       vi.setSystemTime(T0 + 400_000);
@@ -215,6 +222,31 @@ describe("activity timer completion", () => {
     ).toBeTruthy();
     expect(audio.start).not.toHaveBeenCalled();
     expect(vibrate).not.toHaveBeenCalled();
+  });
+
+  it("starts a newly logged set at the full rest, not at the paused remainder", () => {
+    stubAudio();
+    const view = render(
+      <RestTimer exercise="Barbell Bench Press" autoStartKey={0} />
+    );
+    const readout = screen.getByTestId("rest-remaining");
+    fireEvent.click(screen.getByRole("button", { name: "1:30" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start rest timer" }));
+    act(() => vi.setSystemTime(T0 + 40_000));
+    fireEvent.click(screen.getByRole("button", { name: "Pause rest timer" }));
+    expect(readout.textContent).toBe("0:50");
+
+    // Checking off a set bumps autoStartKey: that is a fresh rest, so it takes
+    // the whole selected target — resuming belongs to Play alone.
+    view.rerender(
+      <RestTimer exercise="Barbell Bench Press" autoStartKey={1} />
+    );
+    expect(readout.textContent).toBe("1:30");
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(readout.textContent).toBe("1:20");
+    expect(
+      screen.getByRole("button", { name: "Pause rest timer" })
+    ).toBeTruthy();
   });
 
   it("still completes rest and requests a haptic when audio construction fails", () => {

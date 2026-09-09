@@ -123,6 +123,13 @@ export default function RestTimer({
     setRunning(false);
   };
 
+  // Play continues the number on the face: a 90 s rest paused at 0:45 resumes at
+  // 0:45, on a deadline computed from that remainder, so time spent paused does
+  // not drain it. A finished rest has no number to continue, so it takes the
+  // target. Reset, a preset and a newly logged set still start the full selected
+  // rest (owner ruling on #3700; a quick restart is what Reset is for).
+  const play = () => start(done ? target : remaining);
+
   const reset = () => {
     deadlineRef.current = null;
     setRunning(false);
@@ -203,7 +210,7 @@ export default function RestTimer({
               <button
                 {...anchor}
                 type="button"
-                onClick={() => (running ? pause() : start())}
+                onClick={() => (running ? pause() : play())}
                 data-testid="rest-toggle"
                 className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-500 active:scale-95"
               >
