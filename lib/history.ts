@@ -111,14 +111,38 @@ export interface HistoryGatherOptions {
    * read, where every row's subject is already the acting one.
    */
   actingProfileId?: number;
+  /**
+   * Whether this gather also earns the filter chips. `false` skips
+   * `historyPresentKinds` and its eleven existence probes, and the gather then has no
+   * `presentKinds` FIELD AT ALL — reading one is a type error rather than an empty
+   * array, because `[]` already means "this profile has nothing to show" to the pages
+   * that draw chips, and "nobody asked" is a different fact (#5262).
+   *
+   * OPT-OUT RATHER THAN OPT-IN, because the two failure modes have different guards.
+   * Reading a presence answer nobody computed is a CORRECTNESS failure, and the split
+   * return type below makes that impossible whichever way the default points. Paying
+   * for a presence answer nobody reads is a COST failure, and this page already has a
+   * guard for it: the recorded per-persona query baseline in
+   * `lib/__db_tests__/dashboard-placement-manifest.test.ts` fails on any drift, so a
+   * future caller that starts paying these eleven statements moves a number a person
+   * has to account for. Making every existing caller opt in would buy a second copy
+   * of that guard at the price of touching two pages and every test call site, all of
+   * which are asking for exactly what they already get.
+   */
+  presentKinds?: boolean;
 }
 
-export interface HistoryGather {
+/**
+ * WHAT EVERY GATHER RETURNS, whether or not it earned the chips.
+ *
+ * `presentKinds` is deliberately not here; `HistoryGather` below adds it. A caller
+ * that passed `presentKinds: false` gets this type back and cannot read a presence
+ * answer that was never computed.
+ */
+export interface HistoryGatherCore {
   rows: HistoryRow[];
   /** Whether the bound cut anything off — the load-more control's whole predicate. */
   hasMore: boolean;
-  /** The kinds this profile has ANY row for: what earns a filter chip (#3958). */
-  presentKinds: HistoryKind[];
   /**
    * Whether `?media=1` actually narrowed anything. False when it was not asked for,
    * and false when it was asked for and no row could satisfy it — the degrade case,
@@ -152,6 +176,11 @@ export interface HistoryGather {
    * lists them one per session, so each gets its own mark on its own anchor.
    */
   dayEvents: TimelineEvent[];
+}
+
+export interface HistoryGather extends HistoryGatherCore {
+  /** The kinds this profile has ANY row for: what earns a filter chip (#3958). */
+  presentKinds: HistoryKind[];
 }
 
 function wants(opts: HistoryGatherOptions, kind: HistoryKind): boolean {
@@ -324,11 +353,22 @@ function feedClockKind(category: TimelineCategory): "stated" | "logged" {
  * Each kind is read to the same bound and the five lists are merged by the caller's
  * ordering (`mergeMemberTimelines`), so no kind can crowd another out of the top of
  * the page: a day of forty servings still leaves that day's lab visible.
+ *
+ * The two overloads are `presentKinds` (see the option): a caller that opted out gets
+ * back a gather with no such field, so the opt-out cannot be read as "nothing to show".
  */
 export function gatherHistoryLog(
   profileId: number,
+  opts: HistoryGatherOptions & { presentKinds: false }
+): HistoryGatherCore;
+export function gatherHistoryLog(
+  profileId: number,
+  opts: HistoryGatherOptions & { presentKinds?: true }
+): HistoryGather;
+export function gatherHistoryLog(
+  profileId: number,
   opts: HistoryGatherOptions
-): HistoryGather {
+): HistoryGatherCore {
   const todayStr = today(profileId);
   const tz = getTimezone(profileId);
   const prefs = getDisplayFormatPrefs(opts.loginId);
@@ -1346,22 +1386,30 @@ export function gatherHistoryLog(
     opts.media === true && dated.some((row) => row.media > 0);
   const bounded = mediaApplied ? dated.filter((row) => row.media > 0) : dated;
 
-  return {
+  const core: HistoryGatherCore = {
     rows: bounded,
     hasMore: truncated,
-    // THE LOGS KINDS ARE PROBED and the feed kinds are earned from the read above:
-    // both answers are independent of `?kind`/`?family`, which is the property that
-    // matters. The feed half is "present in the bounded read" rather than "present
-    // ever" — the per-table caps inside the feed gather mean a category with any row in
-    // the window produces one — and the record's window is the reader's own.
-    presentKinds: [
-      ...historyPresentKinds(profileId),
-      ...HISTORY_KINDS.filter((kind) => feedKinds.has(kind)),
-    ],
     mediaApplied,
     today: todayStr,
     dayEvents,
   };
+  // THE ELEVEN PROBES ARE THE LAST THING THIS GATHER DOES, and a caller that said it
+  // does not draw chips stops here (#5262). The dashboard's day-so-far row reads
+  // `dayEvents` alone and paid for the probes on every load.
+  if (opts.presentKinds === false) return core;
+  // THE LOGS KINDS ARE PROBED and the feed kinds are earned from the read above:
+  // both answers are independent of `?kind`/`?family`, which is the property that
+  // matters. The feed half is "present in the bounded read" rather than "present
+  // ever" — the per-table caps inside the feed gather mean a category with any row in
+  // the window produces one — and the record's window is the reader's own.
+  const gather: HistoryGather = {
+    ...core,
+    presentKinds: [
+      ...historyPresentKinds(profileId),
+      ...HISTORY_KINDS.filter((kind) => feedKinds.has(kind)),
+    ],
+  };
+  return gather;
 }
 
 /**
@@ -1375,7 +1423,9 @@ export function gatherHistoryLog(
  */
 export function historyMemberFeed(
   profileId: number,
-  opts: HistoryGatherOptions
+  // NO `presentKinds` OPT-OUT HERE: both callers read the chips off the returned
+  // gather, so the option is not offered rather than offered and ignored.
+  opts: Omit<HistoryGatherOptions, "presentKinds">
 ): MemberTimeline<HistoryRow> & { gather: HistoryGather } {
   const gather = gatherHistoryLog(profileId, opts);
   return {

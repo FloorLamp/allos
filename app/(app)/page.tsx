@@ -1271,10 +1271,15 @@ async function renderDashboard(
       ? getIntradayDay(
           profile.id,
           on,
+          // NO CHIPS HERE, so no chip probes (#5262). This row reads `dayEvents` and
+          // nothing else; the eleven existence probes behind `presentKinds` are the
+          // /history page's filter row earning itself, and the dashboard draws none.
+          // Opting out returns a gather without the field rather than an empty one.
           gatherHistoryLog(profile.id, {
             loginId: login.id,
             day: on,
             limit: DASHBOARD_INTRADAY_DAY_ROWS,
+            presentKinds: false,
           }).dayEvents
         )
       : null;
