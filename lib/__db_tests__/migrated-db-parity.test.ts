@@ -71,6 +71,10 @@ function stable(value: unknown): unknown {
 // its boot, holds `done`, while a database replayed and read in the same tick holds
 // `running`. Neither is wrong and neither is stable, so the row's VALUE is masked
 // while its presence is still compared by the row counts above.
+//
+// `data_write_revision` is likewise runtime progress: each independent boot commits
+// its own set of writes and stamps the last one with a random transaction UUID. Only
+// those two values vary; the singleton, row count and schema remain compared exactly.
 const ASYNC_PROGRESS_SETTINGS = new Set(["photo_metadata_backfill"]);
 
 function rows(db: Database.Database, table: string): string {
@@ -89,7 +93,10 @@ function rows(db: Database.Database, table: string): string {
               k === "value" &&
               ASYNC_PROGRESS_SETTINGS.has(String(row["key"]))
                 ? "<async boot-task progress>"
-                : stable(v),
+                : table === "data_write_revision" &&
+                    (k === "revision" || k === "transaction_id")
+                  ? "<boot write progress>"
+                  : stable(v),
             ] as const
         )
       )

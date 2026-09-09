@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import {
   createProtocol,
   updateProtocol,
@@ -377,7 +377,7 @@ describe("protocol restart lifecycle", () => {
     const endedOn = getProtocols(profile.id)[0].end_date;
     expect(endedOn).not.toBeNull();
 
-    db.exec(
+    rawDb.exec(
       `CREATE TEMP TRIGGER block_activate BEFORE UPDATE ON situations
          WHEN NEW.active = 1
          BEGIN SELECT RAISE(ABORT, 'situation activation refused'); END`
@@ -387,7 +387,7 @@ describe("protocol restart lifecycle", () => {
         resumeProtocol(protocolForm({ id: original.id }))
       ).rejects.toThrow(/situation activation refused/);
     } finally {
-      db.exec("DROP TRIGGER block_activate");
+      rawDb.exec("DROP TRIGGER block_activate");
     }
 
     // Both halves are back where they started.

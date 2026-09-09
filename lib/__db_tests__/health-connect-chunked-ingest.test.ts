@@ -20,7 +20,7 @@
 // Runs via `npm run test:db`; the `db` singleton points at a per-file temp DB (setup.ts).
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { POST } from "@/app/api/integrations/health-connect/ingest/route";
 import { generateHealthConnectToken } from "@/lib/integrations/connections";
 import { setTimezone } from "@/lib/settings";
@@ -461,7 +461,7 @@ describe("HC mid-batch failure reports the committed split (#1614)", () => {
     // A genuine mid-batch DB failure driven from real payload JSON: a trigger that
     // aborts one heart-rate minute. Ordering inside the ingest is body metrics →
     // samples → hr minutes, so the first two chunks commit before this fires.
-    db.exec(
+    rawDb.exec(
       `CREATE TRIGGER hc_partial_poison BEFORE INSERT ON hr_minutes
          WHEN NEW.profile_id = ${profileId} AND NEW.bpm = 199
          BEGIN SELECT RAISE(ABORT, 'poison'); END;`
@@ -494,7 +494,7 @@ describe("HC mid-batch failure reports the committed split (#1614)", () => {
         error: "internal error",
       });
     } finally {
-      db.exec("DROP TRIGGER hc_partial_poison");
+      rawDb.exec("DROP TRIGGER hc_partial_poison");
     }
 
     // The body-metric + steps chunks committed…

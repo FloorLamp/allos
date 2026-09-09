@@ -39,9 +39,10 @@ import {
   ONBOARDING_PROFILE,
   ONBOARDING_CAREGIVER_PROFILE,
 } from "./fixture-logins";
+import type { SqlPrepare } from "../lib/write-revision";
 
 // The minimal handle surface both callers share.
-type DbHandle = Pick<InstanceType<typeof Database>, "prepare">;
+type DbHandle = SqlPrepare;
 
 // Delete every row the onboarding wizard (or the fixture's prior run) can have
 // written for this profile, returning it to "truly empty". This is the wizard's

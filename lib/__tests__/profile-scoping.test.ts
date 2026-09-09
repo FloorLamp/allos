@@ -560,6 +560,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     why: 'preparedFor(), the compile-and-cache helper behind hoistedStatement(): it compiles whatever SQL its CALLER declared, so there is no literal to read here. Nothing is exempted by this entry — every hoistedStatement("…") site is itself a scanned literal (prepareArgs matches it), so those statements are checked where they are written, exactly as a module-scope db.prepare literal was before.',
   },
   {
+    file: "lib/write-revision.ts",
+    expr: "source",
+    why: "trackedDatabase's capability adapter compiles whatever SQL its CALLER supplied, then wraps the native statement so writes advance the durable revision. It owns no query text: literal prepare calls remain scanned where their owners declare them, so this entry exempts no SQL from the profile-scoping census.",
+  },
+  {
     file: "lib/queries/medical/flags.ts",
     expr: "sql",
     why: "reconcileFlags: `sql` starts from a base string that includes WHERE profile_id = ?",

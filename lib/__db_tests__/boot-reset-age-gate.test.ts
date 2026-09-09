@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { rawDb as db } from "@/lib/db";
 import { resetInterruptedWork } from "@/lib/migrations/boot-tasks";
+import { readDataWriteRevision, trackedDatabase } from "@/lib/write-revision";
 
 function newProfile(name: string): number {
   return Number(
@@ -132,12 +133,17 @@ describe("resetInterruptedWork age gate (issue #461)", () => {
   it("is idempotent — a second pass over already-reaped rows changes nothing", () => {
     const stranded = insertDoc(profileId, "processing", 60);
     const job = insertJob(profileId, "committing", 60);
-    resetInterruptedWork(db, 30);
+    const tracked = trackedDatabase(db);
+    const before = readDataWriteRevision(tracked);
+    resetInterruptedWork(tracked, 30);
     expect(docStatus(stranded)).toBe("failed");
     expect(jobStatus(job)).toBe("failed");
+    expect(readDataWriteRevision(tracked)).toBe(before + 1);
     // Second pass: the rows are terminal now, so nothing flips again.
-    resetInterruptedWork(db, 30);
+    const after = readDataWriteRevision(tracked);
+    resetInterruptedWork(tracked, 30);
     expect(docStatus(stranded)).toBe("failed");
     expect(jobStatus(job)).toBe("failed");
+    expect(readDataWriteRevision(tracked)).toBe(after);
   });
 });
