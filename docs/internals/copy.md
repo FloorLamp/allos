@@ -82,6 +82,15 @@ Registry copy splits at its source (`IntegrationDef.lead` and `.detail`) so
 compact cards can show only the lead. Keep useful claims in the lead or detail;
 remove redundant prose rather than hiding it.
 
+## Explainers on rows
+
+A constant explanation states itself once, at the structural level that owns
+it: a column header, group header, or legend. A per-row fact moves to the row's
+detail surface where one exists. A fact with no other home, and a rare warning
+such as a fault or mismatch, keeps its icon; a row carries at most one (#3970).
+Relocate rather than delete: `title=`-only content is unreachable for touch,
+keyboard, and screen readers (#3375).
+
 ## Honest states and repetition
 
 A stat block follows the model's evidence threshold. Below it, show one quiet
