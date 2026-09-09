@@ -142,14 +142,12 @@ export default function ActiveSessions({
       </ul>
 
       {hidden > 0 && (
-        <button
-          type="button"
-          className="btn-ghost text-sm"
+        <Button
           onClick={() => setExpanded((v) => !v)}
           data-testid="sessions-show-all"
         >
           {expanded ? "Show fewer" : `Show all ${sessions.length}`}
-        </button>
+        </Button>
       )}
     </div>
   );
