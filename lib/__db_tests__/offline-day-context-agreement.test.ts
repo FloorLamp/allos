@@ -53,6 +53,8 @@ import {
   offeredItems,
 } from "@/lib/queries/upcoming/intake-safety";
 import { getOfferedIntakeForSlot } from "@/lib/queries/intake";
+import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import type { IntakeCondition } from "@/lib/types";
 
 let seq = 0;
@@ -201,6 +203,73 @@ describe("a live surface holds a post-workout dose until the session ends (#5321
     expect(offeredItems(p, td).map((i) => i.title)).toEqual(["Recovery shake"]);
     expect(getOfferedIntakeForSlot(p, "19:00").map((o) => o.name)).toEqual([
       "Recovery shake",
+    ]);
+  });
+
+  // THE DIGEST IS A SEND, WHICH IS WHY IT GETS ITS OWN ASSERTION (#5321 falsifying
+  // pass). Converting `scheduledDoseRows` above did not only change page rows: the
+  // hourly digest reads the SAME engine — gatherDigestInput → collectUpcoming →
+  // doseItems → scheduledDoseRows — so the gate now decides the pushed "what's due"
+  // list too. A tick firing while the session's recorded end is still ahead no longer
+  // names the post-workout dose.
+  //
+  // Before this, the only thing in the repository that noticed the digest moved was
+  // `tick-gather-budget.test.ts`, and it noticed as a STATEMENT COUNT: a number that
+  // says the gather got two reads more expensive says nothing about which doses the
+  // message names. A count cannot tell a correct hold from a wrong one, and a wrongly
+  // silenced dose is invisible to exactly the person it fails.
+  //
+  // Both directions again, so a digest that simply never names the dose cannot pass.
+  it("holds it out of the digest's due doses mid-session, then names it", () => {
+    const p = newProfile();
+    const td = today(p);
+    seedItem(p, "Recovery tablet", "post_workout");
+    logWorkout(p, td, "17:00", "18:00");
+
+    const digestDoseTitles = (): string[] =>
+      gatherDigestInput(p, "Digest Day Context")
+        .todayGroups.flatMap((g) => g.items)
+        .filter((i) => i.domain === "dose")
+        .map((i) => i.title);
+
+    // Mid-session: the page holds the dose, and so does the message.
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual([]);
+    expect(gatherDigestInput(p, "Digest Day Context").doseCount).toBe(0);
+    expect(digestDoseTitles()).toEqual([]);
+
+    // After the recorded end: the dose is owed, and the message says so.
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
+    expect(gatherDigestInput(p, "Digest Day Context").doseCount).toBe(1);
+    expect(digestDoseTitles()).toEqual(["Recovery tablet"]);
+  });
+
+  // AND THE DAY LEDGER, which is the one that WRITES (#5321 falsifying pass). The three
+  // conversions above are read surfaces; `pendingDayDoses` is the switcher and quick-log
+  // day ledger AND the set the bulk tap filters its writes through — `markDoseTaken`
+  // decrements on-hand supply for every dose it authorizes. So while it built its own
+  // four-field context, a dose the page, Upcoming and the digest all held was still one
+  // tap from a `taken` row and real stock spent. A read divergence shows the wrong
+  // thing; a write divergence spends something.
+  //
+  // Reached from the same page that got this right: the medications board builds a live
+  // five-field context for its own rows and then calls this for the ledger's due half —
+  // one render, two answers about one dose.
+  it("keeps it out of the day ledger's writable set until the session ends", () => {
+    const p = newProfile();
+    const td = today(p);
+    seedItem(p, "Recovery tablet", "post_workout");
+    logWorkout(p, td, "17:00", "18:00");
+
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual([]);
+    expect(pendingDayDoses(p, td).map((d) => d.name)).toEqual([]);
+
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
+    expect(pendingDayDoses(p, td).map((d) => d.name)).toEqual([
+      "Recovery tablet",
     ]);
   });
 });

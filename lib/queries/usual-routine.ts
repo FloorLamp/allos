@@ -16,12 +16,9 @@
 // Profile-scoped: every read below takes `profileId` and the dose rows are scoped
 // through their parent item's `profile_id` (getIntakeDoses).
 
-import {
-  getActivitiesByDate,
-  getActivityDates,
-  isPredictedWorkoutDay,
-} from "./training";
+import { getActivityDates } from "./training";
 import { getIntakeItems } from "./intake";
+import { intakeDayContext } from "./intake/day-context";
 import { getIntakeDoses } from "./intake/schedule";
 import { getSkippedDoseIds, getTakenDoseIds } from "./intake/adherence";
 import { getEffectiveActiveSituations } from "./derived-situations";
@@ -189,40 +186,46 @@ export function pendingDayDoses(
   // strip that #3917's own missed-day offer is computed from — two catch-up surfaces,
   // one question, two answers (#221).
   const isToday = date === today(profileId);
+  // TODAY GOES THROUGH THE SHARED BUILDER (#5321); A PAST DAY CANNOT, and the reason is
+  // one reader. The builder answers today's four facts exactly as this function used to
+  // — the raw activity read, the effective situation set, the inferred prediction — and
+  // adds the fifth this sheet was missing: `postWorkoutReady`, read as `?? true`, so
+  // omitting it did not lose a condition, it defaulted to PERMISSIVE. This is the day
+  // ledger AND the set the bulk tap writes against, so that default put a post-workout
+  // dose the medications page was still holding one tap from a `taken` row and a
+  // decremented supply. It is the last live caller that built its own context.
+  //
+  // WHICH READER, and the two are not interchangeable — which is why a past day keeps
+  // its own build. `getActivitiesByDate` (what the builder uses) is the raw row read;
+  // `getActivityDates` is the same rows with DRAFT HUSKS DROPPED (#3189 —
+  // create-at-start writes the row at the session's first second, so a session opened
+  // and abandoned carries a date like any other). Every other pairing in the repo
+  // splits them exactly this way — today from the raw read, a past day from the
+  // husk-free list — and taking the today reader to a closed day let one abandoned
+  // draft both CONCEAL a rest-day dose the day owed and OFFER a pre-workout dose it did
+  // not, the two harms this sheet exists to prevent. The strip reads `getActivityDates`
+  // too, which is what makes the agreement real rather than a restatement.
+  //
+  // AND A PAST DAY CARRIES NO PREDICTION, the same split, found by auditing this seam.
+  // `conditionAppliesOn` reads `predictedWorkoutDay ?? isWorkoutDay`, and the prediction
+  // is a pattern inferred from a TRAILING window ending today — so on a closed day it
+  // lets a guess made now override the training already on the record. #558 wants it for
+  // TODAY (a pre-workout reminder has to be able to land BEFORE the session is logged);
+  // a closed day has no such need, and `intakeAdherenceStrip` passes no prediction at
+  // all. `null` — "no cadence is known" — falls back to `isWorkoutDay`, which is exactly
+  // the strip's answer. A closed day's `postWorkoutReady` is likewise the day's
+  // converged answer, which is the `true` the omitted field already means there.
+  //
   // Only a PAST day needs the husk-free list, so today's path — the one the composed
-  // one-tap offer rides — pays for no extra read at all.
-  const trainedOn = isToday
-    ? new Set<string>()
-    : new Set(getActivityDates(profileId));
-  const ctx = {
-    date,
-    // WHICH READER, and the two are not interchangeable. `getActivitiesByDate` is the
-    // raw row read; `getActivityDates` is the same rows with DRAFT HUSKS DROPPED
-    // (#3189 — create-at-start writes the row at the session's first second, so a
-    // session opened and abandoned carries a date like any other). Every other pairing
-    // in the repo splits them exactly this way — today from the raw read, a past day
-    // from the husk-free list — and taking the today reader to a closed day let one
-    // abandoned draft both CONCEAL a rest-day dose the day owed and OFFER a
-    // pre-workout dose it did not, the two harms this sheet exists to prevent. The
-    // strip reads `getActivityDates` too, which is what makes the agreement real
-    // rather than a restatement.
-    isWorkoutDay: isToday
-      ? getActivitiesByDate(profileId, date).length > 0
-      : trainedOn.has(date),
-    activeSituations: getEffectiveActiveSituations(profileId, date),
-    // THE SAME TODAY/PAST SPLIT, and found by auditing the rest of this seam rather
-    // than by a third review round. `conditionAppliesOn` reads
-    // `predictedWorkoutDay ?? isWorkoutDay`, and the prediction is a pattern inferred
-    // from a TRAILING window ending today — so on a past day it lets a guess made now
-    // override the training that is already on the record. #558 wants it for TODAY (a
-    // pre-workout reminder has to be able to land BEFORE the session is logged); a
-    // closed day has no such need, and `intakeAdherenceStrip` passes no prediction at
-    // all. `null` — "no cadence is known" — falls back to `isWorkoutDay`, which is
-    // exactly the strip's answer.
-    predictedWorkoutDay: isToday
-      ? isPredictedWorkoutDay(profileId, date)
-      : null,
-  };
+  // one-tap offer rides — still pays for no extra read at all.
+  const ctx = isToday
+    ? intakeDayContext(profileId, date)
+    : {
+        date,
+        isWorkoutDay: new Set(getActivityDates(profileId)).has(date),
+        activeSituations: getEffectiveActiveSituations(profileId, date),
+        predictedWorkoutDay: null,
+      };
   // THE LIFETIME CLAMP (#430/#1442), the same bound `intakeAdherenceStrip` treats as
   // load-bearing. Without it every item a person adds grows two phantom past-day
   // obligations: `doseOnDay` reads only the DECLARED start/end dates and never
