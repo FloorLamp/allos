@@ -28,7 +28,6 @@ import { requestNowMs } from "@/lib/request-now";
 import { appUrl } from "@/lib/external-url-server";
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
-import BackLink from "@/components/BackLink";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
@@ -70,9 +69,10 @@ export default async function HealthConnectPage() {
       className="mx-auto"
       data-testid="integration-page"
     >
-      <BackLink href="/data?section=import" label="Import" />
-
-      <PageHeader title={def.name} />
+      <PageHeader
+        back={{ href: "/data?section=import", destination: "Import" }}
+        title={def.name}
+      />
 
       {/* One sentence, then the mechanics behind a fold (copy.md rule 10 /
           #3490). The registry carries the split; every integration page renders

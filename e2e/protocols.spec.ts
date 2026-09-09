@@ -217,7 +217,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     );
     await dismissToast(page, "Protocol created");
     await expect(
-      detailMain.getByRole("link", { name: "Back to protocols" })
+      detailMain.getByRole("link", { name: "Protocols" })
     ).toHaveAttribute("href", "/longevity#protocols");
     await expect(
       detailMain

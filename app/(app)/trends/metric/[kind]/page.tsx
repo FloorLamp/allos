@@ -92,7 +92,6 @@ import { suggestedPersonalBest } from "@/lib/peak-flow";
 import { savePeakFlowPersonalBest } from "../../peak-flow-actions";
 import SourceComparison from "../../SourceComparison";
 import MetricMeasurementPanel from "./MetricMeasurementPanel";
-import BackLink from "@/components/BackLink";
 import {
   isMeasurementEntryAllowed,
   type MeasurementEntryMetric,
@@ -289,8 +288,10 @@ export default async function TrendMetricDetailPage(props: {
   if (!isTrendMetricSlug(kind)) {
     return (
       <PageContainer width="reading" className="space-y-4">
-        <BackLink href="/trends#body" label="Back to Body" className="" />
-        <PageHeader title="Metric" />
+        <PageHeader
+          back={{ href: "/trends#body", destination: "Body" }}
+          title="Metric"
+        />
         <EmptyState message="Unknown metric." />
       </PageContainer>
     );
@@ -318,8 +319,10 @@ export default async function TrendMetricDetailPage(props: {
   if (kind === "calm" && !isAnxietyScaleRelevant(profile.id) && !starred) {
     return (
       <PageContainer width="reading" className="space-y-4">
-        <BackLink href="/trends#body" label="Back to Body" className="" />
-        <PageHeader title="Metric" />
+        <PageHeader
+          back={{ href: "/trends#body", destination: "Body" }}
+          title="Metric"
+        />
         <EmptyState message="Unknown metric." />
       </PageContainer>
     );
@@ -332,8 +335,11 @@ export default async function TrendMetricDetailPage(props: {
   if (kind === "calm" && !isAnxietyScaleRelevant(profile.id)) {
     return (
       <PageContainer width="reading" className="space-y-4">
-        <BackLink href="/trends#body" label="Back to Body" className="" />
-        <PageHeader title={meta.title} action={starAction} />
+        <PageHeader
+          back={{ href: "/trends#body", destination: "Body" }}
+          title={meta.title}
+          action={starAction}
+        />
         <EmptyState message="This metric isn’t available for this profile." />
       </PageContainer>
     );
@@ -538,25 +544,6 @@ export default async function TrendMetricDetailPage(props: {
         className="mx-auto space-y-4 md:space-y-6"
         data-testid="metric-detail-page"
       >
-        {/* Above the title at EVERY width (#3237), and hoisted out of the ternary
-            so both header compositions get the same placement rather than each
-            carrying its own copy.
-
-            This used to ride below `sm` as a flex sibling of the heading — an
-            icon inside the header's own row, its label `hidden sm:inline`
-            because that shared row had no space for it. The hiding was a
-            consequence of the placement, not an independent constraint, and
-            measuring is what settled it rather than assuming either way: at
-            390px, with the WIDEST-RENDERING title in the metric catalog ("Skin
-            Temperature Variation", 257.5px — ahead of the equally long "Blood
-            Pressure (Diastolic)" at 250.1px), the link renders its full label
-            at 104.5px on its own line (top 73) and the h1 takes its own next
-            line (top 109), both inside a 358px content box. They are on
-            separate lines, so they cannot compete for width at all; nothing
-            needs hiding, and no icon-only variant was added — an option added on the
-            hypothesis is how a shared component starts accumulating them.
-            e2e/mobile-overflow.spec.ts holds the guard at 360px. */}
-        <BackLink href="/trends#body" label="Back to Body" className="" />
         {meta.quickAdd === "measurements" && measurementEntry ? (
           <MetricMeasurementPanel
             metric={measurementEntry.metric}
@@ -584,6 +571,7 @@ export default async function TrendMetricDetailPage(props: {
         ) : (
           <div className="min-w-0">
             <PageHeader
+              back={{ href: "/trends#body", destination: "Body" }}
               className="mb-0! min-w-0"
               title={meta.title}
               subtitle={latestSummary}

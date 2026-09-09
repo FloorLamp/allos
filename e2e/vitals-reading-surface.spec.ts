@@ -117,7 +117,9 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
 
     await expect(page).toHaveURL(/\/results\/clinical-results\/view/);
     await expect(
-      page.getByRole("link", { name: "Back to clinical results" })
+      page
+        .getByRole("main")
+        .getByRole("link", { name: "Clinical results", exact: true })
     ).toBeVisible();
   });
 });
