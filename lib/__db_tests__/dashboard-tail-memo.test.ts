@@ -2,16 +2,26 @@
 //
 // The speed is the receipt; THIS is the deliverable. A memo over health data fails by
 // answering from before a write — a dismissed finding that comes back, a logged dose
-// the coaching input has not seen. The durable database revision has to move for
-// changes committed by this connection and by a second process. Each mutation below
-// is therefore asserted twice: on the VALUE the gather returns (the stale read itself)
-// and on whether the gather ran at all (the receipt). Removing either execution path
-// from the revision owner reds its corresponding row.
+// the coaching input has not seen — and the memo's version is a pair, because neither
+// half sees what the other does:
+//
+//   - the durable `data_write_revision` row moves for every write the tracked
+//     statement/transaction owner commits, on THIS connection or any other,
+//   - `PRAGMA data_version` moves for every commit by ANOTHER connection, whether or
+//     not that writer went through the tracked owner,
+//
+// so a test that drives one case cannot fail when the other signal is removed. Each
+// mutation below is therefore asserted twice: on the VALUE the gather returns (the
+// stale read itself) and on whether the gather ran at all (the receipt). Removing
+// either half of the version in lib/commit-cache.ts reds the rows only that half
+// covers: the two own-connection writes need the revision, the raw second connection
+// needs `data_version`.
 //
 // THE SECOND CONNECTION IS THE CASE NOBODY WOULD THINK TO CHECK, and it is not
 // hypothetical: three processes write this file (the web app, the hourly notify tick,
 // the poll sidecar), and lib/tick-cache.ts names the sidecar and the Telegram poll loop
 // as other-process writers of the very suppression bus these findings ride.
+import Database from "better-sqlite3";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
@@ -21,7 +31,6 @@ import {
   today,
   writeTx,
 } from "@/lib/db";
-import type { SqlPrepare } from "@/lib/write-revision";
 import {
   installStatementTrace,
   requestCache,
@@ -58,8 +67,10 @@ function freshProfile(label: string): void {
 }
 
 // THE MEMO'S OWN COST, and the reason a warm load reads 1 rather than 0. `commitCached`
-// reads the durable revision once per request. It is not one of the six gathers'
-// statements — it is what a warm load spends INSTEAD of all of them.
+// reads its version pair once per request: `PRAGMA data_version` is invisible to the
+// trace (better-sqlite3's `pragma()` bypasses `db.prepare`) and the durable revision
+// is one SELECT. It is not one of the six gathers' statements — it is what a warm load
+// spends INSTEAD of all of them.
 const VERSION_READ = 1;
 
 /** The six gathers above the dashboard's first candidate, called as the page calls them. */
@@ -96,7 +107,14 @@ const allGathers = (): void => {
   for (const gather of GATHERS) gather.run();
 };
 
-function bookAppointment(handle: SqlPrepare, day: string): void {
+// The ONE capability this fixture needs, named structurally so the tracked request
+// database and a bare second connection can both supply it — their `prepare` generics
+// differ, and nothing here binds anything but a string and three values.
+interface AppointmentWriter {
+  prepare(source: string): { run(...params: unknown[]): unknown };
+}
+
+function bookAppointment(handle: AppointmentWriter, day: string): void {
   handle
     .prepare(
       `INSERT INTO appointments (profile_id, date, time_of_day, status, title)
@@ -105,7 +123,7 @@ function bookAppointment(handle: SqlPrepare, day: string): void {
     .run(profileId, day);
 }
 
-/** The three ways a commit reaches this process, and only these three exist. */
+/** The four ways a commit reaches this process, and only these four exist. */
 const MUTATIONS: { name: string; commit: (day: string) => void }[] = [
   {
     // The path #5073 named, and the one every write TRANSACTION takes.
@@ -160,6 +178,22 @@ const MUTATIONS: { name: string; commit: (day: string) => void }[] = [
         }
       );
       expect(child.status, child.stderr || child.stdout).toBe(0);
+    },
+  },
+  {
+    // ANY OTHER WRITER OF THIS FILE, tracked or not: a bare connection that commits
+    // without touching `data_write_revision` at all. The durable revision cannot see
+    // it — only `PRAGMA data_version` can — and the memo must still drop. e2e fixtures
+    // write exactly like this (e2e/weather-uv.spec.ts's `setTodayWetWeather` edits the
+    // weather cache the coaching input reads), as would any operator `sqlite3` session.
+    name: "a commit from a second connection to the same file",
+    commit: (day) => {
+      const other = new Database(dbFilePath());
+      try {
+        bookAppointment(other, day);
+      } finally {
+        other.close();
+      }
     },
   },
 ];

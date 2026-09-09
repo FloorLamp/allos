@@ -12,17 +12,34 @@
 // cleared it, and on a health surface that is the dangerous direction. Nothing here is
 // bounded by the clock.
 //
-// The version is one durable database row. The statement/transaction owner advances it
-// in the same commit as every application mutation, including single-statement writes
-// and writes made by another process. It therefore remains comparable across connection
-// replacement and process restart, unlike the prior data_version/total_changes pair.
+// THE VERSION IS A PAIR, because neither half can see what the other sees.
+//   - The durable `data_write_revision` row is advanced by the statement/transaction
+//     owner (lib/write-revision.ts) in the same commit as every application mutation,
+//     including single-statement writes and writes made by another process. It is the
+//     half that sees THIS connection's own writes, which `data_version` never does,
+//     and the only half that survives connection replacement and process restart —
+//     so it is also what the client freshness beacon compares (#3075).
+//   - `PRAGMA data_version` moves when ANY OTHER CONNECTION commits, whether or not
+//     that writer went through the tracked owner. A raw `sqlite3` session, an e2e
+//     fixture editing the weather cache, or a future writer that has not been routed
+//     through the owner yet still drops this memo, and without this half it would be
+//     served health data from before its write.
+// Both halves are proved live, and proved load-bearing by removal, in
+// lib/__db_tests__/dashboard-tail-memo.test.ts.
 //
-// OVER-INVALIDATION IS THE DESIGN, not an accident: the durable revision is global,
-// so any write anywhere drops every profile's entry. Making it per profile
+// NO total_changes() THIRD HALF. The pre-#3075 version paired `data_version` with
+// SQLite's own-connection change counter, because nothing else saw this connection's
+// writes. The durable revision now does: the owner advances it inside the same
+// transaction as the write, on the same connection, so `readDataWriteRevision` reads
+// it back immediately — including for a bare single-statement write, the path a
+// writeTx-only counter would have missed.
+//
+// OVER-INVALIDATION IS THE DESIGN, not an accident: neither half of the version is per
+// profile, so any write anywhere drops every profile's entry. Making it per profile
 // would need every write to name its profile at the boundary; the cost of not doing so
 // is one recompute after a write, which is what every load pays today.
 //
-// ONE VERSION READ PER REQUEST. `cache()` holds the revision for the request, so a commit
+// ONE VERSION READ PER REQUEST. `cache()` holds the pair for the request, so a commit
 // midway through a render is observed by the NEXT request instead of splitting one
 // render across two snapshots — the same rule the request cache already implies.
 // Outside a request `cache()` is identity, and then this wrapper is a plain
@@ -33,7 +50,8 @@ import { cache } from "./request-cache";
 import { readDataWriteRevision } from "./write-revision";
 
 function readVersion(): string {
-  return String(readDataWriteRevision(db));
+  const others = db.pragma("data_version", { simple: true }) as number;
+  return `${others}.${readDataWriteRevision(db)}`;
 }
 
 // One request's version, read at the first memo use and held for the rest of it.
@@ -91,7 +109,7 @@ function storeAt(version: string): Store {
 //
 // `keyOf` must project EVERY argument that can change the answer — the same discipline
 // `cache()` imposes by identity and `tickCached` states in the same words. It must also
-// project anything OUTSIDE the arguments that the write revision does not cover: the
+// project anything OUTSIDE the arguments that the version pair does not cover: the
 // clock is the one that matters here, so a gather that reads `today(profileId)` for
 // itself puts that day in its key, or it answers yesterday's question after a quiet
 // midnight.

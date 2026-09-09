@@ -35,6 +35,7 @@ export interface SqlPrepare {
 }
 
 export type SqlPragma =
+  | "data_version"
   | "foreign_keys"
   | "foreign_keys = OFF"
   | "foreign_keys = ON"
