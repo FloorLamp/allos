@@ -218,6 +218,15 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         .getByTestId("illness-medication-quick-add")
         .getByTestId("intake-item-form")
     ).toBeVisible();
+    // ZERO STANDING PROSE, SCANNED OVER THE FOLD (#5301). The sentence that stood here
+    // — "Add an over-the-counter medication and its usual dose." — belonged to the HOST
+    // rather than to the form, so a scan bounded by the form's own test id passed with
+    // it still on screen, eight pixels under a control that already says "Add
+    // medication". The assertion above is the positive control: the fold is open and
+    // the form inside it really rendered.
+    await expect(
+      page.getByTestId("illness-medication-quick-add").locator("p")
+    ).toHaveCount(0);
     await page.getByTestId("illness-add-medication").click();
     await expect(addMedication).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByTestId("illness-medication-quick-add")).toHaveCount(
