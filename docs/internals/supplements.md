@@ -131,6 +131,12 @@ readable members the source is chosen explicitly; with one it is named. Source,
 membership, duplicate eligibility and the dose basis are re-read inside the write,
 which refuses a stale offer rather than copying a different member's plan.
 
+Eligibility asks the canonical models, not private ones. Allergy is a gate and
+uses the drug-allergy cross-check about the row the copy would create, so the
+offer and the row's own warning are one judgment. Product identity is RxNorm
+first, taken across the whole membership so every reader derives the same
+product; an item's dose amount is per-dose and is never read as a strength.
+
 ## Amount parsing and suggestions
 
 An ambiguous dose string remains unreadable; do not guess its locale or unit.
