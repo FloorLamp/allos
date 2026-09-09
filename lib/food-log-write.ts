@@ -36,7 +36,8 @@ import { foodSlotForProfileEvent } from "./profile-food-slot";
 import { getTimezone } from "./settings";
 import { isProteinNudgeKey } from "./protein-nudge";
 import {
-  burstFrom,
+  restampBurst,
+  type RestampSelection,
   type CorrectionBurst,
   type TapEvent,
 } from "./correction-time";
@@ -849,7 +850,7 @@ export type FoodRestampOutcome =
 // while still fixing the instant is the honest limit of a grams-less row.
 export function restampFoodEventsCore(
   profileId: number,
-  fromEventId: number,
+  fromEventId: RestampSelection,
   resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null,
   // The tap-time binding, re-evaluated INSIDE this write transaction (#3092 follow-up).
   // The handler's own check runs before its write call, but an `await` separates the
@@ -866,22 +867,38 @@ export function restampFoodEventsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, group_key, date, recorded_at, occurred_at, notify_message_id
+        `SELECT id, group_key, date, recorded_at, occurred_at, notify_message_id, bundle_id
            FROM food_log_events
-          WHERE profile_id = ? AND id >= ?
+          WHERE profile_id = ? AND ${typeof fromEventId === "number" ? "id >= ?" : "id IN (SELECT value FROM json_each(?))"}
           ORDER BY recorded_at, id
-          LIMIT 200`
+          ${typeof fromEventId === "number" ? "LIMIT 200" : ""}`
       )
-      .all(profileId, fromEventId) as {
+      .all(
+        profileId,
+        typeof fromEventId === "number"
+          ? fromEventId
+          : JSON.stringify(fromEventId.ids)
+      ) as {
       id: number;
       group_key: string;
       date: string;
       recorded_at: string;
       occurred_at: string | null;
       notify_message_id: number | null;
+      bundle_id: string | null;
     }[];
+    if (
+      typeof fromEventId !== "number" &&
+      rows.some(
+        (r) =>
+          !Number.isFinite(new Date(r.recorded_at).getTime()) ||
+          (r.occurred_at != null &&
+            !Number.isFinite(new Date(r.occurred_at).getTime()))
+      )
+    )
+      return { kind: "no-burst" as const };
     const byId = new Map(rows.map((r) => [r.id, r]));
-    const burst = burstFrom(
+    const burst = restampBurst(
       rows.map((r) => ({
         id: r.id,
         tapAt: r.recorded_at,
@@ -890,6 +907,7 @@ export function restampFoodEventsCore(
         // provenance the renderer partitioned by, so a chip re-stamps exactly the
         // rows whose correction row it was.
         messageRef: r.notify_message_id,
+        bundleId: r.bundle_id,
         label: r.group_key,
       })),
       fromEventId

@@ -22,11 +22,7 @@ import { dateStrInTz, minuteOfDayInTz } from "../date";
 import { today } from "../db";
 import { profileFoodSlotBoundaries } from "../profile-food-slot";
 import { foodWindowGap, foodWindowGapDates } from "../food-window-gap";
-import {
-  correctionBursts,
-  type CorrectionBurst,
-  type CorrectionDay,
-} from "../correction-time";
+import { type CorrectionBurst, type CorrectionDay } from "../correction-time";
 import { proteinTodayLineParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -35,9 +31,10 @@ import {
   type FoodNudgeWindow,
 } from "./food-format";
 import {
-  correctionMessageBinding,
+  messageCorrectionBursts,
   type CorrectionMessageRef,
 } from "./message-pointers";
+import { slotSessionForKeyboard } from "./intake";
 import { telegramChannel } from "./telegram";
 import { composeForSend } from "./compose";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -133,10 +130,13 @@ export function buildFoodNudge(
   // tap produced it, and an unattributed burst (web, offline replay, pruned pointer)
   // rides only the newest live food message in the chat — never an older one, whose
   // subject it is not and whose chips would restamp servings it never mentioned.
-  const corrections = correctionBursts(
+  const corrections = messageCorrectionBursts(
+    profileId,
+    "food",
     getRecentFoodTaps(profileId, now),
     now,
-    correctionMessageBinding(profileId, "food", opts.ref ?? null)
+    opts.ref ?? null,
+    slotSessionForKeyboard
   );
   const tz = getTimezone(profileId);
   // The empty-window notice (#2376). A RIDE-ALONG, exactly like the correction rows

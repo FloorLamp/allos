@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
+  appContent,
   hydratedClick,
   openFoodAdd,
   settledBoxes,
@@ -9,7 +10,12 @@ import {
 } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
-import { utcSqlString, zonedWallTimeToUtc, shiftDateStr } from "@/lib/date";
+import {
+  utcInstant,
+  utcSqlString,
+  zonedWallTimeToUtc,
+  shiftDateStr,
+} from "@/lib/date";
 import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
 import { bulkLabel } from "@/lib/usual-routine";
@@ -332,6 +338,92 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     const due = morning(page).locator('[data-testid^="ledger-due-group-"]');
     const named = ((await due.getAttribute("data-doses")) ?? "").split(",");
     expect(named).not.toContain(String(seeded.doseIds[2]));
+  });
+
+  test("a corrected mixed bundle shows one stated clock for its foods and doses", async ({
+    page,
+  }) => {
+    const day = todayLocal();
+    const corrected = utcInstant(zonedWallTimeToUtc(zone(), day, "06:15")!);
+    const recorded = utcInstant(zonedWallTimeToUtc(zone(), day, WRITE_HHMM)!);
+    const groups = ["berries", "fermented"];
+    const db = openDb();
+    let servingIds: number[];
+    try {
+      // The DB tier proves the Telegram correction. This fixture observes its
+      // committed mixed-domain result through the actual ledger projection.
+      servingIds = db.transaction(() => {
+        db.prepare(
+          "UPDATE intake_item_logs SET occurred_at = ? WHERE dose_id IN (?, ?) AND date = ? AND item_id IN (SELECT id FROM intake_items WHERE profile_id = 1)"
+        ).run(corrected, ...seeded.doseIds.slice(0, 2), day);
+        return groups.map((group) => {
+          const id = Number(
+            db
+              .prepare(
+                `INSERT INTO food_log_events
+               (profile_id, group_key, date, recorded_at, occurred_at, time_source, meal_slot, bundle_id)
+             VALUES (1, ?, ?, ?, ?, 'stated', NULL, ?)`
+              )
+              .run(group, day, recorded, corrected, WRITE_BUNDLE)
+              .lastInsertRowid
+          );
+          db.prepare(
+            `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+             VALUES (1, ?, ?, 1)
+             ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
+          ).run(day, group);
+          return id;
+        });
+      })();
+    } finally {
+      db.close();
+    }
+    try {
+      await page.goto("/nutrition");
+      const ledger = appContent(page).getByTestId("day-ledger");
+      const clock = /^(?:0?6:15)(?:\s?am)?$/i;
+      const stack = ledger
+        .getByTestId("ledger-group-morning")
+        .locator(`[data-testid^="ledger-stack-"][data-stack="${STACK}"]`);
+      await expect(stack.locator("..").getByText(clock)).toBeVisible();
+      await hydratedClick(page, stack);
+      for (const doseId of seeded.doseIds.slice(0, 2)) {
+        await expect(
+          ledger.getByTestId(`ledger-dose-${doseLogRow(doseId)!.id}`)
+        ).toBeVisible();
+      }
+      for (const id of servingIds) {
+        const row = ledger.getByTestId(`ledger-serving-${id}`);
+        await expect(row.getByText(clock)).toBeVisible();
+        await expect(
+          row.getByRole("button", { name: /serving eaten at 06:15/ })
+        ).toBeVisible();
+      }
+    } finally {
+      const db = openDb();
+      try {
+        db.transaction(() => {
+          db.prepare(
+            "UPDATE intake_item_logs SET occurred_at = NULL WHERE dose_id IN (?, ?) AND date = ? AND item_id IN (SELECT id FROM intake_items WHERE profile_id = 1)"
+          ).run(...seeded.doseIds.slice(0, 2), day);
+          for (const id of servingIds) {
+            db.prepare(
+              "DELETE FROM food_log_events WHERE profile_id = 1 AND id = ?"
+            ).run(id);
+          }
+          for (const group of groups) {
+            db.prepare(
+              "UPDATE food_daily_totals SET servings = servings - 1 WHERE profile_id = 1 AND date = ? AND group_key = ?"
+            ).run(day, group);
+            db.prepare(
+              "DELETE FROM food_daily_totals WHERE profile_id = 1 AND date = ? AND group_key = ? AND servings = 0"
+            ).run(day, group);
+          }
+        })();
+      } finally {
+        db.close();
+      }
+    }
   });
 
   test("a skip states its stored reason, and a stated row sorts above a filed one", async ({
