@@ -4,6 +4,7 @@ import {
   hydratedClick,
   openFoodAdd,
   settledClick,
+  settledFill,
   settledSelect,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
@@ -291,7 +292,7 @@ test("the ⋯ menu removes the corrected row it names, and Undo restores that ro
   await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
 });
 
-test("the sheet corrects a serving's eating time; Meal follows the hour until touched; Not stated clears (#2227)", async ({
+test("the sheet corrects a serving's eating time to a MINUTE; Meal follows it until touched; Not stated clears (#2227, #5617)", async ({
   page,
 }) => {
   test.slow(); // the nutrition route compiles on first hit
@@ -317,8 +318,9 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
     "No eating time recorded"
   );
 
-  // Move the pair's DAY to yesterday first: every hour of a past day is offerable,
-  // so the hour choices below don't depend on what o'clock the frozen run is.
+  // Move the pair's DAY to yesterday first. Every minute of a past day is statable,
+  // so the times below don't depend on what o'clock the frozen run is — a future
+  // instant on TODAY is what `judgeEatenAt` refuses, and this test is not about that.
   const yesterday = shiftDateStr(frozenNow().toISOString().slice(0, 10), -1);
   const dateInput = page.getByTestId("food-correct-time-date");
   await dateInput.fill(yesterday);
@@ -326,24 +328,22 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   // reaching the modal.
   await dateInput.press("Escape");
 
-  // Decision 4: choosing an hour drags the Meal select with it (the seeded profile
+  // THE CORRECTION STATES A MINUTE (#5617). This used to pick from a select of the
+  // day's HOURS, so :40 was unreachable here while the form's own add path had named
+  // minutes since #2236. Every time below is off the hour on purpose: an hour select
+  // could not carry one, so this reds if the grain goes back.
+  const timeInput = page.getByTestId("food-correct-time-time");
+
+  // Decision 4: choosing a time drags the Meal select with it (the seeded profile
   // has no custom schedule, so the default 11:00/15:00 boundaries hold)…
-  const timeSelect = page.getByTestId("food-correct-time-time");
-  const isoAt = async (hhmm: string) => {
-    const iso = await timeSelect
-      .locator("option", { hasText: new RegExp(`^${hhmm}$`) })
-      .getAttribute("value");
-    expect(iso, `the ${hhmm} option is offered`).toBeTruthy();
-    return iso!;
-  };
-  await settledSelect(page, timeSelect, await isoAt("19:00"));
+  await settledFill(page, timeInput, "19:40");
   await expect(page.getByTestId("food-correct-slot")).toHaveValue("Evening");
-  await settledSelect(page, timeSelect, await isoAt("12:00"));
+  await settledFill(page, timeInput, "12:20");
   await expect(page.getByTestId("food-correct-slot")).toHaveValue("Midday");
 
-  // …until Meal is set BY HAND — from then on the hour stops moving it.
+  // …until Meal is set BY HAND — from then on the time stops moving it.
   await settledSelect(page, page.getByTestId("food-correct-slot"), "Morning");
-  await settledSelect(page, timeSelect, await isoAt("19:00"));
+  await settledFill(page, timeInput, "19:40");
   await expect(page.getByTestId("food-correct-slot")).toHaveValue("Morning");
   // Restore the coherent pairing before saving.
   await settledSelect(page, page.getByTestId("food-correct-slot"), "Evening");
@@ -358,22 +358,27 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   // THE ROW STATES THE CLOCK; THE GROUP STATES THE MEAL (#3987). The meal used to be
   // repeated on every row beside its time; it is the heading the row now sits under,
   // which is the same fact said once.
-  await expect(row).toContainText("19:00");
+  await expect(row).toContainText("19:40");
   await expect(page.getByTestId("ledger-group-evening")).toContainText(
     "Legumes & beans"
   );
 
-  // Reopen: the sheet opens on the "Ate at" line and the select shows the hour.
-  await row.getByRole("button", { name: /serving eaten at 19:00/ }).click();
+  // Reopen: the sheet opens on the "Ate at" line and the field shows the minute it
+  // stored — the whole minute, not an hour it was rounded to.
+  await row.getByRole("button", { name: /serving eaten at 19:40/ }).click();
   await page.getByTestId(`ledger-serving-correct-${eventId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await expect(page.getByTestId("food-correct-provenance")).toContainText(
-    "Ate at 19:00."
+    "Ate at 19:40."
   );
+  await expect(page.getByTestId("food-correct-time-time")).toHaveValue("19:40");
 
-  // Decision 6: "Not stated" is the select's first option and choosing it CLEARS —
-  // the honest default stays reachable, not a one-way ratchet into a guess.
-  await settledSelect(page, timeSelect, "");
+  // Decision 6: "Not stated" CLEARS — the honest default stays reachable, not a
+  // one-way ratchet into a guess. At minute grain it is the control's own button
+  // rather than an empty option in a select.
+  // A pure client clear — it posts nothing, so this is not a settledClick.
+  await hydratedClick(page, page.getByTestId("food-correct-time-not-stated"));
+  await expect(page.getByTestId("food-correct-time-time")).toHaveValue("");
   await settledClick(page, page.getByTestId("food-correct-save"));
   await expect(page.getByTestId("food-correct-modal")).toBeHidden();
   // Back on the logged time: the row shows the tap clock again…
