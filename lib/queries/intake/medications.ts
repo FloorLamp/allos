@@ -20,6 +20,7 @@ import {
 import { DOSE_BAND_UPDATE_PREFIX } from "../../dismissal-keys";
 import { isHiddenUnderPolicy } from "../../lifecycle";
 import { getFindingSuppressions } from "../upcoming/suppressions";
+import { isChildProfileAge } from "../../prn-dosing";
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
@@ -39,13 +40,14 @@ export function getPediatricFormContext(
 ): PediatricFormContext {
   const todayStr = today(profileId);
   const latestWeight = getLatestBodyMetricDated(profileId, "weight");
+  const ageMonths = profileAgeMonths(profileId, todayStr);
   return {
-    ageMonths: profileAgeMonths(profileId, todayStr),
+    ageMonths,
     weightKg: latestWeight?.value ?? null,
     weightDate: latestWeight?.date ?? null,
     weightUnit,
     today: todayStr,
-    declinedDoseUpdates: declinedDoseUpdateKeys(profileId, todayStr),
+    declinedDoseUpdates: declinedDoseUpdateKeys(profileId, ageMonths, todayStr),
   };
 }
 
@@ -56,8 +58,13 @@ export function getPediatricFormContext(
 // different key.
 function declinedDoseUpdateKeys(
   profileId: number,
+  ageMonths: number | null,
   todayStr: string
 ): readonly string[] {
+  // Only a child is ever offered a band update, so an adult profile asks the bus
+  // nothing — this context is gathered on every medication surface, including one row
+  // per member on the household dashboard.
+  if (!isChildProfileAge(ageMonths)) return [];
   const out: string[] = [];
   for (const [key, record] of getFindingSuppressions(profileId))
     if (

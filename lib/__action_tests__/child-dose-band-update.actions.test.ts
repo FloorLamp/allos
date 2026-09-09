@@ -16,10 +16,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { setProfileBirthdate } from "@/lib/settings";
-import {
-  getPediatricFormContext,
-  standingDoseUpdateOffer,
-} from "@/lib/queries";
+import { getPediatricFormContext } from "@/lib/queries";
+import { standingDoseUpdateOffer } from "@/lib/prn-dose-band-offer";
 import {
   acceptDoseBandUpdate,
   declineDoseBandUpdate,

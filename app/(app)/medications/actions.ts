@@ -22,8 +22,8 @@ import {
   linkMedIndication,
   declineMedIndication,
   setStoredDoseAmount,
-  standingDoseUpdateOffer,
 } from "@/lib/queries";
+import { standingDoseUpdateOffer } from "@/lib/prn-dose-band-offer";
 import { DORMANT_PRN_PREFIX } from "@/lib/dormant-prn";
 import { parseDoseBandUpdateKey } from "@/lib/dismissal-keys";
 import { createMedicationShareLink } from "@/lib/share-links-db";
