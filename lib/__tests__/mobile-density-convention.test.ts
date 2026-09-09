@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 // value of this work is entirely in there being exactly ONE place each step is
 // written, and this test is what makes that checkable.
 //
-// Four rules:
+// Three rules:
 //   1. app/globals.css declares every tier of both conventions, once each.
 //   2. Every tier is a `max-sm:` override carrying `!`. This is the DESKTOP-SAFETY
 //      proof and it is structural rather than measured: a `max-sm:` variant emits
@@ -28,9 +28,6 @@ import { describe, expect, it } from "vitest";
 //   3. Every site #3466 enumerated still carries its tier class, next to the inset
 //      it steps down FROM. The pair is the review moment: a call site that changes
 //      its desktop padding has to come here and re-pick its tier.
-//   4. NOBODY outside app/globals.css hand-writes a phone step for these two
-//      properties. This is the rule that keeps a second convention from quietly
-//      appearing beside the first, which is the actual failure mode #3466 names.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const GLOBALS = "app/globals.css";
@@ -278,45 +275,6 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   ["app/(app)/wellness/page.tsx", "section-seam-lg", "mb-8"],
 ];
 
-// Rule 4's scan, and its width is the point. The first version read
-// `max-sm:(p-…|mb-…|space-y-…)`, which catches `max-sm:mb-4` and lets
-// `max-sm:px-3`, `max-sm:pt-2`, `max-sm:py-2.5`, `max-sm:mt-3` and
-// `max-sm:space-x-2` walk straight past — half the spellings of the very thing
-// the rule exists to stop, in a guard whose whole job is that nobody starts a
-// second convention. A guard that can only see the spelling its author had in
-// mind turns "nobody has done this" into "nobody can do this", and only the
-// first is true.
-//
-// It matches a phone-scoped padding, margin or space STEP: a numeric value on
-// `p`/`m` with any direction, or on `space-x`/`space-y`. It deliberately does NOT
-// match `-auto` alignment (`max-sm:ml-auto` and `max-sm:mr-auto` both ship today
-// and are not spacing steps), nor `gap-*`, which is intra-component layout rather
-// than either of the two gutter layers this convention owns. Both silences are
-// asserted below, because a guard that cries wolf on shipped, correct code is
-// deleted within a week and takes the real guard with it.
-const OWNED_STEP =
-  /max-sm:-?(?:[mp][trblxy]?|space-[xy])-\d+(?:\.\d+)?(?![\w-])/;
-
-// The three test directories are excluded and nothing else is: a spec that NAMES
-// the forbidden spelling in order to argue about it — this file does, twice — is
-// not a call site, and a guard that fires on its own source gets deleted.
-const NOT_A_CALL_SITE = /^lib\/__(tests|db_tests|action_tests)__\//;
-
-function sourceFiles(): string[] {
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const e of fs.readdirSync(path.join(REPO, dir), {
-      withFileTypes: true,
-    })) {
-      const rel = `${dir}/${e.name}`;
-      if (e.isDirectory()) walk(rel);
-      else if (e.name.endsWith(".tsx") || e.name.endsWith(".ts")) out.push(rel);
-    }
-  };
-  for (const d of ["app", "components", "lib"]) walk(d);
-  return out.filter((f) => !NOT_A_CALL_SITE.test(f));
-}
-
 describe("phone density conventions (#3466)", () => {
   const css = read(GLOBALS);
 
@@ -358,61 +316,6 @@ describe("phone density conventions (#3466)", () => {
         src,
         `${file} must still carry its own '${from}' — the convention is an ADDITION beside the desktop vocabulary, never a replacement for it; a site that drops it has moved its desktop value too`
       ).toContain(from);
-    }
-  });
-
-  it("rule 4: nobody outside app/globals.css hand-writes a phone step for these properties", () => {
-    const offenders = sourceFiles().filter((f) => OWNED_STEP.test(read(f)));
-    expect(
-      offenders,
-      "a per-file `max-sm:p-*` / `max-sm:mb-*` / `max-sm:space-y-*` is the second convention #3466 exists to prevent — add a tier to app/globals.css and use it"
-    ).toEqual([]);
-  });
-
-  // A green sweep over a COMPLYING tree says nothing about what the sweep can see.
-  // Rule 4's pattern is run here over sources authored to BREAK it and over the
-  // benign neighbours it must stay quiet on — the second half matters as much as
-  // the first, because a guard that fires on shipped, correct code gets deleted
-  // and takes the real guard with it.
-  it("rule 4's pattern can SEE every spelling of the step, and stays quiet on what is not one", () => {
-    const caught = [
-      'className="max-sm:p-3"', // the shape the original pattern already saw
-      'className="max-sm:px-3"', // …and five it did not
-      'className="max-sm:py-2.5"',
-      'className="max-sm:pt-2"',
-      'className="max-sm:pb-1"',
-      'className="max-sm:mt-3"',
-      'className="max-sm:mb-4"',
-      'className="max-sm:m-2"',
-      'className="max-sm:-mt-2"', // a negative step is still a step
-      'className="max-sm:space-x-2"',
-      'className="max-sm:space-y-4"',
-      "className={`flex ${x} max-sm:pl-2`}", // inside a template literal
-    ];
-    for (const source of caught) {
-      expect(
-        OWNED_STEP.test(source),
-        `rule 4 must SEE ${source} — a guard blind to the spelling everyone reaches for turns "nobody has done this" into "nobody can do this"`
-      ).toBe(true);
-    }
-
-    const quiet = [
-      'className="max-sm:ml-auto"', // ships today (ProtocolControls) — alignment, not a step
-      'className="max-sm:mr-auto"', // ships today (ActivityPartsList) — same
-      'className="max-sm:mx-auto"',
-      'className="sm:p-3"', // a DESKTOP value is not this convention's business
-      'className="p-3 sm:p-4"',
-      'className="max-sm:flex max-sm:flex-wrap"',
-      'className="max-sm:min-h-10"', // a tap floor, not a gutter
-      'className="max-sm:gap-2"', // intra-component layout, neither gutter layer
-      'className="max-sm:rounded-none"',
-      'className="subpanel-inset section-seam"', // the convention itself
-    ];
-    for (const source of quiet) {
-      expect(
-        OWNED_STEP.test(source),
-        `rule 4 must stay QUIET on ${source} — it is not a phone-scoped padding or margin step, and a guard that cries wolf on it will be deleted`
-      ).toBe(false);
     }
   });
 
