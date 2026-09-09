@@ -5,16 +5,7 @@ import {
 } from "../../coaching";
 import { activityHistoryKey } from "../../activities-catalog";
 import type { AppRoute } from "../../hrefs";
-import { shiftDateStr, startOfWeekStr } from "../../date";
-import { db } from "../../db";
-import {
-  activityWindows,
-  scopeBucketsToWindows,
-  zoneMinuteTotals,
-} from "../../training-zones";
-import { getHrMinutesInRange } from "../metrics";
-import { getProfileZoneModel } from "../zones";
-import type { Activity } from "../../types";
+import { startOfWeekStr } from "../../date";
 import { formatMinutes } from "../../duration";
 import {
   DEFAULT_FORMAT_PREFS,
@@ -306,51 +297,6 @@ export interface IntensityBucket {
   intensity: string; // "Easy" | "Moderate" | "Hard" | "Unspecified"
   minutes: number;
   sessions: number;
-}
-
-export interface CardioZoneCoverage {
-  minutes: number[];
-  totalMinutes: number;
-  easyMinutes: number;
-  hardMinutes: number;
-  easyPercent: number;
-}
-
-// This window's cardio HR minutes on the profile's own zone model. The same
-// activity-window scoping as ride detail prevents ambient HR outside a session
-// from entering the distribution.
-export function getCardioZoneCoverage(
-  profileId: number,
-  since: string,
-  until: string
-): CardioZoneCoverage | null {
-  const model = getProfileZoneModel(profileId);
-  if (!model) return null;
-  const activities = db
-    .prepare(
-      `SELECT * FROM activities
-        WHERE profile_id = ? AND type = 'cardio' AND date >= ? AND date <= ?
-        ORDER BY date, id`
-    )
-    .all(profileId, since, until) as Activity[];
-  if (activities.length === 0) return null;
-  const buckets = scopeBucketsToWindows(
-    getHrMinutesInRange(profileId, since, shiftDateStr(until, 1)),
-    activityWindows(activities)
-  );
-  if (buckets.length === 0) return null;
-  const minutes = zoneMinuteTotals(buckets, model);
-  const easyMinutes = (minutes[0] ?? 0) + (minutes[1] ?? 0);
-  const hardMinutes = minutes.slice(2).reduce((sum, value) => sum + value, 0);
-  const totalMinutes = easyMinutes + hardMinutes;
-  return {
-    minutes,
-    totalMinutes,
-    easyMinutes,
-    hardMinutes,
-    easyPercent:
-      totalMinutes > 0 ? Math.round((easyMinutes / totalMinutes) * 100) : 0,
-  };
 }
 
 // Cardio time + session counts grouped by intensity, for the intensity-mix bar.

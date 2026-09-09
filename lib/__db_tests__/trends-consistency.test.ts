@@ -38,8 +38,14 @@ import { weightTrend } from "@/lib/household";
 import { zone2Adherence } from "@/lib/training-zones";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import { weekWindow } from "@/lib/week-window";
-import { shiftDateStr, startOfWeekStr } from "@/lib/date";
 import {
+  shiftDateStr,
+  startOfWeekStr,
+  utcMinute,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
+import {
+  getTimezone,
   getWeekMode,
   getWeekStart,
   setWeekMode,
@@ -315,5 +321,52 @@ describe("#397 — Trends zone card 'this week' Zone 2 honors week_mode", () => 
     const recapMin =
       getZone2MinutesInWindow(profileId, win.start, win.end) ?? 0;
     expect(data.currentWeekZone2).toEqual(zone2Adherence(recapMin, 60));
+  });
+});
+
+it("projects all-activity zone totals from the same scoped HR as the split", () => {
+  const profileId = Number(
+    db
+      .prepare("INSERT INTO profiles (name) VALUES ('Mixed training zones')")
+      .run().lastInsertRowid
+  );
+  const foreignId = Number(
+    db
+      .prepare("INSERT INTO profiles (name) VALUES ('Other training zones')")
+      .run().lastInsertRowid
+  );
+  setMaxHrOverride(profileId, 180);
+  const day = today(profileId);
+  const tz = getTimezone(profileId);
+  const activity = db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, start_time, end_time, duration_min)
+     VALUES (?, ?, ?, 'Synthetic zone session', ?, ?, ?)`
+  );
+  activity.run(profileId, day, "cardio", "08:00", "08:01", 1);
+  activity.run(profileId, day, "strength", "09:00", "09:07", 7);
+  activity.run(foreignId, day, "cardio", "08:00", "09:07", 67);
+  const minute = db.prepare(
+    "INSERT INTO hr_minutes (profile_id, ts, bpm, n, source) VALUES (?, ?, ?, 1, 'health-connect')"
+  );
+  minute.run(profileId, utcMinute(zonedWallTimeToUtc(tz, day, "08:00")!), 110);
+  for (let m = 0; m < 7; m++) {
+    minute.run(
+      profileId,
+      utcMinute(zonedWallTimeToUtc(tz, day, `09:0${m}`)!),
+      150
+    );
+  }
+  // Ambient wear and another subject must not enter the window totals.
+  minute.run(profileId, utcMinute(zonedWallTimeToUtc(tz, day, "12:00")!), 150);
+  minute.run(foreignId, utcMinute(zonedWallTimeToUtc(tz, day, "08:00")!), 110);
+
+  const data = getTrainingZoneData(profileId, 1, { start: day, end: day });
+  expect(data.minutes).toEqual([0, 1, 0, 7, 0]);
+  expect(data.split).toEqual({
+    easyMin: 1,
+    hardMin: 7,
+    totalMin: 8,
+    easyPct: 13,
+    hardPct: 88,
   });
 });

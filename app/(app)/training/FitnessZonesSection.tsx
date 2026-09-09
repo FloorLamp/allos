@@ -7,6 +7,7 @@ import {
   getTrainingZoneData,
 } from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
+import { zoneWindowSince } from "@/lib/training-zones";
 import {
   hasFitnessZoneContent,
   type FitnessWindow,
@@ -41,7 +42,10 @@ export default async function FitnessZonesSection({
   weeks: number;
 }) {
   const { profile } = await requireSession();
-  const zoneData = getTrainingZoneData(profile.id, weeks, window.to);
+  const zoneData = getTrainingZoneData(profile.id, weeks, {
+    start: window.from ?? zoneWindowSince(window.to, weeks),
+    end: window.to,
+  });
 
   // #3512: the moved section is not standing chrome. Decide that from the zone
   // model before paying for cardio aggregates whose JSX would be discarded.
