@@ -53,7 +53,7 @@ const PRACTICE_ANCHOR = hoistedStatement(
 // Each writer stamps its own audit instant. A later dose can keep the whole act
 // fresh after its food rows cross the floor, so discover identities across all
 // three domains before selecting a member for the requested host.
-const RECENT_BUNDLES_SQL = `WITH recent AS (
+const RECENT_BUNDLE_ANCHORS = hoistedStatement(`WITH recent AS (
   SELECT bundle_id FROM food_log_events
   WHERE profile_id = @profileId AND bundle_id IS NOT NULL
     AND julianday(recorded_at) >= julianday(@floor)
@@ -67,20 +67,22 @@ const RECENT_BUNDLES_SQL = `WITH recent AS (
   SELECT bundle_id FROM practice_logs
   WHERE profile_id = @profileId AND bundle_id IS NOT NULL
     AND julianday(created_at) >= julianday(@floor)
-)`;
-const RECENT_FOOD_BUNDLES = hoistedStatement(`${RECENT_BUNDLES_SQL}
+)
   SELECT MIN(id) AS id FROM food_log_events
-  WHERE profile_id = @profileId AND bundle_id IN (SELECT bundle_id FROM recent)
-  GROUP BY bundle_id`);
-const RECENT_DOSE_BUNDLES = hoistedStatement(`${RECENT_BUNDLES_SQL}
+  WHERE @domain = 'food' AND profile_id = @profileId
+    AND bundle_id IN (SELECT bundle_id FROM recent)
+  GROUP BY bundle_id
+  UNION ALL
   SELECT MIN(l.id) AS id FROM intake_item_logs l
   JOIN intake_item_doses d ON d.id = l.dose_id
   JOIN intake_items i ON i.id = d.item_id
-  WHERE i.profile_id = @profileId AND l.bundle_id IN (SELECT bundle_id FROM recent)
-  GROUP BY l.bundle_id`);
-const RECENT_PRACTICE_BUNDLES = hoistedStatement(`${RECENT_BUNDLES_SQL}
+  WHERE @domain = 'dose' AND i.profile_id = @profileId
+    AND l.bundle_id IN (SELECT bundle_id FROM recent)
+  GROUP BY l.bundle_id
+  UNION ALL
   SELECT MIN(id) AS id FROM practice_logs
-  WHERE profile_id = @profileId AND bundle_id IN (SELECT bundle_id FROM recent)
+  WHERE @domain = 'practice' AND profile_id = @profileId
+    AND bundle_id IN (SELECT bundle_id FROM recent)
   GROUP BY bundle_id`);
 const FOOD_MEMBERS = hoistedStatement(`
   SELECT id, group_key AS groupKey, date, recorded_at AS tapAt,
@@ -106,16 +108,12 @@ export function getRecentCorrectionBundles(
   domain: CorrectionDomain,
   now: Date
 ): CorrectionBundle[] {
-  const statement =
-    domain === "food"
-      ? RECENT_FOOD_BUNDLES
-      : domain === "dose"
-        ? RECENT_DOSE_BUNDLES
-        : RECENT_PRACTICE_BUNDLES;
   const floor = new Date(
     now.getTime() - CORRECTION_FRESH_MIN * 60_000
   ).toISOString();
-  const anchors = statement.all({ profileId, floor }) as { id: number }[];
+  const anchors = RECENT_BUNDLE_ANCHORS.all({ profileId, floor, domain }) as {
+    id: number;
+  }[];
   return anchors.flatMap(({ id }) => {
     const bundle = readCorrectionBundle(profileId, { domain, id });
     return bundle && isBurstFresh(bundle.burst, now) ? [bundle] : [];
