@@ -383,7 +383,7 @@ describe("an item created from a bottle links on save", () => {
     expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(120);
   });
 
-  it("refuses hidden bottles while offering reachable and orphaned ones", async () => {
+  it("refuses hidden and member-less bottles while offering reachable ones", async () => {
     const t = tag();
     // The bottle belongs to a household branch this member was never granted.
     const owner = createLogin({ role: "member", username: `own_${t}` });
@@ -424,7 +424,9 @@ describe("an item created from a bottle links on save", () => {
 
     const ids = (await listSharedSupplyOptions()).map((o) => o.id);
     expect(ids).toContain(ownPool);
-    expect(ids).toContain(orphan);
+    // #5122: a member-less bottle is admin-only, so this member's picker no longer
+    // offers it either — the picker and the cabinet answer one question.
+    expect(ids).not.toContain(orphan);
     expect(ids).not.toContain(hidden);
   });
 
@@ -460,6 +462,200 @@ describe("an item created from a bottle links on save", () => {
         .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE name = ?")
         .get(`Blocked ${t}`)
     ).toEqual({ n: 0 });
+  });
+});
+
+// ── The member-less bottle is ADMIN-ONLY (#5122, owner ruling 2026-09-09) ──────
+//
+// When the last member unlinks, the bottle and its count stay in the cabinet and only
+// an admin can see or manage them. This tier proves the WRITE half: a forged POST must
+// abort before any mutation, for an unrelated login AND for an authorized caregiver of
+// the profile that used to draw on it — once membership is empty, the accessible set
+// stops mattering.
+describe("a member-less bottle refuses every non-admin write", () => {
+  // The shape every case starts from: a bottle Ada's item drew on, then unlinked.
+  function abandoned(t: string, profileId: number, qty: number): number {
+    const supplyId = newPool(`Abandoned ${t}`, qty);
+    const a = item(profileId, `Was linked ${t}`, null);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      supplyId,
+      a
+    );
+    db.prepare("UPDATE intake_items SET supply_id = NULL WHERE id = ?").run(a);
+    return supplyId;
+  }
+
+  it("refuses an unrelated login at every door", async () => {
+    const t = tag();
+    const former = createLogin({ role: "member", username: `former_${t}` });
+    const wasMine = createProfile(`Test Patient ${t}`, former.id);
+    const supplyId = abandoned(t, wasMine.id, 33);
+
+    const outsider = createLogin({ role: "member", username: `strange_${t}` });
+    const theirs = createProfile(`Ada Lovelace ${t}`, outsider.id);
+    actAs(outsider, theirs);
+
+    // Not in the picker.
+    expect((await listSharedSupplyOptions()).map((o) => o.id)).not.toContain(
+      supplyId
+    );
+    // A posted supply_id on a create is refused by the offerability rule.
+    const created = await addIntakeItem(
+      fd({
+        name: `Forged ${t}`,
+        kind: "supplement",
+        supply_id: supplyId,
+        doses: JSON.stringify([{ amount: "1 tab" }]),
+      })
+    );
+    expect(created.ok).toBe(false);
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE name = ?")
+        .get(`Forged ${t}`)
+    ).toEqual({ n: 0 });
+
+    // Edit, delete and link all abort before any mutation.
+    const theirItem = item(theirs.id, `Mine ${t}`, 4);
+    await expect(
+      updatePoolAction(fd({ id: supplyId, ...poolFields(`Hijacked ${t}`) }))
+    ).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(deletePoolAction(fd({ id: supplyId }))).rejects.toThrow(
+      /NEXT_REDIRECT/
+    );
+    await expect(
+      linkItemAction(fd({ item_id: theirItem, supply_id: supplyId }))
+    ).rejects.toThrow(/NEXT_REDIRECT/);
+
+    expect(getSharedSupply(supplyId)?.name).toBe(`Abandoned ${t}`);
+    expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(33);
+    expect(supplyIdOf(theirItem)).toBe(null);
+    expect(itemQty(theirItem)).toBe(4);
+  });
+
+  // THE BEHAVIOR CHANGE. This caregiver holds WRITE on the very profile whose item used
+  // to draw on this bottle, and before the ruling that made the bottle theirs to see and
+  // edit. The refusal is now identical to the stranger's above.
+  it("refuses the FORMER member's own caregiver identically", async () => {
+    const t = tag();
+    const caregiver = createLogin({ role: "member", username: `care_${t}` });
+    const wasTheirs = createProfile(`Test Patient ${t}`, caregiver.id);
+    const alsoMine = createProfile(`Ada Lovelace ${t}`, caregiver.id);
+    actAs(caregiver, alsoMine);
+    const supplyId = abandoned(t, wasTheirs.id, 21);
+
+    expect((await listSharedSupplyOptions()).map((o) => o.id)).not.toContain(
+      supplyId
+    );
+    const mineItem = item(alsoMine.id, `Mine ${t}`, 6);
+    await expect(
+      updatePoolAction(fd({ id: supplyId, ...poolFields(`Reclaimed ${t}`) }))
+    ).rejects.toThrow(/NEXT_REDIRECT/);
+    await expect(deletePoolAction(fd({ id: supplyId }))).rejects.toThrow(
+      /NEXT_REDIRECT/
+    );
+    await expect(
+      linkItemAction(fd({ item_id: mineItem, supply_id: supplyId }))
+    ).rejects.toThrow(/NEXT_REDIRECT/);
+    const created = await addIntakeItem(
+      fd({
+        name: `Reseed ${t}`,
+        kind: "supplement",
+        supply_id: supplyId,
+        doses: JSON.stringify([{ amount: "1 tab" }]),
+      })
+    );
+    expect(created.ok).toBe(false);
+
+    expect(getSharedSupply(supplyId)?.name).toBe(`Abandoned ${t}`);
+    expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(21);
+    expect(supplyIdOf(mineItem)).toBe(null);
+    expect(itemQty(mineItem)).toBe(6);
+  });
+
+  it("lets an ADMIN see it, edit it, and link an item back into it", async () => {
+    const t = tag();
+    const former = createLogin({ role: "member", username: `left_${t}` });
+    const wasTheirs = createProfile(`Test Patient ${t}`, former.id);
+    const supplyId = abandoned(t, wasTheirs.id, 50);
+
+    const admin = createLogin({ role: "admin", username: `boss_${t}` });
+    const p = createProfile(`Ada Lovelace ${t}`);
+    actAs(admin, p);
+
+    expect((await listSharedSupplyOptions()).map((o) => o.id)).toContain(
+      supplyId
+    );
+
+    // Count, threshold and name are all editable.
+    const edited = await updatePoolAction(
+      fd({
+        id: supplyId,
+        name: `Reclaimed ${t}`,
+        low_supply_days: 9,
+        quantity_on_hand: 44,
+        quantity_on_hand_loaded: 50,
+      })
+    );
+    expect(edited.ok).toBe(true);
+    expect(getSharedSupply(supplyId)).toMatchObject({
+      name: `Reclaimed ${t}`,
+      low_supply_days: 9,
+      quantity_on_hand: 44,
+    });
+
+    // Linking an item back makes it an ordinary membership-visible bottle, count intact.
+    const mine = item(p.id, `Rejoin ${t}`, 3);
+    const linked = await linkItemAction(
+      fd({ item_id: mine, supply_id: supplyId })
+    );
+    expect(linked.ok).toBe(true);
+    expect(supplyIdOf(mine)).toBe(supplyId);
+    expect(itemQty(mine)).toBe(null);
+    expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(44);
+    // …and now the ordinary member gate carries it: the admin reaches it through
+    // membership rather than through the admin clause.
+    actAs(former, wasTheirs);
+    expect((await listSharedSupplyOptions()).map((o) => o.id)).not.toContain(
+      supplyId
+    );
+  });
+
+  // "Manageable only by an admin" includes clearing it — the row-ops rule says a bottle
+  // nobody draws from must never be stranded.
+  it("lets an ADMIN delete it", async () => {
+    const t = tag();
+    const former = createLogin({ role: "member", username: `gone_${t}` });
+    const wasTheirs = createProfile(`Test Patient ${t}`, former.id);
+    const supplyId = abandoned(t, wasTheirs.id, 12);
+
+    const admin = createLogin({ role: "admin", username: `sweep_${t}` });
+    const p = createProfile(`Ada Lovelace ${t}`);
+    actAs(admin, p);
+
+    expect((await deletePoolAction(fd({ id: supplyId }))).ok).toBe(true);
+    expect(getSharedSupply(supplyId)).toBe(null);
+  });
+
+  // A read-only admin session is still an admin, but the write gate composes with the
+  // admin one: a demo-restricted or read-only acting session is refused first.
+  it("still requires a legitimate writer, not merely an admin", async () => {
+    const t = tag();
+    const former = createLogin({ role: "member", username: `ro_${t}` });
+    const wasTheirs = createProfile(`Test Patient ${t}`, former.id);
+    const supplyId = abandoned(t, wasTheirs.id, 7);
+
+    const member = createLogin({ role: "member", username: `roact_${t}` });
+    const readOnly = createProfile(`Ada Lovelace ${t}`, member.id);
+    db.prepare(
+      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+    ).run(member.id, readOnly.id);
+    actAs(member, readOnly, "read");
+
+    await expect(
+      updatePoolAction(fd({ id: supplyId, ...poolFields(`Nope ${t}`) }))
+    ).rejects.toThrow(/read-only/);
+    expect(getSharedSupply(supplyId)?.name).toBe(`Abandoned ${t}`);
   });
 });
 
@@ -523,6 +719,15 @@ describe("item-bound supply count", () => {
     db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
       after,
       a
+    );
+    // `before` keeps a member of its own, so the caller genuinely HOLDS write access on
+    // it and the stale-identity check is what refuses — not the membership gate, and
+    // not #5122's member-less admin rule, which would refuse this member outright and
+    // prove nothing about staleness.
+    const sibling = item(mine.id, `Sibling ${t}`, null);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      before,
+      sibling
     );
     for (const supplyId of ["", before]) {
       expect(
