@@ -73,7 +73,7 @@ test("a bottle made from an item inherits its name and strength", async ({
   );
 });
 
-test("adding a bottle for another person prefills its facts and links on save", async ({
+test("the bottle's pre-linked add door prefills its facts and links on save", async ({
   page,
 }, testInfo) => {
   const suffix = `${testInfo.repeatEachIndex}-${testInfo.retry}`;
