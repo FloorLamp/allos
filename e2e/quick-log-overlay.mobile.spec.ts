@@ -764,15 +764,16 @@ test("an empty selected profile adds a medication and takes it in the same sheet
     await expect(form.getByTestId("intake-pediatric-context")).toBeVisible();
     await expectNoClippedContent(page);
     // The row this asserts is read straight from the database, so the click has to
-    // wait for the REVALIDATED RENDER and not merely for an action POST to settle.
-    // The form posts more than once — the name lookup and the draft write are also
-    // action POSTs — so `settledClick` alone can return on one of those while the
-    // create is still in flight, and the read below then finds no row. Under CI
-    // load that gap is wide enough to fail: this read came back empty once on a
-    // shard where the other 144 cases passed. The created item's own PRN row is the
-    // marker the call site knows, and `settledClickApplied` exists because no
-    // general router-applied signal does: it renders only once the create landed
-    // and the sheet re-rendered around it.
+    // wait for the CREATE to be observable and not merely for an action POST to
+    // settle. `settledClick` resolves on whichever caused same-origin action POST
+    // answers first, and this sheet fires several besides the create, so it can
+    // return while `addIntakeItem` is still in flight and the read below then finds
+    // no row. Which POST wins under load is not established; that it can be one
+    // other than the create is. It came back empty once on a CI shard where the
+    // other 144 cases passed, in 2.7s — settled on the wrong answer, not a slow
+    // create. The created item's own PRN row is the marker this call site knows:
+    // it renders from a server read of `intake_items` that runs only after the
+    // create was accepted, so it cannot appear from client state alone.
     const prn = overlay.getByTestId("quick-log-prn-item").filter({
       hasText: "Ibuprofen",
     });
