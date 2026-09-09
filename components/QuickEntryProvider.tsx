@@ -1671,14 +1671,7 @@ export default function QuickEntryProvider({
           : "Switched who this is for."
       );
     },
-    [
-      loadFor,
-      loadIntakeFor,
-      toast,
-      updateVisit,
-      visitOwner,
-      writableProfiles,
-    ]
+    [loadFor, loadIntakeFor, toast, updateVisit, visitOwner, writableProfiles]
   );
 
   const openForm = useCallback(

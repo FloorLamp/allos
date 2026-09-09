@@ -126,7 +126,9 @@ const substanceForm = (props: Record<string, unknown>) => (
   <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat: "24h" }}>
     <ToastProvider>
       <SubstanceForm
-        substances={[{ key: "nicotine", label: substanceDef("nicotine").label }]}
+        substances={[
+          { key: "nicotine", label: substanceDef("nicotine").label },
+        ]}
         date={DAY}
         maxDate={DAY}
         onSaved={() => {}}
