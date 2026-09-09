@@ -43,7 +43,7 @@ import {
 import {
   composeForRebuild,
   composeMessage,
-  withRecipientDistanceUnit,
+  withRecipientUnits,
 } from "./compose";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
@@ -159,7 +159,7 @@ export const telegramChannel: NotificationChannel = {
         // records nothing. A managed shared chat records every mapped login.
         let recipientMessage = msg;
         const messageId = await recordedSend("telegram", loginIds, () => {
-          recipientMessage = withRecipientDistanceUnit(msg, loginIds[0], opts);
+          recipientMessage = withRecipientUnits(msg, loginIds[0], opts);
           return sendMessageRaw(chatId, recipientMessage);
         });
         // Set before bookkeeping: this chat already holds the message.

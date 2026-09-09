@@ -30,6 +30,7 @@ import {
   setSmtpConfig,
   setTelegramBotConfig,
   setUnitPrefs,
+  type UnitPrefs,
 } from "@/lib/settings";
 import { dispatch, getNotifyError } from "@/lib/notifications";
 import {
@@ -147,7 +148,7 @@ describe("Telegram owners", () => {
       [c, "km"],
     ] as const)
       setUnitPrefs(login, {
-        weightUnit: "kg",
+        weightUnit: distanceUnit === "mi" ? "lb" : "kg",
         distanceUnit,
         temperatureUnit: "F",
       });
@@ -157,17 +158,21 @@ describe("Telegram owners", () => {
       body: "canonical",
       kind: "weekly-recap" as const,
     };
-    const bodyForDistanceUnit = vi.fn(
-      (unit: "km" | "mi") => `distance in ${unit}`
+    const bodyForUnits = vi.fn(
+      ({
+        distanceUnit,
+        weightUnit,
+      }: Pick<UnitPrefs, "weightUnit" | "distanceUnit">) =>
+        `distance in ${distanceUnit}; weight in ${weightUnit}`
     );
-    await telegramChannel.send(p, msg, { bodyForDistanceUnit });
+    await telegramChannel.send(p, msg, { bodyForUnits });
     const wire = vi.mocked(fetch);
     const bodies = wire.mock.calls.map(([, init]) =>
       JSON.parse(init!.body as string)
     );
     expect(bodies.map((body) => [body.chat_id, body.text])).toEqual([
-      ["units-shared", expect.stringContaining("distance in mi")],
-      ["units-own", expect.stringContaining("distance in km")],
+      ["units-shared", expect.stringContaining("distance in mi; weight in lb")],
+      ["units-own", expect.stringContaining("distance in km; weight in kg")],
     ]);
     expect([a, b, c].map((login) => stateOf("telegram", login))).toEqual([
       "delivering",
@@ -175,13 +180,13 @@ describe("Telegram owners", () => {
       "delivering",
     ]);
     await telegramChannel.send(p, msg, {
-      bodyForDistanceUnit,
+      bodyForUnits,
       telegramChatIds: ["units-override"],
     });
     expect(JSON.parse(wire.mock.calls[2][1]!.body as string).text).toContain(
       "canonical"
     );
-    expect(bodyForDistanceUnit).toHaveBeenCalledTimes(2);
+    expect(bodyForUnits).toHaveBeenCalledTimes(2);
   });
 
   it("records a renderer failure for every shared owner while the other chat still delivers", async () => {
@@ -204,7 +209,7 @@ describe("Telegram owners", () => {
           kind: "weekly-recap",
         },
         {
-          bodyForDistanceUnit: (unit) => {
+          bodyForUnits: ({ distanceUnit: unit }) => {
             if (unit === "mi") throw new Error("synthetic renderer failure");
             return "metric detail";
           },
@@ -536,7 +541,7 @@ describe("Web Push owners", () => {
         "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
       ).run(login, p);
       setUnitPrefs(login, {
-        weightUnit: "kg",
+        weightUnit: distanceUnit === "mi" ? "lb" : "kg",
         distanceUnit,
         temperatureUnit: "F",
       });
@@ -554,7 +559,8 @@ describe("Web Push owners", () => {
       kind: "weekly-recap" as const,
     };
     await dispatch(p, msg, {
-      bodyForDistanceUnit: (unit) => `distance in ${unit}`,
+      bodyForUnits: ({ distanceUnit, weightUnit }) =>
+        `distance in ${distanceUnit}; weight in ${weightUnit}`,
     });
     expect(
       Object.fromEntries(
@@ -564,12 +570,12 @@ describe("Web Push owners", () => {
         ])
       )
     ).toEqual({
-      [`https://push.example/${metric}/ok`]: "distance in km",
-      [`https://push.example/${imperial}/ok`]: "distance in mi",
+      [`https://push.example/${metric}/ok`]: "distance in km; weight in kg",
+      [`https://push.example/${imperial}/ok`]: "distance in mi; weight in lb",
     });
     wire.mockClear();
     await dispatch(p, msg, {
-      bodyForDistanceUnit: (unit) => {
+      bodyForUnits: ({ distanceUnit: unit }) => {
         if (unit === "mi") throw new Error("synthetic renderer failure");
         return "metric detail";
       },
