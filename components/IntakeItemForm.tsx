@@ -1127,10 +1127,9 @@ export default function IntakeItemForm({
           openEditor={openPanel}
           onOpen={(key, focusKey) => {
             setRulesStartOnMenu(false);
-            // OPENING THE RxNORM CHIP IS THE LOOKUP (#5301). The old text button under
-            // the name field was the trigger; the chip replaced it, so the tap has to
-            // do what the button did — the editor states candidates, and there is
-            // nothing to state until one has run. A confirmed code is not re-looked-up.
+            // OPENING THE RxNORM CHIP IS THE LOOKUP (#5301): the chip replaced the
+            // text button that used to be the trigger, and its editor has nothing to
+            // state until one has run. A confirmed code is not looked up again.
             if (key === "rxnorm" && !rx.rxcui) void rx.find(state.name);
             setOpenPanel(key, focusKey);
           }}
@@ -1182,11 +1181,9 @@ export default function IntakeItemForm({
       case "dose":
         return (
           <>
-            {/* THE FORMULATION, AS #3216 RULING 2 ASKED: a derived chip row, inside the
+            {/* THE FORMULATION, AS #3216 RULING 2 ASKED: a derived chip row inside the
                 editor for the fact it changes (#5301). It shipped as a labelled button
-                group standing above the chips, where it stated the same product the
-                dose chip already did. It renders in the host's `children`, so the
-                primitive is untouched. */}
+                group above the chips, stating the product the dose chip already did. */}
             {choices.length > 0 && (
               <div
                 data-testid="intake-formulation-row"
@@ -1212,10 +1209,9 @@ export default function IntakeItemForm({
                 />
               </div>
             )}
-            {/* The other #798 refusal this editor states, in the one place the label's
-                verdicts are read (#5301). It is the counterpart of `pediatricRefusal`
-                below — that one refuses a figure the chart HAS, this one says the chart
-                does not exist — and the two are mutually exclusive by construction. */}
+            {/* The other #798 refusal, where the label's verdicts are read (#5301):
+                `pediatricRefusal` below refuses a figure the chart HAS, this says the
+                chart does not exist. Mutually exclusive by construction. */}
             {isChildProfile &&
             state.name.trim() &&
             isMed &&
@@ -1379,9 +1375,8 @@ export default function IntakeItemForm({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
                     Redose reminder (optional)
-                    {/* The group's mechanics, at the group's own label (#3970). It was
-                        three standing lines and a disclosure under a control that is
-                        two number fields and a checkbox. */}
+                    {/* The group's mechanics at its own label (#3970): three standing
+                        lines and a disclosure, over two fields and a checkbox. */}
                     <InfoTooltipIcon
                       label={`After a logged dose, one reminder when the minimum interval passes. Fill in both the interval and a maximum to turn it on; leave them blank for no reminder.${prnDefaults ? ` Label source: ${prnDefaults.source}.` : ""}`}
                     />

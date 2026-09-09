@@ -15,8 +15,7 @@
 //     adult's (#851 item 12).
 //
 // #798's contract — the dose comes from the child's recorded WEIGHT BAND, confirmed
-// against the package — is stated once, by the band picker the switch re-derives inside
-// (components/medications/PediatricDoseBandPicker.tsx).
+// against the package — is stated once, by the band picker the switch re-derives inside.
 //
 // WHAT IT STORES. `intake_items.product`, exactly as today: the curated label for a
 // chosen formulation, and nothing for the ingredient's default form (which has no

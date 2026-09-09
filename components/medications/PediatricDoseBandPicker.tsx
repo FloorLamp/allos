@@ -43,9 +43,9 @@ export default function PediatricDoseBandPicker({
   idPrefix: string;
   result: PickerResult;
   bands: readonly PediatricBand[];
-  // READ, never chosen here. The one intake form states the formulation as a derived
-  // chip row above this picker inside the same dose editor (#3216 decision 2, #5301) —
-  // one datum, one control. These two say which product each band's volume is in.
+  // READ, never chosen here: the form states the formulation as a derived chip row
+  // above this picker in the same editor (#3216 decision 2, #5301) — one datum, one
+  // control. These two say which product each band's volume is in.
   formulations: readonly PrnFormulation[];
   formulationSlug: string;
   today: string;

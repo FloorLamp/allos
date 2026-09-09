@@ -78,8 +78,7 @@ export interface IntakeFactSummary {
 export interface IntakeFactInput {
   kind: IntakeItemKind;
   // The name the form's own field states above the chips. Never a chip of its own — it
-  // is here so that no chip echoes it (#3216 ruling 5, reported as #5301): a stored
-  // `product` that only repeats the name is a duplicate, not a formulation.
+  // is here so no chip echoes it (#3216 ruling 5, reported as #5301).
   name: string;
   // Dose row one's amount, and the formulation label chosen for it.
   amount: string;
@@ -184,12 +183,10 @@ function join(parts: (string | null | undefined)[]): string {
 
 // The product this dose is OF, and the ONE place the summary states it (#5301). A
 // pediatric pick names itself through `formulationLabel`; otherwise the stored product
-// IS the formulation ("Extra Strength caplet", a stack's blend), and the identity chip
-// no longer echoes it.
-//
-// A product that only repeats the name states nothing — that is the duplicate #5301
-// reported from the Ibuprofen edit form, where the field and the chip said the same
-// word — so it is dropped rather than moved to another chip.
+// IS the formulation ("Extra Strength caplet", a stack's blend). A product that only
+// repeats the name states nothing — that is the duplicate #5301 reported, where the
+// name field and the identity chip said one word twice — so it is dropped here rather
+// than moved to another chip.
 function formulationOf(f: IntakeFactInput): string {
   const label = f.formulationLabel.trim();
   if (label) return label;
@@ -313,16 +310,13 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
   }
 
   // Brand and stack only. The PRODUCT is the dose's formulation and is stated there
-  // (#5301): on the reported Ibuprofen form this chip repeated the name field word for
-  // word, which is #3216 ruling 5's "no datum renders twice" broken by the chip meant
-  // to enforce it.
+  // (#5301, see `formulationOf`).
   pushOptional(chips, more, "identity", join([f.brand.trim(), f.stack.trim()]));
 
   // THE STANDARDIZED INGREDIENT IS A FACT, so it is a chip rather than a text button
-  // under the name field (#5301, #5300 rule 2). Missing while the form has a name to
-  // look up — the prompt says what tapping it does — and stated once a code is
-  // confirmed. With no name there is nothing to match and nothing an editor could do,
-  // so the fact states nothing and names nothing until the form has one.
+  // under the name field (#5301, #5300 rule 2): missing while there is a name to look
+  // up, stated once a code is confirmed. With no name there is nothing to match and
+  // nothing an editor could do, so it states nothing and names nothing.
   if (f.rxcui.trim())
     chips.push({
       key: "rxnorm",

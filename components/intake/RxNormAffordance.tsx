@@ -3,17 +3,12 @@
 import type { RxcuiState } from "@/components/intake/useIntakeRxcui";
 
 // The standardized-ingredient EDITOR, behind the `rxnorm` fact chip of both intake
-// forms (#846, #5301). The CHIP states the fact — `match RxNorm` while there is none,
-// the confirmed code once there is — and this is what opens under it: the candidates
-// the lookup returned, or the code with the control that releases it.
-//
-// NO BUTTON RESTATES THE TAP THAT GOT YOU HERE. The lookup runs when the chip opens,
-// which is why the old "Match standardized ingredient" text button under the name field
-// is gone: its label named the mechanism rather than the fact, and the fact is now a
-// chip like every other. The lookup is the only network call in the interaction feature
-// and sends just the term (#144).
-//
-// Presentational over the shared useIntakeRxcui hook; the form owns the hidden
+// forms (#846, #5301): the candidates the lookup returned, or the confirmed code with
+// the control that releases it. The CHIP states the fact and opening it RUNS the
+// lookup, so no button here restates the tap that got you here — the old "Match
+// standardized ingredient" text button named the mechanism rather than the fact. The
+// lookup is the only network call in the interaction feature and sends just the term
+// (#144). Presentational over the shared useIntakeRxcui hook; the form owns the hidden
 // `rxcui`/`rxcui_ingredients` inputs.
 export default function RxNormAffordance({ rx }: { rx: RxcuiState }) {
   return (
