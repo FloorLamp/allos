@@ -24,6 +24,10 @@
 // and the post-workout gate is a clock question only on the day still in progress — a
 // past day's session is over, which is exactly the `null` isPostWorkoutReady takes.
 //
+// FOUR FACTS AND ONE VERDICT, which is the distinction `asOfWholeDay` below exists for:
+// `postWorkoutReady` is a statement about the current minute, and a caller that STORES
+// its context rather than rendering it must ask for the day's converged answer instead.
+//
 // No new SQL: every field is asked through the reader its own domain already owns.
 
 import { today } from "../../db";
@@ -41,15 +45,37 @@ import { now as clockNow } from "../../clock";
 import { hhmmToMinutes, zonedDateParts } from "../../date";
 
 export interface IntakeDayContextInputs {
-  // The effective active-situation set for `date`, when the caller has ALREADY resolved
-  // it. The medications board holds a windowed resolver for its adherence strip and its
-  // today row reads that same resolver; re-reading here would pay for the profile's
-  // whole derived history a second time on every render. Omitted ⇒ read through the
-  // single-day entry point, which is the same resolver over a one-day window.
+  // BOTH INPUTS BELOW CHANGE THE ANSWER, so passing one is an ASSERTION that it equals
+  // what this builder would otherwise have read — not a cost knob. They exist because
+  // the callers that hold these values hold them for a reason, and reading a second
+  // copy here would be the divergence this builder exists to end, one level down.
+
+  // The effective active-situation set for `date`. The medications board holds a
+  // windowed resolver for its adherence strip and its today row reads that same
+  // resolver, so passing it is what keeps the row and the strip beside it answering
+  // alike — and re-reading would pay for the profile's whole derived history twice per
+  // render. Omitted ⇒ the single-day entry point, which is that same resolver over a
+  // one-day window.
   activeSituations?: Set<string>;
-  // The caller's own server-clock instant, when it stamps other values from one (#1005).
+  // The caller's own server-clock instant, when it stamps other values from one (#1005)
+  // — passing it is what stops this context and those stamps straddling a minute.
   // Omitted ⇒ the clock seam.
   now?: Date;
+
+  // ASK ABOUT THE DAY AS A WHOLE, not as of this minute (#5321, falsifying pass).
+  //
+  // `postWorkoutReady` is the one field here that is a verdict about NOW rather than a
+  // fact about the day: it is false before the earliest logged session's end time and
+  // true after, and `conditionAppliesOn` ANDs it. A caller that RENDERS LIVE wants that
+  // — a post-workout dose should stay held while the session is still running. A caller
+  // that STORES its answer to be read later must not have it, because a frozen monotone
+  // gate can only be wrong one way: it withholds, for the whole rest of the day, and the
+  // reader has no way to tell.
+  //
+  // With this set, the day is asked about as a closed day would be — the same `null`
+  // minute-of-day any other date already gets here, so there is one rule, not two. The
+  // other four fields are facts about the date and are unaffected.
+  asOfWholeDay?: boolean;
 }
 
 // The day context for one profile on one day.
@@ -59,10 +85,11 @@ export function intakeDayContext(
   inputs: IntakeDayContextInputs = {}
 ): IntakeDayContext {
   const activities = getActivitiesByDate(profileId, date);
-  // The wall clock only decides the day IN PROGRESS. On any other day the session it
-  // would gate has already ended (or has not been logged at all).
+  // The wall clock only decides the day IN PROGRESS, and only for a caller asking about
+  // this minute. On any other day — or for a caller asking about the day as a whole —
+  // the session it would gate has already ended (or was never logged).
   const nowMinutes =
-    date === today(profileId)
+    date === today(profileId) && !inputs.asOfWholeDay
       ? hhmmToMinutes(
           zonedDateParts(getTimezone(profileId), inputs.now ?? clockNow()).hhmm
         )

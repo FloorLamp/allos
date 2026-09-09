@@ -116,13 +116,28 @@ function buildDoseSchedule(
   // `intakeDayContext` is the builder the medications page reads, so there is no subset
   // left to drift: a field added there arrives here.
   //
+  // `asOfWholeDay` IS FACTS-NEVER-VERDICTS (this file's header) applied to the one field
+  // of that context that is a verdict. `postWorkoutReady` is false before the earliest
+  // logged session's end time and true after, and `conditionAppliesOn` ANDs it — so a
+  // snapshot built DURING a session that froze the live value would hold the dose for
+  // the whole rest of the day. That is not a smaller divergence than the one this issue
+  // closed; it is the same one pointed the harmful way, and nothing tells the reader:
+  // `isSnapshotStale` is day-granular for a profile-day payload, and refresh rides
+  // authenticated traffic, so the frozen minute is by construction the person's LAST
+  // ONLINE MOMENT. The day-shaped question has no such exposure. If the timing gate is
+  // ever wanted offline it must travel as a fact the DEVICE evaluates against its own
+  // clock — a different change. The other four fields are facts about the date, as true
+  // when read as when written.
+  //
   // /offline is what someone reads with NO SIGNAL, and it renders these as rows with no
   // control on them — so the acting happens in the world rather than in the app. This is
   // what tells a person whether a dose is owed when nothing else can, and they take it or
   // skip it on that. A divergence about what was owed, never about what is shown. The
   // browser recomputes nothing — it could not, from offline data — and the answer travels
   // as the fact it already is.
-  const dayCtx = intakeDayContext(ctx.profileId, ctx.date);
+  const dayCtx = intakeDayContext(ctx.profileId, ctx.date, {
+    asOfWholeDay: true,
+  });
   const taken = getTakenDoseIds(ctx.profileId, ctx.date);
   const skipped = getSkippedDoseIds(ctx.profileId, ctx.date);
 
