@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import ModalShell from "@/components/ModalShell";
 import DateField from "@/components/DateField";
@@ -123,9 +124,7 @@ export default function EpisodeEditor({
           <SubmitButton pendingLabel="Saving…" variant="primary">
             Save
           </SubmitButton>
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
+          <Button onClick={onClose}>Cancel</Button>
         </div>
       </form>
     </ModalShell>

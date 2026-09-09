@@ -86,6 +86,7 @@ import {
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 import MoodForm from "@/components/mood/MoodForm";
 import { formatMonthDay } from "@/lib/format-date";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
@@ -542,9 +543,7 @@ export default function HistoryRows({
         <SubmitButton variant="primary" disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
         </SubmitButton>
-        <button className="btn-ghost" type="button" onClick={done}>
-          Cancel
-        </button>
+        <Button onClick={done}>Cancel</Button>
       </div>
     );
 
