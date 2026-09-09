@@ -380,32 +380,57 @@ function applyDoseStatusCore(
       target === "taken"
         ? (doseScheduleAsOf(owned, date).amount ?? null)
         : null;
+    // `recorded_at` is immutable capture; `occurred_at` is the administration the
+    // Taken action asserts. A skip records the action but asserts no administration.
+    const capturedAt = clockNow();
+    // WHAT THIS ROW STATES, DECIDED ONCE, ABOVE THE INSERT/UPDATE SPLIT (#4686/#4779).
+    // The UPDATE arm used to bind a bare `instantNow()`, so a past-day skipped→taken
+    // flip both discarded a stated minute AND stamped today's instant onto yesterday's
+    // dose — and since the arming reads then coalesced onto `recorded_at`, which on a
+    // flip is the instant of the SKIP, a caregiver who skipped the 8pm ibuprofen and
+    // gave it at 01:30 was pushed "Redose window open" at 02:10, forty minutes after
+    // the dose. The target and the options own what the row states; which arm the row
+    // happens to take does not.
+    //
+    // THREE LIMBS, AND THE THIRD IS THE ONE EVERY MOUNTED TODAY-FLIP TAKES:
+    //   • `takenAt === null`      — explicitly untimed. The tri-state action yields it
+    //                               for any day that is not the profile's today, and
+    //                               the minute prompt's "Don't know" keeps it.
+    //   • `takenAt` truthy        — the stated minute, resolved against THIS row's day.
+    //                               An unusable value costs only that precision and
+    //                               falls back to the capture instant.
+    //   • `takenAt === undefined` — the captured instant. The action yields undefined
+    //                               when nothing is stated on today's date, and
+    //                               `toggleTaken` passes no options object at all.
+    // A two-way here type-checks, keeps both suites green — nothing asserted
+    // `occurred_at` on the UPDATE arm before this change — and makes every same-day
+    // flip write NULL, which with the union above leaves the family permanently
+    // unplaced. Control C4b is the test that reds on exactly that.
+    const occurredAt =
+      target !== "taken" || opts.takenAt === null
+        ? null
+        : opts.takenAt !== undefined
+          ? utcInstant(
+              resolveQueuedTakenAt(
+                opts.takenAt,
+                getTimezone(profileId),
+                date,
+                // The APP's now (#2312), not a bare `new Date()`. This used to read
+                // real time on the reasoning that a client capture and the server's
+                // clock are two independent REAL clocks — the same reasoning the food
+                // path carried until #2287 overturned it. The guard's OTHER half
+                // already compares against `date`, which came from `today()`, i.e.
+                // from this seam: a predicate whose two halves read two different
+                // clocks is not one predicate. And under the e2e freeze the capture
+                // and the seam are the same frozen instant, so real time refuses a
+                // seconds-old stamp as hours in the future and the dose silently
+                // loses its captured minute. Inert in production, where the seam IS
+                // real time, so a genuinely fast device is still refused.
+                capturedAt
+              ) ?? capturedAt
+            )
+          : utcInstant(capturedAt);
     if (!existing) {
-      // `recorded_at` is immutable capture; `occurred_at` is the administration the
-      // Taken action asserts. An offline replay may carry the captured administration
-      // instant; an unusable value costs only that precision and falls back to the app
-      // clock. A skip records the action but asserts no administration.
-      const capturedAt = clockNow();
-      const explicitlyUntimed = opts.takenAt === null;
-      const stamp = opts.takenAt
-        ? resolveQueuedTakenAt(
-            opts.takenAt,
-            getTimezone(profileId),
-            date,
-            // The APP's now (#2312), not a bare `new Date()`. This used to read
-            // real time on the reasoning that a client capture and the server's
-            // clock are two independent REAL clocks — the same reasoning the food
-            // path carried until #2287 overturned it. The guard's OTHER half
-            // already compares against `date`, which came from `today()`, i.e.
-            // from this seam: a predicate whose two halves read two different
-            // clocks is not one predicate. And under the e2e freeze the capture
-            // and the seam are the same frozen instant, so real time refuses a
-            // seconds-old stamp as hours in the future and the dose silently
-            // loses its captured minute. Inert in production, where the seam IS
-            // real time, so a genuinely fast device is still refused.
-            capturedAt
-          )
-        : null;
       db.prepare(
         `INSERT INTO intake_item_logs
            (dose_id, item_id, date, amount, status, recorded_at, occurred_at,
@@ -418,16 +443,15 @@ function applyDoseStatusCore(
         amount,
         target,
         utcInstant(capturedAt),
-        target === "taken" && !explicitlyUntimed
-          ? utcInstant(stamp ?? capturedAt)
-          : null,
+        occurredAt,
         opts.notifyMessageId ?? null,
         loggedVia,
         opts.bundleId ?? null
       );
     } else {
-      // The immutable record stamp stays put. The explicit target owns whether this row
-      // states an administration: taken means now, skipped means none.
+      // THE IMMUTABLE RECORD STAMP STAYS PUT: `recorded_at` is not in this SET list and
+      // must not join it — a flip is an edit of an existing row, not a new tap, and a
+      // moved capture stamp would date the skip's act to the correction.
       db.prepare(
         `UPDATE intake_item_logs
             SET status = ?, amount = ?, supply_adjusted = ?, occurred_at = ?
@@ -436,7 +460,7 @@ function applyDoseStatusCore(
         target,
         amount,
         target === "taken" ? 1 : 0,
-        target === "taken" ? instantNow() : null,
+        occurredAt,
         doseId,
         date
       );
