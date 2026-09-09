@@ -288,6 +288,46 @@ function timeToken(
 }
 
 describe("complete usual acts through Telegram correction callbacks (#5415)", () => {
+  it("a neighboring unbundled food chip leaves the same-minute usual act unchanged", async () => {
+    vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+    const { profileId, chatId, source, offerId } = seedChatOffer("food");
+    seedLoginTelegram(profileId, chatId);
+    await handleCallbackQuery(
+      callbackAt(source, `usual:${profileId}:${offerId}`)
+    );
+    const [bundle] = getRecentCorrectionBundles(profileId, "food", new Date());
+    const current = messagePointerAt(profileId, chatId, source.messageId)!;
+    const food = current.keyboard
+      .flat()
+      .find((button) =>
+        button.callback_data?.startsWith("food:")
+      )!.callback_data!;
+    await handleCallbackQuery(callbackAt(current, food));
+    const independent = db
+      .prepare(
+        `SELECT id, occurred_at FROM food_log_events
+      WHERE profile_id = ? AND notify_message_id = ? AND bundle_id IS NULL ORDER BY id DESC LIMIT 1`
+      )
+      .get(profileId, source.id) as { id: number; occurred_at: string | null };
+    const afterFood = messagePointerAt(profileId, chatId, source.messageId)!;
+    await handleCallbackQuery(
+      callbackAt(afterFood, timeToken(afterFood, 30, independent.id))
+    );
+    expect(
+      db
+        .prepare(
+          "SELECT occurred_at FROM food_log_events WHERE profile_id = ? AND id = ?"
+        )
+        .get(profileId, independent.id)
+    ).toEqual({ occurred_at: "2026-08-18T09:12:17Z" });
+    expect(
+      readCorrectionBundle(profileId, {
+        domain: "food",
+        id: bundle.burst.fromId,
+      })
+    ).toEqual(bundle);
+  });
+
   it.each(["all", "stack"] as const)(
     "keeps the original host's complete %s confirmation correctable without a usual offer",
     async (kind) => {
@@ -857,6 +897,128 @@ describe("the usual act's captured correction hosts (#5415)", () => {
 });
 
 describe("one usual tap, one act id (#5082)", () => {
+  it("scopes identical bundle strings to their profile across all member stores", () => {
+    vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+    const owner = seedMorning("act-owner");
+    const foreign = seedMorning("act-foreign");
+    // Deliberate identity collision: profile ownership must remain authoritative.
+    const bundleId = newBundle();
+    for (const subject of [owner, foreign]) {
+      logFoodServingCore(
+        subject.profileId,
+        "berries",
+        subject.anchor,
+        "page",
+        undefined,
+        undefined,
+        { bundleId }
+      );
+      markDoseTaken(
+        subject.profileId,
+        subject.creatine,
+        null,
+        subject.anchor,
+        "page",
+        { bundleId }
+      );
+    }
+    db.prepare(
+      `INSERT INTO practice_logs
+      (profile_id, practice, date, start_time, created_at, logged_via, bundle_id)
+      VALUES (?, 'Stretching', ?, '09:42', ?, 'page', ?)`
+    ).run(
+      foreign.profileId,
+      foreign.anchor,
+      new Date().toISOString(),
+      bundleId
+    );
+    const [selected] = getRecentCorrectionBundles(
+      owner.profileId,
+      "food",
+      new Date()
+    );
+    const [stranger] = getRecentCorrectionBundles(
+      foreign.profileId,
+      "dose",
+      new Date()
+    );
+    expect(selected.members).toHaveLength(2);
+    expect(stranger.members).toHaveLength(3);
+    expect(
+      restampCorrectionBundle(
+        owner.profileId,
+        { domain: "dose", id: stranger.burst.fromId },
+        bundleId,
+        { kind: "chip", minutesBack: 30 },
+        new Date(),
+        () => true
+      )
+    ).toEqual({ kind: "no-burst" });
+    expect(
+      restampCorrectionBundle(
+        owner.profileId,
+        { domain: "food", id: selected.burst.fromId },
+        bundleId,
+        { kind: "chip", minutesBack: 30 },
+        new Date(),
+        () => true
+      )
+    ).toMatchObject({
+      kind: "restamped",
+      foodCount: 1,
+      doseCount: 1,
+      practiceCount: 0,
+    });
+    expect(
+      new Set(
+        readCorrectionBundle(owner.profileId, {
+          domain: "food",
+          id: selected.burst.fromId,
+        })!.members.map((member) => member.statedAt)
+      )
+    ).toEqual(new Set(["2026-08-18T09:12:17Z"]));
+    expect(
+      readCorrectionBundle(foreign.profileId, {
+        domain: "dose",
+        id: stranger.burst.fromId,
+      })
+    ).toEqual(stranger);
+  });
+
+  it("corrects every member of an act larger than the old 200-row writer limit", () => {
+    vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+    const { profileId, anchor } = seedMorning("act-large");
+    const bundleId = newBundle();
+    for (let i = 0; i < 201; i++)
+      logFoodServingCore(
+        profileId,
+        "berries",
+        anchor,
+        "page",
+        undefined,
+        undefined,
+        { bundleId }
+      );
+    const [bundle] = getRecentCorrectionBundles(profileId, "food", new Date());
+    expect(bundle.members).toHaveLength(201);
+    expect(
+      restampCorrectionBundle(
+        profileId,
+        { domain: "food", id: bundle.burst.fromId },
+        bundleId,
+        { kind: "chip", minutesBack: 30 },
+        new Date(),
+        () => true
+      )
+    ).toMatchObject({ kind: "restamped", foodCount: 201 });
+    expect(
+      readCorrectionBundle(profileId, {
+        domain: "food",
+        id: bundle.burst.fromId,
+      })!.members.map((member) => member.statedAt)
+    ).toEqual(Array(201).fill("2026-08-18T09:12:17Z"));
+  });
+
   it.each(["food", "dose"] as const)(
     "corrects the complete usual act from its %s anchor",
     (domain) => {
