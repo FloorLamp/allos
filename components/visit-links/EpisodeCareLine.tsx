@@ -12,8 +12,8 @@ import Disclosure from "@/components/Disclosure";
 // The illness-episode cockpit's "Care" line (#1053; many-model #1198): the SET of visits
 // for this episode — each linked visit listed (date-ordered) with its own Unlink, plus
 // the in-range suggestion and the "Link a visit…" picker to ADD more. Server component;
-// every action is a plain server-action <form> (no client JS). `profileId` rides each
-// post as the cross-profile write target.
+// every action is a plain server-action <form> (no client JS). `profile_id` rides each
+// form as the cross-profile write target.
 
 export interface CareVisitOption {
   id: number;
