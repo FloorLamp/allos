@@ -326,8 +326,19 @@ export interface PrnDoseBandStatement {
   bandLabel: string | null;
   // Whether the band's figure differs from the dose this item actually carries, so
   // the row can say which one it is offering. False when they agree, which is the
-  // ordinary case: the add form's own band wrote that amount.
+  // ordinary case: the add form's own band wrote that amount. SYMMETRIC on purpose —
+  // the row must state a chart that reads LOWER than the stored figure just as plainly
+  // as one that reads higher. The offer below does not read this; see `exceedsStored`.
   differsFromStored: boolean;
+  // The same comparison in ONE DIRECTION: the band's figure is strictly HIGHER than the
+  // stored dose. This is the update offer's gate (owner ruling 3 on #5538) and the only
+  // difference between the two fields. A label chart states its figure either way but
+  // never proposes CUTTING a prescriber's — and `intake_items.rx` cannot carry the
+  // downward case, because an imported prescription can land flagged OTC. Both are
+  // false unless a milligram figure was read off the stored amount, so an amount that
+  // is not comparable to a milligram band (a volume, a count, IU, free text) is never a
+  // higher band.
+  exceedsStored: boolean;
   // The label's verdict, for the row to state — including for a dose written as a
   // volume. Null without a child context or an eligible label chart.
   result: Exclude<PediatricDoseResult, { kind: "no-pediatric" }> | null;
@@ -337,6 +348,7 @@ const NO_BAND: PrnDoseBandStatement = {
   bandAmount: null,
   bandLabel: null,
   differsFromStored: false,
+  exceedsStored: false,
   result: null,
 };
 
@@ -372,6 +384,7 @@ export function prnDoseBandStatement(
     bandAmount: formulationDoseAmount(result.mg),
     bandLabel: result.bandLabel,
     differsFromStored: result.mg !== storedMg,
+    exceedsStored: result.mg > storedMg,
     result,
   };
 }
@@ -385,11 +398,17 @@ export function prnDoseBandStatement(
 // that got #4713's item 3 withdrawn, and the reason the invariant at the top of this
 // file says a band amount is a SUGGESTION to confirm, never silently applied.
 //
-// The owner's ruling is to follow the current weight and ASK. When the band's figure
-// differs from the item's stored dose, the dose row offers to rewrite the stored
-// amount ONCE; accepting means every later tap records the new figure, declining
-// writes no health data and no dose amount at all. The tap itself is never gated —
-// there is no per-tap confirm and no provenance column.
+// The owner's ruling is to follow the current weight and ASK. When the band's figure is
+// HIGHER than the item's stored dose, the dose row offers to rewrite the stored amount
+// ONCE; accepting means every later tap records the new figure, declining writes no
+// health data and no dose amount at all. The tap itself is never gated — there is no
+// per-tap confirm and no provenance column.
+//
+// UPWARD ONLY (ruling 3). A growing child is the case this exists for. The reverse — a
+// prescriber's 300 mg beside a chart that reads 150 mg — is NOT offered: an OTC label
+// chart is not authority over a prescription, and the item's Rx flag is not a safe
+// enough gate to tell the two apart. That case is out of scope here, and the row still
+// STATES the chart's figure beside the stored one, which is `differsFromStored`'s job.
 //
 // ONE DERIVATION, FOUR HOSTS. The medications Today panel, the medicine card's Today
 // block, the illness cockpit's Meds fold and the quick-entry sheet all mount the same
@@ -424,11 +443,11 @@ export function prnDoseUpdateOffer(
 ): PrnDoseUpdateOffer | null {
   const band = prnDoseBandStatement(item, context);
   const storedAmount = item.amount;
-  // `differsFromStored` is already exactly "a child, an eligible chart, a fresh
-  // weight, a milligram amount on file, and the two figures disagree" — the case this
-  // offer exists for and nothing else. The result narrowing carries the band's own mg
-  // out of the union; the stored amount is what produced `differsFromStored`.
-  if (!band.differsFromStored || band.result?.kind !== "dose" || !storedAmount)
+  // `exceedsStored` is already exactly "a child, an eligible chart, a fresh weight, a
+  // milligram amount on file, and the band reads higher" — the case this offer exists
+  // for and nothing else. The result narrowing carries the band's own mg out of the
+  // union; the stored amount is what produced `exceedsStored`.
+  if (!band.exceedsStored || band.result?.kind !== "dose" || !storedAmount)
     return null;
   const key = doseBandUpdateKey(item.id, band.result.mg);
   if (context?.declinedDoseUpdates.includes(key)) return null;

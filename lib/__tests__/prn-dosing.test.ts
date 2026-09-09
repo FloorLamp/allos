@@ -12,6 +12,7 @@ import {
   pediatricDoseSuggestion,
   prnDoseUpdateOffer,
   doseUpdateOfferSeat,
+  prnDoseBandStatement,
 } from "@/lib/prn-dosing";
 import { doseBandUpdateKey } from "@/lib/dismissal-keys";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
@@ -304,6 +305,22 @@ describe("prnDoseUpdateOffer — the stale stored dose", () => {
         declinedDoseUpdates: [doseBandUpdateKey(31, 150)],
       })
     ).toMatchObject({ key: doseBandUpdateKey(31, 200), bandAmount: "200 mg" });
+  });
+
+  // UPWARD ONLY (owner ruling 3). A prescriber set 300 mg; the OTC chart for this
+  // weight reads 150 mg. The row still STATES the chart's figure — that is the whole
+  // point of the band line — but nothing here proposes cutting a prescribed dose, and
+  // the item's Rx flag cannot be the gate because an imported prescription can land
+  // flagged OTC. The band statement's own comparison stays symmetric, which is what
+  // the second half asserts: the two predicates are not the same field.
+  it("never proposes lowering a stored dose the chart reads under", () => {
+    const prescribed = { ...item, amount: "300 mg" };
+    expect(prnDoseUpdateOffer(prescribed, GROWN)).toBeNull();
+    expect(prnDoseBandStatement(prescribed, GROWN)).toMatchObject({
+      bandAmount: "150 mg",
+      differsFromStored: true,
+      exceedsStored: false,
+    });
   });
 
   it("offers nothing for an adult, a refusal, or a dose written as a volume", () => {
