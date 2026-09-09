@@ -46,9 +46,9 @@ export interface AlsoForSource {
   itemId: number;
   profileId: number;
   kind: IntakeItemKind;
-  // The member's own display name and product facts. The BOTTLE owns what the product
-  // is (#1705); these are the label-matching facts an item carries that a bottle row
-  // has no column for.
+  // The product facts an ITEM carries and a `shared_supplies` row has no column for.
+  // The bottle still owns what the product IS (#1705); these travel with the copy as
+  // its own provenance.
   rxcui: string | null;
   rxcuiIngredients: string[] | null;
   brand: string | null;
@@ -273,7 +273,11 @@ export interface AlsoForCardModel {
 // stand.
 export function alsoForCardModel(input: {
   pool: Pick<PoolView, "id" | "name" | "strength">;
-  visibleMembers: readonly { itemId: number; profileId: number; name: string }[];
+  visibleMembers: readonly {
+    itemId: number;
+    profileId: number;
+    name: string;
+  }[];
   memberProfileIds: readonly number[];
   candidates: readonly { id: number; name: string }[];
 }): AlsoForCardModel {
@@ -315,7 +319,11 @@ export function alsoForCardModel(input: {
         dose: facts.dose,
       });
     }
-    offers.push({ profileId: candidate.id, name: candidate.name, basisBySource });
+    offers.push({
+      profileId: candidate.id,
+      name: candidate.name,
+      basisBySource,
+    });
   }
   return { sources: sources.map((s) => s.option), offers };
 }
@@ -332,8 +340,7 @@ export type AlsoForCopyResult =
     }
   | { ok: false; error: string };
 
-const STALE =
-  "This offer changed. Reload the cabinet and try again.";
+const STALE = "This offer changed. Reload the cabinet and try again.";
 
 // Copy ONE member's plan onto another person, atomically.
 //
@@ -406,7 +413,8 @@ export function copyPoolMemberPlan(input: {
       condition: schedule.condition,
       // The label, never the source's id-keyed row: situation rules resolve by NAME in
       // the recipient's own vocabulary (see lib/intake-also-for.ts).
-      situation: schedule.condition === "situational" ? schedule.situation : null,
+      situation:
+        schedule.condition === "situational" ? schedule.situation : null,
       brand: source.brand,
       product: source.product,
       rxcui: source.rxcui,

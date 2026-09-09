@@ -240,7 +240,9 @@ export async function unlinkItemAction(
 //
 // Everything the offer was derived from is re-read inside the atomic write, which is
 // where a stale intent is refused (lib/queries/intake/also-for.ts).
-export async function alsoForAction(formData: FormData): Promise<AlsoForResult> {
+export async function alsoForAction(
+  formData: FormData
+): Promise<AlsoForResult> {
   const supplyId = Number(formData.get("supply_id") ?? 0);
   const sourceItemId = Number(formData.get("source_item_id") ?? 0);
   const sourceProfileId = Number(formData.get("source_profile_id") ?? 0);
@@ -251,7 +253,10 @@ export async function alsoForAction(formData: FormData): Promise<AlsoForResult> 
   }
   await requireProfileWriteAccess(targetProfileId);
   const scope = await requireScope();
-  if (!isLinkableSupply(scope.ids, supplyId) || !scope.ids.includes(sourceProfileId)) {
+  if (
+    !isLinkableSupply(scope.ids, supplyId) ||
+    !scope.ids.includes(sourceProfileId)
+  ) {
     return { ok: false, error: "Couldn't find that shared bottle." };
   }
   await requirePoolWriteAccess(supplyId);

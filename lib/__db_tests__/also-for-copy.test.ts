@@ -105,7 +105,13 @@ let supplyId: number;
 function makeBottle(): void {
   source = newProfile("AF Source");
   supplyId = createSharedSupply(
-    { name: "Ibuprofen", strength: "200 mg", form: "tablet", lowSupplyDays: null, notes: null },
+    {
+      name: "Ibuprofen",
+      strength: "200 mg",
+      form: "tablet",
+      lowSupplyDays: null,
+      notes: null,
+    },
     60
   );
   sourceItem = seedMember(source, supplyId);
@@ -206,7 +212,9 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
     // what would put an unstated dose back on the due surfaces (#5285).
     expect(
       db
-        .prepare("SELECT COUNT(*) AS n FROM intake_item_doses WHERE item_id = ?")
+        .prepare(
+          "SELECT COUNT(*) AS n FROM intake_item_doses WHERE item_id = ?"
+        )
         .get(item.id)
     ).toEqual({ n: 0 });
     expect(getIntakeDoses(child).filter((d) => d.item_id === item.id)).toEqual(
@@ -217,7 +225,13 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
   it("copies the interval phase so the household keeps one rhythm", () => {
     const other = newProfile("AF Interval Source");
     const bottle = createSharedSupply(
-      { name: "Ibuprofen", strength: "200 mg", form: "tablet", lowSupplyDays: null, notes: null },
+      {
+        name: "Ibuprofen",
+        strength: "200 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
       30
     );
     const item = seedMember(other, bottle, {

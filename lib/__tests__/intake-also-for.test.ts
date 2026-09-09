@@ -118,7 +118,7 @@ describe("the recipient's own dose", () => {
     expect(
       resolveAlsoForDose({
         identity: IBUPROFEN,
-          pediatric: childContext({ weightKg: null, weightDate: null }),
+        pediatric: childContext({ weightKg: null, weightDate: null }),
       })
     ).toMatchObject({ kind: "none" });
   });
@@ -147,7 +147,7 @@ describe("the recipient's own dose", () => {
           rxcui: null,
           rxcuiIngredients: null,
         },
-          pediatric: null,
+        pediatric: null,
       })
     ).toMatchObject({ kind: "none" });
   });
@@ -161,7 +161,11 @@ describe("eligibility — an offer, not a warning", () => {
     isMember: false,
     hasUnpooledDuplicate: false,
     allergen: null,
-    dose: { kind: "amount", amount: "200 mg", basis: "from the adult label dose" },
+    dose: {
+      kind: "amount",
+      amount: "200 mg",
+      basis: "from the adult label dose",
+    },
   };
 
   it("offers a writable non-member with a derivable dose", () => {
@@ -183,7 +187,9 @@ describe("eligibility — an offer, not a warning", () => {
   });
 
   it("does not offer someone who already keeps the same product unpooled", () => {
-    expect(alsoForEligible({ ...base, hasUnpooledDuplicate: true })).toBe(false);
+    expect(alsoForEligible({ ...base, hasUnpooledDuplicate: true })).toBe(
+      false
+    );
   });
 
   it("does not offer someone with a recorded allergen conflict", () => {

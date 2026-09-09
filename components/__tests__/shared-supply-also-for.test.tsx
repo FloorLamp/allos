@@ -182,7 +182,9 @@ describe("past a chip count the card falls back to a select", () => {
       basisBySource: { 11: `basis-${i}` },
     }));
     mount(card({ alsoFor: { sources: [MIRA], offers: many } }));
-    expect(screen.getAllByTestId("shared-supply-also-for-chip")).toHaveLength(1);
+    expect(screen.getAllByTestId("shared-supply-also-for-chip")).toHaveLength(
+      1
+    );
     const people = screen.getByTestId(
       "shared-supply-also-for-person"
     ) as HTMLSelectElement;

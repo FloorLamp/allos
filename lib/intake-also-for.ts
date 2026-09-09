@@ -28,10 +28,7 @@
 //
 // Pure: no db, no auth, no React.
 
-import {
-  cadenceLabel,
-  type ItemCadence,
-} from "./intake-cadence";
+import { cadenceLabel, type ItemCadence } from "./intake-cadence";
 import {
   CONDITION_LABELS,
   TIME_BUCKET_LABELS,

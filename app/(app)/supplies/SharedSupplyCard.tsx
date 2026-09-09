@@ -92,6 +92,11 @@ export default function SharedSupplyCard({
   // an ADMIN reaches every profile in the instance, and a card cannot render a
   // hundred of them. Four is the layout number, not a rule about people.
   const manyOffers = pool.alsoFor.offers.length > 4;
+  // The card RE-RENDERS after the tap (the action revalidates /supplies), so the person
+  // just added is a member now and their offer is gone. The receipt must outlive that —
+  // it is what says the tap worked and where the new row is — so the block stays while
+  // a receipt is standing, with the controls hidden once there is nobody left to offer.
+  const offersOpen = pool.alsoFor.offers.length > 0;
   const [offerProfileId, setOfferProfileId] = useState("");
   const offer =
     pool.alsoFor.offers.find((o) => String(o.profileId) === offerProfileId) ??
@@ -303,106 +308,113 @@ export default function SharedSupplyCard({
             person picks — even when the schedules read the same, because the copy still
             takes one specific member's plan. Never the first SQL row, never the acting
             profile. */}
-        {alsoForSources.length > 0 && pool.alsoFor.offers.length > 0 && (
-          <div className="mt-3" data-testid="shared-supply-also-for">
-            {alsoForSources.length === 1 ? (
-              <p
-                className="text-sm text-slate-600 dark:text-slate-300"
-                data-testid="shared-supply-also-for-source"
-              >
-                Copying {alsoForSources[0].personName}’s schedule ·{" "}
-                {alsoForSources[0].scheduleLabel}
-              </p>
-            ) : (
-              <div>
-                <label className="label" htmlFor={`pool-also-for-${pool.id}`}>
-                  Copy schedule from
-                </label>
-              </div>
-            )}
-            {/* ONE CONTROL HEIGHT IN THIS ROW (#3481): the select is the `.input`
+        {alsoForSources.length > 0 &&
+          (pool.alsoFor.offers.length > 0 || receipt) && (
+            <div className="mt-3" data-testid="shared-supply-also-for">
+              {offersOpen &&
+                (alsoForSources.length === 1 ? (
+                  <p
+                    className="text-sm text-slate-600 dark:text-slate-300"
+                    data-testid="shared-supply-also-for-source"
+                  >
+                    Copying {alsoForSources[0].personName}’s schedule ·{" "}
+                    {alsoForSources[0].scheduleLabel}
+                  </p>
+                ) : (
+                  <div>
+                    <label
+                      className="label"
+                      htmlFor={`pool-also-for-${pool.id}`}
+                    >
+                      Copy schedule from
+                    </label>
+                  </div>
+                ))}
+              {/* ONE CONTROL HEIGHT IN THIS ROW (#3481): the select is the `.input`
                 family at the `.btn` desktop height, and both families share the phone
                 tap floor (#3708/#3514). Guarded by e2e/shared-supply-pool.spec.ts. */}
-            <div
-              className="mt-1 flex flex-wrap items-end gap-2"
-              data-testid="shared-supply-also-for-row"
-            >
-              {alsoForSources.length > 1 && (
-                <select
-                  id={`pool-also-for-${pool.id}`}
-                  className="input h-9 max-w-xs"
-                  data-testid="shared-supply-also-for-select"
-                  value={sourceItemId}
-                  onChange={(e) => {
-                    setSourceItemId(e.target.value);
-                    setReceipt(null);
-                  }}
+              {offersOpen && (
+                <div
+                  className="mt-1 flex flex-wrap items-end gap-2"
+                  data-testid="shared-supply-also-for-row"
                 >
-                  <option value="">Choose a person</option>
-                  {alsoForSources.map((s) => (
-                    <option key={s.itemId} value={s.itemId}>
-                      {s.personName} · {s.scheduleLabel}
-                    </option>
-                  ))}
-                </select>
+                  {alsoForSources.length > 1 && (
+                    <select
+                      id={`pool-also-for-${pool.id}`}
+                      className="input h-9 max-w-xs"
+                      data-testid="shared-supply-also-for-select"
+                      value={sourceItemId}
+                      onChange={(e) => {
+                        setSourceItemId(e.target.value);
+                        setReceipt(null);
+                      }}
+                    >
+                      <option value="">Choose a person</option>
+                      {alsoForSources.map((s) => (
+                        <option key={s.itemId} value={s.itemId}>
+                          {s.personName} · {s.scheduleLabel}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {manyOffers ? (
+                    <>
+                      <select
+                        aria-label="Also for"
+                        className="input h-9 max-w-xs"
+                        data-testid="shared-supply-also-for-person"
+                        value={offerProfileId}
+                        onChange={(e) => {
+                          setOfferProfileId(e.target.value);
+                          setReceipt(null);
+                        }}
+                      >
+                        <option value="">Choose a person</option>
+                        {pool.alsoFor.offers.map((o) => (
+                          <option key={o.profileId} value={o.profileId}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn"
+                        data-testid="shared-supply-also-for-chip"
+                        disabled={pending || source == null || offer == null}
+                        onClick={() => offer && alsoFor(offer)}
+                      >
+                        Also for
+                      </button>
+                    </>
+                  ) : (
+                    pool.alsoFor.offers.map((o) => (
+                      <button
+                        key={o.profileId}
+                        type="button"
+                        className="btn"
+                        data-testid="shared-supply-also-for-chip"
+                        disabled={pending || source == null}
+                        onClick={() => alsoFor(o)}
+                      >
+                        {o.name} · Also for
+                      </button>
+                    ))
+                  )}
+                </div>
               )}
-              {manyOffers ? (
-                <>
-                  <select
-                    aria-label="Also for"
-                    className="input h-9 max-w-xs"
-                    data-testid="shared-supply-also-for-person"
-                    value={offerProfileId}
-                    onChange={(e) => {
-                      setOfferProfileId(e.target.value);
-                      setReceipt(null);
-                    }}
-                  >
-                    <option value="">Choose a person</option>
-                    {pool.alsoFor.offers.map((o) => (
-                      <option key={o.profileId} value={o.profileId}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn"
-                    data-testid="shared-supply-also-for-chip"
-                    disabled={pending || source == null || offer == null}
-                    onClick={() => offer && alsoFor(offer)}
-                  >
-                    Also for
-                  </button>
-                </>
-              ) : (
-                pool.alsoFor.offers.map((o) => (
-                  <button
-                    key={o.profileId}
-                    type="button"
-                    className="btn"
-                    data-testid="shared-supply-also-for-chip"
-                    disabled={pending || source == null}
-                    onClick={() => alsoFor(o)}
-                  >
-                    {o.name} · Also for
-                  </button>
-                ))
+              {receipt && (
+                <p
+                  className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+                  data-testid="shared-supply-also-for-receipt"
+                >
+                  {receipt.text}{" "}
+                  <Link className="link" href={receipt.href}>
+                    Open their row
+                  </Link>
+                </p>
               )}
             </div>
-            {receipt && (
-              <p
-                className="mt-2 text-sm text-slate-600 dark:text-slate-300"
-                data-testid="shared-supply-also-for-receipt"
-              >
-                {receipt.text}{" "}
-                <Link className="link" href={receipt.href}>
-                  Open their row
-                </Link>
-              </p>
-            )}
-          </div>
-        )}
+          )}
         {pool.hiddenMemberCount > 0 && (
           <p
             className="mt-1 text-xs text-slate-500 dark:text-slate-400"

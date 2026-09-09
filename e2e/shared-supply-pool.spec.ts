@@ -613,7 +613,10 @@ for (const [label, viewport] of [
     // it is what makes a red here say WHICH control moved instead of only that one did.
     console.log(`[#3481] ${label} Also-for rows: ${JSON.stringify(readings)}`);
     for (const r of readings) {
-      expect(r.controls.length, `no controls measured at ${label}`).toBeGreaterThan(0);
+      expect(
+        r.controls.length,
+        `no controls measured at ${label}`
+      ).toBeGreaterThan(0);
       for (const c of r.controls) {
         expect(
           c.height,
