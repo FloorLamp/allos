@@ -36,11 +36,15 @@ import {
   setProfileSetting,
   setStoredAge,
 } from "@/lib/settings";
+import { trackSupplyAskedKey } from "@/lib/dismissal-keys";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
+const dailyDose = JSON.stringify([
+  { amount: "1 serving", time_of_day: "Morning" },
+]);
 
 function itemRow(id: number) {
   return db
@@ -153,7 +157,12 @@ describe("addIntakeItem", () => {
   it("creates a manual-source supplement with a dose", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Creatine", condition: "daily", priority: "high" })
+      fd({
+        name: "Creatine",
+        condition: "daily",
+        priority: "high",
+        doses: dailyDose,
+      })
     );
 
     const items = getIntakeItems(profile.id);
@@ -162,7 +171,6 @@ describe("addIntakeItem", () => {
     expect(row.name).toBe("Creatine");
     expect(row.kind).toBe("supplement");
     expect(row.source).toBe("manual");
-    // parseDoses always yields at least one dose row.
     expect(getIntakeDoses(profile.id)).toHaveLength(1);
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
@@ -216,73 +224,64 @@ describe("addIntakeItem", () => {
     expect(getMedicationCourses(profile.id)[0].started_on).toBe("2025-02-03");
   });
 
-  it("keeps an as-needed start date optional and allows it to be cleared", async () => {
-    const { profile } = seedActor();
-    const added = await addIntakeItem(
-      fd({
-        name: "As-needed test medication",
-        kind: "medication",
-        obligation: "may",
-        started_on: "",
-      })
-    );
+  it.each(["may", "must"])(
+    "keeps a %s start date optional and allows it to be cleared",
+    async (obligation) => {
+      const { profile } = seedActor();
+      const added = await addIntakeItem(
+        fd({
+          name: "Test medication",
+          kind: "medication",
+          obligation,
+          started_on: "",
+        })
+      );
 
-    expect(added.ok).toBe(true);
-    const med = getIntakeItems(profile.id)[0];
-    let course = getMedicationCourses(profile.id)[0];
-    expect(course.started_on).toBeNull();
+      expect(added.ok).toBe(true);
+      const med = getIntakeItems(profile.id)[0];
+      let course = getMedicationCourses(profile.id)[0];
+      expect(course.started_on).toBeNull();
 
-    const dated = await updateIntakeItem(
-      fd({
-        id: med.id,
-        name: med.name,
-        kind: "medication",
-        obligation: "may",
-        course_id: course.id,
-        started_on: "2025-02-03",
-      })
-    );
-    expect(dated.ok).toBe(true);
-    course = getMedicationCourses(profile.id)[0];
-    expect(course.started_on).toBe("2025-02-03");
+      const dated = await updateIntakeItem(
+        fd({
+          id: med.id,
+          name: med.name,
+          kind: "medication",
+          obligation,
+          course_id: course.id,
+          started_on: "2025-02-03",
+        })
+      );
+      expect(dated.ok).toBe(true);
+      course = getMedicationCourses(profile.id)[0];
+      expect(course.started_on).toBe("2025-02-03");
 
-    const cleared = await updateIntakeItem(
-      fd({
-        id: med.id,
-        name: med.name,
-        kind: "medication",
-        obligation: "may",
-        course_id: course.id,
-        started_on: "",
-      })
-    );
-    expect(cleared.ok).toBe(true);
-    expect(getMedicationCourses(profile.id)[0].started_on).toBeNull();
-  });
-
-  it("still requires a start date for a scheduled medication", async () => {
-    const { profile } = seedActor();
-    const result = await addIntakeItem(
-      fd({
-        name: "Scheduled test medication",
-        kind: "medication",
-        started_on: "",
-      })
-    );
-
-    expect(result).toEqual({
-      ok: false,
-      error: "Enter a start date that isn't in the future.",
-    });
-    expect(getIntakeItems(profile.id)).toHaveLength(0);
-  });
+      const cleared = await updateIntakeItem(
+        fd({
+          id: med.id,
+          name: med.name,
+          kind: "medication",
+          obligation,
+          course_id: course.id,
+          started_on: "",
+        })
+      );
+      expect(cleared.ok).toBe(true);
+      expect(getMedicationCourses(profile.id)[0].started_on).toBeNull();
+    }
+  );
 });
 
 describe("toggleTaken refill invariant", () => {
   it("confirm decrements on-hand by qty_per_dose; untoggle re-increments", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Vitamin D", quantity_on_hand: 10, qty_per_dose: 2 })
+      fd({
+        name: "Vitamin D",
+        quantity_on_hand: 10,
+        qty_per_dose: 2,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(profile.id)[0].id;
     const doseId = getIntakeDoses(profile.id)[0].id;
@@ -306,7 +305,12 @@ describe("toggleTaken refill invariant", () => {
   it("preserves an untouched stale quantity but applies an intentional refill", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Metformin", quantity_on_hand: 30, qty_per_dose: 1 })
+      fd({
+        name: "Metformin",
+        quantity_on_hand: 30,
+        qty_per_dose: 1,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(profile.id)[0].id;
     const doseId = getIntakeDoses(profile.id)[0].id;
@@ -347,7 +351,12 @@ describe("toggleTaken refill invariant", () => {
     // Owner seeds a tracked supplement.
     const owner = seedActor();
     await addIntakeItem(
-      fd({ name: "Zinc", quantity_on_hand: 5, qty_per_dose: 1 })
+      fd({
+        name: "Zinc",
+        quantity_on_hand: 5,
+        qty_per_dose: 1,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(owner.profile.id)[0].id;
     const foreignDoseId = getIntakeDoses(owner.profile.id)[0].id;
@@ -367,7 +376,12 @@ describe("setDoseStatus tri-state + skip supply invariant (#232)", () => {
   async function seedTracked(qty = 10) {
     const { profile } = seedActor();
     await addIntakeItem(
-      fd({ name: "Vitamin D", quantity_on_hand: qty, qty_per_dose: 2 })
+      fd({
+        name: "Vitamin D",
+        quantity_on_hand: qty,
+        qty_per_dose: 2,
+        doses: dailyDose,
+      })
     );
     const suppId = getIntakeItems(profile.id)[0].id;
     const doseId = getIntakeDoses(profile.id)[0].id;
@@ -841,4 +855,23 @@ describe("dismissIntakeFinding (#435)", () => {
     await dismissIntakeFinding(fd({ dedupe_key: "biomarker:ldl" }));
     expect(suppressed().has("biomarker:ldl")).toBe(false);
   });
+});
+
+it("saves an add-form ignored/declined supply offer with its new item, but no stock or placeholder dose", async () => {
+  const { profile } = seedActor();
+  const result = await addIntakeItem(
+    fd({ name: "Local offer", supply_offer_seen: "1", qty_per_dose: "2" })
+  );
+  expect(result.ok).toBe(true);
+  const item = getIntakeItems(profile.id)[0];
+  expect(item.quantity_on_hand).toBeNull();
+  expect(item.qty_per_dose).toBe(2);
+  expect(getIntakeDoses(profile.id)).toEqual([]);
+  expect(
+    getFindingSuppressions(profile.id).has(trackSupplyAskedKey(item.id))
+  ).toBe(true);
+  expect(
+    (await addIntakeItem(fd({ name: "", supply_offer_seen: "1" }))).ok
+  ).toBe(false);
+  expect(getIntakeItems(profile.id)).toHaveLength(1);
 });

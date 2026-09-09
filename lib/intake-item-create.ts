@@ -23,6 +23,10 @@
 //     are even meaningful, so it cannot be a thing the row happens to fall into.
 //   • Its obligation defaults to its KIND's default (`must` for a medication, #1505),
 //     not to the column's blanket `should`.
+//   • Its prescriber and Rx number are ATTRIBUTION: what a source or a person
+//     asserted. A caller that only GUESSED one (an import scraping the sig, #5223)
+//     says so, and the guess is not stored — a row cannot carry its own provenance,
+//     so anything it does store is read later as a fact.
 //   • A medication's Rx/OTC flag is derived when unstated by the same rule migration
 //     045 backfilled with: a recorded prescriber or Rx number ⇒ prescription.
 //   • Medication-only fields are NULL on a supplement and supplement-only fields are
@@ -85,7 +89,7 @@ export type IntakeItemProvenance =
  * A new medication's initial course. Required for a medication and unspellable for a
  * supplement, because "a medication with no course" is the state every course reader
  * has to special-case.
- *   • `open`   — this core opens it (the form's start date, or the import's fallback).
+ *   • `open`   — this core opens it with a stated or unknown start.
  *   • `caller` — the caller writes the DERIVED courses itself (an import whose source
  *                carried explicit periods), inside this same transaction.
  */
@@ -93,8 +97,6 @@ export type InitialMedicationCourse =
   | {
       kind: "open";
       startedOn: string | null;
-      // Keep an UNKNOWN start unknown rather than defaulting it to the created day.
-      preserveUnknownStart?: boolean;
       attribution?: CourseAttribution;
     }
   | { kind: "caller" };
@@ -140,8 +142,9 @@ interface MedicationOnlyFields {
   // import with no structured attribution scrapes them out of the sig and notes
   // (prescription-parse's label heuristics), where "Call your doctor if symptoms
   // persist" reads as a prescriber and "no prescription required" as an Rx number.
-  // A caller that got a field that way says so here; the field is still stored, but
-  // the Rx derivation below will not treat a guess as evidence of a prescription.
+  // A caller that got a field that way says so here, and the field is then NOT stored
+  // (#5223) — the columns hold attribution, and a row cannot say which of its own
+  // values was a guess, so a stored guess is read as a fact by every later reader.
   // Omitted → false: a hand-entered field is asserted by the person who typed it.
   prescriberScraped?: boolean;
   rxNumberScraped?: boolean;
@@ -244,9 +247,18 @@ export function createIntakeItemCore(
   const obligation = input.obligation ?? affordances.defaultObligation;
 
   // A medication's identity columns; NULL on a supplement, where they mean nothing.
-  const prescriber = isMed ? (med.prescriber ?? null) : null;
+  // Prescriber and Rx number are ATTRIBUTION — what a source or a person asserted —
+  // so a value the caller flagged as SCRAPED is dropped rather than stored (#5223).
+  // Storing it put a label heuristic's reading of prose on the medicine card as a
+  // fact ("Dr. if symptoms persist · Rx required" on a drugstore ibuprofen, on a row
+  // that simultaneously said OTC), and nothing downstream could tell it from the
+  // mapper's own "Dr. Okafor" — the row carries the value, not its provenance. The
+  // parser still reports what it read; this is the boundary that declines to keep it.
+  const prescriber =
+    isMed && !med.prescriberScraped ? (med.prescriber ?? null) : null;
   const pharmacy = isMed ? (med.pharmacy ?? null) : null;
-  const rxNumber = isMed ? (med.rxNumber ?? null) : null;
+  const rxNumber =
+    isMed && !med.rxNumberScraped ? (med.rxNumber ?? null) : null;
   // Migration 045's derivation, applied at CREATION rather than only at backfill: an
   // imported prescription arrives with a prescriber and an Rx number and used to land
   // as OTC, which hid those very fields and read as "OTC" on the badge and to the
@@ -257,13 +269,12 @@ export function createIntakeItemCore(
   // time the same two columns may hold a label heuristic's guess over prose, and
   // deriving a clinical flag from a guess turns "Call your doctor if symptoms
   // persist" into a prescription — which the episode reconciler then reads as an Rx
-  // course rather than the OTC PRN it is (lib/episode-med-reconcile.ts).
-  const assertedPrescriber = med.prescriberScraped ? null : prescriber;
-  const assertedRxNumber = med.rxNumberScraped ? null : rxNumber;
+  // course rather than the OTC PRN it is (lib/episode-med-reconcile.ts). The two
+  // columns above are already the asserted values, so the derivation simply reads
+  // them: what the row stores and what the flag believes cannot drift apart.
   const rx = !isMed
     ? 0
-    : (med.rx ??
-      (hasText(assertedPrescriber) || hasText(assertedRxNumber) ? 1 : 0));
+    : (med.rx ?? (hasText(prescriber) || hasText(rxNumber) ? 1 : 0));
   const providerId = isMed ? (med.providerId ?? null) : null;
   const indicationConditionId = isMed
     ? (med.indicationConditionId ?? null)
@@ -384,7 +395,6 @@ export function createIntakeItemCore(
       profileId,
       itemId,
       input.course.startedOn,
-      input.course.preserveUnknownStart ?? false,
       input.course.attribution
     );
   }

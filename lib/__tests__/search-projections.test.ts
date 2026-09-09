@@ -21,6 +21,7 @@ import {
   providerHitText,
   providerKindLabel,
   rangeText,
+  type SearchDisplay,
   skinHitText,
   snippet,
 } from "@/lib/search-projections";
@@ -31,12 +32,19 @@ import type {
   SkinLesion,
 } from "@/lib/types";
 
+const DISPLAY: SearchDisplay = {
+  prefs: { dateFormat: "iso", timeFormat: "24h" },
+  today: "2026-09-08",
+};
+
 describe("isoDay", () => {
   it("trims a stored datetime to its ISO day and passes a date through", () => {
     expect(isoDay("2026-07-06 12:30:00")).toBe("2026-07-06");
     expect(isoDay("2026-07-06")).toBe("2026-07-06");
     expect(isoDay(null)).toBeNull();
     expect(isoDay("")).toBeNull();
+    expect(isoDay("2026-02-30")).toBeNull();
+    expect(isoDay("not a day")).toBeNull();
   });
 });
 
@@ -56,23 +64,23 @@ describe("snippet", () => {
 
 describe("rangeText — every stored day window's end is its inclusive last day", () => {
   it("shows the end as itself (a protocol's or episode's last day)", () => {
-    expect(rangeText({ start: "2026-03-01", end: "2026-04-15" })).toBe(
+    expect(rangeText({ start: "2026-03-01", end: "2026-04-15" }, DISPLAY)).toBe(
       "2026-03-01 → 2026-04-15"
     );
   });
 
   it("reads an open window as 'since', a start-less one as 'until'", () => {
-    expect(rangeText({ start: "2026-03-01", end: null })).toBe(
+    expect(rangeText({ start: "2026-03-01", end: null }, DISPLAY)).toBe(
       "since 2026-03-01"
     );
-    expect(rangeText({ start: null, end: "2026-03-08" })).toBe(
+    expect(rangeText({ start: null, end: "2026-03-08" }, DISPLAY)).toBe(
       "until 2026-03-08"
     );
-    expect(rangeText({ start: null, end: null })).toBeNull();
+    expect(rangeText({ start: null, end: null }, DISPLAY)).toBeNull();
   });
 
   it("collapses a single-day window (end == start) to one date", () => {
-    expect(rangeText({ start: "2026-03-01", end: "2026-03-01" })).toBe(
+    expect(rangeText({ start: "2026-03-01", end: "2026-03-01" }, DISPLAY)).toBe(
       "2026-03-01"
     );
   });
@@ -150,12 +158,15 @@ describe("imagingHitText", () => {
   };
 
   it("titles the study with modality, side, and region", () => {
-    expect(imagingHitText(study).title).toBe("MRI Left Knee");
+    expect(imagingHitText(study, DISPLAY).title).toBe("MRI Left Knee");
   });
 
   it("distinguishes two same-modality studies by their date", () => {
-    const older = imagingHitText({ ...study, study_date: "2024-09-02" });
-    const newer = imagingHitText(study);
+    const older = imagingHitText(
+      { ...study, study_date: "2024-09-02" },
+      DISPLAY
+    );
+    const newer = imagingHitText(study, DISPLAY);
     expect(older.title).toBe(newer.title);
     expect(older.subtitle).toContain("2024-09-02");
     expect(newer.subtitle).toContain("2026-02-11");
@@ -163,11 +174,14 @@ describe("imagingHitText", () => {
 
   it("falls back to the indication when no impression was captured", () => {
     expect(
-      imagingHitText({
-        ...study,
-        impression: null,
-        indication: "Persistent knee pain",
-      }).subtitle
+      imagingHitText(
+        {
+          ...study,
+          impression: null,
+          indication: "Persistent knee pain",
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("Persistent knee pain · 2026-02-11");
   });
 });
@@ -197,15 +211,16 @@ describe("genomicHitText", () => {
   };
 
   it("titles the row with the gene and its most specific call", () => {
-    expect(genomicHitText(variant).title).toBe("CYP2C19 *2/*17");
+    expect(genomicHitText(variant, DISPLAY).title).toBe("CYP2C19 *2/*17");
   });
 
   it("states the report's own classification, preferring significance", () => {
-    expect(genomicHitText(variant).subtitle).toBe(
+    expect(genomicHitText(variant, DISPLAY).subtitle).toBe(
       "Pharmacogenomic · Lakeside Genetics · 2025-11-04"
     );
     expect(
-      genomicHitText({ ...variant, significance: "likely-benign" }).subtitle
+      genomicHitText({ ...variant, significance: "likely-benign" }, DISPLAY)
+        .subtitle
     ).toContain("Likely benign");
   });
 });
@@ -224,16 +239,18 @@ describe("dentalHitText", () => {
   };
 
   it("puts the tooth in the title, which is what separates two fillings", () => {
-    expect(dentalHitText(proc).title).toBe("Composite filling · #14 MOD");
-    expect(dentalHitText({ ...proc, tooth: "30", surface: null }).title).toBe(
-      "Composite filling · #30"
+    expect(dentalHitText(proc, DISPLAY).title).toBe(
+      "Composite filling · #14 MOD"
     );
+    expect(
+      dentalHitText({ ...proc, tooth: "30", surface: null }, DISPLAY).title
+    ).toBe("Composite filling · #30");
   });
 
   it("states the status so a planned procedure is not read as history", () => {
-    expect(dentalHitText({ ...proc, status: "planned" }).subtitle).toBe(
-      "Planned · 2026-01-20"
-    );
+    expect(
+      dentalHitText({ ...proc, status: "planned" }, DISPLAY).subtitle
+    ).toBe("Planned · 2026-01-20");
   });
 });
 
@@ -256,24 +273,31 @@ describe("skinHitText", () => {
   };
 
   it("names the lesion and locates it, with its size and status", () => {
-    const out = skinHitText(lesion);
+    const out = skinHitText(lesion, DISPLAY);
     expect(out.title).toBe("Freckled mole");
     expect(out.subtitle).toBe("Left forearm · Watch · 4 mm · 2026-05-06");
   });
 
   it("says how many observations a serial-tracked lesion holds", () => {
-    expect(skinHitText(lesion, 3).subtitle).toContain("3 observations");
-    expect(skinHitText(lesion, 1).subtitle).not.toContain("observation");
+    expect(skinHitText(lesion, DISPLAY, 3).subtitle).toContain(
+      "3 observations"
+    );
+    expect(skinHitText(lesion, DISPLAY, 1).subtitle).not.toContain(
+      "observation"
+    );
   });
 
   it("distinguishes two lesions in the SAME place by side and size", () => {
-    const left = skinHitText({ ...lesion, label: null });
-    const right = skinHitText({
-      ...lesion,
-      label: null,
-      body_side: "right",
-      size_mm: 9,
-    });
+    const left = skinHitText({ ...lesion, label: null }, DISPLAY);
+    const right = skinHitText(
+      {
+        ...lesion,
+        label: null,
+        body_side: "right",
+        size_mm: 9,
+      },
+      DISPLAY
+    );
     expect(left.title).not.toBe(right.title);
     expect(left.subtitle).toContain("Left forearm");
     expect(right.subtitle).toContain("Right forearm");
@@ -284,23 +308,29 @@ describe("skinHitText", () => {
 describe("episodeHitText", () => {
   it("marks an open episode ongoing and dates it from its start", () => {
     expect(
-      episodeHitText({
-        situation: "Head cold",
-        start_date: "2026-03-01",
-        end_date: null,
-        outcome: null,
-      }).subtitle
+      episodeHitText(
+        {
+          situation: "Head cold",
+          start_date: "2026-03-01",
+          end_date: null,
+          outcome: null,
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("Ongoing · since 2026-03-01");
   });
 
   it("renders a closed episode through its inclusive last active day, with its outcome", () => {
     expect(
-      episodeHitText({
-        situation: "Flu",
-        start_date: "2026-03-01",
-        end_date: "2026-03-07",
-        outcome: "Resolved without antibiotics",
-      }).subtitle
+      episodeHitText(
+        {
+          situation: "Flu",
+          start_date: "2026-03-01",
+          end_date: "2026-03-07",
+          outcome: "Resolved without antibiotics",
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("2026-03-01 → 2026-03-07 · Resolved without antibiotics");
   });
 });
@@ -308,23 +338,29 @@ describe("episodeHitText", () => {
 describe("protocolHitText", () => {
   it("renders a finished protocol through its inclusive last day", () => {
     expect(
-      protocolHitText({
-        name: "Sauna block",
-        start_date: "2026-03-01",
-        end_date: "2026-04-15",
-        situation: null,
-      }).subtitle
+      protocolHitText(
+        {
+          name: "Sauna block",
+          start_date: "2026-03-01",
+          end_date: "2026-04-15",
+          situation: null,
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("2026-03-01 → 2026-04-15");
   });
 
   it("marks a running protocol ongoing and names its situation", () => {
     expect(
-      protocolHitText({
-        name: "Creatine trial",
-        start_date: "2026-06-01",
-        end_date: null,
-        situation: "Travel week",
-      }).subtitle
+      protocolHitText(
+        {
+          name: "Creatine trial",
+          start_date: "2026-06-01",
+          end_date: null,
+          situation: "Travel week",
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("Ongoing · since 2026-06-01 · Travel week");
   });
 });
@@ -332,34 +368,43 @@ describe("protocolHitText", () => {
 describe("practiceHitText", () => {
   it("shows the shared weekly cadence text plus the session tally", () => {
     expect(
-      practiceHitText({
-        name: "Cold plunge",
-        perWeek: 3,
-        perWeekMax: 5,
-        sessionCount: 12,
-        lastUsed: "2026-07-02",
-      }).subtitle
+      practiceHitText(
+        {
+          name: "Cold plunge",
+          perWeek: 3,
+          perWeekMax: 5,
+          sessionCount: 12,
+          lastUsed: "2026-07-02",
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("3–5×/week · 12 sessions · 2026-07-02");
   });
 
   it("is honest about an untracked or unlogged practice", () => {
     expect(
-      practiceHitText({
-        name: "Breathwork",
-        perWeek: null,
-        perWeekMax: null,
-        sessionCount: 0,
-        lastUsed: null,
-      }).subtitle
+      practiceHitText(
+        {
+          name: "Breathwork",
+          perWeek: null,
+          perWeekMax: null,
+          sessionCount: 0,
+          lastUsed: null,
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("No sessions yet");
     expect(
-      practiceHitText({
-        name: "Sauna",
-        perWeek: 4,
-        perWeekMax: null,
-        sessionCount: 1,
-        lastUsed: "2026-07-02",
-      }).subtitle
+      practiceHitText(
+        {
+          name: "Sauna",
+          perWeek: 4,
+          perWeekMax: null,
+          sessionCount: 1,
+          lastUsed: "2026-07-02",
+        },
+        DISPLAY
+      ).subtitle
     ).toBe("4×/week · 1 session · 2026-07-02");
   });
 });

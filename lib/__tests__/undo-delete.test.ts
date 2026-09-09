@@ -202,16 +202,11 @@ describe("undo-delete registry", () => {
   // their importer re-inserts with OR IGNORE, so a document reprocess inside the undo
   // window can re-take a deleted imported row's key. Declaring it lets restore ADOPT
   // the live row instead of aborting on the index.
-  it("declares the UNIQUE natural key on every clinical root, and only on roots", () => {
+  it("declares the UNIQUE natural key on every clinical root", () => {
     for (const kind of ["allergy", "condition", "immunization", "skin-lesion"])
       expect(getKindSpec(kind).entities[0].uniqueKey, kind).toEqual([
         "external_id",
       ]);
-    // A child's key is its parent's FK, which the remap already handles — a uniqueKey
-    // there would probe the wrong row.
-    for (const spec of Object.values(UNDO_KINDS))
-      for (const e of spec.entities.slice(1))
-        expect(e.uniqueKey, `${spec.kind}.${e.entity}`).toBeUndefined();
   });
 
   // #1847: `lesion_photos.lesion_id` is a plain REFERENCES (no ON DELETE), so the

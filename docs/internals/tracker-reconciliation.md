@@ -5,8 +5,10 @@ schedule remains unwired under the condition below.
 
 Reconciliation checks tracker claims against the current repository. It may
 refresh factual status markers, cross-references, paths, symbols, and permitted
-labels. It never closes issues or changes scope, decisions, or owner prose beyond
-those factual edits. Flag judgments that the evidence cannot settle.
+labels. The scripts never close issues or change scope or decisions. The agent
+may fold and sequence issues under the reconciliation protocol's separate closure
+bounds, introduced in [#5382](https://github.com/FloorLamp/allos/pull/5382). Preserve
+owner rulings and flag judgments that the evidence cannot settle.
 
 Use the [reconciliation protocol](../../.claude/skills/reconcile-tracker/SKILL.md)
 for the ordered run procedure and the [change and test policy](../change-policy.md)
@@ -22,7 +24,7 @@ it is not a mandate to build more detectors.
 | [reconcile-repo-index.ts](../../scripts/orchestration/reconcile-repo-index.ts)     | Shared tracked-file index and lazy source reads.                            |
 | [reconcile-patch.ts](../../scripts/orchestration/reconcile-patch.ts)               | Exact-anchor patch validation and application.                              |
 | [reconcile-apply.ts](../../scripts/orchestration/reconcile-apply.ts)               | Issue-body writes, conditional change notices, and applied-patch outcomes.  |
-| [reconcile-labels.ts](../../scripts/orchestration/reconcile-labels.ts)             | Permitted label removals and plan-driven domain additions.                  |
+| [reconcile-labels.ts](../../scripts/orchestration/reconcile-labels.ts)             | Retired-label removals, ruled priorities, and planned domain additions.     |
 | [reconcile-watermark.ts](../../scripts/orchestration/reconcile-watermark.ts)       | Read or advance the tracker-owned sweep watermark.                          |
 | [reconcile-run-summary.ts](../../scripts/orchestration/reconcile-run-summary.ts)   | Record one dated run summary on #865.                                       |
 
@@ -99,9 +101,11 @@ gathering. It writes only the issue's `body` field. When an edited issue already
 has comments, or is named by `--notify`, it also posts a change notice so existing
 readers can distinguish the current body from earlier discussion.
 
-The label writer changes labels only. A domain addition must fill an empty domain
-slot on an open issue; existing labels and additions earlier in the same plan both
-count as occupied. Reclassification is outside this routine. Use the core's label
+The label writer removes retired labels, resets priority to an unambiguous ruling
+in the issue's body, and accepts planned domain additions. It refuses removals
+that would strand an issue and contested priority slots. A domain addition must
+fill an empty domain slot on an open issue; existing labels and additions earlier
+in the same plan both count as occupied. Reclassification is outside this routine. Use the core's label
 decisions instead of recreating them in a writer.
 
 The watermark writer is confined to its fixed-title carrier issue. The summary

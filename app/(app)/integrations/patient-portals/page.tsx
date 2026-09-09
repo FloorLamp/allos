@@ -33,7 +33,6 @@ import {
 import { today } from "@/lib/db";
 import { getTimezone } from "@/lib/settings";
 import { dateFromCreatedAt } from "@/lib/timeline-format";
-import BackLink from "@/components/BackLink";
 import PortalsSurface, {
   type AccountView,
   type IdentityView,
@@ -323,8 +322,10 @@ export default async function PatientPortalsPage() {
     // full width of a desktop shell.
     <PageContainer width="flow" className="space-y-6">
       <div>
-        <BackLink href="/data?section=import" label="Import" className="" />
-        <PageHeader title={def.name} />
+        <PageHeader
+          back={{ href: "/data?section=import", destination: "Import" }}
+          title={def.name}
+        />
       </div>
 
       <PortalsSurface

@@ -74,6 +74,7 @@ export default function SubstanceForm({
   maxDate,
   row,
   subjectProfileId,
+  defaultStatedAt = null,
   onSaved,
   onCancel,
   testId,
@@ -85,6 +86,12 @@ export default function SubstanceForm({
   maxDate: string;
   row?: SubstanceEntryRow;
   subjectProfileId?: number;
+  /**
+   * A stated instant to OPEN on, spelled as `MeasurementsQuickAdd` spells it — the
+   * window a day chart was showing when this door was opened (#4950). A default a
+   * person can change, never a write; a seeded row's own instant beats it.
+   */
+  defaultStatedAt?: string | null;
   onSaved: () => void;
   onCancel: () => void;
   testId?: string;
@@ -102,9 +109,10 @@ export default function SubstanceForm({
   // The acting profile's zone — the one the pair's day is minted against.
   const tz = useTimezone();
   // Seeded from the row's own `occurred_at`, so a correction opens on the minute the
-  // person actually stated and a re-save does not silently clear it.
+  // person actually stated and a re-save does not silently clear it, and otherwise
+  // from the window the host was showing (#5615). Empty when neither said a minute.
   const [when, setWhen] = useState<WhenValue>(() =>
-    whenOnDay(row?.date ?? date, tz, row?.statedAt ?? null)
+    whenOnDay(row?.date ?? date, tz, row?.statedAt ?? defaultStatedAt ?? null)
   );
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {

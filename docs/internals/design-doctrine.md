@@ -64,6 +64,14 @@ shared computations rather than repeating arithmetic in a caller:
 Current-age questions are explicit exceptions to reading-date age. Elapsed
 duration is a different quantity and must not substitute for age.
 
+There is no parental access control (#3067). The profile's birthdate, through
+the life-stage model (#494), decides what applies: adult-population statistical
+models (VO2 percentiles, strength standing, fitness age, PhenoAge, eGFR) use
+`isAdultForClinical` and hide on unknown age; logging of every activity type,
+timeline, search, export, and equipment are age-neutral; anything else declares
+a life-stage line or "age-neutral" explicitly. A global minimum-age setting is
+not restored.
+
 Apply a promised read window in SQL, before loading rows. A range selector that
 allows “all time” does not itself bound query cost. When adding a bound, update
 all callers that promise it. Paged reads use `lib/pagination.ts`

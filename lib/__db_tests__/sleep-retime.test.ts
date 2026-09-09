@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { shiftDateStr, utcInstant } from "@/lib/date";
 import {
@@ -128,8 +128,8 @@ const sleepRowCount = (): number =>
   ).c;
 
 beforeEach(() => {
-  db.exec("DELETE FROM metric_samples");
-  db.exec("DELETE FROM hr_minutes");
+  rawDb.exec("DELETE FROM metric_samples");
+  rawDb.exec("DELETE FROM hr_minutes");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('RETIME')").run()
       .lastInsertRowid

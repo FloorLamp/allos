@@ -16,7 +16,7 @@ import { hoistedStatement } from "./db";
 import { buildRecap, type Recap } from "./recap";
 import { gatherRecapInput } from "./notifications/recap-data";
 import { retrospectiveWindow } from "./retrospective";
-import type { WeightUnit } from "./settings";
+import type { WeightUnit, DistanceUnit } from "./settings";
 
 // The earliest day this profile has any of the data a retrospective REPORTS ON. Two
 // day-grained stores, deliberately: activities and body metrics are what every year
@@ -55,10 +55,19 @@ export function getRetrospective(
   profileId: number,
   year: number,
   today: string,
-  weightUnit: WeightUnit = "kg"
+  weightUnit: WeightUnit = "kg",
+  distanceUnit: DistanceUnit = "km"
 ): Recap {
   const win = retrospectiveWindow(year, today);
   return buildRecap(
-    gatherRecapInput(profileId, weightUnit, "year", win.completed, win.asOf)
+    gatherRecapInput(
+      profileId,
+      weightUnit,
+      "year",
+      win.completed,
+      win.asOf,
+      false,
+      distanceUnit
+    )
   );
 }

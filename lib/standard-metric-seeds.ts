@@ -39,6 +39,10 @@ export const STANDARD_TREND_METRIC_IDS: readonly string[] = [
   "volume",
 ];
 
+interface SeedDatabase {
+  prepare(source: string): Pick<Database.Statement, "run">;
+}
+
 // SEEDS ARE UNPOSITIONED AND STAMPED OLDER THAN ANY REAL SAVE. That is what makes
 // them invisible in the ordering, and it is the whole trick of this change.
 //
@@ -79,7 +83,7 @@ function seedCreatedAt(index: number, total: number): string {
 // its own row, its own position and its own real `created_at`, so existing curation
 // is left exactly as it was.
 export function seedStandardMetricSaves(
-  db: Pick<Database.Database, "prepare">,
+  db: SeedDatabase,
   profileId: number
 ): void {
   const insert = db.prepare(

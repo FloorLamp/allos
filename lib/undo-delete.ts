@@ -16,7 +16,9 @@
 // Capture (impure) reads the root row + every child row into a payload keyed by
 // entity. Restore (impure) walks the entities in order, re-inserting each row with
 // a NEW autoincrement id and remapping every FK column from the OLD captured id to
-// the NEW one via `remapRow`. New ids are acceptable and intentional: nothing else
+// the NEW one via `remapRow`. Equipment preserves its original load-lane id, and
+// its repoint entities update surviving links rather than insert rows.
+// New ids for the other kinds are acceptable and intentional: nothing else
 // in the app references these rows by a stable external id, and remapping keeps the
 // parent↔child links intact. A far-endpoint FK whose target was NOT part of this
 // capture (e.g. a "take together" pair's OTHER supplement, which still exists) is
@@ -92,6 +94,13 @@ export interface EntitySpec {
   table: string;
   // FK columns to remap on restore. Empty for the root.
   fks: readonly FkSpec[];
+  // Equipment is a stable load-lane identity, including links in other captures.
+  // Its undo restores the original id instead of allocating a new lane.
+  preserveId?: boolean;
+  // These rows survive the delete. Capture only their id and this FK; detach it
+  // on delete, and reconnect only still-null links on restore. Sets are scoped
+  // through their current activity; other linked rows carry their own profile.
+  repoint?: { column: string };
   // String-key references to remap on restore (for example
   // upcoming_dismissals.signal_key = `practice:<targetId>`).
   keyRefs?: readonly KeyRefSpec[];
@@ -118,7 +127,7 @@ export interface EntitySpec {
   // delete decrements it and the undo increments it back — it is never deleted and
   // re-inserted whole. Mutually exclusive with deleteExplicitly.
   counter?: CounterSpec;
-  // A UNIQUE natural key on the ROOT table that a LIVE row may have re-taken between
+  // A UNIQUE natural key that a LIVE row may have re-taken between
   // the capture and the undo (#1847). The clinical passport tables carry a partial
   // UNIQUE(profile_id, external_id) and their importer re-inserts with OR IGNORE, so
   // "delete an imported allergy → reprocess the document → undo" would hit that index
@@ -217,6 +226,40 @@ export interface MergeUndoContext {
 // becomes a COMPILE error there until it is mapped or argued-excluded. Runtime
 // consumers use the wide UNDO_KINDS view below (payload kinds arrive as strings).
 const KIND_SPECS = {
+  equipment: {
+    kind: "equipment",
+    ownedTable: "equipment",
+    entities: [
+      { entity: "equipment", table: "equipment", fks: [], preserveId: true },
+      {
+        entity: "sets",
+        table: "exercise_sets",
+        fks: [{ column: "equipment_id", ref: "equipment" }],
+        childWhere:
+          "equipment_id = ? AND activity_id IN (SELECT id FROM activities WHERE profile_id = (SELECT profile_id FROM equipment WHERE id = ?))",
+        childBinds: 2,
+        repoint: { column: "equipment_id" },
+      },
+      ...(["activities", "protocols", "goals"] as const).map((table) => ({
+        entity: table,
+        table,
+        fks: [{ column: "equipment_id", ref: "equipment" }],
+        childWhere:
+          "equipment_id = ? AND profile_id = (SELECT profile_id FROM equipment WHERE id = ?)",
+        childBinds: 2,
+        repoint: { column: "equipment_id" },
+      })),
+      {
+        entity: "dismissals",
+        table: "upcoming_dismissals",
+        fks: [],
+        // The cleanup replaces these candidates with the exact rows it removed.
+        childWhere:
+          "profile_id = (SELECT profile_id FROM equipment WHERE id = ?) AND (signal_key LIKE 'pr:strength:%' OR signal_key LIKE 'pr:cardio:%')",
+        uniqueKey: ["signal_key"],
+      },
+    ],
+  },
   activity: {
     kind: "activity",
     ownedTable: "activities",

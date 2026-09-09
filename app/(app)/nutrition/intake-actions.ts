@@ -5,7 +5,7 @@ import {
   requireSession,
 } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
-import { requirePoolWriteAccess } from "../supplies/access";
+import { cabinetViewer, requirePoolWriteAccess } from "../supplies/access";
 import {
   LOGGED_VIA_FIELD,
   parseWebOrigin,
@@ -98,8 +98,10 @@ import {
   type IntakeField,
   type IntakePairInput,
 } from "@/lib/intake-form-fields";
+import { updateIntakeSupplyCount } from "@/lib/queries/intake";
+import { markOfferAsked } from "@/lib/offers";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
-import { parseQuantityOnHand, resolveOnHandWrite } from "@/lib/refill";
+import { parseQuantityOnHand } from "@/lib/refill";
 import {
   intakeItemDoseIds,
   sweepIntakeItemMarkers,
@@ -164,6 +166,8 @@ import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
 function revalidateIntake() {
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");
+  revalidateRoute("/supplies");
+  revalidateRoute("/upcoming");
   // Both doors onto the cross-item dose ledger (#2417) — a backfill, amend or delete
   // made FROM the ledger has to leave the ledger showing what it just wrote.
   revalidateRoute("/history");
@@ -342,12 +346,9 @@ function fields(formData: FormData, todayStr: string) {
   const startDateError =
     kind === "medication" &&
     hasStartedOn &&
-    ((!isOnDemand && !startedOnRaw) ||
-      (!!startedOnRaw &&
-        (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
-      ? isOnDemand
-        ? "Enter a valid start date that isn't in the future."
-        : "Enter a start date that isn't in the future."
+    !!startedOnRaw &&
+    (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)
+      ? "Enter a valid start date that isn't in the future."
       : null;
   return {
     hasStartedOn,
@@ -584,16 +585,16 @@ function readIntakeSubmission(
 }
 
 export async function addIntakeItem(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const get = (k: IntakeField) => formData.get(k);
   const name = String(get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
-  const todayStr = today(profile.id);
+  const todayStr = today(profileId);
   const f = fields(formData, todayStr);
   if (
     f.kind === "supplement" &&
     WORKOUT_CONDITIONS.includes(f.condition) &&
-    !isTrainingRelevant(getProfileAge(profile.id))
+    !isTrainingRelevant(getProfileAge(profileId))
   ) {
     return formError(
       "Workout-based supplement schedules aren't available for this profile's age."
@@ -610,13 +611,13 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   let supplyId: number | null = null;
   if (postedSupplyId) {
     const scope = await requireScope();
-    if (!isLinkableSupply(scope.ids, postedSupplyId))
+    if (!isLinkableSupply(cabinetViewer(scope.ids, scope.role), postedSupplyId))
       return formError("Couldn't find that shared bottle.");
     await requirePoolWriteAccess(postedSupplyId);
     supplyId = postedSupplyId;
   }
   if (f.startDateError) return formError(f.startDateError);
-  const sub = readIntakeSubmission(profile.id, formData, f);
+  const sub = readIntakeSubmission(profileId, formData, f);
   if ("error" in sub) return formError(sub.error);
   const {
     doses,
@@ -631,13 +632,13 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     // row if this is a new label; the free-text `situation` column is kept as a
     // denormalized fallback.
     const situationId = f.situation
-      ? resolveSituationId(profile.id, f.situation)
+      ? resolveSituationId(profileId, f.situation)
       : null;
     // Resolve the INVERSE pause link (#1296), creating the situation ROW if this is a
     // new label — the same get-or-create as the on-link, so a Pre-surgery pause and a
     // Pre-surgery on-link converge on ONE vocabulary row.
     const pauseSituationId = f.pauseSituation
-      ? resolveSituationId(profile.id, f.pauseSituation)
+      ? resolveSituationId(profileId, f.pauseSituation)
       : null;
     // The item, its doses and (for a medication) its opening course are ONE core call
     // (#4669) — this action no longer spells the intake_items column set. What the
@@ -670,7 +671,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
       doses,
     };
     const outcome = createIntakeItemCore(
-      profile.id,
+      profileId,
       f.kind === "medication"
         ? {
             ...base,
@@ -686,26 +687,34 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
             maxDailyAmountMg: f.maxDailyAmountMg,
             redoseNotice: f.redoseNotice,
             // Ensure-course-on-create: a new medication opens an initial course on the
-            // chosen date (today for quick-add).
+            // stated date, or with an unknown start when the field is blank.
             course: {
               kind: "open",
-              startedOn: f.hasStartedOn
-                ? f.startedOnRaw || null
-                : f.isOnDemand
-                  ? null
-                  : todayStr,
-              preserveUnknownStart:
-                f.isOnDemand && (!f.hasStartedOn || !f.startedOnRaw),
+              startedOn: f.startedOnRaw || null,
             },
           }
         : { ...base, kind: "supplement" }
     );
     if (!outcome.ok) return outcome;
-    reconcilePairs(outcome.id, pairs, profile.id);
+    if (supplyId != null && formData.has("supply_count")) {
+      updateIntakeSupplyCount(
+        profileId,
+        outcome.id,
+        supplyId,
+        parseQuantityOnHand(get("supply_count")),
+        parseQuantityOnHand(get("supply_count_loaded"))
+      );
+    }
+    if (get("supply_offer_seen") === "1")
+      markOfferAsked(profileId, {
+        familyId: "track-supply",
+        itemId: outcome.id,
+      });
+    reconcilePairs(outcome.id, pairs, profileId);
     reconcileIngredients(outcome.id, ingredients?.ok ? ingredients.rows : null);
     // Purpose links (#2857). Inside the same write transaction as the item and its
     // composition, so an item and its declared "why" land together or not at all.
-    reconcilePurposes(outcome.id, ownedPurposes(profile.id, purposes));
+    reconcilePurposes(outcome.id, ownedPurposes(profileId, purposes));
     return outcome;
   });
   if (!created.ok) return formError(created.error);
@@ -722,7 +731,12 @@ export async function updateIntakeItem(
   const get = (k: IntakeField) => formData.get(k);
   const has = (k: IntakeField) => formData.has(k);
   const id = Number(get("id"));
-  if (!id) return formError("Couldn't find that supplement.");
+  const missingItem = formError(
+    get("kind") === "medication"
+      ? "Couldn't find that medication."
+      : "Couldn't find that supplement."
+  );
+  if (!id) return missingItem;
   const name = String(get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const todayStr = today(profile.id);
@@ -761,6 +775,12 @@ export async function updateIntakeItem(
   const loadedQuantityOnHand = parseQuantityOnHand(
     get("quantity_on_hand_loaded")
   );
+  if (has("supply_count") && !has("supply_id"))
+    return formError("Reload the item before saving its bottle count.");
+  const expectedSupplyId = has("supply_id")
+    ? Number(get("supply_id")) || null
+    : undefined;
+  if (expectedSupplyId != null) await requirePoolWriteAccess(expectedSupplyId);
   const result = writeTx((tx) => {
     // Verify ownership before touching the supplement or its child rows — the
     // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
@@ -768,12 +788,13 @@ export async function updateIntakeItem(
     // quantity tracking off can clear the low-supply episode marker (issue #325).
     const owned = db
       .prepare(
-        "SELECT active, quantity_on_hand, created_at, kind, condition FROM intake_items WHERE id = ? AND profile_id = ?"
+        "SELECT active, quantity_on_hand, supply_id, created_at, kind, condition FROM intake_items WHERE id = ? AND profile_id = ?"
       )
       .get(id, profile.id) as
       | {
           active: number;
           quantity_on_hand: number | null;
+          supply_id: number | null;
           created_at: string | null;
           kind: IntakeItemKind;
           condition: IntakeCondition;
@@ -817,11 +838,29 @@ export async function updateIntakeItem(
     // current value (re-read here under the IMMEDIATE write lock), so a concurrent
     // dose decrement — e.g. a poll-sidecar Telegram ✅ tap — isn't clobbered by a
     // stale form save. Everything else on the row is still absolute last-write-wins.
-    const effectiveQuantityOnHand = resolveOnHandWrite(
-      f.quantityOnHand,
-      loadedQuantityOnHand,
-      owned.quantity_on_hand
-    );
+    if (expectedSupplyId !== undefined && owned.supply_id !== expectedSupplyId)
+      return "stale-supply" as const;
+    const count =
+      owned.supply_id == null
+        ? updateIntakeSupplyCount(
+            profile.id,
+            id,
+            null,
+            f.quantityOnHand,
+            loadedQuantityOnHand
+          )
+        : has("supply_count")
+          ? updateIntakeSupplyCount(
+              profile.id,
+              id,
+              owned.supply_id,
+              parseQuantityOnHand(get("supply_count")),
+              parseQuantityOnHand(get("supply_count_loaded"))
+            )
+          : { quantity: null };
+    if (!count) return "stale-supply" as const;
+    const effectiveQuantityOnHand =
+      owned.supply_id == null ? count.quantity : null;
 
     // Re-resolve the situation link on edit so a re-typed/changed label re-keys to
     // (or creates) the matching situation ROW (#560); null when not situational.
@@ -839,7 +878,7 @@ export async function updateIntakeItem(
              product = ?, situation = ?, situation_id = ?, pause_situation_id = ?,
              stack = ?,
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
-             quantity_on_hand = ?, qty_per_dose = ?,
+             qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?,
              min_interval_hours = ?, max_daily_count = ?,
              max_daily_amount_mg = ?, redose_notice = ?,
@@ -862,7 +901,6 @@ export async function updateIntakeItem(
       f.critical,
       f.escalateAfterMin,
       f.escalateChatId,
-      effectiveQuantityOnHand,
       f.qtyPerDose,
       f.kind,
       f.prescriber,
@@ -1009,15 +1047,9 @@ export async function updateIntakeItem(
     reconcilePurposes(id, ownedPurposes(profile.id, purposes));
     // Ensure-course invariant: if this row is (or just became) a
     // medication, make sure it has at least one course. No-op when it already has
-    // one or is a supplement. Uses the created_at-date fallback (no explicit start
-    // date on an edit).
+    // one or is a supplement. A missing start remains unknown.
     if (f.kind === "medication") {
-      ensureMedicationCourse(
-        profile.id,
-        id,
-        f.hasStartedOn ? f.startedOnRaw || null : null,
-        !!f.isOnDemand && f.hasStartedOn && !f.startedOnRaw
-      );
+      ensureMedicationCourse(profile.id, id, f.startedOnRaw || null);
       if (f.hasStartedOn && hasCourseId) {
         // Through the course core (#2132) inside THIS transaction (the Tx token) — the
         // course was validated above, so a refusal here is unreachable.
@@ -1057,6 +1089,10 @@ export async function updateIntakeItem(
     }
     return true;
   });
+  if (result === "stale-supply")
+    return formError(
+      "The shared bottle changed. Reload before saving its count."
+    );
   if (result === "course-not-found") {
     return formError("Couldn't find that medication course.");
   }
@@ -1068,7 +1104,7 @@ export async function updateIntakeItem(
       "Workout-based supplement schedules aren't available for this profile's age."
     );
   }
-  if (!result) return formError("Couldn't find that supplement.");
+  if (!result) return missingItem;
   revalidateIntake();
   return formOk();
 }

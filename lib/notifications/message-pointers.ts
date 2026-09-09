@@ -21,8 +21,33 @@ import { sqlNow } from "../clock";
 import { createLogger } from "../log";
 import {
   FRESH_SEND_BINDING,
+  burstsForMessage,
+  collapseBursts,
+  isBurstFresh,
+  seatCorrectionBursts,
+  parseCorrectionAtToken,
+  parseCorrectionChipToken,
   type CorrectionMessageBinding,
+  type CorrectionBurst,
+  type TapEvent,
 } from "../correction-time";
+import {
+  getRecentCorrectionBundles,
+  type CorrectionBundle,
+  type CorrectionDomain,
+} from "../bundle-time-correction";
+import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
+import {
+  keyboardDoseFootprint,
+  parseAllCallback,
+  parseFoodLogCallback,
+  parseFoodProteinCallback,
+  parseSkipCallback,
+  parseTakeCallback,
+} from "./callback-data";
+import { parseOfferCallback } from "./offer-tokens";
+import { readOfferRow } from "./offer-store";
+import type { StoredUsualOffer } from "./usual-routine-attach";
 import type { InlineKeyboard } from "./telegram-render";
 
 const log = createLogger("notify");
@@ -42,6 +67,8 @@ export interface MessagePointer {
   chatId: string;
   messageId: number;
   kind: string;
+  // The delivered message covers the chat; profileId only owns its pointer.
+  chatWide: boolean;
   // The SUBJECT's local calendar date at send time — the rollover comparison.
   date: string;
   // The keyboard currently visible in Telegram, updated after every successful edit.
@@ -56,10 +83,9 @@ export interface MessagePointer {
   // which closes with the subjectless line rather than a guessed one.
   title: string | null;
   sentAt: string;
-  // A HASH of the delivered BODY, for the prose-claim class (#1913 item 4) — what lets
-  // a re-render be compared against what the chat is showing, so an unchanged tick makes
-  // no Telegram call. Null for a pointer recorded before migration 153 and for every kind
-  // that declares no prose reconciler.
+  // The delivered body hash lets text rebuilds skip unchanged messages. Food uses it
+  // alongside its keyboard; prose-only reconcilers use it on its own. Older pointers
+  // and kinds whose text is not independently reconciled may have no hash.
   bodyHash: string | null;
   // The stored keyboard blob VERBATIM — the optimistic-concurrency witness (#1788).
   //
@@ -120,21 +146,21 @@ export function recordMessagePointer(p: {
   chatId: string | number;
   messageId: number;
   kind: string;
+  chatWide?: boolean;
   date: string;
   keyboard: InlineKeyboard;
   // The delivered title line, attribution prefix included (#1822 item 7). Optional so a
   // caller with nothing to record stores NULL rather than an empty subject.
   title?: string | null;
-  // The delivered BODY's hash (#1913 item 4), for the prose-claim class. Optional: a kind
-  // with no prose reconciler stores NULL, and nothing reads it.
+  // The delivered body hash for food and prose-only reconciliation.
   bodyHash?: string | null;
 }): void {
   try {
     db.prepare(
       `INSERT INTO notify_messages
          (profile_id, chat_id, message_id, kind, date, keyboard, receipt_keyboard,
-          title, body_hash, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          title, body_hash, chat_wide, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, message_id) DO UPDATE SET
          profile_id = excluded.profile_id,
          kind       = excluded.kind,
@@ -143,6 +169,7 @@ export function recordMessagePointer(p: {
          receipt_keyboard = excluded.receipt_keyboard,
          title      = excluded.title,
          body_hash  = excluded.body_hash,
+         chat_wide  = excluded.chat_wide,
          sent_at    = excluded.sent_at`
     ).run(
       p.profileId,
@@ -154,6 +181,7 @@ export function recordMessagePointer(p: {
       JSON.stringify(p.keyboard),
       p.title?.trim() || null,
       p.bodyHash ?? null,
+      p.chatWide ? 1 : 0,
       sqlNow()
     );
   } catch (e) {
@@ -175,6 +203,7 @@ interface PointerRow {
   receipt_keyboard: string | null;
   title: string | null;
   body_hash: string | null;
+  chat_wide: number;
   sent_at: string;
 }
 
@@ -189,6 +218,7 @@ function pointerFromRow(r: PointerRow): MessagePointer | null {
     chatId: r.chat_id,
     messageId: r.message_id,
     kind: r.kind,
+    chatWide: r.chat_wide === 1,
     date: r.date,
     keyboard,
     receiptKeyboard: parsedReceipt ?? keyboard,
@@ -207,7 +237,7 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
   const rows = db
     .prepare(
       `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
-              receipt_keyboard, title, body_hash, sent_at
+              receipt_keyboard, title, body_hash, chat_wide, sent_at
          FROM notify_messages
         WHERE profile_id = ?
         ORDER BY sent_at, id`
@@ -246,7 +276,7 @@ export function liveMessagePointersForKind(
   const rows = db
     .prepare(
       `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
-              receipt_keyboard, title, body_hash, sent_at
+              receipt_keyboard, title, body_hash, chat_wide, sent_at
          FROM notify_messages
         WHERE profile_id = ? AND chat_id = ? AND kind = ?
         ORDER BY sent_at, id`
@@ -302,7 +332,7 @@ export function messagePointerAt(
   const row = db
     .prepare(
       `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
-              receipt_keyboard, title, body_hash, sent_at
+              receipt_keyboard, title, body_hash, chat_wide, sent_at
          FROM notify_messages
         WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
     )
@@ -387,6 +417,277 @@ export function correctionMessageBinding(
   };
 }
 
+// A bundle may bridge the two existing hosts of the same usual act. The original
+// receipt and scoped offer establish context; actual member provenance establishes
+// WHICH execution. An offer ID alone is content-deduplicated, not an act ID.
+function hasInitialCorrectionReceipt(
+  profileId: number,
+  pointer: MessagePointer
+): boolean {
+  // Legacy pointer readers may fall back to the live keyboard. That fallback is
+  // useful to ordinary rebuilds, but cannot prove an initial usual/host context.
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM notify_messages
+    WHERE profile_id = ? AND id = ? AND receipt_keyboard = ?`
+      )
+      .get(profileId, pointer.id, pointer.receiptVersion) != null
+  );
+}
+
+function usualBundleSource(
+  profileId: number,
+  bundle: CorrectionBundle,
+  source: MessagePointer
+): { offer: StoredUsualOffer; date: string; token: string } | null {
+  if (source.kind !== "food" && source.kind !== "dose") return null;
+  const refs = new Set(
+    bundle.members.flatMap((m) => (m.messageRef == null ? [] : [m.messageRef]))
+  );
+  if (refs.size !== 1 || !refs.has(source.id)) return null;
+  if (!hasInitialCorrectionReceipt(profileId, source)) return null;
+  const tokens = source.receiptKeyboard.flat().flatMap((button) => {
+    const parsed = parseOfferCallback(button.callback_data, "usual");
+    return parsed ? [{ ...parsed, token: button.callback_data! }] : [];
+  });
+  if (tokens.length !== 1 || tokens[0].profileId !== profileId) return null;
+  const stored = readOfferRow<StoredUsualOffer>(
+    profileId,
+    "usual-routine",
+    tokens[0].offerId
+  );
+  if (!stored || stored.date !== source.date) return null;
+  const covered = bundle.members.every((member) => {
+    if (member.domain === "practice") return true;
+    if (member.domain === "dose")
+      return (
+        member.messageRef === source.id &&
+        member.date === stored.date &&
+        stored.payload.doseIds.includes(member.doseId)
+      );
+    if (member.groupKey === PROTEIN_NUDGE_KEY)
+      return stored.payload.proteinGrams != null;
+    return (
+      member.messageRef === source.id &&
+      stored.payload.groups.includes(member.groupKey)
+    );
+  });
+  return covered
+    ? { offer: stored.payload, date: stored.date, token: tokens[0].token }
+    : null;
+}
+
+// Pass the existing intake reader rather than importing its builder back into the
+// pointer store. It is only called for an All-only retained slot, on the message's
+// explicit date; its results establish relevance, never add correction members.
+type CorrectionSlotReader = typeof import("./intake").slotSessionForKeyboard;
+
+// One message's candidate set, before the shared own-first/two-row seating. The
+// legacy recent readers still supply unbundled taps; they cannot truncate an act.
+export function messageCorrectionBursts(
+  profileId: number,
+  domain: CorrectionDomain,
+  taps: readonly TapEvent[],
+  now: Date,
+  ref: CorrectionMessageRef | null,
+  readSlots: CorrectionSlotReader
+): CorrectionBurst[] {
+  const unbundled = burstsForMessage(
+    collapseBursts(taps.filter((tap) => tap.bundleId == null)).filter((burst) =>
+      isBurstFresh(burst, now)
+    ),
+    correctionMessageBinding(profileId, domain, ref)
+  );
+  // The current usual writer has food/dose hosts; no alternate practice host is
+  // invented. A practice sibling still participates in every complete act read.
+  const bundles =
+    ref && domain !== "practice"
+      ? getRecentCorrectionBundles(profileId, domain, now)
+          .filter(
+            (bundle) =>
+              correctionBundleBinding(
+                profileId,
+                domain,
+                bundle,
+                ref,
+                readSlots
+              ) != null
+          )
+          .map((bundle) => bundle.burst)
+      : [];
+  return seatCorrectionBursts([...unbundled, ...bundles]);
+}
+
+function bundleHostMatches(
+  profileId: number,
+  bundle: CorrectionBundle,
+  target: MessagePointer,
+  context: { offer: StoredUsualOffer; date: string },
+  readSlots: CorrectionSlotReader
+): boolean {
+  if (
+    target.date !== context.date ||
+    !hasInitialCorrectionReceipt(profileId, target)
+  )
+    return false;
+  if (target.kind === "food") {
+    return target.receiptKeyboard.flat().some((button) => {
+      const token =
+        parseFoodLogCallback(button.callback_data) ??
+        parseFoodProteinCallback(button.callback_data);
+      return (
+        token?.profileId === profileId &&
+        token.date === context.date &&
+        token.window === context.offer.window
+      );
+    });
+  }
+  if (target.kind !== "dose") return false;
+  const relevant = new Set(
+    bundle.members.flatMap((member) =>
+      member.domain === "dose" && context.offer.doseIds.includes(member.doseId)
+        ? [member.doseId]
+        : []
+    )
+  );
+  const retained = target.receiptKeyboard.map((row) =>
+    row.filter((button) => {
+      const token =
+        parseTakeCallback(button.callback_data) ??
+        parseSkipCallback(button.callback_data) ??
+        parseAllCallback(button.callback_data);
+      return token?.profileId === profileId && token.date === context.date;
+    })
+  );
+  const footprint = keyboardDoseFootprint(retained);
+  if (footprint.doseIds.some((id) => relevant.has(id))) return true;
+  return (
+    footprint.slots.length > 0 &&
+    readSlots(profileId, [], footprint.slots, context.date).some((part) =>
+      part.entries.some((entry) => relevant.has(entry.dose.id))
+    )
+  );
+}
+
+// The bundle extension of correctionMessageBinding. The normal binding remains
+// untouched for unbundled rows. A bridge has no vacuous-newest or null-provenance
+// fallback: both captured pointers and the source proof must remain current.
+// `token` is supplied at the callback boundary, omitted only while rendering a new
+// action. The optimistic live keyboard proves server selection, NOT edit delivery.
+export function correctionBundleBinding(
+  profileId: number,
+  domain: CorrectionDomain,
+  bundle: CorrectionBundle,
+  ref: CorrectionMessageRef,
+  readSlots: CorrectionSlotReader,
+  token?: string
+): {
+  source: MessagePointer;
+  target: MessagePointer;
+  stillBound: (current: CorrectionBundle) => boolean;
+} | null {
+  const pointers = liveMessagePointers(profileId).filter(
+    (p) => p.chatId === String(ref.chatId)
+  );
+  const target = pointers.find((p) => p.messageId === ref.messageId);
+  if (!target) return null;
+  const refs = new Set(
+    bundle.members.flatMap((m) => (m.messageRef == null ? [] : [m.messageRef]))
+  );
+  if (refs.size !== 1) return null;
+  const source = pointers.find((p) => refs.has(p.id));
+  if (!source) return null;
+  // An attributed anchor already belongs to its original message, including an
+  // ordinary All/stack confirmation with no usual offer. Only another host needs
+  // the retained usual receipt and offer as additional bridge authority.
+  const original = target.id === source.id;
+  const context = original
+    ? null
+    : usualBundleSource(profileId, bundle, source);
+  if (!original && (target.kind !== domain || !context)) return null;
+  const ownIds = bundle.members
+    .filter((m) => m.domain === domain)
+    .map((m) => m.id);
+  if (ownIds.length === 0 || bundle.burst.fromId !== Math.min(...ownIds))
+    return null;
+  const prefix = domain === "practice" ? "practime" : `${domain}time`;
+  if (token != null) {
+    const parsed =
+      parseCorrectionChipToken(token, prefix) ??
+      parseCorrectionAtToken(token, `${prefix}at`);
+    if (
+      parsed?.profileId !== profileId ||
+      parsed.fromId !== bundle.burst.fromId
+    )
+      return null;
+  }
+  const matches = (current: CorrectionBundle, candidate: MessagePointer) =>
+    candidate.id === source.id
+      ? current.members.some(
+          (member) =>
+            member.domain === domain &&
+            member.id === current.burst.fromId &&
+            member.messageRef === source.id
+        ) &&
+        current.members.every(
+          (member) =>
+            member.messageRef == null || member.messageRef === source.id
+        )
+      : context != null &&
+        bundleHostMatches(profileId, current, candidate, context, readSlots);
+  // The original host keeps its own act. Only alternate hosts compete by matching
+  // date/window or actual schedule-dose footprint; a newer unrelated host cannot win.
+  const selected = (current: CorrectionBundle, candidate: MessagePointer) =>
+    candidate.id === source.id ||
+    liveMessagePointersForKind(profileId, ref.chatId, domain)
+      .filter((p) => matches(current, p))
+      .at(-1)?.id === candidate.id;
+  const stillBound = (current: CorrectionBundle): boolean => {
+    if (
+      current.id !== bundle.id ||
+      current.burst.fromId !== bundle.burst.fromId
+    )
+      return false;
+    const currentSource = messagePointerAt(
+      profileId,
+      source.chatId,
+      source.messageId
+    );
+    const currentTarget = messagePointerAt(
+      profileId,
+      target.chatId,
+      target.messageId
+    );
+    if (
+      currentSource?.id !== source.id ||
+      currentTarget?.id !== target.id ||
+      currentSource.kind !== source.kind ||
+      currentTarget.kind !== target.kind ||
+      currentSource.receiptVersion !== source.receiptVersion ||
+      currentTarget.receiptVersion !== target.receiptVersion
+    )
+      return false;
+    if (context != null) {
+      const proof = usualBundleSource(profileId, current, currentSource);
+      if (
+        !proof ||
+        proof.token !== context.token ||
+        proof.date !== context.date ||
+        JSON.stringify(proof.offer) !== JSON.stringify(context.offer)
+      )
+        return false;
+    }
+    if (
+      token != null &&
+      !currentTarget.keyboard.flat().some((b) => b.callback_data === token)
+    )
+      return false;
+    return matches(current, currentTarget) && selected(current, currentTarget);
+  };
+  return stillBound(bundle) ? { source, target, stillBound } : null;
+}
+
 // ---- Claiming an edit (issue #1788) ---------------------------------------
 //
 // THE RACE. The sweep reads a pointer, `await`s a Telegram edit, and only then writes
@@ -408,20 +709,31 @@ export function correctionMessageBinding(
 // reading a half-applied state.
 
 // Claim the right to replace this pointer's keyboard. True only for the tick that
-// still saw `version`; a loser gets false and skips its edit entirely.
+// still saw `version`; a loser gets false and skips its edit entirely. A food rebuild
+// also claims the body hash, since its tally can change without changing any button.
 export function claimMessagePointerKeyboard(
   profileId: number,
   id: number,
   version: string,
-  next: InlineKeyboard
+  next: InlineKeyboard,
+  body?: { previous: string | null; next: string }
 ): boolean {
   return writeTx(() => {
     const res = db
       .prepare(
-        `UPDATE notify_messages SET keyboard = ?
-          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+        `UPDATE notify_messages SET keyboard = ?, body_hash = COALESCE(?, body_hash)
+          WHERE profile_id = ? AND id = ? AND keyboard = ?
+            AND (? IS NULL OR body_hash IS ?)`
       )
-      .run(JSON.stringify(next), profileId, id, version);
+      .run(
+        JSON.stringify(next),
+        body?.next ?? null,
+        profileId,
+        id,
+        version,
+        body?.next ?? null,
+        body?.previous ?? null
+      );
     return res.changes === 1;
   });
 }
@@ -463,15 +775,27 @@ export function releaseMessagePointerKeyboard(
   profileId: number,
   id: number,
   claimed: InlineKeyboard,
-  version: string
+  version: string,
+  body?: { previous: string | null; next: string }
 ): boolean {
   return writeTx(() => {
     const res = db
       .prepare(
-        `UPDATE notify_messages SET keyboard = ?
-          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+        `UPDATE notify_messages SET keyboard = ?,
+            body_hash = CASE WHEN ? IS NULL THEN body_hash ELSE ? END
+          WHERE profile_id = ? AND id = ? AND keyboard = ?
+            AND (? IS NULL OR body_hash = ?)`
       )
-      .run(version, profileId, id, JSON.stringify(claimed));
+      .run(
+        version,
+        body?.next ?? null,
+        body?.previous ?? null,
+        profileId,
+        id,
+        JSON.stringify(claimed),
+        body?.next ?? null,
+        body?.next ?? null
+      );
     return res.changes === 1;
   });
 }
@@ -488,8 +812,8 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
       .prepare(
         `INSERT INTO notify_messages
            (id, profile_id, chat_id, message_id, kind, date, keyboard,
-            receipt_keyboard, title, body_hash, sent_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            receipt_keyboard, title, body_hash, chat_wide, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT DO NOTHING`
       )
       .run(
@@ -505,6 +829,7 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
         p.receiptVersion,
         p.title,
         p.bodyHash,
+        p.chatWide ? 1 : 0,
         p.sentAt
       );
     return res.changes === 1;
@@ -547,12 +872,19 @@ export function syncMessagePointerKeyboard(
   profileId: number,
   chatId: string | number,
   messageId: number,
-  keyboard: InlineKeyboard
+  keyboard: InlineKeyboard,
+  bodyHash?: string
 ): void {
   db.prepare(
-    `UPDATE notify_messages SET keyboard = ?
+    `UPDATE notify_messages SET keyboard = ?, body_hash = COALESCE(?, body_hash)
       WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
-  ).run(JSON.stringify(keyboard), profileId, String(chatId), messageId);
+  ).run(
+    JSON.stringify(keyboard),
+    bodyHash ?? null,
+    profileId,
+    String(chatId),
+    messageId
+  );
 }
 
 // Forget the pointer for a message an edit just CLOSED. The twin of

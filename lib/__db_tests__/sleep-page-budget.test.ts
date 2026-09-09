@@ -21,7 +21,7 @@
 // the dashboard's own comment gives: a recorded number catches drift, a backstop catches
 // the thing nobody thought to record.
 
-import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
@@ -69,7 +69,6 @@ vi.mock("@/lib/scope", async (importActual) =>
   )
 );
 
-const previousTestNow = process.env.ALLOS_TEST_NOW;
 const counts = new Map<string, number>();
 
 function newProfile(name: string): number {
@@ -124,8 +123,9 @@ function ctxFor(profileId: number): PersonaContext {
 }
 
 describe("/sleep route query budget (#3993)", () => {
+  beforeEach(() => vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z")));
   beforeAll(async () => {
-    process.env.ALLOS_TEST_NOW = "2026-08-18T13:00:00.000Z";
+    vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z"));
     session.loginId = (
       db
         .prepare(
@@ -148,44 +148,27 @@ describe("/sleep route query budget (#3993)", () => {
     }
   }, 120_000);
 
-  afterAll(() => {
-    if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = previousTestNow;
-  });
-
-  // Recorded per persona, the same discipline the dashboard manifest uses: a number that
-  // moves is a conversation, not a value to bump. Measured on the merged tree.
-  //
-  // FIVE OF THE SIX ARE UNMOVED BY #3993 at 69, and one moved: `biohacker` 90 → 109. Only
-  // that persona has a bedtime supplement dose to score, so it is the only one whose
-  // gather builds a resolver at all — the others return before it. The +19 is the derived
-  // inputs read ONCE for the history's span (the declared set and its change log, the
-  // suppression bus, the nightly series, the cycle relevance bit, the home location and
-  // the weather gate), not once per night: the page draws 30 nights, and 30 gathers is
-  // what the per-DATE resolver would have cost.
-  //
-  // It was 111 until the declared pair came OUT of the tick memo: the seam and the memo's
-  // passthrough were each reading `getActiveSituations` + `getSituationEvents`, and one
-  // shared read serves both halves now. Fixing the torn read made the page two queries
-  // cheaper, not dearer.
-  //
-  // +1 ON BIOHACKER ONLY (#5034), 109 → 110: that persona now seeds an all-day Oura
-  // heart-rate trace, and the page's overnight reader stops returning at its bounds
-  // check. ONE statement, not one per night — the bounds read is what was missing, and
-  // everything under it was already inside the request memo. The other five personas
-  // seed no `hr_minutes` and are flat, which is what makes this line legible: the move
-  // is the seam becoming reachable, not the page changing.
+  // Recorded render counts: #5157 lowers every persona by five (69→64, 110→105).
+  // The new outcome resolver reuses the chart's one-argument trend cache entry;
+  // the old insight passed (profileId, undefined), missing that entry. Its duplicate
+  // pass read profile timezone, fallback instance timezone, timezone_switches and
+  // free_days. These fixtures set no profile timezone. The timezone reader uses its
+  // own React.cache, outside this harness's request-cache mock, so both timezone
+  // reads count here; the nested sleep-session reader already hits the shared cache.
+  // The fifth saving is the old unconditional situation_events read: none of these
+  // personas has a sufficient trailing SRI comparison, so the new note stops first.
+  // These are this harness's statement counts, not a production-query savings claim.
   const BASELINES: Record<string, number> = {
-    bodybuilder: 69,
-    "marathon-runner": 69,
-    household: 69,
-    pregnant: 69,
-    "diabetic-cgm": 69,
-    biohacker: 110,
+    bodybuilder: 64,
+    "marathon-runner": 64,
+    household: 64,
+    pregnant: 64,
+    "diabetic-cgm": 64,
+    biohacker: 105,
   };
 
   // The dashboard's backstop, borrowed. /sleep is one domain page; reaching this would
-  // mean it costs what the entire dashboard census costs. The heaviest persona is 110
+  // mean it costs what the entire dashboard census costs. The heaviest persona is 105
   // against it — the answer to the question nobody had asked, which was whether this
   // route could exceed a ceiling no gate applies to it.
   const QUERY_CEILING = 274;

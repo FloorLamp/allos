@@ -164,13 +164,7 @@ describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
 
     // Default slot 08:00 + default 120-min wait → due from 10:00; use noon
     // (minute of day since #2121).
-    const res = await runEscalations(
-      p,
-      "Floor Escalate (test)",
-      date,
-      12 * 60,
-      getNotifySchedule(p)
-    );
+    const res = await runEscalations(p, date, 12 * 60, getNotifySchedule(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBe(date);

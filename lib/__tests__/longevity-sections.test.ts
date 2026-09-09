@@ -91,7 +91,7 @@ describe("widget deep-links land on the page section that expands the pillar", (
         expect(p.href).toBe(pillarHref(p.key));
       } else if (p.key === "strength") {
         expect(p.href).toBe(
-          "/training?tab=analyze&kind=strength&item=Barbell%20Back%20Squat"
+          "/training?tab=analyze&kind=strength&item=Barbell+Back+Squat"
         );
       } else {
         expect(p.href).toBe(`/longevity#${PILLAR_ANCHOR[p.key]}`);
@@ -114,7 +114,7 @@ describe("widget deep-links land on the page section that expands the pillar", (
     });
     expect(pillar.detail).toContain("Bench Press");
     expect(pillar.href).toBe(
-      "/training?tab=analyze&kind=strength&item=Barbell%20Bench%20Press"
+      "/training?tab=analyze&kind=strength&item=Barbell+Bench+Press"
     );
     expect(pillar.href).not.toBe(pillarHref("strength"));
   });

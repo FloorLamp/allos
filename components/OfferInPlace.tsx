@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormResult } from "@/lib/types";
 import OfferControls from "@/components/OfferControls";
 import {
   acceptOffer,
@@ -27,13 +28,22 @@ export default function OfferInPlace({
   question,
   yes,
   no,
+  supplyId,
+  onSeen,
+  onAccept,
+  onDecline,
 }: {
   dedupeKey: string;
   familyId: string;
   question: string;
   yes: string;
   no: string;
+  supplyId?: number | null;
+  onSeen?: () => void;
+  onAccept?: (formData: FormData) => Promise<FormResult>;
+  onDecline?: (formData: FormData) => Promise<FormResult>;
 }) {
+  const [quantity, setQuantity] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const seen = useRef(false);
 
@@ -43,6 +53,10 @@ export default function OfferInPlace({
     const mark = () => {
       if (seen.current) return;
       seen.current = true;
+      if (onSeen) {
+        onSeen();
+        return;
+      }
       const fd = new FormData();
       fd.set("dedupe_key", dedupeKey);
       // Fire-and-forget: a failed mark just means the offer is seen once more.
@@ -58,7 +72,7 @@ export default function OfferInPlace({
     };
     fold.addEventListener("toggle", onToggle);
     return () => fold.removeEventListener("toggle", onToggle);
-  }, [dedupeKey]);
+  }, [dedupeKey, onSeen]);
 
   return (
     <div
@@ -69,12 +83,31 @@ export default function OfferInPlace({
       <span className="font-medium text-slate-800 dark:text-slate-100">
         {question}
       </span>
+      {familyId === "track-supply" && (
+        <label className="text-sm">
+          How many are left?
+          <input
+            aria-label="How many are left?"
+            type="number"
+            min={0}
+            step="any"
+            className="input w-24 ml-2"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+          />
+        </label>
+      )}
       <OfferControls
+        fields={
+          familyId === "track-supply"
+            ? { quantity_on_hand: quantity, supply_id: String(supplyId ?? "") }
+            : undefined
+        }
         dedupeKey={dedupeKey}
         accept={{ label: yes, testId: `offer-accept-${familyId}` }}
         decline={{ label: no, testId: `offer-decline-${familyId}` }}
-        acceptAction={acceptOffer}
-        declineAction={declineOffer}
+        acceptAction={onAccept ?? acceptOffer}
+        declineAction={onDecline ?? declineOffer}
         outcomeTestId={`offer-outcome-${familyId}`}
       />
     </div>

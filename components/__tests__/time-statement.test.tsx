@@ -28,6 +28,17 @@ vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: true,
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 vi.mock("@/components/usePrefersReducedMotion", () => ({
   usePrefersReducedMotion: () => false,
@@ -281,7 +292,7 @@ describe("an offline dose confirm queues the stated administration (#4426)", () 
         fireEvent.click(screen.getByTestId("dose-take"));
       });
 
-      const [flow, , payload] = enqueue.mock.calls.at(-1) ?? [];
+      const [flow, payload] = enqueue.mock.calls.at(-1) ?? [];
       expect(flow).toBe("dose");
       // The zone is pinned to UTC by the mock above, so the stated wall time IS the
       // instant's UTC clock — a naive `${day}T07:05` string would read the same here

@@ -73,7 +73,10 @@ import { microMotionPlan } from "@/lib/micro-motion";
 import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+} from "@/components/OfflineQueueProvider";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
@@ -106,6 +109,7 @@ import DayLedger from "./DayLedger";
 import ProteinQuickAdd from "./ProteinQuickAdd";
 import type { LedgerGroup } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
+import { TAP_REACH } from "@/lib/log-manifest";
 
 // Where one corrected serving landed, with the server's authoritative counts for that
 // coordinate. Named off the action's result so the bar and the write core can never
@@ -250,6 +254,7 @@ export default function FoodLogBar({
   ledgerDoor,
   dayLedger,
   subjectProfileId,
+  showDayContext = true,
 }: {
   // The acting profile's today (YYYY-MM-DD) and bounded recent meal history.
   today: string;
@@ -324,6 +329,8 @@ export default function FoodLogBar({
   // separate from the acting profile, and a replay of somebody else's serving
   // must never land on the wrong person.
   subjectProfileId?: number;
+  /** The sheet already renders its owning DayContext control above this body. */
+  showDayContext?: boolean;
 }) {
   const {
     activeDate,
@@ -508,6 +515,7 @@ export default function FoodLogBar({
   };
   // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
   const { enqueue } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   // The shared one-tap ledger (#2041): optimistic bump, rollback, and adoption of
   // the server's authoritative counts. A serving is ADDITIVE and declares no
   // expected interval, so repeats never raise a confirm; #3611 keys each add tap
@@ -1230,6 +1238,10 @@ export default function FoodLogBar({
     onMutationStarted?: (epoch: number) => void,
     existingReceiptOwner?: symbol
   ): Promise<boolean> {
+    const capturedDayContext = captureDayContext(
+      activeDate,
+      TAP_REACH["food-serving"]
+    );
     const noticeScope = currentReceiptProfileScope();
     const slug = group.slug;
     // WHERE the tap lands (#2269): an add with a statement in force files under the
@@ -1288,22 +1300,27 @@ export default function FoodLogBar({
     const queueOffline = async (): Promise<boolean> => {
       if (subjectProfileId != null && subjectProfileId !== activeProfileId)
         return false;
+      if (!capturedDayContext) return false;
       const kept =
-        (await enqueue("food", activeDate, {
-          entry: "serving",
-          groupKey: slug,
-          // This is the fallback declaration, not an echo of a stated instant. If
-          // the replay accepts eatenAt, the write core derives its slot from that
-          // instant. If a fast device clock makes eatenAt unusable, the serving
-          // stays in the active window the person actually tapped.
-          mealSlot: activeSlot,
-          grams: null,
-          // The statement travels as a RESOLVED instant, because a replay has no server
-          // to resolve a wall time against. The replay validates it (judgeEatenAt)
-          // rather than trusting it, and an unusable one costs the statement, never the
-          // serving.
-          eatenAt: statedAt,
-        })) === "kept";
+        (await enqueue(
+          "food",
+          {
+            entry: "serving",
+            groupKey: slug,
+            // This is the fallback declaration, not an echo of a stated instant. If
+            // the replay accepts eatenAt, the write core derives its slot from that
+            // instant. If a fast device clock makes eatenAt unusable, the serving
+            // stays in the active window the person actually tapped.
+            mealSlot: activeSlot,
+            grams: null,
+            // The statement travels as a RESOLVED instant, because a replay has no server
+            // to resolve a wall time against. The replay validates it (judgeEatenAt)
+            // rather than trusting it, and an unusable one costs the statement, never the
+            // serving.
+            eatenAt: statedAt,
+          },
+          capturedDayContext
+        )) === "kept";
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {
@@ -1398,6 +1415,7 @@ export default function FoodLogBar({
       },
       commit,
       write: async () => {
+        if (capturedDayContext) await capturedDayContext.writeToken;
         if (typeof navigator !== "undefined" && navigator.onLine === false) {
           if (delta === -1) return { kind: "offline-undo" };
           return (await queueOffline())
@@ -2122,15 +2140,17 @@ export default function FoodLogBar({
 
   return (
     <div>
-      <IntakeContextBar
-        ledgerDoor={ledgerDoor}
-        today={today}
-        days={days}
-        value={activeDate}
-        onChange={setActiveDate}
-        context={{ label: activeSlot, value: activeSlot }}
-        servings={dayTotal}
-      />
+      {showDayContext ? (
+        <IntakeContextBar
+          ledgerDoor={ledgerDoor}
+          today={today}
+          days={days}
+          value={activeDate}
+          onChange={setActiveDate}
+          context={{ label: activeSlot, value: activeSlot }}
+          servings={dayTotal}
+        />
+      ) : null}
       <div data-testid="food-log-bar" className="space-y-5">
         {/* THE DAY, STATED ONCE (#3987). The Meals cards and the LOGGED-TODAY list
             below them were two full renderings of the same servings, adjacent; both
@@ -2356,7 +2376,8 @@ export default function FoodLogBar({
                 {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
                 {proteinQuickAdd && (
                   <ProteinQuickAdd
-                    today={activeDate}
+                    date={activeDate}
+                    dayLabel={activeDay?.label ?? activeDate}
                     initialGrams={
                       proteinQuickAdd.initialGramsByDate[activeDate] ?? 0
                     }
@@ -2404,6 +2425,15 @@ export default function FoodLogBar({
                 </Disclosure>
               )}
             </div>
+            {!showDayContext && (
+              <p
+                data-testid="food-sheet-day-total"
+                className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+              >
+                {dayTotal} {dayTotal === 1 ? "serving" : "servings"} logged this
+                day
+              </p>
+            )}
           </AddDoor>
         </section>
         {nutrientSummary}

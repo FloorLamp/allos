@@ -1,25 +1,14 @@
-// Release-notes gathering (plain Node, no deps). The CURATION is prose and
-// stays human; the GATHERING — which merges since the newest entry are
-// user-visible — is bookkeeping.
+// Gather release-note candidates from merged paths; the PM curates the result.
+// Format and cadence: docs/orchestration/dispatch.md §Release notes.
 //
 // Usage:
 //   node scripts/orchestration/release-notes-gather.mjs [--since YYYY-MM-DD]
 //   node scripts/orchestration/release-notes-gather.mjs --check
 //
-// --check prints ONE line — how many user-visible merges the notes have not
-// covered — and always exits 0. The batch used to fall behind silently (#4077
-// caught four uncovered merges by hand), and a lag nobody is shown is a lag
-// nobody closes.
-//
-// Default --since is the newest day in lib/release-notes.json, INCLUSIVE —
-// same-day merges after that batch shipped would otherwise be dropped, so the
-// output also prints that day's existing entry titles for an overlap check by
-// eye.
-//
-// Which merges are user-visible is merge-window.mjs's answer, from the PATHS a
-// merge touched — the same enumeration and the same verdict pm-digest.sh ranks
-// its product merges by. This script used to guess it a second time from the
-// TITLE; the header said so, and the guess was wrong on 19 of 63 merges.
+// Default window starts on the newest release-note day, inclusive. Print that
+// day's existing titles for overlap review. --check reports uncovered candidates
+// and exits 0 on success even when notes are due. Read fetch/history caveats;
+// merge-window.mjs owns path classification and clipped-history detection.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";

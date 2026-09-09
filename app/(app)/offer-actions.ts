@@ -6,14 +6,15 @@ import {
   answerOffer,
   markOfferAsked,
   offerFamilyForKey,
-  type OfferFamilyId,
+  type OfferInstance,
 } from "@/lib/offers";
+import { requirePoolWriteAccess } from "./supplies/access";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // The three taps an in-place offer can take (issue #4840): Yes, No, and "seen".
 //
-// Every one carries the family's asked key and nothing else, and resolves the family
-// from it against the registry — a tampered form cannot name a setting that is not
+// Every tap carries the asked key and resolves its family or item instance against
+// the registry — a tampered form cannot name a setting that is not
 // declared as an offer. `answerOffer` re-checks the family's trigger before writing,
 // so a card left open on a phone cannot enable a digest someone has since configured
 // by hand; the Yes tap is the ONLY path through which a family's `writes` runs
@@ -26,21 +27,35 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 const STALE =
   "That offer is out of date — reload the page to see the current state.";
 
-function familyFrom(formData: FormData): OfferFamilyId | null {
+function familyFrom(formData: FormData): OfferInstance | null {
   return offerFamilyForKey(String(formData.get("dedupe_key") ?? "").trim());
 }
 
-function answer(
+async function answer(
   profileId: number,
   formData: FormData,
   yes: boolean
-): FormResult {
+): Promise<FormResult> {
   const id = familyFrom(formData);
-  if (!id || answerOffer(profileId, id, yes) === "stale")
+  let payload;
+  if (id && typeof id !== "string" && yes) {
+    const raw = String(formData.get("quantity_on_hand") ?? "").trim();
+    const quantity = Number(raw);
+    if (!raw || !Number.isFinite(quantity) || quantity < 0)
+      return formError("Enter how many are left.");
+    const supplyId = Number(formData.get("supply_id")) || null;
+    if (supplyId != null) await requirePoolWriteAccess(supplyId);
+    payload = { supplyId, quantity };
+  }
+  if (!id || answerOffer(profileId, id, yes, payload) === "stale")
     return formError(STALE);
   // The setting's own row on Settings → Notifications, and Upcoming's dismissal list.
   revalidateRoute("/settings/notifications");
   revalidateRoute("/upcoming");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  if (typeof id !== "string") revalidateRoute(`/medications/${id.itemId}`);
+  revalidateRoute("/supplies");
   return formOk();
 }
 
@@ -64,6 +79,6 @@ export async function markOfferSeen(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = familyFrom(formData);
   if (!id) return formError(STALE);
-  markOfferAsked(profile.id, id);
+  if (!markOfferAsked(profile.id, id)) return formError(STALE);
   return formOk();
 }

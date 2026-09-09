@@ -32,19 +32,16 @@ const CHIPS = [
 ];
 
 // The chart's own two interactions, as controls: a zoom IS the window, and at full day
-// a crosshair is a start alone (#4950's amendment).
+// a pinned minute is a start alone.
 function Driver() {
-  const { setView, setCursor } = useIntradayInteraction();
+  const { setView, setPin } = useIntradayInteraction();
   return (
     <>
       <button
         data-testid="drive-zoom"
         onClick={() => setView({ from: 19 * 60 + 10, to: 20 * 60 + 40 })}
       />
-      <button
-        data-testid="drive-cursor"
-        onClick={() => setCursor(19 * 60 + 10)}
-      />
+      <button data-testid="drive-pin" onClick={() => setPin(19 * 60 + 10)} />
     </>
   );
 }
@@ -80,11 +77,11 @@ describe("the record's workouts door", () => {
     ]);
   });
 
-  it("carries a start alone from the crosshair, and no end", () => {
+  it("carries a pinned start alone, and no end", () => {
     // Inventing an end here would state a length nobody gave, exactly as it would in
     // the practice form.
     row("2026-09-03");
-    fireEvent.click(screen.getByTestId("drive-cursor"));
+    fireEvent.click(screen.getByTestId("drive-pin"));
     tap();
     expect(opened).toEqual([
       { date: "2026-09-03", startTime: "19:10", endTime: undefined },

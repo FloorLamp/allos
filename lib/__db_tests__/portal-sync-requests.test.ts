@@ -13,7 +13,7 @@
 //   • an expired request leaves no nudge behind.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   bindPortalIdentity,
@@ -148,8 +148,8 @@ function fixture(tag: string): Fixture {
 const todayFor = (profileId: number) => today(profileId);
 
 beforeEach(() => {
-  db.exec("DELETE FROM portal_sync_requests");
-  db.exec("DELETE FROM upcoming_dismissals");
+  rawDb.exec("DELETE FROM portal_sync_requests");
+  rawDb.exec("DELETE FROM upcoming_dismissals");
 });
 
 // ---- Creation ----------------------------------------------------------------
@@ -656,7 +656,7 @@ describe("reach — an Upcoming item and a digest line sharing one key", () => {
 // `.source` on a prepared statement, so wrapping the three execution methods on the
 // shared prototype records the whole sweep without touching the module under test.
 function statementSources<T>(fn: () => T): string[] {
-  const proto = Object.getPrototypeOf(db.prepare("SELECT 1")) as Record<
+  const proto = Object.getPrototypeOf(rawDb.prepare("SELECT 1")) as Record<
     string,
     (...args: unknown[]) => unknown
   >;

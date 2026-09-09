@@ -16,7 +16,7 @@
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { db, today } from "@/lib/db";
@@ -34,7 +34,8 @@ import {
   getMetricSeriesBySourceInRange,
 } from "@/lib/queries";
 import { applyIntent, insertVitals } from "@/lib/offline/writes";
-import { buildIntent, type VitalsPayload } from "@/lib/offline/queue";
+import type { VitalsPayload } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 import { setTimezone } from "@/lib/settings";
 import SourceComparison from "@/app/(app)/trends/SourceComparison";
 import SleepPage from "@/app/(app)/sleep/page";
@@ -102,17 +103,8 @@ const rowsOn = (profileId: number, date: string) =>
 // across that boundary as the real clock moves. Pinning is how the repo already keeps
 // such a file honest; the alternative is a suite that is green today and red later.
 const PINNED_NOW = "2026-12-01T12:00:00.000Z";
-let priorNow: string | undefined;
 
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = PINNED_NOW;
-});
-
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
+beforeEach(() => vi.setSystemTime(new Date(PINNED_NOW)));
 
 describe("a typed night fills a gap the wearable missed (#1851)", () => {
   // THE CASE THE RULING IS ABOUT. 30 ring overnights, one of which the ring never
@@ -524,7 +516,8 @@ describe("a night typed offline replays as the night it was (#1851)", () => {
           temperature: null,
           tempUnit: null,
         } as VitalsPayload,
-        id
+        id,
+        false
       );
       expect(applyIntent(id, intent).status).toBe("done");
       expect(rowsOn(id, "2026-05-14")[0]).toMatchObject({
@@ -559,7 +552,8 @@ describe("a night typed offline replays as the night it was (#1851)", () => {
         "vitals",
         "2026-05-14",
         { ...base, bedTime: "23:00", wakeTime } as VitalsPayload,
-        id
+        id,
+        false
       );
       expect(applyIntent(id, intent).status).toBe("done");
     }

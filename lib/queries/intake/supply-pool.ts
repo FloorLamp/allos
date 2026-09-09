@@ -1,3 +1,4 @@
+import { invalidateRefillOffers } from "../../notifications/offer-store";
 // Shared supply pools — the household medicine cabinet (issue #1374).
 //
 // `shared_supplies` is a household-shared entity (the `providers` precedent): it has no
@@ -14,10 +15,13 @@
 // Server Actions in app/(app)/supplies/actions.ts own the whole gate.
 
 import { db, writeTx } from "../../db";
+import { deleteProfileSetting } from "../../settings";
+import { refillMarkerKey } from "../../refill-nudge";
 import { profileIdsIn, type AuthorizedProfileIds } from "../../cross-profile";
 import {
   daysOfSupplyForPool,
   isPoolVisibleTo,
+  type CabinetViewer,
   resolvePoolUnlinkRestore,
   resolveOnHandWrite,
   DEFAULT_LOW_SUPPLY_DAYS,
@@ -93,16 +97,13 @@ export function listSharedSupplies(): SharedSupply[] {
 // The bottles a caller may LINK an item to, or CREATE an item from (#1705) — the same
 // set the /supplies cabinet lists, through the SAME `isPoolVisibleTo` rule rather than a
 // second hand-rolled copy of it. A picker can therefore never offer a bottle the cabinet
-// would hide, nor hide one it lists. Cross-profile reader convention: already-authorized
-// ids first, no lib/auth import.
-export function listLinkableSupplies(
-  profileIds: readonly number[]
-): SharedSupply[] {
-  const accessible = new Set(profileIds);
+// would hide, nor hide one it lists. Cross-profile reader convention: the already-resolved
+// viewer first, no lib/auth import.
+export function listLinkableSupplies(viewer: CabinetViewer): SharedSupply[] {
   return listSharedSupplies().filter((s) =>
     isPoolVisibleTo(
       poolMembers(s.id).map((m) => m.profileId),
-      accessible
+      viewer
     )
   );
 }
@@ -111,23 +112,23 @@ export function listLinkableSupplies(
 // about a single id, so the write path validating a posted `supply_id` and the page
 // resolving a `?supply=` deep link agree with the picker that offered it.
 export function findLinkableSupply(
-  profileIds: readonly number[],
+  viewer: CabinetViewer,
   supplyId: number
 ): SupplyOption | null {
   const supply = getSharedSupply(supplyId);
   if (!supply) return null;
   const visible = isPoolVisibleTo(
     poolMembers(supplyId).map((m) => m.profileId),
-    new Set(profileIds)
+    viewer
   );
   return visible ? supplyOption(supply, poolMembers(supplyId)) : null;
 }
 
 export function isLinkableSupply(
-  profileIds: readonly number[],
+  viewer: CabinetViewer,
   supplyId: number
 ): boolean {
-  return findLinkableSupply(profileIds, supplyId) != null;
+  return findLinkableSupply(viewer, supplyId) != null;
 }
 
 // One bottle as an offerable option. `members` lets the option carry the two facts the
@@ -282,17 +283,14 @@ export function listPoolViews(): PoolView[] {
 }
 
 // The cabinet as ONE caller sees it: every pool that passes the shared
-// `isPoolVisibleTo` rule for the already-authorized accessible ids. The
-// cross-profile reader convention — ids first, no lib/auth import. The /supplies
-// page renders exactly this list.
-export function listVisiblePoolViews(
-  profileIds: readonly number[]
-): PoolView[] {
-  const accessible = new Set(profileIds);
+// `isPoolVisibleTo` rule for the already-resolved viewer. The cross-profile reader
+// convention — the viewer first, no lib/auth import. The /supplies page renders
+// exactly this list.
+export function listVisiblePoolViews(viewer: CabinetViewer): PoolView[] {
   return listPoolViews().filter((p) =>
     isPoolVisibleTo(
       p.members.map((m) => m.profileId),
-      accessible
+      viewer
     )
   );
 }
@@ -308,11 +306,11 @@ export function listVisiblePoolViews(
 // stays where it is: re-expressing "visible" as SQL would be a second copy of it, and
 // the door's count and the cabinet's list must never disagree about what "in the
 // cabinet" means.
-export function countVisiblePools(profileIds: readonly number[]): number {
-  const accessible = new Set(profileIds);
-  // LEFT JOIN, so an ORPHANED bottle (nothing links it) still yields one row — with a
-  // NULL profile_id, which is exactly the "names nobody, so nothing is disclosed"
-  // case isPoolVisibleTo admits on an empty membership.
+export function countVisiblePools(viewer: CabinetViewer): number {
+  // LEFT JOIN, so a MEMBER-LESS bottle (nothing links it) still yields one row — with a
+  // NULL profile_id, which is the empty membership isPoolVisibleTo admits for an admin
+  // only (#5122). Without the join it would vanish from the count for everyone,
+  // including the admin who has to be able to clear it.
   const rows = db
     .prepare(
       `SELECT s.id AS supply_id, i.profile_id AS profile_id
@@ -328,7 +326,7 @@ export function countVisiblePools(profileIds: readonly number[]): number {
   }
   let count = 0;
   for (const memberProfileIds of membersBySupply.values()) {
-    if (isPoolVisibleTo(memberProfileIds, accessible)) count++;
+    if (isPoolVisibleTo(memberProfileIds, viewer)) count++;
   }
   return count;
 }
@@ -408,6 +406,7 @@ export interface PoolChipData {
   // and every member's chip follows, with no write to any item row.
   strength: string | null;
   form: string | null;
+  quantityOnHand: number | null;
   daysLeft: number | null;
   memberCount: number;
   low: boolean;
@@ -432,6 +431,7 @@ export function getPoolChips(profileId: number): Map<number, PoolChipData> {
       name: pool.name,
       strength: pool.strength,
       form: pool.form,
+      quantityOnHand: pool.quantity_on_hand,
       daysLeft: pool.daysLeft,
       memberCount: pool.members.length,
       low: pool.low,
@@ -474,6 +474,69 @@ export function createSharedSupply(
   return Number(res.lastInsertRowid);
 }
 
+// One absolute count write, shared by the item supply editor and full item edits.
+// The displayed stock identity is checked under the lock before touching either owner.
+export function updateIntakeSupplyCount(
+  profileId: number,
+  itemId: number,
+  expectedSupplyId: number | null,
+  submitted: number | null,
+  loaded: number | null,
+  onlyUntracked = false
+): { quantity: number | null } | null {
+  return writeTx(() => {
+    const item = db
+      .prepare(
+        "SELECT supply_id, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
+      )
+      .get(itemId, profileId) as
+      { supply_id: number | null; quantity_on_hand: number | null } | undefined;
+    if (!item || item.supply_id !== expectedSupplyId) return null;
+    if (item.supply_id != null) {
+      return updateSharedSupplyCount(
+        item.supply_id,
+        submitted,
+        loaded,
+        onlyUntracked
+      );
+    }
+    if (onlyUntracked && item.quantity_on_hand != null) return null;
+    const quantity = resolveOnHandWrite(
+      submitted,
+      loaded,
+      item.quantity_on_hand
+    );
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = ? WHERE id = ? AND profile_id = ?"
+    ).run(quantity, itemId, profileId);
+    if (submitted !== loaded) invalidateRefillOffers(profileId, itemId, null);
+    return { quantity };
+  });
+}
+
+export function invalidatePoolRefillOffers(supplyId: number): void {
+  for (const member of poolMembers(supplyId))
+    invalidateRefillOffers(member.profileId, member.itemId, supplyId);
+}
+
+function updateSharedSupplyCount(
+  supplyId: number,
+  submitted: number | null,
+  loaded: number | null,
+  onlyUntracked = false
+): { quantity: number | null } | null {
+  const row = db
+    .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
+    .get(supplyId) as { quantity_on_hand: number | null } | undefined;
+  if (!row || (onlyUntracked && row.quantity_on_hand != null)) return null;
+  const quantity = resolveOnHandWrite(submitted, loaded, row.quantity_on_hand);
+  db.prepare(
+    "UPDATE shared_supplies SET quantity_on_hand = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(quantity, supplyId);
+  if (submitted !== loaded) invalidatePoolRefillOffers(supplyId);
+  return { quantity };
+}
+
 // Edit a pool. `quantity_on_hand` goes through the #467 compare-and-set at POOL level —
 // the concurrent-writer set is now every linked member's dose confirms (plus the poll
 // sidecar), which is exactly the case CAS exists for. The whole read-decide-write runs
@@ -485,25 +548,17 @@ export function updateSharedSupply(
   loadedQuantity: number | null
 ): boolean {
   return writeTx(() => {
-    const row = db
-      .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
-      .get(supplyId) as { quantity_on_hand: number | null } | undefined;
-    if (!row) return false;
-    const next = resolveOnHandWrite(
-      submittedQuantity,
-      loadedQuantity,
-      row.quantity_on_hand
-    );
+    if (!updateSharedSupplyCount(supplyId, submittedQuantity, loadedQuantity))
+      return false;
     db.prepare(
       `UPDATE shared_supplies
-          SET name = ?, strength = ?, form = ?, quantity_on_hand = ?,
-              low_supply_days = ?, notes = ?, updated_at = datetime('now')
+          SET name = ?, strength = ?, form = ?,
+              low_supply_days = ?, notes = ?
         WHERE id = ?`
     ).run(
       fields.name,
       fields.strength,
       fields.form,
-      next,
       fields.lowSupplyDays,
       fields.notes,
       supplyId
@@ -521,6 +576,16 @@ export function linkItemToPool(
   supplyId: number
 ): void {
   writeTx(() => {
+    const old = db
+      .prepare(
+        "SELECT supply_id FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(profileId, itemId) as { supply_id: number | null } | undefined;
+    if (!old || old.supply_id === supplyId) return;
+    deleteProfileSetting(profileId, refillMarkerKey(itemId));
+    if (old.supply_id != null) invalidatePoolRefillOffers(old.supply_id);
+    invalidateRefillOffers(profileId, itemId, old.supply_id);
+    invalidatePoolRefillOffers(supplyId);
     db.prepare(
       `UPDATE intake_items SET supply_id = ?, quantity_on_hand = NULL
         WHERE id = ? AND profile_id = ?`
@@ -532,9 +597,19 @@ export function linkItemToPool(
 // pool keeps the bottle's count, because the bottle didn't move. The user re-opts into
 // per-item tracking by entering a quantity on the item form.
 export function unlinkItemFromPool(profileId: number, itemId: number): void {
-  db.prepare(
-    `UPDATE intake_items SET supply_id = NULL WHERE id = ? AND profile_id = ?`
-  ).run(itemId, profileId);
+  writeTx(() => {
+    const old = db
+      .prepare(
+        "SELECT supply_id FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(profileId, itemId) as { supply_id: number | null } | undefined;
+    if (!old || old.supply_id == null) return;
+    deleteProfileSetting(profileId, refillMarkerKey(itemId));
+    invalidatePoolRefillOffers(old.supply_id);
+    db.prepare(
+      `UPDATE intake_items SET supply_id = NULL WHERE id = ? AND profile_id = ?`
+    ).run(itemId, profileId);
+  });
 }
 
 // Delete a pool, carrying its side-state (the row-ops rule): every linked item is
@@ -549,12 +624,14 @@ export function deleteSharedSupply(supplyId: number): number[] {
       .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
       .get(supplyId) as { quantity_on_hand: number | null } | undefined;
     if (!supply) return [];
+    invalidatePoolRefillOffers(supplyId);
     const members = poolMembers(supplyId);
     const restored = resolvePoolUnlinkRestore(
       supply.quantity_on_hand,
       members.length
     );
     for (const m of members) {
+      deleteProfileSetting(m.profileId, refillMarkerKey(m.itemId));
       db.prepare(
         `UPDATE intake_items SET supply_id = NULL, quantity_on_hand = ?
           WHERE id = ? AND profile_id = ?`

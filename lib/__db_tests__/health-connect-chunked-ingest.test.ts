@@ -19,12 +19,13 @@
 //
 // Runs via `npm run test:db`; the `db` singleton points at a per-file temp DB (setup.ts).
 
-import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import { db, rawDb } from "@/lib/db";
 import { POST } from "@/app/api/integrations/health-connect/ingest/route";
 import { generateHealthConnectToken } from "@/lib/integrations/connections";
 import { setTimezone } from "@/lib/settings";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
+import * as hcIngest from "@/lib/integrations/health-connect-ingest";
 import {
   HealthConnectWriteError,
   ingestHealthConnectPayload,
@@ -419,13 +420,48 @@ describe("HC mid-batch failure reports the committed split (#1614)", () => {
     }
   });
 
+  it("keeps parsed skips when the writer fails without accounting", async () => {
+    const profileId = newProfile("HC-NO-ACCOUNTING");
+    const token = generateHealthConnectToken(profileId, "never");
+    // Exercise the route's generic-error path. A HealthConnectWriteError carries
+    // a split even when its first chunk fails; it cannot reach the missing-split case.
+    const writer = vi
+      .spyOn(hcIngest, "ingestHealthConnectPayload")
+      .mockImplementationOnce(() => {
+        throw new Error("fixture writer unavailable");
+      });
+    try {
+      const res = await POST(
+        new Request("http://x/api/integrations/health-connect/ingest", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            heart_rate: [
+              { time: "2026-06-11T09:00:00Z", bpm: 70 },
+              { time: "not-a-time", bpm: 80 },
+            ],
+          }),
+        })
+      );
+      expect(res.status).toBe(500);
+      expect(
+        getIntegrationSyncEvents(profileId, "health-connect")
+      ).toMatchObject([{ ok: 0, skipped: 1, written: null, received: null }]);
+    } finally {
+      writer.mockRestore();
+    }
+  });
+
   it("the push route records ONE ok:false event with the committed counts + provenance", async () => {
     const profileId = newProfile("HC-PARTIAL-B");
     const token = generateHealthConnectToken(profileId, "never");
     // A genuine mid-batch DB failure driven from real payload JSON: a trigger that
     // aborts one heart-rate minute. Ordering inside the ingest is body metrics →
     // samples → hr minutes, so the first two chunks commit before this fires.
-    db.exec(
+    rawDb.exec(
       `CREATE TRIGGER hc_partial_poison BEFORE INSERT ON hr_minutes
          WHEN NEW.profile_id = ${profileId} AND NEW.bpm = 199
          BEGIN SELECT RAISE(ABORT, 'poison'); END;`
@@ -458,7 +494,7 @@ describe("HC mid-batch failure reports the committed split (#1614)", () => {
         error: "internal error",
       });
     } finally {
-      db.exec("DROP TRIGGER hc_partial_poison");
+      rawDb.exec("DROP TRIGGER hc_partial_poison");
     }
 
     // The body-metric + steps chunks committed…

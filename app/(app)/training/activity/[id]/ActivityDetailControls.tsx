@@ -11,7 +11,7 @@ import {
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import type { ActivityEditData } from "@/lib/activity-form-model";
 import type { UnitPrefs } from "@/lib/settings";
-import { trainingActivityPageHref } from "@/lib/hrefs";
+import { trainingTabHref, trainingActivityPageHref } from "@/lib/hrefs";
 import ActivityCardMenu, { type MergeSibling } from "../../ActivityCardMenu";
 
 const MergeSignalContext = createContext<{
@@ -111,7 +111,9 @@ export function ActivityDetailActions({
         } /* detail-none: this menu already lives on the activity's canonical detail page. */
         canWrite={canWrite}
         openMergeSignal={signal}
-        deleteReturnHref={trainingRelevant ? "/training?tab=log" : "/history"}
+        deleteReturnHref={
+          trainingRelevant ? trainingTabHref("log") : "/history"
+        }
         mergeAwayHref={(keeperId) =>
           trainingActivityPageHref(
             keeperId,

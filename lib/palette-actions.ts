@@ -50,6 +50,8 @@ export const PALETTE_ACTION_IDS = [
   "log-vitals",
   "log-food",
   "log-dose",
+  "add-medication",
+  "add-supplement",
   "log-mood",
   "log-symptom",
   "add-appointment",
@@ -164,6 +166,28 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     keywords: ["medication", "medicine", "supplement", "pill", "take", "taken"],
     icon: "pill",
     target: { kind: "overlay", form: "dose" },
+  },
+  {
+    id: "add-medication",
+    label: "Add medication",
+    keywords: ["medicine", "drug", "prescription", "new medication"],
+    icon: "pill",
+    target: {
+      kind: "overlay",
+      form: "dose",
+      prefill: { doseIntakeKind: "medication" },
+    },
+  },
+  {
+    id: "add-supplement",
+    label: "Add supplement",
+    keywords: ["vitamin", "mineral", "new supplement"],
+    icon: "pill",
+    target: {
+      kind: "overlay",
+      form: "dose",
+      prefill: { doseIntakeKind: "supplement" },
+    },
   },
   {
     id: "log-mood",

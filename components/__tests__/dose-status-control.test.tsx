@@ -9,6 +9,7 @@ vi.mock("@/components/LoggedViaSurface", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/components/useOptimisticLedger", () => ({
   useOptimisticLedger: () => ({

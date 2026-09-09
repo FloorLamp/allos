@@ -12,7 +12,7 @@
 // would still pass in UTC — so New York (UTC−4 in July) is the fixture.
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { getSleepArrivals } from "@/lib/queries/metrics";
@@ -101,9 +101,9 @@ function seedMeasured(): void {
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM integration_sync_rows");
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM metric_samples");
+  rawDb.exec("DELETE FROM integration_sync_rows");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM metric_samples");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('ARRIVALS')").run()
       .lastInsertRowid

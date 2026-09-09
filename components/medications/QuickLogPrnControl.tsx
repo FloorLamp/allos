@@ -91,6 +91,7 @@ export default function QuickLogPrnControl({
   proposedTime,
   pediatric: pediatricProp = null,
   onLogged,
+  date,
 }: {
   itemId: number;
   name: string;
@@ -135,6 +136,8 @@ export default function QuickLogPrnControl({
   // fires on the duplicate outcome too: the dose the offer existed to get is on the
   // ledger either way, so the prompt has been answered.
   onLogged?: () => void;
+  /** The owning quick-log surface's selected day. */
+  date?: string;
 }) {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
@@ -154,15 +157,15 @@ export default function QuickLogPrnControl({
   // `isPrimaryDay` has one definition here rather than a hand-written fallback beside
   // the context arm.
   const card = useDayBinding(todayStr, tz);
-  const cardDay = card.activeDate;
+  const cardDay = date ?? card.activeDate;
   // WHETHER THIS ROW IS UNDER A CARD AT ALL. `useDayBinding` answers a day either
   // way — that is what makes `isPrimaryDay` one definition — but only a card's day
   // is STATE. Outside one it is this render's `today`, which the write below must
   // not post (see `log`).
-  const inCard = useCockpitDay() !== null;
+  const inCard = useCockpitDay() !== null || date != null;
   // WHETHER THE CARD IS STANDING ON A DAY THAT STILL HAS A "NOW" (#4686). A day that
   // has ended has none, so the tap below asks for the minute instead of stamping one.
-  const isPrimaryDay = card.isPrimaryDay;
+  const isPrimaryDay = date == null ? card.isPrimaryDay : date === todayStr;
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteDraft,
+  deleteDraftRevision,
   getDraft,
   purgeExpiredDrafts,
   putDraft,
@@ -21,6 +22,7 @@ import {
 import { useActiveProfileId } from "./ActiveProfileProvider";
 import {
   markUnsavedWork,
+  releaseUnsavedWork,
   type DiscardableUnsavedWorkEntry,
   type ResumePointer,
 } from "@/lib/offline/unsaved-work";
@@ -91,6 +93,27 @@ export interface FormDraftApi {
    * success path: a draft that outlives its submitted record is #1699 inverted.
    */
   clear: () => void;
+  /** Capture the exact draft revision submitted before the first action await. */
+  captureSubmission: () => DraftSubmission;
+  /** Clear that submitted revision without touching later work. */
+  clearSubmission: (submission: DraftSubmission) => void;
+}
+
+export interface DraftSubmission {
+  key: string | null;
+  writerId: string;
+  revision: number;
+  signature: string;
+}
+
+interface DraftSnapshot {
+  fields: DraftField[];
+  extra: unknown;
+  signature: string;
+}
+
+interface EnqueuedDraft extends DraftSubmission {
+  promise: Promise<boolean>;
 }
 
 function isRestorable(
@@ -267,6 +290,10 @@ export function useFormDraft<E = undefined>({
   // input back.
   const lastWrittenSigRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [writerId] = useState(() => globalThis.crypto.randomUUID());
+  const revisionRef = useRef(0);
+  const latestSnapshotRef = useRef<DraftSnapshot | null>(null);
+  const lastEnqueuedRef = useRef<EnqueuedDraft | null>(null);
   const extraRef = useLatestRef<E | undefined>(extra);
   const keyRef = useRef<string | null>(key);
   const onRestoreRef = useLatestRef(onRestore);
@@ -278,6 +305,16 @@ export function useFormDraft<E = undefined>({
     }),
     [formRef, extraRef]
   );
+
+  const snapshotWithSignature = useCallback((): DraftSnapshot => {
+    const current = snapshot();
+    const result = {
+      ...current,
+      signature: draftSig(current.fields, current.extra),
+    };
+    latestSnapshotRef.current = result;
+    return result;
+  }, [snapshot]);
 
   /**
    * Publish this form's own answer to "do you hold unsaved work?" (#3371), which is
@@ -383,7 +420,10 @@ export function useFormDraft<E = undefined>({
       // selection — but left in, and recorded here so it does not read as an
       // unreachable branch to simplify away.
       const k = keyRef.current;
-      if (k != null) markUnsavedWork(k, dirty, entryRef.current);
+      if (k != null) {
+        if (dirty) markUnsavedWork(k, true, entryRef.current);
+        else releaseUnsavedWork(k, entryRef.current);
+      }
       return dirty;
     },
     [active, ownsUnsavedMarker, scopeRef, formRef, snapshot]
@@ -392,29 +432,75 @@ export function useFormDraft<E = undefined>({
   // Resolves once the draft is durable. Awaited by `capture` below, which is what
   // lets an automatic update reload prove it is not crossing an unflushed keystroke
   // (#2471); every other caller still fires and forgets.
-  const write = useCallback((): Promise<void> => {
-    const k = keyRef.current;
-    if (!active || k == null || profileId == null) return Promise.resolve();
-    const snap = snapshot();
-    const sig = draftSig(snap.fields, snap.extra);
-    if (initialSigRef.current == null) initialSigRef.current = sig;
-    // Free: the signature this decision needs is the signature the marker needs, and
-    // it is the same predicate again — so this ALSO registers (or releases) the
-    // flush, and `write` no longer calls `markUnsavedWork` itself. Registering from
-    // `schedule` instead is what closed the debounce hole; keeping a second call here
-    // would just be a second place to hold the same fact.
-    if (!syncUnsavedWork(sig)) return Promise.resolve();
-    lastWrittenSigRef.current = sig;
-    return putDraft({
-      key: k,
-      profileId,
-      formKey,
-      recordId: recordId ?? null,
-      savedAt: Date.now(),
-      fields: snap.fields,
-      extra: snap.extra,
-    });
-  }, [active, profileId, formKey, recordId, snapshot, syncUnsavedWork]);
+  const enqueueSnapshot = useCallback(
+    (current: DraftSnapshot): EnqueuedDraft => {
+      const previous = lastEnqueuedRef.current;
+      if (
+        previous?.key === keyRef.current &&
+        previous.signature === current.signature
+      ) {
+        return previous;
+      }
+
+      const receipt = {
+        key: keyRef.current,
+        writerId,
+        revision: revisionRef.current + 1,
+        signature: current.signature,
+      } satisfies DraftSubmission;
+      revisionRef.current = receipt.revision;
+      let enqueued: EnqueuedDraft;
+      const persisted =
+        !active || receipt.key == null || profileId == null
+          ? Promise.resolve(false)
+          : putDraft({
+              key: receipt.key,
+              profileId,
+              formKey,
+              recordId: recordId ?? null,
+              savedAt: Date.now(),
+              fields: current.fields,
+              extra: current.extra,
+              writerId: receipt.writerId,
+              revision: receipt.revision,
+            }).then((outcome) => outcome === "kept");
+      const promise = persisted.then(
+        (kept) => {
+          if (!kept && lastEnqueuedRef.current === enqueued)
+            lastEnqueuedRef.current = null;
+          return kept;
+        },
+        (error: unknown) => {
+          if (lastEnqueuedRef.current === enqueued)
+            lastEnqueuedRef.current = null;
+          throw error;
+        }
+      );
+      enqueued = { ...receipt, promise };
+      lastEnqueuedRef.current = enqueued;
+      lastWrittenSigRef.current = current.signature;
+      return enqueued;
+    },
+    [active, formKey, profileId, recordId, writerId]
+  );
+
+  const write = useCallback(
+    (prepared?: DraftSnapshot): Promise<void> => {
+      const k = keyRef.current;
+      if (!active || k == null || profileId == null) return Promise.resolve();
+      const snap = prepared ?? snapshotWithSignature();
+      const sig = snap.signature;
+      if (initialSigRef.current == null) initialSigRef.current = sig;
+      // Free: the signature this decision needs is the signature the marker needs, and
+      // it is the same predicate again — so this ALSO registers (or releases) the
+      // flush, and `write` no longer calls `markUnsavedWork` itself. Registering from
+      // `schedule` instead is what closed the debounce hole; keeping a second call here
+      // would just be a second place to hold the same fact.
+      if (!syncUnsavedWork(sig)) return Promise.resolve();
+      return enqueueSnapshot(snap).promise.then(() => undefined);
+    },
+    [active, profileId, snapshotWithSignature, syncUnsavedWork, enqueueSnapshot]
+  );
 
   const dropDraft = useCallback(async () => {
     if (timerRef.current) {
@@ -424,7 +510,10 @@ export function useFormDraft<E = undefined>({
     const k = keyRef.current;
     offeredRef.current = null;
     setOffer(null);
-    if (k) markUnsavedWork(k, false);
+    if (lastEnqueuedRef.current?.key === k) {
+      lastEnqueuedRef.current = null;
+    }
+    if (k) releaseUnsavedWork(k, entryRef.current);
     if (k) await deleteDraft(k);
   }, []);
 
@@ -456,13 +545,14 @@ export function useFormDraft<E = undefined>({
     // precisely the discard the guard exists for. So is the automatic update reload:
     // registering the flush only when the debounce fired left the form in no registry
     // at all for 600ms, and a hidden-tab reload crossed it with nothing to flush.
-    syncUnsavedWork();
+    const current = snapshotWithSignature();
+    syncUnsavedWork(current.signature);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      write();
+      write(latestSnapshotRef.current ?? undefined);
     }, AUTOSAVE_DEBOUNCE_MS);
-  }, [active, write, syncUnsavedWork]);
+  }, [active, write, snapshotWithSignature, syncUnsavedWork]);
 
   // Apply a stored draft to the live form. The one place that writes a draft back,
   // shared by the user's Resume tap and the #2471 continuation.
@@ -604,7 +694,7 @@ export function useFormDraft<E = undefined>({
     const prev = keyRef.current;
     keyRef.current = key;
     if (prev && key && prev !== key) {
-      markUnsavedWork(prev, false);
+      releaseUnsavedWork(prev, entryRef.current);
       void deleteDraft(prev);
       write();
     }
@@ -634,16 +724,17 @@ export function useFormDraft<E = undefined>({
   // A pending debounce must still land when the form goes away — closing the
   // editor 200ms after the last keystroke is exactly the case #1699 is about.
   useEffect(() => {
+    const owner = entryRef.current;
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
-        write();
+        write(latestSnapshotRef.current ?? undefined);
       }
       const k = keyRef.current;
       // The form is gone, so nothing is being composed any more — the DRAFT stays,
       // the "mid-composition" flag and its capture callback don't.
-      if (k) markUnsavedWork(k, false);
+      if (k) releaseUnsavedWork(k, owner);
     };
   }, [write]);
 
@@ -656,10 +747,58 @@ export function useFormDraft<E = undefined>({
     syncUnsavedWork(initialSigRef.current);
   }, [dropDraft, snapshot, syncUnsavedWork]);
 
+  const captureSubmission = useCallback((): DraftSubmission => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const current = snapshotWithSignature();
+    const enqueued = enqueueSnapshot(current);
+    return {
+      key: enqueued.key,
+      writerId: enqueued.writerId,
+      revision: enqueued.revision,
+      signature: enqueued.signature,
+    };
+  }, [enqueueSnapshot, snapshotWithSignature]);
+
+  const clearSubmission = useCallback(
+    (submission: DraftSubmission) => {
+      const latest = latestSnapshotRef.current ?? snapshotWithSignature();
+      const enqueued = lastEnqueuedRef.current;
+      const unchanged =
+        latest.signature === submission.signature &&
+        enqueued?.key === submission.key &&
+        enqueued?.writerId === submission.writerId &&
+        enqueued.revision === submission.revision;
+      if (unchanged) {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+        offeredRef.current = null;
+        setOffer(null);
+        initialSigRef.current = submission.signature;
+        syncUnsavedWork(submission.signature);
+      }
+      if (submission.key) {
+        void deleteDraftRevision(
+          submission.key,
+          submission.writerId,
+          submission.revision
+        );
+      }
+    },
+    [snapshotWithSignature, syncUnsavedWork]
+  );
+
   const discard = useCallback(() => {
     const k = keyRef.current;
     offeredRef.current = null;
     setOffer(null);
+    if (lastEnqueuedRef.current?.key === k) {
+      lastEnqueuedRef.current = null;
+    }
     if (k) void deleteDraft(k);
   }, []);
 
@@ -677,5 +816,12 @@ export function useFormDraft<E = undefined>({
     })();
   }, [snapshot, confirmReplace, applyDraft]);
 
-  return { offer, resume, discard, clear };
+  return {
+    offer,
+    resume,
+    discard,
+    clear,
+    captureSubmission,
+    clearSubmission,
+  };
 }

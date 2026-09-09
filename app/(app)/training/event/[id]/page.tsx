@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import BackLink from "@/components/BackLink";
 import PageContainer from "@/components/PageContainer";
 import NotesText from "@/components/NotesText";
 import { PageHeader } from "@/components/ui";
@@ -73,8 +72,8 @@ export default async function TrainingEventPage(props: {
 
   return (
     <PageContainer width="reading" className="mx-auto">
-      <BackLink href="/training" label="Training" />
       <PageHeader
+        back={{ href: "/training", destination: "Training" }}
         title={eventTitle(plan, km)}
         subtitle={
           <span data-testid="event-summary">

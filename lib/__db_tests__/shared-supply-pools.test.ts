@@ -27,12 +27,22 @@ import {
   refillSupply,
 } from "@/lib/queries";
 import { collectUpcoming } from "@/lib/queries/upcoming";
-import { poolRefillSignalKey } from "@/lib/refill-nudge";
+import { setProfileSetting, getProfileSetting } from "@/lib/settings";
+import { poolRefillSignalKey, refillMarkerKey } from "@/lib/refill-nudge";
+import type { CabinetViewer } from "@/lib/refill";
+import { deleteProfileData } from "@/lib/profile-delete";
 import { seedProfile, type SeededProfile } from "./fixtures";
 import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
 let alice: SeededProfile;
 let bruno: SeededProfile;
+
+// The cabinet viewer exactly as the request boundary resolves it (#5122,
+// app/(app)/supplies/access.ts): the caller's already-accessible ids, plus whether the
+// login is an admin — which is the whole rule for a bottle nobody draws from.
+function viewer(profileIds: readonly number[], isAdmin = false): CabinetViewer {
+  return { accessible: new Set(profileIds), isAdmin };
+}
 
 // Statement counting (the #885 shape, as tick-scoped-gathers.test.ts uses it): the query
 // layer prepares its SQL inline on every call, so counting prepares of a signature counts
@@ -404,7 +414,15 @@ describe("row-ops side-state on unlink and delete", () => {
     );
     const s = addItem(alice.profileId, "POOLA Solo Pool Med", 1, null);
     linkItemToPool(alice.profileId, s.itemId, soloPool);
+    setProfileSetting(
+      alice.profileId,
+      refillMarkerKey(s.itemId),
+      today(alice.profileId)
+    );
     expect(deleteSharedSupply(soloPool)).toEqual([s.itemId]);
+    expect(
+      getProfileSetting(alice.profileId, refillMarkerKey(s.itemId))
+    ).toBeUndefined();
     expect(getSharedSupply(soloPool)).toBe(null);
     expect(itemQty(s.itemId)).toBe(44);
 
@@ -452,7 +470,15 @@ describe("row-ops side-state on unlink and delete", () => {
     );
     const a = addItem(alice.profileId, "POOLA Orphan Med", 1, null);
     linkItemToPool(alice.profileId, a.itemId, supplyId);
+    setProfileSetting(
+      alice.profileId,
+      refillMarkerKey(a.itemId),
+      today(alice.profileId)
+    );
     unlinkItemFromPool(alice.profileId, a.itemId);
+    expect(
+      getProfileSetting(alice.profileId, refillMarkerKey(a.itemId))
+    ).toBeUndefined();
     const pool = getPoolView(supplyId);
     expect(pool).toBeTruthy();
     expect(pool?.orphaned).toBe(true);
@@ -516,19 +542,24 @@ describe("what the cabinet shows a caller (#1522)", () => {
     linkItemToPool(alice.profileId, a.itemId, mine);
     linkItemToPool(bruno.profileId, b.itemId, theirs);
 
-    const aliceSees = listVisiblePoolViews([alice.profileId]).map((p) => p.id);
+    const aliceSees = listVisiblePoolViews(viewer([alice.profileId])).map(
+      (p) => p.id
+    );
     expect(aliceSees).toContain(mine);
     expect(aliceSees).not.toContain(theirs);
     // A caregiver granted BOTH profiles sees both bottles.
-    const bothSees = listVisiblePoolViews([
-      alice.profileId,
-      bruno.profileId,
-    ]).map((p) => p.id);
+    const bothSees = listVisiblePoolViews(
+      viewer([alice.profileId, bruno.profileId])
+    ).map((p) => p.id);
     expect(bothSees).toContain(mine);
     expect(bothSees).toContain(theirs);
   });
 
-  it("shows an ORPHANED bottle to everyone — nobody is named, and someone must clear it", () => {
+  // #5122, owner ruling 2026-09-09. This bottle used to be listed for EVERY viewer,
+  // including a login with no accessible profiles at all — its count and product came
+  // from whoever last drew on it, so that disclosed one person's stock to unrelated
+  // logins. It is now admin-only, and it stays in the cabinet with its count intact.
+  it("shows a MEMBER-LESS bottle to an admin only, count intact", () => {
     const orphan = createSharedSupply(
       {
         name: "Cabinet Orphan",
@@ -540,11 +571,23 @@ describe("what the cabinet shows a caller (#1522)", () => {
       5
     );
     expect(poolMembers(orphan)).toEqual([]);
-    expect(listVisiblePoolViews([alice.profileId]).map((p) => p.id)).toContain(
+
+    const adminSees = listVisiblePoolViews(viewer([alice.profileId], true));
+    expect(adminSees.map((p) => p.id)).toContain(orphan);
+    // Still in the cabinet, still holding the bottle's count, still marked orphaned so
+    // the admin can clear it.
+    const seen = adminSees.find((p) => p.id === orphan);
+    expect(seen?.quantity_on_hand).toBe(5);
+    expect(seen?.orphaned).toBe(true);
+
+    // An ordinary member of the household does not see it…
+    expect(
+      listVisiblePoolViews(viewer([alice.profileId])).map((p) => p.id)
+    ).not.toContain(orphan);
+    // …nor does a caller with no accessible profiles at all.
+    expect(listVisiblePoolViews(viewer([])).map((p) => p.id)).not.toContain(
       orphan
     );
-    // …including a caller with no accessible profiles at all.
-    expect(listVisiblePoolViews([]).map((p) => p.id)).toContain(orphan);
   });
 
   it("counts exactly what it would list — the door can't outrun the page", () => {
@@ -554,7 +597,10 @@ describe("what the cabinet shows a caller (#1522)", () => {
       [alice.profileId, bruno.profileId],
       [] as number[],
     ]) {
-      expect(countVisiblePools(ids)).toBe(listVisiblePoolViews(ids).length);
+      for (const isAdmin of [false, true]) {
+        const v = viewer(ids, isAdmin);
+        expect(countVisiblePools(v)).toBe(listVisiblePoolViews(v).length);
+      }
     }
   });
 
@@ -564,15 +610,165 @@ describe("what the cabinet shows a caller (#1522)", () => {
   it("asks once for the whole cabinet, not once per bottle", () => {
     // Several bottles, so a per-supply loop could not accidentally pass.
     expect(
-      listVisiblePoolViews([alice.profileId, bruno.profileId]).length
+      listVisiblePoolViews(viewer([alice.profileId, bruno.profileId])).length
     ).toBeGreaterThan(1);
     const [perSupplyMembers, cabinetMembership] = countPrepareSet(
       /FROM intake_items i\s+LEFT JOIN intake_item_doses d/,
       /FROM shared_supplies s\s+LEFT JOIN intake_items i/
     );
-    countVisiblePools([alice.profileId, bruno.profileId]);
+    countVisiblePools(viewer([alice.profileId, bruno.profileId]));
     expect(perSupplyMembers.calls()).toBe(0);
     expect(cabinetMembership.calls()).toBe(1);
+  });
+
+  // ── Every transition that empties a bottle's membership (#5122) ──────────────
+  //
+  // The ruling is about the bottle's STATE, not about how it got there, so each path
+  // that can leave a supply with no members lands on the same admin-only answer. The
+  // bottle and its count stay put in every one of them.
+  describe("a bottle that loses its last member becomes admin-only", () => {
+    function bottle(name: string, qty: number): number {
+      return createSharedSupply(
+        {
+          name,
+          strength: null,
+          form: null,
+          lowSupplyDays: null,
+          notes: null,
+        },
+        qty
+      );
+    }
+
+    // Three viewer classes, asked at every cabinet door at once. The middle one is the
+    // behavior change: an AUTHORIZED CAREGIVER of the profile that used to draw from
+    // this bottle. Once membership is empty the accessible set stops mattering, so the
+    // former manager is refused exactly like the unrelated login.
+    function reach(supplyId: number, ids: readonly number[], isAdmin: boolean) {
+      const v = viewer(ids, isAdmin);
+      return {
+        cabinet: listVisiblePoolViews(v).some((p) => p.id === supplyId),
+        door: countVisiblePools(v),
+        picker: listLinkableSupplies(v).some((sup) => sup.id === supplyId),
+        deepLink: findLinkableSupply(v, supplyId) != null,
+      };
+    }
+
+    function expectAdminOnly(supplyId: number, formerMemberId: number): void {
+      const stranger = reach(supplyId, [], false);
+      expect(stranger.cabinet).toBe(false);
+      expect(stranger.picker).toBe(false);
+      expect(stranger.deepLink).toBe(false);
+
+      // The authorized caregiver — write access on the FORMER member's profile.
+      const caregiver = reach(supplyId, [formerMemberId], false);
+      expect(caregiver.cabinet).toBe(false);
+      expect(caregiver.picker).toBe(false);
+      expect(caregiver.deepLink).toBe(false);
+      // The door and the page agree for them, so nothing is counted that can't be opened.
+      expect(caregiver.door).toBe(
+        listVisiblePoolViews(viewer([formerMemberId])).length
+      );
+
+      const admin = reach(supplyId, [formerMemberId], true);
+      expect(admin.cabinet).toBe(true);
+      expect(admin.picker).toBe(true);
+      expect(admin.deepLink).toBe(true);
+    }
+
+    it("…when the last member UNLINKS", () => {
+      const supplyId = bottle("Unlinked 5122", 12);
+      const a = addItem(alice.profileId, "Unlink 5122", 1, null);
+      linkItemToPool(alice.profileId, a.itemId, supplyId);
+      unlinkItemFromPool(alice.profileId, a.itemId);
+
+      expect(poolMembers(supplyId)).toEqual([]);
+      expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(12);
+      expectAdminOnly(supplyId, alice.profileId);
+    });
+
+    // The item row goes away entirely — the record-surface delete and the Data →
+    // Manage bulk delete both end here, and neither touches shared_supplies.
+    it("…when the sole member's ITEM is deleted", () => {
+      const supplyId = bottle("Deleted item 5122", 8);
+      const a = addItem(alice.profileId, "Delete 5122", 1, null);
+      linkItemToPool(alice.profileId, a.itemId, supplyId);
+      db.prepare("DELETE FROM intake_items WHERE id = ?").run(a.itemId);
+
+      expect(poolMembers(supplyId)).toEqual([]);
+      expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(8);
+      expectAdminOnly(supplyId, alice.profileId);
+    });
+
+    // deleteProfileData deletes the profile's intake_items outright; the household
+    // bottle is NOT profile-owned and survives with its count (#1374's row-ops rule).
+    it("…when the sole member's PROFILE is deleted", () => {
+      const gone = seedProfile("Zero Member Gone");
+      const supplyId = bottle("Deleted profile 5122", 15);
+      const a = addItem(gone.profileId, "Profile 5122", 1, null);
+      linkItemToPool(gone.profileId, a.itemId, supplyId);
+      deleteProfileData(db, gone.profileId);
+
+      expect(poolMembers(supplyId)).toEqual([]);
+      expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(15);
+      // The now-deleted profile is nobody's accessible id any more; alice stands in for
+      // the caregiver who could reach it a moment ago.
+      expectAdminOnly(supplyId, alice.profileId);
+    });
+
+    // An item links to at most one bottle, so linking it elsewhere empties the first.
+    it("…when the sole member RELINKS to a different bottle", () => {
+      const first = bottle("Relink from 5122", 20);
+      const second = bottle("Relink to 5122", 30);
+      const a = addItem(alice.profileId, "Relink 5122", 1, null);
+      linkItemToPool(alice.profileId, a.itemId, first);
+      linkItemToPool(alice.profileId, a.itemId, second);
+
+      expect(poolMembers(first)).toEqual([]);
+      expect(getSharedSupply(first)?.quantity_on_hand).toBe(20);
+      expectAdminOnly(first, alice.profileId);
+      // The bottle they moved TO is an ordinary membership-visible bottle.
+      expect(
+        listVisiblePoolViews(viewer([alice.profileId])).map((p) => p.id)
+      ).toContain(second);
+    });
+
+    // The adjacent misreading. A paused or deactivated item is still a member —
+    // poolMembers returns inactive rows — so nothing about visibility moves.
+    it("does NOT apply when the sole member is merely PAUSED", () => {
+      const supplyId = bottle("Paused 5122", 9);
+      const a = addItem(alice.profileId, "Paused 5122", 1, null);
+      linkItemToPool(alice.profileId, a.itemId, supplyId);
+      db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(
+        a.itemId
+      );
+
+      expect(poolMembers(supplyId).map((m) => m.active)).toEqual([false]);
+      expect(
+        listVisiblePoolViews(viewer([alice.profileId])).map((p) => p.id)
+      ).toContain(supplyId);
+      expect(
+        listLinkableSupplies(viewer([alice.profileId])).map((sup) => sup.id)
+      ).toContain(supplyId);
+    });
+
+    // Linking an item back is the way out: the bottle returns to ordinary membership
+    // visibility with its count untouched — the ruling's "until someone joins again".
+    it("returns to ordinary visibility when someone joins again, count intact", () => {
+      const supplyId = bottle("Rejoined 5122", 42);
+      const a = addItem(alice.profileId, "Rejoin 5122", 1, null);
+      linkItemToPool(alice.profileId, a.itemId, supplyId);
+      unlinkItemFromPool(alice.profileId, a.itemId);
+      expect(
+        listVisiblePoolViews(viewer([alice.profileId])).map((p) => p.id)
+      ).not.toContain(supplyId);
+
+      linkItemToPool(alice.profileId, a.itemId, supplyId);
+      expect(
+        listVisiblePoolViews(viewer([alice.profileId])).map((p) => p.id)
+      ).toContain(supplyId);
+      expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(42);
+    });
   });
 
   // #2116: poolIdsForProfiles looped a SELECT DISTINCT per profile where one bound
@@ -718,36 +914,102 @@ describe("the offerable-bottle rule matches the cabinet's own list", () => {
     linkItemToPool(alice.profileId, a.itemId, mine);
     linkItemToPool(bruno.profileId, b.itemId, theirs);
 
-    const offered = listLinkableSupplies([alice.profileId]).map((s) => s.id);
+    const offered = listLinkableSupplies(viewer([alice.profileId])).map(
+      (s) => s.id
+    );
     expect(offered).toContain(mine);
-    expect(offered).toContain(orphan);
+    // #5122: the member-less bottle is NOT offered to a non-admin — the picker and the
+    // cabinet answer the same question, so it drops out of both together.
+    expect(offered).not.toContain(orphan);
     expect(offered).not.toContain(theirs);
+    expect(
+      listLinkableSupplies(viewer([alice.profileId], true)).map((s) => s.id)
+    ).toContain(orphan);
 
     // The single-id question agrees with the list, and carries the product facts a
     // seeded item form prefills from — plus, since #3216, the two facts the intake
     // form's front door offers the bottle WITH: its count, and the kind its members
-    // lend. An orphan has no members, so it lends nothing and the form still asks.
-    expect(findLinkableSupply([alice.profileId], orphan)).toEqual({
-      id: orphan,
-      name: "Orphan 1705",
-      strength: "200 mg",
-      form: "tablet",
-      onHand: 10,
-      siblingKind: null,
-    });
+    // lend. A member-less bottle has no members, so it lends nothing and the form
+    // still asks — and only an admin gets that far (#5122).
+    expect(findLinkableSupply(viewer([alice.profileId], true), orphan)).toEqual(
+      {
+        id: orphan,
+        name: "Orphan 1705",
+        strength: "200 mg",
+        form: "tablet",
+        onHand: 10,
+        siblingKind: null,
+      }
+    );
     // A bottle someone already draws a MEDICATION from lends "medication" — the
     // safety-leaning direction the cabinet already takes (poolSurfaceKind).
-    expect(findLinkableSupply([alice.profileId], mine)?.siblingKind).toBe(
-      "medication"
-    );
-    expect(findLinkableSupply([alice.profileId], theirs)).toBe(null);
-    expect(isLinkableSupply([alice.profileId], theirs)).toBe(false);
+    expect(
+      findLinkableSupply(viewer([alice.profileId]), mine)?.siblingKind
+    ).toBe("medication");
+    expect(findLinkableSupply(viewer([alice.profileId]), theirs)).toBe(null);
+    expect(isLinkableSupply(viewer([alice.profileId]), theirs)).toBe(false);
+    // The deep link a non-admin could forge resolves to nothing (#5122).
+    expect(findLinkableSupply(viewer([alice.profileId]), orphan)).toBe(null);
+    expect(isLinkableSupply(viewer([alice.profileId]), orphan)).toBe(false);
 
-    // Exactly the set the cabinet page itself lists.
+    // Exactly the set the cabinet page itself lists, for both viewer classes.
     expect(offered.sort()).toEqual(
-      listVisiblePoolViews([alice.profileId])
+      listVisiblePoolViews(viewer([alice.profileId]))
+        .map((p) => p.id)
+        .sort()
+    );
+    expect(
+      listLinkableSupplies(viewer([alice.profileId], true))
+        .map((s) => s.id)
+        .sort()
+    ).toEqual(
+      listVisiblePoolViews(viewer([alice.profileId], true))
         .map((p) => p.id)
         .sort()
     );
   });
+});
+
+it("keeps private Ordered through a dose and partial refill, but retires it on a stock-identity round trip", () => {
+  const a = addItem(alice.profileId, "Private Ordered", 1, 4);
+  const b = addItem(bruno.profileId, "Other Ordered", 1, 4);
+  const marker = JSON.stringify({
+    v: 1,
+    state: "requested",
+    g: "fixture0001",
+    sentOn: today(alice.profileId),
+    dueOn: today(alice.profileId),
+  });
+  setProfileSetting(alice.profileId, refillMarkerKey(a.itemId), marker);
+  setProfileSetting(bruno.profileId, refillMarkerKey(b.itemId), marker);
+  markDoseTaken(
+    alice.profileId,
+    a.doseId,
+    null,
+    today(alice.profileId),
+    "page"
+  );
+  refillSupply(alice.profileId, a.itemId, 1);
+  expect(itemQty(a.itemId)).toBe(4);
+  expect(getProfileSetting(alice.profileId, refillMarkerKey(a.itemId))).toBe(
+    marker
+  );
+  const pool = createSharedSupply(
+    {
+      name: "Ordered pool",
+      strength: null,
+      form: null,
+      lowSupplyDays: null,
+      notes: null,
+    },
+    4
+  );
+  linkItemToPool(alice.profileId, a.itemId, pool);
+  unlinkItemFromPool(alice.profileId, a.itemId);
+  expect(
+    getProfileSetting(alice.profileId, refillMarkerKey(a.itemId))
+  ).toBeUndefined();
+  expect(getProfileSetting(bruno.profileId, refillMarkerKey(b.itemId))).toBe(
+    marker
+  );
 });

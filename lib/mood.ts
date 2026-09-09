@@ -13,8 +13,6 @@
 //   • Calm and optional — skipping is frictionless and never escalates; the only
 //     downstream signals are coaching-tier observations (lib/mood-observation.ts).
 
-import { TAP_REACH, isWithinTapReach } from "./log-manifest";
-
 export const MOOD_MIN = 1;
 export const MOOD_MAX = 5;
 
@@ -151,38 +149,6 @@ export function moodSeriesPoints(
   }
   return out;
 }
-
-// ---- The backfill window (issue #2128) ---------------------------------------
-//
-// Mood was CORRECT-ONLY — the exact inversion of the #1933/#1934 class: a past
-// rating could be edited from the readings table, but a MISSED day could never be
-// logged, on the one domain where "how were you yesterday, actually" is the most
-// natural backfill in the app. The fix is the #2019 chip pattern on the entry
-// surfaces (a day chip chosen BEFORE the tap), bounded the way
-// `lib/dose-log-window.ts` bounds a late dose date (#614, the cited-sibling
-// convention): a small window around the profile's today, so a legitimate
-// late check-in lands while a forged or far-off date cannot. PAST-ONLY, unlike
-// the dose window's ± band — a mood cannot be pre-logged for tomorrow.
-//
-// The bound applies to the USER-DATED entry path (`logMood`); the offline
-// replay deliberately keeps landing a queued check-in on its CAPTURED date
-// however long the queue sat, exactly as it always has — the capture was
-// in-window when it happened.
-// The reach of the day CHIPS, not a property of the mood domain (2026-08-31 ruling):
-// `upsertMoodLog` takes any real past day like every other core, and this bounds what
-// the TAP surface may state. Declared in `TAP_REACH` (#4425).
-export const MOOD_LOG_DATE_WINDOW_DAYS = TAP_REACH["mood-valence"].back;
-
-// Is `date` an acceptable check-in day for the CHIP tap, given the profile's
-// `todayStr`? Past-only: a check-in cannot be pre-logged. `isRealIsoDate` runs inside
-// the shared predicate for `daysBetweenDateStr`'s `Date.parse` roll (see
-// lib/dose-log-window.ts) — this accepted 2026-02-30 until #4425.
-export function isMoodDateAccepted(todayStr: string, date: string): boolean {
-  return isWithinTapReach("mood-valence", todayStr, date);
-}
-
-// The refusal `logMood` answers a well-formed but out-of-window date with.
-export const MOOD_DATE_OUT_OF_WINDOW_ERROR = `Check-ins can be logged for today or up to ${MOOD_LOG_DATE_WINDOW_DAYS} days back. Older days stay editable from the mood readings table once logged.`;
 
 // The chip label for a day `offset` days before today — shared by the dashboard
 // card and the quick-entry overlay so the two surfaces name a day identically.

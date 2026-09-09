@@ -6,6 +6,7 @@ import PendingLink, {
   PendingOverlay,
 } from "@/components/PendingLink";
 import {
+  trainingTabHref,
   cyclingRideHref,
   trainingActivityPageHref,
   type AppRoute,
@@ -50,7 +51,7 @@ export default function ActivityLedgerNav({
     >
       <span className="flex min-w-0 flex-wrap items-center gap-2">
         <PendingLink
-          href={trainingRelevant ? "/training?tab=log" : "/history"}
+          href={trainingRelevant ? trainingTabHref("log") : "/history"}
           label={trainingRelevant ? "training log" : "timeline"}
           className={LEDGER_LINK_CLASS}
         >

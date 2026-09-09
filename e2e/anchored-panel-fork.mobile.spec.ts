@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Locator } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import {
   appContent,
   awaitHydrated,
@@ -10,7 +10,10 @@ import {
   settledBoxes,
   settledClick,
   settledFill,
+  settledSelectSave,
+  touchSwipeFrom,
 } from "./helpers";
+import { parseTypedClock } from "@/lib/format-date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import { ANCHOR_GAP, ANCHOR_MARGIN } from "@/lib/anchored-position";
 
@@ -225,17 +228,21 @@ test.describe("below md the date picker is a bottom sheet", () => {
 // mandatory` and centre-aligned cells, so the momentum and the detents are the
 // platform's own physics and not a gesture recognizer this app would have to own.
 // jsdom cannot say anything about that — components/__tests__/time-field.test.tsx
-// takes the value contract, and everything here is geometry or a real flick.
+// takes the value contract. These cases exercise native scrolling and snapping;
+// the separate recorded gesture diagnostic establishes momentum after release.
 //
-// The subject is the measurements sitting's one shared Time (`m-time`), which is
-// the split-field mount: the composed door's own panel is the same wheel over the
-// same host, and is driven by `pickComposedWhen` in the specs that state a
-// required minute.
+// Records supplies both real hosts: the measurements sitting's split Time and
+// the historical-dose form's composed date/time door. Complementary formats at
+// the two widths cover the host integrations without repeating a full matrix.
 
 /** The column geometry, read the way the platform reads it. */
 async function wheelGeometry(column: Locator) {
   return column.evaluate((el) => {
-    const cell = el.querySelector('[role="option"]') as HTMLElement;
+    const cell = el.querySelector(
+      '[role="option"][aria-selected="true"]'
+    ) as HTMLElement;
+    const columnBox = el.getBoundingClientRect();
+    const cellBox = cell.getBoundingClientRect();
     return {
       snapType: getComputedStyle(el).scrollSnapType,
       cellAlign: getComputedStyle(cell).scrollSnapAlign,
@@ -243,9 +250,210 @@ async function wheelGeometry(column: Locator) {
       overflowY: getComputedStyle(el).overflowY,
       // A snap container that cannot scroll snaps to nothing.
       scrollable: el.scrollHeight - el.clientHeight,
-      scrollTop: el.scrollTop,
+      centerOffset:
+        cellBox.y + cellBox.height / 2 - columnBox.y - columnBox.height / 2,
     };
   });
+}
+
+// Four complementary rows across the existing phone/popover journeys. The full
+// native-momentum matrix is a separate diagnostic; these bounded gestures prove
+// that real browser input crosses a boundary and stays inside its scroll owner.
+async function exerciseWheelFormats(page: Page, wide: boolean) {
+  await page.goto("/settings/display");
+  const preference = appContent(page).getByTestId("time-format-select");
+  const originalFormat = await preference.inputValue();
+  try {
+    for (const format of ["24h", "12h"] as const) {
+      await page.goto("/settings/display");
+      if ((await preference.inputValue()) !== format) {
+        await settledSelectSave(page, preference, format, appContent(page));
+      }
+      const composed = wide === (format === "24h");
+      await page.goto(
+        composed ? "/history?kind=dose" : "/history?quick=log-measurements"
+      );
+      if (composed) {
+        await hydratedClick(
+          page,
+          appContent(page).getByTestId("history-add-open-dose")
+        );
+      }
+      const form = composed
+        ? appContent(page).getByTestId("historical-dose-form")
+        : page
+            .getByRole("dialog", { name: "Log measurements" })
+            .getByTestId("measurements-quick-add");
+      await expect(form).toBeVisible();
+      const date = form.locator('input[type="hidden"][name="date"]');
+      const originalDay = await date.inputValue();
+      const field = form.getByTestId("m-time");
+      const readClock = async () =>
+        composed
+          ? form.locator('input[type="hidden"][name="time"]').inputValue()
+          : parseTypedClock(await field.inputValue());
+      if (!composed) {
+        await settledFill(page, field, wide ? "09:15" : "7:30pm");
+        await field.blur();
+        await expect.poll(readClock).toBe(wide ? "09:15" : "19:30");
+        await expect(page.getByTestId("time-field-sheet")).toHaveCount(0); // testid-scope-ok: portalled picker sheet
+      }
+      const opener = composed
+        ? form.getByTestId("historical-dose-when")
+        : form.getByRole("button", { name: "Open time picker" });
+      await hydratedClick(page, opener);
+      const wheel = page.getByTestId(
+        composed ? "historical-dose-when-panel" : "time-field-wheel"
+      ); // testid-scope-ok: both picker hosts are portalled above the form
+      await expect(wheel).toHaveAttribute(
+        "data-anchored-panel",
+        wide ? "popover" : "sheet"
+      );
+      const hours = wheel.getByRole("listbox", { name: "Hour", exact: true });
+      const minutes = wheel.getByRole("listbox", {
+        name: "Minute",
+        exact: true,
+      });
+      const chosen = (column: Locator) =>
+        column.getByRole("option", { selected: true });
+      await hours.scrollIntoViewIfNeeded();
+      const geometry = await wheelGeometry(hours);
+      expect(geometry.snapType).toMatch(/\by\b/);
+      expect(geometry.snapType).toMatch(/mandatory/);
+      expect(geometry.cellAlign).toBe("center");
+      expect(geometry.overflowY).toBe("auto");
+      expect(geometry.scrollable).toBeGreaterThan(geometry.cellHeight);
+      await expect
+        .poll(async () => Math.abs((await wheelGeometry(hours)).centerOffset))
+        .toBeLessThan(1);
+      if (!composed && !wide) {
+        const twenty = hours.getByRole("option", { name: "20", exact: true });
+        const twentyOne = hours.getByRole("option", {
+          name: "21",
+          exact: true,
+        });
+        await expectPhoneTapTargets(page, "the time wheel's rows", [
+          twenty,
+          twentyOne,
+        ]);
+        await twenty.tap();
+        await expect.poll(readClock).toBe("20:30");
+      }
+      if (!composed && wide) {
+        const [wheelBox, fieldBox] = await settledBoxes([wheel, field]);
+        expect(wheelBox.y).toBeGreaterThanOrEqual(fieldBox.y);
+        await hours.focus();
+        await page.keyboard.press("ArrowDown");
+        await expect.poll(readClock).toBe("10:15");
+      }
+
+      for (const column of [hours, minutes]) {
+        const hourColumn = column === hours;
+        const first = hourColumn && format === "12h" ? 1 : 0;
+        const count = hourColumn ? (format === "12h" ? 12 : 24) : 60;
+        for (const direction of [1, -1, 1, -1]) {
+          await column.scrollIntoViewIfNeeded();
+          await column.focus();
+          await page.keyboard.press(direction === 1 ? "End" : "Home");
+          await expect
+            .poll(async () =>
+              Math.abs((await wheelGeometry(column)).centerOffset)
+            )
+            .toBeLessThan(1);
+          const before = (await readClock())!;
+          const meridiem =
+            format === "12h"
+              ? await chosen(
+                  wheel.getByRole("listbox", { name: "AM or PM" })
+                ).innerText()
+              : null;
+          const outerScroll = () =>
+            column.evaluate((el) => {
+              const positions = [window.scrollY];
+              for (
+                let parent = el.parentElement;
+                parent;
+                parent = parent.parentElement
+              ) {
+                positions.push(parent.scrollTop);
+              }
+              return positions;
+            });
+          const beforeScroll = await outerScroll();
+          const delta = direction * geometry.cellHeight * 1.5;
+          if (wide) {
+            await column.hover();
+            await page.mouse.wheel(0, delta);
+          } else {
+            await touchSwipeFrom(
+              page,
+              column,
+              { dy: -delta },
+              { steps: 6, stepDelayMs: 30 }
+            );
+          }
+          // Crossing must reach the other half of the logical sequence. No
+          // particular inertial travel distance or physical copy is prescribed.
+          await expect
+            .poll(
+              async () =>
+                Number(await chosen(column).innerText()) - first < count / 2
+            )
+            .toBe(direction === 1);
+          await expect
+            .poll(async () =>
+              Math.abs((await wheelGeometry(column)).centerOffset)
+            )
+            .toBeLessThan(1);
+          const hour = await chosen(hours).innerText();
+          const minute = await chosen(minutes).innerText();
+          const h24 =
+            format === "12h"
+              ? (Number(hour) % 12) + (meridiem === "PM" ? 12 : 0)
+              : Number(hour);
+          await expect
+            .poll(readClock)
+            .toBe(`${String(h24).padStart(2, "0")}:${minute}`);
+          const after = (await readClock())!;
+          expect(hourColumn ? after.slice(3) : after.slice(0, 2)).toBe(
+            hourColumn ? before.slice(3) : before.slice(0, 2)
+          );
+          if (meridiem) {
+            await expect(
+              chosen(wheel.getByRole("listbox", { name: "AM or PM" }))
+            ).toHaveText(meridiem);
+          }
+          await expect(date).toHaveValue(originalDay);
+          expect(await outerScroll()).toEqual(beforeScroll);
+        }
+        const names = await column.getByRole("option").allTextContents();
+        expect(names).toHaveLength(count);
+        expect(new Set(names).size).toBe(count);
+        await expect(chosen(column)).toHaveCount(1);
+        await column.focus();
+        await expect(column).toBeFocused();
+        await expect(chosen(column)).toBeInViewport();
+        await expect(column).toHaveAttribute(
+          "aria-activedescendant",
+          (await chosen(column).getAttribute("id"))!
+        );
+      }
+      const finalClock = await readClock();
+      await page.keyboard.press("Escape");
+      await expect(wheel).toHaveCount(0);
+      await expect.poll(readClock).toBe(finalClock);
+    }
+  } finally {
+    await page.goto("/settings/display");
+    if ((await preference.inputValue()) !== originalFormat) {
+      await settledSelectSave(
+        page,
+        preference,
+        originalFormat,
+        appContent(page)
+      );
+    }
+  }
 }
 
 test.describe("below md the time picker is a bottom sheet wheel", () => {
@@ -253,82 +461,7 @@ test.describe("below md the time picker is a bottom sheet wheel", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/?quick=log-measurements");
-    const form = page.getByTestId("measurements-quick-add");
-    await expect(form).toBeVisible();
-    const field = form.getByTestId("m-time");
-
-    // TYPED ENTRY AT EVERY WIDTH, in either clock. This is the invariant #3376
-    // fixed for the date half and the reason focus does NOT open the picker at
-    // this width, though it does from `md` up (#5360, the test below): a sheet
-    // that took focus on focus could never be typed into at all.
-    await settledFill(page, field, "7:30pm");
-    await field.blur();
-    await expect(field).toHaveValue("19:30");
-    await expect(page.getByTestId("time-field-sheet")).toHaveCount(0);
-
-    await hydratedClick(
-      page,
-      form.getByRole("button", { name: "Open time picker" })
-    );
-    const sheet = page.getByTestId("time-field-sheet");
-    await expect(sheet).toBeVisible();
-    const wheel = page.getByTestId("time-field-wheel");
-    await expect(wheel).toHaveAttribute("data-anchored-panel", "sheet");
-
-    // THE GEOMETRY, through the same query the browser answers when it snaps.
-    const hours = wheel.getByRole("listbox", { name: "Hour" });
-    const geometry = await wheelGeometry(hours);
-    expect(geometry.snapType).toMatch(/\by\b/);
-    expect(geometry.snapType).toMatch(/mandatory/);
-    expect(geometry.cellAlign).toBe("center");
-    expect(geometry.overflowY).toBe("auto");
-    expect(
-      geometry.scrollable,
-      "a snap container that cannot scroll snaps to nothing"
-    ).toBeGreaterThan(geometry.cellHeight);
-
-    // THE FIELD'S VALUE PARKED THE COLUMN on its own row: 19 is the 20th hour, so
-    // the centre line is exactly 19 cells down. This is what makes the wheel open
-    // showing what the field holds instead of at midnight.
-    expect(geometry.scrollTop).toBeCloseTo(19 * geometry.cellHeight, 0);
-
-    // THE ROW IS THE TARGET, so it is rendered at the tap floor rather than at the
-    // control box plus a coarse-pointer reach — a wheel tiles on the block axis
-    // with no gap, and the reach idiom needs an isolated axis to spend itself on.
-    // Two adjacent rows go in together so the disjointness is asserted on the
-    // EXTENDED boxes, which is the pair that can fight over a pixel.
-    const twenty = hours.getByRole("option", { name: "20" });
-    const twentyOne = hours.getByRole("option", { name: "21" });
-    await expectPhoneTapTargets(page, "the time wheel's rows", [
-      twenty,
-      twentyOne,
-    ]);
-
-    // TAP A ROW, GET A TIME — the whole value, composed from where the other
-    // column is resting.
-    await twenty.click();
-    await expect(field).toHaveValue("20:30");
-
-    // AND A FLICK LANDS ON A DETENT. The scroll is started off-grid on purpose:
-    // what is being asserted is that the BROWSER carries it to a cell boundary
-    // and the field commits the row it stopped on — neither of which this file
-    // does any arithmetic for.
-    const half = Math.round(geometry.cellHeight / 2);
-    await hours.evaluate(
-      (el, by) => el.scrollBy({ top: -by, behavior: "smooth" }),
-      geometry.cellHeight * 3 + half
-    );
-    await expect
-      .poll(
-        async () => {
-          const { scrollTop, cellHeight } = await wheelGeometry(hours);
-          return Math.abs(scrollTop % cellHeight);
-        },
-        { message: "the flick should settle on a cell boundary" }
-      )
-      .toBeLessThan(1);
-    await expect(field).toHaveValue(/^(?:16|17):30$/);
+    await exerciseWheelFormats(page, false);
   });
 
   // FOCUS DOES NOT OPEN THE SHEET (#5360). From `md` up focus opens the wheel,
@@ -419,42 +552,7 @@ test.describe("from md up the anchored popover is what opens", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/trends?view=tiles");
-    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
-    const form = page.getByTestId("measurements-quick-add");
-    await expect(form).toBeVisible();
-    const field = form.getByTestId("m-time");
-    await settledFill(page, field, "09:15");
-    await field.blur();
-
-    const opener = form.getByRole("button", { name: "Open time picker" });
-    await hydratedClick(page, opener);
-    await expect(page.getByTestId("time-field-sheet")).toHaveCount(0);
-    const wheel = page.getByTestId("time-field-wheel");
-    await expect(wheel).toHaveAttribute("data-anchored-panel", "popover");
-
-    // ANCHORED means placed against the control that opened it — the thing a
-    // sheet could never satisfy, and the reason this half of the fork exists.
-    const [wheelBox, fieldBox] = await settledBoxes([wheel, field]);
-    expect(wheelBox.y).toBeGreaterThanOrEqual(fieldBox.y);
-
-    // THE SAME SNAP GEOMETRY AT THIS WIDTH. One authored picker, not a `hidden
-    // md:` twin (#2305): if the popover had grown its own list of hours, this is
-    // where the two would drift apart.
-    const hours = wheel.getByRole("listbox", { name: "Hour" });
-    const geometry = await wheelGeometry(hours);
-    expect(geometry.snapType).toMatch(/mandatory/);
-    expect(geometry.cellAlign).toBe("center");
-    expect(geometry.scrollTop).toBeCloseTo(9 * geometry.cellHeight, 0);
-
-    // WITHOUT A POINTER. A wheel is a scroll surface first, so the keyboard route
-    // has to be real: the column takes focus and steps on the arrows.
-    await hours.focus();
-    await page.keyboard.press("ArrowDown");
-    await expect(field).toHaveValue("10:15");
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("time-field-wheel")).toHaveCount(0);
-    await expect(field).toHaveValue("10:15");
+    await exerciseWheelFormats(page, true);
   });
 
   // FOCUS OPENS THE WHEEL FROM `md` UP (#5360) — the calendar's rule, brought to

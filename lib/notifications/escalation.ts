@@ -183,13 +183,11 @@ export function elapsedLabel(minutes: number): string {
 // a late tap still resolves the right dose to the right date. A deep link rides along
 // when a public URL is configured (every sibling builder carries one).
 export function renderEscalationMessage(
-  profileName: string,
   due: EscalationDue,
   profileId: number,
   date: string,
   deepLinkBase = ""
 ): NotificationMessage {
-  const who = profileName ? `${profileName} — ` : "";
   const dose = formatMedicationDoseProduct(due.amount, due.product);
   const amt = dose ? ` (${dose})` : "";
   const itemId = due.itemId;
@@ -219,7 +217,7 @@ export function renderEscalationMessage(
     });
   }
   return {
-    title: `${GLYPH.caution} Missed dose: ${who}${due.itemName}`,
+    title: `${GLYPH.caution} Missed dose: ${due.itemName}`,
     body:
       `${due.itemName}${amt} — ${escalationWindowPhrase(due.window)} slot, ` +
       `unconfirmed for ${elapsedLabel(due.unconfirmedMinutes)}.`,

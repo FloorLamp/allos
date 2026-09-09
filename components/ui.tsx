@@ -1,4 +1,5 @@
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
+import BackLink from "@/components/BackLink";
 import ActivityIcon from "@/components/ActivityIcon";
 import CreateAction, {
   type CreateActionDeclaration,
@@ -13,6 +14,7 @@ import type { AppRoute } from "@/lib/hrefs";
 
 export function PageHeader({
   title,
+  back,
   subtitle,
   leading,
   action,
@@ -24,6 +26,7 @@ export function PageHeader({
   className = "",
 }: {
   title: string;
+  back?: { href: AppRoute; destination: string; testId?: string };
   subtitle?: React.ReactNode;
   leading?: React.ReactNode;
   /** The page's one registered create. Unrelated controls stay in `action`. */
@@ -58,39 +61,45 @@ export function PageHeader({
   // change here reaches all ~50 pages that render this — the reason the ad-hoc
   // <h1> pages were converted rather than restyled in place.
   return (
-    <div
-      className={`flex ${stackActionBelowSm ? "flex-wrap sm:flex-nowrap" : ""} ${
-        actionAlign === "start" ? "items-start" : "items-end"
-      } justify-between gap-4 md:mb-6 ${
-        compactBelowSm ? "sm:mb-4" : "mb-4"
-      } ${className}`}
-    >
+    <>
+      {back ? (
+        <div className="mb-4">
+          <BackLink {...back} />
+        </div>
+      ) : null}
       <div
-        className={`flex min-w-0 items-center gap-3 sm:gap-4 ${
-          stackActionBelowSm ? "w-full sm:w-auto sm:flex-1" : ""
-        }`}
+        className={`flex ${stackActionBelowSm ? "flex-wrap sm:flex-nowrap" : ""} ${
+          actionAlign === "start" ? "items-start" : "items-end"
+        } justify-between gap-4 md:mb-6 ${
+          compactBelowSm ? "sm:mb-4" : "mb-4"
+        } ${className}`}
       >
-        {leading ? <div className="shrink-0">{leading}</div> : null}
-        <div className="min-w-0">
-          <h1
-            className={`text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100 ${
-              compactBelowSm ? "sr-only sm:not-sr-only" : ""
-            }`}
-          >
-            {title}
-          </h1>
-          {subtitle && (
-            <div
-              className={`mt-1 text-sm text-slate-500 dark:text-slate-400 ${
-                compactBelowSm || hideSubtitleBelowSm ? "hidden sm:block" : ""
+        <div
+          className={`flex min-w-0 items-center gap-3 sm:gap-4 ${
+            stackActionBelowSm ? "w-full sm:w-auto sm:flex-1" : ""
+          }`}
+        >
+          {leading ? <div className="shrink-0">{leading}</div> : null}
+          <div className="min-w-0">
+            <h1
+              className={`text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100 ${
+                compactBelowSm ? "sr-only sm:not-sr-only" : ""
               }`}
             >
-              {subtitle}
-            </div>
-          )}
+              {title}
+            </h1>
+            {subtitle && (
+              <div
+                className={`mt-1 text-sm text-slate-500 dark:text-slate-400 ${
+                  compactBelowSm || hideSubtitleBelowSm ? "hidden sm:block" : ""
+                }`}
+              >
+                {subtitle}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      {/* AN ACTION IS A CONTROL, NOT REFLOWABLE COPY (#3403). Without `shrink-0` the
+        {/* AN ACTION IS A CONTROL, NOT REFLOWABLE COPY (#3403). Without `shrink-0` the
           action and the title block were both shrinkable, so page identity PROSE won
           the width contest and squeezed the action to min-content: the Timeline's
           "Year in review" collapsed to 62px over two lines on a phone, purely because
@@ -106,25 +115,26 @@ export function PageHeader({
           own line the Medications group still ran 60px past a 390px viewport, into an
           app shell that clips rather than scrolls. Below `sm` it shrinks and wraps
           exactly as it did before; from `sm` up the protection is back on. */}
-      {hasTrailing ? (
-        <div
-          className={
-            stackActionBelowSm ? "ml-auto sm:ml-0 sm:shrink-0" : "shrink-0"
-          }
-        >
-          {createAvailable && createAction && action ? (
-            <div className="flex items-center gap-3">
+        {hasTrailing ? (
+          <div
+            className={
+              stackActionBelowSm ? "ml-auto sm:ml-0 sm:shrink-0" : "shrink-0"
+            }
+          >
+            {createAvailable && createAction && action ? (
+              <div className="flex items-center gap-3">
+                <CreateAction declaration={createAction} housing="page" />
+                {action}
+              </div>
+            ) : createAvailable && createAction ? (
               <CreateAction declaration={createAction} housing="page" />
-              {action}
-            </div>
-          ) : createAvailable && createAction ? (
-            <CreateAction declaration={createAction} housing="page" />
-          ) : (
-            action
-          )}
-        </div>
-      ) : null}
-    </div>
+            ) : (
+              action
+            )}
+          </div>
+        ) : null}
+      </div>
+    </>
   );
 }
 

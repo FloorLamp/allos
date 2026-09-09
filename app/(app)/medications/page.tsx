@@ -3,11 +3,11 @@ import { today } from "@/lib/db";
 import {
   getRankedPickerProviders,
   getIntakeCatalogOptions,
-  getConditions,
   collectHouseholdRollup,
   countVisiblePools,
   findLinkableSupply,
 } from "@/lib/queries";
+import { cabinetViewer } from "../supplies/access";
 import { mergedSituationOptions } from "@/lib/situations";
 import { loadMedicationsData, type MedicationsData } from "./med-data";
 import MedicationBoard from "./MedicationBoard";
@@ -76,7 +76,7 @@ export default async function MedicationsPage(props: {
   // SAME offerability rule the item form's picker uses, so an id outside this caller's
   // reach simply doesn't seed anything.
   const initialSupply = findLinkableSupply(
-    scope.ids,
+    cabinetViewer(scope.ids, scope.role),
     Number(
       (Array.isArray(searchParams.supply)
         ? searchParams.supply[0]
@@ -121,18 +121,12 @@ export default async function MedicationsPage(props: {
     : [];
 
   // The add-workspace is ACTING-ONLY (#1096 write-centric): its pickers/options come
-  // from the acting profile. Conditions for the "For condition…" indication picker
-  // (#1052); situation options for the schedule form.
-  const medConditions = getConditions(actingProfileId).map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-  }));
+  // from the acting profile.
   const situationOptions = mergedSituationOptions(
     getSituations(actingProfileId)
   ).map((o) => o.name);
 
-  const cabinetCount = countVisiblePools(scope.ids);
+  const cabinetCount = countVisiblePools(cabinetViewer(scope.ids, scope.role));
 
   const medCount = actingData.current.length + actingData.past.length;
   const prnCount = actingData.current.filter((item) =>
@@ -156,6 +150,7 @@ export default async function MedicationsPage(props: {
             options={getIntakeCatalogOptions(actingProfileId)}
           >
             <MedicationAddWorkspace
+              intakeContext={actingData.intakeContext}
               initialSupply={initialSupply}
               subtitle={
                 medCount === 0
@@ -163,12 +158,6 @@ export default async function MedicationsPage(props: {
                   : subtitle
               }
               action={addIntakeItem}
-              allIntakeItems={actingData.allIntakeItems}
-              stackItems={actingData.stackItems}
-              pgxVariants={actingData.pgxVariants}
-              pediatric={actingData.pediatric}
-              todayStr={actingData.todayStr}
-              conditions={medConditions}
             />
 
             {multi && (

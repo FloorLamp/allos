@@ -61,6 +61,7 @@ describe("dataset table → undo kind mapping", () => {
     expect(undoKindForTable("food_daily_totals")).toBeNull();
     expect(undoKindForTable("food_log_events")).toBeNull();
     expect(undoKindForTable("activities")).toBe("activity");
+    expect(undoKindForTable("equipment")).toBe("equipment");
     // The mixed intake dataset resolves through its physical table.
     expect(undoKindForTable("intake_items")).toBe("intake-item");
     // #2038's kinds, mapped by #2125.

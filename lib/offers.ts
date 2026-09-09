@@ -35,8 +35,12 @@
 // family's setting stays editable on Settings → Notifications: the offer is a faster
 // door, not the only one.
 
-import { today } from "./db";
-import { offerAskedKey } from "./dismissal-keys";
+import { hoistedStatement, today, writeTx } from "./db";
+import {
+  offerAskedKey,
+  trackSupplyAskedKey,
+  TRACK_SUPPLY_ASKED_PREFIX,
+} from "./dismissal-keys";
 import type { DismissalKeyClass } from "./dismissal-classes";
 import { isHiddenUnderPolicy } from "./lifecycle";
 import {
@@ -57,8 +61,24 @@ import {
   getFindingSuppressions,
 } from "./queries/upcoming/suppressions";
 import { cache } from "./request-cache";
+import { updateIntakeSupplyCount } from "./queries/intake/supply-pool";
+
+const TRACKABLE_ITEM = hoistedStatement(`SELECT i.id FROM intake_items i
+  LEFT JOIN shared_supplies s ON s.id = i.supply_id
+  WHERE i.id = ? AND i.profile_id = ?
+    AND CASE WHEN i.supply_id IS NOT NULL THEN s.quantity_on_hand ELSE i.quantity_on_hand END IS NULL`);
+const OWNED_ITEM = hoistedStatement(
+  "SELECT id FROM intake_items WHERE id = ? AND profile_id = ?"
+);
 
 export type OfferFamilyId = "digest-on-connect" | "recap-on-connect";
+
+export type OfferInstance =
+  OfferFamilyId | { familyId: "track-supply"; itemId: number };
+export interface TrackSupplyAnswer {
+  supplyId: number | null;
+  quantity: number;
+}
 
 /** The two render shapes (ruling 2). There is no third. */
 export type OfferSurface = "in-place" | "ride-along";
@@ -73,11 +93,11 @@ export interface OfferFamily {
    */
   trigger(profileId: number, today: string): boolean;
   /** The setting flip. Called from the Yes tap and from nowhere else. */
-  writes(profileId: number): void;
+  writes(profileId: number, answer?: TrackSupplyAnswer): void | boolean;
   surfaces: readonly OfferSurface[];
   /** The one-shot key on the suppression bus, and the class it is registered under. */
   asked: {
-    keyClass: Extract<DismissalKeyClass, "catalog" | "anchored">;
+    keyClass: Extract<DismissalKeyClass, "catalog" | "anchored" | "id-keyed">;
     key: string;
   };
   /** One question, two verbs. */
@@ -91,7 +111,9 @@ function telegramReachable(profileId: number): boolean {
   return telegramChannel.isConfigured(profileId);
 }
 
-export const OFFER_FAMILIES: Record<OfferFamilyId, OfferFamily> = {
+export const OFFER_FAMILIES: Record<OfferFamilyId, OfferFamily> & {
+  "track-supply": (itemId: number) => OfferFamily;
+} = {
   // Telegram became reachable and there is no morning digest. Off by default with no
   // moment of its own until now; the connect prompt (#682) is the nearest send.
   "digest-on-connect": {
@@ -129,20 +151,63 @@ export const OFFER_FAMILIES: Record<OfferFamilyId, OfferFamily> = {
       no: "No thanks",
     },
   },
+  "track-supply": (itemId) => ({
+    kind: "refill",
+    trigger(profileId) {
+      return !!TRACKABLE_ITEM.get(itemId, profileId);
+    },
+    writes(profileId, answer) {
+      return (
+        !!answer &&
+        !!updateIntakeSupplyCount(
+          profileId,
+          itemId,
+          answer.supplyId,
+          answer.quantity,
+          null,
+          true
+        )
+      );
+    },
+    surfaces: ["in-place"],
+    asked: { keyClass: "id-keyed", key: trackSupplyAskedKey(itemId) },
+    copy: {
+      question: "Track how many are left?",
+      yes: "Track supply",
+      no: "No thanks",
+    },
+  }),
 };
 
-export const OFFER_FAMILY_IDS = Object.keys(OFFER_FAMILIES) as OfferFamilyId[];
+export const OFFER_FAMILY_IDS = [
+  "digest-on-connect",
+  "recap-on-connect",
+] as OfferFamilyId[];
 
 /** The family whose `asked` key this is, or null — the action's only token. */
-export function offerFamilyForKey(key: string): OfferFamilyId | null {
+export function offerFamilyForKey(key: string): OfferInstance | null {
+  if (key.startsWith(TRACK_SUPPLY_ASKED_PREFIX)) {
+    const itemId = Number(key.slice(TRACK_SUPPLY_ASKED_PREFIX.length));
+    return Number.isSafeInteger(itemId) &&
+      itemId > 0 &&
+      key === trackSupplyAskedKey(itemId)
+      ? { familyId: "track-supply", itemId }
+      : null;
+  }
   return (
     OFFER_FAMILY_IDS.find((id) => OFFER_FAMILIES[id].asked.key === key) ?? null
   );
 }
 
-function askedAlready(profileId: number, id: OfferFamilyId): boolean {
+export function offerForInstance(id: OfferInstance): OfferFamily {
+  return typeof id === "string"
+    ? OFFER_FAMILIES[id]
+    : OFFER_FAMILIES["track-supply"](id.itemId);
+}
+
+function askedAlready(profileId: number, id: OfferInstance): boolean {
   const record = getFindingSuppressions(profileId).get(
-    OFFER_FAMILIES[id].asked.key
+    offerForInstance(id).asked.key
   );
   return isHiddenUnderPolicy("normal", record, today(profileId));
 }
@@ -152,9 +217,9 @@ function askedAlready(profileId: number, id: OfferFamilyId): boolean {
  * order is rule 2: a family that has been answered, or shown once and ignored, is
  * never re-asked however eligible the rows still look.
  */
-export function offerStands(profileId: number, id: OfferFamilyId): boolean {
+export function offerStands(profileId: number, id: OfferInstance): boolean {
   if (askedAlready(profileId, id)) return false;
-  return OFFER_FAMILIES[id].trigger(profileId, today(profileId));
+  return offerForInstance(id).trigger(profileId, today(profileId));
 }
 
 /** Every family offering right now, in declaration order. Gathered once per request. */
@@ -168,8 +233,11 @@ export const standingOffers = cache(function standingOffers(
  * Record that the offer was put in front of the person. Called on a render of the
  * in-place surface (ignored = asked) and by every answer; a `catalog` key is forever.
  */
-export function markOfferAsked(profileId: number, id: OfferFamilyId): void {
-  dismissFinding(profileId, OFFER_FAMILIES[id].asked.key);
+export function markOfferAsked(profileId: number, id: OfferInstance): boolean {
+  if (typeof id !== "string" && !OWNED_ITEM.get(id.itemId, profileId))
+    return false;
+  dismissFinding(profileId, offerForInstance(id).asked.key);
+  return true;
 }
 
 export type OfferAnswer = "written" | "declined" | "stale";
@@ -182,14 +250,17 @@ export type OfferAnswer = "written" | "declined" | "stale";
  */
 export function answerOffer(
   profileId: number,
-  id: OfferFamilyId,
-  yes: boolean
+  id: OfferInstance,
+  yes: boolean,
+  answer?: TrackSupplyAnswer
 ): OfferAnswer {
-  const family = OFFER_FAMILIES[id];
-  if (!family.trigger(profileId, today(profileId))) return "stale";
-  if (yes) family.writes(profileId);
-  markOfferAsked(profileId, id);
-  return yes ? "written" : "declined";
+  return writeTx(() => {
+    const family = offerForInstance(id);
+    if (!family.trigger(profileId, today(profileId))) return "stale";
+    if (yes && family.writes(profileId, answer) === false) return "stale";
+    markOfferAsked(profileId, id);
+    return yes ? "written" : "declined";
+  });
 }
 
 /**

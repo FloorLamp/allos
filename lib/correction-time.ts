@@ -80,7 +80,12 @@
 // NO DB, NO NETWORK, NO AMBIENT CLOCK — every function takes its `now` — so the whole
 // model is fixture-testable (lib/__tests__/correction-time.test.ts).
 
-import { zonedDateParts, zonedWallTimeToUtc, shiftDateStr } from "./date";
+import {
+  zonedDateParts,
+  zonedWallTimeToUtc,
+  shiftDateStr,
+  utcMinute,
+} from "./date";
 import { statedHoursOnDate, statedInstantOnDate } from "./stated-time";
 
 // ---- Vocabulary ------------------------------------------------------------
@@ -147,6 +152,7 @@ export interface TapEvent {
   // handler re-derives the burst from the ledger at tap time — so a token stays valid
   // across a rebuild, a rotation, and a restart, and carries no state of its own.
   id: number;
+  bundleId?: string | null;
   // The IMMUTABLE audit stamp: when the tap landed — `food_log_events.recorded_at` for a
   // serving or dose. Burst identity always comes from `recorded_at`.
   // identity and FRESHNESS are computed from this and never from the corrected instant —
@@ -226,6 +232,59 @@ export interface CorrectionBurst {
   localDay: string | null;
   // The lone member's label; empty for a multi-row burst, which is named by its count.
   label: string;
+  // Present only for a complete act resolved by the bundle coordinator. Practice
+  // days constrain every member's target, even on a food or dose host.
+  bundle?: { id: string; practiceDays: readonly string[] };
+}
+
+// Exact IDs come only from server-resolved membership. Ordinary burst callers keep
+// their existing numeric anchor and message/gap behavior.
+export type RestampSelection = number | { ids: readonly number[] };
+
+export function restampBurst(
+  events: readonly TapEvent[],
+  selection: RestampSelection
+): CorrectionBurst | null {
+  if (typeof selection === "number") return burstFrom(events, selection);
+  const ids = new Set(selection.ids);
+  if (
+    !ids.size ||
+    events.length !== ids.size ||
+    events.some((e) => !ids.has(e.id))
+  )
+    return null;
+  if (events.some((e) => !Number.isFinite(ms(e.tapAt)))) return null;
+  return summarizeBurst(events);
+}
+
+// Summarize an already selected set without partitioning it again. The exact-member
+// writers use this after eligibility; the bundle owner uses it for the complete act.
+export function summarizeBurst(
+  events: readonly TapEvent[]
+): CorrectionBurst | null {
+  if (!events.length) return null;
+  const sorted = [...events].sort(
+    (a, b) => ms(a.tapAt) - ms(b.tapAt) || a.id - b.id
+  );
+  const first = sorted[0];
+  const at = sorted.map((e) => ms(rowInstant(e)));
+  return {
+    fromId: Math.min(...sorted.map((e) => e.id)),
+    ids: sorted.map((e) => e.id),
+    count: sorted.length,
+    startAt: first.tapAt,
+    endAt: sorted[sorted.length - 1].tapAt,
+    atStartAt: rowInstant(sorted[at.indexOf(Math.min(...at))]),
+    atEndAt: rowInstant(sorted[at.indexOf(Math.max(...at))]),
+    corrected: sorted.some(
+      (e) => Math.abs(ms(rowInstant(e)) - ms(e.tapAt)) >= CORRECTED_MARK_MS
+    ),
+    messageRef: first.messageRef ?? null,
+    localDay: sorted.every((e) => e.localDay && e.localDay === first.localDay)
+      ? (first.localDay ?? null)
+      : null,
+    label: sorted.length === 1 ? first.label : "",
+  };
 }
 
 function ms(iso: string): number {
@@ -247,9 +306,10 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
   const sorted = [...events]
     .filter((e) => Number.isFinite(ms(e.tapAt)))
     .sort((a, b) => ms(a.tapAt) - ms(b.tapAt) || a.id - b.id);
-  const partitions = new Map<number | null, TapEvent[]>();
+  const partitions = new Map<string | number | null, TapEvent[]>();
   for (const e of sorted) {
-    const key = e.messageRef ?? null;
+    const key =
+      e.bundleId != null ? `bundle:${e.bundleId}` : (e.messageRef ?? null);
     const part = partitions.get(key);
     if (part) part.push(e);
     else partitions.set(key, [e]);
@@ -259,45 +319,16 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
     let current: TapEvent[] = [];
     const flush = () => {
       if (current.length === 0) return;
-      const first = current[0];
-      const last = current[current.length - 1];
-      // The stored span is computed rather than read off the ends: a chip moves every
-      // row back from its OWN instant so the order usually survives, but a per-row
-      // correction (or a row that carries a stated time it was never tapped with, which
-      // the web food bar writes) can reorder them, and the header must state the real
-      // extremes.
-      const at = current.map((e) => ms(rowInstant(e)));
-      const atStart = current[at.indexOf(Math.min(...at))];
-      const atEnd = current[at.indexOf(Math.max(...at))];
-      out.push({
-        fromId: Math.min(...current.map((e) => e.id)),
-        ids: current.map((e) => e.id),
-        count: current.length,
-        startAt: first.tapAt,
-        endAt: last.tapAt,
-        atStartAt: rowInstant(atStart),
-        atEndAt: rowInstant(atEnd),
-        corrected: current.some(
-          (e) => Math.abs(ms(rowInstant(e)) - ms(e.tapAt)) >= CORRECTED_MARK_MS
-        ),
-        // The partition key: every member carries it, by construction (#3092).
-        messageRef: first.messageRef ?? null,
-        // ONE day or none. A burst is one error, and a correction writes one answer
-        // onto every member — so members filed under different days (or any member
-        // filed under none) leave the burst with no day a day-keyed offer could be
-        // bounded by.
-        localDay: current.every(
-          (e) => e.localDay && e.localDay === first.localDay
-        )
-          ? (first.localDay ?? null)
-          : null,
-        label: current.length === 1 ? first.label : "",
-      });
+      out.push(summarizeBurst(current)!);
       current = [];
     };
     for (const e of part) {
       const prev = current[current.length - 1];
-      if (prev && ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS)
+      if (
+        prev &&
+        e.bundleId == null &&
+        ms(e.tapAt) - ms(prev.tapAt) > BURST_GAP_MIN * MIN_MS
+      )
         flush();
       current.push(e);
     }
@@ -386,14 +417,25 @@ export function correctionBursts(
 ): CorrectionBurst[] {
   const fresh = collapseBursts(events).filter((b) => isBurstFresh(b, now));
   if (!binding) return fresh.reverse().slice(0, MAX_CORRECTION_ROWS);
-  const mine = burstsForMessage(fresh, binding).reverse();
+  return seatCorrectionBursts(burstsForMessage(fresh, binding));
+}
+
+// Candidates are already fresh and bound. Complete bundles are owned acts even
+// when they reached this host through its proven alternate context. Seat these
+// and attributed bursts before unrelated riders, then display newest first.
+export function seatCorrectionBursts(
+  bursts: readonly CorrectionBurst[]
+): CorrectionBurst[] {
+  const newest = (a: CorrectionBurst, b: CorrectionBurst) =>
+    ms(b.startAt) - ms(a.startAt) || b.fromId - a.fromId;
+  const mine = [...bursts].sort(newest);
+  const owned = (b: CorrectionBurst) =>
+    b.bundle != null || b.messageRef != null;
   const seated = [
-    ...mine.filter((b) => b.messageRef != null),
-    ...mine.filter((b) => b.messageRef == null),
+    ...mine.filter(owned),
+    ...mine.filter((b) => !owned(b)),
   ].slice(0, MAX_CORRECTION_ROWS);
-  return seated.sort(
-    (a, b) => ms(b.startAt) - ms(a.startAt) || b.fromId - a.fromId
-  );
+  return seated.sort(newest);
 }
 
 // Re-derive ONE burst from the ledger, given the id its token was anchored on. The tap
@@ -437,6 +479,26 @@ export function chipTarget(
   return at.getTime() >= chipFloor(now).getTime() ? at : null;
 }
 
+export function burstChipTarget(
+  burst: CorrectionBurst,
+  minutesBack: number,
+  now: Date,
+  tz: string
+): Date | null {
+  const target = chipInstant(burst.atStartAt, minutesBack);
+  const at = burst.bundle?.practiceDays.length
+    ? new Date(utcMinute(target))
+    : target;
+  if (at.getTime() < chipFloor(now).getTime()) return null;
+  if (
+    burst.bundle?.practiceDays.some(
+      (day) => zonedDateParts(tz, at).date !== day
+    )
+  )
+    return null;
+  return at;
+}
+
 // One offered chip: how far back it steps, where that lands, and the label saying so.
 export interface ChipOffer {
   minutesBack: number;
@@ -461,8 +523,10 @@ export function chipOffers(
   const floor = chipFloor(now).getTime();
   const out: ChipOffer[] = [];
   for (const minutesBack of CORRECTION_CHIP_MINUTES) {
-    const at = chipInstant(burst.atStartAt, minutesBack);
-    if (at.getTime() < floor) continue;
+    const at = burst.bundle
+      ? burstChipTarget(burst, minutesBack, now, tz)
+      : chipInstant(burst.atStartAt, minutesBack);
+    if (!at || at.getTime() < floor) continue;
     if (dayKeyed && !chipStaysOnDay(burst, minutesBack, tz)) continue;
     out.push({ minutesBack, at, label: chipLabel(at, tz, minutesBack) });
   }
@@ -655,6 +719,10 @@ export function offeredHourInstant(
 // burst nothing. It is also null for an instant-keyed domain, which files under no day at
 // all — the bound is only ever consulted under `dayKeyed`, and a missing day FAILS CLOSED.
 export function burstLocalDay(burst: CorrectionBurst): string | null {
+  if (burst.bundle?.practiceDays.length)
+    return burst.bundle.practiceDays.length === 1
+      ? burst.bundle.practiceDays[0]
+      : null;
   return burst.localDay ?? null;
 }
 
@@ -716,7 +784,7 @@ export function offeredHours(
     level === "prev"
       ? pickerPrevDayHourOptions(now, tz)
       : pickerHourOptions(now, tz);
-  return dayKeyed
+  return dayKeyed || !!burst.bundle?.practiceDays.length
     ? hours.filter((h) => hourStaysOnDay(h, burst, now, tz, level))
     : hours;
 }
@@ -783,6 +851,11 @@ export function burstLabel(
     zonedDateParts(tz, new Date(burst.atEndAt)).date,
     todayLocal
   );
+  if (burst.bundle)
+    return `Whole act ×${burst.count} ${hhmmOf(burst.atStartAt, tz)}${localDayMarker(
+      zonedDateParts(tz, new Date(burst.atStartAt)).date,
+      todayLocal
+    )}${mark}`;
   if (burst.count === 1 && burst.label)
     return `${burst.label} ${hhmmOf(burst.atStartAt, tz)}${day}${mark}`;
   const start = hhmmOf(burst.atStartAt, tz);
@@ -807,6 +880,7 @@ export function localDayMarker(day: string, todayLocal: string): string {
 // this is the question, and "(corrected)" belongs on the statement of a value, not on an
 // invitation to state one.
 export function burstSubject(burst: CorrectionBurst, tz: string): string {
+  if (burst.bundle) return `this whole act (${burst.count} entries)`;
   if (burst.count === 1 && burst.label) return burst.label;
   return `these ${burst.count} (${hhmmOf(burst.atStartAt, tz)}–${hhmmOf(burst.atEndAt, tz)})`;
 }

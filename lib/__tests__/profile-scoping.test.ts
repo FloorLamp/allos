@@ -154,7 +154,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/queries/intake/supply-pool.ts",
     includes:
       "SELECT s.id AS supply_id, i.profile_id AS profile_id FROM shared_supplies s LEFT JOIN intake_items i ON i.supply_id = s.id",
-    why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved accessible set, which is the filter. A LEFT JOIN because an ORPHANED bottle names nobody and must still be countable",
+    why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved cabinet viewer, which is the filter. A LEFT JOIN because a MEMBER-LESS bottle names nobody and must still reach the filter — since #5122 that rule counts it for an admin only, and without the join it would vanish for the admin who has to clear it",
   },
   // THE FOUR PORTAL-IDENTITY READS BELOW ARE SCOPED BY A GATE, NOT BY A PREDICATE
   // (#5243/#5239). Each one carries `profile_id IS NOT NULL`, which the scan used to
@@ -427,7 +427,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/undo-delete-db.ts",
-    includes: "SELECT * FROM ${child.table} WHERE ${child.childWhere}",
+    includes: "FROM ${child.table} WHERE ${child.childWhere}",
     why: "captureDelete's child capture: the predicate is the kind's declared `childWhere`, bound to the ROOT id that the statement just above fetched by `id = ? AND profile_id = ?`. A child row is reached only through that owned root, so the profile scope is the root's; whether every childWhere should ALSO name profile_id at the restore loop is #5384's question, not a waiver this scan can grant",
   },
   {
@@ -558,6 +558,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     file: "lib/db.ts",
     expr: "sql",
     why: 'preparedFor(), the compile-and-cache helper behind hoistedStatement(): it compiles whatever SQL its CALLER declared, so there is no literal to read here. Nothing is exempted by this entry — every hoistedStatement("…") site is itself a scanned literal (prepareArgs matches it), so those statements are checked where they are written, exactly as a module-scope db.prepare literal was before.',
+  },
+  {
+    file: "lib/write-revision.ts",
+    expr: "source",
+    why: "trackedDatabase's capability adapter compiles whatever SQL its CALLER supplied, then wraps the native statement so writes advance the durable revision. It owns no query text: literal prepare calls remain scanned where their owners declare them, so this entry exempts no SQL from the profile-scoping census.",
   },
   {
     file: "lib/queries/medical/flags.ts",

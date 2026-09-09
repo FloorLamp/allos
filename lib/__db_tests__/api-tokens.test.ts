@@ -16,7 +16,7 @@
 // uses routeTestToken and still traverses the real verification path.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db, writeTx } from "@/lib/db";
+import { db, rawDb, writeTx } from "@/lib/db";
 import {
   anyApiTokenWithScope,
   authenticateApiToken,
@@ -52,8 +52,8 @@ function bearer(token: string): Request {
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM api_tokens");
-  db.exec("DELETE FROM logins");
+  rawDb.exec("DELETE FROM api_tokens");
+  rawDb.exec("DELETE FROM logins");
   memberId = makeLogin("token-member", "member");
   adminId = makeLogin("token-admin", "admin");
 });

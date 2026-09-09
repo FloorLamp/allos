@@ -4,6 +4,9 @@ import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
+import { DayContextProvider, useDayContext } from "@/components/DayContext";
+import BoundedDaySwitcher from "@/components/BoundedDaySwitcher";
+import { SHEET_REACH } from "@/lib/log-manifest";
 
 const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
@@ -23,6 +26,17 @@ vi.mock("@/components/LoggedViaSurface", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: date === "2026-08-28",
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 // The ledger stands in for the real one, but its `tap` RUNS the write and settles it —
 // a `tap: vi.fn()` stub would make every click a no-op and quietly pass any assertion
@@ -86,21 +100,39 @@ const PAST_DAYS = [
   { date: "2026-08-26", label: "Wed, Aug 26", slots: [] },
 ];
 
-function renderSheet() {
+function DoseHarness({ onDone }: { onDone: () => void }) {
+  const day = useDayContext();
+  return (
+    <>
+      <BoundedDaySwitcher />
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={day.parts.day}
+        doses={[
+          {
+            doseId: DAILY_DOSE,
+            title: "Creatine",
+            detail: null,
+            dueText: "8:00am",
+          },
+        ]}
+        pastDays={PAST_DAYS}
+        onDone={onDone}
+      />
+    </>
+  );
+}
+
+function renderSheet(onDone = vi.fn()) {
   return render(
-    <QuickDoseList
+    <DayContextProvider
+      profileId={1}
       today={TODAY}
-      doses={[
-        {
-          doseId: DAILY_DOSE,
-          title: "Creatine",
-          detail: null,
-          dueText: "8:00am",
-        },
-      ]}
-      pastDays={PAST_DAYS}
-      onDone={vi.fn()}
-    />
+      reach={SHEET_REACH}
+      backing={{ kind: "state", initialDay: TODAY }}
+    >
+      <DoseHarness onDone={onDone} />
+    </DayContextProvider>
   );
 }
 
@@ -114,28 +146,35 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("queues the tap instant and confirms the offline capture", async () => {
-    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
-    mocks.enqueue.mockResolvedValue("kept");
-    const before = Date.now();
-    renderSheet();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00.000Z`));
+    try {
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+      mocks.enqueue.mockResolvedValue("kept");
+      const before = Date.now();
+      renderSheet();
 
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("dose-take"));
-    });
-    const after = Date.now();
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("dose-take"));
+      });
+      const after = Date.now();
 
-    expect(mocks.setDoseStatus).not.toHaveBeenCalled();
-    const [kind, date, payload] = mocks.enqueue.mock.calls[0]!;
-    expect({ kind, doseId: payload.doseId }).toEqual({
-      kind: "dose",
-      doseId: DAILY_DOSE,
-    });
-    expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
-    expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
-    expect(date).toBe(dateStrInTz(DEFAULT_TZ, new Date(payload.clientTakenAt)));
-    expect(mocks.toast).toHaveBeenCalledWith(
-      "Dose saved offline — will sync when you reconnect."
-    );
+      expect(mocks.setDoseStatus).not.toHaveBeenCalled();
+      const [kind, payload, capture] = mocks.enqueue.mock.calls[0]!;
+      expect({ kind, doseId: payload.doseId }).toEqual({
+        kind: "dose",
+        doseId: DAILY_DOSE,
+      });
+      expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
+      expect(capture.dayContext.parts.day).toBe(TODAY);
+      expect(capture.capturedAt.toISOString()).toBe(payload.clientTakenAt);
+      expect(mocks.toast).toHaveBeenCalledWith(
+        "Dose saved offline — will sync when you reconnect."
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the typed online refusal and does not queue it", async () => {
@@ -180,7 +219,8 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
         fireEvent.click(screen.getByTestId("dose-take"));
       });
 
-      const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+      const [flow, payload, capture] = mocks.enqueue.mock.calls[0]!;
+      const date = capture.dayContext.parts.day;
       expect(flow).toBe("dose");
       expect(date).toBe(TODAY);
       expect(dateStrInTz(DEFAULT_TZ, new Date(payload.clientTakenAt))).toBe(
@@ -228,7 +268,8 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
         fireEvent.click(screen.getByTestId("dose-take"));
       });
 
-      const [flow, date] = mocks.enqueue.mock.calls[0]!;
+      const [flow, , capture] = mocks.enqueue.mock.calls[0]!;
+      const date = capture.dayContext.parts.day;
       expect({ flow, date }).toEqual({ flow: "dose", date: day });
     } finally {
       vi.useRealTimers();
@@ -254,7 +295,8 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
     });
 
     expect(mocks.setDoseStatus).not.toHaveBeenCalled();
-    const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+    const [flow, payload, capture] = mocks.enqueue.mock.calls[0]!;
+    const date = capture.dayContext.parts.day;
     expect(flow).toBe("dose");
     expect(date).toBe("2026-08-27");
     expect(payload.doseId).toBe(DAILY_DOSE);
@@ -263,7 +305,7 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
 
   it("offers exactly the days the server sent, today first", () => {
     renderSheet();
-    const labels = within(screen.getByTestId("quick-entry-dose-day-toggle"))
+    const labels = within(screen.getByTestId("bounded-day-switcher"))
       .getAllByRole("button")
       .map((b) => b.textContent);
     // Exact list, not a count and not a lower bound: a fourth day and a missing
@@ -371,22 +413,7 @@ describe("one schedule row on several days is several occurrences", () => {
 
   it("logging yesterday's dose leaves TODAY's identical dose still due", async () => {
     const onDone = vi.fn();
-    render(
-      <QuickDoseList
-        today={TODAY}
-        doses={[
-          {
-            doseId: DAILY_DOSE,
-            title: "Creatine",
-            detail: null,
-            dueText: "8:00am",
-          },
-        ]}
-        pastDays={PAST_DAYS}
-        onDone={onDone}
-      />
-    );
-
+    renderSheet(onDone);
     fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
     const day = screen.getByTestId("quick-entry-dose-day");
     await act(async () => {
@@ -436,5 +463,61 @@ describe("one schedule row on several days is several occurrences", () => {
     expect(
       screen.queryByTestId(`quick-entry-dose-note-${DAILY_DOSE}`)
     ).toBeNull();
+  });
+});
+
+describe("the Dose body owns its add doors (#3203)", () => {
+  it("keeps both doors after an empty result and hands back the clicked control", () => {
+    const onAdd = vi.fn();
+    const addFocusRef = { current: null as HTMLButtonElement | null };
+    render(
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={TODAY}
+        doses={[]}
+        pastDays={[]}
+        onDone={vi.fn()}
+        canAdd
+        onAdd={onAdd}
+        addFocusRef={addFocusRef}
+      />
+    );
+
+    expect(screen.getByTestId("quick-entry-dose-empty")).toBeTruthy();
+    const medication = screen.getByTestId("quick-entry-add-medication");
+    const supplement = screen.getByTestId("quick-entry-add-supplement");
+    expect(addFocusRef.current).toBe(medication);
+
+    fireEvent.click(medication);
+    fireEvent.click(supplement);
+    expect(onAdd.mock.calls).toEqual([
+      ["medication", medication],
+      ["supplement", supplement],
+    ]);
+  });
+
+  it("does not offer an add door without write capability", () => {
+    render(
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={TODAY}
+        doses={[
+          {
+            doseId: DAILY_DOSE,
+            title: "Creatine",
+            detail: null,
+            dueText: "8:00am",
+          },
+        ]}
+        pastDays={PAST_DAYS}
+        onDone={vi.fn()}
+        canAdd={false}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId("quick-entry-add-medication")).toBeNull();
+    expect(screen.queryByTestId("quick-entry-add-supplement")).toBeNull();
+    expect(screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`)).toBeTruthy();
   });
 });

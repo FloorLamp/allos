@@ -5,34 +5,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
 
-// A HELPER THAT CANNOT ASK ITS QUESTION MUST SAY SO (#5256, the class #5252
-// proved). #5252 fixed five check-in reads that suppressed stderr and fell back
-// to something plausible, and landed a scan that keeps the helper PATHS alive.
-// Nothing catches the other half: a fallback that is a GUESS rather than an
-// answer. These pins hold the three sites this issue names.
-//
-// WHY THE SUPPRESSION SHAPE ITSELF IS NOT SCANNED, and this is the measured
-// argument rather than an opinion. `scripts/orchestrator-checkin.sh` carried
-// NINE `2>/dev/null || <fallback>` sites before this change, syntactically
-// identical to each other. Eight were honest, because the fallback IS the
-// answer: MISSING for an absent boot or session file, an empty string for a
-// detached HEAD or an unreadable mtime, `true` for an empty reflog or roster,
-// "UNWRITTEN — run queue-snapshot.mjs" for a queue nobody has taken. ONE was a
-// guess — a hard-coded checkout path — and it is fixed below. A pattern gate on
-// the shape would therefore fire on eight correct lines to catch one wrong one,
-// and a gate at that ratio is routed around or deleted within a week, taking
-// the real check with it. The distinguishing question is whether the fallback
-// is an answer or a guess, and that is a question about MEANING. So the rule is
-// written down instead, in docs/orchestration/environment.md, where the
-// reviews that enforce it already look. (The two sites this change adds read
-// empty as unknown, and their reader prints UNCOMPARED.)
+// Check resolver failures and stale-tooling diagnostics. A failed read must
+// remain distinguishable from an established value or verified absence.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const read = (rel: string) => readFileSync(path.join(REPO, rel), "utf8");
 
 const checkin = read("scripts/orchestrator-checkin.sh");
 const digest = read("scripts/orchestration/pm-digest.sh");
-const environment = read("docs/orchestration/environment.md");
 
 describe("the PM digest's state dir", () => {
   // EXECUTED, not pinned: the refusal is the whole behaviour, and a text pin
@@ -115,14 +95,6 @@ describe("the check-in's stale-tooling verdict", () => {
 });
 
 describe("the unknown vocabulary", () => {
-  it("is written down where the runbook keeps environment rules", () => {
-    expect(environment).toContain("A helper that cannot answer says so");
-    expect(environment).toContain(
-      "the ledger spelt its refusal that way until"
-    );
-    expect(environment).toContain("`tooling:` line reports it every wake");
-  });
-
   // `?` was the ledger's word for "no ledger, go look" and #5252 retired it for
   // UNMEASURED — in the CLI's own header too, so nothing owns the token now. It
   // stays retired here, where a bare `?` would read as a measured value. The

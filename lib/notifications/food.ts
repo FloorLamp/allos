@@ -10,7 +10,6 @@ import {
   rankFoodGroups,
   getFoodServingsOnDate,
   getProteinDailyGrams,
-  getProteinTapsOnDate,
   getProteinQuickAddPreset,
   getProteinToday,
   getLoggedFoodWindows,
@@ -23,11 +22,7 @@ import { dateStrInTz, minuteOfDayInTz } from "../date";
 import { today } from "../db";
 import { profileFoodSlotBoundaries } from "../profile-food-slot";
 import { foodWindowGap, foodWindowGapDates } from "../food-window-gap";
-import {
-  correctionBursts,
-  type CorrectionBurst,
-  type CorrectionDay,
-} from "../correction-time";
+import { type CorrectionBurst, type CorrectionDay } from "../correction-time";
 import { proteinTodayLineParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -36,9 +31,10 @@ import {
   type FoodNudgeWindow,
 } from "./food-format";
 import {
-  correctionMessageBinding,
+  messageCorrectionBursts,
   type CorrectionMessageRef,
 } from "./message-pointers";
+import { slotSessionForKeyboard } from "./intake";
 import { telegramChannel } from "./telegram";
 import { composeForSend } from "./compose";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -85,8 +81,7 @@ export function buildFoodNudge(
   // log bar calls too (#1980) — not a parallel one that claims to agree — and it carries
   // the #2019 proximity weighting for every surface at once.
   const rankedKeys = rankFoodGroups(profileId, window);
-  // Buttons AND the tally line both read the DAY total (#2019 retired the slot-scoped
-  // "(n)" suffix along with the read-time window derivation it depended on).
+  // The tally states the day total; buttons offer another serving.
   const dayServings = getFoodServingsOnDate(profileId, date);
   // ALCOHOL RIDES THIS NUDGE LIKE ANY OTHER FOOD GROUP (owner ruling 2026-09-02,
   // narrowing #3330). Its `food_daily_totals` counter is also the substance ledger, and
@@ -97,18 +92,12 @@ export function buildFoodNudge(
   // substances with no food-group row, on the recap's cap lines (lib/notifications/
   // recap-data.ts). Only `kind: "food"` passes through this builder.
 
-  // The protein button's own day count (#1379's sibling consistency, on #2019's day
-  // meaning). The reserved key never lands in the food_daily_totals counter `dayServings` reads,
-  // so its taps are counted off the ledger and merged in here — the renderer then applies
-  // ONE suffix rule to every button on the keyboard.
-  const proteinTaps = getProteinTapsOnDate(profileId, date);
-  if (proteinTaps > 0) dayServings.set(PROTEIN_NUDGE_KEY, proteinTaps);
   // Day-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
   // Null when there's no target or no protein data — the renderer then omits the line.
   //
   // `date`, NOT TODAY (#4118). Every other figure on this message is already read for the
-  // day the message is FOR — the tally, the button counts, the protein taps, the day
-  // grams, the empty-window notice — and this one line resolved its own `today()`
+  // day the message is FOR — the tally, the day grams, the empty-window notice —
+  // and this one line resolved its own `today()`
   // inside. Unreachable while a food nudge could only be live on its own date; the
   // moment the sweep began rebuilding a message up to two days old, the hourly tick
   // started repainting a past day's nudge with the CURRENT day's protein figure and its
@@ -125,7 +114,7 @@ export function buildFoodNudge(
     ? proteinTodayLineParts(pt)
     : null;
   // A protein-tracker with no target (no bodyweight) still gets a day-grams line when
-  // they've logged protein today, so the "+Xg protein" button's contribution is visible and
+  // they've logged protein today, so the protein button's contribution is visible and
   // distinct from the food-serving tally (#1073). getProteinDailyGrams is a raw stored
   // total — no second engine (#221).
   if (!proteinLine && rankedKeys.includes(PROTEIN_NUDGE_KEY)) {
@@ -141,10 +130,13 @@ export function buildFoodNudge(
   // tap produced it, and an unattributed burst (web, offline replay, pruned pointer)
   // rides only the newest live food message in the chat — never an older one, whose
   // subject it is not and whose chips would restamp servings it never mentioned.
-  const corrections = correctionBursts(
+  const corrections = messageCorrectionBursts(
+    profileId,
+    "food",
     getRecentFoodTaps(profileId, now),
     now,
-    correctionMessageBinding(profileId, "food", opts.ref ?? null)
+    opts.ref ?? null,
+    slotSessionForKeyboard
   );
   const tz = getTimezone(profileId);
   // The empty-window notice (#2376). A RIDE-ALONG, exactly like the correction rows

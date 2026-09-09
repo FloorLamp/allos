@@ -1,3 +1,4 @@
+import { trainingTabHref } from "@/lib/hrefs";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import LeadFold from "@/components/LeadFold";
@@ -25,7 +26,6 @@ import {
 } from "@/lib/integrations/strava-sync";
 import { getProfileAge } from "@/lib/settings";
 import { isTrainingRelevant } from "@/lib/life-stage";
-import BackLink from "@/components/BackLink";
 import SubmitButton from "@/components/SubmitButton";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
@@ -85,9 +85,10 @@ export default async function StravaPage(props: {
       className="mx-auto"
       data-testid="integration-page"
     >
-      <BackLink href="/data?section=import" label="Import" />
-
-      <PageHeader title={def.name} />
+      <PageHeader
+        back={{ href: "/data?section=import", destination: "Import" }}
+        title={def.name}
+      />
 
       {/* One sentence, then the mechanics behind a fold (copy.md rule 10 /
           #3490). The registry carries the split; every integration page renders
@@ -279,7 +280,7 @@ function SetupCard({
         <>
           Imported runs, rides, and workouts appear under{" "}
           <Link
-            href={trainingRelevant ? "/training?tab=log" : "/history"}
+            href={trainingRelevant ? trainingTabHref("log") : "/history"}
             className="text-brand-700 underline dark:text-brand-400"
           >
             {trainingRelevant ? "Training history" : "History"}

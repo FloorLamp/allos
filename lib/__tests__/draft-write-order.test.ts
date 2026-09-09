@@ -26,7 +26,11 @@
 // Only IndexedDB.open needs a stub; the file shares the tier's module registry.
 
 import { describe, it, expect, afterEach } from "vitest";
-import { deleteDraft, putDraft } from "@/lib/offline/draft-db";
+import {
+  deleteDraft,
+  deleteDraftRevision,
+  putDraft,
+} from "@/lib/offline/draft-db";
 import type { FormDraft } from "@/lib/offline/drafts";
 
 let opens = 0;
@@ -107,6 +111,22 @@ describe("one draft's mutations run in call order", () => {
     expect(opens).toBe(1);
 
     void putDraft(draft(activity));
+    await settle();
+    expect(opens).toBe(1);
+  });
+
+  it("a submitted-revision compare/delete waits behind its captured put", async () => {
+    const { activity } = keys();
+    holdTheDatabaseOpen();
+    void putDraft({
+      ...draft(activity),
+      writerId: "writer-a",
+      revision: 1,
+    });
+    await settle();
+    expect(opens).toBe(1);
+
+    void deleteDraftRevision(activity, "writer-a", 1);
     await settle();
     expect(opens).toBe(1);
   });
