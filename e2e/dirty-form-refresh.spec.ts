@@ -177,7 +177,7 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
   test("an external commit waits for the form, while the acting save needs no extra refresh (#3075)", async ({
     page,
   }) => {
-    // Three natural poll intervals establish observation and its completed
+    // Natural poll intervals establish observation and its completed
     // continuation. No accelerated clock or synthetic refresh signal is used.
     test.setTimeout(120_000);
     const nextFreshness = () =>
@@ -200,14 +200,27 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
       .filter({ hasText: BEHIND });
     await expect(main).toHaveAttribute("data-write-revision", /^\d+$/);
     await expect(main).toHaveAttribute("data-rendered-at", /^\d+$/);
-    const initialRevision = (await main.getAttribute("data-write-revision"))!;
-    const initialRender = await main.getAttribute("data-rendered-at");
     expect(mounted.status()).toBe(200);
-    expect(await mounted.json()).toEqual({
-      profileId: 1,
-      revision: initialRevision,
-    });
-    await expect(registry).toHaveAttribute("data-refreshes", "0");
+    const mountedPayload = (await mounted.json()) as {
+      profileId: number;
+      revision: string;
+    };
+    expect(mountedPayload.profileId).toBe(1);
+    // The route handler's first boot can commit its canonical seed after the
+    // initial page render. Let that real startup refresh land before editing.
+    await expect(main).toHaveAttribute(
+      "data-write-revision",
+      mountedPayload.revision
+    );
+    const settled = await nextFreshness();
+    expect(settled.status()).toBe(200);
+    expect(await settled.json()).toEqual(mountedPayload);
+    const initialRevision = mountedPayload.revision;
+    const initialRender = await main.getAttribute("data-rendered-at");
+    const initialRefreshes = Number(
+      await registry.getAttribute("data-refreshes")
+    );
+    await expect(registry).toHaveAttribute("data-owed", "0");
     await expect(behind).toHaveCount(0);
 
     await hydratedClick(
@@ -230,13 +243,19 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     expect(external.profileId).toBe(1);
     expect(BigInt(external.revision)).toBeGreaterThan(BigInt(initialRevision));
     await expect(registry).toHaveAttribute("data-owed", "1");
-    await expect(registry).toHaveAttribute("data-refreshes", "0");
+    await expect(registry).toHaveAttribute(
+      "data-refreshes",
+      String(initialRefreshes)
+    );
     await expect(behind).toHaveCount(0);
     await expect(title).toHaveValue(MARKER);
 
     await title.fill("");
     await title.blur();
-    await expect(registry).toHaveAttribute("data-refreshes", "1");
+    await expect(registry).toHaveAttribute(
+      "data-refreshes",
+      String(initialRefreshes + 1)
+    );
     await expect(registry).toHaveAttribute("data-owed", "0");
     await expect(behind).toBeVisible();
     await expect(main).toHaveAttribute(
@@ -297,7 +316,10 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
       revision: actionRevision,
     });
     await expect(registry).toHaveAttribute("data-owed", "0");
-    await expect(registry).toHaveAttribute("data-refreshes", "1");
+    await expect(registry).toHaveAttribute(
+      "data-refreshes",
+      String(initialRefreshes + 1)
+    );
     await expect(main).toHaveAttribute("data-write-revision", actionRevision);
     await expect(main).toHaveAttribute("data-rendered-at", actionRender);
   });
