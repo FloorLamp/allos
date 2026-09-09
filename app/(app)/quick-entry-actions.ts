@@ -59,6 +59,10 @@ import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import { isWithinReach, SHEET_REACH, TAP_REACH } from "@/lib/log-manifest";
 import { gatherQuickEntryFood } from "@/lib/quick-entry-food";
+import {
+  loadIntakeFormContext,
+  type IntakeFormContext,
+} from "@/lib/intake-form-context";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -306,6 +310,53 @@ export type QuickEntryLoadResult =
   | { kind: "ready"; data: QuickEntryData }
   | { kind: "refused"; reason: "session" | "subject" };
 
+export type QuickEntryIntakeContextResult =
+  | { kind: "ready"; context: IntakeFormContext }
+  | { kind: "refused"; reason: "session" | "subject" };
+
+type QuickEntrySubjectResult =
+  | { kind: "ready"; session: CurrentSession; profileId: number }
+  | { kind: "refused"; reason: "session" | "subject" };
+
+async function resolveQuickEntrySubject(
+  subjectProfileId?: number
+): Promise<QuickEntrySubjectResult> {
+  let session: CurrentSession;
+  try {
+    session = await requireSession();
+  } catch (error) {
+    if (isRedirectError(error)) return { kind: "refused", reason: "session" };
+    throw error;
+  }
+  if (subjectProfileId != null && subjectProfileId !== session.profile.id) {
+    try {
+      return {
+        kind: "ready",
+        session,
+        profileId: await gateSubjectProfile(subjectProfileId),
+      };
+    } catch (error) {
+      if (isRedirectError(error)) return { kind: "refused", reason: "subject" };
+      throw error;
+    }
+  }
+  return { kind: "ready", session, profileId: session.profile.id };
+}
+
+export async function loadQuickEntryIntakeContext(
+  subjectProfileId?: number
+): Promise<QuickEntryIntakeContextResult> {
+  const resolved = await resolveQuickEntrySubject(subjectProfileId);
+  if (resolved.kind === "refused") return resolved;
+  return {
+    kind: "ready",
+    context: loadIntakeFormContext(
+      resolved.profileId,
+      getUnitPrefs(resolved.session.login.id).weightUnit
+    ),
+  };
+}
+
 export async function loadQuickEntry(
   form: QuickEntryForm,
   // The sheet's chosen subject (#4932) — present when the title-row chip names
@@ -321,30 +372,14 @@ export async function loadQuickEntry(
   selectedDay?: string,
   selectedReach: "sheet" | "dated" = "sheet"
 ): Promise<QuickEntryLoadResult> {
-  let session: CurrentSession;
-  let profileId: number;
-  try {
-    session = await requireSession();
-  } catch (error) {
-    if (isRedirectError(error)) return { kind: "refused", reason: "session" };
-    throw error;
-  }
-  if (subjectProfileId != null && subjectProfileId !== session.profile.id) {
-    try {
-      profileId = await gateSubjectProfile(subjectProfileId);
-    } catch (error) {
-      if (isRedirectError(error)) return { kind: "refused", reason: "subject" };
-      throw error;
-    }
-  } else {
-    profileId = session.profile.id;
-  }
+  const resolved = await resolveQuickEntrySubject(subjectProfileId);
+  if (resolved.kind === "refused") return resolved;
   return {
     kind: "ready",
     data: await gatherQuickEntry(
       form,
-      session,
-      profileId,
+      resolved.session,
+      resolved.profileId,
       subjectProfileId,
       selectedDay,
       selectedReach
@@ -633,17 +668,6 @@ async function gatherQuickEntry(
       label: back === 0 ? "Yesterday" : formatWeekdayDate(day, formatPrefs),
       slots: groupDosesByBucket(pendingDayDoses(profile.id, day)),
     }));
-  if (
-    doses.length === 0 &&
-    prnMeds.length === 0 &&
-    pastDays.every((day) => day.slots.length === 0)
-  ) {
-    return {
-      form: "unavailable",
-      today: date,
-      message: "No doses are due right now.",
-    };
-  }
   return {
     form: "dose",
     today: date,

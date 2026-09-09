@@ -15,6 +15,7 @@ export default function IntakeItemCombobox(props: {
   name?: string;
   id?: string;
   ariaLabel?: string;
+  autoFocus?: boolean;
 }) {
   return <Combobox {...props} allowFreeText />;
 }

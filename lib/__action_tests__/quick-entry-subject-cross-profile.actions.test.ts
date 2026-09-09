@@ -3,7 +3,7 @@
 // The sheet's title-row chip lets a caregiver pick a household member other than the
 // acting profile, and every form it hosts must then write THAT member — re-gated
 // server-side through `gateItemProfile`, exactly like a record correction (#4009).
-// Five of the ten forms had no such arm before this issue: `addMeasurements`,
+// Five of the original ten forms had no such arm before this issue: `addMeasurements`,
 // `resolveDayDoses` (#4429), `uploadMedicalDocument`, `logStoolForm` and
 // `logSubstanceUnitAction` all resolved their profile from the SESSION alone, so a
 // posted `profile_id` was silently ignored and every tap landed on the acting
@@ -11,10 +11,11 @@
 // own words: "a DB-tier test per form asserts the stored row's profile_id is the
 // chosen subject and that a read-only member is refused."
 //
-// Table-driven over the five, on the SAME two positions #4009's own table uses: an
+// Table-driven over those five plus #3203's new intake-item door, on the SAME two
+// positions #4009's own table uses: an
 // UNGRANTED and a READ-ONLY-granted profile must both refuse with nothing written,
 // and a WRITE-granted profile must LAND — on the subject, not the acting profile.
-// The other five sheet forms (food, mood, practice, cycle's own doors, symptom) took
+// The other five original sheet forms (food, mood, practice, cycle's own doors, symptom) took
 // this gate before this issue and are proven by their own existing suites
 // (food-log.actions.test.ts, mood.actions.test.ts, practice.actions.test.ts,
 // symptom-log.actions.test.ts); duplicating their coverage here would be the second
@@ -23,11 +24,16 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
-import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
+import {
+  addIntakeItem,
+  resolveDayDoses,
+} from "@/app/(app)/nutrition/intake-actions";
 import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { logStoolForm } from "@/app/(app)/stool-actions";
 import { logSubstanceUnitAction } from "@/app/(app)/medical/substance-use/actions";
+import { loadQuickEntryIntakeContext } from "@/app/(app)/quick-entry-actions";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+import { setTimezone } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 function bodyWeightOf(profileId: number, date: string): number | null {
@@ -115,6 +121,16 @@ function substanceUnitsOf(
     )
     .get(profileId, date, substance) as { units: number } | undefined;
   return row?.units ?? 0;
+}
+
+function intakeItemCount(profileId: number, name: string): number {
+  return (
+    db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = ? AND name = ?"
+      )
+      .get(profileId, name) as { n: number }
+  ).n;
 }
 
 // Each kind: a subject-scoped ADD, and the one reader that answers "did the
@@ -237,6 +253,31 @@ const KINDS = [
       _seeded: { doseId?: number }
     ) => substanceUnitsOf(profileId, date, "cannabis") === 0,
   },
+  {
+    name: "new intake item (#3203)",
+    seed: (_profileId: number) => ({}) as { doseId?: number },
+    write: (
+      subjectId: number | null,
+      _date: string,
+      _seeded: { doseId?: number }
+    ) =>
+      addIntakeItem(
+        fd({
+          name: "Quick-log ibuprofen",
+          kind: "medication",
+          condition: "daily",
+          obligation: "may",
+          ...(subjectId != null ? { profile_id: subjectId } : {}),
+        })
+      ),
+    landed: (profileId: number, _date: string, _seeded: { doseId?: number }) =>
+      intakeItemCount(profileId, "Quick-log ibuprofen") === 1,
+    untouched: (
+      profileId: number,
+      _date: string,
+      _seeded: { doseId?: number }
+    ) => intakeItemCount(profileId, "Quick-log ibuprofen") === 0,
+  },
 ] as const;
 
 describe("the quick-log sheet's subject chip gates each form's write to the CHOSEN subject (#4932)", () => {
@@ -293,5 +334,41 @@ describe("the quick-log sheet's subject chip gates each form's write to the CHOS
 
       expect(kind.landed(acting.id, date, seeded)).toBe(true);
     });
+  });
+});
+
+describe("the quick-log intake context uses that same subject gate (#3203)", () => {
+  it("loads the write-granted subject's local context", async () => {
+    const login = createLogin({ role: "member", weightUnit: "lb" });
+    const acting = createProfile("Acting intake context", login.id);
+    const target = createProfile("Target intake context", login.id);
+    setTimezone(acting.id, "Pacific/Midway");
+    setTimezone(target.id, "Pacific/Kiritimati");
+    actAs(login, acting);
+
+    const result = await loadQuickEntryIntakeContext(target.id);
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.context.todayStr).toBe(today(target.id));
+    expect(result.context.pediatric.today).toBe(today(target.id));
+    expect(result.context.pediatric.weightUnit).toBe("lb");
+  });
+
+  it("refuses an ungranted or read-only subject at the shared gate", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("Acting context gate", login.id);
+    const ungranted = createProfile("Ungrant context gate");
+    const readOnly = createProfile("Readonly context gate");
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+    ).run(login.id, readOnly.id);
+    actAs(login, acting);
+
+    await expect(loadQuickEntryIntakeContext(ungranted.id)).rejects.toThrow(
+      /target profile not accessible/
+    );
+    await expect(loadQuickEntryIntakeContext(readOnly.id)).rejects.toThrow(
+      /read-only on target/
+    );
   });
 });

@@ -18,6 +18,11 @@ import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogge
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
+import QuickEntryProvider, {
+  useQuickEntry,
+} from "@/components/QuickEntryProvider";
+import { ProfileDaysBoundary } from "@/components/DayContext";
+import type { SessionProfile } from "@/lib/auth";
 
 // Hold the subject context fixed across entry points. The adult is the positive
 // control for the age gate; stack and PGx notices prove the form has its context.
@@ -25,6 +30,13 @@ import type { IntakeFormContext } from "@/lib/intake-form-context";
 const addIntakeItem = vi.hoisted(() =>
   vi.fn(async (_data: FormData) => ({ ok: true as const }))
 );
+const loadQuickEntry = vi.hoisted(() => vi.fn());
+const loadQuickEntryIntakeContext = vi.hoisted(() => vi.fn());
+
+vi.mock("@/app/(app)/quick-entry-actions", () => ({
+  loadQuickEntry,
+  loadQuickEntryIntakeContext,
+}));
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   addIntakeItem,
@@ -168,7 +180,74 @@ async function openDoor(door: Door, ctx: IntakeFormContext, name: string) {
 
 const DOORS: Door[] = ["medications", "illness", "supplements"];
 
+function QuickLogMedicationDoor() {
+  const { open } = useQuickEntry();
+  return (
+    <button
+      type="button"
+      onClick={() => open("dose", { doseIntakeKind: "medication" }, 7)}
+    >
+      Add quick medication
+    </button>
+  );
+}
+
 describe("every add door feeds IntakeItemForm the same subject context (#4609)", () => {
+  it("the lazy quick-log door reaches the same child safety context", async () => {
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    loadQuickEntryIntakeContext.mockResolvedValueOnce({
+      kind: "ready",
+      context: CHILD,
+    });
+    const profile: SessionProfile = {
+      id: 7,
+      name: "Example Child",
+      photo_path: null,
+      photo_version: 0,
+    };
+    render(
+      <ToastProvider>
+        <ConfirmProvider>
+          <ProfileDaysBoundary
+            clocks={new Map([[7, { today: TODAY, timeZone: "UTC" }]])}
+          >
+            <QuickEntryProvider
+              actingProfileId={7}
+              writableProfiles={[profile]}
+              measurements={{
+                form: "measurements",
+                defaultDate: TODAY,
+                defaultStatedAt: null,
+                maxDate: TODAY,
+                profileId: 7,
+                weightUnit: "kg",
+                temperatureUnit: "C",
+                showCompositionEntry: true,
+                showGrowth: true,
+                showHeadCirc: false,
+              }}
+            >
+              <QuickLogMedicationDoor />
+            </QuickEntryProvider>
+          </ProfileDaysBoundary>
+        </ConfirmProvider>
+      </ToastProvider>
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add quick medication" })
+    );
+    const name = await screen.findByRole("combobox", { name: "Name" });
+    fireEvent.change(name, { target: { value: "Warfarin" } });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("pgx-notice").textContent).toContain("CYP2C9")
+    );
+    expect(screen.getByTestId("interaction-notice").textContent).toContain(
+      "Warfarin + Ibuprofen"
+    );
+    expect(loadQuickEntryIntakeContext).toHaveBeenCalledWith(7);
+  });
+
   // The alcohol note is `minLifeStage: "adult"`, and an UNKNOWN age is eligible — so
   // the broken illness door and a genuine adult were indistinguishable.
   it.each(DOORS)(
