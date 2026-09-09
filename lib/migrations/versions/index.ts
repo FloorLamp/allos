@@ -241,6 +241,7 @@ import { migration as mSubstanceTrashRecordedAt } from "./20260907-substance-tra
 import { migration as mDoseScheduleAmount } from "./20260907-dose-schedule-amount";
 import { migration as mRetireBlankIntakeDoses } from "./20260908-retire-blank-intake-doses";
 import { migration as mNotifyMessageChatSubject } from "./20260908-notify-message-chat-subject";
+import { migration as mDataWriteRevision } from "./20260909-data-write-revision";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -491,6 +492,7 @@ export const MIGRATIONS: Migration[] = [
   mDoseScheduleAmount,
   mRetireBlankIntakeDoses,
   mNotifyMessageChatSubject,
+  mDataWriteRevision,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

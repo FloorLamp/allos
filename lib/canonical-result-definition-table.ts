@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { SqlPrepare } from "./write-revision";
 
 export type CanonicalResultDefinitionTable =
   "canonical_result_definitions" | "canonical_biomarkers";
@@ -9,7 +9,7 @@ export type CanonicalResultDefinitionTable =
  * legacy literal exists only so a database can replay that immutable migration chain.
  */
 export function canonicalResultDefinitionTableForSchema(
-  db: Database.Database
+  db: SqlPrepare
 ): CanonicalResultDefinitionTable {
   const current = db
     .prepare(

@@ -61,7 +61,16 @@ describe("activity timer completion", () => {
   const vibrate = vi.fn(() => true);
 
   beforeEach(() => {
+    // `now: T0` ANCHORS THE FAKE CLOCK AT INSTALL, and it has to: the fake
+    // `requestAnimationFrame` puts the next frame on a 16ms grid measured from
+    // the epoch the clock was installed at, so installing at the real time and
+    // only then moving to T0 leaves the grid offset by whatever the real clock
+    // read. Once real time passed T0 that offset made the pending frame land
+    // 17-31ms out, and the Fitness case below — which advances one 16ms frame —
+    // stopped reaching it (#5631). Anchored here, the frame is exactly 16ms
+    // away for every run, today and in a year.
     vi.useFakeTimers({
+      now: T0,
       toFake: [
         "Date",
         "setTimeout",
@@ -72,7 +81,6 @@ describe("activity timer completion", () => {
         "cancelAnimationFrame",
       ],
     });
-    vi.setSystemTime(T0);
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     vibrate.mockClear();
     vi.stubGlobal("navigator", { vibrate });
