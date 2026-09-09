@@ -10,6 +10,7 @@ import {
   openMeasurementGroup,
   openMobileDrawer,
   settledClick,
+  settledClickApplied,
   settledFill,
   stageMediaFiles,
 } from "./helpers";
@@ -762,9 +763,23 @@ test("an empty selected profile adds a medication and takes it in the same sheet
     await expect(form.getByTestId("intake-fact-dose")).toContainText("150 mg");
     await expect(form.getByTestId("intake-pediatric-context")).toBeVisible();
     await expectNoClippedContent(page);
-    await settledClick(
+    // The row this asserts is read straight from the database, so the click has to
+    // wait for the REVALIDATED RENDER and not merely for an action POST to settle.
+    // The form posts more than once — the name lookup and the draft write are also
+    // action POSTs — so `settledClick` alone can return on one of those while the
+    // create is still in flight, and the read below then finds no row. Under CI
+    // load that gap is wide enough to fail: this read came back empty once on a
+    // shard where the other 144 cases passed. The created item's own PRN row is the
+    // marker the call site knows, and `settledClickApplied` exists because no
+    // general router-applied signal does: it renders only once the create landed
+    // and the sheet re-rendered around it.
+    const prn = overlay.getByTestId("quick-log-prn-item").filter({
+      hasText: "Ibuprofen",
+    });
+    await settledClickApplied(
       page,
-      form.getByRole("button", { name: "Add", exact: true })
+      form.getByRole("button", { name: "Add", exact: true }),
+      prn
     );
 
     const item = db
@@ -786,9 +801,6 @@ test("an empty selected profile adds a medication and takes it in the same sheet
         product: "Children's oral suspension (100 mg / 5 mL)",
       }),
     ]);
-    const prn = overlay.getByTestId("quick-log-prn-item").filter({
-      hasText: "Ibuprofen",
-    });
     await expect(prn).toContainText("Ibuprofen");
     await expect(prn.getByTestId("prn-day-label")).toHaveText("None today");
     await expect(addMedication).toBeFocused();
