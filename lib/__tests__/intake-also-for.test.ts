@@ -5,6 +5,8 @@ import {
   alsoForEligible,
   alsoForReceipt,
   alsoForScheduleLabel,
+  alsoForWrittenDose,
+  inForceDoseRows,
   resolveAlsoForDose,
   sameIntakeProduct,
   type AlsoForCandidateFacts,
@@ -72,12 +74,24 @@ describe("product identity (#4717)", () => {
     ).toBe(true);
   });
 
-  it("falls back to name AND strength, so two strengths are two products", () => {
-    expect(
-      sameIntakeProduct(IBUPROFEN, { ...IBUPROFEN, strength: "200MG" })
-    ).toBe(true);
+  // The dose-amount-as-strength category error (a "400 mg" dose row is two 200 mg
+  // tablets) is what let a person already tracking ibuprofen be handed a second
+  // active ibuprofen item. An item has no strength column, so the honest question is
+  // identity alone — and it can only ever withhold.
+  it("ignores strength, because an item's dose amount is not a product strength", () => {
     expect(
       sameIntakeProduct(IBUPROFEN, { ...IBUPROFEN, strength: "800 mg" })
+    ).toBe(true);
+    expect(sameIntakeProduct(IBUPROFEN, { ...IBUPROFEN, strength: null })).toBe(
+      true
+    );
+    expect(
+      sameIntakeProduct(IBUPROFEN, {
+        name: "Loratadine",
+        strength: "200 mg",
+        rxcui: null,
+        rxcuiIngredients: null,
+      })
     ).toBe(false);
   });
 });
@@ -323,10 +337,18 @@ describe("the offer names the plan it will copy", () => {
 });
 
 describe("a stale offer cannot be tapped into a different plan", () => {
+  const SOURCE_IDENTITY = {
+    kind: "medication",
+    rxcui: "5640",
+    rxcuiIngredients: null,
+    brand: "Advil",
+    product: "200 mg tablet",
+  };
   const basis = (over: Partial<Parameters<typeof alsoForBasis>[0]> = {}) =>
     alsoForBasis({
       product: IBUPROFEN,
       sourceItemId: 11,
+      sourceIdentity: SOURCE_IDENTITY,
       schedule: schedule(),
       targetProfileId: 7,
       dose: { kind: "amount", amount: "200 mg", basis: "adult" },
@@ -357,6 +379,81 @@ describe("a stale offer cannot be tapped into a different plan", () => {
     expect(basis()).not.toBe(
       basis({ product: { ...IBUPROFEN, strength: "400 mg" } })
     );
+  });
+
+  // EVERY field the copy carries off the source row. A mid-flight edit of any of them
+  // lands different facts on the recipient than the card named — and a kind flip also
+  // decides whether a medication course opens at all (#5576).
+  it.each([
+    ["kind", { kind: "supplement" }],
+    ["RxNorm identity", { rxcui: "11289" }],
+    ["cached ingredients", { rxcuiIngredients: ["11289"] }],
+    ["brand", { brand: "Motrin" }],
+    ["product", { product: "warfarin 5 mg tablet" }],
+  ])("changes when the source's %s changes", (_label, over) => {
+    expect(basis()).not.toBe(
+      basis({ sourceIdentity: { ...SOURCE_IDENTITY, ...over } })
+    );
+  });
+});
+
+describe("a receipt may only claim what was written", () => {
+  const amount: AlsoForDose = {
+    kind: "amount",
+    amount: "200 mg",
+    basis: "from the adult label dose",
+  };
+
+  it("keeps a derived amount when rows carry it", () => {
+    expect(
+      alsoForWrittenDose(amount, [
+        {
+          amount: "200 mg",
+          time_of_day: "08:00",
+          food_timing: "any",
+          weekdays: null,
+          start_date: null,
+          end_date: null,
+        },
+      ])
+    ).toEqual(amount);
+  });
+
+  it("states no dose when the schedule wrote no row to carry it", () => {
+    const written = alsoForWrittenDose(amount, []);
+    expect(written.kind).toBe("none");
+    expect(alsoForReceipt("Ada", written)).toContain("no dose yet");
+    expect(alsoForReceipt("Ada", written)).not.toContain("200 mg");
+  });
+});
+
+describe("only the dose rows still in force are inherited", () => {
+  const row = (start: string | null, end: string | null) => ({
+    amount: "40 mg",
+    time_of_day: "08:00",
+    food_timing: "any" as const,
+    weekdays: null,
+    start_date: start,
+    end_date: end,
+  });
+
+  it("drops a closed window and keeps an open or future one", () => {
+    expect(
+      inForceDoseRows(
+        [
+          row("2026-08-01", "2026-08-10"),
+          row("2026-08-11", null),
+          row("2026-10-01", "2026-10-07"),
+        ],
+        "2026-09-09"
+      )
+    ).toHaveLength(2);
+  });
+
+  it("says a wholly elapsed taper has nothing left to hand on", () => {
+    expect(
+      inForceDoseRows([row(null, "2026-08-10")], "2026-09-09")
+    ).toEqual([]);
   });
 });
 

@@ -75,6 +75,17 @@ function strengthKey(strength: string | null): string {
     .replace(/[.,]$/, "");
 }
 
+// Whether two things are the same PRODUCT: the RxNorm ingredient identity when both
+// sides carry one, else the cleaned generic name.
+//
+// STRENGTH IS DELIBERATELY NOT COMPARED, and #4717's "name + strength" leg cannot be
+// honoured here honestly. `intake_items` has no strength column at all (lib/supply-
+// product.ts: the bottle owns the product, the item owns the use), so the only
+// per-item figure available is a DOSE AMOUNT — which is per-dose, not per-unit. Reading
+// it as a strength says a person taking two 200 mg tablets (a "400 mg" dose row) does
+// not already have the 200 mg bottle, and hands them a second active item: two reminder
+// streams for one drug. Comparing nothing is the conservative direction for this
+// question — it can only ever WITHHOLD an offer, never duplicate a medication.
 export function sameIntakeProduct(
   a: IntakeProductIdentity,
   b: IntakeProductIdentity
@@ -84,8 +95,7 @@ export function sameIntakeProduct(
   if (aCui && bCui) return aCui === bCui;
   const aName = medNameKey(a.name);
   const bName = medNameKey(b.name);
-  if (!aName || !bName || aName !== bName) return false;
-  return strengthKey(a.strength) === strengthKey(b.strength);
+  return !!aName && aName === bName;
 }
 
 // ---- The recipient's own dose ----------------------------------------------
@@ -179,7 +189,14 @@ export function resolveAlsoForDose(input: {
 export interface AlsoForCandidateFacts {
   profileId: number;
   name: string;
-  // The caller may WRITE them. A person the caller cannot write is not offered.
+  // The caller may WRITE them.
+  //
+  // STATED, NOT ENFORCED — say so rather than let this field look like a gate. Both
+  // call sites pass `true`: the cabinet page has already narrowed its candidates to the
+  // profiles the caller may write, and the action has already been through
+  // `requireProfileWriteAccess(targetProfileId)` before the write core runs. Those two
+  // are the real enforcement, and they are where a reviewer should look. This field
+  // keeps the predicate below readable as the whole rule; it decides nothing today.
   canWrite: boolean;
   // They already draw from this bottle.
   isMember: boolean;
@@ -244,6 +261,23 @@ export function alsoForScheduleLabel(schedule: AlsoForSchedule): string {
   return parts.join(" · ");
 }
 
+// The dose rows of a source that are still IN FORCE on `today` — the only ones a person
+// joining now inherits. A window that has already closed is the source's own history
+// (see the module header), and a row whose window has closed is not part of the plan.
+//
+// ONE computation behind the label, the seeds and the basis, because the card must not
+// name a dose time the copy will not write: that was how an all-elapsed taper produced
+// a receipt claiming an amount over an item with no dose rows at all.
+export function inForceDoseRows(
+  doses: readonly AlsoForDoseRow[],
+  today: string
+): AlsoForDoseRow[] {
+  return doses.filter((row) => {
+    const end = clean(row.end_date);
+    return !(end && end < today);
+  });
+}
+
 // The recipient's dose rows: the source's schedule, the recipient's amount.
 //
 // Dose-less means ZERO rows (see AlsoForDose). Elapsed per-dose windows are the
@@ -256,9 +290,8 @@ export function alsoForDoseSeeds(
 ): IntakeItemDoseSeed[] {
   if (dose.kind !== "amount") return [];
   const seeds: IntakeItemDoseSeed[] = [];
-  for (const row of doses) {
+  for (const row of inForceDoseRows(doses, today)) {
     const end = clean(row.end_date);
-    if (end && end < today) continue;
     const start = clean(row.start_date);
     seeds.push({
       amount: dose.amount,
@@ -272,15 +305,45 @@ export function alsoForDoseSeeds(
   return seeds;
 }
 
+// What the copy ACTUALLY wrote, which is the only honest thing to put in a receipt.
+// A derived amount with no row to carry it is not a dose: the item lands active with
+// nothing ever due, so a receipt naming the amount would state a schedule the person
+// does not have.
+export function alsoForWrittenDose(
+  dose: AlsoForDose,
+  seeds: readonly IntakeItemDoseSeed[]
+): AlsoForDose {
+  if (dose.kind !== "amount" || seeds.length > 0) return dose;
+  return {
+    kind: "none",
+    reason: "the copied schedule has no dose times still in force",
+  };
+}
+
 // ---- The offer's basis, so a stale tap refuses -----------------------------
 
 // What the person was looking at when they tapped. Re-derived under the write lock and
 // compared: a changed product, source schedule, or recipient dose basis must refuse the
 // tap rather than quietly copy a different plan. Membership and access are re-read as
 // their own refusals, so they are not repeated here.
+//
+// IT BINDS EVERY FIELD THE COPY CARRIES, not just the ones on screen. The source's
+// KIND, its RxNorm identity and its brand/product text are all written onto the
+// recipient's row by an ordinary edit of the source between render and tap, and a basis
+// blind to them would copy a warfarin's identity under the supplement the card named —
+// and, because only a medication opens a course, skip the #5576 unknown-start
+// guarantee on the way past. The owner's ruling says a changed PRODUCT refuses; this is
+// the list of what "product" is made of.
 export function alsoForBasis(input: {
   product: IntakeProductIdentity;
   sourceItemId: number;
+  sourceIdentity: {
+    kind: string;
+    rxcui: string | null;
+    rxcuiIngredients: string[] | null;
+    brand: string | null;
+    product: string | null;
+  };
   schedule: AlsoForSchedule;
   targetProfileId: number;
   dose: AlsoForDose;
@@ -312,6 +375,11 @@ export function alsoForBasis(input: {
     rows.join(";"),
     dose.kind,
     dose.kind === "amount" ? dose.amount : "",
+    // Everything the copy carries off the SOURCE row.
+    input.sourceIdentity.kind,
+    ingredientCuiKey(input.sourceIdentity) ?? "",
+    input.sourceIdentity.brand ?? "",
+    input.sourceIdentity.product ?? "",
   ].join("~");
 }
 

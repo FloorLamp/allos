@@ -15,7 +15,8 @@ import { snapshotCached } from "../../read-snapshot";
 import { getLatestBodyMetricDated } from "../metrics";
 import { profileAgeMonths } from "../../settings";
 import { parseRxcuiIngredients } from "../../rxnorm";
-import { allergenConflict } from "../../supplement-safety";
+import { crossCheckDrugAllergies } from "../../drug-allergy";
+import { getIntakeSafetyContext } from "./safety";
 import { createIntakeItemCore } from "../../intake-item-create";
 import {
   alsoForBasis,
@@ -23,6 +24,8 @@ import {
   alsoForEligible,
   alsoForReceipt,
   alsoForScheduleLabel,
+  alsoForWrittenDose,
+  inForceDoseRows,
   resolveAlsoForDose,
   sameIntakeProduct,
   type AlsoForCandidateFacts,
@@ -37,6 +40,7 @@ import {
   getPoolView,
   invalidatePoolRefillOffers,
   poolMembers,
+  poolProductCodes,
   type PoolView,
 } from "./supply-pool";
 
@@ -58,9 +62,15 @@ export interface AlsoForSource {
 
 // ONE member's copyable plan, profile-scoped on the member's own profile so a forged id
 // cannot read another household's row.
+//
+// The schedule it returns carries only the dose rows still IN FORCE on the RECIPIENT's
+// day, which is the schedule a person joining now would actually inherit. Reading the
+// raw rows here instead is what let the card name "Morning" over an elapsed taper the
+// copy would not write.
 export function alsoForSource(
   profileId: number,
-  itemId: number
+  itemId: number,
+  today: string
 ): AlsoForSource | null {
   const item = db
     .prepare(
@@ -116,31 +126,32 @@ export function alsoForSource(
       cadence_weekdays: item.cadence_weekdays,
       cadence_interval_days: item.cadence_interval_days,
       cadence_anchor_date: item.cadence_anchor_date,
-      doses,
+      doses: inForceDoseRows(doses, today),
     },
   };
 }
 
-// The bottle's product identity: its OWN name and strength, and nothing borrowed from
-// a member.
+// The bottle's product identity: its own name and strength, plus the RxNorm codes its
+// MEMBERSHIP carries (`poolProductCodes`).
 //
-// THE BOTTLE OWNS WHAT THE PRODUCT IS (#1705 / #5518's `prnLabelIdentityFor`), which is
-// also what makes this answer STABLE — and the offer's basis is only worth checking if
-// both sides compute it the same way. Reading a member's RxCUI here would make the
-// bottle's identity depend on WHICH members the reader can see: the card sees the
-// members behind its own grants, the write sees the membership, and the two would
-// disagree about a bottle whose coded member is hidden — refusing every tap. The
-// members of one bottle are the same product by construction, so the bottle's own two
-// facts are the honest identity. A copied row still carries the SOURCE's RxNorm codes
-// as its product provenance; that is the item's fact, not the bottle's.
+// THE BOTTLE OWNS WHAT THE PRODUCT IS (#1705 / #5518's `prnLabelIdentityFor`), and a
+// `shared_supplies` row has no code column — but #4717's identity is RxCUI FIRST, and
+// an identity with no code can only ever match on a name, which is how a Penicillin
+// allergy failed to recognise an Amoxicillin bottle and an existing Advil failed to
+// recognise an Ibuprofen one.
+//
+// The codes are read across the WHOLE membership in a fixed order rather than off the
+// members this reader can see, which is what makes the answer stable: the card and the
+// write must derive the same product or every offer would refuse itself as stale.
 export function poolProductIdentity(
-  pool: Pick<PoolView, "name" | "strength">
+  pool: Pick<PoolView, "id" | "name" | "strength">
 ): IntakeProductIdentity {
+  const codes = poolProductCodes(pool.id);
   return {
     name: pool.name,
     strength: pool.strength,
-    rxcui: null,
-    rxcuiIngredients: null,
+    rxcui: codes.rxcui,
+    rxcuiIngredients: codes.rxcuiIngredients,
   };
 }
 
@@ -169,16 +180,22 @@ function pediatricContextForUncached(profileId: number): PediatricFormContext {
 
 // Whether this person already keeps an UNPOOLED item of the same product (#4717
 // identity). An item on another bottle is another bottle; an archived one is history.
+//
+// Matched on identity alone — see `sameIntakeProduct` for why an item's dose amount is
+// not a product strength and must not stand in for one.
+//
+// UNCACHED, unlike the two per-profile reads above, because its answer depends on the
+// PRODUCT as well as the person: an admin who may write many profiles pays one item
+// scan per candidate per bottle on a `/supplies` render. Recorded rather than optimised
+// — the scan is a single indexed profile read and the cabinet is a small page, so the
+// right time to cache it is when a real cabinet is slow, keyed on both halves.
 function hasUnpooledDuplicate(
   profileId: number,
   product: IntakeProductIdentity
 ): boolean {
   const rows = db
     .prepare(
-      `SELECT i.id, i.name, i.rxcui, i.rxcui_ingredients,
-              (SELECT d.amount FROM intake_item_doses d
-                WHERE d.item_id = i.id AND d.retired = 0
-                ORDER BY d.sort, d.id LIMIT 1) AS amount
+      `SELECT i.id, i.name, i.rxcui, i.rxcui_ingredients
          FROM intake_items i
         WHERE i.profile_id = ? AND i.supply_id IS NULL AND i.active = 1`
     )
@@ -187,31 +204,53 @@ function hasUnpooledDuplicate(
     name: string;
     rxcui: string | null;
     rxcui_ingredients: string | null;
-    amount: string | null;
   }[];
   return rows.some((row) =>
     sameIntakeProduct(product, {
       name: row.name,
-      strength: row.amount,
+      strength: null,
       rxcui: row.rxcui,
       rxcuiIngredients: parseRxcuiIngredients(row.rxcui_ingredients),
     })
   );
 }
 
-// Every recorded allergen, resolved ones included — the conservative set an INGESTIBLE
-// offer is screened against (the getIngestibleSafetyContext posture, #691).
-const recordedAllergens = snapshotCached(
-  "also-for.allergens",
+// The recipient's recorded allergies, as the CANONICAL drug-allergy cross-check
+// consumes them: coded (`substance_code`), non-resolved and actionable (#1405), from
+// the one shared gather every other safety surface reads.
+const allergyRecordsFor = snapshotCached(
+  "also-for.allergy-records",
   (profileId: number) => String(profileId),
-  recordedAllergensUncached
+  (profileId: number) => getIntakeSafetyContext(profileId).allergyRecords
 );
 
-function recordedAllergensUncached(profileId: number): string[] {
-  const rows = db
-    .prepare("SELECT substance FROM allergies WHERE profile_id = ?")
-    .all(profileId) as { substance: string }[];
-  return rows.map((r) => r.substance);
+// The recorded allergy this bottle meets for this person, or null.
+//
+// THE CANONICAL MODEL, NOT A SECOND ONE. This used to run `allergenConflict` — the
+// SUPPLEMENT-SUGGESTION matcher, which is name-token containment plus the #153 FOOD
+// cross-reactivity dataset — over the bottle's display name. It caught only a near-
+// exact name, so a Penicillin allergy was offered the household Amoxicillin, an Aspirin
+// allergy was offered the Ibuprofen, and an Ibuprofen allergy was offered the Advil;
+// the app's own `crossCheckDrugAllergies` then flagged the very row the offer had just
+// created. Asking the row-level check about the row the copy WOULD create makes the
+// offer and the warning the same judgment: ingredient, class and documented
+// cross-class all withhold, code-first where a code is recorded.
+//
+// The med id is 0 because the row does not exist yet — only the hit's substance is read
+// here, never its dedupeKey or row anchor.
+function allergyBlocking(
+  profileId: number,
+  product: IntakeProductIdentity
+): string | null {
+  const hits = crossCheckDrugAllergies(allergyRecordsFor(profileId), [
+    {
+      id: 0,
+      name: product.name,
+      rxcui: product.rxcui,
+      rxcuiIngredients: product.rxcuiIngredients,
+    },
+  ]);
+  return hits[0]?.substance ?? null;
 }
 
 // Everything the offer asks about one person, gathered from their own rows.
@@ -223,9 +262,6 @@ export function alsoForCandidateFacts(input: {
   product: IntakeProductIdentity;
 }): AlsoForCandidateFacts {
   const { profileId, product } = input;
-  const allergenText = [product.name, product.strength]
-    .filter((v): v is string => !!v && v.trim() !== "")
-    .join(" ");
   return {
     profileId,
     name: input.name,
@@ -235,9 +271,7 @@ export function alsoForCandidateFacts(input: {
       input.canWrite &&
       !input.isMember &&
       hasUnpooledDuplicate(profileId, product),
-    allergen:
-      allergenConflict(allergenText, recordedAllergens(profileId))?.allergen ??
-      null,
+    allergen: allergyBlocking(profileId, product),
     dose: resolveAlsoForDose({
       identity: product,
       pediatric: pediatricContextFor(profileId),
@@ -287,8 +321,15 @@ export function alsoForCardModel(input: {
   if (input.candidates.length === 0) return { sources: [], offers: [] };
   const sources: { option: AlsoForSourceOption; source: AlsoForSource }[] = [];
   for (const member of input.visibleMembers) {
-    const source = alsoForSource(member.profileId, member.itemId);
-    if (!source) continue;
+    const source = alsoForSource(
+      member.profileId,
+      member.itemId,
+      today(member.profileId)
+    );
+    // A member with no dose row still in force has no schedule to hand on: every row
+    // it has is a window that already closed. Offering it would name a plan the copy
+    // cannot write, so it is not a source — the ordinary management doors stand.
+    if (!source || source.schedule.doses.length === 0) continue;
     sources.push({
       option: {
         itemId: source.itemId,
@@ -318,6 +359,7 @@ export function alsoForCardModel(input: {
       basisBySource[source.itemId] = alsoForBasis({
         product,
         sourceItemId: source.itemId,
+        sourceIdentity: source,
         schedule: source.schedule,
         targetProfileId: candidate.id,
         dose: facts.dose,
@@ -380,7 +422,14 @@ export function copyPoolMemberPlan(input: {
         error: `${input.targetName} already draws from this bottle.`,
       };
     }
-    const source = alsoForSource(input.sourceProfileId, input.sourceItemId);
+    // The recipient's day decides which of the source's dose windows are still in
+    // force, exactly as it did when the offer was rendered.
+    const targetToday = today(input.targetProfileId);
+    const source = alsoForSource(
+      input.sourceProfileId,
+      input.sourceItemId,
+      targetToday
+    );
     if (!source) return { ok: false, error: STALE };
 
     const product = poolProductIdentity(pool);
@@ -395,6 +444,7 @@ export function copyPoolMemberPlan(input: {
     const basis = alsoForBasis({
       product,
       sourceItemId: source.itemId,
+      sourceIdentity: source,
       schedule: source.schedule,
       targetProfileId: input.targetProfileId,
       dose: facts.dose,
@@ -404,6 +454,10 @@ export function copyPoolMemberPlan(input: {
     }
 
     const schedule = source.schedule;
+    const seeds = alsoForDoseSeeds(schedule.doses, facts.dose, targetToday);
+    // What the receipt may claim is what the copy WRITES, not what was derivable: an
+    // amount with no row to carry it is not a dose (alsoForWrittenDose).
+    const written = alsoForWrittenDose(facts.dose, seeds);
     // PRODUCT, OBLIGATION AND SCHEDULE — and nothing else. No amount, no weight, no
     // start date, no administrations, no stock. The PRN redose figures are absent for
     // the same reason as the amount: they are the label numbers confirmed for THAT
@@ -431,11 +485,7 @@ export function copyPoolMemberPlan(input: {
       cadenceWeekdays: schedule.cadence_weekdays ?? null,
       cadenceIntervalDays: schedule.cadence_interval_days ?? null,
       cadenceAnchorDate: schedule.cadence_anchor_date ?? null,
-      doses: alsoForDoseSeeds(
-        schedule.doses,
-        facts.dose,
-        today(input.targetProfileId)
-      ),
+      doses: seeds,
     };
     const created = createIntakeItemCore(
       input.targetProfileId,
@@ -458,8 +508,8 @@ export function copyPoolMemberPlan(input: {
       ok: true,
       itemId: created.id,
       kind: source.kind,
-      receipt: alsoForReceipt(input.targetName, facts.dose),
-      dose: facts.dose,
+      receipt: alsoForReceipt(input.targetName, written),
+      dose: written,
     };
   });
 }

@@ -45,11 +45,13 @@ function seedMember(
   over: {
     name?: string;
     obligation?: string;
-    amount?: string;
+    amount?: string | null;
     times?: string[];
     cadenceKind?: string;
     intervalDays?: number | null;
     anchor?: string | null;
+    rxcui?: string | null;
+    endDate?: string | null;
   } = {}
 ): number {
   const itemId = Number(
@@ -57,8 +59,8 @@ function seedMember(
       .prepare(
         `INSERT INTO intake_items
            (profile_id, name, active, kind, condition, obligation, supply_id,
-            cadence_kind, cadence_interval_days, cadence_anchor_date, source)
-         VALUES (?, ?, 1, 'medication', 'daily', ?, ?, ?, ?, ?, 'manual')`
+            cadence_kind, cadence_interval_days, cadence_anchor_date, rxcui, source)
+         VALUES (?, ?, 1, 'medication', 'daily', ?, ?, ?, ?, ?, ?, 'manual')`
       )
       .run(
         profileId,
@@ -67,16 +69,54 @@ function seedMember(
         supplyId,
         over.cadenceKind ?? "daily",
         over.intervalDays ?? null,
-        over.anchor ?? null
+        over.anchor ?? null,
+        over.rxcui ?? null
       ).lastInsertRowid
   );
   (over.times ?? ["morning", "evening"]).forEach((time, i) => {
     db.prepare(
-      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-       VALUES (?, ?, ?, 'with_food', ?)`
-    ).run(itemId, over.amount ?? "400 mg", time, i);
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, end_date)
+       VALUES (?, ?, ?, 'with_food', ?, ?)`
+    ).run(
+      itemId,
+      over.amount === undefined ? "400 mg" : over.amount,
+      time,
+      i,
+      over.endDate ?? null
+    );
   });
   return itemId;
+}
+
+// The card model for one bottle offered to one person — the same model the page
+// renders, so a case asks the question the cabinet asks.
+function modelFor(
+  bottleId: number,
+  bottleName: string,
+  strength: string | null,
+  member: { itemId: number; profileId: number },
+  candidate: { id: number; name: string }
+) {
+  return alsoForCardModel({
+    pool: { id: bottleId, name: bottleName, strength },
+    visibleMembers: [
+      { itemId: member.itemId, profileId: member.profileId, name: "Mira" },
+    ],
+    memberProfileIds: [member.profileId],
+    candidates: [candidate],
+  });
+}
+
+function recordAllergy(
+  profileId: number,
+  substance: string,
+  code: string | null = null
+): void {
+  db.prepare(
+    `INSERT INTO allergies (profile_id, substance, status, substance_code, substance_code_system)
+     VALUES (?, ?, 'active', ?, ?)`
+  ).run(profileId, substance, code, code ? "RxNorm" : null);
 }
 
 function itemsOf(profileId: number): {
@@ -415,3 +455,273 @@ function basisFor(targetProfileId: number): string {
   });
   return model.offers[0]?.basisBySource[sourceItem] ?? "";
 }
+
+// ── THE FALSIFYING PASS'S OWN CASES (#5230 repair round 1) ───────────────────
+//
+// Four findings, each reproduced here as the reviewer measured it, so a regression
+// fails on the case that found it rather than on a paraphrase.
+
+describe("allergy is a GATE, judged by the canonical drug-allergy model", () => {
+  // Each of these was OFFERED and TAPPED successfully before the fix, after which the
+  // app's own crossCheckDrugAllergies flagged the row the offer had just created.
+  it.each([
+    ["a class match", "Penicillin", "Amoxicillin"],
+    ["a documented cross-class match", "Aspirin", "Ibuprofen"],
+    ["a brand-name bottle", "Ibuprofen", "Advil"],
+  ])("withholds the bottle on %s", (_label, allergen, bottleName) => {
+    const owner = newProfile(`AF Src ${bottleName}`);
+    const bottleId = createSharedSupply(
+      {
+        name: bottleName,
+        strength: "200 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    const item = seedMember(owner, bottleId, { name: bottleName });
+    const target = newProfile(`AF Allergic ${bottleName}`);
+    recordAllergy(target, allergen);
+
+    const model = modelFor(
+      bottleId,
+      bottleName,
+      "200 mg",
+      { itemId: item, profileId: owner },
+      { id: target, name: "Ada" }
+    );
+    expect(model.offers).toEqual([]);
+
+    // …and the write refuses too, so a forged post cannot land what the card withheld.
+    const res = copyPoolMemberPlan({
+      supplyId: bottleId,
+      sourceProfileId: owner,
+      sourceItemId: item,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: "anything",
+    });
+    expect(res.ok).toBe(false);
+    expect(itemsOf(target)).toEqual([]);
+  });
+
+  it("still offers a bottle no recorded allergy touches", () => {
+    const target = newProfile("AF Unrelated Allergy");
+    recordAllergy(target, "Penicillin");
+    expect(basisFor(target)).not.toBe("");
+  });
+
+  it("uses the recorded RxNorm code when the names do not meet", () => {
+    const owner = newProfile("AF Coded Src");
+    const bottleId = createSharedSupply(
+      {
+        name: "Household painkiller",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    // The bottle's name says nothing; its membership carries the code (#4717's
+    // RxCUI-first leg, which the bottle side could not reach before the fix).
+    const item = seedMember(owner, bottleId, {
+      name: "Household painkiller",
+      rxcui: "5640",
+    });
+    const target = newProfile("AF Coded Allergic");
+    recordAllergy(target, "ibuprofen", "5640");
+
+    expect(
+      modelFor(
+        bottleId,
+        "Household painkiller",
+        null,
+        { itemId: item, profileId: owner },
+        { id: target, name: "Ada" }
+      ).offers
+    ).toEqual([]);
+  });
+});
+
+describe("the duplicate gate asks about the product, not a dose amount", () => {
+  // A person taking two 200 mg tablets records a "400 mg" dose row. Reading that as a
+  // product strength said they did not have the bottle, and handed them a SECOND
+  // active ibuprofen — two reminder streams for one drug.
+  it.each([
+    ["a dose amount that is not the bottle's strength", "400 mg", "200 mg"],
+    ["a row with no dose amount at all", null, "200 mg"],
+    ["a bottle with no strength", "400 mg", null],
+  ])(
+    "withholds when the target already tracks it — %s",
+    (_l, amount, strength) => {
+      const owner = newProfile(`AF Dup Src ${_l}`);
+      const bottleId = createSharedSupply(
+        {
+          name: "Ibuprofen",
+          strength,
+          form: "tablet",
+          lowSupplyDays: null,
+          notes: null,
+        },
+        30
+      );
+      const item = seedMember(owner, bottleId);
+      const target = newProfile(`AF Dup Target ${_l}`);
+      seedMember(target, null, { amount, times: ["morning"] });
+
+      expect(
+        modelFor(
+          bottleId,
+          "Ibuprofen",
+          strength,
+          { itemId: item, profileId: owner },
+          { id: target, name: "Ada" }
+        ).offers
+      ).toEqual([]);
+      expect(itemsOf(target)).toHaveLength(1);
+    }
+  );
+});
+
+describe("a source with nothing still in force is not a source", () => {
+  it("is not offered, so no receipt can claim a dose the copy never wrote", () => {
+    const owner = newProfile("AF Elapsed Src");
+    const bottleId = createSharedSupply(
+      {
+        name: "Ibuprofen",
+        strength: "200 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    const td = today(owner);
+    const item = seedMember(owner, bottleId, {
+      times: ["morning"],
+      endDate: shiftDateStr(td, -30),
+    });
+    const target = newProfile("AF Elapsed Target");
+
+    const model = modelFor(
+      bottleId,
+      "Ibuprofen",
+      "200 mg",
+      { itemId: item, profileId: owner },
+      { id: target, name: "Ada" }
+    );
+    expect(model.sources).toEqual([]);
+    expect(model.offers).toEqual([]);
+    expect(itemsOf(target)).toEqual([]);
+  });
+
+  it("tells the truth in the receipt if one is copied anyway", () => {
+    // Windows that close between render and tap: the card offered a schedule, the
+    // write finds nothing in force. The row is honest about having no dose.
+    const owner = newProfile("AF Closing Src");
+    const bottleId = createSharedSupply(
+      {
+        name: "Ibuprofen",
+        strength: "200 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    const td = today(owner);
+    const item = seedMember(owner, bottleId, {
+      times: ["morning"],
+      endDate: shiftDateStr(td, 3),
+    });
+    const target = newProfile("AF Closing Target");
+    const model = modelFor(
+      bottleId,
+      "Ibuprofen",
+      "200 mg",
+      { itemId: item, profileId: owner },
+      { id: target, name: "Ada" }
+    );
+    const basis = model.offers[0].basisBySource[item];
+    // The window closes before the tap.
+    db.prepare(
+      "UPDATE intake_item_doses SET end_date = ? WHERE item_id = ?"
+    ).run(shiftDateStr(td, -1), item);
+    const res = copyPoolMemberPlan({
+      supplyId: bottleId,
+      sourceProfileId: owner,
+      sourceItemId: item,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis,
+    });
+    // The schedule changed under the offer, so the honest answer is a refusal.
+    expect(res.ok).toBe(false);
+    expect(itemsOf(target)).toEqual([]);
+  });
+});
+
+describe("the basis binds every field the copy carries off the source", () => {
+  it.each([
+    ["kind", "UPDATE intake_items SET kind = 'supplement' WHERE id = ?"],
+    ["RxNorm identity", "UPDATE intake_items SET rxcui = '11289' WHERE id = ?"],
+    ["brand", "UPDATE intake_items SET brand = 'Motrin' WHERE id = ?"],
+    [
+      "product",
+      "UPDATE intake_items SET product = 'warfarin 5 mg tablet' WHERE id = ?",
+    ],
+  ])(
+    "refuses when the source's %s changed between render and tap",
+    (_l, sql) => {
+      const target = newProfile(`AF Swap ${_l}`);
+      const basis = basisFor(target);
+      db.prepare(sql).run(sourceItem);
+      const res = copyPoolMemberPlan({
+        supplyId,
+        sourceProfileId: source,
+        sourceItemId: sourceItem,
+        targetProfileId: target,
+        targetName: "Ada",
+        basis,
+      });
+      expect(res.ok).toBe(false);
+      expect(itemsOf(target)).toEqual([]);
+    }
+  );
+  // The RxNorm leg needs its own case: the BOTTLE's identity is read off the lowest-id
+  // coded member, so a change to a LATER member moves what the copy writes without
+  // moving the product the card named. Only the source-identity term catches it.
+  it("refuses when a later source member's RxNorm identity changed", () => {
+    db.prepare("UPDATE intake_items SET rxcui = '5640' WHERE id = ?").run(
+      sourceItem
+    );
+    const second = newProfile("AF Swap Second");
+    const secondItem = seedMember(second, supplyId, {
+      times: ["morning"],
+      rxcui: "5640",
+    });
+    const target = newProfile("AF Swap Cui Target");
+    const model = alsoForCardModel({
+      pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
+      visibleMembers: [{ itemId: secondItem, profileId: second, name: "Dune" }],
+      memberProfileIds: [source, second],
+      candidates: [{ id: target, name: "Ada" }],
+    });
+    const basis = model.offers[0].basisBySource[secondItem];
+    db.prepare("UPDATE intake_items SET rxcui = '11289' WHERE id = ?").run(
+      secondItem
+    );
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: second,
+      sourceItemId: secondItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis,
+    });
+    expect(res.ok).toBe(false);
+    expect(itemsOf(target)).toEqual([]);
+  });
+});
