@@ -27,7 +27,6 @@ import { CATALOGS } from "@/components/catalog";
 import CatalogEditor from "@/components/CatalogEditor";
 import CatalogLifecycleControl from "@/components/CatalogLifecycleControl";
 import EquipmentDetailActions from "@/components/EquipmentDetailActions";
-import BackLink from "@/components/BackLink";
 import { StatBox } from "@/components/StatBox";
 
 export const dynamic = "force-dynamic";
@@ -67,9 +66,8 @@ export default async function EquipmentDetailPage(props: {
 
   return (
     <PageContainer width="reading" data-testid="equipment-detail">
-      <BackLink href="/equipment" label="Back to equipment" />
-
       <PageHeader
+        back={{ href: "/equipment", destination: "Equipment" }}
         title={equipment.name}
         subtitle={
           <span className="inline-flex items-center gap-1.5">

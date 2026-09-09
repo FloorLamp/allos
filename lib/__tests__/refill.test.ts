@@ -354,21 +354,43 @@ describe("runOutDateStr (#852 item 3 — projected run-out date)", () => {
 // The medicine cabinet's ONE visibility rule (#1522), shared by the /supplies page's
 // list and the "N shared bottles" doors that replaced its nav row.
 describe("isPoolVisibleTo (#1522 — one cabinet rule)", () => {
-  const accessible = new Set([1, 2]);
+  const member = { accessible: new Set([1, 2]), isAdmin: false };
+  const admin = { accessible: new Set([1, 2]), isAdmin: true };
+  const stranger = { accessible: new Set<number>(), isAdmin: false };
 
   it("shows a pool any accessible profile draws from", () => {
-    expect(isPoolVisibleTo([1], accessible)).toBe(true);
-    expect(isPoolVisibleTo([2, 7], accessible)).toBe(true);
+    expect(isPoolVisibleTo([1], member)).toBe(true);
+    expect(isPoolVisibleTo([2, 7], member)).toBe(true);
   });
 
   it("hides a pool only OTHER households draw from", () => {
-    expect(isPoolVisibleTo([7], accessible)).toBe(false);
-    expect(isPoolVisibleTo([7, 8], accessible)).toBe(false);
+    expect(isPoolVisibleTo([7], member)).toBe(false);
+    expect(isPoolVisibleTo([7, 8], member)).toBe(false);
   });
 
-  it("shows an ORPHANED pool to everyone — it names nobody, and somebody must be able to clear it", () => {
-    expect(isPoolVisibleTo([], accessible)).toBe(true);
-    expect(isPoolVisibleTo([], new Set<number>())).toBe(true);
+  // #5122 (owner ruling 2026-09-09): the member-less case is ADMIN-ONLY. It used to
+  // admit every viewer, which showed one person's product and count to unrelated
+  // logins once the last member unlinked.
+  it("shows a MEMBER-LESS bottle to an admin only", () => {
+    expect(isPoolVisibleTo([], admin)).toBe(true);
+    expect(isPoolVisibleTo([], member)).toBe(false);
+    expect(isPoolVisibleTo([], stranger)).toBe(false);
+  });
+
+  // The accessible set stops mattering once membership is empty: a caregiver with
+  // write access on a FORMER member's profile is refused exactly like a stranger.
+  it("refuses a former member's caregiver as flatly as an unrelated login", () => {
+    const formerCaregiver = { accessible: new Set([1, 2]), isAdmin: false };
+    expect(isPoolVisibleTo([], formerCaregiver)).toBe(
+      isPoolVisibleTo([], stranger)
+    );
+  });
+
+  // A bottle with members is unaffected by role — an admin reaches every profile
+  // anyway, so this is the same answer by a different route.
+  it("leaves a bottle with members on the membership rule", () => {
+    expect(isPoolVisibleTo([7], admin)).toBe(false);
+    expect(isPoolVisibleTo([1], member)).toBe(true);
   });
 });
 

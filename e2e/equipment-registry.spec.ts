@@ -70,7 +70,9 @@ test.describe("Equipment registry (#343)", () => {
     // Back link returns to the index.
     await followLink(
       page,
-      page.getByRole("link", { name: "Back to equipment" }),
+      page
+        .getByRole("main")
+        .getByRole("link", { name: "Equipment", exact: true }),
       /\/equipment$/
     );
     await expect(page.getByTestId("equipment-index")).toBeVisible();

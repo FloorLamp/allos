@@ -90,9 +90,7 @@ test.describe("Visit detail page", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expectNoClippedContent(page);
     // Back-link returns to the Visits list.
-    await expect(
-      detail.getByRole("link", { name: "Back to visits" })
-    ).toBeVisible();
+    await expect(detail.getByRole("link", { name: "Visits" })).toBeVisible();
   });
 
   test("the Visits list row links to the detail page", async ({ page }) => {

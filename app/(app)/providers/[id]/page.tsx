@@ -34,7 +34,6 @@ import ProviderIdentityCard from "../ProviderIdentityCard";
 import ProviderMergePanel from "../ProviderMergePanel";
 import ProviderAffiliations from "../ProviderAffiliations";
 import TabList from "@/components/TabList";
-import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -261,9 +260,8 @@ export default async function ProviderDetailPage(props: {
       className="mx-auto"
       data-testid="provider-detail"
     >
-      <BackLink href="/records/care/providers" label="Back to providers" />
-
       <PageHeader
+        back={{ href: "/records/care/providers", destination: "Providers" }}
         title={provider.name}
         subtitle={
           <span className="inline-flex items-center gap-1.5">
