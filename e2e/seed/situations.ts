@@ -85,7 +85,7 @@ export function seedCycleAndDerived(): void {
 
   // ── Stale open period fixture (#1682 fix a) ──────────────────────────────────
   // A dedicated adult profile whose latest period was started 18 days ago and NEVER
-  // ended — the forgotten "Period ended" tap. Past MAX_PLAUSIBLE_PERIOD_DAYS the
+  // ended — the forgotten "Period ended" tap. Past openPeriodClaimEnd the
   // derivations stop claiming menstrual and the Cycle surface prompts for the real end
   // date, with the record left exactly as stored. One earlier completed period gives the
   // profile a history to derive against. Its own profile because CYCLE_PROFILE must have
