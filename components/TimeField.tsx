@@ -516,7 +516,7 @@ function WheelColumn({
   const rows = (2 * sideCopies + 1) * options.length;
   const [center, setCenter] = useState(middle + index);
   const gesture = useRef<{
-    phase: "idle" | "armed" | "scrolling";
+    phase: "idle" | "armed" | "scrolling" | "choice";
     top: number;
   }>({
     phase: "idle",
@@ -554,25 +554,30 @@ function WheelColumn({
     settle.current = setTimeout(() => {
       settle.current = null;
       if (contacts.current || gesture.current.phase === "idle") return;
-      const moved = gesture.current.phase === "scrolling";
+      const { phase, top } = gesture.current;
       gesture.current.phase = "idle";
-      if (!moved) return;
+      if (phase !== "scrolling" && phase !== "choice") return;
       const el = ref.current;
       const live = latest.current;
       if (!el || !live.open) return;
       const count = live.options.length;
-      const physical = Math.round(el.scrollTop / CELL_PX);
+      const physical =
+        phase === "choice" ? top / CELL_PX : Math.round(el.scrollTop / CELL_PX);
       const logical = live.cyclic
         ? ((physical % count) + count) % count
         : Math.min(count - 1, Math.max(0, physical));
       const parked = live.cyclic
         ? Math.ceil(RUNWAY_ROWS / count) * count + logical
         : logical;
-      // Whole-cycle relocation preserves the visible sequence and fractional
-      // offset. Only a finished gesture can spend the runway and recenter it.
-      el.scrollTop += (parked - physical) * CELL_PX;
+      // Residual native scrolling cannot replace an explicit choice. Ordinary
+      // flicks keep their fractional offset when returning to the middle cycle.
+      if (phase === "choice") el.scrollTop = parked * CELL_PX;
+      else el.scrollTop += (parked - physical) * CELL_PX;
       setCenter(parked);
-      if (!live.selected || live.options[logical] !== live.value)
+      if (
+        phase !== "choice" &&
+        (!live.selected || live.options[logical] !== live.value)
+      )
         live.onSelect(live.options[logical]);
     }, SETTLE_MS);
   };
@@ -580,7 +585,8 @@ function WheelColumn({
   const choose = (physical: number) => {
     if (settle.current) clearTimeout(settle.current);
     settle.current = null;
-    gesture.current.phase = "idle";
+    // Keep the target through native continuation and defer layout parking.
+    gesture.current = { phase: "choice", top: physical * CELL_PX };
     const live = latest.current;
     const logical =
       ((physical % live.options.length) + live.options.length) %
@@ -592,6 +598,8 @@ function WheelColumn({
     setCenter(physical);
     if (!live.selected || live.options[logical] !== live.value)
       live.onSelect(live.options[logical]);
+    // A same-offset choice may emit no scroll event to start finalization.
+    queueSettle();
   };
 
   const move = (to: number) => {
@@ -606,7 +614,10 @@ function WheelColumn({
   };
 
   const arm = () => {
-    if (gesture.current.phase === "idle") {
+    if (
+      gesture.current.phase === "idle" ||
+      gesture.current.phase === "choice"
+    ) {
       gesture.current.phase = "armed";
       gesture.current.top = ref.current?.scrollTop ?? 0;
     }
@@ -651,9 +662,12 @@ function WheelColumn({
           )
         );
         if (gesture.current.phase !== "idle") {
-          const top = event.currentTarget.scrollTop;
-          if (top !== gesture.current.top) gesture.current.phase = "scrolling";
-          gesture.current.top = top;
+          if (gesture.current.phase !== "choice") {
+            const top = event.currentTarget.scrollTop;
+            if (top !== gesture.current.top)
+              gesture.current.phase = "scrolling";
+            gesture.current.top = top;
+          }
           queueSettle();
         }
       }}

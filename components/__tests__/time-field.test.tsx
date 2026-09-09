@@ -293,20 +293,12 @@ describe("TimeField — the wheel", () => {
     expect(emitted.at(-1)).toBe("07:45");
   });
 
-  // A TAP OUTRANKS A SCROLL STILL IN FLIGHT. The column suppresses its own parking
-  // effect while a flick owns the offset, so a row tapped mid-momentum was overwritten
-  // ~120ms later by the settle reading the momentum's resting place instead: the finger
-  // hit 45 and the field committed 21. The tap is the explicit choice and has to win,
-  // or "tap a row selects it" is not true. Found by running dose-history.spec.ts at two
-  // workers, where the slower machine let the settle land after the tap.
-  //
-  // THE FIXTURE REACHES THE FORBIDDEN STATE ON PURPOSE: the scroll is fired FIRST, so a
-  // settle is genuinely pending and genuinely disagrees with the tap. Without the fix
-  // this reads "09:21" — the assertion can fail, which is the only reason to trust it
-  // passing.
+  // A choice retains both its clock and physical row when the browser sends
+  // residual scroll events after the click/key event, without fresh input.
   it.each(["tap", "Home"] as const)(
-    "an immediate %s choice cancels a pending scroll",
+    "an immediate %s choice survives residual scrolling",
     async (choice) => {
+      vi.useFakeTimers();
       const { field } = mount("24h", "09:00");
       openWheel();
       const minutes = column("Minute");
@@ -315,10 +307,29 @@ describe("TimeField — the wheel", () => {
       if (choice === "tap")
         fireEvent.click(within(minutes).getByRole("option", { name: "45" }));
       else fireEvent.keyDown(minutes, { key: "Home" });
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+      positionRow(minutes, "21");
+      await act(() => vi.advanceTimersByTimeAsync(120));
+      const expected = choice === "tap" ? "45" : "00";
+      expect(field().value).toBe(`09:${expected}`);
+      const selected = within(minutes).getByRole("option", {
+        name: expected,
+        selected: true,
       });
-      expect(field().value).toBe(choice === "tap" ? "09:45" : "09:00");
+      expect(minutes.scrollTop).toBe(
+        (Array.from(minutes.children).indexOf(selected) - 1) * 44
+      );
+      expect(
+        document.getElementById(minutes.getAttribute("aria-activedescendant")!)
+      ).toBe(selected);
+
+      if (choice === "tap") {
+        // A fresh wheel input supersedes even a same-offset pending choice.
+        fireEvent.click(selected);
+        fireEvent.wheel(minutes, { deltaY: 44 });
+        positionRow(minutes, "30");
+        await act(() => vi.advanceTimersByTimeAsync(120));
+        expect(field().value).toBe("09:30");
+      }
     }
   );
 
