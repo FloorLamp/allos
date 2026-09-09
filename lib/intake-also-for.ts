@@ -43,7 +43,6 @@ import { medNameKey } from "./medication-record-match";
 import { prnDefaultsFor } from "./prn-defaults";
 import {
   formulationDoseAmount,
-  formulationSlugForProduct,
   isChildProfileAge,
   pediatricDoseSuggestion,
   pediatricRefusalLine,
@@ -117,9 +116,6 @@ const NO_LABEL_REASON = "set the amount on the new row";
 // against its stored amount, which a brand-new item does not have.
 export function resolveAlsoForDose(input: {
   identity: Pick<IntakeProductIdentity, "name" | "rxcui" | "rxcuiIngredients">;
-  // The bottle's formulation label, when a member records one — it is what turns a
-  // band's mg into a readable volume, and it is a product fact of the shared bottle.
-  product: string | null;
   pediatric: PediatricFormContext | null;
 }): AlsoForDose {
   const entry = prnDefaultsFor({
@@ -148,10 +144,9 @@ export function resolveAlsoForDose(input: {
       weightKg: pediatric.weightKg,
       weightDate: pediatric.weightDate,
       today: pediatric.today,
-      formulationSlug: formulationSlugForProduct(
-        entry.pediatric.formulations,
-        input.product
-      ),
+      // No formulation slug: the copy stores MILLIGRAMS (the exposure basis), and a
+      // volume belongs to the product the recipient actually holds, which their own
+      // row states. mlForBand would only add a number nothing here writes.
     });
     if (result.kind === "dose") {
       return {

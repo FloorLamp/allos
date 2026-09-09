@@ -121,26 +121,27 @@ export function alsoForSource(
   };
 }
 
-// The bottle's product identity: the bottle's own name and strength (it owns what the
-// product is), plus the RxNorm identity its members carry, which a `shared_supplies`
-// row has no column for.
+// The bottle's product identity: its OWN name and strength, and nothing borrowed from
+// a member.
+//
+// THE BOTTLE OWNS WHAT THE PRODUCT IS (#1705 / #5518's `prnLabelIdentityFor`), which is
+// also what makes this answer STABLE — and the offer's basis is only worth checking if
+// both sides compute it the same way. Reading a member's RxCUI here would make the
+// bottle's identity depend on WHICH members the reader can see: the card sees the
+// members behind its own grants, the write sees the membership, and the two would
+// disagree about a bottle whose coded member is hidden — refusing every tap. The
+// members of one bottle are the same product by construction, so the bottle's own two
+// facts are the honest identity. A copied row still carries the SOURCE's RxNorm codes
+// as its product provenance; that is the item's fact, not the bottle's.
 export function poolProductIdentity(
-  pool: Pick<PoolView, "name" | "strength">,
-  sources: readonly AlsoForSource[]
+  pool: Pick<PoolView, "name" | "strength">
 ): IntakeProductIdentity {
-  const coded = sources.find((s) => s.rxcui || s.rxcuiIngredients?.length);
   return {
     name: pool.name,
     strength: pool.strength,
-    rxcui: coded?.rxcui ?? null,
-    rxcuiIngredients: coded?.rxcuiIngredients ?? null,
+    rxcui: null,
+    rxcuiIngredients: null,
   };
-}
-
-// The bottle's formulation label, when a member records one — a product fact of the
-// shared bottle, and what turns a band's mg into a readable volume.
-function poolFormulation(sources: readonly AlsoForSource[]): string | null {
-  return sources.find((s) => s.product?.trim())?.product?.trim() ?? null;
 }
 
 // ---- The recipient's facts --------------------------------------------------
@@ -220,7 +221,6 @@ export function alsoForCandidateFacts(input: {
   canWrite: boolean;
   isMember: boolean;
   product: IntakeProductIdentity;
-  formulation: string | null;
 }): AlsoForCandidateFacts {
   const { profileId, product } = input;
   const allergenText = [product.name, product.strength]
@@ -240,7 +240,6 @@ export function alsoForCandidateFacts(input: {
       null,
     dose: resolveAlsoForDose({
       identity: product,
-      product: input.formulation,
       pediatric: pediatricContextFor(profileId),
     }),
   };
@@ -294,11 +293,7 @@ export function alsoForCardModel(input: {
   }
   if (sources.length === 0) return { sources: [], offers: [] };
 
-  const product = poolProductIdentity(
-    input.pool,
-    sources.map((s) => s.source)
-  );
-  const formulation = poolFormulation(sources.map((s) => s.source));
+  const product = poolProductIdentity(input.pool);
   const memberIds = new Set(input.memberProfileIds);
   const offers: AlsoForOffer[] = [];
   for (const candidate of input.candidates) {
@@ -308,7 +303,6 @@ export function alsoForCardModel(input: {
       canWrite: true,
       isMember: memberIds.has(candidate.id),
       product,
-      formulation,
     });
     if (!alsoForEligible(facts)) continue;
     const basisBySource: Record<number, string> = {};
@@ -378,14 +372,13 @@ export function copyPoolMemberPlan(input: {
     const source = alsoForSource(input.sourceProfileId, input.sourceItemId);
     if (!source) return { ok: false, error: STALE };
 
-    const product = poolProductIdentity(pool, [source]);
+    const product = poolProductIdentity(pool);
     const facts = alsoForCandidateFacts({
       profileId: input.targetProfileId,
       name: input.targetName,
       canWrite: true,
       isMember: false,
       product,
-      formulation: source.product?.trim() ?? null,
     });
     if (!alsoForEligible(facts)) return { ok: false, error: STALE };
     const basis = alsoForBasis({

@@ -121,6 +121,16 @@ profile set. Do not manufacture grants or expose unrelated members' data through
 a shared bottle. Product-fact exchange reuses the pool/item model rather than
 copying independent inventories. The cabinet is reached from its consumers.
 
+Adding a bottle for a second person copies ONE named member's row; it never
+switches the caller's active profile and never opens the add form. The copy takes
+the product, the source member's obligation and their schedule, and nothing else:
+the amount is derived for the recipient (the pediatric weight band from their own
+weight where the product has one, else the label's adult dose, else no dose rows
+at all), and there is no start date, weight, history or stock. With several
+readable members the source is chosen explicitly; with one it is named. Source,
+membership, duplicate eligibility and the dose basis are re-read inside the write,
+which refuses a stale offer rather than copying a different member's plan.
+
 ## Amount parsing and suggestions
 
 An ambiguous dose string remains unreadable; do not guess its locale or unit.

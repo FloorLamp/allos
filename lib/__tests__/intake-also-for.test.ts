@@ -86,7 +86,6 @@ describe("the recipient's own dose", () => {
   it("takes an adult's amount from the label, never from the bottle", () => {
     const dose = resolveAlsoForDose({
       identity: IBUPROFEN,
-      product: null,
       pediatric: { ...childContext(), ageMonths: 480 },
     });
     expect(dose.kind).toBe("amount");
@@ -97,7 +96,6 @@ describe("the recipient's own dose", () => {
   it("takes a child's amount from their own weight band", () => {
     const dose = resolveAlsoForDose({
       identity: IBUPROFEN,
-      product: null,
       pediatric: childContext(),
     });
     expect(dose.kind).toBe("amount");
@@ -109,7 +107,6 @@ describe("the recipient's own dose", () => {
   it("lands dose-less, with the band's own reason, on a stale weight", () => {
     const dose = resolveAlsoForDose({
       identity: IBUPROFEN,
-      product: null,
       pediatric: childContext({ weightDate: "2025-01-01" }),
     });
     expect(dose.kind).toBe("none");
@@ -121,21 +118,14 @@ describe("the recipient's own dose", () => {
     expect(
       resolveAlsoForDose({
         identity: IBUPROFEN,
-        product: null,
-        pediatric: childContext({ weightKg: null, weightDate: null }),
+          pediatric: childContext({ weightKg: null, weightDate: null }),
       })
     ).toMatchObject({ kind: "none" });
   });
 
   it("withholds the offer for a child when the label has no children's chart", () => {
     const dose = resolveAlsoForDose({
-      identity: {
-        name: "Aspirin",
-        strength: "325 mg",
-        rxcui: null,
-        rxcuiIngredients: null,
-      },
-      product: null,
+      identity: { name: "Aspirin", rxcui: null, rxcuiIngredients: null },
       pediatric: childContext(),
     });
     expect(dose.kind).toBe("withheld");
@@ -144,7 +134,6 @@ describe("the recipient's own dose", () => {
   it("withholds the offer at the label's own hard age gate", () => {
     const dose = resolveAlsoForDose({
       identity: IBUPROFEN,
-      product: null,
       pediatric: childContext({ ageMonths: 2, weightKg: 5 }),
     });
     expect(dose.kind).toBe("withheld");
@@ -155,12 +144,10 @@ describe("the recipient's own dose", () => {
       resolveAlsoForDose({
         identity: {
           name: "Household Vitamin D3 (test)",
-          strength: "5000 IU",
           rxcui: null,
           rxcuiIngredients: null,
         },
-        product: null,
-        pediatric: null,
+          pediatric: null,
       })
     ).toMatchObject({ kind: "none" });
   });

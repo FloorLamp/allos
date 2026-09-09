@@ -6,17 +6,21 @@ import SharedSupplyCard, {
 } from "@/app/(app)/supplies/SharedSupplyCard";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
+import type { AlsoForResult } from "@/lib/intake-also-for";
+import { medicationHref } from "@/lib/hrefs";
 
 // THE CARD'S HALF OF "ALSO FOR" (#5230). Eligibility itself is derived server-side and
 // pinned in the pure and db tiers; what only a mounted card can show is the owner's
 // 2026-09-09 source ruling: ONE readable member is NAMED, SEVERAL need an explicit pick
 // with nothing preselected, and the action stays disabled until there is one.
 
-const alsoForAction = vi.fn(async () => ({
-  ok: true,
-  receipt: "Added for Ada · 200 mg from the adult label dose",
-  href: "/medications/9" as const,
-}));
+const alsoForAction = vi.fn(
+  async (_posted: FormData): Promise<AlsoForResult> => ({
+    ok: true,
+    receipt: "Added for Ada · 200 mg from the adult label dose",
+    href: medicationHref(9),
+  })
+);
 
 vi.mock("@/app/(app)/supplies/actions", () => ({
   alsoForAction: (fd: FormData) => alsoForAction(fd),
@@ -93,7 +97,7 @@ describe("the offer names the plan it will copy", () => {
 
     fireEvent.click(chip);
     await waitFor(() => expect(alsoForAction).toHaveBeenCalledTimes(1));
-    const posted = alsoForAction.mock.calls[0][0] as unknown as FormData;
+    const posted = alsoForAction.mock.calls[0][0];
     expect(posted.get("profile_id")).toBe("4");
     expect(posted.get("source_item_id")).toBe("11");
     expect(posted.get("source_profile_id")).toBe("2");
@@ -123,7 +127,7 @@ describe("the offer names the plan it will copy", () => {
     expect((chip as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(chip);
     await waitFor(() => expect(alsoForAction).toHaveBeenCalledTimes(1));
-    const posted = alsoForAction.mock.calls[0][0] as unknown as FormData;
+    const posted = alsoForAction.mock.calls[0][0];
     expect(posted.get("source_item_id")).toBe("12");
     expect(posted.get("basis")).toBe("basis-dune");
   });
@@ -160,7 +164,7 @@ describe("the offer names the plan it will copy", () => {
     alsoForAction.mockResolvedValueOnce({
       ok: false,
       error: "This offer changed. Reload the cabinet and try again.",
-    } as never);
+    });
     mount(card());
     fireEvent.click(screen.getByTestId("shared-supply-also-for-chip"));
     await waitFor(() =>
@@ -192,7 +196,7 @@ describe("past a chip count the card falls back to a select", () => {
     expect(chip.disabled).toBe(false);
     fireEvent.click(chip);
     await waitFor(() => expect(alsoForAction).toHaveBeenCalledTimes(1));
-    const posted = alsoForAction.mock.calls[0][0] as unknown as FormData;
+    const posted = alsoForAction.mock.calls[0][0];
     expect(posted.get("profile_id")).toBe("23");
     expect(posted.get("basis")).toBe("basis-3");
   });
