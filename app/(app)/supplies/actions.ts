@@ -7,6 +7,9 @@ import { db } from "@/lib/db";
 import { deleteSetting } from "@/lib/settings";
 import { poolRefillMarkerKey, poolRefillSignalKey } from "@/lib/refill-nudge";
 import { restoreFinding } from "@/lib/queries/upcoming";
+import { copyPoolMemberPlan } from "@/lib/queries/intake/also-for";
+import { intakeHref, medicationHref } from "@/lib/hrefs";
+import type { AlsoForResult } from "@/lib/intake-also-for";
 import {
   createSharedSupply,
   updateSharedSupply,
@@ -17,6 +20,7 @@ import {
   listLinkableSupplies,
   getItemProductFacts,
   getSharedSupply,
+  isLinkableSupply,
   supplyOption,
   type SharedSupplyFields,
 } from "@/lib/queries/intake";
@@ -220,4 +224,54 @@ export async function unlinkItemAction(
   unlinkItemFromPool(profileId, itemId);
   revalidateSupplies();
   return ok(null);
+}
+
+// "Also for" (#5230): copy ONE bottle member's plan onto another person, in one tap,
+// without the caller ever becoming that person.
+//
+// THE GATE IS THE SUBJECT'S, PLUS THE BOTTLE'S. `requireProfileWriteAccess(targetId)` is
+// the same re-gate linkItemAction applies to an item's own profile (#4693: the subject
+// on every path, re-checked server-side) — the ACTING profile's requireWriteAccess()
+// would authorize the wrong person. On top of it sits the bottle's membership-management
+// gate (#5560, requirePoolWriteAccess), because this write also changes who draws from a
+// household-shared bottle. The SOURCE must be a member the caller may actually read, so
+// its profile is checked against the caller's own scope: a member they cannot see is
+// never a plan they can copy.
+//
+// Everything the offer was derived from is re-read inside the atomic write, which is
+// where a stale intent is refused (lib/queries/intake/also-for.ts).
+export async function alsoForAction(formData: FormData): Promise<AlsoForResult> {
+  const supplyId = Number(formData.get("supply_id") ?? 0);
+  const sourceItemId = Number(formData.get("source_item_id") ?? 0);
+  const sourceProfileId = Number(formData.get("source_profile_id") ?? 0);
+  const targetProfileId = Number(formData.get("profile_id") ?? 0);
+  const basis = String(formData.get("basis") ?? "");
+  if (!supplyId || !sourceItemId || !sourceProfileId || !targetProfileId) {
+    return { ok: false, error: "Couldn't find that shared bottle." };
+  }
+  await requireProfileWriteAccess(targetProfileId);
+  const scope = await requireScope();
+  if (!isLinkableSupply(scope.ids, supplyId) || !scope.ids.includes(sourceProfileId)) {
+    return { ok: false, error: "Couldn't find that shared bottle." };
+  }
+  await requirePoolWriteAccess(supplyId);
+  const target = scope.profiles.find((p) => p.id === targetProfileId);
+  const result = copyPoolMemberPlan({
+    supplyId,
+    sourceProfileId,
+    sourceItemId,
+    targetProfileId,
+    targetName: target?.name ?? "them",
+    basis,
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+  revalidateSupplies();
+  return {
+    ok: true,
+    receipt: result.receipt,
+    href:
+      result.kind === "medication"
+        ? medicationHref(result.itemId)
+        : intakeHref(result.kind),
+  };
 }

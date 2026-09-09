@@ -11,9 +11,9 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import type { AppRoute } from "@/lib/hrefs";
 import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
-import { switchProfileAction } from "@/app/(app)/profile-context-actions";
-import { updatePoolAction, deletePoolAction } from "./actions";
+import { updatePoolAction, deletePoolAction, alsoForAction } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import Link from "next/link";
 
 export interface SharedSupplyCardData {
   id: number;
@@ -39,14 +39,25 @@ export interface SharedSupplyCardData {
     profile: AvatarProfile;
     acting: boolean;
   }[];
-  // "Add for another person" (#1705). `addHref` opens the add form for this bottle's
-  // kind, pre-seeded and pre-linked; `addTargets` is every accessible profile the caller
-  // may WRITE, acting first. A SELECT rather than a chip per person: an admin reaches
-  // every profile in the instance, and a card cannot render a hundred chips. The item is
-  // created under the TARGET profile's own write gate — submitting switches the active
-  // profile first, then the ordinary add form runs — never the acting profile's.
-  addHref: AppRoute;
-  addTargets: { id: number; name: string }[];
+  // "Also for" (#5230). `sources` are the members whose plan may be copied — the ones
+  // this viewer can actually SEE, because a plan behind a grant is not a plan they may
+  // copy. `offers` are the people the copy is offered FOR, derived per person from
+  // access, membership, allergy, life stage and whether a dose is derivable at all.
+  // Each offer carries the BASIS it was derived from, per source: the tap posts it back
+  // and the write refuses a stale one rather than copying a different member's plan.
+  alsoFor: {
+    sources: {
+      itemId: number;
+      profileId: number;
+      personName: string;
+      scheduleLabel: string;
+    }[];
+    offers: {
+      profileId: number;
+      name: string;
+      basisBySource: Record<number, string>;
+    }[];
+  };
   canWrite: boolean;
 }
 
@@ -64,6 +75,41 @@ export default function SharedSupplyCard({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const confirm = useConfirm();
+  // The source is a choice about THIS displayed offer, not a saved household default.
+  // One readable member IS the choice and is named above; several start empty.
+  const alsoForSources = pool.alsoFor.sources;
+  const [sourceItemId, setSourceItemId] = useState(
+    alsoForSources.length === 1 ? String(alsoForSources[0].itemId) : ""
+  );
+  const [receipt, setReceipt] = useState<{
+    text: string;
+    href: AppRoute;
+  } | null>(null);
+  const source =
+    alsoForSources.find((s) => String(s.itemId) === sourceItemId) ?? null;
+
+  const alsoFor = (offer: {
+    profileId: number;
+    basisBySource: Record<number, string>;
+  }): void => {
+    if (!source) return;
+    setError(null);
+    setReceipt(null);
+    start(async () => {
+      const fd = new FormData();
+      fd.set("supply_id", String(pool.id));
+      fd.set("source_item_id", String(source.itemId));
+      fd.set("source_profile_id", String(source.profileId));
+      fd.set("profile_id", String(offer.profileId));
+      fd.set("basis", offer.basisBySource[source.itemId] ?? "");
+      const res = await alsoForAction(fd);
+      if (!res.ok || !res.receipt || !res.href) {
+        setError(res.error ?? "Couldn’t add it.");
+        return;
+      }
+      setReceipt({ text: res.receipt, href: res.href });
+    });
+  };
 
   const submit = (formData: FormData): void => {
     setError(null);
@@ -236,49 +282,86 @@ export default function SharedSupplyCard({
             delete it — nothing is removed on your behalf.
           </p>
         )}
-        {/* The bottle → item direction (#1705). A household bottle is only useful to a
-            second person if adding it for them is ONE step: this switches to the chosen
-            profile and opens its add form already seeded with the bottle's product facts
-            and already linked to it. */}
-        {pool.addTargets.length > 0 && (
-          <form
-            action={switchProfileAction}
-            className="mt-3 flex flex-wrap items-end gap-2"
-            data-testid="shared-supply-add-for"
-          >
-            <div>
-              <label className="label" htmlFor={`pool-add-for-${pool.id}`}>
-                Add for another person
-              </label>
-              {/* ONE CONTROL HEIGHT IN THIS ROW (#3481). The select was a bare
-                  `.input` beside a `btn btn-sm` submit: 38px against 32px on desktop
-                  (the shape the phone review reported) and 38px against 44px at
-                  390px, where the `.btn` family's rendered tap floor (#3486/#3514)
-                  lifts the button and the select is left short. Dropping `btn-sm`
-                  fixes the desktop half; `h-9` puts the select on the `.btn` desktop
-                  height (36px). The phone half was a local `min-h-11 sm:min-h-0` and
-                  is now the `.input` family's own floor (#3708) — one number, in one
-                  place, for every field. Both readings are RENDERED boxes; the guard
-                  is e2e/shared-supply-pool.spec.ts. */}
-              <select
-                id={`pool-add-for-${pool.id}`}
-                name="profileId"
-                className="input max-w-xs"
-                data-testid="shared-supply-add-for-select"
-                defaultValue={String(pool.addTargets[0].id)}
+        {/* The bottle → item direction (#5230). A shared bottle is one PRODUCT, so
+            adding it for someone else is a ROW COPY, not a form: one tap copies the
+            named member's obligation and schedule and derives that person's own dose.
+            The caller never becomes anyone else — their active profile is untouched.
+
+            THE SOURCE IS ALWAYS NAMED (owner ruling, 2026-09-09). Members can keep
+            different schedules on one bottle, so the offer states whose plan it will
+            copy. With one readable member that is a sentence; with several it is a
+            selector with NOTHING preselected, and the actions stay disabled until the
+            person picks — even when the schedules read the same, because the copy still
+            takes one specific member's plan. Never the first SQL row, never the acting
+            profile. */}
+        {alsoForSources.length > 0 && pool.alsoFor.offers.length > 0 && (
+          <div className="mt-3" data-testid="shared-supply-also-for">
+            {alsoForSources.length === 1 ? (
+              <p
+                className="text-sm text-slate-600 dark:text-slate-300"
+                data-testid="shared-supply-also-for-source"
               >
-                {pool.addTargets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                Copying {alsoForSources[0].personName}’s schedule ·{" "}
+                {alsoForSources[0].scheduleLabel}
+              </p>
+            ) : (
+              <div>
+                <label className="label" htmlFor={`pool-also-for-${pool.id}`}>
+                  Copy schedule from
+                </label>
+              </div>
+            )}
+            {/* ONE CONTROL HEIGHT IN THIS ROW (#3481): the select is the `.input`
+                family at the `.btn` desktop height, and both families share the phone
+                tap floor (#3708/#3514). Guarded by e2e/shared-supply-pool.spec.ts. */}
+            <div
+              className="mt-1 flex flex-wrap items-end gap-2"
+              data-testid="shared-supply-also-for-row"
+            >
+              {alsoForSources.length > 1 && (
+                <select
+                  id={`pool-also-for-${pool.id}`}
+                  className="input h-9 max-w-xs"
+                  data-testid="shared-supply-also-for-select"
+                  value={sourceItemId}
+                  onChange={(e) => {
+                    setSourceItemId(e.target.value);
+                    setReceipt(null);
+                  }}
+                >
+                  <option value="">Choose a person</option>
+                  {alsoForSources.map((s) => (
+                    <option key={s.itemId} value={s.itemId}>
+                      {s.personName} · {s.scheduleLabel}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {pool.alsoFor.offers.map((offer) => (
+                <button
+                  key={offer.profileId}
+                  type="button"
+                  className="btn"
+                  data-testid="shared-supply-also-for-chip"
+                  disabled={pending || source == null}
+                  onClick={() => alsoFor(offer)}
+                >
+                  {offer.name} · Also for
+                </button>
+              ))}
             </div>
-            <input type="hidden" name="returnTo" value={pool.addHref} />
-            <SubmitButton data-testid="shared-supply-add-for-submit">
-              Add this bottle
-            </SubmitButton>
-          </form>
+            {receipt && (
+              <p
+                className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+                data-testid="shared-supply-also-for-receipt"
+              >
+                {receipt.text}{" "}
+                <Link className="link" href={receipt.href}>
+                  Open their row
+                </Link>
+              </p>
+            )}
+          </div>
         )}
         {pool.hiddenMemberCount > 0 && (
           <p

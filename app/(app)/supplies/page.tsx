@@ -2,8 +2,8 @@ import { requireScope, stampSubjects } from "@/lib/scope";
 import { listVisiblePoolViews } from "@/lib/queries";
 import { EmptyState, PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
-import { addItemFromPoolHref, intakeHref, medicationHref } from "@/lib/hrefs";
-import { poolSurfaceKind } from "@/lib/supply-product";
+import { intakeHref, medicationHref } from "@/lib/hrefs";
+import { alsoForCardModel } from "@/lib/queries/intake/also-for";
 import { sharedSupplyMemberLabels } from "@/lib/shared-supply-member-labels";
 import SharedSupplyCard, {
   type SharedSupplyCardData,
@@ -49,21 +49,22 @@ export default async function SuppliesPage() {
     visiblePools.flatMap(({ stamped }) => stamped)
   );
 
-  // "Add for another person" (#1705). A bottle has no kind of its own, so the surface
-  // its next item lands on is read off the membership (poolSurfaceKind). Offered only
-  // for profiles this caller may WRITE — a read-only grant gets no add affordance —
-  // and the write itself still happens under that profile's own gate: the chip switches
-  // the active profile first, then the ordinary add form runs requireWriteAccess().
-  const addTargetProfiles = scope.profiles
+  // "Also for" (#5230). The people this caller may WRITE — a read-only grant gets no
+  // offer at all, because a person the caller cannot write is not offered rather than
+  // refused after the tap. Sorted by name: the ACTING profile is deliberately not lifted
+  // to the front, because nothing about this offer is about who the caller is.
+  const alsoForCandidates = scope.profiles
     .filter((p) => scope.access.get(p.id) === "write")
     .map((p) => ({ id: p.id, name: p.name }))
-    .sort((a, b) =>
-      a.id === scope.actingProfileId
-        ? -1
-        : b.id === scope.actingProfileId
-          ? 1
-          : 0
-    );
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // A household-shared bottle has no owning profile, so membership decides who may
+  // change it: write access to at least ONE linked profile (the requirePoolWriteAccess
+  // rule, #5560), falling back to the acting profile for a bottle that links nobody.
+  const canManage = (pool: { members: { profileId: number }[] }): boolean =>
+    pool.members.length === 0
+      ? scope.access.get(scope.actingProfileId) === "write"
+      : pool.members.some((m) => scope.access.get(m.profileId) === "write");
 
   const cards: SharedSupplyCardData[] = visiblePools.map(
     ({ pool, visible, stamped }) => ({
@@ -99,12 +100,22 @@ export default async function SuppliesPage() {
             ? medicationHref(m.itemId)
             : intakeHref(m.kind),
       })),
-      addHref: addItemFromPoolHref(poolSurfaceKind(pool.members), pool.id),
-      addTargets: addTargetProfiles,
-      canWrite:
-        pool.members.length === 0
-          ? scope.access.get(scope.actingProfileId) === "write"
-          : pool.members.some((m) => scope.access.get(m.profileId) === "write"),
+      canWrite: canManage(pool),
+      // The offer is derived, per person, from what the app already knows — and only
+      // for a caller who may manage this bottle's membership (#5560), which is the
+      // same permission the tap re-checks server-side.
+      alsoFor: canManage(pool)
+        ? alsoForCardModel({
+            pool,
+            visibleMembers: stamped.map((m) => ({
+              itemId: m.itemId,
+              profileId: m.profileId,
+              name: m.subject.name,
+            })),
+            memberProfileIds: pool.members.map((m) => m.profileId),
+            candidates: alsoForCandidates,
+          })
+        : { sources: [], offers: [] },
     })
   );
 
