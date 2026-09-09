@@ -64,8 +64,6 @@ import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 // record above it fans every body measure onto the feed. It mounts the domain's ONE
 // form instead, which carries the whole field set, the sitting's optional Time through
 // the shared `WhenControl`, and `addMeasurements` with its never-the-future day bound.
-// SUBSTANCE is date-only in the SCHEMA (`substance_daily_totals` is a day total with no
-// event instant, #3327) and its own form now says so.
 
 const KIND_LABEL = {
   food: "Log food",
@@ -301,11 +299,15 @@ export default function HistoryAddDoor({
         // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own substance
         // form — with the bare "Amount" — is deleted and the domain's one form mounts
         // with the found day in hand. The close and re-read stay the door's.
+        //
+        // A use is an EVENT with its own `occurred_at` (#5026 phase 2), so the form
+        // reads the window like every other timed kind here (#5615).
         return (
           <SubstanceForm
             substances={vocabulary.substances}
             date={date}
             maxDate={maxDate}
+            defaultStatedAt={windowStatedAt}
             onSaved={() => {
               close();
               router.refresh();
