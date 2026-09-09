@@ -84,6 +84,18 @@ export default function TodaysSessionCard({
             ))}
           </ul>
         </div>
+        {/* TWO CONTROLS OF THE SAME RANK (#4978 slice 3). This row is the
+            unstacked shape TrainingOverviewActions describes, written here
+            directly, and it used to paint "Log this session" filled beside a
+            quiet "Log activity". Neither is a form commit — both are
+            `type="button"` with an `onClick` and no `<form>` ancestor — so the
+            owner's form ruling does not reach them, and neither can claim the
+            filled paint on a tab that hosts several independent cards. So the
+            card offers two equal doors and lets the copy say which is which.
+            Whether a non-form commit may be primary here is OPEN on #4978: this
+            is the conservative reading, not a settled one, and
+            e2e/routine-recommendation.spec.ts asserts the flat rank so that
+            promoting either control has to be ruled rather than land quietly. */}
         <div
           className="flex shrink-0 flex-wrap gap-2"
           data-testid="training-overview-actions"

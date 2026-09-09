@@ -14,14 +14,29 @@ import type { ReactNode } from "react";
 //
 // Below `md` that rail collapses under the content and used to bring the column
 // with it, so a phone spent one line per control on buttons of DESCENDING
-// importance — three lines. Now the primary keeps its own line and the ghost
-// controls share the one beneath it: two lines, and the hierarchy says what the
-// card wants you to do.
+// importance — three lines. Now the first control keeps its own line and the two
+// beneath it share the next: two lines rather than three. THE ARRANGEMENT IS
+// WHAT THAT BUYS, not a rank. It reads as a hierarchy here only because the
+// control below still wears the raw `.btn` fill, and that is temporary.
 //
-// `secondary` is how a surface hands its OWN ghost control into that pair — the
+// WHAT RANK THIS ROW ACTUALLY STATES, so the next reader is not told a story the
+// code stopped telling (#4978 slice 3). "Start workout" is `type="button"` with
+// an `onClick` and NO `<form>` ancestor, so the owner's form ruling — every form
+// commit is `SubmitButton variant="primary"`, one per form — does not reach it,
+// and Overview is a tab hosting several independent cards, none of which can
+// claim the route's one filled paint. Whether a non-form commit on a multi-card
+// route may be primary is OPEN on #4978 and is not settled by this comment or by
+// the layout below it. TodaysSessionCard writes the unstacked shape for itself
+// and its copy is already two controls of ONE rank; this one is the last raw
+// mount in `app/(app)/training` because ruling (3) holds a commit back until its
+// ghost can convert with it, and this commit's ghost is the `secondary` below.
+//
+// `secondary` is how a surface hands its OWN quiet control into that pair — the
 // next-workout card's "View details", which belongs to the card rather than to
 // the standing doors. It is rendered here because the pair is one flex line, and
-// a sibling of this component could never join it.
+// a sibling of this component could never join it. It is a `PendingTextLink`: a
+// link that answers its own tap, which no button primitive can express, so it
+// keeps its raw class and is reported on #4978 rather than converted.
 //
 // THE BOUNDARY IS `md`, AND IT IS NOT THE CARD-MODE ONE.
 // `CARD_MODE_BREAKPOINT_PX` (`sm`, lib/card-row.ts, #3457) is where a
