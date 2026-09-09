@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   burstFrom,
+  burstChipTarget,
   burstLabel,
   burstLocalDay,
   burstSubject,
@@ -69,6 +70,39 @@ function corrected(
 }
 
 describe("collapseBursts — burst-mates share one error, so they share one row", () => {
+  it("partitions recorded acts from same-minute independent taps and other acts", () => {
+    const at = "2026-08-05T19:00:00Z";
+    const bursts = collapseBursts([
+      { ...tap(1, at), bundleId: "act-a", messageRef: 8 },
+      { ...tap(2, at), messageRef: 8 },
+      { ...tap(3, at), bundleId: "act-b", messageRef: 8 },
+      { ...tap(4, "2026-08-05T19:20:00Z"), bundleId: "act-a", messageRef: 9 },
+    ]);
+    expect(bursts.map((b) => b.ids)).toEqual([[1, 4], [2], [3]]);
+  });
+
+  it("normalizes a practice act before its shared chip floor and day checks", () => {
+    const now = new Date("2026-08-05T19:12:10Z");
+    const burst = collapseBursts([
+      corrected(1, "2026-08-05T19:12:00Z", "2026-08-05T07:42:17Z"),
+      tap(2, "2026-08-05T19:12:00Z"),
+    ])[0];
+    burst.bundle = { id: "act-precision", practiceDays: [] };
+    expect(burstChipTarget(burst, 30, now, "UTC")?.toISOString()).toBe(
+      "2026-08-05T07:12:17.000Z"
+    );
+    burst.bundle.practiceDays = ["2026-08-05"];
+    expect(chipOffers(burst, now, "UTC")).toEqual([]);
+    expect(burstChipTarget(burst, 30, now, "UTC")).toBeNull();
+    const earlier = new Date("2026-08-05T19:12:00Z");
+    expect(burstChipTarget(burst, 30, earlier, "UTC")?.toISOString()).toBe(
+      "2026-08-05T07:12:00.000Z"
+    );
+    burst.bundle.practiceDays = ["2026-08-04", "2026-08-05"];
+    expect(burstChipTarget(burst, 30, earlier, "UTC")).toBeNull();
+    expect(offeredHours(burst, earlier, "UTC")).toEqual([]);
+  });
+
   it("groups taps within the gap and splits on a wider one", () => {
     const bursts = collapseBursts([
       tap(1, "2026-08-05T19:02:00Z", "Salmon"),
