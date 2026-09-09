@@ -10,7 +10,11 @@ import {
   kgToLbs,
   pediatricAgeYears,
   pediatricDoseSuggestion,
+  prnDoseUpdateOffer,
+  doseUpdateOfferSeat,
+  prnDoseBandStatement,
 } from "@/lib/prn-dosing";
+import { doseBandUpdateKey } from "@/lib/dismissal-keys";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { prnDefaultsFor, type PediatricBand } from "@/lib/prn-defaults";
 
@@ -135,6 +139,7 @@ describe("pediatricAgeYears — whole years COMPLETED", () => {
     weightDate: null,
     weightUnit: "kg",
     today: "2026-07-15",
+    declinedDoseUpdates: [],
   });
 
   it("floors months to completed years across the 18th-birthday line", () => {
@@ -240,5 +245,113 @@ describe("pediatricDoseSuggestion — orchestrated lookup", () => {
   it("aspirin has no pediatric table → no-pediatric (structurally cannot dose)", () => {
     const r = pediatricDoseSuggestion({ ...base, entry: ASPIRIN });
     expect(r.kind).toBe("no-pediatric");
+  });
+});
+
+// THE OFFER TO FOLLOW THE CURRENT WEIGHT (#5538). One derivation over the same two
+// arguments the band statement takes, because four dose hosts render it: the
+// medications Today panel, the medicine card's Today block, the illness cockpit's Meds
+// fold and the quick-entry sheet.
+describe("prnDoseUpdateOffer — the stale stored dose", () => {
+  // A six-year-old at 17 kg (37.5 lb) is in ibuprofen's 36–47 lb band: 150 mg.
+  const GROWN: PediatricFormContext = {
+    ageMonths: 72,
+    weightKg: 17,
+    weightDate: "2026-09-01",
+    weightUnit: "kg",
+    today: "2026-09-02",
+    declinedDoseUpdates: [],
+  };
+  const item = {
+    id: 31,
+    name: "Ibuprofen",
+    identity: { name: "Ibuprofen", rxcui: "5640" },
+    amount: "100 mg",
+  };
+
+  it("offers the current band figure against the stored one", () => {
+    expect(prnDoseUpdateOffer(item, GROWN)).toEqual({
+      key: doseBandUpdateKey(31, 150),
+      bandAmount: "150 mg",
+      storedAmount: "100 mg",
+      question: "Ibuprofen is set to 100 mg. Update it to 150 mg?",
+      yes: "Update to 150 mg",
+      no: "Keep 100 mg",
+    });
+  });
+
+  it("stands down once the stored dose is the band figure", () => {
+    expect(prnDoseUpdateOffer({ ...item, amount: "150 mg" }, GROWN)).toBeNull();
+  });
+
+  // The decline is recorded on the suppression bus and read back here, so the offer
+  // does not return on the next page load.
+  it("stands down for a figure this subject has declined", () => {
+    expect(
+      prnDoseUpdateOffer(item, {
+        ...GROWN,
+        declinedDoseUpdates: [doseBandUpdateKey(31, 150)],
+      })
+    ).toBeNull();
+  });
+
+  // THE ANCHOR. A decline names the figure it was given for, so growing into the next
+  // band (22.5 kg is 49.6 lb — 200 mg) mints a different key and asks again.
+  it("returns when the band moves to a different figure", () => {
+    expect(
+      prnDoseUpdateOffer(item, {
+        ...GROWN,
+        weightKg: 22.5,
+        declinedDoseUpdates: [doseBandUpdateKey(31, 150)],
+      })
+    ).toMatchObject({ key: doseBandUpdateKey(31, 200), bandAmount: "200 mg" });
+  });
+
+  // UPWARD ONLY (owner ruling 3). A prescriber set 300 mg; the OTC chart for this
+  // weight reads 150 mg. The row still STATES the chart's figure — that is the whole
+  // point of the band line — but nothing here proposes cutting a prescribed dose, and
+  // the item's Rx flag cannot be the gate because an imported prescription can land
+  // flagged OTC. The band statement's own comparison stays symmetric, which is what
+  // the second half asserts: the two predicates are not the same field.
+  it("never proposes lowering a stored dose the chart reads under", () => {
+    const prescribed = { ...item, amount: "300 mg" };
+    expect(prnDoseUpdateOffer(prescribed, GROWN)).toBeNull();
+    expect(prnDoseBandStatement(prescribed, GROWN)).toMatchObject({
+      bandAmount: "150 mg",
+      differsFromStored: true,
+      exceedsStored: false,
+    });
+  });
+
+  it("offers nothing for an adult, a refusal, or a dose written as a volume", () => {
+    expect(prnDoseUpdateOffer(item, null)).toBeNull();
+    expect(prnDoseUpdateOffer(item, { ...GROWN, ageMonths: 240 })).toBeNull();
+    // The label chart stops at 12 years, so an adolescent's prescribed dose is a
+    // refusal and never a proposal.
+    expect(
+      prnDoseUpdateOffer(
+        { ...item, amount: "600 mg" },
+        { ...GROWN, ageMonths: 192, weightKg: 60 }
+      )
+    ).toBeNull();
+    // No milligram figure to compare against the band.
+    expect(prnDoseUpdateOffer({ ...item, amount: "5 mL" }, GROWN)).toBeNull();
+    expect(prnDoseUpdateOffer({ ...item, amount: null }, GROWN)).toBeNull();
+  });
+
+  // AT MOST ONE OFFER PER SURFACE: a sick child with two charted PRNs meets one box.
+  it("seats the first row that would offer, and only that one", () => {
+    const acetaminophen = {
+      id: 32,
+      name: "Acetaminophen",
+      identity: { name: "Acetaminophen", rxcui: "161" },
+      amount: "160 mg",
+    };
+    expect(doseUpdateOfferSeat([item, acetaminophen], GROWN)).toBe(31);
+    expect(doseUpdateOfferSeat([acetaminophen, item], GROWN)).toBe(32);
+    expect(
+      doseUpdateOfferSeat([{ ...item, amount: "150 mg" }, acetaminophen], GROWN)
+    ).toBe(32);
+    expect(doseUpdateOfferSeat([item], null)).toBeNull();
   });
 });

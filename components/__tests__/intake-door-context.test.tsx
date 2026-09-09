@@ -112,6 +112,7 @@ function context(ageMonths: number): IntakeFormContext {
       weightDate: TODAY,
       weightUnit: "kg",
       today: TODAY,
+      declinedDoseUpdates: [],
     },
     todayStr: TODAY,
   };

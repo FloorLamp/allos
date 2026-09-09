@@ -39,6 +39,7 @@ import { STEPS_PACE_PREFIX } from "./steps-target";
 import { pairedObservationEntry } from "./paired-observations";
 import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
 import {
+  DOSE_BAND_UPDATE_PREFIX,
   OFFER_ASKED_PREFIX,
   TRACK_SUPPLY_ASKED_PREFIX,
   PR_CARDIO_PREFIX,
@@ -504,6 +505,20 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
       return sourceName
         ? `Bedtime watch reminder offer — ${sourceName}`
         : "Bedtime watch reminder offer";
+    },
+  },
+  {
+    // A declined dose-band update (#5538), keyed `dose-band-update:<itemId>:<bandMg>`.
+    // The item id cannot be named purely, so the row names the FIGURE the person
+    // declined — which is also what re-arms it, since a band with a different figure
+    // mints a different key. Restore re-offers that same figure.
+    prefix: DOSE_BAND_UPDATE_PREFIX,
+    domain: "Suggestions",
+    label: (t) => {
+      const mg = Number(part(t, 1));
+      return Number.isFinite(mg)
+        ? `Dose update offer — ${mg} mg`
+        : "Dose update offer";
     },
   },
   {

@@ -165,6 +165,7 @@ describe("resolveIntakePrefill — the medication vocabulary", () => {
       weightDate: "2026-07-10",
       weightUnit: "lb",
       today: "2026-07-16",
+      declinedDoseUpdates: [],
     });
     expect(pf.writes.doseAmount).toBe("100 mg");
     expect(pf.ledger.suggested.has("doseAmount")).toBe(true);
@@ -183,6 +184,7 @@ describe("resolveIntakePrefill — the medication vocabulary", () => {
         ...context,
         weightUnit: "lb",
         today: "2026-07-16",
+        declinedDoseUpdates: [],
       });
       expect(pf.writes.doseAmount).toBeUndefined();
       expect(pf.ledger.suggested.has("doseAmount")).toBe(false);
