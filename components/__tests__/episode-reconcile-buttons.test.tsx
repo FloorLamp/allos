@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
@@ -18,23 +18,26 @@ vi.mock("@/app/(app)/medical/episodes/actions", () => ({
   reopenEpisodeAction: vi.fn(),
 }));
 
+const END = (
+  <EndEpisodeReconcile
+    episodeId={7}
+    meds={[
+      { itemId: 19, name: "Ibuprofen", klass: "otc-prn", defaultChecked: true },
+    ]}
+    triggerLabel="End episode"
+    triggerTestId="episode-end"
+  />
+);
+const REOPEN = (
+  <ReopenEpisodeReconcile
+    episodeId={7}
+    meds={[{ itemId: 19, name: "Ibuprofen" }]}
+  />
+);
+
 describe("episode reconciliation triggers", () => {
   it("opens the end checklist through the ordinary Button treatment", () => {
-    render(
-      <EndEpisodeReconcile
-        episodeId={7}
-        meds={[
-          {
-            itemId: 19,
-            name: "Ibuprofen",
-            klass: "otc-prn",
-            defaultChecked: true,
-          },
-        ]}
-        triggerLabel="End episode"
-        triggerTestId="episode-end"
-      />
-    );
+    render(END);
 
     const trigger = screen.getByRole("button", { name: "End episode" });
     expect(trigger.getAttribute("type")).toBe("button");
@@ -58,13 +61,60 @@ describe("episode reconciliation triggers", () => {
     ).toBeNull();
   });
 
+  // THE ROW CONVERTS WHOLE (#4978 ruling 3, 2026-09-05), AND THE CONFIRM STAYS
+  // LOUD (PM ruling 2026-09-09 22:05 UTC). Both checklists confirmed through a
+  // filled `.btn` beside a raw `.btn-ghost` Cancel. Neither is inside a `<form>`,
+  // so the rule that a form's commit is filled does not reach them — but the
+  // 22:05 ruling is wider than that rule: a surface has ONE loud control, and a
+  // confirm modal is the least ambiguous surface there is. While it is open it IS
+  // the surface, it exists for exactly one action, and it holds exactly one
+  // confirm and one Cancel, so one primary per modal cannot break the admission
+  // rule. Keeping the fill is therefore what a person already sees; demoting it
+  // would have been the visible change. Asserted over BOTH controls of the row at
+  // once, which is what makes a half-converted row fail here rather than only in
+  // a browser.
+  it.each([
+    {
+      row: "end",
+      element: END,
+      trigger: "End episode",
+      dialog: "End this episode?",
+      commitTestId: "episode-med-reconcile-confirm",
+      commitLabel: "End episode",
+    },
+    {
+      row: "reopen",
+      element: REOPEN,
+      trigger: "Reopen episode",
+      dialog: "Reopen this episode?",
+      commitTestId: "episode-reopen-confirm",
+      commitLabel: "Reopen episode",
+    },
+  ])(
+    "renders the $row checklist's commit and its Cancel as one treatment",
+    ({ element, trigger, dialog, commitTestId, commitLabel }) => {
+      render(element);
+      fireEvent.click(screen.getByRole("button", { name: trigger }));
+
+      const row = screen.getByRole("dialog", { name: dialog });
+      const commit = screen.getByTestId(commitTestId);
+      const cancel = within(row).getByRole("button", { name: "Cancel" });
+
+      expect(commit.textContent).toBe(commitLabel);
+      expect(commit.className.split(" ")).toEqual([
+        "button-control",
+        "button-control-primary",
+      ]);
+      expect(cancel.className.split(" ")).toEqual(["button-control"]);
+      for (const control of [commit, cancel]) {
+        expect(control.getAttribute("data-button-control")).toBe("");
+        expect(control.getAttribute("type")).toBe("button");
+      }
+    }
+  );
+
   it("opens the reopen checklist through the ordinary Button treatment", () => {
-    render(
-      <ReopenEpisodeReconcile
-        episodeId={7}
-        meds={[{ itemId: 19, name: "Ibuprofen" }]}
-      />
-    );
+    render(REOPEN);
 
     const trigger = screen.getByRole("button", { name: "Reopen episode" });
     expect(trigger.getAttribute("type")).toBe("button");

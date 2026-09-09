@@ -311,9 +311,13 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
     count: 6,
     why: "DISPLAY readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated: the shared dose-history ordering (three scopes identical), the scheduled row's printed clock, and the quick-log gather's own 'Last dose 8:05pm' column. #4686 took the ARMING readers out — the redose clock now reads a placed instant or nothing, never a capture stamp — so what is left here renders a fact beside the day it happened on, never a duration a safety line turns into a verdict.",
   },
-  "lib/queries/nutrition.ts": {
-    count: 3,
-    why: "three database-side food-ledger operations must pair stated eating time with immutable capture before rows reach JS: the server-paged history's stable within-day order, plus the recent-food check's bounded MAX and WHERE. JS projections use bestKnownInstant and are not allowlisted.",
+  "lib/queries/nutrition/ledger.ts": {
+    count: 1,
+    why: "the food ledger's server-paged history needs its stable within-day order — stated eating time, immutable capture as the fallback — computed database-side, before rows reach JS, because the page total counts the same rows the bound returns. The ledger's JS projections use bestKnownInstant and are not allowlisted.",
+  },
+  "lib/queries/nutrition/regularity.ts": {
+    count: 2,
+    why: "the recent-food check behind a dose's declared timing pairs stated eating time with immutable capture twice database-side: the bounded MAX that picks the profile's latest serving, and the WHERE that holds the scan to the check's own lookback window. Both must stay in SQL so the read is a handful of rows on the busiest day.",
   },
   "lib/queries/substance.ts": {
     count: 1,
