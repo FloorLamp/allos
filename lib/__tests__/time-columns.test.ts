@@ -332,8 +332,8 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
     why: "as school-return-data: the event-to-capture ORDER BY only. The row read uses bestKnownInstant.",
   },
   "app/(app)/medications/med-data.ts": {
-    count: 2,
-    why: "the medication detail's administration list and the 'Last dose 4:02pm' clock beside it, both DISPLAY reads on a card that prints the day next to them. The second one also fed the redose verdict until #4686 — which is how a paused as-needed medication computed 'Redose OK' off a capture stamp — and no longer does: the window math reads `FamilyArming` and this pairing renders a label.",
+    count: 1,
+    why: "the medication detail's administration list, a DISPLAY read on a card that prints the day next to it. The 'Last dose 4:02pm' clock beside it was the second pairing until #4686/#2228 decision 4: it fed the redose verdict (a paused as-needed medication computed 'Redose OK' off a capture stamp), the window math now reads `FamilyArming`, and the label itself asks `bestKnownInstant` so a record-chain clock renders 'recorded 4:02pm' instead of claiming an administration time.",
   },
   "lib/food-slot-count.ts": {
     count: 1,

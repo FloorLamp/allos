@@ -49,6 +49,7 @@ import {
   administrationLastDoseLabel,
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
+import { bestKnownInstant } from "@/lib/row-instants";
 import { activeByKey } from "@/lib/findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
@@ -370,9 +371,14 @@ export function loadMedicationsData(
     // and the PRN id list filters on kind and on-demand with no `active` filter while
     // the family builder requires active — so a PAUSED as-needed medication's card
     // computed "Redose OK — min interval passed" off the instant the app was told.
-    const last = admins[0]
-      ? (admins[0].occurred_at ?? admins[0].recorded_at)
+    // …and it SAYS which column it fell back to, rather than spelling a capture
+    // stamp as an administration time (#2228 decision 4). `bestKnownInstant` is the
+    // repo's one answer to "when did this row happen", and its `semantic` is what the
+    // clock below marks itself with.
+    const lastWhen = admins[0]
+      ? bestKnownInstant("intake_item_logs", admins[0])
       : null;
+    const last = lastWhen?.known ? lastWhen.at : null;
     const fam = familyStates.get(s.id);
     let redoseLine: string | null = null;
     let redosePrimary = true;
@@ -395,12 +401,21 @@ export function loadMedicationsData(
       redoseLine = redoseCardLabel(redoseStatus, fam?.memberIds.length ?? 1);
       redosePrimary = redoseActionIsPrimary(redoseStatus);
     }
-    const lastClock = formatGivenAtClockWithRelativeAge(
+    const clock = formatGivenAtClockWithRelativeAge(
       tz,
       last,
       timeFormat,
       nowInstant
     );
+    // NEVER A BARE CLOCK FOR A ROW THAT STATES NO TIME (#2228 decision 4). The line
+    // reading "Last dose 8:09pm" beside "Last dose has no time yet" was the same
+    // capture stamp the verdict had just refused to trust, spelled as an
+    // administration time. The dose history panel and the nutrition ledger already
+    // mark a record-chain clock this way; this is the third surface, not a new idea.
+    const lastClock =
+      clock && lastWhen?.known && lastWhen.semantic === "record"
+        ? `recorded ${clock}`
+        : clock;
     return {
       label: redoseLine
         ? administrationLastDoseLabel(lastClock)

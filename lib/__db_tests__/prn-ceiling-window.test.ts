@@ -88,13 +88,14 @@ function logAdministration(
   itemId: number,
   doseId: number,
   date: string,
-  at: string | null
+  at: string | null,
+  recordedAt: string = NOW_ISO
 ): void {
   db.prepare(
     `INSERT INTO intake_item_logs
        (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
      VALUES (?, ?, ?, ?, ?, 'taken', '160 mg')`
-  ).run(doseId, itemId, date, utcInstant(new Date(NOW_ISO)), at);
+  ).run(doseId, itemId, date, utcInstant(new Date(recordedAt)), at);
 }
 
 function countFor(profileId: number, itemId: number): number {
@@ -106,6 +107,11 @@ function countFor(profileId: number, itemId: number): number {
 
 function cardLine(profileId: number, itemId: number): string | null {
   return loadMedicationsData(profileId).byId.get(itemId)?.prnRedoseLine ?? null;
+}
+
+// The line the card prints DIRECTLY ABOVE `cardLine`.
+function cardDayLabel(profileId: number, itemId: number): string | null {
+  return loadMedicationsData(profileId).byId.get(itemId)?.prnDayLabel ?? null;
 }
 
 describe("the ceiling counts the trailing 24 hours, not a calendar day (#4686)", () => {
@@ -250,5 +256,52 @@ describe("an untimed administration is anchored at local noon of its own day", (
     logAdministration(itemId, doseId, "2026-09-02", "2026-09-02T20:00:00Z");
     logAdministration(itemId, doseId, "2026-09-03", "2026-09-03T08:16:00Z");
     expect(cardLine(p, itemId)).toBe("Next dose in ~5h · 2 of 5 in 24h");
+  });
+});
+
+// ── AND THE LINE ABOVE IT SAYS WHICH QUESTION ITS CLOCK ANSWERS ──────────────
+//
+// The card printed "Last dose 8:09am (1 hr ago)" immediately above "Last dose has no
+// time yet — add it in Dose history": the same capture stamp the verdict had just
+// refused to trust, spelled as an administration time. The display column stays — a
+// checked-off dose must not read "No doses logged" — so the fix is the SPELLING
+// #2228 decision 4 already settled: a record-chain clock renders "recorded 8:09am",
+// never bare.
+describe("the last-dose clock names the column it came from (#2228 decision 4)", () => {
+  it("an unstated row renders as recorded, not as a bare administration time", () => {
+    const p = seedProfile("UntimedToday", "UTC");
+    const { itemId, doseId } = seedPrnMed(p, "Acetaminophen", {
+      minInterval: 6,
+    });
+    // Today's check-off whose minute prompt was answered "Don't know": no stated
+    // instant, filed an hour ago.
+    logAdministration(
+      itemId,
+      doseId,
+      "2026-09-03",
+      null,
+      "2026-09-03T08:09:00Z"
+    );
+    expect(cardLine(p, itemId)).toBe(
+      "Last dose has no time yet — add it in Dose history · 1 of 5 in 24h"
+    );
+    expect(cardDayLabel(p, itemId)).toBe(
+      "Last dose recorded 8:09am (1 hr ago)"
+    );
+  });
+
+  it("a stated row keeps its plain clock", () => {
+    const p = seedProfile("PlacedToday", "UTC");
+    const { itemId, doseId } = seedPrnMed(p, "Acetaminophen", {
+      minInterval: 6,
+    });
+    logAdministration(
+      itemId,
+      doseId,
+      "2026-09-03",
+      "2026-09-03T08:09:00Z",
+      "2026-09-03T08:09:00Z"
+    );
+    expect(cardDayLabel(p, itemId)).toBe("Last dose 8:09am (1 hr ago)");
   });
 });
