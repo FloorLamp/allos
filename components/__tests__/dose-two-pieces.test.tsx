@@ -42,6 +42,12 @@ const mocks = vi.hoisted(() => ({
   updateHistoricalDose: vi.fn(),
   setDoseStatus: vi.fn(),
   logMedicationAdministration: vi.fn(),
+  acceptDoseBandUpdate: vi.fn(async (_formData: FormData) => ({
+    ok: true as const,
+  })),
+  declineDoseBandUpdate: vi.fn(async (_formData: FormData) => ({
+    ok: true as const,
+  })),
   addMeasurements: vi.fn(async (_formData: FormData) => ({})),
 }));
 
@@ -104,6 +110,8 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
 }));
 vi.mock("@/app/(app)/medications/actions", () => ({
   logMedicationAdministration: mocks.logMedicationAdministration,
+  acceptDoseBandUpdate: mocks.acceptDoseBandUpdate,
+  declineDoseBandUpdate: mocks.declineDoseBandUpdate,
 }));
 // The row's inline weight fixer posts the real body-metric action; only the Server
 // Action import is stood in for, so the fixer itself is the shipped component.
@@ -939,6 +947,7 @@ describe("the PRN row states the child's label band at dose time (#4713)", () =>
     weightDate: "2026-09-01",
     weightUnit: "kg",
     today: "2026-09-02",
+    declinedDoseUpdates: [],
   };
 
   function row(
@@ -1322,5 +1331,118 @@ describe("the medication card hands the panel both halves (#4693)", () => {
     // zone with no id files the caregiver.
     expect(mount()).toMatch(/subjectProfileId=\{subjectProfileId\}/);
     expect(mount()).toMatch(/\btz=\{timezone\}/);
+  });
+});
+
+// THE OFFER TO FOLLOW THE CURRENT WEIGHT (#5538), and WHERE IT SITS. A child's dose
+// row states the current band while every tap still records the stored figure; the
+// ruling is to ask, on the DOSE ROW, immediately below the band statement, on all four
+// dose hosts — which is one seat here, because all four mount this row.
+//
+// The two claims that are not about wording: the offer is BELOW the statement it
+// disagrees with, and the Take chip is not gated by it. The 2 a.m. path this row exists
+// for is one tap, and an offer that turned it into a decision would be the per-tap
+// confirm the ruling rejected.
+describe("the dose row offers to follow the current weight (#5538)", () => {
+  // A six-year-old at 17 kg (37.5 lb) is in ibuprofen's 36–47 lb band: 150 mg. The item
+  // still carries the 100 mg its add form banded when the child was smaller.
+  const GROWN: PediatricFormContext = {
+    ageMonths: 72,
+    weightKg: 17,
+    weightDate: "2026-09-01",
+    weightUnit: "kg",
+    today: "2026-09-02",
+    declinedDoseUpdates: [],
+  };
+
+  function row(
+    over: {
+      pediatric?: PediatricFormContext | null;
+      doseAmount?: string;
+      offerSeat?: boolean;
+      profileId?: number;
+    } = {}
+  ) {
+    render(
+      <QuickLogPrnControl
+        identity={{ name: "Ibuprofen", rxcui: "5640" }}
+        itemId={31}
+        name="Ibuprofen"
+        doseAmount={over.doseAmount ?? "100 mg"}
+        dayLabel="None today"
+        tz="UTC"
+        profileId={over.profileId}
+        offerSeat={over.offerSeat}
+        pediatric={over.pediatric === undefined ? GROWN : over.pediatric}
+      />
+    );
+  }
+
+  it("states both figures and what each answer does", () => {
+    row();
+    const offer = screen.getByTestId("offer-dose-band-update");
+    expect(offer.textContent).toContain(
+      "Ibuprofen is set to 100 mg. Update it to 150 mg?"
+    );
+    expect(
+      screen.getByTestId("offer-accept-dose-band-update").textContent
+    ).toBe("Update to 150 mg");
+    expect(
+      screen.getByTestId("offer-decline-dose-band-update").textContent
+    ).toBe("Keep 100 mg");
+  });
+
+  it("sits below the band statement, and never in front of the tap", () => {
+    row();
+    const basis = screen.getByTestId("prn-band-basis");
+    const offer = screen.getByTestId("offer-dose-band-update");
+    // DOCUMENT_POSITION_FOLLOWING: the offer comes after the statement it answers.
+    expect(
+      basis.compareDocumentPosition(offer) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const take = screen.getByTestId("prn-log-now") as HTMLButtonElement;
+    expect(take.disabled).toBe(false);
+    expect(take.getAttribute("aria-label")).toBe("Take Ibuprofen · 100 mg");
+    fireEvent.click(take);
+    expect(mocks.logMedicationAdministration).toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      subject: "a stored dose that already is the band figure",
+      over: { doseAmount: "150 mg" },
+    },
+    {
+      subject: "a figure this subject has declined",
+      over: {
+        pediatric: {
+          ...GROWN,
+          declinedDoseUpdates: ["dose-band-update:31:150"],
+        },
+      },
+    },
+    {
+      subject: "a row that does not hold the surface's one seat",
+      over: { offerSeat: false },
+    },
+    { subject: "an adult profile", over: { pediatric: null } },
+  ])("offers nothing for $subject", ({ over }) => {
+    row(over);
+    expect(screen.queryByTestId("offer-dose-band-update")).toBeNull();
+    expect(
+      (screen.getByTestId("prn-log-now") as HTMLButtonElement).disabled
+    ).toBe(false);
+  });
+
+  // The answer follows the SUBJECT, like the dose write beside it: the illness cockpit
+  // answers for the household member the row logs for, not the acting login.
+  it("answers for the profile the row logs for", async () => {
+    row({ profileId: 99 });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("offer-decline-dose-band-update"))
+    );
+    const posted = mocks.declineDoseBandUpdate.mock.calls.at(-1)![0];
+    expect(posted.get("dedupe_key")).toBe("dose-band-update:31:150");
+    expect(posted.get("profileId")).toBe("99");
   });
 });

@@ -213,6 +213,7 @@ describe("the pediatric label lookup composes the shared field (#4424 ruling 2)"
     weightDate: null,
     weightUnit: "kg",
     today: "2026-05-20",
+    declinedDoseUpdates: [],
   };
 
   // IT CANNOT MOUNT THE WHOLE FORM, because it renders inside `IntakeItemForm`'s own
