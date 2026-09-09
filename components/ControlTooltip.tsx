@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -26,10 +25,16 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // `aria-label`, and renders that same value in the tooltip. A call site has no way to
 // spell the two differently because there is only one place to spell either.
 //
+// So the reveal is NOT wired as a description (#4893). `aria-describedby` would aim a
+// screen reader at the string it just read — "Mark warmup set, button, Mark warmup
+// set" — because here the panel IS the name. The reveal exists for the sighted viewer,
+// the only one the glyph left without the string; assistive tech had it all along.
+//
 // TWO KINDS, ONE BOX. The app's other tooltip is `InfoTooltipIcon` — a tap-to-open
-// explainer for a FACT, governed by #3970's rules and deliberately untouched here.
-// What the two share is where a tooltip GOES and what it looks like when it gets
-// there, so both render `TooltipPanel` below and neither one places anything itself.
+// explainer for a FACT, governed by #3970's rules — and it is single-string for the
+// same reason, so it drops its description here too and keeps its own tap-to-pin
+// behavior. What the two share is where a tooltip GOES and what it looks like when it
+// gets there, so both render `TooltipPanel` below and neither one places anything.
 
 // The widest a tooltip gets. Beyond this a label wraps rather than becoming a line
 // of text nobody tracks back to its control.
@@ -44,11 +49,9 @@ const TOOLTIP_MAX_WIDTH = 256;
 // a tooltip cannot drift from a menu. `align: "center"` is the one thing a tooltip
 // wants that a menu does not: it is a label FOR the control, not a list hung off it.
 export function TooltipPanel({
-  id,
   label,
   anchorRef,
 }: {
-  id: string;
   label: string;
   anchorRef: RefObject<HTMLElement | null>;
 }) {
@@ -92,7 +95,6 @@ export function TooltipPanel({
   return createPortal(
     <div
       ref={panelRef}
-      id={id}
       role="tooltip"
       style={{
         maxWidth: `min(${TOOLTIP_MAX_WIDTH}px, calc(100vw - ${ANCHOR_MARGIN * 2}px))`,
@@ -119,7 +121,6 @@ export function TooltipPanel({
 export interface ControlAnchorProps {
   ref: RefObject<HTMLButtonElement | null>;
   "aria-label": string;
-  "aria-describedby": string | undefined;
   onPointerEnter: (event: PointerEvent<HTMLButtonElement>) => void;
   onPointerLeave: () => void;
   onPointerDown: () => void;
@@ -140,7 +141,6 @@ export default function ControlTooltip({
   // this component renders a fragment so it is not one.
   children: (anchor: ControlAnchorProps) => ReactNode;
 }) {
-  const id = useId();
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   // Whether the focus this control is about to receive came from a pointer. The
@@ -156,7 +156,6 @@ export default function ControlTooltip({
       {children({
         ref,
         "aria-label": label,
-        "aria-describedby": open ? id : undefined,
         // MOUSE ONLY. A touch tap fires pointerenter too, and on a control a tap is
         // an ACTIVATION — revealing a label over the thing that just changed state
         // is the opposite of an answer. Touch keeps the platform's own semantics.
@@ -177,7 +176,7 @@ export default function ControlTooltip({
           setOpen(false);
         },
       })}
-      {open ? <TooltipPanel id={id} label={label} anchorRef={ref} /> : null}
+      {open ? <TooltipPanel label={label} anchorRef={ref} /> : null}
     </>
   );
 }

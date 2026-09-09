@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { TooltipPanel } from "@/components/ControlTooltip";
 
@@ -11,7 +11,6 @@ export default function InfoTooltipIcon({
   label: string;
   "data-testid"?: string;
 }) {
-  const tooltipId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -54,7 +53,6 @@ export default function InfoTooltipIcon({
         ref={buttonRef}
         type="button"
         aria-label={label}
-        aria-describedby={open ? tooltipId : undefined}
         aria-expanded={open}
         data-testid={testId}
         onFocus={() => setFocused(true)}
@@ -78,9 +76,7 @@ export default function InfoTooltipIcon({
           that is only true of an info affordance: it opens on a TAP and stays
           pinned, because a fact is something you read rather than something you
           point at, and Escape closes it as its own layer (#3222/#3409). */}
-      {open ? (
-        <TooltipPanel id={tooltipId} label={label} anchorRef={buttonRef} />
-      ) : null}
+      {open ? <TooltipPanel label={label} anchorRef={buttonRef} /> : null}
     </span>
   );
 }
