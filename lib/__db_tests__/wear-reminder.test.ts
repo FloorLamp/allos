@@ -35,7 +35,7 @@
 // wrote only the event would be describing a pipeline in which nobody ever looked.
 
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import {
   setTimezone,
   setProfileWearReminder,
@@ -161,11 +161,11 @@ function seedLostNightSignature(): void {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(SLOT_INSTANT));
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM integration_connections");
-  db.exec("DELETE FROM hr_minutes");
-  db.exec("DELETE FROM stream_frontiers");
-  db.exec("DELETE FROM metric_samples");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM integration_connections");
+  rawDb.exec("DELETE FROM hr_minutes");
+  rawDb.exec("DELETE FROM stream_frontiers");
+  rawDb.exec("DELETE FROM metric_samples");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('WEAR-REMINDER')").run()
       .lastInsertRowid

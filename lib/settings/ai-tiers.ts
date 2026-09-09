@@ -14,16 +14,16 @@
 // module, so importing lib/db back made a runtime cycle in which this module
 // evaluated FIRST and saw `db` still in its temporal dead zone. It is also why kv.ts
 // is unreachable from here — it hoists a prepared statement over the singleton.
-import type Database from "better-sqlite3";
 import {
   parseApiShape,
   type TierConfig,
   type TierConfigs,
   type TierName,
 } from "../ai-tiers";
+import type { SqlPrepare } from "../write-revision";
 
 // Reads and single-statement writes need no transaction capability.
-type SettingsDb = Pick<Database.Database, "prepare">;
+type SettingsDb = SqlPrepare;
 
 function getSetting(db: SettingsDb, key: string): string | undefined {
   const row = db
@@ -92,10 +92,10 @@ export function getTierConfig(db: SettingsDb, tier: TierName): TierConfig {
 // Persist one tier's config. An empty api key is treated as "leave the stored key
 // unchanged" so a masked/write-only key field (which submits blank when untouched)
 // never wipes a saved secret; pass a sentinel clear separately when needed.
-// This full-handle adapter owns its IMMEDIATE transaction without importing the
-// singleton back into its initialization path.
+// The caller owns the surrounding write transaction so all tier fields and an
+// optional key clear commit as one revision.
 export function setTierConfig(
-  db: Database.Database,
+  db: SqlPrepare,
   tier: TierName,
   cfg: {
     apiShape: TierConfig["apiShape"];
@@ -105,14 +105,12 @@ export function setTierConfig(
   }
 ): void {
   const k = keys(tier);
-  db.transaction(() => {
-    setSetting(db, k.shape, cfg.apiShape);
-    setSetting(db, k.baseUrl, cfg.baseUrl.trim());
-    setSetting(db, k.model, cfg.model.trim());
-    if (cfg.apiKey !== undefined && cfg.apiKey !== "") {
-      setSetting(db, k.apiKey, cfg.apiKey);
-    }
-  }).immediate();
+  setSetting(db, k.shape, cfg.apiShape);
+  setSetting(db, k.baseUrl, cfg.baseUrl.trim());
+  setSetting(db, k.model, cfg.model.trim());
+  if (cfg.apiKey !== undefined && cfg.apiKey !== "") {
+    setSetting(db, k.apiKey, cfg.apiKey);
+  }
 }
 
 // Clear a tier's stored API key (the "remove key" affordance).

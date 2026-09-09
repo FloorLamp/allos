@@ -2,24 +2,26 @@
 //
 // The speed is the receipt; THIS is the deliverable. A memo over health data fails by
 // answering from before a write — a dismissed finding that comes back, a logged dose
-// the coaching input has not seen — and the two signals that stop it are blind to
-// different halves of the world:
-//
-//   - `total_changes()` sees only THIS connection's writes,
-//   - `PRAGMA data_version` sees only every OTHER connection's,
-//
-// so a test that drives one case cannot fail when the other signal is removed. Each
-// mutation below is therefore asserted twice: on the VALUE the gather returns (the
-// stale read itself) and on whether the gather ran at all (the receipt). Removing
-// either half of the version in lib/commit-cache.ts reds the corresponding row.
+// the coaching input has not seen. The durable database revision has to move for
+// changes committed by this connection and by a second process. Each mutation below
+// is therefore asserted twice: on the VALUE the gather returns (the stale read itself)
+// and on whether the gather ran at all (the receipt). Removing either execution path
+// from the revision owner reds its corresponding row.
 //
 // THE SECOND CONNECTION IS THE CASE NOBODY WOULD THINK TO CHECK, and it is not
 // hypothetical: three processes write this file (the web app, the hourly notify tick,
 // the poll sidecar), and lib/tick-cache.ts names the sidecar and the Telegram poll loop
 // as other-process writers of the very suppression bus these findings ride.
-import Database from "better-sqlite3";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { rawDb as db, dbFilePath, today, writeTx } from "@/lib/db";
+import { spawnSync } from "node:child_process";
+import {
+  db as requestDb,
+  rawDb as db,
+  dbFilePath,
+  today,
+  writeTx,
+} from "@/lib/db";
+import type { SqlPrepare } from "@/lib/write-revision";
 import {
   installStatementTrace,
   requestCache,
@@ -56,10 +58,8 @@ function freshProfile(label: string): void {
 }
 
 // THE MEMO'S OWN COST, and the reason a warm load reads 1 rather than 0. `commitCached`
-// reads its version pair once per request: `PRAGMA data_version` is invisible to the
-// trace (better-sqlite3's `pragma()` bypasses `db.prepare`) and `SELECT total_changes()`
-// is one statement. It is not one of the six gathers' statements — it is what a warm
-// load spends INSTEAD of all of them.
+// reads the durable revision once per request. It is not one of the six gathers'
+// statements — it is what a warm load spends INSTEAD of all of them.
 const VERSION_READ = 1;
 
 /** The six gathers above the dashboard's first candidate, called as the page calls them. */
@@ -96,7 +96,7 @@ const allGathers = (): void => {
   for (const gather of GATHERS) gather.run();
 };
 
-function bookAppointment(handle: Database.Database, day: string): void {
+function bookAppointment(handle: SqlPrepare, day: string): void {
   handle
     .prepare(
       `INSERT INTO appointments (profile_id, date, time_of_day, status, title)
@@ -110,26 +110,56 @@ const MUTATIONS: { name: string; commit: (day: string) => void }[] = [
   {
     // The path #5073 named, and the one every write TRANSACTION takes.
     name: "a writeTx write on this process",
-    commit: (day) => writeTx(() => bookAppointment(db, day)),
+    commit: (day) => writeTx(() => bookAppointment(requestDb, day)),
   },
   {
     // The path #5073's proposed writeTx counter would have MISSED. A single-statement
     // write needs no transaction and dozens of actions skip it — `deleteAppointment`
     // is a bare DELETE on this very table.
     name: "a bare single-statement write on this process",
-    commit: (day) => bookAppointment(db, day),
+    commit: (day) => bookAppointment(requestDb, day),
   },
   {
-    // The notify sidecar and the Telegram poll loop, from this process's point of
-    // view: a different connection to the same file. `total_changes()` cannot see it.
-    name: "a commit from a second connection to the same file",
+    // The notify sidecar and the Telegram poll loop: a separate process importing
+    // the production database owner, not a raw fixture that manually bumps a signal.
+    name: "a production-owned commit from a second process",
     commit: (day) => {
-      const other = new Database(dbFilePath());
-      try {
-        bookAppointment(other, day);
-      } finally {
-        other.close();
-      }
+      const child = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "--eval",
+          `const { db } = await import(${JSON.stringify(
+            new URL("../db.ts", import.meta.url).href
+          )});
+           const { readDataWriteRevision } = await import(${JSON.stringify(
+             new URL("../write-revision.ts", import.meta.url).href
+           )});
+           const before = readDataWriteRevision(db);
+           db.prepare(\`INSERT INTO appointments
+             (profile_id, date, time_of_day, status, title)
+             VALUES (?, ?, '09:00', 'scheduled', 'checkup')\`)
+             .run(Number(process.env.REVISION_PROFILE_ID), process.env.REVISION_DAY);
+           const after = readDataWriteRevision(db);
+           if (after !== before + 1) {
+             throw new Error("target commit revision " + before + " -> " + after);
+           }`,
+        ],
+        {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          timeout: 20_000,
+          env: {
+            ...process.env,
+            ALLOS_DB_PATH: dbFilePath(),
+            REVISION_PROFILE_ID: String(profileId),
+            REVISION_DAY: day,
+          },
+        }
+      );
+      expect(child.status, child.stderr || child.stdout).toBe(0);
     },
   },
 ];

@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { db, dbFilePath } from "./db";
+import { db, dbFilePath, vacuumIntoBackup } from "./db";
 import {
   getBackupSettings,
   getInstanceTimezone,
@@ -567,7 +567,7 @@ export function performBackup(): {
   // The path is app-controlled (fixed dir + timestamped name), so there's no user
   // input here regardless. A failure here (e.g. ENOSPC) throws to the caller,
   // which records it as a backup error.
-  db.exec(`VACUUM INTO '${full.replace(/'/g, "''")}'`);
+  vacuumIntoBackup(full);
 
   const size = fs.statSync(full).size;
 

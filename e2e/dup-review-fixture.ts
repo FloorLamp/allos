@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { SqlPrepare } from "../lib/write-revision";
 
 // The cross-source duplicate ACTIVITY pair (issue #10, Phase 2) that Data → Review
 // flags as a HIGH-confidence duplicate: a manually-logged "Morning run" and a Strava-
@@ -21,10 +21,7 @@ export const DUP_DATE = "2026-01-02";
 // Idempotent — the deletes are scoped to THIS fixture's titles + external_id (a blanket
 // source='strava' delete would eat the training-log-provenance "Strava morning ride" when
 // the frozen clock rolls a relative daysAgo onto DUP_DATE).
-export function seedDupReviewPair(
-  db: Pick<Database.Database, "prepare">,
-  profileId: number
-): void {
+export function seedDupReviewPair(db: SqlPrepare, profileId: number): void {
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND date = ? AND (external_id = 'strava:e2e-run-1' OR title IN ('Morning run', 'Afternoon Run'))`
   ).run(profileId, DUP_DATE);

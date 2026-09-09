@@ -19,7 +19,7 @@
 // and the profile-local DAY the lifecycle keys on is asserted separately.
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { setTimezone, setProfileWearReminder } from "@/lib/settings";
 import { getProfileWearReminder } from "@/lib/settings/notifications";
 import { shiftDateStr, utcMinute, zonedWallTimeToUtc } from "@/lib/date";
@@ -95,10 +95,10 @@ function stateOf(): string | undefined {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(nowInstant());
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM integration_connections");
-  db.exec("DELETE FROM hr_minutes");
-  db.exec("DELETE FROM upcoming_dismissals");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM integration_connections");
+  rawDb.exec("DELETE FROM hr_minutes");
+  rawDb.exec("DELETE FROM upcoming_dismissals");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('STREAM-LIFECYCLE')").run()
       .lastInsertRowid

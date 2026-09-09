@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import crypto from "node:crypto";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import {
   generateHealthConnectToken,
   getConnection,
@@ -26,8 +26,8 @@ function storedConfig(pid: number): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM integration_connections");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM integration_connections");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('HC-HASH')").run()
       .lastInsertRowid

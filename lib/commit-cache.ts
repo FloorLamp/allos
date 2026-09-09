@@ -12,46 +12,28 @@
 // cleared it, and on a health surface that is the dangerous direction. Nothing here is
 // bounded by the clock.
 //
-// THE VERSION IS A PAIR, because neither half can see what the other sees.
-//   - `PRAGMA data_version` moves when ANOTHER CONNECTION commits and never for this
-//     connection's own writes. Three processes write this file (the web app, the hourly
-//     notify tick, the poll sidecar), so this half is how the sidecar's
-//     `upcoming_dismissals` deletes and the poll loop's writes reach a web request.
-//   - `total_changes()` counts the rows THIS connection has written since it opened,
-//     which is exactly the half `data_version` is blind to.
-// Both halves are proved live, and proved load-bearing by removal, in
-// lib/__db_tests__/dashboard-tail-memo.test.ts.
+// The version is one durable database row. The statement/transaction owner advances it
+// in the same commit as every application mutation, including single-statement writes
+// and writes made by another process. It therefore remains comparable across connection
+// replacement and process restart, unlike the prior data_version/total_changes pair.
 //
-// WHY total_changes() RATHER THAN A COUNTER IN writeTx. #5073 proposed incrementing a
-// counter inside `writeTx` on the grounds that it is "the one path every mutation
-// takes". It is not, and the difference is a stale health reading. `writeTx` is where
-// request write transactions go, but single-statement writes need no transaction.
-// `deleteAppointment` (app/(app)/encounters/appointment-actions.ts) removes the row with
-// one prepared statement and no wrapper, and `getScheduledAppointments` is one of the
-// gathers memoized here, so a writeTx-only counter would have served the deleted
-// appointment straight back to the dashboard. SQLite's own counter has no such hole and
-// needs no instrumentation at any write site.
-//
-// OVER-INVALIDATION IS THE DESIGN, not an accident: neither half of the version is per
-// profile, so any write anywhere drops every profile's entry. Making it per profile
+// OVER-INVALIDATION IS THE DESIGN, not an accident: the durable revision is global,
+// so any write anywhere drops every profile's entry. Making it per profile
 // would need every write to name its profile at the boundary; the cost of not doing so
 // is one recompute after a write, which is what every load pays today.
 //
-// ONE VERSION READ PER REQUEST. `cache()` holds the pair for the request, so a commit
+// ONE VERSION READ PER REQUEST. `cache()` holds the revision for the request, so a commit
 // midway through a render is observed by the NEXT request instead of splitting one
 // render across two snapshots — the same rule the request cache already implies.
 // Outside a request `cache()` is identity, and then this wrapper is a plain
 // passthrough: a DB test, a script and the notify sidecar compute every call, exactly
 // as `cache()` and `tickCached` degrade outside their own scopes.
-import { db, hoistedStatement } from "./db";
+import { db } from "./db";
 import { cache } from "./request-cache";
-
-const OWN_WRITES = hoistedStatement("SELECT total_changes() AS changes");
+import { readDataWriteRevision } from "./write-revision";
 
 function readVersion(): string {
-  const others = db.pragma("data_version", { simple: true }) as number;
-  const own = (OWN_WRITES.get() as { changes: number }).changes;
-  return `${others}.${own}`;
+  return String(readDataWriteRevision(db));
 }
 
 // One request's version, read at the first memo use and held for the rest of it.
@@ -109,7 +91,7 @@ function storeAt(version: string): Store {
 //
 // `keyOf` must project EVERY argument that can change the answer — the same discipline
 // `cache()` imposes by identity and `tickCached` states in the same words. It must also
-// project anything OUTSIDE the arguments that the version pair does not cover: the
+// project anything OUTSIDE the arguments that the write revision does not cover: the
 // clock is the one that matters here, so a gather that reads `today(profileId)` for
 // itself puts that day in its key, or it answers yesterday's question after a quiet
 // midnight.

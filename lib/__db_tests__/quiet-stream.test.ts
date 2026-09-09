@@ -28,7 +28,7 @@
 // the other fails loudly.
 
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { setDisplayFormatPrefs } from "@/lib/settings/display";
 import { utcMinute, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
@@ -148,10 +148,10 @@ function seedOffWristNight(): void {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(nowInstant());
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM integration_connections");
-  db.exec("DELETE FROM hr_minutes");
-  db.exec("DELETE FROM stream_frontiers");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM integration_connections");
+  rawDb.exec("DELETE FROM hr_minutes");
+  rawDb.exec("DELETE FROM stream_frontiers");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('QUIET-STREAM')").run()
       .lastInsertRowid
