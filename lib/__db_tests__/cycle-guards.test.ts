@@ -9,11 +9,8 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import {
-  cyclePhaseOnDate,
-  periodOnDate,
-  MAX_PLAUSIBLE_PERIOD_DAYS,
-} from "@/lib/cycle";
+import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
+import { EPISODE_DAY_BOUNDS } from "@/lib/open-episode";
 import { listCyclePeriods, getOpenPeriod } from "@/lib/cycle-store";
 import {
   startPeriodCore,
@@ -164,7 +161,7 @@ describe("reopenPeriodCore outcomes (#1681 bug 3)", () => {
 describe("a stale open period stops claiming menstrual (#1682 fix a)", () => {
   it("stays stored exactly as recorded while yielding no menstrual phase today", () => {
     const p = newProfile("cycle-stale");
-    const startAgo = MAX_PLAUSIBLE_PERIOD_DAYS + 5;
+    const startAgo = EPISODE_DAY_BOUNDS.period.staleDays + 5;
     const id = seedPeriod(p, startAgo, null);
 
     const rows = listCyclePeriods(p);

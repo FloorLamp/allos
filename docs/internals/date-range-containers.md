@@ -40,9 +40,10 @@ A null `start` is **unbounded-past** (a member since before the capped
 change-log); a null `end` is **open/ongoing** (a member from `start` onward).
 
 **A consumer may cap what "onward" means before it calls the chassis (#1682).**
-Cycles do: `lib/cycle.ts` hands `rangeContainsDate` an open period's start plus
-`MAX_PLAUSIBLE_PERIOD_DAYS − 1` as the end, so a period someone forgot to close
-stops claiming menstrual instead of covering every future day. That is a
+Cycles do: `lib/cycle.ts` hands `rangeContainsDate` an open period's
+`openPeriodClaimEnd` as the end — the day bound the open-episode model holds for
+the kind (`EPISODE_DAY_BOUNDS.period`, #5142) — so a period someone forgot to
+close stops claiming menstrual instead of covering every future day. That is a
 DERIVATION-side decision made once, in the one helper both `periodOnDate` and
 `cyclePhaseOnDate` share — the stored `period_end` is still NULL, and nothing
 writes to the row. The chassis itself is unchanged: it still answers "is `d` in
