@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { SmtpConfigView } from "@/lib/settings";
 import { saveSmtpConfig, sendTestEmail } from "./actions";
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { Notice } from "@/components/Notice";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -204,15 +205,9 @@ export default function SmtpSettings({
       <div className="flex flex-wrap items-center gap-2">
         {/* Distinct verb, not "Save" (#928): keep exactly one "Save"-named button
             per page for Playwright's substring role matching. */}
-        <button
-          type="button"
-          onClick={save}
-          disabled={busy}
-          className="btn"
-          data-testid="smtp-apply"
-        >
+        <Button onClick={save} disabled={busy} data-testid="smtp-apply">
           Apply email settings
-        </button>
+        </Button>
       </div>
 
       <div className="border-t border-black/10 pt-4 dark:border-white/10">
@@ -226,15 +221,13 @@ export default function SmtpSettings({
             data-testid="smtp-test-to"
             className="input"
           />
-          <button
-            type="button"
+          <Button
             onClick={test}
             disabled={busy || !testTo.trim()}
-            className="btn-ghost shrink-0"
             data-testid="smtp-test"
           >
             Send test
-          </button>
+          </Button>
         </div>
       </div>
 

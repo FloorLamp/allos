@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import Avatar from "@/components/Avatar";
+import Button from "@/components/Button";
 import {
   reopenAfterRefusedSignOut,
   reopenUnlessSessionEnded,
@@ -212,14 +213,9 @@ function ProfilesCard({
             placeholder="Name"
             className="input"
           />
-          <button
-            type="button"
-            onClick={add}
-            disabled={pending || !newName.trim()}
-            className="btn shrink-0"
-          >
+          <Button onClick={add} disabled={pending || !newName.trim()}>
             Add
-          </button>
+          </Button>
         </div>
         <div className="mt-2">
           <Msg result={result} />
@@ -286,14 +282,9 @@ function ProfileRow({
             onChange={(e) => setName(e.target.value)}
             className="input"
           />
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy || !dirty}
-            className="btn-ghost shrink-0"
-          >
+          <Button onClick={save} disabled={busy || !dirty}>
             Rename
-          </button>
+          </Button>
         </div>
         <PhotoPicker
           hasPhoto={!!profile.photo_path}
@@ -384,25 +375,22 @@ function ProfileRow({
               />
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <Button
                 onClick={del}
                 disabled={busy || typedName.trim() !== profile.name}
-                className="btn-danger shrink-0"
+                variant="danger"
               >
                 Delete permanently
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 onClick={() => {
                   setConfirmOpen(false);
                   setTypedName("");
                 }}
                 disabled={pending}
-                className="btn-ghost shrink-0"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -637,14 +625,12 @@ function LoginsCard({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+          <Button
             onClick={create}
             disabled={pending || !username.trim() || (!invitePath && !password)}
-            className="btn"
           >
             Create login
-          </button>
+          </Button>
           <Msg result={result} />
         </div>
       </div>
@@ -1092,18 +1078,18 @@ function GrantsSummaryRow({
             ? "— all profiles (admin)"
             : grantCountSummary(granted, profiles.length)}
         </span>
-        <button
-          type="button"
-          data-testid={`grant-edit-${login.username}`}
-          onClick={() => {
-            setEverOpened(true);
-            setOpen((v) => !v);
-          }}
-          aria-expanded={open}
-          className="btn-ghost ml-auto"
-        >
-          {open ? "Done" : "Edit"}
-        </button>
+        <span className="ml-auto inline-flex">
+          <Button
+            data-testid={`grant-edit-${login.username}`}
+            onClick={() => {
+              setEverOpened(true);
+              setOpen((v) => !v);
+            }}
+            aria-expanded={open}
+          >
+            {open ? "Done" : "Edit"}
+          </Button>
+        </span>
       </div>
       {everOpened && (
         <div className={open ? "block" : "hidden"}>
@@ -1278,15 +1264,13 @@ function GrantsRow({
         })}
       </div>
       <div className="mt-3 flex items-center gap-3">
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={pending}
           data-testid={`grant-save-${login.username}`}
-          className="btn-ghost"
         >
           Save access
-        </button>
+        </Button>
         <Msg result={result} />
       </div>
     </div>

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import PaginationControls from "@/components/PaginationControls";
 import { requireAdmin } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
@@ -14,6 +13,7 @@ import { clampPage, pageCount } from "@/lib/pagination";
 import type { AppRoute } from "@/lib/hrefs";
 import LogTable from "@/components/LogTable";
 import SubmitButton from "@/components/SubmitButton";
+import { DestinationActionLink } from "@/components/DestinationLink";
 
 export const dynamic = "force-dynamic";
 
@@ -129,9 +129,9 @@ export default async function AuditLogPage(props: {
         {(searchParams.login ||
           searchParams.action ||
           searchParams.profile) && (
-          <Link href="/settings/audit" className="btn-ghost">
+          <DestinationActionLink href="/settings/audit">
             Clear
-          </Link>
+          </DestinationActionLink>
         )}
       </form>
 

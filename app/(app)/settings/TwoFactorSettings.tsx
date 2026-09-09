@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Button from "@/components/Button";
 import {
   begin2fa,
   activate2fa,
@@ -145,14 +146,9 @@ export default function TwoFactorSettings({
                 className="input"
                 inputMode="numeric"
               />
-              <button
-                type="button"
-                onClick={regenerate}
-                disabled={pending || !regenCode}
-                className="btn"
-              >
+              <Button onClick={regenerate} disabled={pending || !regenCode}>
                 Regenerate
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -176,29 +172,25 @@ export default function TwoFactorSettings({
                 className="input"
               />
             </div>
-            <button
-              type="button"
+            <Button
               onClick={turnOff}
               disabled={pending || !disablePw || !disableCode}
-              className="btn"
             >
               Turn off
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {/* ----- Not enabled: start / continue enrollment ----- */}
       {!enabled && !secret && !recoveryCodes && (
-        <button
-          type="button"
+        <Button
           onClick={beginEnroll}
           disabled={pending}
-          className="btn"
           data-testid="twofa-enable"
         >
           Enable two-factor authentication
-        </button>
+        </Button>
       )}
 
       {!enabled && secret && (
@@ -237,15 +229,13 @@ export default function TwoFactorSettings({
               inputMode="numeric"
               data-testid="twofa-code"
             />
-            <button
-              type="button"
+            <Button
               onClick={activate}
               disabled={pending || !enrollCode}
-              className="btn"
               data-testid="twofa-activate"
             >
               Verify &amp; turn on
-            </button>
+            </Button>
           </div>
         </div>
       )}
