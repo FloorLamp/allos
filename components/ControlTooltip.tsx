@@ -17,9 +17,24 @@ import {
 import { microMotionPlan } from "@/lib/micro-motion";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 
-// Use the same label for the control's accessible name and its visual tooltip.
-// A duplicate description would make assistive technology repeat the name.
-// InfoTooltipIcon shares the panel and placement, but owns its tap-to-pin behavior.
+// A glyph control says what it does to a screen reader and to nobody else (#4511).
+// `title=` used to be the sighted answer and #3729 removed it, correctly — it never
+// fired on touch, it could not be styled, and it was a SECOND copy of a string that
+// already existed. This is the replacement, and the whole design is that it is not a
+// second copy: `ControlTooltip` takes ONE `label`, writes it as the control's
+// `aria-label`, and renders that same value in the tooltip. A call site has no way to
+// spell the two differently because there is only one place to spell either.
+//
+// So the reveal is NOT wired as a description (#4893). `aria-describedby` would aim a
+// screen reader at the string it just read — "Mark warmup set, button, Mark warmup
+// set" — because here the panel IS the name. The reveal exists for the sighted viewer,
+// the only one the glyph left without the string; assistive tech had it all along.
+//
+// TWO KINDS, ONE BOX. The app's other tooltip is `InfoTooltipIcon` — a tap-to-open
+// explainer for a FACT, governed by #3970's rules — and it is single-string for the
+// same reason, so it drops its description here too and keeps its own tap-to-pin
+// behavior. What the two share is where a tooltip GOES and what it looks like when it
+// gets there, so both render `TooltipPanel` below and neither one places anything.
 
 // The widest a tooltip gets. Beyond this a label wraps rather than becoming a line
 // of text nobody tracks back to its control.
