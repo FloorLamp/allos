@@ -20,9 +20,20 @@ import { logFoodServingCore } from "@/lib/food-log-write";
 import { logUsualRoutineCore } from "@/lib/usual-routine-write";
 import { markDoseTaken } from "@/lib/queries/intake/adherence";
 import {
+  getRecentCorrectionBundles,
   readCorrectionBundle,
   restampCorrectionBundle,
 } from "@/lib/bundle-time-correction";
+import {
+  correctionBundleBinding,
+  dropMessagePointer,
+  messagePointerAt,
+  recordMessagePointer,
+  syncMessagePointerKeyboard,
+} from "@/lib/notifications/message-pointers";
+import { slotSessionForKeyboard } from "@/lib/notifications/intake";
+import { mintOffer } from "@/lib/notifications/offer-store";
+import { getRecentFoodTaps } from "@/lib/queries/nutrition";
 
 // A prior day's serving, seeded straight into the two stores the offer reads, so the
 // habit exists without going through the writer under test.
@@ -102,6 +113,251 @@ function bundlesOn(profileId: number, date: string) {
     doses: doses.map((r) => r.bundle_id),
   };
 }
+
+// The real usual writer receives the original pointer; the other host has its
+// own initial footprint and never receives a second usual token. No scoop is
+// present to accidentally join the two hosts through a separate protein tap.
+function seedChatAct(sourceKind: "food" | "dose") {
+  const seeded = seedMorning(`act-${sourceKind}-source`);
+  const { profileId, anchor, creatine, collagen } = seeded;
+  const chatId = String(5415000 + profileId);
+  const offerId = mintOffer(profileId, "usual-routine", anchor, {
+    window: "Morning",
+    groups: ["berries", "fermented"],
+    doseIds: [creatine, collagen],
+  });
+  const footprint = (kind: "food" | "dose") => [
+    [
+      {
+        text: kind,
+        callback_data:
+          kind === "food"
+            ? `food:${profileId}:Morning:${anchor}:berries`
+            : `all:${profileId}:Morning:${anchor}`,
+      },
+    ],
+  ];
+  const targetKind: "food" | "dose" = sourceKind === "food" ? "dose" : "food";
+  recordMessagePointer({
+    profileId,
+    chatId,
+    messageId: 54151,
+    kind: sourceKind,
+    date: anchor,
+    keyboard: [
+      [{ text: "Your usual", callback_data: `usual:${profileId}:${offerId}` }],
+      ...footprint(sourceKind),
+    ],
+  });
+  recordMessagePointer({
+    profileId,
+    chatId,
+    messageId: 54152,
+    kind: targetKind,
+    date: anchor,
+    keyboard: footprint(targetKind),
+  });
+  const source = messagePointerAt(profileId, chatId, 54151)!;
+  expect(
+    logUsualRoutineCore(
+      profileId,
+      "Morning",
+      anchor,
+      ["berries", "fermented"],
+      [creatine, collagen],
+      "telegram-nudge",
+      source.id
+    ).kind
+  ).toBe("logged");
+  const bundle = getRecentCorrectionBundles(
+    profileId,
+    targetKind,
+    new Date()
+  )[0];
+  const token = `${targetKind}time:${profileId}:${bundle.burst.fromId}:30`;
+  // Both initial sets can now be consumed; only receipt_keyboard retains them.
+  syncMessagePointerKeyboard(profileId, chatId, 54151, []);
+  syncMessagePointerKeyboard(profileId, chatId, 54152, [
+    [{ text: "−30m", callback_data: token }],
+  ]);
+  return { ...seeded, chatId, source, targetKind, bundle, token, footprint };
+}
+
+describe("the usual act's captured correction hosts (#5415)", () => {
+  it.each(["food", "dose"] as const)(
+    "binds a no-scoop act from its %s source to the other consumed host",
+    (sourceKind) => {
+      vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+      const { profileId, chatId, source, targetKind, bundle, token } =
+        seedChatAct(sourceKind);
+      const proof = correctionBundleBinding(
+        profileId,
+        targetKind,
+        bundle,
+        { chatId, messageId: 54152 },
+        slotSessionForKeyboard,
+        token
+      )!;
+      expect(proof.source.id).toBe(source.id);
+      expect(bundle.members).toHaveLength(4);
+      expect(proof.stillBound(bundle)).toBe(true);
+      // The current exact token is required even though the underlying act exists.
+      syncMessagePointerKeyboard(profileId, chatId, 54152, []);
+      expect(proof.stillBound(bundle)).toBe(false);
+      syncMessagePointerKeyboard(profileId, chatId, 54152, [
+        [{ text: "−30m", callback_data: token }],
+      ]);
+      expect(proof.stillBound(bundle)).toBe(true);
+      // A source prune cannot be replaced by a same-location, same-offer pointer.
+      dropMessagePointer(profileId, source.id);
+      recordMessagePointer({
+        profileId,
+        chatId,
+        messageId: source.messageId,
+        kind: source.kind,
+        date: source.date,
+        keyboard: source.receiptKeyboard,
+      });
+      expect(proof.stillBound(bundle)).toBe(false);
+      const current = readCorrectionBundle(profileId, {
+        domain: targetKind,
+        id: bundle.burst.fromId,
+      })!;
+      expect(
+        correctionBundleBinding(
+          profileId,
+          targetKind,
+          current,
+          { chatId, messageId: 54152 },
+          slotSessionForKeyboard,
+          token
+        )
+      ).toBeNull();
+    }
+  );
+
+  it("selects only the newest matching food context and refuses a missing initial receipt", () => {
+    vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+    const { profileId, anchor, chatId, bundle, token, footprint } =
+      seedChatAct("dose");
+    const ref = { chatId, messageId: 54152 };
+    const proof = correctionBundleBinding(
+      profileId,
+      "food",
+      bundle,
+      ref,
+      slotSessionForKeyboard,
+      token
+    )!;
+    recordMessagePointer({
+      profileId,
+      chatId,
+      messageId: 54153,
+      kind: "food",
+      date: anchor,
+      keyboard: [
+        [
+          {
+            text: "Evening",
+            callback_data: `food:${profileId}:Evening:${anchor}:berries`,
+          },
+        ],
+      ],
+    });
+    expect(proof.stillBound(bundle)).toBe(true);
+    recordMessagePointer({
+      profileId,
+      chatId,
+      messageId: 54154,
+      kind: "food",
+      date: anchor,
+      keyboard: footprint("food"),
+    });
+    expect(proof.stillBound(bundle)).toBe(false);
+    const next = { chatId, messageId: 54154 };
+    expect(
+      correctionBundleBinding(
+        profileId,
+        "food",
+        bundle,
+        next,
+        slotSessionForKeyboard
+      )
+    ).not.toBeNull();
+    // The legacy fallback to live keyboard is not an immutable initial receipt.
+    for (const receipt of [null, "invalid-json"]) {
+      db.prepare(
+        "UPDATE notify_messages SET receipt_keyboard = ? WHERE profile_id = ? AND message_id = ?"
+      ).run(receipt, profileId, 54154);
+      expect(
+        correctionBundleBinding(
+          profileId,
+          "food",
+          bundle,
+          next,
+          slotSessionForKeyboard
+        )
+      ).toBeNull();
+      expect(proof.stillBound(bundle)).toBe(true);
+    }
+  });
+
+  it("keeps both host anchors discoverable while the latest member keeps the whole act fresh", () => {
+    vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+    const { profileId, bundle } = seedChatAct("dose");
+    // The real usual writer calls the food and dose writers in sequence. Pin that
+    // one-second gap so the food stamp is outside the floor and the dose inside.
+    db.prepare(
+      `UPDATE intake_item_logs SET recorded_at = '2026-08-18T09:42:18Z'
+      WHERE bundle_id = ? AND dose_id IN (
+        SELECT d.id FROM intake_item_doses d JOIN intake_items i ON i.id = d.item_id
+        WHERE i.profile_id = ?)`
+    ).run(bundle.id, profileId);
+    vi.setSystemTime(new Date("2026-08-18T10:42:17.500Z"));
+    for (const domain of ["food", "dose"] as const) {
+      const candidates = getRecentCorrectionBundles(
+        profileId,
+        domain,
+        new Date()
+      );
+      expect(candidates.map((candidate) => candidate.id)).toEqual([bundle.id]);
+      expect(candidates[0].members).toHaveLength(4);
+    }
+  });
+
+  it("discovers complete acts beyond the recent-row cap and refuses a current ineligible sibling", () => {
+    vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+    const { profileId, anchor, creatine, collagen } =
+      seedMorning("act-candidate-cap");
+    const unrelated = db.prepare(`INSERT INTO food_log_events
+      (profile_id, group_key, date, recorded_at, logged_via)
+      VALUES (?, 'dark_leafy_greens', ?, '2026-08-18T09:41:00Z', 'telegram-nudge')`);
+    for (let i = 0; i < 101; i++) unrelated.run(profileId, anchor);
+    expect(
+      logUsualRoutineCore(
+        profileId,
+        "Morning",
+        anchor,
+        ["berries", "fermented"],
+        [creatine, collagen],
+        "telegram-nudge"
+      ).kind
+    ).toBe("logged");
+    expect(
+      getRecentFoodTaps(profileId, new Date()).some(
+        (tap) => tap.bundleId != null
+      )
+    ).toBe(false);
+    const [bundle] = getRecentCorrectionBundles(profileId, "food", new Date());
+    expect(bundle.members).toHaveLength(4);
+    db.prepare(
+      "UPDATE intake_item_logs SET status = 'skipped' WHERE dose_id = ?"
+    ).run(creatine);
+    expect(getRecentCorrectionBundles(profileId, "food", new Date())).toEqual(
+      []
+    );
+  });
+});
 
 describe("one usual tap, one act id (#5082)", () => {
   it.each(["food", "dose"] as const)(

@@ -4,6 +4,7 @@ import { hoistedStatement, readTx, writeTx } from "./db";
 import { getTimezone } from "./settings";
 import { toUtcInstant, utcMinute } from "./date";
 import {
+  CORRECTION_FRESH_MIN,
   burstChipTarget,
   isBurstFresh,
   isOfferedHour,
@@ -49,6 +50,38 @@ const DOSE_ANCHOR = hoistedStatement(`
 const PRACTICE_ANCHOR = hoistedStatement(
   "SELECT bundle_id FROM practice_logs WHERE profile_id = ? AND id = ?"
 );
+// Each writer stamps its own audit instant. A later dose can keep the whole act
+// fresh after its food rows cross the floor, so discover identities across all
+// three domains before selecting a member for the requested host.
+const RECENT_BUNDLES_SQL = `WITH recent AS (
+  SELECT bundle_id FROM food_log_events
+  WHERE profile_id = @profileId AND bundle_id IS NOT NULL
+    AND julianday(recorded_at) >= julianday(@floor)
+  UNION
+  SELECT l.bundle_id FROM intake_item_logs l
+  JOIN intake_item_doses d ON d.id = l.dose_id
+  JOIN intake_items i ON i.id = d.item_id
+  WHERE i.profile_id = @profileId AND l.bundle_id IS NOT NULL
+    AND julianday(l.recorded_at) >= julianday(@floor)
+  UNION
+  SELECT bundle_id FROM practice_logs
+  WHERE profile_id = @profileId AND bundle_id IS NOT NULL
+    AND julianday(created_at) >= julianday(@floor)
+)`;
+const RECENT_FOOD_BUNDLES = hoistedStatement(`${RECENT_BUNDLES_SQL}
+  SELECT MIN(id) AS id FROM food_log_events
+  WHERE profile_id = @profileId AND bundle_id IN (SELECT bundle_id FROM recent)
+  GROUP BY bundle_id`);
+const RECENT_DOSE_BUNDLES = hoistedStatement(`${RECENT_BUNDLES_SQL}
+  SELECT MIN(l.id) AS id FROM intake_item_logs l
+  JOIN intake_item_doses d ON d.id = l.dose_id
+  JOIN intake_items i ON i.id = d.item_id
+  WHERE i.profile_id = @profileId AND l.bundle_id IN (SELECT bundle_id FROM recent)
+  GROUP BY l.bundle_id`);
+const RECENT_PRACTICE_BUNDLES = hoistedStatement(`${RECENT_BUNDLES_SQL}
+  SELECT MIN(id) AS id FROM practice_logs
+  WHERE profile_id = @profileId AND bundle_id IN (SELECT bundle_id FROM recent)
+  GROUP BY bundle_id`);
 const FOOD_MEMBERS = hoistedStatement(`
   SELECT id, group_key AS groupKey, date, recorded_at AS tapAt,
          occurred_at AS statedAt, notify_message_id AS messageRef
@@ -65,22 +98,57 @@ const PRACTICE_MEMBERS = hoistedStatement(`
          CASE WHEN ${PRACTICE_CORRECTION_ELIGIBLE_SQL} THEN 1 ELSE 0 END AS eligible
   FROM practice_logs WHERE profile_id = ? AND bundle_id = ? ORDER BY id`);
 
+// Discover acts before the recent-row and keyboard caps. This only locates a
+// typed member; readCorrectionBundle then reads EVERY current sibling and refuses
+// the whole act if any member is ineligible. A recent eligible slice is not an act.
+export function getRecentCorrectionBundles(
+  profileId: number,
+  domain: CorrectionDomain,
+  now: Date
+): CorrectionBundle[] {
+  const statement =
+    domain === "food"
+      ? RECENT_FOOD_BUNDLES
+      : domain === "dose"
+        ? RECENT_DOSE_BUNDLES
+        : RECENT_PRACTICE_BUNDLES;
+  const floor = new Date(
+    now.getTime() - CORRECTION_FRESH_MIN * 60_000
+  ).toISOString();
+  const anchors = statement.all({ profileId, floor }) as { id: number }[];
+  return anchors.flatMap(({ id }) => {
+    const bundle = readCorrectionBundle(profileId, { domain, id });
+    return bundle && isBurstFresh(bundle.burst, now) ? [bundle] : [];
+  });
+}
+
+// A missing/unsupported bundle must not fall back to an unbundled callback path.
+export function correctionBundleId(
+  profileId: number,
+  anchor: CorrectionAnchor
+): string | null {
+  const statement =
+    anchor.domain === "food"
+      ? FOOD_ANCHOR
+      : anchor.domain === "dose"
+        ? DOSE_ANCHOR
+        : PRACTICE_ANCHOR;
+  return (
+    (
+      statement.get(profileId, anchor.id) as
+        { bundle_id: string | null } | undefined
+    )?.bundle_id ?? null
+  );
+}
+
 // The ID is obtained from a typed, profile-owned row, never from a callback payload.
 export function readCorrectionBundle(
   profileId: number,
   anchor: CorrectionAnchor
 ): CorrectionBundle | null {
   return readTx(() => {
-    const statement =
-      anchor.domain === "food"
-        ? FOOD_ANCHOR
-        : anchor.domain === "dose"
-          ? DOSE_ANCHOR
-          : PRACTICE_ANCHOR;
-    const anchored = statement.get(profileId, anchor.id) as
-      { bundle_id: string | null } | undefined;
-    if (anchored?.bundle_id == null) return null;
-    const id = anchored.bundle_id;
+    const id = correctionBundleId(profileId, anchor);
+    if (id == null) return null;
     const food = FOOD_MEMBERS.all(profileId, id) as {
       id: number;
       groupKey: string;
