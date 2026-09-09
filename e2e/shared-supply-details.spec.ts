@@ -117,15 +117,21 @@ test("adding a bottle for another person prefills its facts and links on save", 
     bottleName
   );
 
-  // From the cabinet, add that bottle for a person — the acting profile leads the
-  // selector, and submitting switches to the chosen profile before opening its form.
+  // From the cabinet, the bottle's own pre-linked add door. #5230 replaced the
+  // "Add for another person" SWITCH with the one-tap "Also for" copy; the add form
+  // itself remains the path for a schedule that is genuinely different from every
+  // member's, and it is still reached pre-seeded and pre-linked by the bottle's id.
   await page.goto("/supplies");
   const bottle = page
     .getByTestId("shared-supply-card")
     .filter({ hasText: bottleName });
   await expect(bottle).toHaveCount(1);
-  await settledClick(page, bottle.getByTestId("shared-supply-add-for-submit"));
-  await expect(page).toHaveURL(/\/nutrition\?tab=supplements&supply=\d+/);
+  const bottleId = ((await bottle.getAttribute("id")) ?? "").replace(
+    "supply-",
+    ""
+  );
+  expect(bottleId).toMatch(/^\d+$/);
+  await page.goto(`/nutrition?tab=supplements&supply=${bottleId}`);
 
   // The add form is already open, already seeded, and already pointed at the bottle.
   const seeded = page.getByRole("dialog", { name: "Add supplement" });

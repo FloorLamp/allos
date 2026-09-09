@@ -87,6 +87,15 @@ export default function SharedSupplyCard({
   } | null>(null);
   const source =
     alsoForSources.find((s) => String(s.itemId) === sourceItemId) ?? null;
+  // PAST A CHIP COUNT THE CARD FALLS BACK TO A SELECT, with the same verb (#5230
+  // shape item 1). A household card carries a handful of chips in one wrapping row;
+  // an ADMIN reaches every profile in the instance, and a card cannot render a
+  // hundred of them. Four is the layout number, not a rule about people.
+  const manyOffers = pool.alsoFor.offers.length > 4;
+  const [offerProfileId, setOfferProfileId] = useState("");
+  const offer =
+    pool.alsoFor.offers.find((o) => String(o.profileId) === offerProfileId) ??
+    null;
 
   const alsoFor = (offer: {
     profileId: number;
@@ -337,18 +346,49 @@ export default function SharedSupplyCard({
                   ))}
                 </select>
               )}
-              {pool.alsoFor.offers.map((offer) => (
-                <button
-                  key={offer.profileId}
-                  type="button"
-                  className="btn"
-                  data-testid="shared-supply-also-for-chip"
-                  disabled={pending || source == null}
-                  onClick={() => alsoFor(offer)}
-                >
-                  {offer.name} · Also for
-                </button>
-              ))}
+              {manyOffers ? (
+                <>
+                  <select
+                    aria-label="Also for"
+                    className="input h-9 max-w-xs"
+                    data-testid="shared-supply-also-for-person"
+                    value={offerProfileId}
+                    onChange={(e) => {
+                      setOfferProfileId(e.target.value);
+                      setReceipt(null);
+                    }}
+                  >
+                    <option value="">Choose a person</option>
+                    {pool.alsoFor.offers.map((o) => (
+                      <option key={o.profileId} value={o.profileId}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn"
+                    data-testid="shared-supply-also-for-chip"
+                    disabled={pending || source == null || offer == null}
+                    onClick={() => offer && alsoFor(offer)}
+                  >
+                    Also for
+                  </button>
+                </>
+              ) : (
+                pool.alsoFor.offers.map((o) => (
+                  <button
+                    key={o.profileId}
+                    type="button"
+                    className="btn"
+                    data-testid="shared-supply-also-for-chip"
+                    disabled={pending || source == null}
+                    onClick={() => alsoFor(o)}
+                  >
+                    {o.name} · Also for
+                  </button>
+                ))
+              )}
             </div>
             {receipt && (
               <p
