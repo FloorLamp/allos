@@ -126,8 +126,9 @@ export default function RestTimer({
   // Play continues the number on the face: a 90 s rest paused at 0:45 resumes at
   // 0:45, on a deadline computed from that remainder, so time spent paused does
   // not drain it. A finished rest has no number to continue, so it takes the
-  // target. Reset, a preset and a newly logged set still start the full selected
-  // rest (owner ruling on #3700; a quick restart is what Reset is for).
+  // target. Reset and a preset tapped while idle re-arm the full selected rest
+  // with the clock stopped; only a newly logged set starts it running (owner
+  // ruling on #3700; Reset then Play is the quick full restart).
   const play = () => start(done ? target : remaining);
 
   const reset = () => {
