@@ -14,7 +14,7 @@
 // current zone, no history — which is both the "unchanged for everyone who never moved"
 // guarantee and the positive control that these fixtures can produce the wrong answer.
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { setTimezone, switchProfileTimezone } from "@/lib/settings";
 import { getHrDailySummary } from "@/lib/queries/metrics";
@@ -36,10 +36,7 @@ const PRE_DAYS = ["2026-08-18", "2026-08-19", "2026-08-20"];
 const POST_ROW = "2026-08-22T05:00:00Z"; // 22:00 on the 21st in Los Angeles
 
 beforeEach(() => {
-  process.env.ALLOS_TEST_NOW = SWITCH_INSTANT;
-  return () => {
-    delete process.env.ALLOS_TEST_NOW;
-  };
+  vi.setSystemTime(new Date(SWITCH_INSTANT));
 });
 
 function profile(name: string): number {
@@ -82,7 +79,7 @@ describe("the HR daily summary buckets each day in the zone it was lived in", ()
     const stayed = homebody("HR-BUCKET-HOMEBODY");
     seedHr(moved);
     seedHr(stayed);
-    process.env.ALLOS_TEST_NOW = READ_NOW;
+    vi.setSystemTime(new Date(READ_NOW));
 
     // Each reading lands on the calendar day its own clock was showing: the three New
     // York mornings, and the Los Angeles evening of the 21st.
@@ -121,7 +118,7 @@ describe("the HR daily summary buckets each day in the zone it was lived in", ()
       hrMinute(p, "2026-08-21T05:00:00Z", 90); // 22:00 on the 20th in Los Angeles
       hrMinute(p, "2026-08-21T09:00:00Z", 95); // 02:00 on the 21st in Los Angeles
     }
-    process.env.ALLOS_TEST_NOW = READ_NOW;
+    vi.setSystemTime(new Date(READ_NOW));
 
     expect(getHrDailySummary(moved)).toEqual([
       { date: "2026-08-20", avg: 70, min: 50, max: 90 },
@@ -146,7 +143,7 @@ describe("the glucose day window keeps its edges across a switch", () => {
     const first = recordGlucoseTrace(moved, points, SOURCE);
     recordGlucoseTrace(stayed, points, SOURCE);
     expect(first.days).toEqual(["2026-08-19"]);
-    process.env.ALLOS_TEST_NOW = READ_NOW;
+    vi.setSystemTime(new Date(READ_NOW));
 
     // The window that held these points while they were being logged still holds them.
     expect(getGlucoseTraceDay(moved, "2026-08-19", SOURCE)).toEqual(points);

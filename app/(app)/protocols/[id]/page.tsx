@@ -305,6 +305,7 @@ export default async function ProtocolDetailPage(props: {
                 <ProtocolLogButton
                   practice={practice}
                   ongoing={ongoing}
+                  subjectProfileId={profile.id}
                   todayCount={practiceTodayCount}
                   atCeiling={adherence?.atCeiling ?? false}
                   today={todayStr}

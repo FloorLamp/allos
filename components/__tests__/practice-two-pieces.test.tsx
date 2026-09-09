@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import { shiftHHMM } from "@/lib/activity-meta";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
+import { DayContextProvider } from "@/components/DayContext";
 
 // THE PRACTICE DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.practice.pieces`).
 //
@@ -84,6 +85,17 @@ vi.mock("@/components/ConfirmDialog", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 7, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: true,
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 vi.mock("@/components/FormatPrefsProvider", () => ({
@@ -529,5 +541,42 @@ describe("Upcoming's row is a mount of the one control (#4424 ruling 7)", () => 
     fireEvent.click(screen.getByTestId("practice-log-button"));
     await waitFor(() => expect(posted.logPractice ?? []).toHaveLength(1));
     expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe("a historical quick-entry practice", () => {
+  it("requires a visible end time, posts its selected date, and offers no live Start", async () => {
+    render(
+      <DayContextProvider
+        profileId={7}
+        today={TODAY}
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: FOUND_DAY }}
+      >
+        <LogPracticeButton
+          practice="Sauna"
+          todayCount={0}
+          today={FOUND_DAY}
+          profileToday={TODAY}
+          inlineWhen
+          chipRow
+        />
+      </DayContextProvider>
+    );
+
+    expect(screen.queryByTestId("practice-start-button")).toBeNull();
+    expect(screen.queryByTestId("practice-when-toggle")).toBeNull();
+    const log = screen.getByTestId("practice-log-button");
+    expect(log.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByTestId("practice-when-time"), {
+      target: { value: "07:05" },
+    });
+    expect(log.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(log);
+    await waitFor(() => expect(posted.logPractice ?? []).toHaveLength(1));
+    expect(payload("logPractice")).toMatchObject({
+      date: FOUND_DAY,
+      end_time: "07:05",
+    });
   });
 });

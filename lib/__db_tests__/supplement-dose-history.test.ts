@@ -973,7 +973,6 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
 
     const res = await runEscalations(
       profileId,
-      "Rearm",
       date,
       LATE_MINUTE,
       getNotifySchedule(profileId)
@@ -1003,7 +1002,6 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
     const fetchMock = stubFetch();
     const res = await runEscalations(
       profileId,
-      "Rearm",
       date,
       LATE_MINUTE,
       getNotifySchedule(profileId)
@@ -1037,7 +1035,6 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
     const fetchMock = stubFetch();
     await runEscalations(
       profileId,
-      "Rearm",
       date,
       LATE_MINUTE,
       getNotifySchedule(profileId)
@@ -1091,7 +1088,6 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
     const fetchMock = stubFetch();
     await runEscalations(
       profileId,
-      "Rearm",
       date,
       LATE_MINUTE,
       getNotifySchedule(profileId)

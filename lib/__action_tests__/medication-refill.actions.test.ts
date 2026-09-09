@@ -22,6 +22,7 @@ function seedMed(
     quantityOnHand: number | null;
     qtyPerDose?: number;
     lastFill?: number | null;
+    kind?: "medication" | "supplement";
   }
 ): number {
   return Number(
@@ -29,10 +30,11 @@ function seedMed(
       .prepare(
         `INSERT INTO intake_items
            (profile_id, name, condition, obligation, kind, active, quantity_on_hand, qty_per_dose, last_fill_size)
-         VALUES (?, 'Metformin', 'daily', 'should', 'medication', 1, ?, ?, ?)`
+         VALUES (?, 'Metformin', 'daily', 'should', ?, 1, ?, ?, ?)`
       )
       .run(
         profileId,
+        opts.kind ?? "medication",
         opts.quantityOnHand,
         opts.qtyPerDose ?? 1,
         opts.lastFill ?? null
@@ -55,14 +57,21 @@ function onHand(id: number): {
 }
 
 describe("refillMedication (#852 item 3)", () => {
-  it("first use records the submitted fill size and adds it to supply", async () => {
-    const { profile } = seedActor();
-    const id = seedMed(profile.id, { quantityOnHand: 3, lastFill: null });
-    const res = await refillMedication(fd({ id, fill_size: 30 }));
-    expect(res.ok).toBe(true);
-    expect(onHand(id)).toEqual({ quantity_on_hand: 33, last_fill_size: 30 });
-    expect(revalidate).toHaveBeenCalledWith("/medications");
-  });
+  it.each(["medication", "supplement"] as const)(
+    "first use records the submitted fill size for %s",
+    async (kind) => {
+      const { profile } = seedActor();
+      const id = seedMed(profile.id, {
+        quantityOnHand: 3,
+        lastFill: null,
+        kind,
+      });
+      const res = await refillMedication(fd({ id, fill_size: 30 }));
+      expect(res.ok).toBe(true);
+      expect(onHand(id)).toEqual({ quantity_on_hand: 33, last_fill_size: 30 });
+      expect(revalidate).toHaveBeenCalledWith("/medications");
+    }
+  );
 
   it("one-tap reuses the remembered fill size when none is submitted", async () => {
     const { profile } = seedActor();
@@ -93,6 +102,7 @@ describe("refillMedication (#852 item 3)", () => {
     const id = seedMed(profile.id, { quantityOnHand: 3, lastFill: null });
     const res = await refillMedication(fd({ id }));
     expect(res.ok).toBe(false);
+    expect(res).toMatchObject({ ok: false, kind: "needs-size" });
     // Nothing written.
     expect(onHand(id)).toEqual({ quantity_on_hand: 3, last_fill_size: null });
   });

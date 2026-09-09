@@ -25,7 +25,13 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today, writeTx } from "@/lib/db";
-import { getProfileSetting } from "@/lib/settings";
+import {
+  getProfileSetting,
+  setUnitPrefs,
+  setLoginTelegram,
+  setLoginTelegramDisabledKinds,
+  type DistanceUnit,
+} from "@/lib/settings";
 import { setTelegramBotConfig } from "@/lib/settings";
 import { runPostWorkoutForActivity } from "@/lib/notifications/workout-presence";
 import { postWorkoutFinishMarkerKey } from "@/lib/notifications/post-workout-marker";
@@ -37,7 +43,7 @@ import { writeActivityFold } from "@/lib/merge-activity";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import { liveMessagePointers } from "@/lib/notifications/message-pointers";
 import { messageBodyHash } from "@/lib/notifications/reconcile-core";
-import { composeForSend } from "@/lib/notifications/compose";
+import { composeForSend, composeForRebuild } from "@/lib/notifications/compose";
 import { plainBody } from "@/lib/notifications/rich-text";
 import {
   editMessageTextRaw,
@@ -50,12 +56,18 @@ import { seedLoginTelegram } from "./fixtures";
 const NOW = new Date("2026-07-17T15:16:39Z");
 let chatSeq = 8800000;
 
-function newProfile(name: string): number {
+function newProfile(name: string, distanceUnit?: DistanceUnit): number {
   const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
-  seedLoginTelegram(id, String(chatSeq++));
+  const login = seedLoginTelegram(id, String(chatSeq++));
+  if (distanceUnit)
+    setUnitPrefs(login, {
+      weightUnit: "lb",
+      distanceUnit,
+      temperatureUnit: "F",
+    });
   return id;
 }
 
@@ -267,11 +279,36 @@ describe("the unclassified send says details follow (#4996 item 3)", () => {
 describe("the four orderings (#4996 item 4)", () => {
   // ORDERING 2 — the prod trace. Health Connect first, Strava folds it away.
   it("HEALTH CONNECT FIRST: the fold registers and the sweep edits to the keeper", async () => {
+    const metricChat = String(chatSeq);
     const p = newProfile("REC-hub-first");
+    const imperialChat = String(chatSeq++);
+    const imperialLogin = seedLoginTelegram(p, imperialChat);
+    setUnitPrefs(imperialLogin, {
+      weightUnit: "lb",
+      distanceUnit: "mi",
+      temperatureUnit: "F",
+    });
+    const expectedDistances = new Map([
+      [metricChat, "18.25 km"],
+      [imperialChat, "11.34 mi"],
+    ]);
     connectStrava(p);
     const hub = seedHub(p);
     await runPostWorkoutForActivity(p, hub, { verifyCompletedToday: true });
-    expect(vi.mocked(sendMessageRaw)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sendMessageRaw)).toHaveBeenCalledTimes(2);
+    const pointers = liveMessagePointers(p).filter(
+      (pointer) => pointer.kind === "workout-recap"
+    );
+    expect(pointers).toHaveLength(2);
+    for (const [chatId, distance] of expectedDistances) {
+      const delivered = vi
+        .mocked(sendMessageRaw)
+        .mock.calls.find(([chat]) => chat === chatId)![1];
+      expect(plainBody(delivered.body)).toContain(distance);
+      expect(
+        pointers.find((pointer) => pointer.chatId === chatId)!.bodyHash
+      ).toBe(messageBodyHash(delivered));
+    }
 
     // 15:50 — Strava's sync brings the ride and the auto-merge collapses the cluster.
     vi.setSystemTime(new Date("2026-07-17T15:50:02Z"));
@@ -292,25 +329,45 @@ describe("the four orderings (#4996 item 4)", () => {
     );
     expect(keeperLink(p, hub)).toBe(String(strava));
 
+    const rebuiltHashes = new Map(
+      pointers.map((pointer) => [
+        pointer.chatId,
+        messageBodyHash(
+          composeForRebuild(p, rebuildWorkoutRecap(p, pointer)!, pointer)
+        ),
+      ])
+    );
     vi.mocked(editMessageTextRaw).mockClear();
     const res = await reconcileProfileMessages(p);
-    expect(res.edited).toBe(1);
+    expect(res.edited).toBe(2);
+    for (const [chatId, distance] of expectedDistances) {
+      const edit = vi
+        .mocked(editMessageTextRaw)
+        .mock.calls.find(([chat]) => chat === chatId)!;
+      const text = String(edit[2]);
+      // The keeper's own sentence in this chat's units, with the tracked variant.
+      expect(text).toContain("Cardio complete");
+      expect(text).toContain("Morning Ride done");
+      expect(text).toContain("51 min");
+      expect(text).toContain(distance);
+      expect(text).toContain("avg HR 137 (max 158)");
+      expect(
+        liveMessagePointers(p).find((pointer) => pointer.chatId === chatId)!
+          .bodyHash
+      ).toBe(rebuiltHashes.get(chatId));
+      // The classified keeper has no remaining type ask or provisional line.
+      expect(text).not.toContain(ACTIVITY_TYPE_ASK_PROMPT);
+      expect(text).not.toContain(STRAVA_DETAILS_FOLLOW_LINE);
+      expect(
+        (edit[3]?.keyboard ?? [])
+          .flat()
+          .map((button) => button.callback_data)
+          .filter((data) => typeof data === "string")
+      ).toEqual([]);
+    }
 
-    const text = editedText();
-    // The keeper's own sentence, composed by the same builder the send ran.
-    expect(text).toContain("Cardio complete");
-    expect(text).toContain("Morning Ride done");
-    expect(text).toContain("51 min");
-    expect(text).toContain("18.25 km");
-    expect(text).toContain("avg HR 137 (max 158)");
-    // The ask and its provisional line are gone: the keeper is classified, so there is
-    // nothing left to ask and nothing left to wait for.
-    expect(text).not.toContain(ACTIVITY_TYPE_ASK_PROMPT);
-    expect(text).not.toContain(STRAVA_DETAILS_FOLLOW_LINE);
-    expect(editedKeyboardTokens()).toEqual([]);
-
-    // NO SECOND SEND, EVER. One send, one `sent` claim, and the correction was an edit.
-    expect(vi.mocked(sendMessageRaw)).toHaveBeenCalledTimes(1);
+    // One completion reaches two chats; corrections only edit those two messages.
+    expect(vi.mocked(sendMessageRaw)).toHaveBeenCalledTimes(2);
     expect(sentClaims(p)).toBe(1);
   });
 
@@ -339,7 +396,7 @@ describe("the four orderings (#4996 item 4)", () => {
 
   // ORDERING 3 — a same-source twin fold, before Strava arrives.
   it("SAME-SOURCE FOLD: the rebuild runs and is a NO-OP BY BODY HASH", async () => {
-    const p = newProfile("REC-same-source");
+    const p = newProfile("REC-same-source", "mi");
     connectStrava(p);
     const a = seedHub(p, "a");
     const b = seedHub(p, "b");
@@ -360,6 +417,31 @@ describe("the four orderings (#4996 item 4)", () => {
     const rebuilt = rebuildWorkoutRecap(p, pointer);
     expect(rebuilt).not.toBeNull();
     expect(plainBody(rebuilt!.body)).toContain(ACTIVITY_TYPE_ASK_PROMPT);
+    expect(plainBody(rebuilt!.body)).toContain("11.34 mi");
+    expect(rebuiltHash()).toBe(pointer.bodyHash);
+
+    const { login_id: loginId } = db
+      .prepare("SELECT login_id FROM login_profiles WHERE profile_id = ?")
+      .get(p) as { login_id: number };
+    setLoginTelegramDisabledKinds(loginId, ["workout-recap"]);
+    try {
+      expect(rebuildWorkoutRecap(p, pointer)).toBeNull();
+    } finally {
+      setLoginTelegramDisabledKinds(loginId, []);
+    }
+    setLoginTelegram(loginId, {
+      telegramEnabled: true,
+      telegramChatId: `${pointer.chatId}-rebound`,
+    });
+    try {
+      expect(rebuildWorkoutRecap(p, pointer)).toBeNull();
+    } finally {
+      setLoginTelegram(loginId, {
+        telegramEnabled: true,
+        telegramChatId: pointer.chatId,
+      });
+    }
+    expect(rebuildWorkoutRecap(p, pointer)).not.toBeNull();
     expect(rebuiltHash()).toBe(pointer.bodyHash);
 
     // AND THE COMPARISON CAN FAIL — forged through the SAME pair the assertion above

@@ -23,7 +23,8 @@
 // The prefixes that spell an offer token. Not a registry of behaviour — the dispatcher
 // still routes each to its own handler, and each keeps its own reconcile family; only
 // the GRAMMAR is shared, the way `take:` and `skip:` share theirs.
-export type OfferPrefix = "usual" | "stacktake";
+export type OfferPrefix =
+  "usual" | "stacktake" | "rfreceived" | "rfconfirm" | "rfcancel";
 
 export interface OfferCallback {
   profileId: number;

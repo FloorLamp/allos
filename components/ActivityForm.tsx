@@ -31,8 +31,12 @@ import PlateBuilderModal from "./PlateBuilderModal";
 import { isRealIsoDate } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import {
+  useOfflineQueue,
+  useQueuedDayContextCapture,
+} from "@/components/OfflineQueueProvider";
 import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
+import { DATED_REACH } from "@/lib/log-manifest";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useLatestRef } from "@/components/useLatestRef";
@@ -237,6 +241,7 @@ export default function ActivityForm({
   const toast = useToast();
   // Offline capture for a never-created session (#1596) — see onQueueOffline below.
   const { enqueue: enqueueOffline } = useOfflineQueue();
+  const captureDayContext = useQueuedDayContextCapture();
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   // Which surface this editor was opened from (#3087).
@@ -937,17 +942,26 @@ export default function ActivityForm({
     // the capture is create-only on the queue-stamped profile (#599). The local
     // draft (#1699) is discarded in the same breath: the queue is now the durable
     // owner, and a restorable draft would re-log the session a second time.
-    onQueueOffline: async (fd) => {
+    captureQueue: (fd, capturedAt) => {
+      const rawDate = String(fd.get("date") ?? "");
+      const capturedDate = isRealIsoDate(rawDate) ? rawDate : todayStr(tz);
+      return captureDayContext(capturedDate, DATED_REACH, capturedAt);
+    },
+    onQueueOffline: async (fd, capture) => {
       const fields: Record<string, string> = {};
       fd.forEach((value, key) => {
         if (typeof value === "string" && key !== "id" && key !== "profile_id")
           fields[key] = value;
       });
-      const capturedDate = isRealIsoDate(fields.date ?? "")
-        ? fields.date
-        : todayStr(tz);
+      if (!capture) {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, {
+          tone: "error",
+          key: "offline-capture-refused",
+        });
+        return false;
+      }
       const kept =
-        (await enqueueOffline("set", capturedDate, { fields })) === "kept";
+        (await enqueueOffline("set", { fields }, capture)) === "kept";
       // The device refused the capture (#3038): the queue owns nothing, so say
       // so in the shared sentence, KEEP the draft (whatever it still holds is
       // strictly better than nothing), and report false — the autosave hook then

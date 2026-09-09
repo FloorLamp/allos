@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
+import { followLink } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // The feed is slim rows since #2897, and since #4079 they are the shared history
@@ -194,4 +195,32 @@ test("the source filter narrows a matching day by provider (#1634)", async ({
   await expect(
     page.getByPlaceholder("Search activities or exercises…")
   ).toHaveValue("");
+});
+
+test("source refinement keeps the selected day and widened bound (#4901)", async ({
+  page,
+}) => {
+  const params = new URLSearchParams({
+    tab: "log",
+    day: DEEP_DATE,
+    q: MARKER,
+    type: "sport",
+    show: "400",
+  });
+  await page.goto(`/training?${params}`);
+  await expect(feedRow(page, MANUAL_TITLE)).toBeVisible();
+  const controls = page
+    .getByTestId("training-page")
+    .getByTestId("training-log-controls");
+  await followLink(
+    page,
+    controls.getByRole("link", { name: "Strava", exact: true }),
+    /[?&]src=strava/
+  );
+  expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+    ...Object.fromEntries(params),
+    src: "strava",
+  });
+  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible();
+  await expect(feedRow(page, MANUAL_TITLE)).toHaveCount(0);
 });

@@ -11,30 +11,32 @@ import {
   lookupRxcui,
   lookupRxcuiIngredients,
 } from "@/app/(app)/nutrition/intake-actions";
+import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
+import CreateAction from "@/components/CreateAction";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
+import QuickEntryProvider, {
+  useQuickEntry,
+} from "@/components/QuickEntryProvider";
+import { ProfileDaysBoundary } from "@/components/DayContext";
+import type { SessionProfile } from "@/lib/auth";
 
-// THE TWO ADD DOORS FEED THE SAME FORM THE SAME THING (#4609).
-//
-// The illness "Meds add" fold passed IntakeItemForm the pediatric context and nothing
-// else. The form therefore KNEW the profile was a child — it drew the weight-band
-// dosing copy — while the food-note age gate ran on "unknown" and printed chronic-
-// alcohol counselling underneath it, on a six-year-old. Its stack-interaction and PGx
-// notices had nothing to check against, and without `todayStr` it posted no
-// `started_on` at all, which is what decides whether addIntakeItem validates a start
-// date. Everything looked complete.
-//
-// So the door is the PARAMETER here and the context is held fixed: whatever the
-// /medications door renders from a context, the illness door must render from the same
-// one. The adult row is not decoration — it is the positive control. Without it, "the
-// child sees no alcohol note" passes just as well on a form that rendered nothing.
+// Hold the subject context fixed across entry points. The adult is the positive
+// control for the age gate; stack and PGx notices prove the form has its context.
 
 const addIntakeItem = vi.hoisted(() =>
   vi.fn(async (_data: FormData) => ({ ok: true as const }))
 );
+const loadQuickEntry = vi.hoisted(() => vi.fn());
+const loadQuickEntryIntakeContext = vi.hoisted(() => vi.fn());
+
+vi.mock("@/app/(app)/quick-entry-actions", () => ({
+  loadQuickEntry,
+  loadQuickEntryIntakeContext,
+}));
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   addIntakeItem,
@@ -118,7 +120,7 @@ function context(ageMonths: number): IntakeFormContext {
 const CHILD = context(72); // six years old — the screenshot's case
 const ADULT = context(492); // forty-one
 
-type Door = "medications" | "illness";
+type Door = "medications" | "illness" | "supplements";
 
 /** Open the door and type `name` into the one Name field, then report what it says. */
 async function openDoor(door: Door, ctx: IntakeFormContext, name: string) {
@@ -129,12 +131,20 @@ async function openDoor(door: Door, ctx: IntakeFormContext, name: string) {
           <MedicationAddWorkspace
             subtitle=""
             action={addIntakeItem}
-            allIntakeItems={ctx.allIntakeItems}
-            stackItems={ctx.stackItems}
-            pgxVariants={ctx.pgxVariants}
-            conditions={ctx.conditions}
-            pediatric={ctx.pediatric}
-            todayStr={ctx.todayStr}
+            intakeContext={ctx}
+          />
+        ) : door === "supplements" ? (
+          <CreateAction
+            declaration={{
+              kind: "supplement",
+              control: (
+                <AddSupplementModal
+                  action={addIntakeItem}
+                  intakeContext={ctx}
+                />
+              ),
+            }}
+            housing="section"
           />
         ) : (
           <IllnessMedicationLogger
@@ -152,7 +162,9 @@ async function openDoor(door: Door, ctx: IntakeFormContext, name: string) {
     screen.getByTestId(
       door === "medications"
         ? "medication-add-toggle"
-        : "illness-add-medication"
+        : door === "supplements"
+          ? "supplement-add-toggle"
+          : "illness-add-medication"
     )
   );
   fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
@@ -166,9 +178,76 @@ async function openDoor(door: Door, ctx: IntakeFormContext, name: string) {
   };
 }
 
-const DOORS: Door[] = ["medications", "illness"];
+const DOORS: Door[] = ["medications", "illness", "supplements"];
+
+function QuickLogMedicationDoor() {
+  const { open } = useQuickEntry();
+  return (
+    <button
+      type="button"
+      onClick={() => open("dose", { doseIntakeKind: "medication" }, 7)}
+    >
+      Add quick medication
+    </button>
+  );
+}
 
 describe("every add door feeds IntakeItemForm the same subject context (#4609)", () => {
+  it("the lazy quick-log door reaches the same child safety context", async () => {
+    loadQuickEntry.mockImplementationOnce(() => new Promise(() => {}));
+    loadQuickEntryIntakeContext.mockResolvedValueOnce({
+      kind: "ready",
+      context: CHILD,
+    });
+    const profile: SessionProfile = {
+      id: 7,
+      name: "Example Child",
+      photo_path: null,
+      photo_version: 0,
+    };
+    render(
+      <ToastProvider>
+        <ConfirmProvider>
+          <ProfileDaysBoundary
+            clocks={new Map([[7, { today: TODAY, timeZone: "UTC" }]])}
+          >
+            <QuickEntryProvider
+              actingProfileId={7}
+              writableProfiles={[profile]}
+              measurements={{
+                form: "measurements",
+                defaultDate: TODAY,
+                defaultStatedAt: null,
+                maxDate: TODAY,
+                profileId: 7,
+                weightUnit: "kg",
+                temperatureUnit: "C",
+                showCompositionEntry: true,
+                showGrowth: true,
+                showHeadCirc: false,
+              }}
+            >
+              <QuickLogMedicationDoor />
+            </QuickEntryProvider>
+          </ProfileDaysBoundary>
+        </ConfirmProvider>
+      </ToastProvider>
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add quick medication" })
+    );
+    const name = await screen.findByRole("combobox", { name: "Name" });
+    fireEvent.change(name, { target: { value: "Warfarin" } });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("pgx-notice").textContent).toContain("CYP2C9")
+    );
+    expect(screen.getByTestId("interaction-notice").textContent).toContain(
+      "Warfarin + Ibuprofen"
+    );
+    expect(loadQuickEntryIntakeContext).toHaveBeenCalledWith(7);
+  });
+
   // The alcohol note is `minLifeStage: "adult"`, and an UNKNOWN age is eligible — so
   // the broken illness door and a genuine adult were indistinguishable.
   it.each(DOORS)(
@@ -280,16 +359,16 @@ describe("every add door feeds IntakeItemForm the same subject context (#4609)",
     expect(screen.queryByTestId("pediatric-band-picker")).toBeNull();
   });
 
-  // `todayStr` is not cosmetic: with it absent the form posts no `started_on`, and
-  // addIntakeItem skips its whole start-date branch on `formData.has("started_on")`.
-  it.each(DOORS)(
-    "%s: posts the subject's local day as the start date",
+  // Both doors receive the local day for context, but neither may turn it into
+  // a start date the person has not stated.
+  it.each(["medications", "illness"] as const)(
+    "%s: leaves an unstated start date unknown",
     async (door) => {
       addIntakeItem.mockClear();
       await openDoor(door, CHILD, "Tylenol");
       screen.getByRole("button", { name: "Add" }).click();
       await waitFor(() => expect(addIntakeItem).toHaveBeenCalledOnce());
-      expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBe(TODAY);
+      expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBeNull();
       cleanup();
     }
   );

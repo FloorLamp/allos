@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import type { IntakeItem } from "@/lib/types";
 import type { SupplyOption } from "@/lib/supply-product";
+import RefillButton from "@/components/medications/RefillButton";
 import SharedSupplyPicker from "./SharedSupplyPicker";
 
 // The optional refill-tracking block shared by both intake forms (#846): units on
@@ -19,16 +19,20 @@ export default function RefillTracking({
   onPickSupply,
   quantityOnHand,
   setQuantityOnHand,
+  onRefilled,
   qtyPerDose,
   setQtyPerDose,
+  initialRefill = false,
 }: {
   fid: string | number;
+  initialRefill?: boolean;
   item?: IntakeItem;
   // Controlled by the form (#3216). The merged form shows one editor at a time, so a
   // count that lived only in this block's DOM would save only when the supply editor
   // happened to be open; every posted value is state.
   quantityOnHand: string;
   setQuantityOnHand: (v: string) => void;
+  onRefilled: (newQuantity: number) => void;
   qtyPerDose: string;
   setQtyPerDose: (v: string) => void;
   bottles: SupplyOption[];
@@ -37,43 +41,16 @@ export default function RefillTracking({
   onPickSupply?: (supply: SupplyOption | null) => void;
 }) {
   const s = item;
-  // A POOLED item (#1374) keeps NO private count — the shared bottle holds it — so the
-  // per-item quantity field is hidden entirely and the shared-supply control below is
-  // the whole story. Leaving both visible is how a household ends up double-counting.
   const pooled = supplyId !== "";
-  const [enabled, setEnabled] = useState(s?.quantity_on_hand != null);
-  // Untracked and pooled both mean "this item keeps no private count", and the form
-  // posts state — so the state has to say so, not just the hidden input that used to.
-  useEffect(() => {
-    if (!enabled || pooled) setQuantityOnHand("");
-  }, [enabled, pooled, setQuantityOnHand]);
   return (
     <div
       data-testid="refill-tracking"
       className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
     >
-      <label
-        className={`${pooled ? "hidden " : ""}flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200`}
-      >
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(event) => setEnabled(event.target.checked)}
-          className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
-        />
-        Track supply and refills
-      </label>
-      <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
-        Track units on hand to see “≈N days left” and get a refill nudge when
-        you’re running low.
-      </p>
-      <div
-        className={`${enabled && !pooled ? "grid" : "hidden"} mt-3 grid-cols-1 gap-3 sm:grid-cols-2`}
-        aria-hidden={!enabled || pooled}
-      >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`intake-qty-${fid}`}>
-            Quantity on hand
+            {pooled ? "Shared bottle count" : "Quantity on hand"}
           </label>
           <input
             id={`intake-qty-${fid}`}
@@ -82,10 +59,14 @@ export default function RefillTracking({
             step="any"
             value={quantityOnHand}
             onChange={(event) => setQuantityOnHand(event.target.value)}
-            disabled={!enabled}
             className="input"
-            placeholder="e.g. 90"
+            placeholder="Not tracked"
           />
+          <p className="mt-1 text-xs text-slate-500">
+            {pooled
+              ? "This is the bottle’s count for everyone linked to it."
+              : "Leave blank to stop tracking. Zero means none left."}
+          </p>
         </div>
         <div>
           <label className="label" htmlFor={`intake-qty-per-dose-${fid}`}>
@@ -98,12 +79,23 @@ export default function RefillTracking({
             step="any"
             value={qtyPerDose}
             onChange={(event) => setQtyPerDose(event.target.value)}
-            disabled={!enabled}
             className="input"
             placeholder="1"
           />
         </div>
       </div>
+      {s && quantityOnHand !== "" && (
+        <div className="mt-3">
+          <RefillButton
+            itemId={s.id}
+            supplyId={Number(supplyId) || null}
+            hasLastFill={s.last_fill_size != null}
+            lastFillSize={s.last_fill_size}
+            initialAsk={initialRefill}
+            onRefilled={onRefilled}
+          />
+        </div>
+      )}
       <SharedSupplyPicker
         itemId={s?.id}
         itemName={s?.name ?? ""}

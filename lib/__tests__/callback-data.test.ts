@@ -45,7 +45,13 @@ import {
   parseOfferCallback,
 } from "../notifications/offer-tokens";
 import { parsePreventiveCallback } from "../notifications/preventive-tokens";
-import { parseRefillCallback } from "../notifications/refill-tokens";
+import {
+  parseRefillCallback,
+  parseOrderedRefillCallback,
+  orderedRefillToken,
+  parseReceivedAmount,
+  parseRefillReplyMarker,
+} from "../notifications/refill-tokens";
 import { parseEscalationCallback } from "../notifications/escalation-tokens";
 
 describe("parseTakeCallback", () => {
@@ -513,6 +519,30 @@ describe("parseRefillCallback", () => {
   });
 });
 
+describe("generation-bound Ordered tokens", () => {
+  it("uses a distinct bounded namespace that the deployed snooze parser refuses", () => {
+    const data = orderedRefillToken(
+      Number.MAX_SAFE_INTEGER,
+      Number.MAX_SAFE_INTEGER,
+      "fixture0001"
+    );
+    expect(callbackDataFits(data)).toBe(true);
+    expect(parseRefillCallback(data)).toBeNull();
+    expect(parseOrderedRefillCallback(data)).toEqual({
+      profileId: Number.MAX_SAFE_INTEGER,
+      itemId: Number.MAX_SAFE_INTEGER,
+      generation: "fixture0001",
+      cancel: false,
+    });
+    expect(parseOrderedRefillCallback(`${data}:extra`)).toBeNull();
+    expect(parseOrderedRefillCallback("rfordered:1:2:short")).toBeNull();
+    expect(
+      parseOrderedRefillCallback(orderedRefillToken(1, 2, "fixture0001", true))
+        ?.cancel
+    ).toBe(true);
+  });
+});
+
 describe("refillAnswerText", () => {
   it("acknowledges a snooze and never claims success for a stale item", () => {
     expect(refillAnswerText("snoozed")).toMatch(/3 days/);
@@ -829,5 +859,21 @@ describe("which dose answers must be dismissed rather than glanced at", () => {
     expect(tapLogged("logged-off-day")).toBe(true);
     expect(tapAnswerNeedsDismissal("logged-off-day", "take")).toBe(true);
     expect(tapAnswerNeedsDismissal("logged-off-day", "skip")).toBe(true);
+  });
+});
+
+describe("Received reply input", () => {
+  it.each(["", "0", "-1", "Infinity", "2 bottles", "1,000", "2e3", "1 2"])(
+    "refuses the whole ambiguous or nonpositive input %s",
+    (text) => {
+      expect(parseReceivedAmount(text)).toBeNull();
+    }
+  );
+  it("accepts an explicit positive amount and preserves the named operation", () => {
+    expect(parseReceivedAmount(" 30.5 ")).toBe(30.5);
+    expect(parseRefillReplyMarker("How many arrived? (refill:7:12)")).toEqual({
+      profileId: 7,
+      offerId: 12,
+    });
   });
 });

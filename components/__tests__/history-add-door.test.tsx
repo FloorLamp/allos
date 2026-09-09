@@ -97,6 +97,7 @@ vi.mock("@/app/(app)/trends/measurement-actions", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: async () => "kept" }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/components/useOptimisticLedger", () => ({
   // `commit`/`optimistic` are OPTIONAL here because two shapes of tap reach this mock:

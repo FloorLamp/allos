@@ -21,7 +21,7 @@ export default function PracticeBackfillLauncher({
   items: PracticeBackfillItem[];
   today: string;
   initialDate?: string;
-  minDate: string;
+  minDate?: string;
   invalidRequestedDate?: boolean;
 }) {
   const [name, setName] = useState(items[0]?.name ?? "");
@@ -41,7 +41,7 @@ export default function PracticeBackfillLauncher({
       </h2>
       {invalidRequestedDate ? (
         <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
-          Practice backfill is available for the previous 30 days.
+          Choose today or an earlier date.
         </p>
       ) : items.length === 0 ? (
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">

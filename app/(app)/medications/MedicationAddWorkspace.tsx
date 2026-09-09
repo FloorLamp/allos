@@ -8,10 +8,8 @@ import {
   useCreateActionLabel,
 } from "@/components/CreateAction";
 import IntakeItemForm from "@/components/IntakeItemForm";
-import type { InteractionItem } from "@/lib/drug-interactions";
-import type { PgxVariantInput } from "@/lib/pgx";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
-import type { FormResult, IntakeConditionOption } from "@/lib/types";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
+import type { FormResult } from "@/lib/types";
 import type { SupplyOption } from "@/lib/supply-product";
 
 export function MedicationCreateControl({
@@ -44,22 +42,12 @@ export function MedicationCreateControl({
 export default function MedicationAddWorkspace({
   subtitle,
   action,
-  allIntakeItems,
-  stackItems,
-  pgxVariants,
-  pediatric,
-  todayStr,
-  conditions,
+  intakeContext,
   initialSupply = null,
 }: {
   subtitle: string;
   action: (formData: FormData) => Promise<FormResult>;
-  allIntakeItems: { id: number; name: string }[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
-  pediatric?: PediatricFormContext;
-  todayStr: string;
-  conditions: IntakeConditionOption[];
+  intakeContext: IntakeFormContext;
   // Arrived from the cabinet's "Add for another person" (#1705). One form carries the
   // shared-supply control the seed shows up in, so the bottle is never linked invisibly.
   initialSupply?: SupplyOption | null;
@@ -121,14 +109,9 @@ export default function MedicationAddWorkspace({
               live behind their own fact, reached only if you disagree with it. */}
           <div className="mt-4">
             <IntakeItemForm
+              intakeContext={intakeContext}
               action={action}
               kind="medication"
-              allIntakeItems={allIntakeItems}
-              stackItems={stackItems}
-              pgxVariants={pgxVariants}
-              pediatric={pediatric}
-              todayStr={todayStr}
-              conditions={conditions}
               initialSupply={initialSupply}
               onDone={close}
             />

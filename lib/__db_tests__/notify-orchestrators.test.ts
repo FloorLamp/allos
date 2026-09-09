@@ -32,6 +32,8 @@ import {
   setWeekMode,
   setWeekStart,
   setStoredAge,
+  setUnitPrefs,
+  setLoginTelegramDisabledKinds,
 } from "@/lib/settings";
 import {
   runRecap,
@@ -51,7 +53,10 @@ import {
   type ReviewCadence,
 } from "@/lib/recap-scale";
 import { recapMarkerKey } from "@/lib/notifications/send-markers";
-import { runRefills } from "@/lib/notifications/refill";
+import {
+  runRefills,
+  handleOrderedRefillCallback,
+} from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
 import { getNotifyError } from "@/lib/notifications";
@@ -59,7 +64,14 @@ import { recordDeliveryOutcome } from "@/lib/notifications/delivery-marker";
 import { ESCALATION_SUPPRESSION_POLICY } from "@/lib/notifications/escalation";
 import { isHiddenUnderPolicy } from "@/lib/lifecycle";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
-import { refillMarkerKey } from "@/lib/refill-nudge";
+import {
+  refillMarkerKey,
+  refillSignalKey,
+  parseRefillMarker,
+} from "@/lib/refill-nudge";
+import { liveMessagePointers } from "@/lib/notifications/message-pointers";
+import { parseOrderedRefillCallback } from "@/lib/notifications/refill-tokens";
+import { dismissFinding, restoreFinding } from "@/lib/queries/upcoming";
 import { getNotifySchedule } from "@/lib/settings";
 import { markDoseSkipped, recordPreventiveDone } from "@/lib/queries";
 import { buildWorkoutTargetReminder } from "@/lib/notifications/workouts";
@@ -248,11 +260,13 @@ describe("runRefills orchestrator", () => {
     const fetchMock = stubFetch();
     const date = today(p);
 
-    const res = await runRefills(p, "RefillSend", date);
+    const res = await runRefills(p, date);
     expect(res.failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1); // one HA POST
     // Delivered → the item's low-supply episode marker is stamped with the date.
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBe(date);
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))
+    ).toMatchObject({ state: "sent", sentOn: date });
   });
 
   it("marker lifecycle: no longer low → stale marker CLEARED", async () => {
@@ -266,7 +280,7 @@ describe("runRefills orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    const res = await runRefills(p, "RefillRecover", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(false);
     // Episode ended (not low) → marker swept, and nothing sent.
     expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
@@ -282,7 +296,7 @@ describe("runRefills orchestrator", () => {
     configureHA(p);
     const fetchMock = stubFetch();
 
-    const res = await runRefills(p, "RefillFrozen", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled(); // held out of the send
     // The marker is the third "frozen" state: still low, still marked, but untouched
@@ -290,16 +304,18 @@ describe("runRefills orchestrator", () => {
     expect(getProfileSetting(p, refillMarkerKey(supp))).toBe("2020-01-01");
   });
 
-  it("delivery accounting: no channel configured → no marker, retries next tick", async () => {
+  it("delivery accounting: no channel configured → released attempt, retries next tick", async () => {
     const p = newProfile("RefillNoChannel");
     const supp = seedLowSupplement(p);
     const fetchMock = stubFetch();
 
-    const res = await runRefills(p, "RefillNoChannel", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
-    // No marker written, so the nudge is retried once a channel is configured.
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
+    // The failed attempt retains no delivered baseline and can be retried.
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))
+    ).toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
   });
 
   it("delivery accounting: one channel fails + one succeeds → marker set, failed aggregated", async () => {
@@ -310,26 +326,251 @@ describe("runRefills orchestrator", () => {
     const fetchMock = stubFetch({ telegramOk: true, haOk: false });
     const date = today(p);
 
-    const res = await runRefills(p, "RefillPartial", date);
+    const res = await runRefills(p, date);
     // At least one channel delivered → the marker is set; the failed channel is
     // aggregated into the tick's exit signal.
     expect(res.failed).toBe(true);
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBe(date);
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))
+    ).toMatchObject({ state: "sent", sentOn: date });
     expect(fetchMock).toHaveBeenCalledTimes(2); // telegram + HA both attempted
   });
 
-  it("delivery accounting: all channels fail → no marker", async () => {
+  it("delivery accounting: all channels fail → retryable attempt", async () => {
     const p = newProfile("RefillAllFail");
     const supp = seedLowSupplement(p);
     configureHA(p);
     configureTelegram(p);
     stubFetch({ telegramOk: false, haOk: false });
 
-    const res = await runRefills(p, "RefillAllFail", today(p));
+    const res = await runRefills(p, today(p));
     expect(res.failed).toBe(true);
-    // Nothing delivered → marker stays unset so the episode re-fires next tick.
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
+    // Nothing delivered → the claim is released without inventing a baseline.
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(supp)))
+    ).toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
   });
+});
+
+describe("Ordered delivery claims", () => {
+  it("does not spend a healthy disabled-channel no-op", async () => {
+    const p = newProfile("RefillDisabled");
+    const item = seedLowSupplement(p);
+    const login = configureTelegram(p);
+    setLoginTelegramDisabledKinds(login, ["refill"]);
+    const fetchMock = stubFetch();
+    await runRefills(p, today(p));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(item)))
+    ).toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
+    setLoginTelegramDisabledKinds(login, []);
+    await runRefills(p, today(p));
+    expect(fetchMock).toHaveBeenCalled();
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(item)))
+    ).toMatchObject({ state: "sent" });
+  });
+
+  it("elects one live claimant, recovers expiry, and rejects the old completion", async () => {
+    const p = newProfile("RefillClaim");
+    const item = seedLowSupplement(p);
+    configureHA(p);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    fetchMock.mockImplementationOnce(async () => {
+      entered();
+      await hold;
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const first = runRefills(p, today(p));
+    await waiting;
+    try {
+      await runRefills(p, today(p));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(new Date(Date.now() + 151000));
+      await runRefills(p, today(p));
+      const newer = getProfileSetting(p, refillMarkerKey(item));
+      expect(parseRefillMarker(newer)).toMatchObject({ state: "sent" });
+      release();
+      await first;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(getProfileSetting(p, refillMarkerKey(item))).toBe(newer);
+    } finally {
+      release();
+      await first;
+    }
+  });
+
+  it("accepts Ordered from actual delivery before the other channel settles", async () => {
+    const p = newProfile("RefillEarlyTap");
+    const item = seedLowSupplement(p);
+    configureHA(p);
+    configureTelegram(p);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        if (String(url).includes("api.telegram.org"))
+          return jsonResponse({ ok: true, result: { message_id: 21001 } });
+        entered();
+        await hold;
+        return new Response(null, { status: 200 });
+      })
+    );
+    const first = runRefills(p, today(p));
+    await waiting;
+    try {
+      await vi.waitFor(() =>
+        expect(
+          liveMessagePointers(p).some((pointer) => pointer.kind === "refill")
+        ).toBe(true)
+      );
+      const pointer = liveMessagePointers(p).find(
+        (pointer) => pointer.kind === "refill"
+      )!;
+      const data = pointer.keyboard
+        .flat()
+        .find((b) => b.callback_data?.startsWith("rfordered:"))!.callback_data!;
+      await handleOrderedRefillCallback(
+        {
+          id: "early-ordered",
+          data,
+          message: {
+            message_id: pointer.messageId,
+            chat: { id: pointer.chatId },
+          },
+        },
+        parseOrderedRefillCallback(data)!
+      );
+      const requested = getProfileSetting(p, refillMarkerKey(item));
+      expect(parseRefillMarker(requested)).toMatchObject({
+        state: "requested",
+        dueOn: shiftDateStr(today(p), 3),
+      });
+      release();
+      await first;
+      expect(getProfileSetting(p, refillMarkerKey(item))).toBe(requested);
+    } finally {
+      release();
+      await first;
+    }
+  });
+
+  it("keeps a partial-only delivery retryable but accepts its proved Ordered receipt", async () => {
+    const p = newProfile("RefillPartialReceipt");
+    const item = seedLowSupplement(p);
+    configureTelegram(p, "555071");
+    seedLoginTelegram(p, "555072");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { chat_id?: string };
+        return body.chat_id === "555072"
+          ? jsonResponse({
+              ok: false,
+              description: "synthetic second-chat failure",
+            })
+          : jsonResponse({ ok: true, result: { message_id: 21002 } });
+      })
+    );
+    expect(await runRefills(p, today(p))).toEqual({ failed: true });
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(item)))
+    ).toMatchObject({ state: "attempt", sentOn: null, claimUntil: null });
+    const pointer = liveMessagePointers(p).find(
+      (pointer) => pointer.kind === "refill"
+    )!;
+    const data = pointer.keyboard
+      .flat()
+      .find((b) => b.callback_data?.startsWith("rfordered:"))!.callback_data!;
+    await handleOrderedRefillCallback(
+      {
+        id: "partial-ordered",
+        data,
+        message: {
+          message_id: pointer.messageId,
+          chat: { id: pointer.chatId },
+        },
+      },
+      parseOrderedRefillCallback(data)!
+    );
+    expect(
+      parseRefillMarker(getProfileSetting(p, refillMarkerKey(item)))
+    ).toMatchObject({ state: "requested", sentOn: pointer.date });
+  });
+
+  it.each([false, true])(
+    "ordinary cancellation before settlement invents no baseline (receipt=%s)",
+    async (withReceipt) => {
+      const p = newProfile("RefillCancelAttempt");
+      const item = seedLowSupplement(p);
+      configureHA(p);
+      if (withReceipt) configureTelegram(p);
+      let release!: () => void;
+      let entered!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let haCalls = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: unknown) => {
+          if (String(url).includes("api.telegram.org"))
+            return jsonResponse({ ok: true, result: { message_id: 21003 } });
+          haCalls++;
+          if (haCalls === 1) {
+            entered();
+            await hold;
+          }
+          return new Response(null, { status: 200 });
+        })
+      );
+      const first = runRefills(p, today(p));
+      await waiting;
+      try {
+        if (withReceipt)
+          await vi.waitFor(() =>
+            expect(
+              liveMessagePointers(p).some(
+                (pointer) => pointer.kind === "refill"
+              )
+            ).toBe(true)
+          );
+        dismissFinding(p, refillSignalKey(item));
+        restoreFinding(p, refillSignalKey(item));
+        release();
+        await first;
+        expect(getProfileSetting(p, refillMarkerKey(item))).toBeUndefined();
+        await runRefills(p, today(p));
+        expect(haCalls).toBe(2);
+        expect(
+          parseRefillMarker(getProfileSetting(p, refillMarkerKey(item)))
+        ).toMatchObject({ state: "sent" });
+      } finally {
+        release();
+        await first;
+      }
+    }
+  );
 });
 
 // =====================================================================
@@ -498,7 +739,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscSend",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -516,7 +756,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscFail",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -533,7 +772,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscNoChannel",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -550,13 +788,7 @@ describe("runEscalations orchestrator", () => {
     const fetchMock = stubFetch();
 
     // 09:00 < the 10:00 threshold (slot 8 + 120 min) → not yet due.
-    const res = await runEscalations(
-      p,
-      "EscEarly",
-      date,
-      9,
-      getNotifySchedule(p)
-    );
+    const res = await runEscalations(p, date, 9, getNotifySchedule(p));
     expect(res.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBeUndefined();
@@ -575,7 +807,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscConfirmed",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -598,7 +829,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscSuppressed",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -633,7 +863,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscOverride",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -659,7 +888,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscFanOut",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -693,7 +921,6 @@ describe("runEscalations orchestrator", () => {
 
     const res = await runEscalations(
       p,
-      "EscAccounting",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -721,13 +948,7 @@ describe("runEscalations orchestrator", () => {
     });
     expect(getNotifyError()).not.toBeNull();
 
-    await runEscalations(
-      p,
-      "EscAccountingClear",
-      date,
-      LATE_MINUTE,
-      getNotifySchedule(p)
-    );
+    await runEscalations(p, date, LATE_MINUTE, getNotifySchedule(p));
     // Cleared because this dispatch actually reached THAT caregiver's chat — the
     // owner whose row was failing (#2565), reached by the safety tier too.
     expect(getNotifyError()).toBeNull();
@@ -740,13 +961,7 @@ describe("runEscalations orchestrator", () => {
     const fetchMock = stubFetch();
 
     // 12:00 tick against the 08:00 Morning slot → 4h unconfirmed.
-    await runEscalations(
-      p,
-      "EscElapsed",
-      date,
-      LATE_MINUTE,
-      getNotifySchedule(p)
-    );
+    await runEscalations(p, date, LATE_MINUTE, getNotifySchedule(p));
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(String(body.text)).toContain("morning slot, unconfirmed for 4h");
   });
@@ -772,7 +987,6 @@ describe("runEscalations orchestrator", () => {
     // no marker of its own, no further nag.
     const res = await runEscalations(
       p,
-      "EscSkip",
       date,
       LATE_MINUTE,
       getNotifySchedule(p)
@@ -1009,6 +1223,55 @@ describe("runRecap cadence (#2178)", () => {
     expect(getRecapCard(p, "kg").scale).toBe("week");
   });
 
+  it("retains canonical cardio and sends each login's distance spelling", async () => {
+    const { p, td } = seedCompletedMonth("RecapCardioUnits");
+    setRecapScale(p, "month");
+    onlyScale(p, "month", td);
+    const month = periodOf(p, "month", td, true);
+    for (const [day, km] of [
+      [2, 5],
+      [26, 10],
+    ]) {
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, distance_km, duration_min)
+         VALUES (?, ?, 'cardio', 'Run', ?, 60)`
+      ).run(p, shiftDateStr(month.start, day), km);
+    }
+    const metric = configureTelegram(p, "recap-metric");
+    const imperial = configureTelegram(p, "recap-imperial");
+    setUnitPrefs(metric, {
+      weightUnit: "kg",
+      distanceUnit: "km",
+      temperatureUnit: "F",
+    });
+    setUnitPrefs(imperial, {
+      weightUnit: "lb",
+      distanceUnit: "mi",
+      temperatureUnit: "F",
+    });
+    const input = gatherRecapInput(p, "kg", "month", true, td, true, "mi");
+    expect(input.prs.find((pr) => pr.label === "Run")).toEqual({
+      label: "Run",
+      cardio: { kind: "distance", distanceKm: 10, durationMin: 0, speedKmh: 0 },
+    });
+    const wire = stubFetch();
+    await runRecap(p, "RecapCardioUnits", td);
+    const bodies = wire.mock.calls.map(([, init]) =>
+      JSON.parse(init.body as string)
+    );
+    expect(
+      bodies.find((body) => body.chat_id === "recap-metric").text
+    ).toContain("longest Run at 10 km");
+    expect(
+      bodies.find((body) => body.chat_id === "recap-imperial").text
+    ).toContain("longest Run at 6.21 mi");
+    // The scheduled body-weight spelling stays kg even for the lb-preferring login.
+    for (const body of bodies) expect(body.text).toContain("now 80.4 kg");
+    expect(getProfileSetting(p, recapMarkerKey("month"))).toBe(month.end);
+    await runRecap(p, "RecapCardioUnits", td);
+    expect(wire).toHaveBeenCalledTimes(2);
+  });
+
   it("does not re-send a period the marker already records", async () => {
     const { p, td } = seedCompletedMonth("RecapNoDouble");
     setRecapScale(p, "month");
@@ -1137,7 +1400,7 @@ describe("runEaseBack (#837)", () => {
 
     const input1 = gatherCoachingInput(p, "kg", "km");
     const fetchMock = stubFetch();
-    const res1 = await runEaseBack(p, "EaseBack", input1, td);
+    const res1 = await runEaseBack(p, input1, td);
     expect(res1.failed).toBe(false);
     // Delivered → the per-episode one-shot marker is set to the send date.
     expect(getProfileSetting(p, easeBackMarkerKey(episodeId))).toBe(td);
@@ -1149,7 +1412,7 @@ describe("runEaseBack (#837)", () => {
 
     // Second tick, same open ease-back window → one-shot: no new send.
     const input2 = gatherCoachingInput(p, "kg", "km");
-    const res2 = await runEaseBack(p, "EaseBack", input2, td);
+    const res2 = await runEaseBack(p, input2, td);
     expect(res2.failed).toBe(false);
     expect(fetchMock.mock.calls.length).toBe(firstSendCalls);
   });
@@ -1162,7 +1425,7 @@ describe("runEaseBack (#837)", () => {
 
     const input = gatherCoachingInput(p, "kg", "km");
     const fetchMock = stubFetch();
-    const res = await runEaseBack(p, "EaseBackOpen", input, td);
+    const res = await runEaseBack(p, input, td);
     expect(res.failed).toBe(false);
     expect(fetchMock.mock.calls.length).toBe(0);
   });

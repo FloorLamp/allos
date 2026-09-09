@@ -80,6 +80,40 @@ describe("recapNudgeLine", () => {
     expect(recapNudgeLine(recap(), false)).toBeNull();
   });
 
+  it.each([5, -5])(
+    "renders the existing %s kg progress fact in the recipient's units",
+    (deltaE1rmKg) => {
+      const input = recap({
+        prExercises: [],
+        targetRollup: "none-targeted",
+        exercises: [
+          {
+            exercise: "Bench press",
+            workingSets: 3,
+            plannedSets: null,
+            volumeKg: 1200,
+            verdict: null,
+            bodyweight: false,
+            e1rmPR: false,
+            weightPR: false,
+            deltaE1rmKg,
+            missedSets: 0,
+            shortfall: null,
+          },
+        ],
+      });
+      const before = JSON.stringify(input);
+      const sign = deltaE1rmKg > 0 ? "+" : "−";
+      expect(recapNudgeLine(input, true, "kg")).toContain(
+        `Bench press ${sign}5 kg vs last`
+      );
+      expect(recapNudgeLine(input, true, "lb")).toContain(
+        `Bench press ${sign}11 lb vs last`
+      );
+      expect(JSON.stringify(input)).toBe(before);
+    }
+  );
+
   it("returns null for a finish with no strength working sets (pure cardio)", () => {
     expect(
       recapNudgeLine(recap({ totalWorkingSets: 0, prExercises: [] }), true)
@@ -367,10 +401,15 @@ describe("importedRecapLine (#2272)", () => {
     expect(line).not.toMatch(/set|volume|PR|target/i);
   });
 
-  it("includes distance in canonical km (the notification unit policy)", () => {
-    expect(importedRecapLine(facts({ distanceKm: 8.234 }))).toBe(
-      "Afternoon Workout done · 60 min · 8.23 km"
+  it("converts canonical distance at the recipient boundary", () => {
+    const input = facts({ distanceKm: 10 });
+    expect(importedRecapLine(input, "km")).toBe(
+      "Afternoon Workout done · 60 min · 10 km"
     );
+    expect(importedRecapLine(input, "mi")).toBe(
+      "Afternoon Workout done · 60 min · 6.21 mi"
+    );
+    expect(input.distanceKm).toBe(10);
   });
 
   it("falls back to the elapsed span only through its caller, and skips absent facts", () => {

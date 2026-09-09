@@ -21,7 +21,7 @@
 //
 // The db singleton is redirected at a per-file temp DB by setup.ts.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   getIntakeDoses,
@@ -43,6 +43,9 @@ import {
   STALE_QUEUED_DOSE_REASON,
   type QueuedIntent,
 } from "@/lib/offline/queue";
+import { dayContextKey } from "@/lib/day-context-key";
+import { TAP_REACH } from "@/lib/log-manifest";
+import { TIER_FROZEN_INSTANT } from "./frozen-clock";
 
 let seq = 0;
 
@@ -113,10 +116,21 @@ const DATE = today(1);
 function doseIntent(
   flow: "dose" | "skip-dose",
   doseId: number,
-  opts: { date?: string; clientTakenAt?: string; key?: string } = {}
+  opts: {
+    date?: string;
+    clientTakenAt?: string;
+    key?: string;
+    isPrimaryDay?: boolean;
+    profileId?: number;
+  } = {}
 ): QueuedIntent {
   const date = opts.date ?? DATE;
-  return {
+  const parts = {
+    profileId: opts.profileId ?? 1,
+    day: date,
+    reach: TAP_REACH["dose-day"],
+  };
+  const base = {
     key: opts.key ?? `dose-intent-${++seq}-${Date.now()}`,
     flow,
     date,
@@ -124,6 +138,16 @@ function doseIntent(
     payload: {
       doseId,
       ...(opts.clientTakenAt ? { clientTakenAt: opts.clientTakenAt } : {}),
+    },
+  };
+  if (opts.isPrimaryDay === undefined) return base;
+  return {
+    ...base,
+    profileId: parts.profileId,
+    dayContext: {
+      parts,
+      key: dayContextKey(parts),
+      isPrimaryDay: opts.isPrimaryDay,
     },
   };
 }
@@ -484,22 +508,43 @@ describe("escalationAckState status-awareness (#280)", () => {
 });
 
 describe("offline dose replay rides the shared write cores (#1427)", () => {
-  it("stamps the CAPTURED tap time, snapshots the amount, and decrements supply once", () => {
-    const profileId = seedProfileRow();
-    const itemId = seedItem(profileId, { quantityOnHand: 10 });
-    const doseId = seedDose(itemId, "2 caps");
+  afterEach(() => vi.setSystemTime(TIER_FROZEN_INSTANT));
 
-    // Local midnight of the log's own day: unambiguously inside DATE in the profile
-    // timezone and (except for the first instant of the day) hours before "now", so
-    // the stored recorded_at could not have come from datetime('now').
-    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "00:00")!;
+  it("never invents an instant for a captured nonprimary day that is current at replay", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
+    const doseId = seedDose(itemId, "1 cap");
+    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "08:15")!;
 
     expect(
       applyIntent(
         profileId,
-        doseIntent("dose", doseId, { clientTakenAt: tapped.toISOString() })
+        doseIntent("dose", doseId, {
+          clientTakenAt: tapped.toISOString(),
+          isPrimaryDay: false,
+          profileId,
+        })
       )
     ).toEqual({ status: "done" });
+    expect(occurredAt(doseId, DATE)).toBeNull();
+  });
+
+  it("stamps a primary-day T1 tap after replay crosses midnight", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "2 caps");
+
+    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "23:50")!;
+    vi.setSystemTime(tapped);
+    const intent = doseIntent("dose", doseId, {
+      clientTakenAt: tapped.toISOString(),
+      isPrimaryDay: true,
+      profileId,
+    });
+    vi.setSystemTime(new Date(tapped.getTime() + 20 * 60_000));
+    expect(today(profileId)).toBe(shiftDateStr(DATE, 1));
+
+    expect(applyIntent(profileId, intent)).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)).toEqual({ amount: "2 caps", status: "taken" });
     expect(occurredAt(doseId, DATE)).toBe(utcInstant(tapped));
     expect(onHand(itemId)).toBe(9);

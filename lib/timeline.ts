@@ -4,7 +4,11 @@ import {
   eventTitle,
   type EndurancePlanDiscipline,
 } from "./endurance-plan";
-import { trainingActivityPageHref, trainingEventPageHref } from "./hrefs";
+import {
+  trainingTabHref,
+  trainingActivityPageHref,
+  trainingEventPageHref,
+} from "./hrefs";
 import { isDraftActivityRow } from "./activity-draft";
 import { trainingPhotoCounts } from "./training-photo-write";
 import { shiftDateStr } from "./date";
@@ -1089,7 +1093,7 @@ function collectEvents(
           subtitle: g.target_date
             ? `Target date, ${g.status}`
             : `Created, ${g.status}`,
-          href: "/training?tab=goals",
+          href: trainingTabHref("plan", "goals"),
           sortTime: timeFromCreatedAt(g.created_at, tz),
           tone: g.status === "achieved" ? "good" : "default",
         },

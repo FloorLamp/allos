@@ -1,188 +1,135 @@
-# The shared photo core (`lib/photo/*`, `components/photo/*`)
+# Shared photo core
 
 Status: shipped
 
-The one capture → ingest → store → browse/compare stack every photo-carrying
-domain uses (issue #1119, phase 1). The physique progress-photo domain
-(`progress_photos`, phase 2) was its first tenant; skin (`lesion_photos`) and
-symptom (`symptom_photos`) photos joined it in phase 3 (#1844), so **all three
-photo domains now ride one ingest**. **Video capture (#1224) shipped as a
-SIBLING core** — `lib/video/*` / `components/video/*`, same
-per-profile store conventions and strictest-privacy tier, adding container
-sniffing, a Range-capable serve, and poster frames; see
-`docs/internals/video-core.md` (the poster frame it extracts is EXIF-stripped
-through THIS core's `processPhoto`). This file is the contract a new photo
-tenant builds against.
+Photo tenants reuse the capture, processing, storage, and gallery owners below.
+[Video](video-core.md) shares the profile-storage conventions and photo processing
+for posters, but stores clip bytes without stripping their metadata.
 
-## Why one core (the chokepoint argument)
+## Owners and tenants
 
-Three photo domains predate the core, each re-implementing a partial slice of
-per-profile storage, sniffing, and serving — and none stripped metadata. The
-privacy risk is at EGRESS: the full export bundles upload files verbatim and the
-offsite backup mirrors raw bytes, so embedded GPS/device EXIF rides along —
-metadata the user never entered and cannot see when consenting to a share or an
-export. **Strip-at-ingest is the one chokepoint that keeps every current and
-future egress path clean by construction** (the Telegram-chokepoint / import-
-footprint philosophy). Per-egress-path scrub lists would drift; a single ingest
-funnel cannot.
+| Domain   | Row owner                        | Write core                                                |
+| -------- | -------------------------------- | --------------------------------------------------------- |
+| Progress | Profile and pose/date            | [progress-photo-write](../../lib/progress-photo-write.ts) |
+| Lesion   | Skin lesion                      | [skin-photo-write](../../lib/skin-photo-write.ts)         |
+| Symptom  | Symptom/date, with episode links | [symptom-photo-write](../../lib/symptom-photo-write.ts)   |
+| Training | Activity or endurance-plan event | [training-photo-write](../../lib/training-photo-write.ts) |
 
-## The pipeline (server): `processPhoto(bytes)` — `lib/photo/ingest.ts`
+Training photos have exactly one owner: `activity_id` or `endurance_plan_id`.
+Their date comes from that owner rather than a separate photo-date column.
+Deduplication is per profile within the domain, so attaching identical processed
+bytes to another training owner can return the existing photo.
 
-Order is load-bearing:
+## Process before storing
 
-1. **Gate** — empty / `MAX_PHOTO_BYTES` / magic-byte sniff (`sniffImageMime`,
-   never the client-declared type). HEIC is rejected with a friendly error (the
-   in-app camera path always produces JPEG; prebuilt sharp lacks libheif).
-2. **Harvest before the strip** — `readJpegExif` (`lib/photo/exif.ts`, pure)
-   pulls the ONE useful truth out of EXIF: the capture date (`DateTimeOriginal`
-   → `DateTime`), so a photo taken last Tuesday and uploaded today defaults to
-   Tuesday (`resolvePhotoDate`, `lib/photo/policy.ts` — an explicit user date
-   wins; a FUTURE capture date is refused). **GPS is deliberately never
-   decoded**: the parser only records that a GPS IFD exists; no field of its
-   result can carry a coordinate.
-3. **Auto-orient** — the EXIF orientation is baked into pixels
-   (`sharp.rotate()`).
-4. **Strip + downscale** — re-encode to JPEG (`quality 82`) inside a
-   `PHOTO_MAX_EDGE` (2048px) box, `withoutEnlargement`. A sharp re-encode
-   without `withMetadata()` carries no EXIF/GPS/XMP/ICC.
-5. **Verify the strip** — `readJpegExif(output)` must report no Exif segment;
-   otherwise the pipeline refuses to hand bytes back (defense in depth — we
-   don't blindly trust the dependency either).
-6. **Thumbnail + hash** — a `PHOTO_THUMB_EDGE` (320px) thumbnail for grids, and
-   a sha256 `contentHash` of the PROCESSED bytes (identical captures dedup
-   identically).
+[processPhoto](../../lib/photo/ingest.ts) returns a processed photo or a typed
+invalid result. It performs these steps in order:
 
-Returns a typed outcome: `{ kind: "processed", photo: ProcessedPhoto }` or
-`{ kind: "invalid", error }` — callers never unconditionally confirm.
-`ProcessedPhoto` =
-`{ bytes, thumbBytes, mime: "image/jpeg", width, height, sizeBytes, contentHash, captureDate }`.
+1. Reject empty, oversized, unsupported, or HEIC input. Sniff the bytes rather
+   than trusting the declared MIME type. The shared cap is 15 MiB.
+2. Read JPEG capture-date metadata before stripping it. The EXIF parser detects
+   a GPS directory's presence but never decodes coordinates.
+3. Bake orientation into pixels, resize inside a 2048px box without enlargement,
+   and re-encode as JPEG at quality 82 without preserving metadata.
+4. Reject output that still reports EXIF/GPS, generate a 320px thumbnail, and hash
+   the processed image bytes with SHA-256.
 
-The client half (`components/media/MediaInput.tsx` +
-`lib/photo/client-compress.ts`) makes the common path clean/small at the first
-hop — a canvas re-encode has no EXIF and `fitWithin` (the same pure sizing
-computation the server tests pin) caps the upload at capture time — but the
-server pipeline runs REGARDLESS. Never trust the client.
+[Photo policy](../../lib/photo/policy.ts) owns dimensions, quality, byte limits,
+and date selection. For dated tenants, a valid explicit date wins; otherwise use
+an extracted capture date no later than today, then today. Domain validation
+still decides whether an explicit date is allowed.
 
-The shared media form opens on the chooser when `getUserMedia` is absent, a
-denied / failed outcome is cached, or the browser cannot report camera
-permission. The camera remains one tap away. A readable prompt on a phone or a
-known granted camera leads with the live viewfinder; a failed attempt returns to
-the chooser with blocked / missing / busy guidance. Every picked file still runs
-the same client and server strip/downscale pipeline.
+[MediaInput](../../components/media/MediaInput.tsx) and
+[client compression](../../lib/photo/client-compress.ts) reduce photo size and
+metadata before upload. The server still processes every upload. The chooser is
+the fallback for unavailable, denied, failed, or unobservable camera permission;
+a phone permission prompt or known grant can lead with the viewfinder. Camera
+capture produces JPEG. Document capture has a separate resolution/quality preset
+in photo policy so text stays readable.
 
-## Store / serve — `lib/photo/store.ts`
+## Store and serve
 
-- `PhotoDomain` is `progress` / `lesion` / `symptom`; `DOMAIN_DIRS` maps each to
-  the per-profile dir it already used, so phase 3 moved no files.
-- `storeProcessedPhoto(domain, profileId, photo)` writes
-  `data/uploads/<domain-dir>/<profileId>/<hash16>.jpg` + `<hash16>.thumb.jpg`
-  and returns repo-relative paths for the row. Content-named ⇒ an identical
-  re-store overwrites in place (idempotent).
-- `thumbSiblingPath(storedPath)` is the ONE rule naming a photo's thumbnail:
-  drop the extension, add `.thumb.jpg`. `progress_photos` records `thumb_path`
-  on the row; `lesion_photos`/`symptom_photos` predate the core and carry no
-  such column, and phase 3 deliberately shipped **no schema change**, so their
-  readers derive it. The thumbnail is a derived artifact of the stored file, not
-  an independent fact, so a sibling name encodes it truthfully — and every
-  reader `existsSync`es first, falling back to the full image for a photo the
-  metadata backfill has not reached.
-- `unlinkPhotoFiles(domain, relPaths)` is best-effort and **path-contained**: a
-  stored path resolving outside the domain root is skipped, never followed.
-- Serve routes follow the lesion/symptom posture, hardened: session-gated,
-  scoped `id AND profile_id`, path-contained, `nosniff`, `?thumb=1` for the grid
-  asset, and the #478 JSON error shape (`app/api/progress-photo/[id]/route.ts`
-  is the reference).
+[Photo storage](../../lib/photo/store.ts) maps the four domains to per-profile
+folders under `data/uploads/`. It writes `<hash16>.jpg` and `<hash16>.thumb.jpg`,
+returning repository-relative paths. Re-storing identical content uses the same
+paths. Domain write cores own validation, deduplication, and row writes through
+`writeTx`; the filesystem is not rolled back by a SQLite transaction.
 
-## Browse / compare — one model, two sibling views (#221)
+Keep descriptive metadata edits separate from immutable stored content. A caption,
+date, or series correction must not repoint a row's stored path or content hash.
+Training permits caption edits while its parent supplies date and ownership.
 
-`lib/photo/gallery-model.ts` (pure) owns: `selectableDomains` (only domains the
-profile HAS photos in are offered — a gallery never renders an empty domain
-tab), `filterBySeries` (pose / lesion / episode sub-filter), `dateGroups`
-(most-recent-first grid), `timelineOrder` + `defaultComparePair` (oldest→newest,
-first-vs-latest), `lightboxNeighbors` (no-wrap paging).
+`thumbSiblingPath` owns thumbnail naming. Lesion and symptom rows derive it
+because they have no thumbnail column; their routes fall back to the full image
+when the derived thumbnail is absent. Do not add a column just for that derivation.
+`unlinkPhotoFiles` performs best-effort deletion contained within the domain root.
 
-- `components/photo/PhotoGallery.tsx` — the browse index: domain selector
-  (collapses when only one domain has photos; **domains are never co-mingled in
-  one grid** — the privacy-tier separation is deliberate), series chips, a
-  thumbnail grid (originals load only on lightbox open), and a lightbox with
-  paging + domain-supplied actions (`renderActions`).
-- `components/photo/PhotoTimeline.tsx` — the compare view over ONE series: two
-  date pickers, side-by-side or an onion-skin overlay with a blend slider, and a
-  thumbnail strip for the endpoints.
+All photo serve routes require a session, contain paths within their domain root,
+set `nosniff`, and support `?thumb=1`. Their authorization boundaries differ:
 
-Captions/meta are factual only (date, weight snapshot) — no scoring, no derived
-judgment anywhere in the core (product-decided, #1119).
+- Progress and lesion queries require the active profile's `profile_id`.
+- Symptom and training routes resolve the row's owning profile and require
+  `canAccessProfile`, matching household views without switching active profile.
 
-## Adding a tenant domain (the checklist phase 3 and #1224 followed)
+An inaccessible row gets the same not-found response as a missing row. Preserve
+the surface's profile boundary when reusing a route; file containment alone does
+not authorize a read.
 
-1. Add the domain key + dir to `PhotoDomain`/`DOMAIN_DIRS` in
-   `lib/photo/store.ts`.
-2. Domain write core (`lib/<domain>-photo-write.ts`, auth-blind, profileId-
-   first): validate domain fields → per-profile `contentHash` dedup →
-   `storeProcessedPhoto` → row insert, all inside `writeTx`; delete unlinks both
-   files. `lib/progress-photo-write.ts` is the template. A METADATA edit (#1934)
-   belongs here too and is the split the domain must keep: the row's descriptive
-   fields (date, series key, caption) are correctable in place, while
-   `stored_path`/`thumb_path`/`content_hash` never appear in an UPDATE's SET list
-   — the bytes are immutable content, so a correction can never re-point a row at
-   different pixels and the per-profile dedup keeps meaning what it meant.
-3. Server Action: `requireWriteAccess` → parse → `processPhoto` →
-   `resolvePhotoDate` → core → `revalidatePath`; an action-tier test proves the
-   stored file is metadata-free (`spliceExifIntoJpeg` from
-   `lib/__tests__/exif-fixture.ts` builds GPS-tagged synthetic fixtures).
-4. Serve route scoped `id AND profile_id` with `?thumb=1`.
-5. Row-ops side-state: `deleteProfile` gathers `stored_path`+`thumb_path` before
-   the sweep and unlinks under the domain root; the export-completeness
-   allowlist documents the export stance; owned-table registration. If the
-   domain's owner is a row that can be MERGED, say what a merge does with it —
-   `training_photos` cascaded off a merged-away session and left its files on
-   disk with nothing pointing at them (#5481), because the merge core's child
-   list is hand-written. Activity-owned tables now declare their disposition in
-   `ACTIVITY_CHILD_LINKS` (`lib/merge-activity.ts`), and a new one fails
-   `lib/__db_tests__/activity-child-links.test.ts` until it does.
-6. Surface: `MediaInput` (pass the series' last photo as `ghostUrl`),
-   `PhotoGallery` (add the domain — the selector lights up on data), and
-   `PhotoTimeline` per series. A domain whose table predates the core and has no
-   `thumb_path` derives the grid's thumbnail with `thumbSiblingPath` instead
-   (#1844) — it does NOT earn a schema change for it.
+## Browse and compare
 
-## Phase 3 (#1844) — the other two domains, and the backfill
+[Gallery model](../../lib/photo/gallery-model.ts) owns populated-domain selection,
+series filtering, descending date groups, chronological comparison, first/latest
+endpoints, and non-wrapping lightbox neighbors.
+[PhotoGallery](../../components/photo/PhotoGallery.tsx) shows one domain at a time,
+loads thumbnails for the grid, and accepts domain actions for the lightbox.
+[PhotoTimeline](../../components/photo/PhotoTimeline.tsx) compares one series
+side-by-side or with an overlay. Captions and context remain factual: no scoring
+or derived judgments.
 
-`lib/skin-photo-write.ts` and `lib/symptom-photo-write.ts` were the last domain
-writes storing uploaded bytes verbatim, on the two most sensitive photo domains
-in the app. Both now take a `ProcessedPhoto`, exactly like the progress core; both
-Server Actions run `processPhoto` → `resolvePhotoDate` → core. Their surfaces
-render through the shared views: `LesionPhotoStrip` and `SymptomPhotoStrip` are
-Browse (`PhotoGallery`) / Compare (`PhotoTimeline`) over one series — the lesion
-for skin, the symptom for illness — which is what "is this mole changing?" and
-"is the rash spreading?" actually ask. Both serve routes gained `?thumb=1`.
+## Shared media export
 
-**The one-time backfill** (`lib/photo/metadata-backfill.ts`) is what makes the
-guarantee retroactive. Owner ruling (2026-08-01, #1844): **strip in place** — the
-pass re-encodes each stored file through the same `processPhoto` and replaces the
-bytes, with no archived-originals tier, because an archive only relocates the
-exposure. It is a **boot task, not a versioned migration**: the work is filesystem
-work (a migration's transaction cannot roll back re-encoded files), sharp is async
-while the runner and `bootTasks` are synchronous by design, and it changes no
-schema — it writes only the three byte-derived columns (`mime_type`, `size_bytes`,
-`content_hash`). `bootTasks` claims it through a `settings` marker (the
-canonical-flag-reconcile pattern) and lets it run detached; the pass logs a
-processed / skipped / failed tally. Idempotence is per FILE — a stored JPEG with
-no Exif segment is skipped, never re-compressed — so `npm run photo:backfill`
-re-runs it safely at any time. A file that cannot be cleaned (undecodable, HEIC)
-is counted `failed` and left exactly as it was, never replaced.
+Photo and video files are excluded from the default full export. The per-download
+"Include photo & video files" option sets `?media=1`; it is not a saved preference.
+[MEDIA_DOMAINS](../../lib/export-full.ts) owns the six included domains: progress,
+lesion, symptom, and training photos, plus symptom and activity clips.
 
-## Deliberately out (as of phase 3)
+The bundle stores files under `media/<domain>/<rowId>-<storedName>` and row context
+in `media/index.json`. The index is these tables' row export, so they do not also
+belong in the ordinary dataset list. Thumbnails and posters are derived artifacts
+and are not bundled. Photo bytes are the processed stored image; clip bytes retain
+the uploaded container metadata. Files stream one entry at a time.
 
-- The **global quick-capture type→target chooser** (camera in the pinned
-  quick-actions routing Progress/Skin/Symptom/Document). Phase 3 removed what it
-  was waiting on — three domains now ride the core with the same capture,
-  storage and gallery contract, so a chooser has real targets to route to and
-  each one already accepts the same `ProcessedPhoto`. Still unbuilt, and still a
-  product decision (where the entry point lives, what a mis-routed capture
-  costs); the in-context capture on `/progress`, the lesion strip, the episode
-  strip and the palette's `Add progress photo` action cover today's paths.
-- **Offline capture queueing** — the client already downscales before upload so
-  a queued blob would be small; wiring the capture flow into the offline write
-  queue is future work.
-- Lightbox pinch-zoom gestures.
+Each media query filters the exporting profile, and parent joins match that
+profile too. Each file must resolve inside the domain's profile subdirectory;
+missing or out-of-scope files are skipped. Media counts stay separate from medical
+document counts. These authenticated media flows do not make media available in
+public share links or the emergency card.
+
+## Lifecycle and adding a tenant
+
+Reuse the store and processing owner, then wire the domain's profile-first write
+core to an authorized Server Action and [typed revalidation](server-action-refresh.md).
+Reuse the capture/gallery surfaces and verify the write path with existing
+synthetic EXIF fixtures where coverage needs extending.
+
+Register profile-owned rows, export disposition, and file cleanup with the existing
+owners. For activity children, declare merge behavior in `ACTIVITY_CHILD_LINKS` in
+[merge-activity](../../lib/merge-activity.ts). Parent deletion, undo, merge, permanent
+purge, and profile deletion must account for the files as well as their rows; use
+the [trash contract](trash.md) for retained files and shared-path cleanup.
+
+## Legacy metadata cleanup
+
+[Metadata backfill](../../lib/photo/metadata-backfill.ts) covers stored lesion and
+symptom photos. It is an asynchronous boot task with a versioned settings claim,
+not a schema migration. `npm run photo:backfill` runs the pass manually.
+
+The pass replaces bytes in place through the same processor, writes the thumbnail
+before the full image, and updates MIME, size, and hash. When a processed hash
+collides with another row, it keeps the historical hash. Already-clean JPEGs are
+skipped without recompression. Missing or out-of-root files are skipped; unreadable
+or unsupported images remain unchanged and count as failures. Inspect the tally:
+a completed pass does not prove every legacy file was cleaned.
+
+In-app offline photo queueing remains outside this core. A new capture entry point
+should route into these owners rather than create another ingest pipeline.

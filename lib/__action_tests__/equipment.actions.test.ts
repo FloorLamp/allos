@@ -13,6 +13,9 @@ import {
   deleteEquipmentAction,
 } from "@/app/(app)/equipment/actions";
 import { getEquipment } from "@/lib/equipment";
+import { undoDelete } from "@/app/(app)/undo-actions";
+import { deleteDatasetRows } from "@/app/(app)/data/manage-actions";
+import { prStrengthDismissalKey } from "@/lib/dismissal-keys";
 import { setStoredAge } from "@/lib/settings";
 import {
   actAs,
@@ -144,7 +147,7 @@ describe("setEquipmentRetiredAction", () => {
 });
 
 describe("deleteEquipmentAction", () => {
-  it("removes the row and nulls the referencing exercise_sets link", async () => {
+  it("returns an undo token that restores the equipment and referencing set", async () => {
     const { profile } = seedActor();
     const created = await createEquipmentAction({
       name: "Doomed Bar",
@@ -167,7 +170,8 @@ describe("deleteEquipmentAction", () => {
        VALUES (?, 'Bench Press', 1, 60, 5, ?)`
     ).run(activityId, equipId);
 
-    expect(await deleteEquipmentAction(equipId)).toEqual({ ok: true });
+    const deleted = await deleteEquipmentAction(equipId);
+    if (!deleted.ok) throw new Error(deleted.error);
 
     expect(
       getEquipment(profile.id, { includeRetired: true }).map((e) => e.id)
@@ -178,6 +182,66 @@ describe("deleteEquipmentAction", () => {
       )
       .get(activityId) as { equipment_id: number | null };
     expect(set.equipment_id).toBeNull();
+    expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
+    expect(getEquipment(profile.id).map((e) => e.id)).toContain(equipId);
+    expect(
+      db
+        .prepare("SELECT equipment_id FROM exercise_sets WHERE activity_id = ?")
+        .get(activityId)
+    ).toEqual({ equipment_id: equipId });
+  });
+
+  it("Data → Manage keeps the exact removed PR dismissal in its equipment token", async () => {
+    const { profile } = seedActor();
+    const equipmentId = Number(
+      db
+        .prepare(
+          "INSERT INTO equipment (profile_id, name) VALUES (?, 'Bulk equipment undo')"
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    const activityId = Number(
+      db
+        .prepare(
+          "INSERT INTO activities (profile_id, date, type, title) VALUES (?, '2026-08-01', 'strength', 'Bulk undo set')"
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    db.prepare(
+      "INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, equipment_id) VALUES (?, 'Machine Chest Press', 1, 60, 5, ?)"
+    ).run(activityId, equipmentId);
+    const key = prStrengthDismissalKey(
+      "Machine Chest Press",
+      equipmentId,
+      "1rm"
+    );
+    db.prepare(
+      "INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at) VALUES (?, ?, '2026-08-01 12:00:00')"
+    ).run(profile.id, key);
+    const removed = await deleteDatasetRows("equipment", [equipmentId]);
+    if (!removed.ok) throw new Error(removed.error);
+    expect(removed.deleted).toBe(1);
+    expect(removed.undoIds).toHaveLength(1);
+    expect(
+      db
+        .prepare(
+          "SELECT id FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+        )
+        .get(profile.id, key)
+    ).toBeUndefined();
+    expect(await undoDelete(removed.undoIds[0])).toEqual({ ok: true });
+    expect(
+      db
+        .prepare("SELECT equipment_id FROM exercise_sets WHERE activity_id = ?")
+        .get(activityId)
+    ).toEqual({ equipment_id: equipmentId });
+    expect(
+      db
+        .prepare(
+          "SELECT dismissed_at FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+        )
+        .get(profile.id, key)
+    ).toEqual({ dismissed_at: "2026-08-01 12:00:00" });
   });
 
   // #2138: the delete is row-count-checked — a forged id (or a second tap racing

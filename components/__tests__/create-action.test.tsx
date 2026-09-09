@@ -1,3 +1,4 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CreateAction, {
@@ -285,9 +286,7 @@ describe("CreateAction", () => {
           control: (
             <AddSupplementModal
               action={action}
-              allIntakeItems={[]}
-              stackItems={[]}
-              pgxVariants={[]}
+              intakeContext={intakeFormContext("2026-09-01")}
             />
           ),
         },

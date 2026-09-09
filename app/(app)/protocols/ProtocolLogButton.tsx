@@ -29,6 +29,7 @@ export default function ProtocolLogButton({
   usualSessionDay = false,
   compact = false,
   primaryTone = "brand",
+  subjectProfileId,
 }: {
   practice: ProtocolPractice;
   ongoing: boolean;
@@ -55,6 +56,7 @@ export default function ProtocolLogButton({
   usualSessionDay?: boolean;
   compact?: boolean;
   primaryTone?: "brand" | "neutral";
+  subjectProfileId?: number;
 }) {
   const activityEditor = useActivityEditor();
   const quickEntry = useQuickEntry();
@@ -77,6 +79,7 @@ export default function ProtocolLogButton({
         usualSessionDay={usualSessionDay}
         compact={compact}
         primaryTone={primaryTone}
+        subjectProfileId={subjectProfileId}
       />
     );
   }
@@ -90,7 +93,11 @@ export default function ProtocolLogButton({
           if (action.kind === "activity") {
             activityEditor.openCreate({ type: action.type });
           } else {
-            quickEntry.open("food", { foodGroup: action.foodGroup });
+            quickEntry.open(
+              "food",
+              { foodGroup: action.foodGroup },
+              subjectProfileId
+            );
           }
         }}
         // One control, one height (#4505 family 5): the tone paints, the box is

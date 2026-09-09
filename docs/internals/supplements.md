@@ -7,8 +7,10 @@ second intake model. Start at `lib/types/intake.ts`, `lib/intake-cadence.ts`, an
 
 ## Form and identity
 
-Use the shared intake form. The entry point owns the kind; naming and product
-selection do not silently change it. Present the selected facts with focused
+Use the shared intake form with the required subject context from
+`loadIntakeFormContext`. Keep its age, local day, stack, variants, and conditions
+together across add and edit entry points. The entry point owns the kind; naming
+and product selection do not silently change it. Present the selected facts with focused
 editors and submit the complete form state so hidden editors do not drop values.
 Formulation/concentration must come from an explicit product choice before an
 amount can be expressed in mL. `prnDefaultsFor` offers single-ingredient label

@@ -17,7 +17,7 @@
 // own half: driving the real Server Actions and showing that a zone change on its own
 // touches no row of anybody's.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -119,14 +119,8 @@ describe("a timezone change deletes no ingest rows (#3524)", () => {
     expect(getTravelSwitches(profile.id)).toEqual([]);
     expect(getHomeTimezone(profile.id)).toBeNull(); // no trip in progress
 
-    const previousNow = process.env.ALLOS_TEST_NOW;
-    try {
-      process.env.ALLOS_TEST_NOW = "2026-05-01T14:00:00Z";
-      await saveProfileSettings(fd({ timezone: "Asia/Tokyo" }));
-    } finally {
-      if (previousNow == null) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = previousNow;
-    }
+    vi.setSystemTime(new Date("2026-05-01T14:00:00Z"));
+    await saveProfileSettings(fd({ timezone: "Asia/Tokyo" }));
 
     expect(getTimezone(profile.id)).toBe("Asia/Tokyo");
     expect(getTravelSwitches(profile.id)).toEqual([
@@ -149,16 +143,10 @@ describe("a timezone change deletes no ingest rows (#3524)", () => {
     actAs(login, profile);
     setTimezone(profile.id, "America/New_York");
 
-    const previousNow = process.env.ALLOS_TEST_NOW;
-    try {
-      process.env.ALLOS_TEST_NOW = "2026-05-01T14:00:00Z";
-      await acceptTravelTimezone("Asia/Tokyo");
-      process.env.ALLOS_TEST_NOW = "2026-05-01T14:01:00Z";
-      await saveProfileSettings(fd({ timezone: "America/New_York" }));
-    } finally {
-      if (previousNow == null) delete process.env.ALLOS_TEST_NOW;
-      else process.env.ALLOS_TEST_NOW = previousNow;
-    }
+    vi.setSystemTime(new Date("2026-05-01T14:00:00Z"));
+    await acceptTravelTimezone("Asia/Tokyo");
+    vi.setSystemTime(new Date("2026-05-01T14:01:00Z"));
+    await saveProfileSettings(fd({ timezone: "America/New_York" }));
 
     expect(getTimezone(profile.id)).toBe("America/New_York");
     expect(getHomeTimezone(profile.id)).toBeNull();

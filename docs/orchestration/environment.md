@@ -1,97 +1,120 @@
 # Environment and GitHub access
 
+Use the [change and test policy](../change-policy.md) to keep work and verification
+focused. These are repository defaults within the session's instructions,
+authorization, and available tools.
+
+## Agent tools
+
+The shared skills in `.agents/skills` describe roles and outcomes, not a required
+agent vendor. Codex discovers that directory; `.claude/skills` supplies Claude
+Code entrypoints with its tool metadata. Other hosts can read the shared skill
+directly through `AGENTS.md`. Maintain procedures only in the shared skill.
+
+Inspect the current session's actual capabilities before adapting a workflow:
+
+- Use its worker tools for bounded delegated work and its session/task tools to
+  coordinate separately authorized orchestrators. Reuse existing workers and
+  preserve the actual IDs returned by that host. Neither a GitHub author nor an
+  empty local roster establishes who owns another session's work.
+- Inherit the user's configured model unless they requested a model override.
+  Available agent slots, machine capacity, and review capacity are separate limits.
+- Ask owner questions through the available interaction tool, within its question
+  limit, or in ordinary conversation. An asynchronous question parks only the
+  dependent work; elapsed time is never an answer.
+- Use the host's supported scheduler for authorized future check-ins and its
+  direct messaging facility for an authorized relay. Verify the target and actual
+  scheduled state. If durable scheduling is unavailable, report that limitation
+  while continuing current work; do not invent a trigger or claim a future wake.
+- Use installed CLI/API tools under the GitHub policy below. A missing tool name
+  from another host is not itself a blocker. A capability or permission that is
+  actually absent blocks only operations that require it.
+
+Claude Code's `allowed-tools` metadata belongs to its entrypoints; it does not
+grant tools or permissions to another host. A restricted host grant still applies
+when a shared skill describes an equivalent operation. Do not broaden a confined
+writer to bypass its refusal.
+
+For Codex, workers, separate tasks, and automations are distinct capabilities;
+creating a user-owned task is not a substitute for an internal worker. For Claude
+Remote, a scheduled relay must target the existing `persistent_session_id`;
+`fire_trigger` can create another session and is not a direct-message substitute.
+Use only APIs actually available in the current session.
+
+Some legacy scripts still recognize only Claude session trailers/PR footers or
+process ancestry. Missing attribution from another host remains UNKNOWN, never
+an ownership grant. Check actual task state, branch claims and PRs; use the
+existing explicit adoption path only after resolving ownership. Do not fabricate
+a Claude session ID to satisfy a script. Skills portability does not imply these
+legacy parsers can identify every host.
+
 ## Environment
 
-- Discover the `.nvmrc` Node major from the running process, then version
-  managers (`$NVM_DIR`, `~/.nvm`, `/opt/nvm`) — `host.mjs` is the resolver
-  (#3710). Never pin a patch version or one host's install path. Verify
+- Resolve the `.nvmrc` Node major with
+  [host.mjs](../../scripts/orchestration/host.mjs), using the running process or
+  installed version managers. Avoid pinned host paths and verify that
   `better-sqlite3` loads.
-- Use one canonical `node_modules` tree from the main checkout. Hard-link it
-  into new worktrees as directed by the generated brief.
-- `scripts/orchestration/*` run from that MAIN CHECKOUT, whose HEAD is wherever
-  the session last left it — commonly detached and behind `origin/main`, so a
-  gate, CI watch or `--check` mandate can run stale tooling. The check-in's
-  `tooling:` line reports it every wake; act on a DIFFER verdict.
-- A helper that cannot answer says so: the check-in prints `UNMEASURED`,
-  `UNASKED`, `UNCOMPARED` or `ABSENT` and names the reader that failed. Never
-  a bare `?` — the ledger spelt its refusal that way until #5252, and it reads
-  as a value. A fallback is honest only when it IS the answer, as `MISSING` is.
-- `next build` runs in a worktree whose `node_modules` was HARD-LINKED; a
-  symlinked one fails with `TurbopackInternalError`. Read that error as the
-  link being wrong, never as the build being unavailable here.
-- Create agent worktrees under the shared scratch directory, never inside the
-  main checkout. Give every scratch file a branch-unique name.
-- A worktree's `.next` is a real copy, never hard-linked. `node_modules` may
-  share inodes because nothing writes to it; a linked build directory would let
-  one cluster's build corrupt another's. The harness seeds it — see
-  `docs/orchestration/e2e-ci.md`.
-- Concurrent gates run about six times slower (DB tier: 161 s alone, 862 s at
-  load 18). `agent-gates.sh` gives both vitest tiers a 60 s per-test ceiling, CI
-  keeps 15 s (`vitest.timeouts.ts` derives both). A 60 s timeout is a real hang.
-- CONTENTION CAN PRODUCE A WRONG VALUE, not just a timeout: a test timing out
-  mid-write leaves state its neighbour reads (load 21.6, 92 lost, one of them a
-  `document-sync-provenance` assertion). Re-run alone on any untouched-file red.
-- `pgrep -f <pattern>` matches its OWN command line, the bracket workaround
-  `grep '[p]attern'` is matched by the OTHER waiters, and a script NAME is every
-  lane's (#5366): `until ! …; do sleep` never exits. Wait on a captured PID or a
-  file the run wrote (`run-gates-recorded.sh`); check-in `waiters:` counts.
-- Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
-  ranges.
+- Follow the generated [dispatch setup](../../scripts/orchestration/dispatch-brief.mjs)
+  for worktrees, dependencies, pinned base, and ports. Worktrees belong in shared
+  scratch space outside the main checkout; scratch files and logs need unique
+  names. Use the assigned `E2E_PORT` for Playwright.
+- Dependency sharing uses a hardlink copy, not a directory symlink. Recreate
+  writable caches locally and install compatible dependencies when required.
+  Keep `.next` local to each worktree; never hardlink build output. See
+  [E2E setup](e2e-ci.md).
+- Check the check-in's `tooling:` comparison before trusting orchestration
+  verdicts. A checkout can run older scripts than `origin/main`; resolve a
+  `DIFFER` or `UNCOMPARED` result before relying on affected tooling.
+- A helper that cannot answer must name the failed read and its uncertainty.
+  `UNMEASURED`, `UNASKED`, `UNCOMPARED`, or `ABSENT` describe missing evidence;
+  use `MISSING` only when absence was established. Never turn an unknown into a
+  guessed value or a clean result.
+- Diagnose timeouts through the [Vitest guide](../internals/test-tier-timeouts.md).
+  Wall time alone cannot distinguish a hang, contention, or shared-state leakage.
+  For untouched-file failures, use [dispatch's attribution procedure](dispatch.md)
+  before blaming the change or the machine.
+- Wait on a captured process/tool handle. For recorded gates, use
+  [run-gates-recorded.sh](../../scripts/orchestration/run-gates-recorded.sh) and its
+  recorded PID/exit status. A script-name process search can match other lanes or
+  the waiter itself. An observation timeout does not prove the work stopped.
 
 ## GitHub access
 
-The single source of truth for GitHub transport. Skills and briefs cite this
-section rather than restating it, so the rule cannot drift per surface.
+This section owns transport defaults; skills and briefs link here. It does not
+expand tool grants or override session instructions or an approval rejection.
 
-- **This section outranks the harness**, whose own system prompt pushes
-  `mcp__github__*` for ALL GitHub interactions — generic plumbing re-injected
-  every session, which is why the drift recurs. On conflict this section
-  wins: reads go over REST even with MCP readers loaded.
-- **REST for everything outside the MCP set below — every read included.**
-  Never `gh issue` / `gh pr` subcommands: they ride GraphQL, whose rate pool
-  exhausts independently of REST's.
-- **Two transports, one set of paths.** Use `gh api <path>` when available;
-  otherwise use `curl -sS https://api.github.com/repos/OWNER/REPO/<path>` in
-  Claude Code remote. Check once with `command -v gh`; each `gh api X` below
-  means that REST path through the available transport.
-- **Reads need no credential.** The repository is public, so every GET works
-  unauthenticated. An unset token blocks writing only — never gathering,
-  auditing, or reporting — and sending an auth header on a read can trip a
-  sandbox permission classifier that had no reason to be involved.
-- **Writes read the token by variable name**, `${GH_TOKEN:-$GITHUB_TOKEN}`.
-  Never search the filesystem or environment for credentials (see Lost
-  credentials below); if it is unset, say so and stop at the write.
-- **MCP only handles squash merges, draft-to-ready, protected refs, and
-  Actions writes — where granted.** Without GitHub MCP (#3710), squash-merge
-  through REST's merge endpoint; the `review-merge.md` §Merge invariants are
-  transport-independent and never relax.
-- A run forbidden from issue writes may use MCP scoped readers, because
-  `Bash(gh api:*)` grants every verb; any write-authorized run uses REST.
-- **Read-only tooling may take its credential from `gh auth token`**
-  (`host.mjs`) when the variables are unset — a credential helper, not the
-  forbidden filesystem search. Writes keep requiring the variables by name.
-- **PRs open READY, never draft** — the harness leans draft; open via REST
-  with `"draft": false` explicit. A draft is not a banking state
-  (`dispatch.md`); the draft-to-ready write exists to repair strays, not to
-  make drafts routine.
-- **Some sandbox classifiers refuse `curl -X DELETE` while allowing `PATCH`.**
-  Not a dead end: `PATCH /issues/N` sets `labels` and `assignees` as whole
-  arrays, so a removal is a PATCH that omits what should go, and it sets the
-  replacements in the same call.
-- **The unauthenticated search endpoint is rate-limited or blocked.** Fall back
-  to listing (`/issues?labels=…&state=…`) and filtering locally.
-- **A write is not done until it is re-read.** A transient empty-JSON response
-  has silently dropped a PATCH. Verify by re-reading the item and grepping for
-  a phrase unique to the edit — and verify label changes on the ITEM, never on
-  the label list, which serves stale for a while after a successful write.
-- **A body edit on an issue with READERS needs a comment announcing it.** A
-  body PATCH is silent, so a comment chain or in-flight lane keeps the
-  pre-edit text; `reconcile-apply.ts` comments automatically (`--notify` for
-  in-flight). Label changes are already timeline events — no comment.
-- GitHub closes multiple issues only when each `Fixes #N` is on its own line.
-- A PR landing part of a CHECKLIST issue ticks its own box in the same breath;
-  `Part of #X` against a still-open X is drift the reconcile pass has to chase.
-- Gitleaks scans all checked-out refs. Read its annotation first: installation
-  failure means the scan never ran.
-
-Restart, credential-loss, and stall procedures live in [recovery.md](recovery.md).
+- Use REST for reads and ordinary writes: `gh api <path>`, or the same endpoint
+  through `curl` when `gh` is unavailable. Avoid the GraphQL-based `gh issue` and
+  `gh pr` workflows in orchestration sessions.
+- Granted GitHub MCP tools handle squash merges, draft-to-ready, protected refs,
+  and Actions writes. REST's merge endpoint is the fallback when MCP is absent;
+  [review and merge](review-merge.md) owns the merge requirements.
+- A narrowly granted maintenance role may use scoped MCP readers and its confined
+  writers, as specified by that role. Do not replace a restricted grant with
+  general shell access.
+- Public repository reads can often run unauthenticated. Missing write credentials
+  do not by themselves block gathering. Report endpoint refusals and rate limits;
+  if search is unavailable, list the relevant collection and filter locally.
+- Use the transport's configured authentication: an already-authenticated `gh api`
+  can perform authorized writes without exporting a token. Helpers that require
+  `GH_TOKEN` or `GITHUB_TOKEN` retain their own credential contract; an unset
+  variable alone does not establish that all write access is absent. Never print
+  tokens or search the filesystem or environment for credentials. Follow
+  [recovery](recovery.md) when authorized access is actually unavailable.
+- Respect sandbox and approval refusals. Follow the session's escalation process;
+  do not switch verbs or transports to evade a denial.
+- Open the sole landing candidate ready for review (`"draft": false`). Keep
+  banked work branch-only under [dispatch](dispatch.md); draft-to-ready repairs an
+  existing draft, it is not a second banking workflow.
+- Re-read every written item to verify the result. Check labels on the issue
+  itself and exact text in a changed body. An ambiguous response is not evidence
+  that a write either succeeded or failed; reconcile state before retrying.
+- When authorized to edit and notify an issue's readers, announce body changes on
+  its comment thread. `reconcile-apply.ts` does this for issues with comments;
+  `--notify` includes quiet issues assigned to live lanes. Label changes already
+  create timeline events.
+- Use one closing keyword per intended issue, on separate lines for readability.
+  A partial umbrella delivery uses a reference and updates only verified completed
+  boxes. Check the intended closures through the merge procedure.
+- Inspect Gitleaks annotations and scan scope. An installation failure means the
+  scan did not run; a green result establishes only what that invocation scanned.

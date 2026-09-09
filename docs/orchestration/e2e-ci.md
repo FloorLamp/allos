@@ -1,95 +1,97 @@
 # E2E and CI
 
+This guide owns browser-run responsibility and CI evidence. Use
+[writing E2E tests](../internals/e2e-hygiene.md) for fixtures and assertions,
+[diagnosis](../internals/e2e-diagnosis.md) for reproduction, and the
+[change and test policy](../change-policy.md) to keep verification proportional.
+
 ## Ownership
 
-- The sharded CI E2E matrix is the full-suite authority. Local runs diagnose;
-  they do not replace the merge gate.
-- Run authored or edited specs once locally at `--retries=0`. When tests share
-  a profile or worker state, run the whole file with `--workers=1` for leaks (#3653).
-  Use repeats when diagnosing a timing failure, not as a routine merge step.
-- CI runs the full browser suite once. The duplicate `e2e-changed` job and its
-  required-check entry are removed. All 12 E2E shard checks remain required.
-  The weekly and on-demand `e2e-full.yml` workflow owns repeated flake detection.
-- Only the orchestrator runs a full local suite. Keep at most two agents in the
-  E2E lane.
-- A new navigation item requires updating `TOP_LEVEL_ORDER` in
-  `e2e/nav-consolidation.spec.ts`.
-- What earns a new spec, scan or guard: [change and test policy](../change-policy.md).
+Run authored or edited files once locally with `--retries=0`. For tests sharing
+mutable profile or worker state, run the whole file with `--workers=1`. Repeats
+need a specific timing question; new coverage needs a meaningful missing failure.
+
+The PR's sharded CI matrix supplies full-suite evidence when it actually runs.
+Only the orchestrator owns a full local run; [dispatch](dispatch.md) owns capacity
+and its two-agent E2E cap. Banked branches run assigned local checks; the sole
+landing candidate opens or refreshes its ready PR and consumes final CI. A blocked
+local browser run is a reported limitation, not a reason to open a second PR.
 
 ## The first round in a new worktree
 
-- The first run automatically reuses an identical production build from a
-  sibling worktree, or builds locally if none matches (#2605).
-- Reuse requires a content fingerprint of `e2e/build-inputs.mjs` inputs;
-  matching commits or mtimes are insufficient. See `e2e-hygiene.md`.
-- Refusals name each candidate and reason. `E2E_NO_SEED=1` disables reuse.
-- `node scripts/orchestration/seed-next-build.mjs` attempts reuse manually
-  (exit 3 = refused). Its `record` subcommand tags a build made by
-  `npm run build` so other worktrees can reuse it.
+[Global setup](../../e2e/global-setup.ts) owns production build preparation:
+
+- Locally, when no build exists, it attempts sibling reuse through
+  [build-seed.mjs](../../e2e/build-seed.mjs). Reuse requires matching content under
+  [the build-input model](../../e2e/build-inputs.mjs), not matching commit IDs or
+  timestamps. Refused reuse falls back to building locally.
+- An existing build uses the local freshness check; it is not replaced through
+  sibling reuse. `E2E_NO_SEED=1` disables reuse. Preserve the distinction between
+  reuse's content proof and the local rebuild check's timestamps.
+- CI prepares its build through [the setup action](../../.github/actions/e2e-setup/action.yml).
+  Global setup requires that build rather than compiling it again. An explicit
+  build-skip override assumes the caller has already supplied a suitable build.
+
+`seed-next-build.mjs` supports manual reuse (exit 0 seeded, 3 refused, 1 error).
+Its `record` command records current input fingerprints beside a completed build;
+use it only for the inputs that actually produced that build.
 
 ## Merge bar
 
-- Require every check green on the exact PR head.
-- Only the landing candidate opens or refreshes a PR and runs full CI. Banked
-  branches run authored/edited specs and local gates; non-authored blast radius
-  waits for candidate CI. Report a blocked browser run; do not open another PR.
-- Check `mergeable_state` before diagnosing absent CI. Conflict-dirty PRs do not
-  start checks.
-- A green check describes the base used for that run. Re-merge current main and
-  reverify branches that have sat or overlap recent shared changes.
-- Stop merges when `CI (main)` or `E2E (main)` is red. Fix main first.
-- A green names its tier and nothing more. `CI (main)` covers `check`,
-  `test-unit`, `test-db` — it cannot see e2e. `E2E (main)` is the post-merge
-  browser run and the only main-side evidence about the browser tier.
-- `E2E (main)` skips a push with no runtime surface, and a skip is not a green:
-  its four shards report `skipped`, the run summary says nothing ran, and the
-  merge gate prints "ran NOTHING" rather than a shard count. Its nightly run
-  (00:41 UTC) is unconditional and is what covers main between code pushes.
+[Review and merge](review-merge.md) owns exact-head checks, base movement, holds,
+and merge decisions. Inspect the workflow's actual steps and artifacts before
+calling its browser tier green:
+
+| Workflow                                                       | Evidence and limits                                                                                                                           |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PR CI](../../.github/workflows/ci.yml)                        | Twelve browser shards when the runtime-surface check selects them. A no-runtime PR can have successful jobs whose browser steps were skipped. |
+| [CI on main](../../.github/workflows/ci-main.yml)              | Check, unit, and DB tiers; no browser verdict.                                                                                                |
+| [E2E on main](../../.github/workflows/e2e-main.yml)            | Four browser shards. No-runtime pushes report skipped jobs; the nightly run covers main independently of that change filter.                  |
+| [Periodic/on-demand E2E](../../.github/workflows/e2e-full.yml) | Repeated flake checks and optional forward-clock runs; inspect the selected inputs and clock.                                                 |
+
+A queued or skipped run is not evidence that browser tests passed. A green run
+also describes its tested base; use the merge procedure before relying on it
+after other changes land. Check `mergeable_state` when expected PR CI is absent.
+A confirmed red main takes priority over landing another candidate.
 
 ## Diagnosing a red
 
-- Reproduce locally before pushing a fix. Preserve and inspect Playwright's
-  `error-context.md`.
-- **A spec that drives an RxNorm lookup cannot be reproduced locally** (#5468):
-  the call carries no credential and `rxnav.nlm.nih.gov` is reachable only from
-  CI, so the local run takes the degraded branch and goes GREEN on a branch the
-  bug is not in. The failure class, and how to spot one, is in e2e-hygiene.md.
-- Run failures in failing order and use one orchestrator when investigating
-  shared state or cross-spec poisoning.
-- Check the actual command exit code; pipelines can hide it.
-- For mass failures, check memory pressure, then run failures individually.
-  Passing alone suggests starvation; failing alone suggests a defect.
-- Before calling a PR's e2e red unrelated, compare with clean main: `E2E (main)`
-  on the PR's base, and `main-red-history.mjs` over `e2e-main`'s heads (#5160).
-  Several PRs failing the same untouched specs is a base regression until that
-  run says otherwise — not a coincidence of flakes (#2791).
-- `next dev` and `next start` differ. Interaction fixes must work in both.
-- Verify a separation claim on the branch merged with main — e2e-hygiene.md.
-- After restoring a planted mutation, BUMP THE FILE'S MTIME. `cp -a` from a
-  backup keeps the original timestamp, the harness's staleness check is
-  mtime-based, and it goes on serving the mutated build — so the restored tree
-  reports the planted red and the control reads as a real failure.
+Read the failing assertion, fixture, setup, `error-context.md`, actual command,
+and exit code. Reproduce on the failing head with that run's shard plan, worker
+settings, and clock; the [diagnosis guide](../internals/e2e-diagnosis.md) owns the
+commands and mechanism checklist.
+
+The diagnosis guide covers shared-state leakage, resource pressure, populated
+versus degraded lookup responses, time boundaries, and restoring diagnostic
+mutations. RxNorm availability is environment-dependent; verify the branch reached
+rather than declaring a provider universally unavailable locally.
+
+Match the serving mode (`next dev` or `next start`). Compare allegedly unrelated
+failures with the PR's base and relevant main-side browser evidence;
+`main-red-history.mjs` helps locate recurrence. Several failing PRs still need
+attribution rather than an automatic base-regression or flake verdict.
+
+When local conditions cannot reproduce the failing state, report the limitation
+and use CI artifacts or a controlled reproduction. Wait for a run to settle before
+rerunning failed jobs; inspect setup, cleanup, and annotations as well as tests.
 
 ## Flake evidence
 
-- A passing rerun alone does not exonerate a failure. Identify the mechanism,
-  fix or remove the flaky test, and use targeted repeats to verify a timing fix.
-- A second occurrence of the same spec attaches both CI runs to the owning
-  mechanism/root-cause issue or to the matching failure-class entry; recurrence
-  alone is not a reason to mint a new census issue.
-- Clock-adjacent failures need forced-skew branch/main comparison with
-  `ALLOS_TEST_NOW`; minutes-apart runs are insufficient.
-- The weekly census also runs the suite at `ALLOS_TEST_NOW` +3 and +6 months
-  (`e2e-forward-clock`). A red there is a fuse, not a regression on main — fix
-  the fixture, do not revert a merge. Dispatch it on demand with the
-  `forward_clock` input.
-- Repeated failures invalidate a “distinct one-offs” argument.
-- Consult `docs/internals/e2e-hygiene.md` before diagnosing a known failure
-  class.
+A passing retry does not fix a flake. Identify its mechanism, repair or remove the
+test with a coverage rationale, then use focused repeats to verify a timing fix.
+Attach recurrence to the existing cause rather than filing another census issue.
+
+Use `ALLOS_TEST_NOW` for time-sensitive branch/base comparisons. The periodic
+workflow tests clocks three and six months ahead and enables those runs on its
+weekly schedule or through `forward_clock`. A future-clock failure is evidence
+about that future state; inspect fixture expiry and real time-dependent behavior
+before attributing it to a merge or changing an expectation.
 
 ## Local full suite
 
-- Run it rarely, with nothing else active: build once, then invoke four
-  sequential CI-mode shards.
-- Kill manually started development servers first; they hold locks and consume
-  memory.
+Run a full local suite only when that scope is needed, with competing work paused.
+Stop only owned development servers after checking whether another task needs
+them. Build once, then run four sequential CI-mode shards using the planner for
+that checkout. To reproduce a particular CI failure, match its actual partition
+instead; the diagnosis guide explains why native and duration-balanced shards
+can have different neighbors.

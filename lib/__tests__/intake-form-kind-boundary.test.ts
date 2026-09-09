@@ -7,6 +7,7 @@ import { requireIntakeFormKind } from "@/lib/intake-form-kind";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const INTAKE_FORM_MODULE = "@/components/IntakeItemForm";
+const QUICK_ENTRY_LAZY_OWNER = "components/QuickEntryProvider.tsx";
 
 const EXPECTED_CALLERS = [
   ["app/(app)/medications/MedicationAddWorkspace.tsx", "medication"],
@@ -14,6 +15,7 @@ const EXPECTED_CALLERS = [
   ["app/(app)/nutrition/EditableSupplementRow.tsx", "supplement"],
   ["components/illness/IllnessMedicationLogger.tsx", "medication"],
   ["components/nutrition/AddSupplementModal.tsx", "supplement"],
+  [QUICK_ENTRY_LAZY_OWNER, "IntakeItemKind"],
 ] as const;
 
 function isScannedSource(name: string): boolean {
@@ -36,8 +38,9 @@ function sourceFiles(root: string): string[] {
       withFileTypes: true,
     })) {
       const child = `${rel}/${entry.name}`;
-      if (entry.isDirectory()) walk(child);
-      else if (isScannedSource(entry.name)) out.push(child);
+      if (entry.isDirectory()) {
+        if (entry.name !== "__tests__") walk(child);
+      } else if (isScannedSource(entry.name)) out.push(child);
     }
   };
   walk(root);
@@ -139,9 +142,13 @@ function scanIntakeFormSource(file: string, text: string): IntakeFormCensus {
       isIntakeFormModule(node.text) &&
       executableModuleLoad
     ) {
-      violations.push(
-        `${file} must not load IntakeItemForm through require() or import()`
-      );
+      if (file === QUICK_ENTRY_LAZY_OWNER) {
+        callers.push([file, "IntakeItemKind"]);
+      } else {
+        violations.push(
+          `${file} must not load IntakeItemForm through require() or import()`
+        );
+      }
     }
 
     if (localName != null && ts.isIdentifier(node) && node.text === localName) {
@@ -273,7 +280,7 @@ describe("IntakeItemForm's locked-kind boundary", () => {
     });
   });
 
-  it("has exactly the five shipped literal-kind callers", () => {
+  it("has the shipped literal callers and the one lazy typed owner", () => {
     const census = intakeFormCensus();
     expect(census.violations, census.violations.join("\n")).toEqual([]);
     expect(census.callers).toEqual(EXPECTED_CALLERS);

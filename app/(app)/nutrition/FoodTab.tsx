@@ -3,7 +3,12 @@ import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
-import { parseUtcSql, shiftDateStr, zonedMinuteStr } from "@/lib/date";
+import {
+  isRealIsoDate,
+  parseUtcSql,
+  shiftDateStr,
+  zonedMinuteStr,
+} from "@/lib/date";
 import {
   getFoodMealDays,
   getWeeklyFoodRollup,
@@ -94,6 +99,7 @@ import {
   isPredictedWorkoutDay,
 } from "@/lib/queries/training";
 import { isTrainingRelevant } from "@/lib/life-stage";
+import { isPastWriteAccepted } from "@/lib/log-manifest";
 
 // The Food tab of the Nutrition umbrella (#746): the food-group serving log (issue
 // #579) — the INPUT half of nutrition.
@@ -316,13 +322,20 @@ export default async function FoodTab({
   const recentDates = Array.from({ length: RECENT_DAY_PICKER_SPAN }, (_, i) =>
     shiftDateStr(date, -i)
   );
+  if (
+    isRealIsoDate(initialDate) &&
+    isPastWriteAccepted(date, initialDate) &&
+    !recentDates.includes(initialDate)
+  ) {
+    recentDates.push(initialDate);
+  }
   const mealDays: FoodLogDay[] = getFoodMealDays(profile.id, recentDates).map(
-    (day, i) => ({
+    (day) => ({
       ...day,
       label:
-        i === 0
+        day.date === date
           ? "Today"
-          : i === 1
+          : day.date === shiftDateStr(date, -1)
             ? "Yesterday"
             : formatWeekdayDate(day.date, formatPrefs),
     })

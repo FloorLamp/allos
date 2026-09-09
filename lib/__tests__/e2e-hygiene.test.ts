@@ -464,6 +464,10 @@ const SUSPENSE_BOUNDARY_FILES = [
   // #4997 rebuilt nine chart trees around two renderers, so two of the three are
   // new names for the same client-only shape.
   "components/BarSeriesChart.tsx",
+  // The quick-entry boundary exists only below client state that starts closed and
+  // can open after hydration. Its dynamic body can fail or suspend after a tap, but
+  // no server render can stage a second sheet copy.
+  "components/QuickEntryProvider.tsx",
   "components/ScatterChartCard.tsx",
   "components/TimeSeriesChart.tsx",
 ];

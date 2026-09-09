@@ -25,6 +25,7 @@ import { buildFiberSymptomPanel } from "@/lib/fiber-symptom-panel";
 import { buildAdherenceCalendar } from "@/lib/adherence-calendar";
 import { buildProtocolHeatmap } from "@/lib/protocol-heatmap";
 import { buildWeekSpine, weekSpineDaySummary } from "@/lib/training-week-spine";
+import { buildZoneModel } from "@/lib/training-zones";
 import { practiceCadenceText } from "@/lib/practice";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import { fmtWeight } from "@/lib/units";
@@ -314,10 +315,19 @@ const FAMILIES: Family[] = [
       <EnduranceDepthSuite
         zones={{
           minutes: [10, 20, 0, 0, 5],
-          totalMinutes: 35,
-          easyMinutes: 30,
-          hardMinutes: 5,
-          easyPercent: 86,
+          model: buildZoneModel({ maxHrOverride: 180 }),
+          weeks: [],
+          zone2Target: 0,
+          currentWeekZone2: null,
+          split: {
+            totalMin: 35,
+            easyMin: 30,
+            hardMin: 5,
+            easyPct: 86,
+            hardPct: 14,
+          },
+          hasHrData: true,
+          windowWeeks: 1,
         }}
         form={form}
         vo2={null}

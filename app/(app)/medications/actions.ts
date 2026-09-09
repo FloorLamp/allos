@@ -1,4 +1,5 @@
 "use server";
+import { requirePoolWriteAccess } from "../supplies/access";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 
 import { revalidateRoute } from "@/lib/revalidate";
@@ -399,26 +400,39 @@ export async function createMedicationShareLinkAction(
 // double-tap. Plain serializable fields, never the better-sqlite3 row.
 export type RefillActionResult =
   | { ok: true; fillSize: number; newQuantity: number }
-  | { ok: false; error: string };
+  | { ok: false; error: string; kind?: "needs-size" };
 
 export async function refillMedication(
   formData: FormData
 ): Promise<RefillActionResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that medication.");
+  if (!id) return formError("Couldn't find that item.");
   const raw = formData.get("fill_size");
   const hasFill = raw != null && String(raw).trim() !== "";
   const fillSize = hasFill ? Number(raw) : null;
   if (fillSize != null && (!Number.isFinite(fillSize) || fillSize <= 0)) {
     return formError("Enter a valid fill size.");
   }
-  const outcome = refillSupply(profile.id, id, fillSize);
+  const stock = db
+    .prepare(
+      "SELECT supply_id FROM intake_items WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profile.id) as { supply_id: number | null } | undefined;
+  if (!stock) return formError("Couldn't find that item.");
+  const expectedSupplyId = formData.has("supply_id")
+    ? Number(formData.get("supply_id")) || null
+    : stock.supply_id;
+  if (expectedSupplyId != null) await requirePoolWriteAccess(expectedSupplyId);
+  const outcome = refillSupply(profile.id, id, fillSize, expectedSupplyId);
   switch (outcome.kind) {
     case "refilled":
       deleteProfileSetting(profile.id, refillMarkerKey(id));
       revalidateRoute("/medications");
       revalidateRoute("/nutrition");
+      revalidateRoute("/supplies");
+      revalidateRoute("/upcoming");
+      revalidateRoute(`/medications/${id}`);
       revalidateRoute("/");
       return {
         ok: true,
@@ -426,7 +440,11 @@ export async function refillMedication(
         newQuantity: outcome.newQuantity,
       };
     case "needs-size":
-      return formError("How many units did you refill? Enter the fill size.");
+      return {
+        ok: false,
+        kind: "needs-size",
+        error: "How many units did you refill? Enter the fill size.",
+      };
     case "untracked":
       return formError("Turn on refill tracking to record a refill.");
     case "stale-item":

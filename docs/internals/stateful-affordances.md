@@ -140,6 +140,27 @@ An already idempotent, single-flight form does not need the hook merely to appea
 in the registry. Toggles such as [StarButton](../../components/StarButton.tsx)
 are different: their second tap undoes the first and must remain possible.
 
+## Logging contract
+
+A tap writes the profile's usual payload with an honest time (#4424, #4425,
+#4426, #4753). A tap that writes less than history makes obvious, or stamps a
+time nobody meant, is a defect.
+
+- The payload comes from the shared usual-payload helper, never a per-surface
+  guess. Body readings never prefill a value.
+- Each domain has two shared client pieces: the form (add and full edit in one
+  component, taking a date) and the row control (taps and one-field
+  corrections). The quick sheet, the `/history` add door, and the domain page
+  mount the same two; `LogDomainManifest` declares the set. A row action that is
+  neither piece is the defect.
+- Time is stated or absent, never guessed. A past-day tap writes no instant.
+  "Happened earlier" is the one statement control, spelled by the clock glyph
+  right of the action; the verb never says "now".
+- Windows bind offers, not domains. Every write core accepts any real past day
+  and never the future; do not mint a per-domain backfill window.
+- The labeled-verb chip (`Midday · Take`, `15 min · Log`) is the tap's visual
+  form: one control-height pill, for one-tap writes only.
+
 ## Coverage boundaries
 
 The [one-tap call-site scan](../../lib/__tests__/one-tap-call-sites.test.ts) checks

@@ -144,7 +144,7 @@ import {
   type LowMoodWindow,
 } from "./mood-observation";
 import { getMoodLogs, getMetricDailyTotals } from "./queries";
-import { getSleepRegularity } from "./queries/sleep";
+import { getSleepRegularityDrop } from "./queries/situation-impact";
 import {
   getSuspectSleepSessions,
   SLEEP_SKEW_HISTORY_DAYS,
@@ -161,6 +161,8 @@ import {
 import { describeEta } from "./trend-projection";
 import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "./findings";
 import {
+  trainingTabHref,
+  strengthAnalyzeHref,
   clinicalResultDetailHref,
   nutritionTabHref,
   MEDICATIONS_HREF,
@@ -336,7 +338,7 @@ export function buildMobilitySuggestionFindings(
     tone: "info",
     evidence:
       "Suggestion from your fitness check / recovering injuries — track it as a weekly habit, or dismiss.",
-    actionHref: "/training?tab=overview" as AppRoute,
+    actionHref: trainingTabHref("overview"),
     actionLabel: "Track it",
   }));
 }
@@ -685,7 +687,7 @@ export function buildSleepClockSkewFindings(
 // CO-OCCURS with the low-mood window above. Deliberately a CO-OCCURRENCE note —
 // "the two often move together" — never a causal or directional claim (#992's
 // design choice). Sleep inputs reuse the SAME computations the Trends sleep
-// surfaces render: getSleepRegularity (the #160 SRI) at two anchors, and the
+// surfaces render: the shared trailing SRI comparison decision, and the
 // sleep_min daily totals for the duration windows — no second sleep engine.
 // Coaching tier ONLY (#449): joins collectCoachingFindings, SLEEP_MOOD_PREFIX is
 // registered, never a notification, never the hero. No owned SQL added here.
@@ -695,13 +697,6 @@ export function buildSleepMoodBridgeFindings(
 ): Finding[] {
   const low = lowMoodWindowFor(profileId, today);
   if (!low) return [];
-
-  // SRI over the recent 28-night window vs the 28 nights before it (null when a
-  // window lacks enough recorded nights — the pure decide gate handles nulls).
-  const recentReg = getSleepRegularity(profileId, { asOf: today });
-  const priorReg = getSleepRegularity(profileId, {
-    asOf: shiftDateStr(today, -28),
-  });
 
   // Mean nightly duration, recent 14 days vs the prior 14 — the same daily
   // totals series the body census sleep chart renders.
@@ -713,8 +708,7 @@ export function buildSleepMoodBridgeFindings(
   const obs = decideSleepMoodBridge(
     {
       lowMood: low,
-      recentSri: recentReg?.sri ?? null,
-      priorSri: priorReg?.sri ?? null,
+      regularityDrop: getSleepRegularityDrop(profileId, today),
       recentAvgSleepMin: meanNightlySleepMin(nights, recentStart, today),
       priorAvgSleepMin: meanNightlySleepMin(nights, priorStart, priorEnd),
     },
@@ -1135,12 +1129,6 @@ function foodSuggestionToFinding(s: FoodSuggestion): Finding {
 
 // ---- Domain 4: training balance + plateau (Training → Overview) -----------
 
-// The deep link a stale/plateau exercise finding points at — the Analyze tab focused
-// on that exercise (same link coaching's strength recs use).
-function exerciseHref(exercise: string): AppRoute {
-  return `/training?tab=analyze&kind=strength&item=${encodeURIComponent(exercise)}`;
-}
-
 function trainingObservationToFinding(o: TrainingObservation): Finding {
   return {
     domain: `training-${o.kind}`,
@@ -1151,8 +1139,8 @@ function trainingObservationToFinding(o: TrainingObservation): Finding {
     detail: o.detail,
     tone: "caution",
     actionHref: o.exercise
-      ? exerciseHref(o.exercise)
-      : "/training?tab=overview",
+      ? strengthAnalyzeHref(o.exercise)
+      : trainingTabHref("overview"),
     actionLabel: o.exercise ? "View exercise" : "View training",
   };
 }
@@ -1193,7 +1181,7 @@ function staleExerciseGroupFinding(
     detail,
     tone: "info",
     dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-    actionHref: "/training?tab=overview",
+    actionHref: trainingTabHref("overview"),
     actionLabel: "View training",
   };
 }
@@ -1342,7 +1330,7 @@ function volumeObservationToFinding(o: VolumeBandObservation): Finding {
     detail: o.detail,
     // Calm, observational FYI — never a push, never dashboard Now (#449).
     tone: "info",
-    actionHref: "/training?tab=overview",
+    actionHref: trainingTabHref("overview"),
     actionLabel: "View coverage",
   };
 }
@@ -1505,7 +1493,7 @@ export function buildGoalPacingFindings(
       title: `“${pace.title}” is off pace`,
       detail,
       tone: "caution",
-      actionHref: "/training?tab=goals",
+      actionHref: trainingTabHref("plan", "goals"),
       actionLabel: "Review goal",
     });
   }
@@ -1591,7 +1579,7 @@ export function buildGoalPacingFindings(
       title: `“${pace.title}” is off pace`,
       detail,
       tone: "caution",
-      actionHref: "/training?tab=goals",
+      actionHref: trainingTabHref("plan", "goals"),
       actionLabel: "Review goal",
     });
     biomarkerFindings += 1;
@@ -1833,7 +1821,7 @@ const RIGHTSIZE_ACTION: Record<
 > = {
   practice: { href: PRACTICES_HREF, label: "Open practices" },
   training: {
-    href: "/training?tab=goals" as AppRoute,
+    href: trainingTabHref("plan", "goals"),
     label: "Open weekly targets",
   },
   food: { href: nutritionTabHref("food"), label: "Open weekly habits" },

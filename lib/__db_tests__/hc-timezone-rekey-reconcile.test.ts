@@ -28,7 +28,7 @@
 //
 // Runs via `npm run test:db`; the `db` singleton points at a per-file temp DB (setup.ts).
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimezone, setTimezone } from "@/lib/settings";
@@ -50,14 +50,10 @@ const HONOLULU = "Pacific/Honolulu";
 // The clock seam (lib/clock.ts). Every instant in this file is stated, never sampled:
 // the whole question is which local day an absolute instant lands on, and a sampled
 // "now" makes that a different question on every run.
-const realNow = process.env.ALLOS_TEST_NOW;
+
 function freeze(iso: string): void {
-  process.env.ALLOS_TEST_NOW = iso;
+  vi.setSystemTime(new Date(iso));
 }
-afterEach(() => {
-  if (realNow === undefined) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = realNow;
-});
 
 function newProfile(name: string, tz: string): number {
   const id = Number(

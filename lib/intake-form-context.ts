@@ -1,15 +1,5 @@
-// THE ONE INTAKE-FORM CONTEXT (#4609). Everything `IntakeItemForm` needs about the
-// SUBJECT of the write, gathered once, so a door cannot open with half of it. The form
-// was fed by whichever host mounted it and the hosts disagreed: /medications passed the
-// full set, the illness add fold passed the pediatric context alone. Same form, same
-// profile, different safety surface — a child got chronic-alcohol counselling because
-// the food-note age gate ran on "unknown", and the stack, PGx and pairing controls had
-// nothing in them. Nothing marked that door as degraded; it looked complete.
-//
-// KEYED ON THE SUBJECT, NOT ON WHO IS LOOKING — the parameter is the profile the item
-// is recorded FOR, so a caregiver opening this door for a child gets the CHILD's age,
-// stack, variants and conditions. Authorization stays at the request boundary: the
-// caller resolves which profile it may write and passes that id.
+// Gather the write subject's context once; every intake form requires this object.
+// Callers authorize the subject profile before loading it.
 import type { InteractionItem } from "./drug-interactions";
 import { parseRxcuiIngredients } from "./rxnorm";
 import type { PgxVariantInput } from "./pgx";
@@ -38,10 +28,7 @@ export interface IntakeFormContext {
   // food-note age gate both read it, so a door that can render pediatric dosing cannot
   // also gate on an unknown age.
   pediatric: PediatricFormContext;
-  // The profile-local day, for the start-date seed. Its absence is not cosmetic — it
-  // decides whether the form posts `started_on` at all, and therefore which validation
-  // branch `addIntakeItem` takes. Hosts pass this through; a host that recomputes the
-  // day is the one way the seed and the staleness gate can disagree.
+  // The subject's local day for date-picker bounds and weight-staleness checks.
   todayStr: string;
 }
 
@@ -79,11 +66,7 @@ export function loadIntakeFormContext(
       status: c.status,
     })),
     pediatric,
-    // The same profile-local day the pediatric context resolved, so the weight-staleness
-    // reading and the start-date seed cannot land on different days — provided the host
-    // hands the form THIS day instead of calling today() for its own copy. The
-    // /medications loader did exactly that, and two calls a few lines apart can straddle
-    // profile-local midnight; it now reads this field (app/(app)/medications/med-data.ts).
+    // Date bounds and weight-staleness checks share the subject's local day.
     todayStr: pediatric.today,
   };
 }

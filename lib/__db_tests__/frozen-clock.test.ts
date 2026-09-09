@@ -49,11 +49,11 @@ describe("the db/action tiers freeze the clock (#4509)", () => {
     expect(today(profileId)).toBe(now().toISOString().slice(0, 10));
   });
 
-  it("keeps a per-test setSystemTime working, and restores the tier instant after", () => {
+  it("supports per-test Date and app-clock overrides", () => {
     vi.setSystemTime(new Date("2026-06-17T08:00:00.000Z"));
     expect(now().toISOString()).toBe("2026-06-17T08:00:00.000Z");
-    // No cleanup here on purpose: the tier's own beforeEach is what puts it back,
-    // which is the property a spec that moves the clock in one test depends on.
+    // Leave both overrides behind; the next test must start at the tier instant.
+    process.env.ALLOS_TEST_NOW = "2040-01-01T00:00:00Z";
   });
 
   it("put the tier instant back after the test above moved it", () => {

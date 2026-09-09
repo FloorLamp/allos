@@ -14,6 +14,9 @@ import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import DayLedger from "@/app/(app)/nutrition/DayLedger";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
+import { DayContextProvider, useDayContext } from "@/components/DayContext";
+import BoundedDaySwitcher from "@/components/BoundedDaySwitcher";
+import { SHEET_REACH } from "@/lib/log-manifest";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
@@ -54,6 +57,17 @@ vi.mock("@/components/FormatPrefsProvider", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: date === "2026-08-28",
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 vi.mock("@/components/ConfirmDialog", () => ({
   useConfirm: () => vi.fn(),
@@ -106,6 +120,7 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
 
 const TODAY = "2026-08-28";
 const YESTERDAY = "2026-08-27";
+const TOMORROW = "2026-08-29";
 
 const CREATINE = {
   id: 7,
@@ -555,35 +570,53 @@ describe("one dose row control, any writable day (#4424 ruling 3)", () => {
 });
 
 describe("the quick sheet mounts the same control on both of its arms", () => {
+  function SheetBody() {
+    const day = useDayContext();
+    return (
+      <>
+        <BoundedDaySwitcher />
+        <QuickDoseList
+          today={TODAY}
+          selectedDay={day.parts.day}
+          doses={[
+            { doseId: 41, title: "Creatine", detail: null, dueText: "8:00am" },
+          ]}
+          pastDays={[
+            {
+              date: YESTERDAY,
+              label: "Yesterday",
+              slots: [
+                {
+                  bucket: "Morning",
+                  doses: [
+                    {
+                      doseId: 41,
+                      name: "Creatine",
+                      detail: "5 g",
+                      stack: null,
+                      amountAssumed: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ]}
+          onDone={vi.fn()}
+        />
+      </>
+    );
+  }
+
   function renderSheet() {
     return render(
-      <QuickDoseList
+      <DayContextProvider
+        profileId={1}
         today={TODAY}
-        doses={[
-          { doseId: 41, title: "Creatine", detail: null, dueText: "8:00am" },
-        ]}
-        pastDays={[
-          {
-            date: YESTERDAY,
-            label: "Yesterday",
-            slots: [
-              {
-                bucket: "Morning",
-                doses: [
-                  {
-                    doseId: 41,
-                    name: "Creatine",
-                    detail: "5 g",
-                    stack: null,
-                    amountAssumed: false,
-                  },
-                ],
-              },
-            ],
-          },
-        ]}
-        onDone={vi.fn()}
-      />
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: TODAY }}
+      >
+        <SheetBody />
+      </DayContextProvider>
     );
   }
 
@@ -611,6 +644,39 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
     });
     // The day is the ROW's, and today's row states none — the same post it always made.
     expect(sent.date).toBe(date);
+  });
+
+  it("keeps a cached former-today row visible and writes its explicit day", async () => {
+    render(
+      <DayContextProvider
+        profileId={1}
+        today={TOMORROW}
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: TODAY }}
+      >
+        <QuickDoseList
+          today={TODAY}
+          profileToday={TOMORROW}
+          selectedDay={TODAY}
+          doses={[
+            { doseId: 41, title: "Creatine", detail: null, dueText: "8:00am" },
+          ]}
+          pastDays={[]}
+          onDone={vi.fn()}
+        />
+      </DayContextProvider>
+    );
+
+    expect(screen.getByTestId("quick-entry-dose-41")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("dose-take"));
+    });
+    expect(fields()).toMatchObject({
+      dose_id: "41",
+      status: "taken",
+      from: "clear",
+      date: TODAY,
+    });
   });
 });
 

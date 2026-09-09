@@ -11,6 +11,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../../gate-item";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
+import { isPastWriteAccepted } from "@/lib/log-manifest";
 import { now } from "@/lib/clock";
 import { judgeStatedAt } from "@/lib/stated-time";
 import { getTimezone } from "@/lib/settings";
@@ -77,8 +78,13 @@ export type SubstanceInstrumentActionResult =
 
 // This week's post-write unit count rides the result so the one-tap log/undo
 // reconciles optimistically against the server (the #748 item 2 pattern).
+export type SubstanceCountResult =
+  | { ok: true; weekCount: number }
+  | { ok: false; error: string; weekCount?: number };
+
 export type SubstanceLogResult =
-  { ok: true; weekCount: number } | { ok: false; error: string };
+  | { ok: true; weekCount: number; eventId: number; date: string }
+  | { ok: false; error: string };
 
 export type SubstanceHistoryDeleteResult =
   | { kind: "deleted"; undoId: number }
@@ -212,7 +218,25 @@ export async function logSubstanceUnitAction(
     String(formData.get("substance") ?? "")
   );
   if (substance === null) return { ok: false, error: "Unknown substance." };
-  return logOneUnit(profileId, substance, webOrigin(formData));
+  const date = quickEntryDate(profileId, formData);
+  if (date == null)
+    return { ok: false, error: "That day is outside quick logging." };
+  return logOneUnit(
+    profileId,
+    substance,
+    date,
+    webOrigin(formData),
+    statedUseInstant(profileId, date, formData)
+  );
+}
+
+function quickEntryDate(profileId: number, formData: FormData): string | null {
+  const profileToday = today(profileId);
+  const raw = String(formData.get("date") ?? "").trim();
+  if (raw === "") return profileToday;
+  return isRealIsoDate(raw) && isPastWriteAccepted(profileToday, raw)
+    ? raw
+    : null;
 }
 
 // The surface this post came from, defaulting to the substance page's own form when
@@ -236,25 +260,38 @@ function webOrigin(formData: StampedFormData): WebLoggedVia {
 function logOneUnit(
   profileId: number,
   substance: SubstanceKey,
+  date: string,
   // The mounting surface, read off the post (#3087): the substance row is offered on
   // its own page AND in the quick-log sheet, so the action cannot know which it is.
-  loggedVia: WebLoggedVia
+  loggedVia: WebLoggedVia,
+  statedAt: string | null = null
 ): SubstanceLogResult {
   const outcome =
     substanceDef(substance).ledger === "food-log"
       ? logFoodServingCore(
           profileId,
           ALCOHOL_FOOD_GROUP,
-          today(profileId),
-          loggedVia
+          date,
+          loggedVia,
+          undefined,
+          statedAt ? { eatenAt: statedAt, source: "stated" } : undefined
         )
-      : logSubstanceUnitCore(profileId, substance, today(profileId), loggedVia);
+      : logSubstanceUnitCore(
+          profileId,
+          substance,
+          date,
+          loggedVia,
+          undefined,
+          statedAt
+        );
   if (outcome.kind !== "logged")
     return { ok: false, error: "Couldn't log that." };
   revalidateSubstanceUse();
   return {
     ok: true,
     weekCount: getSubstanceWeekState(profileId, substance).count,
+    eventId: outcome.eventId,
+    date,
   };
 }
 
@@ -303,7 +340,12 @@ export async function trackSubstanceUseAction(
     String(formData.get("name") ?? "")
   );
   if (!name.ok) return { ok: false, error: substanceNameError(name.reason) };
-  const logged = logOneUnit(profile.id, name.key, webOrigin(formData));
+  const logged = logOneUnit(
+    profile.id,
+    name.key,
+    today(profile.id),
+    webOrigin(formData)
+  );
   if (!logged.ok) return logged;
   return {
     ok: true,
@@ -313,10 +355,12 @@ export async function trackSubstanceUseAction(
   };
 }
 
-// Undo one unit logged today (idempotent — a no-op at zero), same dispatch.
+// Undo one unit through the same split-ledger dispatch. A toast receipt names the
+// exact event and its original date; the standing legacy control sends neither and
+// keeps its established newest-event-from-today behavior.
 export async function undoSubstanceUnitAction(
   formData: FormData
-): Promise<SubstanceLogResult> {
+): Promise<SubstanceCountResult> {
   // #4932: the add's inverse must resolve the SAME subject the add did, so it reads
   // it through the same gateItemProfile().
   const profileId = await gateItemProfile(formData);
@@ -326,10 +370,48 @@ export async function undoSubstanceUnitAction(
     String(formData.get("substance") ?? "")
   );
   if (substance === null) return { ok: false, error: "Unknown substance." };
+  const hasEventId = formData.has("event_id");
+  const hasDate = formData.has("date");
+  const exactReceipt = hasEventId || hasDate;
+  const rawEventId = String(formData.get("event_id") ?? "").trim();
+  const rawDate = String(formData.get("date") ?? "").trim();
+  let expectedEventId: number | undefined;
+  if (exactReceipt) {
+    const parsedEventId = Number(rawEventId);
+    if (
+      !hasEventId ||
+      !hasDate ||
+      rawEventId === "" ||
+      !Number.isSafeInteger(parsedEventId) ||
+      parsedEventId < 1 ||
+      !isRealIsoDate(rawDate)
+    )
+      return { ok: false, error: "That use has changed." };
+    expectedEventId = parsedEventId;
+  }
+  const date =
+    expectedEventId === undefined
+      ? quickEntryDate(profileId, formData)
+      : rawDate;
+  if (date == null)
+    return { ok: false, error: "That day is outside quick logging." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
-      ? undoFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, today(profileId))
-      : undoSubstanceUnitCore(profileId, substance, today(profileId));
+      ? undoFoodServingCore(
+          profileId,
+          ALCOHOL_FOOD_GROUP,
+          date,
+          undefined,
+          undefined,
+          expectedEventId
+        )
+      : undoSubstanceUnitCore(profileId, substance, date, expectedEventId);
+  if (outcome.kind === "changed")
+    return {
+      ok: false,
+      error: "That use has changed.",
+      weekCount: getSubstanceWeekState(profileId, substance).count,
+    };
   if (outcome.kind !== "undone")
     return { ok: false, error: "Couldn't undo that." };
   revalidateSubstanceUse();

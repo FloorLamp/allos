@@ -1,89 +1,95 @@
 # Cadence and lifecycle
 
-- Arm the durable one-shot check-in first on every wake, with the documented
-  background fallback. Record the next fire time for the check-in script.
-- Owner HOLDS live in `$SCRATCH/.holds`, never in the orchestrator's head: one
-  per line as `<scope> :: <release condition> :: <what it gates>`. The check-in
-  prints them; test every release condition on every wake. A hold stops only
-  what it names; it neither accepts an outcome nor widens the cycle scope.
-- A hold is the only input no script can derive, so its loss to a restart is the
-  silent one. Everything else the recorder prints is recoverable.
-- The wake prompt carries only DURABLE facts — holds, owner-gated items,
-  standing constraints — and points at the tooling for current state. A wake
-  that enumerates PR numbers and their status is stale before it fires.
-- The check-in script and `dispatch-brief.mjs list` are ground truth on wake.
-  Read them before acting on anything the prompt asserts, including your own.
-- Sweep open issues about every four hours for filings, labels, and comment
-  rulings.
-- Run one adversarial audit over the previous day of merges per session-day.
-  File findings against the introducing PR.
-- **An issue of its own** (owner, 2026-09-05) is user-reachable, breaks main
-  or a merge, a measured reproduction no open issue scopes, or removes a
-  parallel concept (CLAUDE.md). A scan gap is a line on its #5346 adopter, a
-  harness nit a line on the harness issue, a flake joins its mechanism.
-- New guards, scans and e2e specs follow the [change and test policy](../change-policy.md).
-- After each UI-affecting merge, while its PR context is fresh, run
-  `UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run`.
-  It scopes territories, expands shared UI to a census, stops on a manual plan.
-- The Ladder records the cycle's authorized scope, outcomes, and bounded or
-  continuous termination. If that record is missing or conflicting, mark it
-  `needs-human`; continue only clear, unheld work, then bank and report blocked.
-- Dispatch only within that scope. A bounded cycle completes only when every
-  recorded outcome is accepted; a hold or blocker can end active work, not turn
-  it into completion. A continuous cycle reaches exhaustion only when every
-  remaining eligible in-scope issue is accounted for as blocked, owner-gated,
-  or dependency-bound.
-- Keep `parked` labels and status reports consistent.
-- Merge Dependabot minors on green current main. Send majors through
-  `dependabot-eval-brief.mjs` within a day.
-- Give infrastructure issues priorities; active bottlenecks (a red main, a
-  blocked queue) are P1 and isolated latent flakes are P3. Only the owner or a
-  red main makes a P1, including an owner-authorized priority audit: an agent
-  that raises a priority names the rule and demonstrated impact. Reassess P1s
-  after partial fixes against unmet criteria; a resolved incident does not give
-  its residual cleanup permanent P1 status. The PM audits open P1s each watch.
-- Never edit a live agent's worktree without messaging it and receiving an
-  acknowledgement.
-- Rerun failed Actions jobs only after all jobs in the run have completed.
-- A failed job whose steps are all green is infrastructure; inspect the steps,
-  then rerun.
-- Institutionalize lessons in tooling or the relevant focused runbook file the
-  same day — those are the only durable homes. Narrative that fits neither is
-  cut, not relocated; history lives in git.
+This guide owns the recorded cycle, cadence, status, and termination. Follow
+[dispatch](dispatch.md) for priorities and capacity,
+[review and merge](review-merge.md) for landing, and the
+[change and test policy](../change-policy.md) for scope and verification.
+
+## Recorded cycle and holds
+
+Read the Ladder issue (#4769) at each check-in: authorized scope, outcomes,
+bounded or continuous termination, rung order, assigned slice, and prerequisites.
+Missing or conflicting scope goes through [owner-question handling](labels.md).
+Continue clear, unheld work; when none remains, bank and report a blocked handoff.
+The remaining backlog does not authorize broader dispatch.
+
+Record owner holds in `$SCRATCH/.holds`, one per line:
+`<scope> :: <release condition> :: <what it gates>`. Check each release condition
+at every wake. A hold stops only its named work; it neither accepts an outcome nor
+widens scope. Preserve this owner-provided state during recovery.
+
+A bounded cycle completes only when every recorded outcome is accepted.
+Continuous exhaustion requires every eligible in-scope remainder to be accounted
+for as blocked, owner-gated, or dependency-bound. A blocker can stop active work
+without satisfying either completion condition.
+
+## Cadence
+
+For an authorized live session:
+
+- Arrange the next durable one-shot check-in at each wake and record its next fire
+  time. Wake prompts carry stable constraints and point to tooling for current
+  state; avoid embedding a stale PR-status inventory.
+- Read the check-in and `dispatch-brief.mjs list` before acting. Confirm actual
+  agent/process state through [recovery](recovery.md) when a restart or stop is
+  suspected. A persisted roster alone is not a liveness check.
+- Sweep open issues about every four hours for new filings, labels, and comment
+  rulings. Reassess partial deliveries by remaining impact; the PM audits open
+  P1s each watch.
+- Run one adversarial audit of the previous day's merges per session-day. Attach
+  verified findings to the introducing mechanism under the filing bar below.
+- After a UI-affecting merge, run the seeded post-merge census while its context is
+  fresh. The [walkthrough guide](../../.agents/skills/ux-walkthrough/SKILL.md)
+  owns the command, coverage limits, and evidence review.
+- Evaluate Dependabot minors under the normal green-head merge requirements;
+  send majors through `dependabot-eval-brief.mjs` within a day.
+- Diagnose and rerun CI under [E2E and CI](e2e-ci.md). Wait for the run to settle
+  before rerunning failed jobs. A failed job with green listed steps needs its
+  annotations and setup/cleanup result inspected before calling it infrastructure.
+
+Keep recurring rules in their owning tooling or guide. Remove incident narratives;
+git and PR history retain their context. New scans and tests still need the
+concrete gap required by the change policy.
+
+## Filing bar
+
+A finding earns its own issue when it is user-reachable, breaks main or a merge,
+has a measured reproduction no open issue covers, or removes a parallel concept.
+Otherwise attach it to the existing mechanism or owning task: scan gaps to their
+adopter, harness details to the harness issue, and flakes to their cause.
+
+Lanes return findings rather than filing. The orchestrator checks current scope,
+duplicates, and [filing instructions](../../.agents/skills/file-issue/SKILL.md)
+before any authorized tracker write. Keep `parked` and status reports consistent.
 
 ## Status pulse
 
-- The pulse is the census line plus EXCEPTIONS only: a red `main`, a
-  blocker, a needs-human filed, a merge. Nobody reads the transcript — no
-  narration between tool calls, no plans, no recaps. Findings go to their
-  durable homes (PR reviews, issue comments, the ledger); the PM by SendMessage.
-- Its data half is the check-in's own recorder output. The catch-up digest
-  (`pm-digest.sh`) is the PM's, written for the owner, not an orchestrator's pulse.
-- The pulse OPENS with one census line in a fixed grammar, and the turn's
-  status detail carries the same line, so a PM reads saturation without
-  inference: `e2e 2/2 · ord 3/5 · slot #4764 green · banked 2 · blocked #4218`.
-- Read the Ladder issue (#4769, `parked` + `docs`) at every check-in: rung
-  order, your slice, prerequisites. It outranks your own ranking; a
-  disagreement goes to the PM, not into the queue.
+Open the pulse with the check-in's census line, for example:
+`e2e 2/2 · ord 3/5 · slot #4764 green · banked 2 · blocked #4218`.
+Follow it with exceptions that change the next action: red main, blockers, owner
+questions, or a merge. State uncertainty as uncertainty and keep updates concise.
+
+Use the session's communication channels and cadence. Durable findings belong in
+the relevant review, issue, or ledger when those writes are authorized; avoid
+copying the same narrative into each. The PM owns `pm-digest.sh` and the owner's
+catch-up summary.
 
 ## Wind-down
 
-- Stop dispatching new work, land or clearly bank in-flight work, clean
-  worktrees and stale branches, stop check-ins, and hand off remaining state.
-- Name the terminal state: bounded completion, continuous exhaustion, or a
-  blocked handoff with its unmet outcomes. Do not collapse them into "done."
-- Use an unverified WIP marker only when an agent actually died.
-- Before deleting a branch or dirty work, settle it on CONTENT: compare its
-  files against `main` and say which comparison answered. The PR record and
-  the surviving ref are hints; `main` is the verdict.
-- `merged=false` is not evidence nothing landed — work re-lands from a renamed
-  successor branch (#5220), and a squash can leave the record unmerged
-  (`recovery.md` §A merge that half-landed). Nor is a non-empty merge-base
-  diff: only `git diff main <branch> -- <file>` sees a sibling PR's hunk.
+Stop new dispatches, land or clearly bank in-flight work, clean verified redundant
+worktrees and branches, stop check-ins, and hand off the remaining state. Use an
+unverified WIP marker only for work from an agent confirmed stopped.
+
+Before deletion, compare branch content with `main` and record what established
+redundancy. For a suspected successor merge, use a direct file comparison such as
+`git diff main <branch> -- <file>`; PR status or a merge-base diff alone cannot
+settle whether the work landed. Follow recovery's ambiguous-merge procedure.
+
+Name the terminal state: bounded completion, continuous exhaustion, or a blocked
+handoff listing unmet outcomes and the next required action.
 
 ## Out of scope
 
-- Strategic or architectural work without owner approval.
-- Owner judgment about information architecture, navigation, or tone.
-- Documentation is not fenced: agents keep relevant documentation current, but
-  do not restructure top-level guidance incidentally.
+Strategic or architectural changes and owner judgments about information
+architecture, navigation, or tone require that scope from the owner. Keep relevant
+documentation current, but do not restructure top-level guidance incidentally.

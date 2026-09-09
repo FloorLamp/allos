@@ -34,6 +34,7 @@ vi.mock("@/components/ConfirmDialog", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 vi.mock("@/components/FormatPrefsProvider", () => ({

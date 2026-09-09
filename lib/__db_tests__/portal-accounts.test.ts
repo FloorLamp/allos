@@ -14,7 +14,7 @@
 // sync accounting, and provenance.
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { POST as UPLOAD } from "@/app/api/documents/route";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
 import { routeTestToken } from "./route-test-api-token";
@@ -173,15 +173,15 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  db.exec("DELETE FROM medical_documents");
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM integration_connections");
-  db.exec("DELETE FROM portal_identities");
-  db.exec("DELETE FROM pending_portal_identities");
-  db.exec("DELETE FROM portal_run_reports");
+  rawDb.exec("DELETE FROM medical_documents");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM integration_connections");
+  rawDb.exec("DELETE FROM portal_identities");
+  rawDb.exec("DELETE FROM pending_portal_identities");
+  rawDb.exec("DELETE FROM portal_run_reports");
   // Leave only the implicit login on the shared portal, so a test that adds one starts
   // from the single-login world every household starts in.
-  db.exec(
+  rawDb.exec(
     `DELETE FROM portal_accounts WHERE portal_id = ${portalId} AND implicit = 0`
   );
 });

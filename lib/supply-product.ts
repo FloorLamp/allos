@@ -52,7 +52,7 @@ export interface SupplyOption extends PoolProductFacts {
 // The bottle's row in the intake form's name combobox: what it is, and how much is in
 // it. The suffix is what tells a picker that this row is a BOTTLE and not a catalog
 // entry, so it is also what identifies the row on the way back.
-export const BOTTLE_OPTION_SUFFIX = " — shared bottle";
+const BOTTLE_OPTION_SUFFIX = " — shared bottle";
 
 export function bottleOptionLabel(option: SupplyOption): string {
   const left =

@@ -30,18 +30,39 @@
 //       `/mood` keep re-issuing onto one slot instead of stacking;
 //   (4) a chat that maps to no profile records nothing rather than inventing an owner.
 
+import Database from "better-sqlite3";
+import { runMigrations } from "@/lib/migrations/runner";
+import { migrationsBefore } from "@/lib/migrations/versions";
+import { dispatch } from "@/lib/notifications";
+import { renderRefillMessage } from "@/lib/notifications/refill";
+import { renderEscalationMessage } from "@/lib/notifications/escalation";
+import { renderFollowUpNudgeMessage } from "@/lib/notifications/followup";
+import { renderEaseBackMessage } from "@/lib/notifications/ease-back";
+import { renderIllnessCareMessage } from "@/lib/notifications/illness-care";
+import { renderTempRedFlagMessage } from "@/lib/notifications/temp-red-flag";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { getProfilesByTelegramChatId, setSetting } from "@/lib/settings";
-import { CHAT_WIDE, sendTelegramMessage } from "@/lib/notifications/telegram";
+import {
+  CHAT_WIDE,
+  rebuildMessage,
+  renderMessageHtml,
+  sendTelegramMessage,
+} from "@/lib/notifications/telegram";
 import { handleIncomingMessage } from "@/lib/notifications/telegram-quick-log";
 import {
   editMessageTextRaw,
   sendMessageRaw,
 } from "@/lib/notifications/telegram-api";
-import { liveMessagePointersForKind } from "@/lib/notifications/message-pointers";
+import {
+  liveMessagePointersForKind,
+  messagePointerAt,
+  recordMessagePointer,
+  claimMessagePointerClose,
+  restoreMessagePointer,
+} from "@/lib/notifications/message-pointers";
 import type { NotificationMessage } from "@/lib/notifications/types";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 
@@ -223,3 +244,215 @@ describe("the real commands keep their subjects (#1995)", () => {
     expect(bodies[1]).toContain(`#temp:${basil.profileId}`);
   });
 });
+
+describe("delivered subject survives a rebuild (#4789)", () => {
+  it.each(["representative", "other member"])(
+    "keeps a shared send unprefixed for the %s",
+    async (actor) => {
+      const message = checkIn(basil.profileId);
+      await sendTelegramMessage(CHAT, message, CHAT_WIDE);
+      const pointer = liveMessagePointersForKind(
+        ada.profileId,
+        CHAT,
+        "mood"
+      )[0];
+      const delivered = sendMock.mock.calls[0][1];
+      await rebuildMessage(
+        actor === "representative" ? ada.profileId : basil.profileId,
+        CHAT,
+        pointer.messageId,
+        delivered
+      );
+      expect(closeMock.mock.lastCall?.[2]).toBe(renderMessageHtml(delivered));
+      // Rebuilding as another member updates the actual stored owner, too.
+      await rebuildMessage(basil.profileId, CHAT, pointer.messageId, {
+        ...message,
+        actions: [],
+      });
+      expect(
+        messagePointerAt(ada.profileId, CHAT, pointer.messageId)?.keyboard
+      ).toEqual([]);
+    }
+  );
+
+  it("keeps a declared profile's attribution through send and rebuild", async () => {
+    const message = checkIn(basil.profileId);
+    await sendTelegramMessage(CHAT, message, basil.profileId);
+    const pointer = liveMessagePointersForKind(
+      basil.profileId,
+      CHAT,
+      "mood"
+    )[0];
+    await rebuildMessage(basil.profileId, CHAT, pointer.messageId, message);
+    expect(closeMock.mock.lastCall?.[2]).toBe(
+      renderMessageHtml(sendMock.mock.calls[0][1])
+    );
+    expect(closeMock.mock.lastCall?.[2]).toContain("[subject-basil]");
+  });
+
+  it("restores the delivered shared subject after a failed close claim", async () => {
+    await sendTelegramMessage(CHAT, checkIn(ada.profileId), CHAT_WIDE);
+    const pointer = liveMessagePointersForKind(ada.profileId, CHAT, "mood")[0];
+    expect(
+      claimMessagePointerClose(ada.profileId, pointer.id, pointer.version)
+    ).toBe(true);
+    expect(restoreMessagePointer(pointer)).toBe(true);
+    await rebuildMessage(
+      basil.profileId,
+      CHAT,
+      pointer.messageId,
+      checkIn(basil.profileId)
+    );
+    expect(closeMock.mock.lastCall?.[2]).not.toContain("[subject-");
+  });
+
+  it.each([
+    "foreign chat",
+    "inaccessible owner",
+    "other profile subject",
+    "legacy subject",
+  ])("does not borrow a pointer for %s", async (boundary) => {
+    const foreign = seedProfile(`subject-foreign-${boundary}`);
+    const ownerId =
+      boundary === "inaccessible owner"
+        ? foreign.profileId
+        : boundary === "legacy subject"
+          ? basil.profileId
+          : ada.profileId;
+    const chatId = boundary === "foreign chat" ? UNLINKED_CHAT : CHAT;
+    recordMessagePointer({
+      profileId: ownerId,
+      chatId,
+      messageId: 777,
+      kind: "mood",
+      date: today(ownerId),
+      keyboard: [],
+      ...(boundary === "foreign chat" || boundary === "inaccessible owner"
+        ? { chatWide: true }
+        : {}),
+    });
+    await rebuildMessage(basil.profileId, CHAT, 777, checkIn(basil.profileId));
+    expect(closeMock.mock.lastCall?.[2]).toContain("[subject-basil]");
+  });
+});
+
+it("upgrades existing pointers without inventing a shared subject", () => {
+  const legacy = new Database(":memory:");
+  try {
+    runMigrations(
+      legacy,
+      migrationsBefore("20260908-notify-message-chat-subject")
+    );
+    const profileId = Number(
+      legacy.prepare("INSERT INTO profiles (name) VALUES ('Legacy')").run()
+        .lastInsertRowid
+    );
+    legacy
+      .prepare(
+        "INSERT INTO notify_messages (profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at) VALUES (?, 'legacy-chat', 1, 'mood', '2026-09-08', '[]', 'Original title', '2026-09-08 12:00:00')"
+      )
+      .run(profileId);
+    const before = legacy.prepare("SELECT * FROM notify_messages").get();
+    runMigrations(legacy);
+    expect(legacy.prepare("SELECT * FROM notify_messages").get()).toEqual({
+      ...(before as object),
+      chat_wide: 0,
+    });
+  } finally {
+    legacy.close();
+  }
+});
+
+const attributedBuilders = [
+  {
+    label: "refill",
+    build: (id: number) =>
+      renderRefillMessage(
+        [{ id: 1, name: "Vitamin D", daysLeft: 3, generation: "fixture0001" }],
+        id
+      ),
+    title: "🔄 Refill due: Vitamin D",
+  },
+  {
+    label: "escalation",
+    build: (id: number) =>
+      renderEscalationMessage(
+        {
+          doseId: 1,
+          itemId: 1,
+          itemName: "Medicine",
+          amount: "1 mg",
+          window: "Morning",
+          kind: "medication",
+          unconfirmedMinutes: 120,
+          escalateChatId: null,
+        },
+        id,
+        today(id)
+      ),
+    title: "⚠️ Missed dose: Medicine",
+  },
+  {
+    label: "followup",
+    build: () =>
+      renderFollowUpNudgeMessage(
+        {
+          title: "Review",
+          detail: "Recorded finding",
+          dueDate: null,
+          reasons: [],
+        },
+        "first"
+      ),
+    title: "🩺 Overdue follow-up: Review",
+  },
+  {
+    label: "ease-back",
+    build: () => renderEaseBackMessage(),
+    title: "🌤️ Ease back in",
+  },
+  {
+    label: "illness-care",
+    build: () =>
+      renderIllnessCareMessage(
+        {
+          symptom: "fever",
+          label: "Fever",
+          variant: "duration",
+          runDays: 4,
+          dedupeKey: "illness-care:test",
+          title: "Fever",
+          detail: "Recorded fever",
+          source: "Synthetic source",
+        },
+        null
+      ),
+    title: "🌡️ Illness check: Fever",
+  },
+  {
+    label: "temperature",
+    build: () =>
+      renderTempRedFlagMessage("High temperature", "Recorded reading", null),
+    title: "🌡️ High temperature",
+  },
+];
+
+it.each(attributedBuilders)(
+  "dispatch names the subject once for $label, preserving single-profile output",
+  async ({ build, title }) => {
+    const message = build(ada.profileId);
+    await dispatch(ada.profileId, message);
+    expect(sendMock.mock.lastCall?.[1].title).toBe(`[subject-ada] ${title}`);
+    // Keep a real one-profile database for the second dispatch, then restore this
+    // file's shared fixtures. The whole database is synthetic and the savepoint is local.
+    rawDb.exec("SAVEPOINT single_subject");
+    rawDb.pragma("defer_foreign_keys = ON");
+    try {
+      db.prepare("DELETE FROM profiles WHERE id <> ?").run(ada.profileId);
+      await dispatch(ada.profileId, message);
+      expect(sendMock.mock.lastCall?.[1].title).toBe(title);
+    } finally {
+      rawDb.exec("ROLLBACK TO single_subject; RELEASE single_subject");
+    }
+  }
+);

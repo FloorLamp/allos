@@ -10,10 +10,11 @@ import { logHistoricalDose } from "@/lib/queries/intake/adherence";
 import { getDoseScheduleVersions } from "@/lib/queries/intake/schedule";
 import { setTimezone } from "@/lib/settings";
 import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
+import type { SqlPrepare } from "@/lib/write-revision";
 
 const MIGRATION = "20260907-dose-schedule-amount";
 
-type DbHandle = Pick<Database.Database, "prepare">;
+type DbHandle = SqlPrepare;
 
 function insertItem(handle: DbHandle, profileId: number, name: string): number {
   return Number(

@@ -1,3 +1,4 @@
+import { trainingTabHref } from "@/lib/hrefs";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import LeadFold from "@/components/LeadFold";
@@ -150,7 +151,9 @@ export default async function HealthConnectPage() {
                   </Link>
                   ; workouts under{" "}
                   <Link
-                    href={trainingRelevant ? "/training?tab=log" : "/history"}
+                    href={
+                      trainingRelevant ? trainingTabHref("log") : "/history"
+                    }
                     className="text-brand-700 underline dark:text-brand-400"
                   >
                     {trainingRelevant ? "Training history" : "History"}

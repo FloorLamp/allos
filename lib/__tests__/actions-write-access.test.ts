@@ -66,6 +66,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#1468): gathers the props for the quick-entry overlay's forms (unit prefs, the day's food servings + ordered catalog, today's due doses, and the #3936 recent-past days each with what it still owes) — every WRITE still goes through the mounted form's own gated action (addMeasurements / logFoodServing / markTaken / resolveDayDoses), so login-scoped requireSession() is the right gate",
   },
   {
+    file: "app/(app)/quick-entry-actions.ts",
+    fn: "loadQuickEntryIntakeContext",
+    why: "read-only (#3203): gathers the selected subject's full medication/supplement form context for the lazy Quick Logger door and writes nothing; an explicit non-acting subject takes resolveQuickEntrySubject's write-access gate while the acting-profile read stays session-scoped, and the later add still re-gates its posted subject at its own request boundary",
+  },
+  {
     file: "app/(app)/log-sheet-actions.ts",
     fn: "loadLogSheetContext",
     why: "read-only (#2651): gathers the log sheet's due-and-usual context row — the composed usual-routine offer (getUsualRoutineOffer) and the arrived-slot due-dose offer (collectDueDosesNow) — and writes nothing; every tap still goes through the control's own gated action (logUsualRoutine / markTaken), so login-scoped requireSession() is the right gate, same posture as loadQuickEntry",
@@ -379,6 +384,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/nutrition/intake-actions.ts",
     fn: "logHistoricalDose",
     why: "adds follow the surface on a subject-scoped container (#4693, amending #4424 ruling 4): /medications/[id] names one subject, so its backfill ADD posts that subject's `profile_id` and takes the same gateItemProfile() \u2192 requireProfileWriteAccess(subjectProfileId) the amend beside it takes. Every single-subject mount posts none and falls back to the acting-profile gate. The dose's wall time re-anchors in the GATED profile's zone, and the audit row is stamped with it",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "addIntakeItem",
+    why: "#3203: the Quick Logger's full medication/supplement form posts its selected subject, so the create follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId); existing single-subject mounts omit the subject and retain the acting-profile write gate, and every created item and child row is scoped to the profile that gate returns",
     gate: "gateItemProfile",
   },
   {

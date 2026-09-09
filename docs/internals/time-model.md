@@ -81,6 +81,11 @@ hide the cast in a new helper. A DB row assertion may carry the brand supported
 by that column's registry entry and storage contract. Narrow consumer parameters
 as they are changed; a branded return alone does not check a string-typed consumer.
 
+`DisplayText` accepts ordinary text but excludes `LocalDay`. Search's `subtitleOf`
+preserves tuple element types so mixing text with a day cannot silently widen it
+to `string[]`. Format the day before passing it; interpolation or an explicit
+string annotation erases the brand and still needs review.
+
 The existing ESLint restriction catches enumerated cast and alias spellings. It
 is not type resolution or runtime validation: indirect types, dishonest predicates,
 `any`, and other type-system escapes still need review. Keep legitimate constructor

@@ -54,11 +54,11 @@ export default async function setup(): Promise<void> {
   process.env.ADMIN_PASSWORD = priorAdmin ?? "db-test-admin-pw";
 
   try {
-    const { db } = await import("../db");
+    const { db, rawDb } = await import("../db");
     // Fold the WAL into the main file so a single copyFileSync yields a complete
     // database; a clean close then removes the emptied sidecar.
     db.pragma("wal_checkpoint(TRUNCATE)");
-    db.close();
+    rawDb.close();
   } finally {
     if (priorPath === undefined) delete process.env.ALLOS_DB_PATH;
     else process.env.ALLOS_DB_PATH = priorPath;

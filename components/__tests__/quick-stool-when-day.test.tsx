@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import StoolTypeControl from "@/components/stool/StoolTypeControl";
+import { DayContextProvider } from "@/components/DayContext";
 
 // #3273 — the sheet's "Happened earlier?" statement follows the SERVER's day.
 //
@@ -23,6 +24,7 @@ const { toast, outcome } = vi.hoisted(() => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 outcome.mockResolvedValue({ ok: true, type: 4, dayCount: 1 });
@@ -129,5 +131,29 @@ describe("the refused stated time is reported, not swallowed", () => {
     });
 
     expect(toast).toHaveBeenCalledWith(sentence);
+  });
+});
+
+describe("a historical quick-entry stool observation", () => {
+  it("requires its visible time and posts the mounted day", async () => {
+    render(
+      <DayContextProvider
+        profileId={7}
+        today="2026-07-09"
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: "2026-07-08" }}
+      >
+        <StoolTypeControl todayCount={0} today="2026-07-08" />
+      </DayContextProvider>
+    );
+    const type = screen.getByTestId("stool-type-4");
+    expect(screen.queryByTestId("stool-when-toggle")).toBeNull();
+    expect(type.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(timeField(), { target: { value: "08:10" } });
+    expect(type.hasAttribute("disabled")).toBe(false);
+    await act(async () => fireEvent.click(type));
+    const sent = outcome.mock.calls.at(-1)?.[0] as FormData;
+    expect(sent.get("date")).toBe("2026-07-08");
+    expect(sent.get("at")).toBe("08:10");
   });
 });

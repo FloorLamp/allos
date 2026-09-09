@@ -1,8 +1,10 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
+import SubstanceForm from "@/components/substances/SubstanceForm";
 import { ToastProvider } from "@/components/Toast";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
+import { substanceDef } from "@/lib/substance-use";
 
 // A window the chart stated becomes the form's DEFAULT, never its write (#4950).
 //
@@ -14,6 +16,11 @@ import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => {}, refresh: () => {} }),
+}));
+
+vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
+  addSubstanceDailyTotalAction: async () => ({ kind: "added", id: 1 }),
+  correctSubstanceUseAction: async () => ({ kind: "updated", eventId: 4 }),
 }));
 
 const PRACTICES = ["Sauna"];
@@ -107,5 +114,62 @@ describe("a chart window prefills the practice form", () => {
     expect(document.querySelector<HTMLSelectElement>("select")!.value).toBe(
       "Rowing"
     );
+  });
+});
+
+const DAY = "2026-09-03";
+
+// A use is an EVENT with its own instant (#5026 phase 2), so this door reads the
+// window like every timed kind beside it (#5615) — the same three properties the
+// practice form above holds, spelled against the pair the `WhenControl` owns.
+const substanceForm = (props: Record<string, unknown>) => (
+  <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat: "24h" }}>
+    <ToastProvider>
+      <SubstanceForm
+        substances={[
+          { key: "nicotine", label: substanceDef("nicotine").label },
+        ]}
+        date={DAY}
+        maxDate={DAY}
+        onSaved={() => {}}
+        onCancel={() => {}}
+        {...props}
+      />
+    </ToastProvider>
+  </FormatPrefsProvider>
+);
+
+const whenDate = () =>
+  document.querySelector<HTMLInputElement>("#substance-when-date")!;
+const whenTime = () =>
+  document.querySelector<HTMLInputElement>("#substance-when-time")!;
+
+describe("a chart window prefills the substance form", () => {
+  it("opens on the day with the clock empty when no window was stated", () => {
+    render(substanceForm({}));
+    expect(whenDate().value).toBe(DAY);
+    expect(whenTime().value).toBe("");
+  });
+
+  it("offers the window's clock on the day in hand", () => {
+    render(substanceForm({ defaultStatedAt: `${DAY}T15:20:00.000Z` }));
+    expect(whenDate().value).toBe(DAY);
+    expect(whenTime().value).toBe("15:20");
+  });
+
+  it("lets a seeded row's own instant win", () => {
+    render(
+      substanceForm({
+        defaultStatedAt: `${DAY}T15:20:00.000Z`,
+        row: {
+          eventId: 4,
+          substance: "nicotine",
+          date: DAY,
+          statedAt: `${DAY}T06:00:00.000Z`,
+          notes: null,
+        },
+      })
+    );
+    expect(whenTime().value).toBe("06:00");
   });
 });

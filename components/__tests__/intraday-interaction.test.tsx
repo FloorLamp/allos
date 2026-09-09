@@ -29,11 +29,12 @@ function Consumer({
   label: string;
   window: { from: number; to: number };
 }) {
-  const { view, setView, cursor } = useIntradayInteraction();
-  const shown = windowFromView(view, cursor);
+  const { view, setView, pin, setPin } = useIntradayInteraction();
+  const shown = windowFromView(view, pin);
   return (
     <div>
       <button data-testid={`set-${label}`} onClick={() => setView(w)} />
+      <button data-testid={`pin-${label}`} onClick={() => setPin(w.from)} />
       <div data-testid={`consumer-${label}`}>
         {shown ? `${shown.from}-${shown.to ?? "start"}` : "none"}
       </div>
@@ -56,6 +57,12 @@ describe("the day chart's interaction state", () => {
     );
     expect(screen.getByTestId("consumer-compact").textContent).toBe("none");
     expect(screen.getByTestId("consumer-wide").textContent).toBe("none");
+
+    fireEvent.click(screen.getByTestId("pin-compact"));
+    expect(screen.getByTestId("consumer-compact").textContent).toBe(
+      "1150-start"
+    );
+    expect(screen.getByTestId("consumer-wide").textContent).toBe("1150-start");
 
     // The visible variant zooms; the hidden one must agree rather than hold its own.
     fireEvent.click(screen.getByTestId("set-compact"));
@@ -80,7 +87,7 @@ describe("the day chart's interaction state", () => {
     expect(screen.getByTestId("consumer-wide").textContent).toBe("360-480");
   });
 
-  it("keeps a private pair when there is no provider, so an isolated chart still works", () => {
+  it("keeps private state when there is no provider, so an isolated chart still works", () => {
     // The fallback is what stops this lift from making the chart depend on a wrapper.
     // It is also what the chart's own tests mount against.
     render(
@@ -92,12 +99,16 @@ describe("the day chart's interaction state", () => {
         <Consumer label="alone-b" window={{ from: 6 * 60, to: 8 * 60 }} />
       </>
     );
-    fireEvent.click(screen.getByTestId("set-alone-a"));
+    fireEvent.click(screen.getByTestId("pin-alone-a"));
     expect(screen.getByTestId("consumer-alone-a").textContent).toBe(
-      "1150-1240"
+      "1150-start"
     );
     // Independent, which is the whole point of the fallback — and the exact behaviour
     // that would be WRONG inside the day page, which is why the provider exists.
     expect(screen.getByTestId("consumer-alone-b").textContent).toBe("none");
+    fireEvent.click(screen.getByTestId("set-alone-a"));
+    expect(screen.getByTestId("consumer-alone-a").textContent).toBe(
+      "1150-1240"
+    );
   });
 });

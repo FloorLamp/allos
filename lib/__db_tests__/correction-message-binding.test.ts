@@ -8,7 +8,7 @@
 // (migration 170's provenance link), the real callback dispatcher, the real builders
 // and the real sweep, with only the raw Telegram transport stubbed.
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   answerCallbackQuery as answerSpy,
   stubTelegramSends,
@@ -55,24 +55,17 @@ beforeAll(() => stubTelegramSends());
 // (05:30Z), the midday tap 12:42 local (10:42Z) — the screenshot's own clock.
 const MORNING_ISO = "2026-08-05T05:30:00Z";
 const MIDDAY_ISO = "2026-08-05T10:42:00Z";
-let priorNow: string | undefined;
 
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = MORNING_ISO;
+  vi.setSystemTime(new Date(MORNING_ISO));
   setTelegramBotConfig({
     telegramBotToken: "bot-for-tests",
     telegramMode: "poll",
   });
 });
 
-afterEach(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
-
 function setNow(iso: string): void {
-  process.env.ALLOS_TEST_NOW = iso;
+  vi.setSystemTime(new Date(iso));
 }
 
 function newProfile(name: string): number {
@@ -346,7 +339,7 @@ function seedDose(
   return { itemId, doseId };
 }
 
-// `recorded_at` is written by SQL's real clock (the ALLOS_TEST_NOW freeze deliberately
+// `recorded_at` is written by SQL's real clock (the Date freeze deliberately
 // does not reach it), so burst freshness is pinned by stamping it explicitly after the
 // real write path has created the row.
 function stampTap(logId: number, sqlUtc: string): void {

@@ -8,8 +8,8 @@
 // reported but not profiled; the CPU profile covers the renders after it.
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, beforeAll, describe, it, vi } from "vitest";
-import { db, reopenDatabaseForTests } from "@/lib/db";
+import { afterAll, beforeAll, describe, it, vi, beforeEach } from "vitest";
+import { rawDb, reopenDatabaseForTests } from "@/lib/db";
 import {
   adminLoginId,
   allProfileIds,
@@ -56,13 +56,14 @@ vi.mock("@/lib/recommendation-engine", async (importActual) =>
 
 const PROBE_DB = process.env.PROBE_DB;
 const previousDbPath = process.env.ALLOS_DB_PATH;
-const previousTestNow = process.env.ALLOS_TEST_NOW;
 
 describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
+  beforeEach(() =>
+    vi.setSystemTime(new Date(process.env.PROBE_NOW ?? Date.now()))
+  );
   beforeAll(() => {
     process.env.ALLOS_DB_PATH = PROBE_DB;
-    process.env.ALLOS_TEST_NOW =
-      process.env.PROBE_NOW ?? new Date().toISOString();
+    vi.setSystemTime(new Date(process.env.PROBE_NOW ?? Date.now()));
     reopenDatabaseForTests();
     session.loginId = adminLoginId();
     const ids = allProfileIds();
@@ -78,8 +79,6 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
     vi.restoreAllMocks();
     if (previousDbPath === undefined) delete process.env.ALLOS_DB_PATH;
     else process.env.ALLOS_DB_PATH = previousDbPath;
-    if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
-    else process.env.ALLOS_TEST_NOW = previousTestNow;
   });
 
   it("renders, times every statement, and writes a CPU profile", async () => {
@@ -132,7 +131,7 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
     const report = {
       page: pagePath ?? "app/(app)/page",
       db: PROBE_DB,
-      now: process.env.ALLOS_TEST_NOW,
+      now: new Date().toISOString(),
       profileId: session.profile!.id,
       renders: timings,
       statements: stats
@@ -159,6 +158,6 @@ describe.skipIf(!PROBE_DB)("dashboard profile over a database copy", () => {
       JSON.stringify(profile)
     );
     // The handle on the copy is released so the script can remove it.
-    db.close();
+    rawDb.close();
   }, 300_000);
 });

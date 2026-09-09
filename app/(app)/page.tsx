@@ -277,6 +277,8 @@ import {
   undoAttentionDose,
 } from "./actions";
 import {
+  trainingTabHref,
+  onboardingStepHref,
   episodeHref,
   encounterHref,
   historyDayIntradayHref,
@@ -1175,7 +1177,7 @@ async function renderDashboard(
   // The recap gather is shared with the notification; each line becomes an atomic
   // dashboard statement with the stable `weekly-recap` presentation selector.
   const weeklyRecap = trainingRelevant
-    ? getRecapCard(profile.id, units.weightUnit)
+    ? getRecapCard(profile.id, units.weightUnit, units.distanceUnit)
     : null;
 
   // nutrition-today (#1221): today's protein against the goal band + the weekly average
@@ -1777,7 +1779,7 @@ async function renderDashboard(
         label: loadContextLabel(record.exercise, record.equipment),
         value: strengthValue,
         detail: "New personal record",
-        href: "/training?tab=analyze",
+        href: trainingTabHref("analyze"),
       }
     );
   });
@@ -1800,7 +1802,7 @@ async function renderDashboard(
         label: record.activity,
         value,
         detail: "New personal record",
-        href: "/training?tab=analyze",
+        href: trainingTabHref("analyze"),
       }
     );
   });
@@ -1878,7 +1880,7 @@ async function renderDashboard(
         {
           label: stepLabels[step - 1],
           detail: `Setup step ${step} of ${ONBOARDING_STEP_COUNT}`,
-          href: `/onboarding?step=${step}` as AppRoute,
+          href: onboardingStepHref(step),
           actionLabel: "Continue",
         }
       );
@@ -2119,7 +2121,7 @@ async function renderDashboard(
         label: goal.title,
         value: statement.value,
         detail: statement.percent ?? undefined,
-        href: "/training?tab=goals",
+        href: trainingTabHref("plan", "goals"),
         presence: "current",
       }
     );

@@ -19,12 +19,12 @@
 //
 // Server-only: it reads the archive from disk.
 
-import type Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { parseHealthConnectPayload } from "./health-connect";
 import { HEALTH_CONNECT_ID } from "./health-connect";
 import { RAW_PAYLOAD_ROOT } from "./raw-log";
+import type { SqlPrepare } from "../write-revision";
 
 export interface InstantBackfillTally {
   // Archive files read and successfully parsed.
@@ -99,7 +99,7 @@ function archivedPayloads(root: string, profileId: number): string[] {
  * mocking a module (which would cost the DB tier a whole isolated registry).
  */
 export function backfillBodyMetricInstants(
-  db: Database.Database,
+  db: SqlPrepare,
   timezoneFor: (profileId: number) => string,
   root: string = RAW_PAYLOAD_ROOT
 ): InstantBackfillTally {

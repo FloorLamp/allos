@@ -1171,6 +1171,58 @@ export interface PracticeTapRow extends TapEvent {
   statedAt: string;
 }
 
+export type PracticeCorrectionRow = {
+  id: number;
+  practice: string;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  duration_min: number | null;
+  logged_via: string | null;
+  created_at: string;
+  notify_message_id: number | null;
+  bundle_id: string | null;
+};
+
+// Used by the recent reader, the exact-member reader and the existing write core.
+export const PRACTICE_CORRECTION_ELIGIBLE_SQL = `
+  (start_time IS NOT NULL OR end_time IS NOT NULL)
+  AND (end_time IS NULL OR (
+    start_time IS NULL AND duration_min IS NULL AND correction_locked = 0
+    AND logged_via IN ('telegram-nudge', 'telegram-command')
+  )) AND live = 0 AND external_id IS NULL`;
+
+export function practiceCorrectionTap(
+  row: PracticeCorrectionRow,
+  tz: string
+): PracticeTapRow | null {
+  const tapAt = recordInstant("practice_logs", row);
+  const chatFinished =
+    row.end_time != null &&
+    (row.logged_via === "telegram-nudge" ||
+      row.logged_via === "telegram-command");
+  const endDate =
+    chatFinished && row.start_time != null && row.end_time! <= row.start_time
+      ? shiftDateStr(row.date, 1)
+      : row.date;
+  const statedAt = eventInstant(
+    "practice_logs",
+    chatFinished ? { ...row, date: endDate, start_time: row.end_time } : row,
+    tz
+  );
+  if (!tapAt.known || !statedAt.known) return null;
+  return {
+    id: row.id,
+    practice: row.practice,
+    label: row.practice,
+    tapAt: tapAt.at,
+    statedAt: statedAt.at,
+    localDay: row.date,
+    messageRef: row.notify_message_id,
+    bundleId: row.bundle_id,
+  };
+}
+
 // The profile's recent practice TAPS, as the correction offer reads them — the third
 // domain on the #2019/#2020 substrate, joining food servings and dose administrations.
 //
@@ -1229,68 +1281,22 @@ export function getRecentPracticeTaps(
   const rows = db
     .prepare(
       `SELECT id, practice, date, start_time, end_time, duration_min, logged_via,
-              created_at, notify_message_id
+              created_at, notify_message_id, bundle_id
          FROM practice_logs
         WHERE profile_id = ?
           AND created_at >= ?
-          AND (start_time IS NOT NULL OR end_time IS NOT NULL)
-          AND (end_time IS NULL OR (
-            start_time IS NULL AND duration_min IS NULL AND correction_locked = 0
-            AND logged_via IN ('telegram-nudge', 'telegram-command')
-          ))
-          AND live = 0
-          AND external_id IS NULL
+          AND ${PRACTICE_CORRECTION_ELIGIBLE_SQL}
           AND (? = 0 OR logged_via IS NULL
             OR logged_via IN ('telegram-nudge', 'telegram-command'))
         ORDER BY created_at, id
         LIMIT 100`
     )
-    .all(profileId, since, chatOnly ? 1 : 0) as {
-    id: number;
-    practice: string;
-    date: string;
-    start_time: string | null;
-    end_time: string | null;
-    duration_min: number | null;
-    logged_via: string | null;
-    created_at: string;
-    notify_message_id: number | null;
-  }[];
+    .all(profileId, since, chatOnly ? 1 : 0) as PracticeCorrectionRow[];
   const tz = getTimezone(profileId);
   const out: PracticeTapRow[] = [];
   for (const r of rows) {
-    // Both sides through the declared readers. A row whose stored values do not
-    // resolve is DROPPED rather than guessed at: a burst is a set of rows a chip is
-    // about to rewrite, and one it cannot read is one it must not touch.
-    const tapAt = recordInstant("practice_logs", r);
-    // A just-finished Telegram row states its END at the tap. Corrections therefore
-    // move that end (and the derived start with it), while legacy start-only taps keep
-    // their start anchor. Expanded stated windows never enter this query.
-    const chatFinished =
-      r.end_time &&
-      (r.logged_via === "telegram-nudge" ||
-        r.logged_via === "telegram-command");
-    const endDate =
-      chatFinished && r.start_time && r.end_time! <= r.start_time
-        ? shiftDateStr(r.date, 1)
-        : r.date;
-    const anchor = chatFinished
-      ? { ...r, date: endDate, start_time: r.end_time }
-      : r;
-    const statedAt = eventInstant("practice_logs", anchor, tz);
-    if (!tapAt.known || !statedAt.known) continue;
-    out.push({
-      id: r.id,
-      practice: r.practice,
-      tapAt: tapAt.at,
-      statedAt: statedAt.at,
-      // The stored column, straight through — NOT the composed instant's day. This is
-      // the string `restampPracticeLogsCore` compares against, so it is the string the
-      // offer bound has to be computed from (#2875).
-      localDay: r.date,
-      messageRef: r.notify_message_id,
-      label: r.practice,
-    });
+    const tap = practiceCorrectionTap(r, tz);
+    if (tap) out.push(tap);
   }
   return out;
 }

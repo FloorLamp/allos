@@ -26,6 +26,7 @@ import {
   closeSession,
   guardedWrite,
   guardedWriteNow,
+  guardedWriteWithOutcome,
   updateGate,
 } from "@/lib/offline/write-gate";
 
@@ -42,23 +43,36 @@ function rejectedTx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
 // at least has the intent in memory — but in practice IndexedDB is present wherever a
 // service worker is.
 export async function enqueueIntent(
-  intent: QueuedIntent
+  intent: QueuedIntent,
+  token?: number
 ): Promise<DeviceWriteOutcome> {
-  // Gated like every other device-local PHI write (#2908's write gate), and gated as the
-  // FOREGROUND write it is: the tap has already happened, so there is no in-flight work
-  // for a wipe to land inside and no token worth carrying. `guardedWriteNow` asks the
-  // closes inside this write's own transaction, which is the case the gate was built for
-  // — a logged-out device must not accept new PHI just because a stale tab still has a
-  // button.
+  // Gated like every other device-local PHI write (#2908's write gate). Direct callers
+  // use the foreground path. A quick-log caller supplies the token it started at T1,
+  // before its online attempt, so an auth/profile transition during the request refuses
+  // the late offline fallback inside this write's own transaction.
   //
   // The answer is the caller's to read. Anything but "kept" means the device refused the
   // write, and components/OfflineQueueProvider says so rather than letting a flow toast
   // "saved offline — will sync when you reconnect" over a queue that captured nothing.
-  // "closed" additionally means THIS STORE WAS JUST CLEARED — `clearQueue` below wipes it
-  // and closes the gate in one transaction — which is what a caller making two enqueues
-  // from one tap has to know before it claims the first one survived (#3118).
-  return guardedWriteNow([STORE], "queue", (tx) => {
-    tx.objectStore(STORE).put(intent);
+  // "closed" additionally means THIS STORE WAS CLEARED by the session close below.
+  // An open generation mismatch answers "failed": it refuses this stale capture without
+  // claiming an earlier queue entry was removed.
+  const put = (tx: IDBTransaction) => tx.objectStore(STORE).put(intent);
+  return token === undefined
+    ? guardedWriteNow([STORE], "queue", put)
+    : enqueueIntents([intent], token);
+}
+
+// One user submission can contain body measurements and vitals. They remain two
+// existing replay intents, but become visible to every queue reader in one commit.
+export async function enqueueIntents(
+  intents: readonly QueuedIntent[],
+  token: number
+): Promise<DeviceWriteOutcome> {
+  if (intents.length === 0) return "failed";
+  return guardedWriteWithOutcome([STORE], "queue", token, (tx) => {
+    const store = tx.objectStore(STORE);
+    for (const intent of intents) store.put(intent);
   });
 }
 

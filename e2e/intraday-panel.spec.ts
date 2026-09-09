@@ -6,6 +6,7 @@ import {
   expectSvgTextInsidePlot,
   expectSvgTextLegible,
   followLink,
+  settledBoxes,
 } from "./helpers";
 import {
   E2E_LOGIN_INTRADAY,
@@ -72,7 +73,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
     try {
       const date = await openFixtureDay(member);
 
-      const panel = member.getByTestId("intraday-panel");
+      const panel = appContent(member).getByTestId("intraday-panel");
       await expect(panel).toBeVisible();
       await expect(panel).toHaveAttribute("data-intraday-date", date);
       const chart = panel.locator(WIDE);
@@ -137,6 +138,10 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // retries until the URL commits AND holds.
       await followLink(member, morningTick, new RegExp(`${href!.slice(1)}$`));
       await expect(target).toBeInViewport();
+      await expect(chart.getByTestId("intraday-selection")).toHaveCount(0);
+      await expect(
+        appContent(member).getByTestId("history-add-label")
+      ).toHaveText("Add");
     } finally {
       await member.context().close();
     }
@@ -188,7 +193,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
 
   // #1515 B/C/D. The interaction layer is ADDITIVE: the chart above is complete
   // before any of this runs.
-  test("scrubs with the keyboard and zooms to an activity block", async ({
+  test("pins an empty-plot click, scrubs with the keyboard, and zooms to an activity block", async ({
     browser,
   }) => {
     test.slow();
@@ -199,14 +204,73 @@ test.describe("the day view's intraday panel (#1068)", () => {
     });
     try {
       await openFixtureDay(member);
-      const chart = member.getByTestId("intraday-panel").locator(WIDE);
-      await expect(chart).toBeVisible();
+      const chart = appContent(member)
+        .getByTestId("intraday-panel")
+        .locator(WIDE);
+      await expect(chart.getByTestId("intraday-hr")).toBeVisible();
+      const svg = chart.getByTestId("intraday-svg");
+      const label = appContent(member).getByTestId("history-add-label");
+      const doses = appContent(member).getByTestId("history-add-dose");
+      const selection = chart.getByTestId("intraday-selection");
 
       const readout = chart.getByTestId("intraday-readout");
       // The live region exists (and is empty) BEFORE the first scrub, so the first
       // announcement is not swallowed.
       await expect(readout).toBeAttached();
       await expect(readout).toHaveText("");
+
+      // Hover cannot hand a start to a chip. A click can, and leaving the plot
+      // must keep both the clock and the chip's position stable (#5386).
+      await svg.scrollIntoViewIfNeeded();
+      const [box] = await settledBoxes([svg]);
+      const geo = INTRADAY_VARIANTS.wide;
+      const plotWidth = geo.viewBoxWidth - geo.padLeft - geo.padRight;
+      const pinX = geo.padLeft + (740 / 1440) * plotWidth;
+      const x = box.x + (pinX / geo.viewBoxWidth) * box.width;
+      const y = box.y + ((geo.padTop + 2) / geo.viewBoxWidth) * box.width;
+      await member.mouse.move(x, y);
+      await expect(readout).not.toHaveText("");
+      await expect(label).toHaveText("Add");
+      await doses.hover();
+      await expect(label).toHaveText("Add");
+      await expect(doses).not.toHaveAttribute("href", /[?&]from=/);
+
+      await member.mouse.click(x, y);
+      await expect(label).toHaveText("Add at 12:20");
+      const beforeHover = await settledBoxes([label, doses]);
+      await member.mouse.move(x + 40, y);
+      await expect(label).toHaveText("Add at 12:20");
+      await doses.hover();
+      await expect(label).toHaveText("Add at 12:20");
+      expect(await settledBoxes([label, doses])).toEqual(beforeHover);
+      await expect(doses).toHaveAttribute("href", /[?&]from=12%3A20(?:&|$)/);
+      await expect(doses).not.toHaveAttribute("href", /[?&]to=/);
+      await expect(selection).toBeVisible();
+      expect(Number(await selection.getAttribute("x"))).toBeCloseTo(pinX, 1);
+      await expect(readout).toContainText("12:20");
+
+      // A different bucket moves the pin; a nearby click then clears it.
+      const movedX =
+        x + ((60 * plotWidth) / 1440 / geo.viewBoxWidth) * box.width;
+      await member.mouse.click(movedX, y);
+      await expect(label).toHaveText("Add at 13:20");
+      await expect(doses).toHaveAttribute("href", /[?&]from=13%3A20(?:&|$)/);
+      expect(Number(await selection.getAttribute("x"))).toBeCloseTo(
+        pinX + (60 / 1440) * plotWidth,
+        1
+      );
+      await member.mouse.click(
+        movedX + (plotWidth / 1440 / geo.viewBoxWidth) * box.width,
+        y
+      );
+      await expect(label).toHaveText("Add");
+      await expect(selection).toHaveCount(0);
+      await member.mouse.click(x, y);
+      await expect(selection).toBeVisible();
+      await svg.focus();
+      await member.keyboard.press("Escape");
+      await expect(label).toHaveText("Add");
+      await expect(selection).toHaveCount(0);
 
       // Keyboard cursor: the values are reachable without a pointer at all.
       await chart.getByTestId("intraday-svg").focus();
@@ -215,6 +279,9 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(readout).not.toHaveText("");
       await member.keyboard.press("ArrowRight");
       await expect(readout).not.toHaveText("");
+      await member.keyboard.press("Enter");
+      await expect(label).toHaveText("Add at 00:30");
+      await expect(selection).toBeVisible();
 
       // Tapping the block selects its window. The anchor is still the
       // pre-hydration fallback, so this asserts the ENHANCED behavior. Scoped to
@@ -225,6 +292,18 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(chart).toHaveAttribute("data-zoomed", "true");
       const reset = chart.getByTestId("intraday-zoom-reset");
       await expect(reset).toBeVisible();
+      await expect(selection).toHaveCount(0);
+      await expect(label).toHaveText(/^Add at \d{2}:\d{2}–\d{2}:\d{2}$/);
+      const rangeLabel = await label.textContent();
+      const rangeHref = await doses.getAttribute("href");
+      const [zoomBox] = await settledBoxes([svg]);
+      await member.mouse.click(
+        zoomBox.x + zoomBox.width / 2,
+        zoomBox.y + ((geo.padTop + 2) / geo.viewBoxWidth) * zoomBox.width
+      );
+      await expect(selection).toHaveCount(0);
+      await expect(label).toHaveText(rangeLabel!);
+      await expect(doses).toHaveAttribute("href", rangeHref!);
 
       // The finer series replaces the 5-minute line IN PLACE — no loading box ever
       // appears, and the HR layer stays drawn throughout.

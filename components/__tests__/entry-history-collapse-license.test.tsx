@@ -1,5 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import InstrumentHistoryList from "@/app/(app)/medical/instruments/InstrumentHistoryList";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
@@ -87,4 +88,41 @@ describe("the collapse is licensed by a trailing cell", () => {
       within(row).queryAllByRole("button", { name: /details$/ })
     ).toHaveLength(collapses ? 1 : 0);
   });
+});
+
+it("instrument history starts with five scores and expands to the full history", () => {
+  const rows = Array.from({ length: 6 }, (_, i) => ({
+    id: i + 1,
+    instrument: "PHQ-9",
+    date: "2026-07-01",
+    total: 9,
+    maxTotal: 27,
+    bandLabel: "Mild",
+    href: "/records/specialty/mental-health" as const,
+    documentId: i === 0 ? 908 : null,
+  }));
+  render(
+    <InstrumentHistoryList
+      rows={rows}
+      updateAction={async () => ({ ok: true })}
+      deleteAction={async () => ({ undoId: 1 })}
+      testidPrefix="instrument"
+      emptyMessage="No scores."
+    />
+  );
+  const scores = () => screen.getAllByTestId(/^instrument-reading-\d+$/);
+  expect(scores()).toHaveLength(5);
+  fireEvent.click(screen.getByRole("button", { name: "Show details" }));
+  expect(
+    screen
+      .getByRole("button", { name: "Hide details" })
+      .getAttribute("aria-expanded")
+  ).toBe("true");
+  expect(
+    screen.getByRole("link", { name: "Source document" }).getAttribute("href")
+  ).toBe("/import/908");
+  fireEvent.click(screen.getByRole("button", { name: "View all 6 scores" }));
+  expect(scores()).toHaveLength(6);
+  fireEvent.click(screen.getByRole("button", { name: "Show fewer scores" }));
+  expect(scores()).toHaveLength(5);
 });
