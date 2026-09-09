@@ -5,6 +5,7 @@ import { IconChevronDown, IconPlus } from "@tabler/icons-react";
 import type { FrequencyScopeKind } from "@/lib/frequency-targets";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { WeeklyTargets, type WeeklyTarget } from "@/components/WeeklyTargets";
+import Button from "@/components/Button";
 import Collapse from "@/components/Collapse";
 import SubmitButton from "@/components/SubmitButton";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -261,13 +262,9 @@ export default function FrequencyTargets({
               Save
             </SubmitButton>
             {selectedId != null && (
-              <button
-                type="button"
-                onClick={remove}
-                className="btn-ghost text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-              >
+              <Button variant="danger" onClick={remove}>
                 Delete
-              </button>
+              </Button>
             )}
           </form>
         </div>

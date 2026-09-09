@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import type { RoutineWithDays } from "@/lib/types";
+import Button from "@/components/Button";
 import { EmptyState } from "@/components/ui";
 import ModalShell from "@/components/ModalShell";
 import {
@@ -45,14 +46,9 @@ export function RoutineCreateControl({
 }) {
   const label = useCreateActionLabel();
   return (
-    <button
-      type="button"
-      data-testid="routine-new"
-      onClick={onActivate}
-      className="btn inline-flex items-center gap-1.5"
-    >
+    <Button data-testid="routine-new" onClick={onActivate}>
       <IconPlus className="h-4 w-4" /> {label}
-    </button>
+    </Button>
   );
 }
 
@@ -168,14 +164,12 @@ export default function RoutinesManager({
           title="Routines"
           subtitle="Adopt a template or build your own. Activating a routine sets your weekly training targets; at most one routine is active at a time."
           action={
-            <button
-              type="button"
+            <Button
               data-testid="routine-adopt-open"
               onClick={() => setShowPicker(true)}
-              className="btn-ghost"
             >
               Adopt a template
-            </button>
+            </Button>
           }
           createAction={{
             kind: "routine",
@@ -251,8 +245,7 @@ export default function RoutinesManager({
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {active ? (
-                    <button
-                      type="button"
+                    <Button
                       data-testid="routine-deactivate"
                       disabled={isBusy}
                       onClick={() =>
@@ -262,24 +255,20 @@ export default function RoutinesManager({
                           "Routine deactivated"
                         )
                       }
-                      className="btn-ghost py-1"
                     >
                       Deactivate
-                    </button>
+                    </Button>
                   ) : (
-                    <button
-                      type="button"
+                    <Button
                       data-testid="routine-activate"
                       disabled={isBusy}
                       onClick={() => onActivate(r)}
-                      className="btn py-1"
                     >
                       Activate
-                    </button>
+                    </Button>
                   )}
                   {active && r.cycle_weeks != null && (
-                    <button
-                      type="button"
+                    <Button
                       data-testid="routine-restart-cycle"
                       disabled={isBusy}
                       onClick={() =>
@@ -289,28 +278,24 @@ export default function RoutinesManager({
                           "Cycle restarted"
                         )
                       }
-                      className="btn-ghost py-1"
                     >
                       Restart cycle
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    type="button"
+                  <Button
                     data-testid="routine-edit"
                     onClick={() => setBuilder({ routine: r })}
-                    className="btn-ghost py-1"
                   >
                     Edit
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    variant="danger"
                     data-testid="routine-delete"
                     disabled={isBusy}
                     onClick={() => onDelete(r)}
-                    className="btn-ghost py-1 text-rose-600 dark:text-rose-400"
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </div>
             );
@@ -348,8 +333,7 @@ export default function RoutinesManager({
                       {t.description}
                     </p>
                   </div>
-                  <button
-                    type="button"
+                  <Button
                     data-testid="template-adopt"
                     onClick={async () => {
                       const fd = new FormData();
@@ -362,10 +346,9 @@ export default function RoutinesManager({
                         toast(res.error ?? "Couldn't adopt this template.");
                       }
                     }}
-                    className="btn shrink-0 py-1"
                   >
                     Adopt
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
