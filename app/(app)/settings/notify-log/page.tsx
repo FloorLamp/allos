@@ -1,4 +1,3 @@
-import Link from "next/link";
 import PaginationControls from "@/components/PaginationControls";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -16,6 +15,7 @@ import SettingsGroupLayout from "../SettingsGroupLayout";
 import NotifyRunTable from "./NotifyRunTable";
 import { clearNotifyEvents } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import { DestinationActionLink } from "@/components/DestinationLink";
 
 export const dynamic = "force-dynamic";
 
@@ -166,9 +166,9 @@ export default async function NotifyLogPage(props: {
         </label>
         <SubmitButton>Filter</SubmitButton>
         {filtered && (
-          <Link href="/settings/notify-log" className="btn-ghost">
+          <DestinationActionLink href="/settings/notify-log">
             Clear filters
-          </Link>
+          </DestinationActionLink>
         )}
       </form>
 

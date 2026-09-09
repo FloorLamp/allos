@@ -8,6 +8,7 @@ import {
   type ApiTokenScope,
 } from "@/lib/api-token-format";
 import type { ApiTokenSummary } from "@/lib/api-tokens";
+import Button from "@/components/Button";
 import { CopyButton } from "@/components/TokenRow";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -140,15 +141,14 @@ export default function ApiTokensSettings({
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {apiTokenScopeSummary(scope)}
             </p>
-            <button
-              type="button"
+            <Button
               onClick={mint}
               disabled={pending || !name.trim()}
-              className="btn"
               data-testid="api-token-create"
+              variant="primary"
             >
               Create token
-            </button>
+            </Button>
           </div>
         )}
 
@@ -171,14 +171,12 @@ export default function ApiTokensSettings({
               </code>
               <CopyButton value={minted.token} testid="api-token-copy" />
             </div>
-            <button
-              type="button"
+            <Button
               onClick={() => setMinted(null)}
-              className="btn-ghost text-sm"
               data-testid="api-token-secret-dismiss"
             >
               I&rsquo;ve saved it
-            </button>
+            </Button>
           </div>
         )}
 
@@ -245,15 +243,13 @@ export default function ApiTokensSettings({
                   </dl>
                 </div>
                 {canManage && (
-                  <button
-                    type="button"
+                  <Button
                     onClick={() => revoke(t.id)}
                     disabled={pending}
-                    className="btn-ghost shrink-0 text-sm"
                     data-testid="api-token-revoke"
                   >
                     Revoke
-                  </button>
+                  </Button>
                 )}
               </li>
             ))}

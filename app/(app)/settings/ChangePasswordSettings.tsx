@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Button from "@/components/Button";
 import { changeOwnPassword } from "./actions";
 
 // Self-service password change for the signed-in login. Verifies the current
@@ -63,14 +64,9 @@ export default function ChangePasswordSettings({
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={pending || !current || !next}
-          className="btn"
-        >
+        <Button onClick={save} disabled={pending || !current || !next}>
           Change password
-        </button>
+        </Button>
         {result && (
           <p
             className={`text-sm ${

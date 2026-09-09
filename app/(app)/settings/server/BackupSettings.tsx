@@ -8,6 +8,7 @@ import {
   verifyOffsiteDestination,
   recheckLiveIntegrity,
 } from "./actions";
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
@@ -317,35 +318,23 @@ export default function BackupSettings({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={save} disabled={busy} className="btn">
+        <Button onClick={save} disabled={busy}>
           Save
-        </button>
-        <button
-          type="button"
-          onClick={runNow}
-          disabled={busy}
-          className="btn-ghost"
-        >
+        </Button>
+        <Button onClick={runNow} disabled={busy}>
           Back up now
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={recheckIntegrity}
           disabled={busy}
-          className="btn-ghost"
           data-testid="backup-recheck-integrity"
         >
           Recheck integrity now
-        </button>
+        </Button>
         {offsite.configured && (
-          <button
-            type="button"
-            onClick={verifyOffsite}
-            disabled={status.pending}
-            className="btn-ghost"
-          >
+          <Button onClick={verifyOffsite} disabled={status.pending}>
             Verify destination
-          </button>
+          </Button>
         )}
       </div>
 

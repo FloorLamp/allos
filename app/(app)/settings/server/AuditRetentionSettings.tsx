@@ -4,6 +4,7 @@ import {
   MIN_AUDIT_RETENTION_MONTHS,
   MAX_AUDIT_RETENTION_MONTHS,
 } from "@/lib/retention";
+import Button from "@/components/Button";
 import { saveAuditRetention } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -59,15 +60,13 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
             className="input"
           />
         </div>
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={status.pending}
-          className="btn"
           data-testid="audit-retention-save"
         >
           Save
-        </button>
+        </Button>
       </div>
     </div>
   );
