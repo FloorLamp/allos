@@ -13,15 +13,7 @@
 // Every case here goes through a REAL send (so the pointer is recorded exactly as
 // production records it), a REAL callback dispatch, and where relevant the REAL sweep.
 
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { stubTelegramSends } from "./telegram-spies";
 
@@ -66,11 +58,9 @@ const editText = vi.mocked(editMessageTextRaw);
 // The whole file runs at a fixed instant so "within the past hour" is a fact rather
 // than a race. Berlin (UTC+2 in August) makes the local-vs-UTC distinction visible.
 const NOW_ISO = "2026-08-05T19:30:00Z"; // 21:30 local
-let priorNow: string | undefined;
 
 beforeEach(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = NOW_ISO;
+  vi.setSystemTime(new Date(NOW_ISO));
   setTelegramBotConfig({
     telegramBotToken: "bot-for-tests",
     telegramMode: "poll",
@@ -79,13 +69,8 @@ beforeEach(() => {
   editText.mockClear();
 });
 
-afterEach(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
-
 function setNow(iso: string): void {
-  process.env.ALLOS_TEST_NOW = iso;
+  vi.setSystemTime(new Date(iso));
 }
 
 function newProfile(name: string): number {
@@ -683,7 +668,7 @@ function seedDose(
 }
 
 // `recorded_at` is an AUDIT/duration stamp written by SQL's real clock, which the
-// ALLOS_TEST_NOW freeze deliberately does not reach (see lib/clock.ts). So a fixture
+// Date freeze deliberately does not reach (see lib/clock.ts). So a fixture
 // that needs a confirmation to sit at a known instant says so explicitly, after the
 // real write path has created the row.
 function stampTap(logId: number, sqlUtc: string): void {

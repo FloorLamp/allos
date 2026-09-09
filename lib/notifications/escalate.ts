@@ -58,7 +58,6 @@ const escKey = escalationMarkerKey;
 // ordinary send failure.
 export async function runEscalations(
   profileId: number,
-  profileName: string,
   date: string,
   nowMinute: number,
   sched: NotifySchedule
@@ -145,7 +144,7 @@ export async function runEscalations(
     const override = (d.escalateChatId ?? "").trim();
     const results = await dispatch(
       profileId,
-      renderEscalationMessage(profileName, d, profileId, date, deepLinkBase),
+      renderEscalationMessage(d, profileId, date, deepLinkBase),
       override ? { telegramChatIds: [override] } : undefined
     );
     if (results.length === 0) {

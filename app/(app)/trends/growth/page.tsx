@@ -22,7 +22,6 @@ import PageContainer from "@/components/PageContainer";
 import GrowthChartsCard from "@/components/GrowthChartsCard";
 import DateRangeControl from "@/components/DateRangeControl";
 import { EmptyState, PageHeader } from "@/components/ui";
-import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -90,8 +89,9 @@ export default async function GrowthTrendsPage(props: {
           here against 16px there, in the one hub whose grammar #3237 exists to
           converge. Removing the wrapper removes the override rather than
           picking between the two numbers. */}
-      <BackLink href="/trends#body" label="Back to Body" className="" />
+
       <PageHeader
+        back={{ href: "/trends#body", destination: "Body" }}
         className="mb-0!"
         title="Growth Percentiles"
         subtitle="WHO and CDC reference trajectories across height, weight, body mass index, and head circumference."

@@ -21,7 +21,6 @@ import {
   getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
-  getActivitiesByDate,
   getActivities,
   getMedicationCourses,
   getFoodServingsOnDate,
@@ -30,12 +29,13 @@ import {
   getTrackedPractices,
   getRecentByExercise,
 } from "@/lib/queries";
+import { gatherQuickEntryFood } from "@/lib/quick-entry-food";
 import {
   getTimezone,
   getDisplayFormatPrefs,
   getUnitPrefs,
 } from "@/lib/settings";
-import { getEffectiveActiveSituations } from "@/lib/queries/derived-situations";
+import { intakeDayContext } from "@/lib/queries/intake/day-context";
 import {
   doseDueOn,
   isOnDemand,
@@ -45,6 +45,7 @@ import {
 import { buildMedicationList } from "@/lib/medication-list";
 import { medicationStartDate } from "@/lib/profile-summary";
 import { foodGroupBySlug } from "@/lib/food-groups";
+import { FOOD_SLOTS } from "@/lib/food-slot";
 import { utcInstant } from "@/lib/date";
 import { doseSortKey, compareSortHint } from "@/lib/dose-order";
 import {
@@ -59,6 +60,7 @@ import {
   SNAPSHOT_VERSION,
   type AnySnapshot,
   type DoseScheduleEntry,
+  type FoodQuickEntryAvailableSnapshot,
   type SnapshotDataByKind,
   type SnapshotKind,
 } from "@/lib/offline/snapshots";
@@ -96,33 +98,46 @@ function buildDoseSchedule(
       .filter((i) => i.active === 1)
       .map((i) => [i.id, i])
   );
-  // The SAME day context every intake surface builds (the household card, the digest,
-  // the reminders): dueness is `doseDueOn`, never a local filter, so an alternating-
-  // amount pair or a taper window means the same thing offline as on the page (#1602).
-  // THE SITUATIONS THE ONLINE PAGE WOULD HAVE USED, dated to this day (#5167).
+  // THE MEDICATIONS PAGE'S OWN DAY CONTEXT, asked for the SAME subject and the SAME day
+  // the snapshot is built for. Dueness is `doseDueOn`, never a local filter, so an
+  // alternating-amount pair or a taper window means the same thing offline as on the
+  // page (#1602).
   //
-  // This read was `new Set(getActiveSituations(...))` — the DECLARED half alone, asked
-  // as of now. Every online surface that decides whether a dose is due moved to the
-  // effective resolver (declared ∪ derived, dated per day) and the snapshot did not come
-  // with them, so the offline schedule had neither the holding nor the widening: it
-  // OFFERED a dose the medications page holds for a derived pause (a rough night against
-  // `pause_situation`), and OMITTED one whose `situational` trigger the app derived
-  // rather than the person declaring.
+  // NO SECOND ENGINE, which is this module's own rule — and it took two goes to hold it.
+  // This was a hand-assembled context: first `new Set(getActiveSituations(...))`, the
+  // DECLARED half alone asked as of now, while every online dueness surface had moved to
+  // the effective resolver (#5167); then three of the five fields, which is the same
+  // failure a field over (#5321). A subset of this object does not lose a condition, it
+  // ANSWERS DIFFERENTLY: without `predictedWorkoutDay` the schedule omitted a pre-workout
+  // dose the page offers on a predicted training day (#558), and without
+  // `postWorkoutReady` it offered a post-workout dose the page holds — `?? true` in
+  // conditionAppliesOn, so the omission was silent in both directions.
+  //
+  // `intakeDayContext` is the builder the medications page reads, so there is no subset
+  // left to drift: a field added there arrives here.
+  //
+  // `asOfWholeDay` IS FACTS-NEVER-VERDICTS (this file's header) applied to the one field
+  // of that context that is a verdict. `postWorkoutReady` is false before the earliest
+  // logged session's end time and true after, and `conditionAppliesOn` ANDs it — so a
+  // snapshot built DURING a session that froze the live value would hold the dose for
+  // the whole rest of the day. That is not a smaller divergence than the one this issue
+  // closed; it is the same one pointed the harmful way, and nothing tells the reader:
+  // `isSnapshotStale` is day-granular for a profile-day payload, and refresh rides
+  // authenticated traffic, so the frozen minute is by construction the person's LAST
+  // ONLINE MOMENT. The day-shaped question has no such exposure. If the timing gate is
+  // ever wanted offline it must travel as a fact the DEVICE evaluates against its own
+  // clock — a different change. The other four fields are facts about the date, as true
+  // when read as when written.
   //
   // /offline is what someone reads with NO SIGNAL, and it renders these as rows with no
   // control on them — so the acting happens in the world rather than in the app. This is
   // what tells a person whether a dose is owed when nothing else can, and they take it or
-  // skip it on that. A divergence about what was owed, never about what is shown.
-  //
-  // NO SECOND ENGINE, which is this module's own rule: `getEffectiveActiveSituations` is
-  // the seam every one of those surfaces already reads, asked for the SAME subject and
-  // the SAME day the snapshot is built for. The browser recomputes nothing — it could
-  // not, from offline data — and the answer travels as the fact it already is.
-  const dayCtx = {
-    date: ctx.date,
-    isWorkoutDay: getActivitiesByDate(ctx.profileId, ctx.date).length > 0,
-    activeSituations: getEffectiveActiveSituations(ctx.profileId, ctx.date),
-  };
+  // skip it on that. A divergence about what was owed, never about what is shown. The
+  // browser recomputes nothing — it could not, from offline data — and the answer travels
+  // as the fact it already is.
+  const dayCtx = intakeDayContext(ctx.profileId, ctx.date, {
+    asOfWholeDay: true,
+  });
   const taken = getTakenDoseIds(ctx.profileId, ctx.date);
   const skipped = getSkippedDoseIds(ctx.profileId, ctx.date);
 
@@ -272,9 +287,21 @@ function buildRecentTraining(
 // ── food-tallies ─────────────────────────────────────────────────────────────
 
 function buildFoodTallies(
-  ctx: SnapshotContext
+  ctx: SnapshotContext,
+  now: Date
 ): SnapshotDataByKind["food-tallies"] {
-  const servings = getFoodServingsOnDate(ctx.profileId, ctx.date);
+  const gathered = gatherQuickEntryFood(ctx.profileId, {
+    loginId: ctx.loginId,
+    today: ctx.date,
+    requestedDate: ctx.date,
+    now,
+  });
+  // The quick-entry gate is about whether the adult logging catalog is relevant.
+  // Existing /offline tallies remain facts for this profile even when that answer is
+  // unavailable, so keep gathering them through their original owner in that arm.
+  const servings = gathered.available
+    ? new Map(Object.entries(gathered.days[0]?.counts ?? {}))
+    : getFoodServingsOnDate(ctx.profileId, ctx.date);
   const groups = [...servings.entries()]
     .filter(([, n]) => n > 0)
     .map(([key, n]) => ({
@@ -291,8 +318,30 @@ function buildFoodTallies(
     // Null, not 0, for a profile that doesn't track protein: an absent number and a
     // logged zero are different facts, and the offline card renders them differently.
     proteinGrams: profileTracksProtein(ctx.profileId)
-      ? getProteinDailyGrams(ctx.profileId, ctx.date)
+      ? gathered.available
+        ? gathered.grams
+        : getProteinDailyGrams(ctx.profileId, ctx.date)
       : null,
+    quickEntry: gathered.available
+      ? {
+          available: true,
+          rankedGroupSlugsBySlot: Object.fromEntries(
+            FOOD_SLOTS.map((slot) => [
+              slot,
+              gathered.groupsBySlot[slot].map((group) => group.slug),
+            ])
+          ) as FoodQuickEntryAvailableSnapshot["rankedGroupSlugsBySlot"],
+          proteinRankBySlot: gathered.proteinRankBySlot,
+          proteinPreset: gathered.preset,
+          excludedGroups: gathered.exclusions,
+          slotBoundaries: gathered.boundaries,
+          slotCounts: gathered.days[0]?.slotCounts ?? {
+            Morning: {},
+            Midday: {},
+            Evening: {},
+          },
+        }
+      : { available: false },
   };
 }
 
@@ -320,7 +369,10 @@ function buildPracticeWeek(
 // ── The one dispatch ─────────────────────────────────────────────────────────
 
 const BUILDERS: {
-  [K in SnapshotKind]: (ctx: SnapshotContext) => SnapshotDataByKind[K];
+  [K in SnapshotKind]: (
+    ctx: SnapshotContext,
+    now: Date
+  ) => SnapshotDataByKind[K];
 } = {
   "dose-schedule": buildDoseSchedule,
   "medication-list": buildMedicationListData,
@@ -344,7 +396,7 @@ export function buildSnapshot<K extends SnapshotKind>(
     timeZone: ctx.timeZone,
     capturedOn: ctx.date,
     fetchedAt: utcInstant(now),
-    data: BUILDERS[kind](ctx),
+    data: BUILDERS[kind](ctx, now),
   } as AnySnapshot;
 }
 

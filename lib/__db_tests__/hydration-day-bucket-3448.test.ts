@@ -35,7 +35,7 @@
 //
 // SYNTHETIC ONLY: fictional profiles, invented volumes, no PHI.
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db } from "@/lib/db";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
@@ -73,10 +73,6 @@ interface Push {
 
 const withOrigin = (recs: Rec[] | undefined) =>
   (recs ?? []).map((r) => ({ ...r, metadata: { data_origin: ORIGIN } }));
-
-afterEach(() => {
-  delete process.env.ALLOS_TEST_NOW;
-});
 
 // Both cases run two Health Connect pushes at ascending stamps against one profile and
 // read the store back. They differ only in what the pushes carry and where the profile
@@ -257,7 +253,7 @@ describe("hydration and the day-bucket supersede (#3448)", () => {
       for (const push of pushes) {
         // The exporter stamps its own push time; the app's clock only has to be past it
         // for `pushStampFor`'s skew bound to accept it.
-        process.env.ALLOS_TEST_NOW = push.at;
+        vi.setSystemTime(new Date(push.at));
         if (push.switchTo) {
           switchProfileTimezone(profileId, push.switchTo, standing);
           standing = push.switchTo;

@@ -10,7 +10,11 @@ vi.mock("@/app/(app)/trends/measurement-actions", () => ({
 }));
 vi.mock("@/components/Toast", () => ({ useToast: () => () => {} }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: async () => "kept" }),
+  useOfflineQueue: () => ({
+    enqueue: async () => "kept",
+    enqueueBatch: async () => "kept",
+  }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -34,8 +38,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
-
-const ABOUT = /fill in only what you measured/;
 
 // The default timezone is UTC (components/TimezoneProvider.tsx), so a frozen
 // clock makes `defaultDate` the control's own "today" — which is what puts the
@@ -79,15 +81,6 @@ it("the pair's cell takes two tracks and a single-control cell takes one", () =>
   expect(cellOf("#m-systolic").className).not.toMatch(/(^|\s)col-span-2(\s|$)/);
   expect(cellOf("#m-diastolic")).toBe(cellOf("#m-systolic"));
   expect(cellOf("#m-resting-hr").className).not.toContain("col-span");
-});
-
-it("the form body exposes its explainer through the help control", () => {
-  mount();
-  expect(screen.queryByText(ABOUT)).toBeNull();
-  expect(screen.getByTestId("measurements-help")).toHaveProperty(
-    "ariaLabel",
-    expect.stringMatching(ABOUT)
-  );
 });
 
 // THE FORM'S COMMIT OUTRANKS ITS HELPER (#4978 item 2, from #4977's sighting).

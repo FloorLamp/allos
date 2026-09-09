@@ -1,9 +1,12 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
+import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
 import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
+import { TimezoneProvider } from "@/components/TimezoneProvider";
+import { WeekStartProvider } from "@/components/WeekStartProvider";
 import type { TimeFormat } from "@/lib/format-date";
 
 // `DirtyFormProvider` calls `useRouter().refresh` when a form releases into an
@@ -32,8 +35,8 @@ vi.mock("next/navigation", () => ({
 // "HH:MM" (or "" for "no time") out, with the pair rules staying `WhenControl`'s.
 // So everything asserted here is one of three things — what the field DISPLAYS
 // for a given clock preference, what it EMITS for a given input, and what the
-// wheel emits when a row is chosen. Nothing about "now", bounds or requiredness
-// belongs to this component and none of it is tested here.
+// wheel emits when a row is chosen. An opening clock proposal is presentation;
+// bounds and requiredness still belong to the pair owner.
 //
 // jsdom has no layout and no `matchMedia` beyond the tier's stand-in, which
 // answers false to every query — so `useCompactViewport` is false and the picker
@@ -57,6 +60,8 @@ const viewport = {
   removeListener() {},
   dispatchEvent: () => false,
 };
+
+afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
   viewport.matches = false;
@@ -86,6 +91,7 @@ function mount(timeFormat: TimeFormat, initial = "") {
             setValue(next);
           }}
           label="Time taken"
+          tz="UTC"
           data-testid="tf"
         />
       </FormatPrefsProvider>
@@ -99,6 +105,14 @@ const openWheel = () =>
   fireEvent.click(screen.getByRole("button", { name: "Open time picker" }));
 
 const column = (name: string) => screen.getByRole("listbox", { name });
+
+// jsdom has no scrolling physics: position the exposed logical row and send
+// the events separately so each test owns the user gesture's timing.
+function positionRow(list: HTMLElement, name: string) {
+  const row = within(list).getByRole("option", { name });
+  list.scrollTop = (Array.from(list.children).indexOf(row) - 1) * 44;
+  fireEvent.scroll(list);
+}
 
 describe("TimeField — typing", () => {
   // EITHER CLOCK IS ACCEPTED, one canonical value is emitted. A profile on 24h
@@ -265,8 +279,25 @@ describe("TimeField — displaying", () => {
 });
 
 describe("TimeField — the wheel", () => {
+  it.each(["offset before wheel", "wheel before offset"] as const)(
+    "%s commits the same resting minute after quiet",
+    async (order) => {
+      vi.useFakeTimers();
+      const { field } = mount("24h", "09:15");
+      openWheel();
+      const minutes = column("Minute");
+      if (order === "offset before wheel") minutes.scrollTop += 44;
+      fireEvent.wheel(minutes, { deltaY: 44 });
+      if (order === "wheel before offset") minutes.scrollTop += 44;
+      fireEvent.scroll(minutes);
+      // No later offset change or snap correction rescues either ordering.
+      await act(() => vi.advanceTimersByTimeAsync(120));
+      expect(field().value).toBe("09:16");
+    }
+  );
+
   // TAP A ROW, GET A TIME. The scroll physics are the platform's and are asserted
-  // in the browser; what a row IS — a button that composes the whole value from
+  // in the browser; what a row IS — a choice that composes the whole value from
   // where the other columns rest — is assertable here.
   it("picking an hour and a minute composes the value", () => {
     const { emitted } = mount("24h", "09:15");
@@ -279,29 +310,61 @@ describe("TimeField — the wheel", () => {
     expect(emitted.at(-1)).toBe("07:45");
   });
 
-  // A TAP OUTRANKS A SCROLL STILL IN FLIGHT. The column suppresses its own parking
-  // effect while a flick owns the offset, so a row tapped mid-momentum was overwritten
-  // ~120ms later by the settle reading the momentum's resting place instead: the finger
-  // hit 45 and the field committed 21. The tap is the explicit choice and has to win,
-  // or "tap a row selects it" is not true. Found by running dose-history.spec.ts at two
-  // workers, where the slower machine let the settle land after the tap.
-  //
-  // THE FIXTURE REACHES THE FORBIDDEN STATE ON PURPOSE: the scroll is fired FIRST, so a
-  // settle is genuinely pending and genuinely disagrees with the tap. Without the fix
-  // this reads "09:21" — the assertion can fail, which is the only reason to trust it
-  // passing.
-  it("a row tapped mid-scroll wins over the settle still pending against it", async () => {
-    const { emitted } = mount("24h", "09:15");
-    openWheel();
-    const minutes = column("Minute");
-    minutes.scrollTop = 21 * 44; // a flick resting two dozen rows from the tap
-    fireEvent.scroll(minutes);
-    fireEvent.click(within(minutes).getByRole("option", { name: "45" }));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    });
-    expect(emitted.at(-1)).toBe("09:45");
-  });
+  // A choice retains both its clock and physical row when the browser sends
+  // residual scroll events after the click/key event, without fresh input.
+  it.each(["tap", "Home"] as const)(
+    "an immediate %s choice survives residual scrolling",
+    async (choice) => {
+      vi.useFakeTimers();
+      const { field } = mount("24h", "09:00");
+      openWheel();
+      const minutes = column("Minute");
+      fireEvent.wheel(minutes, { deltaY: 44 });
+      positionRow(minutes, "21");
+      if (choice === "tap")
+        fireEvent.click(within(minutes).getByRole("option", { name: "45" }));
+      else fireEvent.keyDown(minutes, { key: "Home" });
+      positionRow(minutes, "21");
+      await act(() => vi.advanceTimersByTimeAsync(120));
+      const expected = choice === "tap" ? "45" : "00";
+      expect(field().value).toBe(`09:${expected}`);
+      const selected = within(minutes).getByRole("option", {
+        name: expected,
+        selected: true,
+      });
+      expect(minutes.scrollTop).toBe(
+        (Array.from(minutes.children).indexOf(selected) - 1) * 44
+      );
+      expect(
+        document.getElementById(minutes.getAttribute("aria-activedescendant")!)
+      ).toBe(selected);
+
+      if (choice === "tap") {
+        // A fresh wheel input supersedes even a same-offset pending choice.
+        fireEvent.click(selected);
+        fireEvent.wheel(minutes, { deltaY: 44 });
+        positionRow(minutes, "30");
+        await act(() => vi.advanceTimersByTimeAsync(120));
+        expect(field().value).toBe("09:30");
+
+        fireEvent.click(within(minutes).getByRole("option", { name: "30" }));
+        positionRow(minutes, "21");
+        // Observed residual movement is not new vertical input from this wheel.
+        fireEvent.wheel(minutes, { deltaX: 44 });
+        fireEvent.scroll(minutes);
+        await act(() => vi.advanceTimersByTimeAsync(120));
+        expect(field().value).toBe("09:30");
+
+        fireEvent.click(within(minutes).getByRole("option", { name: "30" }));
+        // Fresh movement may already be applied when input supersedes a choice.
+        minutes.scrollTop += 44;
+        fireEvent.wheel(minutes, { deltaY: 44 });
+        fireEvent.scroll(minutes);
+        await act(() => vi.advanceTimersByTimeAsync(120));
+        expect(field().value).toBe("09:31");
+      }
+    }
+  );
 
   // THE MERIDIEM COLUMN IS THE PREFERENCE'S, not a third opinion about the value:
   // a 12h profile picks 7 + PM and the field still emits the 24h "19:30".
@@ -321,9 +384,7 @@ describe("TimeField — the wheel", () => {
     expect(screen.queryByRole("listbox", { name: "AM or PM" })).toBeNull();
   });
 
-  // AN UNSET WHEEL PROPOSES NOTHING (#2053). It rests at the top of each column
-  // and marks no row selected — "the field is empty" is a statement, and a wheel
-  // that pre-selected 00:00 would have made it silently.
+  // An opening proposal is not a statement: no row is selected until a choice.
   it("marks nothing selected while the field has no time", () => {
     mount("24h", "");
     openWheel();
@@ -363,13 +424,115 @@ describe("TimeField — the wheel", () => {
     expect(emitted.at(-1)).toBe("09:00");
   });
 
-  // THE COLUMN'S ENDS ARE ENDS, not a wrap: stepping past 23:00 stays there. A
-  // wheel that rolled over would turn one arrow press into a twelve-hour move.
-  it("does not wrap past either end of a column", () => {
-    const { emitted } = mount("24h", "23:00");
+  it.each([
+    ["24h", "23:15", "Hour", "ArrowDown", "00:15"],
+    ["24h", "00:15", "Hour", "ArrowUp", "23:15"],
+    ["24h", "09:59", "Minute", "ArrowDown", "09:00"],
+    ["24h", "09:00", "Minute", "ArrowUp", "09:59"],
+    ["12h", "12:30", "Hour", "ArrowDown", "13:30"],
+    ["12h", "13:30", "Hour", "ArrowUp", "12:30"],
+  ] as const)(
+    "%s %s wraps %s with %s to %s",
+    (format, initial, name, key, expected) => {
+      const { emitted } = mount(format, initial);
+      openWheel();
+      fireEvent.keyDown(column(name), { key });
+      expect(emitted.at(-1)).toBe(expected);
+    }
+  );
+
+  it("a pending hour settlement keeps the minute that settled after it was armed", async () => {
+    vi.useFakeTimers();
+    const { emitted } = mount("24h", "09:15");
     openWheel();
-    fireEvent.keyDown(column("Hour"), { key: "ArrowDown" });
+    const hours = column("Hour");
+    const minutes = column("Minute");
+    fireEvent.wheel(hours, { deltaY: -44 });
+    positionRow(hours, "07");
+    await act(() => vi.advanceTimersByTimeAsync(40));
+    fireEvent.wheel(minutes, { deltaY: 44 });
+    positionRow(minutes, "45");
+    await act(() => vi.advanceTimersByTimeAsync(40));
+    fireEvent.scroll(hours);
+    await act(() => vi.advanceTimersByTimeAsync(80));
+    expect(emitted.at(-1)).toBe("09:45");
+    await act(() => vi.advanceTimersByTimeAsync(40));
+    expect(emitted.at(-1)).toBe("07:45");
+  });
+
+  it("a genuine full-cycle scroll can choose an unset proposal at the same logical row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-09T09:15:00Z"));
+    const { emitted } = mount("24h");
+    openWheel();
+    const hours = column("Hour");
+    fireEvent.wheel(hours, { deltaY: 44 });
+    hours.scrollTop += within(hours).getAllByRole("option").length * 44;
+    fireEvent.scroll(hours);
+    await act(() => vi.advanceTimersByTimeAsync(120));
+    expect(emitted).toEqual(["09:15"]);
+  });
+
+  it("native pointer cancellation keeps each column held until its own touches end", async () => {
+    vi.useFakeTimers();
+    const { emitted } = mount("24h", "09:15");
+    openWheel();
+    const hours = column("Hour");
+    const minutes = column("Minute");
+    const hourTouch = {
+      identifier: 1,
+      target: within(hours).getByRole("option", { name: "09" }),
+    };
+    const minuteTouch = {
+      identifier: 2,
+      target: within(minutes).getByRole("option", { name: "15" }),
+    };
+    fireEvent.touchStart(hourTouch.target, { touches: [hourTouch] });
+    positionRow(hours, "07");
+    fireEvent.pointerCancel(hourTouch.target, { pointerType: "touch" });
+    fireEvent.touchStart(minuteTouch.target, {
+      touches: [hourTouch, minuteTouch],
+    });
+    positionRow(minutes, "45");
+    await act(() => vi.advanceTimersByTimeAsync(200));
     expect(emitted).toEqual([]);
+    fireEvent.touchEnd(hourTouch.target, { touches: [minuteTouch] });
+    await act(() => vi.advanceTimersByTimeAsync(120));
+    expect(emitted.at(-1)).toBe("07:15");
+    fireEvent.touchEnd(minuteTouch.target, { touches: [] });
+    await act(() => vi.advanceTimersByTimeAsync(120));
+    expect(emitted.at(-1)).toBe("07:45");
+  });
+
+  it("exposes one logical choice and keeps listbox focus when choosing across a cycle", () => {
+    const { emitted } = mount("12h", "12:30");
+    openWheel();
+    const hours = column("Hour");
+    fireEvent.click(within(hours).getByRole("option", { name: "01" }));
+    expect(emitted.at(-1)).toBe("13:30");
+    expect(document.activeElement).toBe(hours);
+    const choices = within(hours).getAllByRole("option");
+    expect(choices.map((choice) => choice.textContent).sort()).toEqual([
+      "01",
+      "02",
+      "03",
+      "04",
+      "05",
+      "06",
+      "07",
+      "08",
+      "09",
+      "10",
+      "11",
+      "12",
+    ]);
+    const active = document.getElementById(
+      hours.getAttribute("aria-activedescendant")!
+    );
+    expect(active).toBe(
+      within(hours).getByRole("option", { name: "01", selected: true })
+    );
+    expect(hours.querySelector('[aria-hidden="true"] button')).toBeNull();
   });
 });
 
@@ -418,7 +581,7 @@ describe("TimeField — focus opens the wheel", () => {
 // picker button carries the `name` the registry keys on. Real `DirtyFormProvider`
 // mounted, `data-testid="dirty-form-registry"`'s `data-dirty` read directly —
 // the same signal e2e/dirty-form-refresh.spec.ts asserts through a page.
-function mountNamed(initial = "09:00") {
+function mountNamed(initial = "09:00", tz = "UTC") {
   function Host() {
     const [value, setValue] = useState(initial);
     return (
@@ -429,6 +592,7 @@ function mountNamed(initial = "09:00") {
             onChange={setValue}
             label="Start"
             name="start_time"
+            tz={tz}
             data-testid="tf"
           />
         </form>
@@ -443,6 +607,39 @@ function mountNamed(initial = "09:00") {
 }
 
 describe("TimeField — the dirty-form registry (#4976)", () => {
+  it("refreshes an unset opening proposal without recording no-motion input or dirtying it", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-09T00:37:00Z"));
+    const { field, dirty } = mountNamed("", "Pacific/Honolulu");
+    openWheel();
+    const activeText = (name: string) =>
+      document.getElementById(
+        column(name).getAttribute("aria-activedescendant")!
+      )?.textContent;
+    expect(activeText("Hour")).toBe("14");
+    expect(activeText("Minute")).toBe("37");
+    fireEvent.scroll(column("Minute"));
+    fireEvent.wheel(column("Minute"), { deltaX: 44 });
+    fireEvent.scroll(column("Minute")); // a queued parking event is not movement
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    const target = within(column("Hour")).getByRole("option", { name: "14" });
+    fireEvent.touchStart(target, { touches: [{ identifier: 1, target }] });
+    fireEvent.pointerCancel(target, { pointerType: "touch" });
+    fireEvent.touchCancel(target, { touches: [] });
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    openWheel();
+    expect(field().value).toBe("");
+    expect(new FormData(field().form!).get("start_time")).toBe("");
+    expect(dirty()).toBe("0");
+    vi.setSystemTime(new Date("2026-09-09T01:42:00Z"));
+    openWheel();
+    expect(activeText("Hour")).toBe("15");
+    expect(activeText("Minute")).toBe("42");
+    fireEvent.click(within(column("Hour")).getByRole("option", { name: "15" }));
+    expect(new FormData(field().form!).get("start_time")).toBe("15:42");
+    expect(dirty()).toBe("1");
+  });
+
   // THE SEAM THAT ALREADY WORKED. Typing focuses the visible input first, which
   // is where the hidden field's pre-edit baseline registers.
   it("typing marks the form dirty", () => {
@@ -505,5 +702,62 @@ describe("TimeField — the dirty-form registry (#4976)", () => {
     expect(dirty()).toBe("1");
     fireEvent.change(field(), { target: { value: "09:00" } });
     expect(dirty()).toBe("0");
+  });
+});
+
+function mountNamedDate(initial = "2026-03-15") {
+  render(
+    <TimezoneProvider tz="UTC">
+      <WeekStartProvider weekStart={0}>
+        <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat: "24h" }}>
+          <DirtyFormProvider>
+            <form>
+              <DateField name="date" defaultValue={initial} data-testid="df" />
+              <input type="hidden" name="record_id" defaultValue="1" />
+            </form>
+          </DirtyFormProvider>
+        </FormatPrefsProvider>
+      </WeekStartProvider>
+    </TimezoneProvider>
+  );
+  return {
+    field: () => screen.getByTestId("df") as HTMLInputElement,
+    dirty: () => screen.getByTestId("dirty-form-registry").dataset.dirty,
+  };
+}
+
+describe("DateField — the dirty-form registry (#4986)", () => {
+  it("tracks a manual date-only edit and becomes clean at the original date", () => {
+    const { field, dirty } = mountNamedDate();
+    expect(dirty()).toBe("0");
+    fireEvent.focus(field());
+    expect(screen.getByTestId("date-field-calendar")).toBeTruthy();
+    expect(dirty()).toBe("0");
+
+    fireEvent.change(field(), { target: { value: "2026-03-16" } });
+    expect(dirty()).toBe("1");
+    fireEvent.change(field(), { target: { value: "2026-03-15" } });
+    expect(dirty()).toBe("0");
+  });
+
+  it("tracks a calendar-only edit while opening the calendar stays clean", () => {
+    const { dirty } = mountNamedDate();
+    fireEvent.click(screen.getByRole("button", { name: "Open calendar" }));
+    expect(dirty()).toBe("0");
+    fireEvent.click(screen.getByLabelText("March 16, 2026"));
+    expect(dirty()).toBe("1");
+  });
+
+  it("keeps ordinary hidden plumbing excluded", () => {
+    const { field, dirty } = mountNamedDate();
+    const recordId = document.querySelector<HTMLInputElement>(
+      'input[name="record_id"]'
+    )!;
+    fireEvent.input(recordId, { target: { value: "2" } });
+    expect(dirty()).toBe("0");
+
+    fireEvent.focus(field());
+    fireEvent.change(field(), { target: { value: "2026-03-16" } });
+    expect(dirty()).toBe("1");
   });
 });

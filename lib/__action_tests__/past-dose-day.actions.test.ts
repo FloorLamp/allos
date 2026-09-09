@@ -11,7 +11,7 @@
 // this week (#3573, #3836, #3901, #3884): "yesterday" is a profile-local day, never
 // `Date.now() - 86400000`.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setActiveSituations, setTimezone } from "@/lib/settings";
@@ -52,6 +52,13 @@ import { createLogin, createProfile, actAs, fd } from "./harness";
 // in Midway (−11). One instant, three different profile-local todays — which is what
 // makes the two zones DISCRIMINATING rather than decorative: 2026-08-26 is inside the
 // window for Midway and outside it for Kiritimati.
+async function readyQuickEntry(...args: Parameters<typeof loadQuickEntry>) {
+  const result = await loadQuickEntry(...args);
+  expect(result.kind).toBe("ready");
+  if (result.kind !== "ready") throw new Error("quick-entry read was refused");
+  return result.data;
+}
+
 const NOW_ISO = "2026-08-28T10:30:00Z";
 const ZONES = [
   {
@@ -66,15 +73,7 @@ const ZONES = [
   },
 ] as const;
 
-let priorNow: string | undefined;
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = NOW_ISO;
-});
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
+beforeEach(() => vi.setSystemTime(new Date(NOW_ISO)));
 
 function seedDose(
   profileId: number,
@@ -218,76 +217,85 @@ function resolve(
 }
 
 it("records the amount in force on the selected past day", async () => {
-  const previousNow = process.env.ALLOS_TEST_NOW;
-  try {
-    process.env.ALLOS_TEST_NOW = "2026-08-26T12:00:00Z";
-    const login = createLogin();
-    const profile = createProfile("historical-amount", login.id);
-    actAs(login, profile);
-    setTimezone(profile.id, "UTC");
-    await addIntakeItem(
-      fd({
-        name: "Historical amount",
-        doses: JSON.stringify([
-          {
-            amount: "500 mg",
-            time_of_day: "Morning",
-            food_timing: "any",
-            weekdays: [],
-            start_date: "",
-            end_date: "",
-          },
-        ]),
-      })
-    );
-    const itemId = Number(
-      (
-        db.prepare("SELECT MAX(id) AS id FROM intake_items").get() as {
-          id: number;
-        }
-      ).id
-    );
-    const doseId = Number(
-      (
-        db
-          .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
-          .get(itemId) as { id: number }
-      ).id
-    );
+  vi.setSystemTime(new Date("2026-08-26T12:00:00Z"));
+  const login = createLogin();
+  const profile = createProfile("historical-amount", login.id);
+  actAs(login, profile);
+  setTimezone(profile.id, "UTC");
+  await addIntakeItem(
+    fd({
+      name: "Historical amount",
+      doses: JSON.stringify([
+        {
+          amount: "500 mg",
+          time_of_day: "Morning",
+          food_timing: "any",
+          weekdays: [],
+          start_date: "",
+          end_date: "",
+        },
+      ]),
+    })
+  );
+  const itemId = Number(
+    (
+      db.prepare("SELECT MAX(id) AS id FROM intake_items").get() as {
+        id: number;
+      }
+    ).id
+  );
+  const doseId = Number(
+    (
+      db
+        .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+        .get(itemId) as { id: number }
+    ).id
+  );
 
-    process.env.ALLOS_TEST_NOW = "2026-08-28T12:00:00Z";
-    await updateIntakeItem(
-      fd({
-        id: itemId,
-        name: "Historical amount",
-        doses: JSON.stringify([
-          {
-            id: doseId,
-            amount: "1000 mg",
-            time_of_day: "Morning",
-            food_timing: "any",
-            weekdays: [],
-            start_date: "",
-            end_date: "",
-          },
-        ]),
-      })
-    );
+  vi.setSystemTime(new Date("2026-08-28T12:00:00Z"));
+  await updateIntakeItem(
+    fd({
+      id: itemId,
+      name: "Historical amount",
+      doses: JSON.stringify([
+        {
+          id: doseId,
+          amount: "1000 mg",
+          time_of_day: "Morning",
+          food_timing: "any",
+          weekdays: [],
+          start_date: "",
+          end_date: "",
+        },
+      ]),
+    })
+  );
 
-    const date = "2026-08-27";
-    expect(await resolve(date, "taken", [doseId])).toMatchObject({ ok: true });
-    expect(
-      (
-        db
-          .prepare(
-            "SELECT amount FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-          )
-          .get(doseId, date) as { amount: string }
-      ).amount
-    ).toBe("500 mg");
-  } finally {
-    process.env.ALLOS_TEST_NOW = previousNow;
-  }
+  const date = "2026-08-27";
+  expect(await resolve(date, "taken", [doseId])).toMatchObject({ ok: true });
+  expect(
+    (
+      db
+        .prepare(
+          "SELECT amount FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseId, date) as { amount: string }
+    ).amount
+  ).toBe("500 mg");
+});
+
+it("returns the ordinary Dose body when there is nothing yet to confirm (#3203)", async () => {
+  const login = createLogin();
+  const profile = createProfile("Empty dose body", login.id);
+  actAs(login, profile);
+  setTimezone(profile.id, "UTC");
+
+  const data = await readyQuickEntry("dose");
+  expect(data.form).toBe("dose");
+  if (data.form !== "dose") return;
+  expect(data.doses).toEqual([]);
+  expect(data.pastDays.every((day) => day.slots.length === 0)).toBe(true);
+  expect(data.prn?.meds).toEqual([]);
 });
 
 describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
@@ -297,7 +305,7 @@ describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
     // The instant's UTC day is the 28th; neither zone agrees with it, which is the
     // whole point of running the rest of this file twice.
     expect(localToday).not.toBe(NOW_ISO.slice(0, 10));
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     expect(data.form).toBe("dose");
     if (data.form !== "dose") return;
 
@@ -315,7 +323,7 @@ describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
 
   it("groups a past day by declared bucket and labels the first one Yesterday", async () => {
     const { doses } = seedProfile(`slots-${tz}`, tz);
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const yesterday = data.pastDays[0]!;
     expect(yesterday.date).toBe(shiftDateStr(localToday, -1));
@@ -536,7 +544,7 @@ describe("a past day is scored against the situations active THAT day (#654)", (
   }
 
   async function offeredOn(date: string): Promise<number[]> {
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") return [];
     const day = data.pastDays.find((d) => d.date === date);
     return (day?.slots ?? []).flatMap((slot) =>
@@ -561,7 +569,7 @@ describe("a past day is scored against the situations active THAT day (#654)", (
 
     // TODAY, on the other hand, genuinely does owe it — the same call, one day over,
     // proving the guard above is about the DAY and not about the item being invisible.
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     expect(data.doses.map((d) => d.doseId)).toContain(doseId);
   });
@@ -615,7 +623,7 @@ describe("a moved dose is filed under the slot it occupied that day (#1973)", ()
       `UPDATE intake_item_doses SET time_of_day = 'morning' WHERE id = ?`
     ).run(doseId);
 
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const day = data.pastDays.find((d) => d.date === yesterday)!;
     expect(day.slots.map((slot) => slot.bucket)).toEqual(["Evening"]);
@@ -710,7 +718,7 @@ function stripFor(
 
 describe("the sheet's offer agrees with the adherence strip, day for day", () => {
   async function offeredByDay(): Promise<Map<string, number[]>> {
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     const out = new Map<string, number[]>();
     if (data.form !== "dose") return out;
     out.set(
@@ -887,7 +895,7 @@ describe("a closed day's training is what the record says, not what a pattern pr
     expect(isPredictedWorkoutDay(profile.id, day)).toBe(true);
     expect(getActivitiesByDate(profile.id, day)).toEqual([]);
 
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const offered = (
       data.pastDays.find((d) => d.date === day)?.slots ?? []
@@ -907,7 +915,7 @@ describe("a closed day's training is what the record says, not what a pattern pr
 // BOTH harms this PR exists to fix, from one abandoned session.
 describe("an abandoned draft is not a training day on a closed day (#3189)", () => {
   async function offeredOn(date: string): Promise<number[]> {
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") return [];
     const day = data.pastDays.find((d) => d.date === date);
     return (day?.slots ?? []).flatMap((slot) =>
@@ -987,7 +995,7 @@ describe("a logged dose proves it existed, and the clamp gives way to it", () =>
 
     // And the sheet offers it, as it always did: a log IS proof the dose existed, and
     // clamping the day away would CONCEAL a dose that was genuinely owed.
-    const data = await loadQuickEntry("dose");
+    const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const offered = (
       data.pastDays.find((d) => d.date === day)?.slots ?? []

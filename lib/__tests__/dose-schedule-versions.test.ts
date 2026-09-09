@@ -24,6 +24,7 @@ import {
 import {
   doseBucketOn,
   doseDueOn,
+  doseScheduledOn,
   doseSlotChangedSince,
 } from "@/lib/intake-schedule";
 import { doseWindowSince } from "@/lib/intake-adherence";
@@ -136,6 +137,23 @@ describe("doseScheduleAsOf: the version in force on a day", () => {
   });
 });
 
+describe("doseScheduledOn", () => {
+  const dose = {
+    time_of_day: "Morning",
+    versions: [
+      { effective_from: "2026-06-01", time_of_day: null },
+      { effective_from: "2026-07-15", time_of_day: "Morning" },
+    ],
+  };
+
+  it("starts dueness on the effective day without backfilling earlier days", () => {
+    expect(doseScheduledOn(dose, "2026-07-14")).toBe(false);
+    expect(doseDueOn(ITEM, dose, ctx("2026-07-14"))).toBe(false);
+    expect(doseScheduledOn(dose, "2026-07-15")).toBe(true);
+    expect(doseDueOn(ITEM, dose, ctx("2026-07-15"))).toBe(true);
+  });
+});
+
 describe("#1973 REGRESSION PIN: an edit must not void the days before it", () => {
   // The exact shape from the issue: a dose that has existed since 1 June and was
   // re-timed TODAY. Before this change the window collapsed to the edit day —
@@ -243,10 +261,19 @@ describe("a cadence change is judged forward, never backward", () => {
   // The rewriting direction, which the invariant also forbids. A dose narrowed to
   // Mondays on 15 July was due every day in June; a dose widened from Mondays was not.
   const narrowed = {
+    time_of_day: "Morning",
     weekdays: "1",
     versions: [
-      { effective_from: "2026-06-01", weekdays: null },
-      { effective_from: "2026-07-15", weekdays: "1" },
+      {
+        effective_from: "2026-06-01",
+        weekdays: null,
+        time_of_day: "Morning",
+      },
+      {
+        effective_from: "2026-07-15",
+        weekdays: "1",
+        time_of_day: "Morning",
+      },
     ],
   };
 

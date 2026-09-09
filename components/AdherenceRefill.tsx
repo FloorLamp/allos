@@ -97,6 +97,7 @@ export function SharedSupplyChip({
     strength: string | null;
     form: string | null;
     daysLeft: number | null;
+    quantityOnHand: number | null;
     memberCount: number;
     low: boolean;
   } | null;
@@ -124,7 +125,11 @@ export function SharedSupplyChip({
       <span>
         {pool.low ? "Low · " : ""}Shared bottle · {bottleLabel(pool)} ·{" "}
         {pool.memberCount} tracked item{pool.memberCount === 1 ? "" : "s"}
-        {days ? ` · ${days}` : ""}
+        {pool.quantityOnHand == null
+          ? " · no count"
+          : days
+            ? ` · ${days}`
+            : ` · ${pool.quantityOnHand} left`}
       </span>
     </DestinationLink>
   );

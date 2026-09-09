@@ -39,7 +39,6 @@ import {
   SLEEP_MOOD_PREFIX,
   MOOD_LOW_MIN_LOGS,
   MOOD_LOW_MEAN_THRESHOLD,
-  SLEEP_MOOD_SRI_DROP_POINTS,
   SLEEP_MOOD_DURATION_DROP_MIN,
   type LowMoodWindow,
 } from "@/lib/mood-observation";
@@ -305,8 +304,7 @@ describe("decideSleepMoodBridge", () => {
     const obs = decideSleepMoodBridge(
       {
         lowMood: LOW,
-        recentSri: 62,
-        priorSri: 62 + SLEEP_MOOD_SRI_DROP_POINTS,
+        regularityDrop: { points: 10, through: "2026-06-30" },
         recentAvgSleepMin: null,
         priorAvgSleepMin: null,
       },
@@ -315,6 +313,9 @@ describe("decideSleepMoodBridge", () => {
     expect(obs).not.toBeNull();
     expect(obs!.dedupeKey).toBe(sleepMoodSignalKey("2026-07"));
     expect(obs!.dedupeKey.startsWith(SLEEP_MOOD_PREFIX)).toBe(true);
+    expect(obs!.title).toBe("Sleep regularity and low mood");
+    expect(obs!.detail).toContain("through 2026-06-30");
+    expect(obs!.detail).not.toContain("Over the same stretch");
     // Co-occurrence phrasing, never causal/diagnostic.
     expect(obs!.detail).toMatch(/move together/i);
     expect(obs!.detail).toMatch(/not a diagnosis/i);
@@ -325,8 +326,7 @@ describe("decideSleepMoodBridge", () => {
     const obs = decideSleepMoodBridge(
       {
         lowMood: LOW,
-        recentSri: null,
-        priorSri: null,
+        regularityDrop: null,
         recentAvgSleepMin: 400,
         priorAvgSleepMin: 400 + SLEEP_MOOD_DURATION_DROP_MIN,
       },
@@ -341,8 +341,7 @@ describe("decideSleepMoodBridge", () => {
       decideSleepMoodBridge(
         {
           lowMood: LOW,
-          recentSri: 70,
-          priorSri: 71, // steady (< threshold drop)
+          regularityDrop: null, // shared decision found no material drop
           recentAvgSleepMin: 450,
           priorAvgSleepMin: 455, // steady
         },
@@ -356,8 +355,7 @@ describe("decideSleepMoodBridge", () => {
       decideSleepMoodBridge(
         {
           lowMood: null,
-          recentSri: 40,
-          priorSri: 80, // a huge drop — still silent without the mood half
+          regularityDrop: { points: 40, through: "2026-07-10" },
           recentAvgSleepMin: 300,
           priorAvgSleepMin: 480,
         },
@@ -371,8 +369,7 @@ describe("decideSleepMoodBridge", () => {
       decideSleepMoodBridge(
         {
           lowMood: LOW,
-          recentSri: 50,
-          priorSri: null,
+          regularityDrop: null,
           recentAvgSleepMin: null,
           priorAvgSleepMin: 480,
         },

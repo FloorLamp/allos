@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { SqlPrepare } from "../lib/write-revision";
 
 // Shared re-seeder for the #1081 N-way merge specs (Review cluster card + Training Log
 // multi-select merge). Both surfaces CONSUME their rows (a merge deletes rows +, on
@@ -35,7 +35,7 @@ export const NW_TRAINING_LOG_TITLES = ["NW card", "NW sib A", "NW sib B"];
 // (the spec passes dates recent relative to the frozen clock so the Training Log cards land
 // on page 1). Idempotent — deletes are scoped to this fixture's titles.
 export function seedNwayMergeFixture(
-  db: Pick<Database.Database, "prepare">,
+  db: SqlPrepare,
   profileId: number,
   reviewDate: string,
   trainingLogDate: string,

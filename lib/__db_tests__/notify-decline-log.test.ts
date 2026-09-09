@@ -2,10 +2,9 @@
 // orchestrator against a live schema.
 //
 // The claim under test is the issue's thesis, end to end: when the tick decides NOT
-// to send, that decision now leaves a durable trace, and it does so WITHOUT touching
-// the send-marker state that a real send owns. Both halves matter — a log that
-// recorded declines but also stamped a marker would silently suppress tomorrow's
-// retry, which is far worse than the missing log ever was.
+// to send, that decision leaves a durable trace without spending a delivered
+// baseline. Both halves matter: the released attempt must remain retryable once
+// a channel exists, and the log must not silently suppress that retry.
 //
 // The orchestrator is `runRefills` with NO channel configured, which is the exact
 // shape of the production line the issue quotes ("refill nudge skipped: no channel"
@@ -16,9 +15,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { db, today } from "@/lib/db";
+import { now } from "@/lib/clock";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { runRefills } from "@/lib/notifications/refill";
-import { refillMarkerKey } from "@/lib/refill-nudge";
+import {
+  refillMarkerKey,
+  parseRefillMarker,
+  refillAttemptDue,
+} from "@/lib/refill-nudge";
 import {
   NOTIFY_LOG_PATH,
   beginNotifyRun,
@@ -65,7 +69,7 @@ afterEach(() => {
 });
 
 describe("a tick that declines every send (#2209)", () => {
-  it("appends the decline and writes NO notify_last_* marker", async () => {
+  it("appends the decline and releases the attempt without a delivered baseline", async () => {
     const p = newProfile("DeclineLog");
     const supp = seedLowSupplement(p);
     const date = today(p);
@@ -73,12 +77,20 @@ describe("a tick that declines every send (#2209)", () => {
 
     // No channel configured for this profile at all — dispatch() fans out to
     // nothing, so the orchestrator declines.
-    const res = await runRefills(p, "DeclineLog", date);
+    const res = await runRefills(p, date);
     expect(res.failed).toBe(false);
 
-    // 1. THE MARKER IS UNTOUCHED. This is what lets the nudge retry once a channel
-    //    exists; the log must never become a side channel that stamps it.
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
+    // 1. No delivered baseline is spent, and the attempt can retry immediately.
+    const marker = parseRefillMarker(
+      getProfileSetting(p, refillMarkerKey(supp))
+    );
+    expect(marker).toMatchObject({
+      state: "attempt",
+      sentOn: null,
+      dueOn: null,
+      claimUntil: null,
+    });
+    expect(refillAttemptDue(marker, date, now().getTime())).toBe(true);
 
     // 2. THE DECLINE IS DURABLE — the half that previously existed nowhere.
     const { events } = readNotifyEvents();
@@ -97,7 +109,7 @@ describe("a tick that declines every send (#2209)", () => {
     const date = today(p);
     beginNotifyRun();
 
-    await runRefills(p, "DeclineGroup", date);
+    await runRefills(p, date);
 
     const runs = groupNotifyRuns(readNotifyEvents().events).filter(
       (r) => r.profileId === p
@@ -115,7 +127,7 @@ describe("a tick that declines every send (#2209)", () => {
     const date = today(p);
     beginNotifyRun();
 
-    await runRefills(p, "QuietRun", date);
+    await runRefills(p, date);
     // Stand in for scripts/notify.ts's per-profile marker line.
     const { createLogger } = await import("@/lib/log");
     createLogger("notify").info("profile evaluated", {
@@ -148,12 +160,21 @@ describe("the sink never fails the tick (#2209 constraint 1)", () => {
       throw new Error("ENOSPC: no space left on device");
     });
 
-    const res = await runRefills(p, "SinkDown", date);
+    const res = await runRefills(p, date);
 
     // The tick's own behavior is untouched: it did not throw, it reported no
-    // failure, and it still declined to stamp the marker.
+    // failure, and its released attempt still has no delivered baseline.
     expect(res.failed).toBe(false);
-    expect(getProfileSetting(p, refillMarkerKey(supp))).toBeUndefined();
+    const marker = parseRefillMarker(
+      getProfileSetting(p, refillMarkerKey(supp))
+    );
+    expect(marker).toMatchObject({
+      state: "attempt",
+      sentOn: null,
+      dueOn: null,
+      claimUntil: null,
+    });
+    expect(refillAttemptDue(marker, date, now().getTime())).toBe(true);
   });
 
   it("a send that DOES happen still marks even with the sink broken", async () => {
@@ -170,7 +191,7 @@ describe("the sink never fails the tick (#2209 constraint 1)", () => {
       throw new Error("EROFS: read-only file system");
     });
 
-    await expect(runRefills(p, "SinkDownSend", date)).resolves.toEqual({
+    await expect(runRefills(p, date)).resolves.toEqual({
       failed: false,
     });
     expect(getProfileSetting(p, refillMarkerKey(supp))).toBe("2020-01-01");

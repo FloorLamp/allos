@@ -19,6 +19,13 @@ import { practiceIdentity } from "@/lib/practice";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { createLogin, createProfile, actAs, seedActor } from "./harness";
 
+async function readyQuickEntry(...args: Parameters<typeof loadQuickEntry>) {
+  const result = await loadQuickEntry(...args);
+  expect(result.kind).toBe("ready");
+  if (result.kind !== "ready") throw new Error("quick-entry read was refused");
+  return result.data;
+}
+
 function trackPractice(
   profileId: number,
   name: string,
@@ -56,7 +63,7 @@ describe("loadQuickEntry — practice (#1633)", () => {
       "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'sauna', ?)"
     ).run(profile.id, today(profile.id));
 
-    const data = await loadQuickEntry("practice");
+    const data = await readyQuickEntry("practice");
     expect(data.form).toBe("practice");
     if (data.form !== "practice") return;
     // Alphabetical, one row per identity, named by the TARGET's spelling.
@@ -82,7 +89,7 @@ describe("loadQuickEntry — practice (#1633)", () => {
   it("with nothing tracked, the nav row stays hidden and this row becomes the offer", async () => {
     const { profile } = seedActor({ profileName: "No Practices" });
     expect(getNavRelevance(profile.id).wellness).toBe(false);
-    const data = await loadQuickEntry("practice");
+    const data = await readyQuickEntry("practice");
     expect(data.form).toBe("practice");
     if (data.form !== "practice") return;
     expect(data.practices).toEqual([]);
@@ -95,13 +102,13 @@ describe("loadQuickEntry — practice (#1633)", () => {
     trackPractice(theirs.id, "Cold plunge");
     actAs(admin, mine);
 
-    const mineData = await loadQuickEntry("practice");
+    const mineData = await readyQuickEntry("practice");
     expect(mineData.form).toBe("practice");
     if (mineData.form !== "practice") return;
     expect(mineData.practices).toEqual([]);
 
     actAs(admin, theirs);
-    const data = await loadQuickEntry("practice");
+    const data = await readyQuickEntry("practice");
     expect(data.form).toBe("practice");
     if (data.form !== "practice") return;
     expect(data.practices.map((p) => p.name)).toEqual(["Cold plunge"]);
@@ -111,7 +118,7 @@ describe("loadQuickEntry — practice (#1633)", () => {
 describe("loadQuickEntry — document (#1525)", () => {
   it("gathers only the demo gate — the upload form needs nothing else", async () => {
     seedActor({ profileName: "Uploader" });
-    const data = await loadQuickEntry("document");
+    const data = await readyQuickEntry("document");
     expect(data).toEqual({ form: "document", demo: false });
   });
 });

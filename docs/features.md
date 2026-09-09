@@ -18,7 +18,9 @@ For development entry points and checks, use [Development](development.md).
 
 [Finding reach and attention](internals/findings.md), [reading placement](internals/reading-model.md),
 [freshness](internals/freshness.md), and [time](internals/time-model.md) define the
-shared behavior behind these surfaces.
+shared behavior behind these surfaces. The dashboard's layout follows #3077: one
+ranker over Now, Standing, and Ahead plus a show-everything fold; row identity
+comes from columns, not icons.
 
 ## Training and trends
 
@@ -33,7 +35,9 @@ shared behavior behind these surfaces.
 | Year in review                | Summarizes longer-term history without treating missing coverage as zero activity.                                                                                                                      |
 | Progress photos and video     | Keeps profile-owned media with dated records, viewing, and deletion behavior.                                                                                                                           |
 
-See [workout UX](workout-ux-spec.md), [cadence](internals/cadence-ledger.md),
+The training hub's composition follows #4079: the log renders through the
+record's machinery, overview cards rank by data presence, and Plan is one
+targets ledger. See [workout UX](workout-ux-spec.md), [cadence](internals/cadence-ledger.md),
 [charts](internals/charts.md), [retrospective](internals/retrospective.md),
 [photos](internals/photo-core.md), and [video](internals/video-core.md).
 
@@ -42,7 +46,9 @@ See [workout UX](workout-ux-spec.md), [cadence](internals/cadence-ledger.md),
 Nutrition combines food logs, nutrients, regularity, and applicable dietary limits.
 Meal timing and quantity are separate facts. A missing log does not establish that
 someone skipped a meal. Findings distinguish care concerns from coaching
-observations and report the evidence available.
+observations and report the evidence available. The page is Day | Manage
+(#3987, #4477): one day ledger interleaving food and doses, same-tap doses
+collapsed into a stack row, and one-day navigation to any past day.
 
 Supplements and medications share intake identity, schedules, and dose history.
 Each administration can carry its actual time, quantity, and product. Scheduled
@@ -98,6 +104,17 @@ The identity bar and profile switcher show whose record is active. Cross-profile
 views resolve accessible profiles at the request boundary. Administrator access
 does not automatically subscribe the administrator to every profile's reminders;
 notification scope is an explicit choice.
+
+Who a write is about follows a three-rung ladder (#4693, #4709); an ordinary
+form never carries a subject picker or a `?subject=` parameter. The switcher
+expresses intent for adds. A subject-scoped container (an illness cockpit
+header, a cross-profile medication card) lends its subject to an add on it,
+inherited rather than picked, only when the whole form is subject-keyed, never
+from a row in a mixed list, and re-gated server-side by write access. A
+multi-subject event fans out as ordinary rows through each subject's core,
+linked by one event id, same payload only; mood, sleep, substances, and body
+readings never fan. A correction control on another member's row appears
+exactly when the login has write access, and acts on the row found.
 
 See [identity](internals/identity-registry.md) and [notification routing](internals/notifications.md).
 

@@ -82,6 +82,7 @@ export default function DateField({
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popRef = useRef<HTMLElement | null>(null);
+  const hiddenRef = useRef<HTMLInputElement>(null);
   // WHICH HOST THE CALENDAR OPENS IN, below `md` versus above it (#3376). The
   // panel itself is components/overlay/AnchoredPanel.tsx's decision and this
   // file does not repeat it — but the OUTSIDE-CLICK policy genuinely differs by
@@ -105,6 +106,22 @@ export default function DateField({
           : ""
     );
   }, [val, min, max]);
+
+  // The visible field and calendar button are the user's controls, but the
+  // named hidden sibling is the form field. Relay the registry's focus/edit
+  // events to that canonical value in the same order as an ordinary input:
+  // register its baseline before an edit, then report the committed value.
+  const registerDirtyBaseline = () =>
+    hiddenRef.current?.dispatchEvent(new Event("focusin", { bubbles: true }));
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!name) return;
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    hiddenRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [name, val]);
 
   const todayStr = dateStrInTz(useTimezone());
 
@@ -172,6 +189,7 @@ export default function DateField({
         // calendar button beside the input is the phone's way in, and manual ISO
         // entry keeps working at every width (#3376's invariant).
         onFocus={() => {
+          registerDirtyBaseline();
           if (!compact) setOpen(true);
         }}
         // The field renders the vocabulary's year-bearing short form ("Jul 24,
@@ -189,10 +207,22 @@ export default function DateField({
       />
       {/* The visible field can show a friendly date, so the ISO value is
           submitted via a hidden input for uncontrolled (name) usage. */}
-      {name && <input type="hidden" name={name} value={val} />}
+      {name && (
+        <input
+          ref={hiddenRef}
+          type="hidden"
+          name={name}
+          value={val}
+          data-dirty-track-hidden="true"
+        />
+      )}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) registerDirtyBaseline();
+        }}
         aria-label="Open calendar"
         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
       >

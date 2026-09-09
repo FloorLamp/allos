@@ -31,11 +31,10 @@ import {
   type AnySnapshot,
   type SnapshotEnvelope,
 } from "@/lib/offline/snapshots";
-import {
-  FLOW_KINDS,
-  buildIntent,
-  type QueuedIntent,
-} from "@/lib/offline/queue";
+import { FLOW_KINDS, type QueuedIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
+import { FOOD_GROUPS } from "@/lib/food-groups";
+import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
 
 const PROFILE = 7;
 const OTHER = 8;
@@ -76,6 +75,25 @@ const doseSnapshot = () =>
       ],
     },
   });
+
+function foodQuickEntry() {
+  const catalog = FOOD_GROUPS.map((group) => group.slug);
+  return {
+    available: true as const,
+    rankedGroupSlugsBySlot: Object.fromEntries(
+      FOOD_SLOTS.map((slot) => [slot, [...catalog]])
+    ) as Record<FoodSlot, string[]>,
+    proteinRankBySlot: { Morning: 1, Midday: null, Evening: 4 },
+    proteinPreset: 30,
+    excludedGroups: ["red_meat"],
+    slotBoundaries: { midday: 660, evening: 900 },
+    slotCounts: {
+      Morning: { berries: 1 },
+      Midday: {},
+      Evening: {},
+    },
+  };
+}
 
 // ── The registry ─────────────────────────────────────────────────────────────
 
@@ -144,6 +162,46 @@ describe("parseSnapshot", () => {
     expect(parseSnapshot({ ...doseSnapshot(), timeZone: "" })).toBeNull();
     expect(parseSnapshot(null)).toBeNull();
     expect(parseSnapshot("{}")).toBeNull();
+  });
+
+  it("keeps a legacy Food tally readable but refreshes its missing recovery data", () => {
+    const legacy = envelope({
+      kind: "food-tallies" as const,
+      data: { date: "2026-08-16", groups: [], proteinGrams: null },
+    });
+    const parsed = parseSnapshot(legacy)!;
+    expect(parsed).not.toBeNull();
+    expect(parsed.data).toEqual(legacy.data);
+    expect(
+      snapshotsToRefresh([parsed], PROFILE, new Date("2026-08-16T22:00:30Z"))
+    ).toContain("food-tallies");
+  });
+
+  it("accepts a complete Food recovery member and sanitizes a malformed one", () => {
+    const complete = envelope({
+      kind: "food-tallies" as const,
+      data: {
+        date: "2026-08-16",
+        groups: [{ key: "berries", label: "Berries", servings: 2 }],
+        proteinGrams: 30,
+        quickEntry: foodQuickEntry(),
+      },
+    }) as SnapshotEnvelope<"food-tallies">;
+    const parsed = parseSnapshot(complete)!;
+    expect(
+      snapshotsToRefresh([parsed], PROFILE, new Date("2026-08-16T22:00:30Z"))
+    ).not.toContain("food-tallies");
+
+    const malformed = structuredClone(complete) as typeof complete;
+    const quickEntry = malformed.data.quickEntry;
+    if (quickEntry?.available) {
+      quickEntry.rankedGroupSlugsBySlot.Morning = ["berries"];
+    }
+    const sanitized = parseSnapshot(
+      malformed
+    )! as SnapshotEnvelope<"food-tallies">;
+    expect(sanitized.data.groups).toEqual(complete.data.groups);
+    expect(sanitized.data.quickEntry).toBeUndefined();
   });
 });
 
@@ -287,9 +345,16 @@ function doseIntent(
   flow: "dose" | "skip-dose",
   date = "2026-08-16"
 ): QueuedIntent {
-  const intent = buildIntent(flow, date, { doseId }, profileId ?? 0);
-  if (profileId === undefined) delete intent.profileId;
-  return intent;
+  const stamped = buildIntent(
+    flow,
+    date,
+    { doseId },
+    profileId ?? PROFILE,
+    date === "2026-08-16"
+  );
+  if (profileId !== undefined) return stamped;
+  const { profileId: _profileId, dayContext: _dayContext, ...legacy } = stamped;
+  return legacy;
 }
 
 describe("overlay — folding queued writes into a stored read", () => {
@@ -336,11 +401,13 @@ describe("overlay — folding queued writes into a stored read", () => {
     expect(out.entries[0].status).toBe("pending");
   });
 
-  it("raises the day's food tallies, including a group with nothing logged yet", () => {
+  it("raises overall and exact-meal Food tallies without changing its catalog", () => {
+    const quickEntry = foodQuickEntry();
     const data = {
       date: "2026-08-16",
       groups: [{ key: "berries", label: "Berries", servings: 1 }],
       proteinGrams: 20,
+      quickEntry,
     };
     const out = overlayFoodTallies(
       data,
@@ -351,22 +418,37 @@ describe("overlay — folding queued writes into a stored read", () => {
           {
             entry: "serving",
             groupKey: "berries",
-            mealSlot: null,
+            mealSlot: "Morning",
             grams: null,
           },
-          PROFILE
+          PROFILE,
+          true
         ),
         buildIntent(
           "food",
           "2026-08-16",
-          { entry: "serving", groupKey: "greens", mealSlot: null, grams: null },
-          PROFILE
+          {
+            entry: "serving",
+            groupKey: "leafy_greens",
+            mealSlot: "Midday",
+            grams: null,
+          },
+          PROFILE,
+          true
+        ),
+        buildIntent(
+          "food",
+          "2026-08-16",
+          { entry: "serving", groupKey: "fruit", mealSlot: null, grams: null },
+          PROFILE,
+          true
         ),
         buildIntent(
           "food",
           "2026-08-16",
           { entry: "protein", groupKey: null, mealSlot: null, grams: 30 },
-          PROFILE
+          PROFILE,
+          true
         ),
       ],
       PROFILE
@@ -378,12 +460,35 @@ describe("overlay — folding queued writes into a stored read", () => {
       queued: 1,
     });
     expect(out.groups).toContainEqual({
-      key: "greens",
-      label: "greens",
+      key: "leafy_greens",
+      label: "leafy_greens",
+      servings: 1,
+      queued: 1,
+    });
+    expect(out.groups).toContainEqual({
+      key: "fruit",
+      label: "fruit",
       servings: 1,
       queued: 1,
     });
     expect(out).toMatchObject({ proteinGrams: 50, queuedProteinGrams: 30 });
+    expect(out.quickEntry).toMatchObject({
+      slotCounts: {
+        Morning: { berries: 2 },
+        Midday: { leafy_greens: 1 },
+        Evening: {},
+      },
+    });
+    expect(out.quickEntry).toMatchObject({
+      rankedGroupSlugsBySlot: quickEntry.rankedGroupSlugsBySlot,
+      proteinRankBySlot: quickEntry.proteinRankBySlot,
+      proteinPreset: 30,
+      excludedGroups: ["red_meat"],
+      slotBoundaries: { midday: 660, evening: 900 },
+    });
+    expect(
+      out.quickEntry?.available && out.quickEntry.slotCounts.Morning
+    ).not.toHaveProperty("fruit");
   });
 
   it("prepends a queued workout to the recent spine", () => {
@@ -397,7 +502,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "set",
           "2026-08-16",
           { fields: { title: "Push day", activity_type: "strength" } },
-          PROFILE
+          PROFILE,
+          true
         ),
       ],
       PROFILE
@@ -417,7 +523,8 @@ describe("overlay — folding queued writes into a stored read", () => {
         "practice",
         "2026-08-16",
         { practice: "Sauna", identity: "sauna", durationMin: null },
-        PROFILE
+        PROFILE,
+        true
       )
     );
     const out = overlayPracticeWeek(
@@ -465,7 +572,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "practice",
           "2026-08-15",
           { practice: "Sauna", identity: "sauna", durationMin: null },
-          PROFILE
+          PROFILE,
+          false
         ),
       ],
       PROFILE
@@ -502,7 +610,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "practice",
           "2026-08-09",
           { practice: "Sauna", identity: "sauna", durationMin: null },
-          PROFILE
+          PROFILE,
+          false
         ),
       ],
       PROFILE
@@ -530,7 +639,8 @@ describe("overlay — folding queued writes into a stored read", () => {
           "practice",
           "2026-08-16",
           { practice: "Sauna", identity: "sauna", durationMin: null },
-          PROFILE
+          PROFILE,
+          true
         ),
       ],
       PROFILE

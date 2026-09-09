@@ -20,18 +20,16 @@
 // entries), so the ~300-entry index is built at most once per vocabulary rather than
 // once per reconcile call.
 
-import type Database from "better-sqlite3";
 import { db as defaultDb } from "./db";
 import { buildCanonicalIndex, snapCanonicalName } from "./canonical-name";
+import type { SqlPrepare } from "./write-revision";
 
 const cache = new WeakMap<
-  Pick<Database.Database, "prepare">,
+  SqlPrepare,
   { count: number; index: Map<string, string> }
 >();
 
-function indexFor(
-  handle: Pick<Database.Database, "prepare">
-): Map<string, string> {
+function indexFor(handle: SqlPrepare): Map<string, string> {
   const count = (
     handle
       .prepare("SELECT COUNT(*) AS c FROM canonical_result_definitions")
@@ -54,7 +52,7 @@ function indexFor(
 // A resolve function bound to the current canonical vocabulary. Call once per
 // operation and reuse across its rows: `const resolve = canonicalResolver()`.
 export function canonicalResolver(
-  handle: Pick<Database.Database, "prepare"> = defaultDb
+  handle: SqlPrepare = defaultDb
 ): (name: string) => string {
   const index = indexFor(handle);
   return (name: string) => snapCanonicalName(name, index);

@@ -132,6 +132,7 @@ export default function BottomSheet({
   onGestureDismiss,
   titleAdornment,
   belowTitle,
+  leadingTitle,
 }: {
   open: boolean;
   onClose: () => void;
@@ -144,6 +145,9 @@ export default function BottomSheet({
   // subject chip is the first consumer). Purely presentational — this component
   // decides nothing about what it is.
   titleAdornment?: React.ReactNode;
+  // Optional navigation placed before the heading. The consumer owns its
+  // meaning; the sheet only keeps it in the shared title row and focus trap.
+  leadingTitle?: React.ReactNode;
   // Rendered directly under the title row, before `description`/the content
   // region (#4932's "Who is this for?" household block). Absent by default, so
   // every other consumer of this sheet is unaffected.
@@ -406,18 +410,20 @@ export default function BottomSheet({
     : `font-semibold text-slate-900 dark:text-slate-100 ${
         asDialog || asCentered ? "text-lg" : "text-base"
       }${titleTruncates ? " min-w-0 truncate" : ""}`;
-  const heading = titleAdornment ? (
-    <span className="flex min-w-0 items-center gap-2">
+  const heading =
+    leadingTitle || titleAdornment ? (
+      <span className="flex min-w-0 items-center gap-2">
+        {leadingTitle}
+        <h2 id={titleId} className={titleClass}>
+          {title}
+        </h2>
+        {titleAdornment}
+      </span>
+    ) : (
       <h2 id={titleId} className={titleClass}>
         {title}
       </h2>
-      {titleAdornment}
-    </span>
-  ) : (
-    <h2 id={titleId} className={titleClass}>
-      {title}
-    </h2>
-  );
+    );
 
   return createPortal(
     <div

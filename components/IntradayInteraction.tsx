@@ -11,7 +11,7 @@ import {
 } from "react";
 import type { IntradayView } from "@/lib/intraday-layout";
 
-// ONE ZOOM AND ONE CROSSHAIR FOR THE DAY, NOT ONE PER CHART (#4950).
+// The day's zoom, hover and pinned start are shared by both chart variants.
 //
 // `IntradayChart` renders its day TWICE — a compact drawing and a wide one, both in
 // the DOM at once, with a container query displaying whichever the chart's own width
@@ -33,7 +33,7 @@ import type { IntradayView } from "@/lib/intraday-layout";
 // anyone has to answer.
 //
 // NO PROVIDER IS ALSO A VALID MOUNT. A chart rendered outside the day page — a test, a
-// future surface — keeps a private pair, so this cannot make an isolated chart depend on
+// future surface — keeps private state, so this cannot make an isolated chart depend on
 // a wrapper it does not have. Both hooks are called unconditionally either way, which is
 // what keeps that fallback inside the rules of hooks.
 export interface IntradayInteraction {
@@ -43,6 +43,9 @@ export interface IntradayInteraction {
   /** The crosshair's minute, or null when the pointer is away. */
   cursor: number | null;
   setCursor: Dispatch<SetStateAction<number | null>>;
+  /** The chosen start, snapped to the chart's bucket, independent of hover. */
+  pin: number | null;
+  setPin: Dispatch<SetStateAction<number | null>>;
 }
 
 const IntradayInteractionContext = createContext<IntradayInteraction | null>(
@@ -56,9 +59,10 @@ export function IntradayInteractionProvider({
 }) {
   const [view, setView] = useState<IntradayView | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
+  const [pin, setPin] = useState<number | null>(null);
   const value = useMemo(
-    () => ({ view, setView, cursor, setCursor }),
-    [view, cursor]
+    () => ({ view, setView, cursor, setCursor, pin, setPin }),
+    [view, cursor, pin]
   );
   return (
     <IntradayInteractionContext.Provider value={value}>
@@ -67,14 +71,15 @@ export function IntradayInteractionProvider({
   );
 }
 
-/** The shared pair when a provider is above, a private pair when none is. */
+/** Shared interaction when a provider is above, private state when none is. */
 export function useIntradayInteraction(): IntradayInteraction {
   const shared = useContext(IntradayInteractionContext);
   const [view, setView] = useState<IntradayView | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
+  const [pin, setPin] = useState<number | null>(null);
   const own = useMemo(
-    () => ({ view, setView, cursor, setCursor }),
-    [view, cursor]
+    () => ({ view, setView, cursor, setCursor, pin, setPin }),
+    [view, cursor, pin]
   );
   return shared ?? own;
 }

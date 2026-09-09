@@ -58,18 +58,18 @@ export default function TrainingLogFilterBar({
   show?: number;
   initialCreateDate?: string;
 }) {
-  const base = { everyone, show, source: query.source, tag: query.tag };
+  const base = { ...query, everyone, show, day: day?.date };
   const active = trainingLogQueryActive(query);
   const typeSegments = [
     {
       value: "",
       label: "All",
-      href: trainingLogHref({ ...query, day: day?.date, type: null }),
+      href: trainingLogHref({ ...base, type: null }),
     },
     ...ACTIVITY_TYPES.filter((t) => TYPE_LABELS[t] != null).map((t) => ({
       value: t as string,
       label: TYPE_LABELS[t]!,
-      href: trainingLogHref({ ...query, day: day?.date, type: t }),
+      href: trainingLogHref({ ...base, type: t }),
     })),
   ];
 
@@ -109,6 +109,7 @@ export default function TrainingLogFilterBar({
               />
             )}
             {everyone && <input type="hidden" name="view" value="everyone" />}
+            {show != null && <input type="hidden" name="show" value={show} />}
             <div className="relative min-w-0 flex-1">
               <IconSearch
                 aria-hidden
@@ -149,7 +150,7 @@ export default function TrainingLogFilterBar({
             {day && (
               <Chip
                 role="filter"
-                href={trainingLogHref({ ...query, everyone, show })}
+                href={trainingLogHref({ ...base, day: null })}
                 current
                 testId="training-log-day-filter"
               >
@@ -175,8 +176,7 @@ export default function TrainingLogFilterBar({
                 <Chip
                   role="filter"
                   href={trainingLogHref({
-                    ...query,
-                    day: day?.date,
+                    ...base,
                     source: null,
                   })}
                   current={query.source == null}
@@ -188,8 +188,7 @@ export default function TrainingLogFilterBar({
                     key={option.value}
                     role="filter"
                     href={trainingLogHref({
-                      ...query,
-                      day: day?.date,
+                      ...base,
                       source: option.value,
                     })}
                     current={query.source === option.value}
@@ -206,8 +205,7 @@ export default function TrainingLogFilterBar({
               <Chip
                 role="filter"
                 href={trainingLogHref({
-                  ...query,
-                  day: day?.date,
+                  ...base,
                   fault: !query.fault,
                 })}
                 current={query.fault}
@@ -220,7 +218,7 @@ export default function TrainingLogFilterBar({
             {query.tag && (
               <Chip
                 role="filter"
-                href={trainingLogHref({ ...query, day: day?.date, tag: null })}
+                href={trainingLogHref({ ...base, tag: null })}
                 current
                 testId="training-log-tag-filter"
               >

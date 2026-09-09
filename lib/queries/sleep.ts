@@ -38,7 +38,7 @@ import {
   shiftDateStr,
   zonedDateParts,
 } from "../date";
-import { getTimezone, getSituationEvents, getFreeDays } from "../settings";
+import { getTimezone, getFreeDays } from "../settings";
 import { effectiveSituationResolver } from "./derived-situations";
 import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
@@ -53,7 +53,6 @@ import {
 import {
   computeSleepRegularity,
   sriTrend,
-  regularityTravelInsight,
   mainSleepNights,
   napSessions,
   typicalBedTime as computeTypicalBedTime,
@@ -725,7 +724,7 @@ export function getSleepRegularityInRange(
 //
 // REQUEST-CACHED because several surfaces on one render ask for the same series
 // (#5010): the dashboard reaches it through `sriTrendArrow`, the protocol samples ask
-// again, and `getSleepRegularityInsight` below re-reads it — each a full pass over the
+// again, including the sustained-drop note — each a full pass over the
 // profile's sleep history. `cache()` is identity outside a Next request
 // (lib/request-cache.ts says so deliberately), so the notify tick and the DB tier
 // behave exactly as before. Keyed on the arguments, so a caller narrowing the window
@@ -747,17 +746,6 @@ export const getSleepRegularityTrend = cache(function getSleepRegularityTrend(
     ...opts,
   });
 });
-
-// The "regularity dropped since travel" insight note, or null. Reuses the trend
-// above and the profile's dated situation change-log (which already tracks
-// travel), so no new state is introduced.
-export function getSleepRegularityInsight(
-  profileId: number,
-  opts?: SleepRegularityOptions
-): string | null {
-  const trend = getSleepRegularityTrend(profileId, opts);
-  return regularityTravelInsight(trend, getSituationEvents(profileId));
-}
 
 // ── the morning waiting window (#2097) ───────────────────────────────────────
 

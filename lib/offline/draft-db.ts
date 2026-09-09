@@ -14,8 +14,15 @@ import {
   openOfflineDb,
   txDone,
 } from "@/lib/offline/idb";
-import { DRAFT_TTL_MS, type FormDraft } from "@/lib/offline/drafts";
-import { guardedWriteNow } from "@/lib/offline/write-gate";
+import {
+  DRAFT_TTL_MS,
+  hasDraftRevision,
+  type FormDraft,
+} from "@/lib/offline/drafts";
+import {
+  guardedWriteNow,
+  type DeviceWriteOutcome,
+} from "@/lib/offline/write-gate";
 
 function store(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(DRAFTS_STORE, mode).objectStore(DRAFTS_STORE);
@@ -74,12 +81,12 @@ function inOrder<T>(key: string, work: () => Promise<T>): Promise<T> {
  * — that refuses the write, and asking for it directly costs one database open instead of
  * two, which matters on the path a person is typing on.
  */
-export function putDraft(draft: FormDraft): Promise<void> {
-  return inOrder(draft.key, async () => {
-    await guardedWriteNow([DRAFTS_STORE], "drafts", (tx) => {
+export function putDraft(draft: FormDraft): Promise<DeviceWriteOutcome> {
+  return inOrder(draft.key, () =>
+    guardedWriteNow([DRAFTS_STORE], "drafts", (tx) => {
       tx.objectStore(DRAFTS_STORE).put(draft);
-    });
-  });
+    })
+  );
 }
 
 /**
@@ -146,6 +153,38 @@ export async function getDraft(
 /** Drop one form's draft — on successful submit, or on explicit discard. */
 export function deleteDraft(key: string): Promise<void> {
   return inOrder(key, () => deleteDraftNow(key));
+}
+
+/** Delete only the exact submitted snapshot; a newer mount/edit owns its row. */
+export function deleteDraftRevision(
+  key: string,
+  writerId: string,
+  revision: number
+): Promise<void> {
+  return inOrder(key, async () => {
+    if (!hasIndexedDB()) return;
+    let db: IDBDatabase | null = null;
+    try {
+      db = await openOfflineDb();
+      const tx = db.transaction(DRAFTS_STORE, "readwrite");
+      const drafts = tx.objectStore(DRAFTS_STORE);
+      const row: FormDraft | undefined = await new Promise(
+        (resolve, reject) => {
+          const req = drafts.get(key);
+          req.onsuccess = () => resolve(req.result as FormDraft | undefined);
+          req.onerror = () => reject(req.error);
+        }
+      );
+      if (row && hasDraftRevision(row, { writerId, revision })) {
+        drafts.delete(key);
+      }
+      await txDone(tx);
+    } catch {
+      /* ignore — a matching draft still expires, and a newer one stays intact */
+    } finally {
+      db?.close();
+    }
+  });
 }
 
 async function deleteDraftNow(key: string): Promise<void> {

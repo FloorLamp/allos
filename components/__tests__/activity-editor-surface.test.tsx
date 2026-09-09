@@ -21,6 +21,7 @@ let discardKind: "discarded" | "kept" = "kept";
 const editorRegion: WebLoggedVia[] = [];
 /** The same, as seen by the workout dock — which sits in that region while CLOSED. */
 const dockRegion: WebLoggedVia[] = [];
+const visitOpen = vi.hoisted(() => vi.fn());
 
 vi.mock("@/app/(app)/training/activity-actions", () => ({
   startWorkout: vi.fn(async (fd: FormData) => {
@@ -91,6 +92,18 @@ function DockStandIn({ onOpen }: { onOpen: () => void }) {
 vi.mock("../WorkoutDock", () => ({ default: DockStandIn }));
 vi.mock("../QuickEntryProvider", () => ({
   useQuickEntry: () => ({ open: vi.fn() }),
+  useQuickEntryVisit: () => ({
+    identity: "test-visit",
+    active: null,
+    open: visitOpen,
+    back: vi.fn(),
+    beginClose: vi.fn(),
+    invalidated: false,
+    returnFocus: null,
+    titleAdornment: null,
+    belowTitle: null,
+  }),
+  QuickEntryVisitBodies: () => null,
 }));
 
 import ActivityEditorProvider, {
@@ -129,6 +142,7 @@ beforeEach(() => {
   discardKind = "kept";
   editorRegion.length = 0;
   dockRegion.length = 0;
+  visitOpen.mockReset();
   window.matchMedia ??= ((q: string) => ({
     matches: false,
     media: q,
@@ -188,6 +202,19 @@ const surfaceOf = (fd: FormData) => fd.get(LOGGED_VIA_FIELD);
 const region = () => editorRegion.at(-1);
 
 describe("the real quick-log sheet, inside the real provider", () => {
+  it("keeps an overlay row in the sheet and hands over its real trigger", async () => {
+    const close = vi.fn();
+    renderShell(<QuickLogSheet open onClose={close} />);
+    await act(async () => {
+      screen.getByTestId("log-sheet-segment-care").click();
+    });
+    const mood = screen.getByTestId("quick-log-log-mood");
+    await act(async () => mood.click());
+
+    expect(visitOpen).toHaveBeenCalledWith("mood", mood);
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it("starts a workout that records `quick-log`, not `page`", async () => {
     renderShell(<QuickLogSheet open onClose={() => {}} />);
     const bolt = await screen.findByTestId("quick-log-live-workout");

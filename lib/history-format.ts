@@ -40,6 +40,7 @@ import { BODY_METRIC_MEASURE_SLUG } from "./body-metric-measures";
 import type { AppRoute } from "./hrefs";
 import type { MergeableRow } from "./timeline-multi";
 import type { TimelineEvent } from "./timeline-format";
+import { isRealIsoDate } from "./date";
 
 // THE CLOSED KIND REGISTRY (#3958), one family at a time and in chip order.
 //
@@ -610,7 +611,7 @@ export function clampHistoryDay(
   todayStr: string
 ): string | undefined {
   const raw = first(value)?.trim();
-  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  if (!isRealIsoDate(raw)) return undefined;
   return raw > todayStr ? todayStr : raw;
 }
 

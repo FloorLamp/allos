@@ -24,6 +24,17 @@
 
 import { getProfilesByTelegramChatId, getTimezone } from "../settings";
 import { now as clockNow } from "../clock";
+import { shiftDateStr, zonedDateParts } from "../date";
+import { createLogger } from "../log";
+import {
+  correctionBundleId,
+  readCorrectionBundle,
+  restampCorrectionBundle,
+  type CorrectionBundle,
+  type CorrectionAnchor,
+  type BundleRestampOutcome,
+  type BundleTimeChoice,
+} from "../bundle-time-correction";
 import {
   burstFrom,
   burstsForMessage,
@@ -37,7 +48,10 @@ import {
   type CorrectionChipToken,
   type TapEvent,
 } from "../correction-time";
-import { correctionMessageBinding } from "./message-pointers";
+import {
+  correctionMessageBinding,
+  correctionBundleBinding,
+} from "./message-pointers";
 import {
   restampFoodEventsCore,
   type FoodRestampOutcome,
@@ -58,6 +72,11 @@ import {
 } from "../queries";
 import {
   keyboardDoseFootprint,
+  parseAllCallback,
+  parseTakeCallback,
+  parseSkipCallback,
+  parseFoodLogCallback,
+  parseFoodProteinCallback,
   replacementWithTitle,
   resolveTapProfile,
   OUTDATED_MESSAGE_TEXT,
@@ -79,13 +98,19 @@ import { getRecentFoodTaps } from "../queries/nutrition";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { countVisibleFoodButtons } from "./food-format";
-import { renderDoseSession, slotSessionForKeyboard } from "./intake";
+import {
+  renderDoseSession,
+  slotSessionForKeyboard,
+  withDoseCorrections,
+} from "./intake";
 
 import { answerCallbackQuery } from "./telegram-api";
 import { closeMessage, rebuildMessage } from "./telegram";
 import type { TelegramCallbackQuery } from "./telegram-api";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";
+
+const log = createLogger("notify");
 
 // Everything a correction tap needs before it can do anything: who is acting, where the
 // message is, and the burst the token anchors on — re-derived from the LEDGER, never
@@ -110,6 +135,12 @@ interface Resolved {
   // showed — and the in-transaction evaluation is what closes it: the predicate reads
   // `notify_messages` at write time, against the burst the transaction itself derived.
   stillBound: (burst: CorrectionBurst) => boolean;
+  bundle?: {
+    anchor: CorrectionAnchor;
+    value: CorrectionBundle;
+    proof: NonNullable<ReturnType<typeof correctionBundleBinding>>;
+    stillBound: (current: CorrectionBundle) => boolean;
+  };
 }
 
 // Refusals, each naming what actually happened. "This burst is gone" is the common one
@@ -192,7 +223,14 @@ async function resolve(
     return null;
   }
   const now = clockNow();
-  const burst = burstFrom(taps(profileId, now), token.fromId);
+  const anchor = { domain: prefixes.kind, id: token.fromId };
+  const bundleId = correctionBundleId(profileId, anchor);
+  const bundle =
+    bundleId == null ? null : readCorrectionBundle(profileId, anchor);
+  const burst =
+    bundleId == null
+      ? burstFrom(taps(profileId, now), token.fromId)
+      : bundle?.burst;
   if (!burst) {
     await answerCallbackQuery(cq.id, NO_BURST_TEXT, { alert });
     return null;
@@ -212,13 +250,29 @@ async function resolve(
   // the picker on a burst this message may no longer show would render offers whose
   // writes this same check is about to refuse. The write cores evaluate the same
   // predicate AGAIN inside their transaction — see `Resolved.stillBound`.
-  const stillBound = correctionWriteBinding(
+  const authorized = () =>
+    resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId))) ===
+    profileId;
+  const legacyBinding = correctionWriteBinding(
     profileId,
     prefixes,
     chatId,
     messageId
   );
-  if (!stillBound(burst)) {
+  const stillBound = (current: CorrectionBurst) =>
+    authorized() && legacyBinding(current);
+  const proof =
+    bundle && typeof cq.data === "string"
+      ? correctionBundleBinding(
+          profileId,
+          prefixes.kind,
+          bundle,
+          { chatId, messageId },
+          slotSessionForKeyboard,
+          cq.data
+        )
+      : null;
+  if (bundle ? !proof : !stillBound(burst)) {
     await answerCallbackQuery(cq.id, notBoundText(prefixes), { alert });
     return null;
   }
@@ -226,22 +280,167 @@ async function resolve(
     profileId,
     chatId,
     messageId,
-    rows,
+    rows: proof?.target.keyboard ?? rows,
     burst,
     now,
     tz: getTimezone(profileId),
     stillBound,
+    ...(bundle && proof
+      ? {
+          bundle: {
+            anchor,
+            value: bundle,
+            proof,
+            stillBound: (current: CorrectionBundle) =>
+              authorized() && proof.stillBound(current),
+          },
+        }
+      : {}),
     ...(typeof cq.message?.text === "string" ? { text: cq.message.text } : {}),
   };
+}
+
+// The await of resolve is a real scheduling gap. Re-read the complete act and
+// captured proof on the far side, and give that same predicate to the outer write
+// transaction. Open/back are subject to the same gate but never earn TapWrote.
+async function handleBundleTime(
+  cq: TelegramCallbackQuery,
+  r: Resolved,
+  token: CorrectionChipToken | CorrectionAtToken,
+  prefixes: CorrectionPrefixes
+): Promise<TapWrote> {
+  const act = r.bundle!;
+  r.now = clockNow();
+  r.tz = getTimezone(r.profileId);
+  const current = readCorrectionBundle(r.profileId, act.anchor);
+  if (!current || !act.stillBound(current)) {
+    await answerCallbackQuery(cq.id, notBoundText(prefixes), { alert: true });
+    return;
+  }
+  if (!isBurstFresh(current.burst, r.now)) {
+    await answerCallbackQuery(cq.id, lapsedText(prefixes), { alert: true });
+    return;
+  }
+  const rebuild = async (
+    picker?: CorrectionBurst,
+    level: CorrectionDay = "today"
+  ) => {
+    // An ack can yield too. Do not repaint a picker after its source, selected
+    // token or managing/unmuted authorization disappeared during that await.
+    const latest = readCorrectionBundle(r.profileId, act.anchor);
+    if (!latest || !act.stillBound(latest)) return;
+    r.now = clockNow();
+    r.tz = getTimezone(r.profileId);
+    const open =
+      picker && isBurstFresh(latest.burst, r.now) ? latest.burst : undefined;
+    if (prefixes.kind === "food") await rebuildFood(r, open, level);
+    else {
+      const dose = latest.members.find(
+        (member) => member.domain === "dose" && member.id === act.anchor.id
+      );
+      await rebuildDose(
+        r,
+        dose?.domain === "dose"
+          ? { doseId: dose.doseId, date: dose.date }
+          : null,
+        open,
+        level
+      );
+    }
+  };
+  let choice: BundleTimeChoice;
+  if ("step" in token) {
+    if (token.step.kind !== "at") {
+      await answerCallbackQuery(cq.id);
+      await rebuild(
+        token.step.kind === "back" ? undefined : current.burst,
+        token.step.kind === "prev" ? "prev" : "today"
+      );
+      return;
+    }
+    choice = token.step;
+  } else {
+    choice = { kind: "chip", minutesBack: token.minutesBack };
+  }
+  const outcome = restampCorrectionBundle(
+    r.profileId,
+    act.anchor,
+    act.value.id,
+    choice,
+    r.now,
+    act.stillBound
+  );
+  const text = bundleRestampText(outcome, prefixes, r.tz, r.now);
+  if (outcome.kind !== "restamped") {
+    await answerCallbackQuery(cq.id, text, { alert: true });
+    return;
+  }
+  // The ledger has committed. Failure to acknowledge or edit cannot turn this
+  // into a refusal or suppress the one sweep that will reconcile its other host.
+  try {
+    await answerCallbackQuery(cq.id, text);
+  } catch (error) {
+    log.warn("bundle correction acknowledgement failed after write", {
+      profileId: r.profileId,
+      error: String(error),
+    });
+  }
+  try {
+    await rebuild();
+  } catch (error) {
+    log.warn("bundle correction rebuild failed after write", {
+      profileId: r.profileId,
+      error: String(error),
+    });
+  }
+  return r.profileId;
+}
+
+function bundleRestampText(
+  outcome: BundleRestampOutcome,
+  prefixes: CorrectionPrefixes,
+  tz: string,
+  now: Date
+): string {
+  if (outcome.kind === "lapsed") return lapsedText(prefixes);
+  if (outcome.kind === "crosses-day") return CROSSES_DAY_TEXT;
+  if (outcome.kind !== "restamped")
+    return RESTAMP_REFUSAL_TEXT[outcome.kind](prefixes);
+  const counts = [
+    outcome.foodCount
+      ? `${outcome.foodCount} serving${outcome.foodCount === 1 ? "" : "s"}`
+      : null,
+    outcome.doseCount
+      ? `${outcome.doseCount} dose${outcome.doseCount === 1 ? "" : "s"}`
+      : null,
+    outcome.practiceCount
+      ? `${outcome.practiceCount} session${outcome.practiceCount === 1 ? "" : "s"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const destination = zonedDateParts(tz, outcome.at);
+  const today = zonedDateParts(tz, now).date;
+  const dayName =
+    destination.date === today
+      ? "today"
+      : destination.date === shiftDateStr(today, -1)
+        ? "yesterday"
+        : destination.date;
+  const day = outcome.movedDays
+    ? ` — ${outcome.movedDays} servings moved to ${dayName}`
+    : "";
+  const schedule = outcome.crossedMidnight
+    ? " — dose schedule day unchanged"
+    : "";
+  return `Whole act time updated to ${destination.hhmm}: ${counts}${day}${schedule} ${GLYPH.eventTime}`;
 }
 
 // ---- Food (#2019) ----------------------------------------------------------
 
 // The nudge a food correction message should be rebuilt as. The window and day come off
-// the LIVE keyboard's surviving `food:` tokens — the picker deliberately keeps them, so
-// even mid-drill-down the message still says which nudge it is. A keyboard with none
-// (a token replayed onto some other message) falls back to the profile's current day,
-// which is the only honest answer left.
+// the live keyboard and, for a proven bundle, its initial receipt. A consumed
+// keyboard cannot lose the original window/date. No known context means no rebuild.
 function foodRebuild(
   profileId: number,
   rows: InlineKeyboard,
@@ -249,14 +448,21 @@ function foodRebuild(
   // The message being rebuilt (#2264), so the correction rows stay bound to it.
   ref: { chatId: string | number; messageId: number },
   picker?: CorrectionBurst,
-  pickerLevel: CorrectionDay = "today"
+  pickerLevel: CorrectionDay = "today",
+  receipt: InlineKeyboard = [],
+  expectedDate?: string
 ): NotificationMessage | null {
   let window: FoodNudgeWindow | null = null;
   let date: string | null = null;
-  for (const row of rows) {
+  for (const row of [...rows, ...receipt]) {
     for (const btn of row) {
       const d = btn.callback_data;
       if (typeof d !== "string") continue;
+      if (expectedDate != null) {
+        const parsed = parseFoodLogCallback(d) ?? parseFoodProteinCallback(d);
+        if (parsed?.profileId !== profileId || parsed.date !== expectedDate)
+          continue;
+      }
       // The token may carry an origin marker in a segment of its own (#3087), so the
       // window is found by ASKING which field is a window rather than by counting to
       // one — a fixed index silently read the profile id the day the marker landed.
@@ -295,7 +501,9 @@ async function rebuildFood(
     r.now,
     { chatId: r.chatId, messageId: r.messageId },
     picker,
-    level
+    level,
+    r.bundle?.proof.target.receiptKeyboard,
+    r.bundle?.proof.target.date
   );
   if (rebuilt)
     await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
@@ -323,6 +531,7 @@ export async function handleFoodTimeChip(
 ): Promise<TapWrote> {
   const r = await resolve(cq, token, getRecentFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
+  if (r.bundle) return handleBundleTime(cq, r, token, FOOD_TIME_PREFIXES);
   const outcome = restampFoodEventsCore(
     r.profileId,
     token.fromId,
@@ -353,6 +562,7 @@ export async function handleFoodTimeAt(
 ): Promise<TapWrote> {
   const r = await resolve(cq, token, getRecentFoodTaps, FOOD_TIME_PREFIXES);
   if (!r) return;
+  if (r.bundle) return handleBundleTime(cq, r, token, FOOD_TIME_PREFIXES);
   // `open` and `back` WRITE NOTHING — they swap the picker in and out — so the ack
   // precedes the edit (#2418's ordering rule, the same one the offer tail follows).
   if (token.step.kind === "open") {
@@ -436,13 +646,28 @@ function doseRebuild(
   // fully-confirmed session has no take/skip buttons left, so the ledger is the only
   // remaining record of which session this message is about. `slotSessionForKeyboard`
   // derives the SLOT from the dose id, so none is passed.
-  anchor: { doseId: number; date: string } | null
+  anchor: { doseId: number; date: string } | null,
+  receipt: InlineKeyboard = [],
+  expectedDate?: string
 ): NotificationMessage | null {
-  const footprint = keyboardDoseFootprint(rows);
+  const contextRows = [...rows, ...receipt].map((row) =>
+    expectedDate == null
+      ? row
+      : row.filter((button) => {
+          const parsed =
+            parseTakeCallback(button.callback_data) ??
+            parseSkipCallback(button.callback_data) ??
+            parseAllCallback(button.callback_data);
+          return (
+            parsed?.profileId === profileId && parsed.date === expectedDate
+          );
+        })
+  );
+  const footprint = keyboardDoseFootprint(contextRows);
   const doseIds = [...footprint.doseIds];
   const slots = [...footprint.slots];
   let date: string | null = null;
-  for (const row of rows) {
+  for (const row of contextRows) {
     for (const btn of row) {
       const d = btn.callback_data;
       if (typeof d !== "string") continue;
@@ -486,8 +711,28 @@ async function rebuildDose(
   picker?: CorrectionBurst,
   level: CorrectionDay = "today"
 ): Promise<void> {
-  const rebuilt = doseRebuild(r.profileId, r.rows, anchor);
+  const rebuilt = doseRebuild(
+    r.profileId,
+    r.rows,
+    anchor,
+    r.bundle?.proof.target.receiptKeyboard,
+    r.bundle?.proof.target.date
+  );
   if (!rebuilt) return;
+  if (r.bundle) {
+    await rebuildMessage(
+      r.profileId,
+      r.chatId,
+      r.messageId,
+      withDoseCorrections(r.profileId, rebuilt, {
+        now: r.now,
+        ref: { chatId: r.chatId, messageId: r.messageId },
+        pickerAnchor: picker?.fromId,
+        pickerLevel: level,
+      })
+    );
+    return;
+  }
   // The correction ride-along is appended by the same builder the reminder itself uses,
   // so the picker and the chips ride the rebuilt message exactly as they rode the one
   // that was tapped — and once the burst is corrected, the BODY states the stored time
@@ -567,6 +812,7 @@ export async function handleDoseTimeChip(
     true
   );
   if (!r) return;
+  if (r.bundle) return handleBundleTime(cq, r, token, DOSE_TIME_PREFIXES);
   const outcome = restampDoseLogsCore(
     r.profileId,
     token.fromId,
@@ -592,6 +838,7 @@ export async function handleDoseTimeAt(
     true
   );
   if (!r) return;
+  if (r.bundle) return handleBundleTime(cq, r, token, DOSE_TIME_PREFIXES);
   // Pure keyboard edits, ack first (#2418).
   if (token.step.kind === "open") {
     await answerCallbackQuery(cq.id);

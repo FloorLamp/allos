@@ -1,4 +1,3 @@
-import type Database from "better-sqlite3";
 import crypto from "node:crypto";
 import canonicalSeed from "../canonical-result-definitions.json";
 import {
@@ -23,6 +22,7 @@ import { clockOverride, now } from "../clock";
 import { dateStrInTz, utcInstant } from "../date";
 import { resolveTimezone } from "../timezone";
 import { createLogger } from "../log";
+import type { MaintenanceDatabase } from "../write-revision";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
 // versioned migration runner (lib/migrations/runner.ts) has brought the schema to
@@ -95,7 +95,7 @@ import { createLogger } from "../log";
 // (the canonical_result_definitions rows) must precede the flag reconcile, which reads
 // both. This mirrors the relative order these calls had in the pre-runner
 // migrate() tail.
-export function bootTasks(db: Database.Database): void {
+export function bootTasks(db: MaintenanceDatabase): void {
   // Clock-seam guard (issue #990): ALLOS_TEST_NOW freezes the app's notion of "now"
   // (lib/clock.ts) and is a TEST HOOK only. Warn loudly on every boot when it is set
   // so a misconfigured production instance — running on a frozen clock — is visible in
@@ -188,7 +188,7 @@ export function bootTasks(db: Database.Database): void {
 // "backups enabled but never ran" alarm (#464). On an instance upgrading INTO this
 // change the marker is set now, so its age-grace window resets once (a bounded
 // 72h) — an acceptable one-time cost documented at the health endpoint.
-export function seedInstallMarker(db: Database.Database) {
+export function seedInstallMarker(db: MaintenanceDatabase) {
   const existing = db
     .prepare("SELECT value FROM settings WHERE key = 'install_first_boot_at'")
     .get() as { value?: string } | undefined;
@@ -223,7 +223,7 @@ export function seedInstallMarker(db: Database.Database) {
 // (extractionLeaseMinutes), so interpolating it into the datetime modifier is injection-
 // safe. Exported so the DB-tier test can drive it with a controlled window.
 export function resetInterruptedWork(
-  db: Database.Database,
+  db: MaintenanceDatabase,
   minutes: number = extractionLeaseMinutes()
 ): void {
   const mins =
@@ -317,7 +317,7 @@ export function resetInterruptedWork(
 // one printed to the log exactly once so the operator can capture it. Username
 // from ADMIN_USERNAME (default "admin"). Runs on every boot, so it also upgrades
 // an existing pre-auth database on its next boot.
-export function bootstrapAuth(db: Database.Database) {
+export function bootstrapAuth(db: MaintenanceDatabase) {
   const count = (
     db.prepare("SELECT COUNT(*) AS c FROM logins").get() as { c: number }
   ).c;
@@ -421,7 +421,7 @@ export function bootstrapAuth(db: Database.Database) {
 }
 
 // Seed the timezone setting from the TZ env on first boot.
-export function seedTimezoneFromEnv(db: Database.Database) {
+export function seedTimezoneFromEnv(db: MaintenanceDatabase) {
   const existing = db
     .prepare("SELECT value FROM settings WHERE key = 'timezone'")
     .get() as { value?: string } | undefined;
@@ -453,7 +453,7 @@ export function seedTimezoneFromEnv(db: Database.Database) {
 // seedTimezoneFromEnv pattern) — and a fresh instance with no AI env seeds nothing
 // (both tiers stay unset → offline degradation, unchanged). Uses the passed db handle
 // (the singleton isn't assigned yet inside createDb).
-export function seedAiTiersFromEnv(db: Database.Database) {
+export function seedAiTiersFromEnv(db: MaintenanceDatabase) {
   // Heavy tier setting keys, inlined here (NOT imported from lib/settings/ai-tiers) to
   // keep this module off the settings import — see the note in bootTasks. They mirror
   // the `ai_<tier>_<field>` scheme lib/settings/ai-tiers reads.
@@ -491,7 +491,7 @@ export function seedAiTiersFromEnv(db: Database.Database) {
 // seedAiTiersFromEnv / bootTasks. If ANY smtp_* setting is already stored, the admin
 // (or a prior seed) owns the config and we never re-seed; a fresh instance with no
 // SMTP env seeds nothing.
-export function seedSmtpFromEnv(db: Database.Database) {
+export function seedSmtpFromEnv(db: MaintenanceDatabase) {
   const keys = [
     "smtp_host",
     "smtp_port",
@@ -538,7 +538,7 @@ export function seedSmtpFromEnv(db: Database.Database) {
 // startup). A name present in the JSON also promotes the row to source='seed',
 // so a biomarker first discovered by AI (source='ai') adopts curated ranges
 // once the JSON gains an entry for it. Idempotent.
-export function seedCanonicalResultDefinitions(db: Database.Database) {
+export function seedCanonicalResultDefinitions(db: MaintenanceDatabase) {
   const rows = (canonicalSeed as { definitions?: any[] }).definitions ?? [];
   if (rows.length === 0) return;
   // bootTasks is version-agnostic and can run against a schema that predates the
@@ -636,7 +636,7 @@ export function seedCanonicalResultDefinitions(db: Database.Database) {
 // means nothing relevant changed, so we skip the full scan. After reconciling, the
 // new signature is recorded so it runs once per change. (An existing DB with no
 // stored signature always reconciles once on first boot.)
-export function reconcileFlagsIfCanonicalChanged(db: Database.Database) {
+export function reconcileFlagsIfCanonicalChanged(db: MaintenanceDatabase) {
   const sig = canonicalFlagsSignature();
   const row = db
     .prepare("SELECT value FROM settings WHERE key = 'canonical_flags_sig'")
@@ -661,7 +661,7 @@ export function reconcileFlagsIfCanonicalChanged(db: Database.Database) {
 // cleared when optimal). Mirrors queries.reconcileFlags but runs at boot time,
 // where importing queries would be circular — it reads the canonical ranges
 // straight from the table.
-function reconcileNonOptimalFlags(db: Database.Database) {
+function reconcileNonOptimalFlags(db: MaintenanceDatabase) {
   // Select the #718 cycle-phase column only when it exists (migration 068) — bootTasks
   // is version-agnostic and can run against an earlier-revision schema (a migration
   // test that boots a subset). Mirrors the loinc guard below.

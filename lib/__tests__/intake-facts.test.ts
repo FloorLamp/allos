@@ -65,6 +65,25 @@ function stateOf(
 }
 
 describe("intake fact summary (#3216)", () => {
+  it("keeps missing and zero supply visible outside More", () => {
+    const missing = intakeFactSummary(base());
+    expect(missing.chips.find((chip) => chip.key === "supply")?.label).toBe(
+      "supply · not tracked"
+    );
+    expect(stateOf(base(), "supply")).toBe("missing");
+    expect(missing.more).not.toContain("supply");
+    expect(
+      intakeFactSummary(base({ quantityOnHand: "0" })).chips.find(
+        (chip) => chip.key === "supply"
+      )?.label
+    ).toBe("0 on hand");
+    expect(
+      intakeFactSummary(
+        base({ supplyLabel: "shared bottle · no count" })
+      ).chips.find((chip) => chip.key === "supply")?.label
+    ).toBe("shared bottle · no count");
+  });
+
   it("a missing essential is stated as missing, not omitted", () => {
     // The person has to be able to see what the form still needs. An absent dose that
     // rendered nothing would make Add look complete.

@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { SqlPrepare } from "../lib/write-revision";
 
 // Per-profile timezone overrides are a fixture design decision, not incidental
 // setup. The e2e clock rotates the instance timezone so frozen now reads near
@@ -150,7 +150,7 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
 export type FixtureTimezoneOverride = keyof typeof FIXTURE_TIMEZONE_OVERRIDES;
 
 export function setFixtureTimezone(
-  db: Pick<Database.Database, "prepare">,
+  db: SqlPrepare,
   profileId: number,
   declaration: FixtureTimezoneOverride,
   timezone: string
@@ -171,10 +171,7 @@ export function setFixtureTimezone(
 // `setFixtureTimezone` call removes the write but not the row a previous seed left
 // behind, so a reused dev database would keep honouring an override the source no
 // longer contains. CI builds a fresh template every run and would never notice.
-export function clearFixtureTimezone(
-  db: Pick<Database.Database, "prepare">,
-  profileId: number
-): void {
+export function clearFixtureTimezone(db: SqlPrepare, profileId: number): void {
   db.prepare(
     `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'timezone'`
   ).run(profileId);

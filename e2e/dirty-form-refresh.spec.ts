@@ -1,7 +1,15 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledFill } from "./helpers";
-import { frozenNow, workerDbPath } from "./worker-env";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { shiftDateStr } from "@/lib/date";
+import {
+  appContent,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
+import { frozenNow, workerDbPath, workerDir } from "./worker-env";
 import {
   closeVisitFact,
   openVisitFact,
@@ -85,6 +93,49 @@ function seedAppointmentBehindThePage() {
   }
 }
 
+/** A separate process commits through the same owner used by app writers. */
+function commitAppointmentBehindThePage() {
+  const when = new Date(frozenNow().getTime() + 3 * 24 * 3600 * 1000);
+  execFileSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "--eval",
+      `process.chdir(process.env.ALLOS_E2E_WRITER_DIR);
+       const { db, rawDb, writeTx } = require(process.env.ALLOS_E2E_WRITER_MODULE);
+       const [date, time, title] = JSON.parse(process.env.ALLOS_E2E_WRITER_VALUES);
+       try {
+         const revision = () => db.prepare("SELECT revision FROM data_write_revision WHERE singleton = 1").get().revision;
+         const before = revision();
+         writeTx(() => db.prepare(
+           "INSERT INTO appointments (profile_id, date, time_of_day, title, status) VALUES (1, ?, ?, ?, 'scheduled')"
+         ).run(date, time, title));
+         if (revision() <= before) throw new Error("Appointment commit did not advance the write revision");
+       } finally { rawDb.close(); }`,
+    ],
+    {
+      cwd: process.cwd(),
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        ALLOS_E2E_TEST_HARNESS: "1",
+        ALLOS_TEST_NOW: frozenNow().toISOString(),
+        ALLOS_DB_PATH: workerDbPath(),
+        TSX_TSCONFIG_PATH: path.resolve("tsconfig.json"),
+        ALLOS_E2E_WRITER_DIR: workerDir(),
+        ALLOS_E2E_WRITER_MODULE: path.resolve("lib/db.ts"),
+        ALLOS_E2E_WRITER_VALUES: JSON.stringify([
+          when.toISOString().slice(0, 10),
+          when.toISOString().slice(11, 16),
+          BEHIND,
+        ]),
+      },
+    }
+  );
+}
+
 /** Park a document mid-extraction so the toaster polls at its fast cadence. */
 function seedProcessingDocument() {
   const handle = new Database(DB_PATH);
@@ -122,6 +173,156 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
   // leftover row would make the completion toast ambiguous.
   test.beforeEach(cleanup);
   test.afterAll(cleanup);
+
+  test("an external commit waits for the form, while the acting save needs no extra refresh (#3075)", async ({
+    page,
+  }) => {
+    // Natural poll intervals establish observation and its completed
+    // continuation. No accelerated clock or synthetic refresh signal is used.
+    test.setTimeout(120_000);
+    const nextFreshness = () =>
+      page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/freshness" &&
+          response.request().method() === "GET",
+        { timeout: 40_000 }
+      );
+    const [mounted] = await Promise.all([
+      nextFreshness(),
+      page.goto("/records/history/visits"),
+    ]);
+    const upcoming = appContent(page).getByTestId("visits-upcoming");
+    await expect(upcoming).toBeVisible();
+    const main = page.getByRole("main");
+    const registry = page.getByTestId("dirty-form-registry"); // testid-scope-ok: the provider's single hidden counter is outside streamed app content
+    const behind = upcoming
+      .getByTestId("appointment-row")
+      .filter({ hasText: BEHIND });
+    await expect(main).toHaveAttribute("data-write-revision", /^\d+$/);
+    await expect(main).toHaveAttribute("data-rendered-at", /^\d+$/);
+    expect(mounted.status()).toBe(200);
+    const mountedPayload = (await mounted.json()) as {
+      profileId: number;
+      revision: string;
+    };
+    expect(mountedPayload.profileId).toBe(1);
+    // The route handler's first boot can commit its canonical seed after the
+    // initial page render. Let that real startup refresh land before editing.
+    await expect(main).toHaveAttribute(
+      "data-write-revision",
+      mountedPayload.revision
+    );
+    const settled = await nextFreshness();
+    expect(settled.status()).toBe(200);
+    expect(await settled.json()).toEqual(mountedPayload);
+    const initialRevision = mountedPayload.revision;
+    const initialRender = await main.getAttribute("data-rendered-at");
+    const initialRefreshes = Number(
+      await registry.getAttribute("data-refreshes")
+    );
+    await expect(registry).toHaveAttribute("data-owed", "0");
+    await expect(behind).toHaveCount(0);
+
+    await hydratedClick(
+      page,
+      appContent(page).getByTestId("add-visit-panel-toggle")
+    );
+    const dialog = page.getByRole("dialog", { name: "Add visit" });
+    await openVisitFact(dialog, "reason");
+    const title = dialog.getByLabel("Reason / title");
+    await title.fill(MARKER);
+    await expect(registry).toHaveAttribute("data-dirty", "1");
+
+    commitAppointmentBehindThePage();
+    const observation = await nextFreshness();
+    expect(observation.status()).toBe(200);
+    const external = (await observation.json()) as {
+      profileId: number;
+      revision: string;
+    };
+    expect(external.profileId).toBe(1);
+    expect(BigInt(external.revision)).toBeGreaterThan(BigInt(initialRevision));
+    await expect(registry).toHaveAttribute("data-owed", "1");
+    await expect(registry).toHaveAttribute(
+      "data-refreshes",
+      String(initialRefreshes)
+    );
+    await expect(behind).toHaveCount(0);
+    await expect(title).toHaveValue(MARKER);
+
+    await title.fill("");
+    await title.blur();
+    await expect(registry).toHaveAttribute(
+      "data-refreshes",
+      String(initialRefreshes + 1)
+    );
+    await expect(registry).toHaveAttribute("data-owed", "0");
+    await expect(behind).toBeVisible();
+    await expect(main).toHaveAttribute(
+      "data-write-revision",
+      external.revision
+    );
+    await expect(main).not.toHaveAttribute("data-rendered-at", initialRender!);
+
+    const beforeActionRender = await main.getAttribute("data-rendered-at");
+    await title.fill(MARKER);
+    await settledClick(
+      page,
+      dialog.getByRole("button", { name: "Add", exact: true })
+    );
+    await expect(
+      page.getByText("Appointment saved", { exact: true })
+    ).toBeVisible();
+    await expect(
+      upcoming.getByTestId("appointment-row").filter({ hasText: MARKER })
+    ).toBeVisible();
+    await expect(main).not.toHaveAttribute(
+      "data-write-revision",
+      external.revision
+    );
+    await expect(main).not.toHaveAttribute(
+      "data-rendered-at",
+      beforeActionRender!
+    );
+    await expect(main).toHaveAttribute("data-write-revision", /^\d+$/);
+    await expect(main).toHaveAttribute("data-rendered-at", /^\d+$/);
+    const actionRevision = (await main.getAttribute("data-write-revision"))!;
+    const actionRender = (await main.getAttribute("data-rendered-at"))!;
+    expect(BigInt(actionRevision)).toBeGreaterThan(BigInt(external.revision));
+
+    let first = await nextFreshness();
+    expect(first.status()).toBe(200);
+    let firstPayload = (await first.json()) as {
+      profileId: number;
+      revision: string;
+    };
+    if (firstPayload.revision === external.revision) {
+      // A check started before the action may finish after its returned tree.
+      expect(firstPayload.profileId).toBe(1);
+      first = await nextFreshness();
+      expect(first.status()).toBe(200);
+      firstPayload = (await first.json()) as {
+        profileId: number;
+        revision: string;
+      };
+    }
+    expect(firstPayload).toEqual({ profileId: 1, revision: actionRevision });
+    // A network response alone can precede the watcher's continuation. Its
+    // next single-flight request proves the previous response was handled.
+    const following = await nextFreshness();
+    expect(following.status()).toBe(200);
+    expect(await following.json()).toEqual({
+      profileId: 1,
+      revision: actionRevision,
+    });
+    await expect(registry).toHaveAttribute("data-owed", "0");
+    await expect(registry).toHaveAttribute(
+      "data-refreshes",
+      String(initialRefreshes + 1)
+    );
+    await expect(main).toHaveAttribute("data-write-revision", actionRevision);
+    await expect(main).toHaveAttribute("data-rendered-at", actionRender);
+  });
 
   test("a background extraction finishing mid-edit cannot empty the Add-visit form", async ({
     page,
@@ -282,7 +483,7 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     await expect(dialog.getByTestId("visit-fact-when")).toContainText("14:30");
   });
 
-  test("a poll that observes a finished job does not repaint the tree under a dirty form", async ({
+  test("a poll that observes a finished job waits for a date-only edit (#4986)", async ({
     page,
   }) => {
     test.slow();
@@ -299,11 +500,17 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
 
     await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
     const dialog = page.getByRole("dialog", { name: "Add visit" });
-    // This test fills and empties the same field repeatedly, so its editor stays open
-    // throughout; the closed-panel case is pinned by the test above.
-    await openVisitFact(dialog, "reason");
-    const title = dialog.getByLabel("Reason / title");
-    await settledFill(page, title, MARKER);
+    // Only the date changes; touching a named text field would hide a missing
+    // DateField bridge. Its visible input formats the canonical hidden value.
+    await openVisitFact(dialog, "when");
+    const date = dialog.getByLabel("Date", { exact: true });
+    const canonicalDate = dialog.locator('input[name="date"]');
+    const originalDate = await canonicalDate.inputValue();
+    const editedDate = shiftDateStr(frozenNow().toISOString().slice(0, 10), 2);
+    await hydratedClick(page, date);
+    await expect(registry).toHaveAttribute("data-dirty", "0");
+    await date.fill(editedDate);
+    await page.keyboard.press("Escape");
     await expect(registry).toHaveAttribute("data-dirty", "1");
 
     // Two background events at once, which is the realistic shape: the extraction
@@ -328,13 +535,14 @@ test.describe("Chrome refreshes wait for a half-typed record form (#1878)", () =
     await expect(registry).toHaveAttribute("data-owed", "1");
     await expect(registry).toHaveAttribute("data-refreshes", "0");
     await expect(behind).toHaveCount(0);
+    await expect(canonicalDate).toHaveValue(editedDate);
 
     // The user finishes with the field (undone, not submitted — this test never
     // writes through the UI). The owed repaint lands, once, CARRYING the new row:
     // deferred was never dropped, and what finally arrives is current data rather
     // than a replay of the moment that asked for it.
-    await title.fill("");
-    await title.blur();
+    await date.fill(originalDate);
+    await date.blur();
     await expect(registry).toHaveAttribute("data-dirty", "0");
     await expect(registry).toHaveAttribute("data-refreshes", "1");
     await expect(registry).toHaveAttribute("data-owed", "0");

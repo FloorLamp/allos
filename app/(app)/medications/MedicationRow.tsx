@@ -25,6 +25,9 @@ import {
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
 import type { PoolChipData } from "@/lib/queries/intake";
+import OfferInPlace from "@/components/OfferInPlace";
+import type { OfferFamily } from "@/lib/offers";
+import { trackSupplyAskedKey } from "@/lib/dismissal-keys";
 import RefillButton from "@/components/medications/RefillButton";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import OverflowMenu, {
@@ -52,6 +55,7 @@ export default function MedicationRow({
   strip,
   refillRate,
   poolChip = null,
+  trackSupplyOffer = null,
   prnRedoseLine = null,
   monitoringNote = null,
   heldBy = null,
@@ -66,6 +70,7 @@ export default function MedicationRow({
   refillRate: DoseRate | null;
   // The shared-bottle chip when this med draws from a pool (#1374).
   poolChip?: PoolChipData | null;
+  trackSupplyOffer?: OfferFamily["copy"] | null;
   prnRedoseLine?: string | null;
   // The "Requires monitoring: …" note (issue #995) — the curated labs a clinician
   // typically watches while on this drug. Informational; absent for unmonitored meds.
@@ -115,14 +120,17 @@ export default function MedicationRow({
   const unresolved = unresolvedCount(sideEffects);
   const subline = med.brand?.trim() || null;
   const medMeta = medicationMetaLine(med);
-  const lowSupply = isLowSupply(
-    daysOfSupplyForItem(
-      med.quantity_on_hand,
-      med.qty_per_dose,
-      refillRate,
-      doses.length
-    )
-  );
+  const lowSupply =
+    med.supply_id != null
+      ? !!poolChip?.low
+      : isLowSupply(
+          daysOfSupplyForItem(
+            med.quantity_on_hand,
+            med.qty_per_dose,
+            refillRate,
+            doses.length
+          )
+        );
   const doseLines = doses.map((dose) =>
     formatMedicationDoseLine({
       amount: dose.amount,
@@ -138,6 +146,14 @@ export default function MedicationRow({
       data-testid="medication-row"
       className={`py-4 first:pt-0 last:pb-0 ${menuOpen ? "relative z-20" : ""}`}
     >
+      {canWrite && trackSupplyOffer && (
+        <OfferInPlace
+          dedupeKey={trackSupplyAskedKey(med.id)}
+          familyId="track-supply"
+          supplyId={med.supply_id}
+          {...trackSupplyOffer}
+        />
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <Link
@@ -255,6 +271,7 @@ export default function MedicationRow({
             {lowSupply && (
               <RefillButton
                 itemId={med.id}
+                supplyId={med.supply_id}
                 hasLastFill={med.last_fill_size != null}
                 lastFillSize={med.last_fill_size}
                 // How long a FULL fill lasts (not how much is left) — the same

@@ -1,10 +1,11 @@
 // PURE row → search-result text projections for the second-generation entity
-// domains (issue #1595). One function per domain: it takes the row's OWN fields and
-// returns the two lines the palette (and a Q&A citation) renders — nothing computed,
-// nothing interpreted, no DB. The DB fan-out in lib/queries/search.ts decides WHICH
-// rows match and owns the href; this module decides how each row READS, so the
-// wording is unit-tested here (lib/__tests__/search-projections.test.ts) instead of
-// hiding inside a SQL mapper.
+// domains (issue #1595). One function per domain: it takes the row's OWN fields plus
+// the reader's display shape and returns the two lines the palette (and a Q&A
+// citation) renders — no DB, nothing interpreted. The DB fan-out in
+// lib/queries/search.ts decides WHICH rows match, resolves the SearchDisplay once,
+// and owns the href; this module decides how each row READS, so the wording is
+// unit-tested here (lib/__tests__/search-projections.test.ts) instead of hiding
+// inside a SQL mapper.
 //
 // Every title routes through the domain's OWN canonical one-line label — the same
 // `…DisplayLabel` the list page, the passport, and the import listing use
@@ -17,6 +18,9 @@
 // (specialty, then NPI or locality).
 
 import { dentalDisplayLabel, dentalStatusLabel } from "./dental";
+import { isRealIsoDate } from "./date";
+import { formatMonthDay, type DisplayFormatPrefs } from "./format-date";
+import type { DisplayText, LocalDay } from "./temporal-types";
 import {
   modalityLabel,
   studyDisplayLabel,
@@ -53,16 +57,44 @@ export interface SearchHitText {
 // report_date, procedure_date, observed_date, practice_logs.date, a protocol's
 // window). It is not an instant→day conversion and must not be used as one: the one
 // caller that held an INSTANT (a document's uploaded_at) converts through the
-// profile's zone before it gets here (#3836). The ONE place the trim happens for
-// search text; lib/queries/search.ts reuses it for a hit's `date` field so a subtitle
-// and the recency tiebreak can never disagree.
-export function isoDay(value: string | null | undefined): string | null {
-  return value ? value.slice(0, 10) : null;
+// profile's zone before it gets here (#3836). Routing through `isRealIsoDate` is what
+// mints the `LocalDay` — a cast is a lint error — so a value that is not a real day
+// becomes null rather than reaching display or ranking. The ONE place the trim
+// happens for search: lib/queries/search.ts reuses it for a hit's `date` field and
+// searchDayText below formats the same result, so the printed subtitle and the
+// recency tiebreak can never name different days.
+export function isoDay(value: string | null | undefined): LocalDay | null {
+  const day = value?.slice(0, 10);
+  return isRealIsoDate(day) ? day : null;
+}
+
+// What a printed day needs to read in the login's own shape: the acting login's
+// preferences and the profile-local today its auto-year rule compares against. The
+// fan-out resolves it once and hands it down, so no projection reaches for settings.
+export interface SearchDisplay {
+  prefs: DisplayFormatPrefs;
+  today: string;
+}
+
+// A stored day as DISPLAY COPY (#3492/#3545 — never the storage `YYYY-MM-DD` in user
+// text). The returned DisplayText is no longer a LocalDay, which is what keeps a
+// formatted day and a machine-read one from being swapped for each other.
+export function searchDayText(
+  value: string | null | undefined,
+  display: SearchDisplay
+): DisplayText | null {
+  const day = isoDay(value);
+  return day
+    ? formatMonthDay(day, display.prefs, { today: display.today })
+    : null;
 }
 
 // Join the parts a subtitle is built from with the palette's separator, dropping
 // blanks. Returns null (not "") when nothing survives.
-function subtitleOf(parts: (string | null | undefined)[]): string | null {
+// Preserve each element's type; widening a mixed array to string[] erases LocalDay.
+export function subtitleOf<
+  const Parts extends readonly (string | null | undefined)[],
+>(parts: Parts & readonly (DisplayText | null | undefined)[]): string | null {
   const joined = parts
     .map((p) => (p == null ? "" : String(p).trim()))
     .filter((p) => p !== "")
@@ -87,12 +119,15 @@ export function snippet(
 // since #2232 every stored day window (a protocol's end_date, an illness episode's
 // end_date) is inclusive, and lib/date-range.ts no longer expresses any other bound.
 // An open window reads "since <start>"; a start-less closed one "until <last day>".
-export function rangeText(range: {
-  start: string | null;
-  end: string | null;
-}): string | null {
-  const start = isoDay(range.start);
-  const lastDay = isoDay(range.end);
+export function rangeText(
+  range: {
+    start: string | null;
+    end: string | null;
+  },
+  display: SearchDisplay
+): string | null {
+  const start = searchDayText(range.start, display);
+  const lastDay = searchDayText(range.end, display);
   if (start && lastDay)
     return start === lastDay ? start : `${start} → ${lastDay}`;
   if (start) return `since ${start}`;
@@ -168,13 +203,14 @@ export function imagingHitText(
     | "impression"
     | "report_narrative"
     | "indication"
-  >
+  >,
+  display: SearchDisplay
 ): SearchHitText {
   return {
     title: studyDisplayLabel(row) || modalityLabel(row.modality),
     subtitle: subtitleOf([
       snippet(studyFindingText(row)) ?? snippet(row.indication),
-      isoDay(row.study_date),
+      searchDayText(row.study_date, display),
     ]),
   };
 }
@@ -195,7 +231,8 @@ export function genomicHitText(
     | "result_type"
     | "source_lab"
     | "report_date"
-  >
+  >,
+  display: SearchDisplay
 ): SearchHitText {
   return {
     title: variantDisplayLabel(row),
@@ -204,7 +241,7 @@ export function genomicHitText(
         ? significanceLabel(row.significance)
         : resultTypeLabel(row.result_type),
       row.source_lab,
-      isoDay(row.report_date),
+      searchDayText(row.report_date, display),
     ]),
   };
 }
@@ -218,14 +255,15 @@ export function dentalHitText(
   row: Pick<
     DentalProcedure,
     "name" | "tooth" | "surface" | "status" | "procedure_date" | "finding"
-  >
+  >,
+  display: SearchDisplay
 ): SearchHitText {
   return {
     title: dentalDisplayLabel(row),
     subtitle: subtitleOf([
       dentalStatusLabel(row.status as DentalStatus),
       snippet(row.finding, 60),
-      isoDay(row.procedure_date),
+      searchDayText(row.procedure_date, display),
     ]),
   };
 }
@@ -247,6 +285,7 @@ export function skinHitText(
     | "size_mm"
     | "observed_date"
   >,
+  display: SearchDisplay,
   observationCount = 1
 ): SearchHitText {
   const size = head.size_mm != null ? `${head.size_mm} mm` : null;
@@ -259,28 +298,29 @@ export function skinHitText(
       skinLesionStatusLabel(head.status),
       size,
       serial,
-      isoDay(head.observed_date),
+      searchDayText(head.observed_date, display),
     ]),
   };
 }
 
 // ── Illness episodes (#856) ──────────────────────────────────────────────────
 
-// An episode as a hit: the situation over its window and outcome. `end_date` is the
-// inclusive last active day (#2232) — an episode last active on the 7th reads
-// "→ 2026-03-07".
-export function episodeHitText(row: {
-  situation: string;
-  start_date: string | null;
-  end_date: string | null;
-  outcome: string | null;
-}): SearchHitText {
+// An episode's window ends on its inclusive last active day.
+export function episodeHitText(
+  row: {
+    situation: string;
+    start_date: string | null;
+    end_date: string | null;
+    outcome: string | null;
+  },
+  display: SearchDisplay
+): SearchHitText {
   const ongoing = row.end_date == null;
   return {
     title: row.situation.trim() || "Illness episode",
     subtitle: subtitleOf([
       ongoing ? "Ongoing" : null,
-      rangeText({ start: row.start_date, end: row.end_date }),
+      rangeText({ start: row.start_date, end: row.end_date }, display),
       snippet(row.outcome, 60),
     ]),
   };
@@ -290,18 +330,21 @@ export function episodeHitText(row: {
 
 // A protocol as a hit: its name over its window and the situation it activates. A
 // protocol's `end_date` IS its last day, so the range uses the inclusive bound.
-export function protocolHitText(row: {
-  name: string;
-  start_date: string | null;
-  end_date: string | null;
-  situation: string | null;
-}): SearchHitText {
+export function protocolHitText(
+  row: {
+    name: string;
+    start_date: string | null;
+    end_date: string | null;
+    situation: string | null;
+  },
+  display: SearchDisplay
+): SearchHitText {
   const ongoing = row.end_date == null;
   return {
     title: row.name.trim() || "Protocol",
     subtitle: subtitleOf([
       ongoing ? "Ongoing" : null,
-      rangeText({ start: row.start_date, end: row.end_date }),
+      rangeText({ start: row.start_date, end: row.end_date }, display),
       row.situation,
     ]),
   };
@@ -313,13 +356,16 @@ export function protocolHitText(row: {
 // by practiceIdentity), so "Cold plunge" and "cold  plunge" are one result. The
 // weekly cadence comes from the shared practiceCadenceText, so the target reads the
 // same here as on the practice card.
-export function practiceHitText(row: {
-  name: string;
-  perWeek: number | null;
-  perWeekMax: number | null;
-  sessionCount: number;
-  lastUsed: string | null;
-}): SearchHitText {
+export function practiceHitText(
+  row: {
+    name: string;
+    perWeek: number | null;
+    perWeekMax: number | null;
+    sessionCount: number;
+    lastUsed: string | null;
+  },
+  display: SearchDisplay
+): SearchHitText {
   const cadence =
     row.perWeek != null
       ? practiceCadenceText(row.perWeek, row.perWeekMax)
@@ -330,7 +376,11 @@ export function practiceHitText(row: {
       : "No sessions yet";
   return {
     title: row.name.trim() || "Practice",
-    subtitle: subtitleOf([cadence, sessions, isoDay(row.lastUsed)]),
+    subtitle: subtitleOf([
+      cadence,
+      sessions,
+      searchDayText(row.lastUsed, display),
+    ]),
   };
 }
 

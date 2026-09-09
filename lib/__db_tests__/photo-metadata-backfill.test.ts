@@ -31,9 +31,14 @@ import {
   runPhotoMetadataBackfill,
   PHOTO_BACKFILL_MARKER,
   PHOTO_BACKFILL_VERSION,
+  type PhotoBackfillWrite,
 } from "@/lib/photo/metadata-backfill";
+import { readDataWriteRevision, trackedDatabase } from "@/lib/write-revision";
 
 const createdProfiles: number[] = [];
+const write: PhotoBackfillWrite = (fn) => {
+  db.transaction(fn).immediate();
+};
 
 function newProfile(name: string): number {
   const id = Number(
@@ -227,7 +232,7 @@ describe("backfillPhotoMetadata — strip in place", () => {
       readJpegExif(fs.readFileSync(abs(taggedFile.storedPath))).hasGps
     ).toBe(true); // the fixture has teeth
 
-    const first = await backfillPhotoMetadata(db);
+    const first = await backfillPhotoMetadata(db, write);
     expect(first).toEqual({ processed: 2, skipped: 2, failed: 1 });
 
     // The GPS photo is clean, at its ORIGINAL path, with a thumbnail beside it.
@@ -287,7 +292,7 @@ describe("backfillPhotoMetadata — strip in place", () => {
     );
 
     // RE-RUN: nothing left to process, and the cleaned bytes are not re-compressed.
-    const second = await backfillPhotoMetadata(db);
+    const second = await backfillPhotoMetadata(db, write);
     expect(second).toEqual({ processed: 0, skipped: 4, failed: 1 });
     expect(fs.readFileSync(abs(taggedFile.storedPath))).toEqual(cleaned);
   });
@@ -324,7 +329,7 @@ describe("backfillPhotoMetadata — strip in place", () => {
 
     // The sweep is instance-wide, so its tally also counts the corpus above; what
     // this case is about is the two rows below.
-    await backfillPhotoMetadata(db);
+    await backfillPhotoMetadata(db, write);
     // Both files are clean — the privacy outcome never depends on the hash bookkeeping.
     for (const f of [fileA, fileB]) {
       expect(readJpegExif(fs.readFileSync(abs(f.storedPath))).hasExif).toBe(
@@ -376,7 +381,7 @@ describe("backfillPhotoMetadata — strip in place", () => {
       return realRename(from, to);
     });
     try {
-      await backfillPhotoMetadata(db);
+      await backfillPhotoMetadata(db, write);
     } finally {
       spy.mockRestore();
     }
@@ -390,7 +395,7 @@ describe("backfillPhotoMetadata — strip in place", () => {
     ).toEqual({ content_hash: file.hash });
 
     // And the very next pass cleans it, because `alreadyClean` still says no.
-    await backfillPhotoMetadata(db);
+    await backfillPhotoMetadata(db, write);
     const cleaned = fs.readFileSync(target);
     expect(readJpegExif(cleaned).hasGps).toBe(false);
     expect(
@@ -440,7 +445,9 @@ describe("the once-per-install marker", () => {
     db.prepare(`DELETE FROM settings WHERE key = ?`).run(PHOTO_BACKFILL_MARKER);
     expect(isPhotoBackfillDue(db)).toBe(true);
 
-    runPhotoMetadataBackfill(db);
+    const tracked = trackedDatabase(db);
+    const before = readDataWriteRevision(tracked);
+    runPhotoMetadataBackfill(tracked);
     // The claim is written synchronously, before the detached sweep runs, so a
     // second process booting a moment later finds the work taken.
     const claim = JSON.parse(
@@ -452,8 +459,10 @@ describe("the once-per-install marker", () => {
     );
     expect(claim.version).toBe(PHOTO_BACKFILL_VERSION);
     expect(isPhotoBackfillDue(db)).toBe(false);
+    expect(readDataWriteRevision(tracked)).toBe(before + 1);
 
-    runPhotoMetadataBackfill(db);
+    const afterClaim = readDataWriteRevision(tracked);
+    runPhotoMetadataBackfill(tracked);
     const after = JSON.parse(
       (
         db
@@ -462,5 +471,6 @@ describe("the once-per-install marker", () => {
       ).value
     );
     expect(after.claimedAt).toBe(claim.claimedAt);
+    expect(readDataWriteRevision(tracked)).toBe(afterClaim);
   });
 });

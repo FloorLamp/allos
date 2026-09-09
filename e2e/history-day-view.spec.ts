@@ -3,9 +3,11 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
   appContent,
+  expectInView,
   expectSvgTextLegible,
   followLink,
   hydratedClick,
+  openMobileDrawer,
   settledBoxes,
   settledClick,
   settledPickOption,
@@ -189,6 +191,42 @@ async function scrollTo(page: Page, y: number): Promise<number> {
   await page.evaluate((to) => window.scrollTo(0, to), y);
   return page.evaluate(() => window.scrollY);
 }
+
+test("the day header returns to the filtered feed on a phone", async ({
+  browser,
+}) => {
+  const page = await signIn(browser);
+  try {
+    const drawer = await openMobileDrawer(page);
+    const switcher = drawer.getByTestId("profile-identity-bar");
+    await expect(switcher).toBeEnabled();
+    await switcher.click();
+    await expect(drawer.getByTestId("profile-switcher-panel")).toBeVisible();
+    await settledClick(
+      page,
+      drawer.getByTestId(`view-toggle-${sickProfileId()}`)
+    );
+    await expectInView(page, 2, { within: drawer });
+    for (const query of ["", "kind=dose", "kind=dose&view=everyone&show=400"]) {
+      await page.goto(
+        `${dayUrl(TL_CHROME_BUSY_DAY)}${query ? `&${query}` : ""}`
+      );
+      const back = appContent(page).getByRole("link", {
+        name: "History",
+        exact: true,
+      });
+      await expect(back).toBeVisible();
+      const href = `/history${query ? `?${query}` : ""}`;
+      await expect(back).toHaveAttribute("href", href);
+      await followLink(page, back, new RegExp(href.replace("?", "\\?") + "$"));
+      await expect(
+        appContent(page).getByRole("link", { name: "History", exact: true })
+      ).toHaveCount(0);
+    }
+  } finally {
+    await page.close();
+  }
+});
 
 test.describe("the record day view's phone chrome (#1517, inherited)", () => {
   test("the day nav takes the pinned slot and the filter row scrolls away (A)", async ({

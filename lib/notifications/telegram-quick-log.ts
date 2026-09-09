@@ -1,3 +1,4 @@
+import { handleReceivedReply } from "./refill";
 function prnLogToken(): string {
   return crypto.randomBytes(4).toString("hex");
 }
@@ -1177,6 +1178,7 @@ export async function handleWeightReply(
 export async function handleIncomingMessage(
   message: TelegramMessage
 ): Promise<void> {
+  if (await handleReceivedReply(message)) return;
   if (await handleTempReply(message)) return;
   // The second prompt-reply flow (#1895). Same arm, same reason: a REPLY to a prompt is
   // not a command and must not be re-parsed as one. Each marker is its own, so the two

@@ -153,6 +153,21 @@ describe("intake form field mapping (#3216)", () => {
     ).toBe("120");
   });
 
+  it("posts a bottle count only after an edit and retains its loaded identity", () => {
+    const state = med({ supplyId: "11", qtyPerDose: "2" });
+    expect(value(state, "supply_count")).toBeNull();
+    const changed = {
+      ...state,
+      poolCount: { supplyId: "11", quantity: "0", loaded: "30" },
+      supplyOfferSeen: true,
+    };
+    expect(value(changed, "supply_count")).toBe("0");
+    expect(value(changed, "supply_count_loaded")).toBe("30");
+    expect(value(changed, "qty_per_dose")).toBe("2");
+    expect(value(changed, "supply_offer_seen")).toBe("1");
+    expect(value({ ...changed, supplyId: "12" }, "supply_count")).toBeNull();
+  });
+
   it("qty per dose never reaches the action as zero", () => {
     // Days-of-supply divides by it.
     expect(value(med({ qtyPerDose: "" }), "qty_per_dose")).toBe("1");
@@ -330,14 +345,14 @@ describe("the one intake seeding (#4664)", () => {
     expect(seeded.endDate).toBe("2026-05-05");
   });
 
-  it("starts a new scheduled item today, and an as-needed one with no date", () => {
+  it("leaves a new medication's start unknown until one is stated", () => {
     const scheduled = intakeItemFormStateFrom({
       kind: "medication",
       todayStr: "2026-09-04",
     });
-    expect(scheduled.startedOn).toBe("2026-09-04");
+    expect(scheduled.startedOn).toBe("");
     expect(scheduled.obligation).toBe("must");
-    // An as-needed item has no start date to volunteer, so it does not invent one.
+    // Obligation does not change whether a clinical start was stated.
     const prn = intakeItemFormStateFrom({
       kind: "medication",
       item: { ...FULL_ROW, obligation: "may" },
@@ -346,7 +361,7 @@ describe("the one intake seeding (#4664)", () => {
     expect(prn.startedOn).toBe("");
   });
 
-  it("lets a picked bottle answer the name, the strength and the link", () => {
+  it("lets a picked bottle answer the name and link without inventing a dose", () => {
     const fromBottle = intakeItemFormStateFrom({
       kind: "supplement",
       supply: {
@@ -358,7 +373,7 @@ describe("the one intake seeding (#4664)", () => {
       },
     });
     expect(fromBottle.name).toBe("Vitamin D3");
-    expect(fromBottle.doses[0].amount).toBe("5000 IU");
+    expect(fromBottle.doses).toEqual([]);
     expect(fromBottle.supplyId).toBe("11");
     // The kind's own default posture, not the medication one.
     expect(fromBottle.obligation).toBe("should");
@@ -444,17 +459,7 @@ describe("intake JSON payload parsing (#4666)", () => {
     const fd = new FormData();
     for (const key of ["doses", "pairs", "ingredients", "purposes"])
       fd.set(key, raw);
-    // A dose is always returned so an item is never left without a schedule entry.
-    expect(parseIntakeDoses(fd)).toEqual([
-      {
-        amount: null,
-        time_of_day: null,
-        food_timing: "any",
-        weekdays: null,
-        start_date: null,
-        end_date: null,
-      },
-    ]);
+    expect(parseIntakeDoses(fd)).toEqual([]);
     expect(parseIntakePairs(fd)).toEqual([]);
     expect(parseIntakeIngredients(fd)).toEqual({ ok: true, rows: [] });
     expect(parseIntakePurposes(fd)).toEqual([]);

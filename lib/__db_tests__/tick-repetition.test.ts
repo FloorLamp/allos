@@ -29,7 +29,7 @@
 // activity ids. No PHI.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   enableWeather,
@@ -486,7 +486,7 @@ function staleReportedRun(account: PortalAccount, at: string): void {
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM portal_sync_requests");
+  rawDb.exec("DELETE FROM portal_sync_requests");
 });
 
 describe("evaluateSyncRequests — two calls in the same hour ≡ one (#2121 item 2)", () => {

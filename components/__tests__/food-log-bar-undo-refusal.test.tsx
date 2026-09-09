@@ -16,6 +16,7 @@ import {
 } from "@/components/Toast";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
+import { DayContextProvider } from "@/components/DayContext";
 // The ledger's batch Delete asks ONE confirmation (#4118), through the app-wide
 // dialog `app/(app)/layout.tsx` mounts around every page. The bar renders the ledger,
 // so a tree without the provider is a tree the app never renders.
@@ -24,12 +25,35 @@ import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
 import { buildDayLedger } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import {
-  FoodSelectedDateProvider,
+  FoodProjectionProvider,
   useFoodSelectedDate,
 } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
+
+function FoodSelectedDateProvider({
+  today,
+  days,
+  children,
+}: {
+  today: string;
+  days: FoodLogDay[];
+  children: React.ReactNode;
+}) {
+  return (
+    <DayContextProvider
+      profileId={1}
+      today={today}
+      reach={{ kind: "dated" }}
+      backing={{ kind: "state", initialDay: today }}
+    >
+      <FoodProjectionProvider today={today} days={days}>
+        {children}
+      </FoodProjectionProvider>
+    </DayContextProvider>
+  );
+}
 
 const actions = vi.hoisted(() => ({
   addProteinGrams: vi.fn(),
@@ -69,6 +93,7 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
     enqueue: vi.fn(async () => "kept" as const),
     flush: vi.fn(async () => {}),
   }),
+  useQueuedDayContextCapture: () => () => null,
 }));
 
 const DATE = "2026-08-24";
@@ -184,6 +209,9 @@ function SlotProjectionProbe() {
 
 function barTree({
   profileId = 7,
+  subjectProfileId = undefined as number | undefined,
+  today = DATE,
+  timeZone = "UTC",
   day = DAY,
   days = undefined as FoodLogDay[] | undefined,
   proteinQuickAdd = undefined as React.ComponentProps<
@@ -202,10 +230,11 @@ function barTree({
         observeCurrent: (scope: ProfileToastScope | null) => void;
       }
     | undefined,
+  showDayContext = true,
 } = {}) {
   const offered = days ?? [day];
   return (
-    <TimezoneProvider tz="UTC">
+    <TimezoneProvider tz={timeZone}>
       <ActiveProfileProvider profileId={profileId}>
         <ConfirmProvider>
           <ToastProvider>
@@ -218,18 +247,20 @@ function barTree({
             )}
             <FoodSelectedDateProvider
               key={providerKey}
-              today={DATE}
+              today={today}
               days={offered}
             >
               <FoodLogBar
                 key={barKey}
-                today={DATE}
+                today={today}
                 days={offered}
                 groupsBySlot={GROUPS}
                 slot={slot}
                 slotBoundaries={{ midday: 660, evening: 900 }}
                 dayLedger={ledgerFor(day)}
                 proteinQuickAdd={proteinQuickAdd}
+                subjectProfileId={subjectProfileId}
+                showDayContext={showDayContext}
               />
               {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
               {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
@@ -312,6 +343,49 @@ function deferred<T>() {
 }
 
 describe("FoodLogBar projection publication", () => {
+  it("uses the selected subject's zone for the visible Now statement", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-24T12:30:00.000Z"));
+    try {
+      mountBar({
+        subjectProfileId: 8,
+        timeZone: "Pacific/Honolulu",
+      });
+      fireEvent.click(screen.getByTestId("food-when-now"));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+
+      const sent = actions.logFoodServing.mock.calls[0][0] as FormData;
+      expect(sent.get("date")).toBe(DATE);
+      expect(sent.get("profile_id")).toBe("8");
+      expect(sent.get("occurred_at")).toBe("02:30");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retires the private header and leaves one quiet day total under sheet rows", () => {
+    mountBar({
+      showDayContext: false,
+      day: {
+        ...DAY,
+        counts: { cruciferous: 3 },
+        slotCounts: {
+          Morning: {},
+          Midday: { cruciferous: 3 },
+          Evening: {},
+        },
+      },
+    });
+    expect(screen.queryByTestId("food-log-context")).toBeNull();
+    expect(screen.getByTestId("food-log-bar")).not.toBeNull();
+    expect(screen.getAllByTestId("food-sheet-day-total")).toHaveLength(1);
+    expect(screen.getByTestId("food-sheet-day-total").textContent).toBe(
+      "3 servings logged this day"
+    );
+  });
+
   beforeEach(() => {
     window.matchMedia = mediaQuery;
     vi.stubGlobal(
@@ -378,15 +452,29 @@ describe("FoodLogBar projection publication", () => {
     });
 
     expect(screen.getByTestId("protein-quickadd")).toBeTruthy();
-    expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe("5");
+    expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+      "5g today"
+    );
     fireEvent.click(screen.getByTestId("food-day-yesterday"));
     expect(screen.getByTestId("protein-quickadd")).toBeTruthy();
-    expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe("0");
+    expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+      "0g yesterday"
+    );
     fireEvent.click(screen.getByTestId("protein-quickadd-add"));
 
     await waitFor(() => expect(actions.addProteinGrams).toHaveBeenCalledOnce());
     const submitted = actions.addProteinGrams.mock.calls[0][0] as FormData;
     expect(submitted.get("date")).toBe(yesterday);
+    await waitFor(() =>
+      expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+        "30g yesterday"
+      )
+    );
+
+    fireEvent.click(screen.getByTestId("food-day-today"));
+    expect(screen.getByTestId("protein-quickadd-total").textContent).toBe(
+      "5g today"
+    );
   });
 
   // THE TYPED AMOUNT IS THE TYPIST'S; THE TOTAL IS THE DAY'S (#4934, owner ruling

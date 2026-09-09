@@ -1,3 +1,5 @@
+import { invalidateRefillOffers } from "../../notifications/offer-store";
+import { invalidatePoolRefillOffers } from "./supply-pool";
 // Part of the lib/queries/intake barrel (#319 — same #126 treatment training
 // got). The profile-scoping guard walks all of lib/, so these split modules stay
 // covered; every read is profile-scoped directly or through the parent
@@ -182,7 +184,8 @@ export type RefillOutcome =
 export function refillSupply(
   profileId: number,
   itemId: number,
-  fillSize: number | null
+  fillSize: number | null,
+  expectedSupplyId?: number | null
 ): RefillOutcome {
   return writeTx(() => {
     const row = db
@@ -198,7 +201,11 @@ export function refillSupply(
           supply_id: number | null;
         }
       | undefined;
-    if (!row) return { kind: "stale-item" };
+    if (
+      !row ||
+      (expectedSupplyId !== undefined && row.supply_id !== expectedSupplyId)
+    )
+      return { kind: "stale-item" };
     // A POOLED item (#1374) refills the shared bottle, not its own (always NULL)
     // counter — same lock-read-relative increment, applied to the pool row. The
     // remembered fill size stays on the ITEM: "I buy the 90-count bottle" is a fact
@@ -223,6 +230,7 @@ export function refillSupply(
       db.prepare(
         "UPDATE intake_items SET last_fill_size = ? WHERE id = ? AND profile_id = ?"
       ).run(fill, itemId, profileId);
+      invalidatePoolRefillOffers(row.supply_id);
       return { kind: "refilled", newQuantity: next, fillSize: fill };
     }
     if (row.quantity_on_hand == null) return { kind: "untracked" };
@@ -240,6 +248,7 @@ export function refillSupply(
           SET quantity_on_hand = ?, last_fill_size = ?
         WHERE id = ? AND profile_id = ?`
     ).run(next, fill, itemId, profileId);
+    invalidateRefillOffers(profileId, itemId, null);
     return { kind: "refilled", newQuantity: next, fillSize: fill };
   });
 }

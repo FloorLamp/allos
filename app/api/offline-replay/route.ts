@@ -47,13 +47,19 @@ function isFlow(v: unknown): v is QueuedIntent["flow"] {
 function isIntent(v: unknown): v is QueuedIntent {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
+  const profileIdValid =
+    !("profileId" in o) ||
+    (typeof o.profileId === "number" &&
+      Number.isInteger(o.profileId) &&
+      o.profileId > 0);
   return (
     typeof o.key === "string" &&
     o.key.length > 0 &&
     isFlow(o.flow) &&
     typeof o.date === "string" &&
     typeof o.payload === "object" &&
-    o.payload !== null
+    o.payload !== null &&
+    profileIdValid
   );
 }
 

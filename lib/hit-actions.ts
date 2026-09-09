@@ -9,24 +9,30 @@
 // Server Action (the write auth gate stays in the action — never a search bypass).
 
 import { FOCUS_PARAM } from "./palette-actions";
-import type { AppRoute } from "./hrefs";
+import type { IntakeItemKind } from "./types";
+import { intakeSupplyHref, type AppRoute } from "./hrefs";
 import type { HitAction } from "./search-rank";
 
-// A medication hit (an intake_items row with kind='medication') offers "Log dose"
-// always, and "Refill" only when the item tracks supply (quantity_on_hand set) —
-// refilling an untracked med is a no-op the action would reject, so we don't offer
-// it. Supplements (kind='supplement') get no palette actions: the issue scopes this
-// to the three named kinds (med / appointment / biomarker), and a supplement's
-// stack/UL context lives on its own tab.
+// Both intake kinds can refill tracked stock. Only medications offer Log dose.
+// A first refill opens the same item's fill-size control.
 export function medicationHitActions(
   itemId: number,
-  tracksSupply: boolean
+  tracksSupply: boolean,
+  kind: IntakeItemKind = "medication",
+  supplyId: number | null = null
 ): HitAction[] {
-  const actions: HitAction[] = [
-    { kind: "log-dose", label: "Log dose", entityId: itemId },
-  ];
+  const actions: HitAction[] =
+    kind === "medication"
+      ? [{ kind: "log-dose", label: "Log dose", entityId: itemId }]
+      : [];
   if (tracksSupply) {
-    actions.push({ kind: "refill", label: "Refill", entityId: itemId });
+    actions.push({
+      kind: "refill",
+      supplyId,
+      label: "Refill",
+      entityId: itemId,
+      href: intakeSupplyHref(kind, itemId, true),
+    });
   }
   return actions;
 }

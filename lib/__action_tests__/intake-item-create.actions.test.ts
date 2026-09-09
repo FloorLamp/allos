@@ -241,6 +241,7 @@ describe("the item form's create writes the whole column set", () => {
         quantity_on_hand: "30",
         qty_per_dose: "1",
         cadence_kind: "daily",
+        started_on: "",
         doses: JSON.stringify([
           { amount: "20 mg", time_of_day: "20:00", food_timing: "any" },
         ]),
@@ -280,7 +281,7 @@ describe("the item form's create writes the whole column set", () => {
       { effective_from: today(profile.id) },
     ]);
 
-    expect(coursesOf(row.id)).toEqual([{ started_on: today(profile.id) }]);
+    expect(coursesOf(row.id)).toEqual([{ started_on: null }]);
   });
 
   it("a supplement leaves every medication-only column NULL", async () => {
@@ -317,6 +318,20 @@ describe("the item form's create writes the whole column set", () => {
 // ── The edit, against the create ────────────────────────────────────────────
 
 describe("the EDIT leaves the same shape the CREATE would", () => {
+  it.each(["medication", "supplement"] as const)(
+    "names a missing %s for both absent and unknown ids",
+    async (kind) => {
+      seedActor();
+      for (const id of ["", "999999999"]) {
+        expect(
+          await updateIntakeItem(
+            fd({ id, kind, name: "Missing intake fixture" })
+          )
+        ).toEqual({ ok: false, error: `Couldn't find that ${kind}.` });
+      }
+    }
+  );
+
   it("a medication's stack is nulled by the edit too, however the field arrives", async () => {
     // A row's shape must not depend on which door touched it last. `stack` is a
     // SUPPLEMENT affordance (intakeKindAffordances), and the create nulls it for a
@@ -490,7 +505,19 @@ describe("an imported prescription is created as a prescription", () => {
       { effective_from: today(profile.id) },
     ]);
 
-    expect(coursesOf(row.id)).toHaveLength(1);
+    expect(coursesOf(row.id)).toEqual([{ started_on: DOC_DATE }]);
+  });
+
+  it("an import with no stated prescription date keeps an unknown start", () => {
+    const { profile } = seedActor();
+    const docId = seedDocument(profile.id);
+    persistDocumentImport(
+      profile.id,
+      docId,
+      importInput([prescription("Undated medicine", { date: undefined })])
+    );
+    const row = onlyItem(profile.id);
+    expect(coursesOf(row.id)).toEqual([{ started_on: null }]);
   });
 
   it("an as-needed sig still lands `may`, and an OTC-shaped import stays OTC", async () => {

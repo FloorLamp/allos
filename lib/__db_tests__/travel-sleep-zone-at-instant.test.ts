@@ -11,8 +11,8 @@
 // 2:30 AM instead of 11:24 PM → 5:30 AM, and `typicalWakeTime` — the auto Morning
 // intake slot and the sleep-waiting wake anchor — read ~2:40 AM.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { db } from "@/lib/db";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { db, rawDb } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   setTimezone,
@@ -53,16 +53,12 @@ const NIGHTS = 14;
 const LAST_NY_WAKE_DAY = "2026-08-20";
 
 function freeze(instant: string): void {
-  process.env.ALLOS_TEST_NOW = instant;
+  vi.setSystemTime(new Date(instant));
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM metric_samples");
+  rawDb.exec("DELETE FROM metric_samples");
   freeze(SWITCH_INSTANT);
-});
-
-afterEach(() => {
-  delete process.env.ALLOS_TEST_NOW;
 });
 
 function night(

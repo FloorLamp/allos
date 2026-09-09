@@ -9,7 +9,9 @@ relevant code and checks.
 - Implement the smallest complete change that satisfies the requested behavior.
   Confirm the problem still exists and find the current owner before editing.
 - Reuse that owner. Avoid speculative abstractions, configuration, compatibility
-  layers, parallel implementations, and unrelated cleanup.
+  layers, parallel implementations, and unrelated cleanup. When a defect appears
+  on one of several similar surfaces, fix the shared piece that makes it
+  impossible on all of them rather than patching one.
 - Prefer types that make invalid internal states unrepresentable. Keep runtime
   validation at external-input and authorization boundaries.
 - A conversion removes the implementation it replaces. Design convergence must
@@ -19,6 +21,9 @@ relevant code and checks.
   routine fixes. First try removing the cause or using the existing type/model.
   A source scan is a last resort after types and an existing ESLint rule; it
   needs an explicitly scoped task and a named defect it would catch.
+  Completeness belongs in a typed manifest (`Record<Kind, Entry>`, or
+  `as const satisfies Record<string, Spec>`) that fails `tsc` on omission, not in
+  a census test that scans `app/**` or `components/**` (#5340).
 - Comments explain reasoning the code cannot express. Update current docs in
   place when their contract changes; put incident narratives in the PR or git
   history. Do not append a new policy for each bug.

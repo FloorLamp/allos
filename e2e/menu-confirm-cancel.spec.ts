@@ -47,6 +47,10 @@ test("cancelling a confirm opened from an overflow menu leaves the page able to 
   const addDialog = page.getByRole("dialog", { name: "Add supplement" });
   await settledFill(page, addDialog.getByLabel("Name"), itemName);
   const doseEditor1 = await openFact(page, "dose", addDialog);
+  await hydratedClick(
+    page,
+    doseEditor1.getByRole("button", { name: "Add dose", exact: true })
+  );
   await settledFill(page, doseEditor1.getByLabel("Amount"), "10 mg");
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();

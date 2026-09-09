@@ -1,3 +1,4 @@
+import { trainingTabHref } from "@/lib/hrefs";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getWorkoutActivityDays } from "@/lib/queries";
@@ -81,12 +82,12 @@ export default async function WorkoutHistorySection({
       {values.length === 0 ? (
         <EmptyState
           message="No workouts logged in this window yet. Log a session to start filling in your calendar."
-          action={{ href: "/training?tab=log", label: "Go to Log" }}
+          action={{ href: trainingTabHref("log"), label: "Go to Log" }}
         />
       ) : (
         <DayHistory
           domain="workout"
-          addHref="/training?tab=log"
+          addHref={trainingTabHref("log")}
           values={values}
           groups={groups}
           end={end}

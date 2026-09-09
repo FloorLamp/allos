@@ -43,12 +43,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type Database from "better-sqlite3";
 import { createLogger } from "../log";
 import { runBootTx } from "../migrations/schema-utils";
 import { readJpegExif } from "./exif";
 import { sniffImageMime } from "./policy";
 import { photoDomainRoot, thumbSiblingPath, type PhotoDomain } from "./store";
+import type { SqlPrepare, TransactionDatabase } from "../write-revision";
 
 const log = createLogger("photo-backfill");
 
@@ -86,15 +86,15 @@ interface StoredRow {
 // an unscoped statement — which is exactly why the sweep walks profile by profile.
 interface DomainSpec {
   domain: PhotoDomain;
-  rows: (db: Database.Database, profileId: number) => StoredRow[];
+  rows: (db: SqlPrepare, profileId: number) => StoredRow[];
   hashTakenBy: (
-    db: Database.Database,
+    db: SqlPrepare,
     profileId: number,
     hash: string,
     exceptId: number
   ) => boolean;
   applyBytes: (
-    db: Database.Database,
+    db: SqlPrepare,
     profileId: number,
     id: number,
     mime: string,
@@ -176,7 +176,8 @@ function replaceFile(abs: string, bytes: Buffer): void {
 
 // Re-encode one stored photo in place. Returns which tally bucket it landed in.
 async function backfillOne(
-  db: Database.Database,
+  db: SqlPrepare,
+  write: PhotoBackfillWrite,
   spec: DomainSpec,
   profileId: number,
   row: StoredRow
@@ -253,19 +254,20 @@ async function backfillOne(
       id: row.id,
     });
   const hash = collision ? row.content_hash : photo.contentHash;
-  runBootTx(
-    db.transaction(() => {
-      spec.applyBytes(db, profileId, row.id, photo.mime, photo.sizeBytes, hash);
-    })
-  );
+  write(() => {
+    spec.applyBytes(db, profileId, row.id, photo.mime, photo.sizeBytes, hash);
+  });
   return "processed";
 }
 
 // Sweep every stored lesion/symptom photo on the instance, profile by profile.
 // Auth-blind maintenance: it takes the DB handle, never lib/auth, and touches only
 // bytes + the three byte-derived columns. Safe to run at any time.
+export type PhotoBackfillWrite = (fn: () => void) => void;
+
 export async function backfillPhotoMetadata(
-  db: Database.Database
+  db: SqlPrepare,
+  write: PhotoBackfillWrite
 ): Promise<PhotoBackfillTally> {
   const tally: PhotoBackfillTally = { processed: 0, skipped: 0, failed: 0 };
   const profiles = db.prepare(`SELECT id FROM profiles ORDER BY id`).all() as {
@@ -275,7 +277,7 @@ export async function backfillPhotoMetadata(
     for (const profile of profiles) {
       const rows = spec.rows(db, profile.id);
       for (const row of rows) {
-        tally[await backfillOne(db, spec, profile.id, row)] += 1;
+        tally[await backfillOne(db, write, spec, profile.id, row)] += 1;
       }
     }
   }
@@ -298,7 +300,7 @@ interface BackfillMarker {
   tally?: PhotoBackfillTally;
 }
 
-function readMarker(db: Database.Database): BackfillMarker | null {
+function readMarker(db: SqlPrepare): BackfillMarker | null {
   const row = db
     .prepare(`SELECT value FROM settings WHERE key = ?`)
     .get(PHOTO_BACKFILL_MARKER) as { value?: string } | undefined;
@@ -311,7 +313,7 @@ function readMarker(db: Database.Database): BackfillMarker | null {
   }
 }
 
-function writeMarker(db: Database.Database, marker: BackfillMarker): void {
+function writeMarker(db: SqlPrepare, marker: BackfillMarker): void {
   db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
@@ -332,7 +334,7 @@ export function photoBackfillDue(
   return nowMs - claimedMs > CLAIM_STALE_MINUTES * 60_000;
 }
 
-export function isPhotoBackfillDue(db: Database.Database, now = new Date()) {
+export function isPhotoBackfillDue(db: SqlPrepare, now = new Date()) {
   return photoBackfillDue(readMarker(db), now.getTime());
 }
 
@@ -340,35 +342,34 @@ export function isPhotoBackfillDue(db: Database.Database, now = new Date()) {
 // (bootTasks is), so the sweep itself is detached: the claim is written before this
 // returns, and the tally is logged when the pass finishes. A failure releases the
 // claim rather than marking the instance clean.
-export function runPhotoMetadataBackfill(db: Database.Database): void {
+export function runPhotoMetadataBackfill(db: TransactionDatabase): void {
   const now = new Date();
+  const write: PhotoBackfillWrite = (fn) => {
+    runBootTx(db.transaction(fn));
+  };
   let claimed = false;
-  runBootTx(
-    db.transaction(() => {
-      if (!photoBackfillDue(readMarker(db), now.getTime())) return;
-      writeMarker(db, {
-        version: PHOTO_BACKFILL_VERSION,
-        state: "running",
-        claimedAt: now.toISOString(),
-      });
-      claimed = true;
-    })
-  );
+  write(() => {
+    if (!photoBackfillDue(readMarker(db), now.getTime())) return;
+    writeMarker(db, {
+      version: PHOTO_BACKFILL_VERSION,
+      state: "running",
+      claimedAt: now.toISOString(),
+    });
+    claimed = true;
+  });
   if (!claimed) return;
 
-  void backfillPhotoMetadata(db)
+  void backfillPhotoMetadata(db, write)
     .then((tally) => {
-      runBootTx(
-        db.transaction(() => {
-          writeMarker(db, {
-            version: PHOTO_BACKFILL_VERSION,
-            state: "done",
-            claimedAt: now.toISOString(),
-            finishedAt: new Date().toISOString(),
-            tally,
-          });
-        })
-      );
+      write(() => {
+        writeMarker(db, {
+          version: PHOTO_BACKFILL_VERSION,
+          state: "done",
+          claimedAt: now.toISOString(),
+          finishedAt: new Date().toISOString(),
+          tally,
+        });
+      });
       // The sync-accounting line (#1844): one record per pass, with its counts.
       if (tally.processed || tally.failed)
         log.info("stripped metadata from stored photos", { ...tally });

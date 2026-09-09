@@ -112,7 +112,11 @@ export default function SharedSupplyCard({
         : "Nothing is linked to it.";
 
   return (
-    <div className="card" data-testid="shared-supply-card">
+    <div
+      id={`supply-${pool.id}`}
+      className="card"
+      data-testid="shared-supply-card"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2

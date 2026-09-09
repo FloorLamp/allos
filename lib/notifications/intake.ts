@@ -56,7 +56,7 @@ import { getUnconfirmedMedicationIds } from "../intake-history";
 import { reminderOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { now as clockNow } from "../clock";
-import { getDoseCorrectionBursts } from "../queries/intake/adherence";
+import { getRecentDoseTaps } from "../queries/intake/adherence";
 import { hasCorrectedAnyTime } from "../queries/correction-history";
 import type { CorrectionDay } from "../correction-time";
 import {
@@ -68,7 +68,7 @@ import {
   DOSE_TIME_PREFIXES,
 } from "./correction-rows";
 import {
-  correctionMessageBinding,
+  messageCorrectionBursts,
   type CorrectionMessageRef,
 } from "./message-pointers";
 import { plainBody } from "./rich-text";
@@ -107,10 +107,13 @@ export function withDoseCorrections(
   } = {}
 ): NotificationMessage {
   const now = opts.now ?? clockNow();
-  const bursts = getDoseCorrectionBursts(
+  const bursts = messageCorrectionBursts(
     profileId,
+    "dose",
+    getRecentDoseTaps(profileId, now, true),
     now,
-    correctionMessageBinding(profileId, "dose", opts.ref ?? null)
+    opts.ref ?? null,
+    slotSessionForKeyboard
   );
   if (bursts.length === 0) return message;
   const tz = getTimezone(profileId);

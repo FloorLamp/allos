@@ -238,7 +238,7 @@ export function emitSyncEvent(input: AccountedSyncEventInput): number | null {
     windowEnd: window?.end ?? null,
     ...(tally
       ? { ...tally, written: tally.inserted + tally.updated + tally.unchanged }
-      : {}),
+      : { skipped: Math.max(0, Math.round(skipped)) }),
     details: partial
       ? truncatedSyncDetails(partial.warning)
       : (event.details ?? null),

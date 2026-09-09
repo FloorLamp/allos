@@ -28,7 +28,7 @@ import {
   moodCheckinCallbackData,
 } from "@/lib/notifications/mood";
 import { MOOD_CHECKIN_AUTOPAUSE_DAYS } from "@/lib/mood";
-import { buildIntent } from "@/lib/offline/queue";
+import { buildIntent } from "@/lib/__tests__/queued-intent-fixture";
 
 function newProfile(name: string): number {
   return Number(
@@ -234,7 +234,8 @@ describe("offline replay — the mood flow (#28/#992)", () => {
       "mood",
       "2026-07-11",
       { valence: 4, energy: null, anxiety: null, factors: [], note: null },
-      p
+      p,
+      false
     );
     expect(applyIntent(p, intent)).toEqual({ status: "done" });
     expect(alreadyReplayed(p, intent.key)).toBe(true);
@@ -243,13 +244,88 @@ describe("offline replay — the mood flow (#28/#992)", () => {
     expect(getMoodLogs(p)).toHaveLength(1);
   });
 
+  it("preserves unseen fields for a blind replay while a sighted replay clears them", () => {
+    const p = newProfile("mood-replay-sight");
+    const date = "2026-07-11";
+    upsertMoodLog(p, date, {
+      valence: 2,
+      energy: 1,
+      anxiety: 5,
+      factors: ["work", "social"],
+      note: "rough",
+    });
+    const blind = buildIntent(
+      "mood",
+      date,
+      {
+        valence: 4,
+        energy: null,
+        anxiety: null,
+        factors: [],
+        note: null,
+        dayUnseen: true,
+      },
+      p,
+      false
+    );
+    expect(applyIntent(p, blind)).toEqual({ status: "done" });
+    expect(getMoodOnDate(p, date)).toMatchObject({
+      valence: 4,
+      energy: 1,
+      anxiety: 5,
+      factors: ["work", "social"],
+      notes: "rough",
+    });
+
+    const sighted = buildIntent(
+      "mood",
+      date,
+      { valence: 3, energy: null, anxiety: null, factors: [], note: null },
+      p,
+      false
+    );
+    expect(applyIntent(p, sighted)).toEqual({ status: "done" });
+    expect(getMoodOnDate(p, date)).toMatchObject({
+      valence: 3,
+      energy: null,
+      anxiety: null,
+      factors: [],
+      notes: null,
+    });
+  });
+
+  it.each([false, "true", 1])(
+    "rejects malformed dayUnseen marker %j without recording its key",
+    (dayUnseen) => {
+      const p = newProfile(`mood-replay-marker-${JSON.stringify(dayUnseen)}`);
+      const intent = buildIntent(
+        "mood",
+        "2026-07-11",
+        {
+          valence: 4,
+          energy: null,
+          anxiety: null,
+          factors: [],
+          note: null,
+          dayUnseen,
+        } as never,
+        p,
+        false
+      );
+      expect(applyIntent(p, intent)).toEqual({ status: "rejected" });
+      expect(alreadyReplayed(p, intent.key)).toBe(false);
+      expect(getMoodLogs(p)).toEqual([]);
+    }
+  );
+
   it("rejects a permanently-invalid mood payload (no key recorded)", () => {
     const p = newProfile("mood-replay-bad");
     const intent = buildIntent(
       "mood",
       "2026-07-11",
       { valence: 9, energy: null, anxiety: null, factors: [], note: null },
-      p
+      p,
+      false
     );
     expect(applyIntent(p, intent)).toEqual({ status: "rejected" });
     expect(alreadyReplayed(p, intent.key)).toBe(false);

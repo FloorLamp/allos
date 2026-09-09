@@ -36,11 +36,17 @@ import { refillRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 // session or device is answered by the ledger's cooldown alone.
 export default function RefillButton({
   itemId,
+  supplyId,
+  initialAsk = false,
+  onRefilled,
   hasLastFill,
   lastFillSize = null,
   supplyCycleDays = null,
 }: {
   itemId: number;
+  supplyId?: number | null;
+  initialAsk?: boolean;
+  onRefilled?: (newQuantity: number) => void;
   // Whether a fill size is remembered — true ⇒ one-tap; false ⇒ ask on first tap.
   hasLastFill: boolean;
   lastFillSize?: number | null;
@@ -50,7 +56,7 @@ export default function RefillButton({
   // bottle after the fixed ceiling. Null ⇒ the shared default cycle.
   supplyCycleDays?: number | null;
 }) {
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState(initialAsk);
   const [size, setSize] = useState(
     lastFillSize != null ? String(lastFillSize) : ""
   );
@@ -99,6 +105,7 @@ export default function RefillButton({
       write: () => {
         const fd = new FormData();
         fd.set("id", String(itemId));
+        if (supplyId !== undefined) fd.set("supply_id", String(supplyId ?? ""));
         if (fillSize) fd.set("fill_size", fillSize);
         return refillMedication(fd);
       },
@@ -108,6 +115,7 @@ export default function RefillButton({
           // Nothing was added, so the tap stays immediately retryable.
           return { kind: "rollback" };
         }
+        onRefilled?.(res.newQuantity);
         toast("Refill recorded.");
         setAsking(false);
         // The core's own number, not the form's — the one-tap path reuses a remembered

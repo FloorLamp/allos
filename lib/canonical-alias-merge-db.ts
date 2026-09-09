@@ -26,7 +26,6 @@
 // second reason too: a collision (the profile already stars/snoozes/tracks the target)
 // is a per-profile fact.
 
-import type Database from "better-sqlite3";
 import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
 import { buildCanonicalIndex } from "./canonical-name";
 import {
@@ -41,6 +40,7 @@ import {
   type CanonicalMerge,
 } from "./canonical-alias-merge";
 import { runBootTx } from "./migrations/schema-utils";
+import type { SqlPrepare, TransactionDatabase } from "./write-revision";
 
 export interface CanonicalMergeReport {
   // The ai-coined vocabulary rows deleted, as `from → to`.
@@ -56,7 +56,7 @@ interface Plan {
 
 // READ-ONLY. Works out what would change, so the caller can skip the transaction
 // entirely on the (overwhelmingly common) boot where nothing has drifted.
-function planMerges(db: Database.Database): Plan {
+function planMerges(db: SqlPrepare): Plan {
   const definitionTable = canonicalResultDefinitionTableForSchema(db);
   // The SAME order getCanonicalVocabulary reads in — seeded/curated names ahead of
   // ai-coined ones — because that order decides which spelling wins a shared key.
@@ -130,7 +130,7 @@ function planMerges(db: Database.Database): Plan {
 // (CanonicalMerge's contract), so a DELETE of the old key can never hit the row the
 // UPDATE just moved.
 export function applyCanonicalRename(
-  db: Database.Database,
+  db: SqlPrepare,
   profileId: number,
   { from, to }: CanonicalMerge
 ): number {
@@ -207,7 +207,7 @@ export function applyCanonicalRename(
 
 // Run the whole reconciliation. Returns what moved (empty when nothing did).
 export function mergeSupersededCanonicalNames(
-  db: Database.Database
+  db: TransactionDatabase
 ): CanonicalMergeReport {
   const definitionTable = canonicalResultDefinitionTableForSchema(db);
   const probe = planMerges(db);
