@@ -170,7 +170,7 @@ describe("emailChannel.send end-to-end (capture)", () => {
       });
     }
     setUnitPrefs(a, {
-      weightUnit: "kg",
+      weightUnit: "lb",
       distanceUnit: "mi",
       temperatureUnit: "F",
     });
@@ -179,9 +179,9 @@ describe("emailChannel.send end-to-end (capture)", () => {
       p,
       { title: "Recap", body: "canonical", kind: "weekly-recap" },
       {
-        bodyForDistanceUnit: (unit) => {
-          units.push(unit);
-          return `distance in ${unit}`;
+        bodyForUnits: ({ distanceUnit, weightUnit }) => {
+          units.push(`${distanceUnit}:${weightUnit}`);
+          return `distance in ${distanceUnit}; weight in ${weightUnit}`;
         },
       }
     );
@@ -189,11 +189,11 @@ describe("emailChannel.send end-to-end (capture)", () => {
     expect(mails).toHaveLength(2);
     expect(
       mails.find((mail) => mail.to === "shared@example.com")?.text
-    ).toContain("distance in mi");
+    ).toContain("distance in mi; weight in lb");
     expect(
       mails.find((mail) => mail.to === "private@example.com")?.text
     ).not.toContain("distance in");
-    expect(units).toEqual(["mi"]);
+    expect(units).toEqual(["mi:lb"]);
   });
 
   it("keeps a full-content renderer failure inside that recipient's delivery outcome", async () => {
@@ -220,7 +220,7 @@ describe("emailChannel.send end-to-end (capture)", () => {
         kind: "weekly-recap",
       },
       {
-        bodyForDistanceUnit: (unit) => {
+        bodyForUnits: ({ distanceUnit: unit }) => {
           if (unit === "mi") throw new Error("synthetic renderer failure");
           return "metric detail";
         },

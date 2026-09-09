@@ -100,7 +100,7 @@ import { illnessDaysInWindow } from "../illness-episode-store";
 import { getLatestFitnessAssessmentDate } from "../fitness-assessment";
 import { assembleFitnessCheckModel } from "../fitness-check-assemble";
 import { batteryCompletion } from "../fitness-outcome";
-import type { WeightUnit, DistanceUnit } from "../settings";
+import type { WeightUnit, DistanceUnit, UnitPrefs } from "../settings";
 import { dispatch } from "./index";
 import type { MessageBody } from "./rich-text";
 import { recapMarkerKey } from "./send-markers";
@@ -731,7 +731,9 @@ export async function runRecap(
   // Gather once; only canonical cardio measurements change spelling by recipient.
   // The existing scheduled strength/body-weight unit remains kg.
   const bodies = new Map<DistanceUnit, MessageBody>([["km", msg.body]]);
-  const bodyForDistanceUnit = (distanceUnit: DistanceUnit): MessageBody => {
+  const bodyForUnits = ({
+    distanceUnit,
+  }: Pick<UnitPrefs, "weightUnit" | "distanceUnit">): MessageBody => {
     const cached = bodies.get(distanceUnit);
     if (cached != null) return cached;
     const body = renderRecapMessage(
@@ -746,7 +748,7 @@ export async function runRecap(
   const results = await dispatch(
     profileId,
     msg,
-    input.prs.some((pr) => pr.cardio) ? { bodyForDistanceUnit } : undefined
+    input.prs.some((pr) => pr.cardio) ? { bodyForUnits } : undefined
   );
   if (results.length === 0) {
     // No channel configured — leave unmarked so it can send once configured.
