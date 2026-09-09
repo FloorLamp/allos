@@ -6,21 +6,20 @@
 // cannot disagree with the surfaces it reports on. `lib/household.ts` stays pure: it is
 // handed the raw results, and this module is the fetching half its header describes.
 
-import { getActivitiesByDate } from "./training/activities";
 import { getIntakeItems, getIntakeDoses } from "./intake/schedule";
 import { getTakenDoseIds } from "./intake/adherence";
-import { getEffectiveActiveSituations } from "./derived-situations";
+import { intakeDayContext } from "./intake/day-context";
 import { intakeAdherenceToday, type Adherence } from "../household";
 
 /**
  * One member's x/y intake adherence for one day: how many of that day's due doses have
  * been logged.
  *
- * Dueness is `doseDueOn` through the shared pure helper, against the SAME effective
- * situation set (declared ∪ derived, dated) every other dueness surface reads — so a
- * card cannot count a dose the member's own medications page holds for a derived pause,
- * or miss one whose `situational` trigger the app derived rather than the person
- * declaring (#5167).
+ * Dueness is `doseDueOn` through the shared pure helper, against the day context the
+ * member's OWN medications page builds — the whole five-field object, from the one
+ * builder (#5321), not a subset of it. The card cannot count a dose that page holds for
+ * a derived pause or for an unfinished session, nor miss one whose trigger the app
+ * derived or whose training day it predicted (#5167/#558).
  *
  * Auth-blind and `profileId`-first, like every other reader in this layer: the page
  * resolves the accessible set once and calls this per member.
@@ -42,11 +41,7 @@ export function intakeAdherenceOn(profileId: number, date: string): Adherence {
   return intakeAdherenceToday(
     getIntakeDoses(profileId),
     activeItemById,
-    {
-      date,
-      isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
-      activeSituations: getEffectiveActiveSituations(profileId, date),
-    },
+    intakeDayContext(profileId, date),
     getTakenDoseIds(profileId, date)
   );
 }
