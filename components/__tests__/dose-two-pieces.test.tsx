@@ -325,9 +325,7 @@ describe("one dose form, add and edit, one layout (#4424 ruling 1)", () => {
       )
     ).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Date and time" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Date and time" }));
     fireEvent.click(screen.getByRole("button", { name: "August 28, 2026" }));
     expect(amount.value).toBe("1000 mg");
     expect(
@@ -410,9 +408,7 @@ describe("one dose form, add and edit, one layout (#4424 ruling 1)", () => {
       "5 g · Evening",
     ]);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Date and time" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Date and time" }));
     fireEvent.click(screen.getByRole("button", { name: "August 28, 2026" }));
     expect([...picker.options].map((option) => option.textContent)).toEqual([
       "1000 mg · Evening",
