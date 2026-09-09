@@ -10,6 +10,7 @@ import {
   IconArchive,
   IconArchiveOff,
 } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import OpenInMaps from "@/components/OpenInMaps";
 import Combobox from "@/components/Combobox";
@@ -154,16 +155,14 @@ export default function ProviderIdentityCard({
         ) : null}
         <div className="flex gap-2">
           <SubmitButton variant="primary">Save</SubmitButton>
-          <button
-            type="button"
-            className="btn-ghost"
+          <Button
             onClick={() => {
               setError(null);
               setEditing(false);
             }}
           >
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
     );

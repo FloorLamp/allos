@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import DateField from "@/components/DateField";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import EntryHistoryTable from "@/components/EntryHistoryTable";
 import { EmptyState } from "@/components/ui";
@@ -189,14 +190,12 @@ function ScoreCorrectionForm({
             required
           />
         </div>
-        <button
-          type="button"
-          className="btn-ghost px-2 py-1 text-xs"
+        <Button
           data-testid={`${testidPrefix}-reading-edit-${row.id}`}
           onClick={done}
         >
           Cancel
-        </button>
+        </Button>
         <SubmitButton pendingLabel="Saving…" variant="primary">
           Save
         </SubmitButton>

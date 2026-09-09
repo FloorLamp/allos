@@ -10,6 +10,7 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { editPracticeSession, logPractice } from "@/app/(app)/wellness/actions";
 import { minutesBetween } from "@/lib/activity-meta";
 import { practiceLogOutcomeText } from "@/lib/practice";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
 // THE PRACTICE DOMAIN'S ONE FORM (#4424 ruling 1), named by
@@ -276,11 +277,7 @@ export default function PracticeSessionForm({
         >
           {pending ? "Saving…" : row ? "Save" : "Log session"}
         </SubmitButton>
-        {onCancel ? (
-          <button className="btn-ghost" type="button" onClick={onCancel}>
-            Cancel
-          </button>
-        ) : null}
+        {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
       </div>
     </form>
   );

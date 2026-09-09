@@ -10,6 +10,7 @@ import {
   addSubstanceDailyTotalAction,
   correctSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import { whenOnDay } from "@/lib/stated-time";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -229,9 +230,7 @@ export default function SubstanceForm({
         <SubmitButton variant="primary" disabled={pending}>
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
-        <button className="btn-ghost" type="button" onClick={onCancel}>
-          Cancel
-        </button>
+        <Button onClick={onCancel}>Cancel</Button>
       </div>
     </form>
   );
