@@ -12,7 +12,7 @@ import { FitnessPictogram } from "@/components/fitness-pictograms";
 import IconButton from "@/components/IconButton";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { useWakeLock } from "@/components/useWakeLock";
-import { useHaptics } from "@/components/useHaptics";
+import { useTimerCue } from "@/components/useTimerCue";
 import { formatSeconds } from "@/lib/duration";
 import {
   IDLE_TIMER,
@@ -70,44 +70,11 @@ export default function FitnessTestTimer({
   const endedRef = useRef(false);
   const announcedFinalRef = useRef(false);
   const [announce, setAnnounce] = useState("");
-  const audioRef = useRef<AudioContext | null>(null);
-  const haptic = useHaptics();
+  const cue = useTimerCue();
 
   // Keep the screen awake only while the takeover is open (holding a plank / a stance).
   useWakeLock(expanded);
   useLockBodyScroll(expanded);
-
-  // Best-effort end cue: a short WebAudio chime + a vibration. Both degrade silently where
-  // denied (no AudioContext, autoplay blocked, no Vibration API) — the visual/aria end
-  // state stands in. Mirrors the RestTimer cue.
-  const cue = useCallback(() => {
-    try {
-      const Ctor =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (Ctor) {
-        const ctx = audioRef.current ?? new Ctor();
-        audioRef.current = ctx;
-        void ctx.resume?.();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.42);
-      }
-    } catch {
-      // AudioContext unavailable/blocked — the visual "Time" cue stands in.
-    }
-    // Same shared double-pulse the rest timer ends on (#1422) — one pattern table, one
-    // reduced-motion gate, not a second hand-copied literal.
-    haptic("alert");
-  }, [haptic]);
 
   const finish = useCallback(() => {
     const at = Date.now();
