@@ -225,7 +225,9 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // medication". The assertion above is the positive control: the fold is open and
     // the form inside it really rendered.
     await expect(
-      page.getByTestId("illness-medication-quick-add").locator("p")
+      appContent(page)
+        .getByTestId("illness-medication-quick-add")
+        .locator("p")
     ).toHaveCount(0);
     await page.getByTestId("illness-add-medication").click();
     await expect(addMedication).toHaveAttribute("aria-expanded", "false");
