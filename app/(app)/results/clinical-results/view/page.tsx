@@ -99,7 +99,6 @@ import StarButton from "@/components/StarButton";
 import { resultSeriesKey } from "@/lib/saved-items";
 import ScrollFade from "@/components/ScrollFade";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
-import BackLink from "@/components/BackLink";
 import {
   FitnessPercentileCard,
   fitnessContextFor,
@@ -169,11 +168,13 @@ export default async function ClinicalResultDetailPage(props: {
   if (series.length === 0) {
     return (
       <div>
-        <BackLink
-          href={CLINICAL_RESULTS_LIST_HREF}
-          label="Back to clinical results"
+        <PageHeader
+          back={{
+            href: CLINICAL_RESULTS_LIST_HREF,
+            destination: "Clinical results",
+          }}
+          title={canonical}
         />
-        <PageHeader title={canonical} />
         <EmptyState
           message={`No clinical results found for “${canonical}”.`}
           action={{
@@ -631,17 +632,16 @@ export default async function ClinicalResultDetailPage(props: {
 
   return (
     <div>
-      <BackLink
-        href="/results/clinical-results"
-        label="Back to clinical results"
-      />
-
       {/* One prose surface per fact (#2340). The subtitle used to append the curated
           `note`, which for at least one analyte is a near-paraphrase of the explainer
           card's `description` fifteen lines below — the same fact twice, in different
           words. The card keeps the description; the note's band clause moves to the
           summary card, beside the band it explains the absence of. */}
       <PageHeader
+        back={{
+          href: "/results/clinical-results",
+          destination: "Clinical results",
+        }}
         title={canonical}
         subtitle={`${series.length} clinical result${series.length === 1 ? "" : "s"}`}
         action={

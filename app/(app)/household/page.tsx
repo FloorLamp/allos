@@ -20,6 +20,7 @@ import {
   getFindingSuppressions,
   countVisiblePools,
 } from "@/lib/queries";
+import { cabinetViewer } from "../supplies/access";
 import { householdSetupForProfile } from "@/lib/queries/household-setup";
 import { collectDataQualityGaps } from "@/lib/rule-findings";
 import {
@@ -70,6 +71,9 @@ export default async function HouseholdPage() {
   // The already-authorized accessible ids — the only legitimate input to a
   // cross-profile reader (here, the medicine-cabinet door's count).
   const profileIds = profiles.map((p) => p.id);
+  // The medicine-cabinet door counts through the ONE cabinet viewer (#5122): the
+  // accessible ids, plus the login's role, because a member-less bottle is admin-only.
+  const viewer = cabinetViewer(profileIds, login.role);
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -268,7 +272,7 @@ export default async function HouseholdPage() {
           // (#1522) — a household-scoped registry that lost its nav row and is now
           // reached from the stable parents that consume it.
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-            <SharedSuppliesLink count={countVisiblePools(profileIds)} />
+            <SharedSuppliesLink count={countVisiblePools(viewer)} />
             {/* The owner-approved Household pair (#3487): both destinations keep
                 stable positions in this action row, and the shared primitive owns
                 their one matched indicator treatment. */}

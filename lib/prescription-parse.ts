@@ -545,11 +545,14 @@ export interface ParsedPrescription {
   //
   // The scrape is a guess over prose, and it is a loose one: the label list includes
   // a bare "doctor", so "Call your doctor if symptoms persist" yields a prescriber,
-  // and the Rx pattern reads "no prescription required" as an Rx number. That is
-  // tolerable for TEXT — it is what the label said, shown as-is — and it is not
-  // evidence of anything. Anything that DERIVES a fact from these two fields (the Rx
-  // flag, #851/#4669) must read the assertion, not the guess, so the guess is
-  // labelled here where it is made rather than re-inferred at each reader.
+  // and the Rx pattern reads "no prescription required" as an Rx number. It is
+  // reported here because it is what the text said; it is not evidence of anything.
+  // Every reader that would turn these two fields into a fact must read the
+  // assertion, not the guess — the Rx flag (#851/#4669), the prescriber→provider link
+  // and the stored columns themselves (#5223, where the persist boundary drops a
+  // scraped value rather than leaving a row that cannot say which of its own values
+  // was guessed). The label is set here, where the guess is made, rather than being
+  // re-inferred at each reader.
   prescriberScraped: boolean;
   rxNumberScraped: boolean;
   sig: string | null; // the directions text we parsed (kept for the row's notes)

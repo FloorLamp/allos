@@ -43,7 +43,6 @@ import OpenInMaps from "@/components/OpenInMaps";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import EncounterDetailEdit from "./EncounterDetailEdit";
 import type { Encounter } from "@/lib/types";
-import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -196,9 +195,8 @@ export default async function EncounterDetailPage(props: {
       className="mx-auto"
       data-testid="encounter-detail"
     >
-      <BackLink href="/records/history/visits" label="Back to visits" />
-
       <PageHeader
+        back={{ href: "/records/history/visits", destination: "Visits" }}
         title={encounterTypeDisplay(encounter.type, encounter.class_code)}
         subtitle={dateLabel(encounter, fmt)}
         action={

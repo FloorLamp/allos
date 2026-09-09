@@ -177,22 +177,42 @@ export function resolvePoolUnlinkRestore(
   return linkedItemCount === 1 ? remaining : null;
 }
 
+// Who is looking at the medicine cabinet: the caller's already-authorized accessible
+// profile ids, plus whether the login is an admin. Resolved ONCE at the request
+// boundary (cabinetViewer in app/(app)/supplies/access.ts) and passed DOWN as data —
+// lib/ stays auth-blind, and no reader re-derives either fact.
+export interface CabinetViewer {
+  accessible: ReadonlySet<number>;
+  isAdmin: boolean;
+}
+
 // Which bottles a caller may SEE in the medicine cabinet — ONE rule, shared by the
 // /supplies page itself and the "N shared bottles" doors its consumer surfaces now
-// carry (#1522, the nav row's replacement). A pool is visible when any ACCESSIBLE
-// profile draws from it, or when NOTHING links it at all: an orphaned bottle names
-// nobody, so nothing is disclosed, and somebody has to be able to clear it. Pure, so
-// the page's list and the header count can never disagree about what "in the cabinet"
-// means. `memberProfileIds` is a pool's raw membership (cross-profile by
-// construction); the caller supplies its already-authorized accessible set.
+// carry (#1522, the nav row's replacement). Pure, so the page's list and the header
+// count can never disagree about what "in the cabinet" means. `memberProfileIds` is a
+// pool's raw membership (cross-profile by construction).
+//
+// A bottle somebody draws from is visible to whoever may reach that somebody.
+//
+// A bottle NOBODY draws from is ADMIN-ONLY (#5122, owner ruling 2026-09-09). Its
+// count and product came from whoever last drew on it, so admitting every viewer —
+// which is what this rule used to do — showed one person's stock to unrelated logins.
+// The bottle and its count stay in the cabinet, manageable by an admin, until someone
+// joins again; a former manager who is not an admin re-adds the stock or asks an admin.
+// The accessible set stops mattering here entirely: an authorized caregiver of a FORMER
+// member is refused exactly like a stranger, because there is no longer a member to
+// authorize against.
+//
+// Membership is raw membership, not ACTIVE membership: `poolMembers` returns paused and
+// deactivated items too, and they count here. Pausing an item is not unlinking it — the
+// sole member of a bottle going inactive must not silently move that bottle behind the
+// admin rule.
 export function isPoolVisibleTo(
   memberProfileIds: readonly number[],
-  accessible: ReadonlySet<number>
+  viewer: CabinetViewer
 ): boolean {
-  return (
-    memberProfileIds.length === 0 ||
-    memberProfileIds.some((id) => accessible.has(id))
-  );
+  if (memberProfileIds.length === 0) return viewer.isAdmin;
+  return memberProfileIds.some((id) => viewer.accessible.has(id));
 }
 
 // The label on those cabinet doors (#1522 part C). With bottles to count, the count IS

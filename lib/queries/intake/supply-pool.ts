@@ -21,6 +21,7 @@ import { profileIdsIn, type AuthorizedProfileIds } from "../../cross-profile";
 import {
   daysOfSupplyForPool,
   isPoolVisibleTo,
+  type CabinetViewer,
   resolvePoolUnlinkRestore,
   resolveOnHandWrite,
   DEFAULT_LOW_SUPPLY_DAYS,
@@ -96,16 +97,13 @@ export function listSharedSupplies(): SharedSupply[] {
 // The bottles a caller may LINK an item to, or CREATE an item from (#1705) — the same
 // set the /supplies cabinet lists, through the SAME `isPoolVisibleTo` rule rather than a
 // second hand-rolled copy of it. A picker can therefore never offer a bottle the cabinet
-// would hide, nor hide one it lists. Cross-profile reader convention: already-authorized
-// ids first, no lib/auth import.
-export function listLinkableSupplies(
-  profileIds: readonly number[]
-): SharedSupply[] {
-  const accessible = new Set(profileIds);
+// would hide, nor hide one it lists. Cross-profile reader convention: the already-resolved
+// viewer first, no lib/auth import.
+export function listLinkableSupplies(viewer: CabinetViewer): SharedSupply[] {
   return listSharedSupplies().filter((s) =>
     isPoolVisibleTo(
       poolMembers(s.id).map((m) => m.profileId),
-      accessible
+      viewer
     )
   );
 }
@@ -114,23 +112,23 @@ export function listLinkableSupplies(
 // about a single id, so the write path validating a posted `supply_id` and the page
 // resolving a `?supply=` deep link agree with the picker that offered it.
 export function findLinkableSupply(
-  profileIds: readonly number[],
+  viewer: CabinetViewer,
   supplyId: number
 ): SupplyOption | null {
   const supply = getSharedSupply(supplyId);
   if (!supply) return null;
   const visible = isPoolVisibleTo(
     poolMembers(supplyId).map((m) => m.profileId),
-    new Set(profileIds)
+    viewer
   );
   return visible ? supplyOption(supply, poolMembers(supplyId)) : null;
 }
 
 export function isLinkableSupply(
-  profileIds: readonly number[],
+  viewer: CabinetViewer,
   supplyId: number
 ): boolean {
-  return findLinkableSupply(profileIds, supplyId) != null;
+  return findLinkableSupply(viewer, supplyId) != null;
 }
 
 // One bottle as an offerable option. `members` lets the option carry the two facts the
@@ -285,17 +283,14 @@ export function listPoolViews(): PoolView[] {
 }
 
 // The cabinet as ONE caller sees it: every pool that passes the shared
-// `isPoolVisibleTo` rule for the already-authorized accessible ids. The
-// cross-profile reader convention — ids first, no lib/auth import. The /supplies
-// page renders exactly this list.
-export function listVisiblePoolViews(
-  profileIds: readonly number[]
-): PoolView[] {
-  const accessible = new Set(profileIds);
+// `isPoolVisibleTo` rule for the already-resolved viewer. The cross-profile reader
+// convention — the viewer first, no lib/auth import. The /supplies page renders
+// exactly this list.
+export function listVisiblePoolViews(viewer: CabinetViewer): PoolView[] {
   return listPoolViews().filter((p) =>
     isPoolVisibleTo(
       p.members.map((m) => m.profileId),
-      accessible
+      viewer
     )
   );
 }
@@ -311,11 +306,11 @@ export function listVisiblePoolViews(
 // stays where it is: re-expressing "visible" as SQL would be a second copy of it, and
 // the door's count and the cabinet's list must never disagree about what "in the
 // cabinet" means.
-export function countVisiblePools(profileIds: readonly number[]): number {
-  const accessible = new Set(profileIds);
-  // LEFT JOIN, so an ORPHANED bottle (nothing links it) still yields one row — with a
-  // NULL profile_id, which is exactly the "names nobody, so nothing is disclosed"
-  // case isPoolVisibleTo admits on an empty membership.
+export function countVisiblePools(viewer: CabinetViewer): number {
+  // LEFT JOIN, so a MEMBER-LESS bottle (nothing links it) still yields one row — with a
+  // NULL profile_id, which is the empty membership isPoolVisibleTo admits for an admin
+  // only (#5122). Without the join it would vanish from the count for everyone,
+  // including the admin who has to be able to clear it.
   const rows = db
     .prepare(
       `SELECT s.id AS supply_id, i.profile_id AS profile_id
@@ -331,7 +326,7 @@ export function countVisiblePools(profileIds: readonly number[]): number {
   }
   let count = 0;
   for (const memberProfileIds of membersBySupply.values()) {
-    if (isPoolVisibleTo(memberProfileIds, accessible)) count++;
+    if (isPoolVisibleTo(memberProfileIds, viewer)) count++;
   }
   return count;
 }

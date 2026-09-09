@@ -26,7 +26,6 @@ import { PageHeader, EmptyState } from "@/components/ui";
 import { statusBadge } from "../status-ui";
 import OverrideControls from "./OverrideControls";
 import VaccineDoseHistory from "../VaccineDoseHistory";
-import BackLink from "@/components/BackLink";
 import { displayUnit } from "@/lib/display-unit";
 
 export const dynamic = "force-dynamic";
@@ -48,11 +47,13 @@ export default async function VaccineDetailPage(props: {
   if (!entry) {
     return (
       <div>
-        <BackLink
-          href="/records/history/immunizations"
-          label="Back to immunizations"
+        <PageHeader
+          back={{
+            href: "/records/history/immunizations",
+            destination: "Immunizations",
+          }}
+          title={vaccineDisplayName(code)}
         />
-        <PageHeader title={vaccineDisplayName(code)} />
         <EmptyState message="Unknown vaccine. This detail view covers the tracked catalog vaccines." />
       </div>
     );
@@ -100,12 +101,11 @@ export default async function VaccineDetailPage(props: {
   return (
     <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
       <div>
-        <BackLink
-          href="/records/history/immunizations"
-          label="Back to immunizations"
-        />
-
         <PageHeader
+          back={{
+            href: "/records/history/immunizations",
+            destination: "Immunizations",
+          }}
           title={entry.name}
           subtitle={desc ?? undefined}
           action={<span className={`badge ${badge.cls}`}>{badge.text}</span>}

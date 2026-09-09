@@ -70,7 +70,6 @@ import {
 import { displayUnit } from "@/lib/display-unit";
 import { importActionExplainers } from "@/lib/import-actions-copy";
 import { isDeterministicReprocess } from "@/lib/reprocess-cost";
-import BackLink from "@/components/BackLink";
 import {
   buildImportTabs,
   resolveImportTab,
@@ -432,8 +431,8 @@ export default async function ImportDetailPage(props: {
     <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
       <CanonicalNamesProvider options={canonicalOptions}>
         <div>
-          <BackLink href="/data?section=review" label="Back to Review" />
           <PageHeader
+            back={{ href: "/data?section=review", destination: "Review" }}
             title={doc.filename}
             subtitle={documentFormatLabel(doc)}
             action={

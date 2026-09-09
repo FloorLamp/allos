@@ -157,6 +157,7 @@ export default function ProtocolControls({
         this IS the protocol detail page's heading, so it gets the same treatment —
         including the compact mobile size — as every other page. */}
         <PageHeader
+          back={{ href: "/longevity#protocols", destination: "Protocols" }}
           title={protocol.name}
           className="mb-0! max-sm:flex-wrap max-sm:gap-2 max-sm:[&>div:first-child]:w-full"
           subtitle={
