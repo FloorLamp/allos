@@ -1,8 +1,11 @@
 // SERVER-ACTION TIER (#1099) — the "Create a visit from this record?" accept/decline
 // write paths, driven through the real actions with the auth boundary mocked
 // (setup.ts). The pure/DB tiers can't see the auth gate or the FormData plumbing; this
-// pins that the actions create+link under requireWriteAccess, remember a decline, and
-// reject a cross-profile write target.
+// pins that the actions create+link under requireWriteAccess and remember a decline.
+// The cross-profile subject gate these two share with the other eight visit-link
+// actions is pinned once, for all ten, in visit-links.actions.test.ts (#4780) — the
+// per-file copy of that refusal lived here and asserted the retired `profileId`
+// spelling, so it moved rather than being dropped.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -78,23 +81,6 @@ describe("create-visit-from-record actions", () => {
     const { profile } = seedActor();
     const rx = newOpticalRx(profile.id);
     await createVisitFromRecordAction(fd({ domain: "record", recordId: rx }));
-    expect(rxEncounterId(rx)).toBeNull();
-  });
-
-  it("rejects a cross-profile write target the actor cannot reach", async () => {
-    const { profile } = seedActor({ role: "member" }); // grant to its OWN profile only
-    const rx = newOpticalRx(profile.id);
-    // A profile the acting member has NO grant to.
-    const stranger = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES ('Stranger')").run()
-        .lastInsertRowid
-    );
-    await expect(
-      createVisitFromRecordAction(
-        fd({ profileId: stranger, domain: "optical", recordId: rx })
-      )
-    ).rejects.toThrow(/not accessible/);
-    // No visit fabricated under either profile.
     expect(rxEncounterId(rx)).toBeNull();
   });
 });
