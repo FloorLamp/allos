@@ -344,19 +344,49 @@ describe("CreateAction", () => {
   });
 });
 
-it("places a compact page's return link before its title", () => {
-  render(
-    <PageHeader
-      title="History"
-      compactBelowSm
-      back={{ href: "/history?kind=dose", destination: "History" }}
-    />
-  );
-  const back = screen.getByRole("link", { name: "History" });
-  expect(back.getAttribute("href")).toBe("/history?kind=dose");
-  expect(
-    back.compareDocumentPosition(
-      screen.getByRole("heading", { name: "History" })
-    ) & Node.DOCUMENT_POSITION_FOLLOWING
-  ).toBeTruthy();
+// PageHeader's back slot (#5411). The header owns both halves of a back link:
+// the place (above the h1, never below it or inside a card) and the survival of
+// `compactBelowSm`. That second half is the whole reason the day view can carry
+// one: `compactBelowSm` sends the h1 `sr-only`, so on a phone the back link is
+// the header's ONE visible line. A slot drawn inside the title block would
+// vanish with it and the day view would be back to having no way out.
+describe("PageHeader's back slot", () => {
+  function renderCompactHeader() {
+    render(
+      <PageHeader
+        title="History"
+        compactBelowSm
+        back={{ href: "/history?kind=dose", destination: "History" }}
+      />
+    );
+    return {
+      back: screen.getByRole("link", { name: "History" }),
+      title: screen.getByRole("heading", { name: "History" }),
+    };
+  }
+
+  it("places a compact page's return link before its title", () => {
+    const { back, title } = renderCompactHeader();
+    expect(back.getAttribute("href")).toBe("/history?kind=dose");
+    expect(
+      back.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("keeps the link visible below sm while the title goes sr-only", () => {
+    const { back, title } = renderCompactHeader();
+    expect(title.className).toContain("sr-only");
+    // Nothing between the link and the header root withdraws it below `sm`.
+    const withdrawn: string[] = [];
+    for (
+      let node: HTMLElement | null = back;
+      node && node !== document.body;
+      node = node.parentElement
+    ) {
+      if (/\b(sr-only|hidden)\b/.test(node.className)) {
+        withdrawn.push(node.className);
+      }
+    }
+    expect(withdrawn).toEqual([]);
+  });
 });
