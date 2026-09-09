@@ -112,7 +112,6 @@ export default async function SuppliesPage() {
               profileId: m.profileId,
               name: m.subject.name,
             })),
-            memberProfileIds: pool.members.map((m) => m.profileId),
             candidates: alsoForCandidates,
           })
         : { sources: [], offers: [] },

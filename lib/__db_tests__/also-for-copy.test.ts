@@ -103,7 +103,6 @@ function modelFor(
     visibleMembers: [
       { itemId: member.itemId, profileId: member.profileId, name: "Mira" },
     ],
-    memberProfileIds: [member.profileId],
     candidates: [candidate],
   });
 }
@@ -284,7 +283,6 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
     const model = alsoForCardModel({
       pool: { id: bottle, name: "Ibuprofen", strength: "200 mg" },
       visibleMembers: [{ itemId: item, profileId: other, name: "Mira" }],
-      memberProfileIds: [other],
       candidates: [{ id: target, name: "Ada" }],
     });
     const res = copyPoolMemberPlan({
@@ -322,7 +320,6 @@ describe("the offer is derived per person", () => {
         { itemId: sourceItem, profileId: source, name: "Mira" },
         { itemId: secondItem, profileId: second, name: "Dune" },
       ],
-      memberProfileIds: [source, second],
       candidates: [
         { id: target, name: "Ada" },
         { id: allergic, name: "Bo" },
@@ -350,7 +347,6 @@ describe("the offer is derived per person", () => {
       alsoForCardModel({
         pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
         visibleMembers: [],
-        memberProfileIds: [source],
         candidates: [{ id: target, name: "Ada" }],
       })
     ).toEqual({ sources: [], offers: [] });
@@ -450,7 +446,6 @@ function basisFor(targetProfileId: number): string {
   const model = alsoForCardModel({
     pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
     visibleMembers: [{ itemId: sourceItem, profileId: source, name: "Mira" }],
-    memberProfileIds: [source],
     candidates: [{ id: targetProfileId, name: "Ada" }],
   });
   return model.offers[0]?.basisBySource[sourceItem] ?? "";
@@ -706,7 +701,6 @@ describe("the basis binds every field the copy carries off the source", () => {
     const model = alsoForCardModel({
       pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
       visibleMembers: [{ itemId: secondItem, profileId: second, name: "Dune" }],
-      memberProfileIds: [source, second],
       candidates: [{ id: target, name: "Ada" }],
     });
     const basis = model.offers[0].basisBySource[secondItem];

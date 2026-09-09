@@ -68,7 +68,6 @@ function post(
     visibleMembers: [
       { itemId: sourceItemId, profileId: sourceProfileId, name: "Mira" },
     ],
-    memberProfileIds: [sourceProfileId],
     candidates: [target],
   });
   return fd({

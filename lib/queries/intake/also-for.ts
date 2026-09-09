@@ -40,7 +40,7 @@ import {
   getPoolView,
   invalidatePoolRefillOffers,
   poolMembers,
-  poolProductCodes,
+  type PoolMember,
   type PoolView,
 } from "./supply-pool";
 
@@ -144,14 +144,39 @@ export function alsoForSource(
 // members this reader can see, which is what makes the answer stable: the card and the
 // write must derive the same product or every offer would refuse itself as stale.
 export function poolProductIdentity(
-  pool: Pick<PoolView, "id" | "name" | "strength">
+  pool: Pick<PoolView, "name" | "strength">,
+  members: readonly PoolMember[]
 ): IntakeProductIdentity {
-  const codes = poolProductCodes(pool.id);
+  // Lowest item id wins: the members of one bottle are the same product by
+  // construction, so any coded member answers for the bottle and the oldest is the
+  // stable choice. The MEMBERSHIP is the one cross-profile read (poolMembers, the
+  // allowlisted accounting read); each member's own facts are then read under that
+  // member's profile, so no statement here is unscoped.
+  for (const member of [...members].sort((a, b) => a.itemId - b.itemId)) {
+    const row = db
+      .prepare(
+        "SELECT rxcui, rxcui_ingredients FROM intake_items WHERE id = ? AND profile_id = ?"
+      )
+      .get(member.itemId, member.profileId) as
+      { rxcui: string | null; rxcui_ingredients: string | null } | undefined;
+    const rxcui = row?.rxcui ?? null;
+    const rxcuiIngredients = parseRxcuiIngredients(
+      row?.rxcui_ingredients ?? null
+    );
+    if (rxcui || rxcuiIngredients?.length) {
+      return {
+        name: pool.name,
+        strength: pool.strength,
+        rxcui,
+        rxcuiIngredients,
+      };
+    }
+  }
   return {
     name: pool.name,
     strength: pool.strength,
-    rxcui: codes.rxcui,
-    rxcuiIngredients: codes.rxcuiIngredients,
+    rxcui: null,
+    rxcuiIngredients: null,
   };
 }
 
@@ -312,7 +337,6 @@ export function alsoForCardModel(input: {
     profileId: number;
     name: string;
   }[];
-  memberProfileIds: readonly number[];
   candidates: readonly { id: number; name: string }[];
 }): AlsoForCardModel {
   // Nobody to offer this bottle to means nothing to read: the sources exist only to be
@@ -342,8 +366,13 @@ export function alsoForCardModel(input: {
   }
   if (sources.length === 0) return { sources: [], offers: [] };
 
-  const product = poolProductIdentity(input.pool);
-  const memberIds = new Set(input.memberProfileIds);
+  // The MEMBERSHIP, not the visible subset: who already draws from this bottle and
+  // what product it is are both facts about the bottle, and the write re-reads exactly
+  // this — a card that answered from what its viewer can see would offer a person who
+  // is already a member behind someone else's grant.
+  const members = poolMembers(input.pool.id);
+  const product = poolProductIdentity(input.pool, members);
+  const memberIds = new Set(members.map((m) => m.profileId));
   const offers: AlsoForOffer[] = [];
   for (const candidate of input.candidates) {
     const facts = alsoForCandidateFacts({
@@ -432,7 +461,7 @@ export function copyPoolMemberPlan(input: {
     );
     if (!source) return { ok: false, error: STALE };
 
-    const product = poolProductIdentity(pool);
+    const product = poolProductIdentity(pool, members);
     const facts = alsoForCandidateFacts({
       profileId: input.targetProfileId,
       name: input.targetName,

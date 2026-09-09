@@ -29,7 +29,6 @@ import {
 } from "../../refill";
 import { getRefillRates } from "./refill";
 import { isPushedIntake } from "../../intake-schedule";
-import { parseRxcuiIngredients } from "../../rxnorm";
 import { bottleSiblingKind, type SupplyOption } from "../../supply-product";
 import type { IntakeObligation } from "../../types";
 
@@ -235,34 +234,6 @@ export function poolMembers(supplyId: number): PoolMember[] {
       member.doseAmounts.push(amount);
   }
   return [...members.values()];
-}
-
-// The RxNorm identity a bottle's MEMBERSHIP carries. A `shared_supplies` row has no
-// code column of its own, and #4717's identity is RxCUI FIRST, so the codes have to
-// come off the members — every one of them, in a deterministic order, and NOT off the
-// subset a given reader happens to see. The cabinet card and the write must derive the
-// same product or every offer would refuse itself as stale (#5230).
-//
-// Lowest item id wins: the bottle's members are the same product by construction, so
-// any coded member answers for the bottle, and the oldest is the stable choice.
-// Cross-profile by construction, exactly like poolMembers above.
-export function poolProductCodes(supplyId: number): {
-  rxcui: string | null;
-  rxcuiIngredients: string[] | null;
-} {
-  const row = db
-    .prepare(
-      `SELECT rxcui, rxcui_ingredients FROM intake_items
-        WHERE supply_id = ?
-          AND (rxcui IS NOT NULL OR rxcui_ingredients IS NOT NULL)
-        ORDER BY id LIMIT 1`
-    )
-    .get(supplyId) as
-    { rxcui: string | null; rxcui_ingredients: string | null } | undefined;
-  return {
-    rxcui: row?.rxcui ?? null,
-    rxcuiIngredients: parseRxcuiIngredients(row?.rxcui_ingredients ?? null),
-  };
 }
 
 // Whether a pooled bottle may ride a PUSH surface (#1505). The pool is ONE subject
