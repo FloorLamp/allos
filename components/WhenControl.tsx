@@ -246,6 +246,7 @@ export default function WhenControl({
           disabled={disabled}
           label={`${dateLabel} and ${timeLabel.toLowerCase()}`}
           testId={testId}
+          tz={tz}
         />
       ) : (
         <>
@@ -278,6 +279,7 @@ export default function WhenControl({
             <TimeField
               value={hhmm}
               onChange={setHhmm}
+              tz={tz}
               required={mode === "state" && timeRequired}
               disabled={disabled}
               inputClassName="w-32 text-sm"
@@ -389,6 +391,7 @@ function WhenDoor({
   disabled,
   label,
   testId,
+  tz,
 }: {
   date: string;
   hhmm: string;
@@ -399,16 +402,27 @@ function WhenDoor({
   disabled: boolean;
   label: string;
   testId: string;
+  tz: string;
 }) {
   const prefs = useFormatPrefs();
-  const [open, setOpen] = useState(false);
+  const [{ open, proposal }, setPicker] = useState({
+    open: false,
+    proposal: "",
+  });
+  const setOpen = (next: boolean) => {
+    const proposed = next && !open ? zonedDateParts(tz, new Date()).hhmm : null;
+    setPicker((current) => ({
+      open: next,
+      proposal: proposed ?? current.proposal,
+    }));
+  };
   const ref = useRef<HTMLDivElement>(null);
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(!open)}
         disabled={disabled}
         aria-label={label}
         aria-haspopup="dialog"
@@ -463,7 +477,12 @@ function WhenDoor({
                 />
               </div>
               <div className="mt-2 border-t border-black/10 pt-2 md:mt-0 md:grow md:border-t-0 md:border-l md:pt-0 md:pl-3 dark:border-white/10">
-                <TimeWheel value={hhmm} onChange={onHhmm} />
+                <TimeWheel
+                  value={hhmm}
+                  onChange={onHhmm}
+                  proposal={proposal}
+                  open={open}
+                />
               </div>
             </div>
             <div className="mt-2 flex justify-end border-t border-black/10 pt-2 text-sm dark:border-white/10">

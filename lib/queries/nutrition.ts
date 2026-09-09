@@ -1118,7 +1118,7 @@ export function getRecentFoodTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, group_key, recorded_at, occurred_at, notify_message_id
+      `SELECT id, group_key, recorded_at, occurred_at, notify_message_id, bundle_id
          FROM food_log_events
         WHERE profile_id = ? AND recorded_at >= ?
           AND (logged_via IS NULL OR logged_via IN ('telegram-nudge', 'telegram-command'))
@@ -1131,6 +1131,7 @@ export function getRecentFoodTaps(
     recorded_at: string;
     occurred_at: string | null;
     notify_message_id: number | null;
+    bundle_id: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
@@ -1144,6 +1145,7 @@ export function getRecentFoodTaps(
     // Which message's tap wrote the row (#2264) — the burst's attribution, so a
     // correction row renders only on the message that produced it.
     messageRef: r.notify_message_id,
+    bundleId: r.bundle_id,
     // The reserved __protein__ pseudo-group has no catalog entry, so it is named for
     // what it is rather than rendered as a mystery slug.
     label: isProteinNudgeKey(r.group_key)

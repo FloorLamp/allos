@@ -16,11 +16,12 @@ import {
 } from "./log-manifest";
 import { now, sqlNow } from "./clock";
 import {
-  burstFrom,
+  restampBurst,
+  type RestampSelection,
   type CorrectionBurst,
   type TapEvent,
 } from "./correction-time";
-import { eventInstant, recordInstant } from "./row-instants";
+import { eventInstant } from "./row-instants";
 import { getTimezone } from "./settings";
 import { episodeIsOpen, episodeState, type EpisodeState } from "./open-episode";
 import { derivedSessionMinutes, normalizePracticeName } from "./practice";
@@ -39,6 +40,9 @@ import {
   getPracticeSpellings,
   getPracticeUsualDuration,
   liveSessionOf,
+  practiceCorrectionTap,
+  PRACTICE_CORRECTION_ELIGIBLE_SQL,
+  type PracticeCorrectionRow,
 } from "./queries/wellness";
 import { ADMIN_DEDUP_WINDOW_SEC } from "./queries/intake/adherence";
 
@@ -939,7 +943,7 @@ export type PracticeRestampOutcome =
 // renderer and the write always bound the same rows.
 export function restampPracticeLogsCore(
   profileId: number,
-  fromLogId: number,
+  fromLogId: RestampSelection,
   resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null,
   // The tap-time binding, re-evaluated INSIDE this write transaction (#3092 follow-up).
   // The handler's own check runs before its write call, but an `await` separates the
@@ -958,64 +962,26 @@ export function restampPracticeLogsCore(
     const rows = db
       .prepare(
         `SELECT id, practice, date, start_time, end_time, duration_min, logged_via,
-                created_at, notify_message_id
+                created_at, notify_message_id, bundle_id
            FROM practice_logs
-          WHERE profile_id = ? AND id >= ?
-            AND (start_time IS NOT NULL OR end_time IS NOT NULL)
-            AND (end_time IS NULL OR (
-              start_time IS NULL AND duration_min IS NULL AND correction_locked = 0
-              AND logged_via IN ('telegram-nudge', 'telegram-command')
-            ))
-            AND live = 0
-            AND external_id IS NULL
+          WHERE profile_id = ? AND ${typeof fromLogId === "number" ? "id >= ?" : "id IN (SELECT value FROM json_each(?))"}
+            AND ${PRACTICE_CORRECTION_ELIGIBLE_SQL}
           ORDER BY created_at, id
-          LIMIT 200`
+          ${typeof fromLogId === "number" ? "LIMIT 200" : ""}`
       )
-      .all(profileId, fromLogId) as {
-      id: number;
-      practice: string;
-      date: string;
-      start_time: string | null;
-      end_time: string | null;
-      duration_min: number | null;
-      logged_via: string | null;
-      created_at: string;
-      notify_message_id: number | null;
-    }[];
+      .all(
+        profileId,
+        typeof fromLogId === "number"
+          ? fromLogId
+          : JSON.stringify(fromLogId.ids)
+      ) as PracticeCorrectionRow[];
     const byId = new Map(rows.map((r) => [r.id, r]));
     const events: TapEvent[] = [];
     for (const r of rows) {
-      const tapAt = recordInstant("practice_logs", r);
-      const chatFinished =
-        r.end_time != null &&
-        (r.logged_via === "telegram-nudge" ||
-          r.logged_via === "telegram-command");
-      const endDate =
-        chatFinished && r.start_time != null && r.end_time! <= r.start_time
-          ? shiftDateStr(r.date, 1)
-          : r.date;
-      const statedAt = eventInstant(
-        "practice_logs",
-        chatFinished ? { ...r, date: endDate, start_time: r.end_time } : r,
-        tz
-      );
-      if (!tapAt.known || !statedAt.known) continue;
-      events.push({
-        id: r.id,
-        tapAt: tapAt.at,
-        statedAt: statedAt.at,
-        // The same stored column the refusal below compares against, so the burst this
-        // core builds and the burst the renderer bounded its offers with carry ONE day
-        // (#2875) — not the same day computed two ways.
-        localDay: r.date,
-        // A burst is one message's error (#3092): the write partitions by the same
-        // provenance the renderer partitioned by, so a chip re-stamps exactly the
-        // rows whose correction row it was.
-        messageRef: r.notify_message_id,
-        label: r.practice,
-      });
+      const tap = practiceCorrectionTap(r, tz);
+      if (tap) events.push(tap);
     }
-    const burst = burstFrom(events, fromLogId);
+    const burst = restampBurst(events, fromLogId);
     if (!burst) return { kind: "no-burst" as const };
     if (stillBound && !stillBound(burst)) return { kind: "not-bound" as const };
 
