@@ -180,6 +180,70 @@ describe("Button", () => {
     }
   );
 
+  // THE ONE SHAPE MODIFIER, GHOST-ONLY (owner ruling 4, 2026-09-09, #4978).
+  // Same claim shape as the two rank tests above: `dashed` ADDS one utility to
+  // the same box and removes nothing, so the fact row's "missing" placeholder
+  // shape is the secondary treatment with a border style, never a third paint.
+  it("adds the dashed shape to the ghost and removes nothing", () => {
+    render(
+      <>
+        <Button data-testid="ghost">+ Mark as illness</Button>
+        <Button dashed data-testid="dashed">
+          + Mark as illness
+        </Button>
+      </>
+    );
+
+    expect(screen.getByTestId("ghost").className.split(" ")).toEqual([
+      "button-control",
+    ]);
+    expect(screen.getByTestId("dashed").className.split(" ")).toEqual([
+      "button-control",
+      "border-dashed",
+    ]);
+    expect(
+      screen.getByTestId("dashed").getAttribute("data-button-control")
+    ).toBe("");
+  });
+
+  // AND THE RULING'S LIMIT IS THE TYPE, NOT A CONVENTION. Never rendered: each
+  // `@ts-expect-error` below fails `npm run typecheck` the moment a dashed rank
+  // becomes expressible, which is the only place that claim can be made — a
+  // runtime assertion would be testing a guard this primitive deliberately does
+  // not have. `layout` composes with the shape, so the last row proves the
+  // refusal is aimed at RANK and has not swallowed anything else.
+  function DashedIsGhostOnly() {
+    return (
+      <>
+        {/* @ts-expect-error - ruling 4 admits no dashed primary. */}
+        <Button dashed variant="primary">
+          Save
+        </Button>
+        {/* @ts-expect-error - ruling 4 admits no dashed danger either. */}
+        <Button dashed variant="danger">
+          Delete
+        </Button>
+        <Button dashed layout="block">
+          + Mark as illness
+        </Button>
+      </>
+    );
+  }
+  void DashedIsGhostOnly;
+
+  it("composes the dashed shape with layout rather than replacing it", () => {
+    render(
+      <Button dashed layout="block" data-testid="dashed-block">
+        + Mark as illness
+      </Button>
+    );
+    expect(screen.getByTestId("dashed-block").className.split(" ")).toEqual([
+      "button-control",
+      "w-full",
+      "border-dashed",
+    ]);
+  });
+
   it("keeps a destination a link under the same closed treatment", () => {
     render(
       <DestinationActionLink href="/upcoming" data-testid="destination">

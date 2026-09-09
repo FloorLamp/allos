@@ -138,23 +138,17 @@ export default function ReopenEpisodeReconcile({
             in Past.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Button
+              variant="primary"
               data-testid="episode-reopen-confirm"
               disabled={pending}
               onClick={() => submit([...selected])}
-              className="btn"
             >
               {pending ? "Reopening…" : "Reopen episode"}
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => setOpen(false)}
-              className="btn-ghost"
-            >
+            </Button>
+            <Button disabled={pending} onClick={() => setOpen(false)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </ModalShell>
       )}
