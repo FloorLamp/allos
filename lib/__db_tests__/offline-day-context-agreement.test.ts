@@ -43,7 +43,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr, weekdayOfDateStr } from "@/lib/date";
-import { setTimezone } from "@/lib/settings";
+import {
+  mintCalendarFeedToken,
+  setCalendarFeedOptions,
+  setTimezone,
+} from "@/lib/settings";
+import { GET as calendarFeedGET } from "@/app/api/calendar/[token]/route";
 import { buildSnapshot, snapshotContext } from "@/lib/offline/snapshot-build";
 import type { DoseScheduleEntry } from "@/lib/offline/snapshots";
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
@@ -600,5 +605,62 @@ describe("the composed one-tap riding a send follows it too (#5321)", () => {
     expect(after).not.toBeNull();
     expect(after!.line).toContain("Recovery tablet");
     expect(after!.label).toContain("(3)");
+  });
+});
+
+describe("the subscribed calendar feed follows it too (#5321)", () => {
+  // THE THIRD REACH OF `scheduledDoseRows`, and the other one neither pass named. The
+  // digest and the page rows are both inside the app; this leaves it. `dose` is one of
+  // the ten feed categories (lib/calendar-ics.ts), so a profile that opted its doses
+  // into the ICS feed publishes them to whatever calendar client subscribes:
+  //
+  //   scheduledDoseRows → doseItems (queries/upcoming/intake-safety.ts)
+  //                     → collectUpcoming (queries/upcoming/generators.ts)
+  //                     → feedEligibleSignals (app/api/calendar/[token]/route.ts)
+  //                     → the served .ics body
+  //
+  // Asserted on the SERVED BODY rather than on `collectUpcoming`, for the same reason
+  // the sends above are asserted on their messages: the feed is the artifact a third
+  // party reads, and a query's return value cannot say what left the instance.
+  //
+  // Not a push, so it is not in the send list — it is a pull the subscriber's client
+  // makes. It is guarded anyway because it is content that leaves the app, and because
+  // an .ics is cached by the client for as long as it feels like.
+  it("does not publish a held dose, then publishes it", async () => {
+    const p = newProfile();
+    const td = today(p);
+    seedItem(p, "Recovery tablet", "post_workout");
+    logWorkout(p, td, "17:00", "18:00");
+    const token = mintCalendarFeedToken(p);
+    // Doses are OPT-IN: the default feed carries appointments only.
+    setCalendarFeedOptions(p, {
+      categories: ["appointment", "dose"],
+      reminders: false,
+      pastWindowDays: 30,
+      futureWindowDays: null,
+    });
+
+    const body = async (): Promise<string> => {
+      const res = await calendarFeedGET(
+        new Request(`http://x/api/calendar/${token}`),
+        { params: Promise.resolve({ token }) }
+      );
+      return await res.text();
+    };
+
+    // The feed REDACTS the item (`SUMMARY:Medication / supplement dose`, the Minimal
+    // detail level), so the assertion is on whether the event is published at all —
+    // which is the whole question here, and the redaction is why nobody would have
+    // noticed the wrong answer by reading a calendar.
+    const doseEvents = async (): Promise<number> =>
+      (await body()).split("SUMMARY:Medication / supplement dose").length - 1;
+
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual([]);
+    expect(await doseEvents()).toBe(0);
+
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
+    expect(await doseEvents()).toBe(1);
   });
 });
