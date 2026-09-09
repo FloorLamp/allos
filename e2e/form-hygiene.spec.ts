@@ -112,9 +112,19 @@ test("a disabled primary button uses the one accessible disabled treatment (#145
   expect(ratio).toBeGreaterThanOrEqual(4.5);
 
   // ONE treatment, not two: the admin row control over on Family resolves to the
-  // same disabled surface rather than its own grey. It is still on the retiring
-  // `btn-ghost`, which is the point — the two families must agree on the disabled
-  // surface for as long as both are mounted.
+  // same disabled surface rather than its own grey.
+  //
+  // WHAT THIS HALF PROVES CHANGED WITH #4978 SLICE 4, so the comment changes with
+  // it. It used to be a CROSS-FAMILY check — the Family control was still a raw
+  // `btn-ghost`, so the two families had to agree on the disabled surface for as
+  // long as both were mounted. Slice 4 converted that row, and both controls are
+  // now the primitive. What is left is the check that survives the convergence and
+  // is worth more once the raw family is gone: the rank paints are scoped away from
+  // the disabled treatment (`button-control-primary` / `-danger` are
+  // `:not(:disabled)`), so a DISABLED primary must resolve to exactly the muted
+  // surface a plain secondary does. Unscope either utility and this reddens with a
+  // saturated fill on the left of the comparison — which is #1450 B's own defect,
+  // restated on the primitive that inherited it.
   await page.goto("/settings/family");
   // eslint-disable-next-line no-restricted-properties -- first-ok: spec asserts the shared disabled treatment on any one instance of this repeated admin row control
   const signOutDevices = page
