@@ -3,19 +3,20 @@
 // THE FACT IT SURFACES. One ingredient is several products. Ibuprofen is an adult
 // tablet at one strength and a children's oral suspension at another, and the #798
 // datasets already carry the concentrations — but only the pediatric band picker,
-// buried inside the dose block, ever offered the choice. As a derived chip row beside
-// the kind chip, the choice is where the person can see it, and the profile's age
-// picks the default rather than making them find it.
+// buried inside the dose block, ever offered the choice. As a derived chip row at the
+// top of the dose editor (#5301), the choice sits with the fact it changes, and the
+// profile's age picks the default rather than making anyone find it.
 //
 // WHAT A SWITCH RE-DERIVES, and why each follows from the product rather than from
 // the person:
 //   • the dose amount — a suspension's dose is a volume, so the amount carries both
 //     the milligrams and the millilitres;
 //   • the redose preset — the child label's interval/max where it differs from the
-//     adult's (#851 item 12);
-//   • the pediatric context — #798's contract that the dose comes from the child's
-//     recorded WEIGHT BAND and is confirmed against the package, which survives the
-//     switch rather than being re-derived away by it.
+//     adult's (#851 item 12).
+//
+// #798's contract — the dose comes from the child's recorded WEIGHT BAND, confirmed
+// against the package — is stated once, by the band picker the switch re-derives inside
+// (components/medications/PediatricDoseBandPicker.tsx).
 //
 // WHAT IT STORES. `intake_items.product`, exactly as today: the curated label for a
 // chosen formulation, and nothing for the ingredient's default form (which has no
@@ -24,7 +25,6 @@
 // Pure over the dataset entry.
 
 import type { PrnDefaultEntry } from "./datasets/prn-defaults";
-import { PEDIATRIC_DOSE_CAVEAT } from "./prn-dosing";
 import { redoseLabelDefaults } from "./prn-defaults";
 
 // The stable value of the row's default chip — the ingredient's own form, the one the
@@ -89,16 +89,4 @@ export function formulationRedosePreset(
 ) {
   if (!entry) return null;
   return redoseLabelDefaults(entry, choice?.pediatric === true);
-}
-
-// The #798 contract line that rides a pediatric formulation: the dose is the child's
-// recorded WEIGHT BAND, and it is confirmed against the package — never a computed
-// mg/kg. It survives a formulation switch because it is a property of dosing a child,
-// not of the product chosen.
-export function pediatricContextLine(
-  choice: FormulationChoice | null | undefined,
-  isChildProfile: boolean
-): string | null {
-  if (!isChildProfile && !choice?.pediatric) return null;
-  return `The dose is by the child's weight band. ${PEDIATRIC_DOSE_CAVEAT}`;
 }

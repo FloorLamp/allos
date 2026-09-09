@@ -23,6 +23,7 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 function base(over: Partial<IntakeFactInput> = {}): IntakeFactInput {
   return {
     kind: "medication",
+    name: "",
     amount: "",
     formulationLabel: "",
     extraDoses: [],
@@ -34,6 +35,7 @@ function base(over: Partial<IntakeFactInput> = {}): IntakeFactInput {
     maxDailyAmountMg: "",
     cadenceSentence: null,
     rx: false,
+    rxcui: "",
     prescriber: "",
     indication: "",
     brand: "",

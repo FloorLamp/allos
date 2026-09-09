@@ -39,23 +39,19 @@ export default function PediatricDoseBandPicker({
   selectedBandMinLbs,
   currentAmount,
   onBandSelect,
-  onFormulationChange,
-  hideFormulationSelect = false,
 }: {
   idPrefix: string;
   result: PickerResult;
   bands: readonly PediatricBand[];
+  // READ, never chosen here. The one intake form states the formulation as a derived
+  // chip row above this picker inside the same dose editor (#3216 decision 2, #5301) —
+  // one datum, one control. These two say which product each band's volume is in.
   formulations: readonly PrnFormulation[];
   formulationSlug: string;
   today: string;
   selectedBandMinLbs: number | null;
   currentAmount: string;
   onBandSelect: (band: PediatricBand) => void;
-  onFormulationChange: (slug: string) => void;
-  // The merged intake form (#3216) states the formulation as a derived CHIP ROW above
-  // the facts, so the picker renders no select of its own — one datum, one control.
-  // It still reads the chosen formulation, to show each band's volume.
-  hideFormulationSelect?: boolean;
 }) {
   const formatPrefs = useFormatPrefs();
   const orderedBands = [...bands].sort((a, b) => a.minLbs - b.minLbs);
@@ -68,28 +64,6 @@ export default function PediatricDoseBandPicker({
 
   return (
     <div className="mt-1 space-y-2 text-slate-600 dark:text-slate-300">
-      {formulations.length > 0 && !hideFormulationSelect ? (
-        <div className="flex flex-wrap items-center gap-2 pt-0.5">
-          <label className="text-xs" htmlFor={`${idPrefix}-formulation`}>
-            Formulation
-          </label>
-          <select
-            id={`${idPrefix}-formulation`}
-            data-testid="pediatric-formulation"
-            value={formulationSlug}
-            onChange={(event) => onFormulationChange(event.target.value)}
-            className="input w-auto max-w-full text-xs"
-          >
-            <option value="">mg only (measure per package)</option>
-            {formulations.map((item) => (
-              <option key={item.slug} value={item.slug}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
-
       <fieldset>
         <legend className="text-xs font-medium">
           Select a label weight band

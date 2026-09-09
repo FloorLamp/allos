@@ -259,9 +259,6 @@ export default function IllnessMedicationLogger({
           data-testid="illness-medication-quick-add"
           className="subpanel-inset-sm mt-2 rounded-lg border border-black/5 p-3 dark:border-white/5"
         >
-          <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-            Add an over-the-counter medication and its usual dose.
-          </p>
           <IntakeItemForm
             action={addIntakeItem}
             kind="medication"

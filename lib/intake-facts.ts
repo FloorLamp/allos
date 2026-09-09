@@ -37,6 +37,7 @@ export type IntakeFactKey =
   | "prescription"
   | "indication"
   | "identity"
+  | "rxnorm"
   | "supply"
   | "stopDate"
   | "composition"
@@ -76,6 +77,10 @@ export interface IntakeFactSummary {
 // the form's state object, so the chips can be computed in a test without React.
 export interface IntakeFactInput {
   kind: IntakeItemKind;
+  // The name the form's own field states above the chips. Never a chip of its own — it
+  // is here so that no chip echoes it (#3216 ruling 5, reported as #5301): a stored
+  // `product` that only repeats the name is a duplicate, not a formulation.
+  name: string;
   // Dose row one's amount, and the formulation label chosen for it.
   amount: string;
   formulationLabel: string;
@@ -92,6 +97,8 @@ export interface IntakeFactInput {
   rx: boolean;
   prescriber: string;
   indication: string;
+  // The confirmed RxNorm concept id (#144/#846), or "" when none is matched yet.
+  rxcui: string;
   // Shared identity.
   brand: string;
   product: string;
@@ -150,6 +157,7 @@ export const INTAKE_FACT_NOUNS: Record<IntakeFactKey, string> = {
   prescription: "prescription",
   indication: "condition",
   identity: "brand",
+  rxnorm: "standardized ingredient",
   supply: "supply",
   stopDate: "stop date",
   composition: "what's in it",
@@ -174,10 +182,25 @@ function join(parts: (string | null | undefined)[]): string {
   return parts.filter((p) => p && p.trim()).join(" · ");
 }
 
+// The product this dose is OF, and the ONE place the summary states it (#5301). A
+// pediatric pick names itself through `formulationLabel`; otherwise the stored product
+// IS the formulation ("Extra Strength caplet", a stack's blend), and the identity chip
+// no longer echoes it.
+//
+// A product that only repeats the name states nothing — that is the duplicate #5301
+// reported from the Ibuprofen edit form, where the field and the chip said the same
+// word — so it is dropped rather than moved to another chip.
+function formulationOf(f: IntakeFactInput): string {
+  const label = f.formulationLabel.trim();
+  if (label) return label;
+  const product = f.product.trim();
+  return product.toLowerCase() === f.name.trim().toLowerCase() ? "" : product;
+}
+
 // The dose sentence: the formulation and the strength, plus any further rows phrased
 // the way the editor phrases them.
 function doseLabel(f: IntakeFactInput): string {
-  const head = join([f.formulationLabel.trim(), f.amount.trim()]);
+  const head = join([formulationOf(f), f.amount.trim()]);
   const extras = f.extraDoses
     .filter((d) => d.amount.trim() || d.timeOfDay.trim())
     .map((d) =>
@@ -289,12 +312,29 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
     );
   }
 
-  pushOptional(
-    chips,
-    more,
-    "identity",
-    join([f.brand.trim(), f.product.trim(), f.stack.trim()])
-  );
+  // Brand and stack only. The PRODUCT is the dose's formulation and is stated there
+  // (#5301): on the reported Ibuprofen form this chip repeated the name field word for
+  // word, which is #3216 ruling 5's "no datum renders twice" broken by the chip meant
+  // to enforce it.
+  pushOptional(chips, more, "identity", join([f.brand.trim(), f.stack.trim()]));
+
+  // THE STANDARDIZED INGREDIENT IS A FACT, so it is a chip rather than a text button
+  // under the name field (#5301, #5300 rule 2). Missing while the form has a name to
+  // look up — the prompt says what tapping it does — and stated once a code is
+  // confirmed. With no name there is nothing to match and nothing an editor could do,
+  // so the fact states nothing and names nothing until the form has one.
+  if (f.rxcui.trim())
+    chips.push({
+      key: "rxnorm",
+      label: `RxNorm ${f.rxcui.trim()}`,
+      state: "stated",
+      // Confirmed by the person from the candidate list, never borrowed: no prefill
+      // field resolves to this fact, so it is tracked-and-false.
+      suggested: false,
+    });
+  else if (f.name.trim())
+    chips.push({ key: "rxnorm", label: "match RxNorm", state: "missing" });
+
   chips.push({
     key: "supply",
     state:
