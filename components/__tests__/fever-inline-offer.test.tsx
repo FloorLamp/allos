@@ -290,17 +290,18 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
     const notNow = screen.getByTestId("fever-offer-dismiss");
     expect(notNow.className).not.toContain("button-control");
 
-    // THE ADMISSION RULE ON A REAL SURFACE (#3982, applied by #4978). The open
-    // fold mounts the temperature quick-log's OWN commit beside this offer, so
-    // the bar is a surface with two commits on it and only one may be loud.
-    // Asserted as the whole set rather than one negative, so a second primary
-    // appearing anywhere on the bar reds here.
-    expect(screen.getByTestId("temp-quick-save").className).not.toContain(
-      "button-control-primary"
-    );
+    // THE SURFACE IS THE FORM (owner rulings 2026-09-04 13:05 and 2026-09-05
+    // 19:40 (1), on #4978, rendered from THIS fold). The route reading this
+    // block used to encode — one primary per bar, so the quick-log's commit
+    // yields to a standing offer — is retired: every form commit is filled, and
+    // the collision only exists while an offer is up. So BOTH are loud here, the
+    // temperature form's own commit and the offer's door, and the set is still
+    // asserted whole so a THIRD primary appearing on the bar reds.
+    const tempSave = screen.getByTestId("temp-quick-save");
+    expect(tempSave.className).toContain("button-control-primary");
     expect(
-      Array.from(document.querySelectorAll(".button-control-primary"))
-    ).toEqual([openEpisode]);
+      new Set(Array.from(document.querySelectorAll(".button-control-primary")))
+    ).toEqual(new Set([openEpisode, tempSave]));
   });
 
   it("the dose offer reuses IllnessMedicationLogger, beside Open an episode, never a second control", async () => {
