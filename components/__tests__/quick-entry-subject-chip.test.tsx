@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/Toast";
 import QuickEntryProvider, {
+  QuickEntryVisitBodies,
   useQuickEntry,
+  useQuickEntryVisit,
 } from "@/components/QuickEntryProvider";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
@@ -97,6 +99,57 @@ function OpenMeasurementsFor({ subjectId }: { subjectId: number }) {
     </button>
   );
 }
+
+// THE VISIT, where a subject switch has SIBLINGS to lose (#5624). Every case above
+// drives the direct sheet, whose stack is one entry deep by construction, which is
+// exactly why the loss never surfaced here.
+function VisitSheet() {
+  const visit = useQuickEntryVisit(true, () => {});
+  return (
+    <>
+      <output data-testid="visit-view">{visit.active?.form ?? "menu"}</output>
+      <button
+        data-testid="visit-stool"
+        onClick={(event) => visit.open("stool", event.currentTarget)}
+      >
+        Stool
+      </button>
+      <button
+        data-testid="visit-mood"
+        onClick={(event) => visit.open("mood", event.currentTarget)}
+      >
+        Mood
+      </button>
+      <button data-testid="visit-back" onClick={visit.back}>
+        Back
+      </button>
+      {visit.titleAdornment}
+      {visit.belowTitle}
+      <QuickEntryVisitBodies identity={visit.identity} onDone={() => {}} />
+    </>
+  );
+}
+
+function renderVisit(writableProfiles: SessionProfile[]) {
+  return render(
+    <WithClocks>
+      <ToastProvider>
+        <QuickEntryProvider
+          measurements={MEASUREMENTS}
+          writableProfiles={writableProfiles}
+          actingProfileId={ACTING.id}
+        >
+          <VisitSheet />
+        </QuickEntryProvider>
+      </ToastProvider>
+    </WithClocks>
+  );
+}
+
+const bodyFor = (form: string) =>
+  document.querySelector<HTMLElement>(
+    `[data-testid="quick-entry-body"][data-form="${form}"]`
+  );
 
 function renderSheet(writableProfiles: SessionProfile[]) {
   return render(
@@ -281,6 +334,42 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
 
     expect(screen.queryByTestId("quick-entry-subject-picker")).toBeNull();
     expect(loadQuickEntry).not.toHaveBeenCalled();
+  });
+
+  it("switching the subject on one form keeps the visit's other drafts (#5624)", async () => {
+    renderVisit([ACTING, MIA, SAM]);
+
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    await waitFor(() => expect(bodyFor("stool")).not.toBeNull());
+    const stoolBody = bodyFor("stool")!;
+    fireEvent.click(screen.getByTestId("visit-back"));
+
+    fireEvent.click(screen.getByTestId("visit-mood"));
+    await waitFor(() => expect(bodyFor("mood")).not.toBeNull());
+
+    fireEvent.click(screen.getByTestId("quick-entry-subject-chip"));
+    fireEvent.click(screen.getByTestId(`quick-entry-subject-option-${MIA.id}`));
+
+    // The switched form reloaded for Mia...
+    await waitFor(() =>
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "mood",
+        MIA.id,
+        undefined,
+        "sheet"
+      )
+    );
+    // ...and the Stool draft opened before it is the SAME mounted body, still for
+    // Dad — not a fresh one, which is what a remount of the whole visit would give.
+    expect(bodyFor("stool")).toBe(stoolBody);
+    expect(stoolBody.getAttribute("data-subject-profile-id")).toBe(
+      String(ACTING.id)
+    );
+    // And it is still reachable from the menu, without a third gather.
+    fireEvent.click(screen.getByTestId("visit-back"));
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    expect(screen.getByTestId("visit-view").textContent).toBe("stool");
+    expect(bodyFor("stool")).toBe(stoolBody);
   });
 
   it("measurements renders unavailable for a chosen non-acting subject (#4091's gather has no per-subject version)", async () => {

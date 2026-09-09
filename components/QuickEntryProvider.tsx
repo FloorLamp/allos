@@ -1590,9 +1590,18 @@ export default function QuickEntryProvider({
         return;
       }
 
-      invalidateVisitRequests();
-      visitRequestRefs.current.clear();
       const identity = current.identity;
+      // ONLY THIS ENTRY'S OWN IN-FLIGHT GATHERS (#5624), the way a completion drops
+      // one entry's: the visit-wide invalidation this used to run belonged to the
+      // whole-visit reset below, and would strand a sibling's load once the sibling
+      // survived the switch.
+      for (const lane of ["body", "intake"] as const) {
+        const key = `${identity}:${entryId}:${lane}`;
+        visitRequestRefs.current.set(
+          key,
+          (visitRequestRefs.current.get(key) ?? 0) + 1
+        );
+      }
       const nextId = ++entrySerial.current;
       const intake =
         previous.view.kind === "intake"
@@ -1621,16 +1630,22 @@ export default function QuickEntryProvider({
         addTriggerRef: { current: null },
         focusReturn: null,
       };
-      updateVisit(() => ({
-        identity,
-        presentation: current.presentation,
-        generation: current.generation + 1,
+      // THE SWITCHED ENTRY IS REPLACED IN PLACE, NOT THE VISIT (#5624). Every other
+      // form opened in this visit holds a draft of its own, which is the whole point
+      // of the stack (#3274, kept by #5616) — so `entries` is mapped, as
+      // `openVisitForm` and `retryVisitEntry` map it, rather than rebuilt. Only
+      // `subject` (what a form opened next defaults to) and `activeId` (the new
+      // entry) genuinely move. `generation` keys every body in the visit, so bumping
+      // it remounted the siblings too; the switched form's own body still remounts,
+      // because this entry carries a NEW id, which is what discards its staged input.
+      updateVisit((state) => ({
+        ...state,
         subject: profileId,
         activeId: nextId,
-        entries: [next],
+        entries: state.entries.map((entry) =>
+          entry.id === entryId ? next : entry
+        ),
         returnFocus: null,
-        invalidated: false,
-        completable: true,
       }));
       const owner = visitOwner(identity, nextId);
       loadFor(
@@ -1657,7 +1672,6 @@ export default function QuickEntryProvider({
       );
     },
     [
-      invalidateVisitRequests,
       loadFor,
       loadIntakeFor,
       toast,
