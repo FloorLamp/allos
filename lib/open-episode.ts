@@ -11,9 +11,29 @@
 // columns; an episode is a READING over them, the way `computeWorkoutPresence`
 // already reads `activities`. Nothing new is stored.
 
+import { shiftDateStr } from "./date";
+import type { LocalDay } from "./temporal-types";
+
 // ── What the reading is over ────────────────────────────────────────────────────
 
-export type EpisodeKind = "practice" | "workout" | "fast";
+// TWO UNITS, ONE VOCABULARY (#5142). A minute-counted episode's quiet is minutes since
+// an epoch instant. A day-counted one's is profile-local DAYS since a stored calendar
+// date that has no clock behind it, so its quiet is calendar arithmetic and never a
+// count of 1440-minute blocks: ten local days is 240 hours only when no day is 23 or 25
+// hours long, and this repo keeps an instant and a profile-local day apart on purpose
+// (docs/internals/time-model.md). The two halves keep their own bounds table and their
+// own arithmetic; what they share is the outcome vocabulary below.
+//
+// `EpisodeKind` is DERIVED from the two halves rather than declared, so a kind cannot
+// exist without an entry in its half's table — deleting one makes that table's
+// `satisfies` fail rather than leaving a kind nothing can read. That is its whole job
+// today: it has NO reader yet, and it is not dead. Its first reader is the reading that
+// renders Training, Period and Fast off one state (#5435), which lands with the day
+// reading. Deleting it as unused is how a `Record<EpisodeKind, …>` comes back and a kind
+// gets to exist with no bounds.
+export type MinuteEpisodeKind = "practice" | "workout" | "fast";
+export type DayEpisodeKind = "period";
+export type EpisodeKind = MinuteEpisodeKind | DayEpisodeKind;
 
 // TWO MORE THINGS IN THIS APP ARE OPEN EPISODES AND NEITHER IS A KIND HERE. Naming
 // them is the point: the next reader will find them and should know they were seen.
@@ -34,12 +54,17 @@ export type EpisodeKind = "practice" | "workout" | "fast";
 //     a temperature at 23:55 and again at 00:05 has logged on two days and not ten
 //     minutes apart; and its close is a BACKDATED end at the last activity day that
 //     only the caregiver may accept, so it has no `abandonMin` at all — the app never
-//     gives up holding an illness open. Wiring it means deciding whether this model
-//     speaks days as well as minutes, which is a change to the model rather than a
-//     consumer of it.
+//     gives up holding an illness open. The days question is now settled — this model
+//     speaks days as well as minutes (see `EPISODE_DAY_BOUNDS`) — but the illness bound
+//     is still not a kind here: `DEFAULT_STALE_QUIET_DAYS` is a per-CALL threshold, so
+//     admitting it means the table carrying a per-profile bound. That is its own
+//     question, not a debt this model already owes.
 
+// A minute-keyed episode: the kind is narrowed to the minute half because
+// `episodeState` reads `EPISODE_BOUNDS` by it, and because that is what this shape has
+// always been — `lastSignalAt` is an epoch instant a day-counted episode never has.
 export interface OpenEpisode {
-  kind: EpisodeKind;
+  kind: MinuteEpisodeKind;
 
   // THE FRESHEST EVIDENCE THIS EPISODE IS STILL HAPPENING, as an epoch instant.
   //
@@ -62,7 +87,7 @@ export interface OpenEpisode {
   expectedEnd: number | null;
 }
 
-// ── The bounds, all four in one table (AC 4) ────────────────────────────────────
+// ── The minute bounds, one table for the three minute kinds (AC 4) ──────────────
 //
 // `staleMin` — quiet past which the episode stops reading as in progress and starts
 // reading as "you probably forgot". A SUGGEST: it is what raises "Still going?".
@@ -108,7 +133,47 @@ export const EPISODE_BOUNDS = {
   // a real 24 h fast is never nagged, short enough that a forgotten one surfaces the
   // same day. Nothing auto-ends it (#2756).
   fast: { staleMin: 36 * 60, abandonMin: null },
-} as const satisfies Record<EpisodeKind, EpisodeBounds>;
+} as const satisfies Record<MinuteEpisodeKind, EpisodeBounds>;
+
+// ── The day bounds, one table for the day kinds (AC 4) ──────────────────────────
+//
+// `staleDays` — profile-local days of quiet past which the episode stops reading as in
+// progress and starts reading as "you probably forgot", exactly as `staleMin` above.
+// `abandonDays` — days past which the app stops holding the episode open on its own;
+// `null` means only the person closes this kind.
+export interface EpisodeDayBounds {
+  staleDays: number;
+  abandonDays: number | null;
+}
+
+export const EPISODE_DAY_BOUNDS = {
+  // Ten days: a typical period is 3–7 days, so an open one that has run past ten is far
+  // more likely a forgotten "Period ended" tap than three weeks of bleeding (#1682 fix
+  // a). Past it the row is left EXACTLY as stored and only the menstrual claim lapses,
+  // which is why `abandonDays` is null: a period is SUGGEST-ONLY, and nothing but the
+  // person closes it. That null is not a placeholder — it is the same statement the
+  // fast's `abandonMin: null` makes, the one that leaves a ten-day fast stale rather
+  // than closing it.
+  period: { staleDays: 10, abandonDays: null },
+} as const satisfies Record<DayEpisodeKind, EpisodeDayBounds>;
+
+/**
+ * The last day a day-counted episode still reads as running: its last signal plus
+ * `staleDays − 1`, the signal day being day 1. THE one expression of a day bound —
+ * the cycle domain's menstrual-claim cap is defined through it, so the number and the
+ * −1 exist once.
+ */
+export function dayEpisodeClaimEnd(
+  kind: DayEpisodeKind,
+  lastSignalOn: string
+): LocalDay {
+  return shiftDateStr(lastSignalOn, EPISODE_DAY_BOUNDS[kind].staleDays - 1);
+}
+
+// A `DayEpisodeKind` has bounds and a claim end here, and deliberately NO episode type
+// and NO state reading yet: `OpenDayEpisode` and the four-word day state land with the
+// first reader that needs them, rather than shipping ahead of a caller. Nothing is
+// missing by oversight — the day reading is the next step, not an omission.
 
 // ── The reading ─────────────────────────────────────────────────────────────────
 //
