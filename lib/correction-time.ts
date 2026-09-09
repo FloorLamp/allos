@@ -417,14 +417,25 @@ export function correctionBursts(
 ): CorrectionBurst[] {
   const fresh = collapseBursts(events).filter((b) => isBurstFresh(b, now));
   if (!binding) return fresh.reverse().slice(0, MAX_CORRECTION_ROWS);
-  const mine = burstsForMessage(fresh, binding).reverse();
+  return seatCorrectionBursts(burstsForMessage(fresh, binding));
+}
+
+// Candidates are already fresh and bound. Complete bundles are owned acts even
+// when they reached this host through its proven alternate context. Seat these
+// and attributed bursts before unrelated riders, then display newest first.
+export function seatCorrectionBursts(
+  bursts: readonly CorrectionBurst[]
+): CorrectionBurst[] {
+  const newest = (a: CorrectionBurst, b: CorrectionBurst) =>
+    ms(b.startAt) - ms(a.startAt) || b.fromId - a.fromId;
+  const mine = [...bursts].sort(newest);
+  const owned = (b: CorrectionBurst) =>
+    b.bundle != null || b.messageRef != null;
   const seated = [
-    ...mine.filter((b) => b.messageRef != null),
-    ...mine.filter((b) => b.messageRef == null),
+    ...mine.filter(owned),
+    ...mine.filter((b) => !owned(b)),
   ].slice(0, MAX_CORRECTION_ROWS);
-  return seated.sort(
-    (a, b) => ms(b.startAt) - ms(a.startAt) || b.fromId - a.fromId
-  );
+  return seated.sort(newest);
 }
 
 // Re-derive ONE burst from the ledger, given the id its token was anchored on. The tap
@@ -840,6 +851,11 @@ export function burstLabel(
     zonedDateParts(tz, new Date(burst.atEndAt)).date,
     todayLocal
   );
+  if (burst.bundle)
+    return `Whole act ×${burst.count} ${hhmmOf(burst.atStartAt, tz)}${localDayMarker(
+      zonedDateParts(tz, new Date(burst.atStartAt)).date,
+      todayLocal
+    )}${mark}`;
   if (burst.count === 1 && burst.label)
     return `${burst.label} ${hhmmOf(burst.atStartAt, tz)}${day}${mark}`;
   const start = hhmmOf(burst.atStartAt, tz);
@@ -864,6 +880,7 @@ export function localDayMarker(day: string, todayLocal: string): string {
 // this is the question, and "(corrected)" belongs on the statement of a value, not on an
 // invitation to state one.
 export function burstSubject(burst: CorrectionBurst, tz: string): string {
+  if (burst.bundle) return `this whole act (${burst.count} entries)`;
   if (burst.count === 1 && burst.label) return burst.label;
   return `these ${burst.count} (${hhmmOf(burst.atStartAt, tz)}–${hhmmOf(burst.atEndAt, tz)})`;
 }

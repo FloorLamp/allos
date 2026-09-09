@@ -21,13 +21,20 @@ import { sqlNow } from "../clock";
 import { createLogger } from "../log";
 import {
   FRESH_SEND_BINDING,
+  burstsForMessage,
+  collapseBursts,
+  isBurstFresh,
+  seatCorrectionBursts,
   parseCorrectionAtToken,
   parseCorrectionChipToken,
   type CorrectionMessageBinding,
+  type CorrectionBurst,
+  type TapEvent,
 } from "../correction-time";
-import type {
-  CorrectionBundle,
-  CorrectionDomain,
+import {
+  getRecentCorrectionBundles,
+  type CorrectionBundle,
+  type CorrectionDomain,
 } from "../bundle-time-correction";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -476,6 +483,42 @@ function usualBundleSource(
 // explicit date; its results establish relevance, never add correction members.
 type CorrectionSlotReader = typeof import("./intake").slotSessionForKeyboard;
 
+// One message's candidate set, before the shared own-first/two-row seating. The
+// legacy recent readers still supply unbundled taps; they cannot truncate an act.
+export function messageCorrectionBursts(
+  profileId: number,
+  domain: CorrectionDomain,
+  taps: readonly TapEvent[],
+  now: Date,
+  ref: CorrectionMessageRef | null,
+  readSlots: CorrectionSlotReader
+): CorrectionBurst[] {
+  const unbundled = burstsForMessage(
+    collapseBursts(taps.filter((tap) => tap.bundleId == null)).filter((burst) =>
+      isBurstFresh(burst, now)
+    ),
+    correctionMessageBinding(profileId, domain, ref)
+  );
+  // The current usual writer has food/dose hosts; no alternate practice host is
+  // invented. A practice sibling still participates in every complete act read.
+  const bundles =
+    ref && domain !== "practice"
+      ? getRecentCorrectionBundles(profileId, domain, now)
+          .filter(
+            (bundle) =>
+              correctionBundleBinding(
+                profileId,
+                domain,
+                bundle,
+                ref,
+                readSlots
+              ) != null
+          )
+          .map((bundle) => bundle.burst)
+      : [];
+  return seatCorrectionBursts([...unbundled, ...bundles]);
+}
+
 function bundleHostMatches(
   profileId: number,
   bundle: CorrectionBundle,
@@ -547,18 +590,22 @@ export function correctionBundleBinding(
   const pointers = liveMessagePointers(profileId).filter(
     (p) => p.chatId === String(ref.chatId)
   );
-  const target = pointers.find(
-    (p) => p.messageId === ref.messageId && p.kind === domain
-  );
-  if (!target || !hasInitialCorrectionReceipt(profileId, target)) return null;
+  const target = pointers.find((p) => p.messageId === ref.messageId);
+  if (!target) return null;
   const refs = new Set(
     bundle.members.flatMap((m) => (m.messageRef == null ? [] : [m.messageRef]))
   );
   if (refs.size !== 1) return null;
   const source = pointers.find((p) => refs.has(p.id));
   if (!source) return null;
-  const context = usualBundleSource(profileId, bundle, source);
-  if (!context) return null;
+  // An attributed anchor already belongs to its original message, including an
+  // ordinary All/stack confirmation with no usual offer. Only another host needs
+  // the retained usual receipt and offer as additional bridge authority.
+  const original = target.id === source.id;
+  const context = original
+    ? null
+    : usualBundleSource(profileId, bundle, source);
+  if (!original && (target.kind !== domain || !context)) return null;
   const ownIds = bundle.members
     .filter((m) => m.domain === domain)
     .map((m) => m.id);
@@ -576,8 +623,19 @@ export function correctionBundleBinding(
       return null;
   }
   const matches = (current: CorrectionBundle, candidate: MessagePointer) =>
-    candidate.id === source.id ||
-    bundleHostMatches(profileId, current, candidate, context, readSlots);
+    candidate.id === source.id
+      ? current.members.some(
+          (member) =>
+            member.domain === domain &&
+            member.id === current.burst.fromId &&
+            member.messageRef === source.id
+        ) &&
+        current.members.every(
+          (member) =>
+            member.messageRef == null || member.messageRef === source.id
+        )
+      : context != null &&
+        bundleHostMatches(profileId, current, candidate, context, readSlots);
   // The original host keeps its own act. Only alternate hosts compete by matching
   // date/window or actual schedule-dose footprint; a newer unrelated host cannot win.
   const selected = (current: CorrectionBundle, candidate: MessagePointer) =>
@@ -605,20 +663,21 @@ export function correctionBundleBinding(
       currentSource?.id !== source.id ||
       currentTarget?.id !== target.id ||
       currentSource.kind !== source.kind ||
-      currentTarget.kind !== domain ||
+      currentTarget.kind !== target.kind ||
       currentSource.receiptVersion !== source.receiptVersion ||
-      currentTarget.receiptVersion !== target.receiptVersion ||
-      !hasInitialCorrectionReceipt(profileId, currentTarget)
+      currentTarget.receiptVersion !== target.receiptVersion
     )
       return false;
-    const proof = usualBundleSource(profileId, current, currentSource);
-    if (
-      !proof ||
-      proof.token !== context.token ||
-      proof.date !== context.date ||
-      JSON.stringify(proof.offer) !== JSON.stringify(context.offer)
-    )
-      return false;
+    if (context != null) {
+      const proof = usualBundleSource(profileId, current, currentSource);
+      if (
+        !proof ||
+        proof.token !== context.token ||
+        proof.date !== context.date ||
+        JSON.stringify(proof.offer) !== JSON.stringify(context.offer)
+      )
+        return false;
+    }
     if (
       token != null &&
       !currentTarget.keyboard.flat().some((b) => b.callback_data === token)

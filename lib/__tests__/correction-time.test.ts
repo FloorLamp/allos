@@ -8,6 +8,7 @@ import {
   chipInstant,
   collapseBursts,
   correctionBursts,
+  seatCorrectionBursts,
   correctionTokenAnchor,
   chipFloor,
   chipLabel,
@@ -88,6 +89,9 @@ describe("collapseBursts — burst-mates share one error, so they share one row"
       tap(2, "2026-08-05T19:12:00Z"),
     ])[0];
     burst.bundle = { id: "act-precision", practiceDays: [] };
+    expect(burstLabel(burst, "UTC", now)).toBe(
+      "Whole act ×2 07:42 (corrected)"
+    );
     expect(burstChipTarget(burst, 30, now, "UTC")?.toISOString()).toBe(
       "2026-08-05T07:12:17.000Z"
     );
@@ -101,6 +105,25 @@ describe("collapseBursts — burst-mates share one error, so they share one row"
     burst.bundle.practiceDays = ["2026-08-04", "2026-08-05"];
     expect(burstChipTarget(burst, 30, earlier, "UTC")).toBeNull();
     expect(offeredHours(burst, earlier, "UTC")).toEqual([]);
+    expect(
+      correctableBursts(FOOD_TIME_PREFIXES, [burst], earlier, "UTC").shown
+    ).toEqual([]);
+  });
+
+  it("seats a complete bound act before newer riders regardless of discovery order", () => {
+    const [act] = collapseBursts([tap(1, "2026-08-05T19:00:00Z")]);
+    act.bundle = { id: "bound-act", practiceDays: [] };
+    const riders = collapseBursts([
+      tap(10, "2026-08-05T19:05:00Z"),
+      tap(20, "2026-08-05T19:22:00Z"),
+    ]);
+    for (const candidates of [
+      [act, ...riders],
+      [...riders].reverse().concat(act),
+    ])
+      expect(
+        seatCorrectionBursts(candidates).map((burst) => burst.fromId)
+      ).toEqual([20, 1]);
   });
 
   it("groups taps within the gap and splits on a wider one", () => {

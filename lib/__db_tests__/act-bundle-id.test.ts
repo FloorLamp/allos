@@ -12,10 +12,15 @@
 //
 // Fixtures are synthetic throwaway rows (per-file temp DB via setup.ts). No PHI.
 
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setTimezone } from "@/lib/settings";
+import {
+  setTimezone,
+  setTelegramBotConfig,
+  setProfileFoodTelegram,
+  setProfileMutedForLogin,
+} from "@/lib/settings";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { logUsualRoutineCore } from "@/lib/usual-routine-write";
 import { markDoseTaken } from "@/lib/queries/intake/adherence";
@@ -34,6 +39,31 @@ import {
 import { slotSessionForKeyboard } from "@/lib/notifications/intake";
 import { mintOffer } from "@/lib/notifications/offer-store";
 import { getRecentFoodTaps } from "@/lib/queries/nutrition";
+import { seedLoginTelegram } from "./fixtures";
+import {
+  stubTelegramSends,
+  answerCallbackQuery as answerSpy,
+  editMessageTextRaw as editSpy,
+} from "./telegram-spies";
+import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import {
+  handleFoodTimeChip,
+  handleDoseTimeChip,
+} from "@/lib/notifications/telegram-time-correction";
+import { parseCorrectionChipToken } from "@/lib/correction-time";
+import type { TelegramCallbackQuery } from "@/lib/notifications/telegram-api";
+import type { MessagePointer } from "@/lib/notifications/message-pointers";
+import { newBundle } from "@/lib/bundle";
+
+beforeEach(() => {
+  answerSpy.mockReset();
+  editSpy.mockReset();
+  stubTelegramSends();
+  setTelegramBotConfig({
+    telegramBotToken: "bot-for-tests",
+    telegramMode: "poll",
+  });
+});
 
 // A prior day's serving, seeded straight into the two stores the offer reads, so the
 // habit exists without going through the writer under test.
@@ -117,14 +147,42 @@ function bundlesOn(profileId: number, date: string) {
 // The real usual writer receives the original pointer; the other host has its
 // own initial footprint and never receives a second usual token. No scoop is
 // present to accidentally join the two hosts through a separate protein tap.
-function seedChatAct(sourceKind: "food" | "dose") {
+function seedChatOffer(
+  sourceKind: "food" | "dose",
+  complete = false,
+  protein = false
+) {
   const seeded = seedMorning(`act-${sourceKind}-source`);
   const { profileId, anchor, creatine, collagen } = seeded;
   const chatId = String(5415000 + profileId);
+  const groups = ["berries", "fermented"];
+  const doseIds = [creatine, collagen];
+  if (complete) {
+    if (protein) {
+      for (let d = 1; d <= 12; d++) {
+        const date = shiftDateStr(anchor, -d);
+        db.prepare(
+          `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+          VALUES (?, '__protein__', ?, ?)`
+        ).run(profileId, date, `${date}T08:10:00Z`);
+      }
+    } else {
+      groups.push("nuts_seeds");
+      for (let d = 1; d <= 12; d++)
+        priorTap(profileId, "nuts_seeds", shiftDateStr(anchor, -d), "08:10:00");
+    }
+    for (let d = 0; d < 4; d++)
+      doseIds.push(seedDose(profileId, `Act dose ${d}`));
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = 12, qty_per_dose = 1 WHERE profile_id = ?"
+    ).run(profileId);
+  }
+  setProfileFoodTelegram(profileId, true);
   const offerId = mintOffer(profileId, "usual-routine", anchor, {
     window: "Morning",
-    groups: ["berries", "fermented"],
-    doseIds: [creatine, collagen],
+    groups,
+    doseIds,
+    ...(protein ? { proteinGrams: 30 } : {}),
   });
   const footprint = (kind: "food" | "dose") => [
     [
@@ -158,13 +216,29 @@ function seedChatAct(sourceKind: "food" | "dose") {
     keyboard: footprint(targetKind),
   });
   const source = messagePointerAt(profileId, chatId, 54151)!;
+  return {
+    ...seeded,
+    chatId,
+    source,
+    targetKind,
+    footprint,
+    groups,
+    doseIds,
+    offerId,
+  };
+}
+
+function seedChatAct(sourceKind: "food" | "dose") {
+  const seeded = seedChatOffer(sourceKind);
+  const { profileId, anchor, groups, doseIds, source, targetKind, chatId } =
+    seeded;
   expect(
     logUsualRoutineCore(
       profileId,
       "Morning",
       anchor,
-      ["berries", "fermented"],
-      [creatine, collagen],
+      groups,
+      doseIds,
       "telegram-nudge",
       source.id
     ).kind
@@ -180,8 +254,431 @@ function seedChatAct(sourceKind: "food" | "dose") {
   syncMessagePointerKeyboard(profileId, chatId, 54152, [
     [{ text: "−30m", callback_data: token }],
   ]);
-  return { ...seeded, chatId, source, targetKind, bundle, token, footprint };
+  return { ...seeded, bundle, token };
 }
+
+function callbackAt(
+  pointer: MessagePointer,
+  data: string
+): TelegramCallbackQuery {
+  return {
+    id: `bundle-${pointer.messageId}`,
+    data,
+    message: {
+      message_id: pointer.messageId,
+      chat: { id: Number(pointer.chatId) },
+      text: "Daily log",
+      reply_markup: { inline_keyboard: pointer.keyboard },
+    },
+  };
+}
+
+function timeToken(
+  pointer: MessagePointer,
+  minutes: number,
+  fromId: number
+): string {
+  return pointer.keyboard
+    .flat()
+    .find(
+      (button) =>
+        button.callback_data ===
+        `${pointer.kind}time:${pointer.profileId}:${fromId}:${minutes}`
+    )!.callback_data!;
+}
+
+describe("complete usual acts through Telegram correction callbacks (#5415)", () => {
+  it.each(["all", "stack"] as const)(
+    "keeps the original host's complete %s confirmation correctable without a usual offer",
+    async (kind) => {
+      vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+      const { profileId, anchor, creatine, collagen } = seedMorning(
+        `native-${kind}`
+      );
+      const chatId = String(5415000 + profileId);
+      seedLoginTelegram(profileId, chatId);
+      const all = `all:${profileId}:Morning:${anchor}`;
+      const action =
+        kind === "all"
+          ? all
+          : `stacktake:${profileId}:${mintOffer(profileId, "stack-take", anchor, { doseIds: [creatine, collagen] })}`;
+      recordMessagePointer({
+        profileId,
+        chatId,
+        messageId: 54151,
+        kind: "dose",
+        date: anchor,
+        keyboard: [
+          [{ text: kind, callback_data: action }],
+          ...(kind === "stack" ? [[{ text: "All", callback_data: all }]] : []),
+        ],
+      });
+      const source = messagePointerAt(profileId, chatId, 54151)!;
+      await handleCallbackQuery(callbackAt(source, action));
+      const [bundle] = getRecentCorrectionBundles(
+        profileId,
+        "dose",
+        new Date()
+      );
+      expect(bundle.members).toHaveLength(2);
+      const current = messagePointerAt(profileId, chatId, 54151)!;
+      await handleCallbackQuery(
+        callbackAt(current, timeToken(current, 30, bundle.burst.fromId))
+      );
+      expect(
+        new Set(
+          readCorrectionBundle(profileId, {
+            domain: "dose",
+            id: bundle.burst.fromId,
+          })!.members.map((member) => member.statedAt)
+        )
+      ).toEqual(new Set(["2026-08-18T09:12:17Z"]));
+      // A matching newer reminder has no bridge authority merely because the
+      // native act now has a bundle id and its original buttons were consumed.
+      recordMessagePointer({
+        profileId,
+        chatId,
+        messageId: 54152,
+        kind: "dose",
+        date: anchor,
+        keyboard: [[{ text: "All", callback_data: all }]],
+      });
+      expect(
+        correctionBundleBinding(
+          profileId,
+          "dose",
+          bundle,
+          { chatId, messageId: 54152 },
+          slotSessionForKeyboard
+        )
+      ).toBeNull();
+    }
+  );
+
+  it("confirms the actual food destination when the picker returns a whole act from yesterday to today", async () => {
+    vi.setSystemTime(new Date("2026-08-18T02:10:17Z"));
+    const { profileId, anchor, chatId, source, offerId } =
+      seedChatOffer("food");
+    seedLoginTelegram(profileId, chatId);
+    await handleCallbackQuery(
+      callbackAt(source, `usual:${profileId}:${offerId}`)
+    );
+    const [bundle] = getRecentCorrectionBundles(profileId, "food", new Date());
+    const pick = async (hour: string) => {
+      const current = messagePointerAt(profileId, chatId, source.messageId)!;
+      const open = `foodtimeat:${profileId}:${bundle.burst.fromId}:open`;
+      expect(
+        current.keyboard.flat().some((button) => button.callback_data === open)
+      ).toBe(true);
+      await handleCallbackQuery(callbackAt(current, open));
+      const picker = messagePointerAt(profileId, chatId, source.messageId)!;
+      const at = `foodtimeat:${profileId}:${bundle.burst.fromId}:${hour}`;
+      expect(
+        picker.keyboard.flat().some((button) => button.callback_data === at)
+      ).toBe(true);
+      await handleCallbackQuery(callbackAt(picker, at));
+    };
+    await pick("23:00");
+    const read = () =>
+      readCorrectionBundle(profileId, {
+        domain: "food",
+        id: bundle.burst.fromId,
+      })!;
+    expect(new Set(read().members.map((member) => member.statedAt))).toEqual(
+      new Set(["2026-08-17T23:00:00Z"])
+    );
+    await pick("00:00");
+    expect(new Set(read().members.map((member) => member.statedAt))).toEqual(
+      new Set(["2026-08-18T00:00:00Z"])
+    );
+    expect(
+      read()
+        .members.filter((member) => member.domain === "food")
+        .map((member) => member.date)
+    ).toEqual([anchor, anchor]);
+    expect(answerSpy.mock.calls.at(-1)?.[1]).toContain(
+      "2 servings moved to today"
+    );
+  });
+
+  it.each([
+    ["food", false, false],
+    ["dose", false, false],
+    ["dose", true, false],
+    ["food", true, true],
+  ] as const)(
+    "corrects three servings and six doses from the %s host (scoop %s, midnight %s), then its sibling host",
+    async (sourceKind, protein, midnight) => {
+      vi.setSystemTime(
+        new Date(midnight ? "2026-08-18T00:10:17Z" : "2026-08-18T09:42:17Z")
+      );
+      const setup = seedChatOffer(sourceKind, true, protein);
+      const { profileId, anchor, chatId, source, targetKind, offerId } = setup;
+      seedLoginTelegram(profileId, chatId);
+      await handleCallbackQuery(
+        callbackAt(source, `usual:${profileId}:${offerId}`)
+      );
+      const [initial] = getRecentCorrectionBundles(
+        profileId,
+        sourceKind,
+        new Date()
+      );
+      expect(initial.members).toHaveLength(9);
+      const stock = () =>
+        db
+          .prepare(
+            "SELECT quantity_on_hand FROM intake_items WHERE profile_id = ? ORDER BY id"
+          )
+          .all(profileId);
+      expect(stock()).toEqual(
+        Array.from({ length: 6 }, () => ({ quantity_on_hand: 11 }))
+      );
+      // Separate actions beside this act must not become members through time or
+      // a shared source pointer. Both use the actual existing food writer.
+      logFoodServingCore(
+        profileId,
+        "berries",
+        anchor,
+        "telegram-nudge",
+        undefined,
+        undefined,
+        { notifyMessageId: source.id, bundleId: newBundle() }
+      );
+      logFoodServingCore(
+        profileId,
+        "fermented",
+        anchor,
+        "telegram-nudge",
+        undefined,
+        undefined,
+        { notifyMessageId: source.id }
+      );
+      const independent = db
+        .prepare(
+          "SELECT id, occurred_at FROM food_log_events WHERE profile_id = ? AND date = ? AND (bundle_id IS NULL OR bundle_id != ?) ORDER BY id"
+        )
+        .all(profileId, anchor, initial.id);
+      const tapped = messagePointerAt(profileId, chatId, source.messageId)!;
+      await handleCallbackQuery(
+        callbackAt(tapped, timeToken(tapped, 60, initial.burst.fromId))
+      );
+      const other = messagePointerAt(profileId, chatId, 54152)!;
+      expect(other.kind).toBe(targetKind);
+      const otherAnchor = Math.min(
+        ...initial.members
+          .filter((member) => member.domain === targetKind)
+          .map((member) => member.id)
+      );
+      await handleCallbackQuery(
+        callbackAt(other, timeToken(other, 30, otherAnchor))
+      );
+      const final = readCorrectionBundle(profileId, {
+        domain: sourceKind,
+        id: initial.burst.fromId,
+      })!;
+      expect(new Set(final.members.map((member) => member.statedAt))).toEqual(
+        new Set([midnight ? "2026-08-17T22:40:17Z" : "2026-08-18T08:12:17Z"])
+      );
+      expect(
+        final.members
+          .filter((member) => member.domain === "dose")
+          .every((member) => member.date === anchor)
+      ).toBe(true);
+      expect(
+        db
+          .prepare(
+            "SELECT id, occurred_at FROM food_log_events WHERE profile_id = ? AND date = ? AND (bundle_id IS NULL OR bundle_id != ?) ORDER BY id"
+          )
+          .all(profileId, anchor, initial.id)
+      ).toEqual(independent);
+      expect(
+        db
+          .prepare(
+            "SELECT SUM(servings) AS n FROM food_daily_totals WHERE profile_id = ? AND date = ?"
+          )
+          .get(profileId, anchor)
+      ).toEqual({ n: midnight ? 2 : protein ? 4 : 5 });
+      if (midnight)
+        expect(
+          db
+            .prepare(
+              "SELECT SUM(servings) AS n FROM food_daily_totals WHERE profile_id = ? AND date = ?"
+            )
+            .get(profileId, shiftDateStr(anchor, -1))
+        ).toEqual({ n: 4 });
+      if (protein)
+        expect(
+          db
+            .prepare(
+              "SELECT SUM(grams) AS n FROM protein_daily_totals WHERE profile_id = ? AND date = ?"
+            )
+            .get(profileId, anchor)
+        ).toEqual({ n: 30 });
+      expect(
+        answerSpy.mock.calls.some(([, text]) =>
+          String(text).includes("3 servings, 6 doses")
+        )
+      ).toBe(true);
+      const currentOther = messagePointerAt(profileId, chatId, 54152)!;
+      const open = currentOther.keyboard
+        .flat()
+        .find(
+          (b) =>
+            b.callback_data ===
+            `${targetKind}timeat:${profileId}:${otherAnchor}:open`
+        )!.callback_data!;
+      await handleCallbackQuery(callbackAt(currentOther, open));
+      const picker = messagePointerAt(profileId, chatId, 54152)!;
+      expect(picker.kind).toBe(targetKind);
+      const back = picker.keyboard
+        .flat()
+        .find(
+          (b) =>
+            b.callback_data ===
+            `${targetKind}timeat:${profileId}:${otherAnchor}:back`
+        )!.callback_data!;
+      await handleCallbackQuery(callbackAt(picker, back));
+      expect(
+        readCorrectionBundle(profileId, {
+          domain: sourceKind,
+          id: initial.burst.fromId,
+        })
+      ).toEqual(final);
+      const afterBack = messagePointerAt(profileId, chatId, 54152)!;
+      await handleCallbackQuery(callbackAt(afterBack, open));
+      const exactPicker = messagePointerAt(profileId, chatId, 54152)!;
+      const exact = `${targetKind}timeat:${profileId}:${otherAnchor}:${midnight ? "21:00" : "06:00"}`;
+      expect(
+        exactPicker.keyboard
+          .flat()
+          .some((button) => button.callback_data === exact)
+      ).toBe(true);
+      await handleCallbackQuery(callbackAt(exactPicker, exact));
+      expect(
+        new Set(
+          readCorrectionBundle(profileId, {
+            domain: sourceKind,
+            id: initial.burst.fromId,
+          })!.members.map((member) => member.statedAt)
+        )
+      ).toEqual(
+        new Set([midnight ? "2026-08-17T21:00:00Z" : "2026-08-18T06:00:00Z"])
+      );
+      expect(stock()).toEqual(
+        Array.from({ length: 6 }, () => ({ quantity_on_hand: 11 }))
+      );
+    }
+  );
+
+  it.each([false, true])(
+    "applies the practice member's minute precision and day boundary (midnight %s)",
+    async (midnight) => {
+      vi.setSystemTime(
+        new Date(midnight ? "2026-08-18T00:10:17Z" : "2026-08-18T09:42:17Z")
+      );
+      const { profileId, anchor, chatId, source, bundle, token, creatine } =
+        seedChatAct("dose");
+      seedLoginTelegram(profileId, chatId);
+      db.prepare(
+        `INSERT INTO practice_logs
+      (profile_id, practice, date, start_time, created_at, logged_via, notify_message_id, bundle_id)
+      VALUES (?, 'Stretching', ?, ?, ?, 'telegram-nudge', ?, ?)`
+      ).run(
+        profileId,
+        anchor,
+        midnight ? "00:10" : "09:42",
+        new Date().toISOString(),
+        source.id,
+        bundle.id
+      );
+      if (!midnight)
+        db.prepare(
+          "UPDATE intake_item_logs SET occurred_at = '2026-08-18T09:40:17Z' WHERE dose_id = ?"
+        ).run(creatine);
+      const before = readCorrectionBundle(profileId, {
+        domain: "food",
+        id: bundle.burst.fromId,
+      })!;
+      const target = messagePointerAt(profileId, chatId, 54152)!;
+      const wrote = await handleFoodTimeChip(
+        callbackAt(target, token),
+        parseCorrectionChipToken(token, "foodtime")!
+      );
+      const after = readCorrectionBundle(profileId, {
+        domain: "food",
+        id: bundle.burst.fromId,
+      })!;
+      if (midnight) {
+        expect(wrote).toBeUndefined();
+        expect(after).toEqual(before);
+      } else {
+        expect(wrote).toBe(profileId);
+        expect(new Set(after.members.map((member) => member.statedAt))).toEqual(
+          new Set(["2026-08-18T09:10:00Z"])
+        );
+        expect(
+          db
+            .prepare(
+              "SELECT start_time FROM practice_logs WHERE profile_id = ? AND bundle_id = ?"
+            )
+            .get(profileId, bundle.id)
+        ).toEqual({ start_time: "09:10" });
+      }
+    }
+  );
+
+  it.each(["mute", "source", "token"] as const)(
+    "refuses a %s change in the actual resolve-to-write await gap",
+    async (change) => {
+      vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+      const { profileId, chatId, source, bundle, token } = seedChatAct("dose");
+      const loginId = seedLoginTelegram(profileId, chatId);
+      const target = messagePointerAt(profileId, chatId, 54152)!;
+      const before = bundle.members.map((member) => member.statedAt);
+      const pending = handleFoodTimeChip(
+        callbackAt(target, token),
+        parseCorrectionChipToken(token, "foodtime")!
+      );
+      if (change === "mute") setProfileMutedForLogin(loginId, profileId, true);
+      else if (change === "source") dropMessagePointer(profileId, source.id);
+      else syncMessagePointerKeyboard(profileId, chatId, 54152, []);
+      expect(await pending).toBeUndefined();
+      expect(
+        readCorrectionBundle(profileId, {
+          domain: "food",
+          id: bundle.burst.fromId,
+        })!.members.map((member) => member.statedAt)
+      ).toEqual(before);
+      expect(answerSpy.mock.calls.at(-1)?.[1]).toContain("nothing was changed");
+    }
+  );
+
+  it("returns the one written profile even when acknowledgement and native edit fail after commit", async () => {
+    vi.setSystemTime(new Date("2026-08-18T09:42:17Z"));
+    const { profileId, chatId, bundle, token } = seedChatAct("food");
+    seedLoginTelegram(profileId, chatId);
+    const target = messagePointerAt(profileId, chatId, 54152)!;
+    answerSpy.mockRejectedValueOnce(
+      new Error("temporary acknowledgement failure")
+    );
+    editSpy.mockRejectedValueOnce(new Error("temporary edit failure"));
+    expect(
+      await handleDoseTimeChip(
+        callbackAt(target, token),
+        parseCorrectionChipToken(token, "dosetime")!
+      )
+    ).toBe(profileId);
+    expect(editSpy).toHaveBeenCalledTimes(1);
+    expect(
+      new Set(
+        readCorrectionBundle(profileId, {
+          domain: "dose",
+          id: bundle.burst.fromId,
+        })!.members.map((member) => member.statedAt)
+      )
+    ).toEqual(new Set(["2026-08-18T09:12:17Z"]));
+  });
+});
 
 describe("the usual act's captured correction hosts (#5415)", () => {
   it.each(["food", "dose"] as const)(
