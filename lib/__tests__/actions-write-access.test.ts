@@ -335,6 +335,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "unlinkItemAction",
     why: "#1374: unlinks the ITEM's row from its pool; same requireItemWriteAccess(itemId) → requireProfileWriteAccess(itemProfileId) gate as linkItemAction",
   },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "alsoForAction",
+    gate: "requireProfileWriteAccess",
+    why: "#5230: copies ONE bottle member's plan onto ANOTHER person; requireProfileWriteAccess(targetProfileId) gates the subject exactly as linkItemAction gates an item's profile (#4693 — the acting profile's requireWriteAccess would authorize the wrong person), requirePoolWriteAccess(supplyId) applies the bottle's membership-management gate (#5560), and the source member's profile is checked against the caller's own requireScope() before the atomic write re-reads membership, duplicate eligibility and the dose basis",
+  },
   // --- The record's cross-profile CORRECTIONS (#4009 item 1 / #2106, #3958) ---
   // `/history?view=everyone` merges every in-view member's rows, and #3958 rules that
   // "⋯ additionally requires write access on the row's profile, re-checked
