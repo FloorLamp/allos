@@ -21,7 +21,7 @@ import SubmitButton from "@/components/SubmitButton";
 //     unlinked visit that falls in an illness discoverable, instead of silent.
 //
 // Server component: every link/dismiss/unlink is a plain server-action <form> (no
-// client JS), settling as a POST the e2e helpers await. `profileId` rides each form as
+// client JS), settling as a POST the e2e helpers await. `profile_id` rides each form as
 // the cross-profile write target; the actions gate write access.
 
 export interface VisitEpisodeTrailItem {
@@ -79,7 +79,7 @@ export default function VisitEpisodes({
                   </span>
                 </Link>
                 <form action={unlinkEpisodeVisitAction}>
-                  <input type="hidden" name="profileId" value={profileId} />
+                  <input type="hidden" name="profile_id" value={profileId} />
                   <input type="hidden" name="episodeId" value={ep.id} />
                   <input type="hidden" name="encounterId" value={encounterId} />
                   <button
@@ -119,7 +119,7 @@ export default function VisitEpisodes({
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
                   <form action={linkEpisodeVisitAction}>
-                    <input type="hidden" name="profileId" value={profileId} />
+                    <input type="hidden" name="profile_id" value={profileId} />
                     <input type="hidden" name="episodeId" value={ep.id} />
                     <input
                       type="hidden"
@@ -131,7 +131,7 @@ export default function VisitEpisodes({
                     </SubmitButton>
                   </form>
                   <form action={declineEpisodeVisitAction}>
-                    <input type="hidden" name="profileId" value={profileId} />
+                    <input type="hidden" name="profile_id" value={profileId} />
                     <input type="hidden" name="episodeId" value={ep.id} />
                     <input
                       type="hidden"
