@@ -101,15 +101,19 @@ export async function listSharedSupplyOptions(): Promise<SupplyOption[]> {
   );
 }
 
-// Create a shared bottle. Creating an EMPTY cabinet entry touches nobody's data, so the
-// ordinary active-profile write gate is the right one; when `item_id` is posted the
-// creating item is linked in the same step and its own gate applies too — that is the
-// "create a pool from the item" flow.
+// Create a shared bottle. The gate here is the ordinary active-profile write gate; when
+// `item_id` is posted the creating item is linked in the same step and its own gate
+// applies too — that is the "create a pool from the item" flow.
 //
-// OPEN (#5122): the empty create is still open to any writer, but under the admin-only
-// member-less rule a non-admin cannot then SEE what they just made. Whether to make the
-// affordance admin-only or refuse the empty create for non-admins is an owner decision;
-// nothing here presumes it.
+// RULED, AND NOT IMPLEMENTED HERE (#5122, owner ruling 2026-09-09): a bottle with no
+// member cannot be created by anyone, and the refusal points the user at linking from an
+// item instead. That refusal rides the storage-convergence lane; this one carries only
+// the member-less ACCESS rule, so the empty create still passes the gate above.
+//
+// Nothing depends on it in the meantime: the one caller in the shipped UI
+// (components/intake/SharedSupplyPicker.tsx) always posts an `item_id`, so every bottle
+// born through the app has a member from the start, and an empty create is reachable
+// only by hand-posting this action.
 //
 // It INHERITS the item's product identity (#1705), not just its count: name and strength
 // (the item's first active dose amount — where a strength is actually typed) seed the
