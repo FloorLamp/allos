@@ -7,6 +7,7 @@ import {
   countVisiblePools,
   findLinkableSupply,
 } from "@/lib/queries";
+import { cabinetViewer } from "../supplies/access";
 import { mergedSituationOptions } from "@/lib/situations";
 import { loadMedicationsData, type MedicationsData } from "./med-data";
 import MedicationBoard from "./MedicationBoard";
@@ -75,7 +76,7 @@ export default async function MedicationsPage(props: {
   // SAME offerability rule the item form's picker uses, so an id outside this caller's
   // reach simply doesn't seed anything.
   const initialSupply = findLinkableSupply(
-    scope.ids,
+    cabinetViewer(scope.ids, scope.role),
     Number(
       (Array.isArray(searchParams.supply)
         ? searchParams.supply[0]
@@ -125,7 +126,7 @@ export default async function MedicationsPage(props: {
     getSituations(actingProfileId)
   ).map((o) => o.name);
 
-  const cabinetCount = countVisiblePools(scope.ids);
+  const cabinetCount = countVisiblePools(cabinetViewer(scope.ids, scope.role));
 
   const medCount = actingData.current.length + actingData.past.length;
   const prnCount = actingData.current.filter((item) =>

@@ -22,7 +22,7 @@ import {
 } from "@/lib/queries/intake";
 import { parseQuantityOnHand } from "@/lib/refill";
 import { poolSeedFromItem, type SupplyOption } from "@/lib/supply-product";
-import { requirePoolWriteAccess } from "./access";
+import { cabinetViewer, requirePoolWriteAccess } from "./access";
 
 export interface SupplyResult {
   ok: boolean;
@@ -88,16 +88,16 @@ function fields(
 }
 
 // Read-only: the pools the caller may link an item to. Scoped through the caller's
-// accessible profiles (requireScope) — a member sees the bottles their OWN people
-// already draw from — plus ORPHANED pools, which name nobody and so leak nothing.
-// `form` rides along since #1705: the picker no longer only LINKS an existing item, it
-// also seeds a NEW one, and the bottle's form is part of what it seeds.
+// cabinet viewer (requireScope) — a member sees the bottles their OWN people already
+// draw from, and a MEMBER-LESS bottle reaches an admin only (#5122). `form` rides along
+// since #1705: the picker no longer only LINKS an existing item, it also seeds a NEW
+// one, and the bottle's form is part of what it seeds.
 export async function listSharedSupplyOptions(): Promise<SupplyOption[]> {
   const scope = await requireScope();
   // Each option carries its own members so the intake form can label the row with the
   // bottle's count and read the kind its siblings lend (#3216).
-  return listLinkableSupplies(scope.ids).map((supply) =>
-    supplyOption(supply, poolMembers(supply.id))
+  return listLinkableSupplies(cabinetViewer(scope.ids, scope.role)).map(
+    (supply) => supplyOption(supply, poolMembers(supply.id))
   );
 }
 
@@ -105,6 +105,11 @@ export async function listSharedSupplyOptions(): Promise<SupplyOption[]> {
 // ordinary active-profile write gate is the right one; when `item_id` is posted the
 // creating item is linked in the same step and its own gate applies too — that is the
 // "create a pool from the item" flow.
+//
+// OPEN (#5122): the empty create is still open to any writer, but under the admin-only
+// member-less rule a non-admin cannot then SEE what they just made. Whether to make the
+// affordance admin-only or refuse the empty create for non-admins is an owner decision;
+// nothing here presumes it.
 //
 // It INHERITS the item's product identity (#1705), not just its count: name and strength
 // (the item's first active dose amount — where a strength is actually typed) seed the

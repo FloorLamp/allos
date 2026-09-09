@@ -154,7 +154,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/queries/intake/supply-pool.ts",
     includes:
       "SELECT s.id AS supply_id, i.profile_id AS profile_id FROM shared_supplies s LEFT JOIN intake_items i ON i.supply_id = s.id",
-    why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved accessible set, which is the filter. A LEFT JOIN because an ORPHANED bottle names nobody and must still be countable",
+    why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved cabinet viewer, which is the filter. A LEFT JOIN because a MEMBER-LESS bottle names nobody and must still reach the filter — since #5122 that rule counts it for an admin only, and without the join it would vanish for the admin who has to clear it",
   },
   // THE FOUR PORTAL-IDENTITY READS BELOW ARE SCOPED BY A GATE, NOT BY A PREDICATE
   // (#5243/#5239). Each one carries `profile_id IS NOT NULL`, which the scan used to
