@@ -770,10 +770,12 @@ test("an empty selected profile adds a medication and takes it in the same sheet
     // return while `addIntakeItem` is still in flight and the read below then finds
     // no row. Which POST wins under load is not established; that it can be one
     // other than the create is. It came back empty once on a CI shard where the
-    // other 144 cases passed, in 2.7s — settled on the wrong answer, not a slow
-    // create. The created item's own PRN row is the marker this call site knows:
-    // it renders from a server read of `intake_items` that runs only after the
-    // create was accepted, so it cannot appear from client state alone.
+    // other 144 cases passed, in 2.7s — settled before the row was there, not a
+    // slow create. A refusal answering fast would leave the table empty the same
+    // way; this wait turns either into a legible failure instead of `[]`. The
+    // created item's own PRN row is the marker this call site knows: it renders
+    // from a server read of `intake_items` that runs only after the create was
+    // accepted, so it cannot appear from client state alone.
     const prn = overlay.getByTestId("quick-log-prn-item").filter({
       hasText: "Ibuprofen",
     });
