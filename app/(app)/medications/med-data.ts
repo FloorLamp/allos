@@ -18,9 +18,7 @@ import {
   getRefillRates,
   getPoolChips,
   type PoolChipData,
-  getActivitiesByDate,
   getActivityDates,
-  isPredictedWorkoutDay,
   getMedicationCourses,
   getMedicationSideEffects,
   getInteractionWarnings,
@@ -74,11 +72,11 @@ import {
 } from "@/lib/date";
 import { getTimezone, type WeightUnit } from "@/lib/settings";
 import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
+import { intakeDayContext } from "@/lib/queries/intake/day-context";
 import {
   doseDueOn,
   isDueOn,
   isOnDemand,
-  isPostWorkoutReady,
   heldBySituation,
 } from "@/lib/intake-schedule";
 import type {
@@ -271,25 +269,19 @@ export function loadMedicationsData(
     to: todayStr,
   });
   const effectiveSituations = situationsOn(todayStr);
-  const todaysActivities = getActivitiesByDate(profileId, todayStr);
-  const isWorkoutDay = todaysActivities.length > 0;
-  const predictedWorkoutDay = isPredictedWorkoutDay(profileId, todayStr);
   // Through the frozen-clock seam (#1005): a bare new Date() here diverges from
   // clock-stamped recorded_at/log times under ALLOS_TEST_NOW (a production no-op).
   const nowInstant = clockNow();
   const { hhmm } = zonedDateParts(tz, nowInstant);
-  const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-  const postWorkoutReady = isPostWorkoutReady(
-    todaysActivities.map((a) => a.end_time ?? a.start_time),
-    nowMinutes
-  );
-  const ctx = {
-    date: todayStr,
-    isWorkoutDay,
+  // The shared day-context builder (#5321), handed the two values this gather has
+  // already resolved: the windowed situation resolver's answer for today (so the
+  // profile's derived history is read once for the row and the strip beside it) and the
+  // one server-clock instant every other stamp on this page comes from. Assembling the
+  // object here was how the offline snapshot came to answer a three-field version of it.
+  const ctx = intakeDayContext(profileId, todayStr, {
     activeSituations: effectiveSituations,
-    predictedWorkoutDay,
-    postWorkoutReady,
-  };
+    now: nowInstant,
+  });
   // Adherence strip inputs (shared with the supplement row via the pure
   // intakeAdherenceStrip — #313/#747 parity).
   const workoutDays = new Set(getActivityDates(profileId));
