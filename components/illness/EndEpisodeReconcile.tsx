@@ -164,6 +164,7 @@ export default function EndEpisodeReconcile({
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button
+              variant="primary"
               data-testid="episode-med-reconcile-confirm"
               disabled={pending}
               onClick={() => submit([...selected])}

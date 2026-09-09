@@ -61,12 +61,18 @@ describe("episode reconciliation triggers", () => {
     ).toBeNull();
   });
 
-  // THE ROW CONVERTS WHOLE (#4978 ruling 3, 2026-09-05). Both checklists confirm
-  // through what used to be a filled `.btn` beside a raw `.btn-ghost` Cancel;
-  // neither is inside a `<form>`, so the commit takes the SECONDARY paint and the
-  // pair ends up as one treatment rather than the mismatched row the owner
-  // declined. Asserted over BOTH controls of the row at once, which is what makes
-  // a half-converted row fail here rather than only in a browser.
+  // THE ROW CONVERTS WHOLE (#4978 ruling 3, 2026-09-05), AND THE CONFIRM STAYS
+  // LOUD (PM ruling 2026-09-09 22:05 UTC). Both checklists confirmed through a
+  // filled `.btn` beside a raw `.btn-ghost` Cancel. Neither is inside a `<form>`,
+  // so the rule that a form's commit is filled does not reach them — but the
+  // 22:05 ruling is wider than that rule: a surface has ONE loud control, and a
+  // confirm modal is the least ambiguous surface there is. While it is open it IS
+  // the surface, it exists for exactly one action, and it holds exactly one
+  // confirm and one Cancel, so one primary per modal cannot break the admission
+  // rule. Keeping the fill is therefore what a person already sees; demoting it
+  // would have been the visible change. Asserted over BOTH controls of the row at
+  // once, which is what makes a half-converted row fail here rather than only in
+  // a browser.
   it.each([
     {
       row: "end",
@@ -95,8 +101,12 @@ describe("episode reconciliation triggers", () => {
       const cancel = within(row).getByRole("button", { name: "Cancel" });
 
       expect(commit.textContent).toBe(commitLabel);
+      expect(commit.className.split(" ")).toEqual([
+        "button-control",
+        "button-control-primary",
+      ]);
+      expect(cancel.className.split(" ")).toEqual(["button-control"]);
       for (const control of [commit, cancel]) {
-        expect(control.className.split(" ")).toEqual(["button-control"]);
         expect(control.getAttribute("data-button-control")).toBe("");
         expect(control.getAttribute("type")).toBe("button");
       }
