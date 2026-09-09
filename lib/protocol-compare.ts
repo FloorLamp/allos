@@ -40,6 +40,7 @@ export interface WindowStats {
   n: number;
   mean: number | null;
   median: number | null;
+  last: number | null;
   // The dates actually contributing (for the "nearest draw" fallback, this may be
   // a single date outside the nominal window).
   from: string | null;
@@ -57,6 +58,7 @@ export interface OutcomeComparison {
   intervention: WindowStats;
   meanDelta: number | null;
   medianDelta: number | null;
+  lastDelta: number | null;
   betterness: Betterness;
   // True when either window has too few readings for an honest comparison.
   insufficient: boolean;
@@ -92,6 +94,7 @@ function statsFor(samples: OutcomeSample[]): WindowStats {
     n: values.length,
     mean: values.length ? mean(values) : null,
     median: values.length ? median(values) : null,
+    last: values.length ? values[values.length - 1] : null,
     from: sorted.length ? sorted[0].date : null,
     to: sorted.length ? sorted[sorted.length - 1].date : null,
   };
@@ -171,6 +174,11 @@ export function compareOutcome(
       ? intervention.median - baseline.median
       : null;
 
+  const lastDelta =
+    intervention.last != null && baseline.last != null
+      ? intervention.last - baseline.last
+      : null;
+
   const insufficient =
     baseline.n < DEFAULT_POOLED_MIN || intervention.n < DEFAULT_POOLED_MIN;
   const betterness = judge(direction, insufficient ? null : meanDelta);
@@ -201,6 +209,7 @@ export function compareOutcome(
     intervention,
     meanDelta,
     medianDelta,
+    lastDelta,
     betterness,
     insufficient,
     framing,
@@ -236,8 +245,8 @@ export function baselineFor(w: DuringWindow): WindowRange {
 
 export interface PooledCompareOptions {
   // Pooled minimum-data gates: the during / baseline sample floors below which the
-  // shift is deemed insufficient (the regularityTravelInsight "clean signal" posture —
-  // no fake precision off two readings). Default DEFAULT_POOLED_MIN.
+  // shift is deemed insufficient. Defaults to DEFAULT_POOLED_MIN: no precision
+  // claim from only one or two readings.
   minDuring?: number;
   minBaseline?: number;
 }
@@ -286,6 +295,11 @@ export function compareOutcomePooled(
       ? intervention.median - baseline.median
       : null;
 
+  const lastDelta =
+    intervention.last != null && baseline.last != null
+      ? intervention.last - baseline.last
+      : null;
+
   const insufficient =
     intervention.n < minDuring || baseline.n < minBaseline || meanDelta == null;
   const betterness = judge(direction, insufficient ? null : meanDelta);
@@ -314,6 +328,7 @@ export function compareOutcomePooled(
     intervention,
     meanDelta,
     medianDelta,
+    lastDelta,
     betterness,
     insufficient,
     framing,

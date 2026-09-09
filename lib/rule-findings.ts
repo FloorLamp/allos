@@ -144,7 +144,7 @@ import {
   type LowMoodWindow,
 } from "./mood-observation";
 import { getMoodLogs, getMetricDailyTotals } from "./queries";
-import { getSleepRegularity } from "./queries/sleep";
+import { getSleepRegularityDrop } from "./queries/situation-impact";
 import {
   getSuspectSleepSessions,
   SLEEP_SKEW_HISTORY_DAYS,
@@ -687,7 +687,7 @@ export function buildSleepClockSkewFindings(
 // CO-OCCURS with the low-mood window above. Deliberately a CO-OCCURRENCE note —
 // "the two often move together" — never a causal or directional claim (#992's
 // design choice). Sleep inputs reuse the SAME computations the Trends sleep
-// surfaces render: getSleepRegularity (the #160 SRI) at two anchors, and the
+// surfaces render: the shared trailing SRI comparison decision, and the
 // sleep_min daily totals for the duration windows — no second sleep engine.
 // Coaching tier ONLY (#449): joins collectCoachingFindings, SLEEP_MOOD_PREFIX is
 // registered, never a notification, never the hero. No owned SQL added here.
@@ -697,13 +697,6 @@ export function buildSleepMoodBridgeFindings(
 ): Finding[] {
   const low = lowMoodWindowFor(profileId, today);
   if (!low) return [];
-
-  // SRI over the recent 28-night window vs the 28 nights before it (null when a
-  // window lacks enough recorded nights — the pure decide gate handles nulls).
-  const recentReg = getSleepRegularity(profileId, { asOf: today });
-  const priorReg = getSleepRegularity(profileId, {
-    asOf: shiftDateStr(today, -28),
-  });
 
   // Mean nightly duration, recent 14 days vs the prior 14 — the same daily
   // totals series the body census sleep chart renders.
@@ -715,8 +708,7 @@ export function buildSleepMoodBridgeFindings(
   const obs = decideSleepMoodBridge(
     {
       lowMood: low,
-      recentSri: recentReg?.sri ?? null,
-      priorSri: priorReg?.sri ?? null,
+      regularityDrop: getSleepRegularityDrop(profileId, today),
       recentAvgSleepMin: meanNightlySleepMin(nights, recentStart, today),
       priorAvgSleepMin: meanNightlySleepMin(nights, priorStart, priorEnd),
     },

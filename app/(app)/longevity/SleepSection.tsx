@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth";
 import {
   getSleepRegularity,
   getSleepRegularityTrend,
-  getSleepRegularityInsight,
+  getSleepRegularityDrop,
 } from "@/lib/queries";
 import { chartSeries } from "@/lib/chart-colors";
 import { today } from "@/lib/db";
@@ -15,7 +15,7 @@ import PillarStat from "./PillarStat";
 // Longevity §3 — Sleep regularity (#1042 phase 4): the existing SRI pillar
 // computation (lib/sleep-regularity via the lib/queries/sleep seam — the same
 // numbers Trends → Overview → body census and the weekly recap render), expanded with the timing
-// spread, the travel insight, and the rolling trend. The headline stat is the
+// spread, the sustained-drop note, and the rolling trend. The headline stat is the
 // SAME Pillar object the dashboard presentation renders.
 export default async function SleepSection({
   section,
@@ -29,7 +29,7 @@ export default async function SleepSection({
     date: r.date,
     value: r.sri,
   }));
-  const insight = getSleepRegularityInsight(profile.id);
+  const insight = getSleepRegularityDrop(profile.id, today(profile.id));
 
   return (
     <section
@@ -65,7 +65,7 @@ export default async function SleepSection({
           className="mt-2 rounded-sm bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
           data-testid="longevity-sri-insight"
         >
-          {insight}
+          {insight.detail}
         </p>
       )}
       {trend.length > 1 && (

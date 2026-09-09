@@ -8,7 +8,12 @@
 import { getSituationEvents } from "../settings";
 import type { WeightUnit } from "../settings";
 import { resolveOutcomeSeries } from "./protocols";
-import type { OutcomeSeries } from "../protocol-compare";
+import { compareOutcomePooled, type OutcomeSeries } from "../protocol-compare";
+import { shiftDateStr } from "../date";
+import {
+  decideSleepRegularityDrop,
+  sleepRegularityDropDetail,
+} from "../sleep-regularity";
 import {
   buildSituationImpact,
   declaredSituationNames,
@@ -89,4 +94,31 @@ export function getSituationImpacts(
     (a, b) =>
       b.duringDays - a.duringDays || a.situation.localeCompare(b.situation)
   );
+}
+
+// The third window source over the existing comparison engine: a trailing
+// 28-day SRI endpoint change, with a declared episode only as optional context.
+// This gather lives above the sleep/outcome readers to avoid a circular import.
+export function getSleepRegularityDrop(profileId: number, today: string) {
+  const series = resolveOutcomeSeries(profileId, "index:sri", "kg");
+  if (!series) return null;
+  const window = { start: shiftDateStr(today, -27), end: today };
+  const drop = decideSleepRegularityDrop(
+    compareOutcomePooled(series, [window])
+  );
+  if (!drop) return null;
+
+  const events = getSituationEvents(profileId);
+  const episodes = declaredSituationNames(events)
+    .flatMap((name) =>
+      situationWindows(name, events, today).map((w) => ({ name, ...w }))
+    )
+    .filter((w) => w.start <= window.end && w.end >= window.start)
+    .sort(
+      (a, b) => b.start.localeCompare(a.start) || a.name.localeCompare(b.name)
+    );
+  const situation = episodes.find(
+    (episode) => !compareOutcomePooled(series, [episode]).insufficient
+  );
+  return { ...drop, detail: sleepRegularityDropDetail(drop, today, situation) };
 }
