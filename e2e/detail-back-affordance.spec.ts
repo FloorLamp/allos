@@ -23,7 +23,7 @@ async function expectBackLinkAboveTitle(
   page: Page,
   name: string | RegExp
 ): Promise<void> {
-  const back = page.getByRole("link", { name });
+  const back = page.getByRole("main").getByRole("link", { name, exact: true });
   await expect(back).toBeVisible();
   const h1 = page.getByRole("heading", { level: 1 });
   await expect(h1).toHaveCount(1);
@@ -43,7 +43,7 @@ test("a settings group's way out is the shared back link, above its title", asyn
   // Same marker the settings IA specs navigate by — the shape changed, the
   // handle did not.
   await expect(page.getByTestId("settings-breadcrumb")).toBeVisible();
-  await expectBackLinkAboveTitle(page, "All settings");
+  await expectBackLinkAboveTitle(page, "Settings");
 });
 
 // The dose ledger's back-link case left with the ledger (#3958): its four routes
@@ -56,7 +56,7 @@ test("an episode detail page has a way back to the care trail", async ({
   await page.goto("/medical/episodes");
   const row = page.getByTestId("episode-index-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: any seeded episode proves the shell; no per-row claim is made
   await followLink(page, row, /\/medical\/episodes\/\d+/);
-  await expectBackLinkAboveTitle(page, "Back to episodes");
+  await expectBackLinkAboveTitle(page, "Illness episodes");
 });
 
 test("your own medication detail shows a back link and no identity banner", async ({
@@ -69,7 +69,7 @@ test("your own medication detail shows a back link and no identity banner", asyn
   await page.goto(href!);
 
   await expect(page.getByTestId("medication-detail")).toBeVisible();
-  await expectBackLinkAboveTitle(page, "Back to medications");
+  await expectBackLinkAboveTitle(page, "Medications");
   // ProfileIdentityBanner answers "whose medication is this?", which is not a
   // question on your own. Unconditional, it drew an avatar + your own name above
   // your own back link — this page was its only call site in the app.

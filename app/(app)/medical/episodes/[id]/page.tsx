@@ -258,7 +258,7 @@ export default async function EpisodePage(props: {
       {/* The way out (#3237). This page had none — its in-card identity banner
           (#531/#534) is a different question and is untouched below. `space-y-5`
           on the container owns the gap, so no bottom margin here. */}
-      <BackLink href={EPISODES_HREF} label="Back to episodes" className="" />
+      <BackLink href={EPISODES_HREF} destination="Illness episodes" />
       <EpisodeSummary
         episode={assembled}
         note={row.note}

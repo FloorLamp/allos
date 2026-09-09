@@ -31,12 +31,9 @@ export default function MetricMeasurementPanel({
 
   return (
     <div className="min-w-0" data-testid="metric-measurement-panel">
-      {/* The back affordance used to arrive here as `leading` and sit INSIDE this
-          row below `sm`. It is the page's, not the panel's, and since #3237 the
-          page renders it above this whole block — so the row is just the heading
-          and its actions. */}
       <div className="min-w-0">
         <PageHeader
+          back={{ href: "/trends#body", destination: "Body" }}
           className="mb-0! min-w-0 gap-2! sm:gap-4!"
           title={title}
           subtitle={subtitle}
