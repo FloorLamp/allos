@@ -103,6 +103,63 @@ describe("intake fact summary (#3216)", () => {
     expect(intakeFactSummary(withNotes).more).not.toContain("notes");
   });
 
+  // NO DATUM RENDERS TWICE, AND NONE GOES MISSING FOR IT (#3216 ruling 5, #5301). The
+  // product left the identity chip because on the reported Ibuprofen form it repeated
+  // the name field word for word — so the two halves need opposite assertions, or a
+  // sweep that deleted the echo would also have deleted the adult formulation.
+  it("states a stored product on the dose chip, and drops it when it is the name", () => {
+    const label = (
+      input: Parameters<typeof intakeFactSummary>[0],
+      key: string
+    ) => intakeFactSummary(input).chips.find((c) => c.key === key)?.label ?? "";
+
+    // The ADULT case. No pediatric pick names the formulation, so the stored product is
+    // the only thing that can — and the identity chip no longer says it.
+    const adult = base({
+      name: "Ibuprofen",
+      product: "Extra Strength caplet",
+      amount: "400 mg",
+      brand: "Advil",
+    });
+    expect(label(adult, "dose")).toBe("Extra Strength caplet · 400 mg");
+    expect(label(adult, "identity")).toBe("Advil");
+
+    // A pediatric pick names itself, and the product it stored is not said again.
+    const child = base({
+      name: "Ibuprofen",
+      formulationLabel: "Children's oral suspension (100 mg / 5 mL)",
+      product: "Children's oral suspension (100 mg / 5 mL)",
+      amount: "150 mg",
+    });
+    expect(label(child, "dose")).toBe(
+      "Children's oral suspension (100 mg / 5 mL) · 150 mg"
+    );
+
+    // And a product that only repeats the name states nothing anywhere.
+    const echo = base({
+      name: "Ibuprofen",
+      product: "ibuprofen",
+      amount: "200 mg",
+    });
+    expect(label(echo, "dose")).toBe("200 mg");
+    expect(keys(echo)).not.toContain("identity");
+  });
+
+  // The standardized ingredient is a FACT with two states, not a text button (#5301).
+  it("prompts for an RxNorm match once there is a name, and states the code once there is one", () => {
+    expect(keys(base())).not.toContain("rxnorm");
+    expect(intakeFactSummary(base()).more).not.toContain("rxnorm");
+
+    const named = base({ name: "Ibuprofen" });
+    expect(stateOf(named, "rxnorm")).toBe("missing");
+
+    const matched = base({ name: "Ibuprofen", rxcui: "5640" });
+    expect(stateOf(matched, "rxnorm")).toBe("stated");
+    expect(
+      intakeFactSummary(matched).chips.find((c) => c.key === "rxnorm")?.label
+    ).toContain("5640");
+  });
+
   it("the trailing affordance NAMES the facts it holds", () => {
     // "more" that does not say what is inside it is a place things get lost.
     const label = moreFactsLabel(["supply", "notes"]);
