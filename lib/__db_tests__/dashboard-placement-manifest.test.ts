@@ -1348,7 +1348,7 @@ describe("actual atomic dashboard manifests", () => {
     // −2 EACH (#5073) ON TOP OF THE ABOVE, RE-MEASURED ON THE MERGED TREE and not
     // carried over from the banked branch, whose base predated #3993's +24/+28. The
     // sign is the surprise: this change ADDS one statement per render
-    // (`SELECT total_changes()`, the memo's own version read) and still comes out
+    // (the durable write-revision read, the memo's own version read) and still comes out
     // negative, because three of the six memoized gathers' calls inside ONE render were
     // duplicates. `getScheduledAppointments` is reached four times on a dashboard render
     // — the page's Upcoming list, `kindedScheduled` from the Upcoming generators, the
@@ -1559,8 +1559,8 @@ describe("actual atomic dashboard manifests", () => {
   //
   // WHAT IS LEFT is everything the memo does not cover: the Now/Standing/Ahead gathers,
   // the suppression bus and `routineOrder` (deliberately unmemoized — a dismissal taken
-  // since the last commit must still be read fresh), and one `SELECT total_changes()`
-  // for the memo's own version read.
+  // since the last commit must still be read fresh), and one durable write-revision
+  // SELECT for the memo's own version read.
   //
   // WHAT THIS TABLE CANNOT SEE IS A GATHER LEAVING THE TAIL, and it is worth saying
   // because the cold-is-cheaper line below reads as though it guards the thing it

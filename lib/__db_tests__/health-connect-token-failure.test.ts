@@ -10,7 +10,7 @@
 // fresh successful ingest self-clears both.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import {
   generateHealthConnectToken,
   getConnection,
@@ -41,8 +41,8 @@ function failureEventCount(): number {
 beforeEach(() => {
   // Fresh profile AND a clean integration-table slate so recordUnmatchedHealthConnect
   // Push's "exactly one HC connection" attribution is deterministic across tests.
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM integration_connections");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM integration_connections");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('HC-TOKEN')").run()
       .lastInsertRowid

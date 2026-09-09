@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { setSetting } from "@/lib/settings/kv";
 import { getNotifySchedule } from "@/lib/settings/notifications";
 import { dismissalKeyEntryFor } from "@/lib/dismissal-classes";
@@ -233,7 +233,7 @@ describe("item supply offers", () => {
     db.prepare(
       "UPDATE intake_items SET quantity_on_hand = NULL WHERE id = ?"
     ).run(fx.supplementId);
-    db.exec(`CREATE TEMP TRIGGER fail_track_asked BEFORE INSERT ON upcoming_dismissals
+    rawDb.exec(`CREATE TEMP TRIGGER fail_track_asked BEFORE INSERT ON upcoming_dismissals
       WHEN NEW.profile_id = ${fx.profileId} BEGIN SELECT RAISE(ABORT, 'synthetic asked failure'); END`);
     try {
       expect(() =>
@@ -251,7 +251,7 @@ describe("item supply offers", () => {
       ).toEqual({ quantity_on_hand: null });
       expect(askedRows(fx.profileId)).toEqual([]);
     } finally {
-      db.exec("DROP TRIGGER fail_track_asked");
+      rawDb.exec("DROP TRIGGER fail_track_asked");
     }
   });
 });

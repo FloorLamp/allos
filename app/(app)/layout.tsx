@@ -71,8 +71,10 @@ import { excludedRegions } from "@/lib/injury-model";
 import { niggleTempers } from "@/lib/niggle-model";
 import { buildActivePlateauHints } from "@/lib/rule-findings";
 import { getRpeTracking } from "@/lib/rpe-tracking";
-import { today } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { requestNowMs } from "@/lib/request-now";
+import DataFreshnessWatcher from "@/components/DataFreshnessWatcher";
+import { readDataWriteRevision } from "@/lib/write-revision";
 
 // Authenticated app shell. requireSession() is the authoritative gate for the
 // entire (app) route group — it redirects to /login when there's no live
@@ -105,6 +107,10 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Sample before any page/shell data. A commit during this render therefore leaves
+  // an older marker and triggers a later refresh; the marker can never claim that
+  // data read before it contains a newer commit.
+  const writeRevision = readDataWriteRevision(db);
   const nowMs = requestNowMs();
   const session = await requireSession();
   const { login, profile } = session;
@@ -307,6 +313,7 @@ export default async function AppLayout({
                   those refreshes; it never adds one, never removes one, and
                   never touches a refresh the USER asked for. */}
               <DirtyFormProvider>
+                <DataFreshnessWatcher profileId={profile.id} />
                 <OfflineQueueProvider
                   activeProfileId={profile.id}
                   deviceSessionKey={session.deviceSessionKey}
@@ -402,7 +409,11 @@ export default async function AppLayout({
             `top-edge-safe` (app/globals.css) itself; the token rather than a
             second `env()` for the reason the page gutter is one.
             Below `md` only: the desktop shell never paid this. */}
-                            <main className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0">
+                            <main
+                              data-write-revision={String(writeRevision)}
+                              data-rendered-at={String(nowMs)}
+                              className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0"
+                            >
                               {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN
                     IT (#4102). It was built for the phone top bar's hide-on-scroll
                     (issue #1416), and that bar has retired: the dock is the phone's

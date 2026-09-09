@@ -39,7 +39,7 @@ import {
 // prefix/escaping the chokepoint applies is exercised and the edited wire text this
 // test asserts on is the genuine rendered output, only the network hop is faked.
 
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   getProfileSetting,
@@ -1570,7 +1570,7 @@ describe("Received receipt operation", () => {
     const f = await receivedFixture();
     await handleCallbackQuery(f.open);
     const reply = receiptReply(f, "30");
-    db.exec(`CREATE TEMP TRIGGER refuse_received_completion BEFORE UPDATE ON notify_offers
+    rawDb.exec(`CREATE TEMP TRIGGER refuse_received_completion BEFORE UPDATE ON notify_offers
       WHEN json_extract(NEW.payload, '$.state') = 'completed'
       BEGIN SELECT RAISE(ABORT, 'synthetic completion failure'); END`);
     try {
@@ -1578,7 +1578,7 @@ describe("Received receipt operation", () => {
         "synthetic completion failure"
       );
     } finally {
-      db.exec("DROP TRIGGER refuse_received_completion");
+      rawDb.exec("DROP TRIGGER refuse_received_completion");
     }
     expect(receivedCount(f)).toBe(4);
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
@@ -1992,14 +1992,14 @@ it("rolls back Ordered suppression and marker if the final pointer claim fails",
     f.profileId,
     refillMarkerKey(f.supplementId)
   );
-  db.exec(`CREATE TEMP TRIGGER fail_ordered_pointer BEFORE UPDATE ON notify_messages
+  rawDb.exec(`CREATE TEMP TRIGGER fail_ordered_pointer BEFORE UPDATE ON notify_messages
     WHEN OLD.id = ${f.pointer.id} BEGIN SELECT RAISE(ABORT, 'synthetic pointer failure'); END`);
   try {
     await expect(
       handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!)
     ).rejects.toThrow("synthetic pointer failure");
   } finally {
-    db.exec("DROP TRIGGER fail_ordered_pointer");
+    rawDb.exec("DROP TRIGGER fail_ordered_pointer");
   }
   expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(
     original

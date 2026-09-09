@@ -9,6 +9,10 @@ import {
 } from "./cascade-delete";
 import { takePreMigrationSnapshot } from "./snapshot";
 import { MIGRATIONS } from "./versions";
+import {
+  advanceDataWriteRevisionForMigration,
+  dataWriteRevisionExists,
+} from "../write-revision";
 
 const log = createLogger("migrate");
 
@@ -254,6 +258,11 @@ export function runMigrations(
         // Authoritative in-txn dedup: a peer worker may have applied this
         // migration between our pre-loop read and taking the write lock.
         if (isApplied.get(m.name)) return;
+        // Initialization of the revision row represents every migration that
+        // predates it. Once the row exists, each later migration advances it in
+        // this same transaction so an older process still serving this database
+        // can observe the schema/data commit.
+        const revisionAlreadyExisted = dataWriteRevisionExists(db);
         m.up(db);
         record.run(m.name, instantNow());
         // Keep the tripwire climbing: a numbered-era migration stamps its own id
@@ -264,6 +273,9 @@ export function runMigrations(
             ? Math.max(readVersion(db), m.id)
             : Math.max(readVersion(db), legacyCount) + 1;
         db.pragma(`user_version = ${next}`);
+        if (revisionAlreadyExisted) {
+          advanceDataWriteRevisionForMigration(db);
+        }
       });
       runBootTx(tx);
       fkBefore = reportOrphansIntroduced(db, m, fkBefore);

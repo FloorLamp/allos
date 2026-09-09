@@ -28,7 +28,7 @@
 // several of them would have to be rewritten to pass on the old mechanism.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { POST as UPLOAD } from "@/app/api/documents/route";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
 import { routeTestToken } from "./route-test-api-token";
@@ -296,8 +296,8 @@ describe("the upload route records which IDENTITY a document was acquired for (#
     // The archive has already landed by the time this runs. A provenance write must never
     // turn a successful ingest into a 500 the tool answers by pushing everything again —
     // the same contract recordSyncRows honours.
-    db.exec("DROP INDEX IF EXISTS idx_medical_documents_acquired_identity");
-    db.exec(
+    rawDb.exec("DROP INDEX IF EXISTS idx_medical_documents_acquired_identity");
+    rawDb.exec(
       `CREATE TRIGGER doc_prov_stamp_boom BEFORE UPDATE OF acquired_identity_id
          ON medical_documents
          BEGIN SELECT RAISE(ABORT, 'provenance is down'); END`
@@ -313,8 +313,8 @@ describe("the upload route records which IDENTITY a document was acquired for (#
           .get(docId)
       ).toEqual({ id: null });
     } finally {
-      db.exec("DROP TRIGGER doc_prov_stamp_boom");
-      db.exec(
+      rawDb.exec("DROP TRIGGER doc_prov_stamp_boom");
+      rawDb.exec(
         `CREATE INDEX IF NOT EXISTS idx_medical_documents_acquired_identity
            ON medical_documents(acquired_identity_id)`
       );
@@ -519,7 +519,7 @@ describe("the claim is written whole or not at all (#2999)", () => {
     const doc = stageDoc(accountOne, LABEL_ONE, "atomic-a1.pdf");
     spaceUploads([doc], 10);
 
-    db.exec(
+    rawDb.exec(
       `CREATE TRIGGER doc_prov_rows_boom BEFORE INSERT ON integration_sync_rows
          BEGIN SELECT RAISE(ABORT, 'provenance is down'); END`
     );
@@ -527,7 +527,7 @@ describe("the claim is written whole or not at all (#2999)", () => {
     try {
       failedRun = await reportRun(accountOne, LABEL_ONE);
     } finally {
-      db.exec("DROP TRIGGER doc_prov_rows_boom");
+      rawDb.exec("DROP TRIGGER doc_prov_rows_boom");
     }
 
     // Nothing was written — not the rows, and CRUCIALLY not the mark.

@@ -10,6 +10,7 @@ import { bootTasks } from "./migrations/boot-tasks";
 import {
   acquireBootLock,
   BOOT_LOCK_TIMEOUT_MS,
+  runBootTx,
 } from "./migrations/schema-utils";
 // Side-effect import: registers the fs-backed error sink so createLogger().error()
 // persists to data/logs/errors.jsonl (issue #596). Lives here because db.ts is on
@@ -25,6 +26,12 @@ import "./notify-log";
 import { registerSqlFunctions } from "./sql-functions";
 import { setTierConfigProvider } from "./ai-client";
 import { getTierConfigs } from "./settings/ai-tiers";
+import {
+  trackedDatabase,
+  trackedRequestDatabase,
+  type SqlDatabase,
+  type SqlStatement,
+} from "./write-revision";
 
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
@@ -96,7 +103,7 @@ function createDb(): Database.Database {
     // Apply the versioned schema migrations (lib/migrations/runner), then the
     // per-boot tasks that must re-run on every process start (boot-tasks).
     runMigrations(db);
-    bootTasks(db);
+    bootTasks(trackedDatabase(db));
   } finally {
     bootLock?.release();
   }
@@ -113,7 +120,7 @@ function createDb(): Database.Database {
 // unconditional replay kept retired schema names alive in the final schema (#2879).
 export function migrate(db: Database.Database): void {
   runMigrations(db);
-  bootTasks(db);
+  bootTasks(trackedDatabase(db));
 }
 
 // `let`, not `const`, so the DB-tier test harness can repoint the singleton
@@ -121,8 +128,10 @@ export function migrate(db: Database.Database): void {
 // BINDINGS, so every `import { db }` site observes the reassignment without a
 // single call site changing. Nothing in app code may reassign it.
 let connection = globalForDb.__healthDb ?? createDb();
-// Request code uses writeTx/readTx. Full-handle adapters opt into rawDb explicitly.
-export let db: Omit<Database.Database, "transaction"> = connection;
+// Request code receives only the project-owned statement/connection capability.
+// The wrapped statements keep the native handle private and account for every
+// mutation in the same transaction as the durable write revision.
+export let db: SqlDatabase = trackedRequestDatabase(connection);
 export { connection as rawDb };
 if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = connection;
 
@@ -141,12 +150,9 @@ if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = connection;
 // cache self-invalidating: a new handle is a new cache entry, and the old map is
 // collected with the handle it belonged to. Use this for a module-scope statement;
 // an inline prepare inside a function already sees the current connection.
-const statementCache = new WeakMap<
-  typeof db,
-  Map<string, Database.Statement>
->();
+const statementCache = new WeakMap<typeof db, Map<string, SqlStatement>>();
 
-function preparedFor(sql: string): Database.Statement {
+function preparedFor(sql: string): SqlStatement {
   let forConnection = statementCache.get(db);
   if (!forConnection) {
     forConnection = new Map();
@@ -187,7 +193,7 @@ export function hoistedStatement(sql: string): HoistedStatement {
 export function reopenDatabaseForTests(): void {
   const previous = connection;
   connection = createDb();
-  db = connection;
+  db = trackedRequestDatabase(connection);
   if (process.env.NODE_ENV !== "production")
     globalForDb.__healthDb = connection;
   // Module-level state derived from the OLD database outlives the swap in a
@@ -210,7 +216,7 @@ export function reopenDatabaseForTests(): void {
 // db → boot-tasks → settings cycle otherwise TDZ-faults some import orders). The
 // closure defers the singleton read to call time, and getTierConfigs takes the handle
 // rather than importing it back (#2958), so this edge does not close a cycle.
-setTierConfigProvider(() => getTierConfigs(connection));
+setTierConfigProvider(() => getTierConfigs(db));
 
 // Request writes acquire the reserved lock at BEGIN so read-then-write work
 // cannot fail while upgrading a stale snapshot. Nested calls use savepoints.
@@ -224,7 +230,9 @@ export interface Tx {
 const txToken = {} as Tx;
 
 export function writeTx<T>(fn: (tx: Tx) => T): T {
-  return connection.transaction(() => fn(txToken)).immediate() as T;
+  return trackedDatabase(connection)
+    .transaction(() => fn(txToken))
+    .immediate() as T;
 }
 
 // Run a READ-ONLY snapshot transaction (DEFERRED): wrap several reads in one
@@ -233,6 +241,12 @@ export function writeTx<T>(fn: (tx: Tx) => T): T {
 // take a write lock. Anything that mutates uses writeTx instead.
 export function readTx<T>(fn: () => T): T {
   return connection.transaction(fn)() as T;
+}
+
+// Boot/operator maintenance keeps the boot path's bounded SQLITE_BUSY retry while
+// using the same tracked transaction owner as request writes.
+export function maintenanceWrite(fn: () => void): void {
+  runBootTx(trackedDatabase(connection).transaction(fn));
 }
 
 // Proactively checkpoint the write-ahead log (issue #135, item 6). Three processes
@@ -247,6 +261,13 @@ export function readTx<T>(fn: () => T): T {
 // logging. Uses `pragma(..., { simple:false })` so callers can log what happened.
 export function checkpointWal(): unknown {
   return db.pragma("wal_checkpoint(TRUNCATE)");
+}
+
+// VACUUM INTO creates a separate snapshot file and does not change application
+// rows. Keep this one maintenance operation at the connection owner rather than
+// exposing general SQL execution through the request database capability.
+export function vacuumIntoBackup(destination: string): void {
+  connection.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`);
 }
 
 // today()/appTimezone() run many times per request (weekWindowStart, streaks,

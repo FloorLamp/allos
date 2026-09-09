@@ -18,7 +18,7 @@
 //   • migration 146's columns and its behaviour-preserving backfill.
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
 import { GET as REQUESTS } from "@/app/api/documents/requests/route";
@@ -154,8 +154,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  db.exec("DELETE FROM portal_sync_requests");
-  db.exec("DELETE FROM upcoming_dismissals");
+  rawDb.exec("DELETE FROM portal_sync_requests");
+  rawDb.exec("DELETE FROM upcoming_dismissals");
 });
 
 // ── #1888's named fixture ─────────────────────────────────────────────────────
@@ -520,7 +520,7 @@ describe("declined — one login, three patients, three answers", () => {
       f.account.id,
       stamp(shiftDateStr(f.anchor, -(STALENESS_CADENCE_DAYS + 5)))
     );
-    db.exec("DELETE FROM portal_sync_requests");
+    rawDb.exec("DELETE FROM portal_sync_requests");
     expect(evaluateStalenessRequests(todayFor)).toBeGreaterThanOrEqual(1);
     expect(openSyncRequests().some((r) => r.accountId === f.account.id)).toBe(
       true
@@ -528,7 +528,7 @@ describe("declined — one login, three patients, three answers", () => {
 
     // Both declined: asking a person to collect what the portal will not give is a
     // pointless nag, so the cadence goes quiet for this login.
-    db.exec("DELETE FROM portal_sync_requests");
+    rawDb.exec("DELETE FROM portal_sync_requests");
     await SYNC_REPORT(
       report(memberToken, {
         status: "failed",
@@ -885,7 +885,7 @@ describe("migration 146 — the provenance columns", () => {
     db.prepare(
       "UPDATE portal_run_reports SET checked_at = NULL, checked_ok_at = NULL WHERE account_id = ?"
     ).run(f.account.id);
-    db.exec(
+    rawDb.exec(
       `UPDATE portal_run_reports
           SET checked_at = at,
               checked_ok_at = CASE WHEN ok = 1 THEN at END
