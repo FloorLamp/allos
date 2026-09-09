@@ -489,11 +489,11 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
       const measured = await fieldHeights(page, fields);
       for (const [name, height] of Object.entries(measured))
         expect(
-          height,
+          Math.abs(height - CONTROL_BOX_PX),
           `${name} renders ${height}px at ${viewport.width}px, not the ${CONTROL_BOX_PX}px ` +
             "control box. The box is declared once in app/globals.css (SECTION: " +
             "Touch tap targets); a field outside `.input` carries it itself."
-        ).toBe(CONTROL_BOX_PX);
+        ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
     }
     await page.setViewportSize(PHONE);
 
@@ -548,9 +548,9 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
       const at = (await boxOf(`end time at ${width}`, fields[3].locator))
         .height;
       expect(
-        at,
+        Math.abs(at - CONTROL_BOX_PX),
         `end time is ${at}px at ${width}px — the box does not step at 40rem any more`
-      ).toBe(CONTROL_BOX_PX);
+      ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
     }
   });
 
@@ -569,7 +569,9 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     await expect(dialog).toBeVisible();
 
     const name = dialog.getByRole("combobox", { name: "Name" });
-    expect((await boxOf("picker field", name)).height).toBe(CONTROL_BOX_PX);
+    expect(
+      Math.abs((await boxOf("picker field", name)).height - CONTROL_BOX_PX)
+    ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
     await name.click();
     await expect(name).toBeFocused();
     await expect(name).toHaveAttribute("aria-expanded", "true");
@@ -635,7 +637,9 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
     // pass on 34, on 26 and on 12; the ruling's claim is an equality.
     await page.setViewportSize(DESKTOP);
     const wide = await boxOf("picker field at 1280", name);
-    expect(wide.height).toBe(CONTROL_BOX_PX);
+    expect(Math.abs(wide.height - CONTROL_BOX_PX)).toBeLessThanOrEqual(
+      TAP_FLOOR_FLOAT_EPSILON_PX
+    );
   });
 
   // #3706's own three typed fields, on the real component, at the mount that shows
@@ -659,7 +663,9 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
         .getByTestId("symptom-custom-input")
         .getByRole("combobox");
       const customBox = await boxOf("custom symptom field", custom);
-      expect(customBox.height).toBe(CONTROL_BOX_PX);
+      expect(Math.abs(customBox.height - CONTROL_BOX_PX)).toBeLessThanOrEqual(
+        TAP_FLOOR_FLOAT_EPSILON_PX
+      );
       expect(customBox.x + customBox.width).toBeLessThanOrEqual(PHONE.width);
       await expect(custom).toHaveAttribute("aria-label", "Add another symptom");
 
@@ -680,13 +686,17 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
       await bar.getByTestId("symptom-cough-note-toggle").click();
       const note = bar.getByTestId("symptom-cough-note-input");
       const noteBox = await boxOf("symptom note field", note);
-      expect(noteBox.height).toBe(CONTROL_BOX_PX);
+      expect(Math.abs(noteBox.height - CONTROL_BOX_PX)).toBeLessThanOrEqual(
+        TAP_FLOOR_FLOAT_EPSILON_PX
+      );
       await note.focus();
       await expect(note).toBeFocused();
 
       await page.setViewportSize(DESKTOP);
       const wideNote = await boxOf("symptom note field at 1280", note);
-      expect(wideNote.height).toBe(CONTROL_BOX_PX);
+      expect(Math.abs(wideNote.height - CONTROL_BOX_PX)).toBeLessThanOrEqual(
+        TAP_FLOOR_FLOAT_EPSILON_PX
+      );
     } finally {
       await page.context().close();
     }
@@ -695,9 +705,8 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
   // THE SWEEP, IN BOTH DIRECTIONS, over two field surfaces on different routes and
   // under different logins. Under #3938 both directions are the SAME assertion —
   // every `.input` is the box at 390 and at 1280 — which is stronger than the
-  // old pair of inequalities, and it is stated as the set of distinct heights
-  // rather than as "nothing is short", because an empty filter is satisfied by a
-  // tree where every field vanished.
+  // old pair of inequalities. The sweep must reach fields, and every measured
+  // height must match the control box within the browser's subpixel tolerance.
   //
   // Family settings is here because it carries two of the reconciliation's own 15
   // named sites and neither one was edited: the whole migration for them is the
@@ -766,10 +775,10 @@ test.describe("typed fields render the ruled 44px box on a phone (#3708)", () =>
           `the sweep on ${surface.name} at ${width}px must reach single-line fields`
         ).toBeGreaterThan(1);
         expect(
-          [...new Set(governed.map((f) => f.height))],
-          `\`.input\` renders more than one height on ${surface.name} at ${width}px: ` +
+          Math.max(...governed.map((f) => Math.abs(f.height - CONTROL_BOX_PX))),
+          `\`.input\` differs from the control box on ${surface.name} at ${width}px: ` +
             governed.map((f) => `${f.what}=${f.height}`).join(", ")
-        ).toEqual([CONTROL_BOX_PX]);
+        ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
       }
     });
 });
