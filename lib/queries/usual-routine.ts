@@ -219,7 +219,9 @@ export function pendingDayDoses(
     // closed day has no such need, and `intakeAdherenceStrip` passes no prediction at
     // all. `null` — "no cadence is known" — falls back to `isWorkoutDay`, which is
     // exactly the strip's answer.
-    predictedWorkoutDay: isToday ? isPredictedWorkoutDay(profileId, date) : null,
+    predictedWorkoutDay: isToday
+      ? isPredictedWorkoutDay(profileId, date)
+      : null,
   };
   // THE LIFETIME CLAMP (#430/#1442), the same bound `intakeAdherenceStrip` treats as
   // load-bearing. Without it every item a person adds grows two phantom past-day

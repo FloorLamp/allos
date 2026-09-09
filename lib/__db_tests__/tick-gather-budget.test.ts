@@ -172,13 +172,22 @@ describe("notification tick gather query budget (#5199)", () => {
   // everywhere except `biohacker` at 14; how many times each persona's gather reaches
   // that rollup is not something this file measures, so no reason for the 14 is
   // offered here.
+  //
+  // THEY WENT UP BY 2 EVERYWHERE IN #5321, and the mechanism is one read at each of the
+  // digest gather's two `getOfferedIntakeForSlot` calls. That gather used to assemble
+  // four of the intake day context's five fields; it now asks the shared builder, which
+  // answers the fifth — `postWorkoutReady`, whether the earliest logged session has
+  // ended — and knowing the current minute means resolving the profile's timezone
+  // through `lib/settings.getTimezone`, an unmemoized read this path did not make
+  // before. Uniform across all six personas because both call sites are reached by
+  // every one of them, and the recap gather is unmoved because it does not offer.
   const DIGEST_BASELINE: Record<string, number> = {
-    bodybuilder: 466,
-    "marathon-runner": 479,
-    household: 422,
-    pregnant: 429,
-    "diabetic-cgm": 454,
-    biohacker: 529,
+    bodybuilder: 468,
+    "marathon-runner": 481,
+    household: 424,
+    pregnant: 431,
+    "diabetic-cgm": 456,
+    biohacker: 531,
   };
   const RECAP_BASELINE: Record<string, number> = {
     bodybuilder: 110,

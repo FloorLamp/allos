@@ -188,17 +188,19 @@ function scheduledDoseRows(
   const intakeItems = getIntakeItems(profileId);
   const doses = getIntakeDoses(profileId);
   const taken = getTakenDoseIds(profileId, today);
-  // Derived context (#1292/#1298) widens the active set so a Poor sleep / Period
-  // situational dose surfaces on Upcoming + dashboard placement + the digest exactly while its
-  // derived context holds — the SAME effective set the Supplements bar uses.
-  // THE SHARED DAY CONTEXT (#5321), not a local assembly of it. Upcoming RENDERS
-  // LIVE, so it wants every field the medications page has, including the one that
-  // is a verdict about the current minute: this was four of five fields, and the
-  // missing `postWorkoutReady` fell to `?? true` in conditionAppliesOn — so a
-  // post-workout dose the page HELD until the session's end time was scheduled here
-  // anyway, and the same dose on the same day read two ways on two surfaces.
-  // The builder also carries the derived situation widening (#1292/#1298) and the
-  // predicted training day (#558) this function used to read one at a time.
+  // THE SHARED DAY CONTEXT (#5321), not a local assembly of it. Upcoming RENDERS LIVE,
+  // so it wants every field the medications page has, including the one that is a
+  // verdict about the current minute: this read four of the five, and the missing
+  // `postWorkoutReady` fell to `?? true` in conditionAppliesOn — so a post-workout dose
+  // the page HELD until the session's end time was scheduled here anyway, and the same
+  // dose on the same day read two ways on two surfaces.
+  //
+  // The builder carries what this function used to read one at a time: the derived
+  // context (#1292/#1298) that widens the active set, so a Poor sleep / Period
+  // situational dose surfaces on Upcoming, dashboard placement and the digest exactly
+  // while its derived context holds — the SAME effective set the Supplements bar uses —
+  // and the predicted training day a pre_workout dose keys on before a session is
+  // logged (#558).
   const ctx = intakeDayContext(profileId, today);
 
   const byId = new Map(intakeItems.map((item) => [item.id, item]));
