@@ -14,14 +14,24 @@ import {
 import type { VisitLinkDomain } from "@/lib/visit-link-suggest";
 import { isCreateVisitDomain } from "@/lib/visit-link-suggest";
 
-// Server-component forms revalidate after writing through profile-scoped cores.
-// Retain the old subject field for forms opened before the profile_id migration.
-function normalizeVisitProfile(formData: FormData): FormData {
-  if (!formData.has("profile_id") && formData.has("profileId")) {
-    formData.set("profile_id", String(formData.get("profileId")));
-  }
-  return formData;
-}
+// Record ↔ visit and episode ↔ visit accept/decline/manual-link writes (#1050/#1053).
+// These are rendered as plain server-component <form action={…}> submits, so each
+// returns Promise<void> (the form-action contract) and revalidates; the surfaces
+// re-render with the new link state. The lib write cores are auth-blind and
+// profileId-first, so the action layer owns the gate.
+//
+// ONE SPELLING FOR THE SUBJECT (#4780), the ruling #4730 already made elsewhere.
+// Every form here stamps the subject as `profile_id` and `gateItemProfile` is this
+// repo’s one reader of it: an explicit target is write-gated with
+// requireProfileWriteAccess, its absence falls back to the acting profile. Each of
+// these ten actions hand-rolled those two branches around a camelCase `profileId`,
+// which is the divergence that made #4730 invisible until someone read the form and
+// the action side by side. Nothing reads the old key now — not even as a fallback,
+// because a reader for a name nothing posts is how the next copy gets written.
+//
+// The `requireWriteAccess()` literal the write-access scanner (#319) looks for lives
+// in gate-item.ts; these ten are allowlisted as gateItemProfile delegators in
+// lib/__tests__/actions-write-access.test.ts, exactly as their siblings are.
 
 const RECORD_DOMAINS: ReadonlySet<string> = new Set([
   "record",
@@ -75,7 +85,7 @@ function revalidateVisitLinks() {
 
 // Accept one suggested (or manually picked) record ↔ visit link.
 export async function linkRecordVisitAction(formData: FormData): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const domain = recordDomain(formData);
   const recordId = Number(formData.get("recordId"));
   const encounterId = Number(formData.get("encounterId"));
@@ -89,7 +99,7 @@ export async function linkRecordVisitAction(formData: FormData): Promise<void> {
 export async function declineRecordVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const domain = recordDomain(formData);
   const recordId = Number(formData.get("recordId"));
   const encounterId = Number(formData.get("encounterId"));
@@ -103,7 +113,7 @@ export async function declineRecordVisitAction(
 export async function linkAllFromVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const encounterId = Number(formData.get("encounterId"));
   if (!encounterId) return;
   for (const p of parsePairs(formData)) {
@@ -123,7 +133,7 @@ export async function linkAllFromVisitAction(
 export async function dismissAllFromVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const encounterId = Number(formData.get("encounterId"));
   if (!encounterId) return;
   for (const p of parsePairs(formData)) {
@@ -143,7 +153,7 @@ export async function dismissAllFromVisitAction(
 export async function unlinkRecordVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const domain = recordDomain(formData);
   const recordId = Number(formData.get("recordId"));
   if (domain && recordId) {
@@ -160,7 +170,7 @@ export async function unlinkRecordVisitAction(
 export async function createVisitFromRecordAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const domain = String(formData.get("domain") ?? "");
   const recordId = Number(formData.get("recordId"));
   if (isCreateVisitDomain(domain) && recordId) {
@@ -173,7 +183,7 @@ export async function createVisitFromRecordAction(
 export async function declineCreateVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const domain = String(formData.get("domain") ?? "");
   const recordId = Number(formData.get("recordId"));
   if (isCreateVisitDomain(domain) && recordId) {
@@ -187,7 +197,7 @@ export async function declineCreateVisitAction(
 export async function linkEpisodeVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const episodeId = Number(formData.get("episodeId"));
   const encounterId = Number(formData.get("encounterId"));
   if (episodeId && encounterId) {
@@ -199,7 +209,7 @@ export async function linkEpisodeVisitAction(
 export async function declineEpisodeVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const episodeId = Number(formData.get("episodeId"));
   const encounterId = Number(formData.get("encounterId"));
   if (episodeId && encounterId) {
@@ -211,7 +221,7 @@ export async function declineEpisodeVisitAction(
 export async function unlinkEpisodeVisitAction(
   formData: FormData
 ): Promise<void> {
-  const profileId = await gateItemProfile(normalizeVisitProfile(formData));
+  const profileId = await gateItemProfile(formData);
   const episodeId = Number(formData.get("episodeId"));
   const encounterId = Number(formData.get("encounterId"));
   if (episodeId && encounterId) {

@@ -1,8 +1,11 @@
 // SERVER-ACTION TIER (#1099) — the "Create a visit from this record?" accept/decline
 // write paths, driven through the real actions with the auth boundary mocked
 // (setup.ts). The pure/DB tiers can't see the auth gate or the FormData plumbing; this
-// pins that the actions create+link under requireWriteAccess, remember a decline, and
-// reject a cross-profile write target.
+// pins that the actions create+link under requireWriteAccess and remember a decline.
+// The cross-profile subject gate these two share with the other eight visit-link
+// actions is pinned once, for all ten, in visit-links.actions.test.ts (#4780) — the
+// per-file copy of that refusal lived here and asserted the retired `profileId`
+// spelling, so it moved rather than being dropped.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -11,7 +14,7 @@ import {
   createVisitFromRecordAction,
   declineCreateVisitAction,
 } from "@/app/(app)/visit-link-actions";
-import { seedActor, createProfile, fd } from "./harness";
+import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
@@ -35,29 +38,23 @@ function rxEncounterId(id: number): number | null {
 }
 
 describe("create-visit-from-record actions", () => {
-  it.each(["profile_id", "profileId"])(
-    "creates and links a visit for the posted non-acting subject via %s",
-    async (field) => {
-      const { login } = seedActor({ role: "member" });
-      const profile = createProfile("Shared optical subject", login.id);
-      const rx = newOpticalRx(profile.id);
+  it("createVisitFromRecordAction creates a derived encounter and links the record", async () => {
+    const { profile } = seedActor();
+    const rx = newOpticalRx(profile.id);
 
-      await createVisitFromRecordAction(
-        fd({ [field]: profile.id, domain: "optical", recordId: rx })
-      );
+    await createVisitFromRecordAction(fd({ domain: "optical", recordId: rx }));
 
-      const encId = rxEncounterId(rx);
-      expect(encId).toBeTruthy();
-      const enc = db
-        .prepare(
-          "SELECT source, type FROM encounters WHERE id = ? AND profile_id = ?"
-        )
-        .get(encId, profile.id) as { source: string; type: string };
-      expect(enc.source).toBe("derived-from-record");
-      expect(enc.type).toBe("Eye exam");
-      expect(revalidate).toHaveBeenCalled();
-    }
-  );
+    const encId = rxEncounterId(rx);
+    expect(encId).toBeTruthy();
+    const enc = db
+      .prepare(
+        "SELECT source, type FROM encounters WHERE id = ? AND profile_id = ?"
+      )
+      .get(encId, profile.id) as { source: string; type: string };
+    expect(enc.source).toBe("derived-from-record");
+    expect(enc.type).toBe("Eye exam");
+    expect(revalidate).toHaveBeenCalled();
+  });
 
   it("declineCreateVisitAction remembers the decline and creates no encounter", async () => {
     const { profile } = seedActor();

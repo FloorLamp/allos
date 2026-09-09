@@ -1,8 +1,9 @@
 // SERVER-ACTION TIER (#1050/#1053) — the visit-link accept/decline/manual-link write
 // paths, driven through the real actions with the auth boundary mocked (setup.ts).
 // The pure/DB tiers can't see the auth gate or the FormData plumbing; this is the
-// dynamic guard that the actions set encounter_id, remember a decline, and NULL the
-// links on encounter delete.
+// dynamic guard that the actions set encounter_id, remember a decline, NULL the
+// links on encounter delete, and — for all ten at once, at the bottom of this file —
+// file the write against the profile the form posted rather than the acting one.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -59,36 +60,16 @@ function medEncounterId(id: number): number | null {
 }
 
 describe("record ↔ visit actions", () => {
-  it.each(["profile_id", "profileId"])(
-    "links a writable non-acting profile via %s",
-    async (field) => {
-      const { login, profile: acting } = seedActor({ role: "member" });
-      const profile = createProfile("Shared visit subject", login.id);
-      const enc = newEncounter(profile.id);
-      const med = newMedication(profile.id);
-      await linkRecordVisitAction(
-        fd({
-          [field]: profile.id,
-          domain: "medication",
-          recordId: med,
-          encounterId: enc,
-        })
-      );
-      expect(medEncounterId(med)).toBe(enc);
-      expect(revalidate).toHaveBeenCalled();
-
-      // The canonical field wins if an old field is also present.
-      await unlinkRecordVisitAction(
-        fd({
-          profile_id: profile.id,
-          profileId: acting.id,
-          domain: "medication",
-          recordId: med,
-        })
-      );
-      expect(medEncounterId(med)).toBeNull();
-    }
-  );
+  it("linkRecordVisitAction sets encounter_id", async () => {
+    const { profile } = seedActor();
+    const enc = newEncounter(profile.id);
+    const med = newMedication(profile.id);
+    await linkRecordVisitAction(
+      fd({ domain: "medication", recordId: med, encounterId: enc })
+    );
+    expect(medEncounterId(med)).toBe(enc);
+    expect(revalidate).toHaveBeenCalled();
+  });
 
   it("declineRecordVisitAction remembers the decline (no link set)", async () => {
     const { profile } = seedActor();
@@ -152,8 +133,7 @@ describe("record ↔ visit actions", () => {
 
 describe("episode ↔ visit actions", () => {
   it("linkEpisodeVisitAction sets the link; decline remembers it", async () => {
-    const { login } = seedActor({ role: "member" });
-    const profile = createProfile("Shared episode subject", login.id);
+    const { profile } = seedActor();
     const enc = newEncounter(profile.id, "2026-03-04");
     const episodeId = Number(
       db
@@ -163,15 +143,11 @@ describe("episode ↔ visit actions", () => {
         )
         .run(profile.id).lastInsertRowid
     );
-    await linkEpisodeVisitAction(
-      fd({ profile_id: profile.id, episodeId, encounterId: enc })
-    );
+    await linkEpisodeVisitAction(fd({ episodeId, encounterId: enc }));
     expect(episodeVisitIds(profile.id, episodeId)).toEqual([enc]);
 
     const enc2 = newEncounter(profile.id, "2026-03-05");
-    await declineEpisodeVisitAction(
-      fd({ profile_id: profile.id, episodeId, encounterId: enc2 })
-    );
+    await declineEpisodeVisitAction(fd({ episodeId, encounterId: enc2 }));
     const declined = db
       .prepare(
         `SELECT COUNT(*) AS n FROM visit_link_decisions
@@ -226,38 +202,210 @@ describe("episode ↔ visit actions", () => {
   });
 });
 
-it.each(["read", "absent"])(
-  "every visit-link action refuses a %s grant on the posted subject",
-  async (access) => {
-    const { login } = seedActor({ role: "member" });
-    const target = createProfile(
-      "Visit subject without write access",
-      access === "read" ? login.id : undefined
-    );
-    if (access === "read") {
+// ── THE SUBJECT IS SPELLED ONCE, FOR ALL TEN (#4780) ─────────────────────────
+//
+// Each of these ten actions hand-rolled `gateItemProfile`'s two branches around a
+// camelCase `profileId` — the divergence #4730 closed in `logFoodServing`, and the
+// same silent failure: the gate resolves the ACTING profile, the write is filed
+// against the wrong person, and the row that results is a perfectly ordinary row.
+//
+// The tests above all act AS the subject, which is exactly the arrangement that
+// cannot see this: a gate that fell back to the actor would still look correct. So
+// every case below acts as a caregiver and posts a DIFFERENT, write-granted subject,
+// and reads the STORE rather than any return value — these actions return void, so
+// the rows are the only witness.
+//
+// `visitLinkState` is every table the ten cores write, for one profile. Comparing it
+// before and after is what lets one table ask all ten the same two questions without
+// ten bespoke assertions: the subject's state must MOVE and the actor's must NOT.
+// A second spelling reappearing between a form and the gate inverts that pair — the
+// action resolves the caregiver, every core then refuses the subject's rows as not
+// its own, and the subject's state sits still.
+
+const VISIT_LINK_TABLES = [
+  "encounters",
+  "intake_items",
+  "optical_prescriptions",
+  "visit_link_decisions",
+  "episode_encounters",
+] as const;
+
+function visitLinkState(profileId: number): string {
+  return VISIT_LINK_TABLES.map((t) =>
+    JSON.stringify(
+      db
+        .prepare(`SELECT * FROM ${t} WHERE profile_id = ? ORDER BY id`)
+        .all(profileId)
+    )
+  ).join("|");
+}
+
+function newOpticalRx(profileId: number, date = "2026-04-04"): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO optical_prescriptions (profile_id, kind, issued_date)
+         VALUES (?, 'glasses', ?)`
+      )
+      .run(profileId, date).lastInsertRowid
+  );
+}
+function newEpisode(profileId: number): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+         VALUES (?, 'flu', '2026-03-01', '2026-03-09')`
+      )
+      .run(profileId).lastInsertRowid
+  );
+}
+
+// Every visit-link action, with a payload that WOULD write if the gate let it — the
+// positive control the refusal cases need, since an action given nothing to act on
+// refuses and writes nothing for the wrong reason.
+const SUBJECT_GATED: {
+  name: string;
+  action: (formData: FormData) => Promise<void>;
+  payload: (profileId: number) => Record<string, string | number>;
+}[] = [
+  {
+    name: "linkRecordVisitAction",
+    action: linkRecordVisitAction,
+    payload: (p) => ({
+      domain: "medication",
+      recordId: newMedication(p),
+      encounterId: newEncounter(p),
+    }),
+  },
+  {
+    name: "declineRecordVisitAction",
+    action: declineRecordVisitAction,
+    payload: (p) => ({
+      domain: "medication",
+      recordId: newMedication(p),
+      encounterId: newEncounter(p),
+    }),
+  },
+  {
+    name: "linkAllFromVisitAction",
+    action: linkAllFromVisitAction,
+    payload: (p) => ({
+      encounterId: newEncounter(p),
+      pairs: JSON.stringify([
+        { domain: "medication", recordId: newMedication(p) },
+      ]),
+    }),
+  },
+  {
+    name: "dismissAllFromVisitAction",
+    action: dismissAllFromVisitAction,
+    payload: (p) => ({
+      encounterId: newEncounter(p),
+      pairs: JSON.stringify([
+        { domain: "medication", recordId: newMedication(p) },
+      ]),
+    }),
+  },
+  {
+    name: "unlinkRecordVisitAction",
+    action: unlinkRecordVisitAction,
+    payload: (p) => {
+      const med = newMedication(p);
+      db.prepare("UPDATE intake_items SET encounter_id = ? WHERE id = ?").run(
+        newEncounter(p),
+        med
+      );
+      return { domain: "medication", recordId: med };
+    },
+  },
+  {
+    name: "createVisitFromRecordAction",
+    action: createVisitFromRecordAction,
+    payload: (p) => ({ domain: "optical", recordId: newOpticalRx(p) }),
+  },
+  {
+    name: "declineCreateVisitAction",
+    action: declineCreateVisitAction,
+    payload: (p) => ({ domain: "optical", recordId: newOpticalRx(p) }),
+  },
+  {
+    name: "linkEpisodeVisitAction",
+    action: linkEpisodeVisitAction,
+    payload: (p) => ({
+      episodeId: newEpisode(p),
+      encounterId: newEncounter(p),
+    }),
+  },
+  {
+    name: "declineEpisodeVisitAction",
+    action: declineEpisodeVisitAction,
+    payload: (p) => ({
+      episodeId: newEpisode(p),
+      encounterId: newEncounter(p),
+    }),
+  },
+  {
+    name: "unlinkEpisodeVisitAction",
+    action: unlinkEpisodeVisitAction,
+    payload: (p) => {
+      const episodeId = newEpisode(p);
+      const encounterId = newEncounter(p);
       db.prepare(
-        "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
-      ).run(login.id, target.id);
-    }
-    const actions = [
-      linkRecordVisitAction,
-      declineRecordVisitAction,
-      linkAllFromVisitAction,
-      dismissAllFromVisitAction,
-      unlinkRecordVisitAction,
-      createVisitFromRecordAction,
-      declineCreateVisitAction,
-      linkEpisodeVisitAction,
-      declineEpisodeVisitAction,
-      unlinkEpisodeVisitAction,
-    ];
-    for (const action of actions) {
-      for (const field of ["profile_id", "profileId"]) {
+        `INSERT INTO episode_encounters (profile_id, episode_id, encounter_id)
+         VALUES (?, ?, ?)`
+      ).run(p, episodeId, encounterId);
+      return { episodeId, encounterId };
+    },
+  },
+];
+
+describe.each(SUBJECT_GATED)(
+  "$name — the posted subject",
+  ({ action, payload }) => {
+    it("writes to the write-granted subject, never to the acting profile", async () => {
+      const { login, profile: caregiver } = seedActor({ role: "member" });
+      const subject = createProfile("visit-link subject", login.id);
+      // The fixture reaches the state the verdict is about before any verdict is read.
+      expect(subject.id).not.toBe(caregiver.id);
+      const fields = payload(subject.id);
+      const subjectBefore = visitLinkState(subject.id);
+      const caregiverBefore = visitLinkState(caregiver.id);
+
+      await action(fd({ profile_id: subject.id, ...fields }));
+
+      expect(visitLinkState(subject.id)).not.toBe(subjectBefore);
+      expect(visitLinkState(caregiver.id)).toBe(caregiverBefore);
+    });
+
+    it.each([
+      ["read-only-granted", /read-only/],
+      ["ungranted", /not accessible/],
+    ] as const)(
+      "refuses a %s subject and writes nothing",
+      async (grant, refusal) => {
+        const { login, profile: caregiver } = seedActor({ role: "member" });
+        const subject = createProfile(
+          "unwritable visit-link subject",
+          grant === "ungranted" ? undefined : login.id
+        );
+        if (grant === "read-only-granted") {
+          db.prepare(
+            "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+          ).run(login.id, subject.id);
+        }
+        const fields = payload(subject.id);
+        const subjectBefore = visitLinkState(subject.id);
+        const caregiverBefore = visitLinkState(caregiver.id);
+
         await expect(
-          action(fd({ [field]: target.id })),
-          `${action.name}: ${field}`
-        ).rejects.toThrow(access === "read" ? /read-only/ : /not accessible/);
+          action(fd({ profile_id: subject.id, ...fields }))
+        ).rejects.toThrow(refusal);
+
+        // Refused, not quietly re-aimed at the actor — the failure the fallback made.
+        expect(visitLinkState(subject.id)).toBe(subjectBefore);
+        expect(visitLinkState(caregiver.id)).toBe(caregiverBefore);
       }
-    }
+    );
   }
 );
