@@ -21,7 +21,7 @@ import type {
   NotificationMessage,
 } from "./types";
 import { managingLoginIdsForProfile } from "./managing-logins";
-import { withRecipientDistanceUnit } from "./compose";
+import { withRecipientUnits } from "./compose";
 import { isKindEnabled } from "./home-assistant-core";
 import {
   composeNotificationEmail,
@@ -105,7 +105,7 @@ async function sendToRecipients(
   for (const r of recipients) {
     try {
       const mail = composeNotificationEmail(
-        r.fullContent ? withRecipientDistanceUnit(msg, r.loginId, opts) : msg,
+        r.fullContent ? withRecipientUnits(msg, r.loginId, opts) : msg,
         r.fullContent ? "full" : "content-free",
         publicUrl
       );

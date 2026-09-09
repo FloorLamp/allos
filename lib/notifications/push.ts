@@ -43,7 +43,7 @@ import {
   recordDeliveryOutcome,
 } from "./delivery-marker";
 
-import { withRecipientDistanceUnit } from "./compose";
+import { withRecipientUnits } from "./compose";
 
 const log = createLogger("push");
 
@@ -249,7 +249,7 @@ async function sendToSubscriptions(
       const tally = byLogin.get(s.login_id)!;
       try {
         const payload = buildPushPayload(
-          withRecipientDistanceUnit(msg, s.login_id, opts)
+          withRecipientUnits(msg, s.login_id, opts)
         );
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },

@@ -24,9 +24,17 @@ import { today, writeTx } from "../db";
 import { now as clockNow } from "../clock";
 import { isCompletedSessionRow } from "../workout-presence";
 import { getWorkoutPresence } from "../queries/presence";
-import { getProfileSetting, setProfileSetting } from "../settings";
+import {
+  getProfileSetting,
+  setProfileSetting,
+  type UnitPrefs,
+} from "../settings";
 import { composeFinishNudge } from "./workout-recap-format";
-import { finishRecapParts, loadFinishRow } from "./workout-recap-build";
+import {
+  finishRecapParts,
+  finishRecapLeadLine,
+  loadFinishRow,
+} from "./workout-recap-build";
 import { collectWindowDoses } from "./intake";
 import {
   notifiableWindowDoses,
@@ -37,6 +45,7 @@ import { OBLIGATION_ORDER } from "../intake-schedule";
 import { intakeShortLabels } from "../intake-short-name";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
+import type { MessageBody } from "./rich-text";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { GLYPH } from "./glyphs";
@@ -269,7 +278,7 @@ export async function runPostWorkoutForActivity(
   // replaces its subject. One builder, two callers — the prose-claim class's rule.
   const parts = finishRecapParts(profileId, activityId);
   const msg = composeFinishNudge(
-    parts.leadLine,
+    finishRecapLeadLine(parts),
     doseMsg,
     parts.ask,
     parts.type
@@ -318,7 +327,24 @@ export async function runPostWorkoutForActivity(
   //
   // The winner dispatches OUTSIDE the election transaction (#3058 contract): a
   // network round trip can never sit inside a write lock three processes share.
-  const results = await dispatch(profileId, msg);
+  // Rendering reuses this finish's captured facts; recipient fan-out never regathers.
+  const bodies = new Map<string, MessageBody>([["kg:km", msg.body]]);
+  const bodyForUnits = (
+    units: Pick<UnitPrefs, "weightUnit" | "distanceUnit">
+  ): MessageBody => {
+    const key = `${units.weightUnit}:${units.distanceUnit}`;
+    const cached = bodies.get(key);
+    if (cached != null) return cached;
+    const body = composeFinishNudge(
+      finishRecapLeadLine(parts, units),
+      doseMsg,
+      parts.ask,
+      parts.type
+    )!.body;
+    bodies.set(key, body);
+    return body;
+  };
+  const results = await dispatch(profileId, msg, { bodyForUnits });
   if (results.length === 0) {
     // No channel configured — release the claim so a later-configured channel
     // (or the tick backstop) can elect a fresh winner.

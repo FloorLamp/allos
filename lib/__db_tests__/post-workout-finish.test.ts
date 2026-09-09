@@ -15,9 +15,13 @@ import {
   setProfileHomeAssistant,
   getProfileSetting,
   setLoginTelegramDisabledKinds,
+  getTelegramBotConfig,
+  setTelegramBotConfig,
+  setUnitPrefs,
 } from "@/lib/settings";
 import { seedLoginTelegram } from "./fixtures";
-import { utcSqlString } from "@/lib/date";
+import { utcSqlString, shiftDateStr } from "@/lib/date";
+import * as recapQueries from "@/lib/queries/session-recap";
 import {
   runPostWorkoutFinish,
   runPostWorkoutForActivity,
@@ -115,6 +119,7 @@ beforeEach(() => {
   db.prepare("DELETE FROM settings WHERE key LIKE 'notify_last_error%'").run();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -521,6 +526,94 @@ function seedImportedFinished(
 }
 
 describe("an imported finish gets its own recap line (#2272)", () => {
+  it.each(["distance", "strength"] as const)(
+    "renders one gathered %s finish for both recipients and canonical HA",
+    async (kind) => {
+      const p = newProfile(`FinishUnits-${kind}`);
+      const date = today(p);
+      seedPostWorkoutSupp(p);
+      let activityId: number;
+      if (kind === "distance") {
+        activityId = seedImportedFinished(p, date, "cardio", {
+          distanceKm: 10,
+        });
+      } else {
+        for (const [daysAgo, weight] of [
+          [14, 90],
+          [7, 54],
+        ] as const) {
+          const prior = seedManualFinished(p, shiftDateStr(date, -daysAgo), 20);
+          addWorkingSets(prior, "Bench Press");
+          db.prepare(
+            "UPDATE exercise_sets SET weight_kg = ? WHERE activity_id = ?"
+          ).run(weight, prior);
+        }
+        activityId = seedManualFinished(p, date, 20);
+        addWorkingSets(activityId, "Bench Press");
+      }
+      configureHA(p);
+      for (const distanceUnit of ["km", "mi"] as const) {
+        const login = seedLoginTelegram(p, `finish-${kind}-${distanceUnit}`);
+        setUnitPrefs(login, {
+          distanceUnit,
+          weightUnit: distanceUnit === "mi" ? "lb" : "kg",
+          temperatureUnit: "F",
+        });
+      }
+      const bot = getTelegramBotConfig();
+      setTelegramBotConfig({
+        telegramBotToken: "bot-finish-units",
+        telegramMode: "poll",
+      });
+      const wire = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ ok: true, result: { message_id: 5598 } }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }
+          )
+      );
+      vi.stubGlobal("fetch", wire);
+      const gather = vi.spyOn(recapQueries, "getSessionRecap");
+      try {
+        const result = await runPostWorkoutForActivity(p, activityId);
+        expect(result.outcome).toBe("sent");
+        expect(gather).toHaveBeenCalledTimes(1);
+        const calls = vi.mocked(fetch).mock.calls.map(([url, init]) => ({
+          url: String(url),
+          body: JSON.parse(String(init?.body)),
+        }));
+        const metric = kind === "distance" ? "10 km" : "+7 kg vs last";
+        const imperial = kind === "distance" ? "6.21 mi" : "+15.4 lb vs last";
+        for (const [distanceUnit, expected] of [
+          ["km", metric],
+          ["mi", imperial],
+        ]) {
+          const text = calls.find(
+            (call) => call.body.chat_id === `finish-${kind}-${distanceUnit}`
+          )!.body.text;
+          expect(text).toContain(expected);
+          expect(text).toContain("Creatine (test)");
+        }
+        const ha = calls.find((call) => call.url === HA_URL)!.body;
+        expect(ha.body).toContain(metric);
+        expect(ha.kind).toBe("dose");
+        const count = wire.mock.calls.length;
+        expect(
+          getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))
+        ).toBe(date);
+        expect((await runPostWorkoutForActivity(p, activityId)).outcome).toBe(
+          "already-announced"
+        );
+        expect(wire).toHaveBeenCalledTimes(count);
+      } finally {
+        setTelegramBotConfig(bot);
+      }
+    }
+  );
+
   it("recaps the facts the import carries — with no volume, PR or target language", async () => {
     // The reported shape: 60 minutes, no sets, and a profile with ZERO post_workout
     // intake items — the case that produced no send at all.
