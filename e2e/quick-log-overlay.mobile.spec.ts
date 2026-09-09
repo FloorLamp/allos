@@ -439,6 +439,58 @@ async function openQuickEntry(page: Page, itemId: QuickLogId) {
   return overlay;
 }
 
+test("Back keeps the stool draft through a mood visit, while dismissal starts fresh (#3274)", async ({
+  browser,
+}) => {
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const stool = await openQuickEntry(page, "log-stool");
+    const dialog = await stool.getByRole("dialog").elementHandle();
+    const yesterday = stool.getByRole("button", {
+      name: "Yesterday",
+      exact: true,
+    });
+    await hydratedClick(page, yesterday);
+    await expect(yesterday).toHaveAttribute("aria-pressed", "true");
+    await settledFill(page, stool.getByTestId("stool-when-time"), "08:10");
+
+    const back = page.getByRole("button", { name: "Back to log menu" });
+    await hydratedClick(page, back);
+    const menu = page.getByRole("dialog", { name: "Log", exact: true });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByTestId("quick-log-log-stool")).toBeFocused();
+    expect(await dialog!.evaluate((node) => node.isConnected)).toBe(true);
+
+    await hydratedClick(page, await showLogRow(menu, "log-mood"));
+    await expect(stool.getByTestId("mood-form")).toBeVisible();
+    await expect(back).toBeFocused();
+    await hydratedClick(page, back);
+    await expect(menu.getByTestId("quick-log-log-mood")).toBeFocused();
+    await hydratedClick(page, await showLogRow(menu, "log-stool"));
+    await expect(yesterday).toHaveAttribute("aria-pressed", "true");
+    await expect(stool.getByTestId("stool-when-time")).toHaveValue("08:10");
+    expect(await dialog!.evaluate((node) => node.isConnected)).toBe(true);
+
+    await page.keyboard.press("Escape");
+    await expect(stool).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("navigation", { name: "Primary", exact: true })
+        .getByRole("button", { name: "Log", exact: true })
+    ).toBeFocused();
+    const fresh = await openQuickEntry(page, "log-stool");
+    await expect(fresh.getByTestId("day-context-0")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await hydratedClick(page, fresh.getByTestId("stool-when-toggle"));
+    await expect(fresh.getByTestId("stool-when-time")).toHaveValue("");
+  } finally {
+    await page.context().close();
+  }
+});
+
 test("a weight logged from the dashboard sheet stays put, toasts, and persists", async ({
   browser,
 }) => {

@@ -2,10 +2,12 @@
 
 import {
   Component,
+  Activity,
   Suspense,
   createContext,
   useCallback,
   useContext,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -164,6 +166,66 @@ interface QuickEntryHostApi extends QuickEntryApi {
     subjectProfileId?: number,
     dayContext?: DayContextValue | null
   ) => void;
+  visit: QuickEntryVisitHostApi;
+  actingProfileId: number;
+  writableProfiles: SessionProfile[];
+}
+
+interface QuickEntrySession {
+  id: number;
+  form: QuickEntryForm;
+  prefill: QuickEntryPrefill | null;
+  subject: number;
+  pickerOpen: boolean;
+  host: HostView;
+  bodies: Bodies;
+  trigger: HTMLButtonElement | null;
+}
+
+interface QuickEntryVisitState {
+  identity: string;
+  presentation: "direct" | "visit";
+  generation: number;
+  subject: number;
+  activeId: number | null;
+  entries: QuickEntrySession[];
+  returnFocus: HTMLButtonElement | null;
+  invalidated: boolean;
+  completable: boolean;
+}
+
+interface QuickEntryVisitHostApi {
+  state: QuickEntryVisitState;
+  start: (identity: string) => void;
+  open: (
+    form: QuickEntryForm,
+    trigger: HTMLButtonElement,
+    dayContext: DayContextValue | null
+  ) => void;
+  back: () => void;
+  beginClose: () => void;
+  complete: (entryId: number) => boolean;
+  retry: (entryId: number) => void;
+  selectDay: (entryId: number, day: string) => void;
+  selectSubject: (entryId: number, profileId: number) => void;
+  toggleSubjectPicker: (entryId: number) => void;
+}
+
+export interface QuickEntryVisit {
+  identity: string;
+  active: null | {
+    id: number;
+    form: QuickEntryForm;
+    title: string;
+    size: OverlaySize;
+  };
+  open: (form: QuickEntryForm, trigger: HTMLButtonElement) => void;
+  back: () => void;
+  beginClose: () => void;
+  invalidated: boolean;
+  returnFocus: HTMLButtonElement | null;
+  titleAdornment: ReactNode;
+  belowTitle: ReactNode;
 }
 
 // The prefill vocabulary lives beside the form vocabulary in lib/quick-log.ts
@@ -234,6 +296,88 @@ const SHEET: Record<QuickEntryForm, { title: string; size: OverlaySize }> = {
   document: { title: "Add document", size: "sm" },
 };
 
+export function useQuickEntryVisit(
+  outerOpen: boolean,
+  onInvalidated: () => void
+): QuickEntryVisit {
+  const ctx = useContext(Ctx);
+  const dayContext = useOptionalDayContext();
+  const ownerId = useId();
+  const [edge, setEdge] = useState(() => ({
+    open: outerOpen,
+    serial: outerOpen ? 1 : 0,
+    identity: `${ownerId}:${outerOpen ? 1 : 0}`,
+  }));
+  if (!ctx)
+    throw new Error(
+      "useQuickEntryVisit must be used within a QuickEntryProvider"
+    );
+
+  if (edge.open !== outerOpen) {
+    const serial = outerOpen ? edge.serial + 1 : edge.serial;
+    setEdge({
+      open: outerOpen,
+      serial,
+      identity: `${ownerId}:${serial}`,
+    });
+  }
+
+  const identity =
+    edge.open === outerOpen
+      ? edge.identity
+      : `${ownerId}:${outerOpen ? edge.serial + 1 : edge.serial}`;
+  const currentVisit = ctx.visit.state.identity === identity;
+  const startVisit = ctx.visit.start;
+  const beginClose = ctx.visit.beginClose;
+
+  useLayoutEffect(() => {
+    if (outerOpen) startVisit(identity);
+    else beginClose();
+  }, [beginClose, identity, outerOpen, startVisit]);
+
+  useLayoutEffect(() => {
+    if (outerOpen && currentVisit && ctx.visit.state.invalidated)
+      onInvalidated();
+  }, [ctx.visit.state.invalidated, currentVisit, onInvalidated, outerOpen]);
+
+  const activeEntry = (currentVisit ? ctx.visit.state.entries : []).find(
+    (entry) => entry.id === ctx.visit.state.activeId
+  );
+  const active = activeEntry
+    ? {
+        id: activeEntry.id,
+        form: activeEntry.form,
+        ...SHEET[activeEntry.form],
+      }
+    : null;
+
+  return {
+    identity,
+    active,
+    open: (form, trigger) => ctx.visit.open(form, trigger, dayContext),
+    back: ctx.visit.back,
+    beginClose,
+    invalidated: currentVisit && ctx.visit.state.invalidated,
+    returnFocus: currentVisit ? ctx.visit.state.returnFocus : null,
+    titleAdornment: activeEntry ? (
+      <QuickEntrySubjectChip
+        session={activeEntry}
+        writableProfiles={ctx.writableProfiles}
+        onToggle={() => ctx.visit.toggleSubjectPicker(activeEntry.id)}
+      />
+    ) : null,
+    belowTitle: activeEntry ? (
+      <QuickEntrySubjectPicker
+        session={activeEntry}
+        writableProfiles={ctx.writableProfiles}
+        onSelect={(profileId) =>
+          ctx.visit.selectSubject(activeEntry.id, profileId)
+        }
+      />
+    ) : null,
+  };
+}
+
 // The measurements payload comes from the SHELL, everything else from the gather —
 // one discriminated union either way, so the body below still switches on `form`.
 type QuickEntryBody = QuickEntryData | MeasurementsQuickEntry;
@@ -262,6 +406,12 @@ interface HostView {
   state: LoadState;
   sheetDay: SheetDayContext | null;
   request: LoadRequest | null;
+}
+
+interface LoadOwner {
+  setHost: React.Dispatch<React.SetStateAction<HostView>>;
+  current: (token: number) => boolean;
+  nextToken: () => number;
 }
 
 export type QuickEntryRemountCause = "payload" | "context";
@@ -369,6 +519,91 @@ function withLiveDayLabels(
 const QUICK_ENTRY_LOAD_TIMEOUT_MS = 10_000;
 const QUIET_STATE_CLASS = "text-sm text-slate-500 dark:text-slate-400";
 
+function QuickEntrySubjectChip({
+  session,
+  writableProfiles,
+  onToggle,
+}: {
+  session: Pick<QuickEntrySession, "subject" | "pickerOpen">;
+  writableProfiles: SessionProfile[];
+  onToggle: () => void;
+}) {
+  const subjectInfo = writableProfiles.find((p) => p.id === session.subject);
+  if (!subjectInfo) return null;
+  if (writableProfiles.length <= 1) {
+    return (
+      <span
+        data-testid="quick-entry-subject-chip"
+        className="inline-flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+      >
+        <Avatar profile={subjectInfo} size="sm" />
+        <span className="truncate">{subjectInfo.name}</span>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-testid="quick-entry-subject-chip"
+      aria-expanded={session.pickerOpen}
+      aria-label={`Logging for ${subjectInfo.name}. Change who this is for.`}
+      onClick={onToggle}
+      className="inline-flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-1.5 text-xs font-medium text-slate-600 hover:border-black/20 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:border-white/20"
+    >
+      <Avatar profile={subjectInfo} size="sm" />
+      <span className="truncate">{subjectInfo.name}</span>
+      <IconChevronDown
+        className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${
+          session.pickerOpen ? "rotate-180" : ""
+        }`}
+        aria-hidden
+      />
+    </button>
+  );
+}
+
+function QuickEntrySubjectPicker({
+  session,
+  writableProfiles,
+  onSelect,
+}: {
+  session: Pick<QuickEntrySession, "subject" | "pickerOpen">;
+  writableProfiles: SessionProfile[];
+  onSelect: (profileId: number) => void;
+}) {
+  if (!session.pickerOpen || writableProfiles.length <= 1) return null;
+  return (
+    <div
+      data-testid="quick-entry-subject-picker"
+      className="mb-2 rounded-lg border border-(--border) bg-surface p-2"
+    >
+      <p className="mb-1.5 px-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+        Who is this for?
+      </p>
+      <ul className="flex flex-col gap-0.5">
+        {writableProfiles.map((profile) => (
+          <li key={profile.id}>
+            <button
+              type="button"
+              data-testid={`quick-entry-subject-option-${profile.id}`}
+              aria-current={profile.id === session.subject ? "true" : undefined}
+              onClick={() => onSelect(profile.id)}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                profile.id === session.subject
+                  ? "bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200"
+                  : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-850"
+              }`}
+            >
+              <Avatar profile={profile} size="sm" />
+              <span className="truncate">{profile.name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function QuickEntryProvider({
   children,
   measurements,
@@ -391,57 +626,67 @@ export default function QuickEntryProvider({
   actingProfileId: number;
 }) {
   const toast = useToast();
-  const formatPrefs = useFormatPrefs();
   const liveProfileClocks = useLiveProfileClocks();
   const liveProfileClocksRef = useRef(liveProfileClocks);
   liveProfileClocksRef.current = liveProfileClocks;
   const [open, setOpen] = useState(false);
-  // The form is RETAINED after close so the panel keeps its content through the
-  // sheet's exit animation instead of blanking on the way out.
-  const [form, setForm] = useState<QuickEntryForm | null>(null);
-  const [prefill, setPrefill] = useState<QuickEntryPrefill | null>(null);
-  const [host, setHost] = useState<HostView>({
-    state: { status: "loading" },
-    sheetDay: null,
-    request: null,
+  const entrySerial = useRef(0);
+  const visitRequestRefs = useRef(new Map<string, number>());
+  const [visitState, setVisitState] = useState<QuickEntryVisitState>({
+    identity: "",
+    presentation: "visit",
+    generation: 0,
+    subject: actingProfileId,
+    activeId: null,
+    entries: [],
+    returnFocus: null,
+    invalidated: false,
+    completable: false,
   });
-  // The sheet's chosen subject (#4932) — never null once a form has opened: it
-  // resolves to the opener's subject, else the acting profile, on every open. Never
-  // persisted past close (Out of scope, #4932): the NEXT open recomputes it fresh,
-  // it is not read back in.
-  const [subject, setSubject] = useState(actingProfileId);
-  // The "Who is this for?" block (#4932). Toggled by the chip; nothing else opens
-  // it and it never opens on its own.
-  const [pickerOpen, setPickerOpen] = useState(false);
-  // Ignore a response that lost its race — tapping weight then dose before the
-  // first gather returns must not paint the weight form into the dose sheet.
-  const requestRef = useRef(0);
-  const [bodies, setBodies] = useState(() => loadBodies(0));
+  const visitStateRef = useRef(visitState);
+  visitStateRef.current = visitState;
+  const updateVisit = useCallback(
+    (
+      update: (current: QuickEntryVisitState) => QuickEntryVisitState
+    ): QuickEntryVisitState => {
+      const next = update(visitStateRef.current);
+      visitStateRef.current = next;
+      setVisitState(next);
+      return next;
+    },
+    []
+  );
+
+  const invalidateVisitRequests = useCallback(() => {
+    for (const [key, token] of visitRequestRefs.current)
+      visitRequestRefs.current.set(key, token + 1);
+  }, []);
 
   useLayoutEffect(() => {
     const invalidate = () => {
-      ++requestRef.current;
+      invalidateVisitRequests();
       setOpen(false);
-      setPickerOpen(false);
-      setHost({
-        state: { status: "loading" },
-        sheetDay: null,
-        request: null,
-      });
+      updateVisit((current) => ({
+        ...current,
+        activeId: null,
+        entries: [],
+        returnFocus: null,
+        invalidated: true,
+        completable: false,
+      }));
     };
     return subscribeLastGoodInvalidation(invalidate);
-  }, []);
+  }, [invalidateVisitRequests, updateVisit]);
 
   useLayoutEffect(() => {
     clearLastGood();
   }, [actingProfileId]);
 
   const close = useCallback(() => {
-    ++requestRef.current;
+    invalidateVisitRequests();
+    updateVisit((current) => ({ ...current, completable: false }));
     setOpen(false);
-    setPickerOpen(false);
-    setHost((current) => ({ ...current, request: null }));
-  }, []);
+  }, [invalidateVisitRequests, updateVisit]);
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
   // subject parameter and one gate; no second copy of the gather per subject").
@@ -452,7 +697,8 @@ export default function QuickEntryProvider({
       next: QuickEntryForm,
       subjectId: number,
       token: number,
-      request: LoadRequest
+      request: LoadRequest,
+      owner: LoadOwner
     ) {
       const hasDayContext = next !== "cycle" && next !== "document";
       const requestMatchesSubject =
@@ -474,7 +720,7 @@ export default function QuickEntryProvider({
           : null;
       const requestLiveClock = liveProfileClocksRef.current.get(subjectId);
       if (!requestLiveClock) {
-        setHost({
+        owner.setHost({
           request: effectiveRequest,
           sheetDay: null,
           state: { status: "error" },
@@ -491,7 +737,7 @@ export default function QuickEntryProvider({
 
       if (next === "measurements") {
         const parts = requestParts;
-        setHost({
+        owner.setHost({
           request: effectiveRequest,
           sheetDay: matchingInherited
             ? { kind: "inherited", value: matchingInherited }
@@ -549,7 +795,7 @@ export default function QuickEntryProvider({
         : matchingInherited
           ? { kind: "inherited", value: matchingInherited }
           : { kind: "state", parts: shownParts };
-      setHost({
+      owner.setHost({
         request: effectiveRequest,
         sheetDay: initialSheetDay,
         state: held
@@ -565,7 +811,7 @@ export default function QuickEntryProvider({
 
       const cacheToken = captureLastGoodToken();
       let expired = false;
-      const current = () => requestRef.current === token && !expired;
+      const current = () => owner.current(token) && !expired;
       const recover = async (recoveryToken: number) => {
         const recoveryNow = new Date();
         let snapshots: Awaited<ReturnType<typeof allSnapshots>>;
@@ -576,11 +822,14 @@ export default function QuickEntryProvider({
             allIntents(),
           ]);
         } catch {
-          if (requestRef.current === recoveryToken)
-            setHost((view) => ({ ...view, state: { status: "error" } }));
+          if (owner.current(recoveryToken))
+            owner.setHost((view) => ({
+              ...view,
+              state: { status: "error" },
+            }));
           return;
         }
-        if (requestRef.current !== recoveryToken) return;
+        if (!owner.current(recoveryToken)) return;
         const recoveryLiveToday =
           liveProfileClocksRef.current.get(subjectId)?.today;
         if (!recoveryLiveToday) {
@@ -598,8 +847,8 @@ export default function QuickEntryProvider({
             ))
         ) {
           expired = true;
-          const nextToken = ++requestRef.current;
-          runLoad(next, subjectId, nextToken, { kind: "dayless" });
+          const nextToken = owner.nextToken();
+          runLoad(next, subjectId, nextToken, { kind: "dayless" }, owner);
           return;
         }
         const copy = quickEntryOffline(
@@ -610,7 +859,7 @@ export default function QuickEntryProvider({
           intents,
           recoveryNow
         );
-        setHost({
+        owner.setHost({
           request: effectiveRequest,
           sheetDay: copy ? initialSheetDay : null,
           state: copy
@@ -630,9 +879,9 @@ export default function QuickEntryProvider({
       const expire = () => {
         if (!current()) return;
         expired = true;
-        const recoveryToken = ++requestRef.current;
+        const recoveryToken = owner.nextToken();
         if (held) {
-          setHost({
+          owner.setHost({
             request: effectiveRequest,
             sheetDay: initialSheetDay,
             state: {
@@ -680,8 +929,8 @@ export default function QuickEntryProvider({
             responseLiveToday !== gatheredToday
           ) {
             expired = true;
-            const nextToken = ++requestRef.current;
-            runLoad(next, subjectId, nextToken, { kind: "dayless" });
+            const nextToken = owner.nextToken();
+            runLoad(next, subjectId, nextToken, { kind: "dayless" }, owner);
             return;
           }
           if (
@@ -712,7 +961,7 @@ export default function QuickEntryProvider({
               ? { kind: "inherited", value: matchingInherited }
               : { kind: "state", parts: gatheredParts };
           }
-          setHost({
+          owner.setHost({
             request: effectiveRequest,
             sheetDay: nextSheetDay,
             state: {
@@ -733,52 +982,275 @@ export default function QuickEntryProvider({
     [actingProfileId, measurements]
   );
 
-  const openForm = useCallback(
+  const visitOwner = useCallback(
+    (identity: string, entryId: number): LoadOwner => {
+      const key = `${identity}:${entryId}`;
+      return {
+        setHost: (update) => {
+          updateVisit((current) => {
+            if (current.identity !== identity) return current;
+            return {
+              ...current,
+              entries: current.entries.map((entry) =>
+                entry.id === entryId
+                  ? {
+                      ...entry,
+                      host:
+                        typeof update === "function"
+                          ? update(entry.host)
+                          : update,
+                    }
+                  : entry
+              ),
+            };
+          });
+        },
+        current: (token) =>
+          visitStateRef.current.identity === identity &&
+          visitRequestRefs.current.get(key) === token,
+        nextToken: () => {
+          const token = (visitRequestRefs.current.get(key) ?? 0) + 1;
+          visitRequestRefs.current.set(key, token);
+          return token;
+        },
+      };
+    },
+    [updateVisit]
+  );
+
+  const startVisit = useCallback(
+    (identity: string) => {
+      if (visitStateRef.current.identity === identity) return;
+      invalidateVisitRequests();
+      visitRequestRefs.current.clear();
+      setOpen(false);
+      updateVisit(() => ({
+        identity,
+        presentation: "visit",
+        generation: 0,
+        subject: actingProfileId,
+        activeId: null,
+        entries: [],
+        returnFocus: null,
+        invalidated: false,
+        completable: true,
+      }));
+    },
+    [actingProfileId, invalidateVisitRequests, updateVisit]
+  );
+
+  const beginVisitClose = useCallback(() => {
+    invalidateVisitRequests();
+    updateVisit((current) => ({ ...current, completable: false }));
+  }, [invalidateVisitRequests, updateVisit]);
+
+  const openVisitForm = useCallback(
     (
       next: QuickEntryForm,
-      nextPrefill?: QuickEntryPrefill,
-      subjectProfileId?: number,
-      dayContext?: DayContextValue | null
+      trigger: HTMLButtonElement,
+      dayContext: DayContextValue | null
     ) => {
-      const token = ++requestRef.current;
-      const resolvedSubject = subjectProfileId ?? actingProfileId;
-      setForm(next);
-      setPrefill(nextPrefill ?? null);
-      setSubject(resolvedSubject);
-      setPickerOpen(false);
-      setOpen(true);
+      const current = visitStateRef.current;
+      const existing = current.entries.find((entry) => entry.form === next);
+      if (existing) {
+        updateVisit((state) => ({
+          ...state,
+          activeId: existing.id,
+          entries: state.entries.map((entry) =>
+            entry.id === existing.id ? { ...entry, trigger } : entry
+          ),
+          returnFocus: null,
+        }));
+        return;
+      }
+
+      const entryId = ++entrySerial.current;
+      const entry: QuickEntrySession = {
+        id: entryId,
+        form: next,
+        prefill: null,
+        subject: current.subject,
+        pickerOpen: false,
+        host: {
+          state: { status: "loading" },
+          sheetDay: null,
+          request: null,
+        },
+        bodies: loadBodies(0),
+        trigger,
+      };
+      updateVisit((state) => ({
+        ...state,
+        activeId: entryId,
+        entries: [...state.entries, entry],
+        returnFocus: null,
+      }));
+      const owner = visitOwner(current.identity, entryId);
+      const token = owner.nextToken();
       loadFor(
         next,
-        resolvedSubject,
+        current.subject,
         token,
         dayContext
           ? { kind: "inherited", value: dayContext }
-          : { kind: "dayless" }
+          : { kind: "dayless" },
+        owner
       );
     },
-    [actingProfileId, loadFor]
+    [loadFor, updateVisit, visitOwner]
   );
 
-  // Tapping the chip toggles the block; tapping it again while open closes it
-  // unchanged (#4932). A login with exactly one writable profile never gets a
-  // chevron to tap (rendered below), so this is unreachable for it.
-  const toggleSubjectPicker = useCallback(() => {
-    setPickerOpen((o) => !o);
-  }, []);
+  const backVisit = useCallback(() => {
+    updateVisit((current) => {
+      const active = current.entries.find(
+        (entry) => entry.id === current.activeId
+      );
+      return {
+        ...current,
+        activeId: null,
+        returnFocus: active?.trigger ?? null,
+      };
+    });
+  }, [updateVisit]);
 
-  // Picking a household member (#4932): collapses the block, re-runs the gather for
-  // the new subject, and discards anything staged in the current form — the form
-  // body remounts under a `key` that includes `subject` (below), which is what
-  // actually clears typed state; this just says so. Picking the SAME member the
-  // chip already names just closes the block (no reload, nothing to discard).
-  const selectSubject = useCallback(
-    (profileId: number) => {
-      setPickerOpen(false);
-      if (profileId === subject || form == null) return;
-      setSubject(profileId);
-      setPrefill(null);
-      const token = ++requestRef.current;
-      loadFor(form, profileId, token, { kind: "dayless" });
+  const completeVisitEntry = useCallback(
+    (entryId: number) => {
+      const current = visitStateRef.current;
+      if (current.activeId === entryId) {
+        if (!current.completable) return false;
+        invalidateVisitRequests();
+        updateVisit((state) => ({ ...state, completable: false }));
+        return true;
+      }
+      if (!current.completable) return false;
+      const key = `${current.identity}:${entryId}`;
+      visitRequestRefs.current.set(
+        key,
+        (visitRequestRefs.current.get(key) ?? 0) + 1
+      );
+      updateVisit((state) => ({
+        ...state,
+        entries: state.entries.filter((entry) => entry.id !== entryId),
+      }));
+      return false;
+    },
+    [invalidateVisitRequests, updateVisit]
+  );
+
+  const retryVisitEntry = useCallback(
+    (entryId: number) => {
+      const current = visitStateRef.current;
+      const entry = current.entries.find((item) => item.id === entryId);
+      if (!entry) return;
+      updateVisit((state) => ({
+        ...state,
+        entries: state.entries.map((item) =>
+          item.id === entryId
+            ? { ...item, bodies: loadBodies(item.bodies.attempt + 1) }
+            : item
+        ),
+      }));
+      const owner = visitOwner(current.identity, entryId);
+      loadFor(
+        entry.form,
+        entry.subject,
+        owner.nextToken(),
+        entry.host.request ?? { kind: "dayless" },
+        owner
+      );
+    },
+    [loadFor, updateVisit, visitOwner]
+  );
+
+  const selectVisitDay = useCallback(
+    (entryId: number, day: string) => {
+      const current = visitStateRef.current;
+      const entry = current.entries.find((item) => item.id === entryId);
+      if (!entry) return;
+      const owner = visitOwner(current.identity, entryId);
+      loadFor(
+        entry.form,
+        entry.subject,
+        owner.nextToken(),
+        {
+          kind: "selected",
+          parts: {
+            profileId: entry.subject,
+            day,
+            reach: SHEET_REACH,
+          },
+        },
+        owner
+      );
+    },
+    [loadFor, visitOwner]
+  );
+
+  const toggleVisitSubjectPicker = useCallback(
+    (entryId: number) => {
+      updateVisit((current) => ({
+        ...current,
+        entries: current.entries.map((entry) =>
+          entry.id === entryId
+            ? { ...entry, pickerOpen: !entry.pickerOpen }
+            : entry
+        ),
+      }));
+    },
+    [updateVisit]
+  );
+
+  const selectVisitSubject = useCallback(
+    (entryId: number, profileId: number) => {
+      const current = visitStateRef.current;
+      const previous = current.entries.find((entry) => entry.id === entryId);
+      if (!previous) return;
+      if (profileId === previous.subject) {
+        updateVisit((state) => ({
+          ...state,
+          entries: state.entries.map((entry) =>
+            entry.id === entryId ? { ...entry, pickerOpen: false } : entry
+          ),
+        }));
+        return;
+      }
+
+      invalidateVisitRequests();
+      visitRequestRefs.current.clear();
+      const identity = current.identity;
+      const nextId = ++entrySerial.current;
+      const next: QuickEntrySession = {
+        ...previous,
+        id: nextId,
+        subject: profileId,
+        prefill: null,
+        pickerOpen: false,
+        host: {
+          state: { status: "loading" },
+          sheetDay: null,
+          request: null,
+        },
+        bodies: loadBodies(0),
+      };
+      updateVisit(() => ({
+        identity,
+        presentation: current.presentation,
+        generation: current.generation + 1,
+        subject: profileId,
+        activeId: nextId,
+        entries: [next],
+        returnFocus: null,
+        invalidated: false,
+        completable: true,
+      }));
+      const owner = visitOwner(identity, nextId);
+      loadFor(
+        next.form,
+        profileId,
+        owner.nextToken(),
+        { kind: "dayless" },
+        owner
+      );
       const name = writableProfiles.find((p) => p.id === profileId)?.name;
       toast(
         name
@@ -786,134 +1258,137 @@ export default function QuickEntryProvider({
           : "Switched who this is for."
       );
     },
-    [subject, form, loadFor, writableProfiles, toast]
+    [
+      invalidateVisitRequests,
+      loadFor,
+      toast,
+      updateVisit,
+      visitOwner,
+      writableProfiles,
+    ]
   );
 
-  // Re-runs the SAME gather (#3416 proposal 3) — the error state's Retry button, and
-  // the one thing that gets the sheet out of a stalled/cold-failed open without
-  // closing it. No-op once the sheet has no form (already closed).
-  const retry = useCallback(() => {
-    if (form == null) return;
-    setBodies((current) => loadBodies(current.attempt + 1));
-    const token = ++requestRef.current;
-    loadFor(form, subject, token, host.request ?? { kind: "dayless" });
-  }, [form, subject, loadFor, host.request]);
+  const openForm = useCallback(
+    (
+      next: QuickEntryForm,
+      nextPrefill?: QuickEntryPrefill,
+      subjectProfileId?: number,
+      dayContext?: DayContextValue | null
+    ) => {
+      const current = visitStateRef.current;
+      const retainedBodies =
+        current.presentation === "direct" ? current.entries[0]?.bodies : null;
+      invalidateVisitRequests();
+      visitRequestRefs.current.clear();
+      const entryId = ++entrySerial.current;
+      const identity = `direct:${entryId}`;
+      const resolvedSubject = subjectProfileId ?? actingProfileId;
+      const entry: QuickEntrySession = {
+        id: entryId,
+        form: next,
+        prefill: nextPrefill ?? null,
+        subject: resolvedSubject,
+        pickerOpen: false,
+        host: {
+          state: { status: "loading" },
+          sheetDay: null,
+          request: null,
+        },
+        // The direct sheet may reopen while BottomSheet is still exiting. Reuse
+        // its body types so React keeps the mounted form and the existing held
+        // draft through that canceled exit, as the pre-visit host did. A retry
+        // already replaces this entry's bodies, so that identity carries forward.
+        bodies: retainedBodies ?? loadBodies(0),
+        trigger: null,
+      };
+      updateVisit(() => ({
+        identity,
+        presentation: "direct",
+        generation: 0,
+        subject: resolvedSubject,
+        activeId: entryId,
+        entries: [entry],
+        returnFocus: null,
+        invalidated: false,
+        completable: true,
+      }));
+      setOpen(true);
+      const owner = visitOwner(identity, entryId);
+      loadFor(
+        next,
+        resolvedSubject,
+        owner.nextToken(),
+        dayContext
+          ? { kind: "inherited", value: dayContext }
+          : { kind: "dayless" },
+        owner
+      );
+    },
+    [actingProfileId, invalidateVisitRequests, loadFor, updateVisit, visitOwner]
+  );
 
   const api = useMemo<QuickEntryHostApi>(
-    () => ({ open: openForm, close }),
-    [openForm, close]
+    () => ({
+      open: openForm,
+      close,
+      actingProfileId,
+      writableProfiles,
+      visit: {
+        state: visitState,
+        start: startVisit,
+        open: openVisitForm,
+        back: backVisit,
+        beginClose: beginVisitClose,
+        complete: completeVisitEntry,
+        retry: retryVisitEntry,
+        selectDay: selectVisitDay,
+        selectSubject: selectVisitSubject,
+        toggleSubjectPicker: toggleVisitSubjectPicker,
+      },
+    }),
+    [
+      backVisit,
+      actingProfileId,
+      beginVisitClose,
+      close,
+      completeVisitEntry,
+      openForm,
+      openVisitForm,
+      retryVisitEntry,
+      selectVisitDay,
+      selectVisitSubject,
+      startVisit,
+      toggleVisitSubjectPicker,
+      visitState,
+      writableProfiles,
+    ]
   );
 
-  const selectSheetDay = useCallback(
-    (day: string) => {
-      if (form == null) return;
-      const token = ++requestRef.current;
-      loadFor(form, subject, token, {
-        kind: "selected",
-        parts: { profileId: subject, day, reach: SHEET_REACH },
-      });
-    },
-    [form, subject, loadFor]
-  );
-
-  const state = useMemo(() => {
-    const liveToday = liveProfileClocks.get(subject)?.today;
-    if (!liveToday) return { status: "error" } as const;
-    return host.state.status === "ready"
-      ? {
-          ...host.state,
-          data: withLiveDayLabels(host.state.data, liveToday, formatPrefs),
-        }
-      : host.state;
-  }, [host.state, liveProfileClocks, subject, formatPrefs]);
-  const sheetDay = host.sheetDay;
-  const subjectClock = liveProfileClocks.get(subject);
-  const subjectToday = subjectClock?.today;
-  const inheritedDayValue =
-    sheetDay?.kind === "inherited" && subjectToday
-      ? {
-          ...sheetDay.value,
-          today: subjectToday,
-          isPrimaryDay: sheetDay.value.parts.day === subjectToday,
-        }
+  const directEntry =
+    visitState.presentation === "direct"
+      ? (visitState.entries.find((entry) => entry.id === visitState.activeId) ??
+        null)
       : null;
-
-  const sheet = form ? SHEET[form] : null;
-  // The subject to POST (#4932): explicit only when it differs from the acting
-  // profile, so the acting-profile path stays byte-identical to before this issue
-  // (no stray `profile_id` field on the ordinary tap).
-  const subjectId = subject === actingProfileId ? undefined : subject;
-  const subjectInfo = writableProfiles.find((p) => p.id === subject);
-  // A login with exactly one writable profile gets no chevron and no block — there
-  // is nothing to switch to (#4932).
-  const singleWritableProfile = writableProfiles.length <= 1;
-
-  const chip = subjectInfo ? (
-    singleWritableProfile ? (
-      <span
-        data-testid="quick-entry-subject-chip"
-        className="inline-flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
-      >
-        <Avatar profile={subjectInfo} size="sm" />
-        <span className="truncate">{subjectInfo.name}</span>
-      </span>
-    ) : (
-      <button
-        type="button"
-        data-testid="quick-entry-subject-chip"
-        aria-expanded={pickerOpen}
-        aria-label={`Logging for ${subjectInfo.name}. Change who this is for.`}
-        onClick={toggleSubjectPicker}
-        className="inline-flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-1.5 text-xs font-medium text-slate-600 hover:border-black/20 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:border-white/20"
-      >
-        <Avatar profile={subjectInfo} size="sm" />
-        <span className="truncate">{subjectInfo.name}</span>
-        <IconChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${
-            pickerOpen ? "rotate-180" : ""
-          }`}
-          aria-hidden
-        />
-      </button>
-    )
+  const sheet = directEntry ? SHEET[directEntry.form] : null;
+  const chip = directEntry ? (
+    <QuickEntrySubjectChip
+      session={directEntry}
+      writableProfiles={writableProfiles}
+      onToggle={() => toggleVisitSubjectPicker(directEntry.id)}
+    />
   ) : null;
-
-  const picker =
-    pickerOpen && !singleWritableProfile ? (
-      <div
-        data-testid="quick-entry-subject-picker"
-        className="mb-2 rounded-lg border border-(--border) bg-surface p-2"
-      >
-        <p className="mb-1.5 px-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-          Who is this for?
-        </p>
-        <ul className="flex flex-col gap-0.5">
-          {writableProfiles.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                data-testid={`quick-entry-subject-option-${p.id}`}
-                aria-current={p.id === subject ? "true" : undefined}
-                onClick={() => selectSubject(p.id)}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
-                  p.id === subject
-                    ? "bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-200"
-                    : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-850"
-                }`}
-              >
-                <Avatar profile={p} size="sm" />
-                <span className="truncate">{p.name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    ) : null;
+  const picker = directEntry ? (
+    <QuickEntrySubjectPicker
+      session={directEntry}
+      writableProfiles={writableProfiles}
+      onSelect={(profileId) => selectVisitSubject(directEntry.id, profileId)}
+    />
+  ) : null;
 
   return (
     <Ctx.Provider value={api}>
       {children}
-      {sheet && form && (
+      {sheet && directEntry && (
         <BottomSheet
           open={open}
           onClose={close}
@@ -933,71 +1408,165 @@ export default function QuickEntryProvider({
               pages mount, posting the SAME Server Actions, so the server can only
               tell the sheet from the page if the sheet says so. Declared once here,
               at the region root, rather than on each body. */}
-          <LoggedViaSurface value="quick-log">
-            {/* Keyed on the subject (#4932): switching who this is for remounts the
-                body fresh, which is what actually discards a staged, half-typed
-                entry rather than leaving it to paint under the new subject's name. */}
-            {subjectClock ? (
-              <TimezoneProvider tz={subjectClock.timeZone}>
-                {inheritedDayValue ? (
-                  <DayContextBoundary value={inheritedDayValue}>
-                    <QuickEntryBodyMount
-                      identity={inheritedDayValue.key}
-                      form={form}
-                      subject={subject}
-                      state={state}
-                      bodies={bodies}
-                      prefill={prefill}
-                      onDone={close}
-                      onRetry={retry}
-                      subjectProfileId={subjectId}
-                    />
-                  </DayContextBoundary>
-                ) : sheetDay?.kind === "state" ? (
-                  <DayContextProvider
-                    profileId={sheetDay.parts.profileId}
-                    today={subjectClock.today}
-                    reach={SHEET_REACH}
-                    backing={{ kind: "state", initialDay: sheetDay.parts.day }}
-                    onSelectedDayChange={selectSheetDay}
-                  >
-                    <BoundedDaySwitcher />
-                    <QuickEntryBodyMount
-                      identity={dayContextKey(sheetDay.parts)}
-                      form={form}
-                      subject={subject}
-                      state={state}
-                      bodies={bodies}
-                      prefill={prefill}
-                      onDone={close}
-                      onRetry={retry}
-                      subjectProfileId={subjectId}
-                    />
-                  </DayContextProvider>
-                ) : (
-                  <QuickEntryBodyMount
-                    identity={`${subject}:unscoped`}
-                    form={form}
-                    subject={subject}
-                    state={state}
-                    bodies={bodies}
-                    prefill={prefill}
-                    onDone={close}
-                    onRetry={retry}
-                    subjectProfileId={subjectId}
-                  />
-                )}
-              </TimezoneProvider>
-            ) : (
-              <p role="alert" className={QUIET_STATE_CLASS}>
-                Couldn&apos;t open that form.
-              </p>
-            )}
-          </LoggedViaSurface>
+          <QuickEntrySessionBody
+            form={directEntry.form}
+            prefill={directEntry.prefill}
+            subject={directEntry.subject}
+            host={directEntry.host}
+            bodies={directEntry.bodies}
+            actingProfileId={actingProfileId}
+            onDone={() => {
+              if (completeVisitEntry(directEntry.id)) close();
+            }}
+            onRetry={() => retryVisitEntry(directEntry.id)}
+            onSelectDay={(day) => selectVisitDay(directEntry.id, day)}
+          />
         </BottomSheet>
       )}
     </Ctx.Provider>
   );
+}
+
+function QuickEntrySessionBody({
+  form,
+  prefill,
+  subject,
+  host,
+  bodies,
+  actingProfileId,
+  onDone,
+  onRetry,
+  onSelectDay,
+}: {
+  form: QuickEntryForm;
+  prefill: QuickEntryPrefill | null;
+  subject: number;
+  host: HostView;
+  bodies: Bodies;
+  actingProfileId: number;
+  onDone: () => void;
+  onRetry: () => void;
+  onSelectDay: (day: string) => void;
+}) {
+  const formatPrefs = useFormatPrefs();
+  const liveProfileClocks = useLiveProfileClocks();
+  const subjectClock = liveProfileClocks.get(subject);
+  const subjectToday = subjectClock?.today;
+  const state = useMemo(() => {
+    if (!subjectToday) return { status: "error" } as const;
+    return host.state.status === "ready"
+      ? {
+          ...host.state,
+          data: withLiveDayLabels(host.state.data, subjectToday, formatPrefs),
+        }
+      : host.state;
+  }, [formatPrefs, host.state, subjectToday]);
+  const inheritedDayValue =
+    host.sheetDay?.kind === "inherited" && subjectToday
+      ? {
+          ...host.sheetDay.value,
+          today: subjectToday,
+          isPrimaryDay: host.sheetDay.value.parts.day === subjectToday,
+        }
+      : null;
+  const subjectProfileId = subject === actingProfileId ? undefined : subject;
+
+  return (
+    <LoggedViaSurface value="quick-log">
+      {subjectClock ? (
+        <TimezoneProvider tz={subjectClock.timeZone}>
+          {inheritedDayValue ? (
+            <DayContextBoundary value={inheritedDayValue}>
+              <QuickEntryBodyMount
+                identity={inheritedDayValue.key}
+                form={form}
+                subject={subject}
+                state={state}
+                bodies={bodies}
+                prefill={prefill}
+                onDone={onDone}
+                onRetry={onRetry}
+                subjectProfileId={subjectProfileId}
+              />
+            </DayContextBoundary>
+          ) : host.sheetDay?.kind === "state" ? (
+            <DayContextProvider
+              profileId={host.sheetDay.parts.profileId}
+              today={subjectClock.today}
+              reach={SHEET_REACH}
+              backing={{ kind: "state", initialDay: host.sheetDay.parts.day }}
+              onSelectedDayChange={onSelectDay}
+            >
+              <BoundedDaySwitcher />
+              <QuickEntryBodyMount
+                identity={dayContextKey(host.sheetDay.parts)}
+                form={form}
+                subject={subject}
+                state={state}
+                bodies={bodies}
+                prefill={prefill}
+                onDone={onDone}
+                onRetry={onRetry}
+                subjectProfileId={subjectProfileId}
+              />
+            </DayContextProvider>
+          ) : (
+            <QuickEntryBodyMount
+              identity={`${subject}:unscoped`}
+              form={form}
+              subject={subject}
+              state={state}
+              bodies={bodies}
+              prefill={prefill}
+              onDone={onDone}
+              onRetry={onRetry}
+              subjectProfileId={subjectProfileId}
+            />
+          )}
+        </TimezoneProvider>
+      ) : (
+        <p role="alert" className={QUIET_STATE_CLASS}>
+          Couldn&apos;t open that form.
+        </p>
+      )}
+    </LoggedViaSurface>
+  );
+}
+
+export function QuickEntryVisitBodies({
+  identity,
+  onDone,
+}: {
+  identity: string;
+  onDone: () => void;
+}) {
+  const ctx = useContext(Ctx);
+  if (!ctx)
+    throw new Error(
+      "QuickEntryVisitBodies must be used within a QuickEntryProvider"
+    );
+  const { state } = ctx.visit;
+  if (state.identity !== identity) return null;
+  return state.entries.map((entry) => (
+    <Activity
+      key={`${state.identity}:${state.generation}:${entry.id}`}
+      mode={state.activeId === entry.id ? "visible" : "hidden"}
+    >
+      <QuickEntrySessionBody
+        form={entry.form}
+        prefill={entry.prefill}
+        subject={entry.subject}
+        host={entry.host}
+        bodies={entry.bodies}
+        actingProfileId={ctx.actingProfileId}
+        onDone={() => {
+          if (ctx.visit.complete(entry.id)) onDone();
+        }}
+        onRetry={() => ctx.visit.retry(entry.id)}
+        onSelectDay={(day) => ctx.visit.selectDay(entry.id, day)}
+      />
+    </Activity>
+  ));
 }
 
 function QuickEntryBodyMount({
