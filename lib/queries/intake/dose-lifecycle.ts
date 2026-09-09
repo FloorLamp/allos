@@ -391,7 +391,12 @@ export function setStoredDoseAmount(
     // Lazy backfill of the pre-edit rule, on the same anchor migration 151 seeds from,
     // so a dose from any origin gets a history before the new version is appended.
     if (!(getDoseScheduleVersions(profileId).get(row.id)?.length ?? 0))
-      recordScheduleVersion(row.id, (born ?? "1970-01-01").slice(0, 10), prior, false);
+      recordScheduleVersion(
+        row.id,
+        (born ?? "1970-01-01").slice(0, 10),
+        prior,
+        false
+      );
     const res = casUpdate(
       tx,
       db.prepare(

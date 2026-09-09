@@ -385,10 +385,11 @@ export default function QuickLogPrnControl({
     : null;
   // The SUBJECT rides both answers, like the dose write above: a caregiver answering in
   // the illness cockpit is answering for the household member the row logs for.
-  const answerAs = (act: (fd: FormData) => Promise<FormResult>) => (fd: FormData) => {
-    if (profileId != null) fd.set("profileId", String(profileId));
-    return act(fd);
-  };
+  const answerAs =
+    (act: (fd: FormData) => Promise<FormResult>) => (fd: FormData) => {
+      if (profileId != null) fd.set("profileId", String(profileId));
+      return act(fd);
+    };
   const doseUpdateOffer = doseUpdate ? (
     <OfferInPlace
       dedupeKey={doseUpdate.key}

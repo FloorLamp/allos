@@ -88,7 +88,9 @@ function storedAmount(itemId: number): string | null {
 function suppressionKeys(profileId: number): string[] {
   return (
     db
-      .prepare("SELECT signal_key FROM upcoming_dismissals WHERE profile_id = ?")
+      .prepare(
+        "SELECT signal_key FROM upcoming_dismissals WHERE profile_id = ?"
+      )
       .all(profileId) as { signal_key: string }[]
   ).map((r) => r.signal_key);
 }
@@ -162,7 +164,9 @@ describe("the child dose-band update offer (#5538)", () => {
     const itemId = seedPrnMed(profile.id, "100 mg");
     seedChild(profile.id, IN_150_BAND_KG);
 
-    await acceptDoseBandUpdate(fd({ dedupe_key: doseBandUpdateKey(itemId, 150) }));
+    await acceptDoseBandUpdate(
+      fd({ dedupe_key: doseBandUpdateKey(itemId, 150) })
+    );
 
     // The Today panel and the medications list row print the same stored amount from
     // different queries; the medicine's own page prints it a third time. Revalidating

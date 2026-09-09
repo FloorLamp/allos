@@ -42,8 +42,12 @@ const mocks = vi.hoisted(() => ({
   updateHistoricalDose: vi.fn(),
   setDoseStatus: vi.fn(),
   logMedicationAdministration: vi.fn(),
-  acceptDoseBandUpdate: vi.fn(async () => ({ ok: true as const })),
-  declineDoseBandUpdate: vi.fn(async () => ({ ok: true as const })),
+  acceptDoseBandUpdate: vi.fn(async (_formData: FormData) => ({
+    ok: true as const,
+  })),
+  declineDoseBandUpdate: vi.fn(async (_formData: FormData) => ({
+    ok: true as const,
+  })),
   addMeasurements: vi.fn(async (_formData: FormData) => ({})),
 }));
 
@@ -1392,8 +1396,9 @@ describe("the dose row offers to follow the current weight (#5538)", () => {
     const basis = screen.getByTestId("prn-band-basis");
     const offer = screen.getByTestId("offer-dose-band-update");
     // DOCUMENT_POSITION_FOLLOWING: the offer comes after the statement it answers.
-    expect(basis.compareDocumentPosition(offer) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy();
+    expect(
+      basis.compareDocumentPosition(offer) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     const take = screen.getByTestId("prn-log-now") as HTMLButtonElement;
     expect(take.disabled).toBe(false);
     expect(take.getAttribute("aria-label")).toBe("Take Ibuprofen · 100 mg");
@@ -1423,9 +1428,9 @@ describe("the dose row offers to follow the current weight (#5538)", () => {
   ])("offers nothing for $subject", ({ over }) => {
     row(over);
     expect(screen.queryByTestId("offer-dose-band-update")).toBeNull();
-    expect((screen.getByTestId("prn-log-now") as HTMLButtonElement).disabled).toBe(
-      false
-    );
+    expect(
+      (screen.getByTestId("prn-log-now") as HTMLButtonElement).disabled
+    ).toBe(false);
   });
 
   // The answer follows the SUBJECT, like the dose write beside it: the illness cockpit

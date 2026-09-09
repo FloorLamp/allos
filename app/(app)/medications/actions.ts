@@ -555,17 +555,22 @@ export async function declineIndicationLink(
 // is being shown — the re-check `answerOffer` makes for a family's trigger.
 //
 // The gate follows the SUBJECT, like the dose write one screen up: the illness cockpit
-// answers for a household member without switching profiles.
+// answers for a household member without switching profiles — so each tap carries the
+// #31 cross-profile gate itself rather than delegating it, the shape the dose write
+// beside it already has.
 const DOSE_UPDATE_STALE =
   "That dose band has moved — reload the page to see the current one.";
 
-async function doseUpdateSubject(formData: FormData): Promise<number> {
-  const target = Number(formData.get("profileId"));
-  if (Number.isInteger(target) && target > 0) {
-    await requireProfileWriteAccess(target);
-    return target;
-  }
-  return (await requireWriteAccess()).profile.id;
+// The offer as the server still sees it, or a refusal. Both taps resolve their answer
+// through this so neither can act on a key the current band no longer agrees with.
+function standingOffer(
+  profileId: number,
+  key: string
+): { itemId: number; storedAmount: string; bandAmount: string } | null {
+  const parsed = parseDoseBandUpdateKey(key);
+  if (!parsed) return null;
+  const offer = standingDoseUpdateOffer(profileId, parsed.itemId);
+  return offer?.key === key ? { itemId: parsed.itemId, ...offer } : null;
 }
 
 // Every reader of the stored amount, in the same pass. The Today row and the
@@ -584,22 +589,29 @@ function revalidateStoredDose(itemId: number): void {
 export async function acceptDoseBandUpdate(
   formData: FormData
 ): Promise<FormResult> {
-  const profileId = await doseUpdateSubject(formData);
-  const key = String(formData.get("dedupe_key") ?? "").trim();
-  const parsed = parseDoseBandUpdateKey(key);
-  if (!parsed) return formError(DOSE_UPDATE_STALE);
-  const offer = standingDoseUpdateOffer(profileId, parsed.itemId);
-  if (!offer || offer.key !== key) return formError(DOSE_UPDATE_STALE);
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const offer = standingOffer(
+    profileId,
+    String(formData.get("dedupe_key") ?? "").trim()
+  );
+  if (!offer) return formError(DOSE_UPDATE_STALE);
   const outcome = setStoredDoseAmount(
     profileId,
-    parsed.itemId,
+    offer.itemId,
     offer.storedAmount,
     offer.bandAmount
   );
   if (outcome.kind === "not-found")
     return formError("Couldn't find that medication.");
   if (outcome.kind === "stale") return formError(DOSE_UPDATE_STALE);
-  revalidateStoredDose(parsed.itemId);
+  revalidateStoredDose(offer.itemId);
   return formOk();
 }
 
@@ -613,13 +625,18 @@ export async function acceptDoseBandUpdate(
 export async function declineDoseBandUpdate(
   formData: FormData
 ): Promise<FormResult> {
-  const profileId = await doseUpdateSubject(formData);
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const key = String(formData.get("dedupe_key") ?? "").trim();
-  const parsed = parseDoseBandUpdateKey(key);
-  if (!parsed) return formError(DOSE_UPDATE_STALE);
-  const offer = standingDoseUpdateOffer(profileId, parsed.itemId);
-  if (!offer || offer.key !== key) return formError(DOSE_UPDATE_STALE);
+  const offer = standingOffer(profileId, key);
+  if (!offer) return formError(DOSE_UPDATE_STALE);
   dismissFinding(profileId, key);
-  revalidateStoredDose(parsed.itemId);
+  revalidateStoredDose(offer.itemId);
   return formOk();
 }
