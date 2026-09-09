@@ -12,9 +12,9 @@ import {
   CYCLE_STATS_MIN_SAMPLES,
   FORECAST_MIN_CYCLES,
   LUTEAL_PHASE_DAYS,
-  MAX_PLAUSIBLE_PERIOD_DAYS,
   type CyclePeriod,
 } from "@/lib/cycle";
+import { EPISODE_DAY_BOUNDS } from "@/lib/open-episode";
 
 // Pure-tier: the cycle-phase / length / variability derivations (issue #714). No DB.
 // The phase computation is the ONE function every surface formats over (Cycle card,
@@ -118,7 +118,7 @@ describe("cyclePhaseOnDate", () => {
   // record is left EXACTLY as stored; only the claim lapses.
   it("withdraws the menstrual claim past MAX_PLAUSIBLE_PERIOD_DAYS (day 10 vs 11)", () => {
     const open: CyclePeriod[] = [period(9, "2026-04-01", null)];
-    expect(MAX_PLAUSIBLE_PERIOD_DAYS).toBe(10);
+    expect(EPISODE_DAY_BOUNDS.period.staleDays).toBe(10);
     // Day 10 is 04-10 (the start day is day 1) — still the last plausible bleeding day.
     expect(phaseOn(open, "2026-04-10")).toBe("menstrual");
     expect(periodIn(open, "2026-04-10")?.id).toBe(9);
@@ -261,6 +261,26 @@ describe("periodOnDate", () => {
     expect(periodIn(HISTORY, "2026-01-03")?.id).toBe(1);
     expect(periodIn(HISTORY, "2026-01-10")).toBeNull();
     expect(periodIn(HISTORY, "2026-02-27")?.id).toBe(3);
+  });
+});
+
+// The Cycle page's amber prompt and the withdrawn menstrual claim are ONE claim seen
+// from two sides, and both are defined through openPeriodClaimEnd (#1682 fix a). This
+// says so directly, so a lane that puts the right number in EPISODE_DAY_BOUNDS and then
+// hard-codes the shift on one side still fails here.
+//
+// It holds only over an OPEN period and only from its start onward: before the start
+// neither side covers the day and the period is not stale, and a CLOSED period stops
+// being covered at its own end for an unrelated reason. periodOnDate refuses a date
+// after `today`, so the day under test is its own horizon.
+describe("staleness and coverage are the same claim (#5142)", () => {
+  it("is stale exactly on the days an open period no longer covers", () => {
+    const open = period(9, "2026-04-01", null);
+    for (const d of ["2026-04-09", "2026-04-10", "2026-04-11"]) {
+      expect(isStaleOpenPeriod(open, d)).toBe(
+        periodOnDate([open], d, d) == null
+      );
+    }
   });
 });
 

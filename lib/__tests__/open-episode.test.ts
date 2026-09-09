@@ -3,7 +3,7 @@ import {
   EPISODE_BOUNDS,
   episodeIsOpen,
   episodeState,
-  type EpisodeKind,
+  type MinuteEpisodeKind,
   type OpenEpisode,
 } from "../open-episode";
 
@@ -15,7 +15,7 @@ const NOW = Date.parse("2026-09-04T18:00:00Z");
 const MIN = 60_000;
 
 function episode(
-  kind: EpisodeKind,
+  kind: MinuteEpisodeKind,
   quietMin: number,
   expectedEnd: number | null = null
 ): OpenEpisode {

@@ -139,7 +139,7 @@ export interface CycleControlState {
   openPeriodId: number | null;
   // The open period's start date, or null.
   openPeriodStart: string | null;
-  // The open period has outrun MAX_PLAUSIBLE_PERIOD_DAYS: prompt for the real end date
+  // The open period has outrun openPeriodClaimEnd: prompt for the real end date
   // rather than claiming menstrual (#1682 fix a).
   staleOpenPeriod: boolean;
   // The derived cycle day and phase for today — null together before any history, and
