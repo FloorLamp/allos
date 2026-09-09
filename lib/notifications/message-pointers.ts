@@ -21,8 +21,33 @@ import { sqlNow } from "../clock";
 import { createLogger } from "../log";
 import {
   FRESH_SEND_BINDING,
+  burstsForMessage,
+  collapseBursts,
+  isBurstFresh,
+  seatCorrectionBursts,
+  parseCorrectionAtToken,
+  parseCorrectionChipToken,
   type CorrectionMessageBinding,
+  type CorrectionBurst,
+  type TapEvent,
 } from "../correction-time";
+import {
+  getRecentCorrectionBundles,
+  type CorrectionBundle,
+  type CorrectionDomain,
+} from "../bundle-time-correction";
+import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
+import {
+  keyboardDoseFootprint,
+  parseAllCallback,
+  parseFoodLogCallback,
+  parseFoodProteinCallback,
+  parseSkipCallback,
+  parseTakeCallback,
+} from "./callback-data";
+import { parseOfferCallback } from "./offer-tokens";
+import { readOfferRow } from "./offer-store";
+import type { StoredUsualOffer } from "./usual-routine-attach";
 import type { InlineKeyboard } from "./telegram-render";
 
 const log = createLogger("notify");
@@ -390,6 +415,277 @@ export function correctionMessageBinding(
     messageRef,
     isNewest: newest == null || newest.message_id === ref.messageId,
   };
+}
+
+// A bundle may bridge the two existing hosts of the same usual act. The original
+// receipt and scoped offer establish context; actual member provenance establishes
+// WHICH execution. An offer ID alone is content-deduplicated, not an act ID.
+function hasInitialCorrectionReceipt(
+  profileId: number,
+  pointer: MessagePointer
+): boolean {
+  // Legacy pointer readers may fall back to the live keyboard. That fallback is
+  // useful to ordinary rebuilds, but cannot prove an initial usual/host context.
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM notify_messages
+    WHERE profile_id = ? AND id = ? AND receipt_keyboard = ?`
+      )
+      .get(profileId, pointer.id, pointer.receiptVersion) != null
+  );
+}
+
+function usualBundleSource(
+  profileId: number,
+  bundle: CorrectionBundle,
+  source: MessagePointer
+): { offer: StoredUsualOffer; date: string; token: string } | null {
+  if (source.kind !== "food" && source.kind !== "dose") return null;
+  const refs = new Set(
+    bundle.members.flatMap((m) => (m.messageRef == null ? [] : [m.messageRef]))
+  );
+  if (refs.size !== 1 || !refs.has(source.id)) return null;
+  if (!hasInitialCorrectionReceipt(profileId, source)) return null;
+  const tokens = source.receiptKeyboard.flat().flatMap((button) => {
+    const parsed = parseOfferCallback(button.callback_data, "usual");
+    return parsed ? [{ ...parsed, token: button.callback_data! }] : [];
+  });
+  if (tokens.length !== 1 || tokens[0].profileId !== profileId) return null;
+  const stored = readOfferRow<StoredUsualOffer>(
+    profileId,
+    "usual-routine",
+    tokens[0].offerId
+  );
+  if (!stored || stored.date !== source.date) return null;
+  const covered = bundle.members.every((member) => {
+    if (member.domain === "practice") return true;
+    if (member.domain === "dose")
+      return (
+        member.messageRef === source.id &&
+        member.date === stored.date &&
+        stored.payload.doseIds.includes(member.doseId)
+      );
+    if (member.groupKey === PROTEIN_NUDGE_KEY)
+      return stored.payload.proteinGrams != null;
+    return (
+      member.messageRef === source.id &&
+      stored.payload.groups.includes(member.groupKey)
+    );
+  });
+  return covered
+    ? { offer: stored.payload, date: stored.date, token: tokens[0].token }
+    : null;
+}
+
+// Pass the existing intake reader rather than importing its builder back into the
+// pointer store. It is only called for an All-only retained slot, on the message's
+// explicit date; its results establish relevance, never add correction members.
+type CorrectionSlotReader = typeof import("./intake").slotSessionForKeyboard;
+
+// One message's candidate set, before the shared own-first/two-row seating. The
+// legacy recent readers still supply unbundled taps; they cannot truncate an act.
+export function messageCorrectionBursts(
+  profileId: number,
+  domain: CorrectionDomain,
+  taps: readonly TapEvent[],
+  now: Date,
+  ref: CorrectionMessageRef | null,
+  readSlots: CorrectionSlotReader
+): CorrectionBurst[] {
+  const unbundled = burstsForMessage(
+    collapseBursts(taps.filter((tap) => tap.bundleId == null)).filter((burst) =>
+      isBurstFresh(burst, now)
+    ),
+    correctionMessageBinding(profileId, domain, ref)
+  );
+  // The current usual writer has food/dose hosts; no alternate practice host is
+  // invented. A practice sibling still participates in every complete act read.
+  const bundles =
+    ref && domain !== "practice"
+      ? getRecentCorrectionBundles(profileId, domain, now)
+          .filter(
+            (bundle) =>
+              correctionBundleBinding(
+                profileId,
+                domain,
+                bundle,
+                ref,
+                readSlots
+              ) != null
+          )
+          .map((bundle) => bundle.burst)
+      : [];
+  return seatCorrectionBursts([...unbundled, ...bundles]);
+}
+
+function bundleHostMatches(
+  profileId: number,
+  bundle: CorrectionBundle,
+  target: MessagePointer,
+  context: { offer: StoredUsualOffer; date: string },
+  readSlots: CorrectionSlotReader
+): boolean {
+  if (
+    target.date !== context.date ||
+    !hasInitialCorrectionReceipt(profileId, target)
+  )
+    return false;
+  if (target.kind === "food") {
+    return target.receiptKeyboard.flat().some((button) => {
+      const token =
+        parseFoodLogCallback(button.callback_data) ??
+        parseFoodProteinCallback(button.callback_data);
+      return (
+        token?.profileId === profileId &&
+        token.date === context.date &&
+        token.window === context.offer.window
+      );
+    });
+  }
+  if (target.kind !== "dose") return false;
+  const relevant = new Set(
+    bundle.members.flatMap((member) =>
+      member.domain === "dose" && context.offer.doseIds.includes(member.doseId)
+        ? [member.doseId]
+        : []
+    )
+  );
+  const retained = target.receiptKeyboard.map((row) =>
+    row.filter((button) => {
+      const token =
+        parseTakeCallback(button.callback_data) ??
+        parseSkipCallback(button.callback_data) ??
+        parseAllCallback(button.callback_data);
+      return token?.profileId === profileId && token.date === context.date;
+    })
+  );
+  const footprint = keyboardDoseFootprint(retained);
+  if (footprint.doseIds.some((id) => relevant.has(id))) return true;
+  return (
+    footprint.slots.length > 0 &&
+    readSlots(profileId, [], footprint.slots, context.date).some((part) =>
+      part.entries.some((entry) => relevant.has(entry.dose.id))
+    )
+  );
+}
+
+// The bundle extension of correctionMessageBinding. The normal binding remains
+// untouched for unbundled rows. A bridge has no vacuous-newest or null-provenance
+// fallback: both captured pointers and the source proof must remain current.
+// `token` is supplied at the callback boundary, omitted only while rendering a new
+// action. The optimistic live keyboard proves server selection, NOT edit delivery.
+export function correctionBundleBinding(
+  profileId: number,
+  domain: CorrectionDomain,
+  bundle: CorrectionBundle,
+  ref: CorrectionMessageRef,
+  readSlots: CorrectionSlotReader,
+  token?: string
+): {
+  source: MessagePointer;
+  target: MessagePointer;
+  stillBound: (current: CorrectionBundle) => boolean;
+} | null {
+  const pointers = liveMessagePointers(profileId).filter(
+    (p) => p.chatId === String(ref.chatId)
+  );
+  const target = pointers.find((p) => p.messageId === ref.messageId);
+  if (!target) return null;
+  const refs = new Set(
+    bundle.members.flatMap((m) => (m.messageRef == null ? [] : [m.messageRef]))
+  );
+  if (refs.size !== 1) return null;
+  const source = pointers.find((p) => refs.has(p.id));
+  if (!source) return null;
+  // An attributed anchor already belongs to its original message, including an
+  // ordinary All/stack confirmation with no usual offer. Only another host needs
+  // the retained usual receipt and offer as additional bridge authority.
+  const original = target.id === source.id;
+  const context = original
+    ? null
+    : usualBundleSource(profileId, bundle, source);
+  if (!original && (target.kind !== domain || !context)) return null;
+  const ownIds = bundle.members
+    .filter((m) => m.domain === domain)
+    .map((m) => m.id);
+  if (ownIds.length === 0 || bundle.burst.fromId !== Math.min(...ownIds))
+    return null;
+  const prefix = domain === "practice" ? "practime" : `${domain}time`;
+  if (token != null) {
+    const parsed =
+      parseCorrectionChipToken(token, prefix) ??
+      parseCorrectionAtToken(token, `${prefix}at`);
+    if (
+      parsed?.profileId !== profileId ||
+      parsed.fromId !== bundle.burst.fromId
+    )
+      return null;
+  }
+  const matches = (current: CorrectionBundle, candidate: MessagePointer) =>
+    candidate.id === source.id
+      ? current.members.some(
+          (member) =>
+            member.domain === domain &&
+            member.id === current.burst.fromId &&
+            member.messageRef === source.id
+        ) &&
+        current.members.every(
+          (member) =>
+            member.messageRef == null || member.messageRef === source.id
+        )
+      : context != null &&
+        bundleHostMatches(profileId, current, candidate, context, readSlots);
+  // The original host keeps its own act. Only alternate hosts compete by matching
+  // date/window or actual schedule-dose footprint; a newer unrelated host cannot win.
+  const selected = (current: CorrectionBundle, candidate: MessagePointer) =>
+    candidate.id === source.id ||
+    liveMessagePointersForKind(profileId, ref.chatId, domain)
+      .filter((p) => matches(current, p))
+      .at(-1)?.id === candidate.id;
+  const stillBound = (current: CorrectionBundle): boolean => {
+    if (
+      current.id !== bundle.id ||
+      current.burst.fromId !== bundle.burst.fromId
+    )
+      return false;
+    const currentSource = messagePointerAt(
+      profileId,
+      source.chatId,
+      source.messageId
+    );
+    const currentTarget = messagePointerAt(
+      profileId,
+      target.chatId,
+      target.messageId
+    );
+    if (
+      currentSource?.id !== source.id ||
+      currentTarget?.id !== target.id ||
+      currentSource.kind !== source.kind ||
+      currentTarget.kind !== target.kind ||
+      currentSource.receiptVersion !== source.receiptVersion ||
+      currentTarget.receiptVersion !== target.receiptVersion
+    )
+      return false;
+    if (context != null) {
+      const proof = usualBundleSource(profileId, current, currentSource);
+      if (
+        !proof ||
+        proof.token !== context.token ||
+        proof.date !== context.date ||
+        JSON.stringify(proof.offer) !== JSON.stringify(context.offer)
+      )
+        return false;
+    }
+    if (
+      token != null &&
+      !currentTarget.keyboard.flat().some((b) => b.callback_data === token)
+    )
+      return false;
+    return matches(current, currentTarget) && selected(current, currentTarget);
+  };
+  return stillBound(bundle) ? { source, target, stillBound } : null;
 }
 
 // ---- Claiming an edit (issue #1788) ---------------------------------------

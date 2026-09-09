@@ -67,7 +67,7 @@ export interface CorrectionPrefixes {
   // rendering (or tapping) message's identity on. Declared here so the tap-time binding
   // re-check (lib/notifications/telegram-time-correction.ts) asks the SAME question the
   // domain's own builder asked at render time, from one declaration per domain.
-  kind: string;
+  kind: "food" | "dose" | "practice";
   // The absolute-hour picker: open, back, and each offered hour.
   at: string;
   // Does this domain store a profile-local DAY plus a time, rather than an instant?
@@ -157,10 +157,15 @@ export function correctableBursts(
   now: Date,
   tz: string
 ): { shown: CorrectionBurst[]; offScope: CorrectionBurst[] } {
-  if (!prefixes.dayKeyed) return { shown: [...bursts], offScope: [] };
   const shown: CorrectionBurst[] = [];
   const offScope: CorrectionBurst[] = [];
   for (const burst of bursts) {
+    const dayKeyed =
+      prefixes.dayKeyed || (burst.bundle?.practiceDays.length ?? 0) > 0;
+    if (!dayKeyed) {
+      shown.push(burst);
+      continue;
+    }
     const hasOffer =
       chipOffers(burst, now, tz, true).length > 0 ||
       offeredHours(burst, now, tz, true).length > 0 ||
@@ -389,7 +394,7 @@ export function correctionPickerTitle(
     notes: [
       hours && hours.length === 0
         ? "no earlier hour left on this day — correct it in the app"
-        : `${verb}?`,
+        : `${burst.bundle ? "when did this happen" : verb}?`,
     ],
   });
 }
