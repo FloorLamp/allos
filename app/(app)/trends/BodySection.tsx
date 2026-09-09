@@ -1329,6 +1329,7 @@ export default async function BodySection({
           entry is the logging path there. */}
       <LogMeasurementsPanel
         defaultDate={todayStr}
+        profileId={profile.id}
         defaultStatedAt={getManualBodyMetricStatedAt(profile.id, todayStr)}
         weightUnit={wu}
         temperatureUnit={units.temperatureUnit}

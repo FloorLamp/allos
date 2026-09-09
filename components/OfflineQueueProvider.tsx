@@ -24,12 +24,20 @@ import {
   syncedAnnouncement,
   describeIntent,
   isAuthFailure,
+  captureQueuedDayContext,
   MAX_INTENTS,
   type FlowKind,
   type IntentPayload,
   type ReplayResult,
   type RejectedEntry,
+  type QueuedCapture,
+  type QueuedDayContextInput,
 } from "@/lib/offline/queue";
+import type { TapReach } from "@/lib/log-manifest";
+import {
+  useLiveProfileClocks,
+  useOptionalDayContext,
+} from "@/components/DayContext";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import type { DeviceWriteOutcome } from "@/lib/offline/write-gate";
 import {
@@ -38,6 +46,7 @@ import {
 } from "@/lib/offline/write-gate";
 import {
   enqueueIntent,
+  enqueueIntents,
   allIntents,
   removeIntents,
   putIntents,
@@ -65,26 +74,42 @@ import {
 
 const SYNC_TAG = "allos-offline-replay";
 
-interface OfflineQueueApi {
+export interface OfflineQueueApi {
+  activeProfileId: number;
   // Number of writes currently queued (drives the badge + lets forms hint state).
   pending: number;
   // Persist an intent for later replay. `date` is the captured local date the write
   // lands on; `payload` is the flow's raw fields.
   //
-  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT, AND WHY NOT. A caller that ignores the
-  // answer tells someone "saved offline, will sync when you reconnect" about a write that
-  // was never recorded. Most surfaces make ONE enqueue per tap and only need
-  // `=== "kept"`; the two refusals differ only for a surface making two, because
-  // "closed" means the logout wipe has already committed and took the earlier half with
-  // it, while "failed" leaves it standing (#3118 — see lib/offline/write-gate.ts).
+  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT. A caller that ignores the answer tells
+  // someone "saved offline, will sync when you reconnect" about a write that was never
+  // recorded.
   enqueue: (
     flow: FlowKind,
-    date: string,
-    payload: IntentPayload
+    payload: IntentPayload,
+    capture: QueuedCapture
   ) => Promise<DeviceWriteOutcome>;
+  // One measurements submission can produce body + vitals intents. They keep their
+  // existing replay shapes and become durable together in one gated transaction.
+  enqueueBatch: (
+    entries: readonly {
+      readonly flow: FlowKind;
+      readonly payload: IntentPayload;
+    }[],
+    capture: QueuedCapture
+  ) => Promise<DeviceWriteOutcome>;
+  // Mint the immutable context stamp synchronously at the tap. The provider owns the
+  // active profile identity; callers supply the existing offer's reach and the
+  // DayContext-owned primacy rather than reconstructing either after a failed request.
+  captureDayContext: (
+    input: QueuedDayContextInput,
+    capturedAt?: Date
+  ) => QueuedCapture | null;
   // Attempt to replay the whole queue now (safe to call redundantly).
   flush: () => Promise<void>;
 }
+
+export type { QueuedCapture } from "@/lib/offline/queue";
 
 const OfflineQueueContext = createContext<OfflineQueueApi | null>(null);
 
@@ -96,6 +121,47 @@ export function useOfflineQueue(): OfflineQueueApi {
     );
   }
   return ctx;
+}
+
+// Snapshot the active offer's complete day identity at the moment a caller invokes
+// this function. A mounted DayContext is authoritative: disagreement with the write
+// date refuses capture instead of falling back to a plausible affordance context.
+// Context-free mounts use RouteDayContext's existing live profile-day map and the
+// reach already declared by their affordance; no queue clock or reach registry exists.
+export function useQueuedDayContextCapture(): (
+  date: string,
+  fallbackReach: TapReach,
+  capturedAt?: Date
+) => QueuedCapture | null {
+  const queue = useOfflineQueue();
+  const dayContext = useOptionalDayContext();
+  const liveProfileClocks = useLiveProfileClocks();
+  return useCallback(
+    (date: string, fallbackReach: TapReach, capturedAt?: Date) => {
+      if (dayContext) {
+        if (dayContext.parts.day !== date) return null;
+        return queue.captureDayContext(
+          {
+            parts: dayContext.parts,
+            key: dayContext.key,
+            isPrimaryDay: dayContext.isPrimaryDay,
+          },
+          capturedAt
+        );
+      }
+      const liveClock = liveProfileClocks.get(queue.activeProfileId);
+      if (!liveClock) return null;
+      return queue.captureDayContext(
+        {
+          date,
+          reach: fallbackReach,
+          isPrimaryDay: date === liveClock.today,
+        },
+        capturedAt
+      );
+    },
+    [dayContext, liveProfileClocks, queue]
+  );
 }
 
 // Best-effort Background Sync registration — silently absent where unsupported.
@@ -314,18 +380,56 @@ export default function OfflineQueueProvider({
   }, [toast, refreshCount, refreshRejected, announceSynced]);
 
   const enqueue = useCallback(
-    async (flow: FlowKind, date: string, payload: IntentPayload) => {
+    async (flow: FlowKind, payload: IntentPayload, capture: QueuedCapture) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
-      const outcome = await enqueueIntent(
-        buildIntent(flow, date, payload, activeProfileId)
+      const intent = buildIntent(
+        flow,
+        payload,
+        capture.dayContext,
+        capture.capturedAt
       );
+      const outcome = await enqueueIntent(intent, await capture.writeToken);
       if (outcome !== "kept") return outcome;
       await refreshCount();
       void registerBackgroundSync();
-      return "kept";
+      return outcome;
     },
-    [refreshCount, activeProfileId]
+    [refreshCount]
+  );
+
+  const enqueueBatch = useCallback(
+    async (
+      entries: readonly {
+        readonly flow: FlowKind;
+        readonly payload: IntentPayload;
+      }[],
+      capture: QueuedCapture
+    ) => {
+      const intents = entries.map(({ flow, payload }) =>
+        buildIntent(flow, payload, capture.dayContext, capture.capturedAt)
+      );
+      const outcome = await enqueueIntents(intents, await capture.writeToken);
+      if (outcome !== "kept") return outcome;
+      await refreshCount();
+      void registerBackgroundSync();
+      return outcome;
+    },
+    [refreshCount]
+  );
+
+  const captureDayContext = useCallback(
+    (
+      input: QueuedDayContextInput,
+      capturedAt: Date = new Date()
+    ): QueuedCapture | null =>
+      captureQueuedDayContext(
+        activeProfileId,
+        input,
+        capturedAt,
+        captureWriteToken()
+      ),
+    [activeProfileId]
   );
 
   // A NEW SESSION re-opens the device write gate (#2908). Logout closes every lane
@@ -395,7 +499,16 @@ export default function OfflineQueueProvider({
   }, [flush, refreshCount, refreshRejected, announceSynced]);
 
   return (
-    <OfflineQueueContext.Provider value={{ pending, enqueue, flush }}>
+    <OfflineQueueContext.Provider
+      value={{
+        activeProfileId,
+        pending,
+        enqueue,
+        enqueueBatch,
+        captureDayContext,
+        flush,
+      }}
+    >
       {children}
       {rejected.length > 0 && (
         <div

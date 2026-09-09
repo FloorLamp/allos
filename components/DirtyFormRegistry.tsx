@@ -108,18 +108,15 @@ const NON_INPUT_TYPES = new Set([
   "file",
 ]);
 
-// THE NARROW OPT-IN OUT OF `hidden`'s EXCLUSION (#4976). Most hidden inputs are
+// THE NARROW OPT-IN OUT OF `hidden`'s EXCLUSION (#4976, #4986). Most hidden inputs are
 // plumbing — a CSRF token, a record id, a machine value pasted in at submit — and
 // tracking them would be noise, which is the whole reason `hidden` sits in
-// NON_INPUT_TYPES above. `TimeField` is the one shape that is not that: its
-// VISIBLE input shows the profile's own clock ("7:30 am"), so it cannot carry the
-// record's `name` — the canonical "HH:MM" a Server Action reads lives in a
-// SIBLING hidden input instead, and THAT one is not plumbing, it is the whole
-// value. A hidden input opts in by carrying this dataset key itself; nothing
-// widens the exclusion for hidden inputs generally, and every other hidden field
-// in the tree (ids, tokens, DateField's own — its identical hole is pre-existing
-// and tracked separately, deliberately not fixed by this same mechanism here)
-// keeps the old, silent exclusion.
+// NON_INPUT_TYPES above. `TimeField` and `DateField` are the shapes that are not
+// that: their visible inputs show formatted values and cannot carry the record's
+// `name`, so a sibling hidden input holds the whole canonical value. A hidden
+// input opts in by carrying this dataset key itself; nothing widens the exclusion
+// for hidden inputs generally, and every other hidden field in the tree (ids,
+// tokens, and other plumbing) keeps the old, silent exclusion.
 const DIRTY_TRACK_HIDDEN = "dirtyTrackHidden";
 
 // Separator for comparing a multi-select's selected values as one string. A NUL

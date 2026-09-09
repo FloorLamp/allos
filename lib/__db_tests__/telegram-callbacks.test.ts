@@ -1,3 +1,23 @@
+import {
+  messagePointerAt,
+  liveMessagePointers,
+} from "@/lib/notifications/message-pointers";
+import { setProfileMutedForLogin } from "@/lib/settings";
+import {
+  refillReceivedAction,
+  handleReceivedReply,
+  handleReceivedCallback,
+  reconcileRefillReceipt,
+  renderRefillMessage,
+  runRefills,
+  handleOrderedRefillCallback,
+} from "@/lib/notifications/refill";
+import { readRefillOffer } from "@/lib/notifications/offer-store";
+import { sendTelegramMessage } from "@/lib/notifications/telegram";
+import { sendMessageRaw } from "@/lib/notifications/telegram-api";
+import { updateIntakeSupplyCount } from "@/lib/queries/intake/supply-pool";
+import { dismissFinding, restoreFinding } from "@/lib/queries/upcoming";
+import { decrementSupply, incrementSupply } from "@/lib/queries/intake/refill";
 // DB INTEGRATION TIER — the two-way Telegram action buttons (issue #233) driven
 // end-to-end through handleCallbackQuery against the REAL query layer, with only
 // the Telegram network surface (answer/edit/send) stubbed. Proves each button's
@@ -21,9 +41,24 @@ import {
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getProfileSetting } from "@/lib/settings";
+import {
+  getProfileSetting,
+  setProfileSetting,
+  setTelegramBotConfig,
+  getPublicUrl,
+  setPublicUrl,
+} from "@/lib/settings";
 import { preventiveSignalKey } from "@/lib/preventive-upcoming";
-import { refillSignalKey } from "@/lib/refill-nudge";
+import {
+  refillSignalKey,
+  refillMarkerKey,
+  parseRefillMarker,
+} from "@/lib/refill-nudge";
+import { intakeSupplyHref } from "@/lib/hrefs";
+import {
+  orderedRefillToken,
+  parseOrderedRefillCallback,
+} from "@/lib/notifications/refill-tokens";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import {
   CALLBACK_REGISTRY,
@@ -186,19 +221,55 @@ describe("preventive buttons route to the shared server functions", () => {
 
 // ---- Phase 3: refill ----
 describe("refill snooze button routes to the findings bus", () => {
-  it("📦 Ordered snoozes the refill:<id> finding 3 days out", async () => {
-    await handleCallbackQuery(
-      cq(`rfsnooze:${p.profileId}:${p.supplementId}`, OWN_CHAT)
-    );
-    const row = db
-      .prepare(
-        `SELECT snooze_until FROM upcoming_dismissals
-          WHERE profile_id = ? AND signal_key = ?`
+  it("delivers the promised follow-up after three local days, retries a failure, and spends it once", async () => {
+    const f = await orderedFixture();
+    const firstDate = today(f.profileId);
+    await handleCallbackQuery(f.tap);
+    expect(
+      parseRefillMarker(
+        getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))
       )
-      .get(p.profileId, refillSignalKey(p.supplementId)) as
-      { snooze_until: string | null } | undefined;
-    expect(row?.snooze_until).toBe(shiftDateStr(today(p.profileId), 3));
-    expect(lastAnswerText()).toMatch(/3 days/);
+    ).toMatchObject({ state: "requested", dueOn: shiftDateStr(firstDate, 3) });
+    const send = vi.mocked(sendMessageRaw);
+    send.mockClear();
+    await runRefills(f.profileId, shiftDateStr(firstDate, 2));
+    expect(send).not.toHaveBeenCalled();
+    vi.setSystemTime(new Date(`${shiftDateStr(firstDate, 3)}T12:00:00Z`));
+    send.mockRejectedValueOnce(new Error("synthetic delivery failure"));
+    expect(await runRefills(f.profileId, today(f.profileId))).toEqual({
+      failed: true,
+    });
+    await runRefills(f.profileId, today(f.profileId));
+    await runRefills(f.profileId, today(f.profileId));
+    expect(send).toHaveBeenCalledTimes(2);
+    const settled = getProfileSetting(
+      f.profileId,
+      refillMarkerKey(f.supplementId)
+    );
+    await handleCallbackQuery(f.tap);
+    expect(
+      getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))
+    ).toBe(settled);
+    const fresh = liveMessagePointers(f.profileId)
+      .filter((pointer) => pointer.kind === "refill")
+      .at(-1)!;
+    const data = fresh.keyboard
+      .flat()
+      .find((button) =>
+        button.callback_data?.startsWith("rfordered:")
+      )!.callback_data!;
+    await handleCallbackQuery({
+      ...cq(data, OWN_CHAT),
+      message: { ...f.tap.message, message_id: fresh.messageId },
+    });
+    expect(
+      parseRefillMarker(
+        getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))
+      )
+    ).toMatchObject({
+      state: "requested",
+      dueOn: shiftDateStr(today(f.profileId), 3),
+    });
   });
 
   it("a forged supplement id writes nothing (stale-item)", async () => {
@@ -1255,4 +1326,777 @@ describe("the sweep is never more generous than the handler (#4544)", () => {
       STRICTNESS[pairs.find((p) => p.prefix === "hh")?.handler ?? "none"]
     );
   });
+});
+
+async function orderedFixture() {
+  const profile = seedProfile("Ordered", { quantityOnHand: 4 });
+  setProfileSetting(profile.profileId, "timezone", "UTC");
+  seedLoginTelegram(profile.profileId, OWN_CHAT);
+  setTelegramBotConfig({
+    telegramBotToken: "ordered-synthetic-token",
+    telegramMode: "poll",
+  });
+  await runRefills(profile.profileId, today(profile.profileId));
+  const pointer = liveMessagePointers(profile.profileId).find(
+    (p) => p.kind === "refill"
+  )!;
+  const data = pointer.keyboard
+    .flat()
+    .find((button) =>
+      button.callback_data?.startsWith("rfordered:")
+    )!.callback_data!;
+  const tap = {
+    ...cq(data, OWN_CHAT),
+    message: { message_id: pointer.messageId, chat: { id: OWN_CHAT } },
+  };
+  return { ...profile, pointer, tap, data };
+}
+
+async function receivedFixture() {
+  const profile = seedProfile("Received", { quantityOnHand: 4 });
+  const loginId = seedLoginTelegram(profile.profileId, OWN_CHAT);
+  const action = refillReceivedAction(profile.profileId, profile.supplementId)!;
+  const messageId = await sendTelegramMessage(
+    OWN_CHAT,
+    { title: "Supply", body: "Running low", actions: [action], kind: "refill" },
+    profile.profileId
+  );
+  const offerId = Number(action.data!.split(":")[2]);
+  const open = {
+    ...cq(action.data!, OWN_CHAT),
+    from: { id: 71 },
+    message: { ...cq(action.data!, OWN_CHAT).message, message_id: messageId! },
+  };
+  return { ...profile, loginId, offerId, open, action };
+}
+
+function receiptReply(
+  f: Awaited<ReturnType<typeof receivedFixture>>,
+  amount: string,
+  messageId = 801
+) {
+  const offer = readRefillOffer(f.profileId, f.offerId)!.offer;
+  return {
+    message_id: messageId,
+    chat: { id: OWN_CHAT },
+    from: { id: 71 },
+    text: amount,
+    reply_to_message: {
+      message_id: offer.promptId,
+      text: `(refill:${f.profileId}:${f.offerId})`,
+    },
+  };
+}
+
+function receivedCount(f: Awaited<ReturnType<typeof receivedFixture>>) {
+  return (
+    db
+      .prepare(
+        "SELECT quantity_on_hand FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(f.profileId, f.supplementId) as { quantity_on_hand: number }
+  ).quantity_on_hand;
+}
+
+describe("Received receipt operation", () => {
+  it("asks first, keeps a partial refill warning, and never redirects an old reply to the next prompt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    expect(receivedCount(f)).toBe(4);
+    const oldReply = receiptReply(f, "2");
+    await handleReceivedReply(oldReply);
+    expect(receivedCount(f)).toBe(6);
+    expect(editTextMock.mock.calls.at(-1)?.[2]).toContain("running low");
+    const next = refillReceivedAction(f.profileId, f.supplementId)!;
+    expect(next.data).not.toBe(f.action.data);
+    await handleCallbackQuery({ ...f.open, id: "open-next", data: next.data });
+    expect(
+      readRefillOffer(f.profileId, Number(next.data!.split(":")[2]))!.offer
+        .state
+    ).toBe("pending");
+    await handleReceivedReply(oldReply);
+    await handleReceivedReply({ ...oldReply, message_id: 802 });
+    expect(receivedCount(f)).toBe(6);
+    const nextId = Number(next.data!.split(":")[2]);
+    expect(readRefillOffer(f.profileId, nextId)!.offer.defaultSize).toBe(2);
+    await handleReceivedReply(
+      receiptReply({ ...f, offerId: nextId }, "3", 803)
+    );
+    expect(receivedCount(f)).toBe(9);
+    await handleReceivedReply(oldReply);
+    expect(receivedCount(f)).toBe(9);
+  });
+
+  it("reports a stock write only for a newly confirmed receipt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    await handleReceivedReply(receiptReply(f, "2"));
+    const action = refillReceivedAction(f.profileId, f.supplementId)!;
+    const token = {
+      profileId: f.profileId,
+      offerId: Number(action.data!.split(":")[2]),
+    };
+    expect(
+      await handleReceivedCallback({ ...f.open, data: action.data }, token)
+    ).toBeUndefined();
+    const promptId = readRefillOffer(f.profileId, token.offerId)!.offer
+      .promptId!;
+    const confirm = {
+      ...f.open,
+      data: `rfconfirm:${f.profileId}:${token.offerId}`,
+      message: { ...f.open.message, message_id: promptId },
+    };
+    expect(
+      await handleReceivedCallback({ ...confirm, from: { id: 72 } }, token)
+    ).toBeUndefined();
+    expect(await handleReceivedCallback(confirm, token)).toBe(f.profileId);
+    expect(receivedCount(f)).toBe(8);
+    expect(await handleReceivedCallback(confirm, token)).toBeUndefined();
+    const next = refillReceivedAction(f.profileId, f.supplementId)!;
+    const nextToken = { ...token, offerId: Number(next.data!.split(":")[2]) };
+    await handleReceivedCallback({ ...f.open, data: next.data }, nextToken);
+    expect(
+      await handleReceivedCallback(
+        { ...f.open, data: `rfcancel:${f.profileId}:${nextToken.offerId}` },
+        nextToken
+      )
+    ).toBeUndefined();
+    expect(receivedCount(f)).toBe(8);
+  });
+
+  it("claims concurrent opens before sending and does not reactivate a cancellation during delivery", async () => {
+    const f = await receivedFixture();
+    const send = vi.mocked(sendMessageRaw);
+    let release!: (id: number) => void;
+    send.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          release = resolve;
+        })
+    );
+    const first = handleCallbackQuery(f.open);
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const calls = send.mock.calls.length;
+    await handleCallbackQuery({ ...f.open, id: "second-open" });
+    expect(send.mock.calls.length).toBe(calls);
+    await handleCallbackQuery({
+      ...f.open,
+      id: "cancel-opening",
+      data: `rfcancel:${f.profileId}:${f.offerId}`,
+    });
+    release(9123);
+    await first;
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "canceled"
+    );
+    expect(receivedCount(f)).toBe(4);
+    await handleCallbackQuery(f.open);
+    expect(send.mock.calls.length).toBe(calls);
+  });
+
+  it.each(["rejected", "missing-id"])(
+    "requires explicit cancellation after a %s send outcome",
+    async (outcome) => {
+      const f = await receivedFixture();
+      if (outcome === "rejected")
+        vi.mocked(sendMessageRaw).mockRejectedValueOnce(
+          new Error("synthetic transport uncertainty")
+        );
+      else vi.mocked(sendMessageRaw).mockResolvedValueOnce(undefined);
+      await handleCallbackQuery(f.open);
+      const originTokens = () =>
+        messagePointerAt(f.profileId, OWN_CHAT, f.open.message.message_id)!
+          .keyboard.flat()
+          .map((button) => button.callback_data);
+      expect(originTokens()).toContain(`rfcancel:${f.profileId}:${f.offerId}`);
+      const calls = vi.mocked(sendMessageRaw).mock.calls.length;
+      await handleCallbackQuery(f.open);
+      expect(originTokens()).toContain(`rfcancel:${f.profileId}:${f.offerId}`);
+      expect(vi.mocked(sendMessageRaw).mock.calls.length).toBe(calls);
+      expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+        "sending"
+      );
+      await handleCallbackQuery({
+        ...f.open,
+        data: `rfcancel:${f.profileId}:${f.offerId}`,
+      });
+      expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+        "canceled"
+      );
+      const next = refillReceivedAction(f.profileId, f.supplementId)!;
+      expect(next.data).not.toBe(f.action.data);
+      await handleCallbackQuery({ ...f.open, id: "reopen", data: next.data });
+      expect(
+        readRefillOffer(f.profileId, Number(next.data!.split(":")[2]))!.offer
+          .state
+      ).toBe("pending");
+    }
+  );
+
+  it("preserves pending receipts through dose decrement/Undo but invalidates an intentional recount ABA", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    decrementSupply(f.profileId, f.supplementId);
+    incrementSupply(f.profileId, f.supplementId);
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 4, 4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    const reply = receiptReply(f, "30");
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 8, 4);
+    updateIntakeSupplyCount(f.profileId, f.supplementId, null, 4, 8);
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "invalidated"
+    );
+  });
+
+  it("refuses another sender and another quoted message without consuming the prompt", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const reply = receiptReply(f, "30");
+    await handleReceivedReply({ ...reply, from: { id: 72 } });
+    await handleReceivedReply({
+      ...reply,
+      reply_to_message: { ...reply.reply_to_message, message_id: 999999 },
+    });
+    expect(receivedCount(f)).toBe(4);
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(34);
+  });
+
+  it("rolls stock and receipt state back together when completion persistence fails", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const reply = receiptReply(f, "30");
+    db.exec(`CREATE TEMP TRIGGER refuse_received_completion BEFORE UPDATE ON notify_offers
+      WHEN json_extract(NEW.payload, '$.state') = 'completed'
+      BEGIN SELECT RAISE(ABORT, 'synthetic completion failure'); END`);
+    try {
+      await expect(handleReceivedReply(reply)).rejects.toThrow(
+        "synthetic completion failure"
+      );
+    } finally {
+      db.exec("DROP TRIGGER refuse_received_completion");
+    }
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    await handleReceivedReply(reply);
+    expect(receivedCount(f)).toBe(34);
+  });
+});
+
+it("does not restore an Ordered item's row when another low item keeps the reminder alive", async () => {
+  const f = await receivedFixture();
+  const otherId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+    VALUES (?, 'Other receipt bottle', 1, 'supplement', 'daily', 'should', 4, 1)`
+      )
+      .run(f.profileId).lastInsertRowid
+  );
+  db.prepare(
+    "INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort) VALUES (?, '1 tablet', 'morning', 'any', 0)"
+  ).run(otherId);
+  for (const [id, g] of [
+    [f.supplementId, "fixture0001"],
+    [otherId, "fixture0002"],
+  ] as const)
+    setProfileSetting(
+      f.profileId,
+      refillMarkerKey(id),
+      JSON.stringify({ v: 1, state: "sent", g, sentOn: today(f.profileId) })
+    );
+  const message = renderRefillMessage(
+    [
+      {
+        id: f.supplementId,
+        name: "First bottle",
+        daysLeft: 4,
+        generation: "fixture0001",
+        received: f.action,
+      },
+      {
+        id: otherId,
+        name: "Other bottle",
+        daysLeft: 4,
+        generation: "fixture0002",
+        received: refillReceivedAction(f.profileId, otherId),
+      },
+    ],
+    f.profileId
+  );
+  const messageId = (await sendTelegramMessage(
+    OWN_CHAT,
+    message,
+    f.profileId
+  ))!;
+  const origin = messagePointerAt(f.profileId, OWN_CHAT, messageId)!;
+  await handleCallbackQuery({
+    ...cq(
+      orderedRefillToken(f.profileId, f.supplementId, "fixture0001"),
+      OWN_CHAT
+    ),
+    message: {
+      message_id: messageId,
+      chat: { id: OWN_CHAT },
+      reply_markup: { inline_keyboard: origin.keyboard },
+    },
+  });
+  const after = messagePointerAt(f.profileId, OWN_CHAT, messageId)!;
+  const tokens = after.keyboard.flat().map((button) => button.callback_data);
+  expect(tokens).toContain(
+    orderedRefillToken(f.profileId, otherId, "fixture0002")
+  );
+  expect(tokens).not.toContain(
+    orderedRefillToken(f.profileId, f.supplementId, "fixture0001")
+  );
+  expect(tokens).not.toContain(f.action.data);
+  await reconcileRefillReceipt(f.profileId, after);
+  expect(messagePointerAt(f.profileId, OWN_CHAT, messageId)!.keyboard).toEqual(
+    after.keyboard
+  );
+  const snooze = db
+    .prepare(
+      "SELECT snooze_until FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+    )
+    .get(f.profileId, refillSignalKey(f.supplementId)) as {
+    snooze_until: string;
+  };
+  expect(snooze.snooze_until).toBe(shiftDateStr(today(f.profileId), 3));
+});
+
+it.each(["success", "failure"])(
+  "preserves a newer same-offer pointer when an older edit ends with %s",
+  async (outcome) => {
+    const f = await receivedFixture();
+    const pointer = () =>
+      messagePointerAt(f.profileId, OWN_CHAT, f.open.message.message_id)!;
+    await reconcileRefillReceipt(f.profileId, pointer());
+    decrementSupply(f.profileId, f.supplementId);
+    let finish!: () => void;
+    editTextMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          finish = () =>
+            outcome === "success"
+              ? resolve()
+              : reject(new Error("synthetic stale edit failure"));
+        })
+    );
+    const older = reconcileRefillReceipt(f.profileId, pointer());
+    const observed = older.catch((error) => error);
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    const oldHash = pointer().bodyHash;
+    decrementSupply(f.profileId, f.supplementId);
+    await reconcileRefillReceipt(f.profileId, pointer());
+    const newer = pointer();
+    finish();
+    await observed;
+    expect(pointer().version).toBe(newer.version);
+    expect(pointer().bodyHash).toBe(
+      outcome === "success" ? "" : newer.bodyHash
+    );
+    expect(pointer().bodyHash).not.toBe(oldHash);
+    await reconcileRefillReceipt(f.profileId, pointer());
+    expect(pointer().bodyHash).toBe(newer.bodyHash);
+    expect(receivedCount(f)).toBe(2);
+  }
+);
+
+it.each(["foreign", "muted"])(
+  "does not refresh origin messages for a %s refused callback",
+  async (refusal) => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const offer = readRefillOffer(f.profileId, f.offerId)!.offer;
+    decrementSupply(f.profileId, f.supplementId);
+    const before = [offer.promptId!, offer.origin!.messageId].map((id) =>
+      messagePointerAt(f.profileId, OWN_CHAT, id)
+    );
+    if (refusal === "muted")
+      setProfileMutedForLogin(f.loginId, f.profileId, true);
+    editTextMock.mockClear();
+    const cancel = {
+      ...f.open,
+      data: `rfcancel:${f.profileId}:${f.offerId}`,
+      message: {
+        ...f.open.message,
+        message_id: offer.promptId!,
+        chat: { id: refusal === "foreign" ? OTHER_CHAT : OWN_CHAT },
+      },
+    };
+    await handleCallbackQuery(cancel);
+    expect(receivedCount(f)).toBe(3);
+    expect(editTextMock).not.toHaveBeenCalled();
+    expect(
+      [offer.promptId!, offer.origin!.messageId].map((id) =>
+        messagePointerAt(f.profileId, OWN_CHAT, id)
+      )
+    ).toEqual(before);
+    if (refusal === "muted")
+      setProfileMutedForLogin(f.loginId, f.profileId, false);
+    await handleCallbackQuery({
+      ...cancel,
+      message: { ...cancel.message, chat: { id: OWN_CHAT } },
+    });
+    expect(editTextMock).toHaveBeenCalled();
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "canceled"
+    );
+  }
+);
+
+async function legacyOrderedFixture() {
+  const f = await receivedFixture();
+  const data = `rfsnooze:${f.profileId}:${f.supplementId}`;
+  setProfileSetting(
+    f.profileId,
+    refillMarkerKey(f.supplementId),
+    today(f.profileId)
+  );
+  const message = {
+    title: "Refill due",
+    body: "First bottle is running low.",
+    kind: "refill" as const,
+    actions: [
+      { label: "Ordered", data, row: "old-refill" },
+      { ...f.action, row: "old-refill" },
+    ],
+  };
+  const messageId = (await sendTelegramMessage(
+    OWN_CHAT,
+    message,
+    f.profileId
+  ))!;
+  return {
+    ...f,
+    data,
+    message,
+    tap: {
+      ...cq(data, OWN_CHAT),
+      message: { message_id: messageId, chat: { id: OWN_CHAT } },
+    },
+  };
+}
+
+it("legacy confirmation survives failed edit, binds its source, and only the new confirmation requests a reminder", async () => {
+  const f = await legacyOrderedFixture();
+  const token = { profileId: f.profileId, itemId: f.supplementId };
+  editTextMock.mockRejectedValueOnce(new Error("synthetic edit failure"));
+  await expect(handleOrderedRefillCallback(f.tap, token)).rejects.toThrow(
+    "synthetic edit failure"
+  );
+  const pending = getProfileSetting(
+    f.profileId,
+    refillMarkerKey(f.supplementId)
+  );
+  const pointer = messagePointerAt(
+    f.profileId,
+    OWN_CHAT,
+    f.tap.message.message_id
+  )!;
+  expect(pointer.bodyHash).toBeNull();
+  const confirm = pointer.keyboard
+    .flat()
+    .find((button) =>
+      button.callback_data?.startsWith("rfordered:")
+    )!.callback_data!;
+  const cancel = pointer.keyboard
+    .flat()
+    .find((button) =>
+      button.callback_data?.startsWith("rfordno:")
+    )!.callback_data!;
+  expect(
+    db
+      .prepare(
+        "SELECT 1 FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+      )
+      .get(f.profileId, refillSignalKey(f.supplementId))
+  ).toBeUndefined();
+  await reconcileRefillReceipt(f.profileId, pointer);
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(
+    pending
+  );
+  expect(
+    messagePointerAt(f.profileId, OWN_CHAT, pointer.messageId)!.bodyHash
+  ).not.toBeNull();
+  const otherId = (await sendTelegramMessage(
+    OWN_CHAT,
+    f.message,
+    f.profileId
+  ))!;
+  await handleOrderedRefillCallback(
+    {
+      ...f.tap,
+      data: confirm,
+      message: { ...f.tap.message, message_id: otherId },
+    },
+    parseOrderedRefillCallback(confirm)!
+  );
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(
+    pending
+  );
+  await handleOrderedRefillCallback(
+    { ...f.tap, data: cancel },
+    parseOrderedRefillCallback(cancel)!
+  );
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(
+    today(f.profileId)
+  );
+  const freshTap = {
+    ...f.tap,
+    message: { ...f.tap.message, message_id: otherId },
+  };
+  await handleOrderedRefillCallback(freshTap, token);
+  const fresh = messagePointerAt(f.profileId, OWN_CHAT, otherId)!;
+  const freshData = fresh.keyboard
+    .flat()
+    .find((button) =>
+      button.callback_data?.startsWith("rfordered:")
+    )!.callback_data!;
+  await handleOrderedRefillCallback(
+    { ...freshTap, data: freshData },
+    parseOrderedRefillCallback(freshData)!
+  );
+  expect(
+    parseRefillMarker(
+      getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))
+    )
+  ).toMatchObject({
+    state: "requested",
+    dueOn: shiftDateStr(today(f.profileId), 3),
+  });
+});
+
+it.each(["acknowledgement", "edit"])(
+  "keeps accepted Ordered truthful and recoverable after failed %s",
+  async (failure) => {
+    const f = await orderedFixture();
+    editTextMock.mockClear();
+    if (failure === "acknowledgement")
+      answerMock.mockRejectedValueOnce(
+        new Error("synthetic acknowledgement failure")
+      );
+    else
+      editTextMock.mockRejectedValueOnce(new Error("synthetic edit failure"));
+    await expect(
+      handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!)
+    ).rejects.toThrow(`synthetic ${failure} failure`);
+    const accepted = getProfileSetting(
+      f.profileId,
+      refillMarkerKey(f.supplementId)
+    );
+    expect(parseRefillMarker(accepted)).toMatchObject({ state: "requested" });
+    await reconcileRefillReceipt(
+      f.profileId,
+      messagePointerAt(f.profileId, OWN_CHAT, f.pointer.messageId)!
+    );
+    expect(lastEditedText()).toContain("4 on hand");
+    expect(lastEditedText()).not.toContain("no longer available");
+    expect(
+      messagePointerAt(f.profileId, OWN_CHAT, f.pointer.messageId)!
+        .keyboard.flat()
+        .some((button) => button.callback_data === f.data)
+    ).toBe(false);
+    expect(
+      getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))
+    ).toBe(accepted);
+  }
+);
+
+it("a Received operation defeats stale edit cleanup before its pointer refresh", async () => {
+  const f = await legacyOrderedFixture();
+  let releaseEdit!: () => void;
+  let editEntered!: () => void;
+  let releaseReceipt!: () => void;
+  let receiptEntered!: () => void;
+  const editing = new Promise<void>((resolve) => {
+    editEntered = resolve;
+  });
+  const editHold = new Promise<void>((resolve) => {
+    releaseEdit = resolve;
+  });
+  const sending = new Promise<void>((resolve) => {
+    receiptEntered = resolve;
+  });
+  const receiptHold = new Promise<void>((resolve) => {
+    releaseReceipt = resolve;
+  });
+  editTextMock.mockImplementationOnce(async () => {
+    editEntered();
+    await editHold;
+    throw new Error("synthetic old edit failure");
+  });
+  const pending = handleOrderedRefillCallback(f.tap, {
+    profileId: f.profileId,
+    itemId: f.supplementId,
+  });
+  const rejected = expect(pending).rejects.toThrow(
+    "synthetic old edit failure"
+  );
+  await editing;
+  vi.mocked(sendMessageRaw).mockImplementationOnce(async () => {
+    receiptEntered();
+    await receiptHold;
+    return 22001;
+  });
+  const received = handleReceivedCallback(
+    { ...f.tap, data: f.action.data, from: { id: 71 } },
+    { profileId: f.profileId, offerId: f.offerId }
+  );
+  await sending;
+  try {
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "sending"
+    );
+    const held = messagePointerAt(
+      f.profileId,
+      OWN_CHAT,
+      f.tap.message.message_id
+    )!;
+    releaseEdit();
+    await rejected;
+    const after = messagePointerAt(
+      f.profileId,
+      OWN_CHAT,
+      f.tap.message.message_id
+    )!;
+    expect(after.version).toBe(held.version);
+    // Pointer+marker alone would dirty this hash; the changed offer must defeat cleanup.
+    expect(after.bodyHash).toBe(held.bodyHash);
+    releaseReceipt();
+    await received;
+    expect(
+      messagePointerAt(f.profileId, OWN_CHAT, f.tap.message.message_id)!
+        .keyboard.flat()
+        .some((button) => button.callback_data?.startsWith("rfordered:"))
+    ).toBe(false);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+  } finally {
+    releaseEdit();
+    releaseReceipt();
+    await Promise.allSettled([pending, received]);
+  }
+});
+
+it("rolls back Ordered suppression and marker if the final pointer claim fails", async () => {
+  const f = await orderedFixture();
+  const original = getProfileSetting(
+    f.profileId,
+    refillMarkerKey(f.supplementId)
+  );
+  db.exec(`CREATE TEMP TRIGGER fail_ordered_pointer BEFORE UPDATE ON notify_messages
+    WHEN OLD.id = ${f.pointer.id} BEGIN SELECT RAISE(ABORT, 'synthetic pointer failure'); END`);
+  try {
+    await expect(
+      handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!)
+    ).rejects.toThrow("synthetic pointer failure");
+  } finally {
+    db.exec("DROP TRIGGER fail_ordered_pointer");
+  }
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(
+    original
+  );
+  expect(
+    messagePointerAt(f.profileId, OWN_CHAT, f.pointer.messageId)!.version
+  ).toBe(f.pointer.version);
+  expect(
+    db
+      .prepare(
+        "SELECT 1 FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+      )
+      .get(f.profileId, refillSignalKey(f.supplementId))
+  ).toBeUndefined();
+});
+
+it("ordinary cancellation and restore keep an explicitly accepted episode spent", async () => {
+  const f = await orderedFixture();
+  await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+  dismissFinding(f.profileId, refillSignalKey(f.supplementId));
+  restoreFinding(f.profileId, refillSignalKey(f.supplementId));
+  expect(getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))).toBe(
+    today(f.profileId)
+  );
+  const send = vi.mocked(sendMessageRaw);
+  send.mockClear();
+  await runRefills(f.profileId, shiftDateStr(today(f.profileId), 3));
+  expect(send).not.toHaveBeenCalled();
+});
+
+it.each(["recovery", "pause"])(
+  "retires a requested last item's generation on %s and permits a fresh episode",
+  async (ending) => {
+    const f = await orderedFixture();
+    await handleOrderedRefillCallback(
+      f.tap,
+      parseOrderedRefillCallback(f.data)!
+    );
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = ?, active = ? WHERE profile_id = ? AND id = ?"
+    ).run(
+      ending === "recovery" ? 300 : 4,
+      ending === "pause" ? 0 : 1,
+      f.profileId,
+      f.supplementId
+    );
+    await runRefills(f.profileId, today(f.profileId));
+    expect(
+      getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))
+    ).toBeUndefined();
+    db.prepare(
+      "UPDATE intake_items SET quantity_on_hand = 4, active = 1 WHERE profile_id = ? AND id = ?"
+    ).run(f.profileId, f.supplementId);
+    // The original snooze still stands; its ordinary restoration does not revive g.
+    restoreFinding(f.profileId, refillSignalKey(f.supplementId));
+    await runRefills(f.profileId, today(f.profileId));
+    const fresh = getProfileSetting(
+      f.profileId,
+      refillMarkerKey(f.supplementId)
+    );
+    expect(parseRefillMarker(fresh)).toMatchObject({ state: "sent" });
+    await handleOrderedRefillCallback(
+      f.tap,
+      parseOrderedRefillCallback(f.data)!
+    );
+    expect(
+      getProfileSetting(f.profileId, refillMarkerKey(f.supplementId))
+    ).toBe(fresh);
+  }
+);
+
+it("offers the actual item link for an authorized missing legacy receipt, but not foreign or consumed-generation taps", async () => {
+  const f = await orderedFixture();
+  const before = getPublicUrl();
+  const send = vi.mocked(sendMessageRaw);
+  setPublicUrl("https://allos.example.test");
+  send.mockClear();
+  try {
+    const data = `rfsnooze:${f.profileId}:${f.supplementId}`;
+    const token = { profileId: f.profileId, itemId: f.supplementId };
+    await handleOrderedRefillCallback(cq(data, OTHER_CHAT), token);
+    expect(send).not.toHaveBeenCalled();
+    await handleOrderedRefillCallback(cq(data, OWN_CHAT), token);
+    expect(send.mock.calls.at(-1)?.[1].actions?.[0].url).toBe(
+      `https://allos.example.test${intakeSupplyHref("supplement", f.supplementId, true)}`
+    );
+    await handleOrderedRefillCallback(
+      f.tap,
+      parseOrderedRefillCallback(f.data)!
+    );
+    send.mockClear();
+    await handleOrderedRefillCallback(
+      f.tap,
+      parseOrderedRefillCallback(f.data)!
+    );
+    expect(send).not.toHaveBeenCalled();
+  } finally {
+    setPublicUrl(before);
+  }
 });

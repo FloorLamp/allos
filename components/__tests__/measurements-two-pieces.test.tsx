@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
+import { DayContextProvider } from "@/components/DayContext";
 
 // THE MEASUREMENTS FORM'S SUBJECT SIGNAL (#4932 postmortem).
 //
@@ -46,6 +47,9 @@ const record = (name: string) => (fd: FormData) => {
 
 const mocks = vi.hoisted(() => ({
   enqueue: vi.fn(async () => "kept" as const),
+  enqueueBatch: vi.fn(
+    async (): Promise<"kept" | "closed" | "failed"> => "kept"
+  ),
 }));
 
 vi.mock("@/app/(app)/trends/measurement-actions", () => ({
@@ -59,7 +63,21 @@ vi.mock("@/components/Toast", () => ({
   useToast: () => (text: string) => toasts.push(text),
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
+  useOfflineQueue: () => ({
+    enqueue: mocks.enqueue,
+    enqueueBatch: mocks.enqueueBatch,
+  }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: unknown, capturedAt = new Date()) => ({
+      dayContext: {
+        parts: { profileId: ACTING, day: date, reach },
+        key: "test-context",
+        isPrimaryDay: true,
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -82,6 +100,8 @@ beforeEach(() => {
   toasts.length = 0;
   mocks.enqueue.mockClear();
   mocks.enqueue.mockResolvedValue("kept");
+  mocks.enqueueBatch.mockClear();
+  mocks.enqueueBatch.mockResolvedValue("kept");
   Element.prototype.scrollIntoView ??= () => {};
   vi.stubGlobal(
     "ResizeObserver",
@@ -135,6 +155,7 @@ describe("the measurements form's subject signal (#4932 postmortem)", () => {
         )
       ).toBeTruthy();
       expect(mocks.enqueue).not.toHaveBeenCalled();
+      expect(mocks.enqueueBatch).not.toHaveBeenCalled();
       expect(posted.addMeasurements).toBeUndefined();
       expect(toasts).toEqual([]);
     } finally {
@@ -151,13 +172,102 @@ describe("the measurements form's subject signal (#4932 postmortem)", () => {
       await weighIn(undefined);
       expect(mocks.enqueue).toHaveBeenCalledWith(
         "body-metric",
-        "2026-05-20",
-        expect.objectContaining({ weight: "80" })
+        expect.objectContaining({ weight: "80" }),
+        expect.objectContaining({
+          dayContext: expect.objectContaining({
+            parts: expect.objectContaining({ day: "2026-05-20" }),
+          }),
+        })
       );
       expect(posted.addMeasurements).toBeUndefined();
       expect(toasts).toEqual(["Saved offline — will sync when you reconnect."]);
     } finally {
       restore();
     }
+  });
+
+  it("queues body and vitals atomically and retains both when the batch is refused", async () => {
+    const restore = setOnline(false);
+    mocks.enqueueBatch.mockResolvedValue("failed");
+    try {
+      render(
+        <MeasurementsQuickAdd
+          defaultDate="2026-05-20"
+          weightUnit="kg"
+          defaultGroup="body"
+          profileId={ACTING}
+        />
+      );
+      fireEvent.change(screen.getByLabelText("Weight"), {
+        target: { value: "80" },
+      });
+      fireEvent.change(screen.getByLabelText("Systolic"), {
+        target: { value: "120" },
+      });
+      fireEvent.change(screen.getByLabelText("Diastolic"), {
+        target: { value: "80" },
+      });
+
+      await act(async () =>
+        fireEvent.submit(screen.getByTestId("measurements-quick-add"))
+      );
+
+      expect(mocks.enqueueBatch).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({ flow: "body-metric" }),
+          expect.objectContaining({ flow: "vitals" }),
+        ],
+        expect.objectContaining({
+          dayContext: expect.objectContaining({
+            parts: expect.objectContaining({ day: "2026-05-20" }),
+          }),
+        })
+      );
+      expect((screen.getByLabelText("Weight") as HTMLInputElement).value).toBe(
+        "80"
+      );
+      expect(
+        (screen.getByLabelText("Systolic") as HTMLInputElement).value
+      ).toBe("120");
+      expect(
+        (screen.getByLabelText("Diastolic") as HTMLInputElement).value
+      ).toBe("80");
+      expect(toasts).toEqual([
+        "This entry wasn't saved. Try again once you're back online.",
+      ]);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("measurements mounted under a day context", () => {
+  it("uses the host day as its fixed posted day even when shell bounds are stale", async () => {
+    const hostDay = "2026-05-21";
+    render(
+      <DayContextProvider
+        profileId={ACTING}
+        today={hostDay}
+        reach={{ kind: "dated" }}
+        backing={{ kind: "state", initialDay: hostDay }}
+      >
+        <MeasurementsQuickAdd
+          defaultDate="2026-05-20"
+          maxDate="2026-05-20"
+          weightUnit="kg"
+          defaultGroup="body"
+          profileId={ACTING}
+        />
+      </DayContextProvider>
+    );
+
+    expect(screen.getByTestId("m-date").tagName).toBe("SPAN");
+    fireEvent.change(screen.getByLabelText("Weight"), {
+      target: { value: "80" },
+    });
+    await act(async () =>
+      fireEvent.submit(screen.getByTestId("measurements-quick-add"))
+    );
+    expect(posted.addMeasurements[0].get("date")).toBe(hostDay);
   });
 });

@@ -9,6 +9,7 @@ import {
   hydratedClick,
   openMobileDrawer,
   settledBoxes,
+  settledFill,
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -610,8 +611,9 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // `?tab=log` stays the acting profile's own log, which is asserted below.
     await page.goto("/training?tab=log");
     await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
-    await page.goto("/training?tab=log&view=everyone");
+    await page.goto("/training?tab=log&view=everyone&show=400");
     const sharedCard = page
+      .getByTestId("training-page")
       .getByTestId("history-row")
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
@@ -629,12 +631,37 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // one e2e/history-everyone.spec.ts pins for the other families. What must never
     // happen is two rows wearing the same name.
     const ownerCard = page
+      .getByTestId("training-page")
       .getByTestId("history-row")
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
     await expect(ownerCard).toBeVisible();
     await expect(ownerCard.getByTestId("history-row-subject")).toHaveText(
       MULTI_OWNER_PROFILE
     );
+
+    // Refining a widened household Log keeps its scope and history bound (#4901).
+    const controls = page
+      .getByTestId("training-page")
+      .getByTestId("training-log-controls");
+    await followLink(
+      page,
+      controls.getByRole("link", { name: "Cardio", exact: true }),
+      /[?&]type=cardio/
+    );
+    await expect(page).toHaveURL(/[?&]view=everyone(?:&|$)/);
+    await expect(page).toHaveURL(/[?&]show=400(?:&|$)/);
+    await expect(sharedCard).toBeVisible();
+    await settledFill(page, controls.getByRole("searchbox"), "MV");
+    await controls.getByRole("button", { name: "Search", exact: true }).click();
+    await page.waitForURL(/[?&]q=MV(?:&|$)/);
+    expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+      tab: "log",
+      type: "cardio",
+      view: "everyone",
+      show: "400",
+      q: "MV",
+    });
+    await expect(sharedCard).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/training?tab=log&view=everyone");

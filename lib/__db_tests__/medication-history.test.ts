@@ -83,6 +83,26 @@ describe("stop / restart produces separate courses", () => {
     expect(pausedCourses[0].stopped_on).toBe("2025-01-01"); // closed
   });
 
+  it("keeps an inactive unknown start absent until an explicit Restart", () => {
+    const paused = seedProfile("ensure-paused-unknown");
+    db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(
+      paused.medicationId
+    );
+    ensureMedicationCourse(paused.profileId, paused.medicationId, null);
+    expect(getMedicationCourses(paused.profileId)).toEqual([]);
+
+    expect(
+      restartMedicationCourse(
+        paused.profileId,
+        paused.medicationId,
+        "2025-04-01"
+      )
+    ).toBe("restarted");
+    expect(getMedicationCourses(paused.profileId)).toMatchObject([
+      { started_on: "2025-04-01", stopped_on: null },
+    ]);
+  });
+
   it("setMedicationActive keeps the active flag in sync with course state", () => {
     const p = seedProfile("syncflag");
     ensureMedicationCourse(p.profileId, p.medicationId, "2025-01-01");

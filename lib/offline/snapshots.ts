@@ -27,6 +27,13 @@ import type { FlowKind, QueuedIntent, DosePayload, FoodPayload } from "./queue";
 import type { MedicationListRow } from "@/lib/medication-list";
 import { dateStrInTz, daysBetweenDateStr } from "@/lib/date";
 import { freshnessAgeDays, freshnessState } from "@/lib/freshness";
+import { FOOD_GROUPS } from "@/lib/food-groups";
+import {
+  FOOD_SLOTS,
+  isFoodSlot,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "@/lib/food-slot";
 
 // ── The five kinds ───────────────────────────────────────────────────────────
 
@@ -215,12 +222,28 @@ export interface FoodTallyRow {
   queued?: number;
 }
 
+export interface FoodQuickEntryAvailableSnapshot {
+  readonly available: true;
+  readonly rankedGroupSlugsBySlot: Record<FoodSlot, string[]>;
+  readonly proteinRankBySlot: Record<FoodSlot, number | null>;
+  readonly proteinPreset: number | null;
+  readonly excludedGroups: string[];
+  readonly slotBoundaries: FoodSlotBoundaries;
+  readonly slotCounts: Record<FoodSlot, Record<string, number>>;
+}
+
+export type FoodQuickEntrySnapshot =
+  { readonly available: false } | FoodQuickEntryAvailableSnapshot;
+
 export interface FoodTalliesData {
   date: string;
   groups: FoodTallyRow[];
   // null when the profile doesn't track protein.
   proteinGrams: number | null;
   queuedProteinGrams?: number;
+  // Optional so a version-1 tally captured before quick-entry recovery remains
+  // readable. Its absence is a recovery miss and forces an authenticated refresh.
+  quickEntry?: FoodQuickEntrySnapshot;
 }
 
 export interface PracticeWeekRow {
@@ -285,6 +308,113 @@ function isKind(v: unknown): v is SnapshotKind {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const FOOD_GROUP_SLUGS = FOOD_GROUPS.map((group) => group.slug);
+const FOOD_GROUP_SLUG_SET = new Set(FOOD_GROUP_SLUGS);
+
+function isCatalogOrder(value: unknown): value is string[] {
+  if (!Array.isArray(value) || value.length !== FOOD_GROUP_SLUGS.length)
+    return false;
+  const found = new Set(value);
+  return (
+    found.size === FOOD_GROUP_SLUGS.length &&
+    value.every(
+      (slug) => typeof slug === "string" && FOOD_GROUP_SLUG_SET.has(slug)
+    )
+  );
+}
+
+function isSlotRecord<T>(
+  value: unknown,
+  accepts: (entry: unknown) => entry is T
+): value is Record<FoodSlot, T> {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === FOOD_SLOTS.length &&
+    Object.keys(value).every(isFoodSlot) &&
+    FOOD_SLOTS.every((slot) => accepts(value[slot]))
+  );
+}
+
+function isSlotCounts(
+  value: unknown
+): value is Record<FoodSlot, Record<string, number>> {
+  return isSlotRecord(value, (entry): entry is Record<string, number> => {
+    if (
+      !isRecord(entry) ||
+      Object.keys(entry).length > MAX_SNAPSHOT_FOOD_GROUPS
+    )
+      return false;
+    return Object.entries(entry).every(
+      ([slug, count]) =>
+        FOOD_GROUP_SLUG_SET.has(slug) &&
+        typeof count === "number" &&
+        Number.isInteger(count) &&
+        count >= 0
+    );
+  });
+}
+
+export function parseFoodQuickEntrySnapshot(
+  value: unknown
+): FoodQuickEntrySnapshot | null {
+  if (!isRecord(value) || typeof value.available !== "boolean") return null;
+  if (!value.available) return { available: false };
+  if (
+    !isSlotRecord(value.rankedGroupSlugsBySlot, isCatalogOrder) ||
+    !isSlotRecord(
+      value.proteinRankBySlot,
+      (rank): rank is number | null =>
+        rank === null ||
+        (typeof rank === "number" &&
+          Number.isInteger(rank) &&
+          rank >= 0 &&
+          rank <= FOOD_GROUP_SLUGS.length)
+    ) ||
+    !Array.isArray(value.excludedGroups) ||
+    value.excludedGroups.length > MAX_SNAPSHOT_FOOD_GROUPS ||
+    new Set(value.excludedGroups).size !== value.excludedGroups.length ||
+    !value.excludedGroups.every(
+      (slug) => typeof slug === "string" && FOOD_GROUP_SLUG_SET.has(slug)
+    ) ||
+    !(
+      value.proteinPreset === null ||
+      (typeof value.proteinPreset === "number" &&
+        Number.isFinite(value.proteinPreset) &&
+        value.proteinPreset > 0)
+    ) ||
+    !isRecord(value.slotBoundaries) ||
+    typeof value.slotBoundaries.midday !== "number" ||
+    !Number.isInteger(value.slotBoundaries.midday) ||
+    value.slotBoundaries.midday < 0 ||
+    typeof value.slotBoundaries.evening !== "number" ||
+    !Number.isInteger(value.slotBoundaries.evening) ||
+    value.slotBoundaries.midday >= value.slotBoundaries.evening ||
+    value.slotBoundaries.evening > 24 * 60 ||
+    !isSlotCounts(value.slotCounts)
+  ) {
+    return null;
+  }
+  return {
+    available: true,
+    rankedGroupSlugsBySlot: value.rankedGroupSlugsBySlot as Record<
+      FoodSlot,
+      string[]
+    >,
+    proteinRankBySlot: value.proteinRankBySlot as Record<
+      FoodSlot,
+      number | null
+    >,
+    proteinPreset: value.proteinPreset as number | null,
+    excludedGroups: value.excludedGroups as string[],
+    slotBoundaries: value.slotBoundaries as unknown as FoodSlotBoundaries,
+    slotCounts: value.slotCounts as Record<FoodSlot, Record<string, number>>,
+  };
+}
+
 // Parse a stored envelope defensively: a malformed / wrong-version / wrong-shape blob
 // yields null, so the offline surface says "nothing stored for this section" rather
 // than throwing on a page whose whole job is to work when nothing else does.
@@ -301,6 +431,18 @@ export function parseSnapshot(value: unknown): AnySnapshot | null {
     return null;
   if (typeof o.fetchedAt !== "string" || o.fetchedAt.length === 0) return null;
   if (!o.data || typeof o.data !== "object") return null;
+  if (o.kind === "food-tallies") {
+    const data = o.data as Record<string, unknown>;
+    if (data.quickEntry !== undefined) {
+      const quickEntry = parseFoodQuickEntrySnapshot(data.quickEntry);
+      // Keep the legacy tally readable when only the optional recovery extension is
+      // malformed. Its absence below also makes the writer refresh it immediately.
+      return {
+        ...o,
+        data: { ...data, quickEntry: quickEntry ?? undefined },
+      } as unknown as AnySnapshot;
+    }
+  }
   return o as unknown as AnySnapshot;
 }
 
@@ -428,6 +570,11 @@ export function snapshotsToRefresh(
   return SNAPSHOT_KINDS.filter((kind) => {
     const env = held.get(kind);
     if (!env) return true;
+    if (
+      env.kind === "food-tallies" &&
+      !(env as SnapshotEnvelope<"food-tallies">).data.quickEntry
+    )
+      return true;
     if (isSnapshotStale(env, now)) return true;
     const fetched = new Date(env.fetchedAt).getTime();
     // An unparseable or future stamp re-fetches: both mean the copy cannot be reasoned
@@ -504,17 +651,27 @@ export function overlayFoodTallies(
   profileId: number
 ): FoodTalliesData {
   const servings = new Map<string, number>();
+  const servingsBySlot = Object.fromEntries(
+    FOOD_SLOTS.map((slot) => [slot, new Map<string, number>()])
+  ) as Record<FoodSlot, Map<string, number>>;
   let protein = 0;
   for (const intent of relevantIntents(intents, profileId, ["food"])) {
     if (intent.date !== data.date) continue;
     const p = intent.payload as FoodPayload;
     if (p.entry === "serving" && p.groupKey) {
       servings.set(p.groupKey, (servings.get(p.groupKey) ?? 0) + 1);
+      if (isFoodSlot(p.mealSlot)) {
+        const byGroup = servingsBySlot[p.mealSlot];
+        byGroup.set(p.groupKey, (byGroup.get(p.groupKey) ?? 0) + 1);
+      }
     } else if (p.entry === "protein" && typeof p.grams === "number") {
       protein += p.grams;
     }
   }
-  if (servings.size === 0 && protein === 0) return data;
+  const hasSlotServings = FOOD_SLOTS.some(
+    (slot) => servingsBySlot[slot].size > 0
+  );
+  if (servings.size === 0 && protein === 0 && !hasSlotServings) return data;
   const groups = data.groups.map((g) => {
     const q = servings.get(g.key);
     if (!q) return g;
@@ -526,12 +683,30 @@ export function overlayFoodTallies(
   for (const [key, q] of servings) {
     groups.push({ key, label: key, servings: q, queued: q });
   }
+  const availableQuickEntry =
+    data.quickEntry?.available === true ? data.quickEntry : null;
+  const quickEntry =
+    availableQuickEntry && hasSlotServings
+      ? {
+          ...availableQuickEntry,
+          slotCounts: Object.fromEntries(
+            FOOD_SLOTS.map((slot) => {
+              const counts = { ...availableQuickEntry.slotCounts[slot] };
+              for (const [key, queued] of servingsBySlot[slot]) {
+                counts[key] = (counts[key] ?? 0) + queued;
+              }
+              return [slot, counts];
+            })
+          ) as Record<FoodSlot, Record<string, number>>,
+        }
+      : data.quickEntry;
   return {
     ...data,
     groups,
     proteinGrams:
       protein > 0 ? (data.proteinGrams ?? 0) + protein : data.proteinGrams,
     ...(protein > 0 ? { queuedProteinGrams: protein } : {}),
+    quickEntry,
   };
 }
 

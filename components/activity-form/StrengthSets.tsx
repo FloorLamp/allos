@@ -90,12 +90,8 @@ const fieldBorder = (blocked: boolean) =>
 // seeds a working rating. The rating rides onto the set's declared intent — it
 // never replaces target reps / to-failure.
 //
-// SIZED TO THE OPTIONS COLUMN FROM `sm` UP: the whole control fits the row's
-// w-16 (64px) options column (w-4 + w-7 + w-4 + borders = 62px), stacked above
-// the warmup/remove buttons — it must never widen that column, because the
-// weight/reps inputs' tap-target width is a pinned ergonomics contract (#337; the
-// entry-ergonomics spec asserts the weight input keeps ≥64px). An optional,
-// blank-by-default control shrinks first; the load/reps inputs never do.
+// Compact from `sm` up, below the primary set actions. The load/reps inputs keep
+// their existing minimum width; entry-ergonomics checks the actual input target.
 //
 // BELOW `sm` there is no options column to fit (#1612): the set's identity and its
 // options share one horizontal toolbar row of their own, so the ± targets take the
@@ -340,8 +336,8 @@ function LoadField({
 // two-line wrap (#1612) is a property of the column, and a stacked side is a line
 // inside it.
 //
-// While the grid shares one load (#5371) the row is reps only — the load is stated
-// once, above the rows — and carries the "Vary" door back to per-set weights.
+// Shared rows carry the "Vary" door back to per-set weights. When confirmed rows
+// own their weight, Vary occupies that same column so every row's reps align.
 function SetRow({
   side,
   set,
@@ -354,6 +350,7 @@ function SetRow({
   testId,
   flagsFor,
   load,
+  weightColumn,
   loadRef,
   repsRef,
   onChange,
@@ -378,6 +375,7 @@ function SetRow({
   ) => { weight: boolean; effort: boolean };
   // Whether this row states its own load, or the exercise-level band above does.
   load: "own" | "shared";
+  weightColumn: boolean;
   loadRef?: (el: HTMLInputElement | null) => void;
   // Hands this row's reps input up, so the exercise-level weight's Enter can land in
   // set 1's reps (#5371).
@@ -398,6 +396,16 @@ function SetRow({
   const confirm = (patch: Partial<SetEntry>) =>
     onChange({ ...confirmSet(set), ...patch });
   const flags = flagsFor(set[f.weight], set[f.reps], set[f.duration]);
+  const varyButton = onVary && (
+    <button
+      type="button"
+      onClick={onVary}
+      data-testid={ids?.vary}
+      className="w-12 shrink-0 py-2 text-xs text-link-muted"
+    >
+      Vary
+    </button>
+  );
   const reps = useRef<HTMLInputElement | null>(null);
   const effortRef = (el: HTMLInputElement | null) => {
     reps.current = el;
@@ -482,6 +490,15 @@ function SetRow({
           </span>
         </>
       )}
+      {load === "shared" && weightColumn && (
+        <>
+          <div className="min-w-28 flex-1 basis-0 text-center">
+            {varyButton}
+          </div>
+          {showPlate && <span className="w-7 shrink-0" aria-hidden />}
+          <span className="w-2 shrink-0" aria-hidden />
+        </>
+      )}
       {!timed ? (
         <Stepper
           testId={ids?.repsStepper ?? "reps-stepper"}
@@ -496,15 +513,8 @@ function SetRow({
       ) : (
         effortInput
       )}
-      {onVary && (
-        <button
-          type="button"
-          onClick={onVary}
-          data-testid={ids?.vary}
-          className="w-12 shrink-0 py-2 text-xs text-link-muted"
-        >
-          Vary
-        </button>
+      {load === "shared" && !weightColumn && (
+        <span className="w-12 shrink-0">{varyButton}</span>
       )}
     </div>
   );
@@ -938,6 +948,7 @@ export default function StrengthSets({
   const sharedLoad =
     stepsLoad && !p.varied && sharesLoad(p) && sharedSets.length > 0;
   const sharesBand = (s: SetEntry) => sharedLoad && sharedSets.includes(s);
+  const weightColumn = !sharedLoad || sharedSets.length < p.sets.length;
   // Which set's "Vary" tap just revealed the per-set weights, so that set's weight
   // takes the caret; consumed by the input on mount.
   const varyFocus = useRef<number | null>(null);
@@ -1271,7 +1282,7 @@ export default function StrengthSets({
             {stepsLoad ? (
               <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-center">
                 {p.perSide && <span className="w-4 shrink-0" aria-hidden />}
-                {!sharedLoad && (
+                {weightColumn && (
                   <>
                     <span
                       data-testid="weight-column-heading"
@@ -1292,14 +1303,16 @@ export default function StrengthSets({
                   Reps
                 </span>
                 {/* The rows' "Vary" slot, so the heading centres over the stepper. */}
-                {sharedLoad && <span className="w-12 shrink-0" aria-hidden />}
+                {!weightColumn && (
+                  <span className="w-12 shrink-0" aria-hidden />
+                )}
               </div>
             ) : (
               <span className="flex-1 basis-0 text-center">
                 {timed ? "Hold time" : "Reps"}
               </span>
             )}
-            <span className="hidden w-16 shrink-0 text-right sm:block">
+            <span className="hidden w-28 shrink-0 text-right sm:block">
               Options
             </span>
           </div>
@@ -1345,6 +1358,7 @@ export default function StrengthSets({
                         showPlate={showPlate}
                         flagsFor={sideFlags}
                         load={sharesBand(s) ? "shared" : "own"}
+                        weightColumn={weightColumn}
                         loadRef={rowSide === "left" ? loadRef(si) : undefined}
                         repsRef={
                           si === sharedIndex
@@ -1375,6 +1389,7 @@ export default function StrengthSets({
                     showPlate={showPlate}
                     flagsFor={sideFlags}
                     load={sharesBand(s) ? "shared" : "own"}
+                    weightColumn={weightColumn}
                     loadRef={loadRef(si)}
                     repsRef={
                       si === sharedIndex
@@ -1389,65 +1404,34 @@ export default function StrengthSets({
                 )}
                 <div
                   data-testid={`set-options-${si + 1}`}
-                  className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:w-16 sm:flex-col sm:items-end"
+                  className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:w-28 sm:flex-col sm:items-end"
                 >
-                  {/* Optional per-set RPE selector (#743) — shown for rep-based sets
-                (a timed hold's effort is its duration) belonging to a profile
-                that OPTED IN (#3335). `rpeTracking` is not a flag being consulted
-                here: it is the scale the stepper steps over, and without it
-                RpeStepper has no argument to render, so the column cannot appear
-                for a profile that never asked. Blank by default; the rating rides
-                onto the set without replacing target reps. Stacked INSIDE the same
-                w-16 options column the row always had — widening this column
-                shrinks the weight/reps inputs below their pinned #337 tap-target
-                width (see RpeStepper's sizing note). Below `sm` the column unrolls
-                into one horizontal band on the set's toolbar row (#1612), where
-                there is room for full-size targets.
-
-                NO TAB STOP EITHER WAY. Both stepper buttons are tabIndex={-1}
-                (the values are the tab stops; the steppers are pointer sugar), so
-                a row's keyboard sequence is IDENTICAL with the column on and off —
-                which is what keeps a conditional column from stranding tab order.
-                e2e/rpe-logging.spec.ts asserts that equality directly. */}
+                  {/* Opted-in RPE stays in the phone toolbar and below the primary
+                      actions on desktop. Its pointer-only steppers preserve the
+                      row's keyboard order (e2e/rpe-logging.spec.ts). */}
                   {!timed && rpeTracking && (
-                    <RpeStepper
-                      tracking={rpeTracking}
-                      value={s.rpe}
-                      onChange={(v) => onUpdateSet(si, { rpe: v })}
-                      testId={si === 0 ? "set1-rpe" : undefined}
-                    />
+                    <div className="sm:order-last">
+                      <RpeStepper
+                        tracking={rpeTracking}
+                        value={s.rpe}
+                        onChange={(v) => onUpdateSet(si, { rpe: v })}
+                        testId={si === 0 ? "set1-rpe" : undefined}
+                      />
+                    </div>
                   )}
-                  {/* CONFIRM THIS SET (#5373). The row is the plan until this is
-                tapped: it turns the ghost's numbers into the record and, in live
-                mode, starts the rest timer exactly as checking a set off always did
-                (#340). It is the same gesture as correcting the reps, so it goes
-                away the moment either happens — a confirmed row has nothing left to
-                confirm.
-
-                MOUNTS IconButton, whose own box is the 34px `--control-box` the
-                options column's controls share (#3938); the geometry is the
-                primitive's, not restated here.
-
-                A LINE OF THE OPTIONS COLUMN, NOT A THIRD CONTROL ON THE W/✕ ONE.
-                That line is already full: `sm:w-7` + `sm:w-8` + the gap is the
-                column's whole 64px, which is pinned because widening it shrinks the
-                weight/reps inputs below their #337 tap-target width. A 34px button
-                added beside W overflowed LEFT over the row's own "Vary" control and
-                swallowed its taps — measured: the entry-ergonomics Vary click could
-                not land. Stacked here it is beside W on a phone, where the column
-                unrolls into one horizontal toolbar band (#1612), and above it on
-                desktop, where the column is a column. */}
-                  {!setDone(s) && (
-                    <IconButton
-                      tone="brand"
-                      onClick={() => onUpdateSet(si, confirmSet(s))}
-                      label={`Confirm set ${si + 1}`}
-                      data-testid={`set-confirm-${si + 1}`}
-                    >
-                      <IconCheck className="h-4 w-4" stroke={2.5} />
-                    </IconButton>
-                  )}
-                  <div className="flex items-center justify-end gap-1 sm:items-start">
+                  <div className="flex items-center justify-end gap-1">
+                    {/* Confirm turns the plan into a record (#5373). Keep it beside
+                        warmup/remove, with room for their existing target sizes. */}
+                    {!setDone(s) && (
+                      <IconButton
+                        tone="brand"
+                        onClick={() => onUpdateSet(si, confirmSet(s))}
+                        label={`Confirm set ${si + 1}`}
+                        data-testid={`set-confirm-${si + 1}`}
+                      >
+                        <IconCheck className="h-4 w-4" stroke={2.5} />
+                      </IconButton>
+                    )}
                     {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
                 set (both sides of a per-side set share it).
@@ -1469,7 +1453,7 @@ export default function StrengthSets({
                           onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
                           aria-pressed={s.warmup}
                           data-testid={si === 0 ? "set1-warmup" : undefined}
-                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-bold sm:mt-1 sm:h-8 sm:w-7 ${
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-bold sm:h-8 sm:w-7 ${
                             s.warmup
                               ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
                               : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
@@ -1487,7 +1471,7 @@ export default function StrengthSets({
                             type="button"
                             onClick={() => onRemoveSet(si)}
                             data-testid={`set-remove-${si + 1}`}
-                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:bg-rose-50 focus-visible:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 dark:focus-visible:bg-rose-950/40 dark:focus-visible:text-rose-400"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:bg-rose-50 focus-visible:text-rose-600 sm:h-8 sm:w-8 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 dark:focus-visible:bg-rose-950/40 dark:focus-visible:text-rose-400"
                           >
                             <IconX className="h-4 w-4" />
                           </button>

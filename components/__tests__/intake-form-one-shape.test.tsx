@@ -1,9 +1,13 @@
+import { intakeFormContext } from "./intake-form-context-fixture";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import MedicationCard from "@/app/(app)/medications/MedicationCard";
+import IntakeItemForm from "@/components/IntakeItemForm";
+import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
+import type { SupplyOption } from "@/lib/supply-product";
 import { emptyIntakeItemFormState } from "@/lib/intake-form-fields";
 
 // ONE STATE SHAPE FOR THE INTAKE FORM (#4664).
@@ -26,17 +30,28 @@ import { emptyIntakeItemFormState } from "@/lib/intake-form-fields";
 //     same result whether the property holds or the regex is wrong.
 
 const actions = vi.hoisted(() => ({
+  refill: vi.fn(async (_data: FormData) => ({
+    ok: true as const,
+    fillSize: 30,
+    newQuantity: 34,
+  })),
+  bottles: vi.fn(async (): Promise<SupplyOption[]> => []),
   update: vi.fn(async (_data: FormData) => ({ ok: true as const })),
+  add: vi.fn(async (_data: FormData) => ({ ok: true as const })),
+}));
+
+vi.mock("@/app/(app)/medications/actions", () => ({
+  refillMedication: actions.refill,
 }));
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   updateIntakeItem: actions.update,
-  addIntakeItem: vi.fn(async () => ({ ok: true })),
+  addIntakeItem: actions.add,
   lookupRxcui: vi.fn(async () => []),
   lookupRxcuiIngredients: vi.fn(async () => []),
 }));
 vi.mock("@/app/(app)/supplies/actions", () => ({
-  listSharedSupplyOptions: vi.fn(async () => []),
+  listSharedSupplyOptions: actions.bottles,
   createPoolAction: vi.fn(async () => ({ ok: true })),
   linkItemAction: vi.fn(async () => ({ ok: true })),
   unlinkItemAction: vi.fn(async () => ({ ok: true })),
@@ -104,10 +119,11 @@ const ROW = {
   cadence_anchor_date: "2026-02-02",
   purposes_json: null,
   ingredients_json: null,
-};
+} as const;
 
 const EDIT_MOUNT = {
   medication: ROW,
+  dueDoseIds: [5],
   doses: [
     {
       id: 5,
@@ -147,19 +163,21 @@ const EDIT_MOUNT = {
       created_at: "2026-01-15T00:00:00.000Z",
     },
   ],
-  conditions: [{ id: 3, name: "Migraine" }],
-  allIntakeItems: [
-    { id: 42, name: "Ibuprofen" },
-    { id: 7, name: "Levothyroxine" },
-  ],
-  stackItems: [],
-  pgxVariants: [],
+  intakeContext: intakeFormContext("2026-09-04", {
+    conditions: [{ id: 3, name: "Migraine", status: "active" }],
+    allIntakeItems: [
+      { ...ROW, id: 42, name: "Ibuprofen" },
+      { ...ROW, id: 7, name: "Levothyroxine" },
+    ],
+    stackItems: [],
+    pgxVariants: [],
+  }),
+
   sideEffects: [],
   strip: [],
   takenDoseIds: [],
   skippedDoseIds: [],
   doseHistory: [],
-  todayStr: "2026-09-04",
   initialAction: "edit",
 } as unknown as Parameters<typeof MedicationCard>[0];
 
@@ -208,11 +226,13 @@ const EXPECTED: Record<string, string> = {
 /** The four child-row fields, compared as parsed JSON rather than as strings. */
 const JSON_FIELDS = ["doses", "pairs", "ingredients", "purposes"] as const;
 
-function mountEdit() {
+function mountEdit(
+  overrides: Partial<Parameters<typeof MedicationCard>[0]> = {}
+) {
   render(
     <ToastProvider>
       <ConfirmProvider>
-        <MedicationCard {...EDIT_MOUNT} />
+        <MedicationCard {...EDIT_MOUNT} {...overrides} />
       </ConfirmProvider>
     </ToastProvider>
   );
@@ -269,6 +289,97 @@ describe("an edit mount posts the whole row back, with no editor opened (#4664)"
   });
 });
 
+describe("a retaining host accepts save presentation before navigation", () => {
+  it("posts its captured subject and lets onSaved supersede onDone", async () => {
+    actions.add.mockClear();
+    const onSaved = vi.fn(() => true);
+    const onDone = vi.fn();
+    render(
+      <ToastProvider>
+        <ConfirmProvider>
+          <ActiveProfileProvider profileId={1}>
+            <IntakeItemForm
+              kind="medication"
+              action={actions.add}
+              intakeContext={EDIT_MOUNT.intakeContext}
+              subjectProfileId={8}
+              onSaved={onSaved}
+              onDone={onDone}
+            />
+          </ActiveProfileProvider>
+        </ConfirmProvider>
+      </ToastProvider>
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Ibuprofen" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(actions.add).toHaveBeenCalledOnce());
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(actions.add.mock.calls[0][0].get("profile_id")).toBe("8");
+    expect(onDone).not.toHaveBeenCalled();
+  });
+});
+
+it.each([null, 11])(
+  "adopts refill count and CAS baseline for supply %s while retaining edits",
+  async (supplyId) => {
+    actions.update.mockClear();
+    actions.refill.mockClear();
+    actions.bottles.mockResolvedValue(
+      supplyId
+        ? [
+            {
+              id: 11,
+              name: "The household ibuprofen",
+              strength: null,
+              form: null,
+              siblingKind: "medication",
+              onHand: 4,
+            },
+          ]
+        : []
+    );
+    mountEdit({
+      medication: {
+        ...ROW,
+        supply_id: supplyId,
+        quantity_on_hand: 4,
+      } as Parameters<typeof MedicationCard>[0]["medication"],
+      initialSupplyEditor: true,
+      initialRefill: true,
+    });
+    const count = await screen.findByLabelText(
+      supplyId ? "Shared bottle count" : "Quantity on hand"
+    );
+    await waitFor(() => expect((count as HTMLInputElement).value).toBe("4"));
+    fireEvent.change(screen.getByLabelText("Units per dose"), {
+      target: { value: "3" },
+    });
+    fireEvent.change(screen.getByLabelText("Fill size (units)"), {
+      target: { value: "30" },
+    });
+    fireEvent.click(screen.getByTestId("refill-confirm"));
+    await waitFor(() => expect(actions.refill).toHaveBeenCalledOnce());
+    await waitFor(() => expect((count as HTMLInputElement).value).toBe("34"));
+    fireEvent.click(screen.getByTestId("intake-editor-done"));
+    expect(screen.getByTestId("intake-fact-supply").textContent).toContain(
+      "34"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(actions.update).toHaveBeenCalledOnce());
+    const posted = actions.update.mock.calls[0][0];
+    expect(posted.get(supplyId ? "supply_count" : "quantity_on_hand")).toBe(
+      "34"
+    );
+    expect(
+      posted.get(supplyId ? "supply_count_loaded" : "quantity_on_hand_loaded")
+    ).toBe("34");
+    expect(posted.get("qty_per_dose")).toBe("3");
+  }
+);
+
 // ── The shape itself ─────────────────────────────────────────────────────────
 
 const FORM_SOURCE = readFileSync("components/IntakeItemForm.tsx", "utf8");
@@ -320,14 +431,14 @@ describe("the form holds its posted facts in one shape (#4664)", () => {
 
   // AND A COUNT, because the scan above is by field NAME and the old form held `rx`
   // in a hook called `rxFlag` — a per-field hook under another spelling would walk
-  // straight past it. Twelve: the one posted state, and eleven hooks that are not
+  // straight past it. Eleven: the one posted state, and ten hooks that are not
   // facts about the item (the open panel's add-mode flag, the offered bottles, the
-  // brand narrowing, the start-date latch, the prefill ledger, the formulation slug,
+  // brand narrowing, the prefill ledger, the formulation slug,
   // the selected weight band, the pediatric context, the ingredient seed note, the
   // rule sentences, and the error). This number moves only when someone has decided
   // a new hook is one of those.
-  it("declares one hook for the facts and eleven that are not facts", () => {
-    expect(stateHooks(FORM_SOURCE).length).toBe(12);
+  it("declares one hook for the facts and ten that are not facts", () => {
+    expect(stateHooks(FORM_SOURCE).length).toBe(11);
     expect(stateHooks(FORM_SOURCE)).toContain("state");
   });
 });

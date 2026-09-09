@@ -36,13 +36,14 @@
 
 import {
   getFrequencyTargetProgress,
-  getPracticeCorrectionBursts,
+  getRecentPracticeTaps,
   inferPracticeSchedule,
 } from "../queries";
 import { now as clockNow } from "../clock";
 import { getNotifySchedule, getPublicUrl, getTimezone } from "../settings";
 import { minuteOfDayInTz, weekdayInTz } from "../date";
-import { correctionMessageBinding } from "./message-pointers";
+import { messageCorrectionBursts } from "./message-pointers";
+import { slotSessionForKeyboard } from "./intake";
 import {
   correctableBursts,
   correctionActions,
@@ -420,13 +421,16 @@ function practiceCorrection(
   if (!ctx) return { actions: [], statement: null };
   const now = ctx.now ?? clockNow();
   const tz = getTimezone(profileId);
-  const bursts = getPracticeCorrectionBursts(
+  const bursts = messageCorrectionBursts(
     profileId,
+    "practice",
+    getRecentPracticeTaps(profileId, now, true),
     now,
     // Bound to the `practice` kind: the nudge is the only practice message these rows
     // ride, so an UNATTRIBUTED burst (a web quick-sheet tap) may ride the newest live
     // nudge and nothing else.
-    correctionMessageBinding(profileId, "practice", ctx.ref ?? null)
+    ctx.ref ?? null,
+    slotSessionForKeyboard
   );
   if (bursts.length === 0) return { actions: [], statement: null };
   const { shown, offScope } = correctableBursts(

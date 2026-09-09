@@ -21,12 +21,14 @@ import {
   setProfileMutedForLogin,
   setSmtpConfig,
   setSetting,
+  setUnitPrefs,
 } from "@/lib/settings";
 import {
   emailChannel,
   resolveEmailRecipients,
   sendTestEmailToLogin,
 } from "@/lib/notifications/email";
+import { readDeliveryOutcome } from "@/lib/notifications/delivery-marker";
 import { makeTmpDir } from "../__tests__/tmp-dir";
 
 function newProfile(name: string): number {
@@ -155,6 +157,86 @@ describe("resolveEmailRecipients (#1855)", () => {
 });
 
 describe("emailChannel.send end-to-end (capture)", () => {
+  it("uses the retained shared-address owner and skips rendering content-free mail", async () => {
+    const p = newProfile("Email distance owners");
+    const a = newLogin("member", "units-first", "shared@example.com");
+    const b = newLogin("member", "units-second", " Shared@example.com ");
+    const free = newLogin("member", "units-private", "private@example.com");
+    for (const login of [a, b, free]) {
+      grant(login, p);
+      setLoginEmailNotify(login, {
+        emailEnabled: true,
+        emailFullContent: login !== free,
+      });
+    }
+    setUnitPrefs(a, {
+      weightUnit: "lb",
+      distanceUnit: "mi",
+      temperatureUnit: "F",
+    });
+    const units: string[] = [];
+    await emailChannel.send(
+      p,
+      { title: "Recap", body: "canonical", kind: "weekly-recap" },
+      {
+        bodyForUnits: ({ distanceUnit, weightUnit }) => {
+          units.push(`${distanceUnit}:${weightUnit}`);
+          return `distance in ${distanceUnit}; weight in ${weightUnit}`;
+        },
+      }
+    );
+    const mails = capturedMails();
+    expect(mails).toHaveLength(2);
+    expect(
+      mails.find((mail) => mail.to === "shared@example.com")?.text
+    ).toContain("distance in mi; weight in lb");
+    expect(
+      mails.find((mail) => mail.to === "private@example.com")?.text
+    ).not.toContain("distance in");
+    expect(units).toEqual(["mi:lb"]);
+  });
+
+  it("keeps a full-content renderer failure inside that recipient's delivery outcome", async () => {
+    const p = newProfile("Email distance render failure");
+    const failed = newLogin("member", "render-failed", "failed@example.com");
+    const healthy = newLogin("member", "render-healthy", "healthy@example.com");
+    for (const login of [failed, healthy]) {
+      grant(login, p);
+      setLoginEmailNotify(login, {
+        emailEnabled: true,
+        emailFullContent: true,
+      });
+    }
+    setUnitPrefs(failed, {
+      weightUnit: "kg",
+      distanceUnit: "mi",
+      temperatureUnit: "F",
+    });
+    const outcome = await emailChannel.send(
+      p,
+      {
+        title: "Recap",
+        body: "canonical",
+        kind: "weekly-recap",
+      },
+      {
+        bodyForUnits: ({ distanceUnit: unit }) => {
+          if (unit === "mi") throw new Error("synthetic renderer failure");
+          return "metric detail";
+        },
+      }
+    );
+    expect(outcome).toEqual({ delivered: true });
+    expect(capturedMails().map((mail) => mail.to)).toEqual([
+      "healthy@example.com",
+    ]);
+    expect(
+      [failed, healthy].map(
+        (login) => readDeliveryOutcome("email", login)?.state
+      )
+    ).toEqual(["failing", "delivering"]);
+  });
+
   it("the content-free DEFAULT strips the message: no medication name reaches the mail", async () => {
     const kid = newProfile("Kid 4 (email)");
     const caregiver = newLogin("member", "email-free", "free@example.com");

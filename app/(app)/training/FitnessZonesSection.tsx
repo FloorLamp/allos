@@ -1,3 +1,4 @@
+import { trainingTabHref } from "@/lib/hrefs";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -6,6 +7,7 @@ import {
   getTrainingZoneData,
 } from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
+import { zoneWindowSince } from "@/lib/training-zones";
 import {
   hasFitnessZoneContent,
   type FitnessWindow,
@@ -40,7 +42,10 @@ export default async function FitnessZonesSection({
   weeks: number;
 }) {
   const { profile } = await requireSession();
-  const zoneData = getTrainingZoneData(profile.id, weeks, window.to);
+  const zoneData = getTrainingZoneData(profile.id, weeks, {
+    start: window.from ?? zoneWindowSince(window.to, weeks),
+    end: window.to,
+  });
 
   // #3512: the moved section is not standing chrome. Decide that from the zone
   // model before paying for cardio aggregates whose JSX would be discarded.
@@ -64,14 +69,14 @@ export default async function FitnessZonesSection({
       <ChartCard
         testid="fitness-cardio-volume"
         title="Weekly cardio volume"
-        detailHref="/training?tab=analyze"
+        detailHref={trainingTabHref("analyze")}
         detailTitle="cardio volume"
         description="Minutes per week in this window, by activity."
       >
         {weekly.data.length === 0 ? (
           <EmptyState
             message="No cardio in this window. Widen the range, or log a run, ride, or swim."
-            action={{ href: "/training?tab=log", label: "Go to Log" }}
+            action={{ href: trainingTabHref("log"), label: "Go to Log" }}
           />
         ) : (
           <StackedBarCard

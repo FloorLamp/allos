@@ -18,7 +18,7 @@
 
 import { mean } from "../robust-stats";
 import { today as todayFor } from "../db";
-import { db } from "../db";
+import { db, hoistedStatement } from "../db";
 import { utcInstant, utcSqlString } from "../date";
 import {
   applyRecentChangeDemotion,
@@ -301,6 +301,24 @@ function moodChanges(
   ];
 }
 
+// One read for both intake events; retain added-first ordering before ranking.
+const INTAKE_CHANGES_STMT = hoistedStatement(
+  `SELECT id, name, 'added' AS event, date(created_at) AS date,
+          created_at AS sort_at, NULL AS course_sort
+     FROM intake_items
+    WHERE profile_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
+    UNION ALL
+   SELECT c.id, ii.name, 'started' AS event, c.started_on AS date,
+          c.started_on AS sort_at, c.id AS course_sort
+     FROM medication_courses c
+     JOIN intake_items ii ON ii.id = c.item_id
+    WHERE ii.profile_id = ?
+      AND ii.kind = 'medication'
+      AND c.started_on IS NOT NULL
+      AND c.started_on >= ? AND c.started_on <= ?
+    ORDER BY event, sort_at DESC, course_sort DESC`
+);
+
 // THE collector. Auth-blind, profileId-first, composing existing readers only.
 export function collectRecentChanges(
   profileId: number,
@@ -404,31 +422,32 @@ export function collectRecentChanges(
   }
 
   // ── intake changes (#1463 base 4) ────────────────────────────────────────────
-  // v1 covers the lifecycle events that carry a real timestamp: an item STARTED in
-  // the window (`intake_items.created_at`). Pause and retire are deliberately
+  // v1 covers the lifecycle events that carry a real timestamp: an item ADDED in
+  // the window (`intake_items.created_at`) and a medication course whose start was
+  // actually stated. Pause and retire are deliberately
   // OMITTED rather than approximated — neither carries a change timestamp today,
   // and #1463's implementer note is explicit that a missing timestamp means the
   // event kind waits for one rather than being guessed from row state.
   if (on("intake")) {
-    const started = db
-      .prepare(
-        `SELECT id, name, kind, date(created_at) AS started
-           FROM intake_items
-          WHERE profile_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
-          ORDER BY created_at DESC`
-      )
-      .all(profileId, windowStart, today) as {
+    const events = INTAKE_CHANGES_STMT.all(
+      profileId,
+      windowStart,
+      today,
+      profileId,
+      windowStart,
+      today
+    ) as {
       id: number;
       name: string;
-      kind: string;
-      started: string;
+      event: "added" | "started";
+      date: string;
     }[];
-    for (const it of started) {
+    for (const row of events) {
       changes.push({
-        id: `intake:${it.id}`,
+        id: `intake-${row.event}:${row.id}`,
         category: "intake",
-        date: it.started,
-        text: `${GLYPH.changed} Started ${it.name}`,
+        date: row.date,
+        text: `${GLYPH.changed} ${row.event === "added" ? "Added" : "Started"} ${row.name}`,
       });
     }
   }

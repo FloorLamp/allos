@@ -13,10 +13,14 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, utcMinute, zonedWallTimeToUtc } from "@/lib/date";
 import { getHrMinutesInRange } from "@/lib/queries/metrics";
-import { getDayLoadInputs, getIntensitySignal } from "@/lib/queries/zones";
-import { setMaxHrOverride } from "@/lib/settings";
+import {
+  getDayLoadInputs,
+  getIntensitySignal,
+  getTrainingZoneData,
+} from "@/lib/queries/zones";
+import { getTimezone, setMaxHrOverride } from "@/lib/settings";
 
 const SESSION_MIN = 30; // minutes of HR seeded per session
 const HARD_BPM = 150; // Zone 4 at maxHr 180 — a hard minute either side of the bound
@@ -98,5 +102,50 @@ describe("dashboard zone reads stop at the window's end (#5069)", () => {
     // Converse again: the window's own minutes are all still hard (Zone 4 at maxHr 180),
     // so a passing count above is the in-window session and not a silenced read.
     expect(signal.hardMin).toBe(SESSION_MIN);
+  });
+});
+
+it("uses inclusive day bounds rather than chart weeks or a next-day session tail", () => {
+  const profileId = Number(
+    db
+      .prepare("INSERT INTO profiles (name) VALUES ('Historical zone window')")
+      .run().lastInsertRowid
+  );
+  setMaxHrOverride(profileId, 180);
+  const end = shiftDateStr(today(profileId), -10);
+  const start = shiftDateStr(end, -2);
+  const older = shiftDateStr(start, -1);
+  const next = shiftDateStr(end, 1);
+  const tz = getTimezone(profileId);
+  const activity = db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, start_time, end_time, duration_min)
+     VALUES (?, ?, 'cardio', 'Synthetic bounded session', ?, ?, ?)`
+  );
+  activity.run(profileId, older, "08:00", "08:01", 1);
+  activity.run(profileId, start, "00:00", "00:01", 1);
+  activity.run(profileId, end, "23:59", "00:01", 2);
+  const minute = db.prepare(
+    "INSERT INTO hr_minutes (profile_id, ts, bpm, n, source) VALUES (?, ?, ?, 1, 'health-connect')"
+  );
+  for (const [day, clock, bpm] of [
+    [older, "08:00", 150],
+    [start, "00:00", 110],
+    [end, "23:59", 150],
+    [next, "00:00", 150],
+  ] as const) {
+    minute.run(profileId, utcMinute(zonedWallTimeToUtc(tz, day, clock)!), bpm);
+  }
+
+  // Both decoys really exist: rounding to four weeks or extending through the
+  // cross-midnight session would count them. The requested two boundary minutes stay.
+  expect(getHrMinutesInRange(profileId, older, next)).toHaveLength(4);
+  const data = getTrainingZoneData(profileId, 4, { start, end });
+  expect(data.minutes).toEqual([0, 1, 0, 1, 0]);
+  expect(data.split).toEqual({
+    easyMin: 1,
+    hardMin: 1,
+    totalMin: 2,
+    easyPct: 50,
+    hardPct: 50,
   });
 });

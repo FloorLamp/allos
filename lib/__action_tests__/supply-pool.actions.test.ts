@@ -18,7 +18,12 @@ import {
   unlinkItemAction,
   listSharedSupplyOptions,
 } from "@/app/(app)/supplies/actions";
-import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
+import { acceptOffer, markOfferSeen } from "@/app/(app)/offer-actions";
+import { trackSupplyAskedKey } from "@/lib/dismissal-keys";
+import {
+  addIntakeItem,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import { createSharedSupply, getSharedSupply } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -455,5 +460,118 @@ describe("an item created from a bottle links on save", () => {
         .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE name = ?")
         .get(`Blocked ${t}`)
     ).toEqual({ n: 0 });
+  });
+});
+
+describe("item-bound supply count", () => {
+  it("tracks a shared bottle without private stock, then preserves an unchanged count across a decrement", async () => {
+    const t = tag();
+    const member = createLogin({ role: "member", username: `track_${t}` });
+    const mine = createProfile(`Ada ${t}`, member.id);
+    actAs(member, mine);
+    const pool = newPool(`Bottle ${t}`, null);
+    const a = item(mine.id, `Item ${t}`, null);
+    db.prepare(
+      "UPDATE intake_items SET supply_id = ?, qty_per_dose = 2, notes = 'Keep me' WHERE id = ?"
+    ).run(pool, a);
+    const offer = fd({
+      dedupe_key: trackSupplyAskedKey(a),
+      supply_id: pool,
+      quantity_on_hand: 60,
+    });
+    expect((await markOfferSeen(offer)).ok).toBe(true);
+    expect((await acceptOffer(offer)).ok).toBe(true);
+    expect(itemQty(a)).toBeNull();
+    expect(getSharedSupply(pool)?.quantity_on_hand).toBe(60);
+    expect(
+      db
+        .prepare("SELECT qty_per_dose, notes FROM intake_items WHERE id = ?")
+        .get(a)
+    ).toEqual({ qty_per_dose: 2, notes: "Keep me" });
+    db.prepare(
+      "UPDATE shared_supplies SET quantity_on_hand = 58 WHERE id = ?"
+    ).run(pool);
+    const edit = {
+      id: a,
+      name: `Item ${t}`,
+      kind: "medication",
+      supply_id: pool,
+      supply_count: 60,
+      supply_count_loaded: 60,
+      qty_per_dose: 2,
+    };
+    expect((await updateIntakeItem(fd(edit))).ok).toBe(true);
+    expect(getSharedSupply(pool)?.quantity_on_hand).toBe(58);
+    expect((await updateIntakeItem(fd({ ...edit, supply_count: 0 }))).ok).toBe(
+      true
+    );
+    expect(getSharedSupply(pool)?.quantity_on_hand).toBe(0);
+    expect((await updateIntakeItem(fd({ ...edit, supply_count: "" }))).ok).toBe(
+      true
+    );
+    expect(getSharedSupply(pool)?.quantity_on_hand).toBeNull();
+  });
+
+  it("refuses a stale private or different bottle identity before any form write", async () => {
+    const t = tag();
+    const member = createLogin({ role: "member", username: `stale_${t}` });
+    const mine = createProfile(`Ada ${t}`, member.id);
+    actAs(member, mine);
+    const a = item(mine.id, `Item ${t}`, null);
+    const before = newPool(`Before ${t}`, null);
+    const after = newPool(`After ${t}`, null);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      after,
+      a
+    );
+    for (const supplyId of ["", before]) {
+      expect(
+        (
+          await acceptOffer(
+            fd({
+              dedupe_key: trackSupplyAskedKey(a),
+              supply_id: supplyId,
+              quantity_on_hand: 30,
+            })
+          )
+        ).ok
+      ).toBe(false);
+      expect(
+        (
+          await updateIntakeItem(
+            fd({
+              id: a,
+              name: "Wrong target",
+              supply_id: supplyId,
+              supply_count: 30,
+            })
+          )
+        ).ok
+      ).toBe(false);
+    }
+    expect(
+      (
+        await updateIntakeItem(
+          fd({ id: a, name: "Missing identity", supply_count: 30 })
+        )
+      ).ok
+    ).toBe(false);
+    expect(getSharedSupply(before)?.quantity_on_hand).toBeNull();
+    expect(getSharedSupply(after)?.quantity_on_hand).toBeNull();
+    expect(
+      db.prepare("SELECT name FROM intake_items WHERE id = ?").get(a)
+    ).toEqual({ name: `Item ${t}` });
+    db.prepare(
+      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+    ).run(member.id, mine.id);
+    await expect(
+      acceptOffer(
+        fd({
+          dedupe_key: trackSupplyAskedKey(a),
+          supply_id: after,
+          quantity_on_hand: 30,
+        })
+      )
+    ).rejects.toThrow(/read.only/i);
   });
 });

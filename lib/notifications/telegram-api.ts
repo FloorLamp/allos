@@ -37,6 +37,7 @@ import { GLYPH } from "./glyphs";
 // The subset of Telegram's Update / CallbackQuery shapes the app consumes —
 // shared by the webhook route and the getUpdates poller.
 export interface TelegramCallbackQuery {
+  from?: { id: number };
   id: string;
   data?: string;
   message?: {
@@ -54,12 +55,13 @@ export interface TelegramCallbackQuery {
 // chat id and text; commands carry no callback token, so the acting profile is
 // resolved from the chat (getProfilesByTelegramChatId) like a callback tap.
 export interface TelegramMessage {
+  from?: { id: number };
   message_id?: number;
   chat?: { id?: number | string };
   text?: string;
   // The message this one replies to (Telegram populates it for a reply). Used by the
   // #859 temperature reply quick-log to attribute a "38.5" reply to its /temp prompt.
-  reply_to_message?: { text?: string };
+  reply_to_message?: { message_id?: number; text?: string };
 }
 
 export interface TelegramUpdate {

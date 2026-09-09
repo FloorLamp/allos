@@ -5,7 +5,7 @@ import {
   summarizeEquipmentAvailability,
   type EquipmentAvailability,
 } from "./equipment-availability";
-import { cleanupOrphanPrDismissals } from "./queries/upcoming/suppressions";
+import { captureDelete } from "./undo-delete-db";
 
 // Shape accepted from the manager UI. Weight is in kg (callers convert from the
 // user's display unit first).
@@ -151,65 +151,16 @@ export function setEquipmentRetired(
   });
 }
 
-// Delete an equipment row, first detaching it from any row that links to it so
-// their history survives (the columns have no FK ON DELETE action, so this is done
-// in code — #342 added the activity link, #344 the protocol reference). Equipment
-// is gear at FOUR places: the per-set strength implement
-// (exercise_sets.equipment_id), the session-level activity link
-// (activities.equipment_id), a protocol's recovery-gear reference
-// (protocols.equipment_id), and a goal's optional load context
-// (goals.equipment_id, #1610). Every detach and the delete are scoped to the profile
-// so a leaked id can't reach another profile's rows.
-//
-// A goal detaches back to MOVEMENT-WIDE, which is the honest reading: the machine it
-// was scoped to no longer exists, and #1610's compatibility clause says a destructive
-// delete must not have provenance invented for it. Its sets have moved to the
-// unassigned lane in the same transaction, so a goal left pointing at the dead id
-// would measure nothing at all.
-//
-// Changes-checked (#2138): a forged or stale id reports `not-found` instead of a
-// silent void — the confirm's promise ("Deleted X") must never outrun the row count.
-// The detaches run first (the FKs carry no ON DELETE action, so the DELETE would
-// otherwise trip them); against a nonexistent id they are no-ops by the same FKs,
-// so ordering them before the check costs nothing.
+// Equipment undo preserves the implement's load-lane identity and reconnects
+// captured links that still stand unassigned. The registry owns detachment and
+// PR dismissal capture for both this action and Data → Manage.
 export type EquipmentDeleteOutcome =
-  { kind: "deleted" } | { kind: "not-found" };
+  { kind: "deleted"; undoId: number } | { kind: "not-found" };
 
 export function deleteEquipment(
   profileId: number,
   id: number
 ): EquipmentDeleteOutcome {
-  const outcome = writeTx((): EquipmentDeleteOutcome => {
-    db.prepare(
-      `UPDATE exercise_sets SET equipment_id = NULL
-        WHERE equipment_id = ?
-          AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
-    ).run(id, profileId);
-    db.prepare(
-      `UPDATE activities SET equipment_id = NULL
-        WHERE equipment_id = ? AND profile_id = ?`
-    ).run(id, profileId);
-    db.prepare(
-      `UPDATE protocols SET equipment_id = NULL
-        WHERE equipment_id = ? AND profile_id = ?`
-    ).run(id, profileId);
-    db.prepare(
-      `UPDATE goals SET equipment_id = NULL
-        WHERE equipment_id = ? AND profile_id = ?`
-    ).run(id, profileId);
-    const removed =
-      db
-        .prepare("DELETE FROM equipment WHERE id = ? AND profile_id = ?")
-        .run(id, profileId).changes > 0;
-    return removed ? { kind: "deleted" } : { kind: "not-found" };
-  });
-  if (outcome.kind !== "deleted") return outcome;
-  // Moving every set off this implement retires its LOAD LANE, and a personal-record
-  // celebration's dismissal is keyed on (movement, lane) — so the deleted id's `pr:`
-  // suppression rows now point at a lane no set is in (#1931). This is the row-ops
-  // rule's "saved/dismissed side-state" clause: a delete must carry its dismissals
-  // too, or a lane id SQLite later reissues inherits the old machine's silence.
-  // Outside the transaction (like the other sweeps) so it reads the committed state.
-  cleanupOrphanPrDismissals(profileId);
-  return outcome;
+  const undoId = captureDelete("equipment", profileId, id);
+  return undoId === null ? { kind: "not-found" } : { kind: "deleted", undoId };
 }

@@ -15,7 +15,10 @@ import {
 } from "@/components/useWritePipeline";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
-import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  buildIntent,
+} from "@/lib/offline/queue";
 import { dateStrInTz } from "@/lib/date";
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 import ProteinQuickAdd from "@/app/(app)/nutrition/ProteinQuickAdd";
@@ -51,6 +54,17 @@ vi.mock("@/app/(app)/training/mobility-actions", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
+  useQueuedDayContextCapture:
+    () =>
+    (date: string, reach: object, capturedAt: Date = new Date()) => ({
+      dayContext: {
+        parts: { profileId: 1, day: date, reach },
+        key: `context:${date}`,
+        isPrimaryDay: true,
+      },
+      capturedAt,
+      writeToken: Promise.resolve(0),
+    }),
 }));
 
 // The REAL ledger, the REAL surface context and the REAL undo wiring run here: a
@@ -177,11 +191,12 @@ describe("the client write pipeline (#3276)", () => {
       const after = Date.now();
 
       expect(result).toBe("captured");
-      const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+      const [flow, payload, capture] = mocks.enqueue.mock.calls[0]!;
       expect(flow).toBe("dose");
       expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
       expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
-      expect(date).toBe(
+      expect(capture.capturedAt.toISOString()).toBe(payload.clientTakenAt);
+      expect(capture.dayContext.parts.day).toBe(
         dateStrInTz(PROFILE_TZ, new Date(payload.clientTakenAt))
       );
       expect(mocks.toast).toHaveBeenCalledWith(
@@ -208,12 +223,56 @@ describe("the client write pipeline (#3276)", () => {
       })
     );
 
-    const [, , payload] = mocks.enqueue.mock.calls[0]!;
+    const [, payload, capture] = mocks.enqueue.mock.calls[0]!;
     expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(actionRanAt);
+    expect(capture.capturedAt.toISOString()).toBe(payload.clientTakenAt);
     expect(
       Date.now() - Date.parse(payload.clientTakenAt)
     ).toBeGreaterThanOrEqual(25);
   });
+
+  it.each([
+    {
+      name: "the browser is already offline",
+      online: false,
+      action: async () => ({ ok: true }) as const,
+    },
+    {
+      name: "the awaited action crosses midnight before failing",
+      online: true,
+      action: async () => {
+        await Promise.resolve();
+        vi.setSystemTime(new Date("2026-09-04T00:01:00.000Z"));
+        throw new TypeError("Failed to fetch");
+      },
+    },
+  ])(
+    "keeps every queue timestamp at T1 when $name",
+    async ({ online, action }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const tappedAt = new Date("2026-09-03T23:59:00.000Z");
+      vi.setSystemTime(tappedAt);
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(online);
+      const intents: ReturnType<typeof buildIntent>[] = [];
+      mocks.enqueue.mockImplementation(async (flow, payload, capture) => {
+        intents.push(
+          buildIntent(flow, payload, capture.dayContext, capture.capturedAt)
+        );
+        return "kept";
+      });
+
+      expect(await tapInside(doseSpec({ action }))).toBe("captured");
+      expect(intents[0]).toMatchObject({
+        date: "2026-09-03",
+        capturedAt: tappedAt.toISOString(),
+        dayContext: {
+          parts: { profileId: 1, day: "2026-09-03" },
+          isPrimaryDay: true,
+        },
+      });
+      vi.useRealTimers();
+    }
+  );
 
   // The queue can refuse the capture (#3038), and the pipeline reads the answer rather
   // than promising a sync nothing will perform.
@@ -636,7 +695,12 @@ describe.each(["protein", "mobility"] as const)(
       render(
         <LoggedViaSurface value="quick-log">
           {kind === "protein" ? (
-            <ProteinQuickAdd today={day} initialGrams={0} lastPreset={25} />
+            <ProteinQuickAdd
+              date={day}
+              dayLabel="Today"
+              initialGrams={0}
+              lastPreset={25}
+            />
           ) : (
             <MobilityLogBar
               today={day}
@@ -690,8 +754,12 @@ describe.each(["protein", "mobility"] as const)(
         await act(async () => screen.getByTestId(addId).click());
         expect(mocks.enqueue).toHaveBeenCalledWith(
           kind === "protein" ? "food" : "mobility",
-          day,
-          payload
+          payload,
+          expect.objectContaining({
+            dayContext: expect.objectContaining({
+              parts: expect.objectContaining({ day }),
+            }),
+          })
         );
         expect(screen.getByTestId(totalId).textContent).toBe(queued);
         await act(async () => screen.getByTestId(removeId).click());

@@ -88,6 +88,17 @@ export function markUnsavedWork(
   notify();
 }
 
+/** Release a dirty key only when this exact mounted form still owns it. */
+export function releaseUnsavedWork(
+  key: string,
+  entry: UnsavedWorkEntry
+): boolean {
+  if (dirtyKeys.get(key) !== entry) return false;
+  dirtyKeys.delete(key);
+  notify();
+  return true;
+}
+
 /** True while any draft-backed form is holding unsaved input. */
 export function hasUnsavedWork(): boolean {
   return dirtyKeys.size > 0;

@@ -8,7 +8,7 @@ import {
 } from "@tabler/icons-react";
 import { formatSeconds } from "@/lib/duration";
 import ControlTooltip from "@/components/ControlTooltip";
-import { useHaptics } from "@/components/useHaptics";
+import { useTimerCue } from "@/components/useTimerCue";
 import FilterPills from "@/components/FilterPills";
 import Stepper from "@/components/Stepper";
 import {
@@ -17,6 +17,10 @@ import {
   clampRestSec,
   suggestedRestSec,
 } from "@/lib/live-workout";
+
+function remainingUntil(deadline: number): number {
+  return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+}
 
 // The live-mode rest timer (issue #340): a purely client-side countdown between
 // sets. Big touch targets for the phone-at-the-gym surface. The default rest is
@@ -44,10 +48,8 @@ export default function RestTimer({
   const [done, setDone] = useState(false);
   const [seedExercise, setSeedExercise] = useState(exercise);
   const lastAutoRef = useRef(autoStartKey);
-  // A single lazily-created AudioContext for the end-of-rest chime.
-  const audioRef = useRef<AudioContext | null>(null);
-  // The shared haptic adapter (#1422) — pattern choice + reduced-motion suppression.
-  const haptic = useHaptics();
+  const deadlineRef = useRef<number | null>(null);
+  const cue = useTimerCue();
 
   // Re-default the target to the lift while idle (not mid-countdown): a fresh
   // exercise gets its own rest, but an in-progress rest is left alone. This is a
@@ -61,40 +63,24 @@ export default function RestTimer({
     }
   }
 
-  const beep = useCallback(() => {
-    // Best-effort audible + haptic cue; both degrade silently where unsupported
-    // (no AudioContext, autoplay blocked, or no Vibration API).
-    try {
-      const Ctor =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (Ctor) {
-        const ctx = audioRef.current ?? new Ctor();
-        audioRef.current = ctx;
-        void ctx.resume?.();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.42);
-      }
-    } catch {
-      // AudioContext unavailable/blocked — the visual "Rest done" cue stands in.
+  const reconcile = useCallback(() => {
+    const deadline = deadlineRef.current;
+    if (deadline === null) return;
+    const next = remainingUntil(deadline);
+    setRemaining(next);
+    if (next === 0) {
+      // Consume this run before either a tick or visibility return can cue it again.
+      deadlineRef.current = null;
+      setRunning(false);
+      setDone(true);
+      cue();
     }
-    // The end-of-rest double-pulse — distinguishable through a pocket from the
-    // `commit` tick, and suppressed under prefers-reduced-motion (#1422).
-    haptic("alert");
-  }, [haptic]);
+  }, [cue]);
 
   const start = useCallback(
     (seconds?: number) => {
       const secs = seconds ?? target;
+      deadlineRef.current = secs > 0 ? Date.now() + secs * 1000 : null;
       setRemaining(secs);
       setDone(false);
       setRunning(secs > 0);
@@ -111,32 +97,43 @@ export default function RestTimer({
     }
   }, [autoStartKey, start]);
 
-  // The countdown tick. One interval while running; clears on pause/unmount.
+  // Callbacks only repaint the clock; a throttled tab still owns the same deadline.
   useEffect(() => {
     if (!running) return;
-    const h = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          setRunning(false);
-          setDone(true);
-          beep();
-          return 0;
-        }
-        return r - 1;
-      });
-    }, 1000);
-    return () => clearInterval(h);
-  }, [running, beep]);
+    const h = setInterval(reconcile, 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reconcile();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(h);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [running, reconcile]);
+
+  const pause = () => {
+    reconcile();
+    deadlineRef.current = null;
+    setRunning(false);
+  };
 
   const reset = () => {
+    deadlineRef.current = null;
     setRunning(false);
     setDone(false);
     setRemaining(target);
   };
 
   const nudge = (delta: number) => {
-    const next = clampRestSec((running || done ? remaining : target) + delta);
+    const current =
+      running && deadlineRef.current !== null
+        ? remainingUntil(deadlineRef.current)
+        : done
+          ? remaining
+          : target;
+    const next = clampRestSec(current + delta);
     if (running || done) {
+      if (running) deadlineRef.current = Date.now() + next * 1000;
       setRemaining(next);
       if (next > 0) setDone(false);
     } else {
@@ -200,7 +197,7 @@ export default function RestTimer({
               <button
                 {...anchor}
                 type="button"
-                onClick={() => (running ? setRunning(false) : start())}
+                onClick={() => (running ? pause() : start())}
                 data-testid="rest-toggle"
                 className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-500 active:scale-95"
               >

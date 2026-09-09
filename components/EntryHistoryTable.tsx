@@ -34,33 +34,8 @@ export interface EntryHistoryColumn<T> {
   cell: (item: T) => ReactNode;
 }
 
-// The shared entry-history table (#1491, consolidation-survey addendum).
-//
-// "A dated log entry with inline edit, ⋯ edit/delete, undoable delete, and a
-// collapsed-N expand toggle" had become a four-way structural clone — practice
-// sessions, substance consumption (the newest copy, +657 lines in #2026),
-// screening instruments, and dose history — each independently maintaining the
-// same collapsed-count constant, the same editingId/menuOpenId state trio, the
-// same full-width inline edit row, and the same primitive set. This component
-// owns that shape once:
-//
-//   - the ResponsiveTable/`.th` shell and the slotted card presentation,
-//   - the collapsed-5 window with the expand/collapse toggle,
-//   - the edit-in-place swap (a `Td slot="full"` row rendering the caller's
-//     form — the form itself stays with the caller, because each domain's
-//     typed mutation outcomes and refusal copy are its own),
-//   - the ⋯ menu with Edit/Delete, and
-//   - the delete path: shared confirm dialog, then `useUndoableDelete` — every
-//     "remove one logged event" is undoable by owner ruling (2026-08-05;
-//     practice sessions and substance rows both return `{undoId}` since #2038).
-//
-// Per-surface test ids are parameters, so existing specs keep their hooks.
-//
-// The fourth clone — dose history — was still a bespoke `<ul>` when this comment
-// was written; #2417 migrated it, so BOTH dose-history scopes (the per-item panel
-// and the cross-item ledger) now render here. That migration is what added
-// `readOnly`: the dose panel is the first caller with a genuinely read-only
-// viewer.
+// Shared dated-entry rendering, row menus, inline editors, bounded history and undo.
+// Domain forms own their fields and typed mutation outcomes.
 export default function EntryHistoryTable<T extends { id: number }>({
   items,
   columns,
@@ -74,6 +49,8 @@ export default function EntryHistoryTable<T extends { id: number }>({
   rowTestId,
   editTestId,
   deleteTestId,
+  editLabel = "Edit",
+  deleteLabel = "Delete",
   renderEditForm,
   confirmDelete,
   deleteFormData,
@@ -106,6 +83,8 @@ export default function EntryHistoryTable<T extends { id: number }>({
   rowTestId?: (item: T) => string;
   editTestId?: (item: T) => string;
   deleteTestId?: (item: T) => string;
+  editLabel?: string;
+  deleteLabel?: string;
   // The caller's inline edit form (fields, submit handling, typed-outcome
   // refusal copy). `done` closes the edit row. OMIT IT and the ⋯ offers Delete
   // alone: a table whose rows are a ROLLUP over events corrects those events
@@ -299,7 +278,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
                                   }}
                                   className={MENU_ITEM}
                                 >
-                                  Edit
+                                  {editLabel}
                                 </button>
                               ) : null}
                               <button
@@ -313,7 +292,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
                                 }}
                                 className={MENU_ITEM_DANGER}
                               >
-                                Delete
+                                {deleteLabel}
                               </button>
                             </>
                           )}

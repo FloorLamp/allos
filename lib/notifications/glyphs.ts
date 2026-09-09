@@ -395,7 +395,7 @@ const VOCABULARY = {
     glyph: "📦",
     role: "state",
     means:
-      "A refill has been ORDERED and is on its way — the person's action, not the shortage that prompted it.",
+      "A refill shipment has been ORDERED or RECEIVED — the person's action, not the shortage that prompted it.",
   },
   required: {
     glyph: "🔴",

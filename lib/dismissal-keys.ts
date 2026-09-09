@@ -249,6 +249,12 @@ export function prDismissalKeysLosingBacking(
 // and the display resolver — are pure and must stay importable from any tier.
 export const OFFER_ASKED_PREFIX = "offer-asked:";
 
+export const TRACK_SUPPLY_ASKED_PREFIX = "offer-asked:track-supply:";
+
+export function trackSupplyAskedKey(itemId: number): string {
+  return `${TRACK_SUPPLY_ASKED_PREFIX}${itemId}`;
+}
+
 export function offerAskedKey(familyId: string): string {
   return `${OFFER_ASKED_PREFIX}${familyId}`;
 }

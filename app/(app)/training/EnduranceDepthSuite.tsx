@@ -1,5 +1,5 @@
 import DestinationLink from "@/components/DestinationLink";
-import type { CardioZoneCoverage } from "@/lib/queries";
+import type { TrainingZoneData } from "@/lib/queries";
 import type { SessionOverviewRollup } from "@/lib/session-overview";
 import type { FitnessPercentile } from "@/lib/fitness-norms";
 import { formatPercentile } from "@/lib/fitness-norms";
@@ -21,7 +21,7 @@ export default function EnduranceDepthSuite({
   distanceUnit,
   adultClinicalContent,
 }: {
-  zones: CardioZoneCoverage | null;
+  zones: TrainingZoneData;
   form: SessionOverviewRollup;
   vo2: FitnessPercentile | null;
   distanceUnit: DistanceUnit;
@@ -52,7 +52,7 @@ export default function EnduranceDepthSuite({
         >
           <div>
             <p className="section-label">Zone coverage this week</p>
-            {zones ? (
+            {zones.model && zones.split.totalMin > 0 ? (
               <>
                 <div className="mt-2 flex h-3 rounded-full bg-slate-100 dark:bg-ink-800">
                   {zones.minutes.map((minutes, index) => (
@@ -69,7 +69,7 @@ export default function EnduranceDepthSuite({
                         ][index]
                       }`}
                       style={{
-                        width: `${zones.totalMinutes > 0 ? (minutes / zones.totalMinutes) * 100 : 0}%`,
+                        width: `${(minutes / zones.split.totalMin) * 100}%`,
                       }}
                     />
                   ))}
@@ -81,8 +81,8 @@ export default function EnduranceDepthSuite({
                   )}
                 />
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  Zone 2 {zones.minutes[1] ?? 0} min · {zones.easyPercent}% easy
-                  / {100 - zones.easyPercent}% hard
+                  Zone 2 {zones.minutes[1] ?? 0} min · {zones.split.easyPct}%
+                  easy / {zones.split.hardPct}% hard
                 </p>
               </>
             ) : (

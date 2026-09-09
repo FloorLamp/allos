@@ -113,6 +113,17 @@ describe("palette create actions", () => {
     }
   });
 
+  it.each([
+    ["add-medication", "medication"],
+    ["add-supplement", "supplement"],
+  ] as const)("%s opens the Dose sheet at the full %s form", (id, kind) => {
+    expect(PALETTE_ACTIONS.find((action) => action.id === id)?.target).toEqual({
+      kind: "overlay",
+      form: "dose",
+      prefill: { doseIntakeKind: kind },
+    });
+  });
+
   it("navigates ONLY where no drawer form exists (#2184)", () => {
     // The residual navigate set is a product fact, not an accident: appointment,
     // progress photo, and clinical result have no quick-entry drawer form (a

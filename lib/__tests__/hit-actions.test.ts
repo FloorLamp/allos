@@ -12,8 +12,27 @@ describe("medicationHitActions", () => {
   it("always offers Log dose, and Refill only when supply is tracked", () => {
     expect(medicationHitActions(7, true)).toEqual([
       { kind: "log-dose", label: "Log dose", entityId: 7 },
-      { kind: "refill", label: "Refill", entityId: 7 },
+      {
+        kind: "refill",
+        supplyId: null,
+        label: "Refill",
+        entityId: 7,
+        href: "/medications/7?action=edit&fact=supply&refill=1",
+      },
     ]);
+  });
+
+  it("offers only a refill for a tracked supplement, with its exact first-size door", () => {
+    expect(medicationHitActions(8, true, "supplement")).toEqual([
+      {
+        kind: "refill",
+        supplyId: null,
+        label: "Refill",
+        entityId: 8,
+        href: "/nutrition?tab=supplements&item=8&fact=supply&refill=1",
+      },
+    ]);
+    expect(medicationHitActions(8, false, "supplement")).toEqual([]);
   });
 
   it("omits Refill for an untracked medication", () => {

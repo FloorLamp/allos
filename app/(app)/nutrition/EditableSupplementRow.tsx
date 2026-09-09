@@ -1,16 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { nutritionTabHref } from "@/lib/hrefs";
 import { useState } from "react";
-import type {
-  IntakeItem,
-  IntakeDose,
-  IntakePair,
-  IntakeConditionOption,
-} from "@/lib/types";
+import type { IntakeItem, IntakeDose, IntakePair } from "@/lib/types";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import type { IntakeItemPurpose } from "@/lib/intake-purposes";
-import type { InteractionItem } from "@/lib/drug-interactions";
-import type { PgxVariantInput } from "@/lib/pgx";
 import {
   CONDITION_LABELS,
   FOOD_TIMING_HINTS,
@@ -19,16 +14,22 @@ import {
   stackSchedule,
 } from "@/lib/intake-schedule";
 import type { AdherenceDot } from "@/lib/intake-adherence";
-import type { DoseRate } from "@/lib/refill";
+import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import {
   RefillBadge,
   SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
 import type { PoolChipData } from "@/lib/queries/intake";
+import RefillButton from "@/components/medications/RefillButton";
+import type { OfferFamily } from "@/lib/offers";
+import OfferInPlace from "@/components/OfferInPlace";
+import { trackSupplyAskedKey } from "@/lib/dismissal-keys";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 import ModalShell from "@/components/ModalShell";
+import { pediatricAgeYears } from "@/lib/prn-dosing";
 import FoodGuidance from "@/components/FoodGuidance";
 import DoseHistoryPanel, {
   type DoseHistoryEntry,
@@ -67,14 +68,11 @@ export default function EditableSupplementRow({
   isTaken,
   isSkipped,
   doses,
+  intakeContext,
   retiredDoses = [],
-  allIntakeItems,
-  stackItems,
-  pgxVariants,
   pairs,
   ingredients = [],
   purposes = [],
-  purposeConditions = [],
   purposeBiomarkers = [],
   strip,
   refillRate,
@@ -85,9 +83,14 @@ export default function EditableSupplementRow({
   defaultHistoryTime,
   historyWindowDays,
   activityScheduleAvailable = true,
+  canWrite = true,
+  supplyRepresentative = true,
+  initialSupplyEditor = false,
+  initialRefill = false,
+  trackSupplyOffer = null,
 }: {
   supplement: IntakeItem;
-  dose: IntakeDose;
+  dose?: IntakeDose;
   /**
    * TODAY'S RESOLUTION, ONLY WHERE THIS ROW IS THE ONE STATING IT (#3987).
    *
@@ -105,18 +108,15 @@ export default function EditableSupplementRow({
   isTaken?: boolean;
   isSkipped?: boolean;
   doses: IntakeDose[];
+  intakeContext: IntakeFormContext;
   // Retired doses of this item (#2131), for the edit form's Restore affordance.
   retiredDoses?: IntakeDose[];
-  allIntakeItems: { id: number; name: string }[];
-  stackItems: InteractionItem[];
-  pgxVariants: PgxVariantInput[];
   pairs: IntakePair[];
   // This item's label composition (#2856): the "What's in this" disclosure below and
   // the edit form's repeater. Empty for the ordinary single-substance item.
   ingredients?: IntakeItemIngredient[];
   // Purpose links and their picker sources (#2857), passed straight to the edit form.
   purposes?: IntakeItemPurpose[];
-  purposeConditions?: IntakeConditionOption[];
   purposeBiomarkers?: string[];
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
@@ -136,18 +136,40 @@ export default function EditableSupplementRow({
   defaultHistoryTime: string;
   historyWindowDays: number;
   activityScheduleAvailable?: boolean;
+  canWrite?: boolean;
+  supplyRepresentative?: boolean;
+  initialSupplyEditor?: boolean;
+  initialRefill?: boolean;
+  trackSupplyOffer?: OfferFamily["copy"] | null;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialSupplyEditor && canWrite);
   const [showHistory, setShowHistory] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const router = useRouter();
+  const closeEditor = () => {
+    setEditing(false);
+    if (initialSupplyEditor)
+      router.replace(nutritionTabHref("supplements"), { scroll: false });
+  };
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const s = supplement;
 
+  const lowSupply =
+    s.supply_id != null
+      ? !!poolChip?.low
+      : isLowSupply(
+          daysOfSupplyForItem(
+            s.quantity_on_hand,
+            s.qty_per_dose,
+            refillRate,
+            doses.length
+          )
+        );
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
-  const foodHint = FOOD_TIMING_HINTS[dose.food_timing];
+  const foodHint = dose ? FOOD_TIMING_HINTS[dose.food_timing] : null;
   const multi = doses.length > 1;
-  const schedule = stackSchedule(s, dose).label;
+  const schedule = dose ? stackSchedule(s, dose).label : "Not scheduled";
   // The refill "≈N days left" badge is the shared RefillBadge formatter (#38/#301),
   // rendered identically here and on the medication card (#747 parity).
 
@@ -195,12 +217,26 @@ export default function EditableSupplementRow({
             )}
             {poolChip ? (
               <SharedSupplyChip pool={poolChip} />
-            ) : (
+            ) : dose ? (
               <RefillBadge
                 quantityOnHand={s.quantity_on_hand}
                 qtyPerDose={s.qty_per_dose}
                 refillRate={refillRate}
                 doseCount={doses.length}
+              />
+            ) : null}
+            {canWrite && supplyRepresentative && lowSupply && (
+              <RefillButton
+                itemId={s.id}
+                supplyId={s.supply_id}
+                hasLastFill={s.last_fill_size != null}
+                lastFillSize={s.last_fill_size}
+                supplyCycleDays={daysOfSupplyForItem(
+                  s.last_fill_size,
+                  s.qty_per_dose,
+                  refillRate,
+                  doses.length
+                )}
               />
             )}
             {s.critical === 1 && (
@@ -220,7 +256,7 @@ export default function EditableSupplementRow({
             two would be the duplication #3987 retired. A paused item has none either,
             matching setDoseStatus's own refusals. The logged day is TODAY: a tap says
             "I took this now", it never claims the item was scheduled. */}
-          {!!s.active && isTaken !== undefined && (
+          {!!s.active && dose && isTaken !== undefined && (
             <DoseStatusControl
               doseId={dose.id}
               taken={isTaken}
@@ -247,17 +283,19 @@ export default function EditableSupplementRow({
                 >
                   Edit
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setShowHistory((open) => !open);
-                    close();
-                  }}
-                  className={MENU_ITEM}
-                >
-                  {showHistory ? "Hide dose history" : "Dose history"}
-                </button>
+                {(dose || doseHistory.length > 0) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowHistory((open) => !open);
+                      close();
+                    }}
+                    className={MENU_ITEM}
+                  >
+                    {showHistory ? "Hide dose history" : "Dose history"}
+                  </button>
+                )}
                 {/* STATE-NAMED transition (#2133): the form posts the state this render
                   promised (`to`), and the toast words come from the write's OUTCOME —
                   a stale row's tap gets the typed refusal ("Already paused…"), never
@@ -329,7 +367,7 @@ export default function EditableSupplementRow({
             data-testid="supplement-dose-brand"
             className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400"
           >
-            {[dose.amount, schedule, subline]
+            {[dose?.amount, schedule, subline]
               .filter((part): part is string => !!part)
               .map((part, index) => (
                 <span key={part} className="flex items-center gap-2">
@@ -356,6 +394,7 @@ export default function EditableSupplementRow({
             name={s.name}
             rxcui={s.rxcui}
             rxcuiIngredients={s.rxcui_ingredients}
+            age={pediatricAgeYears(intakeContext.pediatric)}
             suppressedFoodKeys={suppressedFoodKeys}
           />
           <AdherenceSummaryLine strip={strip} noteworthyOnly />
@@ -381,11 +420,12 @@ export default function EditableSupplementRow({
               }))}
               asNeeded={isOnDemand(s)}
               courseBound={false}
+              canWrite={!!dose}
               history={doseHistory}
               strip={strip}
               maxDate={historyMaxDate}
               defaultTime={defaultHistoryTime}
-              note={`Showing the last ${historyWindowDays} days. A backfill can still reach any past date.`}
+              note={`Showing the last ${historyWindowDays} days.${dose ? " A backfill can still reach any past date." : ""}`}
               backfillDisabledReason={
                 doses.length === 0
                   ? "This item has no dose to log against"
@@ -396,32 +436,46 @@ export default function EditableSupplementRow({
         )}
       </div>
 
-      {editing && (
-        <ModalShell
-          title={`Edit ${s.name}`}
-          onClose={() => setEditing(false)}
-          size="lg"
-        >
+      {trackSupplyOffer && canWrite && supplyRepresentative && (
+        <OfferInPlace
+          dedupeKey={trackSupplyAskedKey(s.id)}
+          familyId="track-supply"
+          supplyId={s.supply_id}
+          {...trackSupplyOffer}
+        />
+      )}
+      {editing && canWrite && (
+        <ModalShell title={`Edit ${s.name}`} onClose={closeEditor} size="lg">
           <div
             data-testid="supplement-edit-panel"
             className="min-h-0 overflow-y-auto px-1"
           >
             <IntakeItemForm
+              intakeContext={intakeContext}
               action={updateIntakeItem}
               kind="supplement"
               item={s}
+              initialFact={initialSupplyEditor ? "supply" : null}
+              initialRefill={initialRefill}
+              initialSupply={
+                poolChip
+                  ? {
+                      id: poolChip.supplyId,
+                      name: poolChip.name,
+                      strength: poolChip.strength,
+                      form: poolChip.form,
+                      onHand: poolChip.quantityOnHand,
+                    }
+                  : null
+              }
               doses={doses}
               ingredients={ingredients}
               purposes={purposes}
-              conditions={purposeConditions}
               biomarkers={purposeBiomarkers}
               retiredDoses={retiredDoses}
-              allIntakeItems={allIntakeItems}
-              stackItems={stackItems}
-              pgxVariants={pgxVariants}
               pairs={pairs}
               activityScheduleAvailable={activityScheduleAvailable}
-              onDone={() => setEditing(false)}
+              onDone={closeEditor}
             />
           </div>
         </ModalShell>

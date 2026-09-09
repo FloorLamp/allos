@@ -1,49 +1,12 @@
-// Semantic href helpers + the app-wide internal-route type alias (issue #285).
-//
-// Two things live here:
-//
-// 1. `AppRoute` — the single alias every href-carrying DATA MODEL field is typed
-//    with (`href: AppRoute`, not `href: string`). It resolves to Next's generated
-//    `Route` type (from `experimental`-graduated `typedRoutes`, enabled in
-//    next.config.js), so an invalid internal pathname stored in a model — the
-//    #283 dead-link class (`/goals`, `/medical` after a page was consolidated
-//    away) — becomes a `tsc` error. External URLs stay a plain `string`; only
-//    INTERNAL app routes are `AppRoute`.
-//
-//    THE ALIAS IS ONLY AS TYPED AS THE GENERATED TYPES ARE PRESENT (#2293).
-//    `Route<T>` carries the real route union when `.next/types/routes.d.ts`
-//    exists and falls back to `string & {}` when it does not — silently, with
-//    every dead literal accepted. `/.next/` and `next-env.d.ts` are both
-//    gitignored, so a fresh checkout has neither until something generates them.
-//    That is why `npm run typecheck` is `next typegen && tsc --noEmit` rather
-//    than bare `tsc`: typegen (~1s) materialises the union so the fast gate has
-//    the same teeth `npm run build` has. If a route literal ever stops being
-//    checked, look there first — the failure mode is silence, not an error.
-//
-//    Reversibility (issue #285 note): `typedRoutes` is young. If a Next upgrade
-//    breaks it, flip this ONE line to `export type AppRoute = string;` and every
-//    field degrades to a plain string without touching each interface.
-//
-// 2. The rule-carrying href HELPERS. The one-question-one-computation convention
-//    applied to links: a helper exists ONLY where the link encodes a RULE that is
-//    (or is about to be) duplicated — never a generator that just returns a static
-//    literal (a generator returning "/medical" is exactly as dead as the literal).
-//    Static/one-off links stay plain literals, now compile-checked and greppable.
-//
-// Two flavors of helper:
-//   - QUERY-RULE helpers (clinicalResultDetailHref, historyDayHref, dataSectionHref):
-//     encode a canonical-gating / param-shape rule shared by ≥2 surfaces.
-//   - DYNAMIC-ROUTE helpers (importHref, encounterHref, protocolHref,
-//     immunizationHref): a dynamic route like `/import/5` is NOT assignable to
-//     the field alias `AppRoute` (Next's `Route<string>` only admits static +
-//     query/hash routes — dynamic segments need the literal inferred). These
-//     helpers validate the pathname against the real route tree via a
-//     `Route<`/x/${…}`>` ANNOTATION (a removed `/x/[id]` page fails the build
-//     here — that's the point), then widen to `AppRoute` for storage in a field.
-//     Inline `<Link href={`/import/${id}`}>` in JSX needs no helper — Next infers
-//     and validates those directly.
+// Shared internal-route types and URL builders. AppRoute checks pathnames against
+// Next's generated routes; run `npm run typecheck` to generate those types first.
+// Query helpers own repeated parameter rules and constrain values that typedRoutes
+// cannot check. One-off static links can stay literals. Dynamic-route helpers
+// validate their template with Route<...> before widening it to AppRoute.
 
 import type { Route } from "next";
+import type { TrainingTab } from "./training-tabs";
+import type { OnboardingStep } from "./onboarding";
 import type { CardioMetric, RangeId } from "./analyze-view";
 import type { ExerciseCompareMetric } from "./queries/training/strength";
 import { continuousReadingSlug } from "./reading-cadence";
@@ -54,6 +17,17 @@ import type { IntakeItemKind } from "./types/intake";
 import type { HistoryFamily, HistoryKind } from "./history-format";
 
 export type AppRoute = Route;
+
+export function trainingTabHref(tab: TrainingTab, anchor?: string): AppRoute {
+  return `/training?tab=${tab}${anchor ? `#${encodeURIComponent(anchor)}` : ""}`;
+}
+
+export function onboardingStepHref(
+  step: OnboardingStep,
+  error?: string
+): AppRoute {
+  return `/onboarding?step=${step}${error ? `&error=${encodeURIComponent(error)}` : ""}`;
+}
 
 // --------------------------------------------------------------------------
 // Intake (supplements / medications) surface seam (issue #746)
@@ -71,8 +45,21 @@ export type AppRoute = Route;
 export const NUTRITION_TABS = ["food", "supplements"] as const;
 export type NutritionTab = (typeof NUTRITION_TABS)[number];
 
+export function parseNutritionTab(
+  value: string | string[] | undefined
+): NutritionTab {
+  const first = Array.isArray(value) ? value[0] : value;
+  return NUTRITION_TABS.includes(first as NutritionTab)
+    ? (first as NutritionTab)
+    : "food";
+}
+
 export function nutritionTabHref(tab: NutritionTab): AppRoute {
   return tab === "food" ? "/nutrition" : `/nutrition?tab=${tab}`;
+}
+
+export function nutritionDayHref(date: string): AppRoute {
+  return `/nutrition?date=${encodeURIComponent(date)}` as AppRoute;
 }
 
 // The standalone Medications page (#746) — medications left the old combined
@@ -94,6 +81,10 @@ export function retrospectiveHref(year?: number): AppRoute {
 // has no kind of its own), so every shared-bottle chip, pooled low-supply finding, and
 // pool nudge deep-links here rather than to a kind page.
 export const SUPPLIES_HREF: AppRoute = "/supplies";
+
+export function sharedSupplyHref(supplyId: number): AppRoute {
+  return `/supplies#supply-${supplyId}`;
+}
 
 // The Illness episodes index (#856), which BECAME the cross-profile care-trail surface
 // (#1373 Part 2): the view-set banner drives whose data shows, a `?kind=` toggle drives
@@ -123,6 +114,18 @@ export const INSTRUMENTS_HREF: AppRoute = "/records/specialty/mental-health";
 // ONE place the intake-surface seam is encoded, so every deep-linker (Upcoming,
 // Timeline, search, refill/dose Telegram buttons, imports) agrees on where each
 // kind lives — a #285 "rule-carrying link" (the rule = kind → surface).
+export function intakeSupplyHref(
+  kind: IntakeItemKind,
+  itemId: number,
+  refill = false
+): AppRoute {
+  const base =
+    kind === "medication"
+      ? `/medications/${itemId}?action=edit&fact=supply`
+      : `/nutrition?tab=supplements&item=${itemId}&fact=supply`;
+  return `${base}${refill ? "&refill=1" : ""}` as AppRoute;
+}
+
 export function intakeHref(kind: IntakeItemKind): AppRoute {
   return kind === "medication"
     ? MEDICATIONS_HREF

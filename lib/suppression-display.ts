@@ -40,6 +40,7 @@ import { pairedObservationEntry } from "./paired-observations";
 import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
 import {
   OFFER_ASKED_PREFIX,
+  TRACK_SUPPLY_ASKED_PREFIX,
   PR_CARDIO_PREFIX,
   PR_STRENGTH_PREFIX,
 } from "./dismissal-keys";
@@ -504,6 +505,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
         ? `Bedtime watch reminder offer — ${sourceName}`
         : "Bedtime watch reminder offer";
     },
+  },
+  {
+    prefix: TRACK_SUPPLY_ASKED_PREFIX,
+    domain: "Suggestions",
+    label: () => "Supply tracking offer",
   },
   {
     // An offer family's "did we ask" (#4840), keyed `offer-asked:<familyId>`. The

@@ -1,50 +1,60 @@
 # Recovery
 
+Preserve work and verify current state before restarting, retrying, or deleting.
+Use the [environment guide](environment.md) for setup and access, and the
+[change and test policy](../change-policy.md) for scope. Recovery remains within
+the session's authorization.
+
 ## Restarts
 
-- Run `scripts/orchestrator-checkin.sh` after every restart or activity gap.
-- Detect recovery needs from persisted state, worktrees, and pushed refs—not
-  process liveness, transcript mtime, or old commits.
-- A reported “stopped by the user” is an environment reclaim unless the owner
-  explicitly said they stopped it.
-- Compare transcript byte growth and commit age when diagnosing a stall.
-- Before reporting or debugging a stopped agent, commit dirty work as an
-  explicitly unverified WIP and push its branch.
-- The restart verdict is STICKY and survives being re-read: a detected restart
-  raises `$SCRATCH/.agents_dead`, every later run keeps reporting the fleet as
-  dead, and only `orchestrator-checkin.sh --relaunched` clears it. Clear it
-  after the rescues and the relaunches, never before.
-- The verdict authorises the RESCUE, never the RELAUNCH: a snapshot resume
-  changes both ids while the process tree survives. Confirm with `ListAgents`
-  before relaunching — rescuing a live tree costs a junk commit, relaunching
-  onto one puts two writers on a worktree.
-- Resume agents with a precise state summary. Never run background work that
-  depends on an ephemeral completion event.
-- After rescue and relaunch, return to the Ladder's recorded cycle. Refill
-  unmet authorized work; an empty roster alone proves neither completion nor
-  continuous exhaustion.
+- Run `scripts/orchestrator-checkin.sh` after a restart or activity gap. Its roster,
+  persisted state, worktrees, and pushed refs identify work to inspect; they do
+  not by themselves prove whether an agent is currently running.
+- Consult the harness's live-agent status and any captured process handles before
+  relaunching or writing into an agent's worktree. A timeout while observing a
+  process is not a terminal result. Do not restart work solely because observation
+  expired, and honor an explicit user stop.
+- Preserve a stopped agent's uncommitted work before investigating the failure.
+  Check ownership and content, then checkpoint it on its branch as explicitly
+  unverified WIP when necessary. Push through available authorized access. Do not
+  overwrite a live agent or unrelated user changes.
+- The check-in's restart marker, `$SCRATCH/.agents_dead`, persists until
+  `orchestrator-checkin.sh --relaunched` clears it. Clear it after recovery and any
+  necessary relaunches, not merely because the marker was read. A marker alone is
+  not relaunch authorization.
+- Resume with a precise state summary: branch/head, saved work, completed checks,
+  remaining requirements, and blocker. Give background work durable state to read;
+  do not depend on an ephemeral completion event.
+- Return to the Ladder's recorded cycle and its [lifecycle](lifecycle.md). An empty
+  roster alone establishes neither completion nor continuous exhaustion.
 
 ## Lost credentials
 
-- Credential loss can leave reads working while pushes fail. Reauthorize push
-  access through the connector; verify with a push dry-run. Never search the
-  filesystem or environment for credentials. While writes are down, keep
-  agents working and bank completed reasoning through connector writes.
+Credential loss can leave reads working while pushes fail. Reauthorize through
+the session's approved credential mechanism and verify push access with a dry run.
+Never search for secrets. Continue useful authorized work and checkpoint locally
+while writes are unavailable; report which results remain unpushed.
+
+An approval rejection is different from missing credentials. Do not switch
+transports or use an indirect write to bypass it.
 
 ## Stall test
 
-- Use `dispatch-brief.mjs list`; investigate work past three times the measured
-  completion median.
-- Check that the worktree exists and that its current commit is pushed.
-- Ask for the exact refusal or blocker. Do not infer progress from liveness.
+Use `dispatch-brief.mjs list` to identify work past three times its measured
+completion median. Inspect the worktree, current commit, last pushed checkpoint,
+live agent/process status, and exact refusal or blocker. File or transcript growth
+can help diagnose activity; neither liveness nor an old timestamp proves progress
+or completion. Resolve the cause before starting a replacement.
 
 ## A merge that half-landed
 
-- A 502 from the merge call does not mean the merge did not happen: #4912's
-  squash landed as `91a9681d` while the record stayed open. Re-read
-  `origin/main` for your commit title before retrying, then close the PR by
-  hand once its files match the squash.
-- A remote branch cannot be deleted from here (403 at the proxy), so a
-  surviving branch is only USUALLY proof that nothing merged — which is what
-  `dispatch-brief.mjs done` refuses on, and why it misfires above. Retire with
-  `--keep` after verifying the content on `main` file by file.
+An error response from a merge request can leave its result uncertain. Before
+retrying, read the PR state, remote target branch, and relevant commits. Compare
+what actually landed with the intended files and behavior; a matching title or
+surviving source branch is insufficient evidence.
+
+If the content landed while the PR record remains open, reconcile that record
+within the authorized workflow. Retire the dispatch with `--keep` when its normal
+cleanup cannot verify the surviving refs, documenting the content comparison.
+Never delete branch work solely because the PR is closed, and do not treat a
+closed-but-unmerged record as proof that its changes are absent from `main`.

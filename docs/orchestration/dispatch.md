@@ -1,108 +1,120 @@
 # Dispatch and pipeline
 
-Queue labels live in [labels.md](labels.md) — the two label axes, the
-closed taxonomy, and `needs-human` handling.
+This guide owns queue selection, capacity, and branch promotion. Use
+[lifecycle](lifecycle.md) for authorized scope and termination,
+[labels](labels.md) for classification, and the
+[change and test policy](../change-policy.md) for the smallest complete task and
+useful verification. Session instructions take precedence over these defaults.
 
 ## Dispatch
 
-- Use `scripts/orchestration/dispatch-brief.mjs new` for every agent; adopt any
-  unrecorded live dispatch. Its setup prints `PINNED_BASE_SHA`; keep it and use
-  that exact SHA—not moving `origin/main`—for any reset or history rewrite.
-- Cluster two to six related issues by domain and files. Avoid file overlap;
-  sequence work when overlap cannot be fenced. `claims <path>` names the active
-  lane holding a path; CANNOT TELL is NOT clear: answer before the lane edits.
-- A `design` issue is dispatchable only when its body records the owner
-  decision (the #2701 shape) or a direction with stated falsifiers (#2641).
-  One still carrying the design question is owner-gated; agents never explore.
-- Older issues start with a current-state block: shipped PRs, unmet acceptance
-  criteria, latest owner ruling, and the next bounded action. Refresh it after
-  a partial merge; historical comments do not substitute for remaining scope.
-- Cap E2E work at two agents — `dispatch-brief.mjs` refuses a third `--e2e`
-  lane on every path (new/resume/adopt) and warns past the machine cap.
-  Ordinary concurrency is min(harness slots, machine cap) — five on the
-  4-core container (#2964); a harness exposing fewer slots caps there (#3710).
-- A per-session rate-limit rejection kills every agent at once and is a
-  pause, not a wind-down: banked branches survive. After one, run FOUR agents
-  per session, passes included, until a five-hour window passes clean.
-- The cap counts agents RUNNING. The queue that jams first is PRs awaiting
-  REVIEW, which is serial: hold dispatch at about three unreviewed PRs.
-- With ready P1s, reserve two user/data lanes and select the highest-risk ready
-  P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
-  Compare confirmed safety, stored-record integrity, delivery and recovery
-  failures before new features or cleanup. Rank the remaining impact, not the
-  issue's age, author, original title, or estimated lines removed.
-- **Self-filed work joins the BACK of its queue.** An issue you or a lane
-  filed defaults to P3, sourced OLDEST FIRST only when no owner-filed work of
-  equal or higher priority is ready. Sole exception: a DEMONSTRATED P0/P1
-  regression a merge just introduced. An owner-authorized priority audit can
-  also promote a demonstrated existing defect; record its evidence and impact.
-- Lanes never file issues. Findings ride the return summary; the orchestrator
-  decides what becomes an issue — a filed observation displaces real work.
-- An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
-- STAGGER starts: durations cluster (85±5 min), so simultaneous starts are
-  simultaneous gates. `new` warns within 25 minutes; a P0 preempts.
-- No lane or session touches prod: no replay, backfill, snapshot read or
-  migration run. A lane states what the owner would run; the owner runs it.
-- An untouched-file failure is unattributed, including an assertion failure.
-  Inspect preceding timeouts and shared state, reproduce the focused case, and
-  compare the same case on the pinned base before blaming contention or the diff.
-- Every brief uses the generated template and `agent-gates.sh`'s gate order.
-- Push meaningful checkpoints. A branch not next to land stays branch-only — no
-  PR at all, and a draft is not a banking state. The candidate's PR opens READY
-  (environment.md §GitHub access), never for CI a pending merge will invalidate.
-- Claim the issue, naming the branch, BEFORE briefing — [claims.md](claims.md).
-- Parallelize banked implementation/local pre-review; serialize the sole
-  candidate's remote review, CI, and merge.
-- A census meant to be EXHAUSTIVE passes ripgrep `-a`: files carrying a
-  deliberate NUL separator (`nul-byte-census.test.ts` names them) read as
-  binary, and a plain `rg` reports a clean sweep it never took.
+Read each candidate's whole body and comment thread through `issue-read.mjs`.
+An older issue starts with a current-state block: shipped PRs, unmet acceptance
+criteria, latest owner ruling, and the next bounded action. Refresh it after a
+partial merge. A design task needs a recorded owner decision or direction with
+stated falsifiers; an unanswered design question remains owner-gated.
+
+Prioritize remaining impact:
+
+- Ready P0/P1 defects preempt features. Compare confirmed safety, stored-record
+  integrity, delivery, and recovery failures before cleanup. An old title or past
+  incident does not preserve priority after the relevant defect is fixed.
+- Infrastructure priorities follow demonstrated impact: a red main or blocked
+  landing queue can be P1; an isolated latent flake is P3. Priority elevation
+  needs the owner, a demonstrated main regression, or an owner-authorized audit.
+  Record that evidence and reassess residual work after partial fixes.
+- Agent-discovered work defaults to P3 and joins the back of its queue. Take it
+  oldest first only when no owner-filed work of equal or higher priority is ready.
+  A demonstrated new P0/P1 regression or authorized priority audit can override
+  that ordering. Lanes return findings; the orchestrator decides how to track them
+  under [lifecycle's filing bar](lifecycle.md).
+
+Capacity applies to running agents, including separate review agents:
+
+- Cap E2E lanes at two. Ordinary concurrency is the smaller of harness slots and
+  machine capacity; the generator warns at five active dispatches, the current
+  four-core baseline. A larger harness is not evidence of more machine capacity.
+- After a session rate-limit rejection, inspect current agent state and preserve
+  branches. Cap total agents at four, or the lower applicable limit, until a
+  five-hour window passes without another rejection. Do not assume all agents
+  stopped or discard banked work.
+- With ready P1s, reserve two user/data lanes and select the highest-risk ready P2
+  within available capacity; cap presentation/guard work at one. Recompute when
+  issues arrive or agents finish.
+- Pause dispatch around three unreviewed PRs across the shared review queue.
+  Banking frees agent capacity, not review capacity. Stagger starts to avoid gate
+  contention; the generator warns about starts within 25 minutes. A P0 preempts.
+
+Cluster related issues by domain and files, usually two to six when their scope
+fits one bounded task. Resolve `claims <path>` before editing; an unreadable claim
+is not clearance. Sequence overlaps that cannot be fenced. Use
+[cross-session coordination](multi-orchestrator.md) for other sessions' branches.
 
 ## Per-unit pipeline
 
-1. Read each issue whole via `issue-read.mjs`; `new` refuses a closed one.
-2. Generate the dispatch brief and record the branch in the task list.
-3. Require the agent to merge current `origin/main` and run the assigned gates.
-   Bank a validated branch until it is this session's landing candidate, then
-   open its ready PR (title imperative, one clause, 72 chars max, it is the
-   commit subject; only a `(#N …)` tail); after another
-   merge lands, run `landing-independence.mjs` before deciding to rebase.
-4. Read the full diff, verify claims, and post a substantive COMMENT review.
-5. Diagnose E2E reds locally; send code corrections back to the author unless
-   the change is an orchestrator-owned E2E fix.
-6. Merge only a green exact head. Serialize conflicting merges.
-7. Close the dispatch, remove its worktree and branch, and verify linked issues
-   actually closed.
+1. Claim each issue, naming the branch, under [claims](claims.md) before generating
+   its brief. Use `dispatch-brief.mjs new` for every agent; adopt unrecorded live
+   dispatches through the same tool. Record the branch in the task list.
+2. Keep the generated `PINNED_BASE_SHA` for any authorized reset or history
+   rewrite. Follow its setup, file fences, and assigned gate order. Push meaningful
+   checkpoints and update from current `origin/main` before the assigned gates.
+3. Bank a validated branch without a PR until it is the session's sole landing
+   candidate. Only the candidate opens or refreshes a ready PR and consumes final
+   remote review and CI. An urgent P0/P1 can displace it through `promote`.
+4. Give the PR an imperative, one-clause title of at most 72 characters; only an
+   issue-reference tail may follow. Follow [review and merge](review-merge.md) for
+   the full review, exact-head checks, changed bases, and serialized squash merge.
+   `landing-independence.mjs` supplies path-based advice, not a merge verdict.
+5. Verify intended issue closures and umbrella boxes. Finish the dispatch and
+   clean redundant work through [recovery](recovery.md) and
+   [lifecycle](lifecycle.md); compare content before deleting branches or worktrees.
+
+Parallelize banked implementation and local review when authorized. Serialize the
+landing candidate's final remote review, CI, and merge. Do not edit a live agent's
+worktree without acknowledgement. Production replay, backfill, snapshot access,
+and migration execution remain owner operations outside a normal coding lane.
+
+A decision-held branch is banked work, not a landing candidate. Preserve its head
+and exact release condition, then give available workers the highest ready work
+in the authorized slice. Pending owner answers do not require workers to wait or
+the PM to approve routine queue advancement. Respect actual file, machine, and
+review limits; report a blocked handoff only after no eligible work remains.
 
 ## Tooling
 
-- Every entry script answers `-h`/`--help` with its header and exits before
-  any side effect (`script-help.test.ts` pins it) — probing is always safe.
-- `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
-  validated priority/lane state; deliver every emitted role update. `list`
-  flags 3x-median idleness or a dispatch with no worktree and no branch.
-- `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
-  DB and E2E-hygiene run only when the diff touches them; a format rewrite
-  re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
-  `run-gates-recorded.sh <branch>` records its PID and exit; `--wait` resumes.
-- `ci-watch.mjs`: settled CI over BOTH endpoints, source per row; a closed
-  `merge-gate` STATUS reads NOT MERGEABLE YET, not red (#5022). Exit 0 green,
-  1 red (`cancelled` is no verdict), 2 unsettled and says on what, 3 blocked.
-- `pm-digest.sh`: the owner's catch-up (shipped for people, incidents and the
-  workflow changes they caused, progress). The PM runs it, not an orchestrator.
-- `dependabot-eval-brief.mjs`: evaluate major dependency updates.
-- `queue-snapshot.mjs`: the dispatchable queue in `$SCRATCH/.queue`, refreshed
-  4-hourly, `[lane:B]` on rows the ledger holds. A "thin" claim answers it.
-- `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
-  shape, needs-human issue age; denominators first. Argue caps from its numbers.
-- `release-notes-gather.mjs`: gather merged user-visible changes.
-- `adversarial-review-brief.mjs`: route and brief high-stakes second reviews.
+Use the relevant script's `--help` before unfamiliar operations; check its declared
+behavior rather than assuming every executable is free of side effects.
+
+| Tool                           | Responsibility                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `dispatch-brief.mjs`           | Dispatches, claims, ports, validated state, and candidate promotion; deliver emitted role updates |
+| `agent-gates.sh`               | Assigned local checks in order; environment and gate triggers determine what runs                 |
+| `run-gates-recorded.sh`        | Captured PID and exit status; `--wait` resumes observation                                        |
+| `ci-watch.mjs`                 | Settled check runs and commit statuses: 0 green, 1 red, 2 unsettled, 3 blocked                    |
+| `queue-snapshot.mjs`           | Dispatchable queue snapshot and held-lane markers                                                 |
+| `session-metrics.mjs`          | Throughput, review depth, queue shape, and `needs-human` issue age with denominators              |
+| `adversarial-review-brief.mjs` | High-stakes review routing; review policy owns the response                                       |
+| `dependabot-eval-brief.mjs`    | Major dependency evaluation                                                                       |
+
+For an untouched-file failure, inspect preceding timeouts and shared state,
+reproduce the focused case, and compare it on the pinned base before attribution.
+Use [E2E diagnosis](e2e-ci.md) and [timeout diagnosis](../internals/test-tier-timeouts.md).
+A cancelled or unmeasured run is no verdict. Exhaustive source searches use `rg -a`
+so deliberate NUL bytes do not hide files from the result.
 
 ## Release notes
 
-- Orchestrator bookkeeping in `lib/release-notes.json`: one batch a day at
-  most, entries append-only, upgrade actions in the day's `operatorNotes`.
-- One bullet per user-visible change: ≤80 characters, product words, and a
-  `category` from `RELEASE_NOTE_CATEGORIES`; the schema validates both.
-- A `perf` note needs a measured time on a surface a person waits for, not
-  less work: #5043 (−0.53 s on Trends) yes; #5055 (fewer reads, same view) no.
-- The digest prints the uncovered lag (`--check`); non-zero = the batch is due.
+The PM owns the day's batch, as described in
+[bookkeeping](multi-orchestrator.md#bookkeeping). Keep entries in
+`lib/release-notes.json` append-only, batch at most once a day, and put upgrade
+actions in `operatorNotes`.
+
+Use one product-language bullet per user-visible change, at most 80 characters,
+with a category from [RELEASE_NOTE_CATEGORIES](../../lib/release-notes.ts). A `perf`
+entry needs measured time on a surface people wait for; fewer internal operations
+alone do not establish faster UX.
+
+`release-notes-gather.mjs --check` prints uncovered candidate counts and exits 0
+on a successful check even when the count is positive. Read the output, including
+fetch failures and clipped-history limits. Its path-based candidates require
+curation; `pm-digest.sh` supplies the PM's catch-up, not an additional author list.

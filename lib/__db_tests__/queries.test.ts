@@ -36,7 +36,7 @@ import {
   getIntakeDoses,
   getTakenDoseIds,
   getTakenDoseTimes,
-  resolveMedicationAcrossProfiles,
+  resolveIntakeAcrossProfiles,
   getEncounters,
   getProviders,
   getConditions,
@@ -248,20 +248,27 @@ describe("intake / supplement reads", () => {
   it("resolves medication detail only across the supplied accessible profiles", () => {
     const household = seedProfile("QMEDOWNER");
 
-    const resolved = resolveMedicationAcrossProfiles(
+    const resolved = resolveIntakeAcrossProfiles(
       [fx.profileId, household.profileId],
       household.medicationId
     );
     expect(resolved?.profileId).toBe(household.profileId);
-    expect(resolved?.medication.id).toBe(household.medicationId);
+    expect(resolved?.item.id).toBe(household.medicationId);
+    expect(
+      resolveIntakeAcrossProfiles(
+        [fx.profileId, household.profileId],
+        household.supplementId,
+        "supplement"
+      )?.item.id
+    ).toBe(household.supplementId);
 
     // Omitting the owner from the grants-filtered input keeps the medication hidden;
     // an accessible supplement id is rejected too because this route is medication-only.
     expect(
-      resolveMedicationAcrossProfiles([fx.profileId], household.medicationId)
+      resolveIntakeAcrossProfiles([fx.profileId], household.medicationId)
     ).toBeNull();
     expect(
-      resolveMedicationAcrossProfiles(
+      resolveIntakeAcrossProfiles(
         [fx.profileId, household.profileId],
         household.supplementId
       )

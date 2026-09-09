@@ -98,12 +98,10 @@ export default function OfferRow({
 // write, and this is not the chip — selection chips, navigation, form submits and
 // destructive actions are all excluded by that test rather than by a list.
 //
-// ONE TARGET, AND THE NUB IS NOT A SECOND ONE. The whole pill is a single button
-// wearing the 34px control box, so the label is informative and never a second tap;
-// the verb is a `<span>` inside it, which is why it takes no tab stop and grows no
-// hit region of its own. `chip-base`'s coarse-pointer `::after` reaches 6px past the
-// pill, so a caller placing two of these side by side spends the same `gap-3` every
-// other control row spends (#3938).
+// The usual chip is one target and its label is informative. When the label edits
+// the payload, `labelAction` makes the two halves independent tiled targets inside
+// one 34px pill; each half then owns its block-axis touch reach without competing
+// overlays.
 //
 // THE CLOCK DOOR HAS A SEAT, AND THIS PRIMITIVE ONLY RESERVES IT (#4426, whose
 // `components/TimeStatement.tsx` is the door itself). A door passed by the adopter
@@ -120,6 +118,7 @@ export function LabeledVerbChip({
   ariaLabel,
   testId,
   data,
+  labelAction,
 }: {
   /** The payload this tap writes, as the reader should see it. */
   label: ReactNode;
@@ -137,8 +136,47 @@ export function LabeledVerbChip({
   ariaLabel?: string;
   testId?: string;
   data?: Readonly<Record<`data-${string}`, string | number | undefined>>;
+  labelAction?: {
+    onAct: () => void;
+    ariaLabel: string;
+    expanded: boolean;
+    controls: string;
+    testId?: string;
+  };
 }) {
-  const pill = (
+  const pill = labelAction ? (
+    <span
+      data-fact-chip="pill"
+      className="chip-offer inline-flex items-stretch border-0 text-sm ring-1 ring-inset ring-(--border)"
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={labelAction.onAct}
+        aria-label={labelAction.ariaLabel}
+        aria-expanded={labelAction.expanded}
+        aria-controls={labelAction.controls}
+        data-testid={labelAction.testId}
+        data-fact-chip="tiled"
+        className="min-h-(--control-box) rounded-s-full px-3 transition hover:bg-(--ghost-hover) disabled:opacity-50"
+      >
+        {label}
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onAct}
+        aria-label={ariaLabel}
+        data-testid={testId}
+        data-chip-verb={verb}
+        data-fact-chip="tiled"
+        className={`min-h-(--control-box) shrink-0 rounded-e-full px-2.5 text-xs font-semibold transition disabled:opacity-50 ${OFFER_VERB_TONE[tone]}`}
+        {...data}
+      >
+        {verb}
+      </button>
+    </span>
+  ) : (
     <button
       type="button"
       disabled={disabled}

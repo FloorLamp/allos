@@ -1,5 +1,16 @@
 import { test, expect } from "./fixtures";
-import { settledFill } from "./helpers";
+import { appContent, settledFill } from "./helpers";
+import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import { loginAs } from "./nav";
+import {
+  E2E_LOGIN_WEEK_SPINE,
+  E2E_MEMBER_PASSWORD,
+  WEEK_SPINE_PROFILE,
+} from "./fixture-logins";
+import { frozenNow, workerDbPath } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { utcMinute, zonedWallTimeToUtc } from "@/lib/date";
 
 // Issue #159: training intensity distribution (HR zones). The seed profile is
 // ~40y with a resting HR, so the zone model builds via Karvonen. e2e/seed-events
@@ -8,10 +19,12 @@ import { settledFill } from "./helpers";
 // hub's 90-day default window, so the section's shared range includes them). These
 // specs prove the Training → Analyze zone section renders that distribution, and that the Settings →
 // Profile inputs persist. Reads only + a self-cleaning settings round-trip, so no
-// rows other specs assert on are disturbed.
+// rows other specs assert on are disturbed. The first journey also adds and removes
+// its own mixed-HR rows on the dedicated week-spine profile to compare both callers.
 
 test("Training → Analyze renders the HR training-intensity section (#159/#3512)", async ({
   page,
+  browser,
 }) => {
   await page.goto("/training?tab=analyze");
   const main = page.getByRole("main");
@@ -37,6 +50,107 @@ test("Training → Analyze renders the HR training-intensity section (#159/#3512
 
   // The current-week Zone 2 adherence line renders against the default target.
   await expect(zones.getByTestId("zone2-adherence")).toBeVisible();
+
+  // The shared query already includes non-cardio HR. This leg must reach the
+  // actual Overview caller too: the old cardio-only fork shows 100% / 0% here.
+  const db = new Database(workerDbPath());
+  try {
+    const { id: profileId } = db
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(WEEK_SPINE_PROFILE) as { id: number };
+    const { date } = db
+      .prepare(
+        "SELECT date FROM activities WHERE profile_id = ? AND external_id = 'e2e:week-spine-3'"
+      )
+      .get(profileId) as { date: string };
+    const priorOverride = db
+      .prepare(
+        "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'max_hr_override'"
+      )
+      .get(profileId) as { value: string } | undefined;
+    const tz = pinnedTimezone(frozenNow().toISOString()).zone;
+    const hr = [
+      { ts: utcMinute(zonedWallTimeToUtc(tz, date, "08:00")!), bpm: 110 },
+      ...Array.from({ length: 7 }, (_, minute) => ({
+        ts: utcMinute(zonedWallTimeToUtc(tz, date, `09:0${minute}`)!),
+        bpm: 150,
+      })),
+    ];
+    // Cleanup owns only this committed transaction; a failed insert rolls back
+    // before the cleanup scope, so a conflicting existing minute is never deleted.
+    const activityIds = db.transaction(() => {
+      db.prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'max_hr_override', '180')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+      ).run(profileId);
+      const activity = db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, start_time, end_time, duration_min)
+         VALUES (?, ?, ?, 'Synthetic shared zones', ?, ?, ?)`
+      );
+      const ids = [
+        Number(
+          activity.run(profileId, date, "cardio", "08:00", "08:01", 1)
+            .lastInsertRowid
+        ),
+        Number(
+          activity.run(profileId, date, "strength", "09:00", "09:07", 7)
+            .lastInsertRowid
+        ),
+      ];
+      const minute = db.prepare(
+        "INSERT INTO hr_minutes (profile_id, ts, bpm, n, source) VALUES (?, ?, ?, 1, 'health-connect')"
+      );
+      for (const row of hr) minute.run(profileId, row.ts, row.bpm);
+      return ids;
+    })();
+    let mixedPage: Page | undefined;
+    try {
+      mixedPage = await loginAs(browser, {
+        username: E2E_LOGIN_WEEK_SPINE,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      await mixedPage.goto("/training?tab=analyze");
+      const mixedContent = appContent(mixedPage);
+      await expect(
+        mixedContent
+          .getByTestId("training-zones")
+          .getByTestId("polarization-split")
+          .getByText("13% easy · 88% hard", { exact: true })
+      ).toBeVisible();
+      await mixedPage.goto("/training?tab=overview");
+      await expect(
+        mixedContent
+          .getByTestId("endurance-depth-suite")
+          .getByText("Zone 2 1 min · 13% easy / 88% hard", { exact: true })
+      ).toBeVisible();
+    } finally {
+      try {
+        await mixedPage?.context().close();
+      } finally {
+        db.transaction(() => {
+          const removeActivity = db.prepare(
+            "DELETE FROM activities WHERE profile_id = ? AND id = ?"
+          );
+          for (const id of activityIds) removeActivity.run(profileId, id);
+          const removeMinute = db.prepare(
+            "DELETE FROM hr_minutes WHERE profile_id = ? AND ts = ? AND source = 'health-connect'"
+          );
+          for (const row of hr) removeMinute.run(profileId, row.ts);
+          if (priorOverride) {
+            db.prepare(
+              "UPDATE profile_settings SET value = ? WHERE profile_id = ? AND key = 'max_hr_override'"
+            ).run(priorOverride.value, profileId);
+          } else {
+            db.prepare(
+              "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'max_hr_override'"
+            ).run(profileId);
+          }
+        })();
+      }
+    }
+  } finally {
+    db.close();
+  }
 });
 
 test("Settings → Profile persists the max-HR override and Zone 2 target (#159)", async ({

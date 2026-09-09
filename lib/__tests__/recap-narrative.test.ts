@@ -15,6 +15,7 @@ function recap(over: Partial<Recap> = {}): Recap {
     start: "2026-07-03",
     end: "2026-07-09",
     headline: "4 workouts, 2 PRs",
+    cardioPrNotes: [],
     lines: [
       {
         key: "workouts",

@@ -1,6 +1,9 @@
 // Training coaching — cardio: speed derivation and cardio personal records.
 // Pure and client-safe — no DB/network.
 import { within, byDateDesc } from "./common";
+import { fmtDistance, fmtKmh } from "../units";
+import { formatMinutes } from "../duration";
+import type { DistanceUnit } from "../settings";
 
 // ---- Cardio ----
 
@@ -56,6 +59,18 @@ export interface CardioPR {
   distanceKm: number;
   durationMin: number;
   speedKmh: number;
+}
+
+// One spelling for the finding and recap; quantities stay canonical until here.
+export function cardioPrPhrase(
+  pr: Omit<CardioPR, "date">,
+  distanceUnit: DistanceUnit
+): string {
+  return pr.kind === "distance"
+    ? `longest ${pr.activity} at ${fmtDistance(pr.distanceKm, distanceUnit)}`
+    : pr.kind === "speed"
+      ? `fastest ${pr.activity} at ${fmtKmh(pr.speedKmh, distanceUnit)}`
+      : `longest ${pr.activity} at ${formatMinutes(pr.durationMin)}`;
 }
 
 // ---- Materiality: what a cardio record must clear to be one (#2393) ----

@@ -25,6 +25,7 @@ import {
 } from "../settings";
 import { createLogger } from "../log";
 import type {
+  DispatchOptions,
   NotificationChannel,
   NotificationKind,
   NotificationMessage,
@@ -41,6 +42,8 @@ import {
   invalidateDeliveryOutcome,
   recordDeliveryOutcome,
 } from "./delivery-marker";
+
+import { withRecipientUnits } from "./compose";
 
 const log = createLogger("push");
 
@@ -231,13 +234,13 @@ export const PUSH_SEND_TIMEOUT_MS = 30_000;
 /** How many subscriptions actually received it — 0 when there was nobody live. */
 async function sendToSubscriptions(
   subs: SubscriptionRow[],
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  opts?: DispatchOptions
 ): Promise<number> {
   if (!applyVapid())
     throw new Error("Web Push is not configured (no VAPID keys)");
   if (subs.length === 0) return 0; // nothing live to deliver to — not an error
 
-  const payload = buildPushPayload(msg);
   const byLogin = new Map<number, { ok: number; errors: string[] }>();
   for (const s of subs) byLogin.set(s.login_id, { ok: 0, errors: [] });
 
@@ -245,6 +248,9 @@ async function sendToSubscriptions(
     subs.map(async (s) => {
       const tally = byLogin.get(s.login_id)!;
       try {
+        const payload = buildPushPayload(
+          withRecipientUnits(msg, s.login_id, opts)
+        );
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           payload,
@@ -314,7 +320,11 @@ export const pushChannel: NotificationChannel = {
     if (!isPushDeliverableKind(msg.kind)) return [];
     return [...new Set(audience(profileId, msg.kind).map((s) => s.login_id))];
   },
-  async send(profileId: number, msg: NotificationMessage) {
+  async send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ) {
     // An interaction-only kind (e.g. the food-log nudge) would arrive here as a
     // content-less, button-less push since the payload drops actions — so no-op it,
     // a healthy success like the HA channel's disabled-kind gate (#692). This also
@@ -340,7 +350,8 @@ export const pushChannel: NotificationChannel = {
     // delivered fan-out is a healthy channel here and always has been.
     const reached = await sendToSubscriptions(
       audience(profileId, msg.kind),
-      msg
+      msg,
+      opts
     );
     return { delivered: reached > 0 };
   },

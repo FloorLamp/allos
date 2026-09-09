@@ -18,11 +18,8 @@ import AddPracticeButton from "@/app/(app)/wellness/AddPracticeButton";
 import PracticeCard from "./PracticeCard";
 import DayHistory from "@/components/DayHistory";
 import PracticeBackfillLauncher from "@/components/practices/PracticeBackfillLauncher";
-import { daysBetweenDateStr, isRealIsoDate, shiftDateStr } from "@/lib/date";
-import {
-  closeAbandonedPracticeSessions,
-  PRACTICE_LOG_DATE_WINDOW_DAYS,
-} from "@/lib/practice-log";
+import { isRealIsoDate } from "@/lib/date";
+import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import { historyHref } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
@@ -38,14 +35,10 @@ export default async function WellnessPage(props: {
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const practices = getWellnessPractices(profile.id, todayStr, weekStart);
   const requestedLogDate = searchParams.log;
-  const logDateDiff = isRealIsoDate(requestedLogDate)
-    ? daysBetweenDateStr(todayStr, requestedLogDate)
-    : null;
   const acceptedLogDate =
     requestedLogDate &&
-    logDateDiff != null &&
-    logDateDiff <= 0 &&
-    logDateDiff >= -PRACTICE_LOG_DATE_WINDOW_DAYS
+    isRealIsoDate(requestedLogDate) &&
+    requestedLogDate <= todayStr
       ? requestedLogDate
       : undefined;
   const trendsByIdentity = new Map(
@@ -113,7 +106,6 @@ export default async function WellnessPage(props: {
           }))}
           today={todayStr}
           initialDate={acceptedLogDate}
-          minDate={shiftDateStr(todayStr, -PRACTICE_LOG_DATE_WINDOW_DAYS)}
           invalidRequestedDate={!acceptedLogDate}
         />
       ) : null}

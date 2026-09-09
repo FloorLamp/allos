@@ -12,7 +12,7 @@
 // consistent?", and a missed day nudges it instead of zeroing it.
 
 import type { IntakeItem } from "./types";
-import { isDueOn } from "./intake-schedule";
+import { doseScheduledOn, isDueOn } from "./intake-schedule";
 import { doseOnDay, type DoseCadence } from "./intake-cadence";
 import { dateStrInTz, parseUtcSql } from "./date";
 import { zoneOf, type ProfileDayZone } from "./travel-timezone";
@@ -341,7 +341,10 @@ export function intakeAdherenceStrip(
     // being touched. This is the #430 builder-input-layer failure class: get the
     // denominator wrong and every percentage above it is confidently wrong.
     const live = lifetimes.filter(
-      (d) => (d.since == null || date >= d.since) && doseOnDay(d.dose, date)
+      (d) =>
+        (d.since == null || date >= d.since) &&
+        doseScheduledOn(d.dose, date) &&
+        doseOnDay(d.dose, date)
     );
     if (live.length === 0) return { date, state: "na" };
     // "na", not "missed", on an off-cadence day: nothing was expected, so there is no
