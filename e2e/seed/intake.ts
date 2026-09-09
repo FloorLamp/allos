@@ -200,18 +200,21 @@ export function seedPrnLedger(): void {
   // subsequent widget "Log" click deterministically becomes the third. `date` is pinned
   // to today() (not derived from recorded_at) so the count stays "today" even if an offset
   // crosses UTC midnight at boot.
+  //
+  // EACH ROW STATES THE INSTANT IT ALWAYS MEANT (#4686). `recorded_at` alone is the
+  // shape a check-off answered "Don't know" produces, and the app now reads it as one:
+  // the interval goes unanswerable and the label says so. This fixture means "taken 90
+  // and 45 minutes ago", which is an `occurred_at`, so it writes one.
   const prnToday = today(PROFILE_ID);
   const insAdmin = db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
-   VALUES (?, ?, ?, ?, '400 mg', 'taken')`
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, occurred_at, amount, status)
+   VALUES (?, ?, ?, ?, ?, '400 mg', 'taken')`
   );
   for (const minutesAgo of [90, 45]) {
-    insAdmin.run(
-      prnDoseId,
-      prnMedId,
-      prnToday,
-      utcSqlString(new Date(clockNow().getTime() - minutesAgo * 60 * 1000))
+    const at = utcSqlString(
+      new Date(clockNow().getTime() - minutesAgo * 60 * 1000)
     );
+    insAdmin.run(prnDoseId, prnMedId, prnToday, at, at);
   }
 
   console.log(
@@ -250,15 +253,15 @@ export function seedPrnLedger(): void {
     `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
    VALUES (?, ?, NULL, NULL, 'PRN redose — e2e fixture')`
   ).run(redoseMedId, shiftDateStr(today(PROFILE_ID), -30));
-  db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
-   VALUES (?, ?, ?, ?, '200 mg', 'taken')`
-  ).run(
-    redoseDoseId,
-    redoseMedId,
-    today(PROFILE_ID),
-    utcSqlString(new Date(clockNow().getTime() - 7 * 60 * 60 * 1000))
+  // STATED, not merely captured (#4686) — this fixture's whole subject is a window
+  // measured from the administration, and a row that states no instant arms nothing.
+  const redoseAt = utcSqlString(
+    new Date(clockNow().getTime() - 7 * 60 * 60 * 1000)
   );
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, occurred_at, amount, status)
+   VALUES (?, ?, ?, ?, ?, '200 mg', 'taken')`
+  ).run(redoseDoseId, redoseMedId, today(PROFILE_ID), redoseAt, redoseAt);
   console.log(
     `e2e: seeded PRN redose-notice fixture "${REDOSE_MED_NAME}" (#798)`
   );
