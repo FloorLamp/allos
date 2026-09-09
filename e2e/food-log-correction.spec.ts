@@ -332,7 +332,10 @@ test("the sheet corrects a serving's eating time to a MINUTE; Meal follows it un
   // day's HOURS, so :40 was unreachable here while the form's own add path had named
   // minutes since #2236. Every time below is off the hour on purpose: an hour select
   // could not carry one, so this reds if the grain goes back.
-  const timeInput = page.getByTestId("food-correct-time-time");
+  // Scoped to the modal, not the page: the nutrition route streams, so a global
+  // testid can also match a staged copy while a Suspense boundary relocates (#4890).
+  const correctModal = page.getByTestId("food-correct-modal");
+  const timeInput = correctModal.getByTestId("food-correct-time-time");
 
   // Decision 4: choosing a time drags the Meal select with it (the seeded profile
   // has no custom schedule, so the default 11:00/15:00 boundaries hold)…
@@ -371,14 +374,17 @@ test("the sheet corrects a serving's eating time to a MINUTE; Meal follows it un
   await expect(page.getByTestId("food-correct-provenance")).toContainText(
     "Ate at 19:40."
   );
-  await expect(page.getByTestId("food-correct-time-time")).toHaveValue("19:40");
+  await expect(timeInput).toHaveValue("19:40");
 
   // Decision 6: "Not stated" CLEARS — the honest default stays reachable, not a
   // one-way ratchet into a guess. At minute grain it is the control's own button
   // rather than an empty option in a select.
   // A pure client clear — it posts nothing, so this is not a settledClick.
-  await hydratedClick(page, page.getByTestId("food-correct-time-not-stated"));
-  await expect(page.getByTestId("food-correct-time-time")).toHaveValue("");
+  await hydratedClick(
+    page,
+    correctModal.getByTestId("food-correct-time-not-stated")
+  );
+  await expect(timeInput).toHaveValue("");
   await settledClick(page, page.getByTestId("food-correct-save"));
   await expect(page.getByTestId("food-correct-modal")).toBeHidden();
   // Back on the logged time: the row shows the tap clock again…
