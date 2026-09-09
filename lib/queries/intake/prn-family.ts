@@ -193,6 +193,38 @@ export const CEILING_WINDOW_SQL =
   "((l.occurred_at IS NOT NULL AND l.occurred_at >= ?)" +
   " OR (l.occurred_at IS NULL AND l.date >= ? AND l.date <= ?))";
 
+// ── WHAT ARMS THE INTERVAL CLOCK, AS ONE ORDERING (#4686) ───────────────────
+//
+// Spelled once because three gathers ask it — the family state below, the per-item
+// fallback in adherence.ts, and the quick-log statement's own columns.
+//
+// A taken row that states NO administration instant sorts FIRST. That is the whole
+// rule: such a row could be the latest and nothing in it says otherwise, so the family
+// is `unplaced` whatever else is on file. `l.occurred_at IS NOT NULL` is 0 for those
+// rows and 1 for the rest, so ascending puts them ahead; below them the ordering is the
+// plain latest stated instant, id as the tiebreak.
+export const ARMING_ORDER =
+  "(l.occurred_at IS NOT NULL) ASC, l.occurred_at DESC, l.id DESC";
+
+// The row that ordering returns, read as the union. No COALESCE anywhere: a capture
+// stamp is when the app was TOLD, and a duration measured from it is a verdict nobody
+// can check, on the permissive side.
+export function armingFromRow(
+  row: { id: number; givenAt: string | null; itemId?: number } | undefined,
+  itemName: string | null = null
+): FamilyArming {
+  if (!row) return { kind: "none" };
+  if (row.givenAt == null)
+    return { kind: "unplaced", administrationId: row.id };
+  return {
+    kind: "placed",
+    administrationId: row.id,
+    givenAt: row.givenAt,
+    itemId: row.itemId ?? null,
+    itemName,
+  };
+}
+
 // The three bind parameters `CEILING_WINDOW_SQL` takes, in order. `nowMinute` is
 // minutes since the epoch (`ceilingWindowEndMinute`), never a date string — see that
 // function for why the type carries the distinction.
@@ -263,55 +295,38 @@ function getMedicationFamilyStatesUncached(
   for (const family of getActiveMedicationFamilies(profileId)) {
     const ids = family.members.map((m) => m.id);
     const placeholders = ids.map(() => "?").join(", ");
-    // THE ARMING READ, IN TWO HALVES, AND NEITHER OF THEM COALESCES (#4686).
+    // THE ARMING READ, AND IT COALESCES NOTHING (#4686). One row answers the whole
+    // union because `ARMING_ORDER` sorts a taken administration that states NO instant
+    // ahead of every one that does: such a row could be the latest and nothing in it
+    // says otherwise, so its mere existence makes the family `unplaced` — no window, no
+    // anchor, no arithmetic. That is what an earlier pass got wrong by testing
+    // membership against the count's noon anchor, which made the arm engage for half of
+    // every day. Below that row the ordering is the plain latest stated instant.
     //
-    // The latest PLACED administration — a row that states its own instant. No
-    // `COALESCE`, so a capture stamp can never reach the interval clock through here.
-    // Not bounded by `l.date` either: a midnight-crossing correction moves `occurred_at`
-    // and leaves the adherence day where the schedule put it (`restampDoseLogsCore`
-    // says so and returns `crossedMidnight` as an outcome), so a `MAX(date)` narrowing
-    // drops the genuinely-latest dose — measured at 18:00 where the truth was 22:00.
+    // NOT BOUNDED BY `l.date`: a midnight-crossing correction moves `occurred_at` and
+    // leaves the adherence day where the schedule put it (`restampDoseLogsCore` says so
+    // and returns `crossedMidnight` as an outcome), so a `MAX(date)` narrowing drops the
+    // genuinely-latest dose — measured at 18:00 where the truth was 22:00. Not bounded
+    // by `recorded_at` either: a skipped→taken flip re-uses a row created by a different
+    // act, so its capture stamp predates the dose it now records.
     const latest = db
       .prepare(
         `SELECT l.id AS id, l.occurred_at AS givenAt, l.item_id AS itemId
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-            AND l.status = 'taken' AND l.occurred_at IS NOT NULL
-          ORDER BY l.occurred_at DESC, l.id DESC
+            AND l.status = 'taken'
+          ORDER BY ${ARMING_ORDER}
           LIMIT 1`
       )
       .get(profileId, ...ids) as
-      { id: number; givenAt: string; itemId: number } | undefined;
-    // Does ANY taken administration for this family state no instant? That is the whole
-    // question — no window, no anchor, no arithmetic. If one exists the family is
-    // `unplaced` WHATEVER the placed read returned, because it could be the latest and
-    // nothing in the row says otherwise. Bounding this by `recorded_at` would be wrong
-    // in the permissive direction too: a skipped→taken flip re-uses a row created by a
-    // different act, so its capture stamp predates the dose it now records.
-    const unplaced = db
-      .prepare(
-        `SELECT l.id AS id
-           FROM intake_item_logs l
-           JOIN intake_items s ON s.id = l.item_id
-          WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-            AND l.status = 'taken' AND l.occurred_at IS NULL
-          ORDER BY l.id DESC
-          LIMIT 1`
-      )
-      .get(profileId, ...ids) as { id: number } | undefined;
-    const arming: FamilyArming = unplaced
-      ? { kind: "unplaced", administrationId: unplaced.id }
-      : latest
-        ? {
-            kind: "placed",
-            administrationId: latest.id,
-            givenAt: latest.givenAt,
-            itemId: latest.itemId,
-            itemName:
-              family.members.find((m) => m.id === latest.itemId)?.name ?? null,
-          }
-        : { kind: "none" };
+      { id: number; givenAt: string | null; itemId: number } | undefined;
+    const arming: FamilyArming = armingFromRow(
+      latest,
+      latest
+        ? (family.members.find((m) => m.id === latest.itemId)?.name ?? null)
+        : null
+    );
     // The WINDOW's taken administrations with their snapshotted amounts — the count
     // is the row count, and the amounts feed the amount-aware exposure (#1854).
     const windowLogs = db

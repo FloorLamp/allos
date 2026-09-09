@@ -43,6 +43,8 @@ import {
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
 import {
+  ARMING_ORDER,
+  armingFromRow,
   CEILING_WINDOW_SQL,
   ceilingWindowBounds,
   getMedicationFamilyStates,
@@ -1840,33 +1842,21 @@ export function getRedoseArmingState(
   itemId: number,
   nowMinute: number
 ): RedoseArmingState {
-  // The latest administration that STATES its instant — no COALESCE, so the one-shot
-  // can never be armed by a capture stamp. Scoped through the parent item so a forged
-  // itemId can't read across profiles.
+  // The row that arms the one-shot, under the SHARED ordering (`ARMING_ORDER`) — no
+  // COALESCE, so a capture stamp can never reach the interval clock through here, and a
+  // taken row stating no instant wins outright. Scoped through the parent item so a
+  // forged itemId can't read across profiles.
   const latest = db
     .prepare(
       `SELECT l.id AS id, l.occurred_at AS givenAt
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-          AND l.occurred_at IS NOT NULL
-        ORDER BY l.occurred_at DESC, l.id DESC
+        ORDER BY ${ARMING_ORDER}
         LIMIT 1`
     )
-    .get(profileId, itemId) as { id: number; givenAt: string } | undefined;
-  // Any taken row stating no instant at all — see the family gather for why this needs
-  // neither a window nor a date bound.
-  const unplaced = db
-    .prepare(
-      `SELECT l.id AS id
-         FROM intake_item_logs l
-         JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-          AND l.occurred_at IS NULL
-        ORDER BY l.id DESC
-        LIMIT 1`
-    )
-    .get(profileId, itemId) as { id: number } | undefined;
+    .get(profileId, itemId) as
+    { id: number; givenAt: string | null } | undefined;
   const count = db
     .prepare(
       `SELECT COUNT(*) AS n
@@ -1879,17 +1869,7 @@ export function getRedoseArmingState(
     n: number;
   };
   return {
-    arming: unplaced
-      ? { kind: "unplaced", administrationId: unplaced.id }
-      : latest
-        ? {
-            kind: "placed",
-            administrationId: latest.id,
-            givenAt: latest.givenAt,
-            itemId,
-            itemName: null,
-          }
-        : { kind: "none" },
+    arming: armingFromRow(latest ? { ...latest, itemId } : undefined),
     countInWindow: count.n,
   };
 }
@@ -2060,20 +2040,16 @@ const PRN_QUICK_LOG_STMT = hoistedStatement(
               (SELECT MAX(COALESCE(l.occurred_at, l.recorded_at)) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.status = 'taken')
                 AS lastGivenAt,
-              -- The item's OWN arming halves, in the shape getRedoseArmingState reads
-              -- them and with no COALESCE in either: the ONLY consumer is the
-              -- non-medication fallback below, which has no ingredient family to ask.
+              -- The item's OWN arming row, under the SAME ordering the family gather
+              -- and the per-item fallback use, and with no COALESCE: the only consumer
+              -- is the non-medication fallback below, which has no ingredient family to
+              -- ask. A NULL armingAt beside a non-null armingId is the unplaced arm.
               (SELECT l.id FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.status = 'taken'
-                  AND l.occurred_at IS NOT NULL
-                ORDER BY l.occurred_at DESC, l.id DESC LIMIT 1) AS placedId,
+                ORDER BY ${ARMING_ORDER} LIMIT 1) AS armingId,
               (SELECT l.occurred_at FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.status = 'taken'
-                  AND l.occurred_at IS NOT NULL
-                ORDER BY l.occurred_at DESC, l.id DESC LIMIT 1) AS placedAt,
-              (SELECT MAX(l.id) FROM intake_item_logs l
-                WHERE l.item_id = s.id AND l.status = 'taken'
-                  AND l.occurred_at IS NULL) AS unplacedId,
+                ORDER BY ${ARMING_ORDER} LIMIT 1) AS armingAt,
               s.min_interval_hours AS minIntervalHours,
               s.max_daily_count AS maxDailyCount
         FROM intake_items s
@@ -2104,9 +2080,8 @@ function getPrnQuickLogItems(
     rxcui_ingredients: string | null;
     supply_id: number | null;
     supply_name: string | null;
-    placedId: number | null;
-    placedAt: string | null;
-    unplacedId: number | null;
+    armingId: number | null;
+    armingAt: string | null;
   })[];
   const families = getMedicationFamilyStates(
     profileId,
@@ -2118,9 +2093,8 @@ function getPrnQuickLogItems(
       rxcui_ingredients,
       supply_id,
       supply_name,
-      placedId,
-      placedAt,
-      unplacedId,
+      armingId,
+      armingAt,
       ...r
     }) => {
       const fam = families.get(r.id);
@@ -2140,17 +2114,11 @@ function getPrnQuickLogItems(
         // unreachable on the whole non-medication path.
         familyArming:
           fam?.arming ??
-          (unplacedId != null
-            ? { kind: "unplaced", administrationId: unplacedId }
-            : placedId != null && placedAt != null
-              ? {
-                  kind: "placed",
-                  administrationId: placedId,
-                  givenAt: placedAt,
-                  itemId: r.id,
-                  itemName: null,
-                }
-              : { kind: "none" }),
+          armingFromRow(
+            armingId == null
+              ? undefined
+              : { id: armingId, givenAt: armingAt, itemId: r.id }
+          ),
         familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
         familyExposure: fam?.exposure ?? null,
         familyMemberCount: fam?.memberIds.length ?? 1,
