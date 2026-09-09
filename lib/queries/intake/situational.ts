@@ -9,39 +9,18 @@
 
 import { today } from "../../db";
 import { getIntakeItems } from "./schedule";
-import {
-  getActivitiesByDate,
-  isPredictedWorkoutDay,
-} from "../training/activities";
-import { countSituationalDue, isPostWorkoutReady } from "../../intake-schedule";
-import { getTimezone } from "../../settings";
-import { getEffectiveActiveSituations } from "../derived-situations";
-import { zonedDateParts } from "../../date";
+import { intakeDayContext } from "./day-context";
+import { countSituationalDue } from "../../intake-schedule";
 
 // The count of situational intake items currently DUE for the profile given its active
-// situations — the SAME figure the intake activation line uses. Mirrors the
-// tab's ctx build (isWorkoutDay / activeSituations / predictedWorkoutDay /
-// postWorkoutReady) exactly so both read one truth.
+// situations — the SAME figure the intake activation line uses, over the SAME day
+// context builder the tab and the medications page read, so both read one truth.
 export function getSituationalDueCount(profileId: number): number {
   const on = today(profileId);
   const items = getIntakeItems(profileId);
-  // Derived context widens the active set (#1292/#1298): a Poor sleep / Period item
-  // counts as due exactly while its derived context holds — the SAME set the bar uses.
-  const activeSituations = getEffectiveActiveSituations(profileId, on);
-  const todaysActivities = getActivitiesByDate(profileId, on);
-  const isWorkoutDay = todaysActivities.length > 0;
-  const predictedWorkoutDay = isPredictedWorkoutDay(profileId, on);
-  const { hhmm } = zonedDateParts(getTimezone(profileId), new Date());
-  const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-  const postWorkoutReady = isPostWorkoutReady(
-    todaysActivities.map((a) => a.end_time ?? a.start_time),
-    nowMinutes
-  );
-  return countSituationalDue(items, {
-    date: on,
-    isWorkoutDay,
-    activeSituations,
-    predictedWorkoutDay,
-    postWorkoutReady,
-  });
+  // The SHARED day-context builder (#5321) — the bar's ctx build was a verbatim copy of
+  // the medications page's, and a copy is what drifts. Derived context widens the active
+  // set inside it (#1292/#1298): a Poor sleep / Period item counts as due exactly while
+  // its derived context holds.
+  return countSituationalDue(items, intakeDayContext(profileId, on));
 }

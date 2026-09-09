@@ -9,7 +9,6 @@ import {
 } from "@/lib/symptom-analysis";
 import { severityLabelFor } from "@/lib/symptoms";
 import PageContainer from "@/components/PageContainer";
-import BackLink from "@/components/BackLink";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { SeriesSummary } from "@/components/SeriesAccess";
 
@@ -118,8 +117,8 @@ export default async function SymptomTrendsPage() {
       className="mx-auto space-y-4 md:space-y-6"
       data-testid="symptom-trends-page"
     >
-      <BackLink href="/trends" label="Back to Trends" className="" />
       <PageHeader
+        back={{ href: "/trends", destination: "Trends" }}
         className="mb-0!"
         title="Symptom Trends"
         subtitle="How many days each symptom showed up, month by month, with each day shaded by how bad it was."

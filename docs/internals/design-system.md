@@ -13,9 +13,8 @@ public APIs; styling variants belong to the primitive, not each caller.
 | Lifecycle writes and one-tap feedback    | [Stateful affordances](stateful-affordances.md)                                      |
 | Scope and test selection                 | [Change and test policy](../change-policy.md), [component tests](component-tests.md) |
 
-These owners hold the detailed rules. Update them in place instead of copying
-policy here. Existing tests are evidence to reuse; a visual fix does not
-automatically require another guard or changed assertions.
+Update the owning guide rather than copying it. Reuse existing tests; visual
+changes do not automatically require new guards or assertions.
 
 ## 1. Tokens and themes
 
@@ -159,13 +158,19 @@ specialized intake context's existing action cell. Unavailable declarations
 remove host chrome. Forms and `AddEntryPanel` keep their own semantics; the dock
 FAB remains the global quick-log.
 
-A page/section primary may hide its label below `sm` only with an accessible
-name and the shared target geometry; it shows its label from `sm` upward.
+A primary may hide its label below `sm` only with an accessible name and shared
+target geometry.
 
 Destination links name their destination and use `DestinationIndicator` through
 `DestinationLink` or the registered composed presentation. Calendar, disclosure,
 carousel, and pager arrows keep their own meanings. `OverflowMenu` receives
 `itemName` and optional `kind`; `lib/overflow-menu-label.ts` composes its title.
+
+`PageHeader.back` places `BackLink` above the title, visible even with
+`compactBelowSm`. Pass the destination's title, without “Back to” or “All”;
+the header owns spacing. Standalone links remain only on medication and
+immunization print pages (beside Print), and episode detail (its title lives
+in the summary card). Local-state back buttons keep their own behavior.
 
 ## 5. Phone idioms
 
@@ -186,9 +191,7 @@ toggles reserve their alignment slot. Other shared idioms:
 
 ## 6. Verification
 
-Reuse primitive component tests, compiled-CSS checks, and relevant rendered
-geometry coverage. `phone-only-compiled-css.test.ts` proves discovered shared
-phone utilities stay below `sm`; it does not prove every composition's cascade
-or every caller's adoption. Density and residual scans likewise have bounded
-scope. Select additional verification through the shared change/test policy;
-do not turn this index into another adopter registry or mandatory-test list.
+Reuse component, compiled-CSS, and geometry tests.
+`phone-only-compiled-css.test.ts` checks utility breakpoints, not composition or
+adoption. Density and residual scans are also bounded. Follow the shared
+change/test policy; do not add adopter registries or mandatory test lists here.

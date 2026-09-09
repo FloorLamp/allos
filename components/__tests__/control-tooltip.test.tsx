@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ControlTooltip from "@/components/ControlTooltip";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import ActivityPartsList from "@/components/activity-form/ActivityPartsList";
 import RestTimer from "@/components/activity-form/RestTimer";
 import type { PartEntry, SetEntry } from "@/lib/activity-form-model";
@@ -67,8 +68,10 @@ function expectNamesItself(control: HTMLElement) {
   const panel = tooltip();
   expect(panel, `no tooltip for "${name}"`).not.toBeNull();
   expect(panel?.textContent).toBe(name);
-  // And the reveal is WIRED to the control, not merely present beside it.
-  expect(control.getAttribute("aria-describedby")).toBe(panel?.id);
+  // The open tooltip repeats the name visually, not as an extra spoken description.
+  expect(
+    screen.getAllByRole("button", { name: name!, description: "" })
+  ).toContain(control);
 }
 
 function Subject({ label = "Mark warmup set" }: { label?: string }) {
@@ -114,6 +117,13 @@ describe("a glyph control reveals its own accessible name (#4511)", () => {
     else expect(tooltip()).toBeNull();
   });
 
+  it("an info tooltip reveals its name without repeating it as a description", () => {
+    render(<InfoTooltipIcon label="About this reading" />);
+    const button = screen.getByRole("button", { name: "About this reading" });
+    tabTo(button);
+    expectNamesItself(button);
+  });
+
   it("stays away when a tap focuses the control on its way to activating it", () => {
     // The half a hover test cannot see. A tap focuses the button, so "reveal on
     // focus" alone would put a label over the control the finger just pressed.
@@ -129,7 +139,6 @@ describe("a glyph control reveals its own accessible name (#4511)", () => {
     expectNamesItself(button);
     fireEvent.pointerLeave(button);
     expect(tooltip()).toBeNull();
-    expect(button.getAttribute("aria-describedby")).toBeNull();
   });
 
   it("takes the tooltip away when focus leaves", () => {
@@ -139,7 +148,6 @@ describe("a glyph control reveals its own accessible name (#4511)", () => {
     expectNamesItself(button);
     fireEvent.blur(button);
     expect(tooltip()).toBeNull();
-    expect(button.getAttribute("aria-describedby")).toBeNull();
   });
 
   it("follows the label when the control's state renames it", () => {

@@ -189,7 +189,9 @@ test.describe("Unified profile switcher (issue #1801)", () => {
         page.getByRole("heading", { level: 1, name: MVMEDS_SELF_MED })
       ).toBeVisible();
       await expect(
-        page.getByRole("link", { name: "Back to medications" })
+        page
+          .getByRole("main")
+          .getByRole("link", { name: "Medications", exact: true })
       ).toBeVisible();
       await expect(page.getByTestId("medication-identity-banner")).toHaveCount(
         0

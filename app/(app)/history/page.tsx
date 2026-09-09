@@ -338,17 +338,17 @@ export default async function HistoryPage(props: {
   // filter the reader has set rides across — walking days inside `?kind=dose` stays
   // inside it. The fold and rollup open-sets are deliberately DROPPED: they are the
   // scrolling feed's state and a day view has no folds to open.
+  const dayNavigationParams = {
+    family: kind ? undefined : family,
+    kind,
+    class: doseClass,
+    item: rawItem,
+    media: mediaApplied,
+    everyone,
+    show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
+  };
   const dayNavHref = (target: string): AppRoute =>
-    historyHref({
-      family: kind ? undefined : family,
-      kind,
-      class: doseClass,
-      item: rawItem,
-      media: mediaApplied,
-      day: target,
-      everyone,
-      show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-    });
+    historyHref({ ...dayNavigationParams, day: target });
 
   // THE ROLLUP LINE'S OWN LINK — the same toggle helper the folds use, so the `?expand`
   // set is sorted and the href for a given open set is byte-identical across renders.
@@ -931,12 +931,21 @@ export default async function HistoryPage(props: {
           first." describes the FEED — a day view is one day, and the day bar under
           this header already says which. On the day view it was a sentence about a
           different page sitting above the day's own name. */}
-      <PageHeader
-        title="History"
-        subtitle={day ? undefined : "Everything recorded, newest first."}
-        compactBelowSm
-        className={railGutter}
-      />
+      <div className={railGutter}>
+        <PageHeader
+          back={
+            day
+              ? {
+                  href: historyHref(dayNavigationParams),
+                  destination: "History",
+                }
+              : undefined
+          }
+          title="History"
+          subtitle={day ? undefined : "Everything recorded, newest first."}
+          compactBelowSm
+        />
+      </div>
 
       {/* ONE FILTER ROW, AND IT IS ONE LINE. Kind chips on the shared responsive
           pill group (#3938's control box, phone-scroll / `sm`-wrap), data-presence

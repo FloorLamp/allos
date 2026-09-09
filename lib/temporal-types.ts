@@ -11,6 +11,9 @@ declare const BARE_INSTANT: unique symbol;
 // A real calendar day, attributed in the domain's local timezone.
 export type LocalDay = string & { readonly [LOCAL_DAY]: true };
 
+// Display boundaries accept ordinary text but require a LocalDay to be formatted.
+export type DisplayText = string & { readonly [LOCAL_DAY]?: never };
+
 // A local HH:MM clock value; needs a date and zone to resolve to an instant.
 export type LocalTime = string & { readonly [LOCAL_TIME]: true };
 

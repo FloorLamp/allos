@@ -1,5 +1,6 @@
 import { requireScope, stampSubjects } from "@/lib/scope";
 import { listVisiblePoolViews } from "@/lib/queries";
+import { cabinetViewer } from "./access";
 import { EmptyState, PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import { intakeHref, medicationHref } from "@/lib/hrefs";
@@ -27,12 +28,14 @@ export const dynamic = "force-dynamic";
 // the grant. Admins, who may act as every profile, see every name.
 export default async function SuppliesPage() {
   const scope = await requireScope();
-  const accessible = new Set(scope.ids);
+  const viewer = cabinetViewer(scope.ids, scope.role);
+  const accessible = viewer.accessible;
   // The visibility rule itself lives in lib/refill.ts (isPoolVisibleTo) and is applied
   // here through listVisiblePoolViews — the SAME computation the "N shared bottles"
   // doors on Medications / Supplements / Household count with (#1522), so a door can
-  // never promise a bottle this page won't list.
-  const pools = listVisiblePoolViews(scope.ids);
+  // never promise a bottle this page won't list. A member-less bottle reaches an admin
+  // only (#5122).
+  const pools = listVisiblePoolViews(viewer);
 
   const visiblePools = pools.map((pool) => {
     const visible = pool.members.filter((m) => accessible.has(m.profileId));

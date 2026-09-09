@@ -135,13 +135,24 @@ export function persistExtractedMedications(
   let newItems = 0;
   for (const key of order) {
     const { med, courses, encExt, indExt, rxcui, presDate } = groups.get(key)!;
-    // Prescriber link (#1051 semantics (a)): resolve the parsed prescriber TEXT into
-    // an EXISTING individual registry row (exact only — never an org / near-miss).
-    const providerId = med.prescriber
-      ? resolveExactPrescriberId(med.prescriber)
+    // ATTRIBUTION, not text (#5223). `parsePrescription` scrapes a prescriber out of
+    // the sig and notes when the source carried no structured one, and the scrape is a
+    // guess over prose: it reads "Call your doctor if symptoms persist" as a
+    // prescriber, and its `Dr. <Name>` fallback reads an OTC label that names the
+    // person's own doctor. #5209 settled that a guess is not evidence of a
+    // prescription; a guess is not evidence of a RELATIONSHIP either, and this is the
+    // call that used to mint one — resolving the scraped string against the provider
+    // registry stamped a real clinician onto a drugstore ibuprofen and onto its
+    // course, which the medicine card then preferred over the free text. So the
+    // prescriber the link and the course are built from is the ASSERTED one only.
+    const assertedPrescriber = med.prescriberScraped ? null : med.prescriber;
+    // Prescriber link (#1051 semantics (a)): resolve the prescriber TEXT into an
+    // EXISTING individual registry row (exact only — never an org / near-miss).
+    const providerId = assertedPrescriber
+      ? resolveExactPrescriberId(assertedPrescriber)
       : null;
     const attribution: CourseAttribution = {
-      prescriber: med.prescriber,
+      prescriber: assertedPrescriber,
       providerId,
       doseSnapshot: doseSnapshotOf(med),
     };
@@ -252,10 +263,10 @@ export function persistExtractedMedications(
       pharmacy: med.pharmacy,
       rxNumber: med.rxNumber,
       // Which of those two the SOURCE asserted, and which the parser scraped out of
-      // the sig/notes. The scrape is kept as the row's text — it is what the label
-      // said — but it is not attribution, so the core will not read it as evidence of
-      // a prescription: an OTC ibuprofen whose sig says "call your doctor if symptoms
-      // persist" is not a prescription because a label heuristic found the word.
+      // the sig/notes. A scraped value is not attribution, so the core neither stores
+      // it nor reads it as evidence of a prescription: an OTC ibuprofen whose sig says
+      // "call your doctor if symptoms persist" does not acquire a prescriber, or an Rx
+      // flag, because a label heuristic found the word.
       prescriberScraped: med.prescriberScraped,
       rxNumberScraped: med.rxNumberScraped,
       providerId,

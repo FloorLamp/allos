@@ -34,15 +34,14 @@
 // lives) — never filtered afterwards in TypeScript. The day view is acting-profile-only
 // by ruling, and these hits are doors onto it.
 
-import { db, today } from "../db";
+import { db } from "../db";
 import { zonedDateParts } from "../date";
 import { getTimezone } from "../settings";
-import { getDisplayFormatPrefs } from "../settings/display";
 import {
-  DEFAULT_FORMAT_PREFS,
-  formatMonthDay,
-  type DisplayFormatPrefs,
-} from "../format-date";
+  searchDayText,
+  subtitleOf,
+  type SearchDisplay,
+} from "../search-projections";
 import { historyHref, type AppRoute } from "../hrefs";
 import { timelineEntryAnchorId } from "../timeline-format";
 import { normalizePracticeName } from "../practice";
@@ -361,33 +360,25 @@ const LOGGED_SOURCES: readonly LoggedSource[] = [
 // THE SUBTITLE'S DATE IS DISPLAY COPY, so it is rendered in the login's date shape and
 // never as the stored `YYYY-MM-DD` (#3492/#3545 — a storage-format date in user copy).
 // The issue pins the SHAPE `<kind> · <date>`, which "Practice · Aug 31" satisfies and
-// the machine spelling does not. `formatMonthDay` is the vocabulary entry for a dense
-// in-app label, and its auto-year rule is what puts the year on last year's session
-// and leaves it off this morning's. The hit's `date` field keeps the ISO day — that
-// one is machine-read (the recency tiebreak), never printed.
+// the machine spelling does not; `searchDayText` is the one formatter the whole fan-out
+// prints days through (#5105), and its auto-year rule is what puts the year on last
+// year's session and leaves it off this morning's. The hit's `date` field keeps the ISO
+// day — that one is machine-read (the recency tiebreak), never printed.
 function loggedHit(
   source: LoggedSource,
   entry: LoggedEntry,
-  display: Display
+  display: SearchDisplay
 ): SearchHit {
   const day = historyHref({ day: entry.day, kind: source.kind });
   return {
     domain: "logged",
     key: `logged:${entry.entryId}`,
     title: entry.title,
-    subtitle: `${source.noun} · ${formatMonthDay(entry.day, display.prefs, {
-      today: display.today,
-    })}`,
+    subtitle: subtitleOf([source.noun, searchDayText(entry.day, display)]),
     // The day view, scoped to the kind, scrolled to this row.
     href: `${day}#${timelineEntryAnchorId(entry.entryId)}` as AppRoute,
     date: entry.day,
   };
-}
-
-/** What the subtitle's date needs to read in the login's own shape. */
-interface Display {
-  prefs: DisplayFormatPrefs;
-  today: string;
 }
 
 /**
@@ -397,22 +388,16 @@ interface Display {
  * so the whole group costs a bounded seven reads however dense the record is. Up to 35
  * candidates come back; the ranker keeps the five newest of them.
  *
- * `loginId` is the acting login, for the date shape its owner chose. `null` is the
- * documented login-less channel (a retrieval with a profile but no reader in context):
- * the default shape, declared at the call site rather than defaulted silently.
+ * `display` is resolved once by the fan-out (lib/queries/search.ts) from the acting
+ * login and the profile-local today, so no source here reaches for settings.
  */
 export function loggedEntryHits(
   profileId: number,
   query: string,
   like: string,
-  loginId: number | null
+  display: SearchDisplay
 ): SearchHit[] {
   const q: LoggedQuery = { query, like };
-  const display: Display = {
-    prefs:
-      loginId == null ? DEFAULT_FORMAT_PREFS : getDisplayFormatPrefs(loginId),
-    today: today(profileId),
-  };
   return LOGGED_SOURCES.flatMap((source) =>
     source
       .read(profileId, q)

@@ -452,12 +452,14 @@ test("detail routes survive and their back-links point at the owning panes (#107
 
   await page.goto(`/providers/${providerId}`);
   await expect(
-    page.getByRole("link", { name: /Back to providers/ })
+    page.getByRole("main").getByRole("link", { name: /Providers/ })
   ).toHaveAttribute("href", "/records/care/providers");
 
   await page.goto("/immunizations/tdap");
   await expect(
-    page.getByRole("link", { name: /Back to immunizations/ }).first() // eslint-disable-line no-restricted-properties -- first-ok: the single "Back to immunizations" link on the tdap detail page; href asserted
+    page
+      .getByRole("main")
+      .getByRole("link", { name: "Immunizations", exact: true })
   ).toHaveAttribute("href", "/records/history/immunizations");
 });
 

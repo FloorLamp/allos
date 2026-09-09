@@ -56,6 +56,7 @@ import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
 import { OFFER_FAMILIES, offerStands } from "@/lib/offers";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
+import { cabinetViewer } from "../supplies/access";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
 import { historyHref } from "@/lib/hrefs";
@@ -210,10 +211,11 @@ export default async function ManageTab({
   // its own, so this tab and Medications show the same number and land on the same
   // list. Everything else on this tab stays single-profile.
   const scope = await requireScope();
-  const cabinetCount = countVisiblePools(scope.ids);
+  const viewer = cabinetViewer(scope.ids, scope.role);
+  const cabinetCount = countVisiblePools(viewer);
   // Resolved through the SAME offerability rule the item form's picker uses, so an id
   // outside this caller's reach simply doesn't seed anything.
-  const initialSupply = findLinkableSupply(scope.ids, supplyId);
+  const initialSupply = findLinkableSupply(viewer, supplyId);
   const units = getUnitPrefs(login.id);
   const intakeContext = loadIntakeFormContext(profile.id, units.weightUnit);
   const todayStr = intakeContext.todayStr;

@@ -110,7 +110,8 @@ than treating every invalid filter as a 404 or promising an identical fallback.
 
 The narrow layout is day bar → chart → add layer → rows. The bar names the day
 and record count, including zero. The feed subtitle and per-group day headings
-are omitted. The calendar remains a door at every width.
+are omitted. The calendar remains a door at every width. The header's History
+link returns to the feed, preserving filters, household view, and the read bound.
 
 At 1440px, use the shared rail page width with a fixed `48rem` reading column
 and a `minmax(0,760px)` right rail. Keep the rail first in source order for the

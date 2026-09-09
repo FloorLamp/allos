@@ -172,7 +172,7 @@ test("the analyte detail route lives under Clinical results (#1079)", async ({
     page.getByRole("heading", { name: "Glucose", exact: true })
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Back to clinical results/ })
+    page.getByRole("main").getByRole("link", { name: /Clinical results/ })
   ).toHaveAttribute("href", "/results/clinical-results");
 });
 

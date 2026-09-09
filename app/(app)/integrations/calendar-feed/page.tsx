@@ -28,7 +28,6 @@ import { requestNowMs } from "@/lib/request-now";
 // The base an external calendar client must be able to reach — one authority,
 // shared with Health Connect, Strava and Withings (#2959).
 import { externalBaseUrl } from "@/lib/external-url-server";
-import BackLink from "@/components/BackLink";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
 
 export const dynamic = "force-dynamic";
@@ -114,9 +113,10 @@ export default async function CalendarFeedPage() {
       className="mx-auto"
       data-testid="integration-page"
     >
-      <BackLink href="/data" label="Data" />
-
-      <PageHeader title={def.name} />
+      <PageHeader
+        back={{ href: "/data", destination: "Data" }}
+        title={def.name}
+      />
 
       {/* One sentence, then the mechanics behind a fold (copy.md rule 10 /
           #3490). The registry carries the split; every integration page renders

@@ -302,8 +302,10 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // shared and has NO owning profile, so the active-profile requireWriteAccess()
   // would authorize the wrong subject. Pool EDITS gate on the pool's MEMBERSHIP
   // (requirePoolWriteAccess: write access to ≥1 linked profile, falling back to
-  // requireProfileWriteAccess for the refusal path, and to requireWriteAccess for an
-  // orphaned pool that links nobody); LINK/UNLINK gate on the ITEM's own profile
+  // requireProfileWriteAccess for the refusal path; and #5122's owner ruling
+  // (2026-09-09) makes a pool with NO members ADMIN-ONLY, which requirePoolWriteAccess
+  // spells as requireWriteAccess() composed with requireAdmin() — both redirect, so a
+  // forged POST aborts before any mutation); LINK/UNLINK gate on the ITEM's own profile
   // (requireItemWriteAccess → requireProfileWriteAccess). ---
   {
     file: "app/(app)/results/actions.ts",

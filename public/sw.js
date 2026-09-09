@@ -48,6 +48,7 @@ const PRECACHE = [OFFLINE_URL, "/icon.svg"];
 // The page's tap: activate now, on request. This is the ONLY path from waiting to
 // active on an update — nothing here decides to take over on its own.
 const SKIP_WAITING_MESSAGE = "allos-skip-waiting";
+const REST_DONE_MESSAGE = "allos-rest-done";
 
 // Set during install when there was no predecessor worker: a FIRST install has no
 // running build to interrupt, so it may activate and claim immediately (otherwise a
@@ -84,6 +85,31 @@ self.addEventListener("install", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === SKIP_WAITING_MESSAGE) {
     self.skipWaiting();
+    return;
+  }
+  if (event.data?.type === REST_DONE_MESSAGE) {
+    event.waitUntil(
+      (async () => {
+        try {
+          // The browser supplies the sender. Payload text/URLs/IDs are never used.
+          const source = event.source;
+          if (
+            source?.type !== "window" ||
+            !source.id ||
+            new URL(source.url).origin !== self.location.origin
+          )
+            return;
+          await self.registration.showNotification("Rest done", {
+            body: "",
+            icon: "/icon.svg",
+            badge: "/icon.svg",
+            data: { type: REST_DONE_MESSAGE, clientId: source.id },
+          });
+        } catch {
+          // Best effort: a denied display must not leave a rejected worker event.
+        }
+      })()
+    );
   }
 });
 
@@ -316,6 +342,23 @@ self.addEventListener("push", (event) => {
 // link) or open a new one. Same-origin only — url comes from our own payload.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  if (event.notification.data?.type === REST_DONE_MESSAGE) {
+    event.waitUntil(
+      (async () => {
+        try {
+          const client = await self.clients.get(
+            event.notification.data.clientId
+          );
+          // Preserve the originating tab's URL, live editor and minimized state.
+          if (client?.type === "window") await client.focus();
+          else await self.clients.openWindow("/training");
+        } catch {
+          // No retry or navigation of another tab after a rejected focus/open.
+        }
+      })()
+    );
+    return;
+  }
   const url = (event.notification.data && event.notification.data.url) || "/";
   event.waitUntil(
     (async () => {
