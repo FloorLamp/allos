@@ -54,13 +54,9 @@ import type { GoalBiomarkerOption } from "@/app/(app)/training/goal-target-optio
 export function GoalCreateControl({ onActivate }: { onActivate: () => void }) {
   const label = useCreateActionLabel();
   return (
-    <button
-      type="button"
-      onClick={onActivate}
-      className="btn inline-flex items-center gap-1.5"
-    >
+    <Button onClick={onActivate}>
       <IconPlus className="h-4 w-4" /> {label}
-    </button>
+    </Button>
   );
 }
 

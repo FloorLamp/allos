@@ -2,6 +2,7 @@
 
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import type { ActivityEditData } from "@/components/ActivityForm";
+import Button from "@/components/Button";
 import LogActivityButton from "@/components/LogActivityButton";
 import type { ReactNode } from "react";
 
@@ -88,9 +89,7 @@ export default function TodaysSessionCard({
           data-testid="training-overview-actions"
         >
           {canStartWorkout && (
-            <button
-              type="button"
-              className="btn"
+            <Button
               data-testid="log-this-session"
               data-workout-offer={workoutOffer.kind}
               onClick={() => openSession(prefill)}
@@ -103,7 +102,7 @@ export default function TodaysSessionCard({
               {workoutOffer.kind === "resume"
                 ? workoutOffer.label
                 : "Log this session"}
-            </button>
+            </Button>
           )}
           <LogActivityButton testId="training-overview-log-activity">
             Log activity

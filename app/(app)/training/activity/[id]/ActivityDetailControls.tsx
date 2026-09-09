@@ -8,6 +8,7 @@ import {
   IconChevronRight,
   IconPencil,
 } from "@tabler/icons-react";
+import Button from "@/components/Button";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import type { ActivityEditData } from "@/lib/activity-form-model";
 import type { UnitPrefs } from "@/lib/settings";
@@ -89,15 +90,13 @@ export function ActivityDetailActions({
   return (
     <div className="flex shrink-0 items-center gap-1.5">
       {canWrite ? (
-        <button
-          type="button"
+        <Button
           data-testid="activity-page-edit"
-          className="btn btn-sm inline-flex items-center gap-1.5"
           onClick={() => openEdit(activity)}
         >
           <IconPencil className="h-4 w-4" aria-hidden />
           Edit
-        </button>
+        </Button>
       ) : null}
       <ActivityCardMenu
         activity={activity}

@@ -67,7 +67,20 @@ test("Today's session card renders the resolved routine day (#740)", async ({
     await expect(
       actions.getByTestId("training-overview-start-workout")
     ).toHaveCount(0);
-    await expect(actions.locator("button.btn")).toHaveCount(1);
+    // THE ROW'S RANK, NOT ITS CLASS (#4978 slice 3). This read `button.btn`
+    // toHaveCount(1) while "Log this session" was a raw `.btn`: one filled
+    // control beside one quiet one. The control converted to the typed Button,
+    // and a class selector would have stopped matching it — a control that
+    // drops out of the corpus is a control this test silently stops measuring.
+    // It sweeps the marker every rank stamps instead, and still states a rank:
+    // this row holds exactly its two controls and NEITHER is filled, because
+    // "Log this session" is not a form commit and #4978's question about
+    // non-form commits on a multi-card route is open. Promoting it must break
+    // this line and be ruled, not land unnoticed.
+    await expect(actions.locator("[data-button-control]")).toHaveCount(2);
+    await expect(
+      actions.locator(".button-control-primary, .button-control-danger")
+    ).toHaveCount(0);
   } finally {
     await page.context().close();
   }
