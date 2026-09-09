@@ -203,7 +203,7 @@ describe("an untimed administration is anchored at local noon of its own day", (
     expect(countFor(p, itemId)).toBe(expected);
   });
 
-  it("counts beside timed rows, and the interval clock is untouched by the anchor", () => {
+  it("counts beside timed rows, and an untimed row leaves the interval unanswered", () => {
     const p = seedProfile("UntimedMixed", "UTC");
     const { itemId, doseId } = seedPrnMed(p, "Acetaminophen", {
       minInterval: 6,
@@ -211,20 +211,44 @@ describe("an untimed administration is anchored at local noon of its own day", (
     // One placed dose an hour ago, one check-off for yesterday that states no minute.
     logAdministration(itemId, doseId, "2026-09-03", "2026-09-03T08:16:00Z");
     logAdministration(itemId, doseId, "2026-09-02", null);
+    // The COUNT still answers — it has a window and a noon anchor for the unplaced row.
     expect(countFor(p, itemId)).toBe(2);
-    // The interval is a DURATION and reads the placed dose, never the noon anchor:
-    // an hour after a real dose the window is shut, and it says so.
+    // THE INTERVAL DOES NOT (#4686). An untimed row could be the latest, so the arm is
+    // `unplaced` WHATEVER the placed read returned — no noon anchor, no window
+    // arithmetic. The card keeps the exact count and names the door that places it.
+    const arming = getMedicationFamilyStates(
+      p,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId)!.arming;
+    expect(arming.kind).toBe("unplaced");
     const status = prnQuickLogRedoseStatus(
       {
         minIntervalHours: 6,
         maxDailyCount: 5,
         familyCount: 2,
-        familyLastGivenAt: "2026-09-03T08:16:00Z",
+        familyArming: arming,
         familyMaxDailyCount: 5,
       },
       new Date(NOW_ISO)
     )!;
-    expect(status.open).toBe(false);
-    expect(redoseCardLabel(status)).toBe("Next dose in ~5h · 2 of 5 in 24h");
+    expect(status.kind).toBe("unknown");
+    expect(redoseCardLabel(status)).toBe(
+      "Last dose has no time yet — add it in Dose history · 2 of 5 in 24h"
+    );
+    expect(cardLine(p, itemId)).toBe(
+      "Last dose has no time yet — add it in Dose history · 2 of 5 in 24h"
+    );
+  });
+
+  // The other half of the same rule: with every row placed, the interval is a plain
+  // duration and reads the latest stated instant.
+  it("with every row placed, the interval reads the latest stated instant", () => {
+    const p = seedProfile("PlacedOnly", "UTC");
+    const { itemId, doseId } = seedPrnMed(p, "Acetaminophen", {
+      minInterval: 6,
+    });
+    logAdministration(itemId, doseId, "2026-09-02", "2026-09-02T20:00:00Z");
+    logAdministration(itemId, doseId, "2026-09-03", "2026-09-03T08:16:00Z");
+    expect(cardLine(p, itemId)).toBe("Next dose in ~5h · 2 of 5 in 24h");
   });
 });

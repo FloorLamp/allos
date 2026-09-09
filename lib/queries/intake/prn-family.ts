@@ -37,6 +37,7 @@ import {
   prnCeilingWindowStart,
   prnDayExposure,
   prnUntimedDateFloor,
+  type FamilyArming,
   type PrnDayExposure,
 } from "../../prn-redose";
 import { getTimezone } from "../../settings";
@@ -51,14 +52,10 @@ export interface MedFamilyState {
   memberNames: string[];
   // Human label for the family ("Ibuprofen") — the duplication/over-max copy.
   label: string;
-  // Latest administration across ALL members (the stated event instant when present,
-  // otherwise the immutable capture instant),
-  // plus WHICH member it belongs to, so a notice can honestly say "6h since OTC
-  // Ibuprofen" when a sibling's dose armed the clock.
-  latestId: number | null;
-  latestGivenAt: string | null;
-  latestItemId: number | null;
-  latestItemName: string | null;
+  // WHAT ARMS THE INTERVAL CLOCK across ALL members (#4686). One discriminated value,
+  // not four fields beside a nullable instant: the `unplaced` arm carries no instant at
+  // all, so nothing here can be read as an elapsed time when nobody stated one.
+  arming: FamilyArming;
   // Combined taken count across all members inside the trailing 24 hours (#4686).
   countInWindow: number;
   // The most conservative confirmed max_daily_count among members, or null when no
@@ -142,6 +139,17 @@ export function redoseWindowState(
   // Read the current family's administrations once inside the caller's write
   // transaction. The shared row-instant model chooses administration time first and
   // immutable capture second; this window check does not invent a third pairing.
+  //
+  // THIS PAIRING IS A CHOSEN TRADE, NOT A SAFE ONE (#4686). It is deliberately NOT the
+  // union above, because this asks a different question: is the window a Telegram
+  // button was armed by still the current one. Falling back to capture can only let a
+  // NEWER row win and cancel an older window — but that cuts both ways, and the cost is
+  // measured: checking off YESTERDAY's dose at 22:30 with no time stated supersedes a
+  // live window armed by a real 22:00 administration, cancelling the 04:00 redose
+  // notice a caregiver opted into. Safe against a double dose, unsafe against
+  // under-treating the overnight fever this window exists for. Removing it is worse
+  // (a newer untimed dose would fail to supersede at all), so it stays — as a trade
+  // that was priced, not as a guard that is safe.
   const administrations = db
     .prepare(
       `SELECT l.id, l.occurred_at, l.recorded_at
@@ -255,20 +263,55 @@ function getMedicationFamilyStatesUncached(
   for (const family of getActiveMedicationFamilies(profileId)) {
     const ids = family.members.map((m) => m.id);
     const placeholders = ids.map(() => "?").join(", ");
+    // THE ARMING READ, IN TWO HALVES, AND NEITHER OF THEM COALESCES (#4686).
+    //
+    // The latest PLACED administration — a row that states its own instant. No
+    // `COALESCE`, so a capture stamp can never reach the interval clock through here.
+    // Not bounded by `l.date` either: a midnight-crossing correction moves `occurred_at`
+    // and leaves the adherence day where the schedule put it (`restampDoseLogsCore`
+    // says so and returns `crossedMidnight` as an outcome), so a `MAX(date)` narrowing
+    // drops the genuinely-latest dose — measured at 18:00 where the truth was 22:00.
     const latest = db
       .prepare(
-        `SELECT l.id AS id,
-                COALESCE(l.occurred_at, l.recorded_at) AS administeredAt,
-                l.item_id AS itemId
+        `SELECT l.id AS id, l.occurred_at AS givenAt, l.item_id AS itemId
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-            AND l.status = 'taken'
-          ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
+            AND l.status = 'taken' AND l.occurred_at IS NOT NULL
+          ORDER BY l.occurred_at DESC, l.id DESC
           LIMIT 1`
       )
       .get(profileId, ...ids) as
-      { id: number; administeredAt: string; itemId: number } | undefined;
+      { id: number; givenAt: string; itemId: number } | undefined;
+    // Does ANY taken administration for this family state no instant? That is the whole
+    // question — no window, no anchor, no arithmetic. If one exists the family is
+    // `unplaced` WHATEVER the placed read returned, because it could be the latest and
+    // nothing in the row says otherwise. Bounding this by `recorded_at` would be wrong
+    // in the permissive direction too: a skipped→taken flip re-uses a row created by a
+    // different act, so its capture stamp predates the dose it now records.
+    const unplaced = db
+      .prepare(
+        `SELECT l.id AS id
+           FROM intake_item_logs l
+           JOIN intake_items s ON s.id = l.item_id
+          WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
+            AND l.status = 'taken' AND l.occurred_at IS NULL
+          ORDER BY l.id DESC
+          LIMIT 1`
+      )
+      .get(profileId, ...ids) as { id: number } | undefined;
+    const arming: FamilyArming = unplaced
+      ? { kind: "unplaced", administrationId: unplaced.id }
+      : latest
+        ? {
+            kind: "placed",
+            administrationId: latest.id,
+            givenAt: latest.givenAt,
+            itemId: latest.itemId,
+            itemName:
+              family.members.find((m) => m.id === latest.itemId)?.name ?? null,
+          }
+        : { kind: "none" };
     // The WINDOW's taken administrations with their snapshotted amounts — the count
     // is the row count, and the amounts feed the amount-aware exposure (#1854).
     const windowLogs = db
@@ -299,12 +342,7 @@ function getMedicationFamilyStatesUncached(
       memberIds: ids,
       memberNames: family.members.map((m) => m.name),
       label: familyDisplayLabel(family.members),
-      latestId: latest?.id ?? null,
-      latestGivenAt: latest?.administeredAt ?? null,
-      latestItemId: latest?.itemId ?? null,
-      latestItemName: latest
-        ? (family.members.find((m) => m.id === latest.itemId)?.name ?? null)
-        : null,
+      arming,
       countInWindow: amountsInWindow.length,
       minConfirmedMax,
       minConfirmedMaxMg,

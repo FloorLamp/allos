@@ -761,7 +761,7 @@ describe("one quick-log visit", () => {
         minIntervalHours: null,
         maxDailyCount: null,
         familyCount: 0,
-        familyLastGivenAt: null,
+        familyArming: { kind: "none" },
         familyMaxDailyCount: null,
         familyExposure: null,
         familyMemberCount: 1,

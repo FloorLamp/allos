@@ -38,6 +38,7 @@ import {
 import {
   ceilingWindowEndMinute,
   effectiveMaxDailyCount,
+  NO_ARMING,
   redoseWindowStatus,
 } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
@@ -64,12 +65,7 @@ import {
   type MedicationListRow,
 } from "@/lib/medication-list";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import {
-  lastNDates,
-  shiftDateStr,
-  zonedDateParts,
-  parseUtcSql,
-} from "@/lib/date";
+import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { getTimezone, type WeightUnit } from "@/lib/settings";
 import { effectiveSituationResolver } from "@/lib/queries/derived-situations";
 import { intakeDayContext } from "@/lib/queries/intake/day-context";
@@ -367,25 +363,30 @@ export function loadMedicationsData(
       amount: a.amount,
       product: a.product,
     }));
+    // THE DISPLAY READ, and only that (#4686). It is the "Last dose 8:05pm" clock
+    // below, so it keeps its capture fallback — dropping it would hide a dose that
+    // happened. What it stopped being is the ARMING read: `fam?.latestGivenAt ?? last`
+    // handed the redose verdict a capture stamp whenever the family map had no entry,
+    // and the PRN id list filters on kind and on-demand with no `active` filter while
+    // the family builder requires active — so a PAUSED as-needed medication's card
+    // computed "Redose OK — min interval passed" off the instant the app was told.
     const last = admins[0]
       ? (admins[0].occurred_at ?? admins[0].recorded_at)
       : null;
     const fam = familyStates.get(s.id);
-    const famLast = fam?.latestGivenAt ?? last;
-    const famCount = fam?.countInWindow ?? admins.length;
     let redoseLine: string | null = null;
     let redosePrimary = true;
     // The daily max is optional (#1458): the interval + an administration are all
     // the "next dose in ~Nh" half needs, so the gate asks only for those.
-    if (s.min_interval_hours != null && famLast) {
+    if (s.min_interval_hours != null) {
       const redoseStatus = redoseWindowStatus({
         minIntervalHours: s.min_interval_hours,
         maxDailyCount: effectiveMaxDailyCount(
           s.max_daily_count,
           fam?.minConfirmedMax
         ),
-        latestGivenAt: parseUtcSql(famLast),
-        countInWindow: famCount,
+        arming: fam?.arming ?? NO_ARMING,
+        countInWindow: fam?.countInWindow ?? admins.length,
         now: nowInstant,
         // The family's amount-aware exposure (#1854): the card's "N of M" line
         // reads milligrams when a mg/day max is confirmed and amounts are known.

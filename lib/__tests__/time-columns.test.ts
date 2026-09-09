@@ -308,12 +308,8 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 9,
-    why: "SQL readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated. The shared dose-history ordering keeps three scopes identical; the redose readers require the same database-side ordering and aggregation.",
-  },
-  "lib/queries/intake/prn-family.ts": {
-    count: 2,
-    why: "the family safety gather selects and orders the latest administration event, with immutable capture as the fallback for rows whose event is unstated. Both operations must remain database-side across all family members.",
+    count: 6,
+    why: "DISPLAY readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated: the shared dose-history ordering (three scopes identical), the scheduled row's printed clock, and the quick-log gather's own 'Last dose 8:05pm' column. #4686 took the ARMING readers out — the redose clock now reads a placed instant or nothing, never a capture stamp — so what is left here renders a fact beside the day it happened on, never a duration a safety line turns into a verdict.",
   },
   "lib/queries/nutrition.ts": {
     count: 3,
@@ -337,7 +333,7 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "app/(app)/medications/med-data.ts": {
     count: 2,
-    why: "the medication detail's administration list and its 'last taken' label use the event instant with capture fallback, matching the shared dose history semantics.",
+    why: "the medication detail's administration list and the 'Last dose 4:02pm' clock beside it, both DISPLAY reads on a card that prints the day next to them. The second one also fed the redose verdict until #4686 — which is how a paused as-needed medication computed 'Redose OK' off a capture stamp — and no longer does: the window math reads `FamilyArming` and this pairing renders a label.",
   },
   "lib/food-slot-count.ts": {
     count: 1,

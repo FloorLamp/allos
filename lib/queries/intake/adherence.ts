@@ -49,7 +49,11 @@ import {
   redoseWindowState,
 } from "./prn-family";
 import { ceilingWindowEndMinute } from "../../prn-redose";
-import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
+import type {
+  FamilyArming,
+  PrnDayExposure,
+  PrnExposureBasis,
+} from "../../prn-redose";
 import type {
   AdministrationOutcome,
   DoseStatus,
@@ -733,16 +737,14 @@ function logAdministrationTx(
   }
   const summary = db
     .prepare(
-      `SELECT COUNT(*) AS count,
-              MAX(COALESCE(occurred_at, recorded_at)) AS last
+      `SELECT COUNT(*) AS count
          FROM intake_item_logs
         WHERE item_id = ? AND date = ? AND status = 'taken'`
     )
-    .get(itemId, date) as { count: number; last: string | null };
+    .get(itemId, date) as { count: number };
   return {
     kind: dup ? "duplicate" : "logged",
     count: summary.count,
-    lastGivenAt: summary.last ?? occurredAtStr,
     date,
   };
 }
@@ -1793,15 +1795,19 @@ export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
     .all(profileId) as RedoseNoticeItem[];
 }
 
-// The arming state for one PRN item's redose one-shot: the latest administration's id
-// + its intake time (arms/re-arms the timer, keyed by id per the notify_last_*
-// discipline) and the TRAILING-24h administration count (drives the "N of M" + max
-// suppression, #4686). Profile-scoped via the parent item. `nowMinute` is the instant
-// the ceiling window ends, and the count reads the same one predicate the family gather
-// does — the two must never disagree about what is inside the window.
+// The arming state for one PRN item's redose one-shot: what arms the timer (#4686's
+// `FamilyArming`, keyed by administration id per the notify_last_* discipline) and the
+// TRAILING-24h administration count (drives the "N of M" + max suppression). Profile-
+// scoped via the parent item. `nowMinute` is the instant the ceiling window ends, and
+// the count reads the same one predicate the family gather does — the two must never
+// disagree about what is inside the window.
+//
+// THE PER-ITEM READ ANSWERS IN THE SAME UNION AS THE FAMILY GATHER, deliberately: this
+// is the fallback a caller reaches when the family map has no entry, and a fallback
+// that answered in a different shape is exactly how `recorded_at` got back into the
+// interval clock in three files.
 export interface RedoseArmingState {
-  latestId: number | null;
-  latestGivenAt: string | null;
+  arming: FamilyArming;
   countInWindow: number;
 }
 
@@ -1810,21 +1816,33 @@ export function getRedoseArmingState(
   itemId: number,
   nowMinute: number
 ): RedoseArmingState {
-  // The most-recent administration (by intake time, id as tiebreak) that arms the
-  // one-shot. Scoped through the parent item so a forged itemId can't read across
-  // profiles.
+  // The latest administration that STATES its instant — no COALESCE, so the one-shot
+  // can never be armed by a capture stamp. Scoped through the parent item so a forged
+  // itemId can't read across profiles.
   const latest = db
     .prepare(
-      `SELECT l.id AS id,
-              COALESCE(l.occurred_at, l.recorded_at) AS administeredAt
+      `SELECT l.id AS id, l.occurred_at AS givenAt
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-        ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
+          AND l.occurred_at IS NOT NULL
+        ORDER BY l.occurred_at DESC, l.id DESC
         LIMIT 1`
     )
-    .get(profileId, itemId) as
-    { id: number; administeredAt: string } | undefined;
+    .get(profileId, itemId) as { id: number; givenAt: string } | undefined;
+  // Any taken row stating no instant at all — see the family gather for why this needs
+  // neither a window nor a date bound.
+  const unplaced = db
+    .prepare(
+      `SELECT l.id AS id
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
+          AND l.occurred_at IS NULL
+        ORDER BY l.id DESC
+        LIMIT 1`
+    )
+    .get(profileId, itemId) as { id: number } | undefined;
   const count = db
     .prepare(
       `SELECT COUNT(*) AS n
@@ -1837,8 +1855,17 @@ export function getRedoseArmingState(
     n: number;
   };
   return {
-    latestId: latest?.id ?? null,
-    latestGivenAt: latest?.administeredAt ?? null,
+    arming: unplaced
+      ? { kind: "unplaced", administrationId: unplaced.id }
+      : latest
+        ? {
+            kind: "placed",
+            administrationId: latest.id,
+            givenAt: latest.givenAt,
+            itemId,
+            itemName: null,
+          }
+        : { kind: "none" },
     countInWindow: count.n,
   };
 }
@@ -1947,6 +1974,13 @@ export function getPrnOverMaxItems(
 // OTC ibuprofen dose an hour ago holds the Rx item's "redose OK"). For a solo item
 // the family values equal the per-item ones. The per-item count/lastGivenAt stay for
 // the "N today · last 4:02pm" day label (the item's own administrations).
+//
+// TWO CONSUMERS, TWO ANSWERS (#4686). `lastGivenAt` is a DISPLAY column and keeps its
+// capture fallback: deleting it would make a PRN medication read "No doses logged"
+// after any past-day check-off, hiding a dose that happened. `familyArming` is the
+// SAFETY answer and never falls back to it — including on the non-medication path,
+// which has no ingredient family and now reads its own arming halves rather than
+// inheriting the display column.
 export interface PrnMedForQuickLog {
   // Complete label identity. Its name is the linked bottle's product name when one
   // exists, otherwise the item's display name; confirmed CUIs retain precedence.
@@ -1966,7 +2000,10 @@ export interface PrnMedForQuickLog {
   // The ingredient family's administrations inside the trailing 24 hours (#4686) —
   // the ceiling's basis.
   familyCount: number;
-  familyLastGivenAt: string | null;
+  // What arms the interval clock (#4686). A discriminated value rather than a nullable
+  // instant, so the "logged but unplaced" state cannot collapse onto "nothing logged"
+  // — or onto the display column above.
+  familyArming: FamilyArming;
   // min confirmed max across the family; falls back to the item's own max.
   familyMaxDailyCount: number | null;
   // The family's amount-aware window exposure (#1854) from the ONE family gather —
@@ -1999,6 +2036,20 @@ const PRN_QUICK_LOG_STMT = hoistedStatement(
               (SELECT MAX(COALESCE(l.occurred_at, l.recorded_at)) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.status = 'taken')
                 AS lastGivenAt,
+              -- The item's OWN arming halves, in the shape getRedoseArmingState reads
+              -- them and with no COALESCE in either: the ONLY consumer is the
+              -- non-medication fallback below, which has no ingredient family to ask.
+              (SELECT l.id FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.status = 'taken'
+                  AND l.occurred_at IS NOT NULL
+                ORDER BY l.occurred_at DESC, l.id DESC LIMIT 1) AS placedId,
+              (SELECT l.occurred_at FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.status = 'taken'
+                  AND l.occurred_at IS NOT NULL
+                ORDER BY l.occurred_at DESC, l.id DESC LIMIT 1) AS placedAt,
+              (SELECT MAX(l.id) FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.status = 'taken'
+                  AND l.occurred_at IS NULL) AS unplacedId,
               s.min_interval_hours AS minIntervalHours,
               s.max_daily_count AS maxDailyCount
         FROM intake_items s
@@ -2020,7 +2071,7 @@ function getPrnQuickLogItems(
     PrnMedForQuickLog,
     | "identity"
     | "familyCount"
-    | "familyLastGivenAt"
+    | "familyArming"
     | "familyMaxDailyCount"
     | "familyExposure"
     | "familyMemberCount"
@@ -2029,13 +2080,25 @@ function getPrnQuickLogItems(
     rxcui_ingredients: string | null;
     supply_id: number | null;
     supply_name: string | null;
+    placedId: number | null;
+    placedAt: string | null;
+    unplacedId: number | null;
   })[];
   const families = getMedicationFamilyStates(
     profileId,
     ceilingWindowEndMinute(clockNow())
   );
   return rows.map(
-    ({ rxcui, rxcui_ingredients, supply_id, supply_name, ...r }) => {
+    ({
+      rxcui,
+      rxcui_ingredients,
+      supply_id,
+      supply_name,
+      placedId,
+      placedAt,
+      unplacedId,
+      ...r
+    }) => {
       const fam = families.get(r.id);
       return {
         ...r,
@@ -2047,7 +2110,23 @@ function getPrnQuickLogItems(
           rxcuiIngredients: parseRxcuiIngredients(rxcui_ingredients),
         }),
         familyCount: fam?.countInWindow ?? r.count,
-        familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
+        // The family answer when there is one, else THIS item's own union — never the
+        // display column beside it. A PRN supplement has no ingredient family, and
+        // before #4686 it inherited `lastGivenAt`, which is how the unknown arm was
+        // unreachable on the whole non-medication path.
+        familyArming:
+          fam?.arming ??
+          (unplacedId != null
+            ? { kind: "unplaced", administrationId: unplacedId }
+            : placedId != null && placedAt != null
+              ? {
+                  kind: "placed",
+                  administrationId: placedId,
+                  givenAt: placedAt,
+                  itemId: r.id,
+                  itemName: null,
+                }
+              : { kind: "none" }),
         familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
         familyExposure: fam?.exposure ?? null,
         familyMemberCount: fam?.memberIds.length ?? 1,
