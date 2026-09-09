@@ -281,6 +281,10 @@ export function alsoForCardModel(input: {
   memberProfileIds: readonly number[];
   candidates: readonly { id: number; name: string }[];
 }): AlsoForCardModel {
+  // Nobody to offer this bottle to means nothing to read: the sources exist only to be
+  // chosen between, and reading each member's schedule to render no action is work the
+  // cabinet does once per bottle per page.
+  if (input.candidates.length === 0) return { sources: [], offers: [] };
   const sources: { option: AlsoForSourceOption; source: AlsoForSource }[] = [];
   for (const member of input.visibleMembers) {
     const source = alsoForSource(member.profileId, member.itemId);
