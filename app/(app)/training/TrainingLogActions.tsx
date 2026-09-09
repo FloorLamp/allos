@@ -2,7 +2,6 @@
 
 import { IconBolt, IconRepeat } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import Button from "@/components/Button";
 import LogActivityButton from "@/components/LogActivityButton";
 
 // THE LOG'S OWN DOORS (#4079's anti-drop census: "repeat-last → Log mount").
@@ -38,22 +37,29 @@ export default function TrainingLogActions() {
         </LogActivityButton>
       </div>
       {hasLastActivity && (
-        <Button onClick={openRepeatLast} data-testid="repeat-last">
+        <button
+          type="button"
+          onClick={openRepeatLast}
+          data-testid="repeat-last"
+          className="btn-ghost"
+        >
           <IconRepeat className="h-4 w-4" stroke={2} />
           Repeat last
-        </Button>
+        </button>
       )}
       {canStartWorkout && (
-        <Button
+        <button
+          type="button"
           onClick={openLive}
           data-testid="start-workout"
           data-workout-offer={workoutOffer.kind}
+          className="btn-ghost"
         >
           <IconBolt className="h-4 w-4" stroke={2} />
           {/* The label IS the offer (#1893) — "Resume workout" while a session is
               live, because openLive reopens it rather than resetting its clock. */}
           {workoutOffer.label}
-        </Button>
+        </button>
       )}
     </div>
   );
