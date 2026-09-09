@@ -24,7 +24,7 @@ import {
   logMedicationAdministration,
 } from "@/app/(app)/medications/actions";
 import { doseBandUpdateKey } from "@/lib/dismissal-keys";
-import { seedActor, fd } from "./harness";
+import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -263,5 +263,91 @@ describe("the child dose-band update offer (#5538)", () => {
 
     expect(res.ok).toBe(false);
     expect(storedAmount(itemId)).toBe("100 mg");
+  });
+});
+
+// THE CROSS-PROFILE GATE ON BOTH TAPS (#31/#858 shape, this PR's subject).
+//
+// Both answers accept an explicit `profileId` — the dose row posts the subject it logs
+// for, so a caregiver can answer a child's offer from the household cockpit without
+// switching. That subject-carrying branch is a DIFFERENT authorization from the
+// fallback: it gates on the TARGET via requireProfileWriteAccess instead of the acting
+// profile's requireWriteAccess. Nothing above reaches it — every call there omits
+// `profileId` and takes the fallback — so the gate itself is pinned here, on the three
+// answers the gate has to sort: an ungranted target, a read-only target, and the
+// granted one it exists to permit.
+//
+// This is the first cross-profile rewrite of a stored dose DEFINITION in the tree, so
+// the refusals assert the victim's own row is unmoved, not merely that the call failed.
+// Prod's redirect surfaces here as a throw (see setup.ts).
+
+// A member acting as its OWN base profile, granted WRITE on `kid`, no grant on
+// `stranger`, and a read-only grant on `readonly` — the three cases the gate must sort.
+// A member, not an admin: an admin reaches every profile and would prove nothing.
+function household() {
+  const login = createLogin({ role: "member" });
+  const home = createProfile("Caregiver Home", login.id);
+  const kid = createProfile("Sick Kid", login.id); // write grant (default)
+  const stranger = createProfile("Stranger Kid"); // no grant
+  const readonly = createProfile("Readonly Kid", login.id);
+  db.prepare(
+    "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+  ).run(login.id, readonly.id);
+  actAs(login, home); // acting as the base profile, NOT a kid
+  return { login, home, kid, stranger, readonly };
+}
+
+/** A child with a standing 100 mg → 150 mg offer, and that offer's own key. */
+function seedStandingOffer(profileId: number): { itemId: number; key: string } {
+  const itemId = seedPrnMed(profileId, "100 mg");
+  seedChild(profileId, IN_150_BAND_KG);
+  return { itemId, key: doseBandUpdateKey(itemId, 150) };
+}
+
+describe("answering another profile's offer (#5538 cross-profile gate)", () => {
+  it("accepts for a write-granted child without switching profile", async () => {
+    const { kid } = household();
+    const { itemId, key } = seedStandingOffer(kid.id);
+
+    const res = await acceptDoseBandUpdate(
+      fd({ dedupe_key: key, profileId: kid.id })
+    );
+
+    // The permitting half of the gate: the caregiver never became the child.
+    expect(res.ok).toBe(true);
+    expect(storedAmount(itemId)).toBe("150 mg");
+  });
+
+  it("refuses accepting for an ungranted profile", async () => {
+    const { stranger } = household();
+    const { itemId, key } = seedStandingOffer(stranger.id);
+
+    // The key is the stranger's OWN valid one, so nothing but the gate can refuse it.
+    await expect(
+      acceptDoseBandUpdate(fd({ dedupe_key: key, profileId: stranger.id }))
+    ).rejects.toThrow(/not accessible/);
+    expect(storedAmount(itemId)).toBe("100 mg");
+  });
+
+  it("refuses accepting on a read-only grant", async () => {
+    const { readonly } = household();
+    const { itemId, key } = seedStandingOffer(readonly.id);
+
+    await expect(
+      acceptDoseBandUpdate(fd({ dedupe_key: key, profileId: readonly.id }))
+    ).rejects.toThrow(/read-only/);
+    expect(storedAmount(itemId)).toBe("100 mg");
+  });
+
+  it("refuses declining for an ungranted profile", async () => {
+    const { stranger } = household();
+    const { key } = seedStandingOffer(stranger.id);
+
+    // The decline writes only to the suppression bus, so that is where the damage
+    // would show: a stranger silencing a child's standing offer.
+    await expect(
+      declineDoseBandUpdate(fd({ dedupe_key: key, profileId: stranger.id }))
+    ).rejects.toThrow(/not accessible/);
+    expect(suppressionKeys(stranger.id)).toEqual([]);
   });
 });
