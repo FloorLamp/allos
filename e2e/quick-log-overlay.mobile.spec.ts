@@ -793,7 +793,9 @@ test("an empty selected profile adds a medication and takes it in the same sheet
     await expect(prn.getByTestId("prn-day-label")).toHaveText("None today");
     await expect(addMedication).toBeFocused();
     await settledClick(page, prn.getByTestId("prn-log-now"));
-    await expect(prn.getByTestId("prn-day-label")).toContainText("1 today");
+    await expect(prn.getByTestId("prn-day-label")).toHaveText(
+      /^Last dose .+\(just now\)$/
+    );
     expect(
       db
         .prepare(
