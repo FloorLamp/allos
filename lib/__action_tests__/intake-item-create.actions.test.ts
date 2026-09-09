@@ -12,7 +12,9 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { getEpisodeMedReconciliation } from "@/lib/queries";
+import { getEpisodeMedReconciliation, getMedications } from "@/lib/queries";
+import { medicationMetaLine } from "@/lib/medication-history";
+import { resolveExactPrescriberId } from "@/lib/providers-db";
 import { shiftDateStr } from "@/lib/date";
 import {
   addIntakeItem,
@@ -98,6 +100,46 @@ function coursesOf(itemId: number): { started_on: string | null }[] {
   return db
     .prepare("SELECT started_on FROM medication_courses WHERE item_id = ?")
     .all(itemId) as { started_on: string | null }[];
+}
+
+/** The item's prescriber FK (#1051) and the same FK on each course it carries. */
+function providerIdOf(itemId: number): number | null {
+  return (
+    db
+      .prepare("SELECT provider_id FROM intake_items WHERE id = ?")
+      .get(itemId) as { provider_id: number | null }
+  ).provider_id;
+}
+
+function courseProviderIdsOf(itemId: number): (number | null)[] {
+  return (
+    db
+      .prepare(
+        "SELECT provider_id FROM medication_courses WHERE item_id = ? ORDER BY id"
+      )
+      .all(itemId) as { provider_id: number | null }[]
+  ).map((c) => c.provider_id);
+}
+
+/**
+ * The one medication, read back through the SAME query the medications surface uses,
+ * so `provider_name` is the real join and the meta line is the one a person sees.
+ */
+function onlyMedication(profileId: number) {
+  const meds = getMedications(profileId);
+  expect(meds).toHaveLength(1);
+  return meds[0];
+}
+
+/** A registry individual the scrape could resolve to. `providers` is GLOBAL. */
+function seedIndividualProvider(name: string): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO providers (name, type, dedup_key) VALUES (?, 'individual', ?)`
+      )
+      .run(name, `name:individual:${name.toLowerCase()}`).lastInsertRowid
+  );
 }
 
 function seedSuggestion(
@@ -568,12 +610,16 @@ describe("an imported prescription is created as a prescription", () => {
     );
 
     const row = onlyItem(profile.id);
-    // The scraped text is still STORED — it is what the label said, and losing it is
-    // not this fix's business — but it is not attribution.
-    expect(row.prescriber).toBe("if symptoms persist");
-    expect(row.rx_number).toBe("required");
+    // #5223: the guess is not stored either. The columns hold ATTRIBUTION — what a
+    // source or a person asserted — so a label heuristic's reading of prose leaves
+    // them NULL rather than putting "if symptoms persist" on the card as a fact.
+    expect(row.prescriber).toBeNull();
+    expect(row.rx_number).toBeNull();
     expect(row.rx).toBe(0);
     expect(row.obligation).toBe("may");
+    // The visible outcome: the medicine card's meta line, which has no `rx` gate and
+    // used to read "Dr. if symptoms persist · Rx required" on a drugstore ibuprofen.
+    expect(medicationMetaLine(onlyMedication(profile.id))).toBe("");
   });
 
   it("…and that OTC is still the PRE-CHECKED row when the illness episode resolves", () => {
@@ -606,6 +652,64 @@ describe("an imported prescription is created as a prescription", () => {
         defaultChecked: true,
       },
     ]);
+  });
+
+  it("does NOT mint a provider link from a prescriber scraped out of an OTC's own directions", () => {
+    // THE WORSE HALF (#5223). `prescriberFrom` falls back to a bare `Dr. <Name>`
+    // anywhere in the text, so an OTC label that tells you to call your own doctor by
+    // name scrapes cleanly — and the import used to resolve THAT string through the
+    // provider registry, stamping a real clinician onto the item AND onto its course.
+    // The row then said "not a prescription" and "prescribed by Dr. Chen" at once, and
+    // the card, which prefers the linked provider over the free text, showed her name.
+    // A guess is not evidence (#5209); minting a RELATIONSHIP out of one is that same
+    // line, one call earlier.
+    const { profile } = seedActor();
+    const providerId = seedIndividualProvider("Dr. Chen");
+    const docId = seedDocument(profile.id);
+    persistDocumentImport(
+      profile.id,
+      docId,
+      importInput([
+        prescription("Ibuprofen 200 mg", {
+          value:
+            "Take 1 tablet every 6 hours as needed for pain. Call Dr. Chen if symptoms persist",
+          notes: "Over-the-counter; no prescription required",
+        }),
+      ])
+    );
+
+    const row = onlyItem(profile.id);
+    expect(row.rx).toBe(0);
+    expect(providerIdOf(row.id)).toBeNull();
+    expect(courseProviderIdsOf(row.id)).toEqual([null]);
+    // …so the card names nobody. Not vacuously: the scraped string DOES resolve to
+    // the seeded registry row — the import simply stops asking it to.
+    expect(medicationMetaLine(onlyMedication(profile.id))).toBe("");
+    expect(resolveExactPrescriberId("Dr. Chen")).toBe(providerId);
+  });
+
+  it("still mints the link when the SOURCE asserted the prescriber", () => {
+    // The other direction, so the fix above cannot be "never link". A mapper-supplied
+    // prescriber IS attribution, and it still resolves to the registry row — on the
+    // item and on the course it opens.
+    const { profile } = seedActor();
+    const providerId = seedIndividualProvider("Ada Okafor");
+    const docId = seedDocument(profile.id);
+    persistDocumentImport(
+      profile.id,
+      docId,
+      importInput([
+        prescription("Oxycodone 5 mg", {
+          value:
+            "Take 1 tablet every 6 hours as needed for pain. Call Dr. Chen if symptoms persist",
+          prescriber: "Ada Okafor",
+        }),
+      ])
+    );
+    const row = onlyItem(profile.id);
+    expect(row.prescriber).toBe("Ada Okafor");
+    expect(providerIdOf(row.id)).toBe(providerId);
+    expect(courseProviderIdsOf(row.id)).toEqual([providerId]);
   });
 
   it("still reads the SOURCE's own structured attribution as a prescription", async () => {
