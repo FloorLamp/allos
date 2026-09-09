@@ -9,6 +9,11 @@ import Button from "@/components/Button";
 // each a submit button in ONE form that posts its `resolution` value plus the
 // follow-up id and the resolving record id to the shared resolveFollowUp action. The
 // app never auto-resolves; the outcome is always this explicit click.
+//
+// All three stay SECONDARY, and that is the doctrine rather than an omission here:
+// peers posting one action with different values share no rank, so this surface's
+// loud control is absent by design — the rank would belong to the choice, not to
+// any one outcome (#4978, ruling 7, 2026-09-09).
 export default function FollowUpResolveControls({
   action,
   carePlanItemId,
