@@ -8,8 +8,10 @@ import {
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ToastProvider } from "@/components/Toast";
 import QuickEntryProvider, {
+  QuickEntryVisitBodies,
   remounts,
   useQuickEntry,
+  useQuickEntryVisit,
 } from "@/components/QuickEntryProvider";
 import type { SessionProfile } from "@/lib/auth";
 import { clearLastGood } from "@/lib/offline/quick-entry-read";
@@ -28,8 +30,17 @@ import type { AppRoute } from "@/lib/hrefs";
 
 const loadQuickEntry = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
-const logMood = vi.hoisted(() => vi.fn(async () => ({ ok: true as const })));
+const logMood = vi.hoisted(() =>
+  vi.fn(async (_formData: FormData) => ({ ok: true as const }))
+);
 vi.mock("@/app/(app)/mood-actions", () => ({ logMood }));
+vi.mock("@/app/(app)/stool-actions", () => ({
+  logStoolForm: vi.fn(async () => ({
+    ok: true as const,
+    type: 4,
+    dayCount: 1,
+  })),
+}));
 const allSnapshots = vi.hoisted(() => vi.fn(async () => [] as unknown[]));
 const allIntents = vi.hoisted(() => vi.fn(async () => [] as unknown[]));
 vi.mock("@/lib/offline/snapshot-db", () => ({ allSnapshots }));
@@ -96,6 +107,12 @@ vi.mock("@/components/medications/dose-day-settlement", () => ({
 const ACTING: SessionProfile = {
   id: 1,
   name: "Dad",
+  photo_path: null,
+  photo_version: 0,
+};
+const MIA: SessionProfile = {
+  id: 2,
+  name: "Mia",
   photo_path: null,
   photo_version: 0,
 };
@@ -290,8 +307,74 @@ function mood(
   });
 }
 
+function stool(today = MEASUREMENTS.defaultDate) {
+  return ready({ form: "stool" as const, today, todayCount: 0 });
+}
+
+function VisitSheet({
+  open,
+  onDone = () => {},
+}: {
+  open: boolean;
+  onDone?: () => void;
+}) {
+  const visit = useQuickEntryVisit(open, vi.fn());
+  return (
+    <>
+      <output data-testid="visit-view">{visit.active?.form ?? "menu"}</output>
+      <button
+        data-testid="visit-stool"
+        onClick={(event) => visit.open("stool", event.currentTarget)}
+      >
+        Stool
+      </button>
+      <button
+        data-testid="visit-mood"
+        onClick={(event) => visit.open("mood", event.currentTarget)}
+      >
+        Mood
+      </button>
+      <button data-testid="visit-back" onClick={visit.back}>
+        Back
+      </button>
+      {visit.titleAdornment}
+      {visit.belowTitle}
+      <QuickEntryVisitBodies identity={visit.identity} onDone={onDone} />
+    </>
+  );
+}
+
+function renderVisitSheet(initiallyOpen = false, onDone?: () => void) {
+  const surface = (open: boolean) => (
+    <ToastProvider>
+      <ProfileDaysBoundary
+        clocks={
+          new Map([
+            [ACTING.id, { today: MEASUREMENTS.defaultDate, timeZone: "UTC" }],
+            [MIA.id, { today: MEASUREMENTS.defaultDate, timeZone: "UTC" }],
+          ])
+        }
+      >
+        <QuickEntryProvider
+          measurements={MEASUREMENTS}
+          writableProfiles={[ACTING, MIA]}
+          actingProfileId={ACTING.id}
+        >
+          <VisitSheet open={open} onDone={onDone} />
+        </QuickEntryProvider>
+      </ProfileDaysBoundary>
+    </ToastProvider>
+  );
+  const utils = render(surface(initiallyOpen));
+  return {
+    ...utils,
+    rerenderOpen: (open: boolean) => utils.rerender(surface(open)),
+  };
+}
+
 beforeEach(() => {
   loadQuickEntry.mockReset();
+  logMood.mockReset().mockResolvedValue({ ok: true as const });
   allSnapshots.mockReset().mockResolvedValue([]);
   allIntents.mockReset().mockResolvedValue([]);
   wiped.mockReset();
@@ -348,6 +431,150 @@ describe("body remount policy", () => {
   it("remounts an arriving variant", () => {
     expect(remounts("mood", "unavailable", "payload")).toBe(true);
     expect(remounts("unavailable", "mood", "payload")).toBe(true);
+  });
+});
+
+describe("one quick-log visit", () => {
+  it("keeps a visited body draft and selected day across sibling travel", async () => {
+    loadQuickEntry
+      .mockResolvedValueOnce(stool())
+      .mockResolvedValueOnce(stool("2026-09-02"))
+      .mockResolvedValueOnce(mood(3, "fresh"));
+    const { rerenderOpen } = renderVisitSheet();
+    rerenderOpen(true);
+
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    await screen.findByTestId("quick-entry-stool");
+    fireEvent.click(screen.getByTestId("day-context-1"));
+    const time = await screen.findByTestId("stool-when-time");
+    fireEvent.change(time, { target: { value: "08:10" } });
+
+    fireEvent.click(screen.getByTestId("visit-back"));
+    expect(screen.getByTestId("visit-view").textContent).toBe("menu");
+    fireEvent.click(screen.getByTestId("visit-mood"));
+    await screen.findByTestId("mood-form");
+    fireEvent.click(screen.getByTestId("visit-back"));
+    fireEvent.click(screen.getByTestId("visit-stool"));
+
+    expect(
+      screen
+        .getByRole("button", { name: /^Yesterday$/ })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      (screen.getByTestId("stool-when-time") as HTMLInputElement).value
+    ).toBe("08:10");
+    expect(loadQuickEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets a pending Mood write finish without presenting over its sibling", async () => {
+    let resolveMood!: (result: { ok: true }) => void;
+    logMood.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveMood = resolve))
+    );
+    loadQuickEntry
+      .mockResolvedValueOnce(mood(3, "fresh"))
+      .mockResolvedValueOnce(mood(3, "fresh"))
+      .mockResolvedValueOnce(stool());
+    const onDone = vi.fn();
+    const { rerenderOpen } = renderVisitSheet(false, onDone);
+    rerenderOpen(true);
+
+    fireEvent.click(screen.getByTestId("visit-mood"));
+    await screen.findByTestId("mood-form");
+    fireEvent.click(screen.getByTestId("quick-entry-subject-chip"));
+    fireEvent.click(screen.getByTestId(`quick-entry-subject-option-${MIA.id}`));
+    await waitFor(() =>
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "mood",
+        MIA.id,
+        undefined,
+        "sheet"
+      )
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("quick-entry-body")
+          .getAttribute("data-subject-profile-id")
+      ).toBe(String(MIA.id))
+    );
+    expect(
+      screen.getByTestId("quick-entry-subject-chip").textContent
+    ).toContain(MIA.name);
+    fireEvent.click(await screen.findByRole("button", { name: "Mood: Good" }));
+    await waitFor(() => expect(logMood).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByTestId("visit-back"));
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    await screen.findByTestId("quick-entry-stool");
+
+    const posted = Object.fromEntries(
+      (logMood.mock.calls[0]?.[0] as FormData).entries()
+    );
+    expect(posted).toMatchObject({
+      date: MEASUREMENTS.defaultDate,
+      valence: "4",
+      energy: "3",
+      note: "fresh",
+      profile_id: String(MIA.id),
+    });
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "stool",
+      MIA.id,
+      undefined,
+      "sheet"
+    );
+    expect(
+      screen
+        .getByTestId("quick-entry-stool")
+        .closest('[data-testid="quick-entry-body"]')
+        ?.getAttribute("data-subject-profile-id")
+    ).toBe(String(MIA.id));
+    expect(
+      screen.getByTestId("quick-entry-subject-chip").textContent
+    ).toContain(MIA.name);
+    resolveMood({ ok: true });
+    await act(async () => {});
+
+    expect(screen.getByTestId("visit-view").textContent).toBe("stool");
+    expect(screen.getByTestId("quick-entry-stool")).toBeTruthy();
+    expect(screen.queryByText("Logged Good · Today")).toBeNull();
+    expect(onDone).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("visit-back"));
+    fireEvent.click(screen.getByTestId("visit-mood"));
+    await waitFor(() =>
+      expect(screen.getByTestId("mood-form").getAttribute("aria-busy")).toBe(
+        "false"
+      )
+    );
+    expect(loadQuickEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns a fresh menu before a rapid reopen can install the prior visit", async () => {
+    let resolveFirst!: (value: ReturnType<typeof stool>) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveFirst = resolve))
+    );
+    const { rerenderOpen } = renderVisitSheet();
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    expect(screen.getByTestId("visit-view").textContent).toBe("stool");
+
+    rerenderOpen(false);
+    rerenderOpen(true);
+    expect(screen.getByTestId("visit-view").textContent).toBe("menu");
+    expect(screen.queryByTestId("quick-entry-stool")).toBeNull();
+
+    resolveFirst(stool());
+    await act(async () => {});
+    expect(screen.getByTestId("visit-view").textContent).toBe("menu");
+    expect(screen.queryByTestId("quick-entry-stool")).toBeNull();
+
+    loadQuickEntry.mockResolvedValueOnce(mood(3, "new visit"));
+    fireEvent.click(screen.getByTestId("visit-mood"));
+    expect(await screen.findByTestId("mood-form")).toBeTruthy();
   });
 });
 
