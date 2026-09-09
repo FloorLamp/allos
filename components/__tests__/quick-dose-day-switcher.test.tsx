@@ -465,3 +465,59 @@ describe("one schedule row on several days is several occurrences", () => {
     ).toBeNull();
   });
 });
+
+describe("the Dose body owns its add doors (#3203)", () => {
+  it("keeps both doors after an empty result and hands back the clicked control", () => {
+    const onAdd = vi.fn();
+    const addFocusRef = { current: null as HTMLButtonElement | null };
+    render(
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={TODAY}
+        doses={[]}
+        pastDays={[]}
+        onDone={vi.fn()}
+        canAdd
+        onAdd={onAdd}
+        addFocusRef={addFocusRef}
+      />
+    );
+
+    expect(screen.getByTestId("quick-entry-dose-empty")).toBeTruthy();
+    const medication = screen.getByTestId("quick-entry-add-medication");
+    const supplement = screen.getByTestId("quick-entry-add-supplement");
+    expect(addFocusRef.current).toBe(medication);
+
+    fireEvent.click(medication);
+    fireEvent.click(supplement);
+    expect(onAdd.mock.calls).toEqual([
+      ["medication", medication],
+      ["supplement", supplement],
+    ]);
+  });
+
+  it("does not offer an add door without write capability", () => {
+    render(
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={TODAY}
+        doses={[
+          {
+            doseId: DAILY_DOSE,
+            title: "Creatine",
+            detail: null,
+            dueText: "8:00am",
+          },
+        ]}
+        pastDays={PAST_DAYS}
+        onDone={vi.fn()}
+        canAdd={false}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId("quick-entry-add-medication")).toBeNull();
+    expect(screen.queryByTestId("quick-entry-add-supplement")).toBeNull();
+    expect(screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`)).toBeTruthy();
+  });
+});

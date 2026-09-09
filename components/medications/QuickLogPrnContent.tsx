@@ -32,6 +32,7 @@ export default function QuickLogPrnContent({
   nowIso,
   pediatric,
   date,
+  onLogged,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
@@ -61,6 +62,8 @@ export default function QuickLogPrnContent({
   pediatric?: PediatricFormContext | null;
   /** The owning quick-log surface's selected day. Other mounts keep their own day. */
   date?: string;
+  /** Called after a durable dose write so a retaining host can refresh its row. */
+  onLogged?: () => void;
 }) {
   // The frozen-clock seam (#1005): recorded_at is stamped through lib/clock, so the
   // elapsed-window "now" must come from the same source (a production no-op). A
@@ -98,6 +101,7 @@ export default function QuickLogPrnContent({
         tz={tz}
         pediatric={pediatric}
         date={date}
+        onLogged={onLogged}
       />
     );
   };

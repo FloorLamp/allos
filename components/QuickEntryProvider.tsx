@@ -26,7 +26,9 @@ import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
 import { FoodProjectionProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import {
   loadQuickEntry,
+  loadQuickEntryIntakeContext,
   type QuickEntryData,
+  type QuickEntryIntakeContextResult,
 } from "@/app/(app)/quick-entry-actions";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import type { QuickEntryForm, QuickEntryPrefill } from "@/lib/quick-log";
@@ -58,6 +60,9 @@ import {
 import { allIntents } from "@/lib/offline/queue-db";
 import { allSnapshots } from "@/lib/offline/snapshot-db";
 import { wipeDeviceForSignOut } from "./device-wipe";
+import { ActiveProfileProvider } from "./ActiveProfileProvider";
+import type { IntakeItemKind } from "@/lib/types";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
@@ -79,6 +84,18 @@ function loadBodies(attempt: number) {
       () => import("./quick-entry/QuickSubstanceList")
     ),
     QuickSymptomPanel: dynamic(() => import("./quick-entry/QuickSymptomPanel")),
+    IntakeItemForm: dynamic(async () => {
+      const [{ default: IntakeItemForm }, { addIntakeItem }] =
+        await Promise.all([
+          import("./IntakeItemForm"),
+          import("@/app/(app)/nutrition/intake-actions"),
+        ]);
+      return function QuickEntryIntakeItemForm(
+        props: Omit<React.ComponentProps<typeof IntakeItemForm>, "action">
+      ) {
+        return <IntakeItemForm {...props} action={addIntakeItem} />;
+      };
+    }),
   };
 }
 
@@ -180,7 +197,30 @@ interface QuickEntrySession {
   host: HostView;
   bodies: Bodies;
   trigger: HTMLButtonElement | null;
+  view: QuickEntryView;
+  bodyActivation: number;
+  addTriggerRef: { current: HTMLButtonElement | null };
+  focusReturn: {
+    activation: number;
+    bodyActivation: number;
+    preferred: HTMLButtonElement | null;
+  } | null;
 }
+
+type QuickEntryIntakeContext =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; value: IntakeFormContext };
+
+type QuickEntryView =
+  | { kind: "body" }
+  | {
+      kind: "intake";
+      intakeKind: IntakeItemKind;
+      activation: number;
+      trigger: HTMLButtonElement | null;
+      context: QuickEntryIntakeContext;
+    };
 
 interface QuickEntryVisitState {
   identity: string;
@@ -209,6 +249,15 @@ interface QuickEntryVisitHostApi {
   selectDay: (entryId: number, day: string) => void;
   selectSubject: (entryId: number, profileId: number) => void;
   toggleSubjectPicker: (entryId: number) => void;
+  openIntake: (
+    entryId: number,
+    kind: IntakeItemKind,
+    trigger: HTMLButtonElement | null
+  ) => void;
+  exitIntake: (entryId: number) => void;
+  acceptIntakeSave: (entryId: number, activation: number) => boolean;
+  refreshDose: (entryId: number, bodyActivation: number) => void;
+  focusDoseReturn: (entryId: number, activation: number) => void;
 }
 
 export interface QuickEntryVisit {
@@ -296,6 +345,21 @@ const SHEET: Record<QuickEntryForm, { title: string; size: OverlaySize }> = {
   document: { title: "Add document", size: "sm" },
 };
 
+function sheetForEntry(entry: QuickEntrySession): {
+  title: string;
+  size: OverlaySize;
+} {
+  return entry.view.kind === "intake"
+    ? {
+        title:
+          entry.view.intakeKind === "medication"
+            ? "Add medication"
+            : "Add supplement",
+        size: "lg",
+      }
+    : SHEET[entry.form];
+}
+
 export function useQuickEntryVisit(
   outerOpen: boolean,
   onInvalidated: () => void
@@ -347,7 +411,7 @@ export function useQuickEntryVisit(
     ? {
         id: activeEntry.id,
         form: activeEntry.form,
-        ...SHEET[activeEntry.form],
+        ...sheetForEntry(activeEntry),
       }
     : null;
 
@@ -631,6 +695,7 @@ export default function QuickEntryProvider({
   liveProfileClocksRef.current = liveProfileClocks;
   const [open, setOpen] = useState(false);
   const entrySerial = useRef(0);
+  const intakeActivationSerial = useRef(0);
   const visitRequestRefs = useRef(new Map<string, number>());
   const [visitState, setVisitState] = useState<QuickEntryVisitState>({
     identity: "",
@@ -983,8 +1048,12 @@ export default function QuickEntryProvider({
   );
 
   const visitOwner = useCallback(
-    (identity: string, entryId: number): LoadOwner => {
-      const key = `${identity}:${entryId}`;
+    (
+      identity: string,
+      entryId: number,
+      lane: "body" | "intake" = "body"
+    ): LoadOwner => {
+      const key = `${identity}:${entryId}:${lane}`;
       return {
         setHost: (update) => {
           updateVisit((current) => {
@@ -1016,6 +1085,56 @@ export default function QuickEntryProvider({
       };
     },
     [updateVisit]
+  );
+
+  const loadIntakeFor = useCallback(
+    (
+      identity: string,
+      entryId: number,
+      subject: number,
+      intakeKind: IntakeItemKind,
+      activation: number
+    ) => {
+      const owner = visitOwner(identity, entryId, "intake");
+      const token = owner.nextToken();
+      const current = () => {
+        if (!owner.current(token)) return false;
+        const state = visitStateRef.current;
+        const entry = state.entries.find((item) => item.id === entryId);
+        return (
+          entry?.subject === subject &&
+          entry.view.kind === "intake" &&
+          entry.view.activation === activation &&
+          entry.view.intakeKind === intakeKind
+        );
+      };
+      const setContext = (context: QuickEntryIntakeContext) => {
+        updateVisit((state) => {
+          if (!current()) return state;
+          return {
+            ...state,
+            entries: state.entries.map((entry) =>
+              entry.id === entryId && entry.view.kind === "intake"
+                ? { ...entry, view: { ...entry.view, context } }
+                : entry
+            ),
+          };
+        });
+      };
+      void loadQuickEntryIntakeContext(subject).then(
+        (result: QuickEntryIntakeContextResult) => {
+          if (!current()) return;
+          if (result.kind === "refused") {
+            if (result.reason === "session") void wipeDeviceForSignOut();
+            else clearLastGood();
+            return;
+          }
+          setContext({ status: "ready", value: result.context });
+        },
+        () => setContext({ status: "error" })
+      );
+    },
+    [updateVisit, visitOwner]
   );
 
   const startVisit = useCallback(
@@ -1057,7 +1176,11 @@ export default function QuickEntryProvider({
           ...state,
           activeId: existing.id,
           entries: state.entries.map((entry) =>
-            entry.id === existing.id ? { ...entry, trigger } : entry
+            entry.id === existing.id
+              ? { ...entry, trigger }
+              : entry.id === state.activeId && entry.view.kind === "body"
+                ? { ...entry, bodyActivation: entry.bodyActivation + 1 }
+                : entry
           ),
           returnFocus: null,
         }));
@@ -1078,11 +1201,22 @@ export default function QuickEntryProvider({
         },
         bodies: loadBodies(0),
         trigger,
+        view: { kind: "body" },
+        bodyActivation: 0,
+        addTriggerRef: { current: null },
+        focusReturn: null,
       };
       updateVisit((state) => ({
         ...state,
         activeId: entryId,
-        entries: [...state.entries, entry],
+        entries: [
+          ...state.entries.map((item) =>
+            item.id === state.activeId && item.view.kind === "body"
+              ? { ...item, bodyActivation: item.bodyActivation + 1 }
+              : item
+          ),
+          entry,
+        ],
         returnFocus: null,
       }));
       const owner = visitOwner(current.identity, entryId);
@@ -1105,10 +1239,41 @@ export default function QuickEntryProvider({
       const active = current.entries.find(
         (entry) => entry.id === current.activeId
       );
+      if (active?.view.kind === "intake") {
+        const intake = active.view;
+        const key = `${current.identity}:${active.id}:intake`;
+        visitRequestRefs.current.set(
+          key,
+          (visitRequestRefs.current.get(key) ?? 0) + 1
+        );
+        return {
+          ...current,
+          returnFocus: null,
+          entries: current.entries.map((entry) =>
+            entry.id === active.id
+              ? {
+                  ...entry,
+                  view: { kind: "body" },
+                  bodyActivation: entry.bodyActivation + 1,
+                  focusReturn: {
+                    activation: intake.activation,
+                    bodyActivation: entry.bodyActivation + 1,
+                    preferred: intake.trigger,
+                  },
+                }
+              : entry
+          ),
+        };
+      }
       return {
         ...current,
         activeId: null,
         returnFocus: active?.trigger ?? null,
+        entries: current.entries.map((entry) =>
+          entry.id === active?.id && entry.view.kind === "body"
+            ? { ...entry, bodyActivation: entry.bodyActivation + 1 }
+            : entry
+        ),
       };
     });
   }, [updateVisit]);
@@ -1116,14 +1281,15 @@ export default function QuickEntryProvider({
   const completeVisitEntry = useCallback(
     (entryId: number) => {
       const current = visitStateRef.current;
+      const entry = current.entries.find((item) => item.id === entryId);
       if (current.activeId === entryId) {
-        if (!current.completable) return false;
+        if (!current.completable || entry?.view.kind !== "body") return false;
         invalidateVisitRequests();
         updateVisit((state) => ({ ...state, completable: false }));
         return true;
       }
       if (!current.completable) return false;
-      const key = `${current.identity}:${entryId}`;
+      const key = `${current.identity}:${entryId}:body`;
       visitRequestRefs.current.set(
         key,
         (visitRequestRefs.current.get(key) ?? 0) + 1
@@ -1142,6 +1308,33 @@ export default function QuickEntryProvider({
       const current = visitStateRef.current;
       const entry = current.entries.find((item) => item.id === entryId);
       if (!entry) return;
+      if (entry.view.kind === "intake") {
+        const activation = ++intakeActivationSerial.current;
+        updateVisit((state) => ({
+          ...state,
+          entries: state.entries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  bodies: loadBodies(item.bodies.attempt + 1),
+                  view: {
+                    ...entry.view,
+                    activation,
+                    context: { status: "loading" },
+                  },
+                }
+              : item
+          ),
+        }));
+        loadIntakeFor(
+          current.identity,
+          entryId,
+          entry.subject,
+          entry.view.intakeKind,
+          activation
+        );
+        return;
+      }
       updateVisit((state) => ({
         ...state,
         entries: state.entries.map((item) =>
@@ -1159,7 +1352,181 @@ export default function QuickEntryProvider({
         owner
       );
     },
-    [loadFor, updateVisit, visitOwner]
+    [loadFor, loadIntakeFor, updateVisit, visitOwner]
+  );
+
+  const openIntake = useCallback(
+    (
+      entryId: number,
+      intakeKind: IntakeItemKind,
+      trigger: HTMLButtonElement | null
+    ) => {
+      const current = visitStateRef.current;
+      const entry = current.entries.find((item) => item.id === entryId);
+      if (!entry || current.activeId !== entryId || entry.form !== "dose")
+        return;
+      const activation = ++intakeActivationSerial.current;
+      updateVisit((state) => ({
+        ...state,
+        returnFocus: null,
+        entries: state.entries.map((item) =>
+          item.id === entryId
+            ? {
+                ...item,
+                view: {
+                  kind: "intake",
+                  intakeKind,
+                  activation,
+                  trigger,
+                  context: { status: "loading" },
+                },
+                focusReturn: null,
+              }
+            : item
+        ),
+      }));
+      loadIntakeFor(
+        current.identity,
+        entryId,
+        entry.subject,
+        intakeKind,
+        activation
+      );
+    },
+    [loadIntakeFor, updateVisit]
+  );
+
+  const exitIntake = useCallback(
+    (entryId: number) => {
+      const current = visitStateRef.current;
+      const entry = current.entries.find((item) => item.id === entryId);
+      if (!entry || entry.view.kind !== "intake") return;
+      const intake = entry.view;
+      const key = `${current.identity}:${entryId}:intake`;
+      visitRequestRefs.current.set(
+        key,
+        (visitRequestRefs.current.get(key) ?? 0) + 1
+      );
+      updateVisit((state) => ({
+        ...state,
+        returnFocus: null,
+        entries: state.entries.map((item) =>
+          item.id === entryId
+            ? {
+                ...item,
+                view: { kind: "body" },
+                bodyActivation: item.bodyActivation + 1,
+                focusReturn: {
+                  activation: intake.activation,
+                  bodyActivation: item.bodyActivation + 1,
+                  preferred: intake.trigger,
+                },
+              }
+            : item
+        ),
+      }));
+    },
+    [updateVisit]
+  );
+
+  const refreshDose = useCallback(
+    (entryId: number, bodyActivation: number) => {
+      const current = visitStateRef.current;
+      const entry = current.entries.find((item) => item.id === entryId);
+      if (
+        !entry ||
+        entry.form !== "dose" ||
+        entry.view.kind !== "body" ||
+        entry.bodyActivation !== bodyActivation ||
+        current.activeId !== entryId ||
+        !current.completable
+      )
+        return;
+      const owner = visitOwner(current.identity, entryId);
+      loadFor(
+        "dose",
+        entry.subject,
+        owner.nextToken(),
+        entry.host.request ?? { kind: "dayless" },
+        owner
+      );
+    },
+    [loadFor, visitOwner]
+  );
+
+  const focusDoseReturn = useCallback(
+    (entryId: number, activation: number) => {
+      const current = visitStateRef.current;
+      const entry = current.entries.find((item) => item.id === entryId);
+      if (
+        !current.completable ||
+        current.activeId !== entryId ||
+        entry?.view.kind !== "body" ||
+        entry.focusReturn?.activation !== activation ||
+        entry.focusReturn.bodyActivation !== entry.bodyActivation
+      )
+        return;
+      const target = entry.focusReturn.preferred?.isConnected
+        ? entry.focusReturn.preferred
+        : entry.addTriggerRef.current;
+      if (!target?.isConnected) return;
+      target.focus();
+      updateVisit((state) => ({
+        ...state,
+        entries: state.entries.map((item) =>
+          item.id === entryId && item.focusReturn?.activation === activation
+            ? { ...item, focusReturn: null }
+            : item
+        ),
+      }));
+    },
+    [updateVisit]
+  );
+
+  const acceptIntakeSave = useCallback(
+    (entryId: number, activation: number) => {
+      let accepted = false;
+      let refresh = false;
+      updateVisit((current) => {
+        const entry = current.entries.find((item) => item.id === entryId);
+        if (
+          !current.completable ||
+          current.activeId !== entryId ||
+          entry?.view.kind !== "intake" ||
+          entry.view.activation !== activation
+        )
+          return current;
+        const intake = entry.view;
+        accepted = true;
+        refresh = true;
+        return {
+          ...current,
+          returnFocus: null,
+          entries: current.entries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  view: { kind: "body" },
+                  bodyActivation: item.bodyActivation + 1,
+                  focusReturn: {
+                    activation: intake.activation,
+                    bodyActivation: item.bodyActivation + 1,
+                    preferred: intake.trigger,
+                  },
+                }
+              : item
+          ),
+        };
+      });
+      if (refresh) {
+        const bodyActivation =
+          visitStateRef.current.entries.find((item) => item.id === entryId)
+            ?.bodyActivation ?? -1;
+        queueMicrotask(() => refreshDose(entryId, bodyActivation));
+      }
+      return accepted;
+    },
+    [refreshDose, updateVisit]
   );
 
   const selectVisitDay = useCallback(
@@ -1167,6 +1534,14 @@ export default function QuickEntryProvider({
       const current = visitStateRef.current;
       const entry = current.entries.find((item) => item.id === entryId);
       if (!entry) return;
+      updateVisit((state) => ({
+        ...state,
+        entries: state.entries.map((item) =>
+          item.id === entryId
+            ? { ...item, bodyActivation: item.bodyActivation + 1 }
+            : item
+        ),
+      }));
       const owner = visitOwner(current.identity, entryId);
       loadFor(
         entry.form,
@@ -1183,7 +1558,7 @@ export default function QuickEntryProvider({
         owner
       );
     },
-    [loadFor, visitOwner]
+    [loadFor, updateVisit, visitOwner]
   );
 
   const toggleVisitSubjectPicker = useCallback(
@@ -1219,6 +1594,16 @@ export default function QuickEntryProvider({
       visitRequestRefs.current.clear();
       const identity = current.identity;
       const nextId = ++entrySerial.current;
+      const intake =
+        previous.view.kind === "intake"
+          ? {
+              kind: "intake" as const,
+              intakeKind: previous.view.intakeKind,
+              activation: ++intakeActivationSerial.current,
+              trigger: previous.view.trigger,
+              context: { status: "loading" as const },
+            }
+          : ({ kind: "body" } as const);
       const next: QuickEntrySession = {
         ...previous,
         id: nextId,
@@ -1231,6 +1616,10 @@ export default function QuickEntryProvider({
           request: null,
         },
         bodies: loadBodies(0),
+        view: intake,
+        bodyActivation: 0,
+        addTriggerRef: { current: null },
+        focusReturn: null,
       };
       updateVisit(() => ({
         identity,
@@ -1251,6 +1640,15 @@ export default function QuickEntryProvider({
         { kind: "dayless" },
         owner
       );
+      if (intake.kind === "intake") {
+        loadIntakeFor(
+          identity,
+          nextId,
+          profileId,
+          intake.intakeKind,
+          intake.activation
+        );
+      }
       const name = writableProfiles.find((p) => p.id === profileId)?.name;
       toast(
         name
@@ -1261,6 +1659,7 @@ export default function QuickEntryProvider({
     [
       invalidateVisitRequests,
       loadFor,
+      loadIntakeFor,
       toast,
       updateVisit,
       visitOwner,
@@ -1283,6 +1682,17 @@ export default function QuickEntryProvider({
       const entryId = ++entrySerial.current;
       const identity = `direct:${entryId}`;
       const resolvedSubject = subjectProfileId ?? actingProfileId;
+      const intakeKind =
+        next === "dose" ? nextPrefill?.doseIntakeKind : undefined;
+      const intakeView = intakeKind
+        ? {
+            kind: "intake" as const,
+            intakeKind,
+            activation: ++intakeActivationSerial.current,
+            trigger: null,
+            context: { status: "loading" as const },
+          }
+        : ({ kind: "body" } as const);
       const entry: QuickEntrySession = {
         id: entryId,
         form: next,
@@ -1300,6 +1710,10 @@ export default function QuickEntryProvider({
         // already replaces this entry's bodies, so that identity carries forward.
         bodies: retainedBodies ?? loadBodies(0),
         trigger: null,
+        view: intakeView,
+        bodyActivation: 0,
+        addTriggerRef: { current: null },
+        focusReturn: null,
       };
       updateVisit(() => ({
         identity,
@@ -1323,8 +1737,24 @@ export default function QuickEntryProvider({
           : { kind: "dayless" },
         owner
       );
+      if (intakeView.kind === "intake") {
+        loadIntakeFor(
+          identity,
+          entryId,
+          resolvedSubject,
+          intakeView.intakeKind,
+          intakeView.activation
+        );
+      }
     },
-    [actingProfileId, invalidateVisitRequests, loadFor, updateVisit, visitOwner]
+    [
+      actingProfileId,
+      invalidateVisitRequests,
+      loadFor,
+      loadIntakeFor,
+      updateVisit,
+      visitOwner,
+    ]
   );
 
   const api = useMemo<QuickEntryHostApi>(
@@ -1344,6 +1774,11 @@ export default function QuickEntryProvider({
         selectDay: selectVisitDay,
         selectSubject: selectVisitSubject,
         toggleSubjectPicker: toggleVisitSubjectPicker,
+        openIntake,
+        exitIntake,
+        acceptIntakeSave,
+        refreshDose,
+        focusDoseReturn,
       },
     }),
     [
@@ -1353,7 +1788,12 @@ export default function QuickEntryProvider({
       close,
       completeVisitEntry,
       openForm,
+      openIntake,
       openVisitForm,
+      exitIntake,
+      acceptIntakeSave,
+      refreshDose,
+      focusDoseReturn,
       retryVisitEntry,
       selectVisitDay,
       selectVisitSubject,
@@ -1369,7 +1809,7 @@ export default function QuickEntryProvider({
       ? (visitState.entries.find((entry) => entry.id === visitState.activeId) ??
         null)
       : null;
-  const sheet = directEntry ? SHEET[directEntry.form] : null;
+  const sheet = directEntry ? sheetForEntry(directEntry) : null;
   const chip = directEntry ? (
     <QuickEntrySubjectChip
       session={directEntry}
@@ -1412,6 +1852,7 @@ export default function QuickEntryProvider({
             form={directEntry.form}
             prefill={directEntry.prefill}
             subject={directEntry.subject}
+            view={directEntry.view}
             host={directEntry.host}
             bodies={directEntry.bodies}
             actingProfileId={actingProfileId}
@@ -1420,6 +1861,24 @@ export default function QuickEntryProvider({
             }}
             onRetry={() => retryVisitEntry(directEntry.id)}
             onSelectDay={(day) => selectVisitDay(directEntry.id, day)}
+            canAdd={writableProfiles.some(
+              (profile) => profile.id === directEntry.subject
+            )}
+            onOpenIntake={(kind, trigger) =>
+              openIntake(directEntry.id, kind, trigger)
+            }
+            onExitIntake={() => exitIntake(directEntry.id)}
+            onIntakeSaved={(activation) =>
+              acceptIntakeSave(directEntry.id, activation)
+            }
+            onRefreshDose={() =>
+              refreshDose(directEntry.id, directEntry.bodyActivation)
+            }
+            addTriggerRef={directEntry.addTriggerRef}
+            focusReturn={directEntry.focusReturn}
+            onFocusReturn={(activation) =>
+              focusDoseReturn(directEntry.id, activation)
+            }
           />
         </BottomSheet>
       )}
@@ -1431,22 +1890,43 @@ function QuickEntrySessionBody({
   form,
   prefill,
   subject,
+  view,
   host,
   bodies,
   actingProfileId,
   onDone,
   onRetry,
   onSelectDay,
+  canAdd,
+  onOpenIntake,
+  onExitIntake,
+  onIntakeSaved,
+  onRefreshDose,
+  addTriggerRef,
+  focusReturn,
+  onFocusReturn,
 }: {
   form: QuickEntryForm;
   prefill: QuickEntryPrefill | null;
   subject: number;
+  view: QuickEntryView;
   host: HostView;
   bodies: Bodies;
   actingProfileId: number;
   onDone: () => void;
   onRetry: () => void;
   onSelectDay: (day: string) => void;
+  canAdd: boolean;
+  onOpenIntake: (
+    kind: IntakeItemKind,
+    trigger: HTMLButtonElement | null
+  ) => void;
+  onExitIntake: () => void;
+  onIntakeSaved: (activation: number) => boolean;
+  onRefreshDose: () => void;
+  addTriggerRef: { current: HTMLButtonElement | null };
+  focusReturn: QuickEntrySession["focusReturn"];
+  onFocusReturn: (activation: number) => void;
 }) {
   const formatPrefs = useFormatPrefs();
   const liveProfileClocks = useLiveProfileClocks();
@@ -1470,6 +1950,32 @@ function QuickEntrySessionBody({
         }
       : null;
   const subjectProfileId = subject === actingProfileId ? undefined : subject;
+  useLayoutEffect(() => {
+    if (view.kind === "body" && focusReturn)
+      onFocusReturn(focusReturn.activation);
+  }, [focusReturn, onFocusReturn, view.kind]);
+  const content = (identity: string) => (
+    <QuickEntrySessionContent
+      identity={identity}
+      form={form}
+      subject={subject}
+      view={view}
+      state={state}
+      bodies={bodies}
+      prefill={prefill}
+      onDone={onDone}
+      onRetry={onRetry}
+      subjectProfileId={subjectProfileId}
+      canAdd={canAdd}
+      onOpenIntake={onOpenIntake}
+      onExitIntake={onExitIntake}
+      onIntakeSaved={onIntakeSaved}
+      onRefreshDose={onRefreshDose}
+      addTriggerRef={addTriggerRef}
+      focusReturn={focusReturn}
+      onFocusReturn={onFocusReturn}
+    />
+  );
 
   return (
     <LoggedViaSurface value="quick-log">
@@ -1477,17 +1983,7 @@ function QuickEntrySessionBody({
         <TimezoneProvider tz={subjectClock.timeZone}>
           {inheritedDayValue ? (
             <DayContextBoundary value={inheritedDayValue}>
-              <QuickEntryBodyMount
-                identity={inheritedDayValue.key}
-                form={form}
-                subject={subject}
-                state={state}
-                bodies={bodies}
-                prefill={prefill}
-                onDone={onDone}
-                onRetry={onRetry}
-                subjectProfileId={subjectProfileId}
-              />
+              {content(inheritedDayValue.key)}
             </DayContextBoundary>
           ) : host.sheetDay?.kind === "state" ? (
             <DayContextProvider
@@ -1497,31 +1993,11 @@ function QuickEntrySessionBody({
               backing={{ kind: "state", initialDay: host.sheetDay.parts.day }}
               onSelectedDayChange={onSelectDay}
             >
-              <BoundedDaySwitcher />
-              <QuickEntryBodyMount
-                identity={dayContextKey(host.sheetDay.parts)}
-                form={form}
-                subject={subject}
-                state={state}
-                bodies={bodies}
-                prefill={prefill}
-                onDone={onDone}
-                onRetry={onRetry}
-                subjectProfileId={subjectProfileId}
-              />
+              {view.kind === "body" ? <BoundedDaySwitcher /> : null}
+              {content(dayContextKey(host.sheetDay.parts))}
             </DayContextProvider>
           ) : (
-            <QuickEntryBodyMount
-              identity={`${subject}:unscoped`}
-              form={form}
-              subject={subject}
-              state={state}
-              bodies={bodies}
-              prefill={prefill}
-              onDone={onDone}
-              onRetry={onRetry}
-              subjectProfileId={subjectProfileId}
-            />
+            content(`${subject}:unscoped`)
           )}
         </TimezoneProvider>
       ) : (
@@ -1530,6 +2006,103 @@ function QuickEntrySessionBody({
         </p>
       )}
     </LoggedViaSurface>
+  );
+}
+
+function QuickEntrySessionContent({
+  identity,
+  form,
+  subject,
+  view,
+  state,
+  bodies,
+  prefill,
+  onDone,
+  onRetry,
+  subjectProfileId,
+  canAdd,
+  onOpenIntake,
+  onExitIntake,
+  onIntakeSaved,
+  onRefreshDose,
+  addTriggerRef,
+  focusReturn,
+  onFocusReturn,
+}: React.ComponentProps<typeof QuickEntryBody> & {
+  identity: string;
+  form: QuickEntryForm;
+  subject: number;
+  view: QuickEntryView;
+  canAdd: boolean;
+  onOpenIntake: (
+    kind: IntakeItemKind,
+    trigger: HTMLButtonElement | null
+  ) => void;
+  onExitIntake: () => void;
+  onIntakeSaved: (activation: number) => boolean;
+  onRefreshDose: () => void;
+  addTriggerRef: { current: HTMLButtonElement | null };
+  focusReturn: QuickEntrySession["focusReturn"];
+  onFocusReturn: (activation: number) => void;
+}) {
+  const { IntakeItemForm } = bodies;
+  return (
+    <>
+      <Activity mode={view.kind === "body" ? "visible" : "hidden"}>
+        <QuickEntryBodyMount
+          identity={identity}
+          form={form}
+          subject={subject}
+          state={state}
+          bodies={bodies}
+          prefill={prefill}
+          onDone={onDone}
+          onRetry={onRetry}
+          subjectProfileId={subjectProfileId}
+          canAdd={canAdd}
+          onOpenIntake={onOpenIntake}
+          onRefreshDose={onRefreshDose}
+          addTriggerRef={addTriggerRef}
+          focusReturn={focusReturn}
+          onFocusReturn={onFocusReturn}
+        />
+      </Activity>
+      {view.kind === "intake" ? (
+        <div data-testid="quick-entry-intake" data-kind={view.intakeKind}>
+          {view.context.status === "loading" ? (
+            <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
+              Loading…
+            </p>
+          ) : view.context.status === "error" ? (
+            <QuickEntryError onRetry={onRetry} />
+          ) : (
+            <BodyBoundary key={bodies.attempt} onRetry={onRetry}>
+              <Suspense
+                fallback={
+                  <p
+                    data-testid="quick-entry-loading"
+                    className={QUIET_STATE_CLASS}
+                  >
+                    Loading…
+                  </p>
+                }
+              >
+                <ActiveProfileProvider profileId={subject}>
+                  <IntakeItemForm
+                    intakeContext={view.context.value}
+                    kind={view.intakeKind}
+                    subjectProfileId={subject}
+                    autoFocusName
+                    onDone={onExitIntake}
+                    onSaved={() => onIntakeSaved(view.activation)}
+                  />
+                </ActiveProfileProvider>
+              </Suspense>
+            </BodyBoundary>
+          )}
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1556,6 +2129,7 @@ export function QuickEntryVisitBodies({
         form={entry.form}
         prefill={entry.prefill}
         subject={entry.subject}
+        view={entry.view}
         host={entry.host}
         bodies={entry.bodies}
         actingProfileId={ctx.actingProfileId}
@@ -1564,6 +2138,24 @@ export function QuickEntryVisitBodies({
         }}
         onRetry={() => ctx.visit.retry(entry.id)}
         onSelectDay={(day) => ctx.visit.selectDay(entry.id, day)}
+        canAdd={ctx.writableProfiles.some(
+          (profile) => profile.id === entry.subject
+        )}
+        onOpenIntake={(kind, trigger) =>
+          ctx.visit.openIntake(entry.id, kind, trigger)
+        }
+        onExitIntake={() => ctx.visit.exitIntake(entry.id)}
+        onIntakeSaved={(activation) =>
+          ctx.visit.acceptIntakeSave(entry.id, activation)
+        }
+        onRefreshDose={() =>
+          ctx.visit.refreshDose(entry.id, entry.bodyActivation)
+        }
+        addTriggerRef={entry.addTriggerRef}
+        focusReturn={entry.focusReturn}
+        onFocusReturn={(activation) =>
+          ctx.visit.focusDoseReturn(entry.id, activation)
+        }
       />
     </Activity>
   ));
@@ -1646,6 +2238,12 @@ function QuickEntryBody({
   onRetry,
   subjectProfileId,
   bodies,
+  canAdd,
+  onOpenIntake,
+  onRefreshDose,
+  addTriggerRef,
+  focusReturn,
+  onFocusReturn,
 }: {
   state: LoadState;
   prefill: QuickEntryPrefill | null;
@@ -1661,6 +2259,15 @@ function QuickEntryBody({
   // turned a non-acting subject into the `unavailable` case above this switch).
   subjectProfileId?: number;
   bodies: Bodies;
+  canAdd: boolean;
+  onOpenIntake: (
+    kind: IntakeItemKind,
+    trigger: HTMLButtonElement | null
+  ) => void;
+  onRefreshDose: () => void;
+  addTriggerRef: { current: HTMLButtonElement | null };
+  focusReturn: QuickEntrySession["focusReturn"];
+  onFocusReturn: (activation: number) => void;
 }) {
   const dayContext = useOptionalDayContext();
   const subjectTimeZone = useTimezone();
@@ -1757,6 +2364,12 @@ function QuickEntryBody({
           onDone={onDone}
           subjectProfileId={subjectProfileId}
           selectedDay={selectedDay ?? data.today}
+          canAdd={canAdd}
+          onAdd={onOpenIntake}
+          onPrnLogged={onRefreshDose}
+          addFocusRef={addTriggerRef}
+          focusReturnActivation={focusReturn?.activation}
+          onReturnFocus={onFocusReturn}
         />
       );
     case "cycle":

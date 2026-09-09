@@ -12,7 +12,7 @@
 // intake slot and the sleep-waiting wake anchor — read ~2:40 AM.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   setTimezone,
@@ -57,7 +57,7 @@ function freeze(instant: string): void {
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM metric_samples");
+  rawDb.exec("DELETE FROM metric_samples");
   freeze(SWITCH_INSTANT);
 });
 

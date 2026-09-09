@@ -181,6 +181,9 @@ export default function IntakeItemForm({
   retiredDoses = [],
   pairs: initialPairs = [],
   onDone,
+  onSaved,
+  subjectProfileId,
+  autoFocusName = false,
   course,
   initialSupply = null,
   activityScheduleAvailable = true,
@@ -204,6 +207,11 @@ export default function IntakeItemForm({
   retiredDoses?: IntakeDose[];
   pairs?: IntakePair[];
   onDone?: () => void;
+  // A retaining host accepts presentation only while this exact form activation
+  // still owns the screen. The write and its submitted draft cleanup already won.
+  onSaved?: () => boolean;
+  subjectProfileId?: number;
+  autoFocusName?: boolean;
   course?: MedicationCourse;
   initialSupply?: SupplyOption | null;
   activityScheduleAvailable?: boolean;
@@ -963,9 +971,13 @@ export default function IntakeItemForm({
       if (!ok) return;
     }
 
+    const formData = intakeItemFormData(formState);
+    if (subjectProfileId != null)
+      formData.set("profile_id", String(subjectProfileId));
+    const submission = draft.captureSubmission();
     let result: FormResult;
     try {
-      result = await action(intakeItemFormData(formState));
+      result = await action(formData);
     } catch {
       setError("Couldn't save this. Try again.");
       return;
@@ -974,7 +986,12 @@ export default function IntakeItemForm({
       setError(result.error);
       return;
     }
-    draft.clear();
+    draft.clearSubmission(submission);
+    if (onSaved) {
+      if (!onSaved()) return;
+      toast(s ? `${label} updated` : `${label} added`);
+      return;
+    }
     toast(s ? `${label} updated` : `${label} added`);
     if (onDone) return onDone();
     reset();
@@ -1065,6 +1082,7 @@ export default function IntakeItemForm({
           onPick={onPickName}
           options={nameOptions}
           placeholder={affordances.namePlaceholder}
+          autoFocus={autoFocusName}
         />
         <RxNormAffordance
           name={state.name}

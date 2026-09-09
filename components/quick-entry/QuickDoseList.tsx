@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import OfferRow from "@/components/OfferRow";
@@ -19,6 +19,7 @@ import type {
   QuickEntryPastDose,
   QuickEntryPrn,
 } from "@/app/(app)/quick-entry-actions";
+import type { IntakeItemKind } from "@/lib/types";
 
 // The quick-entry overlay's DOSE form (issue #1468), with the recent-past day
 // switcher (#3936).
@@ -70,6 +71,12 @@ export default function QuickDoseList({
   onDone,
   subjectProfileId,
   selectedDay,
+  canAdd = false,
+  onAdd,
+  onPrnLogged,
+  addFocusRef,
+  focusReturnActivation,
+  onReturnFocus,
 }: {
   // The day whose current-day bucket produced `doses`. Usually the live profile day;
   // it can be the prior day while an in-reach cached response remains visible.
@@ -93,6 +100,12 @@ export default function QuickDoseList({
   // `resolveDayDoses` both re-gate it server-side.
   subjectProfileId?: number;
   selectedDay: string;
+  canAdd?: boolean;
+  onAdd?: (kind: IntakeItemKind, trigger: HTMLButtonElement) => void;
+  onPrnLogged?: () => void;
+  addFocusRef?: { current: HTMLButtonElement | null };
+  focusReturnActivation?: number;
+  onReturnFocus?: (activation: number) => void;
 }) {
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
@@ -108,6 +121,10 @@ export default function QuickDoseList({
   // carried the same collision: a refusal earned on yesterday rendered under today's
   // row. One occurrence is one (day, dose) pair; nothing here may key on less.
   const [resolved, setResolved] = useState<Set<string>>(() => new Set());
+  useLayoutEffect(() => {
+    if (focusReturnActivation != null && addFocusRef?.current)
+      onReturnFocus?.(focusReturnActivation);
+  }, [addFocusRef, focusReturnActivation, onReturnFocus]);
   // The last outcome per (day, dose) that did NOT resolve it — shown inline so the
   // reason the row is still there is legible without hunting for the toast.
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -248,8 +265,30 @@ export default function QuickDoseList({
           title={null}
           profileId={subjectProfileId}
           date={day}
+          onLogged={onPrnLogged}
         />
       )}
+      {canAdd && onAdd ? (
+        <div className="flex flex-wrap gap-2 border-t border-(--border) pt-3">
+          <button
+            ref={addFocusRef}
+            type="button"
+            className="btn-ghost"
+            data-testid="quick-entry-add-medication"
+            onClick={(event) => onAdd("medication", event.currentTarget)}
+          >
+            Add medication
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            data-testid="quick-entry-add-supplement"
+            onClick={(event) => onAdd("supplement", event.currentTarget)}
+          >
+            Add supplement
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import {
   ProfileDaysBoundary,
 } from "@/components/DayContext";
 import type { AppRoute } from "@/lib/hrefs";
+import type { QuickEntryPrn } from "@/app/(app)/quick-entry-actions";
 
 // COMPONENT TIER — #3416/#4454, the sheet's offline OPEN path: last-good render
 // with a revalidate behind it, a failed revalidate keeping what is already shown, a
@@ -29,7 +30,61 @@ import type { AppRoute } from "@/lib/hrefs";
 // boundary ProfileSwitchWatcher enforces for the offline read snapshots).
 
 const loadQuickEntry = vi.hoisted(() => vi.fn());
-vi.mock("@/app/(app)/quick-entry-actions", () => ({ loadQuickEntry }));
+const loadQuickEntryIntakeContext = vi.hoisted(() => vi.fn());
+vi.mock("@/app/(app)/quick-entry-actions", () => ({
+  loadQuickEntry,
+  loadQuickEntryIntakeContext,
+}));
+const intakeSave = vi.hoisted(() =>
+  vi.fn(
+    async (_input: {
+      kind: "medication" | "supplement";
+      subjectProfileId?: number;
+    }): Promise<void> => undefined
+  )
+);
+vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
+  addIntakeItem: vi.fn(async () => ({ ok: true as const })),
+  resolveDayDoses: vi.fn(),
+  setDoseStatus: vi.fn(),
+}));
+vi.mock("@/components/IntakeItemForm", () => ({
+  default: function IntakeFormProbe({
+    kind,
+    subjectProfileId,
+    autoFocusName,
+    onDone,
+    onSaved,
+  }: {
+    kind: "medication" | "supplement";
+    subjectProfileId?: number;
+    autoFocusName?: boolean;
+    onDone?: () => void;
+    onSaved?: () => boolean;
+  }) {
+    return (
+      <div
+        data-testid="intake-form-probe"
+        data-kind={kind}
+        data-subject={subjectProfileId}
+      >
+        <input aria-label="Name" autoFocus={autoFocusName} />
+        <button
+          type="button"
+          onClick={async () => {
+            await intakeSave({ kind, subjectProfileId });
+            onSaved?.();
+          }}
+        >
+          Save intake
+        </button>
+        <button type="button" onClick={onDone}>
+          Cancel intake
+        </button>
+      </div>
+    );
+  },
+}));
 const logMood = vi.hoisted(() =>
   vi.fn(async (_formData: FormData) => ({ ok: true as const }))
 );
@@ -103,6 +158,21 @@ vi.mock("@/components/medications/dose-day-settlement", () => ({
     bulkBlocked: () => false,
   }),
 }));
+const prnSave = vi.hoisted(() => vi.fn(async (): Promise<void> => undefined));
+vi.mock("@/components/medications/QuickLogPrnContent", () => ({
+  default: ({ onLogged }: { onLogged?: () => void }) => (
+    <button
+      type="button"
+      data-testid="prn-save-probe"
+      onClick={async () => {
+        await prnSave();
+        onLogged?.();
+      }}
+    >
+      Take PRN
+    </button>
+  ),
+}));
 
 const ACTING: SessionProfile = {
   id: 1,
@@ -136,6 +206,13 @@ function Sheet({ actingProfileId = ACTING.id }: { actingProfileId?: number }) {
     <>
       <button onClick={() => open("stool")}>open</button>
       <button onClick={() => open("dose")}>open dose</button>
+      <button
+        onClick={() =>
+          open("dose", { doseIntakeKind: "medication" }, actingProfileId)
+        }
+      >
+        open add medication
+      </button>
       <button onClick={() => open("food")}>open food</button>
       <button onClick={() => open("mood")}>open mood</button>
       <button onClick={() => open("cycle")}>open cycle</button>
@@ -227,7 +304,7 @@ function unavailable(message: string, today = MEASUREMENTS.defaultDate) {
   });
 }
 
-function dueDose(today: string) {
+function dueDose(today: string, meds: QuickEntryPrn["meds"] = []) {
   return ready({
     form: "dose" as const,
     today,
@@ -240,7 +317,7 @@ function dueDose(today: string) {
       },
     ],
     prn: {
-      meds: [],
+      meds,
       tz: "UTC",
       timeFormat: "24h" as const,
       nowIso: `${today}T12:00:00.000Z`,
@@ -323,6 +400,12 @@ function VisitSheet({
     <>
       <output data-testid="visit-view">{visit.active?.form ?? "menu"}</output>
       <button
+        data-testid="visit-dose"
+        onClick={(event) => visit.open("dose", event.currentTarget)}
+      >
+        Dose
+      </button>
+      <button
         data-testid="visit-stool"
         onClick={(event) => visit.open("stool", event.currentTarget)}
       >
@@ -374,6 +457,12 @@ function renderVisitSheet(initiallyOpen = false, onDone?: () => void) {
 
 beforeEach(() => {
   loadQuickEntry.mockReset();
+  loadQuickEntryIntakeContext.mockReset().mockResolvedValue({
+    kind: "ready",
+    context: {},
+  });
+  intakeSave.mockReset().mockResolvedValue(undefined);
+  prnSave.mockReset().mockResolvedValue(undefined);
   logMood.mockReset().mockResolvedValue({ ok: true as const });
   allSnapshots.mockReset().mockResolvedValue([]);
   allIntents.mockReset().mockResolvedValue([]);
@@ -575,6 +664,180 @@ describe("one quick-log visit", () => {
     loadQuickEntry.mockResolvedValueOnce(mood(3, "new visit"));
     fireEvent.click(screen.getByTestId("visit-mood"));
     expect(await screen.findByTestId("mood-form")).toBeTruthy();
+  });
+
+  it("opens either full intake kind and Cancel returns to the retained Dose body", async () => {
+    loadQuickEntry.mockResolvedValueOnce(dueDose(MEASUREMENTS.defaultDate));
+    const { rerenderOpen } = renderVisitSheet();
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-dose"));
+    await screen.findByText("Held midnight dose");
+
+    const medication = screen.getByTestId("quick-entry-add-medication");
+    fireEvent.click(medication);
+    const form = await screen.findByTestId("intake-form-probe");
+    expect(form.dataset.kind).toBe("medication");
+    expect(form.dataset.subject).toBe(String(ACTING.id));
+    expect(loadQuickEntryIntakeContext).toHaveBeenCalledWith(ACTING.id);
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "Name" })
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel intake" }));
+    expect(screen.getByText("Held midnight dose")).toBeTruthy();
+    expect(document.activeElement).toBe(medication);
+    expect(loadQuickEntry).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId("quick-entry-add-supplement"));
+    expect((await screen.findByTestId("intake-form-probe")).dataset.kind).toBe(
+      "supplement"
+    );
+  });
+
+  it("accepts one current intake save, refreshes Dose once, and returns focus", async () => {
+    loadQuickEntry
+      .mockResolvedValueOnce(dueDose(MEASUREMENTS.defaultDate))
+      .mockResolvedValueOnce(dueDose(MEASUREMENTS.defaultDate));
+    const { rerenderOpen } = renderVisitSheet();
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-dose"));
+    await screen.findByText("Held midnight dose");
+    const medication = screen.getByTestId("quick-entry-add-medication");
+    fireEvent.click(medication);
+    await screen.findByTestId("intake-form-probe");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save intake" }));
+
+    await waitFor(() => expect(loadQuickEntry).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId("intake-form-probe")).toBeNull();
+    expect(document.activeElement).toBe(medication);
+    expect(intakeSave).toHaveBeenCalledWith({
+      kind: "medication",
+      subjectProfileId: ACTING.id,
+    });
+  });
+
+  it("a same-kind reopen rejects the prior form's late save presentation", async () => {
+    let resolveFirst!: () => void;
+    intakeSave.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolveFirst = resolve))
+    );
+    loadQuickEntry.mockResolvedValueOnce(dueDose(MEASUREMENTS.defaultDate));
+    const { rerenderOpen } = renderVisitSheet();
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-dose"));
+    await screen.findByText("Held midnight dose");
+
+    fireEvent.click(screen.getByTestId("quick-entry-add-medication"));
+    await screen.findByTestId("intake-form-probe");
+    fireEvent.click(screen.getByRole("button", { name: "Save intake" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel intake" }));
+    fireEvent.click(screen.getByTestId("quick-entry-add-medication"));
+    await screen.findByTestId("intake-form-probe");
+
+    resolveFirst();
+    await act(async () => {});
+    expect(screen.getByTestId("intake-form-probe").dataset.kind).toBe(
+      "medication"
+    );
+    expect(loadQuickEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a PRN completion from an older body activation reload the returned body", async () => {
+    let resolvePrn!: () => void;
+    prnSave.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolvePrn = resolve))
+    );
+    const dose = dueDose(MEASUREMENTS.defaultDate, [
+      {
+        id: 31,
+        name: "Rescue medicine",
+        identity: { name: "Rescue medicine", rxcui: null },
+        kind: "medication",
+        product: null,
+        amount: null,
+        count: 0,
+        lastGivenAt: null,
+        minIntervalHours: null,
+        maxDailyCount: null,
+        familyCount: 0,
+        familyLastGivenAt: null,
+        familyMaxDailyCount: null,
+        familyExposure: null,
+        familyMemberCount: 1,
+      },
+    ]);
+    loadQuickEntry.mockResolvedValueOnce(dose);
+    const { rerenderOpen } = renderVisitSheet();
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-dose"));
+    await screen.findByText("Held midnight dose");
+
+    fireEvent.click(screen.getByTestId("prn-save-probe"));
+    fireEvent.click(screen.getByTestId("quick-entry-add-medication"));
+    await screen.findByTestId("intake-form-probe");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel intake" }));
+    resolvePrn();
+    await act(async () => {});
+
+    expect(loadQuickEntry).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Held midnight dose")).toBeTruthy();
+  });
+
+  it("retries a failed intake context and ignores a later context after Back", async () => {
+    let resolveLate!: (value: {
+      kind: "ready";
+      context: Record<string, never>;
+    }) => void;
+    loadQuickEntry.mockResolvedValueOnce(dueDose(MEASUREMENTS.defaultDate));
+    loadQuickEntryIntakeContext
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ kind: "ready", context: {} })
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveLate = resolve))
+      );
+    const { rerenderOpen } = renderVisitSheet();
+    rerenderOpen(true);
+    fireEvent.click(screen.getByTestId("visit-dose"));
+    await screen.findByText("Held midnight dose");
+
+    fireEvent.click(screen.getByTestId("quick-entry-add-medication"));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Couldn't open that form."
+    );
+    fireEvent.click(screen.getByTestId("quick-entry-retry"));
+    expect(await screen.findByTestId("intake-form-probe")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel intake" }));
+    fireEvent.click(screen.getByTestId("quick-entry-add-supplement"));
+    fireEvent.click(screen.getByTestId("visit-back"));
+    resolveLate({ kind: "ready", context: {} });
+    await act(async () => {});
+
+    expect(screen.queryByTestId("intake-form-probe")).toBeNull();
+    expect(screen.getByText("Held midnight dose")).toBeTruthy();
+  });
+});
+
+describe("palette intake intent", () => {
+  it("opens the medication form directly and Cancel focuses the visible Dose fallback", async () => {
+    let resolveDose!: (value: ReturnType<typeof dueDose>) => void;
+    loadQuickEntry.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveDose = resolve))
+    );
+    renderSheet();
+    fireEvent.click(screen.getByText("open add medication"));
+
+    const form = await screen.findByTestId("intake-form-probe");
+    expect(form.dataset.kind).toBe("medication");
+    expect(form.dataset.subject).toBe(String(ACTING.id));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel intake" }));
+    resolveDose(dueDose(MEASUREMENTS.defaultDate));
+
+    const fallback = await screen.findByTestId("quick-entry-add-medication");
+    await waitFor(() => expect(document.activeElement).toBe(fallback));
+    expect(screen.getByText("Held midnight dose")).toBeTruthy();
+    expect(loadQuickEntry).toHaveBeenCalledTimes(1);
   });
 });
 

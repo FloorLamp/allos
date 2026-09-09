@@ -24,6 +24,7 @@ import {
   type SessionCadenceFacts,
 } from "../cadence";
 import { fmtDistance } from "../units";
+import type { WeightUnit, DistanceUnit } from "../settings";
 import type { ActivityType } from "../types/training";
 import { activityTypeAskCallback } from "./callback-data";
 import { formatMessageLine } from "./message-line";
@@ -133,7 +134,8 @@ export function weeklyRemainingLine(
 // (dose-only), so a promptly-synced run can't spam a "run done" note.
 export function recapNudgeLine(
   recap: Recap | null,
-  enabled: boolean
+  enabled: boolean,
+  weightUnit: WeightUnit = "kg"
 ): string | null {
   if (!enabled || !recap) return null;
   if (recap.totalWorkingSets === 0) return null;
@@ -141,7 +143,7 @@ export function recapNudgeLine(
   // the whole message — so this is the surface that needs the progress fact and the
   // named, quantified target rollup. Same formatter, one verbosity option: the in-app
   // card title keeps the compact form because every fact is rendered below it.
-  const line = formatRecapLine(recap, { detail: true });
+  const line = formatRecapLine(recap, { detail: true, weightUnit });
   return line || null;
 }
 
@@ -173,14 +175,15 @@ export interface ImportedSessionFacts {
 //
 // Null when the import carries no fact beyond its own existence — "Workout done" on
 // its own is not worth a push.
-export function importedRecapLine(facts: ImportedSessionFacts): string | null {
+export function importedRecapLine(
+  facts: ImportedSessionFacts,
+  distanceUnit: DistanceUnit = "km"
+): string | null {
   const segs: string[] = [];
   if (facts.durationMin != null && facts.durationMin > 0)
     segs.push(`${facts.durationMin} min`);
   if (facts.distanceKm != null && facts.distanceKm > 0)
-    // Canonical km, the notification unit policy (a chat has no login-unit context),
-    // through the shared formatter — the same call the digest's activity line makes.
-    segs.push(fmtDistance(facts.distanceKm, "km"));
+    segs.push(fmtDistance(facts.distanceKm, distanceUnit));
   if (facts.avgHr != null && facts.avgHr > 0) {
     const max =
       facts.maxHr != null && facts.maxHr > 0

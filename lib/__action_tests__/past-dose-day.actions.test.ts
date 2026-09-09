@@ -284,6 +284,20 @@ it("records the amount in force on the selected past day", async () => {
   ).toBe("500 mg");
 });
 
+it("returns the ordinary Dose body when there is nothing yet to confirm (#3203)", async () => {
+  const login = createLogin();
+  const profile = createProfile("Empty dose body", login.id);
+  actAs(login, profile);
+  setTimezone(profile.id, "UTC");
+
+  const data = await readyQuickEntry("dose");
+  expect(data.form).toBe("dose");
+  if (data.form !== "dose") return;
+  expect(data.doses).toEqual([]);
+  expect(data.pastDays.every((day) => day.slots.length === 0)).toBe(true);
+  expect(data.prn?.meds).toEqual([]);
+});
+
 describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
   it("resolves the profile's local today and offers exactly the accepted days", async () => {
     const { profile } = seedProfile(`offer-${tz}`, tz);

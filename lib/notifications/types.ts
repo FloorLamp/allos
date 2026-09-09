@@ -3,7 +3,7 @@
 // knows nothing about supplements and channels know nothing about features.
 
 import type { MessageBody } from "./rich-text";
-import type { DistanceUnit } from "../settings";
+import type { UnitPrefs } from "../settings";
 
 export type ChannelId = "telegram" | "push" | "home-assistant" | "email";
 
@@ -111,9 +111,11 @@ export interface NotificationMessage {
 // dispatch()'s delivery accounting and still reaches Web Push / Home Assistant (#1716).
 // Channels that don't understand an option ignore it.
 export interface DispatchOptions {
-  // Format canonical distance facts for an already-selected recipient. Only the
+  // Format canonical measurements for an already-selected recipient. Only the
   // body varies; admission, routing, title, kind and actions stay with the message.
-  bodyForDistanceUnit?: (unit: DistanceUnit) => MessageBody;
+  bodyForUnits?: (
+    units: Pick<UnitPrefs, "weightUnit" | "distanceUnit">
+  ) => MessageBody;
   // Explicit Telegram chat ids that REPLACE the profile's fan-out recipients for this
   // one send. An override chat is not a login, so it carries no per-login
   // disabled-kinds gate — it was configured for exactly this item.

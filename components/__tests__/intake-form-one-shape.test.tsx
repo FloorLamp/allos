@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import MedicationCard from "@/app/(app)/medications/MedicationCard";
+import IntakeItemForm from "@/components/IntakeItemForm";
+import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
 import type { SupplyOption } from "@/lib/supply-product";
@@ -35,6 +37,7 @@ const actions = vi.hoisted(() => ({
   })),
   bottles: vi.fn(async (): Promise<SupplyOption[]> => []),
   update: vi.fn(async (_data: FormData) => ({ ok: true as const })),
+  add: vi.fn(async (_data: FormData) => ({ ok: true as const })),
 }));
 
 vi.mock("@/app/(app)/medications/actions", () => ({
@@ -43,7 +46,7 @@ vi.mock("@/app/(app)/medications/actions", () => ({
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   updateIntakeItem: actions.update,
-  addIntakeItem: vi.fn(async () => ({ ok: true })),
+  addIntakeItem: actions.add,
   lookupRxcui: vi.fn(async () => []),
   lookupRxcuiIngredients: vi.fn(async () => []),
 }));
@@ -283,6 +286,39 @@ describe("an edit mount posts the whole row back, with no editor opened (#4664)"
     ]);
     expect(child.pairs).toMatchObject([{ otherId: 7, relation: "separate" }]);
     expect(child.purposes).toEqual([]);
+  });
+});
+
+describe("a retaining host accepts save presentation before navigation", () => {
+  it("posts its captured subject and lets onSaved supersede onDone", async () => {
+    actions.add.mockClear();
+    const onSaved = vi.fn(() => true);
+    const onDone = vi.fn();
+    render(
+      <ToastProvider>
+        <ConfirmProvider>
+          <ActiveProfileProvider profileId={1}>
+            <IntakeItemForm
+              kind="medication"
+              action={actions.add}
+              intakeContext={EDIT_MOUNT.intakeContext}
+              subjectProfileId={8}
+              onSaved={onSaved}
+              onDone={onDone}
+            />
+          </ActiveProfileProvider>
+        </ConfirmProvider>
+      </ToastProvider>
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
+      target: { value: "Ibuprofen" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(actions.add).toHaveBeenCalledOnce());
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(actions.add.mock.calls[0][0].get("profile_id")).toBe("8");
+    expect(onDone).not.toHaveBeenCalled();
   });
 });
 

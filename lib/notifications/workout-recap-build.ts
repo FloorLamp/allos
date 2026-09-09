@@ -28,10 +28,13 @@ import { db } from "../db";
 import {
   getLoginTelegramDisabledKinds,
   getProfileHomeAssistant,
+  getUnitPrefs,
+  type UnitPrefs,
 } from "../settings";
 import { isKindEnabled } from "./home-assistant-core";
-import { resolveTelegramRecipients } from "./fan-out";
+import { resolveTelegramRecipients, resolveTelegramChats } from "./fan-out";
 import { getSessionRecap } from "../queries/session-recap";
+import type { Recap } from "../session-recap";
 import { getFrequencyTargetProgress } from "../queries";
 import { getEventPhysiology } from "../queries/event-physiology";
 import { getSessionCadenceFacts } from "../queries/cadence-ledger";
@@ -116,10 +119,33 @@ function stravaDetailsFollow(profileId: number, row: FinishRow): boolean {
 export interface FinishRecapParts {
   // What finished, for the title. Null when the row could not be read.
   type: ActivityType | null;
-  // The recap line plus its weekly status, or null when there is nothing to recap.
-  leadLine: string | null;
+  // Canonical facts retained until the destination's display boundary.
+  recap: Recap | null;
+  imported: ImportedSessionFacts | null;
+  hrClause: string | null;
+  weeklyLine: string | null;
   // The #2272 type ask, carrying #4996's provisional line when one is warranted.
   ask: FinishTypeAsk | null;
+}
+
+export function finishRecapLeadLine(
+  parts: FinishRecapParts,
+  units: Pick<UnitPrefs, "weightUnit" | "distanceUnit"> = {
+    weightUnit: "kg",
+    distanceUnit: "km",
+  }
+): string | null {
+  const baseLine =
+    recapNudgeLine(parts.recap, true, units.weightUnit) ??
+    (parts.imported
+      ? importedRecapLine(parts.imported, units.distanceUnit)
+      : null);
+  // Physiology and weekly status ride an existing recap; neither adds admission.
+  const recapLine =
+    baseLine && parts.hrClause ? `${baseLine} · ${parts.hrClause}` : baseLine;
+  return recapLine && parts.weeklyLine
+    ? `${recapLine}\n${parts.weeklyLine}`
+    : recapLine;
 }
 
 /**
@@ -161,19 +187,20 @@ export function finishRecapParts(
   // same quantity twice from two sources and invite the reader to reconcile them. The
   // stream's split is the more specific claim, so it wins and the import's summary
   // steps aside; with no coverage the import's figure is all there is and is kept.
-  const importedLine =
+  const imported =
     recapEnabled && finishRow?.source
-      ? importedRecapLine(
-          hrClause
-            ? { ...importedFacts(finishRow), avgHr: null, maxHr: null }
-            : importedFacts(finishRow)
-        )
+      ? hrClause
+        ? { ...importedFacts(finishRow), avgHr: null, maxHr: null }
+        : importedFacts(finishRow)
       : null;
-  const baseLine = recapNudgeLine(recap, recapEnabled) ?? importedLine;
-  // The clause RIDES a line and never makes one: a manual row with nothing to recap
-  // sends exactly what it sent before this issue.
-  const recapLine =
-    baseLine && hrClause ? `${baseLine} · ${hrClause}` : baseLine;
+  const parts: FinishRecapParts = {
+    type: finishRow?.type ?? null,
+    recap: recapEnabled ? recap : null,
+    imported,
+    hrClause,
+    weeklyLine: null,
+    ask: null,
+  };
   // §3 (#981): the recap line gains a forward-looking weekly-remaining status, from the
   // SAME weekly rollup the reminder reads (#221). It rides WITH the recap line (the
   // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
@@ -182,7 +209,7 @@ export function finishRecapParts(
   // The rollup is profile-wide, so the facts of THIS session go with it (#2503): without
   // them the line led with the closest-to-done target anywhere, and a walk's recap
   // reported a chest target a barbell session had advanced earlier in the week.
-  const weeklyLine = recapLine
+  const weeklyLine = finishRecapLeadLine(parts)
     ? weeklyRemainingLine(
         getFrequencyTargetProgress(profileId),
         getSessionCadenceFacts(profileId, activityId)
@@ -204,9 +231,8 @@ export function finishRecapParts(
         }
       : null;
   return {
-    type: finishRow?.type ?? null,
-    leadLine:
-      recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine,
+    ...parts,
+    weeklyLine,
     ask,
   };
 }
@@ -250,8 +276,24 @@ export function rebuildWorkoutRecap(
 ): NotificationMessage | null {
   const announced = announcedActivityId(profileId, pointer);
   if (announced == null) return null;
+  const recipient = resolveTelegramChats(profileId).find(
+    (chat) => chat.chatId === pointer.chatId
+  );
+  if (
+    !recipient ||
+    !isKindEnabled(
+      "workout-recap",
+      getLoginTelegramDisabledKinds(recipient.loginIds[0])
+    )
+  )
+    return null;
   const target = recapRebuildTarget(profileId, announced);
   if (!loadFinishRow(profileId, target)) return null;
   const parts = finishRecapParts(profileId, target);
-  return composeFinishNudge(parts.leadLine, null, parts.ask, parts.type);
+  return composeFinishNudge(
+    finishRecapLeadLine(parts, getUnitPrefs(recipient.loginIds[0])),
+    null,
+    parts.ask,
+    parts.type
+  );
 }

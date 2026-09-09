@@ -33,6 +33,9 @@ can require a full row. Upcoming due text uses the shared band-aware formatter.
   at coincident boundaries; they do not introduce a parallel contact schedule.
 - Reducing contact is immediate and explained, with an offer to keep the previous
   behavior where appropriate. Confirmation must not be required to stop contact.
+- Absence changes what is shown, never what is sent. After three days away a
+  page may change; no catch-up message is added and no standing reminder is
+  suppressed or reordered.
 - Never refer to controls that a destination channel does not carry.
 - Preference filters and repeat dismissal cannot override a safety floor.
 - A waiting state names what the data is doing. Transport silence or unavailable

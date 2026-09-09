@@ -33,12 +33,12 @@
 // the registry without booting a database; scripts/seed.ts passes the live db
 // and lib helpers in through PersonaContext.
 
-import type { Database } from "better-sqlite3";
 import type { FitnessEntryInput } from "../lib/fitness-assessment";
+import type { SqlPrepare } from "../lib/write-revision";
 import { VIA_IMPORTED, VIA_SEEDED } from "./seed-logged-via";
 
 export interface PersonaContext {
-  db: Pick<Database, "prepare">;
+  db: SqlPrepare;
   profileId: number;
   /** Calendar-string date n days ago (negative = future), profile-local. */
   daysAgo(n: number): string;

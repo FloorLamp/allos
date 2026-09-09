@@ -15,7 +15,7 @@
 // SYNTHETIC ONLY: fictional profiles, invented counts, no PHI.
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import {
   overlapsLeftWarning,
   parseHealthConnectPayload,
@@ -1234,8 +1234,8 @@ describe("D1 — the deletes commit with the LAST chunk", () => {
    * falls — a spy on the module would test the mock's boundaries instead of SQLite's.
    */
   function abortOn(sql: string): () => void {
-    db.exec(`CREATE TEMP TRIGGER d1_abort ${sql}`);
-    return () => db.exec("DROP TRIGGER d1_abort");
+    rawDb.exec(`CREATE TEMP TRIGGER d1_abort ${sql}`);
+    return () => rawDb.exec("DROP TRIGGER d1_abort");
   }
 
   function pushChunked(
@@ -1653,12 +1653,12 @@ describe("R8/R9 — the victim set is derived from the store, under the lock", (
 
   /** A write that commits with the chunk that inserts `onStart`, and only that chunk. */
   function raceOn(p: number, onStart: string, body: string): () => void {
-    db.exec(
+    rawDb.exec(
       `CREATE TEMP TRIGGER hc_race AFTER INSERT ON metric_samples
          WHEN NEW.profile_id = ${p} AND NEW.started_at = '${onStart}'
          BEGIN ${body} END`
     );
-    return () => db.exec("DROP TRIGGER hc_race");
+    return () => rawDb.exec("DROP TRIGGER hc_race");
   }
 
   it("R8 — keeps the old row when the replacement is TOMBSTONED between chunks", () => {
