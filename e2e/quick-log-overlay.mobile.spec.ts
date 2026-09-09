@@ -10,6 +10,7 @@ import {
   openMeasurementGroup,
   openMobileDrawer,
   settledClick,
+  settledClickApplied,
   settledFill,
   stageMediaFiles,
 } from "./helpers";
@@ -762,9 +763,26 @@ test("an empty selected profile adds a medication and takes it in the same sheet
     await expect(form.getByTestId("intake-fact-dose")).toContainText("150 mg");
     await expect(form.getByTestId("intake-pediatric-context")).toBeVisible();
     await expectNoClippedContent(page);
-    await settledClick(
+    // The row this asserts is read straight from the database, so the click has to
+    // wait for the CREATE to be observable and not merely for an action POST to
+    // settle. `settledClick` resolves on whichever caused same-origin action POST
+    // answers first, and this sheet fires several besides the create, so it can
+    // return while `addIntakeItem` is still in flight and the read below then finds
+    // no row. Which POST wins under load is not established; that it can be one
+    // other than the create is. It came back empty once on a CI shard where the
+    // other 144 cases passed, in 2.7s — settled before the row was there, not a
+    // slow create. A refusal answering fast would leave the table empty the same
+    // way; this wait turns either into a legible failure instead of `[]`. The
+    // created item's own PRN row is the marker this call site knows: it renders
+    // from a server read of `intake_items` that runs only after the create was
+    // accepted, so it cannot appear from client state alone.
+    const prn = overlay.getByTestId("quick-log-prn-item").filter({
+      hasText: "Ibuprofen",
+    });
+    await settledClickApplied(
       page,
-      form.getByRole("button", { name: "Add", exact: true })
+      form.getByRole("button", { name: "Add", exact: true }),
+      prn
     );
 
     const item = db
@@ -786,9 +804,6 @@ test("an empty selected profile adds a medication and takes it in the same sheet
         product: "Children's oral suspension (100 mg / 5 mL)",
       }),
     ]);
-    const prn = overlay.getByTestId("quick-log-prn-item").filter({
-      hasText: "Ibuprofen",
-    });
     await expect(prn).toContainText("Ibuprofen");
     await expect(prn.getByTestId("prn-day-label")).toHaveText("None today");
     await expect(addMedication).toBeFocused();
