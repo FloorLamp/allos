@@ -41,8 +41,14 @@ import { useTimezone } from "@/components/TimezoneProvider";
 // gone with the state it existed for. The control owns the PAIR (#2236 invariant 1): a
 // stated instant's profile-local date IS the entry's date, and changing the day
 // re-anchors or clears the time rather than leaving the two to disagree. `timeRequired`
-// is false and `mode="state"`, so an untouched field emits null — a use with no stated
-// time is still a use, and nothing invents one (#2053).
+// is false, so an untouched field emits null — a use with no stated time is still a
+// use, and nothing invents one (#2053).
+//
+// THE ADD STATES, THE CORRECTION AMENDS (#5617). Both modes ran as `state`, so the
+// correction door could reach every value except back to "nobody said" — the one-way
+// ratchet `correct` mode exists to prevent. The action has always taken an empty
+// `stated_at` as a clear and this form has always posted the field; what was missing
+// was the affordance, which `correct` mode draws.
 //
 // EDIT MODE CORRECTS ONE EVENT, NOT A DAY (#5026 phase 2). A consumable is an EVENT
 // (owner ruling, 2026-09-04), so what a correction moves is this use's day, the
@@ -186,7 +192,7 @@ export default function SubstanceForm({
         When
         <div className="mt-1">
           <WhenControl
-            mode="state"
+            mode={row ? "correct" : "state"}
             grain="minute"
             value={when}
             onChange={setWhen}
