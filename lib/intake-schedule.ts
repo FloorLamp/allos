@@ -379,6 +379,30 @@ export function isOfferedOn(
   return conditionAppliesOn(item, ctx);
 }
 
+// Whether this item is off today's offer ONLY because the post-workout timing gate has
+// not opened yet (#5321). Asked by ONE surface, the digest, and asked because of what
+// that surface is: when a profile's only `may` item is post-workout, the timing gate
+// empties the offer tail, and the digest's minimal-send guarantee (#1505) would then
+// suppress the WHOLE message — leaving a tap-only reader with no path to their own
+// list on exactly the day they trained. The owner ruled the digest keeps sending and
+// NAMES the hold instead: it does not offer what the page holds, but it says so.
+//
+// Stated as a DIFFERENCE over the shared predicate rather than as a second condition
+// check, so it cannot drift from what actually decided the item's absence: held today,
+// offered if the session had ended. A situational pause, a rest-day condition or a
+// non-`may` obligation therefore answers false here — those are not this hold, and each
+// has its own disclosure (heldSummaryLine for the pause, the collapse rule for the rest).
+export function heldByWorkoutTiming(
+  item: Pick<IntakeItem, "condition" | "situation"> & {
+    obligation?: IntakeObligation;
+    pause_situation?: string | null;
+  },
+  ctx: IntakeDayContext
+): boolean {
+  if (isOfferedOn(item, ctx)) return false;
+  return isOfferedOn(item, { ...ctx, postWorkoutReady: true });
+}
+
 // The count of situational intake items currently due BECAUSE their situation is
 // active (issue #662 item 1). It reuses the SAME dueness computation the dose list
 // and Upcoming use — isDueOn's `situational` branch — so the situations-bar

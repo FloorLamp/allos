@@ -62,11 +62,7 @@ import type {
   RedoseWindowAdministrationOutcome,
 } from "../../types";
 import type { IntakeObligation } from "../../types";
-import { isOfferedOn, slotHintCoversNow } from "../../intake-schedule";
-import { formatMedicationDoseProduct } from "../../medication-dose-format";
-import { getSituations } from "../../settings";
-import { intakeDayContext } from "./day-context";
-import type { IntakeCondition, IntakeItemKind } from "../../types";
+import type { IntakeItemKind } from "../../types";
 import { intakeShortLabels } from "../../intake-short-name";
 import { getDoseScheduleVersions, getIntakeItems } from "./schedule";
 import { DOSE_CONFIRM_UNDO, DOSE_RESOLUTION } from "@/lib/log-manifest";
@@ -2282,106 +2278,6 @@ export function getIntakeAdherenceEvidence(
     date: string;
     status: DoseStatus;
   }[];
-}
-
-// ---- The offer tail's gather (issue #1505) --------------------------------
-
-// The `may` items this profile may be OFFERED right now, scoped by their slot hint
-// against the profile-local wall clock — the DB half of the "➕ Doses" tail.
-//
-// Two filters, both load-bearing and both evaluated at CALL time (which is TAP time
-// for the tail): the item's day CONDITION must apply today (a rest-day magnesium is
-// not offered on a training day), and its slot HINT must cover the current bucket (a
-// bedtime item is not offered at breakfast). A hint-less item passes the second
-// filter always — no hint means no opinion, and refusing to show it anywhere would
-// make "may with no slot" unreachable, defeating the guaranteed-access rule.
-//
-// Unlike getPrnMedicationsForQuickLog this is NOT medication-only: `may` is a shape,
-// not a kind, so a may supplement (magnesium, a preworkout) is offered on exactly the
-// same terms as a PRN med. That is the whole point of the collapse — the two were
-// always the same thing wearing different flags.
-export function getOfferedIntakeForSlot(
-  profileId: number,
-  nowHhmm: string
-): {
-  itemId: number;
-  name: string;
-  kind: IntakeItemKind;
-  product: string | null;
-  detail: string | null;
-  countToday: number;
-}[] {
-  const date = today(profileId);
-  const rows = db
-    .prepare(
-      `SELECT s.id AS id, s.name AS name, s.kind AS kind, s.product AS product,
-              s.condition AS condition, s.situation AS situation,
-              s.pause_situation_id AS pauseSituationId,
-              (SELECT d.amount FROM intake_item_doses d
-                WHERE d.item_id = s.id AND d.retired = 0
-                ORDER BY d.sort, d.id LIMIT 1) AS amount,
-              (SELECT d.time_of_day FROM intake_item_doses d
-                WHERE d.item_id = s.id AND d.retired = 0
-                ORDER BY d.sort, d.id LIMIT 1) AS timeOfDay,
-              (SELECT COUNT(*) FROM intake_item_logs l
-                WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
-                AS countToday
-         FROM intake_items s
-        WHERE s.profile_id = ? AND s.active = 1 AND s.obligation = 'may'
-        ORDER BY s.name, s.id`
-    )
-    .all(date, profileId) as {
-    id: number;
-    name: string;
-    kind: IntakeItemKind;
-    product: string | null;
-    condition: IntakeCondition;
-    situation: string | null;
-    pauseSituationId: number | null;
-    amount: string | null;
-    timeOfDay: string | null;
-    countToday: number;
-  }[];
-  if (rows.length === 0) return [];
-
-  // The day context, resolved ONCE per call, THROUGH THE SHARED BUILDER (#5321) — so
-  // an offer cannot disagree with the medications page about the same item on the same
-  // day. That includes the field this gather used to leave out: `postWorkoutReady` is
-  // read as `?? true`, so omitting it did not lose a condition, it defaulted to
-  // permissive and put a post-workout dose one tap away while the page still held it.
-  // The sheet is tapped LIVE, so the live verdict is the right one here.
-  const ctx = intakeDayContext(profileId, date);
-  const pauseNames = new Map(
-    getSituations(profileId).map((s) => [s.id, s.name])
-  );
-
-  return rows
-    .filter((r) =>
-      isOfferedOn(
-        {
-          obligation: "may",
-          condition: r.condition,
-          situation: r.situation,
-          pause_situation:
-            r.pauseSituationId != null
-              ? (pauseNames.get(r.pauseSituationId) ?? null)
-              : null,
-        },
-        ctx
-      )
-    )
-    .filter((r) => slotHintCoversNow(r.timeOfDay, nowHhmm))
-    .map((r) => ({
-      itemId: r.id,
-      name: r.name,
-      kind: r.kind,
-      product: r.product,
-      detail:
-        r.kind === "medication"
-          ? formatMedicationDoseProduct(r.amount, r.product)
-          : r.amount,
-      countToday: r.countToday,
-    }));
 }
 
 // ---- Administration-time correction (issue #2020) ----

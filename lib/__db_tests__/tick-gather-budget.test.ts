@@ -187,15 +187,33 @@ describe("notification tick gather query budget (#5199)", () => {
   //
   // ATTRIBUTED BY MEASUREMENT, not by reading the diff, because the diff's other
   // conversions look equally plausible from here and are not. Reverting ONLY
-  // `getOfferedIntakeForSlot` to its base four-field assembly leaves all three tests in
-  // this file green with these numbers unchanged: `gatherDigestInput` holds ONE such
-  // call and it is not on the counted path (the second lives in `collapsedDigestActions`,
-  // reached only from the async keyboard refresh this harness never walks). Reverting
-  // ONLY `scheduledDoseRows` reproduces the whole delta and nothing else does —
-  // 468→466, 481→479, 424→422, 431→429, 456→454, 531→529, the recorded pre-#5321 map
-  // exactly. The recap gather is unmoved because it does not read `collectUpcoming`.
+  // `scheduledDoseRows` reproduces the whole delta and nothing else does — 468→466,
+  // 481→479, 424→422, 431→429, 456→454, 531→529, the recorded pre-#5321 map exactly.
+  // The recap gather is unmoved because it does not read `collectUpcoming`.
+  //
+  // AND THE CALL THAT DOES NOT MOVE IT IS WALKED ANYWAY — a correction to what this
+  // comment said on its first two passes, and the reason the persona below exists.
+  // `gatherDigestInput` holds ONE `getOfferedIntakeForSlot` call (the second lives in
+  // `collapsedDigestActions`, reached only from the async keyboard refresh this harness
+  // never walks). It was recorded here as "not on the counted path". It IS on it:
+  // stubbing it out drops EVERY persona by exactly one statement. What it does not do is
+  // move with the conversion, and the reason is a property of the FIXTURE rather than of
+  // the path — the query reads the profile's active `may` rows first and returns early
+  // when there are none, so the shared day-context build the conversion changed was
+  // never reached. A persona that gains such an item moves the number, and until #5321
+  // not one persona's own profile had one (the two `may` items in scripts/
+  // seed-personas.ts belong to family members, not to the profile these gathers run for).
+  //
+  // SO THE NUMBER IS NOW REAL, and `bodybuilder` is the persona that makes it so: Marcus
+  // gained an on-demand post-workout supplement, and his digest gather went 468 → 475.
+  // Measured the same way: with that item present, stubbing the call drops him by EIGHT
+  // rather than by one — the `may` row read plus the shared builder behind it (the day's
+  // activities, the effective situations, the inferred prediction, the timezone the
+  // session-end comparison needs) and the pause-name lookup beside it. The other five are
+  // unchanged at their recorded values, which is the control: one persona holds the item,
+  // one persona's number moved.
   const DIGEST_BASELINE: Record<string, number> = {
-    bodybuilder: 468,
+    bodybuilder: 475,
     "marathon-runner": 481,
     household: 424,
     pregnant: 431,

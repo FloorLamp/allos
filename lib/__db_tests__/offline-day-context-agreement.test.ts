@@ -54,7 +54,12 @@ import {
 } from "@/lib/queries/upcoming/intake-safety";
 import { getOfferedIntakeForSlot } from "@/lib/queries/intake";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
+import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
+import { mintUsualRoutineAttachment } from "@/lib/notifications/usual-routine-attach";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
+import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
+import { plainBody } from "@/lib/notifications/rich-text";
 import type { IntakeCondition } from "@/lib/types";
 
 let seq = 0;
@@ -326,5 +331,274 @@ describe("the stored snapshot answer survives to read time (#5321)", () => {
     expect(buildAt(p, td, "07:20")).toEqual([]);
     expect(buildAt(p, td, "20:00")).toEqual([]);
     expect(pageDueNames(p)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE SENDS THIS CONVERSION REACHES (#5321 design amendment, 2026-09-09)
+// ---------------------------------------------------------------------------
+//
+// Two falsifying passes found the same defect twice: a converted call site reached a
+// notification SEND that the PR body attributed to a nearer surface, and nothing in the
+// repository asserted what was sent. Round one, the digest's due-dose set (asserted
+// above). Round two, the digest's offer tail and the intake reminder's ride-along row.
+// Both times a query's return value was the only witness, and a query's return value
+// cannot tell a correct hold from a wrong one on a message nobody reads back.
+//
+// So the rule this block exists under: ONE ASSERTION PER SEND the PR body's consumer
+// enumeration names, on the SENT CONTENT — the message the profile would actually
+// receive, built through the same builder the tick calls.
+//
+// The enumeration is in the PR body. What lands here is its guard:
+//
+//   getOfferedIntakeForSlot → gatherDigestInput → buildDigest    the digest's offer
+//                                                                count, tail and the
+//                                                                withheld line
+//   getOfferedIntakeForSlot → buildIntakeReminderForSlots        the reminder's
+//                                                                ride-along keyboard
+//   pendingDayDoses → getUsualRoutineOffer                       the composed one-tap
+//                   → mintUsualRoutineAttachment                 riding a send
+//
+// The first was found by round two; the third was found by neither pass and is reported
+// on the PR as a new finding rather than covered quietly.
+
+// A profile with NOTHING else to say: the two seasonal vaccines recorded so the
+// immunization band is empty, and its rows aged out of the digest's 24-hour
+// recent-changes window. That is what it takes to reach the minimal-digest guard
+// (lib/notifications/digest.ts) — and reaching it is the point, because the guard is
+// what the owner's ruling is about. Every other fixture in this file has incidental
+// Today content, which is exactly why the whole-send suppression was invisible until
+// someone built this.
+function quietProfile(): number {
+  const p = newProfile();
+  const td = today(p);
+  for (const vaccine of ["influenza", "covid"]) {
+    db.prepare(
+      `INSERT INTO immunizations (profile_id, date, vaccine, source)
+       VALUES (?, ?, ?, 'manual')`
+    ).run(p, td, vaccine);
+  }
+  return p;
+}
+
+// Age every row this profile owns out of the digest's "New since yesterday" window.
+// Called AFTER seeding, so the fixture's own inserts do not become the news.
+function ageRows(profileId: number): void {
+  db.prepare(
+    "UPDATE intake_items SET created_at = datetime('now','-30 days') WHERE profile_id = ?"
+  ).run(profileId);
+  db.prepare(
+    `UPDATE intake_item_doses SET created_at = datetime('now','-30 days')
+      WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(profileId);
+  db.prepare(
+    "UPDATE activities SET created_at = datetime('now','-30 days') WHERE profile_id = ?"
+  ).run(profileId);
+}
+
+/** The message this profile would actually receive, or null when nothing is sent. */
+function sentDigest(profileId: number): {
+  body: string;
+  actionLabels: string[];
+} | null {
+  const model = buildDigest(gatherDigestInput(profileId, "Digest Send"));
+  if (!model) return null;
+  const msg = renderDigestMessage(model);
+  return {
+    body: plainBody(msg.body),
+    actionLabels: (msg.actions ?? []).map((a) => a.label),
+  };
+}
+
+describe("the digest still sends while the timing gate holds the only offer (#5321)", () => {
+  // THE OWNER'S RULING, 2026-09-09 21:20 UTC, and the defect it answers.
+  //
+  // `getOfferedIntakeForSlot` feeds `offerCount` and `offerTail`. When a profile's ONLY
+  // on-demand item is post-workout, the gate empties both — and the minimal-digest
+  // guard suppresses a message with no sections and no tail. Measured on the head
+  // before this change: `buildDigest` returned null for the whole mid-session window,
+  // where the base sent a tail-only message. The digest is the guaranteed access path
+  // for a tap-only reader (#1505); losing it on the day they trained is a worse failure
+  // than the over-offer this PR set out to fix.
+  //
+  // The ruling keeps the send and makes it honest: do not OFFER what the medications
+  // page holds, but NAME the hold — the same sentence the page's own answer implies.
+  it("names the hold instead of offering it, then offers it once the session ends", () => {
+    const p = quietProfile();
+    const td = today(p);
+    seedItem(p, "Ibuprofen", "post_workout", {
+      obligation: "may",
+      timeOfDay: null,
+    });
+    logWorkout(p, td, "17:00", "18:00");
+    ageRows(p);
+
+    // MID-SESSION. The page holds the item, so the digest does not offer it — and the
+    // message arrives anyway, carrying one line that says why.
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual([]);
+    const mid = gatherDigestInput(p, "Digest Send");
+    expect(mid.offerCount).toBe(0);
+    expect(mid.offerTail).toBeNull();
+    const midSent = sentDigest(p);
+    expect(midSent).not.toBeNull();
+    expect(midSent!.body).toContain("Ibuprofen waits until your session ends");
+    // Named, not offered: no tap exists for an item the app is deliberately holding.
+    expect(midSent!.actionLabels).not.toContain("➕ Doses (1)");
+
+    // AFTER THE RECORDED END. The hold lifts by itself: the tail is back, and the line
+    // that explained its absence is gone rather than sitting beside its own refutation.
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    const after = gatherDigestInput(p, "Digest Send");
+    expect(after.offerCount).toBe(1);
+    expect(after.offerTail).not.toBeNull();
+    const afterSent = sentDigest(p);
+    expect(afterSent).not.toBeNull();
+    expect(afterSent!.body).not.toContain("waits until your session ends");
+    expect(afterSent!.body).toContain("1 more supplement you can log any time");
+    expect(afterSent!.actionLabels).toContain("➕ Doses (1)");
+  });
+
+  // THE CONTROL FOR THE SEND ITSELF. Without this, the test above passes on a head that
+  // suppresses nothing because it never held anything — and passes just as well on the
+  // head that suppressed the whole message, since `toContain` on a null body would have
+  // thrown for a reason no reader would connect to the guard. This asserts the property
+  // the ruling is about: a profile with nothing else to say still receives a message in
+  // BOTH windows, and the two differ only in which line they carry.
+  it("sends in both windows for a profile with nothing else to say", () => {
+    const p = quietProfile();
+    const td = today(p);
+    seedItem(p, "Ibuprofen", "post_workout", {
+      obligation: "may",
+      timeOfDay: null,
+    });
+    logWorkout(p, td, "17:00", "18:00");
+    ageRows(p);
+
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(sentDigest(p)).not.toBeNull();
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    expect(sentDigest(p)).not.toBeNull();
+
+    // And it is not simply always non-null: a quiet profile with no `may` item at all
+    // is still suppressed, which is the #1505 rule this line must not have widened.
+    const silent = quietProfile();
+    ageRows(silent);
+    expect(sentDigest(silent)).toBeNull();
+  });
+});
+
+describe("the intake reminder's ride-along keyboard follows the same gate (#5321)", () => {
+  // THE SECOND SEND round two named. `buildIntakeReminderForSlots` decorates a reminder
+  // that is going out anyway with a "➕ Log other (N)" row over the SAME slot's `may`
+  // items — `getOfferedIntakeForSlot`, the converted call site. So the conversion
+  // changes a KEYBOARD that is pushed to a phone, not only a page's rows.
+  //
+  // Asserted on the built message's actions rather than on the query, because that is
+  // the thing the person receives. A reminder with no ride-along row and a reminder
+  // whose row promises an item the medications page holds are indistinguishable from
+  // the query's side.
+  it("drops the row while the session runs and restores it after", () => {
+    const p = newProfile();
+    const td = today(p);
+    // The reminder itself: a Morning `should` dose, so a send exists for the row to
+    // ride. The ride-along may only decorate a send that exists for its own reasons.
+    seedItem(p, "Morning tablet", "daily");
+    seedItem(p, "Ibuprofen", "post_workout", {
+      obligation: "may",
+      timeOfDay: null,
+    });
+    logWorkout(p, td, "17:00", "18:00");
+
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    const mid = buildIntakeReminderForSlots(p, ["Morning"]);
+    expect(mid).not.toBeNull();
+    expect((mid!.message.actions ?? []).map((a) => a.label)).not.toContain(
+      "➕ Log other (1)"
+    );
+
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    const after = buildIntakeReminderForSlots(p, ["Morning"]);
+    expect(after).not.toBeNull();
+    expect((after!.message.actions ?? []).map((a) => a.label)).toContain(
+      "➕ Log other (1)"
+    );
+  });
+});
+
+describe("the composed one-tap riding a send follows it too (#5321)", () => {
+  // A SEND NEITHER FALSIFYING PASS NAMED, found by re-deriving the call graph for the
+  // amendment rather than re-reading the diff. `pendingDayDoses` was disclosed as "the
+  // day ledger and the bulk tap's write set" — both true, both in-app. It also reaches
+  // a message:
+  //
+  //   pendingDayDoses → getPendingRoutineDoses (queries/usual-routine.ts)
+  //                   → getUsualRoutineOffer   (same file)
+  //                   → mintUsualRoutineAttachment (notifications/usual-routine-attach.ts)
+  //                   → attachUsualRoutine, from notifications/tick.ts and the
+  //                     reconcile sweep — a keyboard on a pushed message.
+  //
+  // The attachment NAMES the doses one tap will write, and that tap writes: the handler
+  // runs `logUsualRoutineCore`, which marks each dose taken and decrements on-hand
+  // supply. So before this conversion a message could offer, in one button, a dose the
+  // medications page was holding — and spend real stock on it.
+  //
+  // The food half is the gate (no habitual food offer, no control at all), so the
+  // fixture builds one: twelve mornings of the same two groups, today deliberately
+  // empty. The dose rides.
+  function tapFood(
+    profileId: number,
+    group: string,
+    date: string,
+    hhmmss: string
+  ): void {
+    db.prepare(
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+         ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
+    ).run(profileId, date, group);
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, ?, ?, ?)`
+    ).run(profileId, group, date, `${date}T${hhmmss}Z`);
+  }
+
+  it("keeps a held dose out of the button's bundle until the session ends", () => {
+    const p = newProfile();
+    const td = today(p);
+    for (let d = 1; d <= 12; d++) {
+      const day = shiftDateStr(td, -d);
+      tapFood(p, "berries", day, "07:00:00");
+      tapFood(p, "fermented", day, "07:05:00");
+    }
+    seedItem(p, "Recovery tablet", "post_workout");
+    // A session inside the Morning food window (00:00-11:00, lib/food-slot.ts), because
+    // the food half is slot-anchored: both readings have to be asked of the window the
+    // habit was built in, or the second one is measuring a missing breakfast offer
+    // rather than the dose gate.
+    logWorkout(p, td, "09:00", "10:00");
+
+    // Mid-session: the food half still stands, so the button is still offered — and the
+    // dose the page holds is not in what it would write.
+    vi.setSystemTime(new Date(`${td}T08:00:00.000Z`));
+    const slot = currentFoodSlotWindow(p).slot;
+    expect(pageDueNames(p)).toEqual([]);
+    const mid = mintUsualRoutineAttachment(p, slot, td);
+    expect(mid).not.toBeNull();
+    // The SENTENCE the message says and the COUNT on its button, not the query behind
+    // them: an offer may never name less than the tap would write (#2460), so the line
+    // and the count are the promise, and they are what a reader is held to.
+    expect(mid!.line).not.toContain("Recovery tablet");
+    expect(mid!.label).toContain("(2)");
+
+    // After the recorded end, same window: the dose joins the bundle the same tap writes.
+    vi.setSystemTime(new Date(`${td}T10:30:00.000Z`));
+    const after = mintUsualRoutineAttachment(
+      p,
+      currentFoodSlotWindow(p).slot,
+      td
+    );
+    expect(after).not.toBeNull();
+    expect(after!.line).toContain("Recovery tablet");
+    expect(after!.label).toContain("(3)");
   });
 });
