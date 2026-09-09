@@ -279,6 +279,23 @@ describe("TimeField — displaying", () => {
 });
 
 describe("TimeField — the wheel", () => {
+  it.each(["offset before wheel", "wheel before offset"] as const)(
+    "%s commits the same resting minute after quiet",
+    async (order) => {
+      vi.useFakeTimers();
+      const { field } = mount("24h", "09:15");
+      openWheel();
+      const minutes = column("Minute");
+      if (order === "offset before wheel") minutes.scrollTop += 44;
+      fireEvent.wheel(minutes, { deltaY: 44 });
+      if (order === "wheel before offset") minutes.scrollTop += 44;
+      fireEvent.scroll(minutes);
+      // No later offset change or snap correction rescues either ordering.
+      await act(() => vi.advanceTimersByTimeAsync(120));
+      expect(field().value).toBe("09:16");
+    }
+  );
+
   // TAP A ROW, GET A TIME. The scroll physics are the platform's and are asserted
   // in the browser; what a row IS — a choice that composes the whole value from
   // where the other columns rest — is assertable here.
@@ -329,6 +346,22 @@ describe("TimeField — the wheel", () => {
         positionRow(minutes, "30");
         await act(() => vi.advanceTimersByTimeAsync(120));
         expect(field().value).toBe("09:30");
+
+        fireEvent.click(within(minutes).getByRole("option", { name: "30" }));
+        positionRow(minutes, "21");
+        // Observed residual movement is not new vertical input from this wheel.
+        fireEvent.wheel(minutes, { deltaX: 44 });
+        fireEvent.scroll(minutes);
+        await act(() => vi.advanceTimersByTimeAsync(120));
+        expect(field().value).toBe("09:30");
+
+        fireEvent.click(within(minutes).getByRole("option", { name: "30" }));
+        // Fresh movement may already be applied when input supersedes a choice.
+        minutes.scrollTop += 44;
+        fireEvent.wheel(minutes, { deltaY: 44 });
+        fireEvent.scroll(minutes);
+        await act(() => vi.advanceTimersByTimeAsync(120));
+        expect(field().value).toBe("09:31");
       }
     }
   );
