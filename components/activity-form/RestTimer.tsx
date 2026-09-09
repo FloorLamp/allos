@@ -31,12 +31,14 @@ function remainingUntil(deadline: number): number {
 export default function RestTimer({
   exercise,
   autoStartKey,
+  onHiddenComplete,
 }: {
   // The lift currently being worked; picks the default rest duration.
   exercise: string;
   // Monotonic nonce: any increase auto-starts a fresh countdown (a set was
   // logged). 0 on mount means "don't auto-start until the first set".
   autoStartKey: number;
+  onHiddenComplete?: () => void;
 }) {
   // The chosen rest target (seconds). Seeded from the lift and kept in sync while
   // the timer is idle so switching exercises re-defaults it — but never yanked
@@ -73,9 +75,10 @@ export default function RestTimer({
       deadlineRef.current = null;
       setRunning(false);
       setDone(true);
-      cue();
+      if (document.visibilityState === "visible") cue();
+      else onHiddenComplete?.();
     }
-  }, [cue]);
+  }, [cue, onHiddenComplete]);
 
   const start = useCallback(
     (seconds?: number) => {
