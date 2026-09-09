@@ -110,6 +110,12 @@ const ACTING: SessionProfile = {
   photo_path: null,
   photo_version: 0,
 };
+const MIA: SessionProfile = {
+  id: 2,
+  name: "Mia",
+  photo_path: null,
+  photo_version: 0,
+};
 
 const MEASUREMENTS = {
   form: "measurements" as const,
@@ -331,6 +337,8 @@ function VisitSheet({
       <button data-testid="visit-back" onClick={visit.back}>
         Back
       </button>
+      {visit.titleAdornment}
+      {visit.belowTitle}
       <QuickEntryVisitBodies identity={visit.identity} onDone={onDone} />
     </>
   );
@@ -343,12 +351,13 @@ function renderVisitSheet(initiallyOpen = false, onDone?: () => void) {
         clocks={
           new Map([
             [ACTING.id, { today: MEASUREMENTS.defaultDate, timeZone: "UTC" }],
+            [MIA.id, { today: MEASUREMENTS.defaultDate, timeZone: "UTC" }],
           ])
         }
       >
         <QuickEntryProvider
           measurements={MEASUREMENTS}
-          writableProfiles={[ACTING]}
+          writableProfiles={[ACTING, MIA]}
           actingProfileId={ACTING.id}
         >
           <VisitSheet open={open} onDone={onDone} />
@@ -465,6 +474,7 @@ describe("one quick-log visit", () => {
     );
     loadQuickEntry
       .mockResolvedValueOnce(mood(3, "fresh"))
+      .mockResolvedValueOnce(mood(3, "fresh"))
       .mockResolvedValueOnce(stool());
     const onDone = vi.fn();
     const { rerenderOpen } = renderVisitSheet(false, onDone);
@@ -472,7 +482,27 @@ describe("one quick-log visit", () => {
 
     fireEvent.click(screen.getByTestId("visit-mood"));
     await screen.findByTestId("mood-form");
-    fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+    fireEvent.click(screen.getByTestId("quick-entry-subject-chip"));
+    fireEvent.click(screen.getByTestId(`quick-entry-subject-option-${MIA.id}`));
+    await waitFor(() =>
+      expect(loadQuickEntry).toHaveBeenLastCalledWith(
+        "mood",
+        MIA.id,
+        undefined,
+        "sheet"
+      )
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("quick-entry-body")
+          .getAttribute("data-subject-profile-id")
+      ).toBe(String(MIA.id))
+    );
+    expect(
+      screen.getByTestId("quick-entry-subject-chip").textContent
+    ).toContain(MIA.name);
+    fireEvent.click(await screen.findByRole("button", { name: "Mood: Good" }));
     await waitFor(() => expect(logMood).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByTestId("visit-back"));
@@ -487,7 +517,23 @@ describe("one quick-log visit", () => {
       valence: "4",
       energy: "3",
       note: "fresh",
+      profile_id: String(MIA.id),
     });
+    expect(loadQuickEntry).toHaveBeenLastCalledWith(
+      "stool",
+      MIA.id,
+      undefined,
+      "sheet"
+    );
+    expect(
+      screen
+        .getByTestId("quick-entry-stool")
+        .closest('[data-testid="quick-entry-body"]')
+        ?.getAttribute("data-subject-profile-id")
+    ).toBe(String(MIA.id));
+    expect(
+      screen.getByTestId("quick-entry-subject-chip").textContent
+    ).toContain(MIA.name);
     resolveMood({ ok: true });
     await act(async () => {});
 
@@ -503,7 +549,7 @@ describe("one quick-log visit", () => {
         "false"
       )
     );
-    expect(loadQuickEntry).toHaveBeenCalledTimes(2);
+    expect(loadQuickEntry).toHaveBeenCalledTimes(3);
   });
 
   it("returns a fresh menu before a rapid reopen can install the prior visit", async () => {
