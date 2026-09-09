@@ -44,6 +44,7 @@ import {
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
 import {
+  DOSE_BAND_UPDATE_PREFIX,
   OFFER_ASKED_PREFIX,
   TRACK_SUPPLY_ASKED_PREFIX,
 } from "./dismissal-keys";
@@ -519,6 +520,19 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // profile, and no sweep is needed. The one set that must never be silenceable is
     // handled at a different layer: a row carrying `unroutable` is marked
     // non-dismissible, so no key containing it is ever written OR read.
+  },
+  {
+    prefix: DOSE_BAND_UPDATE_PREFIX,
+    keyClass: "anchored",
+    shape: "`<intakeItemId>:<bandMg>` (#5538)",
+    // The child dose-band update offer. ANCHORED and deliberately not id-keyed: the
+    // ruling is that a declined offer returns when the band moves again, and an
+    // id-keyed decline would silence it forever. The anchor is the band's own
+    // milligram figure — the thing the offer proposes and the person declined — so
+    // growing into a band with a different figure mints a different key. The item half
+    // is an AUTOINCREMENT id, so nothing in the tail recycles and there is no sweep to
+    // name; a stale row can only ever re-decline the identical proposal about the
+    // identical item.
   },
   {
     prefix: "digest-time:",

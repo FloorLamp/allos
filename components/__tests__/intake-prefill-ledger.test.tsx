@@ -417,6 +417,7 @@ const CHILD_ON_PICK: PediatricFormContext = {
   weightDate: TODAY,
   weightUnit: "kg",
   today: TODAY,
+  declinedDoseUpdates: [],
 };
 
 it("keeps an adolescent's dose blank when switching a refused chart's formulation", async () => {

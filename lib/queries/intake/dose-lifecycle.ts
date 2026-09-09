@@ -337,3 +337,80 @@ export function unretireDose(
     return { kind: "restored", dose };
   });
 }
+
+// ---- Restating a live dose's AMOUNT (issue #5538) --------------------------
+
+export type StoredDoseAmountOutcome =
+  | { kind: "updated"; doseId: number }
+  | { kind: "stale" }
+  | { kind: "not-found" };
+
+// Rewrite the amount on an item's stored dose, ONCE, from the child dose-band update
+// offer. The offer's whole point is that every later tap records the new figure, so
+// what moves is the item's stored dose — not the administration being written, and not
+// a provenance column: `intake_item_doses.amount` cannot tell a band figure from a
+// prescriber's, which is exactly why nothing may refresh it without a person saying so
+// (lib/prn-dosing.ts's pinned invariant).
+//
+// It lands here rather than in the answering Server Action because this module already
+// owns the effective-dated bookkeeping an amount change requires (#1973): the pre-edit
+// rule is recorded before the row is overwritten, so every earlier day keeps resolving
+// to the amount that applied then and no past administration is re-judged by the new
+// figure. The edit form does the same three steps around its own UPDATE.
+//
+// THE TARGET IS THE ITEM'S FIRST LIVE DOSE — the same `retired = 0 ORDER BY sort, id
+// LIMIT 1` row every dose surface reads its stored amount from, so the figure the offer
+// quoted and the row it rewrites cannot be two different rows.
+//
+// CAS ON THE FIGURE THE OFFER SHOWED (`expected`): a card left open on a phone while
+// the dose was edited elsewhere refuses instead of overwriting the newer amount.
+export function setStoredDoseAmount(
+  profileId: number,
+  itemId: number,
+  expected: string,
+  amount: string
+): StoredDoseAmountOutcome {
+  return writeTx((tx): StoredDoseAmountOutcome => {
+    const row = readForUpdate<DoseScheduleRow & { created_at: string | null }>(
+      tx,
+      db.prepare(
+        `SELECT d.id, d.created_at, d.amount, d.time_of_day, d.weekdays,
+                d.start_date, d.end_date
+           FROM intake_item_doses d
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE d.item_id = ? AND s.profile_id = ? AND d.retired = 0
+          ORDER BY d.sort, d.id LIMIT 1`
+      ),
+      itemId,
+      profileId
+    );
+    if (!row) return { kind: "not-found" };
+    if (row.amount !== expected) return { kind: "stale" };
+    const { created_at: born, ...prior } = row;
+    const todayStr = today(profileId);
+    // Lazy backfill of the pre-edit rule, on the same anchor migration 151 seeds from,
+    // so a dose from any origin gets a history before the new version is appended.
+    if (!(getDoseScheduleVersions(profileId).get(row.id)?.length ?? 0))
+      recordScheduleVersion(row.id, (born ?? "1970-01-01").slice(0, 10), prior, false);
+    const res = casUpdate(
+      tx,
+      db.prepare(
+        `UPDATE intake_item_doses SET amount = ?
+          WHERE id = ? AND amount IS ?
+            AND EXISTS (
+              SELECT 1 FROM intake_items s
+               WHERE s.id = intake_item_doses.item_id AND s.profile_id = ?
+            )`
+      ),
+      amount,
+      row.id,
+      expected,
+      profileId
+    );
+    if (res.kind === "stale") return { kind: "stale" };
+    // Effective-dated from today: the new figure applies from here on, and the days
+    // before it keep the one that applied then.
+    recordScheduleVersion(row.id, todayStr, { ...prior, amount });
+    return { kind: "updated", doseId: row.id };
+  });
+}

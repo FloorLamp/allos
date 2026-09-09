@@ -26,11 +26,24 @@ import {
   PEDIATRIC_DOSE_CAVEAT,
   pediatricRefusalLine,
   prnDoseBandStatement,
+  prnDoseUpdateOffer,
   type PediatricFormContext,
 } from "@/lib/prn-dosing";
-import { logMedicationAdministration } from "@/app/(app)/medications/actions";
+import OfferInPlace from "@/components/OfferInPlace";
+import {
+  acceptDoseBandUpdate,
+  declineDoseBandUpdate,
+  logMedicationAdministration,
+} from "@/app/(app)/medications/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
+import type { FormResult } from "@/lib/types";
+
+// THE OFFER IS NOT MARKED ASKED ON RENDER (#5538). The shared in-place offer records
+// "we showed it" so an ignored one does not repeat; this one repeats on purpose. It
+// appears when a growing child crosses a label band — roughly once a year — and the
+// only answer that silences it is the person's own No, per the ruling.
+const noSeenMark = () => {};
 
 // One PRN (as-needed) medication's shared quick-log row (#797).
 // A primary one-tap records an administration NOW; the clock door beside it — this
@@ -90,6 +103,7 @@ export default function QuickLogPrnControl({
   tz: tzProp,
   proposedTime,
   pediatric: pediatricProp = null,
+  offerSeat = true,
   onLogged,
   date,
 }: {
@@ -131,6 +145,11 @@ export default function QuickLogPrnControl({
   // an adult, or an item with no label chart) and every line below is the snapshot the
   // row has always shown.
   pediatric?: PediatricFormContext | null;
+  // WHETHER THIS ROW HOLDS THE SURFACE'S ONE OFFER SEAT (#5538). A list host works out
+  // which of its rows would offer to update a stale stored dose and seats exactly one
+  // — three charted PRNs on a sick child are three boxes otherwise. A host that mounts
+  // a single dose row has nothing to arbitrate and leaves this alone.
+  offerSeat?: boolean;
   // Fired once a dose is RECORDED — used by the illness fold's dose offer, which the
   // ruling ends when the offer is "taken" (#4712, 2026-09-04 11:20 UTC part 2). It
   // fires on the duplicate outcome too: the dose the offer existed to get is on the
@@ -347,6 +366,42 @@ export default function QuickLogPrnControl({
     </div>
   ) : null;
 
+  // THE OFFER TO FOLLOW THE CURRENT WEIGHT (#5538), on the dose row, directly under the
+  // band statement it disagrees with. The band amount is a suggestion to confirm and
+  // never silently applied (lib/prn-dosing.ts's pinned invariant), so a stored dose that
+  // has gone stale as a child grew moves only when a person says so — here, in one tap,
+  // on all four dose hosts at once because they all mount this row. Accepting rewrites
+  // the ITEM's stored dose once; declining records only the decline. Neither gates the
+  // Take chip beside it, and the offer is not marked "asked" on render: a band a child
+  // grows through every year or so is not a nag, and ignoring it is not an answer.
+  //
+  // It re-derives from the row's own `pediatric` state, so saving a weight in the fixer
+  // below can open the offer in place without a navigation.
+  const doseUpdate = offerSeat
+    ? prnDoseUpdateOffer(
+        { id: itemId, name, identity, product, amount: doseAmount },
+        pediatric
+      )
+    : null;
+  // The SUBJECT rides both answers, like the dose write above: a caregiver answering in
+  // the illness cockpit is answering for the household member the row logs for.
+  const answerAs = (act: (fd: FormData) => Promise<FormResult>) => (fd: FormData) => {
+    if (profileId != null) fd.set("profileId", String(profileId));
+    return act(fd);
+  };
+  const doseUpdateOffer = doseUpdate ? (
+    <OfferInPlace
+      dedupeKey={doseUpdate.key}
+      familyId="dose-band-update"
+      question={doseUpdate.question}
+      yes={doseUpdate.yes}
+      no={doseUpdate.no}
+      onSeen={noSeenMark}
+      onAccept={answerAs(acceptDoseBandUpdate)}
+      onDecline={answerAs(declineDoseBandUpdate)}
+    />
+  ) : null;
+
   // THE LABEL'S REFUSAL, ON THE ROW (#4713 fix 2). The same vocabulary the add form
   // states — #798's gates decide, this only moves where they run — reached from the
   // surface a dose is actually given from. A missing or stale weight also seats the
@@ -455,6 +510,7 @@ export default function QuickLogPrnControl({
         ) : null}
         {bandBasis ? <div className="mt-0.5">{bandBasis}</div> : null}
         {bandNote ? <div className="mt-1">{bandNote}</div> : null}
+        {doseUpdateOffer ? <div className="mt-2">{doseUpdateOffer}</div> : null}
         {options ? (
           <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
             {options}
@@ -478,9 +534,10 @@ export default function QuickLogPrnControl({
         /* The refusal and its fixer sit in the FOOTER, not among the sublines: the
            subline column is the row's narrow left cell, and the fixer is a two-field
            editor. Same seat the retro-time options already take. */
-        bandNote || options ? (
+        bandNote || doseUpdateOffer || options ? (
           <div className="space-y-2 border-t border-black/5 pt-2 pl-6 dark:border-white/5">
             {bandNote}
+            {doseUpdateOffer}
             {options}
           </div>
         ) : null

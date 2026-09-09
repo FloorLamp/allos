@@ -41,7 +41,8 @@ import {
   type CorrectionMessageBinding,
 } from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
-import { setCourseStartDate } from "./medications";
+import { getPediatricFormContext, setCourseStartDate } from "./medications";
+import { prnDoseUpdateOffer, type PrnDoseUpdateOffer } from "../../prn-dosing";
 import {
   CEILING_WINDOW_SQL,
   ceilingWindowBounds,
@@ -2079,6 +2080,35 @@ export function getPrnIntakeItemsForQuickLog(
     ...item,
     displayName: labelById.get(item.id) ?? item.name,
   }));
+}
+
+// THE OFFER AS THE SERVER STILL SEES IT (issue #5538) — the answer path's re-check.
+//
+// Both taps carry only the suppression key the row rendered. This re-derives the offer
+// from live rows and the subject's current weight, so a card left open across a weight
+// entry, a dose edit or another device's answer refuses instead of writing a figure
+// nobody is being shown. It is the same discipline `answerOffer` applies to a family's
+// trigger, and it reads the same quick-log row every dose surface bands from, so the
+// key it computes cannot disagree with the one the row rendered.
+export function standingDoseUpdateOffer(
+  profileId: number,
+  itemId: number
+): PrnDoseUpdateOffer | null {
+  const item = getPrnIntakeItemsForQuickLog(profileId).find(
+    (row) => row.id === itemId
+  );
+  return item
+    ? prnDoseUpdateOffer(
+        {
+          id: item.id,
+          name: item.displayName,
+          identity: item.identity,
+          product: item.product,
+          amount: item.amount,
+        },
+        getPediatricFormContext(profileId)
+      )
+    : null;
 }
 
 // The name of an intake item this profile owns, or null — for the Telegram /dose

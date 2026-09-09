@@ -17,6 +17,9 @@ import {
   type EpisodeMedInput,
   type EpisodeMedSuggestion,
 } from "../../episode-med-reconcile";
+import { DOSE_BAND_UPDATE_PREFIX } from "../../dismissal-keys";
+import { isHiddenUnderPolicy } from "../../lifecycle";
+import { getFindingSuppressions } from "../upcoming/suppressions";
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
@@ -42,7 +45,27 @@ export function getPediatricFormContext(
     weightDate: latestWeight?.date ?? null,
     weightUnit,
     today: todayStr,
+    declinedDoseUpdates: declinedDoseUpdateKeys(profileId, todayStr),
   };
+}
+
+// The dose-band update offers this profile has said no to (#5538). Read from the ONE
+// suppression bus every other offer answers on, under the same normal policy — a
+// decline hides indefinitely, but only the exact `<item>:<figure>` it was given for,
+// so growing into a band with a different figure re-opens the offer by minting a
+// different key.
+function declinedDoseUpdateKeys(
+  profileId: number,
+  todayStr: string
+): readonly string[] {
+  const out: string[] = [];
+  for (const [key, record] of getFindingSuppressions(profileId))
+    if (
+      key.startsWith(DOSE_BAND_UPDATE_PREFIX) &&
+      isHiddenUnderPolicy("normal", record, todayStr)
+    )
+      out.push(key);
+  return out;
 }
 
 // ---- Episode-end medication reconciliation (issue #880) ----

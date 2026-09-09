@@ -2,6 +2,7 @@
 // recorded weight. Refusals never offer a dose; mL requires a selected concentration.
 
 import { prnDefaultsFor } from "./prn-defaults";
+import { doseBandUpdateKey } from "./dismissal-keys";
 import { parseAmountMg } from "./prn-redose";
 import type {
   PediatricBand,
@@ -24,6 +25,12 @@ export interface PediatricFormContext {
   // the standard body-metric path, which converts this unit back to canonical kg.
   weightUnit: WeightUnit;
   today: string;
+  // THE BAND-UPDATE OFFERS THIS SUBJECT HAS DECLINED (#5538) — the profile's active
+  // `dose-band-update:` suppression keys. The offer to rewrite a stale stored dose is
+  // derived from this context on four dose surfaces, so "have they already said no to
+  // this figure?" rides the same object rather than becoming a fifth prop each host
+  // has to remember to thread.
+  declinedDoseUpdates: readonly string[];
 }
 
 // Shared child/adult boundary for every medication-form pediatric surface and its
@@ -367,4 +374,87 @@ export function prnDoseBandStatement(
     differsFromStored: result.mg !== storedMg,
     result,
   };
+}
+
+// ── THE STALE STORED DOSE, AND THE OFFER THAT FIXES IT (issue #5538) ─────────
+//
+// `prnDoseBandStatement` above already STATES the band beside a stored amount that
+// disagrees with it (#4713 item 1). What it cannot do is move the amount: nothing in
+// `intake_item_doses` separates a figure a band suggested from one a prescriber set,
+// so a lookup that refreshes the first necessarily overwrites the second — the defect
+// that got #4713's item 3 withdrawn, and the reason the invariant at the top of this
+// file says a band amount is a SUGGESTION to confirm, never silently applied.
+//
+// The owner's ruling is to follow the current weight and ASK. When the band's figure
+// differs from the item's stored dose, the dose row offers to rewrite the stored
+// amount ONCE; accepting means every later tap records the new figure, declining
+// writes no health data and no dose amount at all. The tap itself is never gated —
+// there is no per-tap confirm and no provenance column.
+//
+// ONE DERIVATION, FOUR HOSTS. The medications Today panel, the medicine card's Today
+// block, the illness cockpit's Meds fold and the quick-entry sheet all mount the same
+// dose row and all already carry the subject's pediatric context, so the offer is
+// derived here — from the same two arguments the band statement takes — rather than
+// four times over.
+export interface PrnDoseUpdateOffer {
+  /** The suppression-bus key this offer lives under; the answer path's only token. */
+  key: string;
+  /** The band figure accepting writes, as the row spells it ("150 mg"). */
+  bandAmount: string;
+  /** The item's stored dose as it stands today ("100 mg"). */
+  storedAmount: string;
+  /** One question, two verbs — the shared in-place offer's vocabulary. */
+  question: string;
+  yes: string;
+  no: string;
+}
+
+export interface PrnDoseUpdateItem {
+  id: number;
+  /** The medicine as the surface names it — a dose statement names its drug. */
+  name: string;
+  identity: Parameters<typeof prnDefaultsFor>[0];
+  product?: string | null;
+  amount?: string | null;
+}
+
+export function prnDoseUpdateOffer(
+  item: PrnDoseUpdateItem,
+  context: PediatricFormContext | null | undefined
+): PrnDoseUpdateOffer | null {
+  const band = prnDoseBandStatement(item, context);
+  const storedAmount = item.amount;
+  // `differsFromStored` is already exactly "a child, an eligible chart, a fresh
+  // weight, a milligram amount on file, and the two figures disagree" — the case this
+  // offer exists for and nothing else. The result narrowing carries the band's own mg
+  // out of the union; the stored amount is what produced `differsFromStored`.
+  if (!band.differsFromStored || band.result?.kind !== "dose" || !storedAmount)
+    return null;
+  const key = doseBandUpdateKey(item.id, band.result.mg);
+  if (context?.declinedDoseUpdates.includes(key)) return null;
+  const bandAmount = formulationDoseAmount(band.result.mg);
+  return {
+    key,
+    bandAmount,
+    storedAmount,
+    // Names the medicine and both amounts, then what accepting does. The band line
+    // directly above already says which weight band the new figure comes from, so the
+    // question does not repeat it.
+    question: `${item.name} is set to ${storedAmount}. Update it to ${bandAmount}?`,
+    yes: `Update to ${bandAmount}`,
+    no: `Keep ${storedAmount}`,
+  };
+}
+
+// AT MOST ONE OFFER PER SURFACE (the placement ruling). A list host renders one dose
+// row per PRN, and a sick child with three charted PRNs would otherwise meet three
+// boxes at once — the same argument the row's weight fixer already makes for opening
+// one editor rather than several. The seat goes to the first row that would offer, in
+// the order the surface renders them; a host that mounts a single dose row needs no
+// seat at all.
+export function doseUpdateOfferSeat(
+  items: readonly PrnDoseUpdateItem[],
+  context: PediatricFormContext | null | undefined
+): number | null {
+  return items.find((item) => prnDoseUpdateOffer(item, context))?.id ?? null;
 }
