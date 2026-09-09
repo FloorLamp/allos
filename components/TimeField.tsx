@@ -515,10 +515,10 @@ function WheelColumn({
   const middle = sideCopies * options.length;
   const rows = (2 * sideCopies + 1) * options.length;
   const [center, setCenter] = useState(middle + index);
-  const gesture = useRef<{
-    phase: "idle" | "armed" | "scrolling" | "choice";
-    top: number;
-  }>({
+  const gesture = useRef<
+    | { phase: "idle" | "armed" | "scrolling"; top: number }
+    | { phase: "choice"; top: number; target: number }
+  >({
     phase: "idle",
     top: 0,
   });
@@ -541,6 +541,7 @@ function WheelColumn({
     }
     if (!ref.current || gesture.current.phase !== "idle") return;
     ref.current.scrollTop = (middle + index) * CELL_PX;
+    gesture.current.top = ref.current.scrollTop;
     setCenter(middle + index);
   }, [index, middle, open]);
 
@@ -554,15 +555,17 @@ function WheelColumn({
     settle.current = setTimeout(() => {
       settle.current = null;
       if (contacts.current || gesture.current.phase === "idle") return;
-      const { phase, top } = gesture.current;
-      gesture.current.phase = "idle";
-      if (phase !== "scrolling" && phase !== "choice") return;
+      const current = gesture.current;
+      gesture.current = { phase: "idle", top: current.top };
+      if (current.phase !== "scrolling" && current.phase !== "choice") return;
       const el = ref.current;
       const live = latest.current;
       if (!el || !live.open) return;
       const count = live.options.length;
       const physical =
-        phase === "choice" ? top / CELL_PX : Math.round(el.scrollTop / CELL_PX);
+        current.phase === "choice"
+          ? current.target / CELL_PX
+          : Math.round(el.scrollTop / CELL_PX);
       const logical = live.cyclic
         ? ((physical % count) + count) % count
         : Math.min(count - 1, Math.max(0, physical));
@@ -571,11 +574,12 @@ function WheelColumn({
         : logical;
       // Residual native scrolling cannot replace an explicit choice. Ordinary
       // flicks keep their fractional offset when returning to the middle cycle.
-      if (phase === "choice") el.scrollTop = parked * CELL_PX;
+      if (current.phase === "choice") el.scrollTop = parked * CELL_PX;
       else el.scrollTop += (parked - physical) * CELL_PX;
+      gesture.current.top = el.scrollTop;
       setCenter(parked);
       if (
-        phase !== "choice" &&
+        current.phase !== "choice" &&
         (!live.selected || live.options[logical] !== live.value)
       )
         live.onSelect(live.options[logical]);
@@ -586,7 +590,11 @@ function WheelColumn({
     if (settle.current) clearTimeout(settle.current);
     settle.current = null;
     // Keep the target through native continuation and defer layout parking.
-    gesture.current = { phase: "choice", top: physical * CELL_PX };
+    gesture.current = {
+      phase: "choice",
+      top: physical * CELL_PX,
+      target: physical * CELL_PX,
+    };
     const live = latest.current;
     const logical =
       ((physical % live.options.length) + live.options.length) %
@@ -594,6 +602,7 @@ function WheelColumn({
     if (ref.current) {
       ref.current.focus({ preventScroll: true });
       ref.current.scrollTop = physical * CELL_PX;
+      gesture.current.top = ref.current.scrollTop;
     }
     setCenter(physical);
     if (!live.selected || live.options[logical] !== live.value)
@@ -618,8 +627,9 @@ function WheelColumn({
       gesture.current.phase === "idle" ||
       gesture.current.phase === "choice"
     ) {
-      gesture.current.phase = "armed";
-      gesture.current.top = ref.current?.scrollTop ?? 0;
+      // Native scrolling may move the offset before this input is delivered.
+      // Keep the last observed or parked position until its scroll event.
+      gesture.current = { phase: "armed", top: gesture.current.top };
     }
   };
 
@@ -666,10 +676,11 @@ function WheelColumn({
             const top = event.currentTarget.scrollTop;
             if (top !== gesture.current.top)
               gesture.current.phase = "scrolling";
-            gesture.current.top = top;
           }
           queueSettle();
         }
+        // Even residual choice scrolling updates observation, not its target.
+        gesture.current.top = event.currentTarget.scrollTop;
       }}
       onKeyDown={(e) => {
         const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
