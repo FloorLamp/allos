@@ -18,23 +18,26 @@ vi.mock("@/app/(app)/medical/episodes/actions", () => ({
   reopenEpisodeAction: vi.fn(),
 }));
 
+const END = (
+  <EndEpisodeReconcile
+    episodeId={7}
+    meds={[
+      { itemId: 19, name: "Ibuprofen", klass: "otc-prn", defaultChecked: true },
+    ]}
+    triggerLabel="End episode"
+    triggerTestId="episode-end"
+  />
+);
+const REOPEN = (
+  <ReopenEpisodeReconcile
+    episodeId={7}
+    meds={[{ itemId: 19, name: "Ibuprofen" }]}
+  />
+);
+
 describe("episode reconciliation triggers", () => {
   it("opens the end checklist through the ordinary Button treatment", () => {
-    render(
-      <EndEpisodeReconcile
-        episodeId={7}
-        meds={[
-          {
-            itemId: 19,
-            name: "Ibuprofen",
-            klass: "otc-prn",
-            defaultChecked: true,
-          },
-        ]}
-        triggerLabel="End episode"
-        triggerTestId="episode-end"
-      />
-    );
+    render(END);
 
     const trigger = screen.getByRole("button", { name: "End episode" });
     expect(trigger.getAttribute("type")).toBe("button");
@@ -67,21 +70,7 @@ describe("episode reconciliation triggers", () => {
   it.each([
     {
       row: "end",
-      element: (
-        <EndEpisodeReconcile
-          episodeId={7}
-          meds={[
-            {
-              itemId: 19,
-              name: "Ibuprofen",
-              klass: "otc-prn",
-              defaultChecked: true,
-            },
-          ]}
-          triggerLabel="End episode"
-          triggerTestId="episode-end"
-        />
-      ),
+      element: END,
       trigger: "End episode",
       dialog: "End this episode?",
       commitTestId: "episode-med-reconcile-confirm",
@@ -89,12 +78,7 @@ describe("episode reconciliation triggers", () => {
     },
     {
       row: "reopen",
-      element: (
-        <ReopenEpisodeReconcile
-          episodeId={7}
-          meds={[{ itemId: 19, name: "Ibuprofen" }]}
-        />
-      ),
+      element: REOPEN,
       trigger: "Reopen episode",
       dialog: "Reopen this episode?",
       commitTestId: "episode-reopen-confirm",
@@ -120,12 +104,7 @@ describe("episode reconciliation triggers", () => {
   );
 
   it("opens the reopen checklist through the ordinary Button treatment", () => {
-    render(
-      <ReopenEpisodeReconcile
-        episodeId={7}
-        meds={[{ itemId: 19, name: "Ibuprofen" }]}
-      />
-    );
+    render(REOPEN);
 
     const trigger = screen.getByRole("button", { name: "Reopen episode" });
     expect(trigger.getAttribute("type")).toBe("button");
