@@ -77,14 +77,14 @@ export function composeForRebuild(
 
 // Applied after channel recipient/consent gates. Ownerless destinations keep the
 // canonical body, and the already-composed envelope is never composed a second time.
-export function withRecipientDistanceUnit(
+export function withRecipientUnits(
   msg: NotificationMessage,
   loginId: number | undefined,
   opts?: DispatchOptions
 ): NotificationMessage {
-  if (!opts?.bodyForDistanceUnit || loginId == null) return msg;
+  if (!opts?.bodyForUnits || loginId == null) return msg;
   return {
     ...msg,
-    body: opts.bodyForDistanceUnit(getUnitPrefs(loginId).distanceUnit),
+    body: opts.bodyForUnits(getUnitPrefs(loginId)),
   };
 }

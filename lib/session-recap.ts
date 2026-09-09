@@ -522,6 +522,7 @@ const MAX_NAMED_MISSES = 2;
 export interface RecapLineOptions {
   // Expand the progress and target segments (the chat form). Default false.
   detail?: boolean;
+  weightUnit?: WeightUnit;
 }
 
 // The PR segment, unchanged in both forms — a PR is the strongest progress fact the
@@ -532,11 +533,11 @@ function prSegment(recap: Recap): string | null {
   return null;
 }
 
-// The best vs-last movement of the session, kg — canonical, per the notification unit
-// policy (a chat has no login-unit context). The MAXIMUM is a selection, not a claim
+// The best vs-last movement is selected in canonical kg and converted for display.
+// The MAXIMUM is a selection, not a claim
 // about the session, so it is stated whichever way it went: hiding a negative best
 // would make "no delta segment" mean two different things.
-function deltaSegment(recap: Recap): string | null {
+function deltaSegment(recap: Recap, weightUnit: WeightUnit): string | null {
   let best: RecapExerciseLine | null = null;
   for (const l of recap.exercises) {
     if (l.deltaE1rmKg == null || l.deltaE1rmKg === 0) continue;
@@ -544,7 +545,7 @@ function deltaSegment(recap: Recap): string | null {
   }
   if (!best) return null;
   const d = best.deltaE1rmKg!;
-  return `${best.exercise} ${d > 0 ? "+" : "−"}${fmtWeight(Math.abs(d), "kg")} vs last`;
+  return `${best.exercise} ${d > 0 ? "+" : "−"}${fmtWeight(Math.abs(d), weightUnit)} vs last`;
 }
 
 function setsSegment(recap: Recap): string | null {
@@ -579,7 +580,9 @@ export function formatRecapLine(
     head.push(`${recap.durationMin} min`);
 
   const pr = prSegment(recap);
-  const progress = detail ? (pr ?? deltaSegment(recap)) : pr;
+  const progress = detail
+    ? (pr ?? deltaSegment(recap, opts.weightUnit ?? "kg"))
+    : pr;
 
   // A recap's question is "did I progress"; the set count answers "did I show up",
   // which the message's existence already says. In the detailed form it therefore

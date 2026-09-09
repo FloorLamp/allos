@@ -7,7 +7,7 @@
 import { db, today } from "../db";
 import { shiftDateStr } from "../date";
 import { cache } from "../request-cache";
-import { weekWindow } from "../week-window";
+import { weekWindow, type WeekWindow } from "../week-window";
 import { getHrMinutesInRange, getLatestBodyMetric } from "./metrics";
 import {
   getMaxHrOverride,
@@ -106,7 +106,8 @@ export function getProfileZoneModel(profileId: number): ZoneModel | null {
 
 export interface TrainingZoneData {
   model: ZoneModel | null;
-  weeks: WeeklyZoneMinutes[]; // oldest→newest, only weeks with training HR
+  weeks: WeeklyZoneMinutes[]; // oldest→newest, gaps zero-filled
+  minutes: number[]; // all five zone totals over the requested day interval
   zone2Target: number; // weekly Zone 2 minutes target (0 = none)
   currentWeekZone2: Zone2Adherence | null;
   split: PolarizedSplit; // easy/hard over the whole window
@@ -114,24 +115,19 @@ export interface TrainingZoneData {
   windowWeeks: number;
 }
 
-// Everything the Trends Fitness zone section needs, over the `weeks` weeks ending
-// on `endDate` (default today). hasHrData distinguishes "no zone model" (needs
-// age/override) from "model but no synced HR yet" so the surface can explain the
-// right next step.
-//
-// `weeks`/`endDate` are how the section honors the Trends hub's shared range
-// (#1492) — the SAME computation with a window parameter, never a second windowed
-// zone engine. `currentWeekZone2` stays anchored to the profile's REAL current
-// week (it answers "this week", not "the last week of the window"); the surface
-// hides it when the window doesn't reach today.
+// Shared training-zone distribution over an inclusive profile-day window. `weeks`
+// budgets calendar chart columns; it does not widen an explicitly supplied interval.
+// With no window, retain the default trailing block ending on the profile's today.
+// The current-week adherence stat still answers the real current profile week;
+// historical surfaces hide it when their window does not reach today.
 export function getTrainingZoneData(
   profileId: number,
   weeks = ZONE_WINDOW_WEEKS,
-  endDate?: string
+  window?: Pick<WeekWindow, "start" | "end">
 ): TrainingZoneData {
   const td = today(profileId);
-  const end = endDate ?? td;
-  const since = zoneWindowSince(end, weeks);
+  const end = window?.end ?? td;
+  const since = window?.start ?? zoneWindowSince(end, weeks);
   const zone2Target = getZone2WeeklyTargetMin(profileId);
   const model = getProfileZoneModel(profileId);
   const buckets = hrBuckets(profileId, since, end);
@@ -149,6 +145,7 @@ export function getTrainingZoneData(
     return {
       model: null,
       weeks: [],
+      minutes: [0, 0, 0, 0, 0],
       zone2Target,
       currentWeekZone2: null,
       split: emptySplit,
@@ -183,6 +180,7 @@ export function getTrainingZoneData(
   return {
     model,
     weeks: rows,
+    minutes: zoneMinuteTotals(scoped, model),
     zone2Target,
     currentWeekZone2,
     split,
