@@ -145,6 +145,7 @@ const INTAKE_CONTEXT: IntakeFormContext = {
     weightDate: null,
     weightUnit: "kg",
     today: TODAY,
+    declinedDoseUpdates: [],
   },
   todayStr: TODAY,
 };

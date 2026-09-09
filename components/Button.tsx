@@ -49,6 +49,28 @@ export interface ButtonProps {
   layout?: "block" | "hidden-below-sm";
 }
 
+/**
+ * THE ONE SHAPE MODIFIER, AND IT IS GHOST-ONLY (owner ruling 4, 2026-09-09,
+ * #4978). The fact row's "missing" placeholder shape — a dashed box saying the
+ * app is waiting for this rather than offering it — is grammar the two rank
+ * paints cannot spell, so `symptom-illness-bridge-activate` wore
+ * `btn-ghost btn-sm border-dashed` and could not move onto the primitive at
+ * all. The ruling admitted ONE BOOLEAN for it and stopped there: not a
+ * `borderStyle` prop, not a third `variant` value, not a size axis, and NO
+ * dashed primary or dashed danger — "ghost only. No third treatment beyond
+ * that boolean."
+ *
+ * That limit is spelled as a union rather than trusted to a convention, so
+ * `<Button dashed variant="primary">` is a COMPILE error and there is no
+ * runtime guard to read: the type is the admission rule here exactly as it is
+ * for `variant` and `layout` above. Widening this — a dashed rank, a second
+ * shape, a `dashed` on `SubmitButton` (a form commit is filled, never a
+ * placeholder) — is a new ruling, not a refactor.
+ */
+type ButtonShapeProps = { dashed?: false } | { dashed: true; variant?: never };
+
+type ButtonMountProps = ButtonProps & ButtonShapeProps;
+
 // `hidden sm:inline-flex` beats the `button-control` utility's own
 // `inline-flex` because Tailwind emits custom `@utility` rules BEFORE the core
 // ones (checked against the compiled sheet, not assumed), so the later `hidden`
@@ -66,7 +88,7 @@ const LAYOUT_CLASS = {
 // the same box, the same focus ring and the same pending spinner by construction.
 // The control is a full 44px effective target on a coarse pointer; navigational
 // actions use DestinationActionLink instead.
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+const Button = forwardRef<HTMLButtonElement, ButtonMountProps>(function Button(
   {
     children,
     type = "button",
@@ -83,6 +105,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     "data-testid": testId,
     variant,
     layout,
+    dashed = false,
   },
   ref
 ) {
@@ -109,6 +132,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
         "button-control",
         variant && `button-control-${variant}`,
         layout && LAYOUT_CLASS[layout],
+        dashed && "border-dashed",
       ]
         .filter(Boolean)
         .join(" ")}

@@ -17,6 +17,10 @@ import {
   type EpisodeMedInput,
   type EpisodeMedSuggestion,
 } from "../../episode-med-reconcile";
+import { DOSE_BAND_UPDATE_PREFIX } from "../../dismissal-keys";
+import { isHiddenUnderPolicy } from "../../lifecycle";
+import { getFindingSuppressions } from "../upcoming/suppressions";
+import { isChildProfileAge } from "../../prn-dosing";
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
@@ -36,13 +40,39 @@ export function getPediatricFormContext(
 ): PediatricFormContext {
   const todayStr = today(profileId);
   const latestWeight = getLatestBodyMetricDated(profileId, "weight");
+  const ageMonths = profileAgeMonths(profileId, todayStr);
   return {
-    ageMonths: profileAgeMonths(profileId, todayStr),
+    ageMonths,
     weightKg: latestWeight?.value ?? null,
     weightDate: latestWeight?.date ?? null,
     weightUnit,
     today: todayStr,
+    declinedDoseUpdates: declinedDoseUpdateKeys(profileId, ageMonths, todayStr),
   };
+}
+
+// The dose-band update offers this profile has said no to (#5538). Read from the ONE
+// suppression bus every other offer answers on, under the same normal policy — a
+// decline hides indefinitely, but only the exact `<item>:<figure>` it was given for,
+// so growing into a band with a different figure re-opens the offer by minting a
+// different key.
+function declinedDoseUpdateKeys(
+  profileId: number,
+  ageMonths: number | null,
+  todayStr: string
+): readonly string[] {
+  // Only a child is ever offered a band update, so an adult profile asks the bus
+  // nothing — this context is gathered on every medication surface, including one row
+  // per member on the household dashboard.
+  if (!isChildProfileAge(ageMonths)) return [];
+  const out: string[] = [];
+  for (const [key, record] of getFindingSuppressions(profileId))
+    if (
+      key.startsWith(DOSE_BAND_UPDATE_PREFIX) &&
+      isHiddenUnderPolicy("normal", record, todayStr)
+    )
+      out.push(key);
+  return out;
 }
 
 // ---- Episode-end medication reconciliation (issue #880) ----

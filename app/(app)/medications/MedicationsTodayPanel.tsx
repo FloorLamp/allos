@@ -20,7 +20,10 @@ import {
   formatGivenAtClock,
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
+import {
+  doseUpdateOfferSeat,
+  type PediatricFormContext,
+} from "@/lib/prn-dosing";
 import type { MedCardData } from "./med-data";
 
 // The Today panel that LEADS the Medications page (#817): the daily-use job first.
@@ -100,6 +103,9 @@ export default function MedicationsTodayPanel({
   );
   // PRN log rows are a pure write affordance; a read-only board omits them.
   const showPrn = canWrite && prnToday.length > 0;
+  // ONE OFFER PER SURFACE (#5538): whichever PRN row would first offer to update a
+  // stale stored dose gets the seat, and the rest render as they always did.
+  const offerSeatId = doseUpdateOfferSeat(prnToday, pediatric);
   if (dueScheduled.length === 0 && !showPrn) return null;
 
   const byId = new Map(dueScheduled.map((d) => [d.med.id, d]));
@@ -255,6 +261,7 @@ export default function MedicationsTodayPanel({
           <div className="divide-y divide-black/5 dark:divide-white/5">
             {prnToday.map((m) => (
               <QuickLogPrnControl
+                offerSeat={m.id === offerSeatId}
                 key={m.id}
                 itemId={m.id}
                 identity={m.identity}
