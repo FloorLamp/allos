@@ -1143,6 +1143,7 @@ export default function SymptomLogBar({
               <SubmitButton
                 data-testid="temp-quick-save"
                 disabled={tempPending}
+                variant="primary"
               >
                 {tempPending ? "Logging…" : "Log temp"}
               </SubmitButton>

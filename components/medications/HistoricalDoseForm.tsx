@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
@@ -381,9 +382,7 @@ export default function HistoricalDoseForm({
         <SubmitButton pendingLabel="Saving…" variant="primary">
           {editing ? "Save changes" : "Save dose"}
         </SubmitButton>
-        <button type="button" onClick={onDone} className="btn-ghost btn-sm">
-          Cancel
-        </button>
+        <Button onClick={onDone}>Cancel</Button>
       </div>
     </form>
   );

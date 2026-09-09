@@ -699,9 +699,7 @@ function LogInjuryForm({
         >
           Log injury
         </SubmitButton>
-        <button type="button" onClick={onDone} className="btn-ghost">
-          Cancel
-        </button>
+        <Button onClick={onDone}>Cancel</Button>
       </div>
     </form>
   );
@@ -852,9 +850,7 @@ function EditInjuryForm({
         >
           Save changes
         </SubmitButton>
-        <button type="button" onClick={onDone} className="btn-ghost">
-          Cancel
-        </button>
+        <Button onClick={onDone}>Cancel</Button>
       </div>
     </form>
   );

@@ -94,14 +94,9 @@ export default function MedicationAddWorkspace({
           className="card relative z-20 mb-5"
           data-testid="medication-add-panel"
         >
-          <div>
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-              {CREATE_ACTIONS.medication.label}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Start with the name — everything else is a tap away.
-            </p>
-          </div>
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+            {CREATE_ACTIONS.medication.label}
+          </h2>
 
           {/* ONE form (#3216). The quick/full tab pair is gone: the quick door existed
               because the full form front-loaded every field, and a summary-first form

@@ -299,13 +299,7 @@ export default function EndurancePlanBar({
             >
               Add event
             </SubmitButton>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="btn-ghost"
-            >
-              Cancel
-            </button>
+            <Button onClick={() => setShowForm(false)}>Cancel</Button>
           </div>
         </form>
       )}

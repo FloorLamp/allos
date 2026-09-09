@@ -974,9 +974,12 @@ test.describe("the illness cockpit's symptom row (#3954)", () => {
 // effective floor and the same disjointness on exactly those two halves.
 //
 // AND THE BOUND KINDS BESIDE THEM, at the same instant: "34" also passes on a form
-// where everything shrank together, so the form's own `button-control` submit and its
-// `btn-ghost` are swept into the same one-height set rather than compared to the
-// constant alone.
+// where everything shrank together, so the form's own submit and the Cancel beside it
+// are swept into the same one-height set rather than compared to the constant alone.
+// The sweep reads `[data-button-control]` — the marker the typed Button stamps on
+// every rank — rather than a class from the retiring raw family (#4978 slice 1): a
+// class-name selector stops matching the moment a control converts, and a control
+// that drops out of the corpus is a control this test silently stops measuring.
 test.describe("the fact chip wears the box (#4035)", () => {
   test.use({ viewport: PHONE });
 
@@ -1031,9 +1034,7 @@ test.describe("the fact chip wears the box (#4035)", () => {
           .filter(visible)
           .map(read);
         const bound = Array.from(
-          el.querySelectorAll<HTMLElement>(
-            '[data-testid="injury-submit"], .btn-ghost'
-          )
+          el.querySelectorAll<HTMLElement>("[data-button-control]")
         )
           .filter(visible)
           .map(read);

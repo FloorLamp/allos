@@ -208,15 +208,15 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   await expect(obligation).toHaveValue("may");
   await closeEditor(page, addCard);
 
-  // The one-line redose copy (#851 item 5): the terse explainer up front, the verbose
-  // confirm-discipline text tucked behind a "How it works" disclosure.
+  // The redose mechanics (#851 item 5), at the group's own label since #5301 adopted
+  // #3970's rule: what was a standing one-liner, a "How it works" disclosure and two
+  // more precondition lines inside the block is ONE info affordance on its heading.
   const timing = await openFact(page, "timing", addCard);
   const redose = timing.getByTestId("redose-block");
   await expect(redose).toBeVisible();
   await expect(
-    redose.getByText("Reminds you when the minimum interval has passed")
-  ).toBeVisible();
-  await expect(redose.getByText("How it works")).toBeVisible();
+    redose.getByRole("button", { name: /minimum interval passes/i })
+  ).toHaveCount(1);
   await closeEditor(page, addCard);
 
   // The PRN dose editor is the amount-only single row (#851 item 9): no "+ Add dose"

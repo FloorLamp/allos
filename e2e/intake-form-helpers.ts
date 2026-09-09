@@ -16,6 +16,7 @@ export type IntakeFact =
   | "prescription"
   | "indication"
   | "identity"
+  | "rxnorm"
   | "supply"
   | "stopDate"
   | "composition"

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { TierConfigView } from "@/lib/settings/ai-tiers";
 import type { ApiShape, TierName } from "@/lib/ai-tiers";
+import Button from "@/components/Button";
 import { saveAiTierConfig, testAiTier } from "./actions";
 
 // The GLOBAL AI provider tiers (issue #875): two independent provider configs, admin
@@ -195,24 +196,20 @@ function TierBlock({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={pending}
           data-testid={`ai-tier-${tier}-save`}
-          className="btn"
         >
           Apply {tier} tier
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={test}
           disabled={pending}
           data-testid={`ai-tier-${tier}-test`}
-          className="btn-ghost"
         >
           Test connection
-        </button>
+        </Button>
       </div>
 
       {result && (
