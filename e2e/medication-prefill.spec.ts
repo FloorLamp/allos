@@ -166,11 +166,15 @@ test("a pediatric formulation persists from quick add to the medication list", a
     const quickAdd = panel.getByTestId("intake-item-form");
 
     // An unsupported medication says that its chart is unavailable rather than
-    // silently looking like an adult/unknown profile.
+    // silently looking like an adult/unknown profile. Since #5301 it says so in the
+    // DOSE editor, beside the label's other refusals, instead of standing under the
+    // name field on the closed form.
     await quickAdd.getByLabel("Name").fill("Hydrocortisone");
+    const refusal = await openFact(page, "dose", panel);
     await expect(
-      quickAdd.getByTestId("medication-pediatric-no-chart")
+      refusal.getByTestId("medication-pediatric-no-chart")
     ).toContainText("No pediatric dose chart is available for this product.");
+    await closeEditor(page, panel);
 
     await quickAdd.getByLabel("Name").fill("Acetaminophen");
     // Portaled listbox (#3271) — resolved from the page, not the panel.
@@ -235,8 +239,8 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await secondWeightUpdate.getByRole("button", { name: "Save" }).click();
     await expect(secondWeightUpdate).toHaveCount(0);
 
-    // The formulation is a derived CHIP ROW beside the kind, not a select buried in
-    // the band picker — one datum, one control.
+    // The formulation is a derived CHIP ROW at the top of this same dose editor, not a
+    // select buried in the band picker — one datum, one control (#3216 ruling 2, #5301).
     const formulation = quickAdd.getByTestId("intake-formulation-row");
     await expect(formulation).toBeVisible();
     await expect(quickAdd).not.toContainText("Saved with this medication.");
@@ -253,8 +257,8 @@ test("a pediatric formulation persists from quick add to the medication list", a
       .getByTestId("intake-formulation-choice")
       .filter({ hasText: "Children's oral suspension" })
       .click();
-    // The formulation row sits ABOVE the facts and never closes the open editor, so
-    // the band picker is still on screen — the switch re-derives inside it.
+    // The row sits in the same editor as the band picker and does not close it, so the
+    // picker is still on screen — the switch re-derives inside it.
     const bands = quickAdd.getByTestId("pediatric-band-option");
     await expect(bands).toHaveCount(5);
     await expect(bands.filter({ hasText: "Recorded weight" })).toContainText(

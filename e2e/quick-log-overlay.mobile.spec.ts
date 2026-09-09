@@ -16,7 +16,7 @@ import {
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
-import { setObligation } from "./intake-form-helpers";
+import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import type { QuickLogId } from "@/lib/quick-log";
 import {
@@ -751,17 +751,22 @@ test("an empty selected profile adds a medication and takes it in the same sheet
     const advil = comboboxRows(page).filter({ hasText: "Advil" }).first(); // eslint-disable-line no-restricted-properties -- first-ok: transient catalog list this test just opened
     await hydratedClick(page, advil);
     await setObligation(page, "may", overlay);
-    const suspension = form
+    const editor = await openFact(page, "dose", overlay);
+    const suspension = editor
       .getByTestId("intake-formulation-row")
       .getByTestId("intake-formulation-choice")
       .filter({ hasText: "Children's oral suspension" });
     await hydratedClick(page, suspension);
     await expect(suspension).toHaveAttribute("aria-pressed", "true");
+    // #798's contract — the dose is the child's recorded WEIGHT BAND, confirmed against
+    // the package — is stated once, by the band picker the switch re-derives inside.
+    // It used to be restated by a standing hedge above the chips (#5301).
+    await expect(editor.getByTestId("pediatric-band-picker")).toBeVisible();
+    await closeEditor(page, overlay);
     await expect(form.getByTestId("intake-fact-dose")).toContainText(
       "Children's oral suspension"
     );
     await expect(form.getByTestId("intake-fact-dose")).toContainText("150 mg");
-    await expect(form.getByTestId("intake-pediatric-context")).toBeVisible();
     await expectNoClippedContent(page);
     // The row this asserts is read straight from the database, so the click has to
     // wait for the CREATE to be observable and not merely for an action POST to
