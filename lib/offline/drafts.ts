@@ -57,7 +57,7 @@ export type DraftFormKey = (typeof DRAFT_FORM_KEYS)[number];
 /** One named DOM field value: `[name, value]`, in document order. */
 export type DraftField = [string, string];
 
-export interface FormDraft {
+interface FormDraftBase {
   /** `draftKey()` — the object store's keyPath. */
   key: string;
   profileId: number;
@@ -78,6 +78,28 @@ export interface FormDraft {
    * Opaque JSON owned by the form that wrote it.
    */
   extra: unknown;
+}
+
+// New writes identify the exact hook snapshot that produced them. Older rows have
+// neither field and stay readable until that form next writes (#3203).
+export type FormDraft = FormDraftBase &
+  (
+    | { writerId: string; revision: number }
+    | { writerId?: undefined; revision?: undefined }
+  );
+
+export interface DraftRevision {
+  writerId: string;
+  revision: number;
+}
+
+export function hasDraftRevision(
+  draft: FormDraft,
+  expected: DraftRevision
+): boolean {
+  return (
+    draft.writerId === expected.writerId && draft.revision === expected.revision
+  );
 }
 
 /** How long a draft stays offerable. Older ones are ignored and purged on read. */

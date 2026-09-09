@@ -585,16 +585,16 @@ function readIntakeSubmission(
 }
 
 export async function addIntakeItem(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const get = (k: IntakeField) => formData.get(k);
   const name = String(get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
-  const todayStr = today(profile.id);
+  const todayStr = today(profileId);
   const f = fields(formData, todayStr);
   if (
     f.kind === "supplement" &&
     WORKOUT_CONDITIONS.includes(f.condition) &&
-    !isTrainingRelevant(getProfileAge(profile.id))
+    !isTrainingRelevant(getProfileAge(profileId))
   ) {
     return formError(
       "Workout-based supplement schedules aren't available for this profile's age."
@@ -617,7 +617,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     supplyId = postedSupplyId;
   }
   if (f.startDateError) return formError(f.startDateError);
-  const sub = readIntakeSubmission(profile.id, formData, f);
+  const sub = readIntakeSubmission(profileId, formData, f);
   if ("error" in sub) return formError(sub.error);
   const {
     doses,
@@ -632,13 +632,13 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     // row if this is a new label; the free-text `situation` column is kept as a
     // denormalized fallback.
     const situationId = f.situation
-      ? resolveSituationId(profile.id, f.situation)
+      ? resolveSituationId(profileId, f.situation)
       : null;
     // Resolve the INVERSE pause link (#1296), creating the situation ROW if this is a
     // new label — the same get-or-create as the on-link, so a Pre-surgery pause and a
     // Pre-surgery on-link converge on ONE vocabulary row.
     const pauseSituationId = f.pauseSituation
-      ? resolveSituationId(profile.id, f.pauseSituation)
+      ? resolveSituationId(profileId, f.pauseSituation)
       : null;
     // The item, its doses and (for a medication) its opening course are ONE core call
     // (#4669) — this action no longer spells the intake_items column set. What the
@@ -671,7 +671,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
       doses,
     };
     const outcome = createIntakeItemCore(
-      profile.id,
+      profileId,
       f.kind === "medication"
         ? {
             ...base,
@@ -698,7 +698,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     if (!outcome.ok) return outcome;
     if (supplyId != null && formData.has("supply_count")) {
       updateIntakeSupplyCount(
-        profile.id,
+        profileId,
         outcome.id,
         supplyId,
         parseQuantityOnHand(get("supply_count")),
@@ -706,15 +706,15 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
       );
     }
     if (get("supply_offer_seen") === "1")
-      markOfferAsked(profile.id, {
+      markOfferAsked(profileId, {
         familyId: "track-supply",
         itemId: outcome.id,
       });
-    reconcilePairs(outcome.id, pairs, profile.id);
+    reconcilePairs(outcome.id, pairs, profileId);
     reconcileIngredients(outcome.id, ingredients?.ok ? ingredients.rows : null);
     // Purpose links (#2857). Inside the same write transaction as the item and its
     // composition, so an item and its declared "why" land together or not at all.
-    reconcilePurposes(outcome.id, ownedPurposes(profile.id, purposes));
+    reconcilePurposes(outcome.id, ownedPurposes(profileId, purposes));
     return outcome;
   });
   if (!created.ok) return formError(created.error);

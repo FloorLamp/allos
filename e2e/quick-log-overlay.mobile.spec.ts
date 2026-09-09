@@ -3,6 +3,8 @@ import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
   appContent,
+  comboboxRows,
+  expectNoClippedContent,
   expectPhoneTapTargets,
   hydratedClick,
   openMeasurementGroup,
@@ -12,6 +14,8 @@ import {
   stageMediaFiles,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { setObligation } from "./intake-form-helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import type { QuickLogId } from "@/lib/quick-log";
 import {
@@ -688,6 +692,179 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
   } finally {
     clearDoseLogs(doseId);
     setDoseRetired(doseId, false);
+    await page.context().close();
+  }
+});
+
+test("an empty selected profile adds a medication and takes it in the same sheet (#3203)", async ({
+  browser,
+}) => {
+  const db = openDb();
+  db.pragma("foreign_keys = ON");
+  const profileName = "Quick intake child (e2e)";
+  const profileId = db.transaction(() => {
+    const id = createFixtureProfile(db, profileName);
+    db.prepare(
+      `INSERT INTO login_profiles (login_id, profile_id, access)
+       SELECT id, ?, 'write' FROM logins WHERE username = ?`
+    ).run(id, E2E_LOGIN_SHELL);
+    db.prepare(
+      "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)"
+    ).run(id, `${frozenNow().getUTCFullYear() - 6}-01-01`);
+    db.prepare(
+      "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 20)"
+    ).run(id, dateStrInTz(PINNED_TZ, frozenNow()));
+    return id;
+  })();
+  let page: Page | undefined;
+  try {
+    page = await signIn(browser);
+    await page.goto("/");
+    const dashboardUrl = page.url();
+    const overlay = await openQuickEntry(page, "log-dose");
+    await hydratedClick(page, overlay.getByTestId("quick-entry-subject-chip"));
+    await settledClick(
+      page,
+      overlay
+        .getByTestId("quick-entry-subject-picker")
+        .getByTestId(`quick-entry-subject-option-${profileId}`)
+    );
+    await expect(overlay.getByTestId("quick-entry-subject-chip")).toContainText(
+      profileName
+    );
+    await expect(overlay.getByTestId("quick-entry-dose-empty")).toBeVisible();
+    await expect(
+      overlay.getByRole("button", { name: "Add supplement", exact: true })
+    ).toBeVisible();
+    const dialog = await overlay.getByRole("dialog").elementHandle();
+    const addMedication = overlay.getByRole("button", {
+      name: "Add medication",
+      exact: true,
+    });
+    await hydratedClick(page, addMedication);
+    const form = overlay.getByTestId("intake-item-form");
+    await expect(form).toHaveAttribute("data-kind", "medication");
+    const name = form.getByLabel("Name");
+    await expect(name).toBeFocused();
+    await settledFill(page, name, "Ibuprofen");
+    const advil = comboboxRows(page).filter({ hasText: "Advil" }).first(); // eslint-disable-line no-restricted-properties -- first-ok: transient catalog list this test just opened
+    await hydratedClick(page, advil);
+    await setObligation(page, "may", overlay);
+    const suspension = form
+      .getByTestId("intake-formulation-row")
+      .getByTestId("intake-formulation-choice")
+      .filter({ hasText: "Children's oral suspension" });
+    await hydratedClick(page, suspension);
+    await expect(suspension).toHaveAttribute("aria-pressed", "true");
+    await expect(form.getByTestId("intake-fact-dose")).toContainText(
+      "Children's oral suspension"
+    );
+    await expect(form.getByTestId("intake-fact-dose")).toContainText("150 mg");
+    await expect(form.getByTestId("intake-pediatric-context")).toBeVisible();
+    await expectNoClippedContent(page);
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Add", exact: true })
+    );
+
+    const item = db
+      .prepare(
+        "SELECT id, name, kind, obligation, product FROM intake_items WHERE profile_id = ?"
+      )
+      .all(profileId) as Array<{
+      id: number;
+      name: string;
+      kind: string;
+      obligation: string;
+      product: string;
+    }>;
+    expect(item).toEqual([
+      expect.objectContaining({
+        name: "Ibuprofen",
+        kind: "medication",
+        obligation: "may",
+        product: "Children's oral suspension (100 mg / 5 mL)",
+      }),
+    ]);
+    const prn = overlay.getByTestId("quick-log-prn-item").filter({
+      hasText: "Ibuprofen",
+    });
+    await expect(prn).toContainText("Ibuprofen");
+    await expect(prn.getByTestId("prn-day-label")).toHaveText("None today");
+    await expect(addMedication).toBeFocused();
+    await settledClick(page, prn.getByTestId("prn-log-now"));
+    await expect(prn.getByTestId("prn-day-label")).toContainText("1 today");
+    expect(
+      db
+        .prepare(
+          `SELECT l.status FROM intake_item_logs l
+       JOIN intake_items i ON i.id = l.item_id
+       WHERE i.profile_id = ? AND i.id = ?`
+        )
+        .all(profileId, item[0].id)
+    ).toEqual([{ status: "taken" }]);
+    expect(page.url()).toBe(dashboardUrl);
+    expect(
+      await overlay
+        .getByRole("dialog")
+        .evaluate((el, original) => el === original, dialog)
+    ).toBe(true);
+  } finally {
+    await page?.context().close();
+    db.transaction(() => {
+      db.prepare("DELETE FROM intake_items WHERE profile_id = ?").run(
+        profileId
+      );
+      db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(
+        profileId
+      );
+      db.prepare("DELETE FROM profile_settings WHERE profile_id = ?").run(
+        profileId
+      );
+      destroyFixtureProfile(db, profileId);
+    })();
+    db.close();
+  }
+});
+
+test("palette intake doors open the full form and cancel back to Dose (#3203)", async ({
+  browser,
+}) => {
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const dashboardUrl = page.url();
+    for (const kind of ["medication", "supplement"] as const) {
+      const input = await openCommandPalette(page);
+      await settledFill(page, input, `Add ${kind}`);
+      await hydratedClick(
+        page,
+        page
+          .getByRole("listbox", { name: "Results" })
+          .getByTestId(`palette-action-add-${kind}`)
+      );
+      const overlay = page.getByRole("dialog", {
+        name: /^(Add (medication|supplement)|Log dose)$/,
+      });
+      await expect(overlay).toHaveAccessibleName(`Add ${kind}`);
+      const form = overlay.getByTestId("intake-item-form");
+      await expect(form).toHaveAttribute("data-kind", kind);
+      await expect(form.getByLabel("Name")).toBeFocused();
+      await expect(form.getByTestId("intake-fact-row")).toBeVisible();
+      await hydratedClick(
+        page,
+        form.getByRole("button", { name: "Cancel", exact: true })
+      );
+      await expect(form).toHaveCount(0);
+      await expect(overlay).toHaveAccessibleName("Log dose");
+      await expect(
+        overlay.getByRole("button", { name: "Add medication", exact: true })
+      ).toBeFocused();
+      expect(page.url()).toBe(dashboardUrl);
+      await page.keyboard.press("Escape");
+      await expect(overlay).toHaveCount(0);
+    }
+  } finally {
     await page.context().close();
   }
 });
