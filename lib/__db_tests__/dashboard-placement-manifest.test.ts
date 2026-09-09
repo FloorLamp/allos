@@ -1365,7 +1365,15 @@ describe("actual atomic dashboard manifests", () => {
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 308,
+    // −11 on `biohacker` and 0 on the other five (#5262). The day-so-far row's
+    // `gatherHistoryLog` computed `presentKinds` — eleven indexed existence probes,
+    // one per Logs kind — and the dashboard reads only `dayEvents` off that gather.
+    // The probes exist so /history and the training history section can earn their
+    // filter chips; this page draws none, so it now opts out and the gather returns a
+    // type with no such field. Nothing a person sees moved: every placement manifest
+    // in this file is byte-identical, which is the assertion that says so. The five
+    // personas at 0 have no `hr_minutes` and never open the gather at all.
+    biohacker: 297,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1620,7 +1628,10 @@ describe("actual atomic dashboard manifests", () => {
     "diabetic-cgm": 128,
     // The cold table's −4, carried through: the warm render re-issues the same two
     // substance reads and they are the same two bounded pairs now.
-    biohacker: 186,
+    // And the cold table's −11 carried through in full (#5262): the day gather sits
+    // outside the commit-scoped memo, so a warm load opened it and paid the eleven
+    // chip probes again. 186 → 175.
+    biohacker: 175,
   };
 
   it("dashboard query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
