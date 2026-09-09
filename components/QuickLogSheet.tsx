@@ -1,7 +1,13 @@
 "use client";
 
+import { useCallback, useLayoutEffect, useRef } from "react";
+import { IconArrowLeft } from "@tabler/icons-react";
 import BottomSheet from "./BottomSheet";
 import QuickLogMenu from "./QuickLogMenu";
+import {
+  QuickEntryVisitBodies,
+  useQuickEntryVisit,
+} from "./QuickEntryProvider";
 import type { SegmentLogDays } from "@/lib/log-sheet";
 
 // The phone's log sheet — what the dock's raised puck opens (issue #2651), and
@@ -27,20 +33,53 @@ export default function QuickLogSheet({
   substanceRelevant?: boolean;
   logHabitDays?: SegmentLogDays | null;
 }) {
+  const visit = useQuickEntryVisit(open, onClose);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const fullClose = useCallback(() => {
+    visit.beginClose();
+    onClose();
+  }, [onClose, visit]);
+
+  useLayoutEffect(() => {
+    if (visit.active) backRef.current?.focus();
+    else visit.returnFocus?.focus();
+  }, [visit.active, visit.returnFocus]);
+
   return (
     <BottomSheet
       open={open}
-      onClose={onClose}
-      title="Log"
-      testId="quick-log-sheet"
+      onClose={fullClose}
+      title={visit.active?.title ?? "Log"}
+      size={visit.active?.size ?? "sm"}
+      testId={visit.active ? "quick-entry-sheet" : "quick-log-sheet"}
+      titleAdornment={visit.titleAdornment}
+      belowTitle={visit.belowTitle}
+      leadingTitle={
+        visit.active ? (
+          <button
+            ref={backRef}
+            type="button"
+            aria-label="Back to log menu"
+            data-testid="quick-log-back"
+            onClick={visit.back}
+            className="-ml-2 flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-850"
+          >
+            <IconArrowLeft className="h-5 w-5" aria-hidden />
+          </button>
+        ) : null
+      }
     >
-      <QuickLogMenu
-        open={open}
-        onRun={onClose}
-        cycleRelevant={cycleRelevant}
-        substanceRelevant={substanceRelevant}
-        logHabitDays={logHabitDays}
-      />
+      <div hidden={visit.active !== null}>
+        <QuickLogMenu
+          open={open}
+          onRun={fullClose}
+          onOpenOverlay={visit.open}
+          cycleRelevant={cycleRelevant}
+          substanceRelevant={substanceRelevant}
+          logHabitDays={logHabitDays}
+        />
+      </div>
+      <QuickEntryVisitBodies onDone={fullClose} />
     </BottomSheet>
   );
 }
