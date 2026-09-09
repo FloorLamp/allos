@@ -128,14 +128,26 @@ the amount is derived for the recipient (the pediatric weight band from their ow
 weight where the product has one, else the label's adult dose, else no dose rows
 at all), and there is no start date, weight, history or stock. With several
 readable members the source is chosen explicitly; with one it is named. Source,
-membership, duplicate eligibility and the dose basis are re-read inside the write,
-which refuses a stale offer rather than copying a different member's plan.
+membership, the recipient's decline state and their dose basis are re-read inside
+the write, which refuses a stale offer rather than copying a different member's
+plan. Every offer is declinable per person, on the ordinary suppression bus, and
+does not come back until that person restores it.
 
-Eligibility asks the canonical models, not private ones. Allergy is a gate and
-uses the drug-allergy cross-check about the row the copy would create, so the
-offer and the row's own warning are one judgment. Product identity is RxNorm
-first, taken across the whole membership so every reader derives the same
-product; an item's dose amount is per-dose and is never read as a strength.
+Eligibility asks only what this door owns: may the caller write this person, is
+that person already on the bottle, and have they declined it. Every other verdict
+is stated rather than withheld. Allergy does not gate the offer — no model in the
+app blocks a write on allergy grounds — and the receipt names a recorded allergen
+the bottle matches, including food cross-reactivity, which is the only place a
+supplement's allergen is ever said. A bottle carries no product code and none is
+derived from its members, so the duplicate question is not asked and the receipt
+says so. The product's life stage is the one clinical gate that remains: a
+curated adult-only product withholds the copy for a child with the label's own
+reason on screen, and an uncurated one is still offered dose-less.
+
+The copy is judged in the RECIPIENT's day, carried in the offer's basis as data.
+A refusal names the fact that moved, and where a fresh render fixes it — a
+midnight crossing, a changed bottle, a changed source, a changed dose — the card
+re-reads and the next tap works.
 
 ## Amount parsing and suggestions
 

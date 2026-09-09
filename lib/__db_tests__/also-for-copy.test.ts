@@ -1,15 +1,31 @@
 // DB INTEGRATION TIER — the "Also for" copy (#5230). The write re-reads membership,
-// duplicate eligibility and the recipient's dose basis under the write lock, derives a
-// per-subject amount from that person's own weight/age, and opens a medication course
-// with an UNKNOWN start. None of that is visible to the pure tier, which only sees
-// pre-gathered arrays.
+// the recipient's decline state, their own local day and their dose basis under the
+// write lock, derives a per-subject amount from that person's own weight/age, and opens
+// a medication course with an UNKNOWN start. None of that is visible to the pure tier,
+// which only sees pre-gathered arrays.
+//
+// THE TWO GATES THAT RETIRED KEEP THEIR CASES, INVERTED (the 2026-09-09 rulings and the
+// non-author review). They are the only coverage of what both falsifying passes
+// measured, so the allergy and duplicate blocks below now assert that the chip IS
+// offered, that the tap SUCCEEDS, and that the receipt names what the app knows.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   alsoForCardModel,
   copyPoolMemberPlan,
+  declineAlsoForOffer,
 } from "@/lib/queries/intake/also-for";
+import {
+  alsoForRefusalRefreshes,
+  decodeAlsoForBasis,
+  encodeAlsoForBasis,
+} from "@/lib/intake-also-for";
+import { alsoForOfferKey } from "@/lib/dismissal-keys";
+import {
+  getFindingSuppressions,
+  restoreFinding,
+} from "@/lib/queries/upcoming/suppressions";
 import {
   createSharedSupply,
   getIntakeDoses,
@@ -19,7 +35,7 @@ import {
   unlinkItemFromPool,
 } from "@/lib/queries";
 import { collectRecentChanges } from "@/lib/queries/recent-changes";
-import { setProfileBirthdate } from "@/lib/settings";
+import { setProfileBirthdate, setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 
 // A bare profile: this feature is about people, bottles and schedules, and the shared
@@ -291,7 +307,7 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
       sourceItemId: item,
       targetProfileId: target,
       targetName: "Ada",
-      basis: model.offers[0].basisBySource[item],
+      basis: model.offers[0].bySource[item].basis,
     });
     expect(res.ok).toBe(true);
     expect(itemsOf(target)[0]).toMatchObject({
@@ -332,12 +348,14 @@ describe("the offer is derived per person", () => {
     expect(model.sources[0].scheduleLabel).not.toBe(
       model.sources[1].scheduleLabel
     );
-    // Offered: the writable non-member with no conflict. Not offered: the allergic
-    // person, the one already keeping the same product unpooled, and the member.
-    expect(model.offers.map((o) => o.name)).toEqual(["Ada"]);
+    // Offered: EVERY writable non-member. The allergic person and the person already
+    // keeping their own ibuprofen are offered too — allergy warns through the receipt
+    // and the duplicate question is not asked at all (the 2026-09-09 rulings). Only the
+    // member is absent, which is the one fact this feature owns.
+    expect(model.offers.map((o) => o.name)).toEqual(["Ada", "Bo", "Cy"]);
     // Each source gives that person its OWN basis, so a tap can only mean one plan.
-    expect(model.offers[0].basisBySource[sourceItem]).not.toBe(
-      model.offers[0].basisBySource[secondItem]
+    expect(model.offers[0].bySource[sourceItem].basis).not.toBe(
+      model.offers[0].bySource[secondItem].basis
     );
   });
 
@@ -448,7 +466,7 @@ function basisFor(targetProfileId: number): string {
     visibleMembers: [{ itemId: sourceItem, profileId: source, name: "Mira" }],
     candidates: [{ id: targetProfileId, name: "Ada" }],
   });
-  return model.offers[0]?.basisBySource[sourceItem] ?? "";
+  return model.offers[0]?.bySource[sourceItem]?.basis ?? "";
 }
 
 // ── THE FALSIFYING PASS'S OWN CASES (#5230 repair round 1) ───────────────────
@@ -456,62 +474,237 @@ function basisFor(targetProfileId: number): string {
 // Four findings, each reproduced here as the reviewer measured it, so a regression
 // fails on the case that found it rather than on a paraphrase.
 
-describe("allergy is a GATE, judged by the canonical drug-allergy model", () => {
-  // Each of these was OFFERED and TAPPED successfully before the fix, after which the
-  // app's own crossCheckDrugAllergies flagged the row the offer had just created.
+describe("allergy warns in the receipt, it never withholds the chip", () => {
+  // Each of these was WITHHELD by round two's gate — silently, with the write refusing
+  // as "stale" — and every one of them is a documented NOTE rather than a refusal. No
+  // model in this app blocks a person's write on allergy grounds.
   it.each([
     ["a class match", "Penicillin", "Amoxicillin"],
     ["a documented cross-class match", "Aspirin", "Ibuprofen"],
     ["a brand-name bottle", "Ibuprofen", "Advil"],
-  ])("withholds the bottle on %s", (_label, allergen, bottleName) => {
-    const owner = newProfile(`AF Src ${bottleName}`);
+  ])(
+    "offers the bottle on %s, and the tap lands",
+    (_label, allergen, bottleName) => {
+      const owner = newProfile(`AF Src ${bottleName}`);
+      const bottleId = createSharedSupply(
+        {
+          name: bottleName,
+          strength: "200 mg",
+          form: "tablet",
+          lowSupplyDays: null,
+          notes: null,
+        },
+        30
+      );
+      const item = seedMember(owner, bottleId, { name: bottleName });
+      const target = newProfile(`AF Allergic ${bottleName}`);
+      recordAllergy(target, allergen);
+
+      const model = modelFor(
+        bottleId,
+        bottleName,
+        "200 mg",
+        { itemId: item, profileId: owner },
+        { id: target, name: "Ada" }
+      );
+      expect(model.offers.map((o) => o.name)).toEqual(["Ada"]);
+      const res = copyPoolMemberPlan({
+        supplyId: bottleId,
+        sourceProfileId: owner,
+        sourceItemId: item,
+        targetProfileId: target,
+        targetName: "Ada",
+        basis: model.offers[0].bySource[item].basis,
+      });
+      expect(res.ok).toBe(true);
+      expect(itemsOf(target)).toHaveLength(1);
+    }
+  );
+
+  // THE CASE THAT MADE THE RULING NECESSARY. A supplement never reaches
+  // getDrugAllergyWarnings (getIntakeSafetyContext filters to kind === "medication")
+  // and crossCheckDrugAllergies carries no food cross-reactivity, so without this line
+  // a shrimp-allergic person is offered krill oil and NOTHING anywhere says shrimp.
+  it("names a shrimp allergy on a krill-oil bottle, in the receipt", () => {
+    const owner = newProfile("AF Krill Src");
     const bottleId = createSharedSupply(
       {
-        name: bottleName,
-        strength: "200 mg",
-        form: "tablet",
+        name: "Krill Oil",
+        strength: null,
+        form: "softgel",
         lowSupplyDays: null,
         notes: null,
       },
       30
     );
-    const item = seedMember(owner, bottleId, { name: bottleName });
-    const target = newProfile(`AF Allergic ${bottleName}`);
-    recordAllergy(target, allergen);
+    const item = seedMember(owner, bottleId, { name: "Krill Oil" });
+    db.prepare("UPDATE intake_items SET kind = 'supplement' WHERE id = ?").run(
+      item
+    );
+    const target = newProfile("AF Shrimp");
+    recordAllergy(target, "Shrimp");
 
     const model = modelFor(
       bottleId,
-      bottleName,
-      "200 mg",
+      "Krill Oil",
+      null,
       { itemId: item, profileId: owner },
       { id: target, name: "Ada" }
     );
-    expect(model.offers).toEqual([]);
-
-    // …and the write refuses too, so a forged post cannot land what the card withheld.
+    expect(model.offers).toHaveLength(1);
     const res = copyPoolMemberPlan({
       supplyId: bottleId,
       sourceProfileId: owner,
       sourceItemId: item,
       targetProfileId: target,
       targetName: "Ada",
-      basis: "anything",
+      basis: model.offers[0].bySource[item].basis,
     });
-    expect(res.ok).toBe(false);
-    expect(itemsOf(target)).toEqual([]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.receipt).toContain("Shrimp allergy recorded");
+    expect(res.receipt).toContain("krill");
   });
 
-  it("still offers a bottle no recorded allergy touches", () => {
+  it("says nothing about an allergy the bottle does not meet", () => {
     const target = newProfile("AF Unrelated Allergy");
     recordAllergy(target, "Penicillin");
-    expect(basisFor(target)).not.toBe("");
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: basisFor(target),
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.receipt).not.toContain("allergy recorded");
   });
 
-  it("uses the recorded RxNorm code when the names do not meet", () => {
-    const owner = newProfile("AF Coded Src");
+  // A STATED BEHAVIOUR, not an open decision: the receipt reads the non-resolved,
+  // actionable set (getIntakeSafetyContext), so an allergy the person has had ruled out
+  // is not read back to them.
+  it("says nothing about a RESOLVED allergy", () => {
+    const target = newProfile("AF Resolved Allergy");
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, status) VALUES (?, 'Ibuprofen', 'resolved')`
+    ).run(target);
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: basisFor(target),
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.receipt).not.toContain("allergy recorded");
+  });
+});
+
+describe("the duplicate question is not asked, and the receipt says so", () => {
+  // Round one withheld here by reading a "400 mg" dose row as a product strength, and
+  // round two withheld here by folding Succinate into Tartrate. A bottle carries no
+  // code, no code is derived from its members (#4717), so the question answers
+  // "unknown" out loud instead of withholding on a guess.
+  it.each([
+    ["a person already taking 800 mg of their own", "Ibuprofen", "800 mg"],
+    ["a different salt form", "Metoprolol Tartrate", "25 mg"],
+    ["the very same product", "Ibuprofen", "200 mg"],
+  ])("offers the bottle to %s", (_l, ownName, ownAmount) => {
+    const target = newProfile(`AF Dup ${_l}`);
+    seedMember(target, null, {
+      name: ownName,
+      amount: ownAmount,
+      times: ["morning"],
+    });
+    const basis = basisFor(target);
+    expect(basis).not.toBe("");
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // Two ibuprofen items is the truth of that cabinet — and the receipt is honest
+    // about not having been able to check.
+    expect(itemsOf(target)).toHaveLength(2);
+    expect(res.receipt).toContain(
+      "we couldn’t check whether Ada already has this"
+    );
+  });
+});
+
+// ── THE PRODUCT'S LIFE STAGE: THE ONE GATE THAT STAYS, AND IT SPEAKS ──────────
+describe("a curated adult-only product withholds with its reason on screen", () => {
+  function aspirinBottle(): { bottleId: number; owner: number; item: number } {
+    const owner = newProfile(`AF Aspirin Src ${Math.random()}`);
     const bottleId = createSharedSupply(
       {
-        name: "Household painkiller",
+        name: "Aspirin",
+        strength: "325 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    return {
+      bottleId,
+      owner,
+      item: seedMember(owner, bottleId, { name: "Aspirin" }),
+    };
+  }
+
+  it("states the label's reason instead of removing the chip", () => {
+    const { bottleId, owner, item } = aspirinBottle();
+    const child = newProfile("AF Aspirin Child");
+    setProfileBirthdate(child, shiftDateStr(today(child), -365 * 5));
+    recordWeight(child, 18, today(child));
+
+    const model = modelFor(
+      bottleId,
+      "Aspirin",
+      "325 mg",
+      { itemId: item, profileId: owner },
+      { id: child, name: "Ada" }
+    );
+    // The person is STILL an offer — the card renders the sentence where the action
+    // would be, rather than the offer vanishing without a word.
+    expect(model.offers).toHaveLength(1);
+    const withheld = model.offers[0].bySource[item].withheld;
+    expect(withheld).toBeTruthy();
+    expect(withheld).toMatch(/children/i);
+
+    // …and the write refuses by NAME, carrying the label's own words.
+    const res = copyPoolMemberPlan({
+      supplyId: bottleId,
+      sourceProfileId: owner,
+      sourceItemId: item,
+      targetProfileId: child,
+      targetName: "Ada",
+      basis: model.offers[0].bySource[item].basis,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("age-gated");
+    expect(res.detail).toMatch(/children/i);
+    expect(itemsOf(child)).toEqual([]);
+  });
+
+  // The asymmetry the ruling deliberately keeps: no curated entry means no life-stage
+  // statement to make, so the copy lands dose-less rather than being withheld.
+  it("still offers an UNCURATED adult-only product, dose-less", () => {
+    const owner = newProfile("AF Uncurated Src");
+    const bottleId = createSharedSupply(
+      {
+        name: "Household tonic (test)",
         strength: null,
         form: null,
         lowSupplyDays: null,
@@ -519,69 +712,40 @@ describe("allergy is a GATE, judged by the canonical drug-allergy model", () => 
       },
       30
     );
-    // The bottle's name says nothing; its membership carries the code (#4717's
-    // RxCUI-first leg, which the bottle side could not reach before the fix).
     const item = seedMember(owner, bottleId, {
-      name: "Household painkiller",
-      rxcui: "5640",
+      name: "Household tonic (test)",
     });
-    const target = newProfile("AF Coded Allergic");
-    recordAllergy(target, "ibuprofen", "5640");
+    const child = newProfile("AF Uncurated Child");
+    setProfileBirthdate(child, shiftDateStr(today(child), -365 * 5));
+    recordWeight(child, 18, today(child));
 
+    const model = modelFor(
+      bottleId,
+      "Household tonic (test)",
+      null,
+      { itemId: item, profileId: owner },
+      { id: child, name: "Ada" }
+    );
+    expect(model.offers[0].bySource[item].withheld).toBeNull();
+    const res = copyPoolMemberPlan({
+      supplyId: bottleId,
+      sourceProfileId: owner,
+      sourceItemId: item,
+      targetProfileId: child,
+      targetName: "Ada",
+      basis: model.offers[0].bySource[item].basis,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.receipt).toContain("no dose yet");
     expect(
-      modelFor(
-        bottleId,
-        "Household painkiller",
-        null,
-        { itemId: item, profileId: owner },
-        { id: target, name: "Ada" }
-      ).offers
+      getIntakeDoses(child).filter((d) => d.item_id === itemsOf(child)[0].id)
     ).toEqual([]);
   });
 });
 
-describe("the duplicate gate asks about the product, not a dose amount", () => {
-  // A person taking two 200 mg tablets records a "400 mg" dose row. Reading that as a
-  // product strength said they did not have the bottle, and handed them a SECOND
-  // active ibuprofen — two reminder streams for one drug.
-  it.each([
-    ["a dose amount that is not the bottle's strength", "400 mg", "200 mg"],
-    ["a row with no dose amount at all", null, "200 mg"],
-    ["a bottle with no strength", "400 mg", null],
-  ])(
-    "withholds when the target already tracks it — %s",
-    (_l, amount, strength) => {
-      const owner = newProfile(`AF Dup Src ${_l}`);
-      const bottleId = createSharedSupply(
-        {
-          name: "Ibuprofen",
-          strength,
-          form: "tablet",
-          lowSupplyDays: null,
-          notes: null,
-        },
-        30
-      );
-      const item = seedMember(owner, bottleId);
-      const target = newProfile(`AF Dup Target ${_l}`);
-      seedMember(target, null, { amount, times: ["morning"] });
-
-      expect(
-        modelFor(
-          bottleId,
-          "Ibuprofen",
-          strength,
-          { itemId: item, profileId: owner },
-          { id: target, name: "Ada" }
-        ).offers
-      ).toEqual([]);
-      expect(itemsOf(target)).toHaveLength(1);
-    }
-  );
-});
-
-describe("a source with nothing still in force is not a source", () => {
-  it("is not offered, so no receipt can claim a dose the copy never wrote", () => {
+describe("a source with nothing still in force is still a source, and says so", () => {
+  it("is offered, and the receipt refuses to claim a dose the copy never wrote", () => {
     const owner = newProfile("AF Elapsed Src");
     const bottleId = createSharedSupply(
       {
@@ -600,6 +764,8 @@ describe("a source with nothing still in force is not a source", () => {
     });
     const target = newProfile("AF Elapsed Target");
 
+    // Dropping this member was a silent withhold answered in the SOURCE's day. It
+    // stands as a source; the honesty moves to the receipt.
     const model = modelFor(
       bottleId,
       "Ibuprofen",
@@ -607,14 +773,78 @@ describe("a source with nothing still in force is not a source", () => {
       { itemId: item, profileId: owner },
       { id: target, name: "Ada" }
     );
-    expect(model.sources).toEqual([]);
-    expect(model.offers).toEqual([]);
-    expect(itemsOf(target)).toEqual([]);
+    expect(model.sources).toHaveLength(1);
+    expect(model.offers).toHaveLength(1);
+    const res = copyPoolMemberPlan({
+      supplyId: bottleId,
+      sourceProfileId: owner,
+      sourceItemId: item,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: model.offers[0].bySource[item].basis,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.receipt).toContain("no dose yet");
+    expect(res.receipt).not.toContain("200 mg from");
+    expect(
+      getIntakeDoses(target).filter((d) => d.item_id === res.itemId)
+    ).toEqual([]);
   });
 
-  it("tells the truth in the receipt if one is copied anyway", () => {
+  // THE ATTACK: a source whose only dose row starts next month. The row TRAVELS — that
+  // is the schedule saying what happens next — and the receipt must not claim a dose
+  // the person has today. `doseOnDay` owns that second question.
+  it("copies a step that starts next month without claiming a live dose", () => {
+    const owner = newProfile("AF Future Src");
+    const bottleId = createSharedSupply(
+      {
+        name: "Ibuprofen",
+        strength: "200 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    const item = seedMember(owner, bottleId, { times: ["morning"] });
+    const target = newProfile("AF Future Target");
+    const starts = shiftDateStr(today(target), 30);
+    db.prepare(
+      "UPDATE intake_item_doses SET start_date = ? WHERE item_id = ?"
+    ).run(starts, item);
+
+    const model = modelFor(
+      bottleId,
+      "Ibuprofen",
+      "200 mg",
+      { itemId: item, profileId: owner },
+      { id: target, name: "Ada" }
+    );
+    const res = copyPoolMemberPlan({
+      supplyId: bottleId,
+      sourceProfileId: owner,
+      sourceItemId: item,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: model.offers[0].bySource[item].basis,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // The row travelled, with its future bound intact…
+    expect(
+      getIntakeDoses(target).filter((d) => d.item_id === res.itemId)[0]
+    ).toMatchObject({
+      start_date: starts,
+    });
+    // …and the receipt says nothing is due yet.
+    expect(res.receipt).toContain("nothing due yet");
+    expect(res.written.kind).toBe("pending");
+  });
+
+  it("refuses when a window closes between render and tap", () => {
     // Windows that close between render and tap: the card offered a schedule, the
-    // write finds nothing in force. The row is honest about having no dose.
+    // write finds a different one. The refusal names the fact that moved.
     const owner = newProfile("AF Closing Src");
     const bottleId = createSharedSupply(
       {
@@ -639,8 +869,7 @@ describe("a source with nothing still in force is not a source", () => {
       { itemId: item, profileId: owner },
       { id: target, name: "Ada" }
     );
-    const basis = model.offers[0].basisBySource[item];
-    // The window closes before the tap.
+    const basis = model.offers[0].bySource[item].basis;
     db.prepare(
       "UPDATE intake_item_doses SET end_date = ? WHERE item_id = ?"
     ).run(shiftDateStr(td, -1), item);
@@ -652,8 +881,9 @@ describe("a source with nothing still in force is not a source", () => {
       targetName: "Ada",
       basis,
     });
-    // The schedule changed under the offer, so the honest answer is a refusal.
     expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("source-changed");
     expect(itemsOf(target)).toEqual([]);
   });
 });
@@ -685,37 +915,197 @@ describe("the basis binds every field the copy carries off the source", () => {
       expect(itemsOf(target)).toEqual([]);
     }
   );
-  // The RxNorm leg needs its own case: the BOTTLE's identity is read off the lowest-id
-  // coded member, so a change to a LATER member moves what the copy writes without
-  // moving the product the card named. Only the source-identity term catches it.
-  it("refuses when a later source member's RxNorm identity changed", () => {
-    db.prepare("UPDATE intake_items SET rxcui = '5640' WHERE id = ?").run(
-      sourceItem
-    );
-    const second = newProfile("AF Swap Second");
+  // NO BOTTLE CODE IS DERIVED FROM A MEMBER any more (#4717 owns bottle identity), so
+  // the only RxNorm term in the basis is the CHOSEN SOURCE's own. A change to a
+  // different member must therefore leave this offer alone — the answer must not depend
+  // on which members the reader happens to see.
+  it("ignores a DIFFERENT member's RxNorm identity entirely", () => {
+    const second = newProfile("AF Other Member");
     const secondItem = seedMember(second, supplyId, {
       times: ["morning"],
       rxcui: "5640",
     });
-    const target = newProfile("AF Swap Cui Target");
-    const model = alsoForCardModel({
-      pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
-      visibleMembers: [{ itemId: secondItem, profileId: second, name: "Dune" }],
-      candidates: [{ id: target, name: "Ada" }],
-    });
-    const basis = model.offers[0].basisBySource[secondItem];
+    const target = newProfile("AF Other Cui Target");
+    const basis = basisFor(target);
     db.prepare("UPDATE intake_items SET rxcui = '11289' WHERE id = ?").run(
       secondItem
     );
     const res = copyPoolMemberPlan({
       supplyId,
-      sourceProfileId: second,
-      sourceItemId: secondItem,
+      sourceProfileId: source,
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis,
+    });
+    expect(res.ok).toBe(true);
+    expect(itemsOf(target)).toHaveLength(1);
+  });
+});
+
+// ── WHOSE DAY THE OFFER LIVES IN, AND HOW A MIDNIGHT CROSSING RECOVERS ────────
+//
+// Round two called ONE function with TWO days — the card asked `today(sourceProfileId)`
+// and the write asked `today(targetProfileId)` — so a household with a member abroad
+// had a chip whose every tap answered "reload the cabinet and try again" over a state
+// that was deterministic rather than stale. The day is now the RECIPIENT's, carried in
+// the basis as data.
+describe("the offer lives in the RECIPIENT's day", () => {
+  it("carries each recipient's own day, not the reader's and not the source's", () => {
+    const nz = newProfile("AF NZ");
+    const la = newProfile("AF LA");
+    setProfileSetting(nz, "timezone", "Pacific/Auckland");
+    setProfileSetting(la, "timezone", "America/Los_Angeles");
+    const model = alsoForCardModel({
+      pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
+      visibleMembers: [{ itemId: sourceItem, profileId: source, name: "Mira" }],
+      candidates: [
+        { id: nz, name: "Nia" },
+        { id: la, name: "Lou" },
+      ],
+    });
+    for (const offer of model.offers) {
+      const basis = decodeAlsoForBasis(offer.bySource[sourceItem].basis);
+      expect(basis?.day).toBe(today(offer.profileId));
+    }
+  });
+
+  // A source on the far side of the date line does not move the recipient's day, so the
+  // tap works — five consecutive re-renders, which is how round two's defect was
+  // measured (every one of them refused).
+  it("copies across the date line, re-render after re-render", () => {
+    const abroad = newProfile("AF Abroad Src");
+    setProfileSetting(abroad, "timezone", "Pacific/Auckland");
+    const bottleId = createSharedSupply(
+      {
+        name: "Ibuprofen",
+        strength: "200 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    const item = seedMember(abroad, bottleId, { times: ["morning"] });
+    for (let i = 0; i < 5; i++) {
+      const target = newProfile(`AF Home Target ${i}`);
+      setProfileSetting(target, "timezone", "America/Los_Angeles");
+      const model = modelFor(
+        bottleId,
+        "Ibuprofen",
+        "200 mg",
+        { itemId: item, profileId: abroad },
+        { id: target, name: "Ada" }
+      );
+      expect(model.offers).toHaveLength(1);
+      const res = copyPoolMemberPlan({
+        supplyId: bottleId,
+        sourceProfileId: abroad,
+        sourceItemId: item,
+        targetProfileId: target,
+        targetName: "Ada",
+        basis: model.offers[0].bySource[item].basis,
+      });
+      expect(res.ok).toBe(true);
+    }
+  });
+
+  // Rendered at 23:59, tapped at 00:01. It must refuse — and it must NOT refuse
+  // forever: the card re-reads and the very next tap lands.
+  it("refuses a day-rolled offer by name, then refreshes into a working one", () => {
+    const target = newProfile("AF Midnight");
+    const shown = decodeAlsoForBasis(basisFor(target));
+    expect(shown).not.toBeNull();
+    if (!shown) return;
+    const yesterday = encodeAlsoForBasis({
+      ...shown,
+      day: shiftDateStr(shown.day, -1),
+    });
+    const refused = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: yesterday,
+    });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.reason).toBe("day-rolled");
+    expect(alsoForRefusalRefreshes(refused.reason)).toBe(true);
+    expect(itemsOf(target)).toEqual([]);
+
+    // THE RE-RENDER. The same card, read again, hands back an offer that works.
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: basisFor(target),
+    });
+    expect(res.ok).toBe(true);
+    expect(itemsOf(target)).toHaveLength(1);
+  });
+});
+
+// ── THE DECLINE ──────────────────────────────────────────────────────────────
+describe("a declined offer does not come back", () => {
+  it("removes the chip, refuses a forged tap, and writes nothing but the suppression", () => {
+    const target = newProfile("AF Declined");
+    const basis = basisFor(target);
+    expect(basis).not.toBe("");
+
+    declineAlsoForOffer(supplyId, target);
+
+    // Gone from the card…
+    expect(basisFor(target)).toBe("");
+    // …and the write refuses the basis the person was holding, by name.
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
       basis,
     });
     expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("declined");
+    // Nothing about the person's health or the bottle's membership moved.
     expect(itemsOf(target)).toEqual([]);
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE supply_id = ?")
+        .get(supplyId)
+    ).toMatchObject({ n: 1 });
+    expect(getFindingSuppressions(target).has(alsoForOfferKey(supplyId))).toBe(
+      true
+    );
+  });
+
+  // "Dismissible WITHOUT RECURRENCE": the suppression is indefinite, and the only way
+  // back is the person's own Restore in Snoozed & dismissed.
+  it("comes back only when the person restores it", () => {
+    const target = newProfile("AF Restored");
+    declineAlsoForOffer(supplyId, target);
+    expect(basisFor(target)).toBe("");
+    restoreFinding(target, alsoForOfferKey(supplyId));
+    expect(basisFor(target)).not.toBe("");
+  });
+
+  it("declines one person without touching another", () => {
+    const declined = newProfile("AF Decl One");
+    const other = newProfile("AF Decl Two");
+    declineAlsoForOffer(supplyId, declined);
+    const model = alsoForCardModel({
+      pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
+      visibleMembers: [{ itemId: sourceItem, profileId: source, name: "Mira" }],
+      candidates: [
+        { id: declined, name: "Ada" },
+        { id: other, name: "Bo" },
+      ],
+    });
+    expect(model.offers.map((o) => o.name)).toEqual(["Bo"]);
   });
 });

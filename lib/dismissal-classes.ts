@@ -44,6 +44,7 @@ import {
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
 import {
+  ALSO_FOR_OFFER_PREFIX,
   OFFER_ASKED_PREFIX,
   TRACK_SUPPLY_ASKED_PREFIX,
 } from "./dismissal-keys";
@@ -356,6 +357,15 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     prefix: TRACK_SUPPLY_ASKED_PREFIX,
     keyClass: "id-keyed",
     shape: "`<intakeItemId>` (one supply offer per item)",
+  },
+  {
+    prefix: ALSO_FOR_OFFER_PREFIX,
+    keyClass: "id-keyed",
+    shape: "`<sharedSupplyId>` (one bottle offer per recipient, #5230)",
+    // The "Also for" offer on a household bottle, declined for the row's own profile.
+    // The tail is the bottle's autoincrement id and the profile is the row's, so the
+    // pair is bottle × recipient and neither half recycles — a deleted bottle leaves an
+    // inert, restorable row exactly as `pool-refill:` does.
   },
   {
     prefix: OFFER_ASKED_PREFIX,

@@ -268,3 +268,23 @@ export function offerAskedKey(familyId: string): string {
 export const NOTIFICATION_CHANNEL_ASKED_KEY = offerAskedKey(
   "notification-channel"
 );
+
+// ---- The shared bottle's "Also for" offer (issue #5230) ----------------------
+//
+// Every writable non-member of a household bottle is offered it, permanently, so the
+// offer has to be declinable without recurrence. It rides the suppression bus's
+// SUPPRESSION half exactly as an offer family's "did we ask" does — `dismissFinding`
+// writes it, `getFindingSuppressions` reads it, and no health data and no membership
+// moves. It is deliberately NOT an `OfferFamily` and NOT under `OFFER_ASKED_PREFIX`:
+// that registry requires a `NotificationKind` and a `writes()` that flips a
+// notification setting, and this Yes tap creates an intake item and touches neither.
+//
+// ONE OFFER PER BOTTLE × RECIPIENT, and the recipient is the ROW'S PROFILE:
+// `upcoming_dismissals` is profile-scoped, so the recipient's own id is already half of
+// the pair and the tail carries only the bottle. That also puts the row in the
+// RECIPIENT's own "Snoozed & dismissed", which is where Restore re-arms it.
+export const ALSO_FOR_OFFER_PREFIX = "also-for:";
+
+export function alsoForOfferKey(supplyId: number): string {
+  return `${ALSO_FOR_OFFER_PREFIX}${supplyId}`;
+}

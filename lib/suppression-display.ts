@@ -39,6 +39,7 @@ import { STEPS_PACE_PREFIX } from "./steps-target";
 import { pairedObservationEntry } from "./paired-observations";
 import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
 import {
+  ALSO_FOR_OFFER_PREFIX,
   OFFER_ASKED_PREFIX,
   TRACK_SUPPLY_ASKED_PREFIX,
   PR_CARDIO_PREFIX,
@@ -510,6 +511,16 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: TRACK_SUPPLY_ASKED_PREFIX,
     domain: "Suggestions",
     label: () => "Supply tracking offer",
+  },
+  {
+    // The household bottle's "Also for" offer (#5230), declined for this profile:
+    // `also-for:<sharedSupplyId>`. Not under `offer-asked:` — it is not an offer family
+    // (no notification kind, no setting written) — and not in RULE_FINDING_REGISTRY for
+    // the same reason `pool-refill:` isn't: no rule builder emits it. Restore puts the
+    // chip back on the cabinet card.
+    prefix: ALSO_FOR_OFFER_PREFIX,
+    domain: "Suggestions",
+    label: () => "Shared bottle offer",
   },
   {
     // An offer family's "did we ask" (#4840), keyed `offer-asked:<familyId>`. The

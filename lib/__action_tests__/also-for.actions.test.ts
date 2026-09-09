@@ -11,11 +11,16 @@
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { alsoForAction } from "@/app/(app)/supplies/actions";
+import {
+  alsoForAction,
+  declineAlsoForAction,
+} from "@/app/(app)/supplies/actions";
 import { alsoForCardModel } from "@/lib/queries/intake/also-for";
 import { createSharedSupply } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { peekActingSession } from "./session-state";
+import { alsoForOfferKey } from "@/lib/dismissal-keys";
+import { getFindingSuppressions } from "@/lib/queries/upcoming/suppressions";
 
 let seq = 0;
 const tag = (): string => `af${++seq}`;
@@ -75,7 +80,7 @@ function post(
     source_item_id: sourceItemId,
     source_profile_id: sourceProfileId,
     profile_id: target.id,
-    basis: model.offers[0]?.basisBySource[sourceItemId] ?? "",
+    basis: model.offers[0]?.bySource[sourceItemId]?.basis ?? "",
   });
 }
 
@@ -161,5 +166,60 @@ describe("the copy is gated on the SUBJECT, and the caller stays who they are", 
     );
     expect(res.ok).toBe(false);
     expect(itemCount(ada.id)).toBe(0);
+  });
+});
+
+// The decline touches the RECIPIENT's suppression row, so it carries the same two gates
+// as the tap — the target's own write access and the bottle's membership-management
+// gate — even though it writes no health data and no membership.
+describe("declining an offer is gated the same way the tap is", () => {
+  it("declines for a granted profile and leaves everything else alone", async () => {
+    const t = tag();
+    const login = createLogin({ role: "member", username: `m_${t}` });
+    const mira = createProfile(`Mira ${t}`, login.id);
+    const ada = createProfile(`Ada ${t}`, login.id);
+    actAs(login, mira);
+    const supplyId = bottle();
+    const sourceItem = member(mira.id, supplyId);
+
+    // The offer the person is holding, captured BEFORE the decline — the tap they were
+    // already mid-way through must refuse by name rather than land.
+    const held = post(supplyId, mira.id, sourceItem, ada);
+
+    const res = await declineAlsoForAction(
+      fd({ supply_id: supplyId, profile_id: ada.id })
+    );
+    expect(res.ok).toBe(true);
+    expect(itemCount(ada.id)).toBe(0);
+    expect(peekActingSession()?.profile.id).toBe(mira.id);
+    expect(getFindingSuppressions(ada.id).has(alsoForOfferKey(supplyId))).toBe(
+      true
+    );
+
+    // …and the offer the person was holding no longer lands.
+    const tap = await alsoForAction(held);
+    expect(tap.ok).toBe(false);
+    expect(tap.reason).toBe("declined");
+    expect(itemCount(ada.id)).toBe(0);
+  });
+
+  it("refuses a target the caller may only read", async () => {
+    const t = tag();
+    const login = createLogin({ role: "member", username: `m_${t}` });
+    const mira = createProfile(`Mira ${t}`, login.id);
+    const readOnlyTarget = createProfile(`Read ${t}`, login.id);
+    readOnly(login.id, readOnlyTarget.id);
+    actAs(login, mira);
+    const supplyId = bottle();
+    member(mira.id, supplyId);
+
+    await expect(
+      declineAlsoForAction(
+        fd({ supply_id: supplyId, profile_id: readOnlyTarget.id })
+      )
+    ).rejects.toThrow(/read-only on target/);
+    expect(
+      getFindingSuppressions(readOnlyTarget.id).has(alsoForOfferKey(supplyId))
+    ).toBe(false);
   });
 });

@@ -547,6 +547,18 @@ test.describe("shared supply pools", () => {
 
       const chip = bottle.getByTestId("shared-supply-also-for-chip");
       await expect(chip).toHaveText(`${SUPPLY_CHILD_PROFILE} · Also for`);
+      // EVERY OFFER IS DECLINABLE (#5230). Since allergy stopped withholding the chip,
+      // every writable non-member gets one permanently, so the decline sits beside it
+      // on the same row and names the person it would silence. What the decline WRITES
+      // — one suppression row under that person's own profile, and no recurrence — is
+      // pinned at the db and action tiers; what only a real page can show is that the
+      // affordance is there, next to the chip, before anyone taps.
+      await expect(
+        bottle.getByTestId("shared-supply-also-for-dismiss")
+      ).toHaveAttribute(
+        "aria-label",
+        `Don’t offer this bottle for ${SUPPLY_CHILD_PROFILE}`
+      );
       await settledClick(page, chip);
 
       await expect(

@@ -21,9 +21,13 @@ const alsoForAction = vi.fn(
     href: medicationHref(9),
   })
 );
+const declineAlsoForAction = vi.fn(
+  async (_posted: FormData): Promise<AlsoForResult> => ({ ok: true })
+);
 
 vi.mock("@/app/(app)/supplies/actions", () => ({
   alsoForAction: (fd: FormData) => alsoForAction(fd),
+  declineAlsoForAction: (fd: FormData) => declineAlsoForAction(fd),
   updatePoolAction: vi.fn(async () => ({ ok: true })),
   deletePoolAction: vi.fn(async () => ({ ok: true })),
 }));
@@ -43,7 +47,10 @@ const DUNE = {
 const ADA = {
   profileId: 4,
   name: "Ada",
-  basisBySource: { 11: "basis-mira", 12: "basis-dune" },
+  bySource: {
+    11: { basis: "basis-mira", withheld: null },
+    12: { basis: "basis-dune", withheld: null },
+  },
 };
 
 function card(over: Partial<SharedSupplyCardData> = {}): SharedSupplyCardData {
@@ -80,6 +87,7 @@ function mount(data: SharedSupplyCardData) {
 
 beforeEach(() => {
   alsoForAction.mockClear();
+  declineAlsoForAction.mockClear();
 });
 
 describe("the offer names the plan it will copy", () => {
@@ -160,16 +168,18 @@ describe("the offer names the plan it will copy", () => {
     expect(screen.queryByTestId("shared-supply-also-for")).toBeNull();
   });
 
-  it("reports a refusal instead of claiming an add", async () => {
+  // A REFUSAL SAYS WHICH FACT MOVED, and where a fresh render fixes it, it says to tap
+  // again — never to reload, which is the one instruction that could not help someone
+  // whose offer was deterministic rather than stale.
+  it("reports a named refusal instead of claiming an add", async () => {
     alsoForAction.mockResolvedValueOnce({
       ok: false,
-      error: "This offer changed. Reload the cabinet and try again.",
+      reason: "day-rolled",
+      error: "It’s a new day for Ada. The card is up to date — tap again.",
     });
     mount(card());
     fireEvent.click(screen.getByTestId("shared-supply-also-for-chip"));
-    await waitFor(() =>
-      expect(screen.getByText(/This offer changed/)).toBeTruthy()
-    );
+    await waitFor(() => expect(screen.getByText(/tap again/)).toBeTruthy());
     expect(screen.queryByTestId("shared-supply-also-for-receipt")).toBeNull();
   });
 });
@@ -179,7 +189,7 @@ describe("past a chip count the card falls back to a select", () => {
     const many = Array.from({ length: 6 }, (_, i) => ({
       profileId: 20 + i,
       name: `Person ${i}`,
-      basisBySource: { 11: `basis-${i}` },
+      bySource: { 11: { basis: `basis-${i}`, withheld: null } },
     }));
     mount(card({ alsoFor: { sources: [MIRA], offers: many } }));
     expect(screen.getAllByTestId("shared-supply-also-for-chip")).toHaveLength(
@@ -201,5 +211,81 @@ describe("past a chip count the card falls back to a select", () => {
     const posted = alsoForAction.mock.calls[0][0];
     expect(posted.get("profile_id")).toBe("23");
     expect(posted.get("basis")).toBe("basis-3");
+  });
+});
+
+// ── THE VERDICTS THAT NO LONGER ARRIVE AS AN ABSENCE ────────────────────────────
+//
+// The struck acceptance line ("no chip for a person with an allergen conflict") is
+// gone: allergy is said in the receipt after the tap, not by a missing control. The ONE
+// clinical gate that remains — the product's life stage — now arrives as its own
+// sentence where the action would be.
+describe("a withheld offer says why, in place of the chip", () => {
+  const CHILD = {
+    profileId: 5,
+    name: "Bo",
+    bySource: {
+      11: {
+        basis: "basis-bo",
+        withheld: "Aspirin has no children’s dosing chart on its label.",
+      },
+    },
+  };
+
+  it("renders the label's own reason and no action for that person", () => {
+    mount(card({ alsoFor: { sources: [MIRA], offers: [CHILD] } }));
+    expect(
+      screen.getByTestId("shared-supply-also-for-withheld").textContent
+    ).toBe("Bo · Aspirin has no children’s dosing chart on its label.");
+    expect(screen.queryByTestId("shared-supply-also-for-chip")).toBeNull();
+  });
+
+  it("still offers everyone the product does not refuse", () => {
+    mount(card({ alsoFor: { sources: [MIRA], offers: [ADA, CHILD] } }));
+    expect(screen.getAllByTestId("shared-supply-also-for-chip")).toHaveLength(
+      1
+    );
+    expect(screen.getByTestId("shared-supply-also-for-chip").textContent).toBe(
+      "Ada · Also for"
+    );
+    expect(
+      screen.getAllByTestId("shared-supply-also-for-withheld")
+    ).toHaveLength(1);
+  });
+});
+
+// ── DECLINING ──────────────────────────────────────────────────────────────────
+//
+// Every writable non-member now gets a chip, permanently, so every chip is declinable
+// without recurrence (#5230). The decline posts the bottle and the person and nothing
+// else — one row on the suppression bus under that person's own profile.
+describe("every offer can be declined", () => {
+  it("posts the bottle and the person, and claims no add", async () => {
+    mount(card());
+    fireEvent.click(screen.getByTestId("shared-supply-also-for-dismiss"));
+    await waitFor(() => expect(declineAlsoForAction).toHaveBeenCalledTimes(1));
+    const posted = declineAlsoForAction.mock.calls[0][0];
+    expect(posted.get("supply_id")).toBe("7");
+    expect(posted.get("profile_id")).toBe("4");
+    expect(alsoForAction).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("shared-supply-also-for-receipt")).toBeNull();
+  });
+
+  it("can decline a person the product refuses, so the sentence can be silenced", () => {
+    mount(
+      card({
+        alsoFor: {
+          sources: [MIRA],
+          offers: [
+            {
+              profileId: 5,
+              name: "Bo",
+              bySource: { 11: { basis: "b", withheld: "Not for children." } },
+            },
+          ],
+        },
+      })
+    );
+    expect(screen.getByTestId("shared-supply-also-for-dismiss")).toBeTruthy();
   });
 });

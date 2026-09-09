@@ -1,7 +1,7 @@
 // "Also for" — the reads behind the offer and the ONE atomic write behind the tap
-// (#5230). The pure model (identity, the recipient's dose, the schedule copy, the
-// offer's basis) lives in lib/intake-also-for.ts; this module gathers the rows it needs
-// and performs the copy.
+// (#5230). The pure model (the recipient's dose, the schedule copy, the offer's basis,
+// the typed refusals and the receipt) lives in lib/intake-also-for.ts; this module
+// gathers the rows it needs and performs the copy.
 //
 // AUTH-BLIND (the lib/ write-core convention): nothing here imports lib/auth. The
 // Server Action owns the whole gate — the TARGET's own write access, exactly as
@@ -9,30 +9,47 @@
 // (#5560, requirePoolWriteAccess). Every profile id reaching these functions has been
 // proved accessible by the caller's ProfileScope; each read is single-profile
 // `profile_id = ?` SQL, or the pool's own allowlisted cross-profile membership read.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT DERIVE, after two falsifying passes broke on
+// exactly these: a clinical verdict (allergy warns through the receipt, it does not
+// gate) and a product identity (a bottle has no code, and none is minted by scanning
+// its membership — #4717 owns that seam, and until it lands the duplicate question
+// answers "unknown" out loud instead of withholding on a guess).
 
 import { db, today, writeTx } from "../../db";
 import { snapshotCached } from "../../read-snapshot";
 import { getLatestBodyMetricDated } from "../metrics";
 import { profileAgeMonths } from "../../settings";
 import { parseRxcuiIngredients } from "../../rxnorm";
-import { crossCheckDrugAllergies } from "../../drug-allergy";
+import { allergenConflict, type AllergenHit } from "../../supplement-safety";
+import { isHiddenUnderPolicy } from "../../lifecycle";
+import { alsoForOfferKey } from "../../dismissal-keys";
+import {
+  dismissFinding,
+  getFindingSuppressions,
+} from "../upcoming/suppressions";
 import { getIntakeSafetyContext } from "./safety";
 import { createIntakeItemCore } from "../../intake-item-create";
+import { prnLabelIdentityFor } from "../../prn-defaults";
 import {
   alsoForBasis,
+  alsoForBasisRefusal,
   alsoForDoseSeeds,
   alsoForEligible,
   alsoForReceipt,
   alsoForScheduleLabel,
-  alsoForWrittenDose,
-  inForceDoseRows,
+  alsoForWritten,
+  decodeAlsoForBasis,
+  encodeAlsoForBasis,
   resolveAlsoForDose,
-  sameIntakeProduct,
+  sourcePlanRows,
   type AlsoForCandidateFacts,
-  type AlsoForDose,
   type AlsoForDoseRow,
+  type AlsoForLabelIdentity,
+  type AlsoForNotes,
+  type AlsoForRefusal,
   type AlsoForSchedule,
-  type IntakeProductIdentity,
+  type AlsoForWritten,
 } from "../../intake-also-for";
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { IntakeItemKind } from "../../types/intake";
@@ -40,7 +57,6 @@ import {
   getPoolView,
   invalidatePoolRefillOffers,
   poolMembers,
-  type PoolMember,
   type PoolView,
 } from "./supply-pool";
 
@@ -52,7 +68,7 @@ export interface AlsoForSource {
   kind: IntakeItemKind;
   // The product facts an ITEM carries and a `shared_supplies` row has no column for.
   // The bottle still owns what the product IS (#1705); these travel with the copy as
-  // its own provenance.
+  // its own provenance, and the basis binds them so a mid-flight re-code refuses.
   rxcui: string | null;
   rxcuiIngredients: string[] | null;
   brand: string | null;
@@ -63,14 +79,13 @@ export interface AlsoForSource {
 // ONE member's copyable plan, profile-scoped on the member's own profile so a forged id
 // cannot read another household's row.
 //
-// The schedule it returns carries only the dose rows still IN FORCE on the RECIPIENT's
-// day, which is the schedule a person joining now would actually inherit. Reading the
-// raw rows here instead is what let the card name "Morning" over an elapsed taper the
-// copy would not write.
+// The dose rows come back AS STORED. Filtering them is a question about a day, and the
+// questions that used to share one filter are asked in two different days by two
+// different callers (lib/intake-also-for.ts): the label describes the SOURCE's plan in
+// the source's day; the copy takes the rows that travel in the RECIPIENT's day.
 export function alsoForSource(
   profileId: number,
-  itemId: number,
-  today: string
+  itemId: number
 ): AlsoForSource | null {
   const item = db
     .prepare(
@@ -126,57 +141,33 @@ export function alsoForSource(
       cadence_weekdays: item.cadence_weekdays,
       cadence_interval_days: item.cadence_interval_days,
       cadence_anchor_date: item.cadence_anchor_date,
-      doses: inForceDoseRows(doses, today),
+      doses,
     },
   };
 }
 
-// The bottle's product identity: its own name and strength, plus the RxNorm codes its
-// MEMBERSHIP carries (`poolProductCodes`).
+// The label identity of the ROW THE COPY WILL CREATE: the bottle's name over the source
+// row's own codes. That projection is `prnLabelIdentityFor` (#5518) — the repository's
+// one answer to "what product is this pooled item" — so the chip's dose and the dose
+// the created row derives tomorrow cannot disagree.
 //
-// THE BOTTLE OWNS WHAT THE PRODUCT IS (#1705 / #5518's `prnLabelIdentityFor`), and a
-// `shared_supplies` row has no code column — but #4717's identity is RxCUI FIRST, and
-// an identity with no code can only ever match on a name, which is how a Penicillin
-// allergy failed to recognise an Amoxicillin bottle and an existing Advil failed to
-// recognise an Ibuprofen one.
-//
-// The codes are read across the WHOLE membership in a fixed order rather than off the
-// members this reader can see, which is what makes the answer stable: the card and the
-// write must derive the same product or every offer would refuse itself as stale.
-export function poolProductIdentity(
-  pool: Pick<PoolView, "name" | "strength">,
-  members: readonly PoolMember[]
-): IntakeProductIdentity {
-  // Lowest item id wins: the members of one bottle are the same product by
-  // construction, so any coded member answers for the bottle and the oldest is the
-  // stable choice. The MEMBERSHIP is the one cross-profile read (poolMembers, the
-  // allowlisted accounting read); each member's own facts are then read under that
-  // member's profile, so no statement here is unscoped.
-  for (const member of [...members].sort((a, b) => a.itemId - b.itemId)) {
-    const row = db
-      .prepare(
-        "SELECT rxcui, rxcui_ingredients FROM intake_items WHERE id = ? AND profile_id = ?"
-      )
-      .get(member.itemId, member.profileId) as
-      { rxcui: string | null; rxcui_ingredients: string | null } | undefined;
-    const rxcui = row?.rxcui ?? null;
-    const rxcuiIngredients = parseRxcuiIngredients(
-      row?.rxcui_ingredients ?? null
-    );
-    if (rxcui || rxcuiIngredients?.length) {
-      return {
-        name: pool.name,
-        strength: pool.strength,
-        rxcui,
-        rxcuiIngredients,
-      };
-    }
-  }
-  return {
+// It is NOT a bottle identity, and nothing here scans the membership for a code: the
+// codes belong to the ONE source the person named, and the basis binds them.
+function labelIdentityFor(
+  pool: Pick<PoolView, "id" | "name">,
+  source: AlsoForSource
+): AlsoForLabelIdentity {
+  const identity = prnLabelIdentityFor({
     name: pool.name,
-    strength: pool.strength,
-    rxcui: null,
-    rxcuiIngredients: null,
+    rxcui: source.rxcui,
+    rxcuiIngredients: source.rxcuiIngredients,
+    supplyId: pool.id,
+    supplyName: pool.name,
+  });
+  return {
+    name: identity.name,
+    rxcui: identity.rxcui ?? null,
+    rxcuiIngredients: identity.rxcuiIngredients ?? null,
   };
 }
 
@@ -203,104 +194,59 @@ function pediatricContextForUncached(profileId: number): PediatricFormContext {
   };
 }
 
-// Whether this person already keeps an UNPOOLED item of the same product (#4717
-// identity). An item on another bottle is another bottle; an archived one is history.
+// The recorded allergen this bottle meets for this person, or null — FOR THE RECEIPT,
+// never for a gate (owner ruling, 2026-09-09).
 //
-// Matched on identity alone — see `sameIntakeProduct` for why an item's dose amount is
-// not a product strength and must not stand in for one.
+// `allergenConflict` is the matcher that covers ingestibles and the #153 food
+// cross-reactivity families, which is what a supply cabinet needs because bottles hold
+// supplements. It is the only thing in the repository that can answer "shrimp, via
+// krill" at all: `getIntakeSafetyContext` builds its medication list with `kind ===
+// "medication"`, so a supplement never reaches `getDrugAllergyWarnings`, and
+// `crossCheckDrugAllergies` carries no food cross-reactivity either way. For a
+// supplement this receipt line is the ONLY surface in the app that says the allergen.
 //
-// UNCACHED, unlike the two per-profile reads above, because its answer depends on the
-// PRODUCT as well as the person: an admin who may write many profiles pays one item
-// scan per candidate per bottle on a `/supplies` render. Recorded rather than optimised
-// — the scan is a single indexed profile read and the cabinet is a small page, so the
-// right time to cache it is when a real cabinet is slow, keyed on both halves.
-function hasUnpooledDuplicate(
+// The NON-RESOLVED, actionable set (`getIntakeSafetyContext`), not the ingestible
+// widening: this is a note about the person's live record, and a resolved allergy
+// should not keep being read back to them. The belt that keeps resolved allergens
+// exists to drop a MACHINE's suggestion, which this is not.
+const allergensFor = snapshotCached(
+  "also-for.allergens",
+  (profileId: number) => String(profileId),
+  (profileId: number) => getIntakeSafetyContext(profileId).allergens
+);
+
+function allergenNoteFor(
   profileId: number,
-  product: IntakeProductIdentity
-): boolean {
-  const rows = db
-    .prepare(
-      `SELECT i.id, i.name, i.rxcui, i.rxcui_ingredients
-         FROM intake_items i
-        WHERE i.profile_id = ? AND i.supply_id IS NULL AND i.active = 1`
-    )
-    .all(profileId) as {
-    id: number;
-    name: string;
-    rxcui: string | null;
-    rxcui_ingredients: string | null;
-  }[];
-  return rows.some((row) =>
-    sameIntakeProduct(product, {
-      name: row.name,
-      strength: null,
-      rxcui: row.rxcui,
-      rxcuiIngredients: parseRxcuiIngredients(row.rxcui_ingredients),
-    })
+  poolName: string
+): AllergenHit | null {
+  return allergenConflict(poolName, allergensFor(profileId));
+}
+
+// Whether the offer for this bottle has been declined for this person. The suppression
+// bus's own read, under the same "normal" policy every other declined offer uses: a
+// dismissal hides indefinitely, which is what "dismissible without recurrence" means.
+function declinedAlsoFor(profileId: number, supplyId: number): boolean {
+  return isHiddenUnderPolicy(
+    "normal",
+    getFindingSuppressions(profileId).get(alsoForOfferKey(supplyId)),
+    today(profileId)
   );
 }
 
-// The recipient's recorded allergies, as the CANONICAL drug-allergy cross-check
-// consumes them: coded (`substance_code`), non-resolved and actionable (#1405), from
-// the one shared gather every other safety surface reads.
-const allergyRecordsFor = snapshotCached(
-  "also-for.allergy-records",
-  (profileId: number) => String(profileId),
-  (profileId: number) => getIntakeSafetyContext(profileId).allergyRecords
-);
-
-// The recorded allergy this bottle meets for this person, or null.
-//
-// THE CANONICAL MODEL, NOT A SECOND ONE. This used to run `allergenConflict` — the
-// SUPPLEMENT-SUGGESTION matcher, which is name-token containment plus the #153 FOOD
-// cross-reactivity dataset — over the bottle's display name. It caught only a near-
-// exact name, so a Penicillin allergy was offered the household Amoxicillin, an Aspirin
-// allergy was offered the Ibuprofen, and an Ibuprofen allergy was offered the Advil;
-// the app's own `crossCheckDrugAllergies` then flagged the very row the offer had just
-// created. Asking the row-level check about the row the copy WOULD create makes the
-// offer and the warning the same judgment: ingredient, class and documented
-// cross-class all withhold, code-first where a code is recorded.
-//
-// The med id is 0 because the row does not exist yet — only the hit's substance is read
-// here, never its dedupeKey or row anchor.
-function allergyBlocking(
-  profileId: number,
-  product: IntakeProductIdentity
-): string | null {
-  const hits = crossCheckDrugAllergies(allergyRecordsFor(profileId), [
-    {
-      id: 0,
-      name: product.name,
-      rxcui: product.rxcui,
-      rxcuiIngredients: product.rxcuiIngredients,
-    },
-  ]);
-  return hits[0]?.substance ?? null;
-}
-
-// Everything the offer asks about one person, gathered from their own rows.
+// The two facts the offer asks about one person.
 export function alsoForCandidateFacts(input: {
   profileId: number;
   name: string;
-  canWrite: boolean;
+  supplyId: number;
   isMember: boolean;
-  product: IntakeProductIdentity;
 }): AlsoForCandidateFacts {
-  const { profileId, product } = input;
   return {
-    profileId,
+    profileId: input.profileId,
     name: input.name,
-    canWrite: input.canWrite,
     isMember: input.isMember,
-    hasUnpooledDuplicate:
-      input.canWrite &&
-      !input.isMember &&
-      hasUnpooledDuplicate(profileId, product),
-    allergen: allergyBlocking(profileId, product),
-    dose: resolveAlsoForDose({
-      identity: product,
-      pediatric: pediatricContextFor(profileId),
-    }),
+    declined: input.isMember
+      ? false
+      : declinedAlsoFor(input.profileId, input.supplyId),
   };
 }
 
@@ -313,12 +259,18 @@ export interface AlsoForSourceOption {
   scheduleLabel: string;
 }
 
+// What one source would give one recipient: the basis the tap posts back, and the
+// life-stage refusal if the product has one for them. A withheld dose is a SENTENCE on
+// the card, not a missing chip.
+export interface AlsoForOfferSource {
+  basis: string;
+  withheld: string | null;
+}
+
 export interface AlsoForOffer {
   profileId: number;
   name: string;
-  // What each source would give this person, keyed by source item id: the basis the tap
-  // posts back, so a changed plan refuses instead of substituting another member's.
-  basisBySource: Record<number, string>;
+  bySource: Record<number, AlsoForOfferSource>;
 }
 
 export interface AlsoForCardModel {
@@ -326,10 +278,14 @@ export interface AlsoForCardModel {
   offers: AlsoForOffer[];
 }
 
-// The bottle's offer as ONE caller sees it. `members` are the members that caller may
-// SEE (hidden members are never source options); `candidates` are the profiles they may
-// WRITE. An empty source list means no automatic copy — the ordinary management doors
-// stand.
+// The bottle's offer as ONE caller sees it. `visibleMembers` are the members that
+// caller may SEE (hidden members are never source options); `candidates` are the
+// profiles they may WRITE. An empty source list means no automatic copy — the ordinary
+// management doors stand.
+//
+// A member is never dropped from the source list for having nothing live: that was a
+// silent withhold answered in the wrong person's day, and the honest form is to offer
+// the copy and let the receipt say what actually landed.
 export function alsoForCardModel(input: {
   pool: Pick<PoolView, "id" | "name" | "strength">;
   visibleMembers: readonly {
@@ -345,60 +301,65 @@ export function alsoForCardModel(input: {
   if (input.candidates.length === 0) return { sources: [], offers: [] };
   const sources: { option: AlsoForSourceOption; source: AlsoForSource }[] = [];
   for (const member of input.visibleMembers) {
-    const source = alsoForSource(
-      member.profileId,
-      member.itemId,
-      today(member.profileId)
-    );
-    // A member with no dose row still in force has no schedule to hand on: every row
-    // it has is a window that already closed. Offering it would name a plan the copy
-    // cannot write, so it is not a source — the ordinary management doors stand.
-    if (!source || source.schedule.doses.length === 0) continue;
+    const source = alsoForSource(member.profileId, member.itemId);
+    if (!source) continue;
     sources.push({
       option: {
         itemId: source.itemId,
         profileId: source.profileId,
         personName: member.name,
-        scheduleLabel: alsoForScheduleLabel(source.schedule),
+        // A statement ABOUT THE SOURCE, so it is asked in the SOURCE's own day. This is
+        // the one day question here that is not the recipient's, and it is why the card
+        // can name one schedule per bottle instead of one per reader.
+        scheduleLabel: alsoForScheduleLabel({
+          ...source.schedule,
+          doses: sourcePlanRows(source.schedule.doses, today(source.profileId)),
+        }),
       },
       source,
     });
   }
   if (sources.length === 0) return { sources: [], offers: [] };
 
-  // The MEMBERSHIP, not the visible subset: who already draws from this bottle and
-  // what product it is are both facts about the bottle, and the write re-reads exactly
-  // this — a card that answered from what its viewer can see would offer a person who
-  // is already a member behind someone else's grant.
-  const members = poolMembers(input.pool.id);
-  const product = poolProductIdentity(input.pool, members);
-  const memberIds = new Set(members.map((m) => m.profileId));
+  // The MEMBERSHIP, not the visible subset: who already draws from this bottle is a
+  // fact about the bottle, and the write re-reads exactly this — a card that answered
+  // from what its viewer can see would offer a person who is already a member behind
+  // someone else's grant.
+  const memberIds = new Set(poolMembers(input.pool.id).map((m) => m.profileId));
   const offers: AlsoForOffer[] = [];
   for (const candidate of input.candidates) {
     const facts = alsoForCandidateFacts({
       profileId: candidate.id,
       name: candidate.name,
-      canWrite: true,
+      supplyId: input.pool.id,
       isMember: memberIds.has(candidate.id),
-      product,
     });
     if (!alsoForEligible(facts)) continue;
-    const basisBySource: Record<number, string> = {};
+    // THE RECIPIENT'S DAY, per recipient — not the source's and not the reader's.
+    const targetDay = today(candidate.id);
+    const pediatric = pediatricContextFor(candidate.id);
+    const bySource: Record<number, AlsoForOfferSource> = {};
     for (const { source } of sources) {
-      basisBySource[source.itemId] = alsoForBasis({
-        product,
-        sourceItemId: source.itemId,
-        sourceIdentity: source,
-        schedule: source.schedule,
-        targetProfileId: candidate.id,
-        dose: facts.dose,
+      const dose = resolveAlsoForDose({
+        label: labelIdentityFor(input.pool, source),
+        pediatric,
       });
+      bySource[source.itemId] = {
+        basis: encodeAlsoForBasis(
+          alsoForBasis({
+            pool: input.pool,
+            sourceItemId: source.itemId,
+            sourceIdentity: source,
+            schedule: source.schedule,
+            targetProfileId: candidate.id,
+            targetDay,
+            dose,
+          })
+        ),
+        withheld: dose.kind === "withheld" ? dose.reason : null,
+      };
     }
-    offers.push({
-      profileId: candidate.id,
-      name: candidate.name,
-      basisBySource,
-    });
+    offers.push({ profileId: candidate.id, name: candidate.name, bySource });
   }
   return { sources: sources.map((s) => s.option), offers };
 }
@@ -411,82 +372,97 @@ export type AlsoForCopyResult =
       itemId: number;
       kind: IntakeItemKind;
       receipt: string;
-      dose: AlsoForDose;
+      written: AlsoForWritten;
     }
-  | { ok: false; error: string };
-
-const STALE = "This offer changed. Reload the cabinet and try again.";
+  | { ok: false; reason: AlsoForRefusal; detail?: string };
 
 // Copy ONE member's plan onto another person, atomically.
 //
 // Everything the offer was derived from is re-read HERE, under the write lock: the
-// bottle, the source's membership, the target's membership and duplicate eligibility,
-// and the target's own dose basis. A stale intent is REFUSED — never silently resolved
-// to a different person's plan — which is also what makes a double tap land at most one
-// item: the second tap finds the target already a member.
+// bottle, the source's membership, the target's membership and decline state, the
+// recipient's own day and their dose basis. A stale intent is REFUSED — never silently
+// resolved to a different person's plan — which is also what makes a double tap land at
+// most one item: the second tap finds the target already a member.
+//
+// EVERY REFUSAL IS A NAMED FACT. One `STALE` string for every failure is what let an
+// over-block present itself as "reload and try again"; the reasons below say which fact
+// moved, and `alsoForRefusalRefreshes` says which of them a fresh render fixes.
 export function copyPoolMemberPlan(input: {
   supplyId: number;
   sourceProfileId: number;
   sourceItemId: number;
   targetProfileId: number;
   targetName: string;
-  // The basis the caller was shown. Empty refuses: an offer with no stated basis is an
-  // offer nobody looked at.
+  // The basis the caller was shown. Unreadable refuses: an offer with no stated basis
+  // is an offer nobody looked at.
   basis: string;
 }): AlsoForCopyResult {
+  const shown = decodeAlsoForBasis(input.basis);
+  if (
+    !shown ||
+    shown.sourceItemId !== input.sourceItemId ||
+    shown.targetProfileId !== input.targetProfileId
+  ) {
+    return { ok: false, reason: "no-offer" };
+  }
   return writeTx(() => {
     const pool = getPoolView(input.supplyId);
-    if (!pool) return { ok: false, error: "Couldn't find that shared bottle." };
+    if (!pool) return { ok: false, reason: "no-bottle" };
     const members = poolMembers(input.supplyId);
     const sourceMember = members.find(
       (m) =>
         m.itemId === input.sourceItemId && m.profileId === input.sourceProfileId
     );
-    if (!sourceMember) {
-      return { ok: false, error: STALE };
-    }
+    if (!sourceMember) return { ok: false, reason: "source-gone" };
     if (members.some((m) => m.profileId === input.targetProfileId)) {
-      return {
-        ok: false,
-        error: `${input.targetName} already draws from this bottle.`,
-      };
+      return { ok: false, reason: "already-member" };
     }
-    // The recipient's day decides which of the source's dose windows are still in
-    // force, exactly as it did when the offer was rendered.
-    const targetToday = today(input.targetProfileId);
-    const source = alsoForSource(
-      input.sourceProfileId,
-      input.sourceItemId,
-      targetToday
-    );
-    if (!source) return { ok: false, error: STALE };
+    if (declinedAlsoFor(input.targetProfileId, input.supplyId)) {
+      return { ok: false, reason: "declined" };
+    }
+    const source = alsoForSource(input.sourceProfileId, input.sourceItemId);
+    if (!source) return { ok: false, reason: "source-gone" };
 
-    const product = poolProductIdentity(pool, members);
-    const facts = alsoForCandidateFacts({
-      profileId: input.targetProfileId,
-      name: input.targetName,
-      canWrite: true,
-      isMember: false,
-      product,
+    // THE RECIPIENT'S DAY decides which of the source's dose windows travel, and it is
+    // bound in the basis so the two sides compare one value rather than each deriving
+    // its own in a different timezone.
+    const targetDay = today(input.targetProfileId);
+    const dose = resolveAlsoForDose({
+      label: labelIdentityFor(pool, source),
+      pediatric: pediatricContextFor(input.targetProfileId),
     });
-    if (!alsoForEligible(facts)) return { ok: false, error: STALE };
-    const basis = alsoForBasis({
-      product,
-      sourceItemId: source.itemId,
-      sourceIdentity: source,
-      schedule: source.schedule,
-      targetProfileId: input.targetProfileId,
-      dose: facts.dose,
-    });
-    if (!input.basis || basis !== input.basis) {
-      return { ok: false, error: STALE };
+    const moved = alsoForBasisRefusal(
+      shown,
+      alsoForBasis({
+        pool,
+        sourceItemId: source.itemId,
+        sourceIdentity: source,
+        schedule: source.schedule,
+        targetProfileId: input.targetProfileId,
+        targetDay,
+        dose,
+      })
+    );
+    if (moved) return { ok: false, reason: moved };
+    // The product's own life-stage gate, refused by NAME so the card can say it. It is
+    // asked after the basis so a withhold that was on screen and a withhold that
+    // appeared since read the same way to the person.
+    if (dose.kind === "withheld") {
+      return { ok: false, reason: "age-gated", detail: dose.reason };
     }
 
     const schedule = source.schedule;
-    const seeds = alsoForDoseSeeds(schedule.doses, facts.dose, targetToday);
-    // What the receipt may claim is what the copy WRITES, not what was derivable: an
-    // amount with no row to carry it is not a dose (alsoForWrittenDose).
-    const written = alsoForWrittenDose(facts.dose, seeds);
+    const seeds = alsoForDoseSeeds(schedule.doses, dose, targetDay);
+    // What the receipt may claim is what the copy WROTE and what is LIVE: an amount
+    // with no row to carry it is not a dose, and a row that starts next month is not a
+    // dose you have today (alsoForWritten asks `doseOnDay`).
+    const written = alsoForWritten(dose, seeds, targetDay);
+    const notes: AlsoForNotes = {
+      allergen: allergenNoteFor(input.targetProfileId, pool.name),
+      // A bottle carries no code, so the duplicate question cannot be asked (#4717).
+      // Said out loud rather than left as a silence that reads like a clean check.
+      productMatched: false,
+    };
     // PRODUCT, OBLIGATION AND SCHEDULE — and nothing else. No amount, no weight, no
     // start date, no administrations, no stock. The PRN redose figures are absent for
     // the same reason as the amount: they are the label numbers confirmed for THAT
@@ -528,7 +504,9 @@ export function copyPoolMemberPlan(input: {
           }
         : { ...base, kind: "supplement" }
     );
-    if (!created.ok) return { ok: false, error: created.error };
+    if (!created.ok) {
+      return { ok: false, reason: "create-failed", detail: created.error };
+    }
     // A new member changes what the bottle owes everyone, so the pooled refill offers
     // are re-derived rather than answered from a cached projection — the same sweep the
     // link path runs.
@@ -537,8 +515,21 @@ export function copyPoolMemberPlan(input: {
       ok: true,
       itemId: created.id,
       kind: source.kind,
-      receipt: alsoForReceipt(input.targetName, written),
-      dose: written,
+      receipt: alsoForReceipt(input.targetName, written, notes),
+      written,
     };
   });
+}
+
+// ---- The decline ------------------------------------------------------------
+
+// "Not for them": one row on the suppression bus, under the RECIPIENT's own profile,
+// and nothing else. No health data, no membership and no notification setting — which
+// is exactly what this issue's design boundary requires of a decline, and why Restore
+// in the recipient's "Snoozed & dismissed" puts the chip back.
+export function declineAlsoForOffer(
+  supplyId: number,
+  targetProfileId: number
+): void {
+  dismissFinding(targetProfileId, alsoForOfferKey(supplyId));
 }

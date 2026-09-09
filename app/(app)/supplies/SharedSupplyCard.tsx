@@ -11,7 +11,12 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import type { AppRoute } from "@/lib/hrefs";
 import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
-import { updatePoolAction, deletePoolAction, alsoForAction } from "./actions";
+import {
+  updatePoolAction,
+  deletePoolAction,
+  alsoForAction,
+  declineAlsoForAction,
+} from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import Link from "next/link";
 
@@ -41,10 +46,15 @@ export interface SharedSupplyCardData {
   }[];
   // "Also for" (#5230). `sources` are the members whose plan may be copied — the ones
   // this viewer can actually SEE, because a plan behind a grant is not a plan they may
-  // copy. `offers` are the people the copy is offered FOR, derived per person from
-  // access, membership, allergy, life stage and whether a dose is derivable at all.
-  // Each offer carries the BASIS it was derived from, per source: the tap posts it back
-  // and the write refuses a stale one rather than copying a different member's plan.
+  // copy. `offers` are the people the copy is offered FOR: every person the caller may
+  // write who is not already a member and has not declined this bottle. Allergy,
+  // interactions and product identity do NOT withhold an offer — they are said in the
+  // receipt after the tap — and the ONE clinical gate that remains, the product's life
+  // stage, arrives as `withheld` TEXT rather than as a missing chip.
+  //
+  // Each offer carries, per source, the BASIS it was derived from — including the
+  // RECIPIENT's own day. The tap posts it back and the write refuses a stale one with a
+  // named reason rather than copying a different member's plan.
   alsoFor: {
     sources: {
       itemId: number;
@@ -55,7 +65,7 @@ export interface SharedSupplyCardData {
     offers: {
       profileId: number;
       name: string;
-      basisBySource: Record<number, string>;
+      bySource: Record<number, { basis: string; withheld: string | null }>;
     }[];
   };
   canWrite: boolean;
@@ -102,11 +112,19 @@ export default function SharedSupplyCard({
     pool.alsoFor.offers.find((o) => String(o.profileId) === offerProfileId) ??
     null;
 
+  // What the SELECTED source would give one person: the basis to post, and the life
+  // stage's own words when the product refuses them. Null until a source is picked.
+  const forOffer = (offer: {
+    bySource: Record<number, { basis: string; withheld: string | null }>;
+  }): { basis: string; withheld: string | null } | null =>
+    source ? (offer.bySource[source.itemId] ?? null) : null;
+
   const alsoFor = (offer: {
     profileId: number;
-    basisBySource: Record<number, string>;
+    bySource: Record<number, { basis: string; withheld: string | null }>;
   }): void => {
-    if (!source) return;
+    const entry = forOffer(offer);
+    if (!source || !entry || entry.withheld) return;
     setError(null);
     setReceipt(null);
     start(async () => {
@@ -115,13 +133,32 @@ export default function SharedSupplyCard({
       fd.set("source_item_id", String(source.itemId));
       fd.set("source_profile_id", String(source.profileId));
       fd.set("profile_id", String(offer.profileId));
-      fd.set("basis", offer.basisBySource[source.itemId] ?? "");
+      fd.set("basis", entry.basis);
       const res = await alsoForAction(fd);
       if (!res.ok || !res.receipt || !res.href) {
+        // The refusal's own sentence. Every one of them names the fact that moved, and
+        // the ones a fresh render fixes say "tap again" — the action has already
+        // re-validated /supplies, so this card is re-rendering with the new basis
+        // behind the message.
         setError(res.error ?? "Couldn’t add it.");
         return;
       }
       setReceipt({ text: res.receipt, href: res.href });
+    });
+  };
+
+  // "Not for them": one row on the suppression bus under that person's own profile, and
+  // the offer does not come back (#5230, "every chip is dismissible without
+  // recurrence"). Restore lives in their "Snoozed & dismissed".
+  const decline = (profileId: number): void => {
+    setError(null);
+    setReceipt(null);
+    start(async () => {
+      const fd = new FormData();
+      fd.set("supply_id", String(pool.id));
+      fd.set("profile_id", String(profileId));
+      const res = await declineAlsoForAction(fd);
+      if (!res.ok) setError(res.error ?? "Couldn’t dismiss it.");
     });
   };
 
@@ -378,29 +415,82 @@ export default function SharedSupplyCard({
                           </option>
                         ))}
                       </select>
+                      {/* THE LIFE STAGE SAYS WHY, it does not just disappear (owner
+                          ruling, 2026-09-09 16:10). An adult-only product with a
+                          curated label withholds the copy for a child — and the
+                          label's own sentence stands where the action would be. */}
+                      {offer && forOffer(offer)?.withheld ? (
+                        <span
+                          className="text-sm text-slate-600 dark:text-slate-300"
+                          data-testid="shared-supply-also-for-withheld"
+                        >
+                          {offer.name} · {forOffer(offer)?.withheld}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn h-9"
+                          data-testid="shared-supply-also-for-chip"
+                          disabled={pending || source == null || offer == null}
+                          onClick={() => offer && alsoFor(offer)}
+                        >
+                          Also for
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn h-9"
-                        data-testid="shared-supply-also-for-chip"
-                        disabled={pending || source == null || offer == null}
-                        onClick={() => offer && alsoFor(offer)}
+                        data-testid="shared-supply-also-for-dismiss"
+                        aria-label={
+                          offer
+                            ? `Don’t offer this bottle for ${offer.name}`
+                            : "Don’t offer this bottle"
+                        }
+                        disabled={pending || offer == null}
+                        onClick={() => offer && decline(offer.profileId)}
                       >
-                        Also for
+                        Not for them
                       </button>
                     </>
                   ) : (
-                    pool.alsoFor.offers.map((o) => (
-                      <button
-                        key={o.profileId}
-                        type="button"
-                        className="btn h-9"
-                        data-testid="shared-supply-also-for-chip"
-                        disabled={pending || source == null}
-                        onClick={() => alsoFor(o)}
-                      >
-                        {o.name} · Also for
-                      </button>
-                    ))
+                    pool.alsoFor.offers.map((o) => {
+                      const entry = forOffer(o);
+                      return (
+                        <span
+                          key={o.profileId}
+                          className="inline-flex items-center gap-1"
+                        >
+                          {entry?.withheld ? (
+                            <span
+                              className="text-sm text-slate-600 dark:text-slate-300"
+                              data-testid="shared-supply-also-for-withheld"
+                            >
+                              {o.name} · {entry.withheld}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn h-9"
+                              data-testid="shared-supply-also-for-chip"
+                              disabled={pending || source == null}
+                              onClick={() => alsoFor(o)}
+                            >
+                              {o.name} · Also for
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn h-9"
+                            data-testid="shared-supply-also-for-dismiss"
+                            aria-label={`Don’t offer this bottle for ${o.name}`}
+                            disabled={pending}
+                            onClick={() => decline(o.profileId)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })
                   )}
                 </div>
               )}

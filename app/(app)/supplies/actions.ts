@@ -7,9 +7,16 @@ import { db } from "@/lib/db";
 import { deleteSetting } from "@/lib/settings";
 import { poolRefillMarkerKey, poolRefillSignalKey } from "@/lib/refill-nudge";
 import { restoreFinding } from "@/lib/queries/upcoming";
-import { copyPoolMemberPlan } from "@/lib/queries/intake/also-for";
+import {
+  copyPoolMemberPlan,
+  declineAlsoForOffer,
+} from "@/lib/queries/intake/also-for";
 import { intakeHref, medicationHref } from "@/lib/hrefs";
-import type { AlsoForResult } from "@/lib/intake-also-for";
+import {
+  alsoForRefusalMessage,
+  alsoForRefusalRefreshes,
+  type AlsoForResult,
+} from "@/lib/intake-also-for";
 import {
   createSharedSupply,
   updateSharedSupply,
@@ -249,6 +256,15 @@ export async function unlinkItemAction(
 //
 // Everything the offer was derived from is re-read inside the atomic write, which is
 // where a stale intent is refused (lib/queries/intake/also-for.ts).
+//
+// A REFUSAL THAT A FRESH RENDER FIXES ALSO REFRESHES THE CARD. The recipient's midnight
+// is the case that matters: the offer's basis carries the day it was computed in, so an
+// offer rendered at 23:59 and tapped at 00:01 refuses — and it must not refuse forever,
+// which is what "reload the cabinet and try again" did to a state that was deterministic
+// rather than stale. Revalidating here re-renders /supplies as part of this action's own
+// response, so the card the person is looking at is already carrying the new day's basis
+// by the time they read the message, and the next tap works. `alsoForRefusalRefreshes`
+// names exactly which reasons that is true of.
 export async function alsoForAction(
   formData: FormData
 ): Promise<AlsoForResult> {
@@ -258,27 +274,47 @@ export async function alsoForAction(
   const targetProfileId = Number(formData.get("profile_id") ?? 0);
   const basis = String(formData.get("basis") ?? "");
   if (!supplyId || !sourceItemId || !sourceProfileId || !targetProfileId) {
-    return { ok: false, error: "Couldn't find that shared bottle." };
+    return {
+      ok: false,
+      reason: "no-bottle",
+      error: alsoForRefusalMessage("no-bottle", "them"),
+    };
   }
   await requireProfileWriteAccess(targetProfileId);
   const scope = await requireScope();
   if (
-    !isLinkableSupply(scope.ids, supplyId) ||
+    !isLinkableSupply(cabinetViewer(scope.ids, scope.role), supplyId) ||
     !scope.ids.includes(sourceProfileId)
   ) {
-    return { ok: false, error: "Couldn't find that shared bottle." };
+    return {
+      ok: false,
+      reason: "no-bottle",
+      error: alsoForRefusalMessage("no-bottle", "them"),
+    };
   }
   await requirePoolWriteAccess(supplyId);
   const target = scope.profiles.find((p) => p.id === targetProfileId);
+  const targetName = target?.name ?? "them";
   const result = copyPoolMemberPlan({
     supplyId,
     sourceProfileId,
     sourceItemId,
     targetProfileId,
-    targetName: target?.name ?? "them",
+    targetName,
     basis,
   });
-  if (!result.ok) return { ok: false, error: result.error };
+  if (!result.ok) {
+    if (alsoForRefusalRefreshes(result.reason)) revalidateSupplies();
+    return {
+      ok: false,
+      reason: result.reason,
+      // The named refusals carry their own sentence; `age-gated` and `create-failed`
+      // carry the OWNER MODEL's own words instead — the label's life-stage reason and
+      // the create core's error — because those are more specific than anything this
+      // action could say about them.
+      error: result.detail ?? alsoForRefusalMessage(result.reason, targetName),
+    };
+  }
   revalidateSupplies();
   return {
     ok: true,
@@ -288,4 +324,38 @@ export async function alsoForAction(
         ? medicationHref(result.itemId)
         : intakeHref(result.kind),
   };
+}
+
+// "Not for them" (#5230): decline the bottle's offer for ONE person, without recurrence.
+//
+// Same gate as the tap, because the same two subjects are involved — the recipient's own
+// write access and the bottle's membership-management gate — even though the write is
+// only a suppression row under the recipient's profile. It touches no health data, no
+// membership and no notification setting; Restore in that profile's "Snoozed &
+// dismissed" puts the chip back.
+export async function declineAlsoForAction(
+  formData: FormData
+): Promise<AlsoForResult> {
+  const supplyId = Number(formData.get("supply_id") ?? 0);
+  const targetProfileId = Number(formData.get("profile_id") ?? 0);
+  if (!supplyId || !targetProfileId) {
+    return {
+      ok: false,
+      reason: "no-bottle",
+      error: alsoForRefusalMessage("no-bottle", "them"),
+    };
+  }
+  await requireProfileWriteAccess(targetProfileId);
+  const scope = await requireScope();
+  if (!isLinkableSupply(cabinetViewer(scope.ids, scope.role), supplyId)) {
+    return {
+      ok: false,
+      reason: "no-bottle",
+      error: alsoForRefusalMessage("no-bottle", "them"),
+    };
+  }
+  await requirePoolWriteAccess(supplyId);
+  declineAlsoForOffer(supplyId, targetProfileId);
+  revalidateSupplies();
+  return { ok: true };
 }
