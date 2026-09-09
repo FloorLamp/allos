@@ -258,8 +258,7 @@ export function poolProductCodes(supplyId: number): {
         ORDER BY id LIMIT 1`
     )
     .get(supplyId) as
-    | { rxcui: string | null; rxcui_ingredients: string | null }
-    | undefined;
+    { rxcui: string | null; rxcui_ingredients: string | null } | undefined;
   return {
     rxcui: row?.rxcui ?? null,
     rxcuiIngredients: parseRxcuiIngredients(row?.rxcui_ingredients ?? null),

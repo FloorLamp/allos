@@ -451,9 +451,9 @@ describe("only the dose rows still in force are inherited", () => {
   });
 
   it("says a wholly elapsed taper has nothing left to hand on", () => {
-    expect(
-      inForceDoseRows([row(null, "2026-08-10")], "2026-09-09")
-    ).toEqual([]);
+    expect(inForceDoseRows([row(null, "2026-08-10")], "2026-09-09")).toEqual(
+      []
+    );
   });
 });
 
