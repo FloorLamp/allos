@@ -1316,7 +1316,10 @@ function pageHits(
 export function searchAll(
   profileId: number,
   rawQuery: string,
-  // Explicit null denotes a login-less channel using the default display shape.
+  // The acting login, for the date shape its owner chose — every date this fan-out
+  // prints goes through it. `null` is the documented login-less channel: a profile in
+  // context but no reader, so the default shape. It is passed at the call site rather
+  // than defaulted here, so a missing login is visible instead of silently ordinary.
   loginId: number | null
 ): SearchGroup[] {
   // Cap length defensively: a search box never needs more, and it bounds the
