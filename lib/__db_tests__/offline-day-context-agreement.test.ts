@@ -28,6 +28,16 @@
 // Telling someone that nothing is owed while the page they cannot reach says a dose is
 // due is the harm #5167 argued, one field over.
 //
+// NOTHING HERE COMPARES OFFLINE TO THE PAGE BEFORE THE EARLIEST SESSION END, AND THAT
+// ABSENCE IS INTENT RATHER THAN OVERSIGHT. In that window the two deliberately still
+// differ: the page holds the post-workout dose and the snapshot offers it, because the
+// snapshot asks the DAY-shaped question (`asOfWholeDay`) and the day's converged answer
+// is "the session has ended". Asserting agreement there would be asserting that a stored
+// payload carries a wall-clock verdict, which is the thing this file's third describe
+// exists to say it must not do. Closing that window means shipping the earliest session
+// end time as a FACT the device evaluates against its own clock — a separate change with
+// its own design, and the assertion belongs with it.
+//
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect, vi } from "vitest";
@@ -38,6 +48,11 @@ import { buildSnapshot, snapshotContext } from "@/lib/offline/snapshot-build";
 import type { DoseScheduleEntry } from "@/lib/offline/snapshots";
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
 import { intakeAdherenceOn } from "@/lib/queries/household";
+import {
+  doseDayProgress,
+  offeredItems,
+} from "@/lib/queries/upcoming/intake-safety";
+import { getOfferedIntakeForSlot } from "@/lib/queries/intake";
 import type { IntakeCondition } from "@/lib/types";
 
 let seq = 0;
@@ -73,21 +88,27 @@ function logWorkout(
 function seedItem(
   profileId: number,
   name: string,
-  condition: IntakeCondition
+  condition: IntakeCondition,
+  // `may` + a hint-less dose is the OFFER shape (#1505): nothing is owed, so the item
+  // reaches the availability surfaces instead of the due ones, and a dose with no
+  // stated time carries no slot opinion — which is what lets one item be asked about
+  // at two different minutes without the slot filter deciding the answer.
+  opts: { obligation?: "should" | "may"; timeOfDay?: string | null } = {}
 ): void {
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items
            (profile_id, name, kind, condition, obligation, active)
-         VALUES (?, ?, 'medication', ?, 'should', 1)`
+         VALUES (?, ?, 'medication', ?, ?, 1)`
       )
-      .run(profileId, name, condition).lastInsertRowid
+      .run(profileId, name, condition, opts.obligation ?? "should")
+      .lastInsertRowid
   );
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-     VALUES (?, '1 dose', 'Morning', 'any', 0)`
-  ).run(itemId);
+     VALUES (?, '1 dose', ?, 'any', 0)`
+  ).run(itemId, opts.timeOfDay === undefined ? "Morning" : opts.timeOfDay);
 }
 
 /** The doses the offline snapshot would put on the device, as built right now. */
@@ -146,6 +167,41 @@ describe("a live surface holds a post-workout dose until the session ends (#5321
     vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
     expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
     expect(intakeAdherenceOn(p, td)).toEqual({ taken: 0, due: 1 });
+  });
+
+  // THE THREE SURFACES #5637 LEFT, closed here as the behavior fix the PM ruled it is
+  // (2026-09-09). Upcoming's dose rows, Upcoming's availability disclosure and the
+  // quick-log sheet each assembled their own four-field context, so `?? true` unheld a
+  // dose the page was holding — a person mid-session was offered a post-workout dose on
+  // one surface and told to wait on another, about the same dose on the same day.
+  //
+  // Both directions, because a surface that simply never offered the dose would pass a
+  // one-sided assertion: held before the earliest session end, offered after it.
+  it("holds it on Upcoming and the quick-log sheet too, then offers it", () => {
+    const p = newProfile();
+    const td = today(p);
+    // One item per surface shape: `should` reaches the due rows, `may` reaches the two
+    // offer surfaces. Both are post-workout on the same session, so one gate decides.
+    seedItem(p, "Recovery tablet", "post_workout");
+    seedItem(p, "Recovery shake", "post_workout", {
+      obligation: "may",
+      timeOfDay: null,
+    });
+    logWorkout(p, td, "17:00", "18:00");
+
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual([]);
+    expect(doseDayProgress(p, td)).toEqual({ scheduled: 0, taken: 0 });
+    expect(offeredItems(p, td).map((i) => i.title)).toEqual([]);
+    expect(getOfferedIntakeForSlot(p, "09:00").map((o) => o.name)).toEqual([]);
+
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
+    expect(doseDayProgress(p, td)).toEqual({ scheduled: 1, taken: 0 });
+    expect(offeredItems(p, td).map((i) => i.title)).toEqual(["Recovery shake"]);
+    expect(getOfferedIntakeForSlot(p, "19:00").map((o) => o.name)).toEqual([
+      "Recovery shake",
+    ]);
   });
 });
 

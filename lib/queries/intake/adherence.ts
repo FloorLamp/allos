@@ -65,8 +65,7 @@ import type { IntakeObligation } from "../../types";
 import { isOfferedOn, slotHintCoversNow } from "../../intake-schedule";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import { getSituations } from "../../settings";
-import { getEffectiveActiveSituations } from "../derived-situations";
-import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
+import { intakeDayContext } from "./day-context";
 import type { IntakeCondition, IntakeItemKind } from "../../types";
 import { intakeShortLabels } from "../../intake-short-name";
 import { getDoseScheduleVersions, getIntakeItems } from "./schedule";
@@ -2345,15 +2344,13 @@ export function getOfferedIntakeForSlot(
   }[];
   if (rows.length === 0) return [];
 
-  // The day context, resolved ONCE per call — the same effective situation set every
-  // other dueness surface reads (declared ∪ derived), so an offer can't disagree with
-  // the page about whether a situational item applies today.
-  const ctx = {
-    date,
-    isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
-    activeSituations: getEffectiveActiveSituations(profileId, date),
-    predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
-  };
+  // The day context, resolved ONCE per call, THROUGH THE SHARED BUILDER (#5321) — so
+  // an offer cannot disagree with the medications page about the same item on the same
+  // day. That includes the field this gather used to leave out: `postWorkoutReady` is
+  // read as `?? true`, so omitting it did not lose a condition, it defaulted to
+  // permissive and put a post-workout dose one tap away while the page still held it.
+  // The sheet is tapped LIVE, so the live verdict is the right one here.
+  const ctx = intakeDayContext(profileId, date);
   const pauseNames = new Map(
     getSituations(profileId).map((s) => [s.id, s.name])
   );
