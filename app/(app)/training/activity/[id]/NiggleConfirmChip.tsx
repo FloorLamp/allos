@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Button from "@/components/Button";
 import { confirmNiggle } from "../../niggle-actions";
 
 // The one-tap confirm chip (issue #2948, part 2). The detector found a body region in
@@ -38,11 +39,9 @@ export default function NiggleConfirmChip({
       data-laterality={laterality ?? "unstated"}
     >
       <span className="text-slate-600 dark:text-slate-300">{prompt}</span>
-      <button
-        type="button"
+      <Button
         data-testid="niggle-chip-confirm"
         disabled={busy}
-        className="btn btn-sm"
         onClick={async () => {
           setBusy(true);
           setError(null);
@@ -67,7 +66,7 @@ export default function NiggleConfirmChip({
         }}
       >
         Track it
-      </button>
+      </Button>
       {error ? (
         <span
           className="text-rose-600 dark:text-rose-400"
