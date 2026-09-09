@@ -213,7 +213,11 @@ function ProfilesCard({
             placeholder="Name"
             className="input"
           />
-          <Button onClick={add} disabled={pending || !newName.trim()}>
+          <Button
+            onClick={add}
+            disabled={pending || !newName.trim()}
+            variant="primary"
+          >
             Add
           </Button>
         </div>
@@ -628,6 +632,7 @@ function LoginsCard({
           <Button
             onClick={create}
             disabled={pending || !username.trim() || (!invitePath && !password)}
+            variant="primary"
           >
             Create login
           </Button>
@@ -879,9 +884,11 @@ function LoginRow({
             None of the six controls in this row is a form commit: LoginRow renders
             no <form> — every action here posts through a Server Action from an
             onClick — so under the 2026-09-04 13:05 UTC form reading there is no
-            surface primary to spend, and the row is one rank plus the destructive
-            paint. The row also renders once PER LOGIN, so a primary here would be
-            one per row rather than one per surface. */}
+            primary here to spend, and the row is one rank plus the destructive
+            paint. PM ruling 6 (2026-09-09 23:35 UTC) then named the CARD as the
+            surface, and this card spends its one loud control on "Create login"
+            above; the row renders once PER LOGIN, so a primary here would be one
+            per row rather than one per card. */}
         <div className="flex flex-wrap items-center gap-1">
           {canInvite && login.email && (
             <Button

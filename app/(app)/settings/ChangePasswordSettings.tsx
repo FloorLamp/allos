@@ -64,7 +64,11 @@ export default function ChangePasswordSettings({
       </div>
 
       <div className="flex items-center gap-3">
-        <Button onClick={save} disabled={pending || !current || !next}>
+        <Button
+          onClick={save}
+          disabled={pending || !current || !next}
+          variant="primary"
+        >
           Change password
         </Button>
         {result && (

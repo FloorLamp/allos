@@ -28,6 +28,14 @@ import FamilyManager from "@/app/(app)/settings/family/FamilyManager";
 // row itself renders once per login — so under the 2026-09-04 13:05 UTC form reading
 // there is no primary to spend. That is asserted too: a primary appearing here would
 // be one per row.
+//
+// THE COUNT IS TAKEN OVER THE ROW, AND IT USED TO BE TAKEN OVER THE DOCUMENT.
+// A document-wide zero was a true proxy only while slice 2's reading held and no
+// card on this surface was filled. PM ruling 6 (2026-09-09 23:35 UTC) made the
+// CARD the surface, so the logins card now spends its one primary on "Create
+// login" and a document total of 0 would be false for a reason that has nothing
+// to do with this row. The claim being made was always about the ROW, so the
+// count moved onto it — narrower, and it now fails for one reason only.
 
 vi.mock("@/app/(app)/settings/family/actions", () => ({
   createProfile: async () => ({ ok: true as const }),
@@ -144,9 +152,9 @@ describe("the family login row ranks its destructive action against its neighbou
 
   it("spends no primary on a row that renders once per login", () => {
     mount();
-    expect(document.querySelectorAll(".button-control-primary")).toHaveLength(
-      0
-    );
+    for (const row of screen.getAllByTestId("login-row")) {
+      expect(row.querySelectorAll(".button-control-primary")).toHaveLength(0);
+    }
     // One destructive paint per login row, not one per screen: the rank belongs to
     // the action, and this action exists on every row.
     expect(document.querySelectorAll(".button-control-danger")).toHaveLength(
