@@ -33,6 +33,7 @@ import type { AppRoute } from "./hrefs";
 import { MEDICATIONS_HREF } from "./hrefs";
 import { type ArguedExclusion, type LoggableDomain } from "./loggable-domains";
 import type { MeasurementGroup } from "./measurements-deeplink";
+import type { IntakeItemKind } from "./types";
 import {
   DEFAULT_TRENDS_TAB,
   parseTab,
@@ -107,6 +108,7 @@ export type QuickEntryForm =
 export interface QuickEntryPrefill {
   foodGroup?: string;
   measurementGroup?: MeasurementGroup;
+  doseIntakeKind?: IntakeItemKind;
 }
 
 export type QuickLogTarget =
