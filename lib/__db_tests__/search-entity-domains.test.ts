@@ -18,7 +18,9 @@
 // clearly fictional fixtures only (no PHI).
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
+import { setLoginSetting } from "@/lib/settings";
+import { DEFAULT_FORMAT_PREFS, formatMonthDay } from "@/lib/format-date";
 import { retrieveRecordCitations, searchAll } from "@/lib/queries";
 import {
   getProviderActivityTotal,
@@ -26,6 +28,7 @@ import {
 } from "@/lib/queries/providers";
 import type { SearchDomain, SearchHit } from "@/lib/search-rank";
 
+let dateReader = 0;
 let mine = 0;
 let other = 0;
 let clinicId = 0;
@@ -92,8 +95,28 @@ function titles(
 }
 
 beforeAll(() => {
+  dateReader = Number(
+    db
+      .prepare(
+        "INSERT INTO logins (username, password_hash) VALUES ('search-display-reader', 'x')"
+      )
+      .run().lastInsertRowid
+  );
+  setLoginSetting(dateReader, "date_format", "dmy");
   mine = newProfile("SEARCHDOM-MINE");
   other = newProfile("SEARCHDOM-OTHER");
+
+  for (const sql of [
+    "INSERT INTO medical_records (profile_id, category, name, canonical_name, date) VALUES (?, 'lab', 'Display date result', 'Display date result', '2026-02-11')",
+    "INSERT INTO medical_documents (profile_id, filename, stored_path, document_date) VALUES (?, 'Display date document', 'test-fixture.pdf', '2026-02-11')",
+    "INSERT INTO activities (profile_id, type, title, date) VALUES (?, 'cardio', 'Display date activity', '2026-02-11')",
+    "INSERT INTO immunizations (profile_id, vaccine, date, notes) VALUES (?, 'influenza', '2026-02-11', 'Display date vaccine')",
+    "INSERT INTO conditions (profile_id, name, status, onset_date) VALUES (?, 'Display date condition', 'active', '2026-02-11')",
+    "INSERT INTO procedures (profile_id, name, date) VALUES (?, 'Display date procedure', '2026-02-11')",
+    "INSERT INTO care_plan_items (profile_id, description, planned_date) VALUES (?, 'Display date plan', '2026-02-11')",
+    "INSERT INTO care_goals (profile_id, description, target_date) VALUES (?, 'Display date goal', '2026-02-11')",
+  ])
+    db.prepare(sql).run(mine);
 
   // ── Providers: a clinic this profile has seen, a clinician only the OTHER
   // profile has seen, and two same-named clinicians (the disambiguation case).
@@ -409,7 +432,9 @@ describe("illness episodes are searchable (#856/#1595)", () => {
     expect(found).toHaveLength(1);
     expect(found[0].href).toBe(`/medical/episodes/${episodeId}`);
     // end_date is the inclusive last active day (#2232) — the label ends ON it.
-    expect(found[0].subtitle).toContain("2026-03-01 → 2026-03-07");
+    expect(found[0].subtitle).toContain(
+      `${formatMonthDay("2026-03-01", DEFAULT_FORMAT_PREFS, { today: today(mine) })} → ${formatMonthDay("2026-03-07", DEFAULT_FORMAT_PREFS, { today: today(mine) })}`
+    );
     expect(titles(mine, "antibiotics", "episode")).toContain("Winter flu");
   });
 
@@ -427,7 +452,9 @@ describe("protocols are searchable (#344/#1595)", () => {
     expect(found).toHaveLength(1);
     expect(found[0].href).toBe(`/protocols/${protocolId}`);
     // end_date is INCLUSIVE for a protocol — the label ends on the stored day.
-    expect(found[0].subtitle).toContain("2026-03-01 → 2026-04-15");
+    expect(found[0].subtitle).toContain(
+      `${formatMonthDay("2026-03-01", DEFAULT_FORMAT_PREFS, { today: today(mine) })} → ${formatMonthDay("2026-04-15", DEFAULT_FORMAT_PREFS, { today: today(mine) })}`
+    );
     expect(titles(mine, "sessions a week", "protocol")).toContain(
       "Sauna block"
     );
@@ -565,3 +592,39 @@ describe("grounded record Q&A can now cite the new domains (#878 × #1595)", () 
     expect(cites.map((c) => c.title)).not.toContain("MRI Shoulder");
   });
 });
+
+it.each([
+  ["clinical-result", "Display date result", "2026-02-11"],
+  ["document", "Display date document", "2026-02-11"],
+  ["activity", "Display date activity", "2026-02-11"],
+  ["immunization", "Display date vaccine", "2026-02-11"],
+  ["condition", "Display date condition", "2026-02-11"],
+  ["procedure", "Display date procedure", "2026-02-11"],
+  ["care-plan", "Display date plan", "2026-02-11"],
+  ["care-goal", "Display date goal", "2026-02-11"],
+  ["imaging", "meniscal", "2026-02-11"],
+  ["genomic", "Lakeside", "2025-11-04"],
+  ["dental", "Composite filling", "2026-01-20"],
+  ["skin", "Freckled mole", "2026-05-06"],
+  ["practice", "Cold plunge", "2026-07-02"],
+  ["episode", "Winter flu", "2026-03-01"],
+  ["protocol", "Sauna block", "2026-03-01"],
+  ["encounter", "Imaging visit", "2026-02-11"],
+] as const)(
+  "%s subtitles use the reader's format while ranking dates stay ISO",
+  (domain, query, day) => {
+    for (const loginId of [dateReader, null]) {
+      const hit = searchAll(mine, query, loginId).find(
+        (group) => group.domain === domain
+      )?.hits[0];
+      expect(hit?.date).toBe(day);
+      const prefs = {
+        ...DEFAULT_FORMAT_PREFS,
+        dateFormat: loginId == null ? ("mdy" as const) : ("dmy" as const),
+      };
+      expect(hit?.subtitle).toContain(
+        formatMonthDay(day, prefs, { today: today(mine) })
+      );
+    }
+  }
+);
