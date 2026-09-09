@@ -4,7 +4,7 @@
 // (the account→tokens precedent), keeping the #319 rule intact: actions live with
 // the surface that posts them, and every action here gates on requireAdmin().
 import { requireAdmin } from "@/lib/auth";
-import { db, rawDb } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { revalidateRoute } from "@/lib/revalidate";
 import { setAiPrefs } from "@/lib/settings";
 import { setTierConfig, clearTierApiKey } from "@/lib/settings/ai-tiers";
@@ -24,13 +24,15 @@ export async function saveAiTierConfig(formData: FormData) {
   await requireAdmin();
   const tier = parseTier(formData.get("tier"));
   const apiKey = String(formData.get("api_key") ?? "");
-  setTierConfig(rawDb, tier, {
-    apiShape: parseApiShape(String(formData.get("api_shape") ?? "")),
-    baseUrl: String(formData.get("base_url") ?? ""),
-    model: String(formData.get("model") ?? ""),
-    apiKey,
+  writeTx(() => {
+    setTierConfig(db, tier, {
+      apiShape: parseApiShape(String(formData.get("api_shape") ?? "")),
+      baseUrl: String(formData.get("base_url") ?? ""),
+      model: String(formData.get("model") ?? ""),
+      apiKey,
+    });
+    if (formData.get("clear_api_key") === "1") clearTierApiKey(db, tier);
   });
-  if (formData.get("clear_api_key") === "1") clearTierApiKey(db, tier);
   revalidateRoute("/settings/ai");
 }
 

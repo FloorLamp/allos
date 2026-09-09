@@ -19,7 +19,7 @@
 // subqueries is covered statically by lib/__tests__/profile-scoping.test.ts.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "@/lib/db";
+import { db, rawDb } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { getHrDailySummaryInRange } from "@/lib/queries";
 
@@ -52,7 +52,7 @@ function days(rows: { date: string }[]): string[] {
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM hr_minutes");
+  rawDb.exec("DELETE FROM hr_minutes");
   profileId = newProfile("HR-BOUNDS");
   neighbour = newProfile("HR-BOUNDS-NEIGHBOUR");
 });

@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { toKg, toKm } from "@/lib/units";
 import { utcInstant } from "@/lib/date";
-import { db, writeTx } from "@/lib/db";
+import { db, rawDb, writeTx } from "@/lib/db";
 import {
   upsertActivities,
   upsertBodyMetrics,
@@ -50,12 +50,12 @@ function provenanceRowCount(): number {
 }
 
 beforeEach(() => {
-  db.exec("DELETE FROM integration_sync_rows");
-  db.exec("DELETE FROM integration_sync_events");
-  db.exec("DELETE FROM activities");
-  db.exec("DELETE FROM body_metrics");
-  db.exec("DELETE FROM medical_records");
-  db.exec("DELETE FROM practice_logs");
+  rawDb.exec("DELETE FROM integration_sync_rows");
+  rawDb.exec("DELETE FROM integration_sync_events");
+  rawDb.exec("DELETE FROM activities");
+  rawDb.exec("DELETE FROM body_metrics");
+  rawDb.exec("DELETE FROM medical_records");
+  rawDb.exec("DELETE FROM practice_logs");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('SYNC-PROV')").run()
       .lastInsertRowid

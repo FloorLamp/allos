@@ -13,7 +13,7 @@
 // Fixtures are synthetic throwaway rows (per-file temp DB via setup.ts). No PHI.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { db, today } from "@/lib/db";
+import { db, rawDb, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   setTimezone,
@@ -1119,7 +1119,7 @@ describe("one usual tap, one act id (#5082)", () => {
     const originalCounters = counters();
     // A later refusal must escape the outer transaction, not commit its earlier
     // food work. The trigger supplies that race at a synchronous DB boundary.
-    db.exec(`CREATE TEMP TRIGGER refuse_act_dose AFTER UPDATE OF occurred_at ON food_log_events
+    rawDb.exec(`CREATE TEMP TRIGGER refuse_act_dose AFTER UPDATE OF occurred_at ON food_log_events
       WHEN NEW.id = ${food[0].id}
       BEGIN UPDATE intake_item_logs SET status = 'skipped' WHERE dose_id = ${creatine}; END`);
     try {
@@ -1136,7 +1136,7 @@ describe("one usual tap, one act id (#5082)", () => {
       expect(readCorrectionBundle(profileId, selected)).toEqual(before);
       expect(counters()).toEqual(originalCounters);
     } finally {
-      db.exec("DROP TRIGGER refuse_act_dose");
+      rawDb.exec("DROP TRIGGER refuse_act_dose");
     }
   });
 

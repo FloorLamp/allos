@@ -17,6 +17,7 @@ import {
   type Migration,
 } from "@/lib/migrations/runner";
 import { MIGRATIONS, migrationsBefore } from "@/lib/migrations/versions";
+import { migration as dataWriteRevisionMigration } from "@/lib/migrations/versions/20260909-data-write-revision";
 
 // bootstrapAuth is a per-boot task (not the runner), but importing lib/db.ts is
 // unnecessary here — the runner never touches auth. Keep the env quiet regardless.
@@ -266,6 +267,49 @@ describe("migration runner — name-keyed era (injected registries)", () => {
       marker("20260812-alpha"),
     ];
     expect(() => runMigrations(db, bad)).toThrow(/Duplicate migration name/);
+    db.close();
+  });
+});
+
+describe("migration runner — durable write revision", () => {
+  it("initializes for history and advances once for each later committed migration", () => {
+    const db = newDb();
+    runMigrations(db, [dataWriteRevisionMigration]);
+    const revision = () =>
+      (
+        db
+          .prepare(
+            "SELECT revision FROM data_write_revision WHERE singleton = 1"
+          )
+          .get() as { revision: number }
+      ).revision;
+    expect(revision()).toBe(0);
+
+    const later = marker("20260910-after-write-revision");
+    runMigrations(db, [dataWriteRevisionMigration, later]);
+    expect(revision()).toBe(1);
+
+    runMigrations(db, [dataWriteRevisionMigration, later]);
+    expect(revision()).toBe(1);
+
+    const failing: Migration = {
+      name: "20260911-failed-after-write-revision",
+      up(handle) {
+        handle
+          .prepare("INSERT INTO applied_order (name) VALUES (?)")
+          .run("rolled-back");
+        throw new Error("migration failed");
+      },
+    };
+    expect(() =>
+      runMigrations(db, [dataWriteRevisionMigration, later, failing])
+    ).toThrow("migration failed");
+    expect(revision()).toBe(1);
+    expect(
+      db
+        .prepare("SELECT name FROM applied_order WHERE name = 'rolled-back'")
+        .get()
+    ).toBeUndefined();
     db.close();
   });
 });

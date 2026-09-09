@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { db, dbFilePath } from "@/lib/db";
+import { rawDb, dbFilePath } from "@/lib/db";
 import {
   performBackup,
   backupsDir,
@@ -36,7 +36,7 @@ function mkTmp(): string {
 
 // Take a real VACUUM INTO snapshot of the live (migrated) singleton DB to `dest`.
 function snapshotTo(dest: string): void {
-  db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+  rawDb.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
 }
 
 // Whether the settings key exists in the DB at `p` (read-only probe).

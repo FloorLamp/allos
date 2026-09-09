@@ -13,24 +13,26 @@
 // bounded by the clock.
 //
 // THE VERSION IS A PAIR, because neither half can see what the other sees.
-//   - `PRAGMA data_version` moves when ANOTHER CONNECTION commits and never for this
-//     connection's own writes. Three processes write this file (the web app, the hourly
-//     notify tick, the poll sidecar), so this half is how the sidecar's
-//     `upcoming_dismissals` deletes and the poll loop's writes reach a web request.
-//   - `total_changes()` counts the rows THIS connection has written since it opened,
-//     which is exactly the half `data_version` is blind to.
+//   - The durable `data_write_revision` row is advanced by the statement/transaction
+//     owner (lib/write-revision.ts) in the same commit as every application mutation,
+//     including single-statement writes and writes made by another process. It is the
+//     half that sees THIS connection's own writes, which `data_version` never does,
+//     and the only half that survives connection replacement and process restart —
+//     so it is also what the client freshness beacon compares (#3075).
+//   - `PRAGMA data_version` moves when ANY OTHER CONNECTION commits, whether or not
+//     that writer went through the tracked owner. A raw `sqlite3` session, an e2e
+//     fixture editing the weather cache, or a future writer that has not been routed
+//     through the owner yet still drops this memo, and without this half it would be
+//     served health data from before its write.
 // Both halves are proved live, and proved load-bearing by removal, in
 // lib/__db_tests__/dashboard-tail-memo.test.ts.
 //
-// WHY total_changes() RATHER THAN A COUNTER IN writeTx. #5073 proposed incrementing a
-// counter inside `writeTx` on the grounds that it is "the one path every mutation
-// takes". It is not, and the difference is a stale health reading. `writeTx` is where
-// request write transactions go, but single-statement writes need no transaction.
-// `deleteAppointment` (app/(app)/encounters/appointment-actions.ts) removes the row with
-// one prepared statement and no wrapper, and `getScheduledAppointments` is one of the
-// gathers memoized here, so a writeTx-only counter would have served the deleted
-// appointment straight back to the dashboard. SQLite's own counter has no such hole and
-// needs no instrumentation at any write site.
+// NO total_changes() THIRD HALF. The pre-#3075 version paired `data_version` with
+// SQLite's own-connection change counter, because nothing else saw this connection's
+// writes. The durable revision now does: the owner advances it inside the same
+// transaction as the write, on the same connection, so `readDataWriteRevision` reads
+// it back immediately — including for a bare single-statement write, the path a
+// writeTx-only counter would have missed.
 //
 // OVER-INVALIDATION IS THE DESIGN, not an accident: neither half of the version is per
 // profile, so any write anywhere drops every profile's entry. Making it per profile
@@ -43,15 +45,13 @@
 // Outside a request `cache()` is identity, and then this wrapper is a plain
 // passthrough: a DB test, a script and the notify sidecar compute every call, exactly
 // as `cache()` and `tickCached` degrade outside their own scopes.
-import { db, hoistedStatement } from "./db";
+import { db } from "./db";
 import { cache } from "./request-cache";
-
-const OWN_WRITES = hoistedStatement("SELECT total_changes() AS changes");
+import { readDataWriteRevision } from "./write-revision";
 
 function readVersion(): string {
   const others = db.pragma("data_version", { simple: true }) as number;
-  const own = (OWN_WRITES.get() as { changes: number }).changes;
-  return `${others}.${own}`;
+  return `${others}.${readDataWriteRevision(db)}`;
 }
 
 // One request's version, read at the first memo use and held for the rest of it.

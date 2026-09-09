@@ -30,20 +30,20 @@
 // only the row's own derived column, and it never reads across profiles. Its two
 // statements carry allowlist entries in lib/__tests__/profile-scoping.test.ts.
 
-import type Database from "better-sqlite3";
 import {
   serializeCyclingStreamSummary,
   streamSummarySignature,
   summarizeCyclingStreams,
 } from "./cycling-stream-summary";
 import { runBootTx } from "./migrations/schema-utils";
+import type { SqlPrepare, TransactionDatabase } from "./write-revision";
 
 // Schema introspection, the #684 posture: a boot task must be VERSION-AGNOSTIC,
 // because it also runs against handles built to an earlier schema (the migration
 // tests drive bootTasks on a partial DB). Cycling telemetry arrived in migration
 // 159, so on anything older there is simply nothing to reconcile. Binds the name
 // rather than interpolating it, so this reads no owned table.
-function tableExists(db: Database.Database): boolean {
+function tableExists(db: SqlPrepare): boolean {
   return (
     db
       .prepare(
@@ -58,7 +58,7 @@ function tableExists(db: Database.Database): boolean {
 // summarised, or a row a raw INSERT created) matches without a second clause.
 // Deliberately selects ONLY the id: `streams_json` is not read for a row that
 // needs no work, which is the entire point.
-function planStale(db: Database.Database): number[] {
+function planStale(db: SqlPrepare): number[] {
   return (
     db
       .prepare(
@@ -72,7 +72,9 @@ function planStale(db: Database.Database): number[] {
 
 // Re-derive the stale summaries. Returns how many rows were rewritten (0 on the
 // overwhelmingly common boot where nothing has drifted).
-export function reconcileCyclingStreamSummaries(db: Database.Database): number {
+export function reconcileCyclingStreamSummaries(
+  db: TransactionDatabase
+): number {
   if (!tableExists(db)) return 0;
   if (planStale(db).length === 0) return 0;
 

@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { OWNED_TABLES } from "./owned-tables";
+import type { SqlPrepare } from "./write-revision";
 
 // The profile-delete SUBTREE, derived from the live schema (issue #2126).
 //
@@ -53,7 +53,7 @@ interface PragmaFkRow {
   on_delete: string;
 }
 
-function userTables(db: Pick<Database.Database, "prepare">): string[] {
+function userTables(db: SqlPrepare): string[] {
   return (
     db
       .prepare(
@@ -66,9 +66,7 @@ function userTables(db: Pick<Database.Database, "prepare">): string[] {
 
 // Every FK each table declares, grouped by the pragma's constraint id so a
 // composite (multi-column) FK is visible as one unit.
-function tableForeignKeys(
-  db: Pick<Database.Database, "prepare">
-): Map<string, PragmaFkRow[][]> {
+function tableForeignKeys(db: SqlPrepare): Map<string, PragmaFkRow[][]> {
   const out = new Map<string, PragmaFkRow[][]>();
   for (const t of userTables(db)) {
     const rows = db
@@ -90,9 +88,7 @@ function tableForeignKeys(
 // (composite, or referencing a column other than the parent's `id`) — that failure
 // is the decision point: such a schema needs an explicit new plan here, not a
 // silent omission from the sweep.
-export function ownedChildTables(
-  db: Pick<Database.Database, "prepare">
-): Map<string, OwnedChildTable> {
+export function ownedChildTables(db: SqlPrepare): Map<string, OwnedChildTable> {
   const owned = new Set<string>(OWNED_TABLES);
   const fks = tableForeignKeys(db);
 
@@ -168,9 +164,7 @@ export interface ProfileChildDelete {
 // The ordered child-delete plan: deepest tables first, so every subquery still
 // finds its parent rows, then alphabetical for stable output. Table names come
 // from sqlite_master, never from user input.
-export function profileChildDeletePlan(
-  db: Pick<Database.Database, "prepare">
-): ProfileChildDelete[] {
+export function profileChildDeletePlan(db: SqlPrepare): ProfileChildDelete[] {
   const owned = new Set<string>(OWNED_TABLES);
   const children = ownedChildTables(db);
 
@@ -210,10 +204,7 @@ export function profileChildDeletePlan(
 // inside a transaction, so it must be toggled outside), and handles the global
 // tables (profile_settings, login_profiles, sessions, logins, profiles) plus
 // on-disk files itself.
-export function deleteProfileData(
-  db: Pick<Database.Database, "prepare">,
-  profileId: number
-): void {
+export function deleteProfileData(db: SqlPrepare, profileId: number): void {
   for (const step of profileChildDeletePlan(db)) {
     db.prepare(step.sql).run(...Array(step.binds).fill(profileId));
   }
