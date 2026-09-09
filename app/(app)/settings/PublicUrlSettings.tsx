@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Button from "@/components/Button";
 import { savePublicUrl } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { REFUSED, useSaveStatus } from "@/components/useSaveStatus";
@@ -68,14 +69,9 @@ export default function PublicUrlSettings({
             className="input"
           />
         </div>
-        <button
-          type="button"
-          onClick={save}
-          disabled={status.pending}
-          className="btn"
-        >
+        <Button onClick={save} disabled={status.pending}>
           Save
-        </button>
+        </Button>
       </div>
 
       {validationError && (

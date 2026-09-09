@@ -161,14 +161,12 @@ export default function InjuryBar({
             </p>
           )}
         </div>
-        <button
-          type="button"
+        <Button
           onClick={() => setShowForm((v) => !v)}
-          className="btn-ghost flex items-center gap-1 text-sm"
           data-testid="injury-add-toggle"
         >
           <IconPlus size={16} /> Log injury
-        </button>
+        </Button>
       </div>
 
       {current.length > 0 && (
