@@ -26,7 +26,11 @@ import type { LocalDay } from "./temporal-types";
 //
 // `EpisodeKind` is DERIVED from the two halves rather than declared, so a kind cannot
 // exist without an entry in its half's table — deleting one makes that table's
-// `satisfies` fail rather than leaving a kind nothing can read.
+// `satisfies` fail rather than leaving a kind nothing can read. That is its whole job
+// today: it has NO reader yet, and it is not dead. Its first reader is the reading that
+// renders Training, Period and Fast off one state (#5435), which lands with the day
+// reading. Deleting it as unused is how a `Record<EpisodeKind, …>` comes back and a kind
+// gets to exist with no bounds.
 export type MinuteEpisodeKind = "practice" | "workout" | "fast";
 export type DayEpisodeKind = "period";
 export type EpisodeKind = MinuteEpisodeKind | DayEpisodeKind;

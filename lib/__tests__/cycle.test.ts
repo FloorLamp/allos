@@ -116,7 +116,7 @@ describe("cyclePhaseOnDate", () => {
 
   // #1682 fix a — a forgotten "Period ended" tap must not claim menstrual forever. The
   // record is left EXACTLY as stored; only the claim lapses.
-  it("withdraws the menstrual claim past MAX_PLAUSIBLE_PERIOD_DAYS (day 10 vs 11)", () => {
+  it("withdraws the menstrual claim past the period's stale bound (day 10 vs 11)", () => {
     const open: CyclePeriod[] = [period(9, "2026-04-01", null)];
     expect(EPISODE_DAY_BOUNDS.period.staleDays).toBe(10);
     // Day 10 is 04-10 (the start day is day 1) — still the last plausible bleeding day.
