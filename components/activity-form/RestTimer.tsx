@@ -38,7 +38,8 @@ export default function RestTimer({
   // Monotonic nonce: any increase auto-starts a fresh countdown (a set was
   // logged). 0 on mount means "don't auto-start until the first set".
   autoStartKey: number;
-  onHiddenComplete?: () => void;
+  // Announces a completion the page cannot; reports whether it actually did.
+  onHiddenComplete?: () => boolean;
 }) {
   // The chosen rest target (seconds). Seeded from the lift and kept in sync while
   // the timer is idle so switching exercises re-defaults it — but never yanked
@@ -75,8 +76,10 @@ export default function RestTimer({
       deadlineRef.current = null;
       setRunning(false);
       setDone(true);
-      if (document.visibilityState === "visible") cue();
-      else onHiddenComplete?.();
+      // A hidden end goes to the notification path first, so a delivered one is
+      // not double-announced. Anything it cannot deliver still cues page-side.
+      if (document.visibilityState === "visible" || !onHiddenComplete?.())
+        cue();
     }
   }, [cue, onHiddenComplete]);
 

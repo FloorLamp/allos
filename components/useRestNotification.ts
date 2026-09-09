@@ -145,7 +145,9 @@ export function useRestNotification() {
     }
   };
 
-  const notify = useCallback(() => {
+  // True only when the worker actually took the message: the caller falls back to
+  // its own cue for every condition this path cannot announce.
+  const notify = useCallback((): boolean => {
     const worker = registrationRef.current?.active;
     if (
       !mountedRef.current ||
@@ -155,12 +157,14 @@ export function useRestNotification() {
       Notification.permission !== "granted" ||
       worker?.state !== "activated"
     )
-      return;
+      return false;
     try {
       // One immediate attempt, never a pending alarm waiting for registration.
       worker.postMessage({ type: "allos-rest-done" });
+      return true;
     } catch {
       // A stale worker loses this attempt; the timer's done state remains truthful.
+      return false;
     }
   }, [readCurrentChoice]);
 

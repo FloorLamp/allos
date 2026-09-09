@@ -349,22 +349,21 @@ describe("activity timer completion", () => {
       );
       const attempts =
         condition === "hidden" || condition === "dispatch failed" ? 1 : 0;
+      // Only a notification the worker took replaces the page-side cue; every
+      // undeliverable condition still chimes and vibrates exactly as before.
+      const cues = condition === "hidden" ? 0 : 1;
       expect(browser.postMessage.mock.calls).toEqual(
         attempts ? [[{ type: "allos-rest-done" }]] : []
       );
-      expect(audio.start).toHaveBeenCalledTimes(
-        condition === "visible" ? 1 : 0
-      );
-      expect(vibrate).toHaveBeenCalledTimes(condition === "visible" ? 1 : 0);
+      expect(audio.start).toHaveBeenCalledTimes(cues);
+      expect(vibrate).toHaveBeenCalledTimes(cues);
       vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
       await refreshNotificationRow();
       act(() => {
         vi.advanceTimersByTime(1000);
       });
       expect(browser.postMessage).toHaveBeenCalledTimes(attempts);
-      expect(audio.start).toHaveBeenCalledTimes(
-        condition === "visible" ? 1 : 0
-      );
+      expect(audio.start).toHaveBeenCalledTimes(cues);
       expect(browser.requestPermission).not.toHaveBeenCalled();
     }
   );
