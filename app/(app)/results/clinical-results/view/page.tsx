@@ -821,7 +821,10 @@ export default async function ClinicalResultDetailPage(props: {
             dashboard flag atom write (owner ruling 2026-08-20: one state, not two), so
             it also quiets the analyte's flag and its trajectory watch, and the next
             draw of the family re-arms all three. The reading itself is untouched: it
-            still reads "High" here and still lists on /results. */}
+            still reads "High" here and still lists on /results.
+            Its form's one commit, so it carries the primary paint (#4014, under
+            #4978's 2026-09-04 13:05 UTC form rule); the Recheck scheduler beside
+            it is a different form and keeps its own quiet commit. */}
         {isNotableFlag(latest.flag) && (
           <div data-testid="result-acknowledge">
             <div className="label">Acknowledge</div>
@@ -835,7 +838,10 @@ export default async function ClinicalResultDetailPage(props: {
             ) : (
               <form action={dismissTrajectory}>
                 <input type="hidden" name="dedupe_key" value={resultAckKey} />
-                <SubmitButton data-testid="result-acknowledge-submit">
+                <SubmitButton
+                  variant="primary"
+                  data-testid="result-acknowledge-submit"
+                >
                   Seen it
                 </SubmitButton>
               </form>
