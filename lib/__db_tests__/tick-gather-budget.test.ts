@@ -193,9 +193,9 @@ describe("notification tick gather query budget (#5199)", () => {
   //
   // AND THE CALL THAT DOES NOT MOVE IT IS WALKED ANYWAY — a correction to what this
   // comment said on its first two passes, and the reason the persona below exists.
-  // `gatherDigestInput` holds ONE `getOfferedIntakeForSlot` call (the second lives in
-  // `collapsedDigestActions`, reached only from the async keyboard refresh this harness
-  // never walks). It was recorded here as "not on the counted path". It IS on it:
+  // `gatherDigestInput` holds ONE offer read, `getIntakeOffersForSlot` (the second lives
+  // in `collapsedDigestActions`, through the `getOfferedIntakeForSlot` wrapper over it,
+  // and is reached only from the async keyboard refresh this harness never walks). It was recorded here as "not on the counted path". It IS on it:
   // stubbing it out drops EVERY persona by exactly one statement. What it does not do is
   // move with the conversion, and the reason is a property of the FIXTURE rather than of
   // the path — the query reads the profile's active `may` rows first and returns early

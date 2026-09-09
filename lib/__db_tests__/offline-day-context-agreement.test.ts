@@ -41,6 +41,16 @@
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+// The router the record door's card calls `refresh()` on after a tap. Imported from
+// `next/dist` because that is where the context itself lives — `next/navigation`
+// exports only the hook, which throws off a mounted tree. Same deep-import shape
+// `app/(app)/quick-entry-actions.ts` already uses for `isRedirectError`.
+import {
+  AppRouterContext,
+  type AppRouterInstance,
+} from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { db, today } from "@/lib/db";
 import { shiftDateStr, weekdayOfDateStr } from "@/lib/date";
 import {
@@ -62,7 +72,12 @@ import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
 import { mintUsualRoutineAttachment } from "@/lib/notifications/usual-routine-attach";
-import { pendingDayDoses } from "@/lib/queries/usual-routine";
+import {
+  pendingDayDoses,
+  usualRoutineDayOffers,
+} from "@/lib/queries/usual-routine";
+import { HistoryUsualOffers } from "@/app/(app)/history/HistoryAddDoor";
+import { ToastProvider } from "@/components/Toast";
 import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
 import { plainBody } from "@/lib/notifications/rich-text";
 import type { IntakeCondition } from "@/lib/types";
@@ -89,6 +104,25 @@ function logWorkout(
     `INSERT INTO activities (profile_id, date, type, title, duration_min, start_time, end_time)
      VALUES (?, ?, 'strength', 'Session', 45, ?, ?)`
   ).run(profileId, date, start, end);
+}
+
+// One logged serving of a food group on a day — the habit the composed offer is built
+// from. Shared by the two describes below that need a standing "usual", so the fixture
+// the message host and the record door are measured against is literally the same one.
+function tapFood(
+  profileId: number,
+  group: string,
+  date: string,
+  hhmmss: string
+): void {
+  db.prepare(
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+       ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
+  ).run(profileId, date, group);
+  db.prepare(
+    `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(profileId, group, date, `${date}T${hhmmss}Z`);
 }
 
 // One active, daily-cadence item with one dose, on the given day condition.
@@ -356,13 +390,15 @@ describe("the stored snapshot answer survives to read time (#5321)", () => {
 //
 // The enumeration is in the PR body. What lands here is its guard:
 //
-//   getOfferedIntakeForSlot → gatherDigestInput → buildDigest    the digest's offer
+//   getIntakeOffersForSlot  → gatherDigestInput → buildDigest    the digest's offer
 //                                                                count, tail and the
 //                                                                withheld line
 //   getOfferedIntakeForSlot → buildIntakeReminderForSlots        the reminder's
 //                                                                ride-along keyboard
 //   pendingDayDoses → getUsualRoutineOffer                       the composed one-tap
 //                   → mintUsualRoutineAttachment                 riding a send
+//                   → usualRoutineDayOffers                      the record page's
+//                                                                add-door offer
 //
 // The first was found by round two; the third was found by neither pass and is reported
 // on the PR as a new finding rather than covered quietly.
@@ -418,7 +454,7 @@ function sentDigest(profileId: number): {
 describe("the digest still sends while the timing gate holds the only offer (#5321)", () => {
   // THE OWNER'S RULING, 2026-09-09 21:20 UTC, and the defect it answers.
   //
-  // `getOfferedIntakeForSlot` feeds `offerCount` and `offerTail`. When a profile's ONLY
+  // `getIntakeOffersForSlot` feeds `offerCount` and `offerTail`. When a profile's ONLY
   // on-demand item is post-workout, the gate empties both — and the minimal-digest
   // guard suppresses a message with no sections and no tail. Measured on the head
   // before this change: `buildDigest` returned null for the whole mid-session window,
@@ -551,22 +587,6 @@ describe("the composed one-tap riding a send follows it too (#5321)", () => {
   // The food half is the gate (no habitual food offer, no control at all), so the
   // fixture builds one: twelve mornings of the same two groups, today deliberately
   // empty. The dose rides.
-  function tapFood(
-    profileId: number,
-    group: string,
-    date: string,
-    hhmmss: string
-  ): void {
-    db.prepare(
-      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
-         ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
-    ).run(profileId, date, group);
-    db.prepare(
-      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
-       VALUES (?, ?, ?, ?)`
-    ).run(profileId, group, date, `${date}T${hhmmss}Z`);
-  }
-
   it("keeps a held dose out of the button's bundle until the session ends", () => {
     const p = newProfile();
     const td = today(p);
@@ -605,6 +625,79 @@ describe("the composed one-tap riding a send follows it too (#5321)", () => {
     expect(after).not.toBeNull();
     expect(after!.line).toContain("Recovery tablet");
     expect(after!.label).toContain("(3)");
+  });
+});
+
+describe("the record page's add door follows it too (#5321)", () => {
+  // THE OTHER REACH OF `pendingDayDoses`, and the one no round named — not a message
+  // this time but a WRITING CONTROL on a page:
+  //
+  //   pendingDayDoses → getPendingRoutineDoses (queries/usual-routine.ts)
+  //                   → getUsualRoutineOffer   (same file)
+  //                   → usualRoutineDayOffers  (same file, once per FOOD_SLOT)
+  //                   → app/(app)/history/page.tsx → <HistoryUsualOffers>
+  //
+  // The same derivation seeds the nutrition bar (app/(app)/nutrition/FoodTab.tsx) and is
+  // re-read by `usualRoutineOffersOn` (app/(app)/actions.ts) when the bar's day picker
+  // moves, so this one assertion stands for the derivation all three render.
+  //
+  // ASSERTED ON THE RENDERED DOOR, not on `usualRoutineDayOffers`, for the same reason
+  // the sends above are asserted on their messages: the card's heading is a COUNT of
+  // every write its tap performs and its `data-doses` is the list it posts, so the
+  // markup is where the promise and the write are both visible. A query's return value
+  // cannot say what a label promised.
+  //
+  // `usualRoutineDayOffers` loops every window rather than the current one, so unlike
+  // the message host above this reading does not depend on the minute — which is what
+  // lets the two instants differ only by the gate.
+  function renderAddDoor(profileId: number, date: string): string {
+    return renderToStaticMarkup(
+      createElement(
+        AppRouterContext.Provider,
+        // The door refreshes the feed after a tap; nothing here taps, so the one method
+        // it would call is the whole stub.
+        { value: { refresh: () => {} } as AppRouterInstance },
+        createElement(
+          ToastProvider,
+          null,
+          createElement(HistoryUsualOffers, {
+            offers: usualRoutineDayOffers(profileId, date),
+            date,
+          })
+        )
+      )
+    );
+  }
+
+  it("does not offer a held dose on the door, then offers it", () => {
+    const p = newProfile();
+    const td = today(p);
+    for (let d = 1; d <= 12; d++) {
+      const day = shiftDateStr(td, -d);
+      tapFood(p, "berries", day, "07:00:00");
+      tapFood(p, "fermented", day, "07:05:00");
+    }
+    seedItem(p, "Recovery tablet", "post_workout");
+    logWorkout(p, td, "09:00", "10:00");
+
+    // Mid-session. The food half still stands, so the door still shows the card — and
+    // the dose the medications page is holding is neither named on it nor in the set
+    // its tap would post.
+    vi.setSystemTime(new Date(`${td}T08:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual([]);
+    const mid = renderAddDoor(p, td);
+    expect(mid).toContain("Your usual Morning (2)");
+    expect(mid).not.toContain("Recovery tablet");
+    expect(mid).toContain('data-doses=""');
+
+    // After the recorded end, same day, same window: the dose joins the promise and
+    // the write.
+    vi.setSystemTime(new Date(`${td}T10:30:00.000Z`));
+    expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
+    const after = renderAddDoor(p, td);
+    expect(after).toContain("Your usual Morning (3)");
+    expect(after).toContain("Recovery tablet");
+    expect(after).not.toContain('data-doses=""');
   });
 });
 
