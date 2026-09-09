@@ -16,7 +16,8 @@ wording. Reuse those owners instead of calculating staleness in a component.
 
 A reading exactly one interval old is current. Do not fold `not-applicable` into
 `due`: an immutable attribute has no retest clock, and an unmeasured test is not
-an overdue reading.
+an overdue reading. `DormancyState` owns the word "absent"; a candidate or
+presentation state that merely does not apply is `not-applicable`.
 
 `freshnessAgeDays(date, today)` returns the signed difference in whole days, or
 `null` for absent/unparseable dates. Date-based callers supply the profile-local
