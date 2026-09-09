@@ -34,6 +34,7 @@ const ctx = {
   date: "2026-03-04",
   isWorkoutDay: false,
   activeSituations: new Set<string>(),
+  predictedWorkoutDay: null,
 };
 
 describe("slotHintBucket", () => {

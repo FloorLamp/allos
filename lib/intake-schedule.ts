@@ -177,7 +177,22 @@ export interface IntakeDayContext {
   date: string;
   isWorkoutDay: boolean;
   activeSituations: Set<string>;
-  predictedWorkoutDay?: boolean | null;
+  // REQUIRED, and asymmetrically so (#5321). This field already carries its own third
+  // state: `null` is "no cadence is known", which is what makes `?? isWorkoutDay` below
+  // fall back to the logged signal. `undefined` said the same thing, so optionality
+  // bought nothing and cost the compile error — a caller that forgot the prediction
+  // keyed a pre_workout item on "a session is already logged" and silently omitted a
+  // dose the medications page offers on a predicted training day (#558).
+  predictedWorkoutDay: boolean | null;
+  // OPTIONAL, and that is not an oversight either. The four fields above are facts
+  // about `date`; this one is a verdict about the current MINUTE, so only a caller
+  // asking about the day IN PROGRESS can answer it. Every closed-day context —
+  // scoring yesterday, projecting a future day — would otherwise have to hand-write
+  // `postWorkoutReady: true` as boilerplate, and a hand-written `true` reads as a
+  // deliberate claim about a session in a way the language default does not.
+  // The permissive `?? true` below is therefore load-bearing, and a LIVE caller that
+  // omits it is answering differently from the page — see intakeDayContext, which is
+  // how a live caller gets it.
   postWorkoutReady?: boolean;
 }
 

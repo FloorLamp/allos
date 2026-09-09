@@ -217,10 +217,9 @@ export function pendingDayDoses(
     // override the training that is already on the record. #558 wants it for TODAY (a
     // pre-workout reminder has to be able to land BEFORE the session is logged); a
     // closed day has no such need, and `intakeAdherenceStrip` passes no prediction at
-    // all. Undefined falls back to `isWorkoutDay`, which is exactly the strip's answer.
-    predictedWorkoutDay: isToday
-      ? isPredictedWorkoutDay(profileId, date)
-      : undefined,
+    // all. `null` — "no cadence is known" — falls back to `isWorkoutDay`, which is
+    // exactly the strip's answer.
+    predictedWorkoutDay: isToday ? isPredictedWorkoutDay(profileId, date) : null,
   };
   // THE LIFETIME CLAMP (#430/#1442), the same bound `intakeAdherenceStrip` treats as
   // load-bearing. Without it every item a person adds grows two phantom past-day

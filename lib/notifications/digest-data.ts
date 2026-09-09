@@ -639,6 +639,7 @@ export function gatherDigestInput(
     date: td,
     isWorkoutDay: false,
     activeSituations: effectiveSituations,
+    predictedWorkoutDay: null,
   });
   // The digest has no login context (the notify tick runs per PROFILE), so weather
   // figures render in canonical °C — the default. A weather situation's activation is a
