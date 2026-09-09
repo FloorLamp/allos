@@ -38,7 +38,7 @@ import {
 } from "../../intake-schedule";
 import { getTimezone } from "../../settings";
 import { now as clockNow } from "../../clock";
-import { zonedDateParts } from "../../date";
+import { hhmmToMinutes, zonedDateParts } from "../../date";
 
 export interface IntakeDayContextInputs {
   // The effective active-situation set for `date`, when the caller has ALREADY resolved
@@ -63,7 +63,7 @@ export function intakeDayContext(
   // would gate has already ended (or has not been logged at all).
   const nowMinutes =
     date === today(profileId)
-      ? minutesOfDay(
+      ? hhmmToMinutes(
           zonedDateParts(getTimezone(profileId), inputs.now ?? clockNow()).hhmm
         )
       : null;
@@ -78,8 +78,4 @@ export function intakeDayContext(
       nowMinutes
     ),
   };
-}
-
-function minutesOfDay(hhmm: string): number {
-  return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 }
