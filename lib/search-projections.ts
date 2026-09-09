@@ -1,5 +1,21 @@
-// Pure search-result labels. Domain helpers own titles; this module owns subtitles.
-// SearchDisplay is resolved once by the fan-out; ISO days remain separate for ranking.
+// PURE row → search-result text projections for the second-generation entity
+// domains (issue #1595). One function per domain: it takes the row's OWN fields plus
+// the reader's display shape and returns the two lines the palette (and a Q&A
+// citation) renders — no DB, nothing interpreted. The DB fan-out in
+// lib/queries/search.ts decides WHICH rows match, resolves the SearchDisplay once,
+// and owns the href; this module decides how each row READS, so the wording is
+// unit-tested here (lib/__tests__/search-projections.test.ts) instead of hiding
+// inside a SQL mapper.
+//
+// Every title routes through the domain's OWN canonical one-line label — the same
+// `…DisplayLabel` the list page, the passport, and the import listing use
+// (studyDisplayLabel, dentalDisplayLabel, skinLesionDisplayLabel,
+// variantDisplayLabel) — so a hit can never name a record differently from the page
+// it links to (the one-question-one-computation rule). What this module adds is the
+// SUBTITLE: the attribute that actually tells two otherwise-identical rows apart —
+// two studies of the same modality and region (their dates), two lesions in the same
+// place (their body-map side, size, and status), two providers with the same name
+// (specialty, then NPI or locality).
 
 import { dentalDisplayLabel, dentalStatusLabel } from "./dental";
 import { isRealIsoDate } from "./date";
@@ -36,17 +52,33 @@ export interface SearchHitText {
   subtitle: string | null;
 }
 
-// Day-grained storage only. Convert instants in the profile zone before calling.
+// Take the ISO day off a value that is ALREADY DAY-GRAINED — every column this
+// reaches is declared `day` in docs/internals/time-columns.md (study_date,
+// report_date, procedure_date, observed_date, practice_logs.date, a protocol's
+// window). It is not an instant→day conversion and must not be used as one: the one
+// caller that held an INSTANT (a document's uploaded_at) converts through the
+// profile's zone before it gets here (#3836). Routing through `isRealIsoDate` is what
+// mints the `LocalDay` — a cast is a lint error — so a value that is not a real day
+// becomes null rather than reaching display or ranking. The ONE place the trim
+// happens for search: lib/queries/search.ts reuses it for a hit's `date` field and
+// searchDayText below formats the same result, so the printed subtitle and the
+// recency tiebreak can never name different days.
 export function isoDay(value: string | null | undefined): LocalDay | null {
   const day = value?.slice(0, 10);
   return isRealIsoDate(day) ? day : null;
 }
 
+// What a printed day needs to read in the login's own shape: the acting login's
+// preferences and the profile-local today its auto-year rule compares against. The
+// fan-out resolves it once and hands it down, so no projection reaches for settings.
 export interface SearchDisplay {
   prefs: DisplayFormatPrefs;
   today: string;
 }
 
+// A stored day as DISPLAY COPY (#3492/#3545 — never the storage `YYYY-MM-DD` in user
+// text). The returned DisplayText is no longer a LocalDay, which is what keeps a
+// formatted day and a machine-read one from being swapped for each other.
 export function searchDayText(
   value: string | null | undefined,
   display: SearchDisplay
