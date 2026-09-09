@@ -49,11 +49,13 @@ export default async function RetrospectivePage({
   const year = resolveRetrospectiveYear((await searchParams).year, years);
 
   const formatPrefs = getDisplayFormatPrefs(login.id);
+  const units = getUnitPrefs(login.id);
   const recap = getRetrospective(
     profile.id,
     year,
     td,
-    getUnitPrefs(login.id).weightUnit
+    units.weightUnit,
+    units.distanceUnit
   );
   const coverage = retrospectiveCoverage(year, first, td);
   const coverageSentence = retrospectiveCoverageSentence(coverage, formatPrefs);

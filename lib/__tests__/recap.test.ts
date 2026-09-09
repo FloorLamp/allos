@@ -387,6 +387,64 @@ describe("buildRecap", () => {
     expect(recap.headline).toContain("a Bench press PR");
   });
 
+  it.each([
+    [
+      "distance",
+      "Run",
+      10,
+      0,
+      0,
+      "longest Run at 10 km",
+      "longest Run at 6.21 mi",
+    ],
+    [
+      "speed",
+      "Cycle",
+      0,
+      0,
+      30,
+      "fastest Cycle at 30 km/h",
+      "fastest Cycle at 18.6 mi/h",
+    ],
+    [
+      "duration",
+      "Row",
+      0,
+      90,
+      0,
+      "longest Row at 1h 30m",
+      "longest Row at 1h 30m",
+    ],
+  ] as const)(
+    "carries %s detail through notes, headline and saved-narrative supplement in each unit",
+    (kind, label, distanceKm, durationMin, speedKmh, km, mi) => {
+      for (const [distanceUnit, phrase] of [
+        ["km", km],
+        ["mi", mi],
+      ] as const) {
+        const recap = buildRecap(
+          baseInput({
+            workouts: [{ date: TODAY, type: "cardio" }],
+            distanceUnit,
+            prs: [
+              { label, cardio: { kind, distanceKm, durationMin, speedKmh } },
+            ],
+          })
+        );
+        expect(recap.lines.find((line) => line.key === "prs")?.notes).toEqual([
+          phrase,
+          null,
+        ]);
+        expect(recap.headline).toContain(`a PR: ${phrase}`);
+        const narrative = "Your week included steady training.";
+        const message = renderRecapMessage(recap, "Ada", narrative)!;
+        expect(plainBody(message.body)).toContain(
+          `${narrative}\n\n• Cardio PRs — ${phrase}`
+        );
+      }
+    }
+  );
+
   // #3033 decision 2: the PR line says what was lifted, through the shared
   // prSetClause — an e1RM record as the set it was performed with, a bodyweight
   // lift as reps alone, a top-weight record labelled as the top set it is.
@@ -582,6 +640,61 @@ describe("renderRecapMessage", () => {
     expect(plainBody(msg.body)).toContain("A strong week");
     // The narrative supersedes the bullet lines.
     expect(plainBody(msg.body)).not.toContain("• Workouts:");
+  });
+
+  it("keeps the overall three-record cap before adding cardio facts to a narrative", () => {
+    const prs: RecapInput["prs"] = [
+      { label: "Bench press" },
+      {
+        label: "Run",
+        cardio: {
+          kind: "distance",
+          distanceKm: 10,
+          durationMin: 0,
+          speedKmh: 0,
+        },
+      },
+      {
+        label: "Cycle",
+        cardio: { kind: "speed", distanceKm: 0, durationMin: 0, speedKmh: 30 },
+      },
+      {
+        label: "Row",
+        cardio: {
+          kind: "duration",
+          distanceKm: 0,
+          durationMin: 90,
+          speedKmh: 0,
+        },
+      },
+    ];
+    const input = baseInput({
+      workouts: [{ date: "2026-07-08", type: "strength" }],
+      distanceUnit: "mi",
+      prs,
+    });
+    const narrative = "Your week included steady cardio and strength work.";
+    const message = renderRecapMessage(buildRecap(input), "Ada", narrative)!;
+    expect(plainBody(message.body)).toBe(
+      `Jul 3 – Jul 9\n${narrative}\n\n• Cardio PRs — longest Run at 6.21 mi · fastest Cycle at 18.6 mi/h`
+    );
+
+    // Strength and legacy label-only records still occupy the cap. Neither
+    // missing measurements nor a measured cardio record fourth adds a claim.
+    const withoutVisibleCardio = buildRecap({
+      ...input,
+      prs: [
+        { label: "Bench press" },
+        { label: "Squat" },
+        { label: "Run" },
+        prs[3],
+      ],
+    });
+    expect(
+      plainBody(
+        renderRecapMessage(withoutVisibleCardio, "Ada", narrative)!.body
+      )
+    ).toBe(`Jul 3 – Jul 9\n${narrative}`);
   });
 
   it("falls back to bullets when the narrative is empty/whitespace", () => {

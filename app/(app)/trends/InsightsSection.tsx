@@ -67,7 +67,7 @@ export default async function InsightsSection({
 }) {
   const { login, profile } = await requireSession();
   const formatPrefs = getDisplayFormatPrefs(login.id);
-  const weightUnit = getUnitPrefs(login.id).weightUnit;
+  const units = getUnitPrefs(login.id);
   // Read every insight (ALL_ROWS overrides the default 30-row cap) so an older
   // window isn't silently truncated before filterSeriesByRange windows it.
   const insights = filterSeriesByRange(
@@ -79,7 +79,8 @@ export default async function InsightsSection({
   const recaps = getRecentPeriodRecaps(profile.id, RECAP_KINDS, 6);
   const recapCapFacts = new Map(
     recaps.flatMap((n) => {
-      const line = getScaleRecap(profile.id, n.kind, weightUnit, {
+      const line = getScaleRecap(profile.id, n.kind, units.weightUnit, {
+        distanceUnit: units.distanceUnit,
         asOf: n.period_end,
       }).lines.find((candidate) => candidate.key === "caps");
       if (!line) return [];
@@ -99,7 +100,7 @@ export default async function InsightsSection({
   const situationImpacts = getSituationImpacts(
     profile.id,
     today(profile.id),
-    weightUnit
+    units.weightUnit
   );
 
   return (
