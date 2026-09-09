@@ -7,9 +7,11 @@ import {
   hydratedClick,
   settledClick,
   settledFill,
+  settledSelect,
   followLink,
 } from "./helpers";
 import { medicationsToday, scheduledTodayItem } from "./med-card-helpers";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_SUPPLY,
@@ -477,19 +479,60 @@ test.describe("shared supply pools", () => {
   // exactly the thing that went wrong, so it is asserted on the real surface — the
   // identity bar, before and after the tap.
   //
-  // REPEAT-SAFETY: the tap creates a row, so the case DELETES it again through the new
-  // member's own card, which is also the receipt's edit door. That restores the edit
-  // bottle to its one-member fixture state, so the next repeat sees the same world.
+  // FIXTURE (#868 hygiene): SPEC-OWNED, created through the shipped item → bottle flow
+  // and named per repeat, because the tap ADDS a member and a bottle can only offer a
+  // person once. The seeded bottles are left exactly as they are.
   test("Also for copies a member's plan without changing the acting profile", async ({
     browser,
-  }) => {
+  }, testInfo) => {
+    const suffix = `${testInfo.repeatEachIndex}-${testInfo.retry}`;
+    const itemName = `Also-for item ${suffix}`;
+    const bottleName = `Also-for bottle ${suffix}`;
     const page = await loginAs(browser, {
       username: E2E_LOGIN_SUPPLY,
       password: E2E_MEMBER_PASSWORD,
     });
     try {
+      // A bottle of this case's own, with the acting profile as its ONE member.
+      await page.goto("/nutrition?tab=supplements");
+      await page.getByTestId("supplement-add-toggle").click(); // testid-scope-ok: the tab's own add toggle, outside every streamed row boundary
+      const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+      await settledFill(page, addDialog.getByLabel("Name"), itemName);
+      const doseEditor = await openFact(page, "dose", addDialog);
+      await hydratedClick(
+        page,
+        doseEditor.getByRole("button", { name: "Add dose", exact: true })
+      );
+      await settledFill(page, doseEditor.getByLabel("Amount"), "10 mg");
+      await closeEditor(page, addDialog);
+      await addDialog.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(addDialog).toHaveCount(0);
+
+      const row = appContent(page)
+        .getByTestId("supplement-row")
+        .filter({ hasText: itemName });
+      await hydratedClick(
+        page,
+        row.getByRole("button", { name: "Supplement actions" })
+      );
+      await page.getByRole("menuitem", { name: "Edit" }).click();
+      const editDialog = page.getByRole("dialog", { name: `Edit ${itemName}` });
+      const picker = (await openFact(page, "supply", editDialog)).getByTestId(
+        "shared-supply-picker"
+      );
+      await settledSelect(page, picker.getByLabel("Shared supply"), "__new__");
+      await settledFill(
+        page,
+        picker.getByLabel("New shared bottle name"),
+        bottleName
+      );
+      await picker.getByTestId("shared-supply-apply").click();
+      await expect(picker.getByTestId("shared-supply-success")).toContainText(
+        bottleName
+      );
+
       await page.goto(CABINET);
-      const bottle = bottleCard(page, SUPPLY_EDIT_BOTTLE);
+      const bottle = bottleCard(page, bottleName);
       const identity = page.getByTestId("profile-identity-bar"); // testid-scope-ok: the identity bar is app chrome, outside every streamed page boundary
       const before = await identity.getAttribute("aria-label");
 
@@ -506,39 +549,22 @@ test.describe("shared supply pools", () => {
       await expect(chip).toHaveText(`${SUPPLY_CHILD_PROFILE} · Also for`);
       await settledClick(page, chip);
 
-      const receipt = bottle.getByTestId("shared-supply-also-for-receipt");
-      await expect(receipt).toContainText(`Added for ${SUPPLY_CHILD_PROFILE}`);
+      await expect(
+        bottle.getByTestId("shared-supply-also-for-receipt")
+      ).toContainText(`Added for ${SUPPLY_CHILD_PROFILE}`);
       // THE POINT OF THE FEATURE: no profile switch, no form, no redirect.
       await expect(page).toHaveURL(new RegExp(`${CABINET}$`));
       await expect(identity).toHaveAttribute("aria-label", before ?? "");
 
-      // The new member is really on the bottle, under the OTHER profile.
+      // The new member is really on the bottle, under the OTHER profile — and the
+      // offer for that person is spent, so a second tap has nothing to repeat.
       await expect(
         bottle
           .getByTestId("shared-supply-member-link")
           .filter({ hasText: SUPPLY_CHILD_PROFILE })
       ).toHaveCount(1);
-
-      // Restore: delete the row this case created, through the receipt's own door.
-      await followLink(
-        page,
-        receipt.getByRole("link", { name: "Open their row" }),
-        /\/medications\/\d+/
-      );
-      await hydratedClick(
-        page,
-        appContent(page).getByTestId("overflow-menu-trigger")
-      );
-      await page.getByRole("menuitem", { name: "Delete" }).click();
-      const dialog = page.getByTestId("confirm-dialog"); // testid-scope-ok: the confirm dialog is a portal at the document root
-      await dialog.getByRole("button", { name: "Delete" }).click();
-      await expect(dialog).toHaveCount(0);
-
-      await page.goto(CABINET);
       await expect(
-        bottleCard(page, SUPPLY_EDIT_BOTTLE)
-          .getByTestId("shared-supply-member-link")
-          .filter({ hasText: SUPPLY_CHILD_PROFILE })
+        bottle.getByTestId("shared-supply-also-for-chip")
       ).toHaveCount(0);
     } finally {
       await page.context().close();

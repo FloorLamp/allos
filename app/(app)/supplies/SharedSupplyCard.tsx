@@ -330,9 +330,11 @@ export default function SharedSupplyCard({
                     </label>
                   </div>
                 ))}
-              {/* ONE CONTROL HEIGHT IN THIS ROW (#3481): the select is the `.input`
-                family at the `.btn` desktop height, and both families share the phone
-                tap floor (#3708/#3514). Guarded by e2e/shared-supply-pool.spec.ts. */}
+              {/* ONE CONTROL HEIGHT IN THIS ROW (#3481). The row mixes the two control
+                families, so both are pinned to the same 36px box: `h-9` on the `.input`
+                selects and on the `.btn` actions, which render 38px and 34px left to
+                themselves. Each family's phone tap floor (#3708/#3514) still applies
+                and lifts both together. Guarded by e2e/shared-supply-pool.spec.ts. */}
               {offersOpen && (
                 <div
                   className="mt-1 flex flex-wrap items-end gap-2"
@@ -378,7 +380,7 @@ export default function SharedSupplyCard({
                       </select>
                       <button
                         type="button"
-                        className="btn"
+                        className="btn h-9"
                         data-testid="shared-supply-also-for-chip"
                         disabled={pending || source == null || offer == null}
                         onClick={() => offer && alsoFor(offer)}
@@ -391,7 +393,7 @@ export default function SharedSupplyCard({
                       <button
                         key={o.profileId}
                         type="button"
-                        className="btn"
+                        className="btn h-9"
                         data-testid="shared-supply-also-for-chip"
                         disabled={pending || source == null}
                         onClick={() => alsoFor(o)}
