@@ -179,16 +179,19 @@ interface QuickEntrySession {
   pickerOpen: boolean;
   host: HostView;
   bodies: Bodies;
-  trigger: HTMLButtonElement;
+  trigger: HTMLButtonElement | null;
 }
 
 interface QuickEntryVisitState {
   identity: string;
+  presentation: "direct" | "visit";
+  generation: number;
   subject: number;
   activeId: number | null;
   entries: QuickEntrySession[];
   returnFocus: HTMLButtonElement | null;
   invalidated: boolean;
+  completable: boolean;
 }
 
 interface QuickEntryVisitHostApi {
@@ -324,15 +327,18 @@ export function useQuickEntryVisit(
       ? edge.identity
       : `${ownerId}:${outerOpen ? edge.serial + 1 : edge.serial}`;
   const currentVisit = ctx.visit.state.identity === identity;
+  const startVisit = ctx.visit.start;
+  const beginClose = ctx.visit.beginClose;
 
   useLayoutEffect(() => {
-    if (outerOpen) ctx.visit.start(identity);
-    else ctx.visit.beginClose();
-  }, [ctx.visit, identity, outerOpen]);
+    if (outerOpen) startVisit(identity);
+    else beginClose();
+  }, [beginClose, identity, outerOpen, startVisit]);
 
   useLayoutEffect(() => {
-    if (outerOpen && ctx.visit.state.invalidated) onInvalidated();
-  }, [ctx.visit.state.invalidated, onInvalidated, outerOpen]);
+    if (outerOpen && currentVisit && ctx.visit.state.invalidated)
+      onInvalidated();
+  }, [ctx.visit.state.invalidated, currentVisit, onInvalidated, outerOpen]);
 
   const activeEntry = (currentVisit ? ctx.visit.state.entries : []).find(
     (entry) => entry.id === ctx.visit.state.activeId
@@ -350,7 +356,7 @@ export function useQuickEntryVisit(
     active,
     open: (form, trigger) => ctx.visit.open(form, trigger, dayContext),
     back: ctx.visit.back,
-    beginClose: ctx.visit.beginClose,
+    beginClose,
     invalidated: currentVisit && ctx.visit.state.invalidated,
     returnFocus: currentVisit ? ctx.visit.state.returnFocus : null,
     titleAdornment: activeEntry ? (
@@ -628,11 +634,14 @@ export default function QuickEntryProvider({
   const visitRequestRefs = useRef(new Map<string, number>());
   const [visitState, setVisitState] = useState<QuickEntryVisitState>({
     identity: "",
+    presentation: "visit",
+    generation: 0,
     subject: actingProfileId,
     activeId: null,
     entries: [],
     returnFocus: null,
     invalidated: false,
+    completable: false,
   });
   const visitStateRef = useRef(visitState);
   visitStateRef.current = visitState;
@@ -655,21 +664,15 @@ export default function QuickEntryProvider({
 
   useLayoutEffect(() => {
     const invalidate = () => {
-      ++requestRef.current;
       invalidateVisitRequests();
       setOpen(false);
-      setPickerOpen(false);
-      setHost({
-        state: { status: "loading" },
-        sheetDay: null,
-        request: null,
-      });
       updateVisit((current) => ({
         ...current,
         activeId: null,
         entries: [],
         returnFocus: null,
         invalidated: true,
+        completable: false,
       }));
     };
     return subscribeLastGoodInvalidation(invalidate);
@@ -680,11 +683,10 @@ export default function QuickEntryProvider({
   }, [actingProfileId]);
 
   const close = useCallback(() => {
-    ++requestRef.current;
+    invalidateVisitRequests();
+    updateVisit((current) => ({ ...current, completable: false }));
     setOpen(false);
-    setPickerOpen(false);
-    setHost((current) => ({ ...current, request: null }));
-  }, []);
+  }, [invalidateVisitRequests, updateVisit]);
 
   // ONE GATHER, taking the subject (#4932's own wording: "loadQuickEntry has one
   // subject parameter and one gate; no second copy of the gather per subject").
@@ -981,7 +983,7 @@ export default function QuickEntryProvider({
   );
 
   const visitOwner = useCallback(
-    (identity: number, entryId: number): LoadOwner => {
+    (identity: string, entryId: number): LoadOwner => {
       const key = `${identity}:${entryId}`;
       return {
         setHost: (update) => {
@@ -1016,22 +1018,31 @@ export default function QuickEntryProvider({
     [updateVisit]
   );
 
-  const startVisit = useCallback(() => {
-    invalidateVisitRequests();
-    visitRequestRefs.current.clear();
-    updateVisit(() => ({
-      identity: ++visitSerial.current,
-      subject: actingProfileId,
-      activeId: null,
-      entries: [],
-      returnFocus: null,
-      invalidated: false,
-    }));
-  }, [actingProfileId, invalidateVisitRequests, updateVisit]);
+  const startVisit = useCallback(
+    (identity: string) => {
+      if (visitStateRef.current.identity === identity) return;
+      invalidateVisitRequests();
+      visitRequestRefs.current.clear();
+      setOpen(false);
+      updateVisit(() => ({
+        identity,
+        presentation: "visit",
+        generation: 0,
+        subject: actingProfileId,
+        activeId: null,
+        entries: [],
+        returnFocus: null,
+        invalidated: false,
+        completable: true,
+      }));
+    },
+    [actingProfileId, invalidateVisitRequests, updateVisit]
+  );
 
   const beginVisitClose = useCallback(() => {
     invalidateVisitRequests();
-  }, [invalidateVisitRequests]);
+    updateVisit((current) => ({ ...current, completable: false }));
+  }, [invalidateVisitRequests, updateVisit]);
 
   const openVisitForm = useCallback(
     (
@@ -1053,7 +1064,7 @@ export default function QuickEntryProvider({
         return;
       }
 
-      const entryId = ++visitSerial.current;
+      const entryId = ++entrySerial.current;
       const entry: QuickEntrySession = {
         id: entryId,
         form: next,
@@ -1106,9 +1117,12 @@ export default function QuickEntryProvider({
     (entryId: number) => {
       const current = visitStateRef.current;
       if (current.activeId === entryId) {
+        if (!current.completable) return false;
         invalidateVisitRequests();
+        updateVisit((state) => ({ ...state, completable: false }));
         return true;
       }
+      if (!current.completable) return false;
       const key = `${current.identity}:${entryId}`;
       visitRequestRefs.current.set(
         key,
@@ -1203,8 +1217,8 @@ export default function QuickEntryProvider({
 
       invalidateVisitRequests();
       visitRequestRefs.current.clear();
-      const identity = ++visitSerial.current;
-      const nextId = ++visitSerial.current;
+      const identity = current.identity;
+      const nextId = ++entrySerial.current;
       const next: QuickEntrySession = {
         ...previous,
         id: nextId,
@@ -1220,11 +1234,14 @@ export default function QuickEntryProvider({
       };
       updateVisit(() => ({
         identity,
+        presentation: current.presentation,
+        generation: current.generation + 1,
         subject: profileId,
         activeId: nextId,
         entries: [next],
         returnFocus: null,
         invalidated: false,
+        completable: true,
       }));
       const owner = visitOwner(identity, nextId);
       loadFor(
@@ -1258,71 +1275,57 @@ export default function QuickEntryProvider({
       subjectProfileId?: number,
       dayContext?: DayContextValue | null
     ) => {
-      const token = ++requestRef.current;
+      const current = visitStateRef.current;
+      const retainedBodies =
+        current.presentation === "direct" ? current.entries[0]?.bodies : null;
+      invalidateVisitRequests();
+      visitRequestRefs.current.clear();
+      const entryId = ++entrySerial.current;
+      const identity = `direct:${entryId}`;
       const resolvedSubject = subjectProfileId ?? actingProfileId;
-      setForm(next);
-      setPrefill(nextPrefill ?? null);
-      setSubject(resolvedSubject);
-      setPickerOpen(false);
+      const entry: QuickEntrySession = {
+        id: entryId,
+        form: next,
+        prefill: nextPrefill ?? null,
+        subject: resolvedSubject,
+        pickerOpen: false,
+        host: {
+          state: { status: "loading" },
+          sheetDay: null,
+          request: null,
+        },
+        // The direct sheet may reopen while BottomSheet is still exiting. Reuse
+        // its body types so React keeps the mounted form and the existing held
+        // draft through that canceled exit, as the pre-visit host did. A retry
+        // already replaces this entry's bodies, so that identity carries forward.
+        bodies: retainedBodies ?? loadBodies(0),
+        trigger: null,
+      };
+      updateVisit(() => ({
+        identity,
+        presentation: "direct",
+        generation: 0,
+        subject: resolvedSubject,
+        activeId: entryId,
+        entries: [entry],
+        returnFocus: null,
+        invalidated: false,
+        completable: true,
+      }));
       setOpen(true);
+      const owner = visitOwner(identity, entryId);
       loadFor(
         next,
         resolvedSubject,
-        token,
+        owner.nextToken(),
         dayContext
           ? { kind: "inherited", value: dayContext }
           : { kind: "dayless" },
-        directLoadOwner
+        owner
       );
     },
-    [actingProfileId, loadFor, directLoadOwner]
+    [actingProfileId, invalidateVisitRequests, loadFor, updateVisit, visitOwner]
   );
-
-  // Tapping the chip toggles the block; tapping it again while open closes it
-  // unchanged (#4932). A login with exactly one writable profile never gets a
-  // chevron to tap (rendered below), so this is unreachable for it.
-  const toggleSubjectPicker = useCallback(() => {
-    setPickerOpen((o) => !o);
-  }, []);
-
-  // Picking a household member (#4932): collapses the block, re-runs the gather for
-  // the new subject, and discards anything staged in the current form — the form
-  // body remounts under a `key` that includes `subject` (below), which is what
-  // actually clears typed state; this just says so. Picking the SAME member the
-  // chip already names just closes the block (no reload, nothing to discard).
-  const selectSubject = useCallback(
-    (profileId: number) => {
-      setPickerOpen(false);
-      if (profileId === subject || form == null) return;
-      setSubject(profileId);
-      setPrefill(null);
-      const token = ++requestRef.current;
-      loadFor(form, profileId, token, { kind: "dayless" }, directLoadOwner);
-      const name = writableProfiles.find((p) => p.id === profileId)?.name;
-      toast(
-        name
-          ? `Switched — now logging for ${name}.`
-          : "Switched who this is for."
-      );
-    },
-    [subject, form, loadFor, directLoadOwner, writableProfiles, toast]
-  );
-
-  // Re-runs the SAME gather (#3416 proposal 3) — the error state's Retry button, and
-  // the one thing that gets the sheet out of a stalled/cold-failed open without
-  // closing it. No-op once the sheet has no form (already closed).
-  const retry = useCallback(() => {
-    if (form == null) return;
-    setBodies((current) => loadBodies(current.attempt + 1));
-    const token = ++requestRef.current;
-    loadFor(
-      form,
-      subject,
-      token,
-      host.request ?? { kind: "dayless" },
-      directLoadOwner
-    );
-  }, [form, subject, loadFor, host.request, directLoadOwner]);
 
   const api = useMemo<QuickEntryHostApi>(
     () => ({
@@ -1361,45 +1364,31 @@ export default function QuickEntryProvider({
     ]
   );
 
-  const selectSheetDay = useCallback(
-    (day: string) => {
-      if (form == null) return;
-      const token = ++requestRef.current;
-      loadFor(
-        form,
-        subject,
-        token,
-        {
-          kind: "selected",
-          parts: { profileId: subject, day, reach: SHEET_REACH },
-        },
-        directLoadOwner
-      );
-    },
-    [form, subject, loadFor, directLoadOwner]
-  );
-
-  const sheet = form ? SHEET[form] : null;
-  const directSession = { subject, pickerOpen };
-  const chip = (
+  const directEntry =
+    visitState.presentation === "direct"
+      ? (visitState.entries.find((entry) => entry.id === visitState.activeId) ??
+        null)
+      : null;
+  const sheet = directEntry ? SHEET[directEntry.form] : null;
+  const chip = directEntry ? (
     <QuickEntrySubjectChip
-      session={directSession}
+      session={directEntry}
       writableProfiles={writableProfiles}
-      onToggle={toggleSubjectPicker}
+      onToggle={() => toggleVisitSubjectPicker(directEntry.id)}
     />
-  );
-  const picker = (
+  ) : null;
+  const picker = directEntry ? (
     <QuickEntrySubjectPicker
-      session={directSession}
+      session={directEntry}
       writableProfiles={writableProfiles}
-      onSelect={selectSubject}
+      onSelect={(profileId) => selectVisitSubject(directEntry.id, profileId)}
     />
-  );
+  ) : null;
 
   return (
     <Ctx.Provider value={api}>
       {children}
-      {sheet && form && (
+      {sheet && directEntry && (
         <BottomSheet
           open={open}
           onClose={close}
@@ -1420,15 +1409,17 @@ export default function QuickEntryProvider({
               tell the sheet from the page if the sheet says so. Declared once here,
               at the region root, rather than on each body. */}
           <QuickEntrySessionBody
-            form={form}
-            prefill={prefill}
-            subject={subject}
-            host={host}
-            bodies={bodies}
+            form={directEntry.form}
+            prefill={directEntry.prefill}
+            subject={directEntry.subject}
+            host={directEntry.host}
+            bodies={directEntry.bodies}
             actingProfileId={actingProfileId}
-            onDone={close}
-            onRetry={retry}
-            onSelectDay={selectSheetDay}
+            onDone={() => {
+              if (completeVisitEntry(directEntry.id)) close();
+            }}
+            onRetry={() => retryVisitEntry(directEntry.id)}
+            onSelectDay={(day) => selectVisitDay(directEntry.id, day)}
           />
         </BottomSheet>
       )}
@@ -1542,16 +1533,23 @@ function QuickEntrySessionBody({
   );
 }
 
-export function QuickEntryVisitBodies({ onDone }: { onDone: () => void }) {
+export function QuickEntryVisitBodies({
+  identity,
+  onDone,
+}: {
+  identity: string;
+  onDone: () => void;
+}) {
   const ctx = useContext(Ctx);
   if (!ctx)
     throw new Error(
       "QuickEntryVisitBodies must be used within a QuickEntryProvider"
     );
   const { state } = ctx.visit;
+  if (state.identity !== identity) return null;
   return state.entries.map((entry) => (
     <Activity
-      key={`${state.identity}:${entry.id}`}
+      key={`${state.identity}:${state.generation}:${entry.id}`}
       mode={state.activeId === entry.id ? "visible" : "hidden"}
     >
       <QuickEntrySessionBody

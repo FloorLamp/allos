@@ -16,10 +16,10 @@ import type { SegmentLogDays } from "@/lib/log-sheet";
 // desktop sidebar's "+ Log" panel (components/SidebarLogButton.tsx) is the other
 // host. This file is the phone's presentation and nothing else.
 //
-// `onRun={onClose}`: the sheet CLOSES behind a row, because whatever opens next
-// is its own overlay and should stand alone rather than stack over a sheet that
-// has finished its job. The desktop panel makes the opposite call and stays
-// open; that difference is the only thing the two hosts do not share.
+// Activity keeps its existing dock handoff. Quick-entry rows stay in this sheet:
+// a Back control returns to the normally mounted menu, so visited form drafts
+// remain available until the whole sheet closes. The desktop panel continues to
+// open those same forms through the provider's direct API.
 export default function QuickLogSheet({
   open,
   onClose,
@@ -35,15 +35,17 @@ export default function QuickLogSheet({
 }) {
   const visit = useQuickEntryVisit(open, onClose);
   const backRef = useRef<HTMLButtonElement>(null);
+  const beginClose = visit.beginClose;
+  const activeId = visit.active?.id ?? null;
   const fullClose = useCallback(() => {
-    visit.beginClose();
+    beginClose();
     onClose();
-  }, [onClose, visit]);
+  }, [beginClose, onClose]);
 
   useLayoutEffect(() => {
-    if (visit.active) backRef.current?.focus();
+    if (activeId != null) backRef.current?.focus();
     else visit.returnFocus?.focus();
-  }, [visit.active, visit.returnFocus]);
+  }, [activeId, visit.returnFocus]);
 
   return (
     <BottomSheet
@@ -79,7 +81,7 @@ export default function QuickLogSheet({
           logHabitDays={logHabitDays}
         />
       </div>
-      <QuickEntryVisitBodies onDone={fullClose} />
+      <QuickEntryVisitBodies identity={visit.identity} onDone={fullClose} />
     </BottomSheet>
   );
 }

@@ -410,15 +410,20 @@ export default function BottomSheet({
     : `font-semibold text-slate-900 dark:text-slate-100 ${
         asDialog || asCentered ? "text-lg" : "text-base"
       }${titleTruncates ? " min-w-0 truncate" : ""}`;
-  const heading = (
-    <span className="flex min-w-0 items-center gap-2">
-      {leadingTitle}
+  const heading =
+    leadingTitle || titleAdornment ? (
+      <span className="flex min-w-0 items-center gap-2">
+        {leadingTitle}
+        <h2 id={titleId} className={titleClass}>
+          {title}
+        </h2>
+        {titleAdornment}
+      </span>
+    ) : (
       <h2 id={titleId} className={titleClass}>
         {title}
       </h2>
-      {titleAdornment}
-    </span>
-  );
+    );
 
   return createPortal(
     <div
