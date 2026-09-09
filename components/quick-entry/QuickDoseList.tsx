@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
-import DoseStatusControl from "@/components/DoseStatusControl";
+import DatedDoseControl from "@/components/medications/DatedDoseControl";
 import OfferRow from "@/components/OfferRow";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
@@ -200,6 +200,7 @@ export default function QuickDoseList({
           }
           onResolved={(doseIds) => markResolved(day, doseIds)}
           subjectProfileId={subjectProfileId}
+          profileToday={profileToday}
         />
       ) : remaining.length === 0 && !prn?.meds.length ? (
         <p
@@ -236,9 +237,11 @@ export default function QuickDoseList({
                 </>
               }
               actions={
-                <DoseStatusControl
+                <DatedDoseControl
                   doseId={dose.doseId}
                   date={today === profileToday ? undefined : today}
+                  profileToday={profileToday}
+                  itemName={dose.title}
                   taken={false}
                   skipped={false}
                   variant="pill"
@@ -302,8 +305,11 @@ function PastDayDoses({
   onNote,
   onResolved,
   subjectProfileId,
+  profileToday,
 }: {
   date: string;
+  // The live profile day, so the rows can tell a day that has ENDED from today (#4686).
+  profileToday: string;
   slots: { bucket: TimeBucket; doses: QuickEntryPastDose[] }[];
   // Keyed by `occurrenceKey`, not by dose id — see the host's note on why a schedule
   // row id is not an occurrence.
@@ -403,9 +409,10 @@ function PastDayDoses({
                     </>
                   }
                   actions={
-                    <DoseStatusControl
+                    <DatedDoseControl
                       doseId={dose.doseId}
                       date={date}
+                      profileToday={profileToday}
                       taken={false}
                       skipped={false}
                       variant="pill"

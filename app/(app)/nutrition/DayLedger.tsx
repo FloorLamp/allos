@@ -13,7 +13,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import Button from "@/components/Button";
-import DoseStatusControl from "@/components/DoseStatusControl";
+import DatedDoseControl from "@/components/medications/DatedDoseControl";
 import type { DoseStatusResult } from "@/app/(app)/nutrition/intake-actions";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
@@ -81,6 +81,12 @@ function occurrenceKey(date: string, doseId: number): string {
 
 export interface DayLedgerProps {
   date: string;
+  /**
+   * The profile's live local day. The rows compare their own `date` against it to
+   * decide whether a check-off must state the minute it happened (#4686) — a day that
+   * has ENDED cannot infer one from the tap.
+   */
+  profileToday: string;
   groups: LedgerGroup[];
   /**
    * Whether this day is still inside `DOSE_LOG_DATE_WINDOW_DAYS`. Beyond it the write
@@ -115,6 +121,7 @@ export interface DayLedgerProps {
 
 export default function DayLedger({
   date,
+  profileToday,
   groups,
   doseWritable,
   prefs,
@@ -310,7 +317,10 @@ export default function DayLedger({
       <li
         key={dose.doseId}
         data-testid={`ledger-due-dose-${dose.doseId}`}
-        className={LOGGED_EVENT_ROW}
+        // WRAPS, so the past-day minute prompt (#4686) opens on its own line under the
+        // row rather than squeezing the name and the control. On a row with nothing to
+        // wrap this is inert.
+        className={`${LOGGED_EVENT_ROW} flex-wrap`}
       >
         <LoggedEventRow icon={<DoseGlyph />}>{dose.name}</LoggedEventRow>
         <span className={LOGGED_EVENT_TRAILING}>Not recorded</span>
@@ -349,10 +359,13 @@ export default function DayLedger({
         </LoggedEventRow>
         {/* ONE CONTROL, ANY WRITABLE DAY (#4424 ruling 3). This row picked between the
             tri-state and a hand-rolled Take/Skip pair on `isToday` because
-            `setDoseStatus` stamped today; the control carries the row's day now. */}
-        <DoseStatusControl
+            `setDoseStatus` stamped today; the control carries the row's day now — and
+            on a day that has ended it asks for the minute first (#4686). */}
+        <DatedDoseControl
           doseId={dose.doseId}
           date={date}
+          profileToday={profileToday}
+          itemName={dose.name}
           taken={false}
           skipped={false}
           variant="circle"
@@ -457,7 +470,8 @@ export default function DayLedger({
           key={row.id}
           data-testid={`ledger-dose-${row.logId}`}
           data-status={row.status}
-          className={`${LOGGED_EVENT_ROW}${
+          // Wraps for the same reason as the pending row above.
+          className={`${LOGGED_EVENT_ROW} flex-wrap${
             row.status === "skipped"
               ? " text-slate-500 dark:text-slate-400"
               : ""
@@ -490,9 +504,11 @@ export default function DayLedger({
               ACTION that stamped today. So a dose taken on the wrong past day could be
               logged from this ledger and not un-logged from it. */}
           {doseWritable && (
-            <DoseStatusControl
+            <DatedDoseControl
               doseId={row.doseId}
               date={date}
+              profileToday={profileToday}
+              itemName={row.name}
               taken={row.status === "taken"}
               skipped={row.status === "skipped"}
               variant="circle"
