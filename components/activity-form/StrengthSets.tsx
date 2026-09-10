@@ -24,6 +24,7 @@ import {
 } from "@/lib/injury-model";
 import { isValidDuration } from "@/lib/duration";
 import { judgeTargets } from "@/lib/training-log-format";
+import { verdictText } from "@/lib/chart-colors";
 import {
   suggestNextSet,
   contextualNextSet,
@@ -1542,12 +1543,20 @@ export default function StrengthSets({
           </span>
         )}
         <span className="ml-auto flex items-center gap-3">
+          {/* A missed target is a verdict, so it reads the shared warn ink
+              (#5725). Written as a bare ternary arm inside a template literal it
+              had no key for #5187's map conversion — or #5744's keyed-map guard —
+              to see, and it shipped `text-amber-500`: 1.99:1 on the Botanical
+              light surface against a 4.5 text floor, the worst ratio in the
+              issue. The IconAlertTriangle below inherits currentColor, so the
+              glyph moves with the word. `met` stays brand-600: "target met" is
+              this form's own affirmation, not one of the four verdicts. */}
           {targetStatus && (
             <span
               data-testid="activity-target-status"
               className={`flex items-center gap-1 text-xs font-medium ${
                 targetStatus === "missed"
-                  ? "text-amber-500 dark:text-amber-400"
+                  ? verdictText.warn.class
                   : "text-brand-600 dark:text-brand-400"
               }`}
             >
