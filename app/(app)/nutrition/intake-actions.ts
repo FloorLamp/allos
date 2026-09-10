@@ -1557,11 +1557,22 @@ function applyLedgerSelection(
     return formError(
       "Those rows are no longer on this day. Refresh and try again."
     );
-  // AUDITED LIKE ANY OTHER RETROACTIVE DOSE WRITE (#1933). Amending or removing what the
-  // record says was given is clinically significant whether it happens one row at a time
-  // or twelve; the batch earns one row per affected item, exactly what the single-row
-  // amend and delete write.
-  for (const itemId of outcome.auditedItemIds) {
+  // AUDITED LIKE ANY OTHER RETROACTIVE DOSE WRITE (#1933), ROW FOR ROW. Amending or
+  // removing what the record says was given is clinically significant whether it happens
+  // one row at a time or twelve, so the batch writes exactly what twelve trips through
+  // the ⋯ menu would: one `dose-log.amend` / `dose-log.delete` per CORRECTED ROW, keyed
+  // on that row's item and the day it ended on.
+  //
+  // PER ROW IS THE #5618 CHANGE, and it is the medication case that makes it bite: a PRN
+  // is taken more than once a day, so a batch over two administrations of one item used
+  // to leave a single audit row where two single-row amends leave two. The owner ruling
+  // bringing medication doses into selection says the batch writes "the same audit rows
+  // the single-row amend already writes"; a count that collapses with the selection is
+  // not the same rows.
+  //
+  // The REVALIDATE stays deduped — it is a cache instruction, not a record, and asking
+  // twice for the same path is noise where a second audit row is a second fact.
+  for (const { itemId, date: onDate } of outcome.auditedDoses) {
     recordAudit({
       loginId,
       profileId,
@@ -1570,10 +1581,11 @@ function applyLedgerSelection(
           ? AUDIT_ACTIONS.doseLogDelete
           : AUDIT_ACTIONS.doseLogAmend,
       target: String(itemId),
-      detail: edit.kind === "move-day" ? edit.date : date,
+      detail: onDate,
     });
-    revalidateRoute(`/medications/${itemId}`);
   }
+  for (const itemId of new Set(outcome.auditedDoses.map((d) => d.itemId)))
+    revalidateRoute(`/medications/${itemId}`);
   if (outcome.applied > 0) {
     revalidateIntake();
     // The food half moves day counters, which the trends rollups read.
