@@ -992,10 +992,15 @@
      including the family's ONE disabled treatment, which the hand-rolled
      `disabled:` overrides here only restated.
      What is left is the retiring `.btn-danger` SHAPE — wider padding, larger
-     type, the shared control radius — which rank does not spell. Painting one of
-     these fills onto an element a rule reaches through a COMBINATOR — here or in
-     any other rule in this file — is what
-     `components/__tests__/loud-controls.test.tsx` refuses. */
+     type, the shared control radius — which rank does not spell. Adding one of
+     these fills back here would redden
+     `components/__tests__/loud-controls.test.tsx`, which refuses a rule that
+     paints `--btn` / `--danger-btn` where a COMBINATOR or a descendant space
+     follows the leading `&` — here or anywhere else in this file. It does NOT
+     see a combinator sitting behind a qualifier (`&:hover > .button-control`),
+     and it reddens on a rank utility rewritten as
+     `&:not(:disabled, [aria-disabled="true"])`; both are pinned as cases in that
+     file rather than left to be rediscovered. */
   @apply contents;
   & > .button-control {
     @apply gap-2 px-4 text-sm shadow-xs;

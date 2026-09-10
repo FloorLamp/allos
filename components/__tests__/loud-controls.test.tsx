@@ -76,19 +76,43 @@ describe("a card's loud controls", () => {
 // runs from. (Same technique as button-control-cascade.test.tsx.)
 const GLOBALS = path.join(process.cwd(), "app/globals.css");
 
-// THE RULE THE GUARD ENFORCES: inside `app/globals.css`, no rule may paint
-// `--btn` / `--danger-btn` onto an element it reaches through a COMBINATOR. The
-// fill has to land on the element the rule's own subject is — which, for a
-// control, is the element carrying the rank class. That is one sentence rather
-// than a list of known wrapper names, and it is what makes the paint and the
-// rank the same fact instead of two that can drift.
+// WHAT THIS GUARD ACTUALLY MATCHES, written as the code behaves rather than as
+// the rule one would like it to enforce. It reads `app/globals.css`, finds every
+// RULE that paints `--btn` / `--danger-btn` in its own body (looking through
+// `@media`), and flags it when a selector in its chain of enclosing rules STEPS
+// DOWN off the subject. "Steps down" is decided by inspecting the character
+// immediately after the leading `&` — a combinator (`>`, `+`, `~`) or a
+// descendant space — or, for a branch that does not begin with `&` at all, by
+// treating it as a descendant outright; a top-level selector is checked for any
+// combinator once parenthesised argument lists are stripped.
 //
-// WHAT IT DOES NOT SEE, stated because a guard's silence is worth nothing
-// unless its edge is known: only `app/globals.css` is read, and only these two
-// tokens. A control filled with an arbitrary colour (`@apply bg-emerald-700` on
-// a child) is off-palette rather than a rank the census misses, and belongs to
-// the token discipline, not the loud budget. Both are pinned as cases below so
-// the edge is executable rather than asserted in a comment.
+// The intent is that a fill lands on the element carrying the rank rather than on
+// something underneath it. The match above is NARROWER THAN THAT INTENT IN ONE
+// DIRECTION AND WIDER IN ANOTHER, and both are pinned as executable cases below
+// rather than described here:
+//
+//   - A combinator sitting behind a qualifier on `&` — `&:hover > .button-control`,
+//     `&[data-loud] > .button-control`, `&.on .button-control` — is NOT seen,
+//     because only the character right after `&` is examined.
+//   - Splitting the selector on `,` happens before anything considers
+//     parentheses, so a functional pseudo-class holding a selector list
+//     (`&:not(:disabled, [aria-disabled="true"])`) manufactures a branch that
+//     does not start with `&` and reads as a descendant. That is the
+//     selector-list spelling of the rank utility at `app/globals.css:950`, so
+//     rewriting that rule in this equally correct form REDDENS this guard.
+//
+// WHAT IT DOES NOT SEE AT ALL: only `app/globals.css` is read, and only these
+// two tokens. A control filled with an arbitrary colour (`@apply bg-emerald-700`
+// on a child) is off-palette rather than a rank the census misses, and belongs
+// to the token discipline. A paint written directly in an `@utility` body rather
+// than inside a nested rule is never examined either — rules are the unit of the
+// walk — which is right for `@utility btn` at `:837`, whose fill lands on its own
+// element.
+//
+// AND WHAT IT SEES THAT IT SHOULD NOT: the match is ELEMENT-AGNOSTIC. It no
+// longer requires a control anywhere in the selector, so
+// `@utility legend-swatch { & > .dot { background-color: var(--btn); } }` flags
+// under a describe titled for controls even though nothing there is one.
 
 /** A declaration that paints one of the two solid control fills. */
 const fillDeclaration = (decl: Declaration) =>
@@ -183,10 +207,15 @@ export function wrapperFills(css: string, from = "planted.css"): string[] {
   return offenders;
 }
 
-// The two blocks this change retired, copied from the tree they were deleted
-// from, plus the shapes a later author would reach for writing the same defect
-// in the file's own house style. These are the positive control: without them
-// the assertion below is `[] === []` over a corpus nothing proves is readable.
+// The two blocks this change retired, copied BYTE FOR BYTE from the tree they
+// were deleted from, plus the shapes a later author would reach for writing the
+// same defect in the file's own house style. These are the positive control:
+// without them the assertion below is `[] === []` over a corpus nothing proves
+// is readable.
+//
+// Eight cases, SEVEN DISTINCT AXES: the first two are one shape differing only
+// in which token it paints, kept apart because each is a regression pin for a
+// specific block this change deleted.
 const OFFENDERS = [
   {
     name: "the retired duplicate-resolution-primary, verbatim",
@@ -200,11 +229,12 @@ const OFFENDERS = [
   {
     name: "the destructive-submit this change converted, verbatim",
     css: `@utility destructive-submit {
-        @apply contents;
-        & > .button-control {
-          @apply gap-2 border-transparent bg-(--danger-btn) px-4 text-sm text-(--danger-btn-fg);
-        }
-      }`,
+  @apply contents;
+  & > .button-control {
+    @apply gap-2 border-transparent bg-(--danger-btn) px-4 text-sm text-(--danger-btn-fg) shadow-xs hover:bg-(--danger-btn-hover) disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:bg-slate-100 dark:disabled:bg-ink-750 dark:disabled:text-slate-400 dark:disabled:hover:bg-ink-750;
+    border-radius: var(--radius-control);
+  }
+}`,
   },
   {
     name: "the fill spelled as a raw declaration rather than @apply",
@@ -299,5 +329,52 @@ describe("nothing but a rank class may fill a control", () => {
 
   it.each(BENIGN)("leaves alone $name", ({ css }) => {
     expect(wrapperFills(css)).toEqual([]);
+  });
+});
+
+// THE TWO DEFECTS IN THIS PREDICATE, PINNED RATHER THAN DESCRIBED.
+//
+// Found by the round-2 review of #5696 and frozen there under review-merge's
+// two-round ceiling: the repair that widened this walk introduced them, and a
+// third mechanism round on one branch is the option with the worst record. They
+// are filed as a follow-up. Neither is a regression against `main`, which has no
+// guard here at all — the version below still refuses seven shapes `main`
+// accepts, including both blocks this change deleted.
+//
+// They are ASSERTIONS rather than comments so the next reader inherits an
+// executable description of this guard instead of a claim about it: a comment
+// saying "it misses X" rots silently the day X starts being caught, and a red
+// build with no pin behind it reads as a fresh bug rather than a known one.
+describe("this guard's known defects, pinned so they are inherited", () => {
+  it("MISSES a combinator sitting behind a qualifier on `&`", () => {
+    // `nestedDescends` reads only the character after the leading `&`, so every
+    // one of these paints a control through a combinator and passes anyway.
+    // `&:hover > .button-control` is ordinary CSS — at least as plausible as the
+    // nested-`:not(:disabled)` shape that motivated widening the walk — and the
+    // predicate this one replaced CAUGHT all four.
+    for (const selector of [
+      "&:hover > .button-control",
+      "&:focus-within > .button-control",
+      "&[data-loud] > .button-control",
+      "&.on .button-control",
+    ]) {
+      expect(
+        wrapperFills(`@utility w { ${selector} { @apply bg-(--btn); } }`)
+      ).toEqual([]);
+    }
+  });
+
+  it("FLAGS the rank utility rewritten with a selector list inside `:not()`", () => {
+    // `branches()` splits on `,` before anything strips parentheses, so the
+    // second half of `:not(:disabled, [aria-disabled="true"])` becomes a branch
+    // that does not start with `&` and reads as a descendant. This is
+    // `app/globals.css:950` spelled the other correct way — the very rule
+    // `BENIGN` protects in its current spelling — so the day someone rewrites it
+    // like this, THIS PIN IS THE EXPLANATION for the red rather than a mystery.
+    expect(
+      wrapperFills(`@utility button-control-primary {
+        &:not(:disabled, [aria-disabled="true"]) { background-color: var(--btn); }
+      }`)
+    ).not.toEqual([]);
   });
 });

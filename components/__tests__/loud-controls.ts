@@ -16,15 +16,18 @@
 // source rather than mirrored here — `DestructiveSubmit` states
 // `variant="danger"`, `DuplicateResolutionActions` states `variant="primary"`,
 // and the retired utility took its hand-rolled copy of the primary fill with it.
-// So the rank class IS the fill, and `loud-controls.test.tsx` refuses any rule in
-// `app/globals.css` that would paint one onto an element it reaches through a
-// combinator — the fill has to land on the element carrying the rank.
+// So the rank class IS the fill, and `loud-controls.test.tsx` refuses a rule in
+// `app/globals.css` that paints one where a combinator or a descendant space
+// follows the leading `&`. That file states what the match does and does not
+// reach, and pins both of its known defects as cases.
 //
 // SCOPE: the typed control family. The retiring raw `btn` / `btn-danger`
 // families paint the same tokens and are solid too, but they are still mounted
-// across more than a hundred files and retire with their last caller (#4978), so
-// folding them in would redden dozens of specs for debt that is not this
-// definition's.
+// widely and retire with their last caller (#4978), so folding them in would
+// redden dozens of specs for debt that is not this definition's. (No count is
+// given here on purpose: every way of measuring it — class tokens, single-line
+// `className` mounts, files mentioning the family — gives a different number,
+// and none of them is pinned by anything.)
 //
 // THAT SCOPE IS NOT FREE, and the mitigation is uneven rather than universal: on
 // a surface still carrying a raw mount, this function reports one fewer loud
