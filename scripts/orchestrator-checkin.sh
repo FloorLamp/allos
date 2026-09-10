@@ -412,6 +412,58 @@ else
   echo "  *** fetch of origin/main FAILED (its error is above) — every comparison"
   echo "      against main below reads whatever was last fetched, which may be old ***"
 fi
+# WHAT THE NUMBERS ARE ABOUT (#4960). Every delegate that reads the tree used to
+# read THIS checkout's HEAD — commonly detached and behind origin/main — and
+# twice the answer read as lost work: a release-notes lag of 52 that was 27 on
+# origin/main, a citation 27 lines off. A stale coverage read fails toward
+# "work is missing", which is the answer that gets acted on. So the tree reads
+# below take origin/main BY REF (host.mjs node-bin is handed the tip; the PM's
+# release-notes-gather.mjs reads its notes there by default), and this line
+# says where the checkout sits, so a reader can tell a HEAD figure from a main
+# figure at a glance. THE CHECKOUT IS NEVER MOVED: it occasionally holds a
+# rescue in progress, and reading through a ref needs no fast-forward. The
+# remedy is printed only when it is provably safe — clean and strictly behind.
+checkout_head=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo "")
+if checkout_status=$(git -C "$REPO" status --porcelain); then
+  checkout_dirty=$(printf '%s\n' "$checkout_status" | grep -c . || true)
+  checkout_work="$checkout_dirty uncommitted"
+  [ "$checkout_dirty" = "0" ] && checkout_work="clean"
+else
+  checkout_dirty=UNREAD
+  checkout_work="status UNREAD"
+fi
+checkout_shape=${BRANCH_NOW:-detached}
+behind_main=""
+ahead_main=""
+if [ -z "$checkout_head" ]; then
+  echo "  checkout: *** HEAD UNREAD (its error is above) — where this checkout sits is UNKNOWN ***"
+elif [ -z "$MAIN_TIP" ]; then
+  echo "  checkout: ${checkout_head:0:7} ($checkout_shape, $checkout_work) — origin/main UNFETCHED, position UNKNOWN"
+else
+  behind_main=$(git -C "$REPO" rev-list --count "$checkout_head..$MAIN_TIP" 2>/dev/null || echo "")
+  ahead_main=$(git -C "$REPO" rev-list --count "$MAIN_TIP..$checkout_head" 2>/dev/null || echo "")
+  if [ -z "$behind_main" ] || [ -z "$ahead_main" ]; then
+    position="position vs origin/main ${MAIN_TIP:0:7} UNCOMPARED (rev-list failed)"
+  elif [ "$behind_main" = "0" ] && [ "$ahead_main" = "0" ]; then
+    position="== origin/main ${MAIN_TIP:0:7}"
+  elif [ "$ahead_main" = "0" ]; then
+    position="$behind_main behind origin/main ${MAIN_TIP:0:7}"
+  elif [ "$behind_main" = "0" ]; then
+    position="$ahead_main ahead of origin/main ${MAIN_TIP:0:7} (unpushed commits here)"
+  else
+    position="DIVERGED from origin/main ${MAIN_TIP:0:7} ($ahead_main ahead, $behind_main behind)"
+  fi
+  echo "  checkout: ${checkout_head:0:7} ($checkout_shape, $checkout_work) — $position"
+  if [ -n "$behind_main" ] && [ "$behind_main" != "0" ]; then
+    echo "      tree reads below answer from origin/main ${MAIN_TIP:0:7}, not from this checkout, and say so;"
+    echo "      the scripts/ this session runs ARE this checkout's (tooling: below). Not moved by this script."
+    if [ "$checkout_dirty" = "0" ] && [ "$ahead_main" = "0" ]; then
+      echo "      Clean and strictly behind, so this is safe: git -C $REPO merge --ff-only origin/main"
+    else
+      echo "      It holds local work — commit and push that before any fast-forward."
+    fi
+  fi
+fi
 live_branches=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}')
 found=0
 alarms=0
@@ -1032,12 +1084,26 @@ fi
 # different fact — it is not a claim about the binary at all — and #5242 had the
 # two collapsed: this printed ABSENT for weeks on a host where `host.mjs
 # node-bin` names the path.
+#
+# AND .nvmrc IS READ AT origin/main'S TIP, NAMED (#4960): lanes are dispatched
+# at origin/main, so the node they need is the one that tree pins, not the one
+# wherever this checkout sits pins. The tip is the one this run fetched; with no
+# fetch there is only the working tree, and the label says which was read.
+nodebin_args=(node-bin)
+if [ -n "$MAIN_TIP" ]; then
+  nodebin_args+=("$MAIN_TIP")
+  nvmrc_at="origin/main ${MAIN_TIP:0:7}"
+else
+  nvmrc_at="HEAD ${checkout_head:0:7}, origin/main UNFETCHED"
+fi
 if [ ! -f "$HELPERS/host.mjs" ]; then
   echo "  node(.nvmrc): *** UNRESOLVED — $HELPERS/host.mjs is not on disk, so this says NOTHING about the binary ***"
-elif nodebin=$(node "$HELPERS/host.mjs" node-bin); then
-  echo "  node(.nvmrc): $nodebin"
+elif nodebin=$(node "$HELPERS/host.mjs" "${nodebin_args[@]}"); then
+  echo "  node(.nvmrc @ $nvmrc_at): $nodebin"
+elif [ "$?" = "2" ]; then
+  echo "  node(.nvmrc @ $nvmrc_at): *** UNREAD — .nvmrc could not be read there (its error is above), so this says NOTHING about the binary ***"
 else
-  echo "  node(.nvmrc): ABSENT (the resolver ran and found none — its error is above)"
+  echo "  node(.nvmrc @ $nvmrc_at): ABSENT (the resolver ran and found none — its error is above)"
   echo "      install the .nvmrc major with your version manager"
 fi
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"

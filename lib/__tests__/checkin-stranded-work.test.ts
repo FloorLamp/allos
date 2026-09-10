@@ -107,6 +107,8 @@ function checkin(opts: {
   repo: string;
   ps?: string[] | "fails";
   breakStatusIn?: string;
+  /** A copy of the recorder hosted inside the fixture (see buildStaleFixture). */
+  script?: string;
 }) {
   const bin = makeTmpDir("checkin-stub-bin");
   const rows = opts.ps ?? [];
@@ -133,7 +135,7 @@ function checkin(opts: {
     path.join(state, ".queue"),
     "0 candidates as of 2026-09-05T00:00Z (0 under dispatch)\n"
   );
-  const run = spawnSync("bash", [CHECKIN], {
+  const run = spawnSync("bash", [opts.script ?? CHECKIN], {
     cwd: opts.repo,
     encoding: "utf8",
     timeout: 60_000,
@@ -260,5 +262,179 @@ describe("a probe that cannot run says so instead of answering", () => {
     // of benign shapes — without it, an absence assertion on a pattern nothing
     // ever produces would pass forever.
     expect(out).not.toMatch(ALL_CLEAR);
+  });
+});
+
+// #4960 IS THE THIRD BLIND SPOT: THE RECORDER ANSWERED FROM WHEREVER ITS
+// CHECKOUT SAT. The orchestrator's checkout is commonly detached and behind
+// origin/main, and every delegate that read the tree read THAT — so a
+// release-notes lag printed 52 where main had 27, and a citation was 27 lines
+// off. A stale coverage read fails toward "work is missing", which is the
+// answer that gets acted on. The fixture below is a checkout two commits
+// behind its own origin/main; the recorder and the gatherer are copied INTO it
+// because both derive their repo from their own file location, by design.
+const HOSTED_HELPERS = [
+  "host",
+  "ledger",
+  "usage",
+  "release-notes-gather",
+  "merge-window",
+] as const;
+
+/** A commit at a fixed instant, so merge-window's day grouping is deterministic. */
+function commitAt(cwd: string, date: string, subject: string) {
+  const run = spawnSync("git", ["commit", "-qam", subject], {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "fixture",
+      GIT_AUTHOR_EMAIL: "fixture@example.test",
+      GIT_COMMITTER_NAME: "fixture",
+      GIT_COMMITTER_EMAIL: "fixture@example.test",
+      GIT_AUTHOR_DATE: date,
+      GIT_COMMITTER_DATE: date,
+    },
+  });
+  if (run.status !== 0) throw new Error(`git commit: ${run.stderr}`);
+}
+
+const notesJson = (days: object[]) => JSON.stringify({ days });
+
+/**
+ * HEAD (detached, clean) holds a notes file whose newest day covers nothing and
+ * an .nvmrc no host has; origin/main is two merges on — one user-visible (#2,
+ * which also pins the running node's major) and one notes-only batch (#3) that
+ * covers #2. Read at HEAD, #1 and #2 look uncovered; read at origin/main,
+ * nothing is owed.
+ */
+function buildStaleFixture() {
+  const root = makeTmpDir("checkin-stale");
+  const origin = path.join(root, "origin.git");
+  git(root, "init", "-q", "--bare", "-b", "main", origin);
+  const repo = path.join(root, "repo");
+  fs.mkdirSync(path.join(repo, "app"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "lib"));
+  git(repo, "init", "-q", "-b", "main", ".");
+  fs.writeFileSync(path.join(repo, "app/x.ts"), "export const x = 1;\n");
+  fs.writeFileSync(
+    path.join(repo, "lib/release-notes.json"),
+    notesJson([{ date: "2026-09-01", entries: [] }])
+  );
+  fs.writeFileSync(path.join(repo, ".nvmrc"), "1\n");
+  git(repo, "add", "-A");
+  commitAt(repo, "2026-09-01T12:00:00Z", "Base (#1)");
+  git(repo, "remote", "add", "origin", origin);
+  git(repo, "-c", "push.negotiate=false", "push", "-q", "-u", "origin", "main");
+  git(repo, "checkout", "-q", "--detach");
+  const author = path.join(root, "author");
+  git(root, "clone", "-q", origin, author);
+  fs.writeFileSync(path.join(author, "app/y.ts"), "export const y = 2;\n");
+  fs.writeFileSync(
+    path.join(author, ".nvmrc"),
+    `${process.versions.node.split(".")[0]}\n`
+  );
+  git(author, "add", "-A");
+  commitAt(author, "2026-09-02T12:00:00Z", "Ship a thing (#2)");
+  fs.writeFileSync(
+    path.join(author, "lib/release-notes.json"),
+    notesJson([
+      {
+        date: "2026-09-02",
+        entries: [
+          { pr: 2, kind: "feature", category: "Interface", title: "A thing" },
+        ],
+      },
+      { date: "2026-09-01", entries: [] },
+    ])
+  );
+  commitAt(author, "2026-09-02T13:00:00Z", "Release notes for 2026-09-02 (#3)");
+  git(author, "-c", "push.negotiate=false", "push", "-q");
+  const helpers = path.join(repo, "scripts/orchestration");
+  fs.mkdirSync(helpers, { recursive: true });
+  const script = path.join(repo, "scripts/orchestrator-checkin.sh");
+  fs.copyFileSync(CHECKIN, script);
+  for (const h of HOSTED_HELPERS) {
+    fs.copyFileSync(
+      path.join(REPO, `scripts/orchestration/${h}.mjs`),
+      path.join(helpers, `${h}.mjs`)
+    );
+  }
+  fs.appendFileSync(path.join(repo, ".git/info/exclude"), "scripts/\n");
+  const head = (cwd: string) =>
+    git(cwd, "rev-parse", "--short=7", "HEAD").trim();
+  return { repo, script, base: head(repo), tip: head(author) };
+}
+
+describe("a checkout behind origin/main answers from origin/main, and says so", () => {
+  const fx = buildStaleFixture();
+  const out = checkin({ repo: fx.repo, script: fx.script });
+
+  it("prints the checkout's position with both SHAs, and never moves it", () => {
+    expect(out).toContain(
+      `checkout: ${fx.base} (detached, clean) — 2 behind origin/main ${fx.tip}`
+    );
+    expect(out).toContain(`tree reads below answer from origin/main ${fx.tip}`);
+    expect(git(fx.repo, "rev-parse", "--short=7", "HEAD").trim()).toBe(fx.base);
+  });
+
+  it("reads .nvmrc at origin/main's tip, where HEAD's would read ABSENT", () => {
+    // origin/main pins the node running this test, so the resolver answers
+    // with its own bin dir; HEAD pins a major no host has.
+    expect(out).toContain(
+      `node(.nvmrc @ origin/main ${fx.tip}): ${path.dirname(process.execPath)}`
+    );
+  });
+
+  it("counts the release-notes lag against origin/main's notes", () => {
+    const gather = (...args: string[]) => {
+      const run = spawnSync(
+        process.execPath,
+        [
+          path.join(fx.repo, "scripts/orchestration/release-notes-gather.mjs"),
+          "--check",
+          ...args,
+        ],
+        { encoding: "utf8", timeout: 60_000 }
+      );
+      expect(run.status).toBe(0);
+      return run.stdout.trim();
+    };
+    expect(gather()).toBe(
+      `release notes: current through 2026-09-02 [notes @ origin/main ${fx.tip}]`
+    );
+    // THE STALE READ, ON REQUEST — and the positive control: the same fixture
+    // read at HEAD reports the incident's shape, merges "uncovered" that main's
+    // notes already cover, and the label says where that number came from.
+    expect(gather("--ref", "HEAD")).toBe(
+      "release notes: 2 user-visible merge(s) uncovered since 2026-09-01 (#1, #2) " +
+        `— batch them (docs/orchestration/dispatch.md, Release notes) [notes @ HEAD ${fx.base}]`
+    );
+  });
+
+  it("reports, and does not move, a checkout holding local work", () => {
+    const held = buildStaleFixture();
+    fs.writeFileSync(path.join(held.repo, "app/x.ts"), "export const x = 3;\n");
+    const out = checkin({ repo: held.repo, script: held.script });
+    expect(out).toContain(
+      `checkout: ${held.base} (detached, 1 uncommitted) — 2 behind origin/main ${held.tip}`
+    );
+    expect(out).toContain("holds local work");
+    expect(out).not.toContain("--ff-only");
+    expect(git(held.repo, "rev-parse", "--short=7", "HEAD").trim()).toBe(
+      held.base
+    );
+    expect(fs.readFileSync(path.join(held.repo, "app/x.ts"), "utf8")).toBe(
+      "export const x = 3;\n"
+    );
+  });
+
+  it("says == origin/main once the checkout is current", () => {
+    const fresh = buildStaleFixture();
+    git(fresh.repo, "fetch", "-q", "origin", "main");
+    git(fresh.repo, "merge", "-q", "--ff-only", "origin/main");
+    expect(checkin({ repo: fresh.repo, script: fresh.script })).toContain(
+      `checkout: ${fresh.tip} (detached, clean) — == origin/main ${fresh.tip}`
+    );
   });
 });
