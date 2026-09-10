@@ -742,7 +742,8 @@ export const LOG_MANIFEST = {
 // the function; corrections and deletes carry none, matching what the rows named.
 type LogCoreModules =
   | typeof import("./food-log-write")
-  | typeof import("./queries/intake/adherence")
+  | typeof import("./queries/intake/dose-status")
+  | typeof import("./queries/intake/administrations")
   | typeof import("./practice-log")
   | typeof import("./offline/writes")
   | typeof import("./symptom-log-write")
