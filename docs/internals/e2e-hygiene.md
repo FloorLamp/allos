@@ -17,6 +17,8 @@ Use existing helpers and fixtures; do not create a second test harness.
   own domain rows and use `destroyFixtureProfile` for constructor-owned state.
 - Restore settings and rows you change. Worker isolation does not prevent two
   tests on that worker from leaking into each other.
+- A temp directory comes from `makeTmpDir` (`lib/__tests__/tmp-dir.ts`); lint
+  refuses a raw `mkdtemp` in any test tier.
 - A fixture must represent a state a real user can reach. Include realistic
   boundary cases only when they distinguish the behavior under test.
 
@@ -54,8 +56,8 @@ undo or overshoot the desired state. Action completion and rendered application
 are separate events: wait for the one the next assertion needs.
 
 Do not use `networkidle` to infer hydration or arbitrary sleeps to settle a
-write. For absence-of-effect windows, follow the bounded, documented exception
-in the existing hygiene check; do not add another generic delay helper.
+write. For absence-of-effect windows, carry the `waitfortimeout-ok` reason the
+lint rule asks for; do not add another generic delay helper.
 
 Use `appContent(page)` and scoped locators to avoid a streamed staged copy.
 Anchor on the item's own identity element; a row's text may include unrelated
@@ -66,8 +68,6 @@ Keep established dialogs, disclosures, and combobox interaction helpers.
 
 - Assert persisted writes, navigation, accessible state, meaningful order, or
   usable controls. Do not pin exact classes, colors, spacing, or obsolete labels.
-- CSS edits do not automatically require changed assertions. A failing assertion
-  needs an explanation against the requested behavior before it is changed.
 - Wait for the specific loaded child before measuring its container. A loading
   placeholder can fit while the real content clips.
 - For an opened `Disclosure`, wait until its inner content fits the disclosure
@@ -79,14 +79,12 @@ Keep established dialogs, disclosures, and combobox interaction helpers.
   Use geometry only when it proves usability and no semantic assertion can.
 - An absence assertion must reach the state that could produce the unwanted
   effect. Do not let polling skip past a transient defect's observation window.
-- A race test must deliberately reach its race window. Repeating a test that
-  never enters the window proves nothing about the race.
+- A race test must deliberately reach its race window.
 
 ## Run and inspect
 
 Run authored/edited files once with `--retries=0`. When tests share mutable
-state, run the whole file with `--workers=1`. Repeats are for a diagnosed timing
-question, not a routine way to turn red into green.
+state, run the whole file with `--workers=1`.
 
 Mobile files use `*.mobile.spec.ts`; the project supplies viewport and touch
 settings. Verify routing without a `--project` filter, as CI does. A desktop-named
@@ -98,5 +96,8 @@ component. This identifies coverage; it does not authorize rewriting expectation
 
 [Orchestration E2E/CI](../orchestration/e2e-ci.md) owns who runs local/full suites,
 build reuse, and the merge bar. [Diagnosis](e2e-diagnosis.md) covers failure
-mechanisms and reproduction. Existing checks in `lib/__tests__/e2e-hygiene.test.ts`
-provide concrete diagnostics; do not grow their exceptions to make a spec pass.
+mechanisms and reproduction. The `e2e/**` blocks in `eslint.config.mjs` refuse the
+settle, clock, harness and family shapes above (a reviewed exception is an
+`eslint-disable-line` with its reason); `lib/__tests__/e2e-hygiene.test.ts` keeps
+the offline-navigation rule and the count ratchets. Do not grow either's
+exceptions to make a spec pass.
