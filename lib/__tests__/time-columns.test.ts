@@ -307,9 +307,9 @@ describe("the published index cannot fall behind the declaration", () => {
 // point of the ledger is that each of these is a decision somebody made rather than a
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
-  "lib/queries/intake/adherence.ts": {
+  "lib/queries/intake/dose-status.ts": {
     count: 2,
-    why: "the scheduled row's printed clock — the taken-dose times the day's check-offs render beside each dose, ordered and selected by the administration event with immutable capture as the fallback for rows whose event was never stated. #4686 took the ARMING readers out of this file — the redose clock now reads a placed instant or nothing — so what is left renders a fact beside the day it happened on, never a duration a safety line turns into a verdict. The count falls as #2960 moves each reader into its own module; the pairings themselves are unchanged.",
+    why: "the scheduled row's printed clock — the taken-dose times the day's check-offs render beside each dose, ordered and selected by the administration event with immutable capture as the fallback for rows whose event was never stated. #4686 took the ARMING readers out of this file — the redose clock now reads a placed instant or nothing — so what is left renders a fact beside the day it happened on, never a duration a safety line turns into a verdict. #2960 moved this reader out of adherence.ts whole — same SELECT, same ORDER BY, new file.",
   },
   "lib/queries/intake/dose-history.ts": {
     count: 3,

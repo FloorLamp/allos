@@ -8,12 +8,12 @@ DELETES. This is that half made shared, plus its first non-delete tenant.
 
 ## Where the pieces live
 
-| Concern                         | Owner                                                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Window, refusal words, the rule | `lib/undo-offer.ts` — pure: `UNDO_TOAST_MS`, `UndoRefusal`/`UndoOutcome`, `undoRefusalText`, `undoToastPlan`                   |
-| The one client wiring           | `components/useUndoableAction.ts` — toast + "Undo" + rendering the inverse's typed outcome                                     |
-| Delete adapter                  | `components/useUndoableDelete.ts` over the hook; the token shape and `restoreDeletedRow` are unchanged                         |
-| Dose-confirm adapter            | `lib/dose-outcome-text.ts` (`doseConfirmUndoable`, `doseUndoOutcome`) + `undoDoseConfirm` in `lib/queries/intake/adherence.ts` |
+| Concern                         | Owner                                                                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Window, refusal words, the rule | `lib/undo-offer.ts` — pure: `UNDO_TOAST_MS`, `UndoRefusal`/`UndoOutcome`, `undoRefusalText`, `undoToastPlan`                     |
+| The one client wiring           | `components/useUndoableAction.ts` — toast + "Undo" + rendering the inverse's typed outcome                                       |
+| Delete adapter                  | `components/useUndoableDelete.ts` over the hook; the token shape and `restoreDeletedRow` are unchanged                           |
+| Dose-confirm adapter            | `lib/dose-outcome-text.ts` (`doseConfirmUndoable`, `doseUndoOutcome`) + `undoDoseConfirm` in `lib/queries/intake/dose-status.ts` |
 
 There is exactly ONE undo window, ONE "Undo" label and ONE set of refusal
 sentences. Before #2642 `15000` appeared as a local constant in four client
@@ -70,10 +70,10 @@ right to remove one. These stay confirm-first:
   probes the day's ledger under the write lock (`readAllForUpdate`, which demands
   the `writeTx` token) and proceeds only while exactly one taken row stands.
 
-`intake_item_logs` is a registered stateful-write table whose one core is
-`lib/queries/intake/adherence.ts`, and the clear still goes through
-`applyDoseStatusCore` there — ownership re-check, paused-item refusal, supply
-hand-back. The nested `writeTx` is a SAVEPOINT under the outer IMMEDIATE lock, so
+`intake_item_logs` is a registered stateful-write table, and the clear still goes
+through `applyDoseStatusCore` in `lib/queries/intake/dose-status.ts` — the one
+core for scheduled status transitions — ownership re-check, paused-item refusal,
+supply hand-back. The nested `writeTx` is a SAVEPOINT under the outer IMMEDIATE lock, so
 probe-then-clear is atomic against the notify sidecar.
 
 Its four answers: `undone`, `not-taken`, `changed`, `stale-dose`. `changed`

@@ -62,16 +62,16 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
   {
     table: "intake_item_logs",
     cores: [
-      "lib/queries/intake/adherence.ts",
       "lib/queries/intake/administration-delete.ts",
       "lib/queries/intake/administrations.ts",
+      "lib/queries/intake/dose-status.ts",
       "lib/queries/intake/dose-time-correction.ts",
     ],
     // No `offerState`, honestly: DoseStatusControl already renders from the dose's
     // taken/skipped/clear state and each surface gates the control on its own
     // (active && due) read, but that derivation has not been extracted into one shared
     // pure function. An honest gap, not a claim.
-    why: "#2039/#232: the dose ledger row is a LIFECYCLE row — taken ↔ skipped ↔ clear — and it is what DRIVES the supply counter one column over, so a parallel core desynchronizes the two. It had one: a tri-state twin in the nutrition Server Action module with its own DELETE/INSERT/UPDATE, its own increment/decrement crossings, and (having drifted) no paused-item refusal at all, while lib/offline/writes.ts already records a THIRD parallel dose writer that drifted and was deleted for it. lib/queries/intake/adherence.ts now owns every transition of the table — the tri-state, the one-way resolvers, the PRN administration ledger and the historical-dose corrections — each under one BEGIN IMMEDIATE with a typed refusal (stale-dose / inactive / already-taken / already-skipped). A raw INSERT from a fourth module would re-mint the #797 double-decrement the exists-check under the write lock exists to prevent.",
+    why: "#2039/#232: the dose ledger row is a LIFECYCLE row — taken ↔ skipped ↔ clear — and it is what DRIVES the supply counter one column over, so a parallel core desynchronizes the two. It had one: a tri-state twin in the nutrition Server Action module with its own DELETE/INSERT/UPDATE, its own increment/decrement crossings, and (having drifted) no paused-item refusal at all, while lib/offline/writes.ts already records a THIRD parallel dose writer that drifted and was deleted for it. The lib/queries/intake dose modules now own every transition of the table, each under one BEGIN IMMEDIATE with a typed refusal (stale-dose / inactive / already-taken / already-skipped): dose-status.ts holds the scheduled tri-state and the one-way resolvers, administrations.ts the PRN ledger and the historical-dose corrections, administration-delete.ts the undoable delete and its restore, dose-time-correction.ts the occurred_at-only restamp. FOUR FILES, NOT FOUR CORES — #2960 split one 1,705-line module along its existing section boundaries and moved no behavior; the count here is a file list, and the two write cores (scheduled resolution, administration) are what it always was. A raw INSERT from a module NOT on this list would re-mint the #797 double-decrement the exists-check under the write lock exists to prevent.",
   },
   {
     table: "intake_items",
