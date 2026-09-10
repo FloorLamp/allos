@@ -68,6 +68,10 @@ import {
   offeredItems,
 } from "@/lib/queries/upcoming/intake-safety";
 import { getOfferedIntakeForSlot } from "@/lib/queries/intake";
+import {
+  collectMultiProfileAttention,
+  type MultiProfileAttention,
+} from "@/lib/queries/attention";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
@@ -140,7 +144,7 @@ function seedItem(
   // stated time carries no slot opinion — which is what lets one item be asked about
   // at two different minutes without the slot filter deciding the answer.
   opts: { obligation?: "should" | "may"; timeOfDay?: string | null } = {}
-): void {
+): number {
   const itemId = Number(
     db
       .prepare(
@@ -155,6 +159,28 @@ function seedItem(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?, '1 dose', ?, 'any', 0)`
   ).run(itemId, opts.timeOfDay === undefined ? "Morning" : opts.timeOfDay);
+  return itemId;
+}
+
+// Put an item under an ACTIVE pause situation — the other way an item can be off
+// today's offer, and one of the two the withheld line must never claim as its own.
+function pauseItemUnder(
+  profileId: number,
+  itemId: number,
+  situation: string
+): void {
+  const situationId = Number(
+    db
+      .prepare(
+        `INSERT INTO situations (profile_id, name, active, illness_type)
+         VALUES (?, ?, 1, 0)`
+      )
+      .run(profileId, situation).lastInsertRowid
+  );
+  db.prepare("UPDATE intake_items SET pause_situation_id = ? WHERE id = ?").run(
+    situationId,
+    itemId
+  );
 }
 
 /** The doses the offline snapshot would put on the device, as built right now. */
@@ -451,6 +477,20 @@ function sentDigest(profileId: number): {
   };
 }
 
+/**
+ * The one line of the sent digest that explains a withheld offer, or null when the
+ * message carries none. Read off the SENT body rather than off `offerHeldLine`, so a
+ * line that named the wrong items cannot pass by never being rendered.
+ */
+function withheldLine(profileId: number): string | null {
+  const sent = sentDigest(profileId);
+  if (!sent) return null;
+  const line = sent.body
+    .split("\n")
+    .find((l) => l.includes("until your session ends"));
+  return line ? line.replace(/^[^\p{L}\p{N}]+/u, "").trim() : null;
+}
+
 describe("the digest still sends while the timing gate holds the only offer (#5321)", () => {
   // THE OWNER'S RULING, 2026-09-09 21:20 UTC, and the defect it answers.
   //
@@ -526,6 +566,72 @@ describe("the digest still sends while the timing gate holds the only offer (#53
     const silent = quietProfile();
     ageRows(silent);
     expect(sentDigest(silent)).toBeNull();
+  });
+});
+
+describe("the withheld line names only what the timing gate held (#5321)", () => {
+  // THE PROPERTY THAT MAKES THE LINE TRUSTWORTHY, and the one nothing in the repository
+  // held until this assertion (#5321, fourth falsifying pass).
+  //
+  // `heldByWorkoutTiming` is written as a DIFFERENCE over ONE shared predicate — not
+  // offered now, offered if the session had ended — precisely so the sentence it feeds
+  // can only name items that gate actually held. Every assertion beside it fixtures a
+  // single post-workout `may` item, and a single-item fixture cannot tell that
+  // difference apart from "everything in this slot that is not on offer": both name the
+  // same one item. Replacing the second `isOfferedOn` call with `return true` left the
+  // whole of this file, offer-tail.test.ts and intake-schedule.test.ts green.
+  //
+  // The failure that hides behind that gap is a message telling someone their paused
+  // medication is "waiting until your session ends" — a hold the surgeon set, restated
+  // as a timing detail that will lift on its own. It will not.
+  //
+  // So the fixture is three `may` items that are ALL off today's offer for three
+  // different reasons, and the line must name exactly one of them. Every dose is
+  // hint-less, so the slot filter decides nothing and the day rule is the only thing
+  // separating them.
+  it("never names a paused item or a rest-day condition", () => {
+    const p = quietProfile();
+    const td = today(p);
+    // Held by the timing gate: today's session has not reached its recorded end.
+    seedItem(p, "Recovery shake", "post_workout", {
+      obligation: "may",
+      timeOfDay: null,
+    });
+    // Held by a rest-day condition: today is a training day, and it still will be
+    // after the session ends. Nothing about this waits for a clock.
+    seedItem(p, "Rest-day magnesium", "rest_day", {
+      obligation: "may",
+      timeOfDay: null,
+    });
+    // Held by an active pause situation, which has its own disclosure (#1296) and
+    // outlasts the session by design.
+    const paused = seedItem(p, "Paused ibuprofen", "daily", {
+      obligation: "may",
+      timeOfDay: null,
+    });
+    pauseItemUnder(p, paused, "Pre-surgery");
+    logWorkout(p, td, "17:00", "18:00");
+    ageRows(p);
+
+    // The premise: mid-session none of the three is on offer, so "not offered" alone
+    // cannot distinguish them and the line has to be a difference to get this right.
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(getOfferedIntakeForSlot(p, "09:00").map((o) => o.name)).toEqual([]);
+
+    // Asserted on the SENT line rather than on the name set, because the sentence is
+    // what the person reads and a whole-body `toContain` would pass on a line that
+    // named all three.
+    expect(withheldLine(p)).toBe(
+      "Recovery shake waits until your session ends"
+    );
+
+    // And after the recorded end the line is gone entirely — the other two are still
+    // off the offer, and neither of them was ever this line's to explain.
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    expect(getOfferedIntakeForSlot(p, "19:00").map((o) => o.name)).toEqual([
+      "Recovery shake",
+    ]);
+    expect(withheldLine(p)).toBeNull();
   });
 });
 
@@ -755,5 +861,62 @@ describe("the subscribed calendar feed follows it too (#5321)", () => {
     vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
     expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
     expect(await doseEvents()).toBe(1);
+  });
+});
+
+describe("the Upcoming page's own due list follows it too (#5321)", () => {
+  // THE FOURTH REACH OF `scheduledDoseRows`, and the one every consumer table stopped
+  // one line short of (#5321, fourth falsifying pass). The tables ended at
+  // `collectAttentionDashboardData → app/(app)/page.tsx` — the dashboard — and the
+  // second caller one line below it is the whole Upcoming page:
+  //
+  //   scheduledDoseRows → doseItems (queries/upcoming/intake-safety.ts)
+  //                     → collectUpcoming (queries/upcoming/generators.ts)
+  //                     → collectAttentionDashboardData (queries/attention.ts)
+  //                     → collectAttentionModel        (same file, the second caller)
+  //                     → collectMultiProfileAttention (same file)
+  //                     → app/(app)/upcoming/page.tsx
+  //
+  // Asserted on the MODEL THE PAGE READS — `total`, `groups`, `memberSections` — and
+  // not on `collectUpcoming`'s return value, because the attention model is a filter
+  // (snoozes, dismissals, banding) between the two: a query that stopped returning the
+  // dose and a model that stopped carrying it look identical from the query's side, and
+  // the badge, the bands and the by-person sections are what a person actually sees.
+  //
+  // `total` is the page's view-set badge, so the count is asserted alongside the names:
+  // a band that silently dropped a row while the badge still promised it would be a
+  // different defect with the same fix.
+  it("holds the dose out of the badge and the bands, then counts it", () => {
+    const p = newProfile();
+    const td = today(p);
+    seedItem(p, "Recovery tablet", "post_workout");
+    logWorkout(p, td, "17:00", "18:00");
+
+    const doseTitles = (m: MultiProfileAttention): string[] => [
+      ...new Set([
+        ...m.groups.flatMap((g) => g.items).map((i) => i.title),
+        ...m.memberSections
+          .flatMap((sec) => sec.groups)
+          .flatMap((g) => g.items)
+          .map((i) => i.title),
+      ]),
+    ];
+
+    // MID-SESSION. The page holds the dose, and so does the list. The two seasonal
+    // vaccine prompts every profile carries are the rest of the badge — they are the
+    // control that the count is a real count rather than an empty model.
+    vi.setSystemTime(new Date(`${td}T09:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual([]);
+    const mid = collectMultiProfileAttention([p]);
+    expect(doseTitles(mid)).not.toContain("Recovery tablet");
+    expect(mid.total).toBe(2);
+
+    // AFTER THE RECORDED END. The dose is owed, the bands carry it and the badge counts
+    // it — one more than before, not a different list.
+    vi.setSystemTime(new Date(`${td}T19:00:00.000Z`));
+    expect(pageDueNames(p)).toEqual(["Recovery tablet"]);
+    const after = collectMultiProfileAttention([p]);
+    expect(doseTitles(after)).toContain("Recovery tablet");
+    expect(after.total).toBe(3);
   });
 });
