@@ -14,6 +14,7 @@ import {
 import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
 import { absoluteUrl } from "@/lib/external-url";
 import { TokenRow } from "@/components/TokenRow";
+import Button from "@/components/Button";
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import {
   enableConsolidatedCalendarFeedAction,
@@ -102,14 +103,14 @@ export default function ConsolidatedFeedConfig({
         {error && (
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
         )}
-        <button
-          className="btn"
+        <Button
+          variant="primary"
           disabled={busy}
           onClick={onEnableOrRotate}
           data-testid="family-feed-enable"
         >
           {busy ? "Enabling…" : "Enable family feed"}
-        </button>
+        </Button>
       </div>
     );
   }

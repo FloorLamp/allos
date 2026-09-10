@@ -2652,10 +2652,12 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    AND `border-style: solid` LEFT THIS RULE FOR THE FACT CHIP TO JOIN IT. It was
    redundant — preflight already sets `border: 0 solid` on every element, so a member
    declaring no border was solid anyway — and it was unlayered, so it BEAT a call
-   site's `border-dashed` (utilities). Measured before removing it: `btn-ghost btn-sm
-   border-dashed` (components/illness/SymptomLogBar.tsx) rendered SOLID. A dashed
-   MISSING chip is the fact row's whole grammar for "the form is waiting for this",
-   so the box could not carry the kind while that declaration stood.
+   site's `border-dashed` (utilities). Measured before removing it: the illness
+   bridge's placeholder (components/illness/SymptomLogBar.tsx, then `btn-ghost
+   btn-sm border-dashed`, now `<Button dashed>` since #4978's ruling 4) rendered
+   SOLID. A dashed MISSING chip is the fact row's whole grammar for "the form is
+   waiting for this", so the box could not carry the kind while that declaration
+   stood.
 
    THE FOLD IS A KIND TOO (#4505). A `<summary>` that IS the control — one line of
    text, an icon, a count — rendered whatever its font gave it (16 to 20px bare, and

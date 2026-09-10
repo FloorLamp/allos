@@ -111,7 +111,9 @@ describe("redoseNoticeMessage", () => {
 });
 
 describe("redoseCardLabel", () => {
-  const status = (over: Partial<RedoseStatus>): RedoseStatus => ({
+  type WindowStatus = Extract<RedoseStatus, { kind: "window" }>;
+  const status = (over: Partial<WindowStatus> = {}): RedoseStatus => ({
+    kind: "window",
     open: false,
     atMax: false,
     countInWindow: 1,
@@ -121,9 +123,36 @@ describe("redoseCardLabel", () => {
     exposure: null,
     ...over,
   });
+  // The arm a dose that states no minute produces: a ceiling, and no interval at all.
+  const unknown = (over: Partial<WindowStatus> = {}): RedoseStatus => ({
+    kind: "unknown",
+    administrationId: 9,
+    atMax: over.atMax ?? false,
+    countInWindow: over.countInWindow ?? 1,
+    maxDailyCount: over.maxDailyCount ?? 4,
+    exposure: over.exposure ?? null,
+  });
 
   it("null status → null", () => {
     expect(redoseCardLabel(null)).toBeNull();
+  });
+
+  // #4686 owner ruling 1. The retired line was "Last dose time not recorded" — a fact
+  // about the record with nothing a reader could do about it. The arm keeps the exact
+  // count (the ceiling never depended on the minute) and names the door that fixes it.
+  it("the unplaced arm says what happened, the step, and the exact count", () => {
+    expect(redoseCardLabel(unknown({ countInWindow: 2 }))).toBe(
+      "Last dose has no time yet — add it in Dose history · 2 of 4 in 24h"
+    );
+  });
+
+  it("the unplaced arm never claims an interval passed, and Max reached still wins", () => {
+    const label = redoseCardLabel(unknown({ countInWindow: 2 }))!;
+    expect(label).not.toContain("Redose OK");
+    expect(label).not.toContain("Next dose in");
+    expect(redoseCardLabel(unknown({ atMax: true, countInWindow: 4 }))).toBe(
+      "Max reached · 4 of 4 in 24h"
+    );
   });
 
   it("at max wins over open", () => {
@@ -146,7 +175,7 @@ describe("redoseCardLabel", () => {
 
   // #1458 — the parent who filled in "6 hours" and left "maximum in 24 hours" blank.
   it("keeps the window guidance with no confirmed daily max", () => {
-    const noMax = (over: Partial<RedoseStatus>) =>
+    const noMax = (over: Partial<WindowStatus>) =>
       redoseCardLabel(status({ maxDailyCount: null, ...over }));
     expect(noMax({ open: false, opensInHours: 5, countInWindow: 1 })).toBe(
       "Next dose in ~5h · 1 in 24h · no 24h limit on record"
@@ -210,7 +239,10 @@ describe("helpers", () => {
 // the card said "3 of 4 in 24h across 2 items". These pin that the list label IS the
 // card's classification.
 describe("prnQuickLogLabel (#1717)", () => {
-  const status = (over: Partial<RedoseStatus> = {}): RedoseStatus => ({
+  const status = (
+    over: Partial<Extract<RedoseStatus, { kind: "window" }>> = {}
+  ): RedoseStatus => ({
+    kind: "window",
     open: true,
     atMax: false,
     countInWindow: 2,
@@ -326,6 +358,7 @@ describe("prnLogAnswerText (#1717)", () => {
         "Logged ✅ Ibuprofen — 5 today",
         true,
         {
+          kind: "window",
           open: false,
           atMax: true,
           countInWindow: 5,
@@ -421,6 +454,7 @@ describe("redoseCardLabel × exposure (#1854)", () => {
     });
     expect(
       redoseCardLabel({
+        kind: "window",
         open: true,
         atMax: exposure!.atMax,
         countInWindow: 1,
@@ -439,6 +473,7 @@ describe("redoseCardLabel × exposure (#1854)", () => {
       maxDailyCount: 6,
     });
     const s: RedoseStatus = {
+      kind: "window",
       open: true,
       atMax: exposure!.atMax,
       countInWindow: 3,
@@ -519,7 +554,10 @@ describe("prnOverMaxDetail (#1854)", () => {
 // a ceiling — which is named even when it is not open, because a caregiver must not
 // have to expand three panels to find it.
 describe("medChipsStatusLine", () => {
-  const window = (over: Partial<RedoseStatus>): RedoseStatus => ({
+  const window = (
+    over: Partial<Extract<RedoseStatus, { kind: "window" }>>
+  ): RedoseStatus => ({
+    kind: "window",
     open: true,
     atMax: false,
     countInWindow: 1,

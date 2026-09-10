@@ -7,7 +7,7 @@ import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
-import { shiftDateStr, utcSqlString } from "../../lib/date";
+import { shiftDateStr, utcInstant, utcSqlString } from "../../lib/date";
 import {
   E2E_LOGIN_SUPPLY,
   SUPPLY_PARENT_PROFILE,
@@ -200,18 +200,27 @@ export function seedPrnLedger(): void {
   // subsequent widget "Log" click deterministically becomes the third. `date` is pinned
   // to today() (not derived from recorded_at) so the count stays "today" even if an offset
   // crosses UTC midnight at boot.
+  //
+  // EACH ROW STATES THE INSTANT IT ALWAYS MEANT (#4686). `recorded_at` alone is the
+  // shape a check-off answered "Don't know" produces, and the app now reads it as one:
+  // the interval goes unanswerable and the label says so. This fixture means "taken 90
+  // and 45 minutes ago", which is an `occurred_at`, so it writes one.
+  //
+  // AND IN THE COLUMN'S OWN CONVENTION (`lib/time-columns.ts`): both instants here are
+  // declared `canonical`, and the trailing-24h window compares `occurred_at` to
+  // `prnCeilingWindowStart` as a STRING. A bare `2026-09-09 22:43:26` sorts before a
+  // canonical `2026-09-09T00:13:26Z` on the same date — space < 'T' — so a bare row
+  // silently falls out of its own window and the count reads 0.
   const prnToday = today(PROFILE_ID);
   const insAdmin = db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
-   VALUES (?, ?, ?, ?, '400 mg', 'taken')`
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, occurred_at, amount, status)
+   VALUES (?, ?, ?, ?, ?, '400 mg', 'taken')`
   );
   for (const minutesAgo of [90, 45]) {
-    insAdmin.run(
-      prnDoseId,
-      prnMedId,
-      prnToday,
-      utcSqlString(new Date(clockNow().getTime() - minutesAgo * 60 * 1000))
+    const at = utcInstant(
+      new Date(clockNow().getTime() - minutesAgo * 60 * 1000)
     );
+    insAdmin.run(prnDoseId, prnMedId, prnToday, at, at);
   }
 
   console.log(
@@ -250,15 +259,15 @@ export function seedPrnLedger(): void {
     `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
    VALUES (?, ?, NULL, NULL, 'PRN redose — e2e fixture')`
   ).run(redoseMedId, shiftDateStr(today(PROFILE_ID), -30));
-  db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
-   VALUES (?, ?, ?, ?, '200 mg', 'taken')`
-  ).run(
-    redoseDoseId,
-    redoseMedId,
-    today(PROFILE_ID),
-    utcSqlString(new Date(clockNow().getTime() - 7 * 60 * 60 * 1000))
+  // STATED, not merely captured (#4686) — this fixture's whole subject is a window
+  // measured from the administration, and a row that states no instant arms nothing.
+  const redoseAt = utcInstant(
+    new Date(clockNow().getTime() - 7 * 60 * 60 * 1000)
   );
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, occurred_at, amount, status)
+   VALUES (?, ?, ?, ?, ?, '200 mg', 'taken')`
+  ).run(redoseDoseId, redoseMedId, today(PROFILE_ID), redoseAt, redoseAt);
   console.log(
     `e2e: seeded PRN redose-notice fixture "${REDOSE_MED_NAME}" (#798)`
   );
@@ -440,15 +449,18 @@ export function seedPrnCounter(): void {
       .run(prnRxId).lastInsertRowid
   );
   // The sibling administration: 1h before the frozen clock, on the profile-local day.
+  //
+  // IT STATES THAT INSTANT (#4686). "1h before the frozen clock" is a claim about when
+  // the dose was GIVEN — the whole point of this fixture is that it HOLDS the OTC
+  // item's window — and a capture stamp is only when the app was told. Writing one
+  // alone is the shape a check-off answered "Don't know" produces, which the redose
+  // window now reads honestly as unplaced instead of guessing an hour from it. In the
+  // canonical convention, for the reason spelled out on `seedPrnLedger` above.
+  const prnSiblingAt = utcInstant(new Date(clockNow().getTime() - 3_600_000));
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
-   VALUES (?, ?, ?, ?, 'taken')`
-  ).run(
-    prnRxDoseId,
-    prnRxId,
-    today(prnFamilyId),
-    utcSqlString(new Date(clockNow().getTime() - 3_600_000))
-  );
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, occurred_at, status)
+   VALUES (?, ?, ?, ?, ?, 'taken')`
+  ).run(prnRxDoseId, prnRxId, today(prnFamilyId), prnSiblingAt, prnSiblingAt);
   seedMemberLogin(E2E_LOGIN_PRN_FAMILY, prnFamilyId, "write");
   console.log(
     `e2e: seeded cross-item PRN counter fixture — profile ${prnFamilyId} (${PRN_FAMILY_PROFILE}) (#1027)`

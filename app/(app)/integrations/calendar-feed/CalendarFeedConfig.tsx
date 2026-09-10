@@ -16,6 +16,7 @@ import {
 import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
 import { absoluteUrl } from "@/lib/external-url";
 import { TokenRow } from "@/components/TokenRow";
+import Button from "@/components/Button";
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import {
   enableCalendarFeedAction,
@@ -152,9 +153,9 @@ export default function CalendarFeedConfig({
         {error && (
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
         )}
-        <button className="btn" disabled={busy} onClick={onEnableOrRotate}>
+        <Button variant="primary" disabled={busy} onClick={onEnableOrRotate}>
           {busy ? "Enabling…" : "Enable feed"}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -362,15 +363,14 @@ export default function CalendarFeedConfig({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="btn"
+            <Button
+              variant="primary"
               disabled={busy}
               onClick={onSaveOptions}
               data-testid="calendar-feed-options-save"
             >
               {busy ? "Saving…" : "Save feed options"}
-            </button>
+            </Button>
             {optsSaved && (
               <span className="inline-flex items-center gap-1 text-sm text-brand-600 dark:text-brand-400">
                 <IconCheck className="h-4 w-4" /> Saved

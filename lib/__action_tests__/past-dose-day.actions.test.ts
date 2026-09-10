@@ -208,6 +208,18 @@ function occurredAt(doseId: number, date: string): string | null {
   ).occurred_at;
 }
 
+// The immutable capture stamp. A flip is an edit of an existing row, so this must not
+// move: `recorded_at` is not in the UPDATE's SET list and must never join it.
+function recordedAt(doseId: number, date: string): string {
+  return (
+    db
+      .prepare(
+        "SELECT recorded_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, date) as { recorded_at: string }
+  ).recorded_at;
+}
+
 function resolve(
   date: string,
   status: "taken" | "skipped",
@@ -442,6 +454,79 @@ describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
       )
     ).toMatchObject({ ok: true });
     expect(occurredAt(doses.melatonin, past)).toBe(statedPastInstant);
+  });
+
+  // ── THE SKIPPED→TAKEN FLIP (#4779, folded into #4686) ─────────────────────
+  //
+  // The UPDATE arm ignored `opts.takenAt` entirely and bound a bare `instantNow()`, so
+  // un-skipping yesterday's dose stamped it with TODAY's instant — and the arming reads
+  // then coalesced onto `recorded_at`, which on a flip is the instant of the SKIP. A
+  // caregiver who skipped the 8pm ibuprofen and gave it at 01:30 was pushed "Redose
+  // window open" at 02:10, forty minutes after the dose.
+  //
+  // The flip is now the SAME expression the insert arm on the same day is: nothing
+  // stated on a past day writes nothing, a stated minute is kept, and today's flip
+  // keeps the tap instant. That last case is the one no test in the tree asserted, and
+  // it is the limb every mounted flip actually takes.
+  describe("a skipped→taken flip states what the tap states, not when it happened", () => {
+    async function skipThenTake(
+      doseId: number,
+      date: string,
+      at?: string
+    ): Promise<void> {
+      expect(
+        await setDoseStatus(fd({ dose_id: doseId, date, status: "skipped" }))
+      ).toMatchObject({ ok: true });
+      expect(
+        await setDoseStatus(
+          fd({ dose_id: doseId, date, status: "taken", ...(at ? { at } : {}) })
+        )
+      ).toMatchObject({ ok: true });
+    }
+
+    it("on a PAST day with nothing stated, writes no instant — as the insert arm does", async () => {
+      const { doses } = seedProfile(`flip-past-${tz}`, tz);
+      const past = shiftDateStr(localToday, -1);
+      await skipThenTake(doses.creatine, past);
+      expect(occurredAt(doses.creatine, past)).toBeNull();
+    });
+
+    it("on a PAST day with a stated minute, keeps the minute", async () => {
+      const { doses } = seedProfile(`flip-stated-${tz}`, tz);
+      const past = shiftDateStr(localToday, -1);
+      await skipThenTake(doses.melatonin, past, "07:05");
+      expect(occurredAt(doses.melatonin, past)).toBe(statedPastInstant);
+    });
+
+    // CONTROL C4b. Hoisting a plausible TWO-way (`opts.takenAt ? resolve(...) : null`)
+    // passes both cases above and type-checks, while making every flip on today write
+    // NULL — which with the arming union leaves the family permanently unplaced, so a
+    // caregiver who un-skips a dose they just gave gets no redose notice for it. This
+    // is the case that reds on that shape.
+    it("on TODAY with nothing stated, keeps the tap instant", async () => {
+      const { doses } = seedProfile(`flip-today-${tz}`, tz);
+      await skipThenTake(doses.creatine, localToday);
+      expect(occurredAt(doses.creatine, localToday)).toBe(NOW_ISO);
+    });
+
+    it("leaves the capture stamp where the skip put it", async () => {
+      const { doses } = seedProfile(`flip-capture-${tz}`, tz);
+      const past = shiftDateStr(localToday, -1);
+      expect(
+        await setDoseStatus(
+          fd({ dose_id: doses.creatine, date: past, status: "skipped" })
+        )
+      ).toMatchObject({ ok: true });
+      const captured = recordedAt(doses.creatine, past);
+      vi.setSystemTime(new Date("2026-08-28T14:00:00Z"));
+      expect(
+        await setDoseStatus(
+          fd({ dose_id: doses.creatine, date: past, status: "taken" })
+        )
+      ).toMatchObject({ ok: true });
+      expect(recordedAt(doses.creatine, past)).toBe(captured);
+      vi.setSystemTime(new Date(NOW_ISO));
+    });
   });
 
   it("refuses a day past the window, and the CORE would refuse it too", async () => {
