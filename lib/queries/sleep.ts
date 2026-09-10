@@ -494,6 +494,9 @@ function bedtimeSupplementsByWakeDay(
           date: sleepDate,
           isWorkoutDay: workoutDays.has(sleepDate),
           activeSituations: situationsOn(sleepDate),
+          // A CLOSED DAY HAS NO PREDICTION (#5321) — `null` falls back to
+          // `isWorkoutDay`, the training the night's own day recorded.
+          predictedWorkoutDay: null,
         })
       ) {
         return [];

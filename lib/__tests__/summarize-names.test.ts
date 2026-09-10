@@ -4,6 +4,7 @@ import {
   joinNames,
   joinNamesForSentence,
   summarizeNames,
+  summarizeNamesForSentence,
 } from "../summarize-names";
 import { rollupTrajectoryFindings } from "../trajectory-rollup";
 import { summarizeMuscleNames } from "../training-findings-rollup";
@@ -125,5 +126,42 @@ describe("the three consumers render the shared separator", () => {
         { name: "Iron", administrations: [{}] },
       ] as never)
     ).toBe("Ibuprofen ×2 · Iron ×1");
+  });
+});
+
+describe("summarizeNamesForSentence", () => {
+  // The sentence form the held-offer line uses (#5321, PM ruling 2026-09-09 23:15
+  // UTC): a subject the line then makes ONE claim about, so two names read "and".
+  it("reads two names aloud and keeps the roster separator past them", () => {
+    expect(summarizeNamesForSentence([])).toBe("");
+    expect(summarizeNamesForSentence(["Ibuprofen"])).toBe("Ibuprofen");
+    expect(summarizeNamesForSentence(["Ibuprofen", "Magnesium"])).toBe(
+      "Ibuprofen and Magnesium"
+    );
+    expect(summarizeNamesForSentence(["A", "B", "C"])).toBe("A · B · C");
+    expect(summarizeNamesForSentence(["A", "B", "C", "D"])).toBe(
+      "A · B · C and 1 more"
+    );
+  });
+
+  // THE COLLISION, PROVED RATHER THAN ARGUED FROM THE DEFAULT LIMIT. "A and B and 2
+  // more" is the line a reader cannot parse — is B a name, or the start of the count?
+  // It is unreachable because the sentence join runs only while the WHOLE list is
+  // shown, not because the limit happens to be three: at a limit of two, four names
+  // still take the roster separator. So whenever anything is counted, this function IS
+  // `summarizeNames` — one implementation of the counted form, and no conjunction in it.
+  it("never puts the conjunction next to the count, at any limit", () => {
+    expect(summarizeNamesForSentence(["A", "B"], 2)).toBe("A and B");
+    expect(summarizeNamesForSentence(["A", "B", "C", "D"], 2)).toBe(
+      "A · B and 2 more"
+    );
+    for (let n = 0; n <= 8; n++) {
+      const names = Array.from({ length: n }, (_, i) => `N${i}`);
+      for (const limit of [0, 1, 2, 3, 4]) {
+        const line = summarizeNamesForSentence(names, limit);
+        if (line.endsWith(" more"))
+          expect(line).toBe(summarizeNames(names, limit));
+      }
+    }
   });
 });

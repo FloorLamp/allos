@@ -52,6 +52,31 @@ export function joinNamesForSentence(names: readonly string[]): string {
 }
 
 /**
+ * The SENTENCE form of `summarizeNames`: "A and B" for two, "A · B · C" for three,
+ * "A · B · C and 2 more" past the limit.
+ *
+ * For a line that names its subject and then makes ONE claim about all of it — "A and
+ * B wait until your session ends" — where the roster form would print a middot between
+ * a two-name subject and "and" is what a person says there. Same distinction
+ * `joinNamesForSentence` draws one level down, and the two are composed here rather
+ * than re-spelled by each caller.
+ *
+ * THE CONJUNCTION AND THE COUNT CAN NEVER MEET. The sentence join is reached only when
+ * the whole list is shown, so "A and B and 2 more" — where a reader cannot tell whether
+ * B is a name or the start of the count — is unreachable by construction rather than by
+ * the default limit happening to be three. Past the limit this IS `summarizeNames`, so
+ * the counted form has exactly one implementation.
+ */
+export function summarizeNamesForSentence(
+  names: readonly string[],
+  limit: number = SUMMARY_NAME_LIMIT
+): string {
+  return names.length > 0 && names.length <= Math.max(0, limit)
+    ? joinNamesForSentence(names)
+    : summarizeNames(names, limit);
+}
+
+/**
  * Join up to `limit` names, then count the remainder: "A · B · C and 2 more".
  * An empty list summarizes as the empty string (a caller renders no detail line).
  */

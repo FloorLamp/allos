@@ -15,3 +15,4 @@ export * from "./intake/safety";
 export * from "./intake/prn-family";
 export * from "./intake/situational";
 export * from "./intake/day-context";
+export * from "./intake/offers";
