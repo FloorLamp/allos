@@ -126,6 +126,7 @@ function duenessOverWindow(profileId: number, anchor: string): string {
             date,
             isWorkoutDay: false,
             activeSituations: new Set<string>(),
+            predictedWorkoutDay: null,
           })
             ? "1"
             : "0"
@@ -299,6 +300,7 @@ describe("buildAdherencePatternFindings — an edit no longer voids the past (#1
         date,
         isWorkoutDay: false,
         activeSituations: new Set<string>(),
+        predictedWorkoutDay: null,
       });
 
     // The history is attached by the query layer, not re-fetched per call.

@@ -26,6 +26,7 @@ const ctx = (date: string) => ({
   date,
   isWorkoutDay: false,
   activeSituations: new Set<string>(),
+  predictedWorkoutDay: null,
 });
 
 describe("parseWeekdays / normalizeWeekdays", () => {

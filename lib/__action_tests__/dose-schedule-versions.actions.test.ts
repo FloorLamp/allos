@@ -131,6 +131,7 @@ function dueOn(itemId: number, doseId: number, date: string): boolean {
     date,
     isWorkoutDay: false,
     activeSituations: new Set<string>(),
+    predictedWorkoutDay: null,
   });
 }
 

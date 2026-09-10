@@ -94,6 +94,7 @@ describe("intakeAdherenceToday", () => {
     date: "2026-03-04",
     isWorkoutDay: false,
     activeSituations: new Set<string>(),
+    predictedWorkoutDay: null,
   };
 
   it("counts due doses and how many are taken", () => {
@@ -133,6 +134,7 @@ describe("intakeAdherenceToday", () => {
       date: "2026-03-04",
       isWorkoutDay: true,
       activeSituations: new Set<string>(),
+      predictedWorkoutDay: null,
     };
     const adh = intakeAdherenceToday(
       doses,
@@ -158,6 +160,7 @@ describe("intakeAdherenceToday", () => {
       date: "2026-03-04",
       isWorkoutDay: false,
       activeSituations: new Set(["Travel"]),
+      predictedWorkoutDay: null,
     };
     expect(intakeAdherenceToday(doses, byId, travel, new Set([10]))).toEqual({
       taken: 1,
