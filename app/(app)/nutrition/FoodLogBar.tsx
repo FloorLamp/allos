@@ -764,11 +764,12 @@ export default function FoodLogBar({
   function commitProjection(next: FoodProjectionState) {
     // LOAD-BEARING ON EXACTLY ONE PATH, which is why it reads as redundant. Every
     // settlement that consults `isCurrentMutation()` is already gated — that helper
-    // calls `isMountedProfile()` itself — so deleting this line stays green across the
-    // whole suite. `onError`'s offline arm for a decrement is the exception: it returns
-    // `rollback` unconditionally, and this is the only thing standing between a bar
-    // that has been swapped out and the provider that outlived it. Its stale snapshot
-    // would overwrite a serving that landed after it.
+    // calls `isMountedProfile()` itself — so on those paths this line can never be the
+    // check that decides. `onError`'s offline arm for a decrement is the exception: it
+    // returns `rollback` unconditionally, and this is the only thing standing between a
+    // bar that has been swapped out and the provider that outlived it, whose stale
+    // snapshot would overwrite a serving that landed after it. Deleting this line reds
+    // "does not let an unmounted bar's offline-undo rollback clobber the live count".
     if (!isMountedProfile()) return;
     // Keep the async mutation boundary and the provider on the exact same object.
     // Every caller below computes both halves before this one publication.
@@ -1490,6 +1491,15 @@ export default function FoodLogBar({
         // told. Rolling back makes this tap `discarded` — nothing left on the counter
         // and nothing left to say. Superseded, the paint is not ours to move, so it is
         // still standing and the burst must still reconcile it.
+        // STRUCTURALLY UNOBSERVABLE, AND SAID SO ON PURPOSE: no test can tell the
+        // `kept` here from a `discarded`, and that is a property of the code rather
+        // than a gap in the suite. `isCurrentMutation()` is false only if the epoch
+        // moved — and then `settleFoodServingAdd` returns `accepted: false` and
+        // records no disposition at all — or if the bar is unmounted, and then the
+        // post-burst block's own `isMountedProfile()` skips it. Reading the answer
+        // once, before telling the burst, is still the right ordering; it just cannot
+        // be proven from outside. The same holds for the two `!isCurrentMutation()`
+        // arms in `onError`.
         if (tap.kind === "refused") {
           const rollingBack = isCurrentMutation();
           const settled = settleAddBurst(

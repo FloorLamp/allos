@@ -1956,6 +1956,71 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
+  // THE CONNECTION DYING MID-TAP, then the queue refusing what it caught. The tap
+  // never reaches `settle` — `onError` handles it — and that arm rolls back, so it is
+  // `discarded` like the offline-preflight refusal beside it. Calling it `kept` would
+  // send a doomed read after a refusal that has already spoken, which is the shape
+  // this branch exists to remove: reachable whenever a connection dies while
+  // `navigator.onLine` is still true, on a day the queue cannot stamp.
+  it("asks the server nothing when a dropped tap is then refused by the queue", async () => {
+    actions.logFoodServing
+      .mockReset()
+      .mockRejectedValue(new TypeError("Failed to fetch"));
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 2,
+      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+    });
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(
+      await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+    ).toBeTruthy();
+    expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
+  });
+
+  // THE OTHER HALF OF THE SAME SENTENCE. A serving that landed and a repair read that
+  // died is the one case that may say "Saved" — and must, because reporting a landed
+  // serving as unsaved invites a duplicate re-tap, which is the more expensive error
+  // of the two to make.
+  it("says the serving saved when only the repair read fails", async () => {
+    actions.logFoodServing.mockReset().mockResolvedValue({
+      ok: true,
+      eventId: 41,
+      servings: 3,
+      mealSlot: "Midday",
+      mealServings: 3,
+    });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockRejectedValue(new Error("offline"));
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(
+      screen.queryByText(
+        "Saved, but couldn't refresh the count — reload to check it."
+      )
+    ).not.toBeNull();
+    expect(
+      screen.queryByText("Couldn't save that serving — try again.")
+    ).toBeNull();
+    // The optimistic count stands: the serving is on the server, the figure is just
+    // unconfirmed, and taking it back would be the same lie the other way round.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("3");
+  });
+
   // The read is also the failure channel, so when the read itself cannot run the
   // sentence still has to be true: a burst that landed nothing may not say "Saved".
   it("does not claim a save when the repair read fails after a refused +", async () => {
