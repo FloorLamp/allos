@@ -240,6 +240,40 @@ describe("a withheld offer says why, in place of the chip", () => {
     expect(screen.queryByTestId("shared-supply-also-for-chip")).toBeNull();
   });
 
+  // THE >4 FALLBACK IS A SECOND RENDER OF THIS RULE, and it had no test at all.
+  // Executed against the banked branch: replacing that branch's `withheld` ternary with
+  // `false` — leaving an enabled chip where the sentence should be — left all ten
+  // component tests green. On a bottle with five or more candidates a child would get a
+  // live chip on an adult-only product.
+  it("says why in the SELECT fallback too, and offers no chip there", () => {
+    const many = [
+      CHILD,
+      ...Array.from({ length: 5 }, (_, i) => ({
+        profileId: 30 + i,
+        name: `Person ${i}`,
+        bySource: { 11: { basis: `basis-${i}`, withheld: null } },
+      })),
+    ];
+    mount(card({ alsoFor: { sources: [MIRA], offers: many } }));
+    const people = screen.getByTestId(
+      "shared-supply-also-for-person"
+    ) as HTMLSelectElement;
+
+    fireEvent.change(people, { target: { value: String(CHILD.profileId) } });
+    expect(
+      screen.getByTestId("shared-supply-also-for-withheld").textContent
+    ).toBe("Bo · Aspirin has no children’s dosing chart on its label.");
+    expect(screen.queryByTestId("shared-supply-also-for-chip")).toBeNull();
+
+    // …and the same control comes back for someone the product does not refuse.
+    fireEvent.change(people, { target: { value: "31" } });
+    expect(screen.queryByTestId("shared-supply-also-for-withheld")).toBeNull();
+    expect(
+      (screen.getByTestId("shared-supply-also-for-chip") as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+  });
+
   it("still offers everyone the product does not refuse", () => {
     mount(card({ alsoFor: { sources: [MIRA], offers: [ADA, CHILD] } }));
     expect(screen.getAllByTestId("shared-supply-also-for-chip")).toHaveLength(
@@ -287,5 +321,30 @@ describe("every offer can be declined", () => {
       })
     );
     expect(screen.getByTestId("shared-supply-also-for-dismiss")).toBeTruthy();
+  });
+});
+
+// ── "Open their row" is offered only when there is a row to open ────────────────
+describe("the receipt's link", () => {
+  it("renders the receipt with no link when the action returns no destination", async () => {
+    alsoForAction.mockResolvedValueOnce({
+      ok: true,
+      receipt: "Added for Ada · no dose yet — set the amount on the new row",
+    });
+    mount(card());
+    fireEvent.click(screen.getByTestId("shared-supply-also-for-chip"));
+    const receipt = await screen.findByTestId("shared-supply-also-for-receipt");
+    expect(receipt.textContent).toContain("Added for Ada");
+    // Rules out treating a missing href as a FAILURE, which is what the card did: the
+    // cross-profile supplement copy succeeded and its receipt would have been swallowed.
+    expect(receipt.querySelector("a")).toBeNull();
+    expect(screen.queryByText("Open their row")).toBeNull();
+  });
+
+  it("renders the link when there is one", async () => {
+    mount(card());
+    fireEvent.click(screen.getByTestId("shared-supply-also-for-chip"));
+    const receipt = await screen.findByTestId("shared-supply-also-for-receipt");
+    expect(receipt.querySelector("a")?.textContent).toBe("Open their row");
   });
 });

@@ -1027,10 +1027,14 @@ describe("the allergy composition", () => {
     ]);
   });
 
-  // Rules out the DIRECT-loop short-circuit — the half a fix aimed only at
-  // cross-reactivity leaves behind. NOTE: the spec's G3 (`Peanut Soy Bar`) cannot rule
-  // this out, because "Soybean" does not token-match "Soy" and never hits at all; this
-  // fixture is G3 with a name both recorded allergens actually match.
+  // Rules out a composition that keeps the single-hit shape and states only the first
+  // of two allergies one bottle meets (executed: it drops to one clause). NOTE on the
+  // spec's own G3 (`Peanut Soy Bar`): it cannot rule out the direct-loop short-circuit,
+  // because "Soybean" does not token-match "Soy" and never hits that name at all. This
+  // is G3 with a name both recorded allergens really match — and even here the DRUG
+  // matcher supplies Soybean, so the food short-circuit's own control lives beside the
+  // matcher, in supplement-safety.test.ts ("returns every direct hit, not just the
+  // first"), where nothing masks it.
   it("G3′: two recorded allergens the same name matches are two clauses", () => {
     expect(notes(["Peanut", "Soybean"], "Peanut Soybean Bar")).toEqual([
       { allergen: "Peanut" },

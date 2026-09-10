@@ -30,8 +30,8 @@ import { getPediatricFormContext } from "./medications";
 import { createIntakeItemCore } from "../../intake-item-create";
 import { prnLabelIdentityFor } from "../../prn-defaults";
 import {
-  alsoForBasis,
   alsoForAllergenNotes,
+  alsoForBasis,
   alsoForBasisRefusal,
   alsoForDetectedSlugs,
   alsoForDoseSeeds,

@@ -22,6 +22,7 @@ import {
   encodeAlsoForBasis,
 } from "@/lib/intake-also-for";
 import { alsoForOfferKey } from "@/lib/dismissal-keys";
+import { alsoForDetectedSlugs } from "@/lib/intake-also-for";
 import {
   getFindingSuppressions,
   restoreFinding,
@@ -1105,9 +1106,11 @@ describe("a declined offer does not come back", () => {
         .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE supply_id = ?")
         .get(supplyId)
     ).toMatchObject({ n: 1 });
-    expect(getFindingSuppressions(target).has(alsoForOfferKey(supplyId))).toBe(
-      true
-    );
+    expect(
+      getFindingSuppressions(target).has(
+        alsoForOfferKey(supplyId, alsoForDetectedSlugs("Ibuprofen"))
+      )
+    ).toBe(true);
   });
 
   // "Dismissible WITHOUT RECURRENCE": the suppression is indefinite, and the only way
@@ -1116,7 +1119,10 @@ describe("a declined offer does not come back", () => {
     const target = newProfile("AF Restored");
     declineAlsoForOffer(supplyId, target);
     expect(basisFor(target)).toBe("");
-    restoreFinding(target, alsoForOfferKey(supplyId));
+    restoreFinding(
+      target,
+      alsoForOfferKey(supplyId, alsoForDetectedSlugs("Ibuprofen"))
+    );
     expect(basisFor(target)).not.toBe("");
   });
 
@@ -1133,5 +1139,190 @@ describe("a declined offer does not come back", () => {
       ],
     });
     expect(model.offers.map((o) => o.name)).toEqual(["Bo"]);
+  });
+});
+
+// ── RULING 8: an inactive linked item is not membership ────────────────────────
+//
+// `poolMembers` returns stopped rows on purpose — eleven-plus consumers depend on it,
+// including the write-access gate — so the filter belongs at each decision point. There
+// are four of them, and each of the tests below kills a different one being missed.
+describe("a stopped link is not membership", () => {
+  function stop(itemId: number): void {
+    db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(itemId);
+  }
+
+  // Rules out the shipped `memberIds` set, which counted an inactive row as membership:
+  // the person got no chip, no sentence, and no way back onto the household bottle.
+  it("offers the chip again, and the tap creates a NEW item rather than reviving the old one", () => {
+    const target = newProfile("AF Restart");
+    const stopped = seedMember(target, supplyId);
+    stop(stopped);
+
+    expect(basisFor(target)).not.toBe("");
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceName: "Mira",
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: basisFor(target),
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.itemId).not.toBe(stopped);
+    // The stopped row is untouched: a restart is a new row, never a reactivation.
+    expect(
+      db.prepare("SELECT active FROM intake_items WHERE id = ?").get(stopped)
+    ).toMatchObject({ active: 0 });
+    expect(itemsOf(target)).toHaveLength(2);
+  });
+
+  // Rules out filtering sites 1, 2 and 4 while leaving the WRITE CORE's source lookup
+  // unfiltered: without it a forged or stale post copies a stopped member's plan.
+  it("refuses a post naming a stopped member as the source", () => {
+    const target = newProfile("AF Stale Source");
+    const basis = basisFor(target);
+    stop(sourceItem);
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceName: "Mira",
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("source-gone");
+    // …and it is a refusal a fresh render fixes, so the card re-reads rather than
+    // leaving the person on a dead end.
+    expect(alsoForRefusalRefreshes(res.reason)).toBe(true);
+    expect(itemsOf(target)).toEqual([]);
+  });
+
+  // Rules out filtering the SOURCE OPTIONS somewhere that also feeds the rendered
+  // roster: a stopped member must still appear on the card as a member of the bottle.
+  it("drops a stopped member from the source options only", () => {
+    stop(sourceItem);
+    const model = alsoForCardModel({
+      pool: { id: supplyId, name: "Ibuprofen", strength: "200 mg" },
+      visibleMembers: [],
+      candidates: [{ id: newProfile("AF No Source"), name: "Ada" }],
+    });
+    expect(model.sources).toEqual([]);
+    expect(model.offers).toEqual([]);
+    // The bottle still has the member — `poolMembers` is unchanged, which is what the
+    // roster renders from.
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE supply_id = ?")
+        .get(supplyId)
+    ).toMatchObject({ n: 1 });
+  });
+});
+
+// ── THE DECLINE KEY CARRIES WHAT THE BOTTLE IS (ruling 7) ──────────────────────
+describe("correcting a bottle's name brings back a declined offer", () => {
+  function rename(name: string): void {
+    db.prepare("UPDATE shared_supplies SET name = ? WHERE id = ?").run(
+      name,
+      supplyId
+    );
+  }
+  function offered(targetProfileId: number, name: string): boolean {
+    return (
+      alsoForCardModel({
+        pool: { id: supplyId, name, strength: "200 mg" },
+        visibleMembers: [
+          { itemId: sourceItem, profileId: source, name: "Mira" },
+        ],
+        candidates: [{ id: targetProfileId, name: "Ada" }],
+      }).offers.length > 0
+    );
+  }
+
+  // RULING 7's own resolution path: the disagreement is fixed by naming the bottle
+  // correctly, and the offer has to come back when it is. Rules out the shipped
+  // bottle-only key, under which the prescribed fix never restores the offer.
+  it("un-declines when the name is corrected to a different product", () => {
+    const target = newProfile("AF Renamed");
+    rename("Tylenol");
+    expect(offered(target, "Tylenol")).toBe(true);
+    declineAlsoForOffer(supplyId, target);
+    expect(offered(target, "Tylenol")).toBe(false);
+
+    rename("Advil");
+    expect(offered(target, "Advil")).toBe(true);
+  });
+
+  // Rules out a key that ignores the identity, and one keyed on the RAW NAME — under
+  // the latter every edit of the label re-arms a decline the person meant.
+  it("stays declined when the name changes WITHIN one identity", () => {
+    const target = newProfile("AF Same Identity");
+    rename("Tylenol");
+    declineAlsoForOffer(supplyId, target);
+    rename("Tylenol Extra Strength");
+    expect(offered(target, "Tylenol Extra Strength")).toBe(false);
+  });
+
+  // The write and the read must derive the tail identically, or a decline is written
+  // under one key and looked for under another — which reads as a decline that did
+  // nothing at all.
+  it("writes the tail the read looks for", () => {
+    const target = newProfile("AF Tail");
+    rename("Tylenol");
+    declineAlsoForOffer(supplyId, target);
+    expect(
+      getFindingSuppressions(target).has(
+        alsoForOfferKey(supplyId, alsoForDetectedSlugs("Tylenol"))
+      )
+    ).toBe(true);
+  });
+});
+
+// ── THE COPY RE-DERIVES THE BOTTLE'S REFILL OFFERS ─────────────────────────────
+//
+// Executed against the banked branch: replacing `invalidatePoolRefillOffers(...)` with
+// a no-op left all 41 db/action tests green. A new member changes what the bottle owes
+// everyone, so a pending refill offer computed for the old membership is a stale promise
+// about a real notification.
+describe("a copy invalidates the bottle's refill offers", () => {
+  it("marks a live pooled refill offer invalidated", () => {
+    const target = newProfile("AF Refill");
+    const offerDay = today(source);
+    db.prepare(
+      `INSERT INTO notify_offers (profile_id, family, date, payload, created_at)
+       VALUES (?, 'refill', ?, ?, datetime('now'))`
+    ).run(
+      source,
+      offerDay,
+      JSON.stringify({
+        state: "available",
+        itemId: sourceItem,
+        supplyId,
+      })
+    );
+
+    const res = copyPoolMemberPlan({
+      supplyId,
+      sourceProfileId: source,
+      sourceName: "Mira",
+      sourceItemId: sourceItem,
+      targetProfileId: target,
+      targetName: "Ada",
+      basis: basisFor(target),
+    });
+    expect(res.ok).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT json_extract(payload, '$.state') AS state
+             FROM notify_offers WHERE profile_id = ? AND family = 'refill'`
+        )
+        .get(source)
+    ).toMatchObject({ state: "invalidated" });
   });
 });

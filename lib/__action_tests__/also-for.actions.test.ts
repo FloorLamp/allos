@@ -9,7 +9,8 @@
 //
 // And the point of the whole feature: the caller's ACTIVE profile is unchanged.
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   alsoForAction,
@@ -20,20 +21,32 @@ import { createSharedSupply } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { peekActingSession } from "./session-state";
 import { alsoForOfferKey } from "@/lib/dismissal-keys";
+import {
+  alsoForDetectedSlugs,
+  decodeAlsoForBasis,
+  encodeAlsoForBasis,
+} from "@/lib/intake-also-for";
 import { getFindingSuppressions } from "@/lib/queries/upcoming/suppressions";
+
+const revalidate = vi.mocked(revalidatePath);
+beforeEach(() => revalidate.mockClear());
 
 let seq = 0;
 const tag = (): string => `af${++seq}`;
 
-function member(profileId: number, supplyId: number | null): number {
+function member(
+  profileId: number,
+  supplyId: number | null,
+  kind: "medication" | "supplement" = "medication"
+): number {
   const id = Number(
     db
       .prepare(
         `INSERT INTO intake_items
            (profile_id, name, active, kind, condition, obligation, supply_id, source)
-         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'must', ?, 'manual')`
+         VALUES (?, 'Ibuprofen', 1, ?, 'daily', 'must', ?, 'manual')`
       )
-      .run(profileId, supplyId).lastInsertRowid
+      .run(profileId, kind, supplyId).lastInsertRowid
   );
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -192,9 +205,11 @@ describe("declining an offer is gated the same way the tap is", () => {
     expect(res.ok).toBe(true);
     expect(itemCount(ada.id)).toBe(0);
     expect(peekActingSession()?.profile.id).toBe(mira.id);
-    expect(getFindingSuppressions(ada.id).has(alsoForOfferKey(supplyId))).toBe(
-      true
-    );
+    expect(
+      getFindingSuppressions(ada.id).has(
+        alsoForOfferKey(supplyId, alsoForDetectedSlugs("Ibuprofen"))
+      )
+    ).toBe(true);
 
     // …and the offer the person was holding no longer lands.
     const tap = await alsoForAction(held);
@@ -219,7 +234,131 @@ describe("declining an offer is gated the same way the tap is", () => {
       )
     ).rejects.toThrow(/read-only on target/);
     expect(
-      getFindingSuppressions(readOnlyTarget.id).has(alsoForOfferKey(supplyId))
+      getFindingSuppressions(readOnlyTarget.id).has(
+        alsoForOfferKey(supplyId, alsoForDetectedSlugs("Ibuprofen"))
+      )
     ).toBe(false);
+  });
+});
+
+// ── THE REFRESH IS THE MECHANISM, and nothing red-able covered it ───────────────
+//
+// Executed against the banked branch: deleting
+// `if (alsoForRefusalRefreshes(result.reason)) revalidateSupplies();` left all 41
+// db/action tests and all 10 component tests green. That one line is the whole of
+// ruling 3's midnight guarantee and ruling 6's "tap again": without it the card keeps
+// the stale basis, so the next tap refuses for the same reason, forever.
+describe("a refusal a fresh render fixes also refreshes the card", () => {
+  // `day-rolled` is the cheapest of the refreshing reasons and the one that changes on
+  // its own: an offer rendered at 23:59 and tapped at 00:01 must not refuse forever.
+  it("revalidates the cabinet on a day-rolled refusal", async () => {
+    const t = tag();
+    const login = createLogin({ role: "member", username: `m_${t}` });
+    const mira = createProfile(`Mira ${t}`, login.id);
+    const ada = createProfile(`Ada ${t}`, login.id);
+    actAs(login, mira);
+    const supplyId = bottle();
+    const sourceItem = member(mira.id, supplyId);
+
+    const held = post(supplyId, mira.id, sourceItem, ada);
+    const shown = decodeAlsoForBasis(String(held.get("basis")));
+    expect(shown).not.toBeNull();
+    if (!shown) return;
+    held.set("basis", encodeAlsoForBasis({ ...shown, day: "2000-01-01" }));
+
+    revalidate.mockClear();
+    const res = await alsoForAction(held);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("day-rolled");
+    expect(itemCount(ada.id)).toBe(0);
+    expect(revalidate).toHaveBeenCalled();
+  });
+
+  // A bottle deleted between render and tap refreshes the card too (PM, 18:45 UTC).
+  // ONE reason and ONE message across deleted, foreign and unreachable: if only a truly
+  // deleted bottle refreshed, the refresh would be an oracle telling a caller that a
+  // bottle they may not see exists.
+  it("revalidates on a missing bottle, from both doors", async () => {
+    const t = tag();
+    const login = createLogin({ role: "member", username: `m_${t}` });
+    const mira = createProfile(`Mira ${t}`, login.id);
+    const ada = createProfile(`Ada ${t}`, login.id);
+    actAs(login, mira);
+
+    revalidate.mockClear();
+    const tap = await alsoForAction(
+      fd({
+        supply_id: 0,
+        source_item_id: 0,
+        source_profile_id: 0,
+        profile_id: ada.id,
+        basis: "",
+      })
+    );
+    expect(tap.reason).toBe("no-bottle");
+    expect(revalidate).toHaveBeenCalled();
+
+    revalidate.mockClear();
+    const declined = await declineAlsoForAction(
+      fd({ supply_id: 0, profile_id: ada.id })
+    );
+    expect(declined.reason).toBe("no-bottle");
+    expect(revalidate).toHaveBeenCalled();
+  });
+});
+
+// ── "Open their row" must land on THEIR row, or not be offered ──────────────────
+describe("the receipt's link", () => {
+  // A medication has a cross-profile detail page, so the link is the recipient's own
+  // row and reads correctly for anyone who may see them.
+  it("points at the recipient's own medication row", async () => {
+    const t = tag();
+    const login = createLogin({ role: "member", username: `m_${t}` });
+    const mira = createProfile(`Mira ${t}`, login.id);
+    const ada = createProfile(`Ada ${t}`, login.id);
+    actAs(login, mira);
+    const supplyId = bottle();
+    const sourceItem = member(mira.id, supplyId);
+
+    const res = await alsoForAction(post(supplyId, mira.id, sourceItem, ada));
+    expect(res.ok).toBe(true);
+    const [created] = db
+      .prepare("SELECT id FROM intake_items WHERE profile_id = ?")
+      .all(ada.id) as { id: number }[];
+    expect(res.href).toBe(`/medications/${created.id}`);
+  });
+
+  // A SUPPLEMENT has no cross-profile route: every supplement door resolves to
+  // /nutrition?tab=supplements, which is the CALLER's own tab, and the nutrition page
+  // reads no profile parameter. Linking there shows the wrong person's supplements, so
+  // the link is not offered at all and the receipt's "set the amount on the new row"
+  // stands. Rules out shipping a link to somebody else's stack.
+  it("is absent for a cross-profile supplement copy, and present for the caller's own", async () => {
+    const t = tag();
+    const login = createLogin({ role: "member", username: `m_${t}` });
+    const mira = createProfile(`Mira ${t}`, login.id);
+    const ada = createProfile(`Ada ${t}`, login.id);
+    actAs(login, mira);
+    const supplyId = bottle();
+    const sourceItem = member(mira.id, supplyId, "supplement");
+
+    const cross = await alsoForAction(post(supplyId, mira.id, sourceItem, ada));
+    expect(cross.ok).toBe(true);
+    expect(cross.receipt).toBeTruthy();
+    expect(cross.href).toBeUndefined();
+
+    // The SAME copy for the caller's own profile does land on a page that shows it,
+    // so the link stands there. Rules out dropping the link for every supplement.
+    const t2 = tag();
+    const login2 = createLogin({ role: "member", username: `m_${t2}` });
+    const bo = createProfile(`Bo ${t2}`, login2.id);
+    const cass = createProfile(`Cass ${t2}`, login2.id);
+    actAs(login2, cass);
+    const supply2 = bottle();
+    const source2 = member(bo.id, supply2, "supplement");
+
+    const own = await alsoForAction(post(supply2, bo.id, source2, cass));
+    expect(own.ok).toBe(true);
+    expect(own.href).toBe("/nutrition?tab=supplements");
   });
 });
