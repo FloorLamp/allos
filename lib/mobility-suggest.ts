@@ -7,7 +7,7 @@
 // Training overview, one-tap acceptable into a mobility_region frequency target and
 // dismissible through the shared bus. NEVER a push, never a rehab prescription (#838's
 // non-goal holds — the injury line is soft, note-only). DB-free; the builder in
-// lib/rule-findings.ts gathers the inputs and calls this.
+// lib/rule-findings/training.ts gathers the inputs and calls this.
 
 import type { MuscleRegion } from "./lifts";
 

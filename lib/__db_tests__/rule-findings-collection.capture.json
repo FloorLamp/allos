@@ -1,0 +1,2834 @@
+{
+  "collectionOrder": [
+    "buildMedicationDuplicationFindings",
+    "buildTrainingObservationFindings",
+    "buildMuscleVolumeFindings",
+    "buildBodyHygieneFindings",
+    "buildGoalPacingFindings",
+    "buildAdherencePatternFindings",
+    "buildDemotionSuggestionFindings",
+    "buildTargetRightSizeFindings",
+    "buildFoodSuggestionFindings",
+    "buildFoodHabitFindings",
+    "buildFoodDrugVarianceFindings",
+    "buildSubstanceUseFindings",
+    "buildProteinAdequacyFindings",
+    "buildFiberAdequacyFindings",
+    "buildEndurancePlanFindings",
+    "buildSunExposureFindings",
+    "buildOralHealthFindings",
+    "buildFitnessCheckFindings",
+    "buildMobilitySuggestionFindings",
+    "buildMoodFindings",
+    "buildSleepMoodBridgeFindings",
+    "buildSleepClockSkewFindings",
+    "buildPairedObservationFindings",
+    "buildCycleBleedingFindings",
+    "buildTtcWorkupFindings",
+    "buildDataQualityFindings"
+  ],
+  "entityFindingLimits": {
+    "medicationDuplication": 3,
+    "staleExerciseNames": 3,
+    "trainingPlateau": 3,
+    "bodyHygiene": 3,
+    "endurancePlan": 3,
+    "prolongedBleeding": 1,
+    "goalPacing": 3,
+    "adherencePattern": 3,
+    "demotionSuggestion": 3,
+    "targetRightSize": 3
+  },
+  "bodybuilder": {
+    "today": "2026-08-18",
+    "coaching": [
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:pull up@none:28",
+        "supersedes": "training-obs:plateau:pull up@none",
+        "title": "Pull Up has plateaued",
+        "detail": "Your estimated 1RM for Pull Up has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Pull Up, Chin Up) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Pull+Up",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:lats:2026-08",
+        "title": "Lats volume is light this week",
+        "detail": "Lats: 4.5 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:calves:2026-08",
+        "title": "Calves volume is light this week",
+        "detail": "Calves: 3 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:abs:2026-08",
+        "title": "Abs volume is light this week",
+        "detail": "Abs: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:side-delts:2026-08",
+        "title": "Side delts volume is light this week",
+        "detail": "Side delts: 4.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:obliques:2026-08",
+        "title": "Obliques volume is light this week",
+        "detail": "Obliques: 0.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:traps:2026-08",
+        "title": "Traps volume is light this week",
+        "detail": "Traps: 3 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:quads:2026-08",
+        "title": "Quads volume is light this week",
+        "detail": "Quads: 7.5 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:mid-back:2026-08",
+        "title": "Mid back volume is light this week",
+        "detail": "Mid back: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:glutes:2026-08",
+        "title": "Glutes volume is light this week",
+        "detail": "Glutes: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:biceps:2026-08",
+        "title": "Biceps volume is light this week",
+        "detail": "Biceps: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:rear-delts:2026-08",
+        "title": "Rear delts volume is light this week",
+        "detail": "Rear delts: 4.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:hamstrings:2026-08",
+        "title": "Hamstrings volume is light this week",
+        "detail": "Hamstrings: 7.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "fiber-adequacy",
+        "dedupeKey": "fiber-adequacy:shortfall",
+        "title": "Fiber may be below the daily target",
+        "detail": "Your fiber is ~29 g/day from your tracked intake — below the ~38 g/day (DRI adequate intake, adult male). Nudging it up with whole plants helps. Informational, not medical or dietary advice.",
+        "tone": "info",
+        "evidence": "Target ~38 g/day from the DRI Adequate Intake for fiber (IOM 2005). Informational, not prescriptive.",
+        "actionHref": "/nutrition",
+        "actionLabel": "Log servings"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "builders": {
+      "buildMedicationDuplicationFindings": [],
+      "buildTrainingObservationFindings": [
+        {
+          "domain": "training-plateau",
+          "dedupeKey": "training-obs:plateau:pull up@none:28",
+          "supersedes": "training-obs:plateau:pull up@none",
+          "title": "Pull Up has plateaued",
+          "detail": "Your estimated 1RM for Pull Up has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Pull Up, Chin Up) can restart progression.",
+          "tone": "caution",
+          "actionHref": "/training?tab=analyze&kind=strength&item=Pull+Up",
+          "actionLabel": "View exercise"
+        }
+      ],
+      "buildMuscleVolumeFindings": [
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:lats:2026-08",
+          "title": "Lats volume is light this week",
+          "detail": "Lats: 4.5 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:calves:2026-08",
+          "title": "Calves volume is light this week",
+          "detail": "Calves: 3 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:abs:2026-08",
+          "title": "Abs volume is light this week",
+          "detail": "Abs: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:side-delts:2026-08",
+          "title": "Side delts volume is light this week",
+          "detail": "Side delts: 4.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:obliques:2026-08",
+          "title": "Obliques volume is light this week",
+          "detail": "Obliques: 0.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:traps:2026-08",
+          "title": "Traps volume is light this week",
+          "detail": "Traps: 3 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:quads:2026-08",
+          "title": "Quads volume is light this week",
+          "detail": "Quads: 7.5 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:mid-back:2026-08",
+          "title": "Mid back volume is light this week",
+          "detail": "Mid back: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:glutes:2026-08",
+          "title": "Glutes volume is light this week",
+          "detail": "Glutes: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:biceps:2026-08",
+          "title": "Biceps volume is light this week",
+          "detail": "Biceps: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:rear-delts:2026-08",
+          "title": "Rear delts volume is light this week",
+          "detail": "Rear delts: 4.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:hamstrings:2026-08",
+          "title": "Hamstrings volume is light this week",
+          "detail": "Hamstrings: 7.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        }
+      ],
+      "buildBodyHygieneFindings": [],
+      "buildGoalPacingFindings": [],
+      "buildAdherencePatternFindings": [],
+      "buildDemotionSuggestionFindings": [],
+      "buildTargetRightSizeFindings": [],
+      "buildFoodSuggestionFindings": [
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:soluble-fiber",
+          "title": "Food for Soluble fiber",
+          "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+          "tone": "info",
+          "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-reduce:ldl-apob",
+          "title": "Cut back for LDL cholesterol / ApoB",
+          "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+          "tone": "info",
+          "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        }
+      ],
+      "buildFoodHabitFindings": [],
+      "buildSubstanceUseFindings": [],
+      "buildProteinAdequacyFindings": [],
+      "buildFiberAdequacyFindings": [
+        {
+          "domain": "fiber-adequacy",
+          "dedupeKey": "fiber-adequacy:shortfall",
+          "title": "Fiber may be below the daily target",
+          "detail": "Your fiber is ~29 g/day from your tracked intake — below the ~38 g/day (DRI adequate intake, adult male). Nudging it up with whole plants helps. Informational, not medical or dietary advice.",
+          "tone": "info",
+          "evidence": "Target ~38 g/day from the DRI Adequate Intake for fiber (IOM 2005). Informational, not prescriptive.",
+          "actionHref": "/nutrition",
+          "actionLabel": "Log servings"
+        }
+      ],
+      "buildEndurancePlanFindings": [],
+      "buildSunExposureFindings": [],
+      "buildOralHealthFindings": [],
+      "buildFitnessCheckFindings": [],
+      "buildMobilitySuggestionFindings": [],
+      "buildMoodFindings": [],
+      "buildSleepMoodBridgeFindings": [],
+      "buildSleepClockSkewFindings": [],
+      "buildPairedObservationFindings": [],
+      "buildCycleBleedingFindings": [],
+      "buildTtcWorkupFindings": [],
+      "buildDataQualityFindings": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ]
+    },
+    "coachingAltDisplay": [
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:pull up@none:28",
+        "supersedes": "training-obs:plateau:pull up@none",
+        "title": "Pull Up has plateaued",
+        "detail": "Your estimated 1RM for Pull Up has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Pull Up, Chin Up) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Pull+Up",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:lats:2026-08",
+        "title": "Lats volume is light this week",
+        "detail": "Lats: 4.5 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:calves:2026-08",
+        "title": "Calves volume is light this week",
+        "detail": "Calves: 3 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:abs:2026-08",
+        "title": "Abs volume is light this week",
+        "detail": "Abs: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:side-delts:2026-08",
+        "title": "Side delts volume is light this week",
+        "detail": "Side delts: 4.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:obliques:2026-08",
+        "title": "Obliques volume is light this week",
+        "detail": "Obliques: 0.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:traps:2026-08",
+        "title": "Traps volume is light this week",
+        "detail": "Traps: 3 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:quads:2026-08",
+        "title": "Quads volume is light this week",
+        "detail": "Quads: 7.5 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:mid-back:2026-08",
+        "title": "Mid back volume is light this week",
+        "detail": "Mid back: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:glutes:2026-08",
+        "title": "Glutes volume is light this week",
+        "detail": "Glutes: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:biceps:2026-08",
+        "title": "Biceps volume is light this week",
+        "detail": "Biceps: 6 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:rear-delts:2026-08",
+        "title": "Rear delts volume is light this week",
+        "detail": "Rear delts: 4.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:hamstrings:2026-08",
+        "title": "Hamstrings volume is light this week",
+        "detail": "Hamstrings: 7.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "fiber-adequacy",
+        "dedupeKey": "fiber-adequacy:shortfall",
+        "title": "Fiber may be below the daily target",
+        "detail": "Your fiber is ~29 g/day from your tracked intake — below the ~38 g/day (DRI adequate intake, adult male). Nudging it up with whole plants helps. Informational, not medical or dietary advice.",
+        "tone": "info",
+        "evidence": "Target ~38 g/day from the DRI Adequate Intake for fiber (IOM 2005). Informational, not prescriptive.",
+        "actionHref": "/nutrition",
+        "actionLabel": "Log servings"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "closure": {
+      "fitnessCheck": [],
+      "dataQuality": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "both": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "unknownPrefix": []
+    },
+    "dataQualityGaps": [
+      {
+        "key": "smoking-status",
+        "label": "Record smoking status",
+        "whyLine": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "ctaHref": "/records/care/overview#smoking-history",
+        "leverage": 2
+      },
+      {
+        "key": "phenoage-inputs",
+        "label": "Complete the PhenoAge panel",
+        "whyLine": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "ctaHref": "/results/clinical-results?new=1&name=Albumin",
+        "leverage": 1
+      },
+      {
+        "key": "risk-attributes",
+        "label": "Review risk factors",
+        "whyLine": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "ctaHref": "/records/care/overview#risk-factors",
+        "leverage": 1
+      }
+    ],
+    "plateauHints": [
+      {
+        "exerciseKey": "pull up",
+        "equipmentId": null,
+        "dedupeKey": "training-obs:plateau:pull up@none:28",
+        "supersedes": "training-obs:plateau:pull up@none",
+        "hintText": "Flat ~6 weeks — consider a deload (drop the load ~10% and rebuild) or a variation (Assisted Pull Up, Chin Up)."
+      }
+    ],
+    "rightSizeCandidates": [],
+    "rightSizeFindings": [],
+    "demotionCandidateItemIds": [],
+    "afterDismissingEveryKey": []
+  },
+  "marathon-runner": {
+    "today": "2026-08-18",
+    "coaching": [
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:iron",
+        "title": "Food for Iron",
+        "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+        "tone": "info",
+        "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Ferritin",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-d",
+        "title": "Food for Vitamin D",
+        "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+        "tone": "info",
+        "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "builders": {
+      "buildMedicationDuplicationFindings": [],
+      "buildTrainingObservationFindings": [],
+      "buildMuscleVolumeFindings": [],
+      "buildBodyHygieneFindings": [],
+      "buildGoalPacingFindings": [],
+      "buildAdherencePatternFindings": [],
+      "buildDemotionSuggestionFindings": [],
+      "buildTargetRightSizeFindings": [],
+      "buildFoodSuggestionFindings": [
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:iron",
+          "title": "Food for Iron",
+          "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+          "tone": "info",
+          "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+          "actionHref": "/results/clinical-results/view?name=Ferritin",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:vitamin-d",
+          "title": "Food for Vitamin D",
+          "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+          "tone": "info",
+          "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+          "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+          "actionLabel": "View biomarker"
+        }
+      ],
+      "buildFoodHabitFindings": [],
+      "buildSubstanceUseFindings": [],
+      "buildProteinAdequacyFindings": [],
+      "buildFiberAdequacyFindings": [],
+      "buildEndurancePlanFindings": [],
+      "buildSunExposureFindings": [],
+      "buildOralHealthFindings": [],
+      "buildFitnessCheckFindings": [],
+      "buildMobilitySuggestionFindings": [],
+      "buildMoodFindings": [],
+      "buildSleepMoodBridgeFindings": [],
+      "buildSleepClockSkewFindings": [],
+      "buildPairedObservationFindings": [],
+      "buildCycleBleedingFindings": [],
+      "buildTtcWorkupFindings": [],
+      "buildDataQualityFindings": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ]
+    },
+    "coachingAltDisplay": [
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:iron",
+        "title": "Food for Iron",
+        "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+        "tone": "info",
+        "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Ferritin",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-d",
+        "title": "Food for Vitamin D",
+        "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+        "tone": "info",
+        "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "closure": {
+      "fitnessCheck": [],
+      "dataQuality": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "both": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "unknownPrefix": []
+    },
+    "dataQualityGaps": [
+      {
+        "key": "smoking-status",
+        "label": "Record smoking status",
+        "whyLine": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "ctaHref": "/records/care/overview#smoking-history",
+        "leverage": 2
+      },
+      {
+        "key": "risk-attributes",
+        "label": "Review risk factors",
+        "whyLine": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "ctaHref": "/records/care/overview#risk-factors",
+        "leverage": 1
+      }
+    ],
+    "plateauHints": [],
+    "rightSizeCandidates": [],
+    "rightSizeFindings": [],
+    "demotionCandidateItemIds": [],
+    "afterDismissingEveryKey": []
+  },
+  "household": {
+    "today": "2026-08-18",
+    "coaching": [
+      {
+        "domain": "goal-pace",
+        "dedupeKey": "goal-pace:goal:6",
+        "title": "“Get back under 85 kg” is off pace",
+        "detail": "At your current pace you're trending away from this goal — consider adjusting the target date or your plan. (rough estimate)",
+        "tone": "caution",
+        "actionHref": "/training?tab=plan#goals",
+        "actionLabel": "Review goal"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-d",
+        "title": "Food for Vitamin D",
+        "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+        "tone": "info",
+        "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:glucose",
+        "title": "Cut back for Glucose / HbA1c",
+        "detail": "Because your Hemoglobin A1c is high. Added sugar and sweets — Reducing added sugar lowers the post-meal glucose load that raises A1c. Sugary drinks — soda, juice, sweetened coffee — Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change. Refined grains — white bread, white rice, pastries — Swapping refined grains for whole grains blunts glucose spikes. Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone.",
+        "tone": "info",
+        "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load. Source: NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars).",
+        "actionHref": "/results/clinical-results/view?name=Hemoglobin%20A1c",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "builders": {
+      "buildMedicationDuplicationFindings": [],
+      "buildTrainingObservationFindings": [],
+      "buildMuscleVolumeFindings": [],
+      "buildBodyHygieneFindings": [],
+      "buildGoalPacingFindings": [
+        {
+          "domain": "goal-pace",
+          "dedupeKey": "goal-pace:goal:6",
+          "title": "“Get back under 85 kg” is off pace",
+          "detail": "At your current pace you're trending away from this goal — consider adjusting the target date or your plan. (rough estimate)",
+          "tone": "caution",
+          "actionHref": "/training?tab=plan#goals",
+          "actionLabel": "Review goal"
+        }
+      ],
+      "buildAdherencePatternFindings": [],
+      "buildDemotionSuggestionFindings": [],
+      "buildTargetRightSizeFindings": [],
+      "buildFoodSuggestionFindings": [
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:vitamin-d",
+          "title": "Food for Vitamin D",
+          "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+          "tone": "info",
+          "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+          "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:soluble-fiber",
+          "title": "Food for Soluble fiber",
+          "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+          "tone": "info",
+          "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-reduce:ldl-apob",
+          "title": "Cut back for LDL cholesterol / ApoB",
+          "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+          "tone": "info",
+          "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-reduce:glucose",
+          "title": "Cut back for Glucose / HbA1c",
+          "detail": "Because your Hemoglobin A1c is high. Added sugar and sweets — Reducing added sugar lowers the post-meal glucose load that raises A1c. Sugary drinks — soda, juice, sweetened coffee — Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change. Refined grains — white bread, white rice, pastries — Swapping refined grains for whole grains blunts glucose spikes. Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone.",
+          "tone": "info",
+          "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load. Source: NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars).",
+          "actionHref": "/results/clinical-results/view?name=Hemoglobin%20A1c",
+          "actionLabel": "View biomarker"
+        }
+      ],
+      "buildFoodHabitFindings": [],
+      "buildSubstanceUseFindings": [],
+      "buildProteinAdequacyFindings": [],
+      "buildFiberAdequacyFindings": [],
+      "buildEndurancePlanFindings": [],
+      "buildSunExposureFindings": [],
+      "buildOralHealthFindings": [],
+      "buildFitnessCheckFindings": [],
+      "buildMobilitySuggestionFindings": [],
+      "buildMoodFindings": [],
+      "buildSleepMoodBridgeFindings": [],
+      "buildSleepClockSkewFindings": [],
+      "buildPairedObservationFindings": [],
+      "buildCycleBleedingFindings": [],
+      "buildTtcWorkupFindings": [],
+      "buildDataQualityFindings": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ]
+    },
+    "coachingAltDisplay": [
+      {
+        "domain": "goal-pace",
+        "dedupeKey": "goal-pace:goal:6",
+        "title": "“Get back under 85 kg” is off pace",
+        "detail": "At your current pace you're trending away from this goal — consider adjusting the target date or your plan. (rough estimate)",
+        "tone": "caution",
+        "actionHref": "/training?tab=plan#goals",
+        "actionLabel": "Review goal"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-d",
+        "title": "Food for Vitamin D",
+        "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+        "tone": "info",
+        "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:glucose",
+        "title": "Cut back for Glucose / HbA1c",
+        "detail": "Because your Hemoglobin A1c is high. Added sugar and sweets — Reducing added sugar lowers the post-meal glucose load that raises A1c. Sugary drinks — soda, juice, sweetened coffee — Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change. Refined grains — white bread, white rice, pastries — Swapping refined grains for whole grains blunts glucose spikes. Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone.",
+        "tone": "info",
+        "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load. Source: NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars).",
+        "actionHref": "/results/clinical-results/view?name=Hemoglobin%20A1c",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "closure": {
+      "fitnessCheck": [],
+      "dataQuality": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "both": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "unknownPrefix": []
+    },
+    "dataQualityGaps": [
+      {
+        "key": "smoking-status",
+        "label": "Record smoking status",
+        "whyLine": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "ctaHref": "/records/care/overview#smoking-history",
+        "leverage": 2
+      },
+      {
+        "key": "phenoage-inputs",
+        "label": "Complete the PhenoAge panel",
+        "whyLine": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "ctaHref": "/results/clinical-results?new=1&name=Albumin",
+        "leverage": 1
+      },
+      {
+        "key": "risk-attributes",
+        "label": "Review risk factors",
+        "whyLine": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "ctaHref": "/records/care/overview#risk-factors",
+        "leverage": 1
+      }
+    ],
+    "plateauHints": [],
+    "rightSizeCandidates": [],
+    "rightSizeFindings": [],
+    "demotionCandidateItemIds": [],
+    "afterDismissingEveryKey": []
+  },
+  "pregnant": {
+    "today": "2026-08-18",
+    "coaching": [
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:iron",
+        "title": "Food for Iron",
+        "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+        "tone": "info",
+        "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Ferritin",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-d",
+        "title": "Food for Vitamin D",
+        "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+        "tone": "info",
+        "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "builders": {
+      "buildMedicationDuplicationFindings": [],
+      "buildTrainingObservationFindings": [],
+      "buildMuscleVolumeFindings": [],
+      "buildBodyHygieneFindings": [],
+      "buildGoalPacingFindings": [],
+      "buildAdherencePatternFindings": [],
+      "buildDemotionSuggestionFindings": [],
+      "buildTargetRightSizeFindings": [],
+      "buildFoodSuggestionFindings": [
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:iron",
+          "title": "Food for Iron",
+          "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+          "tone": "info",
+          "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+          "actionHref": "/results/clinical-results/view?name=Ferritin",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:vitamin-d",
+          "title": "Food for Vitamin D",
+          "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+          "tone": "info",
+          "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+          "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+          "actionLabel": "View biomarker"
+        }
+      ],
+      "buildFoodHabitFindings": [],
+      "buildSubstanceUseFindings": [],
+      "buildProteinAdequacyFindings": [],
+      "buildFiberAdequacyFindings": [],
+      "buildEndurancePlanFindings": [],
+      "buildSunExposureFindings": [],
+      "buildOralHealthFindings": [],
+      "buildFitnessCheckFindings": [],
+      "buildMobilitySuggestionFindings": [],
+      "buildMoodFindings": [],
+      "buildSleepMoodBridgeFindings": [],
+      "buildSleepClockSkewFindings": [],
+      "buildPairedObservationFindings": [],
+      "buildCycleBleedingFindings": [],
+      "buildTtcWorkupFindings": [],
+      "buildDataQualityFindings": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ]
+    },
+    "coachingAltDisplay": [
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:iron",
+        "title": "Food for Iron",
+        "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+        "tone": "info",
+        "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Ferritin",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-d",
+        "title": "Food for Vitamin D",
+        "detail": "Because your Vitamin D, 25-Hydroxy is low. Fatty fish, egg yolks, and fortified milk/cereals — Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency. Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
+        "tone": "info",
+        "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources. Source: NIH ODS Vitamin D fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20D%2C%2025-Hydroxy",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "closure": {
+      "fitnessCheck": [],
+      "dataQuality": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "both": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "unknownPrefix": []
+    },
+    "dataQualityGaps": [
+      {
+        "key": "smoking-status",
+        "label": "Record smoking status",
+        "whyLine": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "ctaHref": "/records/care/overview#smoking-history",
+        "leverage": 2
+      },
+      {
+        "key": "risk-attributes",
+        "label": "Review risk factors",
+        "whyLine": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "ctaHref": "/records/care/overview#risk-factors",
+        "leverage": 1
+      }
+    ],
+    "plateauHints": [],
+    "rightSizeCandidates": [],
+    "rightSizeFindings": [],
+    "demotionCandidateItemIds": [],
+    "afterDismissingEveryKey": []
+  },
+  "diabetic-cgm": {
+    "today": "2026-08-18",
+    "coaching": [
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-b12",
+        "title": "Food for Vitamin B12",
+        "detail": "Because your Vitamin B12 is low. Fish, meat, eggs, dairy (and fortified foods) — B12 occurs naturally only in animal foods; fortified cereals or nutritional yeast cover a plant-based diet. Absorption falls with age and with acid-lowering medication — a persistent low often needs a supplement, not just food.",
+        "tone": "info",
+        "evidence": "B12 is found naturally only in animal foods; a plant-based diet relies on fortified foods or a supplement. Source: NIH ODS Vitamin B12 fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20B12",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:glucose",
+        "title": "Cut back for Glucose / HbA1c",
+        "detail": "Because your Hemoglobin A1c is high. Added sugar and sweets — Reducing added sugar lowers the post-meal glucose load that raises A1c. Sugary drinks — soda, juice, sweetened coffee — Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change. Refined grains — white bread, white rice, pastries — Swapping refined grains for whole grains blunts glucose spikes. Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone.",
+        "tone": "info",
+        "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load. Source: NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars).",
+        "actionHref": "/results/clinical-results/view?name=Hemoglobin%20A1c",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "oral-health",
+        "dedupeKey": "oral-health:periodontal:diabetes",
+        "title": "Gum health and blood sugar reinforce each other",
+        "detail": "Diabetes and gum disease (periodontitis) are linked in both directions — higher blood sugar makes gum inflammation more likely, and gum disease can make blood sugar harder to control. Keeping up with dental cleanings and day-to-day oral care supports your glycemic control too. Worth mentioning to your dentist and your diabetes clinician.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Diabetes and periodontitis are bidirectionally linked (ADA / AAP).",
+        "actionHref": "/records/history/visits",
+        "actionLabel": "Dental care"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:med-rxcui",
+        "title": "Confirm 3 RxNorm matches",
+        "detail": "3 medications have no confirmed RxNorm code, so their interaction, PGx, dental, and ototoxic safety checks match by name only.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 4 engines once fixed.",
+        "actionHref": "/medications?filter=needs-rxcui",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "builders": {
+      "buildMedicationDuplicationFindings": [],
+      "buildTrainingObservationFindings": [],
+      "buildMuscleVolumeFindings": [],
+      "buildBodyHygieneFindings": [],
+      "buildGoalPacingFindings": [],
+      "buildAdherencePatternFindings": [],
+      "buildDemotionSuggestionFindings": [],
+      "buildTargetRightSizeFindings": [],
+      "buildFoodSuggestionFindings": [
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:vitamin-b12",
+          "title": "Food for Vitamin B12",
+          "detail": "Because your Vitamin B12 is low. Fish, meat, eggs, dairy (and fortified foods) — B12 occurs naturally only in animal foods; fortified cereals or nutritional yeast cover a plant-based diet. Absorption falls with age and with acid-lowering medication — a persistent low often needs a supplement, not just food.",
+          "tone": "info",
+          "evidence": "B12 is found naturally only in animal foods; a plant-based diet relies on fortified foods or a supplement. Source: NIH ODS Vitamin B12 fact sheet.",
+          "actionHref": "/results/clinical-results/view?name=Vitamin%20B12",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:soluble-fiber",
+          "title": "Food for Soluble fiber",
+          "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+          "tone": "info",
+          "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-reduce:ldl-apob",
+          "title": "Cut back for LDL cholesterol / ApoB",
+          "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+          "tone": "info",
+          "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-reduce:glucose",
+          "title": "Cut back for Glucose / HbA1c",
+          "detail": "Because your Hemoglobin A1c is high. Added sugar and sweets — Reducing added sugar lowers the post-meal glucose load that raises A1c. Sugary drinks — soda, juice, sweetened coffee — Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change. Refined grains — white bread, white rice, pastries — Swapping refined grains for whole grains blunts glucose spikes. Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone.",
+          "tone": "info",
+          "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load. Source: NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars).",
+          "actionHref": "/results/clinical-results/view?name=Hemoglobin%20A1c",
+          "actionLabel": "View biomarker"
+        }
+      ],
+      "buildFoodHabitFindings": [],
+      "buildSubstanceUseFindings": [],
+      "buildProteinAdequacyFindings": [],
+      "buildFiberAdequacyFindings": [],
+      "buildEndurancePlanFindings": [],
+      "buildSunExposureFindings": [],
+      "buildOralHealthFindings": [
+        {
+          "domain": "oral-health",
+          "dedupeKey": "oral-health:periodontal:diabetes",
+          "title": "Gum health and blood sugar reinforce each other",
+          "detail": "Diabetes and gum disease (periodontitis) are linked in both directions — higher blood sugar makes gum inflammation more likely, and gum disease can make blood sugar harder to control. Keeping up with dental cleanings and day-to-day oral care supports your glycemic control too. Worth mentioning to your dentist and your diabetes clinician.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Diabetes and periodontitis are bidirectionally linked (ADA / AAP).",
+          "actionHref": "/records/history/visits",
+          "actionLabel": "Dental care"
+        }
+      ],
+      "buildFitnessCheckFindings": [],
+      "buildMobilitySuggestionFindings": [],
+      "buildMoodFindings": [],
+      "buildSleepMoodBridgeFindings": [],
+      "buildSleepClockSkewFindings": [],
+      "buildPairedObservationFindings": [],
+      "buildCycleBleedingFindings": [],
+      "buildTtcWorkupFindings": [],
+      "buildDataQualityFindings": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:med-rxcui",
+          "title": "Confirm 3 RxNorm matches",
+          "detail": "3 medications have no confirmed RxNorm code, so their interaction, PGx, dental, and ototoxic safety checks match by name only.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 4 engines once fixed.",
+          "actionHref": "/medications?filter=needs-rxcui",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ]
+    },
+    "coachingAltDisplay": [
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:vitamin-b12",
+        "title": "Food for Vitamin B12",
+        "detail": "Because your Vitamin B12 is low. Fish, meat, eggs, dairy (and fortified foods) — B12 occurs naturally only in animal foods; fortified cereals or nutritional yeast cover a plant-based diet. Absorption falls with age and with acid-lowering medication — a persistent low often needs a supplement, not just food.",
+        "tone": "info",
+        "evidence": "B12 is found naturally only in animal foods; a plant-based diet relies on fortified foods or a supplement. Source: NIH ODS Vitamin B12 fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Vitamin%20B12",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:glucose",
+        "title": "Cut back for Glucose / HbA1c",
+        "detail": "Because your Hemoglobin A1c is high. Added sugar and sweets — Reducing added sugar lowers the post-meal glucose load that raises A1c. Sugary drinks — soda, juice, sweetened coffee — Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change. Refined grains — white bread, white rice, pastries — Swapping refined grains for whole grains blunts glucose spikes. Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone.",
+        "tone": "info",
+        "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load. Source: NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars).",
+        "actionHref": "/results/clinical-results/view?name=Hemoglobin%20A1c",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "oral-health",
+        "dedupeKey": "oral-health:periodontal:diabetes",
+        "title": "Gum health and blood sugar reinforce each other",
+        "detail": "Diabetes and gum disease (periodontitis) are linked in both directions — higher blood sugar makes gum inflammation more likely, and gum disease can make blood sugar harder to control. Keeping up with dental cleanings and day-to-day oral care supports your glycemic control too. Worth mentioning to your dentist and your diabetes clinician.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Diabetes and periodontitis are bidirectionally linked (ADA / AAP).",
+        "actionHref": "/records/history/visits",
+        "actionLabel": "Dental care"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:med-rxcui",
+        "title": "Confirm 3 RxNorm matches",
+        "detail": "3 medications have no confirmed RxNorm code, so their interaction, PGx, dental, and ototoxic safety checks match by name only.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 4 engines once fixed.",
+        "actionHref": "/medications?filter=needs-rxcui",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "closure": {
+      "fitnessCheck": [],
+      "dataQuality": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:med-rxcui",
+          "title": "Confirm 3 RxNorm matches",
+          "detail": "3 medications have no confirmed RxNorm code, so their interaction, PGx, dental, and ototoxic safety checks match by name only.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 4 engines once fixed.",
+          "actionHref": "/medications?filter=needs-rxcui",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "both": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:med-rxcui",
+          "title": "Confirm 3 RxNorm matches",
+          "detail": "3 medications have no confirmed RxNorm code, so their interaction, PGx, dental, and ototoxic safety checks match by name only.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 4 engines once fixed.",
+          "actionHref": "/medications?filter=needs-rxcui",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "unknownPrefix": []
+    },
+    "dataQualityGaps": [
+      {
+        "key": "med-rxcui",
+        "label": "Confirm 3 RxNorm matches",
+        "whyLine": "3 medications have no confirmed RxNorm code, so their interaction, PGx, dental, and ototoxic safety checks match by name only.",
+        "ctaHref": "/medications?filter=needs-rxcui",
+        "leverage": 4
+      },
+      {
+        "key": "smoking-status",
+        "label": "Record smoking status",
+        "whyLine": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "ctaHref": "/records/care/overview#smoking-history",
+        "leverage": 2
+      },
+      {
+        "key": "phenoage-inputs",
+        "label": "Complete the PhenoAge panel",
+        "whyLine": "1 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "ctaHref": "/results/clinical-results?new=1&name=Albumin",
+        "leverage": 1
+      },
+      {
+        "key": "risk-attributes",
+        "label": "Review risk factors",
+        "whyLine": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "ctaHref": "/records/care/overview#risk-factors",
+        "leverage": 1
+      }
+    ],
+    "plateauHints": [],
+    "rightSizeCandidates": [],
+    "rightSizeFindings": [],
+    "demotionCandidateItemIds": [],
+    "afterDismissingEveryKey": []
+  },
+  "biohacker": {
+    "today": "2026-08-18",
+    "coaching": [
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:back squat@none:23",
+        "supersedes": "training-obs:plateau:back squat@none",
+        "title": "Back Squat has plateaued",
+        "detail": "Your estimated 1RM for Back Squat has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Bulgarian Split Squat, Front Squat) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Back+Squat",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:bench press@none:19",
+        "supersedes": "training-obs:plateau:bench press@none",
+        "title": "Barbell Bench Press has plateaued",
+        "detail": "Your estimated 1RM for Barbell Bench Press has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Dip, Cable Fly) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Barbell+Bench+Press",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:pull up@none:21",
+        "supersedes": "training-obs:plateau:pull up@none",
+        "title": "Pull Up has plateaued",
+        "detail": "Your estimated 1RM for Pull Up has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Pull Up, Chin Up) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Pull+Up",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:quads:2026-08",
+        "title": "Quads volume is light this week",
+        "detail": "Quads: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:chest:2026-08",
+        "title": "Chest volume is light this week",
+        "detail": "Chest: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:lats:2026-08",
+        "title": "Lats volume is light this week",
+        "detail": "Lats: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:glutes:2026-08",
+        "title": "Glutes volume is light this week",
+        "detail": "Glutes: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:hamstrings:2026-08",
+        "title": "Hamstrings volume is light this week",
+        "detail": "Hamstrings: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:triceps:2026-08",
+        "title": "Triceps volume is light this week",
+        "detail": "Triceps: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:biceps:2026-08",
+        "title": "Biceps volume is light this week",
+        "detail": "Biceps: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:mid-back:2026-08",
+        "title": "Mid back volume is light this week",
+        "detail": "Mid back: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:abs:2026-08",
+        "title": "Abs volume is light this week",
+        "detail": "Abs: 1 set this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:lower-back:2026-08",
+        "title": "Lower back volume is light this week",
+        "detail": "Lower back: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:front-delts:2026-08",
+        "title": "Front delts volume is light this week",
+        "detail": "Front delts: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:obliques:2026-08",
+        "title": "Obliques volume is light this week",
+        "detail": "Obliques: 0.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:forearms:2026-08",
+        "title": "Forearms volume is light this week",
+        "detail": "Forearms: 1.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:iron",
+        "title": "Food for Iron",
+        "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+        "tone": "info",
+        "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Ferritin",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "builders": {
+      "buildMedicationDuplicationFindings": [],
+      "buildTrainingObservationFindings": [
+        {
+          "domain": "training-plateau",
+          "dedupeKey": "training-obs:plateau:back squat@none:23",
+          "supersedes": "training-obs:plateau:back squat@none",
+          "title": "Back Squat has plateaued",
+          "detail": "Your estimated 1RM for Back Squat has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Bulgarian Split Squat, Front Squat) can restart progression.",
+          "tone": "caution",
+          "actionHref": "/training?tab=analyze&kind=strength&item=Back+Squat",
+          "actionLabel": "View exercise"
+        },
+        {
+          "domain": "training-plateau",
+          "dedupeKey": "training-obs:plateau:bench press@none:19",
+          "supersedes": "training-obs:plateau:bench press@none",
+          "title": "Barbell Bench Press has plateaued",
+          "detail": "Your estimated 1RM for Barbell Bench Press has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Dip, Cable Fly) can restart progression.",
+          "tone": "caution",
+          "actionHref": "/training?tab=analyze&kind=strength&item=Barbell+Bench+Press",
+          "actionLabel": "View exercise"
+        },
+        {
+          "domain": "training-plateau",
+          "dedupeKey": "training-obs:plateau:pull up@none:21",
+          "supersedes": "training-obs:plateau:pull up@none",
+          "title": "Pull Up has plateaued",
+          "detail": "Your estimated 1RM for Pull Up has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Pull Up, Chin Up) can restart progression.",
+          "tone": "caution",
+          "actionHref": "/training?tab=analyze&kind=strength&item=Pull+Up",
+          "actionLabel": "View exercise"
+        }
+      ],
+      "buildMuscleVolumeFindings": [
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:quads:2026-08",
+          "title": "Quads volume is light this week",
+          "detail": "Quads: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:chest:2026-08",
+          "title": "Chest volume is light this week",
+          "detail": "Chest: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:lats:2026-08",
+          "title": "Lats volume is light this week",
+          "detail": "Lats: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:glutes:2026-08",
+          "title": "Glutes volume is light this week",
+          "detail": "Glutes: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:hamstrings:2026-08",
+          "title": "Hamstrings volume is light this week",
+          "detail": "Hamstrings: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:triceps:2026-08",
+          "title": "Triceps volume is light this week",
+          "detail": "Triceps: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:biceps:2026-08",
+          "title": "Biceps volume is light this week",
+          "detail": "Biceps: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:mid-back:2026-08",
+          "title": "Mid back volume is light this week",
+          "detail": "Mid back: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:abs:2026-08",
+          "title": "Abs volume is light this week",
+          "detail": "Abs: 1 set this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:lower-back:2026-08",
+          "title": "Lower back volume is light this week",
+          "detail": "Lower back: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:front-delts:2026-08",
+          "title": "Front delts volume is light this week",
+          "detail": "Front delts: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:obliques:2026-08",
+          "title": "Obliques volume is light this week",
+          "detail": "Obliques: 0.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        },
+        {
+          "domain": "muscle-volume",
+          "dedupeKey": "muscle-volume:below:forearms:2026-08",
+          "title": "Forearms volume is light this week",
+          "detail": "Forearms: 1.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+          "tone": "info",
+          "actionHref": "/training?tab=overview",
+          "actionLabel": "View coverage"
+        }
+      ],
+      "buildBodyHygieneFindings": [],
+      "buildGoalPacingFindings": [],
+      "buildAdherencePatternFindings": [],
+      "buildDemotionSuggestionFindings": [],
+      "buildTargetRightSizeFindings": [],
+      "buildFoodSuggestionFindings": [
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:iron",
+          "title": "Food for Iron",
+          "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+          "tone": "info",
+          "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+          "actionHref": "/results/clinical-results/view?name=Ferritin",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-suggest:soluble-fiber",
+          "title": "Food for Soluble fiber",
+          "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+          "tone": "info",
+          "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        },
+        {
+          "domain": "food-suggest",
+          "dedupeKey": "food-reduce:ldl-apob",
+          "title": "Cut back for LDL cholesterol / ApoB",
+          "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+          "tone": "info",
+          "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+          "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+          "actionLabel": "View biomarker"
+        }
+      ],
+      "buildFoodHabitFindings": [],
+      "buildSubstanceUseFindings": [],
+      "buildProteinAdequacyFindings": [],
+      "buildFiberAdequacyFindings": [],
+      "buildEndurancePlanFindings": [],
+      "buildSunExposureFindings": [],
+      "buildOralHealthFindings": [],
+      "buildFitnessCheckFindings": [],
+      "buildMobilitySuggestionFindings": [],
+      "buildMoodFindings": [],
+      "buildSleepMoodBridgeFindings": [],
+      "buildSleepClockSkewFindings": [],
+      "buildPairedObservationFindings": [],
+      "buildCycleBleedingFindings": [],
+      "buildTtcWorkupFindings": [],
+      "buildDataQualityFindings": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ]
+    },
+    "coachingAltDisplay": [
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:back squat@none:23",
+        "supersedes": "training-obs:plateau:back squat@none",
+        "title": "Back Squat has plateaued",
+        "detail": "Your estimated 1RM for Back Squat has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Bulgarian Split Squat, Front Squat) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Back+Squat",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:bench press@none:19",
+        "supersedes": "training-obs:plateau:bench press@none",
+        "title": "Barbell Bench Press has plateaued",
+        "detail": "Your estimated 1RM for Barbell Bench Press has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Dip, Cable Fly) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Barbell+Bench+Press",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "training-plateau",
+        "dedupeKey": "training-obs:plateau:pull up@none:21",
+        "supersedes": "training-obs:plateau:pull up@none",
+        "title": "Pull Up has plateaued",
+        "detail": "Your estimated 1RM for Pull Up has been flat for about 6 weeks. A short deload — drop the load ~10% and rebuild — or swapping in a variation (Assisted Pull Up, Chin Up) can restart progression.",
+        "tone": "caution",
+        "actionHref": "/training?tab=analyze&kind=strength&item=Pull+Up",
+        "actionLabel": "View exercise"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:quads:2026-08",
+        "title": "Quads volume is light this week",
+        "detail": "Quads: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:chest:2026-08",
+        "title": "Chest volume is light this week",
+        "detail": "Chest: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:lats:2026-08",
+        "title": "Lats volume is light this week",
+        "detail": "Lats: 3 sets this week — the weekly floor for steady growth is about 10. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:glutes:2026-08",
+        "title": "Glutes volume is light this week",
+        "detail": "Glutes: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:hamstrings:2026-08",
+        "title": "Hamstrings volume is light this week",
+        "detail": "Hamstrings: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:triceps:2026-08",
+        "title": "Triceps volume is light this week",
+        "detail": "Triceps: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:biceps:2026-08",
+        "title": "Biceps volume is light this week",
+        "detail": "Biceps: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:mid-back:2026-08",
+        "title": "Mid back volume is light this week",
+        "detail": "Mid back: 1.5 sets this week — the weekly floor for steady growth is about 8. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:abs:2026-08",
+        "title": "Abs volume is light this week",
+        "detail": "Abs: 1 set this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:lower-back:2026-08",
+        "title": "Lower back volume is light this week",
+        "detail": "Lower back: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:front-delts:2026-08",
+        "title": "Front delts volume is light this week",
+        "detail": "Front delts: 1.5 sets this week — the weekly floor for steady growth is about 6. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:obliques:2026-08",
+        "title": "Obliques volume is light this week",
+        "detail": "Obliques: 0.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "muscle-volume",
+        "dedupeKey": "muscle-volume:below:forearms:2026-08",
+        "title": "Forearms volume is light this week",
+        "detail": "Forearms: 1.5 sets this week — the weekly floor for steady growth is about 4. A little more direct volume brings it into range.",
+        "tone": "info",
+        "actionHref": "/training?tab=overview",
+        "actionLabel": "View coverage"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:iron",
+        "title": "Food for Iron",
+        "detail": "Because your Ferritin is low. Lean red meat, poultry, shellfish (heme iron) — Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores. Legumes, lentils, tofu, dark leafy greens (non-heme iron) — Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption. A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption.",
+        "tone": "info",
+        "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake. Source: NIH ODS Iron fact sheet.",
+        "actionHref": "/results/clinical-results/view?name=Ferritin",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-suggest:soluble-fiber",
+        "title": "Food for Soluble fiber",
+        "detail": "Because your LDL Cholesterol is high. Oats and barley — whole grains rich in beta-glucan — A daily bowl of oats or barley is the beta-glucan source the health claims are written for. Legumes — beans, lentils, and chickpeas — Half a cup of cooked legumes adds soluble fiber alongside plant protein. Berries and other whole fruit — Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber. Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
+        "tone": "info",
+        "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims. Source: FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims.",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "food-suggest",
+        "dedupeKey": "food-reduce:ldl-apob",
+        "title": "Cut back for LDL cholesterol / ApoB",
+        "detail": "Because your LDL Cholesterol is high. Fried and deep-fried foods — Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB. Processed and fatty red meats — Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up. Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+        "tone": "info",
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever. Source: NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat).",
+        "actionHref": "/results/clinical-results/view?name=LDL%20Cholesterol",
+        "actionLabel": "View biomarker"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:smoking-status",
+        "title": "Record smoking status",
+        "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 2 engines once fixed.",
+        "actionHref": "/records/care/overview#smoking-history",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:phenoage-inputs",
+        "title": "Complete the PhenoAge panel",
+        "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/results/clinical-results?new=1&name=Albumin",
+        "actionLabel": "Fix it"
+      },
+      {
+        "domain": "data-quality",
+        "dedupeKey": "data-quality:risk-attributes",
+        "title": "Review risk factors",
+        "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "tone": "info",
+        "dashboardRelevance": 2,
+        "evidence": "Unblocks 1 engine once fixed.",
+        "actionHref": "/records/care/overview#risk-factors",
+        "actionLabel": "Fix it"
+      }
+    ],
+    "closure": {
+      "fitnessCheck": [],
+      "dataQuality": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "both": [
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:smoking-status",
+          "title": "Record smoking status",
+          "detail": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 2 engines once fixed.",
+          "actionHref": "/records/care/overview#smoking-history",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:phenoage-inputs",
+          "title": "Complete the PhenoAge panel",
+          "detail": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/results/clinical-results?new=1&name=Albumin",
+          "actionLabel": "Fix it"
+        },
+        {
+          "domain": "data-quality",
+          "dedupeKey": "data-quality:risk-attributes",
+          "title": "Review risk factors",
+          "detail": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+          "tone": "info",
+          "dashboardRelevance": 2,
+          "evidence": "Unblocks 1 engine once fixed.",
+          "actionHref": "/records/care/overview#risk-factors",
+          "actionLabel": "Fix it"
+        }
+      ],
+      "unknownPrefix": []
+    },
+    "dataQualityGaps": [
+      {
+        "key": "smoking-status",
+        "label": "Record smoking status",
+        "whyLine": "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
+        "ctaHref": "/records/care/overview#smoking-history",
+        "leverage": 2
+      },
+      {
+        "key": "phenoage-inputs",
+        "label": "Complete the PhenoAge panel",
+        "whyLine": "2 of 9 biological-age inputs are present — the remaining labs unlock your biological age.",
+        "ctaHref": "/results/clinical-results?new=1&name=Albumin",
+        "leverage": 1
+      },
+      {
+        "key": "risk-attributes",
+        "label": "Review risk factors",
+        "whyLine": "Unlocks risk-stratified screening cadence (occupational and immune-status context).",
+        "ctaHref": "/records/care/overview#risk-factors",
+        "leverage": 1
+      }
+    ],
+    "plateauHints": [
+      {
+        "exerciseKey": "back squat",
+        "equipmentId": null,
+        "dedupeKey": "training-obs:plateau:back squat@none:23",
+        "supersedes": "training-obs:plateau:back squat@none",
+        "hintText": "Flat ~6 weeks — consider a deload (drop the load ~10% and rebuild) or a variation (Bulgarian Split Squat, Front Squat)."
+      },
+      {
+        "exerciseKey": "bench press",
+        "equipmentId": null,
+        "dedupeKey": "training-obs:plateau:bench press@none:19",
+        "supersedes": "training-obs:plateau:bench press@none",
+        "hintText": "Flat ~6 weeks — consider a deload (drop the load ~10% and rebuild) or a variation (Assisted Dip, Cable Fly)."
+      },
+      {
+        "exerciseKey": "pull up",
+        "equipmentId": null,
+        "dedupeKey": "training-obs:plateau:pull up@none:21",
+        "supersedes": "training-obs:plateau:pull up@none",
+        "hintText": "Flat ~6 weeks — consider a deload (drop the load ~10% and rebuild) or a variation (Assisted Pull Up, Chin Up)."
+      }
+    ],
+    "rightSizeCandidates": [],
+    "rightSizeFindings": [],
+    "demotionCandidateItemIds": [],
+    "afterDismissingEveryKey": []
+  }
+}

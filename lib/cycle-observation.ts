@@ -15,7 +15,7 @@
 // doctrine: this domain is never a source of dueness), so this can never become a push.
 //
 // Pure (no DB/clock beyond the anchor it is handed); the DB input assembly lives in
-// buildCycleBleedingFindings (lib/rule-findings.ts).
+// buildCycleBleedingFindings (lib/rule-findings/clinical.ts).
 
 import {
   PROLONGED_PERIOD_DAYS,

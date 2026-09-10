@@ -362,6 +362,79 @@ const BARE_NOTES_BAN = [
     "Render free-text notes through <NotesText notes={…} /> (components/NotesText.tsx) so they wrap and keep their line breaks (#794).",
 }));
 
+// ── The JSX-attribute scanners (#5347 slice 3) ──────────────────────────────
+//
+// The same bar as slice 2: a guard moved here only when a shipped defect stands
+// behind the shape it bans. The consolidation censuses, the icon-button pair and
+// the guards a type already carries (typed routes) were deleted instead.
+
+// #2535 — `aria-pressed` is a toggle-BUTTON state. An <a href> is role="link",
+// which does not support it, so assistive technology announces NO selected state:
+// four URL-state selectors shipped that way before SegmentedControl gained a link
+// binding. A link that is the current view carries aria-current.
+// (was lib/__tests__/link-aria-pressed-scan.test.ts)
+const LINK_ARIA_PRESSED_BAN = {
+  selector:
+    "JSXOpeningElement[name.name=/^(?:a|Link)$/] > JSXAttribute[name.name='aria-pressed']",
+  message:
+    'aria-pressed is a toggle-button state and a link is role="link", so the selected state is announced to nobody (#2535) — use aria-current, or <SegmentedControl> with an href per option.',
+};
+
+// #3375/#3729 — information that exists only on hover does not exist on a phone:
+// a `title=` renders nothing on touch and a non-interactive element cannot be
+// focused. Explanatory text goes through a touch-reachable primitive
+// (InfoTooltipIcon, ControlTooltip) and a control's name through aria-label plus
+// an sr-only span. Intrinsic elements, plus the components that hand `title`
+// straight to their anchor. (was lib/__tests__/raw-title-boundary.test.ts, which
+// also resolved a renamed import; this keys on the tag name as written)
+const RAW_TITLE_BAN = {
+  selector:
+    "JSXOpeningElement[name.name=/^(?:[a-z]|(?:Link|DestinationLink|DestinationActionLink|StandingDestinationLink|CardFootnote)$)/] > JSXAttribute[name.name='title']",
+  message:
+    "A title= attribute is hover-only, so its text does not exist on a phone (#3375) — explain through InfoTooltipIcon / ControlTooltip, and name a control with aria-label plus an sr-only span (#3729).",
+};
+
+// #3677 — 47 raw <details> each snapped open. components/Disclosure.tsx is the one
+// that renders the element: it carries the continuity motion (#3676) and the
+// marker suppression, and is exempted below. (was lib/__tests__/disclosure-owner-scan.test.ts)
+const RAW_DETAILS_BAN = {
+  selector: "JSXOpeningElement[name.name='details']",
+  message:
+    "A raw <details> snaps open — render <Disclosure> (components/Disclosure.tsx), which carries the continuity motion (#3677).",
+};
+const DISCLOSURE_OWNER = "components/Disclosure.tsx";
+
+// #5181 — a command inside a role="menu" panel that carries no menu role is not
+// counted or announced as an item of it: the episode kebab read as "menu, 1 item"
+// over three. A panel is <OverflowMenu> (which hands role="menu" to its
+// AnchoredPanel) or an element declaring the role itself; the population is the
+// button / a / Link elements written among its CHILDREN in the same file — not its
+// trigger prop, and not a wrapper component mounted there, which the render tier
+// holds. NOTE the nesting: esquery honours `:has(> X)` one level at a time, so
+// `:has(> A:has(> B))` is the spelling; `:has(> A > B)` matches nothing.
+// (was lib/__tests__/menu-item-role-scan.test.ts)
+const MENU_PANEL =
+  ":matches(JSXElement[openingElement.name.name='OverflowMenu'], JSXElement:has(> JSXOpeningElement:has(> JSXAttribute[name.name='role']:has(> Literal[value='menu']))))";
+const MENU_ITEM_ROLE_BAN = {
+  selector: `${MENU_PANEL} > :not(JSXOpeningElement, JSXClosingElement) JSXOpeningElement[name.name=/^(?:button|a|Link)$/]:not(:has(> JSXAttribute[name.name='role']:has(> Literal[value=/^menuitem(?:checkbox|radio)?$/])))`,
+  message:
+    'A command inside a role="menu" panel announces itself as an item of it — add role="menuitem" (menuitemcheckbox / menuitemradio for a stateful one), or a screen reader does not count it (#5181).',
+};
+
+// #4924 — a recharts curve written as a literal. `type="monotone"` sat at nine
+// call sites across six cards, so five weigh-ins drew the invented spline a
+// ninety-point series gets; the curve is the scaffold's `chartCurve`. An axis'
+// type="number" / "category" is a different prop of the same name and stays
+// silent. (was the curve half of lib/__tests__/chart-scaffold-scan.test.ts; its
+// dash, tooltip and recharts-importer registry halves had no catch and are gone)
+const CHART_CURVES =
+  "basis|basisClosed|basisOpen|bumpX|bumpY|cardinal|catmullRom|linear|linearClosed|monotone|monotoneX|monotoneY|natural|step|stepAfter|stepBefore";
+const RAW_CURVE_BAN = {
+  selector: `JSXAttribute[name.name='type'] > Literal[value=/^(?:${CHART_CURVES})$/]`,
+  message:
+    "A line's curve is chart vocabulary decided once — pass type={chartCurve} from components/chart-scaffold.tsx, not a literal (#4924).",
+};
+
 const UI_SYNTAX = [
   ...MUTED_TEXT_CONTRAST,
   BORDER_SLATE_BAN,
@@ -369,7 +442,61 @@ const UI_SYNTAX = [
   UNWRAPPED_TABLE_BAN,
   ...EMPHASIS_SPACING,
   ...BARE_NOTES_BAN,
+  LINK_ARIA_PRESSED_BAN,
+  RAW_TITLE_BAN,
+  RAW_DETAILS_BAN,
+  MENU_ITEM_ROLE_BAN,
+  RAW_CURVE_BAN,
 ];
+
+// #544/#551 — a loose `flag !== "normal"` compare sorted the good "immune" titer
+// to the top as if abnormal, and the same shape pushed it as a care-tier
+// notification. Notability routes through isOutOfRange / isNonOptimal
+// (lib/reference-range); the compare is banned in either order on any
+// flag-named value. lib/reference-range/qualitative.ts MAPS parsed results onto
+// flag values rather than deciding notability, and is exempted below.
+// (was lib/__tests__/flag-notability.test.ts)
+const FLAG_NORMAL_BAN = {
+  selector:
+    "BinaryExpression[operator=/^(?:===|!==|==|!=)$/]:matches([right.value='normal']:matches([left.name=/flag$/i], [left.property.name=/flag$/i]), [left.value='normal']:matches([right.name=/flag$/i], [right.property.name=/flag$/i]))",
+  message:
+    'Do not decide notability by comparing a flag to "normal" — a neutral flag such as "immune" is miscategorized (#544). Route through isOutOfRange / isNonOptimal from @/lib/reference-range.',
+};
+const FLAG_VALUE_MAPPER = "lib/reference-range/qualitative.ts";
+
+// #454 — every outbound Telegram obligation (length and keyboard limits, the
+// "[Name] " attribution prefix, escaping, delivery accounting) is owned by
+// lib/notifications/telegram.ts, so it alone imports the three raw send/edit
+// primitives. A callback handler that edited a message directly is how the prefix
+// was dropped (#377), and a builder reaching the wire is how the 4096-char cap was
+// missed (#379). scripts/reach-graph.ts names the same three as SENDERS for reach
+// derivation — a different question, not a second copy of this ban.
+// (was the import half of lib/__tests__/telegram-chokepoint.test.ts; the raw
+// call() is module-private, so the module system carries that half)
+const TELEGRAM_RAW_SEND_BAN = {
+  group: ["**/telegram-api"],
+  importNames: [
+    "sendMessageRaw",
+    "editMessageTextRaw",
+    "editMessageReplyMarkupRaw",
+  ],
+  message:
+    "Only lib/notifications/telegram.ts sends or edits on the wire — go through telegramChannel / sendTelegramMessage / rebuildMessage so limits, the [Name] prefix and delivery accounting apply (#454).",
+};
+const TELEGRAM_CHOKEPOINT = "lib/notifications/telegram.ts";
+
+// #985 — every email leaves through lib/email.ts, the sole importer of nodemailer:
+// that is where TLS is enforced, where "not configured" refuses rather than sends,
+// and where the deterministic test capture lives. A second importer of the raw
+// transport would send without those. A security boundary rather than a caught
+// defect (owner ruling on #5347 slice 3), kept as the Telegram ban's twin.
+// (was lib/__tests__/email-chokepoint.test.ts)
+const EMAIL_RAW_SEND_BAN = {
+  group: ["nodemailer", "nodemailer/*"],
+  message:
+    "Only lib/email.ts imports nodemailer — send through sendEmail there so TLS enforcement, the not-configured refusal and delivery capture apply (#985).",
+};
+const EMAIL_CHOKEPOINT = "lib/email.ts";
 
 // #1891 — a sortable item translates, it does not scale. `CSS.Transform.toString()`
 // carries rectSortingStrategy's scaleX/scaleY, which morphs the dragged item toward
@@ -418,9 +545,14 @@ const APP_SURFACE_SYNTAX = [
 // The level `app/`, `components/`, `lib/`, `scripts/` and `e2e/` already sit on —
 // named so the e2e blocks below can spread it rather than re-listing its members.
 const SYNTAX_APP_SURFACE = [...SYNTAX_ALL, ...APP_SURFACE_SYNTAX];
-// Production code is also where the #794/#1447/#1891 UI shapes are banned; a test
-// tier may quote any of them.
-const SYNTAX_PRODUCTION = [...SYNTAX_APP_SURFACE, RPE_BRAND_CAST, ...UI_SYNTAX];
+// Production code is also where the #794/#1447/#1891 UI shapes and the #544 flag
+// compare are banned; a test tier may quote any of them.
+const SYNTAX_PRODUCTION = [
+  ...SYNTAX_APP_SURFACE,
+  RPE_BRAND_CAST,
+  ...UI_SYNTAX,
+  FLAG_NORMAL_BAN,
+];
 const SYNTAX_PRODUCTION_KEYED = [...SYNTAX_PRODUCTION, ...RPE_KEY_LITERAL];
 const SYNTAX_LIB_APP = [
   ...SYNTAX_PRODUCTION_KEYED,
@@ -429,10 +561,15 @@ const SYNTAX_LIB_APP = [
 ];
 const IMPORT_PATHS_PRODUCTION = [REVALIDATE_PATH_BAN, RPE_MINTER_BAN];
 const IMPORT_PATTERNS_PRODUCTION = [TYPESCRIPT_API_PATTERN];
-const IMPORT_PATTERNS_LIB_APP = [
+// Shipped code only: a test tier stubs the raw Telegram primitives (the callback
+// DB tests mock telegram-api's network hop), and the revalidate block above reads
+// the test trees too, so the ban joins at the first level that ignores them.
+const IMPORT_PATTERNS_SHIPPED = [
   ...IMPORT_PATTERNS_PRODUCTION,
-  STREAK_MODULE_BAN,
+  TELEGRAM_RAW_SEND_BAN,
+  EMAIL_RAW_SEND_BAN,
 ];
+const IMPORT_PATTERNS_LIB_APP = [...IMPORT_PATTERNS_SHIPPED, STREAK_MODULE_BAN];
 const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
 
 // ── e2e/**: the hygiene scan's zero-allowlist bans (#5350) ───────────────────
@@ -923,7 +1060,7 @@ const config = [
     rules: {
       "no-restricted-imports": restrictImports(
         IMPORT_PATHS_PRODUCTION,
-        IMPORT_PATTERNS_PRODUCTION
+        IMPORT_PATTERNS_SHIPPED
       ),
       "no-restricted-syntax": ["error", ...SYNTAX_PRODUCTION],
     },
@@ -1161,6 +1298,46 @@ const config = [
         "error",
         ...without(SYNTAX_LIB_APP, UNWRAPPED_TABLE_BAN),
       ],
+    },
+  },
+  // ── The owners of the #5347 slice 3 bans ────────────────────────────────────
+  // The disclosure renders the <details>, the qualitative classifier maps onto the
+  // flag values, and the two chokepoints import their raw transports; each keeps
+  // every other ban of its level.
+  {
+    files: [DISCLOSURE_OWNER],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, RAW_DETAILS_BAN),
+      ],
+    },
+  },
+  {
+    files: [FLAG_VALUE_MAPPER],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, FLAG_NORMAL_BAN),
+      ],
+    },
+  },
+  {
+    files: [TELEGRAM_CHOKEPOINT],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        IMPORT_PATHS_PRODUCTION,
+        without(IMPORT_PATTERNS_LIB_APP, TELEGRAM_RAW_SEND_BAN)
+      ),
+    },
+  },
+  {
+    files: [EMAIL_CHOKEPOINT],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        IMPORT_PATHS_PRODUCTION,
+        without(IMPORT_PATTERNS_LIB_APP, EMAIL_RAW_SEND_BAN)
+      ),
     },
   },
   // ── e2e/**: the retired hygiene scan's zero-allowlist bans (#5350) ──────────

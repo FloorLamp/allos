@@ -677,6 +677,27 @@ describe("the substance doors state a use's minute", () => {
     expect((timeField() as HTMLInputElement).value).toMatch(/^\d{2}:\d{2}$/);
   });
 
+  // A CORRECTION CAN REACH "NOBODY SAID" (#5617). Both modes mounted the control as
+  // `state`, which does not offer that answer — so the correction door could move a
+  // stated minute anywhere except back to unstated, the one-way ratchet `correct` mode
+  // exists to prevent. The action has always read an empty `stated_at` as a clear and
+  // this form has always posted the field; what was missing was the affordance. The
+  // ADD has nothing to clear and is deliberately not offered one.
+  it("clears a corrected minute back to Not stated, and offers that on the correction only", async () => {
+    openForm(undefined, "nicotine");
+    expect(screen.queryByTestId("substance-when-not-stated")).toBeNull();
+
+    cleanup();
+    openForm(ROW);
+    expect((timeField() as HTMLInputElement).value).toMatch(/^\d{2}:\d{2}$/);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("substance-when-not-stated"))
+    );
+    expect((timeField() as HTMLInputElement).value).toBe("");
+    await save("Save");
+    expect(payload("update").stated_at).toBe("");
+  });
+
   it.each(["alcohol", "nicotine"])(
     "%s posts the stated instant it collected, and an empty one when untouched",
     async (substance) => {

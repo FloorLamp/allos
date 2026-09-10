@@ -125,7 +125,7 @@ export default function StoolForm({
             onChange={setWhen}
             maxDate={maxDate}
             dateLabel="Date"
-            timeLabel="Time it happened"
+            timeLabel="Time"
             testId="stool-form-when"
           />
         </div>

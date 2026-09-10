@@ -37,10 +37,17 @@ import SubmitButton from "@/components/SubmitButton";
 // correctable on the nutrition page and nowhere else; the bar's modal had both and was
 // the only one that could clear a statement. All three now do all three.
 //
-// WHAT THE MODE CHANGES, and why neither is a field-membership flag: a CORRECTION picks
-// from the day's own offered hours and can choose "Not stated" to clear a statement
-// somebody made, which is a thing only an existing row has; an ADD states a minute and
-// has nothing to clear. Both draw the same three fields.
+// WHAT THE MODE CHANGES, and why neither is a field-membership flag: a CORRECTION can
+// choose "Not stated" to clear a statement somebody made, which is a thing only an
+// existing row has; an ADD has nothing to clear. Both draw the same three fields.
+//
+// BOTH MODES STATE A MINUTE (#5617). The correction used to offer the day's HOURS in a
+// select, so a serving eaten at 19:40 could only be corrected to 19:00 — the form's own
+// add path, and every sibling form's when, had named a minute since #2236. The hours
+// were also truncated at the current hour on today, which the write boundary already
+// enforces better: `judgeEatenAt` refuses an instant meaningfully in the future and the
+// correction path shows that refusal (app/(app)/nutrition/actions.ts), so the truncation
+// was a second, coarser copy of a rule that lives at the write.
 //
 // THE MOUNT ANNOUNCES, NOT THE FORM, and food is the domain where that matters. Its
 // siblings toast from inside; the nutrition bar's channel is PROFILE-SCOPED, because a
@@ -137,7 +144,9 @@ export default function FoodServingForm({
     row?.groupKey ?? groups[0]?.slug ?? ""
   );
   // The meal a stated instant falls in. ONE reading of that question, so the meal an
-  // opening instant lands in and the meal a picked hour moves to cannot drift apart.
+  // opening instant lands in and the meal a picked time moves to cannot drift apart.
+  // The offered-hour lookup answers an exact hour; every other minute takes the
+  // `foodSlotForHhmm` fallback, which is the same boundaries read the same way.
   function slotForStated(statedAt: string, onDate: string): FoodSlot {
     const offered = eatingHoursOnDate(
       onDate,
@@ -295,14 +304,14 @@ export default function FoodServingForm({
             never editable. */}
         <WhenControl
           mode={row ? "correct" : "state"}
-          grain={row ? "hour" : "minute"}
+          grain="minute"
           value={when}
           onChange={moveWhen}
           tz={tzProp}
           minDate={minDate}
           maxDate={maxDate}
           dateLabel="Date"
-          timeLabel={row ? "Time eaten" : "Time"}
+          timeLabel="Time"
           testId={`${testId}-time`}
         />
       </div>

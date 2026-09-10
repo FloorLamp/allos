@@ -117,7 +117,7 @@
 //     score — which is why the argued registry, not a tuning knob, is the design.
 //
 // Pure: no DB, no clock, no I/O. The gathering half is lib/queries/paired-observations.ts
-// and the finding half is buildPairedObservationFindings (lib/rule-findings.ts).
+// and the finding half is buildPairedObservationFindings (lib/rule-findings/wellbeing.ts).
 
 import { mean } from "./robust-stats";
 import { daysBetweenDateStr } from "./date";

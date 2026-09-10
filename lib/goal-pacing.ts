@@ -10,7 +10,7 @@
 //   2. Safe-rate caution: weight is dropping faster than ~1%/week sustained — a
 //      gentle nudge that faster isn't better (lean-mass/adherence risk).
 //
-// Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings.ts
+// Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings/body-goals.ts
 // (getOutcomeGoals + getWeights → these → Finding[]), surfaced on the Goals tab. Thresholds
 // are named constants with rationale; boundaries unit-tested in
 // lib/__tests__/goal-pacing.test.ts.

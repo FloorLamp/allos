@@ -5,7 +5,9 @@ import { IconClock } from "@tabler/icons-react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import {
+  DOSE_ACTION_AMBER,
   DOSE_ACTION_ICON,
+  DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
 import { statedHhmm, statedInstantOnDate, whenOnDay } from "@/lib/stated-time";
@@ -50,6 +52,12 @@ export const HAPPENED_EARLIER = "Happened earlier?";
 //      `spend` takes what the tap CONSUMED and drops only that, because the settle runs
 //      arbitrarily later than the tap: a statement made while the write was in flight
 //      must survive it.
+//   7. A REQUIRED STATEMENT OFFERS AN EXPLICIT "DON'T KNOW" (#4686). `required` keeps
+//      the field on screen and takes the close door away; without a named escape, the
+//      only way past it is a blank field, which works but says nothing about whether
+//      leaving it blank is allowed or what it costs. A mount that passes
+//      `unknownLabel` gets that escape as a control, and it posts exactly what a blank
+//      field posts: nothing.
 export interface TimeStatement {
   /** The stated profile-local wall time this tap may post, or null (rules 1 and 2). */
   at: string | null;
@@ -98,6 +106,7 @@ export function useTimeStatement({
   tz: tzProp,
   disabled = false,
   required = false,
+  unknownLabel,
 }: {
   // Rule 2 — the ONE expression the render and the write both read.
   shown?: boolean;
@@ -129,6 +138,13 @@ export function useTimeStatement({
   // A nonprimary quick-log cannot infer an instant from the current tap. Keep the
   // statement visible and remove the close door so a past-day write must state one.
   required?: boolean;
+  // RULE 7 — A REQUIRED STATEMENT NEEDS AN EXPLICIT WAY TO SAY "I DON'T KNOW" (#4686
+  // owner ruling 2). A caregiver checking off yesterday's dose often genuinely does not
+  // know the minute, and the honest answer keeps the row untimed. Leaving the field
+  // blank already did that — silently, which is the problem: nothing on screen said the
+  // escape existed or that taking it is fine. This names it. Only meaningful with
+  // `required`; the optional statement's close door already IS this affordance.
+  unknownLabel?: string;
 }): TimeStatement {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
@@ -140,6 +156,9 @@ export function useTimeStatement({
   // commit the new day does, so no render can post against the day that left. A NEW
   // PROPOSAL re-seeds through the same follower, for the same reason — the offer that
   // made it is about one reading, and a second reading is a different minute.
+  // Rule 7's state. A day change drops it with the statement it belongs to: "I don't
+  // know when this happened yesterday" is not a claim about today.
+  const [unknown, setUnknown] = useState(false);
   const [seenDay, setSeenDay] = useState(day);
   const [seenProposed, setSeenProposed] = useState(proposed);
   if (seenDay !== day || seenProposed !== proposed) {
@@ -147,6 +166,7 @@ export function useTimeStatement({
     setSeenDay(day);
     setSeenProposed(proposed);
     setWhen(seedWhen(day, proposed, tz));
+    setUnknown(false);
     // A proposal arrives WITH its reveal; a day change alone leaves the door as the
     // user left it.
     if (proposalChanged && proposed !== null) setOpen(true);
@@ -156,7 +176,12 @@ export function useTimeStatement({
   // Collapsing an optional statement has always kept its stated value armed; the
   // disclosure controls visibility, not whether the value is posted. Required
   // statements only change visibility by keeping the disclosure open.
-  const at = shown ? statedHhmm(when.statedAt, tz) || null : null;
+  // Rule 7: an explicit "don't know" posts nothing, exactly as an untouched field does.
+  // The row is then deliberately untimed, which the redose window reads as unplaced
+  // rather than guessing an instant for it.
+  const stateUnknown = required && unknownLabel != null && unknown;
+  const at =
+    shown && !stateUnknown ? statedHhmm(when.statedAt, tz) || null : null;
   // The revealed control itself, WITHOUT surrounding spacing — where it sits in a
   // layout is the host's, which is the whole reason a host renders this piece rather
   // than `node`. `minDate === maxDate` is the day clause above made structural: the
@@ -179,9 +204,23 @@ export function useTimeStatement({
         minDate={day}
         maxDate={day}
         timeLabel={timeLabel}
-        disabled={disabled}
+        disabled={disabled || stateUnknown}
         testId={testId}
       />
+      {required && unknownLabel != null ? (
+        <button
+          type="button"
+          data-testid={`${testId}-unknown`}
+          aria-pressed={unknown}
+          disabled={disabled}
+          onClick={() => setUnknown((v) => !v)}
+          className={`${DOSE_ACTION_LABEL} ${
+            unknown ? DOSE_ACTION_AMBER : DOSE_ACTION_NEUTRAL
+          }`}
+        >
+          {unknownLabel}
+        </button>
+      ) : null}
     </>
   ) : null;
   return {
