@@ -41,15 +41,20 @@ import { openGoalFact } from "./goal-form-helpers";
 //   1. A ROUTE-READINESS PROOF. Most routes use a deliberately loose census
 //      floor: a 404 page and a bare shell come in an order of magnitude under it.
 //      A compact surface whose density legitimately changes instead names stable
-//      semantic landmarks; it must still yield a non-empty census sample.
+//      semantic landmarks; it must still yield a non-empty census sample. The
+//      floor is counted ON THE SURFACE THE ROUTE'S SUBJECT LIVES IN (#5104) — a
+//      route whose subject is a dialog cannot clear it out of the page underneath.
 //   2. A NAMED SUBJECT per route — the element whose date was the defect — which
 //      must be among the nodes actually collected. This is the tighter half: a
 //      floor can be met by 200 nav labels while the table the route exists for
 //      never rendered. A count says "something was here"; the subject says "the
 //      thing I am making a claim about was here".
-//   3. A SYNTHETIC OFFENDER, planted in the live DOM of the last route and required
-//      to be caught. A collector that reads the wrong root, or a matcher that was
-//      quietly narrowed, fails this while sailing through the other two.
+//   3. TWO SYNTHETIC OFFENDERS, planted in a live DOM and required to be caught:
+//      one inside `<main>`, one inside a real DIALOG. A collector that reads the
+//      wrong root, or a matcher that was quietly narrowed, fails these while
+//      sailing through the other two — and the dialog one is the half that a
+//      `<main>`-rooted collector passed for months while blind to every modal,
+//      drawer and portalled surface in the app (#5104).
 //
 // ── WHAT IT READS, AND WHY NOT SOURCE ───────────────────────────────────────────
 //
@@ -260,7 +265,24 @@ const ROUTES: CensusRoute[] = [
   {
     path: "/?quick=search",
     why: "Global search's precomposed Selenium result subtitle.",
-    minTextNodes: 40,
+    // A LANDMARK RATHER THAN A FLOOR, AND THE OLD FLOOR IS WHY (#5104). This route
+    // carried `minTextNodes: 40` and met it out of the DASHBOARD BEHIND THE PALETTE,
+    // because the count was taken on `<main>` — 40 nodes of a surface this route is
+    // not in the census for. Scoped to the palette, where its subject actually
+    // lives, the numbers say a floor cannot work here at all. Measured 2026-09-10:
+    // the palette reads 22 rendered text nodes with an EMPTY query, 9 with a query
+    // that matches nothing, and 12 with the Selenium hit this route exists for. The
+    // not-ready state is the LARGEST of the three, so no threshold separates ready
+    // from not-ready on this surface — which is exactly the case `assertReady` is
+    // for. The hit itself is the proof, and the loop still requires the palette to
+    // contribute rendered copy to the sweep.
+    assertReady: async (page) => {
+      await expect(
+        page.getByRole("option").filter({
+          has: page.getByText("Selenium", { exact: true }),
+        })
+      ).toBeVisible();
+    },
     kinds: ["lab-unit"],
     unitSubject: (page) =>
       page.getByRole("option").filter({
@@ -272,25 +294,36 @@ const ROUTES: CensusRoute[] = [
       });
       await expect(input).toBeVisible();
       await settledFill(page, input, "Selenium");
-      await expect(
-        page.getByRole("option").filter({
-          has: page.getByText("Selenium", { exact: true }),
-        })
-      ).toBeVisible();
     },
   },
   {
     path: "/?quick=search",
     why: "Global search's logged-row subtitles — the day each record row is filed under (#5006).",
-    minTextNodes: 40,
+    // The same measured reason as the lab-unit palette route above: scoped to the
+    // palette this route reads 11 rendered text nodes with its planted hit on
+    // screen, against 22 for an empty query and 9 for a query that matches nothing.
+    // The floor of 40 it used to carry was met by the dashboard behind the dialog.
+    assertReady: async (page) => {
+      // The palette mounts as a SIBLING of <main> (app/(app)/layout.tsx — <main>
+      // closes, then <CommandPalette>), so it sits outside `app-content-container`
+      // and outside every StreamedSection call site. appContent() scoping cannot
+      // reach it, and there is no staged copy for a bare lookup to match.
+      const group = page.getByTestId("palette-group-logged"); // testid-scope-ok: outside <main>
+      await expect(
+        group.getByRole("option", { name: LOGGED_SYMPTOM_PROBE })
+      ).toBeVisible({ timeout: 15_000 });
+    },
     kinds: ["date"],
-    // THE SUBJECT IS THE WHOLE GUARD ON THIS ROUTE, and that is measured rather than
-    // assumed: the collector below walks `document.querySelector("main")`, and the
-    // palette is a dialog rendered OUTSIDE main, so no palette copy has ever entered
-    // the offender sweep — on this route or on the lab-unit one above it. Forcing the
-    // subtitle to the machine shape leaves the sweep silent and reds THIS line, which
-    // is the assertion doing the work. Widening the collector past `main` would put
-    // every dialog on every route into the sweep at once; that is its own change.
+    // THE SUBJECT IS NO LONGER THE WHOLE GUARD ON THIS ROUTE (#5104). It was, and
+    // the comment this replaces said so from measurement: the collector walked
+    // `document.querySelector("main")`, the palette is a dialog rendered OUTSIDE
+    // main, and no palette copy had ever entered the offender sweep — on this route
+    // or on the lab-unit one above it. #5006's lane proved it both ways, forcing the
+    // subtitle to the machine shape with and without this `subject` line: with it the
+    // route reds, without it the route PASSES with the ISO date on screen. The
+    // collector now walks the body, so the sweep covers this dialog too and the
+    // second mutation reds as well — see the (3b) control below, which plants that
+    // exact offender in this exact palette on every run.
     //
     // The hit itself, not the group box: the group renders before its rows, and an
     // assertion taken between the two is a claim about an empty list.
@@ -303,20 +336,23 @@ const ROUTES: CensusRoute[] = [
       });
       await expect(input).toBeVisible();
       await settledFill(page, input, LOGGED_SYMPTOM_PROBE);
-      // The palette mounts as a SIBLING of <main> (app/(app)/layout.tsx — <main>
-      // closes, then <CommandPalette>), so it sits outside `app-content-container`
-      // and outside every StreamedSection call site. appContent() scoping cannot
-      // reach it, and there is no staged copy for a bare lookup to match.
-      const group = page.getByTestId("palette-group-logged"); // testid-scope-ok: outside <main>
-      await expect(
-        group.getByRole("option", { name: LOGGED_SYMPTOM_PROBE })
-      ).toBeVisible({ timeout: 15_000 });
     },
   },
   {
     path: "/training?tab=goals",
     why: "The lab-goal target label and precomposed reference-range hint.",
-    minTextNodes: 35,
+    // ANOTHER FLOOR THAT WAS BEING MET BY THE PAGE UNDERNEATH (#5104). The goal form
+    // is hosted in a ModalShell, so it renders OUTSIDE `<main>` too, and this route's
+    // `minTextNodes: 35` was satisfied entirely by the training page behind the
+    // modal — the census had never counted a node of the surface it is here for.
+    // Measured 2026-09-10, the modal reads 10 rendered text nodes when it opens, 10
+    // once Selenium is picked and 10 with the Target panel open: its density is flat
+    // across every state, so a floor over it distinguishes nothing. The reference
+    // hint below is the readiness proof, and it is a stronger one.
+    assertReady: async (page) => {
+      const hint = page.getByTestId("goal-clinical-result-reference"); // testid-scope-ok: the goal form is hosted in a ModalShell, so it renders outside <main> and no appContent() scoping can reach it
+      await expect(hint).toBeVisible();
+    },
     kinds: ["lab-unit"],
     unitSubject: (page) => page.getByTestId("goal-clinical-result-reference"),
     reveal: async (page) => {
@@ -379,6 +415,10 @@ const ROUTES: CensusRoute[] = [
     minTextNodes: 40,
     // This route joins the census for its micro-unit fixture. Its existing raw
     // dates are #3492 follow-up scope, not a reason to omit the unit surface.
+    // Measured while widening the collector (2026-09-10), the date rule finds them
+    // in `[data-testid="longevity-fitness-coverage"]` and in every
+    // `[data-testid="longevity-biomarker-date"]` — all inside `<main>`, so they are
+    // this exception's declared cost and not fallout from #5104.
     kinds: ["lab-unit"],
     unitSubject: (page) =>
       page.getByTestId("bio-age-input").filter({
@@ -392,6 +432,20 @@ const ROUTES: CensusRoute[] = [
     path: "/upcoming",
     why: "Flagged-lab follow-up source and resolving labels on Upcoming.",
     minTextNodes: 30,
+    // `kinds` IS AN EXCEPTION AND IT IS COSTING SOMETHING, recorded here rather than
+    // left implicit (#5104). This route is asked only about lab units, and the date
+    // rule — run against it while widening the collector, 2026-09-10 — finds two
+    // machine dates in `<main>` that nothing currently reports:
+    //   * [data-testid="upcoming-item-biomarker:…"] — "Last tested 2025-06-17 (15mo
+    //     ago) · retest every 6mo"
+    //   * [data-testid="suppressed-row"] — "Snoozed until 2026-09-15"
+    // Both are in `<main>`, so they predate this change and are NOT fallout from it:
+    // the `kinds` filter, not the collector root, is what keeps them quiet. They are
+    // routed to their owners rather than fixed here (this lane's fence is the census
+    // itself), and the first one is worth a second look against
+    // CENSUS_KNOWN_OFFENDERS' note that #3526 fixed the Upcoming biomarker-retest
+    // line. Dropping `kinds` here is a product change plus a ledger entry, not a
+    // test edit.
     kinds: ["lab-unit"],
     unitSubject: (page) =>
       page
@@ -520,7 +574,26 @@ const DISPLAY_DATE =
 const DISPLAY_MICRO_UNIT = /µ(?:g(?=\s*\/)|L\b|IU(?=\s*\/)|mol(?=\s*\/))/;
 
 interface Census {
+  /**
+   * Text nodes the OFFENDER SWEEP read. The whole rendered page, `<main>` and the
+   * portalled surfaces beside it alike.
+   */
+  swept: number;
+  /**
+   * The subset of `swept` that lies inside THE SURFACE ON SCREEN — a rendered
+   * dialog, or `<main>` when none is open — which is the only copy a route's
+   * `minTextNodes` floor is a claim about. Never a separate walk:
+   * a node is counted here only after the sweep has already read it, so "enough
+   * copy examined" cannot outrun "this copy was actually scanned".
+   */
   examined: number;
+  /** The counted surface, named for the floor's failure message. */
+  surface: string;
+  /**
+   * Which selector the counted surface came from, so the caller can assert its own
+   * subject is on it without a second, disagreeing definition of "the surface".
+   */
+  surfaceSelector: "main" | '[role="dialog"]';
   offenders: {
     kind: "date" | "lab-unit";
     text: string;
@@ -530,13 +603,48 @@ interface Census {
 }
 
 /**
- * Every RENDERED text node under `<main>`, minus the exempt subtrees, scanned for
- * machine dates and machine-spelled lab units.
+ * Every RENDERED text node in the document body, minus the exempt subtrees, scanned
+ * for machine dates and machine-spelled lab units.
  *
- * `matcherSource` is handed in rather than closed over: `page.evaluate` serializes
+ * ── THE ROOT IS THE BODY, NOT `<main>` (#5104) ─────────────────────────────────
+ *
+ * It read `document.querySelector("main")` for months, and every modal, drawer,
+ * bottom sheet and portalled surface in this app renders OUTSIDE main — the palette
+ * is a sibling of it (app/(app)/layout.tsx), and components/BottomSheet.tsx portals
+ * to `document.body`. So the sweep could not fail on an entire class of surface:
+ * #5006's lane put a raw ISO date in the palette subtitle with no `subject` naming
+ * it and the route passed with the date on screen. The collector, not the matcher,
+ * was the hole; `e2e/machine-date-census.spec.ts`'s own dialog-planted offender
+ * test below is the control that keeps it shut.
+ *
+ * NOTHING IS SUBTRACTED FOR BEING "CHROME". The sidebar, the dock and the toasters
+ * are copy a person reads, so a machine date in one of them is a real offender and
+ * the sweep says so. What chrome must NOT do is pad a route's readiness count,
+ * which is what `surface` below is for — the floor is scoped, the sweep is not.
+ * (Narrowing the collector to keep a floor honest would re-open exactly this bug.)
+ *
+ * `matcherSource` is handed in rather than closed over: the evaluate call serializes
  * its argument into the browser, so the rules from lib/machine-date-census and
  * lib/machine-lab-unit-census travel with it and there is no second copy of either
  * pattern living in this file.
+ *
+ * ── THE COUNTED SURFACE IS RESOLVED IN THE BROWSER, NOT CARRIED INTO IT ────────
+ *
+ * A rendered dialog is the surface; `<main>` is the surface when none is open. Both
+ * are found HERE, inside the walk, from a selector — never handed in as an element
+ * resolved by an earlier round trip. That was the first shape of this and it was
+ * wrong in a way worth recording: the route's own subject was resolved in Node and
+ * passed as a handle, and on /import/908 (and again on /import/908?tab=visits) the
+ * page re-rendered in the gap between the two calls, so the census received a
+ * DETACHED node. A stale node's `closest()` is null, which silently scopes the count
+ * back to `<main>` — the exact mis-scoping this is built to prevent, arriving as an
+ * intermittent one. `locator.evaluate` does not close that gap either: it resolves
+ * the selector and evaluates in two calls, so a re-render between them detaches the
+ * element without erroring. Nothing here now survives across a round trip.
+ *
+ * What the caller still owes: proving its route's subject is ON that surface. It
+ * does that with an ordinary auto-retrying assertion against `surfaceSelector`,
+ * which re-resolves on every poll and so cannot go stale (see the loop).
  */
 async function census(
   page: Page,
@@ -555,23 +663,60 @@ async function census(
         { kind: "lab-unit" as const, re: new RegExp(patterns.labUnit, "g") },
       ];
       const main = document.querySelector("main");
-      if (!main) return { examined: 0, offenders: [] };
+      const root = document.body;
+      if (!main || !root)
+        return {
+          swept: 0,
+          examined: 0,
+          surface: "nothing rendered",
+          surfaceSelector: "main" as const,
+          offenders: [],
+        };
+      // THE SURFACE THE FLOOR IS A CLAIM ABOUT. A rendered dialog IS the surface
+      // while one is open — it is what a person is looking at, and the page behind it
+      // is what the old `<main>` count was mistaking for evidence. `<main>` is the
+      // surface the rest of the time, which is what every existing floor was measured
+      // against. A dialog that is mounted but not rendered is neither.
+      const dialogs = [...root.querySelectorAll('[role="dialog"]')].filter(
+        (el) => el.getClientRects().length > 0
+      );
+      const surfaces: Element[] = dialogs.length ? dialogs : [main];
+      const surfaceName = dialogs.length
+        ? `[role="dialog"]` +
+          (dialogs.length > 1 ? ` (${dialogs.length} open)` : "") +
+          (dialogs[0].closest("[data-testid]")
+            ? ` inside [data-testid="${dialogs[0].closest("[data-testid]")?.getAttribute("data-testid")}"]`
+            : "")
+        : "<main>";
       const exempt = exemptSelectors.flatMap((s) => [
-        ...main.querySelectorAll(s),
+        ...root.querySelectorAll(s),
       ]);
-      const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       const out: {
         kind: "date" | "lab-unit";
         text: string;
         testId: string;
         where: string;
       }[] = [];
+      let swept = 0;
       let examined = 0;
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         const text = n.textContent ?? "";
         if (!text.trim()) continue;
         const parent = n.parentElement;
         if (!parent) continue;
+        // NOT COPY AT ALL. Widening the root to the body brings `<script>` into
+        // reach for the first time — Next's flight payload is a text node full of
+        // storage-shaped dates, and it is a transport, not something anyone reads.
+        // The visibility check below already drops it (a script box has no rects),
+        // but that is a coincidence of layout and this is the reason.
+        if (
+          parent.tagName === "SCRIPT" ||
+          parent.tagName === "STYLE" ||
+          parent.tagName === "NOSCRIPT" ||
+          parent.tagName === "TEMPLATE"
+        )
+          continue;
         // NOT RENDERED IS NOT COPY. A closed <details>, a `hidden` attribute and a
         // `display:none` branch are all in the DOM and none of them is something a
         // person is reading. `offsetParent` is null for every one of them (and for
@@ -582,7 +727,8 @@ async function census(
           parent.tagName === "BODY";
         if (!shown) continue;
         if (exempt.some((el) => el.contains(n))) continue;
-        examined += 1;
+        swept += 1;
+        if (surfaces.some((el) => el.contains(n))) examined += 1;
         for (const matcher of matchers) {
           matcher.re.lastIndex = 0;
           const hits = [...text.matchAll(matcher.re)].map((m) => m[0]);
@@ -594,6 +740,9 @@ async function census(
               text: hit,
               testId: testid?.getAttribute("data-testid") ?? "",
               where:
+                // Which side of `<main>` a hit is on, stated: everything on the far
+                // side of it was invisible to this sweep until #5104.
+                (main.contains(n) ? "" : "OUTSIDE <main> — ") +
                 `${tag}` +
                 (testid
                   ? ` inside [data-testid="${testid.getAttribute("data-testid")}"]`
@@ -603,7 +752,15 @@ async function census(
           }
         }
       }
-      return { examined, offenders: out };
+      return {
+        swept,
+        examined,
+        surface: surfaceName,
+        surfaceSelector: dialogs.length
+          ? ('[role="dialog"]' as const)
+          : ("main" as const),
+        offenders: out,
+      };
     },
     {
       patterns: matcherSources,
@@ -629,6 +786,18 @@ test("every census route declares one honest route-readiness proof", () => {
       strategies,
       `${route.path} must declare exactly one of minTextNodes or assertReady`
     ).toBe(1);
+    // …AND ONE SUBJECT, WHICH IS WHAT TIES THE FLOOR TO A SURFACE (#5104). The
+    // readiness count is taken over the surface the PAGE is showing — a rendered
+    // dialog, or `<main>` when none is open — and the loop then requires this
+    // route's subject to be ON it. A route that names no subject can make that
+    // check of nothing, which is how "enough copy examined" came to be a claim
+    // about a surface the route had never entered.
+    expect(
+      Number(route.subject !== undefined) +
+        Number(route.unitSubject !== undefined),
+      `${route.path} must declare a subject or a unitSubject: the census counts its ` +
+        `readiness floor on the surface that subject lives in`
+    ).toBeGreaterThan(0);
   }
 });
 
@@ -668,16 +837,25 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
       // THE CONTENT, NOT THE CONTAINER: a route that renders its shell and then its
       // table would otherwise be censused between the two, and empty is the state
       // that flatters an absence assertion.
+      //
+      // Every subject proved out here is ALSO required, below, to be ON THE SURFACE
+      // the readiness count is taken over (#5104) — so the two halves of the route's
+      // claim cannot describe different parts of the screen.
+      const subjects: { what: string; locator: Locator }[] = [];
       if (route.subject) {
-        const subject = page
+        const dated = page
           .locator(route.subject)
           .filter({ hasText: DISPLAY_DATE });
+        const subject = dated.first(); // eslint-disable-line no-restricted-properties -- first-ok: read-only census — one instance is all that proves the surface rendered
         await expect(
-          subject.first(), // eslint-disable-line no-restricted-properties -- first-ok: read-only census — one instance is all that proves the surface rendered
+          subject,
           `${route.path}: no element matching \`${route.subject}\` rendered a date in ` +
             `the display shape, so this route's silence about machine dates means ` +
             `nothing — ${route.why}`
         ).toBeVisible();
+        // The unfiltered locator for the containment check below: Playwright refuses
+        // a `has:` locator that has already been narrowed to an index.
+        subjects.push({ what: `subject \`${route.subject}\``, locator: dated });
       }
 
       if (route.unitSubject) {
@@ -698,25 +876,56 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
           `${route.path}: the fixture-owned micro-unit result was not visible — ` +
             `${route.why}`
         ).toBeVisible();
+        subjects.push({ what: "unitSubject", locator: unitSubject });
       }
 
-      const { examined, offenders } = await census(page, BROWSER_PATTERNS);
+      const { swept, examined, surface, surfaceSelector, offenders } =
+        await census(page, BROWSER_PATTERNS);
 
-      // (1) THE ROUTE-READINESS PROOF. A semantic route still has to contribute
-      // actual rendered text to the collector; its landmarks replace only the
-      // arbitrary density threshold, never the evidence that a sweep occurred.
+      // (1) THE ROUTE-READINESS PROOF, COUNTED ON THE SURFACE THE ROUTE IS IN THE
+      // CENSUS FOR (#5104). It used to be counted on `<main>` for every route, so a
+      // route whose subject is a DIALOG cleared its floor on the page UNDERNEATH the
+      // dialog: `/?quick=search` met a floor of 40 out of the dashboard behind the
+      // palette and reported "enough copy examined" about a surface it had not
+      // entered, and `/training?tab=goals` did the same behind its goal modal. A
+      // threshold satisfied by the wrong nodes is the same defect as a sweep that
+      // cannot reach them, one level up.
+      //
+      // Three things hold it honest, and each fails LOUDLY rather than open:
+      //   * the surface follows THE PAGE — an open dialog is the surface — so it is
+      //     nothing a route can forget to declare when the next dialog route lands;
+      //   * every subject this route made a claim about has to be ON that surface,
+      //     asserted here, so a floor and a subject can never be about different
+      //     things;
+      //   * a counted node is a SWEPT node, asserted, so "examined" can never
+      //     describe copy the offender sweep did not read.
+      for (const { what, locator } of subjects) {
+        await expect(
+          page.locator(surfaceSelector).filter({ has: locator }),
+          `${route.path}: its ${what} is not inside ${surface}, the surface the ` +
+            `readiness count is taken over — the count and the subject are claims ` +
+            `about different parts of the screen. ${route.why}`
+        ).not.toHaveCount(0);
+      }
+      expect(
+        examined,
+        `${route.path}: the readiness count (${examined}) exceeds what the offender ` +
+          `sweep read (${swept}) — the floor is counting nodes the sweep never saw.`
+      ).toBeLessThanOrEqual(swept);
       if (route.minTextNodes !== undefined) {
         expect(
           examined,
-          `${route.path}: only ${examined} rendered text nodes — under the floor of ` +
-            `${route.minTextNodes}. This route did not render what it is in the census ` +
-            `for, so its silence about machine dates means nothing.`
+          `${route.path}: only ${examined} rendered text nodes in ${surface} — under ` +
+            `the floor of ${route.minTextNodes} (the whole page swept ${swept}). This ` +
+            `route did not render what it is in the census for, so its silence about ` +
+            `machine dates means nothing.`
         ).toBeGreaterThanOrEqual(route.minTextNodes);
       } else {
         expect(
           examined,
           `${route.path}: its semantic readiness landmarks rendered but the census ` +
-            `collected no text, so its silence about machine text means nothing.`
+            `collected no text in ${surface}, so its silence about machine text means ` +
+            `nothing.`
         ).toBeGreaterThan(0);
       }
 
@@ -813,6 +1022,131 @@ test("(3) the census catches synthetic offenders planted in the live DOM", async
     ["lab-unit", "uU"],
   ]);
   expect(dirty.examined).toBe(clean.examined + 1);
+  expect(dirty.swept).toBe(clean.swept + 1);
+});
+
+// ── (3b) THE SAME PROOF, IN A DIALOG — THE HALF THAT COULD NOT FAIL (#5104) ────
+//
+// The control above plants inside `<main>`, and a collector rooted at `<main>` sails
+// through it: it passed on every day the sweep was blind to every modal, drawer,
+// bottom sheet and portalled surface in the app. So the offender sweep gets a second
+// synthetic offender that a `<main>`-rooted collector CANNOT see, planted in a real
+// dialog on a real censused route, with NO `subject` selector naming it — which is
+// exactly the mutation #5006's lane ran and watched pass with the date on screen.
+//
+// It asserts the planted node is outside `<main>` before it asserts the catch. That
+// ordering is the whole test: without it, a future edit that re-narrowed the root
+// would keep this green by planting somewhere the narrow root still reaches.
+test("(3b) the census catches a synthetic offender planted in a DIALOG (#5104)", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/?quick=search");
+  await expect(page.getByRole("main")).toBeVisible();
+  const input = page.getByRole("combobox", { name: "Search or run a command" });
+  await expect(input).toBeVisible();
+  const palette = page.getByRole("dialog", { name: "Search" });
+  await expect(palette).toBeVisible();
+
+  const clean = await census(page, BROWSER_PATTERNS);
+  expect(clean.offenders).toEqual([]);
+
+  // The palette's own copy has to be IN the sweep for its silence to mean anything —
+  // the count the dashboard behind it contributes is not evidence about this surface.
+  const paletteNodes = await palette.evaluate((el) => {
+    let n = 0;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let t = walker.nextNode(); t; t = walker.nextNode())
+      if ((t.textContent ?? "").trim()) n += 1;
+    return n;
+  });
+  expect(
+    paletteNodes,
+    "the palette rendered no copy, so planting in it proves nothing"
+  ).toBeGreaterThan(0);
+
+  const outsideMain = await palette.evaluate(
+    (el) => !document.querySelector("main")?.contains(el)
+  );
+  expect(
+    outsideMain,
+    "the palette is no longer outside <main>, so this control no longer covers the " +
+      "class of surface #5104 was about — find a surface that still is"
+  ).toBe(true);
+
+  await palette.evaluate((el) => {
+    const p = document.createElement("p");
+    p.setAttribute("data-testid", "forged-dialog-machine-text");
+    // FORGED BY A SPEC on purpose — never a real render.
+    p.textContent = "Forged in a dialog by the census spec: 2014-03-09";
+    el.appendChild(p);
+  });
+
+  const dirty = await census(page, BROWSER_PATTERNS);
+  expect(
+    dirty.offenders.map((o) => [o.kind, o.text]),
+    "a machine date rendered in a dialog did not red the offender sweep — the " +
+      "collector has been narrowed back inside <main> (#5104)"
+  ).toEqual([["date", "2014-03-09"]]);
+  expect(dirty.offenders[0]?.where).toContain("OUTSIDE <main>");
+  expect(dirty.swept).toBe(clean.swept + 1);
+});
+
+// ── THE FLOOR COUNTS THE RIGHT NODES, PROVED BY MUTATION (#5104) ──────────────
+//
+// `minTextNodes` is the census's "enough copy examined" claim, and on a route whose
+// subject is a dialog it used to be met entirely by the page UNDERNEATH: the sweep
+// counted `<main>`, so `/?quick=search` cleared a floor of 40 from the dashboard
+// behind the palette without the palette contributing a single node. A count
+// satisfied by the wrong inputs says nothing, however green it is.
+//
+// The mutation that shows it: add copy to `<main>` while the palette is open. The
+// swept total must move (the sweep reads the whole page) and the palette-scoped
+// count must NOT (the floor is a claim about the palette). A floor scoped back to
+// `<main>` fails the second half.
+test("a dialog route's readiness floor counts the dialog, not the page under it (#5104)", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/?quick=search");
+  await expect(page.getByRole("main")).toBeVisible();
+  const input = page.getByRole("combobox", { name: "Search or run a command" });
+  await expect(input).toBeVisible();
+  const palette = page.getByRole("dialog", { name: "Search" });
+  await expect(palette).toBeVisible();
+
+  const scoped = await census(page, BROWSER_PATTERNS);
+  expect(scoped.surface).toContain('[role="dialog"]');
+  expect(scoped.surfaceSelector).toBe('[role="dialog"]');
+  expect(scoped.examined).toBeGreaterThan(0);
+  expect(
+    scoped.examined,
+    "the palette-scoped count is the whole swept page — the floor was not scoped"
+  ).toBeLessThan(scoped.swept);
+
+  // Ten nodes of dashboard copy: enough to clear a floor on its own, and none of it
+  // on the surface this route is in the census for.
+  await page.evaluate(() => {
+    const main = document.querySelector("main");
+    for (let i = 0; i < 10; i += 1) {
+      const p = document.createElement("p");
+      p.setAttribute("data-testid", "forged-under-dialog-copy");
+      p.textContent = `Forged by the census spec: filler line ${i}`;
+      main?.appendChild(p);
+    }
+  });
+
+  const after = await census(page, BROWSER_PATTERNS);
+  expect(
+    after.swept,
+    "the offender sweep did not read the copy added to <main> — it is not reading " +
+      "the whole page"
+  ).toBe(scoped.swept + 10);
+  expect(
+    after.examined,
+    "copy added UNDER the dialog moved this route's readiness count — the floor is " +
+      "being met by nodes from a surface the route is not in the census for (#5104)"
+  ).toBe(scoped.examined);
 });
 
 test("the exemptions hold only while their premises do (#3492 item 3)", async ({

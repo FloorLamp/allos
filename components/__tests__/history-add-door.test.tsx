@@ -13,6 +13,7 @@ import HistoryAddDoor, {
 } from "@/app/(app)/history/HistoryAddDoor";
 import { HISTORY_KIND_LABELS } from "@/lib/history-format";
 import { logHeading } from "@/lib/log-manifest";
+import { FORM_ID_OF_LOG_DOMAIN } from "@/lib/form-grammar";
 
 // WHAT THE RECORD'S ADD DOOR POSTS (#4045 §1).
 //
@@ -340,6 +341,16 @@ function only(action: string): Record<string, string> {
 }
 
 describe("the record's Add door posts to the domain's own create action", () => {
+  // The opened panel says WHICH FORM it is (#5300 rule 7). The id is type-bound to the
+  // registry, so what is unproved — and asserted here — is that the door renders the
+  // declaration at all, which is the hook each adoption's own spec reads the grammar by.
+  it("declares the registered form the door opened", () => {
+    open("stool");
+    expect(
+      screen.getByTestId("history-add-panel-stool").getAttribute("data-form-id")
+    ).toBe(FORM_ID_OF_LOG_DOMAIN.stool);
+  });
+
   it("keeps the mood door on its day, clears it, and accepts a second save", async () => {
     open("mood");
     fireEvent.click(screen.getByText("Details"));

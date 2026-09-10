@@ -54,6 +54,7 @@ export default function SkinSection({
       >
         <div className="space-y-6">
           <AddEntryPanel
+            formId="skin-lesion"
             testId="add-skin-lesion-panel"
             panelId="add-skin-lesion-panel-body"
             label="Add skin lesion"
