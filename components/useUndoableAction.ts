@@ -169,11 +169,19 @@ export interface ReceiptSession {
 export function useKeyedReceipt(subject?: string): () => ReceiptSession {
   const announceUndoable = useUndoableAction();
   const claimKey = useClaimToastKey();
-  const dismissKey = useDismissToast();
   const getProfileScope = useToastProfileScopeGetter();
   const mountedRef = useRef(false);
   const generationRef = useRef(0);
   const ownersRef = useRef(new Map<string, symbol>());
+  // The dismisser is read at UNMOUNT and never during a session's life, so it is kept
+  // current in a ref rather than depended on: what ends a session is the subject
+  // changing or the surface going away, and listing a provider callback below would end
+  // every live session the moment a host handed back a new function identity.
+  const dismissKey = useDismissToast();
+  const dismissKeyRef = useRef(dismissKey);
+  useLayoutEffect(() => {
+    dismissKeyRef.current = dismissKey;
+  }, [dismissKey]);
 
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -182,10 +190,10 @@ export function useKeyedReceipt(subject?: string): () => ReceiptSession {
     return () => {
       mountedRef.current = false;
       generationRef.current += 1;
-      for (const [key, owner] of owners) dismissKey(key, owner);
+      for (const [key, owner] of owners) dismissKeyRef.current(key, owner);
       owners.clear();
     };
-  }, [dismissKey, subject]);
+  }, [subject]);
 
   return useCallback(() => {
     const generation = generationRef.current;
