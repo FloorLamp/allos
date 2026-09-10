@@ -53,7 +53,7 @@ const items = [
     label: "Chest",
     count: 1,
     perWeek: 2,
-    pace: "on_pace" as const,
+    pace: "on-pace" as const,
     scopeKind: "region" as const,
     scopeValue: "Chest",
   },
