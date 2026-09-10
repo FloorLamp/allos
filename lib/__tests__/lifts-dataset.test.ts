@@ -10,7 +10,14 @@ import {
   composeVariant,
   liftsDataset,
 } from "@/lib/datasets/lifts";
-import { MUSCLE_IDS, liftInfo, type LiftDef } from "@/lib/lifts";
+import {
+  MUSCLE_IDS,
+  REGION_SCOPES,
+  liftInfo,
+  type Equipment,
+  type LiftDef,
+  type MovementPattern,
+} from "@/lib/lifts";
 
 // Anti-drift pins for the curated lift catalog after it moved out of lib/lifts.ts into
 // lib/datasets/data/lifts.json (#5175). The relocation's correctness was proved by a
@@ -27,6 +34,41 @@ import { MUSCLE_IDS, liftInfo, type LiftDef } from "@/lib/lifts";
 //     catalog they name.
 //
 // Pure — no DB, no network.
+
+// The LEGAL VALUE SETS the pins below check against, derived from the code that owns
+// each union wherever a runtime witness exists, so a pin cannot drift from its type:
+//
+//   MuscleId     → MUSCLE_IDS, exported by lib/lifts.ts.
+//   MuscleRegion → REGION_SCOPES, exported and typed `MuscleRegion[]`, so every element
+//                  is compile-checked to be one. If it ever stopped being the WHOLE
+//                  union the pins would get too STRICT (a false failure), never too
+//                  permissive — the safe direction, and why no literal is needed here.
+//
+// MovementPattern and Equipment have no runtime witness to derive from, so each is a
+// `satisfies`-checked record: `satisfies` fails on a MISSING member and the
+// excess-property check fails on an INVENTED one, which pins the literal to the union
+// in both directions at compile time — the nearest thing to a witness the union has.
+const PATTERNS = {
+  push: true,
+  pull: true,
+  legs: true,
+  core: true,
+} satisfies Record<MovementPattern, true>;
+
+const EQUIPMENT = {
+  Barbell: true,
+  Dumbbell: true,
+  Cable: true,
+  Machine: true,
+  Kettlebell: true,
+  "Trap Bar": true,
+  Smith: true,
+} satisfies Record<Equipment, true>;
+
+const MUSCLE_SET = new Set<string>(MUSCLE_IDS);
+const REGION_SET = new Set<string>(REGION_SCOPES);
+const PATTERN_SET = new Set<string>(Object.keys(PATTERNS));
+const EQUIPMENT_SET = new Set<string>(Object.keys(EQUIPMENT));
 
 describe("lifts.json dataset", () => {
   it("is the registered `lifts` envelope, identified by lift name", () => {
@@ -84,8 +126,10 @@ describe("lifts.json dataset", () => {
 
   it("rolls up and labels EVERY MuscleId (totality over the union)", () => {
     for (const m of MUSCLE_IDS) {
-      expect(MUSCLE_REGION[m], `${m}: no region`).toBeTruthy();
-      expect(MUSCLE_LABEL[m], `${m}: no label`).toBeTruthy();
+      // Membership, not truthiness: a corrupted "Bak" is truthy and would sail
+      // through a presence check while silently un-regioning every chest lift.
+      expect(REGION_SET.has(MUSCLE_REGION[m]), `${m}: region`).toBe(true);
+      expect(MUSCLE_LABEL[m]?.trim(), `${m}: label`).toBeTruthy();
     }
     expect(Object.keys(MUSCLE_REGION).sort()).toEqual([...MUSCLE_IDS].sort());
     expect(Object.keys(MUSCLE_LABEL).sort()).toEqual([...MUSCLE_IDS].sort());
@@ -96,6 +140,76 @@ describe("lifts.json dataset", () => {
       for (const key of names) {
         const info = liftInfo(key);
         expect(info?.name.toLowerCase(), `${implement}: "${key}"`).toBe(key);
+      }
+    }
+  });
+  // ── Value domains ─────────────────────────────────────────────────────────
+  // The guarantee the relocation traded away. The in-code literals were fully
+  // typechecked, so `pattern: "pushh"` or `region: "Bak"` was a COMPILE error. A JSON
+  // entry gets its `LiftDef` typing from `loadDataset<LiftDef, …>`'s type PARAMETER,
+  // which is erased: loadDataset validates the envelope and the identity keys, and the
+  // framework harness checks citations, identity, refusal and key collisions — none of
+  // them asks whether a value belongs to its union. These are that check, at the
+  // boundary, so a bad value fails HERE naming the lift rather than downstream.
+  //
+  // The deeper tagging invariant — that a lift's primary muscles ROLL UP into its
+  // declared region — is muscle-id.test.ts's, over the derived defs. This file pins the
+  // dataset's own fields; that file pins what they must add up to. Don't add a third.
+
+  it("gives every entry a real region and pattern, and only real muscle ids", () => {
+    for (const d of PLAIN_DEFS) {
+      expect(REGION_SET.has(d.region), `${d.name}: region "${d.region}"`).toBe(
+        true
+      );
+      expect(
+        PATTERN_SET.has(d.pattern),
+        `${d.name}: pattern "${d.pattern}"`
+      ).toBe(true);
+      // `muscle` is a free-text DISPLAY label and deliberately NOT an identity key
+      // (LiftDef says so): "Posterior chain", "Chest & triceps" and "Full body" are
+      // real catalog values and none of them is a MuscleId. The ids are the two arrays
+      // below, so all this field can honestly be pinned to is that it says something.
+      expect(d.muscle.trim(), `${d.name}: empty muscle label`).not.toBe("");
+      for (const m of [...d.primaryMuscles, ...d.secondaryMuscles]) {
+        expect(MUSCLE_SET.has(m), `${d.name}: unknown muscle id "${m}"`).toBe(
+          true
+        );
+      }
+    }
+  });
+
+  it("gives every variant group a real region, pattern, muscle ids and equipment", () => {
+    for (const g of VARIANT_GROUPS) {
+      expect(REGION_SET.has(g.region), `${g.name}: region "${g.region}"`).toBe(
+        true
+      );
+      expect(
+        PATTERN_SET.has(g.pattern),
+        `${g.name}: pattern "${g.pattern}"`
+      ).toBe(true);
+      expect(g.muscle.trim(), `${g.name}: empty muscle label`).not.toBe("");
+      for (const m of [...g.primaryMuscles, ...g.secondaryMuscles]) {
+        expect(MUSCLE_SET.has(m), `${g.name}: unknown muscle id "${m}"`).toBe(
+          true
+        );
+      }
+      expect(g.equipment.length, `${g.name}: no equipment`).toBeGreaterThan(0);
+      for (const eq of g.equipment) {
+        expect(EQUIPMENT_SET.has(eq), `${g.name}: equipment "${eq}"`).toBe(
+          true
+        );
+      }
+      for (const eq of g.unilateralEquipment ?? []) {
+        expect(
+          EQUIPMENT_SET.has(eq),
+          `${g.name}: unilateralEquipment "${eq}"`
+        ).toBe(true);
+        // A per-side flag for an implement the group cannot be loaded with composes
+        // no lift, so it would silently do nothing.
+        expect(
+          g.equipment,
+          `${g.name}: unilateralEquipment "${eq}" is not in equipment`
+        ).toContain(eq);
       }
     }
   });
