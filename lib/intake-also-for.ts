@@ -145,13 +145,18 @@ export interface AlsoForLabelIdentity {
 //   E name-only   NO code is stored at all, and the name resolves. Unchanged behaviour.
 //   F no-product  neither reading lands on a curated label. Nothing to dose from.
 //
-// THE DIVIDING PREDICATE IS "IS A CODE STORED", never "does the code resolve".
-// `prnDefaultsFor` is code-first WITH a name fallback and `ingredientCuiKey` falls back
-// to the raw rxcui, so ANY stored code at all suppresses the name fallback, resolvable
-// or not: an uncoded bottle named `Aspirin` resolves and withholds for a child with the
-// Reye's sentence, while the same bottle carrying an unrecognised code resolves to
-// nothing and lands dose-less. Branching on "does it resolve" instead gets state F
-// wrong in whichever direction the reader was leaning.
+// THE DIVIDING PREDICATE IS "IS A CODE STORED". `prnDefaultsFor` is code-first WITH a
+// name fallback and `ingredientCuiKey` falls back to the raw rxcui, so ANY stored code
+// at all suppresses the name fallback, resolvable or not: an uncoded bottle named
+// `Aspirin` resolves and withholds for a child with the Reye's sentence, while the same
+// bottle carrying an unrecognised code resolves to nothing and lands dose-less.
+//
+// SPELLING IT "does the code resolve" IS A NO-OP, NOT A BUG — measured, because the
+// comment here used to claim otherwise. `prnDefaultsFor` returns null in exactly the row
+// where the two predicates disagree (a stored code that matches no entry), so both reach
+// `no-product` with the same null product. What the wording is actually guarding is a
+// DIFFERENT implementation: falling back to the NAME when a stored code fails to
+// resolve. That one is a real behaviour change, and F10/F11 catch it.
 export type AlsoForIdentityState =
   | "plural"
   | "mismatch"
