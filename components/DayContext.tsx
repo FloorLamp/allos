@@ -230,3 +230,34 @@ export function useDayContext(): DayContextValue {
     throw new Error("useDayContext must be used within DayContextProvider");
   return value;
 }
+
+/**
+ * A day context whose day is owned by a SWITCHER standing above it: a bounded reach
+ * the mount may move within, and a selector to move it with.
+ */
+export type SwitchedDayContext = DayContextValue & {
+  readonly select: (day: string) => void;
+  readonly parts: DayContextParts & {
+    readonly reach: Extract<TapReach, { kind: "bounded" }>;
+  };
+};
+
+/**
+ * Whether a day SWITCHER stands above this context, which is `BoundedDaySwitcher`'s
+ * own precondition asked once rather than twice.
+ *
+ * THE DAY IS PRINTED ONCE (#4738 ruling 1). A surface under a switcher has already
+ * been told which day it is standing on, so the controls beneath it state the TIME
+ * and nothing else (#5753 leg 3); a URL-backed record day and a form with no day
+ * context above it are both false here, and their mounts keep saying the day
+ * themselves because nothing else on screen does.
+ */
+export function daySwitcherOwnsDay(
+  value: DayContextValue | null
+): value is SwitchedDayContext {
+  return (
+    value != null &&
+    value.select !== null &&
+    value.parts.reach.kind === "bounded"
+  );
+}

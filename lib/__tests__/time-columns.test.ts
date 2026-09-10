@@ -21,7 +21,6 @@ import { stripComments } from "./strip-comments";
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   NOT_TEMPORAL,
   TIME_COLUMNS,
@@ -31,8 +30,7 @@ import {
   type TemporalTable,
   type TimeColumn,
 } from "@/lib/time-columns";
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+import { REPO, readSource, relPath } from "./sql-scan";
 
 const SEMANTICS = new Set([
   "event",
@@ -291,7 +289,7 @@ describe("the declared index is internally consistent", () => {
 
 describe("the published index cannot fall behind the declaration", () => {
   it("matches the committed docs page", () => {
-    const doc = fs.readFileSync(path.join(REPO, TIME_COLUMN_INDEX_DOC), "utf8");
+    const doc = readSource(path.join(REPO, TIME_COLUMN_INDEX_DOC));
     expect(
       doc.includes(timeColumnIndexBlock()),
       `${TIME_COLUMN_INDEX_DOC} is stale — run \`npm run gen:time-columns\` and commit the result.`
@@ -382,7 +380,7 @@ function runtimeSources(): RuntimeSource[] {
   const out: RuntimeSource[] = [];
   for (const dir of ["lib", "app", "components", "scripts"]) {
     for (const full of walk(path.join(REPO, dir))) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
+      const rel = relPath(full);
       if (
         rel.includes("__tests__") ||
         rel.includes("__db_tests__") ||
@@ -391,7 +389,7 @@ function runtimeSources(): RuntimeSource[] {
       ) {
         continue;
       }
-      out.push({ rel, source: fs.readFileSync(full, "utf8") });
+      out.push({ rel, source: readSource(full) });
     }
   }
   return (runtimeSourcesCache = out);
@@ -413,9 +411,8 @@ describe("the retired dose timestamp spelling (#4347)", () => {
       "historical source exception no longer names the retired column"
     ).toEqual([]);
 
-    const notifications = fs.readFileSync(
-      path.join(REPO, "docs/internals/notifications.md"),
-      "utf8"
+    const notifications = readSource(
+      path.join(REPO, "docs/internals/notifications.md")
     );
     expect(notifications).not.toContain("given_at");
     expect(notifications).toMatch(/dose stores\s+`occurred_at`/);
