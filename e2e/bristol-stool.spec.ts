@@ -288,10 +288,13 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
     "1 logged today."
   );
 
-  // The statement, made while that first write is still out. The day half is FIXED to
-  // today, so a statement can only move the minute.
+  // The statement, made while that first write is still out. The day half is FIXED,
+  // so a statement can only move the minute — and under the sheet's day switcher it
+  // does not RENDER that day either, because the switcher above already states it
+  // (#5753 leg 3). What opens is the minute and nothing else.
   await hydratedClick(page, toggle);
-  await expect(picker.getByTestId("stool-when-date")).toHaveText("Today");
+  await expect(picker.getByTestId("stool-when-time")).toBeVisible();
+  await expect(picker.getByTestId("stool-when-date")).toHaveCount(0);
   await settledFill(page, picker.getByTestId("stool-when-time"), "07:05");
 
   release();
