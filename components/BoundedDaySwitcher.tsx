@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import SegmentedControl from "@/components/SegmentedControl";
-import { useDayContext } from "@/components/DayContext";
+import { daySwitcherOwnsDay, useDayContext } from "@/components/DayContext";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { shiftDateStr } from "@/lib/date";
 import { formatWeekdayDate } from "@/lib/format-date";
@@ -11,7 +11,7 @@ import { historyDayHref } from "@/lib/hrefs";
 export default function BoundedDaySwitcher() {
   const day = useDayContext();
   const prefs = useFormatPrefs();
-  if (day.parts.reach.kind !== "bounded" || !day.select) {
+  if (!daySwitcherOwnsDay(day)) {
     throw new Error(
       "BoundedDaySwitcher requires a state-backed bounded DayContext"
     );

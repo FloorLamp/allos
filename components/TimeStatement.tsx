@@ -3,6 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { IconClock } from "@tabler/icons-react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import {
+  daySwitcherOwnsDay,
+  useOptionalDayContext,
+} from "@/components/DayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import {
   DOSE_ACTION_AMBER,
@@ -148,6 +152,13 @@ export function useTimeStatement({
 }): TimeStatement {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
+  // RULE 3'S OTHER HALF: THE DAY IS PRINTED ONCE (#4738 ruling 1, reached by #5753
+  // leg 3). A statement belongs to the day it was made about, and where that day
+  // comes from a host with a SWITCHER the host has already put it on screen — so the
+  // reveal states the TIME and nothing else. The record's dated door and the forms
+  // have no switcher above them and go on naming their day, which is the only place
+  // it appears there.
+  const daySaidAbove = daySwitcherOwnsDay(useOptionalDayContext());
   const [open, setOpen] = useState(proposed !== null);
   const [when, setWhen] = useState<WhenValue>(() =>
     seedWhen(day, proposed, tz)
@@ -203,6 +214,7 @@ export function useTimeStatement({
         tz={tz}
         minDate={day}
         maxDate={day}
+        daySaidAbove={daySaidAbove}
         timeLabel={timeLabel}
         disabled={disabled || stateUnknown}
         testId={testId}

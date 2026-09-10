@@ -726,3 +726,37 @@ export function parseHistoryExpand(
   }
   return out;
 }
+
+/**
+ * Which of the ledger's two selectable id spaces this record row sits in, if any
+ * (#5618 ruling 4), or `null` when a selection may not act on it.
+ *
+ * ONE PREDICATE FOR THE BOX AND FOR THE COUNT. The record's Select control is drawn
+ * from a count on the server and the boxes are drawn on the client, and a day whose
+ * count disagreed with its boxes would offer a mode with nothing in it — so both ask
+ * this.
+ *
+ * IT MIRRORS `selectableOn` IN lib/day-ledger-edit.ts AND ADDS NOTHING. A record row is
+ * pickable exactly when that day re-derivation would find it:
+ *   • a food serving (the record's food rows already exclude the `__`-prefixed ranking
+ *     events and alcohol, which the record files as a substance);
+ *   • a SUPPLEMENT dose — the record shows medication doses too, and the batch cores
+ *     scope themselves to `kind != 'medication'`, so offering a box on one would draw
+ *     an affordance whose every tap the server refuses;
+ * and never a row belonging to another subject, because one batch names one
+ * `profile_id`. Every other kind on the record — a symptom day, a movement, a reading,
+ * a practice, a period — has no core behind these three verbs, and #5618 ruling 4
+ * inherits the ledger's grammar rather than inventing cores for them.
+ */
+export function historyRowPick(
+  row: HistoryRow,
+  subjectProfileId: number
+): { kind: "servings" | "doses"; id: number } | null {
+  if (row.profileId !== subjectProfileId) return null;
+  const edit = row.edit;
+  if (!edit) return null;
+  if (edit.kind === "food") return { kind: "servings", id: edit.eventId };
+  if (edit.kind === "dose" && edit.itemKind === "supplement")
+    return { kind: "doses", id: edit.logId };
+  return null;
+}

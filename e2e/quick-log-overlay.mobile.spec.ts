@@ -904,6 +904,30 @@ test("a PRN-only profile logs an as-needed dose from the dose sheet", async ({
     await expect(overlay.getByTestId("quick-entry-dose-list")).toHaveCount(0);
     await expect(overlay.getByTestId("quick-entry-dose-empty")).toHaveCount(0);
 
+    // ── ONE FRAME IN THIS BODY (#5753 leg 2) ───────────────────────────────
+    // The as-needed rows used to be a bordered inset card per medication, with a
+    // link-coloured name, in a gapped stack under the borderless scheduled rows —
+    // the shape #5521 retired for the rows above them. They are list items in the
+    // sheet's own row list now, under one eyebrow, and the name is plain text.
+    await expect(overlay.getByText("As needed")).toBeVisible();
+    await expect(prn).toHaveCount(1);
+    await expect(
+      overlay.getByTestId("quick-entry-prn-list").getByRole("listitem")
+    ).toHaveCount(1);
+    // NO FRAME OF ITS OWN, asked of the rendered box rather than of a class: the
+    // retired shape was a rounded bordered card, and a row inside the shared list
+    // draws no border at all (#5521 leg 2's rule, applied here).
+    expect(
+      await prn.evaluate((el) => [
+        el.tagName,
+        getComputedStyle(el).borderTopWidth,
+        getComputedStyle(el).borderLeftWidth,
+      ])
+    ).toEqual(["LI", "0px", "0px"]);
+    // The name is not a destination. A row that offers one is a row you can leave
+    // the sheet from, mid-write.
+    await expect(prn.getByRole("link")).toHaveCount(0);
+
     // ── THE CLOCK DOOR IN ITS SEAT (#4753) ─────────────────────────────────
     // The labeled-verb chip reserves a seat immediately right of the pill and the
     // wrapper pays the reach gap; this is the shipped mount of it, measured on a
@@ -974,15 +998,27 @@ test("the dose sheet logs a missed day, on the day it names", async ({
     const named = await day.getAttribute("data-date");
     expect(named).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-    // The bucket's whole-stack row names both doses and writes exactly them.
-    const stack = day.getByTestId("quick-entry-dose-stack-Anytime");
-    await expect(stack).toContainText("Anytime stack (2)");
-    await expect(stack).toHaveAttribute(
-      "data-doses",
-      `${doseId},${secondDoseId}`
+    // ONE ROW COMPOSITION, ON THIS DAY AS ON TODAY (#5753 leg 1). The bucket is the
+    // chip's payload rather than a heading over a section, so the row reads
+    // `Anytime · Take` with a Skip seat beside it — the same row today draws, in the
+    // same list. The per-bucket offer row and the sectioning that framed it are gone;
+    // the bundle is #5663's receipt contract, not a second control row.
+    const rows = day.getByTestId("quick-entry-dose-list").getByRole("listitem");
+    await expect(rows).toHaveCount(2);
+    await expect(day.getByTestId("quick-entry-dose-stack-Anytime")).toHaveCount(
+      0
     );
-    await settledClick(page, stack);
-    await expect(page.getByTestId("toast")).toContainText("2 doses logged");
+    const takeFor = (id: number) =>
+      day.getByTestId(`quick-entry-dose-${id}`).getByTestId("dose-take");
+    await expect(takeFor(doseId)).toContainText("Anytime");
+    await expect(takeFor(doseId)).toContainText("Take");
+    await expect(
+      day.getByTestId(`quick-entry-dose-${doseId}`).getByTestId("dose-skip")
+    ).toBeVisible();
+
+    await settledClick(page, takeFor(doseId));
+    await settledClick(page, takeFor(secondDoseId));
+    await expect(rows).toHaveCount(0);
 
     // THE assertion, from the ledger: both rows landed on the day the sheet named, and
     // nothing at all was written for today.
@@ -1417,7 +1453,10 @@ test("the sheet keeps its collapsed earlier-time statement for Just finished (#3
     await expect(row.getByTestId("practice-when-time")).toHaveCount(0);
 
     await hydratedClick(page, toggle);
-    await expect(row.getByTestId("practice-when-date")).toHaveText("Today");
+    // THE DAY IS PRINTED ONCE (#5753 leg 3). The sheet's switcher a few rows up is
+    // standing on Today; the reveal states the MINUTE and says nothing about the day.
+    await expect(row.getByTestId("practice-when-time")).toBeVisible();
+    await expect(row.getByTestId("practice-when-date")).toHaveCount(0);
     // #4384 fix 3: what opens is a LABELLED statement, not a bare box. The label is
     // asserted VISIBLE and ASSOCIATED — an `aria-label` is what this replaced, and an
     // `sr-only` span would satisfy every DOM check while looking exactly like the

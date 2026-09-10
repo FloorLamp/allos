@@ -114,24 +114,22 @@ export interface QuickEntryPrn {
 // One recent-past day the dose sheet can switch to, with what it still owes grouped
 // by the bucket each dose was DECLARED in. A past day is NOT filtered by arrived
 // slot — every bucket of a closed day has arrived — so this is the day's whole
-// unresolved set, which is also exactly what the per-bucket bulk row writes.
+// unresolved set. The bucket is the row's CHIP PAYLOAD (#5753 leg 1), which is the
+// only thing the sheet still groups for; the day's own name is the switcher's, and
+// this payload stopped carrying a second spelling of it.
 export interface QuickEntryPastDay {
   date: string;
-  // "Yesterday", or the weekday+date in the reader's own format prefs.
-  label: string;
   slots: {
     bucket: TimeBucket;
     doses: QuickEntryPastDose[];
   }[];
 }
 
-// A past day's unresolved dose. `stack` (#3098) feeds the shared label compression
-// the bulk row promises with; nothing here is a second dueness derivation.
+// A past day's unresolved dose. Nothing here is a second dueness derivation.
 export interface QuickEntryPastDose {
   doseId: number;
   name: string;
   detail: string | null;
-  stack: string | null;
   amountAssumed: boolean;
 }
 
@@ -663,9 +661,8 @@ async function gatherQuickEntry(
   // is already the profile-LOCAL today, so each shifted day is a profile-local day.
   const pastDays = doseLogDays(date)
     .slice(1)
-    .map((day, back) => ({
+    .map((day) => ({
       date: day,
-      label: back === 0 ? "Yesterday" : formatWeekdayDate(day, formatPrefs),
       slots: groupDosesByBucket(pendingDayDoses(profile.id, day)),
     }));
   return {
@@ -699,7 +696,6 @@ function groupDosesByBucket(
         doseId: dose.doseId,
         name: dose.name,
         detail: dose.detail,
-        stack: dose.stack ?? null,
         amountAssumed: dose.amountAssumed,
       })),
   })).filter((slot) => slot.doses.length > 0);

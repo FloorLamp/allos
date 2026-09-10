@@ -76,6 +76,29 @@ export function relPath(file: string): string {
 // NOT this: the scan can still see that statement's shape and its predicates.
 export type SqlArg = { kind: "sql" | "expr"; text: string; composed?: true };
 
+// Read one string/template literal starting at `src[i]` (which is its opening quote).
+// Returns the literal's contents and the index of its closing quote.
+function readLiteral(
+  src: string,
+  i: number,
+  quote: string
+): { text: string; end: number } {
+  let j = i + 1;
+  let text = "";
+  while (j < src.length) {
+    const c = src[j];
+    if (c === "\\") {
+      text += src[j + 1] ?? "";
+      j += 2;
+      continue;
+    }
+    if (c === quote) break;
+    text += c;
+    j++;
+  }
+  return { text, end: j };
+}
+
 // Extract the first argument of every call matching `opener` (a global RegExp that
 // ends at the call's opening paren, e.g. /\.prepare\s*\(/g or /\.exec\s*\(/g).
 // Returns either the string literal's contents (kind "sql") or the raw expression
@@ -92,25 +115,41 @@ export function firstStringArgs(src: string, opener: RegExp): SqlArg[] {
       // Read to the matching, unescaped closing quote/backtick. Template
       // interpolations in this codebase never contain a backtick, so a naive
       // scan to the next backtick is safe.
-      let j = i + 1;
-      let buf = "";
-      while (j < src.length) {
-        const c = src[j];
-        if (c === "\\") {
-          buf += src[j + 1] ?? "";
-          j += 2;
-          continue;
-        }
-        if (c === q) break;
-        buf += c;
-        j++;
+      const first = readLiteral(src, i, q);
+      let buf = first.text;
+      let end = first.end;
+      // A statement SPLIT ACROSS `+`-JOINED LITERALS is one statement, so keep
+      // reading while the next non-space token is `+` followed by another literal.
+      // Stopping at the first literal truncated the statement, and a truncated
+      // statement is not merely shorter — it silently loses the tail, which is
+      // where a WHERE lives. lib/migrations/cascade-delete.ts writes two this way
+      // (the set-null UPDATE and the orphan DELETE): the scans read
+      // `UPDATE … SET ${sets}` with no WHERE at all, and `DELETE … AND NOT EXISTS`
+      // with the subquery that makes it safe cut off. The concatenation is written
+      // ACROSS LINES, which is why the single-line `git grep` that looked for this
+      // shape reported the tree clean.
+      //
+      // A `+` whose right side is NOT a literal (`"SELECT " + col + " FROM x"`)
+      // still stops here: the scan cannot know what the expression holds, and
+      // guessing would be worse than reading a prefix. That remains a stated limit.
+      for (;;) {
+        let k = end + 1;
+        while (k < src.length && /\s/.test(src[k])) k++;
+        if (src[k] !== "+") break;
+        k++;
+        while (k < src.length && /\s/.test(src[k])) k++;
+        const q2 = src[k];
+        if (q2 !== "`" && q2 !== '"' && q2 !== "'") break;
+        const next = readLiteral(src, k, q2);
+        buf += next.text;
+        end = next.end;
       }
       out.push(
         /^\s*\$\{/.test(buf)
           ? { kind: "sql", text: buf, composed: true }
           : { kind: "sql", text: buf }
       );
-      re.lastIndex = j + 1;
+      re.lastIndex = end + 1;
     } else {
       // Non-literal expression argument: capture up to the matching ')'.
       let depth = 1;

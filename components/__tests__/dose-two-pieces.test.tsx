@@ -600,7 +600,6 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
           pastDays={[
             {
               date: YESTERDAY,
-              label: "Yesterday",
               slots: [
                 {
                   bucket: "Morning",
@@ -609,7 +608,6 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
                       doseId: 41,
                       name: "Creatine",
                       detail: "5 g",
-                      stack: null,
                       amountAssumed: false,
                     },
                   ],

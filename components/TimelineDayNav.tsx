@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useDragGesture } from "@/components/overlay";
@@ -76,6 +82,7 @@ export default function TimelineDayNav({
   prev,
   next,
   day,
+  trailing,
   targetSelector,
 }: {
   prev: DayNavDestination;
@@ -83,6 +90,13 @@ export default function TimelineDayNav({
   next?: DayNavDestination;
   /** What the bar NAMES — the day's own header line (#3958's grammar). */
   day: string;
+  /**
+   * ONE MODE CONTROL FOR THE WHOLE DAY (#5618 ruling 4) — the record's Select, which
+   * is to this bar what the ledger's is to its section header: a control over every
+   * row below, so it belongs to the frame that names the day rather than to any row.
+   * `shrink-0` beside the day name, which is the part that gives (`truncate`).
+   */
+  trailing?: ReactNode;
   targetSelector: string;
 }) {
   const router = useRouter();
@@ -234,6 +248,7 @@ export default function TimelineDayNav({
           )}
         </PendingLink>
       ) : null}
+      {trailing ? <span className="shrink-0">{trailing}</span> : null}
       {/* The arrows announce themselves from inside PendingLink; a swipe has no
           link to do that, so the bar names the day it is opening. */}
       {swiping && (
