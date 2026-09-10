@@ -640,6 +640,14 @@ export default function ActivityPartsList({
     );
   }
 
+  // ONE WARMUP EXPLAINER PER FORM (#5726). What a warmup set is excluded from is a
+  // constant fact about the W column, and ONE PER FORM is a property of the LIST — the
+  // same reason the equipment row lives here rather than in StrengthSets. The first
+  // strength part's set-column headings row carries it; the rest render nothing.
+  const warmupNotePart = parts.findIndex(
+    (entry) => partType(entry) === "strength"
+  );
+
   const guidePart =
     guideFor != null &&
     parts[guideFor] &&
@@ -886,6 +894,7 @@ export default function ActivityPartsList({
                   editedDate={editedDate}
                   equipmentList={equipmentList}
                   showBodyweightPrompt={!bwKnown && pi === firstBwPart}
+                  showWarmupNote={pi === warmupNotePart}
                   bwInput={bwInput}
                   bwSaving={bwSaving}
                   onBwInput={onBwInput}

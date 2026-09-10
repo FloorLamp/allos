@@ -4,6 +4,7 @@ import { formatCount } from "@/lib/format-number";
 
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import ControlTooltip from "@/components/ControlTooltip";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import IconButton from "@/components/IconButton";
 import ExerciseHistory from "./ExerciseHistory";
 import { useEffect, useRef, useState } from "react";
@@ -540,6 +541,7 @@ export default function StrengthSets({
   editedDate,
   equipmentList,
   showBodyweightPrompt,
+  showWarmupNote,
   bwInput,
   bwSaving,
   onBwInput,
@@ -581,6 +583,11 @@ export default function StrengthSets({
   editedDate: string | null;
   equipmentList: Equipment[];
   showBodyweightPrompt: boolean;
+  // Does this part carry the form's ONE warmup explainer (#5726)? What a warmup set
+  // is excluded from is a constant fact about the W column, not about this exercise,
+  // so the list names a single owner (ActivityPartsList) and every other part renders
+  // nothing — the same shape `showBodyweightPrompt` above already uses.
+  showWarmupNote: boolean;
   bwInput: string;
   bwSaving: boolean;
   onBwInput: (v: string) => void;
@@ -1312,8 +1319,21 @@ export default function StrengthSets({
                 {timed ? "Hold time" : "Reps"}
               </span>
             )}
-            <span className="hidden w-28 shrink-0 text-right sm:block">
+            {/* THE COLUMN'S OWN EXPLAINER (#5726, #5300 rule 4). "Warmup sets do not
+                count toward volume or target markers" used to be a standing paragraph
+                under EVERY exercise's grid; it is a constant fact about the W control
+                in this column, so it states itself once, at the heading that owns it
+                (docs/internals/copy.md, "Explainers on rows"). The glyph rides INSIDE
+                the existing `w-28` cell, so the columns still line up with the
+                steppers under them (#1612). */}
+            <span className="hidden w-28 shrink-0 items-center justify-end gap-1 text-right sm:flex">
               Options
+              {showWarmupNote && (
+                <InfoTooltipIcon
+                  label="Warmup sets do not count toward volume or target markers."
+                  data-testid="warmup-note"
+                />
+              )}
             </span>
           </div>
           <div className="mt-2 space-y-2">
@@ -1543,7 +1563,10 @@ export default function StrengthSets({
               ) : (
                 <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
               )}
-              {targetStatus === "missed" ? "Below target" : "Target met"}
+              {/* ONE SPELLING (#5726). The recent-session rows (ExerciseHistory) and
+                  the recap (SessionRecapView) both say "Missed target" for this same
+                  status, and all three can be on screen at once. */}
+              {targetStatus === "missed" ? "Missed target" : "Target met"}
             </span>
           )}
           {total > 0 && (
@@ -1553,11 +1576,6 @@ export default function StrengthSets({
           )}
         </span>
       </div>
-      {showGrid && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Warmup sets do not count toward volume or target markers.
-        </p>
-      )}
       {badDuration && (
         <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
           Enter hold time as m:ss (e.g. 1:30) or seconds (e.g. 90).

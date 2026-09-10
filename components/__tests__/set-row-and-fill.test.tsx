@@ -310,6 +310,7 @@ function Harness({
         editedDate={null}
         equipmentList={[]}
         showBodyweightPrompt={false}
+        showWarmupNote={pi === 0}
         bwInput=""
         bwSaving={false}
         onBwInput={vi.fn()}
