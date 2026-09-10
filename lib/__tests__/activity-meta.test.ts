@@ -197,6 +197,21 @@ describe("activityClockHHMM — the one reading of a stated activity clock", () 
     expect(activityClockHHMM("25:00")).toBeNull();
     expect(activityClockHHMM("14:75")).toBeNull();
   });
+
+  // #4550: the bare-clock half is `parseClockHhmm`'s now, so it is ANCHORED where
+  // this used to match a prefix, and it reads the legacy 12-hour display form the
+  // owner has always accepted instead of silently dropping the meridiem.
+  it("reads a 12-hour display clock rather than dropping its meridiem", () => {
+    expect(activityClockHHMM("2:30 pm")).toBe("14:30");
+    expect(activityClockHHMM("12:00 AM")).toBe("00:00");
+    expect(activityClockHHMM("11:59 p.m.")).toBe("23:59");
+  });
+
+  it("no longer takes a clock-shaped PREFIX off a longer string", () => {
+    expect(activityClockHHMM("14:30x")).toBeNull();
+    expect(activityClockHHMM("07:00 UTC")).toBeNull();
+    expect(activityClockHHMM("14:30 PM")).toBeNull();
+  });
 });
 
 describe("timeOfDay", () => {

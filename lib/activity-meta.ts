@@ -3,6 +3,7 @@ import {
   MOBILITY_ACTIVITIES,
   SPORTS,
 } from "./activities-catalog";
+import { parseClockHhmm } from "./format-date";
 import { liftInfo } from "./lifts";
 import type { ActivityType } from "./types";
 import type { LocalTime } from "./temporal-types";
@@ -221,7 +222,10 @@ export function legacyActivityName(
 //
 // The display path reads through this too, so "what clock does this row state" is one
 // computation rather than a parse per surface.
-const ACTIVITY_CLOCK = /^(\d{1,2}):(\d{2})/;
+// The BARE-CLOCK half is `parseClockHhmm`'s (lib/format-date.ts, #4550) — the
+// documented owner of "stored clock text -> canonical HH:MM". Only the ISO branch is
+// this function's own: it is the deliberate #2245 superset that folds the extractor's
+// timestamp form into the column's, and nothing else in the repo reads it.
 const ISO_CLOCK = /^\d{4}-\d{2}-\d{2}[T ](\d{1,2}):(\d{2})/;
 
 export function activityClockHHMM(
@@ -230,7 +234,10 @@ export function activityClockHHMM(
   if (typeof raw !== "string") return null;
   const value = raw.trim();
   if (!value) return null;
-  const m = ACTIVITY_CLOCK.exec(value) ?? ISO_CLOCK.exec(value);
+  const bare = parseClockHhmm(value);
+  // eslint-disable-next-line no-restricted-syntax -- LocalTime minter: parseClockHhmm range-checks hour and minute
+  if (bare) return bare as LocalTime;
+  const m = ISO_CLOCK.exec(value);
   if (!m) return null;
   const [h, min] = [Number(m[1]), Number(m[2])];
   if (h > 23 || min > 59) return null;

@@ -13,6 +13,7 @@ import { daysBetweenDateStr, shiftDateStr, zonedWallTimeToUtc } from "./date";
 import {
   formatClockValue,
   formatCompactRelativeTime,
+  parseClockHhmm,
   type TimeFormat,
 } from "./format-date";
 import type { IntakeItemKind } from "./types/intake";
@@ -563,23 +564,12 @@ export function readingClockWithRelativeAge(
 ): string {
   const clock = formatClockValue(time, context?.timeFormat);
   if (!context?.timeZone) return clock;
-  const storedClock = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(time.trim());
-  const displayClock = /^(\d{1,2}):(\d{2})\s*([ap])\.?m\.?$/i.exec(time.trim());
-  if (!storedClock && !displayClock) return clock;
-  const match = storedClock ?? displayClock!;
-  let hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (displayClock) {
-    if (hour < 1 || hour > 12) return clock;
-    hour = (hour % 12) + (displayClock[3].toLowerCase() === "p" ? 12 : 0);
-  }
-  if (hour > 23 || minute > 59) return clock;
+  // Both accepted shapes — stored "HH:MM[:SS]" and the legacy 12-hour display form —
+  // are `parseClockHhmm`'s, the documented owner (#4550). This inlined both regexes.
+  const canonical = parseClockHhmm(time);
+  if (!canonical) return clock;
 
-  const instant = zonedWallTimeToUtc(
-    context.timeZone,
-    date,
-    `${String(hour).padStart(2, "0")}:${match[2]}`
-  );
+  const instant = zonedWallTimeToUtc(context.timeZone, date, canonical);
   if (!instant) return clock;
   const age = formatCompactRelativeTime(
     instant.toISOString(),
