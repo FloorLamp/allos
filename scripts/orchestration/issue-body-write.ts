@@ -55,11 +55,23 @@ function curlJson(args: readonly string[]): unknown {
 export function writeIssueBody(write: BodyWrite): string {
   const { repo, token, issue, body } = write;
   const url = `https://api.github.com/repos/${repo}/issues/${issue}`;
+  // ONE header list for both calls, and `Content-Type` is not optional on the
+  // PATCH (#5758). `--data-binary` with no declared type makes curl default to
+  // `application/x-www-form-urlencoded`, and the write is refused with HTTP 415
+  // — "Request bodies must declare Content-Type: application/json" — before it
+  // ever reaches the issue. It is inert on the GET, which sends no body.
+  //
+  // The header list is pinned as DATA in `lib/__tests__/issue-body-write.test.ts`,
+  // by comparing the argv handed to curl. It CANNOT be pinned by watching a live
+  // write succeed: writes from this container are credentialed by the agent proxy,
+  // so a round trip returns 2xx even with no `Authorization` header at all.
   const headers = [
     "-H",
     `Authorization: Bearer ${token}`,
     "-H",
     "Accept: application/vnd.github+json",
+    "-H",
+    "Content-Type: application/json",
   ];
   const current =
     (curlJson([...headers, url]) as { body: string | null }).body ?? "";
