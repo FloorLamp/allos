@@ -503,8 +503,7 @@ describe("the regex-vs-division heuristic, and what it gets wrong", () => {
 //
 // THE CENSUS READS ITS OWN CORPUS COMMENT-BLANKED, which is what keeps it from
 // firing on prose: strip-comments.ts itself quotes the retired regex twice in the
-// header above in order to argue against it, and lib/__tests__/tmp-dir-census.ts
-// makes the same move for its own construct. A guard that fired on the
+// header above in order to argue against it. A guard that fired on the
 // documentation explaining it would teach the next author to stop writing the
 // documentation (#3509).
 // ── THE SECOND SCANNER IS RETIRED ONTO THIS ONE (#3581) ─────────────────────────
@@ -585,7 +584,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/food-limit-note.test.ts",
     "lib/__tests__/immediate-tx.test.ts",
     "lib/__tests__/ingest-narrowing-scan.test.ts",
-    "lib/__tests__/migration-historical-fixture-scan.test.ts",
     "lib/__tests__/mobile-density-convention.test.ts",
     "lib/__tests__/offline-queue.test.ts",
     "lib/__tests__/reconcile-registry.test.ts",

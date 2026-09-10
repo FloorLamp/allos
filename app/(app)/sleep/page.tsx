@@ -27,10 +27,8 @@ import {
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { formatClockMinutes, formatRelativeTime } from "@/lib/format-date";
 import { sriPresentation } from "@/lib/sleep-regularity";
-import {
-  PillarToneBadge,
-  PILLAR_TONE_CLASS,
-} from "@/components/dashboard/HealthspanPillarPresentation";
+import { PillarToneBadge } from "@/components/dashboard/HealthspanPillarPresentation";
+import { verdictText } from "@/lib/chart-colors";
 import { PageHeader } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import SleepHero from "./SleepHero";
@@ -248,7 +246,7 @@ export default async function SleepPage() {
               </div>
               <div className="flex items-baseline gap-2">
                 <div
-                  className={`text-3xl font-bold ${PILLAR_TONE_CLASS[sleepRegDisplay.tone]}`}
+                  className={`text-3xl font-bold ${verdictText[sleepRegDisplay.tone].class}`}
                   data-testid="sri-value"
                 >
                   {sleepRegDisplay.text}

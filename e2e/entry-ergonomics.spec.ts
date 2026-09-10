@@ -22,6 +22,11 @@ import {
 } from "./shared-profile-guard";
 import { frozenNow, workerDbPath } from "./worker-env";
 
+// What a warmup set is excluded from, which the W toggle's own label states since
+// #5726 (it used to be a standing paragraph under every exercise's set grid).
+const WARMUP_MECHANIC =
+  "warmup sets do not count toward volume or target markers";
+
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
 // muscle badge ("Barbell Bench Press" + "Chest"), while an EXACT typed match
@@ -1185,9 +1190,11 @@ test("remaining sets share a weight until Vary opens per-set editing", async ({
           ),
           form.getByTestId("set-vary-2"),
           form.getByTestId("set-confirm-2"),
-          form
-            .getByTestId("set-options-2")
-            .getByRole("button", { name: "Mark warmup set", exact: true }),
+          form.getByTestId("set-options-2").getByRole("button", {
+            // The W names what it does AND what it costs since #5726.
+            name: `Mark warmup set — ${WARMUP_MECHANIC}`,
+            exact: true,
+          }),
           form.getByTestId("set-remove-2"),
         ]
       );

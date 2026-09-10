@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  accessForProfile,
-  getAccessibleProfiles,
-  requireSession,
-} from "@/lib/auth";
+import { getAccessibleProfiles, requireSession } from "@/lib/auth";
+import { canWriteProfile } from "@/lib/write-affordance";
 import {
   getRankedPickerProviders,
   getIntakeCatalogOptions,
@@ -65,11 +62,7 @@ export default async function MedicationDetailPage(props: {
 }) {
   const params = await props.params;
   const searchParams = await props.searchParams;
-  const {
-    login,
-    profile: activeProfile,
-    access: activeAccess,
-  } = await requireSession();
+  const { login, profile: activeProfile } = await requireSession();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
   const accessible = await getAccessibleProfiles();
@@ -81,7 +74,10 @@ export default async function MedicationDetailPage(props: {
   const profileId = resolved.profileId;
   const subject = accessible.find((profile) => profile.id === profileId)!;
   const crossProfile = profileId !== activeProfile.id;
-  const canWrite = !crossProfile && activeAccess === "write";
+  // BOTH write affordances on this page ask `canWriteProfile` (#4844), so neither can
+  // offer a control the write gate will refuse. Grant AND demo posture, together.
+  const canWrite =
+    !crossProfile && canWriteProfile(login.id, login.role, activeProfile.id);
   // THIS PAGE IS A SUBJECT-SCOPED CONTAINER (#4693, widened by #4429): it names one
   // profile in the identity banner above, so the doses it shows are unambiguously that
   // profile's — and the affordances that act on a DAY (the dose-history add/amend,
@@ -90,15 +86,15 @@ export default async function MedicationDetailPage(props: {
   // (`canWrite`), which is why this is a separate fact and not a wider `canWrite`.
   //
   // REACHABILITY FIRST, THEN THE GRANT — the ordering requireProfileWriteAccess itself
-  // depends on, because `accessForProfile` defaults an UNGRANTED member to 'write' and
-  // so decides nothing on its own. Reachability is settled above by construction:
+  // depends on, because the grant read behind `canWriteProfile` defaults an UNGRANTED
+  // member to 'write' and so decides nothing on its own. Reachability is settled by
+  // construction above:
   // `profileId` came out of `resolveIntakeAcrossProfiles(accessible…)`, so a
   // profile this login cannot reach 404s before this line. Write access is then asked
   // of the SUBJECT rather than of the acting profile — and this is only what the page
   // OFFERS: every action re-gates the posted id server-side.
   const subjectProfileId =
-    crossProfile &&
-    accessForProfile(login.id, login.role, profileId) === "write"
+    crossProfile && canWriteProfile(login.id, login.role, profileId)
       ? profileId
       : undefined;
   const requestedAction = Array.isArray(searchParams.action)

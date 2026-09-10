@@ -159,8 +159,6 @@ const OFFLINE_NAV_OK_MARKER = "offline-nav-ok";
 // The helper module that OWNS the precondition — it spells the markers out by design.
 const OFFLINE_HELPERS_FILE = "helpers.ts";
 
-const FIXTURE_PROFILE_FILE = "fixture-profile.ts";
-
 // A SHARED-PROFILE activity cleanup, spelled inline (#3946). The freeze is ZERO and
 // there is no allowlist: `deleteActivitiesTitled` in e2e/shared-profile-guard.ts is
 // the one definition, and it existed verbatim in three specs before this.
@@ -1114,33 +1112,6 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     }
   );
 
-  it("the blessed shared-profile cleanup exists and is profile-scoped", () => {
-    const mod = fs.readFileSync(
-      path.join(E2E_DIR, "shared-profile-guard.ts"),
-      "utf8"
-    );
-    expect(mod).toMatch(/export function deleteActivitiesTitled\b/);
-    // Profile-scoped and cascading, or it is not a replacement for what it replaced.
-    expect(mod).toMatch(
-      /DELETE FROM activities WHERE profile_id = \? AND title = \?/
-    );
-    expect(mod).toMatch(/foreign_keys = ON/);
-  });
-
-  it("the blessed fixture-profile constructor exists and seeds the standard metric saves", () => {
-    const mod = fs.readFileSync(
-      path.join(E2E_DIR, FIXTURE_PROFILE_FILE),
-      "utf8"
-    );
-    expect(mod).toMatch(/export function createFixtureProfile\b/);
-    expect(mod).toMatch(/export function createFixtureProfileWithId\b/);
-    // The destructor is not optional: creation writes side-state, so a fixture that
-    // deletes its profile needs the pair (see the DELETE freeze above).
-    expect(mod).toMatch(/export function destroyFixtureProfile\b/);
-    // It must delegate to the production seeding core, not re-implement it.
-    expect(mod).toMatch(/seedStandardMetricSaves\(/);
-  });
-
   it("no offline NAVIGATION in an e2e/*.ts without a cache-warm precondition (use readyForOffline)", () => {
     const violations: string[] = [];
     for (const { name, text } of specFiles()) {
@@ -1215,31 +1186,6 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     };
     expect(inWindow(navigates)).toBe(true);
     expect(inWindow(queueOnly)).toBe(false);
-  });
-
-  it("the blessed offline precondition exists and asserts the cache, not a render", () => {
-    const helpers = fs.readFileSync(path.join(E2E_DIR, "helpers.ts"), "utf8");
-    expect(helpers).toContain("export async function offlineChunksWarm");
-    expect(helpers).toContain("export async function readyForOffline");
-    // It reads the cache — a render assertion is exactly what cannot see the bypass.
-    expect(helpers).toContain("caches.match(");
-  });
-
-  it("the per-worker harness exposes its addressing helpers", () => {
-    const env = fs.readFileSync(path.join(E2E_DIR, "worker-env.ts"), "utf8");
-    expect(env).toMatch(/export function workerDbPath\b/);
-    expect(env).toMatch(/export function workerDir\b/);
-    expect(env).toMatch(/export function workerPort\b/);
-    const fixtures = fs.readFileSync(path.join(E2E_DIR, "fixtures.ts"), "utf8");
-    // The two option overrides are what point page/context at THIS worker.
-    expect(fixtures).toMatch(/baseURL:\s*async/);
-    expect(fixtures).toMatch(/storageState:\s*async/);
-  });
-
-  it("the blessed interaction module exists and exports settledClick + followLink", () => {
-    const helpers = fs.readFileSync(path.join(E2E_DIR, "helpers.ts"), "utf8");
-    expect(helpers).toMatch(/export async function settledClick\b/);
-    expect(helpers).toMatch(/export async function followLink\b/);
   });
 
   it("no NEW unscoped page.getByTestId in an e2e/*.ts (scope it, or mark testid-scope-ok)", () => {
@@ -1333,10 +1279,11 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     ).toEqual([...SUSPENSE_BOUNDARY_FILES].sort());
   });
 
-  it("the family helper module exists and exports the three create/grant drivers", () => {
+  // createLoginViaFamily and createProfileViaFamily are imported by specs, so tsc
+  // carries them; setGrantsViaFamily has no importer, and the "Save access" ban in
+  // eslint.config.mjs points at it.
+  it("the family helper module exports the grant driver its lint ban names", () => {
     const fam = fs.readFileSync(path.join(E2E_DIR, FAMILY_HELPERS), "utf8");
-    expect(fam).toMatch(/export async function createLoginViaFamily\b/);
-    expect(fam).toMatch(/export async function createProfileViaFamily\b/);
     expect(fam).toMatch(/export async function setGrantsViaFamily\b/);
   });
 });

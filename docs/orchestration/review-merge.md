@@ -9,8 +9,9 @@
   path when the diff cannot demonstrate the behavior.
 - Check a consumer table with `npx tsx scripts/reach.ts <module> <symbol>`: the
   terminals it prints are the rows the table must name, never the nearest one.
-  The merge gate prints that reach as a row for a PR whose diff changes a
-  shared `lib/` derivation; a terminal the table does not name is a NOTE today.
+  The merge gate prints that reach as a NOTE row for a PR whose diff changes a
+  shared `lib/` derivation, naming the terminals the table omits and the tree
+  it walked; a declaration moved verbatim between files prints no row.
 - Relay evidence exactly and make only conclusions you independently derived.
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
@@ -51,9 +52,8 @@
   another implementation round,
   write the revised ownership model, what mechanism retires, and the concrete
   attack it must survive; have a non-author review that design. A smaller guard
-  or a new exception alone is not a redesign. This applies before spending a
-  third repair round; changing the defect category does not reset the count.
-  Non-leaking prose mismatches remain follow-ups.
+  or a new exception alone is not a redesign. Non-leaking prose mismatches
+  remain follow-ups.
 - A PR the owner opens gets a plain non-author review and the standard gates;
   a blocker is fixed as a new commit on the owner's branch, stated on the
   PR — never rebase, amend or force-push it (owner 2026-09-04).
