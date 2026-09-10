@@ -45,8 +45,11 @@
 //   is ASSERTED afterwards, so a future "optimization" to `-l` fails loudly.
 //
 //   STALENESS. A seeded worktree the agent then edits falls straight back to
-//   `ensureBuild`'s ordinary mtime rule and rebuilds — BUILD_ID is stamped to now,
-//   so every later edit is newer. That path is untouched.
+//   `ensureBuild`'s ordinary check and rebuilds: this seed writes the target's OWN
+//   input record beside the copied build, so the first edit makes the tree's
+//   fingerprint differ from it. That path is untouched — and since #5772 replaced
+//   the mtime comparison with that record, it no longer leans on the BUILD_ID
+//   stamp below at all.
 //
 //   CONCURRENCY. Five clusters can seed at once. Sources are only ever READ, so
 //   concurrent seeds need no lock. The one non-read-only race is a rebuild landing
@@ -165,6 +168,16 @@ export function seedDecision(facts) {
   // `npm run build`. The same fact can be DERIVED, at the cost of one extra
   // assumption the recorded proof does not need: that the source tree has not
   // changed since it was built. Say which proof was used.
+  //
+  // AND THAT ASSUMPTION IS CHECKED WITH MTIMES, which #5772 measured cannot see a
+  // whole class of change: a source edited while its own build was running is
+  // stamped a hundred seconds BEFORE the BUILD_ID that build wrote, so it reads as
+  // unchanged, permanently. This branch inherits that hole knowingly. It is the
+  // only evidence a record-less build can offer; the recorded branch above has no
+  // such hole; and every build this harness makes writes a record, so a source
+  // reaching here is one `npm run build` produced outside it. Recording such a
+  // build (`node scripts/orchestration/seed-next-build.mjs record`) moves it to the
+  // branch above and is the remedy, not a wider mtime rule.
   if (!sourceFingerprint) {
     return { seed: false, reason: "its build inputs could not be read" };
   }
@@ -329,15 +342,19 @@ export function seedFrom({
       );
     }
 
-    // `cp -a` preserved the source's mtimes, which read as older than this
-    // worktree's just-created sources and would make `ensureBuild` rebuild the very
-    // build it was handed. Stamp BUILD_ID forward — licensed by the fingerprint
-    // equality proven above and by nothing else. Every later edit is newer again,
-    // so ordinary staleness detection resumes untouched.
+    // `cp -a` preserved the source's mtimes. Stamp BUILD_ID forward — licensed by
+    // the fingerprint equality proven above and by nothing else.
+    //
+    // WHAT THIS IS STILL FOR, now that it no longer decides staleness. Since #5772
+    // `ensureBuild` reads the record this seed writes rather than any mtime, so the
+    // stamp cannot make a seeded build read as fresh or stale. What still reads it
+    // is `discoverSeedSources`, which orders candidates most-recently-built first —
+    // that is how a wave finds the build matching the `origin/main` it just
+    // branched from — and `seedDecision`'s derived branch in a downstream seed.
     // Rewrite the tiny file instead of calling utimes. On DrvFS/NTFS, Node's
     // explicit utimes call truncates to whole seconds even though ordinary writes
-    // receive a high-resolution filesystem timestamp. A target source written in
-    // that same second would then remain newer and force an immediate rebuild.
+    // receive a high-resolution filesystem timestamp, and both readers above want
+    // the resolution.
     const buildIdBytes = fs.readFileSync(copiedBuildId);
     fs.writeFileSync(copiedBuildId, buildIdBytes);
 

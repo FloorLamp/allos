@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { openConfirm } from "./helpers";
 // Exercises the long-lived calendar `.ics` token lifecycle (issue #24): enabling
 // mints a subscribe URL that serves an iCalendar feed, and rotating it mints a
 // FRESH URL while the previous one immediately 404s (the token hash was replaced).
@@ -50,7 +51,14 @@ test.describe("Calendar feed token lifecycle", () => {
     // (#868 fixture ownership). This spec previously left profile 1's feed
     // enabled, which stranded calendar-feed-customization.spec.ts's "Enable
     // feed" click on any later run against the same DB (e.g. --repeat-each).
-    await page.getByRole("button", { name: "Disable feed" }).click();
+    // The Disable went quiet under #4978's ruling 12, and its confirm step now
+    // carries the red — so the teardown answers the confirm rather than
+    // assuming the click disabled anything.
+    const confirm = await openConfirm(
+      page,
+      page.getByRole("button", { name: "Disable feed" })
+    );
+    await confirm.getByRole("button", { name: "Disable feed" }).click();
     await expect(
       page.getByRole("button", { name: "Enable feed" })
     ).toBeVisible();

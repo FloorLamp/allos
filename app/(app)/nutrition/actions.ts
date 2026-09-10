@@ -19,13 +19,14 @@ import {
   updateFoodLogEventCore,
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
-import { EATEN_AT_FUTURE_SKEW_MS, judgeEatenAt } from "@/lib/food-eating-time";
-import { statedHourInstant } from "@/lib/correction-time";
-import { normalizeClockTime } from "@/lib/vitals-input";
-import { statedInstantOnDate } from "@/lib/stated-time";
-import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
+import {
+  judgeEatenAt,
+  judgePostedEatingTime,
+  statedFoodPlacement,
+} from "@/lib/food-eating-time";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
-import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
+import { zonedWallTimeToUtc } from "@/lib/date";
 import { getProfileAge, getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
@@ -169,76 +170,19 @@ export async function logFoodServing(
   const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
-  // The eating-time statement (#2053), when the user made one. The form carries an
-  // ABSOLUTE profile-local wall time ("HH:MM") and never a client instant: the server
-  // resolves it against its own clock and the profile's timezone, so no browser has to
-  // convert a profile-local hour with its own locale. Since #3273 that is the ONE shape
-  // this field takes — the bar's hand-rolled "now" word went with its chip group, and
-  // the shared control's Now button fills a wall time the person can see instead. An
-  // absent or unusable statement records NO eating time — the validate-never-drop rule:
-  // the serving always lands, the statement is what is lost, and since #2296 the answer
-  // SAYS SO rather than dropping it in silence.
-  //
-  // ONE clock read for the whole decision, and one VERDICT rather than a nullable
-  // instant (#2296): "nobody stated a time" and "a time was stated and refused" are
-  // different answers, and only the second is something to tell the user about. A time
-  // that won't resolve at all (a wall time inside a DST gap) is a refusal too, not an
-  // absence — it was stated.
+  // The eating-time statement (#2053), when the user made one. The wire shape, the day
+  // rule and the acceptance gate are `judgePostedEatingTime`'s, shared with the composed
+  // bundle on the same bar (#4438) — an absent or unusable statement records NO eating
+  // time, the serving always lands, and since #2296 the answer SAYS SO rather than
+  // dropping the minute in silence. ONE clock read for the whole decision.
   const at = clockNow();
   const tz = getTimezone(profileId);
-  const stated = normalizeClockTime(String(formData.get("occurred_at") ?? ""));
-  // WHICH DAY A BARE WALL TIME MEANS, and the two cases are genuinely different.
-  //
-  //   THE ROW'S DAY IS TODAY — THE DAY RULE, with the acceptance gate's own clock
-  //   tolerance, as it has been since #3273 moved the offer client-side.
-  //   `statedHourInstant` reads a wall time later than `now` as YESTERDAY's: right for
-  //   a picker whose hours the server enumerated, wrong for a field the browser filled
-  //   from its own clock, so the skew rides along. Measured: a 90-second skew re-dated
-  //   the statement and lost it. The re-dating is what keeps the backfill guard below
-  //   non-vacuous for the today case.
-  //
-  //   THE ROW'S DAY IS A PAST DAY — ANCHORED ON THAT DAY, by construction (#4118's
-  //   past-day amendment). The form NAMES its day, the surface offered that day's own
-  //   hours, and `statedInstantOnDate` enforces the (date, hhmm) pair or refuses: a
-  //   wall time that does not exist there (a spring-forward gap) comes back null and is
-  //   reported as malformed rather than settling silently onto a different reading.
-  //   Re-dating relative to `now` here is simply wrong — "8pm" stated about last
-  //   Tuesday is last Tuesday's, and the day rule would resolve it to today or
-  //   yesterday and then refuse it as "not on that day", which is how the amendment's
-  //   sticky-time batch would have silently lost every minute it set. This is the same
-  //   split `offeredHourInstant` already makes between its `today` and `prev` levels.
-  const resolved = !stated
-    ? null
-    : fields.date === dateStrInTz(tz, at)
-      ? statedHourInstant(stated, at, tz, EATEN_AT_FUTURE_SKEW_MS)
-      : statedInstantOnDate(fields.date, stated, tz);
-  const judged: StatedTimeVerdict = !stated
-    ? { kind: "unstated" }
-    : resolved === null
-      ? { kind: "refused", reason: "malformed" }
-      : judgeEatenAt(resolved, tz, fields.date, at);
-  // THE REFUSAL IS RIGHT; ITS REASON WAS NOT. Past the tolerance a fast clock's wall
-  // time re-dates to yesterday and is refused for missing the row's day — correct to
-  // refuse, and re-anchoring on the row's date instead would make the backfill guard
-  // below vacuous. But "it isn't on that day" is untrue when the day is the one the
-  // person is standing in, and it blames the wrong machine. Same outcome, and the
-  // reason the queued path already reports for this.
-  //
-  // Both conditions carry weight: `aheadOfServer` separates a fast clock from an hour
-  // genuinely meant as yesterday's, and the row's date being today is what makes
-  // "that day" theirs — a real backfill off its day is still told so.
-  const localToday = dateStrInTz(tz, at);
-  const onToday = stated ? zonedWallTimeToUtc(tz, localToday, stated) : null;
-  const aheadOfServer =
-    onToday !== null &&
-    onToday.getTime() > at.getTime() + EATEN_AT_FUTURE_SKEW_MS;
-  const verdict: StatedTimeVerdict =
-    judged.kind === "refused" &&
-    judged.reason === "other-day" &&
-    aheadOfServer &&
-    fields.date === localToday
-      ? { kind: "refused", reason: "future" }
-      : judged;
+  const verdict = judgePostedEatingTime(
+    formData.get("occurred_at"),
+    fields.date,
+    tz,
+    at
+  );
   const outcome = logFoodServingCore(
     profileId,
     fields.group,
@@ -253,11 +197,7 @@ export async function logFoodServing(
     // boundary that can still see the gesture, so nothing below can be handed a pair.
     // A refused or absent statement leaves the declaration standing.
     //
-    // 'stated' for both shapes: "now" and "13:00" are equally a human answering the
-    // question. 'tap' belongs to the Telegram button, whose declared contract IS "now".
-    verdict.kind === "accepted"
-      ? { eatenAt: utcInstant(verdict.at), source: "stated" }
-      : fields.mealSlot,
+    statedFoodPlacement(verdict, fields.mealSlot),
     undefined,
     // THE NOTE RIDES THE ADD (#5304). One serving, one note, on the row itself — the
     // day counter this tap bumps carries none. An absent or blank field is the common

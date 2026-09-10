@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import Button, { type ButtonProps } from "@/components/Button";
+import { useConfirm, type ConfirmOptions } from "@/components/ConfirmDialog";
 
 type SubmitButtonProps = Omit<
   ButtonProps,
@@ -98,3 +99,37 @@ export const DestructiveSubmit = (props: DestructiveSubmitProps) => (
     <Button {...props} type="submit" variant="danger" />
   </span>
 );
+
+// THE OTHER HALF OF A QUIET DESTRUCTIVE SUBMIT (#4978 ruling 10 as narrowed by
+// ruling 12; owner-endorsed 2026-09-10). A destructive control that gives up the
+// fill hands the red to its CONFIRM STEP — quieting one with nothing behind it
+// deletes the destructive signal rather than relocating it, and every caller
+// here revokes access with no undo. `danger` is stated HERE and nowhere else,
+// so a caller cannot take the quiet paint and forget the red.
+//
+// It gates the ACTION rather than owning the <form>, because the forms it serves
+// have nothing else in common: one is a card-level control carrying the DOM
+// marker the integrations specs select on, the other is a per-row control
+// carrying a layout class and its row's hidden id. A component owning the form
+// would need a `className` escape, a children slot and a marker prop to serve
+// both — three openings bought for one shared line.
+//
+// The confirm is awaited INSIDE the form action, the shape #5336 settled for
+// this app (components/IntakeItemForm.tsx does the same): the dialog's store is
+// external, so React commits the sheet even while the action is pending, and the
+// caller stays a plain `<form action>` with the primitive owning its pending
+// state.
+type DestructiveAction = (formData: FormData) => void | Promise<void>;
+
+export function useDestructiveSubmitGate(): (
+  options: Omit<ConfirmOptions, "danger">,
+  action: DestructiveAction
+) => DestructiveAction {
+  const confirm = useConfirm();
+  return useCallback(
+    (options, action) => async (formData) => {
+      if (await confirm({ ...options, danger: true })) await action(formData);
+    },
+    [confirm]
+  );
+}

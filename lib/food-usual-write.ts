@@ -52,7 +52,11 @@
 import { instantNow } from "./clock";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { today, writeTx } from "./db";
-import { logFoodServingCore, type FoodWriteOrigin } from "./food-log-write";
+import {
+  logFoodServingCore,
+  type FoodEatingTime,
+  type FoodWriteOrigin,
+} from "./food-log-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import { isProteinNudgeKey } from "./protein-nudge";
 import type { FoodSlot } from "./food-slot";
@@ -132,7 +136,27 @@ export function logUsualFoodCore(
   // (#2264/#2460) is the Telegram composed one-tap's only; the ACT ID (#5082) is
   // whatever the composed caller minted, and the web control passing nothing stores
   // NULL for both, exactly as the bar does.
-  origin?: FoodWriteOrigin
+  origin?: FoodWriteOrigin,
+  // WHEN THEY SAID THEY ATE IT (#4438, owner ruling 2026-09-02). Absent is the answer
+  // for every surface whose button names a WINDOW rather than an hour — the Telegram
+  // composed tap and the dashboard control — and it writes the declared window with a
+  // NULL eating instant on every member, as this core always has.
+  //
+  // Present is the nutrition bar's sticky statement: the person named an hour, and the
+  // bar says out loud which window that hour files under before the tap. It is a
+  // placement for the SERVINGS, never for the OFFER: `window` above still decides what
+  // is offered and therefore what may be written, so a bundle labelled Morning stays a
+  // Morning bundle whatever hour its rows carry. What follows from the statement is
+  // #2269's rule, unchanged — `logFoodServingCore` stores the instant and no slot, the
+  // meal DERIVES from it, and a later correction moves the meal with the time.
+  //
+  // THE COST IS REAL AND IT IS THE SURFACE'S TO CARRY. A Morning bundle stated at 19:00
+  // files into Evening while `getUsualFoodOffer` re-derives FOR MORNING and still
+  // stands, so the button survives its own write and a second tap writes again. That is
+  // why no surface may pass this without saying where the servings land; it is also why
+  // the composed Telegram tap, whose label is the only thing naming the window there,
+  // does not pass it at all.
+  statedAt?: FoodEatingTime
 ): UsualFoodOutcome {
   const t = today(profileId);
   if (!isUsualBackfillDateAccepted(t, date)) return { kind: "invalid-date" };
@@ -163,19 +187,19 @@ export function logUsualFoodCore(
 
       const groups: UsualFoodLogged[] = [];
       for (const groupKey of toLog) {
-        // The placement is a DECLARATION here, exactly as the bar's meal tab is (#2269):
-        // the offer is about a meal window and states no eating time, so the serving
-        // carries the declared slot and a NULL eating instant rather than a guessed one.
-        // A bundle may NOT state an hour instead — see `logUsualRoutineCore`'s header:
-        // that would drop the very window this offer was derived and labelled for, and
-        // the offer would then never reduce.
+        // ONE PLACEMENT for the whole set (#4729): the eater's stated instant when the
+        // surface carried one, and otherwise the tab's DECLARED window with a NULL
+        // eating instant. Nothing is guessed either way, and every member of the bundle
+        // is placed identically — one tap is one act, so a set whose rows disagreed
+        // about when it happened would be the "one event, two sections" defect
+        // `logUsualRoutineCore`'s header names, wearing a different hat.
         const outcome = logFoodServingCore(
           profileId,
           groupKey,
           date,
           via,
           loggedAt,
-          window,
+          statedAt ?? window,
           origin
         );
         // Unreachable in practice — the offer only ever contains catalog slugs — but a
