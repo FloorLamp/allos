@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import type { Page } from "@playwright/test";
-import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  openConfirm,
+  settledBoxes,
+} from "./helpers";
 
 // The printable immunization record and its revocable share link (#1849). The one
 // record type whose stated purpose is being handed to a registrar had neither, while
@@ -127,7 +132,15 @@ test.describe("Immunization record print + share (#1849)", () => {
       .filter({ has: page.getByRole("button", { name: "Revoke" }) })
       .first();
     await expect(row).toBeVisible();
-    await row.getByRole("button", { name: "Revoke" }).click();
+    // The per-row Revoke went quiet under #4978's ruling 10 and its confirm step
+    // carries the red; the confirm names the link, so it is also what proves the
+    // right row was picked.
+    const revokeConfirm = await openConfirm(
+      page,
+      row.getByRole("button", { name: "Revoke" })
+    );
+    await expect(revokeConfirm).toContainText("Immunization record");
+    await revokeConfirm.getByRole("button", { name: "Revoke" }).click();
 
     // The same token now 404s with the anti-probing copy.
     const anonCtx2 = await browser.newContext({
