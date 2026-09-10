@@ -12,9 +12,9 @@ import {
   eventVerdict,
   formatSyncChange,
   syncRunNounForKind,
-  type StatusTone,
   type SyncVocabulary,
 } from "./source-state";
+import type { VerdictTone } from "@/lib/chart-colors";
 import { originChoiceLabel, parseSyncEventDetails } from "./sync-details";
 
 // Plain client-safe views for the paged sync ledger. Collapsed ranges carry only
@@ -24,7 +24,7 @@ export interface SyncRunView {
   at: string;
   isLatest: boolean;
   ok: boolean;
-  verdict: { label: string; tone: StatusTone };
+  verdict: { label: string; tone: VerdictTone };
   change: string | null;
   changeMuted: boolean;
   skipped: number;
@@ -67,7 +67,7 @@ export type SyncDayEntryView =
 export interface SyncDayView {
   day: string;
   label: string;
-  attention: { label: string; tone: StatusTone } | null;
+  attention: { label: string; tone: VerdictTone } | null;
   entries: SyncDayEntryView[];
 }
 

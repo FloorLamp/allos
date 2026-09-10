@@ -384,14 +384,14 @@ describe("cyclingHighlights", () => {
         label: "Best efforts",
         value: "1 personal best",
         detail: "1 top-10 leaderboard result",
-        tone: "positive",
+        tone: "good",
       },
       {
         key: "efficiency",
         label: "Efficiency",
         value: "+4.2% drift",
         detail: "Fell in the second half",
-        tone: "caution",
+        tone: "warn",
       },
     ]);
   });

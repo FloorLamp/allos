@@ -55,10 +55,10 @@ describe("the member card speaks the broad panel, not the widest net (#3487 item
     expect(src).toContain("optimalTone(optimal)");
   });
 
-  it("the card renders the fraction with the pillar's own tone map and its text twin", () => {
+  it("the card renders the fraction with the shared verdict tone and its text twin", () => {
     const src = read(CARD);
     expect(src).toContain("Biomarkers optimal");
-    expect(src).toContain("PILLAR_TONE_CLASS[biomarkers.tone]");
+    expect(src).toContain("verdictText[biomarkers.tone].class");
     // WCAG 1.4.1 (#1220): the verdict may not travel by colour alone, and the badge
     // is the ONE mapping both pillar surfaces already render.
     expect(src).toContain("<PillarToneBadge tone={biomarkers.tone} />");

@@ -3,7 +3,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import InlineError from "@/components/InlineError";
+import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { UsualRoutineOfferCard } from "@/components/dashboard/UsualRoutineControl";
@@ -25,6 +25,7 @@ import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
+import { logHeading, type LogDomain } from "@/lib/log-manifest";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
@@ -65,18 +66,14 @@ import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 // form instead, which carries the whole field set, the sitting's optional Time through
 // the shared `WhenControl`, and `addMeasurements` with its never-the-future day bound.
 
-const KIND_LABEL = {
-  food: "Log food",
-  dose: "Log past dose",
-  practice: "Log a practice",
-  mood: "Log a check-in",
-  substance: "Log a use",
-  body: "Log a reading",
-  symptom: "Log a symptom",
-  stool: "Log a movement",
-} as const;
-
-export type HistoryAddKind = keyof typeof KIND_LABEL;
+// THE DOOR NO LONGER NAMES ITS OWN KINDS (#5300 rule 6, #5617 step 2). It carried a
+// second vocabulary for the eight domains the quick sheet had already named — four
+// RENAMINGS ("Log a check-in" for mood, "Log a use" for substance, "Log a reading"
+// for body, "Log a movement" for stool) and three articles ("Log a practice", "Log a
+// symptom", "Log past dose") — so one domain answered to two phrases depending on
+// which surface a person opened it from. The noun is declared once on the domain's
+// manifest entry and every heading is built from it.
+export type HistoryAddKind = LogDomain;
 
 /** The per-kind vocabulary the server reads once for the page. */
 export interface HistoryAddVocabulary {
@@ -119,7 +116,7 @@ export interface HistoryAddVocabulary {
 // The composed one-tap is an OFFER over foods and stacks (#4477's vocabulary) and never
 // a food: the tap writes servings AND doses. Under `Log food` the label under-named it,
 // and a reader reconstructing a day met the bundle behind the food door and the per-dose
-// backfill behind `Log a dose`. So the add door LEADS with the day's standing offers, in
+// backfill behind `Log dose`. So the add door LEADS with the day's standing offers, in
 // the same accent offer chip the quick-log sheet's food overlay leads with, and the door
 // row keeps its per-kind grammar beneath.
 //
@@ -214,7 +211,6 @@ export default function HistoryAddDoor({
       ? null
       : (statedInstantOnDate(date, window.from, tz)?.toISOString() ?? null);
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (kind === "dose" && vocabulary.doseItems.length === 0) return null;
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
@@ -223,7 +219,6 @@ export default function HistoryAddDoor({
 
   function close(): void {
     setOpen(false);
-    setError(null);
   }
   function form(): ReactNode {
     switch (kind) {
@@ -405,18 +400,51 @@ export default function HistoryAddDoor({
         type="button"
         className="btn-ghost btn-sm shrink-0"
         aria-expanded={open}
+        aria-haspopup="dialog"
         data-testid={`history-add-open-${kind}`}
         onClick={() => setOpen((value) => !value)}
       >
-        {KIND_LABEL[kind]}
+        {logHeading(kind)}
       </button>
       {open ? (
-        <div className="mt-2" data-testid={`history-add-panel-${kind}`}>
-          {form()}
-          <InlineError data-testid={`history-add-error-${kind}`}>
-            {error}
-          </InlineError>
-        </div>
+        // ONE HOST (#5300 rule 5, adopted by #5617 step 1). This was an inline panel
+        // under the button — `<div className="mt-2">` holding the domain's form — so
+        // the same eight forms had three hosts between them: this panel, the record
+        // row's in-row editor, and the converged sheet/dialog the quick logger and
+        // the nutrition day correction already used. A sheet below `md` and a centred
+        // card above is what every other transactional capture in the app opens as,
+        // and it is what the owner ruled the record's forms open in ("we do the
+        // sheet").
+        //
+        // WHAT THE MOVE BUYS beyond uniformity: the form no longer competes with the
+        // record it is writing into for the reader's screen — the add layer sits
+        // under a day chart and above the rows, so an opened panel pushed the rows it
+        // was about off the fold. It gains the host's body-scroll lock, its
+        // dirty-discard guard on a flick or a scrim tap, and its focus trap; none of
+        // those were reachable from an inline div.
+        //
+        // THE TRIGGER KEEPS ITS IDENTITY (#3911) and its `aria-expanded`: the control
+        // still says what it is FOR rather than turning into Cancel, and dismissal
+        // still belongs to the surface it opened. `aria-haspopup` is what changed —
+        // the content it discloses is a dialog now, and a reader is owed that.
+        //
+        // THE SIZE MIRRORS THE QUICK SHEET'S (#4977 item 1): the measurements grid is
+        // a multi-column tool and declares `lg` there, every other body a column of
+        // rows at `sm`. It is stated here rather than read from the manifest because
+        // the size vocabulary is `components/overlay`'s and `lib/log-manifest.ts` is
+        // dependency-free by contract — see #5617 for the unification that would
+        // need.
+        <ModalShell
+          title={logHeading(kind)}
+          onClose={close}
+          size={kind === "body" ? "lg" : "sm"}
+          testId={`history-add-sheet-${kind}`}
+        >
+          {/* THE PANEL MARKER STAYS ON THE FORM'S OWN WRAPPER, not on the host: it is
+              what every spec on this door identifies the form by, and the host's
+              chrome is the host's to assert. */}
+          <div data-testid={`history-add-panel-${kind}`}>{form()}</div>
+        </ModalShell>
       ) : null}
     </>
   );

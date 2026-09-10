@@ -20,6 +20,7 @@ import {
   type FitnessPercentile,
 } from "./fitness-norms";
 import { bioAgeDeltaCompact, type BioAgeDelta } from "./bio-age";
+import type { VerdictTone } from "./chart-colors";
 import { strengthAnalyzeHref, type AppRoute } from "./hrefs";
 import {
   strengthLevelLabel,
@@ -356,21 +357,10 @@ export function pillarHref(key: PillarKey): AppRoute {
   return `/longevity#${PILLAR_ANCHOR[key]}`;
 }
 
-export type PillarTone = "good" | "warn" | "bad" | "neutral";
-
-// The text twin of each tone's color (WCAG 1.4.1, issue #1220): a pillar's
-// good/warn/bad judgment must never travel by COLOR ALONE, so every judging tone
-// carries a short label that both pillar surfaces (the dashboard presentation and the
-// Longevity page's PillarStat) render as a visible badge next to the colored
-// value — the ONE mapping (#221), so a new pillar or surface can't ship
-// color-only again. `neutral` is deliberately null: it makes no judgment (its
-// value renders in the plain text color), so there is nothing to label.
-export const PILLAR_TONE_LABEL: Record<PillarTone, string | null> = {
-  good: "Good",
-  warn: "Fair",
-  bad: "Poor",
-  neutral: null,
-};
+// A pillar's judgment is the app's shared VerdictTone (#5187) — it was the same
+// four words under a domain name, and both pillar surfaces paint it from the one
+// palette. Its non-colour twin (WCAG 1.4.1, #1220) is VERDICT_TONE_LABEL, which
+// moved to the palette with it so a tone's colour and its word stay together.
 
 export interface PillarTrend {
   direction: "up" | "down" | "flat";
@@ -383,7 +373,7 @@ export interface Pillar {
   // The headline number/phrase, derived directly from the source computation.
   value: string;
   detail: string;
-  tone: PillarTone;
+  tone: VerdictTone;
   trend: PillarTrend | null;
   // Deep-link to the pillar's detail surface.
   href: AppRoute;
@@ -416,7 +406,7 @@ export interface PillarInputs {
   } | null;
 }
 
-function vo2Tone(p: number): PillarTone {
+function vo2Tone(p: number): VerdictTone {
   if (p >= 50) return "good";
   if (p >= 25) return "warn";
   return "bad";
@@ -431,7 +421,7 @@ function vo2Tone(p: number): PillarTone {
 // UNKNOWN freshness (no dates / no clock to read) is deliberately NOT treated as stale:
 // the gate needs positive evidence that results are old (`due > 0`), so a caller that
 // supplies no dates behaves exactly as before.
-export function optimalTone(rate: OptimalHitRate): PillarTone {
+export function optimalTone(rate: OptimalHitRate): VerdictTone {
   if (rate.total === 0) return "neutral";
   if (hasNoCurrentReading(rate.freshness) && rate.freshness.due > 0)
     return "neutral";
@@ -441,7 +431,7 @@ export function optimalTone(rate: OptimalHitRate): PillarTone {
   return "bad";
 }
 
-function bioAgeTone(d: BioAgeDelta): PillarTone {
+function bioAgeTone(d: BioAgeDelta): VerdictTone {
   if (d.direction === "younger") return "good";
   if (d.direction === "older") return "bad";
   return "neutral";
@@ -478,7 +468,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       label: "Strength standard",
       value: strengthLevelLabel(level),
       detail: `${inputs.strength.lift} — for your bodyweight & sex`,
-      // strengthTone returns good/warn/bad, all valid PillarTones.
+      // strengthTone returns good/warn/bad, all valid VerdictTones.
       tone: strengthTone(level),
       trend: inputs.strength.trend ?? null,
       // The claim names a lift; the tap reaches THAT lift's evidence (#1921). The

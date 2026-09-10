@@ -10,11 +10,21 @@
 // which runs inside migrate() on first open, is deterministic and doesn't print a
 // generated password.
 
-import { afterAll, beforeAll } from "vitest";
+import { afterAll, beforeAll, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { installFixtureProfileSpace } from "./fixture-profile-space";
 import { makeTmpDir } from "../__tests__/tmp-dir";
+
+// Two markers the (app) layout's import graph carries that only Next's build
+// resolves (#5669): `next/font/google` is an SWC transform, so its font functions
+// are not callable here, and `server-only` exists only as Next's compiled marker.
+// Neither is behaviour this tier measures, so a render at the route boundary gets
+// an empty font and an empty module.
+vi.mock("next/font/google", () => ({
+  Outfit: () => ({ className: "", variable: "", style: {} }),
+}));
+vi.mock("server-only", () => ({}));
 
 const tmpDir = makeTmpDir("db-test");
 process.env.ALLOS_DB_PATH = path.join(tmpDir, "test.db");
