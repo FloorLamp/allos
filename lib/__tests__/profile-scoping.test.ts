@@ -344,17 +344,17 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   // getClinicalObservations query also carries an explicit `WHERE profile_id = ?` in its
   // latest-ids CTE).
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/records.ts",
     includes: "AS is_latest FROM medical_records",
     why: "getClinicalObservations: the latest-ids CTE and ${clause} both filter profile_id = ?",
   },
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/records.ts",
     includes: "SELECT COUNT(*) AS n FROM medical_records ${clause}",
     why: "countClinicalObservations (#2116): the same ${clause} the row read above composes, from the same observationSelection — it always begins with 'profile_id = ?', and both CTEs bind it too",
   },
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/records.ts",
     includes: "FROM medical_records WHERE ${where.join(",
     why: "getObservationsForDocument: where[] always begins with 'profile_id = ?'",
   },
