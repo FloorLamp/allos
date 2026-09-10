@@ -3,39 +3,47 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import FamilyManager from "@/app/(app)/settings/family/FamilyManager";
 
-// THE FAMILY LOGIN ROW'S ONE RANK AND ITS ONE DESTRUCTIVE PAINT (#4978 slice 4,
-// owner rulings 2026-09-05 (3) and 2026-09-09 20:05 UTC (5)).
+// THE FAMILY LOGIN ROW SPENDS NO LOUD CONTROL AT ALL (#4978 slice 4, owner
+// rulings 2026-09-05 (3), 2026-09-09 20:05 UTC (5), 2026-09-09 23:35 UTC (6),
+// 2026-09-10 01:30 UTC (10)).
 //
 // Slice 2 converted the rest of `settings/family` and deliberately left this row
 // whole: its Delete wore `btn-ghost text-rose-600`, a red-TINTED ghost, which is a
-// rank decision rather than a class swap. Ruling (5) settled it — destructive
-// actions look the same everywhere, so Delete is the filled `danger` paint and no
-// tinted-ghost variant exists. Ruling (3) then decides the UNIT: the Delete and the
-// four quiet actions beside it convert together, because a filled red standing next
-// to four raw ghosts is exactly the half-converted state the owner declined.
+// rank decision rather than a class swap. Ruling (5) settled the PAINT — destructive
+// actions look the same everywhere, so no tinted-ghost variant exists — and #5677
+// filled Delete accordingly. Ruling (10) then settled what that fill COSTS: a filled
+// danger control SPENDS the surface's loud-control budget rather than sitting outside
+// it, so a per-row destructive action in a repeated list goes quiet. This row renders
+// once per login, so the filled Delete was one loud control per login on a single
+// card — 194 of them on the e2e fixture. Delete is now the plain secondary like its
+// neighbours, and the filled danger lives where ruling (10) puts it: the standalone
+// action and the confirm step (ProfileCard's "Delete permanently").
 //
-// So this asserts the PAIR, never Delete alone: the destructive control carries
-// `button-control-danger` AND every neighbour in the same row carries the plain
-// `button-control` with no raw family class left on it. Falsified both ways during
-// authoring — against the unconverted file (Delete has no `button-control-danger`)
-// and against a half-converted copy with Delete converted and `Sign out devices`
-// left raw (the neighbour still matches the raw family).
+// So this asserts that the whole row is quiet, never Delete alone: every control in
+// it carries the plain `button-control` with no raw family class left on it, and
+// neither loud paint appears. Ruling (3) still decides the UNIT — the row converts
+// as one — which is why the neighbours are named here rather than left implied.
+// Falsified during authoring against the unconverted file (the neighbours still
+// match the raw family) and against the pre-ruling-10 tree (Delete carries
+// `button-control-danger`).
 //
-// Read off the RENDERED classes rather than the call site, so a prop the primitive
-// silently drops cannot pass here.
+// A NEGATIVE PAINT ASSERTION NEEDS AN ANCHOR, AND ITS ANCHOR IS button.test.tsx:
+// that test pins `variant="danger"` to exactly `button-control button-control-danger`
+// on the primitive, so "no `button-control-danger` in this row" cannot pass here by
+// the token drifting. Read off the RENDERED classes rather than the call site, so a
+// prop the primitive silently drops cannot pass either.
 //
 // No control in this row is a form commit — `LoginRow` renders no `<form>`, and the
 // row itself renders once per login — so under the 2026-09-04 13:05 UTC form reading
-// there is no primary to spend. That is asserted too: a primary appearing here would
-// be one per row.
+// there is no primary to spend.
 //
-// THE COUNT IS TAKEN OVER THE ROW, AND IT USED TO BE TAKEN OVER THE DOCUMENT.
-// A document-wide zero was a true proxy only while slice 2's reading held and no
-// card on this surface was filled. PM ruling 6 (2026-09-09 23:35 UTC) made the
-// CARD the surface, so the logins card now spends its one primary on "Create
-// login" and a document total of 0 would be false for a reason that has nothing
-// to do with this row. The claim being made was always about the ROW, so the
-// count moved onto it — narrower, and it now fails for one reason only.
+// THE COUNTS ARE TAKEN OVER THE ROW, AND THE PRIMARY COUNT USED TO BE TAKEN OVER THE
+// DOCUMENT. A document-wide zero was a true proxy only while slice 2's reading held
+// and no card on this surface was filled. Ruling (6) made the CARD the surface, so
+// the logins card now spends its one primary on "Create login" and a document total
+// of 0 would be false for a reason that has nothing to do with this row. The claim
+// being made was always about the ROW, so both counts sit on it — narrower, and each
+// now fails for one reason only.
 
 vi.mock("@/app/(app)/settings/family/actions", () => ({
   createProfile: async () => ({ ok: true as const }),
@@ -113,30 +121,12 @@ function memberRow(): HTMLElement {
 afterEach(cleanup);
 
 describe("the family login row ranks its destructive action against its neighbours", () => {
-  it("paints Delete with the one destructive paint and every neighbour quiet", () => {
+  it("paints Delete quiet like every neighbour beside it", () => {
     mount();
     const row = memberRow();
-    const del = within(row, "Delete");
 
-    expect(del.className).toContain("button-control-danger");
-    expect(del.className).not.toContain("button-control-primary");
-
-    // The four quiet actions in the same row. `Send invite` only renders when the
+    // The six controls of the converted row. `Send invite` only renders when the
     // instance can send mail AND the login has an address — both true above.
-    for (const name of [
-      "Send invite",
-      "Email",
-      "Reset password",
-      "Sign out devices",
-    ]) {
-      const el = within(row, name);
-      expect(el.className).toContain("button-control");
-      expect(el.className).not.toContain("button-control-danger");
-      expect(el.className).not.toContain("button-control-primary");
-    }
-
-    // Nothing in the row is on the retiring raw family any more, and every control
-    // carries the one control box rather than boxes that happen to agree today.
     for (const name of [
       "Send invite",
       "Email",
@@ -145,21 +135,28 @@ describe("the family login row ranks its destructive action against its neighbou
       "Delete",
     ]) {
       const el = within(row, name);
+      // Nothing in the row is on the retiring raw family any more, and every
+      // control carries the one control box rather than boxes that happen to
+      // agree today.
+      expect(el.className).toContain("button-control");
       expect(el.className).not.toMatch(RAW_FAMILY);
       expect(el.hasAttribute("data-button-control")).toBe(true);
+      // Neither loud paint: Delete included, under ruling (10).
+      expect(el.className).not.toContain("button-control-danger");
+      expect(el.className).not.toContain("button-control-primary");
     }
   });
 
-  it("spends no primary on a row that renders once per login", () => {
+  it("adds no loud control per login on a row that renders once per login", () => {
     mount();
+    // The multiplication is the point, and it is now zero on both paints. A loud
+    // control here would be one PER LOGIN on a single card — the shape ruling (10)
+    // named when it sent per-row destructive actions quiet.
     for (const row of screen.getAllByTestId("login-row")) {
       expect(row.querySelectorAll(".button-control-primary")).toHaveLength(0);
+      expect(row.querySelectorAll(".button-control-danger")).toHaveLength(0);
     }
-    // One destructive paint per login row, not one per screen: the rank belongs to
-    // the action, and this action exists on every row.
-    expect(document.querySelectorAll(".button-control-danger")).toHaveLength(
-      LOGINS.length
-    );
+    expect(screen.getAllByTestId("login-row")).toHaveLength(LOGINS.length);
   });
 });
 

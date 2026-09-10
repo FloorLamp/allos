@@ -6,7 +6,8 @@ import TwoFactorSettings from "@/app/(app)/settings/TwoFactorSettings";
 import AiTierSettings from "@/app/(app)/settings/ai/AiTierSettings";
 import FamilyManager from "@/app/(app)/settings/family/FamilyManager";
 
-// ONE LOUD CONTROL PER SETTINGS CARD (#4978, PM ruling 6, 2026-09-09 23:35 UTC).
+// ONE LOUD CONTROL PER SETTINGS CARD (#4978, PM ruling 6, 2026-09-09 23:35 UTC;
+// owner ruling 10, 2026-09-10 01:30 UTC).
 //
 // Slice 2 demoted about a dozen settings-card commits on the reading that a
 // settings ROUTE is one surface hosting many cards, so none of them may be loud.
@@ -15,6 +16,13 @@ import FamilyManager from "@/app/(app)/settings/family/FamilyManager";
 // control. This pins the unit that reading turns on — the count is taken over
 // the CARD the commit lives in, never over the document, because a per-route
 // total is exactly the number ruling 6 says does not exist.
+//
+// THE BUDGET COUNTS BOTH LOUD PAINTS, NOT JUST `primary`. Ruling 10 settled that
+// a filled `danger` control SPENDS the card's one loud control rather than
+// sitting outside it, so counting only `button-control-primary` here would let a
+// card go loud twice and still pass. `loudIn` therefore reads both, which is
+// also what couples the logins case below to the per-row Deletes: those went
+// quiet under the same ruling, and if they come back this fails.
 //
 // The two carve-outs ruling 6 names are pinned as their own cases, because they
 // are what a later lane would "finish" by mistake: a fold commit that can be
@@ -74,9 +82,11 @@ function cardOf(control: HTMLElement): HTMLElement {
   return card;
 }
 
-function filledIn(card: HTMLElement): string[] {
-  return Array.from(card.querySelectorAll(".button-control-primary"), (el) =>
-    (el.textContent ?? "").trim()
+/** Every loud control on the card — both paints ruling 10 counts against it. */
+function loudIn(card: HTMLElement): string[] {
+  return Array.from(
+    card.querySelectorAll(".button-control-primary, .button-control-danger"),
+    (el) => (el.textContent ?? "").trim()
   );
 }
 
@@ -86,7 +96,7 @@ describe("a settings card spends its one loud control on its own commit", () => 
     const save = screen.getByTestId("audit-retention-save");
 
     expect(save.className).toContain("button-control-primary");
-    expect(filledIn(cardOf(save))).toEqual(["Save"]);
+    expect(loudIn(cardOf(save))).toEqual(["Save"]);
   });
 
   it("keeps the logins card at one filled control with both row folds open", () => {
@@ -115,7 +125,10 @@ describe("a settings card spends its one loud control on its own commit", () => 
 
     const create = screen.getByRole("button", { name: "Create login" });
     const card = cardOf(create);
-    expect(filledIn(card)).toEqual(["Create login"]);
+    // The one loud control on a card that also renders a Delete per login row —
+    // quiet since ruling 10, so the card's budget is spent here and nowhere else.
+    expect(card.querySelectorAll("[data-testid='login-row']").length).toBe(1);
+    expect(loudIn(card)).toEqual(["Create login"]);
 
     // CARVE-OUT 1, checked as state rather than asserted as doctrine: `open` and
     // `emailOpen` are independent booleans and neither toggle clears the other,
@@ -127,7 +140,7 @@ describe("a settings card spends its one loud control on its own commit", () => 
     expect(screen.getByTestId("save-email")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Set" })).toBeTruthy();
 
-    expect(filledIn(card)).toEqual(["Create login"]);
+    expect(loudIn(card)).toEqual(["Create login"]);
   });
 
   it("fills the enrollment commit in each state, and neither of the two that coexist", () => {
@@ -135,7 +148,7 @@ describe("a settings card spends its one loud control on its own commit", () => 
       <TwoFactorSettings enabled={false} recoveryRemaining={0} />
     );
     const enable = screen.getByTestId("twofa-enable");
-    expect(filledIn(cardOf(enable))).toEqual([
+    expect(loudIn(cardOf(enable))).toEqual([
       "Enable two-factor authentication",
     ]);
 
@@ -146,7 +159,7 @@ describe("a settings card spends its one loud control on its own commit", () => 
     const card = cardOf(screen.getByTestId("twofa-status-on"));
     expect(screen.getByRole("button", { name: "Regenerate" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Turn off" })).toBeTruthy();
-    expect(filledIn(card)).toEqual([]);
+    expect(loudIn(card)).toEqual([]);
   });
 
   it("leaves the two peer tier commits on one card quiet", () => {
@@ -161,7 +174,7 @@ describe("a settings card spends its one loud control on its own commit", () => 
     // Both blocks post the same action with a different `tier`, inside one card:
     // peers share no rank (ruling 7), and a fill on either would also be the
     // second loud control on this card.
-    expect(filledIn(screen.getByTestId("ai-tier-settings"))).toEqual([]);
+    expect(loudIn(screen.getByTestId("ai-tier-settings"))).toEqual([]);
     expect(screen.getByTestId("ai-tier-heavy-save")).toBeTruthy();
     expect(screen.getByTestId("ai-tier-light-save")).toBeTruthy();
   });

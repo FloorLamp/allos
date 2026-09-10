@@ -872,23 +872,27 @@ function LoginRow({
             {login.email ? login.email : "no email"}
           </span>
         </div>
-        {/* THE ROW'S ACTIONS, CONVERTED AS ONE (#4978 item 3, owner ruling
-            2026-09-05 (3)). Delete used to be a red-TINTED ghost — the quiet box
-            with rose text — which is a third treatment by another name; the owner
-            ruled at 2026-09-09 20:05 UTC that destructive actions look the same
-            everywhere, so it takes the primitive's one destructive paint and no
-            tinted-ghost variant exists to spell. Its four neighbours convert with
-            it rather than after it, because a filled red beside four raw ghosts is
-            the half-converted state ruling (3) declines.
+        {/* THE ROW IS ENTIRELY QUIET, AND THAT IS THE RULE (#4978 item 3, owner
+            rulings 2026-09-05 (3), 2026-09-09 20:05 UTC (5), 2026-09-10 01:30 UTC
+            (10)). Ruling 5 gave Delete the primitive's one destructive paint, and
+            #5677 filled it. Ruling 10 then settled what that paint COSTS: a filled
+            danger control SPENDS the surface's loud-control budget rather than
+            sitting outside it, so a per-row destructive action in a repeated list
+            goes quiet. This row renders once per login — 194 of them on the e2e
+            fixture — so a filled Delete here was 194 loud controls on one card.
+            Delete is therefore the plain secondary: the primitive has one quiet
+            treatment and absence of `variant` IS it, so there is nothing to spell
+            and the rose tint that #5677 replaced does not come back. The filled
+            danger stays where ruling 10 puts it — the standalone action and the
+            confirm step, which is the "Delete permanently" mount in ProfileCard.
 
-            None of the six controls in this row is a form commit: LoginRow renders
-            no <form> — every action here posts through a Server Action from an
-            onClick — so under the 2026-09-04 13:05 UTC form reading there is no
-            primary here to spend, and the row is one rank plus the destructive
-            paint. PM ruling 6 (2026-09-09 23:35 UTC) then named the CARD as the
-            surface, and this card spends its one loud control on "Create login"
-            above; the row renders once PER LOGIN, so a primary here would be one
-            per row rather than one per card. */}
+            None of the six controls in this row is a form commit either: LoginRow
+            renders no <form> — every action here posts through a Server Action from
+            an onClick — so under the 2026-09-04 13:05 UTC form reading there is no
+            primary here to spend. PM ruling 6 (2026-09-09 23:35 UTC) then named the
+            CARD as the surface, and this card spends its one loud control on
+            "Create login" above; the row renders once PER LOGIN, so a primary here
+            would be one per row rather than one per card. */}
         <div className="flex flex-wrap items-center gap-1">
           {canInvite && login.email && (
             <Button
@@ -907,11 +911,7 @@ function LoginRow({
           >
             Sign out devices
           </Button>
-          <Button
-            onClick={del}
-            disabled={pending || isLastAdmin}
-            variant="danger"
-          >
+          <Button onClick={del} disabled={pending || isLastAdmin}>
             Delete
           </Button>
         </div>
