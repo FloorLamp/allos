@@ -69,35 +69,37 @@
 // than written, and the amount snapshotted onto the row is resolved for that day by the
 // same effective-dated dose history as its schedule.
 //
-// ── THE BUNDLE STATES NO EATING HOUR, ON ANY SURFACE (#4438, ruled 2026-09-02) ──
+// ── WHO MAY STATE AN EATING HOUR (#4438, owner ruling 2026-09-02) ───────────
 //
-// #4438 item 2 asked the composed tap to carry the nutrition bar's sticky eating-time
-// statement, and item 3 asked the same of the Telegram tap. Neither does, and it is one
-// answer rather than two omissions: a stated eating time is a statement about A SERVING,
-// and a bundle is labelled by A WINDOW. Applying one to the other is a category error,
-// and it breaks this core's own headline contract two ways.
+// #4438 asked the composed tap to carry an eating time, on the web (item 2) and on
+// Telegram (item 3). The answer is not the same on both, and the difference is not an
+// inconsistency — it is WHAT THE LABEL PROMISES.
 //
-//   • `logFoodServingCore` drops a declared window when it is handed a time (#2269 —
-//     a stated hour wins and the window derives from the instant), so a bundle promising
-//     "your usual Morning" files its servings under Evening. `getUsualFoodOffer` is then
-//     re-derived FOR MORNING, still stands, and EVERY REPEAT TAP WRITES AGAIN, each
-//     answering `ok: true`. "A STALE TAP REFUSES; IT NEVER DOUBLE-LOGS" — broken by the
-//     writes that same tap performed.
-//   • and the two writers used to disagree about it: `addProteinGramsCore` stored
-//     `meal_slot` AND `occurred_at`, and `foodEventWindow` gives an explicit slot
-//     precedence, so one tap put its servings in Evening and its scoop in Morning. One
-//     event, two sections. That half is now structural rather than remembered — both
-//     cores take ONE `FoodPlacement`, a declared window or a stated instant (#4729), so
-//     a bundle cannot hand either of them a pair to disagree over.
+//   • THE WEB BAR STATES ONE. The person set an hour in the bar's own "Happened
+//     earlier?" fold, and the note under it says which window that hour files under
+//     before the tap happens. A statement someone made, on a surface that shows its
+//     consequence, is exactly what `time_source = 'stated'` is for.
+//   • THE TELEGRAM COMPOSED TAP DOES NOT, as shipped. Its label — "Your usual Morning" —
+//     is the only thing naming the window, so a tap instant would move the servings out
+//     of the very window the button promised, silently and only at some hours of the
+//     day. Measured on the DB tier with the clock at 23:45: a Morning bundle wrote both
+//     servings into EVENING and the Morning offer still stood. Eating time is corrected
+//     there the way it is everywhere else on Telegram — by the time-correction chips the
+//     rebuilt host carries, the same ones the per-group food and dose taps carry, which
+//     read this act's rows through its bundle id.
 //
-// Reachability was ordinary, not adversarial: the bar's statement is per-DAY, not
-// per-slot, and its own note says so — set 19:00 for dinner, switch to the Morning tab,
-// tap the bundle.
+// The cost the web half accepts is that same one, made visible: a Morning bundle stated
+// at 19:00 files into Evening, `getUsualFoodOffer` re-derives FOR MORNING and still
+// stands, and a second tap writes again. "A STALE TAP REFUSES; IT NEVER DOUBLE-LOGS"
+// bounds what the OFFER justifies, not where a stated hour files, and the bar's note is
+// what keeps that from being a surprise.
 //
-// So the parameter is gone rather than defaulted, on both paths. Whether a bundle SHOULD
-// carry an hour — and if so whether the window follows it or survives it — is an owner
-// question about what a label promises, and it is now ONE question with one answer for
-// the web and the chat rather than a ruling already pre-empted on one of them.
+// WHAT IS STRUCTURAL RATHER THAN REMEMBERED: the two writers used to disagree about the
+// placement — `addProteinGramsCore` stored `meal_slot` AND `occurred_at` while
+// `foodEventWindow` gives an explicit slot precedence, so one tap put its servings in
+// Evening and its scoop in Morning. Both cores now take ONE `FoodPlacement` (#4729) and
+// this core hands them the SAME one, so a bundle cannot file its members in two
+// sections however it was placed.
 //
 // ── AND IT CHANGES NOTHING ELSE ──────────────────────────────────────────────
 //
@@ -118,6 +120,7 @@ import { getTimezone } from "./settings";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { newBundle, type BundleId } from "./bundle";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
+import type { FoodEatingTime } from "./food-log-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import { addProteinGramsCore } from "./protein-daily-totals-write";
 import { isProteinNudgeKey } from "./protein-nudge";
@@ -261,7 +264,12 @@ export function logUsualRoutineCore(
   // `namedDoseIds`, never an instruction: the offer is re-derived below and the grams
   // are written only while it still names protein. Absent means the tap did not offer
   // protein, so nothing about it is written.
-  promisedProteinGrams?: number
+  promisedProteinGrams?: number,
+  // WHEN THEY SAID THEY ATE IT — see the header for which surfaces may pass it. Absent
+  // means the bundle states no hour and every member takes the declared `window`.
+  // Passed to BOTH food writers below, never to the dose half: a dose's own intake
+  // instant is `markDoseTaken`'s question and is not what a meal window states.
+  statedAt?: FoodEatingTime
 ): UsualRoutineOutcome {
   const t = today(profileId);
   // ONE BOUND, ASKED ONCE. A dose-only bundle would otherwise skip the food half's
@@ -302,7 +310,8 @@ export function logUsualRoutineCore(
           namedGroups,
           loggedVia,
           undefined,
-          { notifyMessageId, bundleId }
+          { notifyMessageId, bundleId },
+          statedAt
         )
       : ({ kind: "nothing-to-log" } as const);
   const groups = food.kind === "logged" ? food.groups : [];
@@ -368,9 +377,11 @@ export function logUsualRoutineCore(
       promisedProteinGrams,
       via,
       undefined,
-      // The window is a DECLARATION here exactly as it is for the servings beside it
-      // (#1704), and no eating instant is invented to sit under it.
-      window,
+      // THE SAME PLACEMENT THE SERVINGS TOOK (#1704, #4729). The scoop was part of the
+      // same swallow, so it files where they file — the stated instant when the tap
+      // carried one, and otherwise the declared window with no invented instant under
+      // it. Handing this core a different answer is how one act reached two sections.
+      statedAt ?? window,
       // The tap's one act id (#5082) — the scoop was part of the same gesture as the
       // servings, so its ledger event says so rather than sitting beside them unlinked.
       { bundleId }

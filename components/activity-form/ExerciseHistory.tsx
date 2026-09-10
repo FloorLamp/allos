@@ -9,6 +9,7 @@ import { summarizeExercise } from "@/lib/training-log-format";
 import { rpeSummaryText } from "@/lib/rpe";
 import type { ExerciseHistoryMap } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
+import { verdictText } from "@/lib/chart-colors";
 
 type PriorSession = ExerciseHistoryMap[string]["sessions"][number];
 
@@ -65,9 +66,16 @@ export default function ExerciseHistory({
           </span>
         )}
         {/* Same missed-target marker as the training log card; the session status is
-            judged server-side. */}
+            judged server-side. A missed target is a verdict, so it reads the shared
+            warn ink (#5725): written as a bare className on a conditional span it
+            had no key for #5187's map conversion — or its guard — to see, and it
+            shipped `text-amber-500`, 1.99:1 on the Botanical light surface against a
+            4.5 text floor. The IconAlertTriangle inside inherits currentColor, so
+            the glyph moves with the word. */}
         {sess.status === "missed" && (
-          <span className="inline-flex items-center gap-0.5 text-xs text-amber-500 dark:text-amber-400">
+          <span
+            className={`inline-flex items-center gap-0.5 text-xs ${verdictText.warn.class}`}
+          >
             <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
             Missed target
           </span>

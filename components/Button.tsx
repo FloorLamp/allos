@@ -188,7 +188,9 @@ export const SubmitActionChip = (props: SubmitActionProps) => (
 
 // The link-shaped submit. `variant` is deliberately not forwardable: this wrapper
 // already repaints its `> .button-control` child, and a primary inside it would be
-// two paints arguing. Same reason `DestructiveSubmit` picks its props by name.
+// two paints arguing. `DestructiveSubmit` picks its props by name for a DIFFERENT
+// reason since #5757 — it repaints nothing now, and hard-codes `variant="danger"`
+// on the child, so a caller-supplied rank would fight the one it states.
 export const InlineSubmitAction = (
   props: Omit<SubmitActionProps, "variant">
 ) => (
