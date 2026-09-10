@@ -10,7 +10,7 @@
 // The load-bearing property, exactly as on the food side: the suggestions come ONLY
 // from the curated, human-reviewable map — never from free AI generation. The engine is
 // PURE (no DB/network/clock/model), so a covered family yields byte-identical output on
-// every run; the DB gather lives in lib/queries/nutrition.ts
+// every run; the DB gather lives in lib/queries/nutrition/adequacy.ts
 // (getCuratedSupplementSuggestions), which every surface formats — "one question, one
 // computation."
 //
@@ -38,23 +38,26 @@
 // map does not contain one to carry.
 
 import type {
-  BiomarkerSupplementEntry,
+  BiomarkerSupplementMapEntry,
   SupplementSource,
 } from "./datasets/biomarker-supplement-map";
 import { BIOMARKER_SUPPLEMENT_ENTRIES } from "./datasets/biomarker-supplement-map";
 import {
   screenSuggestionSafety,
-  tokenContains,
   type SafetyContext,
   type SafetyMedication,
 } from "./supplement-safety";
-import { conditionOrSituationMatches } from "./condition-nutrient";
 import { stackFoodDrugHits } from "./food-drug-interactions";
 import type { ConditionInput } from "./condition-codes";
-import { isLowFlag, isHighFlag, type FlaggedReading } from "./food-suggest";
+import {
+  isLowFlag,
+  isHighFlag,
+  suggestCurated,
+  type FlaggedReading,
+} from "./curated-suggest";
 import type { FoodTiming } from "./types";
 
-const ENTRIES: BiomarkerSupplementEntry[] = BIOMARKER_SUPPLEMENT_ENTRIES;
+const ENTRIES: BiomarkerSupplementMapEntry[] = BIOMARKER_SUPPLEMENT_ENTRIES;
 
 // The covered biomarker set, built ONCE at module load — the map is a frozen committed
 // dataset, so there is nothing to rebuild per call. Lowercased name → display spelling,
@@ -165,146 +168,76 @@ function toSuggested(
   };
 }
 
-// Build one suggestion for a triggered entry, running the screens. Returns null when
-// the suggestion is withheld entirely — a drop-severity condition tag, the substance
-// already being in the stack, or every candidate (primaries AND the alternative)
-// struck by the shared belt.
-function buildSuggestion(
-  entry: BiomarkerSupplementEntry,
-  triggeredBy: string[],
-  input: CuratedSupplementInput,
-  safety: SafetyContext,
-  drugHits: Map<string, { advice: string; food: string }>,
-  taking: readonly string[]
-): CuratedSupplementSuggestion | null {
-  // 1. Already in the stack. Checked FIRST and over the map's own match tokens (the
-  //    primaries AND the alternative), so a profile already taking algal oil is not told
-  //    to start fish oil either.
-  const candidates = [
-    ...entry.supplements,
-    ...(entry.allergyAlternative ? [entry.allergyAlternative] : []),
-  ];
-  for (const c of candidates) {
-    for (const token of c.matchTokens) {
-      if (taking.some((item) => tokenContains(item, token))) return null;
-    }
-  }
-
-  const notes: SupplementSafetyNote[] = [];
-
-  // 2. Map-declared condition/situation tags, via the SHARED matcher. A "drop" tag
-  //    withholds the whole suggestion; a "caution" tag annotates it.
-  for (const c of entry.contraindications) {
-    if (
-      conditionOrSituationMatches(c.match, input.conditions, input.situations)
-    ) {
-      if ((c.severity ?? "caution") === "drop") return null;
-      notes.push({ kind: "condition", text: c.caution });
-    }
-  }
-
-  // 3. The SHARED deterministic belt over each primary: allergen (direct +
-  //    cross-reactive), medication interaction, condition→nutrient. Survivors render;
-  //    if every primary is struck, the curated alternative is screened and surfaced in
-  //    its place; if that is struck too, nothing is offered at all.
-  const surviving: SupplementSource[] = [];
-  let firstDrop: "allergen" | "interaction" | "condition" | null = null;
-  for (const s of entry.supplements) {
-    const drop = screen(s, safety);
-    if (drop) {
-      firstDrop ??= drop.field;
-      continue;
-    }
-    surviving.push(s);
-  }
-
-  let rendered = surviving;
-  let isAlternative = false;
-  if (surviving.length === 0) {
-    const alt = entry.allergyAlternative;
-    if (!alt || screen(alt, safety)) return null; // nothing safe to offer
-    rendered = [alt];
-    isAlternative = true;
-    notes.push({ kind: "allergy", text: struckNote(firstDrop ?? "allergen") });
-  }
-
-  // 4. Medication TIMING notes from the food–drug inverse index — the same advice copy
-  //    the food engine attaches, deduped by entry key. Read off what is ACTUALLY being
-  //    rendered (the alternative carries its own keys when it stands in), so the notes
-  //    always describe the substance on screen. Never a drop (a hard drop is step 3's
-  //    job); a separation window is guidance, not a contraindication.
-  const seen = new Set<string>();
-  for (const s of rendered) {
-    for (const k of s.interactionKeys ?? []) {
-      if (seen.has(k)) continue;
-      const hit = drugHits.get(k);
-      if (hit) {
-        seen.add(k);
-        notes.push({ kind: "medication", text: hit.advice });
-      }
-    }
-  }
-
-  return {
-    key: entry.key,
-    label: entry.label,
-    origin: "curated",
-    side: entry.direction,
-    triggeredBy,
-    supplements: rendered.map((s) => toSuggested(s, isAlternative)),
-    evidence: entry.evidence,
-    source: entry.source,
-    caveat: entry.caveat,
-    safetyNotes: notes,
-  };
-}
-
-// The pure engine: currently-flagged readings + profile safety context → safety-screened
-// supplement suggestions, in the curated map's order. Deterministic; no DB, no clock, no
-// model call. The same input always yields the same output.
+/**
+ * The pure engine, as a DECLARATION over the shared curated-suggestion engine
+ * (lib/curated-suggest.ts, #5173): currently-flagged readings + profile safety context →
+ * safety-screened supplement suggestions, in the curated map's order. Deterministic; no
+ * DB, no clock, no model. The same input always yields the same output.
+ *
+ * WHAT THIS DECLARES that the food twin does not: `alreadyTaking` (a covered family the
+ * profile already supplements yields NO suggestion) and the shared deterministic belt as
+ * its per-candidate screen. What it does NOT declare — target triggers, reduce entries,
+ * the dietary-preference layer — is the food side's, and its absence is exactly the
+ * behaviour this engine had before the two loops became one.
+ */
 export function suggestCuratedSupplements(
   input: CuratedSupplementInput
 ): CuratedSupplementSuggestion[] {
-  const flaggedLow = new Map<string, string>(); // lower(name) -> original name
-  const flaggedHigh = new Map<string, string>();
-  for (const r of input.flagged) {
-    const lower = r.name.trim().toLowerCase();
-    if (isLowFlag(r.flag)) flaggedLow.set(lower, r.name);
-    else if (isHighFlag(r.flag)) flaggedHigh.set(lower, r.name);
-  }
-  if (flaggedLow.size === 0 && flaggedHigh.size === 0) return [];
-
   // The belt's facts, in the shape screenSuggestionSafety consumes — assembled once.
   const safety: SafetyContext = {
     allergens: input.allergens,
     medications: input.medications,
     conditions: input.conditions,
   };
-  const drugHits = stackFoodDrugHits(input.medications);
-  const taking = (input.alreadyTaking ?? []).filter((n) => n && n.trim());
+  // The food–drug inverse index, built on FIRST USE: nothing flagged, no index.
+  let drugHits: Map<string, { advice: string; food: string }> | null = null;
 
-  const out: CuratedSupplementSuggestion[] = [];
-  for (const entry of ENTRIES) {
-    // The entry's DECLARED trigger side (#2754): low for the repletion routes, high
-    // for the lipids soluble-fiber entry.
-    const flaggedOnSide = entry.direction === "high" ? flaggedHigh : flaggedLow;
-    const triggeredBy: string[] = [];
-    for (const bm of entry.biomarkers) {
-      const original = flaggedOnSide.get(bm.trim().toLowerCase());
-      if (original) triggeredBy.push(original);
-    }
-    if (triggeredBy.length === 0) continue;
-    const suggestion = buildSuggestion(
-      entry,
+  return suggestCurated<
+    BiomarkerSupplementMapEntry,
+    SupplementSource,
+    CuratedSupplementSuggestion,
+    SupplementSafetyNote
+  >(input.flagged, {
+    entries: ENTRIES,
+    conditions: input.conditions,
+    situations: input.situations,
+    // Checked over the map's own match tokens (the primaries AND the alternative), so a
+    // profile already taking algal oil is not told to start fish oil either.
+    alreadyTaking: input.alreadyTaking,
+    matchTokens: (s) => s.matchTokens,
+    // The SHARED deterministic belt: allergen (direct + cross-reactive), medication
+    // interaction, condition→nutrient.
+    screenItem: (s) => {
+      const drop = screen(s, safety);
+      return drop ? { field: drop.field, label: null } : null;
+    },
+    // Only the all-struck case says anything: a partial strike simply renders the
+    // survivors, because a supplement list is a ranked answer, not a menu.
+    struckNote: (strikes, allStruck) =>
+      allStruck
+        ? { kind: "allergy", text: struckNote(strikes[0]?.field ?? "allergen") }
+        : null,
+    // Read off what is ACTUALLY rendering (the alternative carries its own keys when it
+    // stands in), so the notes always describe the substance on screen.
+    drugKeys: (s) => s.interactionKeys,
+    drugNoteScope: "rendered",
+    drugAdvice: (key) =>
+      (drugHits ??= stackFoodDrugHits(input.medications)).get(key)?.advice ??
+      null,
+    note: (kind, text) => ({ kind, text }),
+    finish: (entry, triggeredBy, rendered, notes) => ({
+      key: entry.key,
+      label: entry.label,
+      origin: "curated",
+      side: entry.direction,
       triggeredBy,
-      input,
-      safety,
-      drugHits,
-      taking
-    );
-    if (suggestion) out.push(suggestion);
-  }
-  return out;
+      supplements: rendered.map((r) => toSuggested(r.item, r.isAlternative)),
+      evidence: entry.evidence,
+      source: entry.source,
+      caveat: entry.caveat,
+      safetyNotes: notes,
+    }),
+  });
 }
 
 // Every canonical biomarker name the curated map covers, lowercased. THE coverage

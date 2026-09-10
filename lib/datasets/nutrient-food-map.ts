@@ -9,6 +9,7 @@ import rawMap from "./data/nutrient-food-map.json";
 import { loadDataset } from "./loader";
 import { createMatcher, fieldStrategy } from "./matcher";
 import type {
+  FoodSource,
   NutrientFoodEntry,
   ReduceFoodEntry,
   NutrientFoodMapMeta,
@@ -34,9 +35,17 @@ export const nutrientKeyStrategy = fieldStrategy("key");
 // in the map resolves to null.
 const matcher = createMatcher(nutrientFoodMapDataset, nutrientKeyStrategy);
 
+// A map entry as the shared curated-suggestion engine reads it (lib/curated-suggest.ts,
+// #5173): the engine names every entry's candidate list `items`, this map spells it
+// `foods`. Named ONCE here — the committed JSON is untouched, and `foods` stays for the
+// consumers that read the food-shaped field by its own name.
+export type NutrientFoodMapEntry = NutrientFoodEntry & {
+  readonly items: FoodSource[];
+};
+
 // The low-direction entries (ADD a food when a biomarker family reads low, #577).
-export const NUTRIENT_FOOD_ENTRIES: NutrientFoodEntry[] =
-  nutrientFoodMapDataset.entries;
+export const NUTRIENT_FOOD_ENTRIES: NutrientFoodMapEntry[] =
+  nutrientFoodMapDataset.entries.map((e) => ({ ...e, items: e.foods }));
 
 // The high-side REDUCE entries (limit a food when a biomarker reads high, #775),
 // carried in dataset meta.

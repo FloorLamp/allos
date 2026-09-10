@@ -9,7 +9,7 @@
 // This is the food twin of lib/supplement-suggest.ts, but with a load-bearing
 // difference: the suggestions come ONLY from the curated, human-reviewable map — never
 // from free AI generation. The engine here is PURE (no DB/network/clock): the DB gather
-// lives in lib/queries/nutrition.ts (getFoodSuggestions), which both surfaces (the
+// lives in lib/queries/nutrition/adequacy.ts (getFoodSuggestions), which both surfaces (the
 // biomarker detail page and the coaching tab) format — "one question, one computation."
 //
 // Safety screens (each reuses/inverts existing machinery):
@@ -44,22 +44,26 @@
 // lib/rule-finding-prefixes.ts.
 
 import type {
-  NutrientFoodEntry,
   ReduceFoodEntry,
   FoodSource,
 } from "@/scripts/gen-nutrient-food-map";
 import {
   NUTRIENT_FOOD_ENTRIES,
   REDUCE_FOOD_ENTRIES,
+  type NutrientFoodMapEntry,
 } from "./datasets/nutrient-food-map";
 import { allergenConflict, type SafetyMedication } from "./supplement-safety";
-import { conditionOrSituationMatches } from "./condition-nutrient";
 import type { ConditionInput } from "./condition-codes";
 import { stackFoodDrugHits } from "./food-drug-interactions";
 import { applyPreferenceFilter, isExcludedGroup } from "./dietary-preferences";
 import { joinNamesForSentence } from "./summarize-names";
+import {
+  suggestCurated,
+  type FlaggedReading,
+  type TargetTrigger,
+} from "./curated-suggest";
 
-const ENTRIES: NutrientFoodEntry[] = NUTRIENT_FOOD_ENTRIES;
+const ENTRIES: NutrientFoodMapEntry[] = NUTRIENT_FOOD_ENTRIES;
 const REDUCE_ENTRIES: ReduceFoodEntry[] = REDUCE_FOOD_ENTRIES;
 
 // The findings-bus namespace for low-side (ADD) food suggestions (issue #435/#482).
@@ -81,61 +85,16 @@ export function foodReduceSignalKey(reduceKey: string): string {
   return `${FOOD_REDUCE_PREFIX}${reduceKey}`;
 }
 
-// A flag string is "low-side" when the current reading is below its reference or
-// optimal range — the classic direction diet addresses by ADDING a food (#577; the
-// #2754 add-on-high entry is the declared exception, see NutrientFoodEntry.direction).
-export function isLowFlag(flag: string | null | undefined): boolean {
-  const f = (flag ?? "").trim().toLowerCase();
-  return f === "low" || f === "non-optimal-low";
-}
-
-// A flag string is "high-side" when the current reading is above its reference or
-// optimal range, or qualitatively abnormal (a toxin/heavy-metal panel reports "high"
-// or "abnormal"). The direction diet addresses by REDUCING a food (issue #775) — the
-// deliberate other half of the one-directional #577 engine. The mirror of isLowFlag.
-export function isHighFlag(flag: string | null | undefined): boolean {
-  const f = (flag ?? "").trim().toLowerCase();
-  return f === "high" || f === "non-optimal-high" || f === "abnormal";
-}
-
-// One currently-flagged reading the engine considers — name + its flag. Shaped to
-// accept a CurrentFlaggedReading (lib/queries/medical.ts) directly.
-export interface FlaggedReading {
-  name: string;
-  flag: string | null;
-}
-
-// THE SECOND INPUT (issue #2383). A curated entry named DIRECTLY, rather than found by
-// matching a flagged biomarker against the entry's `biomarkers` list.
-//
-// WHY THE ENGINE NEEDED A SECOND DOOR AND NOT A SECOND ENGINE. Everything downstream of
-// "which entry applies" — the allergy screen, the food–drug inverse, the condition
-// contraindications, the preference filter, the alternative fallback, the dedupe
-// namespaces — is about the FOOD, and none of it cares how the entry was reached. What
-// differs between a flagged vitamin D and a missed fibre target is only the QUESTION that
-// selected the nutrient: an assay read low, versus a resolved daily target the day's logs
-// did not reach. So the resolution step takes a second source and the rest is untouched.
-//
-// A TRIGGER IS A CLAIM THE CALLER ALREADY OWNS. This type carries no threshold and no
-// verdict: the caller has already decided that this nutrient is short (or, for the limit
-// direction, over) and states the entry key plus the reason it will be shown as. The
-// engine never re-derives that — it screens the foods and hands them back.
-//
-// DIRECTION IS DECLARED, NOT ASSUMED. `add` looks the key up in the low-side `entries`;
-// `reduce` looks it up in `meta.reduceEntries`. Only `add` has a producer today (#2383 is
-// the additive half); the restrictive twin (#2377) slots in by emitting `reduce` triggers
-// and needs no change to this shape or to the resolution below.
-export interface TargetTrigger {
-  // The curated entry key — `entry.key` in the table this trigger's `direction` names.
-  // A key with no entry is simply not followed (never a guess, never a default).
-  key: string;
-  // Which curated table the key names. See the paragraph above.
-  direction: "add" | "reduce";
-  // What the suggestion should cite as its reason, in the caller's own words — the
-  // `triggeredBy` a flagged reading would have supplied its biomarker name for. For the
-  // nutrition shortfall route this is the day's figure against its target.
-  reason: string;
-}
+// THE FLAG SORT, THE SECOND DOOR AND THE READING SHAPE now live in the shared engine
+// (lib/curated-suggest.ts, #5173) because both curated engines always asked them
+// identically. Re-exported here so `@/lib/food-suggest` stays the import site it has
+// been since #577.
+export {
+  isLowFlag,
+  isHighFlag,
+  type FlaggedReading,
+  type TargetTrigger,
+} from "./curated-suggest";
 
 export interface FoodSuggestInput {
   // Currently-flagged biomarker readings (family-collapsed, current-only per #557).
@@ -269,152 +228,6 @@ function allergyStrike(food: FoodSource, allergens: string[]): string | null {
     : hit.allergen;
 }
 
-// Build one suggestion for a triggered nutrient entry, running the three safety
-// screens. Returns null when the suggestion is withheld entirely (a drop-severity
-// condition tag, or every food struck by an allergy with no viable alternative).
-function buildSuggestion(
-  entry: NutrientFoodEntry,
-  triggeredBy: string[],
-  input: FoodSuggestInput,
-  drugHits: Map<string, { advice: string; food: string }>,
-  flaggedHigh: Set<string>,
-  excluded: Set<string>
-): FoodSuggestion | null {
-  const notes: FoodSafetyNote[] = [];
-
-  // 1. Condition/situation contraindications. A "drop" hit withholds the whole
-  //    suggestion (increasing the nutrient is hazardous for the condition).
-  for (const c of entry.contraindications) {
-    if (
-      conditionOrSituationMatches(c.match, input.conditions, input.situations)
-    ) {
-      if ((c.severity ?? "caution") === "drop") return null;
-      notes.push({ kind: "condition", text: c.caution });
-    }
-  }
-
-  // 2. Allergy screen over the primary foods. A struck primary food drops out; if ALL
-  //    primaries are struck, fall back to the entry's alternative (itself screened).
-  const survivingPrimaries: SuggestedFood[] = [];
-  const struckLabels = new Set<string>();
-  for (const f of entry.foods) {
-    const struck = allergyStrike(f, input.allergens);
-    if (struck) {
-      struckLabels.add(struck);
-      continue;
-    }
-    survivingPrimaries.push({
-      food: f.food,
-      foodGroup: f.foodGroup,
-      serving: f.serving,
-      isAlternative: false,
-    });
-  }
-
-  let foods: SuggestedFood[] = survivingPrimaries;
-  if (survivingPrimaries.length === 0) {
-    // Every primary struck — try the alternative.
-    const alt = entry.allergyAlternative;
-    if (!alt || allergyStrike(alt, input.allergens)) return null; // nothing safe to offer
-    foods = [
-      {
-        food: alt.food,
-        foodGroup: alt.foodGroup,
-        serving: alt.serving,
-        isAlternative: true,
-      },
-    ];
-    notes.push({
-      kind: "allergy",
-      text: `Your ${[...struckLabels].join(", ")} allergy rules out the usual sources — here is an alternative.`,
-    });
-  } else if (struckLabels.size > 0) {
-    notes.push({
-      kind: "allergy",
-      text: `Some sources were left out for your ${[...struckLabels].join(", ")} allergy.`,
-    });
-  }
-
-  // 3. Medication screen (food–drug inverse). Attach the advice for any interaction
-  //    entry a surviving food participates in AND the stack matches. Deduped by key.
-  const seenDrugKeys = new Set<string>();
-  for (const f of entry.foods) {
-    for (const dk of f.foodDrugKeys ?? []) {
-      if (seenDrugKeys.has(dk)) continue;
-      const hit = drugHits.get(dk);
-      if (hit) {
-        seenDrugKeys.add(dk);
-        notes.push({ kind: "medication", text: hit.advice });
-      }
-    }
-  }
-
-  // 4. Excess-caution screen (issue #775). A biomarker-driven caution TEMPERS this add
-  //    suggestion when a related toxin/marker reads high — the mercury→fatty-fish case,
-  //    generalizing the static pregnancy caution. It never withholds the suggestion
-  //    (fish is still the omega-3 answer), only qualifies which species.
-  if (entry.excessCaution) {
-    const hit = entry.excessCaution.biomarkers.some((b) =>
-      flaggedHigh.has(b.trim().toLowerCase())
-    );
-    if (hit) notes.push({ kind: "biomarker", text: entry.excessCaution.note });
-  }
-
-  // 5. Dietary-preference filter (issue #975). FILTER + SUBSTITUTE, never block: drop the
-  //    excluded groups and lead with the preference-compatible sources. When EVERY primary
-  //    is excluded, substitute the entry's alternative source if it's compatible (the
-  //    omega-3 → algae/ALA case, mirroring the allergy fallback); if nothing compatible
-  //    remains, keep the primaries (a shortfall must never vanish because its only sources
-  //    are excluded — never an empty suggestion). A softer layer than the safety screens.
-  if (excluded.size > 0) {
-    const compatible = foods.filter(
-      (f) => !isExcludedGroup(f.foodGroup, excluded)
-    );
-    if (compatible.length > 0 && compatible.length < foods.length) {
-      foods = compatible;
-      notes.push({
-        kind: "preference",
-        text: "Sources you don't eat were left out — these fit your dietary preferences.",
-      });
-    } else if (compatible.length === 0) {
-      const alt = entry.allergyAlternative;
-      if (
-        alt &&
-        !isExcludedGroup(alt.foodGroup, excluded) &&
-        !allergyStrike(alt, input.allergens)
-      ) {
-        foods = [
-          {
-            food: alt.food,
-            foodGroup: alt.foodGroup,
-            serving: alt.serving,
-            isAlternative: true,
-          },
-        ];
-        notes.push({
-          kind: "preference",
-          text: "The usual sources don't fit your dietary preferences — here's a preference-friendly alternative.",
-        });
-      }
-      // else: leave the primaries in place — the shortfall stays visible (never empty).
-    }
-  }
-
-  return {
-    key: entry.key,
-    label: entry.label,
-    direction: "add",
-    dedupeKey: foodSuggestSignalKey(entry.key),
-    side: entry.direction,
-    triggeredBy,
-    foods,
-    evidence: entry.evidence,
-    source: entry.source,
-    caveat: entry.caveat,
-    safetyNotes: notes,
-  };
-}
-
 // Build one high-side REDUCE suggestion (issue #775) — the deliberate other direction of
 // the ONE engine. Reduce entries carry only "limit"-tier foods to eat LESS of, so the
 // allergy/contraindication ADD-screens don't apply (you can't be "allergic" to a food
@@ -445,95 +258,112 @@ function buildReduceSuggestion(
   };
 }
 
-// The reasons each directly-named entry was triggered with, keyed `direction:key` so the
-// two curated tables can share one index without a key in one shadowing a key in the
-// other. Order within a key follows the caller's declared order.
-function indexTargets(
-  targets: readonly TargetTrigger[] | undefined
-): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  for (const t of targets ?? []) {
-    const key = t.key.trim();
-    const reason = t.reason.trim();
-    if (!key || !reason) continue;
-    const id = `${t.direction}:${key}`;
-    out.set(id, [...(out.get(id) ?? []), reason]);
-  }
-  return out;
-}
-
-// The pure engine: currently-flagged readings and/or directly-named targets + profile
-// safety context → safety-screened food suggestions, in the curated map's order.
-// Deterministic; no DB/clock.
+/**
+ * The pure engine, as a DECLARATION over the shared curated-suggestion engine
+ * (lib/curated-suggest.ts, #5173): currently-flagged readings and/or directly-named
+ * targets + profile safety context → safety-screened food suggestions, in the curated
+ * map's order. Deterministic; no DB, no clock.
+ *
+ * WHAT THIS DECLARES that the supplement twin does not: `extraTriggers` (the #2383
+ * second door), `reduceEntries` (the #775 high side) and `exclude` (the #975 soft
+ * dietary-preference layer). What it does NOT declare — `alreadyTaking` — is the
+ * supplement side's, and its absence is exactly the behaviour this engine had before
+ * the two loops became one.
+ */
 export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
-  // Index flagged readings by lowercased name for O(1) family lookup, split by side.
-  const flaggedLow = new Map<string, string>(); // lower(name) -> original name
-  const flaggedHighNames = new Map<string, string>();
-  for (const r of input.flagged) {
-    const lower = r.name.trim().toLowerCase();
-    if (isLowFlag(r.flag)) flaggedLow.set(lower, r.name);
-    else if (isHighFlag(r.flag)) flaggedHighNames.set(lower, r.name);
-  }
-  const targeted = indexTargets(input.targets);
-  if (
-    flaggedLow.size === 0 &&
-    flaggedHighNames.size === 0 &&
-    targeted.size === 0
-  )
-    return [];
-
-  const flaggedHigh = new Set(flaggedHighNames.keys());
-  const drugHits = stackFoodDrugHits(input.medications);
+  // The food–drug inverse index, built on FIRST USE: nothing flagged, no index.
+  let drugHits: Map<string, { advice: string; food: string }> | null = null;
   // Dietary preferences (#975) — the excluded food-group set the ADD suggestions filter
-  // and substitute against. REDUCE suggestions (limit-tier foods to eat LESS of) are left
-  // untouched: excluding a food you're already told to cut back on is moot.
+  // and substitute against. REDUCE suggestions (limit-tier foods to eat LESS of) are
+  // left untouched: excluding a food you're already told to cut back on is moot.
   const excluded = new Set(input.excludedGroups ?? []);
-  const out: FoodSuggestion[] = [];
 
-  // ADD side: a nutrient flagged on the entry's DECLARED trigger side (low for the
-  // classic deficiency route; high for the #2754 add-on-high soluble-fiber entry), OR a
-  // directly-named shortfall target (#2383), → the curated food sources,
-  // safety-screened. The two doors compose: a nutrient that is both flagged and short
-  // against its target cites both reasons on ONE suggestion, under the one dedupeKey
-  // the family already owns.
-  for (const entry of ENTRIES) {
-    const flaggedOnSide =
-      entry.direction === "high" ? flaggedHighNames : flaggedLow;
-    const triggeredBy: string[] = [];
-    for (const bm of entry.biomarkers) {
-      const original = flaggedOnSide.get(bm.trim().toLowerCase());
-      if (original) triggeredBy.push(original);
-    }
-    triggeredBy.push(...(targeted.get(`add:${entry.key}`) ?? []));
-    if (triggeredBy.length === 0) continue;
-    const suggestion = buildSuggestion(
-      entry,
+  return suggestCurated<
+    NutrientFoodMapEntry,
+    FoodSource,
+    FoodSuggestion,
+    FoodSafetyNote,
+    ReduceFoodEntry
+  >(input.flagged, {
+    entries: ENTRIES,
+    extraTriggers: input.targets,
+    reduceEntries: REDUCE_ENTRIES,
+    buildReduce: buildReduceSuggestion,
+    conditions: input.conditions,
+    situations: input.situations,
+    // A food survives unless a recorded allergen (direct or cross-reactive) strikes its
+    // display text; the label is what the swap copy names.
+    screenItem: (f) => {
+      const label = allergyStrike(f, input.allergens);
+      return label ? { field: "allergen", label } : null;
+    },
+    struckNote: (strikes, allStruck) => {
+      if (!allStruck && strikes.length === 0) return null;
+      const labels = [...new Set(strikes.map((x) => x.label ?? ""))].join(", ");
+      return allStruck
+        ? {
+            kind: "allergy",
+            text: `Your ${labels} allergy rules out the usual sources — here is an alternative.`,
+          }
+        : {
+            kind: "allergy",
+            text: `Some sources were left out for your ${labels} allergy.`,
+          };
+    },
+    // Read off the entry's WHOLE source list, not just the survivors: a warfarin
+    // profile's leafy-greens advice is about the nutrient, not about which serving
+    // happened to survive the allergy screen.
+    drugKeys: (f) => f.foodDrugKeys,
+    drugNoteScope: "entry",
+    drugAdvice: (key) =>
+      (drugHits ??= stackFoodDrugHits(input.medications)).get(key)?.advice ??
+      null,
+    note: (kind, text) => ({ kind, text }),
+    // The excess-caution screen (#775). A biomarker-driven caution TEMPERS this add
+    // suggestion when a related toxin/marker reads high — the mercury→fatty-fish case.
+    // It never withholds the suggestion (fish is still the omega-3 answer), only
+    // qualifies which species.
+    extraNotes: (entry, flags) => {
+      const caution = entry.excessCaution;
+      if (!caution) return [];
+      const hit = caution.biomarkers.some((b) =>
+        flags.high.has(b.trim().toLowerCase())
+      );
+      return hit ? [{ kind: "biomarker", text: caution.note }] : [];
+    },
+    exclude:
+      excluded.size > 0
+        ? {
+            isExcluded: (f) => isExcludedGroup(f.foodGroup, excluded),
+            filteredNote: {
+              kind: "preference",
+              text: "Sources you don't eat were left out — these fit your dietary preferences.",
+            },
+            alternativeNote: {
+              kind: "preference",
+              text: "The usual sources don't fit your dietary preferences — here's a preference-friendly alternative.",
+            },
+          }
+        : undefined,
+    finish: (entry, triggeredBy, rendered, notes) => ({
+      key: entry.key,
+      label: entry.label,
+      direction: "add",
+      dedupeKey: foodSuggestSignalKey(entry.key),
+      side: entry.direction,
       triggeredBy,
-      input,
-      drugHits,
-      flaggedHigh,
-      excluded
-    );
-    if (suggestion) out.push(suggestion);
-  }
-
-  // High side (REDUCE, #775): a flagged-high core-panel biomarker → the limit-tier foods
-  // to eat less of. Appended after the add suggestions, in curated reduce-table order.
-  for (const entry of REDUCE_ENTRIES) {
-    const triggeredBy: string[] = [];
-    for (const bm of entry.biomarkers) {
-      const original = flaggedHighNames.get(bm.trim().toLowerCase());
-      if (original) triggeredBy.push(original);
-    }
-    // The same second door, on the excess side. No producer emits a `reduce` target today
-    // — the restrictive direction is #2377 — but the resolution is the SAME line of code
-    // rather than a fork waiting to be written.
-    triggeredBy.push(...(targeted.get(`reduce:${entry.key}`) ?? []));
-    if (triggeredBy.length === 0) continue;
-    out.push(buildReduceSuggestion(entry, triggeredBy));
-  }
-
-  return out;
+      foods: rendered.map((r) => ({
+        food: r.item.food,
+        foodGroup: r.item.foodGroup,
+        serving: r.item.serving,
+        isAlternative: r.isAlternative,
+      })),
+      evidence: entry.evidence,
+      source: entry.source,
+      caveat: entry.caveat,
+      safetyNotes: notes,
+    }),
+  });
 }
 
 // Map a lib/dri.ts nutrient key (dri.json uses snake_case: `vitamin_d`) to the
