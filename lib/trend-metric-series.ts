@@ -66,139 +66,150 @@ export interface TrendMetricSeriesFold {
 
 // The metric's own stream series, BEFORE the observation fold — the store-shaped
 // half, in display units.
-function streamMetricSeries(
-  slug: TrendMetricSlug,
-  profileId: number,
-  weightUnit: WeightUnit,
-  todayStr: string
-): { date: string; value: number }[] {
-  switch (slug) {
-    case "systolic":
-      return biomarkerPoints("Blood Pressure Systolic", profileId, 0);
-    case "diastolic":
-      return biomarkerPoints("Blood Pressure Diastolic", profileId, 0);
-    case "spo2":
-      return biomarkerPoints("Oxygen Saturation", profileId, 0);
-    case "respiratory-rate":
-      return biomarkerPoints("Respiratory Rate", profileId, 0);
-    case "temperature":
-      return biomarkerPoints("Body Temperature", profileId, 1);
-    case "hrv":
-      return getMetricDailyTotals(profileId, HRV_METRIC, ALL_ROWS).map(
-        (row) => ({ date: row.date, value: Math.round(row.value) })
-      );
-    case "peak-flow":
-      // Averaged per day by the shared bucket rule (#1850) — a day's blows are
-      // repeat measurements of one quantity, never an additive total.
-      return getMetricDailyTotals(profileId, PEAK_FLOW_METRIC, ALL_ROWS).map(
-        (row) => ({ date: row.date, value: Math.round(row.value) })
-      );
-    case "skin-temp":
-      return getMetricDailyTotals(
-        profileId,
-        SKIN_TEMP_DELTA_METRIC,
-        ALL_ROWS
-      ).map((row) => ({
+//
+// Keyed on the slug union itself, so the registry and this reader cannot drift: a
+// slug added to `TREND_METRIC_SLUGS` with no reader here fails `tsc`, and a key that
+// is not a registered slug cannot be written. That is what the tap-through promise
+// rests on — `/trends/metric/[kind]` is where every registered metric taps through
+// to, and a metric with no series there charts nothing. The `switch` this replaces
+// inferred the same completeness from control flow, which one `default:` arm — the
+// obvious way to silence the error — would have ended silently.
+type StreamRead = (ctx: {
+  profileId: number;
+  weightUnit: WeightUnit;
+  todayStr: string;
+}) => { date: string; value: number }[];
+
+const STREAM_SERIES: Record<TrendMetricSlug, StreamRead> = {
+  systolic: ({ profileId }) =>
+    biomarkerPoints("Blood Pressure Systolic", profileId, 0),
+  diastolic: ({ profileId }) =>
+    biomarkerPoints("Blood Pressure Diastolic", profileId, 0),
+  spo2: ({ profileId }) => biomarkerPoints("Oxygen Saturation", profileId, 0),
+  "respiratory-rate": ({ profileId }) =>
+    biomarkerPoints("Respiratory Rate", profileId, 0),
+  temperature: ({ profileId }) =>
+    biomarkerPoints("Body Temperature", profileId, 1),
+  hrv: ({ profileId }) =>
+    getMetricDailyTotals(profileId, HRV_METRIC, ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: Math.round(row.value),
+    })),
+  // Averaged per day by the shared bucket rule (#1850) — a day's blows are repeat
+  // measurements of one quantity, never an additive total.
+  "peak-flow": ({ profileId }) =>
+    getMetricDailyTotals(profileId, PEAK_FLOW_METRIC, ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: Math.round(row.value),
+    })),
+  "skin-temp": ({ profileId }) =>
+    getMetricDailyTotals(profileId, SKIN_TEMP_DELTA_METRIC, ALL_ROWS).map(
+      (row) => ({
         date: row.date,
         value: round(row.value, TREND_METRIC_META["skin-temp"].decimals),
-      }));
-    case "weight":
-      return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
-        (point) => ({
-          date: point.date,
-          value: dispWeight(point.value, weightUnit),
-        })
-      );
-    case "body-fat":
-      return getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map(
-        (point) => ({ date: point.date, value: round(point.value, 1) })
-      );
-    case "resting-hr":
-      return getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
-        (point) => ({ date: point.date, value: Math.round(point.value) })
-      );
-    case "height":
-      return getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map(
-        (row) => ({ date: row.date, value: round(row.value, 1) })
-      );
-    case "head-circ":
-      return getMetricDailyTotals(
-        profileId,
-        "head_circumference_cm",
-        ALL_ROWS
-      ).map((row) => ({ date: row.date, value: round(row.value, 1) }));
-    case "waist-circ":
-      // Averaged per day by the shared bucket rule (#2322) — a tape reading and a
-      // same-date imported one are repeat measurements of one quantity.
-      return getMetricDailyTotals(profileId, WAIST_CIRC_METRIC, ALL_ROWS).map(
-        (row) => ({ date: row.date, value: round(row.value, 1) })
-      );
-    case "sun":
-      return getDaylightOutdoorMinutesSeries(
-        profileId,
-        lastNDates(todayStr, SUN_SERIES_DAYS)
-      );
-    case "steps":
-      return getMetricDailyTotals(profileId, "steps", ALL_ROWS).map((row) => ({
+      })
+    ),
+  weight: ({ profileId, weightUnit }) =>
+    getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map((point) => ({
+      date: point.date,
+      value: dispWeight(point.value, weightUnit),
+    })),
+  "body-fat": ({ profileId }) =>
+    getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map((point) => ({
+      date: point.date,
+      value: round(point.value, 1),
+    })),
+  "resting-hr": ({ profileId }) =>
+    getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
+      (point) => ({
+        date: point.date,
+        value: Math.round(point.value),
+      })
+    ),
+  height: ({ profileId }) =>
+    getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: round(row.value, 1),
+    })),
+  "head-circ": ({ profileId }) =>
+    getMetricDailyTotals(profileId, "head_circumference_cm", ALL_ROWS).map(
+      (row) => ({ date: row.date, value: round(row.value, 1) })
+    ),
+  // Averaged per day by the shared bucket rule (#2322) — a tape reading and a
+  // same-date imported one are repeat measurements of one quantity.
+  "waist-circ": ({ profileId }) =>
+    getMetricDailyTotals(profileId, WAIST_CIRC_METRIC, ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: round(row.value, 1),
+    })),
+  sun: ({ profileId, todayStr }) =>
+    getDaylightOutdoorMinutesSeries(
+      profileId,
+      lastNDates(todayStr, SUN_SERIES_DAYS)
+    ),
+  steps: ({ profileId }) =>
+    getMetricDailyTotals(profileId, "steps", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: Math.round(row.value),
+    })),
+  "active-calories": ({ profileId }) =>
+    getMetricDailyTotals(profileId, "active_kcal", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: Math.round(row.value),
+    })),
+  hr: ({ profileId }) =>
+    getHrDailySummary(profileId, 3650).map((row) => ({
+      date: row.date,
+      value: Math.round(row.avg),
+    })),
+  // The ONE BMI derivation (#2646 decision 3). The birthdate is what bounds how
+  // stale the paired height may be — for a growing profile a months-old height
+  // reads growth as fatness — so this reader resolves it rather than defaulting
+  // to the unbounded adult rule.
+  bmi: ({ profileId }) =>
+    bmiSeriesDatePaired(
+      getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map((row) => ({
         date: row.date,
-        value: Math.round(row.value),
-      }));
-    case "active-calories":
-      return getMetricDailyTotals(profileId, "active_kcal", ALL_ROWS).map(
-        (row) => ({ date: row.date, value: Math.round(row.value) })
-      );
-    case "hr":
-      return getHrDailySummary(profileId, 3650).map((row) => ({
+        value: row.value,
+      })),
+      getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map((row) => ({
         date: row.date,
-        value: Math.round(row.avg),
-      }));
-    case "bmi":
-      // The ONE BMI derivation (#2646 decision 3). The birthdate is what bounds how
-      // stale the paired height may be — for a growing profile a months-old height
-      // reads growth as fatness — so this reader resolves it rather than defaulting
-      // to the unbounded adult rule.
-      return bmiSeriesDatePaired(
-        getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map((row) => ({
-          date: row.date,
-          value: row.value,
-        })),
-        getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map((row) => ({
-          date: row.date,
-          value: row.value,
-        })),
-        getProfileBirthdate(profileId)
-      ).map((point) => ({ date: point.date, value: round(point.value, 1) }));
-    case "lean-mass":
-      return getMetricDailyTotals(profileId, "lean_mass_kg", ALL_ROWS).map(
-        (row) => ({ date: row.date, value: round(row.value, 1) })
-      );
-    case "bone-mass":
-      return getMetricDailyTotals(profileId, "bone_mass_kg", ALL_ROWS).map(
-        (row) => ({ date: row.date, value: round(row.value, 2) })
-      );
-    case "bmr":
-      return getMetricDailyTotals(profileId, "bmr_kcal", ALL_ROWS).map(
-        (row) => ({ date: row.date, value: Math.round(row.value) })
-      );
-    case "hydration":
-      return getMetricDailyTotals(profileId, "hydration_l", ALL_ROWS).map(
-        (row) => ({ date: row.date, value: round(row.value, 2) })
-      );
-    case "calories":
-      return getMetricDailyTotals(profileId, "nutrition_kcal", ALL_ROWS).map(
-        (row) => ({ date: row.date, value: Math.round(row.value) })
-      );
-    // The daily check-in's three ratings (#1408) — ONE read of the mood rows, mapped
-    // by the ONE pure series function every check-in surface shares (#221). `calm`
-    // comes out on its #1313 display axis, exactly as the card and the census draw it.
-    case "mood":
-      return moodSeriesPoints(getMoodLogs(profileId), "valence");
-    case "energy":
-      return moodSeriesPoints(getMoodLogs(profileId), "energy");
-    case "calm":
-      return moodSeriesPoints(getMoodLogs(profileId), "calm");
-  }
-}
+        value: row.value,
+      })),
+      getProfileBirthdate(profileId)
+    ).map((point) => ({ date: point.date, value: round(point.value, 1) })),
+  "lean-mass": ({ profileId }) =>
+    getMetricDailyTotals(profileId, "lean_mass_kg", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: round(row.value, 1),
+    })),
+  "bone-mass": ({ profileId }) =>
+    getMetricDailyTotals(profileId, "bone_mass_kg", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: round(row.value, 2),
+    })),
+  bmr: ({ profileId }) =>
+    getMetricDailyTotals(profileId, "bmr_kcal", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: Math.round(row.value),
+    })),
+  hydration: ({ profileId }) =>
+    getMetricDailyTotals(profileId, "hydration_l", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: round(row.value, 2),
+    })),
+  calories: ({ profileId }) =>
+    getMetricDailyTotals(profileId, "nutrition_kcal", ALL_ROWS).map((row) => ({
+      date: row.date,
+      value: Math.round(row.value),
+    })),
+  // The daily check-in's three ratings (#1408) — ONE read of the mood rows, mapped
+  // by the ONE pure series function every check-in surface shares (#221). `calm`
+  // comes out on its #1313 display axis, exactly as the card and the census draw it.
+  mood: ({ profileId }) => moodSeriesPoints(getMoodLogs(profileId), "valence"),
+  energy: ({ profileId }) => moodSeriesPoints(getMoodLogs(profileId), "energy"),
+  calm: ({ profileId }) => moodSeriesPoints(getMoodLogs(profileId), "calm"),
+};
 
 // The metric's series together with the observations folded into it (#2029).
 //
@@ -215,7 +226,7 @@ export function trendMetricSeriesFold(
   weightUnit: WeightUnit,
   todayStr: string
 ): TrendMetricSeriesFold {
-  const stream = streamMetricSeries(slug, profileId, weightUnit, todayStr);
+  const stream = STREAM_SERIES[slug]({ profileId, weightUnit, todayStr });
   const candidates = getMetricObservations(profileId, slug);
   if (candidates.length === 0) return { points: stream, observations: [] };
   const decimals = TREND_METRIC_META[slug].decimals;
