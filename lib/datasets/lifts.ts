@@ -132,10 +132,12 @@ export const MUSCLE_REGION = rawLifts.meta.muscleRegions satisfies Record<
 export const MUSCLE_LABEL: Record<MuscleId, string> =
   rawLifts.meta.muscleLabels;
 
-/** The base lifts that compose with an implement ("Curl" → "Dumbbell Curl"). */
-export const VARIANT_GROUPS: VariantGroup[] = (
-  liftsDataset.meta as LiftsDatasetMeta
-).variantGroups;
+/**
+ * The base lifts that compose with an implement ("Curl" → "Dumbbell Curl"). Read off
+ * the raw import like the tables above — one place the meta tables come from — with the
+ * cast supplying the union types the JSON widens to `string`.
+ */
+export const VARIANT_GROUPS = rawLifts.meta.variantGroups as VariantGroup[];
 
 /**
  * Stand-alone lifts (no equipment variants), in catalog order. Handed through from the
