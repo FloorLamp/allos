@@ -170,7 +170,6 @@ beforeEach(() => {
     addListener: () => {},
     removeListener: () => {},
     dispatchEvent: () => false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   })) as any;
   globalThis.ResizeObserver ??= class {
     observe() {}

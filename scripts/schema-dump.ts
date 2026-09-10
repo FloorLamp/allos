@@ -32,10 +32,8 @@ function main() {
     .all() as { type: string; name: string; tbl_name: string; sql: string }[];
 
   const version = db.pragma("user_version", { simple: true });
-  // eslint-disable-next-line no-console
   console.log(`-- allos schema @ user_version = ${version}`);
   for (const r of rows) {
-    // eslint-disable-next-line no-console
     console.log(`\n-- [${r.type}] ${r.name}\n${r.sql.trim()};`);
   }
   db.close();

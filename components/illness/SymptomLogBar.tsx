@@ -1074,8 +1074,7 @@ export default function SymptomLogBar({
           className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
         >
           <span>Tracking an illness?</span>
-          <button
-            type="button"
+          <Button
             data-testid="symptom-illness-bridge-activate"
             // THE SUBJECT RIDES THE BRIDGE (#4712), through `withTarget` — the same
             // stamp every symptom and temperature this bar posts carries, rather
@@ -1084,10 +1083,15 @@ export default function SymptomLogBar({
             onClick={() =>
               startTransition(() => void openIllnessEpisode("bridge"))
             }
-            className="btn-ghost btn-sm border-dashed"
+            // THE FACT ROW'S "MISSING" SHAPE (owner ruling 4, #4978), which is why
+            // this mount could not move onto the primitive until the boolean
+            // existed: the dashed box says the app is waiting for an illness to be
+            // named, not that it is offering one. Ghost only — the type refuses a
+            // dashed rank.
+            dashed
           >
             + Mark as illness
-          </button>
+          </Button>
           {activationError?.where === "bridge" && (
             <p
               role="alert"

@@ -1357,7 +1357,16 @@ describe("actual atomic dashboard manifests", () => {
     // this change's actual subject shows up.
     bodybuilder: 228,
     "marathon-runner": 237,
-    household: 252,
+    // +2 ON `household` AND NOWHERE ELSE (#5538). The dose row now offers to update a
+    // stored dose the child's current weight has outgrown, and whether the person has
+    // already declined that figure is one read of the suppression bus per SUBJECT,
+    // inside `getPediatricFormContext`. It is asked only for a profile young enough to
+    // be offered one — an adult context returns [] without touching the bus — so the
+    // five adult-only personas are unmoved and the household pays exactly one per child
+    // member. The bus read is deliberately not memoized (lib/queries/upcoming/
+    // suppressions.ts states why: a decline written mid-request must be visible to the
+    // next read), so this is a real query and not a hidden one.
+    household: 254,
     pregnant: 228,
     "diabetic-cgm": 235,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
@@ -1623,7 +1632,10 @@ describe("actual atomic dashboard manifests", () => {
   const WARM_BASELINE: Record<string, number> = {
     bodybuilder: 119,
     "marathon-runner": 125,
-    household: 177,
+    // +2, the cold table's move seen warm (#5538): the pediatric context is gathered on
+    // every load, not once per commit, so the two child members' suppression reads are
+    // outside the commit-scoped memo.
+    household: 179,
     pregnant: 119,
     "diabetic-cgm": 128,
     // The cold table's −4, carried through: the warm render re-issues the same two

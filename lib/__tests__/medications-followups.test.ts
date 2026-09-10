@@ -79,6 +79,7 @@ describe("#851 item 12 — redose interval/max prefill is age-aware or refuses",
     weightDate: "2026-07-10",
     weightUnit: "kg" as const,
     today: "2026-07-16",
+    declinedDoseUpdates: [],
   };
 
   it("returns the adult figures for an adult / unknown age", () => {

@@ -177,7 +177,22 @@ export interface IntakeDayContext {
   date: string;
   isWorkoutDay: boolean;
   activeSituations: Set<string>;
-  predictedWorkoutDay?: boolean | null;
+  // REQUIRED, and asymmetrically so (#5321). This field already carries its own third
+  // state: `null` is "no cadence is known", which is what makes `?? isWorkoutDay` below
+  // fall back to the logged signal. `undefined` said the same thing, so optionality
+  // bought nothing and cost the compile error — a caller that forgot the prediction
+  // keyed a pre_workout item on "a session is already logged" and silently omitted a
+  // dose the medications page offers on a predicted training day (#558).
+  predictedWorkoutDay: boolean | null;
+  // OPTIONAL, and that is not an oversight either. The four fields above are facts
+  // about `date`; this one is a verdict about the current MINUTE, so only a caller
+  // asking about the day IN PROGRESS can answer it. Every closed-day context —
+  // scoring yesterday, projecting a future day — would otherwise have to hand-write
+  // `postWorkoutReady: true` as boilerplate, and a hand-written `true` reads as a
+  // deliberate claim about a session in a way the language default does not.
+  // The permissive `?? true` below is therefore load-bearing, and a LIVE caller that
+  // omits it is answering differently from the page — see intakeDayContext, which is
+  // how a live caller gets it.
   postWorkoutReady?: boolean;
 }
 
@@ -362,6 +377,30 @@ export function isOfferedOn(
 ): boolean {
   if (item.obligation !== "may") return false;
   return conditionAppliesOn(item, ctx);
+}
+
+// Whether this item is off today's offer ONLY because the post-workout timing gate has
+// not opened yet (#5321). Asked by ONE surface, the digest, and asked because of what
+// that surface is: when a profile's only `may` item is post-workout, the timing gate
+// empties the offer tail, and the digest's minimal-send guarantee (#1505) would then
+// suppress the WHOLE message — leaving a tap-only reader with no path to their own
+// list on exactly the day they trained. The owner ruled the digest keeps sending and
+// NAMES the hold instead: it does not offer what the page holds, but it says so.
+//
+// Stated as a DIFFERENCE over the shared predicate rather than as a second condition
+// check, so it cannot drift from what actually decided the item's absence: held today,
+// offered if the session had ended. A situational pause, a rest-day condition or a
+// non-`may` obligation therefore answers false here — those are not this hold, and each
+// has its own disclosure (heldSummaryLine for the pause, the collapse rule for the rest).
+export function heldByWorkoutTiming(
+  item: Pick<IntakeItem, "condition" | "situation"> & {
+    obligation?: IntakeObligation;
+    pause_situation?: string | null;
+  },
+  ctx: IntakeDayContext
+): boolean {
+  if (isOfferedOn(item, ctx)) return false;
+  return isOfferedOn(item, { ...ctx, postWorkoutReady: true });
 }
 
 // The count of situational intake items currently due BECAUSE their situation is

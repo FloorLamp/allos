@@ -44,6 +44,8 @@ vi.mock("@/app/(app)/medications/actions", () => ({
     ok: true as const,
     outcome: "logged" as const,
   })),
+  acceptDoseBandUpdate: vi.fn(async () => ({ ok: true as const })),
+  declineDoseBandUpdate: vi.fn(async () => ({ ok: true as const })),
 }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   addIntakeItem: vi.fn(async () => ({ ok: true })),
@@ -199,6 +201,7 @@ const INTAKE_CONTEXT: IntakeFormContext = {
     weightDate: "2026-09-01",
     weightUnit: "kg",
     today: "2026-09-02",
+    declinedDoseUpdates: [],
   },
   todayStr: "2026-09-02",
 };

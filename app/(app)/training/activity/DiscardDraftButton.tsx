@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { discardWorkout } from "../activity-actions";
+import Button from "@/components/Button";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 
 // The draft banner's one action (#2870 step 3): remove the never-logged
@@ -21,11 +22,9 @@ export default function DiscardDraftButton({
   const { trainingRelevant } = useActivityEditor();
   const [busy, setBusy] = useState(false);
   return (
-    <button
-      type="button"
+    <Button
       data-testid="discard-draft"
       disabled={busy}
-      className="btn-ghost text-sm font-medium"
       onClick={async () => {
         setBusy(true);
         try {
@@ -44,6 +43,6 @@ export default function DiscardDraftButton({
       }}
     >
       Discard draft
-    </button>
+    </Button>
   );
 }
