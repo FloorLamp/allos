@@ -5,7 +5,7 @@ import { describe, it } from "vitest";
 import fs from "node:fs";
 import { normalizeCanonicalKey } from "../canonical-name";
 // DIFF_IMPORT
-import { uncuratedAnalyte, uncuratedAnalytes } from "../canonical-name";
+import { uncuratedAnalyte, uncuratedAnalytes } from "../datasets/uncurated-analytes";
 import canonicalSeed from "../canonical-result-definitions.json";
 
 // Every region name that appears in ANY of the three DEXA region lists, so the cross

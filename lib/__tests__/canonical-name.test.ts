@@ -15,10 +15,12 @@ import {
   biomarkerFamilyAnchor,
   biomarkerRetestIdentity,
   canonicalAliases,
-  uncuratedAnalyte,
-  uncuratedAnalytes,
   isGarbageCanonical,
 } from "../canonical-name";
+import {
+  uncuratedAnalyte,
+  uncuratedAnalytes,
+} from "../datasets/uncurated-analytes";
 import canonicalSeed from "../canonical-result-definitions.json";
 import { bodyMetricKind } from "../body-metric-extract";
 

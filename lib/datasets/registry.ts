@@ -78,6 +78,10 @@ import {
   tempRedFlagsDataset,
   tempRedFlagKeyStrategy,
 } from "./temperature-red-flags";
+import {
+  uncuratedAnalytesDataset,
+  uncuratedAnalyteIdStrategy,
+} from "./uncurated-analytes";
 import { nameStrategy, slugStrategy } from "./matcher";
 import type { LoadedDataset, MatchStrategy } from "./types";
 
@@ -214,5 +218,9 @@ export const DATASETS: RegisteredDataset[] = [
   {
     dataset: tempRedFlagsDataset,
     strategy: tempRedFlagKeyStrategy,
+  },
+  {
+    dataset: uncuratedAnalytesDataset,
+    strategy: uncuratedAnalyteIdStrategy,
   },
 ];
