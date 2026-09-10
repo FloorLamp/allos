@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { openConfirm } from "./helpers";
 // Public share links (issue #391, gap 1 — the ONLY anonymous PHI surface). The
 // create→view→revoke flow (PassportControls → profile/actions →
 // app/share/[token]/page) had zero browser coverage beyond a 404-header check.
@@ -70,12 +71,15 @@ test.describe("Public passport share links (#391)", () => {
     // link (#422 item 3), so scope to the FIRST row — the link this test just
     // created — instead of the (now ambiguous) bare Revoke button.
     // eslint-disable-next-line no-restricted-properties -- first-ok: newest-first list — the FIRST row is the link THIS test just created (see comment above)
-    await page
+    const revoke = page
       .locator("li")
       .filter({ has: page.getByRole("button", { name: "Revoke" }) })
       .first()
-      .getByRole("button", { name: "Revoke" })
-      .click();
+      .getByRole("button", { name: "Revoke" });
+    // The per-row Revoke went quiet under #4978's ruling 10 and its confirm step
+    // carries the red, so answering the confirm is now part of revoking.
+    const revokeConfirm = await openConfirm(page, revoke);
+    await revokeConfirm.getByRole("button", { name: "Revoke" }).click();
 
     // Reloading the same token now 404s with the friendly, anti-probing copy —
     // indistinguishable from an invalid link.

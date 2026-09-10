@@ -2,37 +2,25 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 // The tap-through guard (issue #1488), in the repo's source-scan idiom
 // (`chart-scaffold-scan.test.ts`, `telegram-chokepoint.test.ts`, `e2e-hygiene.test.ts`):
 // read the app's own TSX as TEXT — no DB, no network, so it stays "pure" in the vitest
 // sense — and fail the build when a chart ships as a dead end.
 //
-// WHY A SCAN AND NOT JUST THE TYPE. `ChartCard`'s `detailHref` is a REQUIRED prop, so
-// `tsc` already stops a card that forgets it. What the compiler cannot see is the two
-// ways the rule actually erodes:
-//
-//   1. A new chart is hand-assembled as `<div className="card"><h2/>…<LineChartCard/>`
-//      — bypassing the card, and with it the whole contract. That is exactly how every
-//      full-size Trends chart came to be a dead end while the Overview tiles linked
-//      out. Rule 1 below fails a Trends chart rendered outside `ChartCard`.
-//   2. `detailHref={null}` is written to make the type error go away. Null is legal —
-//      some charts genuinely have no destination — but only as a DECLARED decision, so
-//      rule 2 requires a same-line `detail-none: <why>` comment (the `first-ok`
-//      pattern from the e2e hygiene guard).
-//
-// Rule 3 pins the registry side of the promise: `/trends/metric/[kind]` is the
-// destination every registered metric taps through to, so every declared slug must
-// actually resolve to a series there — a slug added to the registry without a case in
-// the shared `fullTrendMetricSeries` reader would render a detail page that silently
-// charts nothing.
+// WHY A SCAN AND NOT JUST THE TYPE. `ChartCard`'s `detailHref` is REQUIRED and, since
+// #5351, states its own reason for having no destination — `AppRoute | { none: string }`
+// — so `tsc` stops both a card that forgets it and a dead end that never says why. What
+// the compiler cannot see is the one way the rule still erodes: a new chart is
+// hand-assembled as `<div className="card"><h2/>…<LineChartCard/>`, bypassing the card
+// and with it the whole contract. That is exactly how every full-size Trends chart came
+// to be a dead end while the Overview tiles linked out, and it is what the scan below
+// fails.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const CHART_CARD = "components/ChartCard.tsx";
 const METRIC_PAGE = "app/(app)/trends/metric/[kind]/page.tsx";
-const METRIC_SERIES = "lib/trend-metric-series.ts";
 
 /**
  * Where the tap-through rule is ENFORCED. The Trends hub is the surface #1488 is
@@ -80,9 +68,6 @@ const NOT_A_CARD = new Map<string, string>([
   ],
 ]);
 
-const RE_DETAIL_NULL = /detailHref=\{null\}/;
-const RE_DETAIL_JUSTIFIED = /detailHref=\{null\}.*(?:\/\/|\/\*)\s*detail-none:/;
-
 function walk(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -113,37 +98,9 @@ function scanFiles(): { rel: string; text: string }[] {
   return files;
 }
 
-/** Every file in the repo that mentions ChartCard's null escape hatch. */
-function nullSites(): { rel: string; line: number; text: string }[] {
-  const out: { rel: string; line: number; text: string }[] = [];
-  for (const dir of ["app", "components", "lib"]) {
-    const abs = path.join(REPO, dir);
-    if (!fs.existsSync(abs)) continue;
-    for (const full of walk(abs)) {
-      const r = rel(full);
-      if (r.includes("__tests__")) continue;
-      fs.readFileSync(full, "utf8")
-        .split("\n")
-        .forEach((line, i) => {
-          if (RE_DETAIL_NULL.test(line))
-            out.push({ rel: r, line: i + 1, text: line });
-        });
-    }
-  }
-  return out;
-}
-
 describe("chart tap-through guard (issue #1488)", () => {
-  it("ChartCard exists and takes detailHref as a REQUIRED prop", () => {
+  it("ChartCard keeps the plot outside its header link", () => {
     const src = fs.readFileSync(path.join(REPO, CHART_CARD), "utf8");
-    // `detailHref: AppRoute | null;` — required (no `?`), and nullable only through
-    // the declared escape hatch below.
-    expect(
-      /\n\s*detailHref: AppRoute \| null;/.test(src),
-      `${CHART_CARD} must declare \`detailHref: AppRoute | null\` as a REQUIRED prop — ` +
-        `making it optional would let a new chart ship as a dead end without so much ` +
-        `as a type error.`
-    ).toBe(true);
     // The plot must not be inside the header link: tapping the plot is tooltip
     // inspection on touch, and must never navigate.
     const plotIdx = src.indexOf('data-testid="chart-card-plot"');
@@ -192,38 +149,17 @@ describe("chart tap-through guard (issue #1488)", () => {
     ).toEqual([]);
   });
 
-  it("every detailHref={null} carries a same-line detail-none justification", () => {
-    const offenders = nullSites()
-      .filter((s) => !RE_DETAIL_JUSTIFIED.test(s.text))
-      .map((s) => `${s.rel}:${s.line}`);
-    expect(
-      offenders,
-      `A chart with no destination is a DECISION, not a default. Keep the null and ` +
-        `add a same-line justification comment — ` +
-        `\`detailHref={null} // detail-none: <why>\` — so the next reader can tell a ` +
-        `considered dead end from an unfinished one:\n${offenders.join("\n")}`
-    ).toEqual([]);
-  });
-
-  it("the metric detail page resolves every kind the registry declares", () => {
+  it("the metric detail page reads the shared series fold", () => {
     const pageSrc = fs.readFileSync(path.join(REPO, METRIC_PAGE), "utf8");
-    const seriesSrc = fs.readFileSync(path.join(REPO, METRIC_SERIES), "utf8");
     expect(
       pageSrc.includes("trendMetricSeriesFold("),
-      `${METRIC_PAGE} must read through ${METRIC_SERIES}, so Overview and metric ` +
-        `details cannot drift into two implementations of the same series — and it ` +
-        `must take the FOLD, whose second half is the observation set its readings ` +
-        `table lists, so chart and table cannot disagree about a day (#2029).`
+      `${METRIC_PAGE} must read through lib/trend-metric-series.ts, so Overview and ` +
+        `metric details cannot drift into two implementations of the same series — ` +
+        `and it must take the FOLD, whose second half is the observation set its ` +
+        `readings table lists, so chart and table cannot disagree about a day ` +
+        `(#2029). WHICH slugs resolve to a series is no longer asked here: ` +
+        `STREAM_SERIES is a Record<TrendMetricSlug, StreamRead>, so a registered ` +
+        `metric with no series read fails tsc (#5351).`
     ).toBe(true);
-    const missing = TREND_METRIC_SLUGS.filter(
-      (slug) => !seriesSrc.includes(`case "${slug}":`)
-    );
-    expect(
-      missing,
-      `/trends/metric/[kind] is the tap-through destination for every registered ` +
-        `metric, so a slug in TREND_METRIC_SLUGS with no case in the page's ` +
-        `shared streamMetricSeries() renders a detail page that charts nothing. ` +
-        `Add the series read for:\n${missing.join("\n")}`
-    ).toEqual([]);
   });
 });

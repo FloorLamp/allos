@@ -313,55 +313,73 @@ describe("logUsualRoutine on a past day, food half", () => {
   });
 });
 
-// ── THE BUNDLE STATES NO HOUR, AND THAT IS WHAT KEEPS IT FROM DOUBLE-LOGGING ──
+// ── THE BUNDLE CARRIES THE BAR'S STATED EATING TIME (#4438, ruled 2026-09-02) ──
 //
 // #4438 item 2 asked the composed tap to carry the nutrition bar's sticky eating-time
-// statement. It cannot, and the reason is a category error rather than a plumbing gap: a
-// stated eating time is a statement about A SERVING, and a bundle is labelled by A
-// WINDOW. Handing one to the other breaks the core's own headline contract.
+// statement, and the owner ruled that it does — on the WEB. The Telegram composed tap
+// still states no hour, because there the button's label ("Your usual Morning") is the
+// only thing naming the window; here the bar's own note names the window the statement
+// files under, out loud, before the tap.
 //
-// The mechanism, which is why this is asserted at the ACTION tier with the exact
-// FormData `FoodLogBar.logUsual()` builds rather than at the core: the bar's statement is
-// per-DAY, not per-slot — its own note says "a serving stating 19:00 from the Morning tab
-// lands in Evening" — so setting 19:00 for dinner and then tapping "Your usual Morning"
-// is ordinary use. With the time threaded, `logFoodServingCore` drops the declared window
-// (a stated time wins, #2269) and the servings derive to Evening, while the offer is
-// re-derived for MORNING and still stands. Every repeat tap then writes again, answering
-// `ok: true` each time.
+// Asserted at the ACTION tier with the exact FormData `FoodLogBar.logUsual()` builds,
+// because the contract spans the whole path: the posted wall time, the gate that judges
+// it against the row's day, and the placement every member of the bundle then takes.
+// The rows are the evidence — `occurred_at`, `time_source` and `meal_slot` on
+// `food_log_events` — never the answer text.
 //
-// Both directions are asserted because only the pair is the contract: the write lands
-// (this is not "the bundle refuses everything"), and the SECOND one does not.
-describe("the composed bundle and the bar's day-wide stated time (#4438)", () => {
-  const BAR_POST = {
-    meal_slot: "Morning",
-    groups: "berries,fermented",
-    // What the sticky WhenControl carries when the person set a dinner time earlier in
-    // the day and never cleared it. The bar posts this on the SAME day, per day.
-    occurred_at: "19:00",
-  };
+// WHAT THIS REPLACES. An earlier reading of the same issue asserted the opposite: that
+// the bundle drops the statement, on the reasoning that a stated hour outside the
+// labelled window leaves the offer standing and lets a repeat tap write again. That
+// consequence is real and is asserted below rather than removed — what changed is that
+// the owner ruled it acceptable on a surface that announces it, and unacceptable on one
+// that cannot.
+describe("the composed bundle and the bar's stated eating time (#4438)", () => {
+  const BAR_POST = { meal_slot: "Morning", groups: "berries,fermented" };
 
-  it("reduces after one tap, and refuses the second", async () => {
-    const { profile, anchor } = seedUsualMorning("usual-stated-time");
-    const first = await logUsualRoutine(fd(BAR_POST));
-    expect(first.ok).toBe(true);
+  function events(profileId: number, date: string) {
+    return db
+      .prepare(
+        `SELECT group_key, meal_slot, occurred_at, time_source FROM food_log_events
+          WHERE profile_id = ? AND date = ? ORDER BY group_key`
+      )
+      .all(profileId, date) as {
+      group_key: string;
+      meal_slot: string | null;
+      occurred_at: string | null;
+      time_source: string | null;
+    }[];
+  }
 
-    // THE OFFER IS GONE. This is the assertion the defect fails: the servings must land
-    // where the bundle promised them, or the Morning offer never shrinks.
-    expect(getUsualFoodOffer(profile.id, "Morning", anchor)).toEqual([]);
-
-    const second = await logUsualRoutine(fd(BAR_POST));
-    expect(second.ok).toBe(false);
-    // One serving each, not two — the ledger is the evidence, not the answer.
-    expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([
-      { date: anchor, group_key: "berries", servings: 1 },
-      { date: anchor, group_key: "fermented", servings: 1 },
+  // THE DEFAULT, AND THE HALF #5618 RULING 7 STANDS ON: no statement in force posts no
+  // field, and every member of the bundle is written untimed under the declared window.
+  it("writes the declared window and no eating instant when the bar states no hour", async () => {
+    const { profile, anchor } = seedUsualMorning("usual-untimed");
+    expect((await logUsualRoutine(fd(BAR_POST))).ok).toBe(true);
+    expect(events(profile.id, anchor)).toEqual([
+      {
+        group_key: "berries",
+        meal_slot: "Morning",
+        occurred_at: null,
+        time_source: null,
+      },
+      {
+        group_key: "fermented",
+        meal_slot: "Morning",
+        occurred_at: null,
+        time_source: null,
+      },
     ]);
+    // The offer reduces and the second tap refuses — the anti-double-log property, on
+    // the path every other host of this bundle takes.
+    expect(getUsualFoodOffer(profile.id, "Morning", anchor)).toEqual([]);
+    expect((await logUsualRoutine(fd(BAR_POST))).ok).toBe(false);
   });
 
-  it("files the whole bundle under the window it named, in one meal section", async () => {
-    const { profile, anchor } = seedUsualMorning("usual-stated-time-window");
-    // The scoop is habitual here too, so the bundle carries a protein member and the
-    // two writers are both exercised by one tap (#4379).
+  // THE STATEMENT, ON EVERY MEMBER INCLUDING THE SCOOP. One tap is one act, so a reader
+  // must not find half of it timed and half of it filed under a tab — which is what two
+  // writers disagreeing about the placement produced before #4729 made it one value.
+  it("lands the stated hour on every member of the bundle, scoop included", async () => {
+    const { profile, anchor } = seedUsualMorning("usual-stated-hour");
     for (let d = 1; d <= 12; d++)
       db.prepare(
         `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
@@ -371,28 +389,87 @@ describe("the composed bundle and the bar's day-wide stated time (#4438)", () =>
         shiftDateStr(anchor, -d),
         `${shiftDateStr(anchor, -d)}T08:10:00Z`
       );
-    await logUsualRoutine(fd({ ...BAR_POST, protein_grams: "30" }));
-    // ONE EVENT, ONE SECTION. The food half and the protein member are the same tap, so
-    // a reader must not find half of it under Morning and half under Evening — which is
-    // what two writers disagreeing about whether a stated time drops a declared window
-    // produces (`logFoodServingCore` drops it; `addProteinGramsCore` keeps it).
-    const rows = db
-      .prepare(
-        `SELECT group_key, meal_slot, occurred_at FROM food_log_events
-          WHERE profile_id = ? AND date = ? ORDER BY group_key`
-      )
-      .all(profile.id, anchor) as {
-      group_key: string;
-      meal_slot: string | null;
-      occurred_at: string | null;
-    }[];
-    expect(rows.map((r) => r.group_key)).toEqual([
-      "__protein__",
+    const res = await logUsualRoutine(
+      fd({ ...BAR_POST, protein_grams: "30", occurred_at: "08:00" })
+    );
+    expect(res.ok).toBe(true);
+    // A STATEMENT STORES THE INSTANT AND NO SLOT (#2269): the meal DERIVES from the hour,
+    // so a later correction moves the meal along with the time instead of leaving a
+    // frozen tab echo contradicting it.
+    const at = `${anchor}T08:00:00Z`;
+    expect(events(profile.id, anchor)).toEqual([
+      {
+        group_key: "__protein__",
+        meal_slot: null,
+        occurred_at: at,
+        time_source: "stated",
+      },
+      {
+        group_key: "berries",
+        meal_slot: null,
+        occurred_at: at,
+        time_source: "stated",
+      },
+      {
+        group_key: "fermented",
+        meal_slot: null,
+        occurred_at: at,
+        time_source: "stated",
+      },
+    ]);
+    // 08:00 derives BACK to Morning, so the window the label promised is still the
+    // window the ledger holds: the offer reduces and the tap cannot repeat.
+    expect(getUsualFoodOffer(profile.id, "Morning", anchor)).toEqual([]);
+    expect((await logUsualRoutine(fd(BAR_POST))).ok).toBe(false);
+  });
+
+  // THE RULED TRADEOFF, ASSERTED RATHER THAN HIDDEN. The bar's statement is per-DAY, so
+  // setting 19:00 for dinner and then tapping "Your usual Morning" is ordinary use — and
+  // the servings then file where the HOUR says, leaving the Morning offer standing. The
+  // bar says exactly this before the tap ("recorded as eaten at 19:00 and land in
+  // Evening"), which is why the ruling allows it here and forbids it on the Telegram tap,
+  // whose label is the only thing naming the window. Do not "fix" this by dropping the
+  // statement; that is the answer the ruling of 2026-09-02 replaced.
+  it("files an hour outside the labelled window where the hour says, and the offer stays", async () => {
+    const { profile, anchor } = seedUsualMorning("usual-cross-window");
+    expect(
+      (await logUsualRoutine(fd({ ...BAR_POST, occurred_at: "19:00" }))).ok
+    ).toBe(true);
+    expect(events(profile.id, anchor).map((r) => r.occurred_at)).toEqual([
+      `${anchor}T19:00:00Z`,
+      `${anchor}T19:00:00Z`,
+    ]);
+    // The window the ledger now holds is the hour's, not the label's, so the Morning
+    // offer is untouched — the visible cost of the statement, named by the surface.
+    expect(getUsualFoodOffer(profile.id, "Morning", anchor).sort()).toEqual([
       "berries",
       "fermented",
     ]);
-    expect(rows.every((r) => r.meal_slot === "Morning")).toBe(true);
-    // And no eating instant is invented for a bundle that states none.
-    expect(rows.every((r) => r.occurred_at === null)).toBe(true);
+  });
+
+  // VALIDATE, NEVER DROP — and never silently (#2296). The tier's clock sits at 23:50
+  // UTC, so 23:59 is past the acceptance skew: the statement is refused, the servings
+  // land under the declaration they named, and the answer carries the reason so the bar
+  // can say the minute went missing on the same sentence.
+  it("keeps the declaration and reports the reason when the stated hour is refused", async () => {
+    const { profile, anchor } = seedUsualMorning("usual-refused-hour");
+    const res = await logUsualRoutine(
+      fd({ ...BAR_POST, occurred_at: "23:59" })
+    );
+    expect(res).toMatchObject({ ok: true, statedTimeRefused: "future" });
+    expect(events(profile.id, anchor)).toEqual([
+      {
+        group_key: "berries",
+        meal_slot: "Morning",
+        occurred_at: null,
+        time_source: null,
+      },
+      {
+        group_key: "fermented",
+        meal_slot: "Morning",
+        occurred_at: null,
+        time_source: null,
+      },
+    ]);
   });
 });

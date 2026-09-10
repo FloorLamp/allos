@@ -425,7 +425,9 @@ export default async function TrendMetricDetailPage(props: {
 
   const chartSpec: TrendChartSpec = {
     key: meta.slug,
-    detailHref: null, // detail-none: this page IS the detail — a card here would link to itself
+    detailHref: {
+      none: "this page IS the detail — a card here would link to itself",
+    },
     title: meta.title,
     // The page's <h1> already says it — a card heading here is pure echo (#1541).
     hideTitle: true,

@@ -818,10 +818,6 @@ export default function FoodLogBar({
     commitProjection(next);
   }
 
-  function applyPlacement(placement: FoodPlacement) {
-    applyPlacements([placement]);
-  }
-
   // Reconcile a completed add burst in one paint from one post-burst server
   // snapshot. All meal projections travel together so a cross-slot burst cannot
   // repair its latest row while leaving an earlier row optimistic or stale.
@@ -1091,7 +1087,7 @@ export default function FoodLogBar({
     // not a delta — the same reconciliation a correction does, so a dropped or refused
     // write can never leave a phantom count behind.
     const vacated = outcome.vacated;
-    if (current) applyPlacement(vacated);
+    if (current) applyPlacements([vacated]);
     const undoId = outcome.undoId;
     // Precise removal supersedes the cumulative add receipt for this day/group.
     // Reusing its slot prevents two generic Undo buttons on desktop and keeps the
@@ -1158,11 +1154,13 @@ export default function FoodLogBar({
             // The restore puts back exactly the one serving this delete took, at the
             // coordinate the server already named — so the counts move by exactly one
             // from the authoritative figures above, not from a locally guessed total.
-            applyPlacement({
-              ...vacated,
-              servings: vacated.servings + 1,
-              mealServings: vacated.mealServings + 1,
-            });
+            applyPlacements([
+              {
+                ...vacated,
+                servings: vacated.servings + 1,
+                mealServings: vacated.mealServings + 1,
+              },
+            ]);
             profileToast(noticeScope, "Restored.", {
               key: receiptKey,
               owner: removalOwner,
@@ -1201,9 +1199,9 @@ export default function FoodLogBar({
   // through the same boundaries the server's tallies use, exactly as the correction
   // sheet's follow-the-hour Meal default is. Null when no statement is in force: the
   // tab's declaration is then the only fact and the serving files under it.
-  function statedFilingSlot(): FoodSlot | null {
-    return statedTime ? foodSlotForHhmm(statedTime, slotBoundaries) : null;
-  }
+  const statedFilingSlot: FoodSlot | null = statedTime
+    ? foodSlotForHhmm(statedTime, slotBoundaries)
+    : null;
 
   // The pair of counts one tap moves: the day's total for the group, and the group's
   // total inside the meal window under the user's finger. They travel together — the
@@ -1232,7 +1230,7 @@ export default function FoodLogBar({
     // consequence — so the optimistic bump moves THAT section's count, not the cell
     // being looked at. An undo (and an add with no statement) stays tab-scoped.
     const filingSlot =
-      inverseSlot ?? (delta === 1 ? statedFilingSlot() : null) ?? activeSlot;
+      inverseSlot ?? (delta === 1 ? statedFilingSlot : null) ?? activeSlot;
     const coordinate = foodServingCoordinate(
       receiptProfileId,
       activeDate,
@@ -2034,19 +2032,23 @@ export default function FoodLogBar({
         foodServingToastKey(receiptProfileId, activeDate, slug)
       );
     const endFastOwner = reserveToastLifecycle("end-fast-offer");
-    const window = activeSlot;
+    // WHERE THE BUNDLE'S SERVINGS LAND, which is the tab only while nobody has stated
+    // an hour (#4438). The POST still names `activeSlot`, the window the offer was
+    // derived and labelled for; this is the SECTION whose counts move, and it follows
+    // the statement exactly as a single "+" does (#2269).
+    const filing = statedFilingSlot ?? activeSlot;
     const before: Record<string, ServingCounts> = Object.fromEntries(
       slugs.map((slug) => [
         slug,
         {
           day: counts[slug] ?? 0,
-          meal: slotCountsByDate[activeDate]?.[window]?.[slug] ?? 0,
+          meal: slotCountsByDate[activeDate]?.[filing]?.[slug] ?? 0,
         },
       ])
     );
     const commit = (next: Record<string, ServingCounts>) => {
       for (const [slug, value] of Object.entries(next)) {
-        setServingCounts(activeDate, window, slug, () => value);
+        setServingCounts(activeDate, filing, slug, () => value);
       }
     };
     await usualLedger.tap<UsualRoutineResult>({
@@ -2060,7 +2062,7 @@ export default function FoodLogBar({
       commit,
       write: async () => {
         const fd = new FormData();
-        fd.set("meal_slot", window);
+        fd.set("meal_slot", activeSlot);
         // THE DAY BEING FILLED, posted (#4118). Without it the action fell back to
         // today, so the control on a past day would have written to the wrong one.
         fd.set("date", activeDate);
@@ -2071,12 +2073,13 @@ export default function FoodLogBar({
         fd.set("dose_ids", doseIds.join(","));
         if (usualProteinGrams != null)
           fd.set("protein_grams", String(usualProteinGrams));
-        // NO `occurred_at`, DELIBERATELY, and not the oversight #4438 item 2 read it as.
-        // The sticky statement is per-DAY and this button names a WINDOW: the note above
-        // the rows already says a serving stating 19:00 from the Morning tab lands in
-        // Evening, which for a BUNDLE means its servings leave the window it was derived
-        // and labelled for — so the offer never reduces and every repeat tap writes
-        // again. `logUsualRoutineCore`'s header carries the measurement.
+        // THE STICKY STATEMENT RIDES THE BUNDLE (#4438 item 2, ruled 2026-09-02), on
+        // the wire shape and through the gate a single "+" uses: an absolute
+        // profile-local wall time the server resolves. The note above the rows has
+        // already said which window it files under, which is why this surface may state
+        // one where the Telegram tap may not — there the label is the only thing that
+        // names the window. No statement posts no field, as it always has.
+        if (statedTime) fd.set("occurred_at", statedTime);
         return logUsualRoutine(stampLoggedVia(fd));
       },
       settle: (result) => {
@@ -2187,7 +2190,7 @@ export default function FoodLogBar({
         const renderedCoordinate = foodServingCoordinate(
           receiptProfileId,
           activeDate,
-          statedFilingSlot() ?? activeSlot,
+          statedFilingSlot ?? activeSlot,
           g.slug
         );
         return (
@@ -2377,16 +2380,13 @@ export default function FoodLogBar({
                   className="w-full text-xs text-slate-500 dark:text-slate-400"
                 >
                   {statedTime
-                    ? `Servings you add are recorded as eaten at ${statedTime}${
-                        // The filing named OUT LOUD when it leaves the active tab
-                        // (#2269): a serving stating 19:00 from the Morning tab lands
-                        // in Evening, and the answer text says so before the tap does.
-                        (() => {
-                          const filing = statedFilingSlot();
-                          return filing && filing !== activeSlot
-                            ? ` and land in ${filing}`
-                            : "";
-                        })()
+                    ? // The filing named OUT LOUD when it leaves the active tab (#2269):
+                      // a serving stating 19:00 from the Morning tab lands in Evening,
+                      // said before the tap. Speaks for the usual bundle too (#4438).
+                      `Servings you add are recorded as eaten at ${statedTime}${
+                        statedFilingSlot && statedFilingSlot !== activeSlot
+                          ? ` and land in ${statedFilingSlot}`
+                          : ""
                       }.`
                     : statingTime
                       ? "Servings you add are recorded with no eating time until you say one."

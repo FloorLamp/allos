@@ -39,7 +39,11 @@ describe("ChartCard: about renders as the title's info glyph, not the note slot 
 
   it("without a detailHref: still one glyph, still no note paragraph", () => {
     const { container } = render(
-      <ChartCard title="Macros & fiber" about={ABOUT} detailHref={null}>
+      <ChartCard
+        title="Macros & fiber"
+        about={ABOUT}
+        detailHref={{ none: "no destination is the case under test" }}
+      >
         <div />
       </ChartCard>
     );
@@ -54,7 +58,11 @@ describe("ChartCard: about renders as the title's info glyph, not the note slot 
   it("a fact passed as note still prints, and never through the glyph", () => {
     const FACT = "3 of 5 days logged this week.";
     render(
-      <ChartCard title="Cadence" note={FACT} detailHref={null}>
+      <ChartCard
+        title="Cadence"
+        note={FACT}
+        detailHref={{ none: "no destination is the case under test" }}
+      >
         <div />
       </ChartCard>
     );
