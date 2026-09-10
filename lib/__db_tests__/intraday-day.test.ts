@@ -11,7 +11,8 @@
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
-import { getIntradayDay } from "@/lib/queries";
+import { getIntradayDay, getIntradayDayWindows } from "@/lib/queries";
+import { gatherHistoryLog } from "@/lib/history";
 import { setProfileSetting } from "@/lib/settings";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import type { TimelineEvent } from "@/lib/timeline-format";
@@ -217,5 +218,73 @@ describe("getIntradayDay", () => {
     // No HR, no sleep — the panel still renders for the block alone.
     expect(model!.hr).toBeNull();
     expect(model!.sleep).toEqual([]);
+  });
+});
+
+// THE CHART'S OWN DAY READER (#5262). The day view hands the panel its feed's own
+// resolved events because it also LISTS them; the dashboard's "day so far" row lists
+// nothing, and the owner ruled it keeps the session blocks while the feed-sourced ticks
+// leave.
+//
+// BOTH ARMS COMPOSE THROUGH THE SAME TWO FUNCTIONS, so what this can fail on is the
+// READS either side of them: that the day-scoped pair finds the same rows the feed's
+// bounded gather and practice ledger find, and that it applies the draft rule. Drop
+// that rule and the husk below — started, never ended — arrives as a start-only window
+// and lands on the rail the last line says is empty.
+describe("getIntradayDayWindows", () => {
+  function login(): number {
+    return Number(
+      db
+        .prepare("INSERT INTO logins (username, password_hash) VALUES (?, 'x')")
+        .run(`intraday_${Math.random().toString(36).slice(2, 8)}`)
+        .lastInsertRowid
+    );
+  }
+
+  it("composes the same blocks the record's day gather does, with the feed's ticks gone", () => {
+    const p = newProfile("Intraday Windows");
+    const loginId = login();
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, start_time, end_time, duration_min)
+       VALUES (?, ?, 'cardio', 'Zone 2 base ride', '08:00', '09:00', 60)`
+    ).run(p, DAY);
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time, end_time, duration_min)
+       VALUES (?, 'Sauna', ?, '19:00', '19:25', 25)`
+    ).run(p, DAY);
+    // A CREATE-AT-START HUSK, which renders nowhere but its own page (#2870) — so it
+    // must not put a mark on this axis either. Started, never ended, nothing logged in it.
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, start_time)
+       VALUES (?, ?, 'strength', 'Untitled session', '17:00')`
+    ).run(p, DAY);
+    // A feed-sourced mark, so the arm below cannot pass by having nothing to drop.
+    // The rail reads the EVENT instant only, so the use states one.
+    db.prepare(
+      `INSERT INTO substance_log_events (profile_id, substance, date, recorded_at, occurred_at)
+       VALUES (?, 'nicotine', ?, ?, ?)`
+    ).run(p, DAY, instant(DAY, "13:40"), instant(DAY, "13:40"));
+
+    const feed = getIntradayDay(
+      p,
+      DAY,
+      gatherHistoryLog(p, { loginId, day: DAY, limit: 200 }).dayEvents
+    );
+    const chart = getIntradayDay(p, DAY, getIntradayDayWindows(p, DAY));
+
+    // The two real sessions, drawn identically but for the record's `feed:` id space,
+    // and the husk in neither.
+    expect(chart.blocks.map((b) => b.title)).toEqual([
+      "Zone 2 base ride",
+      "Sauna",
+    ]);
+    expect(
+      chart.blocks.map(({ key, eventId, anchorId, ...rest }) => rest)
+    ).toEqual(feed.blocks.map(({ key, eventId, anchorId, ...rest }) => rest));
+
+    // The positive control and the subject, in that order: the feed arm draws the
+    // substance tick, and the chart arm draws no rail at all.
+    expect(feed.ticks.map((t) => t.category)).toEqual(["substance"]);
+    expect(chart.ticks).toEqual([]);
   });
 });
