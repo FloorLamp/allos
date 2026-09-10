@@ -222,6 +222,56 @@ describe("foodServingFeedback", () => {
     expect(failure.reportFailure).toBe(true);
   });
 
+  // WHETHER ANYTHING WAS WRITTEN, which is a different question from whether an
+  // Undo can be offered: everything the bar does after a burst — the authoritative
+  // re-read and the "saved" wording around it — is answered from this one and not
+  // from `receipt` or `completed`.
+  it("reports a nameless landing as landed and a refused-only burst as not", () => {
+    const nameless = beginFoodServingAdd(
+      emptyFoodServingBurst(),
+      "morning",
+      "Morning"
+    );
+    const wrote = settleFoodServingAdd(nameless.state, nameless.tap, {
+      ok: true,
+    });
+    // Nothing to bind an Undo to, but a serving is on the counter.
+    expect(wrote.receipt).toBeUndefined();
+    expect(wrote.reportFailure).toBe(false);
+    expect(wrote.landed).toBe(true);
+
+    const refused = beginFoodServingAdd(
+      emptyFoodServingBurst(),
+      "morning",
+      "Morning"
+    );
+    const nothing = settleFoodServingAdd(refused.state, refused.tap, {
+      ok: false,
+    });
+    expect(nothing.completed).toBe(true);
+    expect(nothing.landed).toBe(false);
+  });
+
+  // A burst is only finished once, so `landed` answers for the WHOLE burst: an
+  // earlier serving that landed still owes the day an authoritative read even when
+  // the tap that completes the burst is the one that failed.
+  it("still reports landed when the completing tap is the failure", () => {
+    let state = emptyFoodServingBurst();
+    const first = beginFoodServingAdd(state, "morning", "Morning");
+    state = first.state;
+    const second = beginFoodServingAdd(state, "morning", "Morning");
+    const success = settleFoodServingAdd(second.state, first.tap, {
+      ok: true,
+      eventId: 21,
+    });
+    expect(success.completed).toBe(false);
+    expect(success.landed).toBe(false);
+    const failure = settleFoodServingAdd(success.state, second.tap, {
+      ok: false,
+    });
+    expect(failure.landed).toBe(true);
+  });
+
   it("keys settle state by profile, day, meal, and group", () => {
     expect(
       foodServingCoordinate(7, "2026-08-24", "Morning", "berries")

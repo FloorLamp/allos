@@ -31,6 +31,7 @@ import {
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
+import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 
 function FoodSelectedDateProvider({
   today,
@@ -1794,6 +1795,142 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.getByTestId("projection-slot-morning").textContent).toBe("0");
     expect(screen.getByTestId("projection-slot-evening").textContent).toBe("1");
     expect(frames).toHaveLength(1);
+  });
+
+  // ── WHAT THE COUNTER SAYS AFTER A REFUSAL (#3728) ─────────────────────────
+  //
+  // The bar's adopter case for the shared optimistic channel, and it is written
+  // against THE NUMBER ON SCREEN rather than against the fact that a call was
+  // refused. That distinction is the whole point: a restore that puts back the
+  // wrong figure, or that puts back anything at all over a serving that landed
+  // while it was in flight, refuses exactly as loudly as a correct one. Only the
+  // count tells them apart, so every assertion below reads the count — the meal
+  // figure the row shows, the day total beside it, and the slot projection the
+  // probe renders — and never the mock.
+  const TWO_SERVINGS: FoodLogDay = {
+    ...DAY,
+    counts: { cruciferous: 2 },
+    slotCounts: { Morning: {}, Midday: { cruciferous: 2 }, Evening: {} },
+  };
+
+  it("puts the servings back on the counter when the row's − is refused", async () => {
+    mountBar({ day: TWO_SERVINGS });
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    });
+
+    // The refusal is the server's own sentence, and the two servings are still
+    // there: the person did not lose one by asking to.
+    expect(
+      await screen.findByText("That serving count has changed.")
+    ).toBeTruthy();
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("2 servings");
+  });
+
+  it("does not take back a serving that landed while a refused − was in flight", async () => {
+    const refusal = deferred<{ ok: false; error: string }>();
+    actions.undoFoodServing.mockReturnValue(refusal.promise);
+    // One authoritative read answers the add; anything the stale − asks for after
+    // it never returns, so the figure left standing is the one the channel chose
+    // and not a later snapshot that would mask a wrong restore.
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 3,
+        mealServings: { Morning: 0, Midday: 3, Evening: 0 },
+      })
+      .mockReturnValue(new Promise(() => {}));
+    mountBar({ day: TWO_SERVINGS });
+
+    // The − is fired first and paints 1 …
+    fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+
+    // … then a "+" lands underneath it, and the server says the day holds three.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("3")
+    );
+
+    await act(async () => {
+      refusal.resolve({ ok: false, error: "That serving count has changed." });
+    });
+
+    // The − was fired from a 2. Putting that back would erase the serving the
+    // "+" recorded — a figure the person successfully logged, gone because a
+    // different tap failed.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("3");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("3");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("3 servings");
+  });
+
+  it("rolls the counter back when the device will not keep an offline tap", async () => {
+    const online = vi
+      .spyOn(window.navigator, "onLine", "get")
+      .mockReturnValue(false);
+    try {
+      mountBar({ day: TWO_SERVINGS });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+
+      // Nothing was kept, so nothing is claimed: a phantom third serving would
+      // outlive the session and never be contradicted.
+      expect(
+        await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+      ).toBeTruthy();
+      expect(actions.logFoodServing).not.toHaveBeenCalled();
+      // And nothing goes looking for a total for a serving that was never sent —
+      // the read that used to follow every burst is where "Saved, but couldn't
+      // refresh the count" came from, on a tap that saved nothing.
+      expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
+      expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+      expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
+        "2"
+      );
+      expect(screen.getByTestId("food-day-total").textContent).toBe(
+        "2 servings"
+      );
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it("leaves the switched-to subject's counter alone when the old subject's − is refused", async () => {
+    const refusal = deferred<{ ok: false; error: string }>();
+    actions.undoFoodServing.mockReturnValue(refusal.promise);
+    const other: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 9 },
+      slotCounts: { Morning: {}, Midday: { cruciferous: 9 }, Evening: {} },
+    };
+    const view = mountBar({ profileId: 7, day: TWO_SERVINGS });
+
+    fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+
+    view.rerender(barTree({ profileId: 8, day: other }));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
+
+    await act(async () => {
+      refusal.resolve({ ok: false, error: "That serving count has changed." });
+    });
+
+    // The restore belongs to a day nobody is looking at any more. Writing 2 here
+    // would put one subject's servings on another subject's counter.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("9");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("9 servings");
+    expect(screen.queryByText("That serving count has changed.")).toBeNull();
   });
 });
 

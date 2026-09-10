@@ -1297,10 +1297,26 @@ export default function FoodLogBar({
     // separate from it — a non-acting subject's tap must refuse offline rather
     // than queue a serving that could replay onto somebody else (the same guard
     // MoodForm/StoolTypeControl carry).
+    // The one sentence a refused capture gets, shared with `useWritePipeline`'s
+    // own capture arm so the two never word the same refusal differently.
+    const sayCaptureRefused = () => {
+      if (isCurrentMutation() || !isMountedProfile())
+        profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE, {
+          tone: "error",
+        });
+    };
     const queueOffline = async (): Promise<boolean> => {
       if (subjectProfileId != null && subjectProfileId !== activeProfileId)
         return false;
-      if (!capturedDayContext) return false;
+      // NO DAY TO REPLAY INTO IS A REFUSAL, AND IT SAYS SO (#3038). The bar has
+      // its own day picker, so a tap on a day the queue cannot stamp — a past day
+      // the mounted day context does not name — reaches here routinely. It used to
+      // roll the count back in silence, which reads as the tap never registering
+      // rather than as the save that did not happen.
+      if (!capturedDayContext) {
+        sayCaptureRefused();
+        return false;
+      }
       const kept =
         (await enqueue(
           "food",
@@ -1324,10 +1340,7 @@ export default function FoodLogBar({
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {
-        if (isCurrentMutation() || !isMountedProfile())
-          profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE, {
-            tone: "error",
-          });
+        sayCaptureRefused();
         return false;
       }
       if (isCurrentMutation())
@@ -1376,7 +1389,7 @@ export default function FoodLogBar({
     };
     let refreshRefusedInverseTruth = false;
     const settleAddBurst = (
-      outcome: { ok: true; eventId: number } | { ok: false }
+      outcome: { ok: true; eventId?: number } | { ok: false }
     ): FoodServingBurstSettlement | null => {
       if (!addTap) return null;
       const settled = settleFoodServingAdd(
@@ -1466,8 +1479,12 @@ export default function FoodLogBar({
         const outcome = tap.outcome;
         if (outcome.ok) {
           if (delta === 1) {
+            // A LANDING THE SERVER DID NOT NAME. The write succeeded, so this is
+            // not a failure — it simply has no row id for an Undo to bind to. It
+            // still settles the burst as a success, so the authoritative re-read
+            // below still runs for the serving that is now on the counter.
             if (outcome.eventId == null) {
-              settleAddBurst({ ok: false });
+              settleAddBurst({ ok: true });
               return { kind: "keep" };
             }
             const settled = settleAddBurst({
@@ -1656,11 +1673,17 @@ export default function FoodLogBar({
     }
 
     const addSettlement = addSettlementBox.value;
+    // THE POST-BURST AUTHORITATIVE READ, and it belongs only to a burst that
+    // WROTE (#3728). It used to run on `completed` alone, so a tap the device
+    // refused to capture offline — nothing queued, the counts already rolled back —
+    // still went and asked the server for a total, applied it over the rollback,
+    // and, when that request died as an offline request does, said "Saved, but
+    // couldn't refresh the count". Nothing had been saved.
     if (
       delta === 1 &&
       addTap &&
       addSettlement?.accepted &&
-      addSettlement.completed &&
+      addSettlement.landed &&
       isMountedProfile()
     ) {
       const completionEpoch = addTap.epoch;

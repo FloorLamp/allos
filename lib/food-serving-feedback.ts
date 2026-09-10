@@ -66,6 +66,12 @@ export interface FoodServingBurstSettlement {
   accepted: boolean;
   completed: boolean;
   receipt?: FoodServingBurstReceipt;
+  // Did this completed burst put ANY serving on the server? Distinct from
+  // `receipt`, which additionally needs a row id to bind an Undo to: a write can
+  // land without naming one. Nothing that follows a burst — the authoritative
+  // re-read, its "saved" wording — may run for a burst that wrote nothing, or it
+  // reports a save that did not happen (#3728).
+  landed: boolean;
   reportFailure: boolean;
 }
 
@@ -126,13 +132,17 @@ export function beginFoodServingAdd(
 export function settleFoodServingAdd(
   state: FoodServingBurstState,
   tap: FoodServingAddTap,
-  outcome: { ok: true; eventId: number } | { ok: false }
+  // `eventId` is optional because the write core's success arm does not promise
+  // one. A nameless landing is still a landing: it counts toward `landed` and it
+  // is not a failure, it simply has no row for an Undo to bind to.
+  outcome: { ok: true; eventId?: number } | { ok: false }
 ): FoodServingBurstSettlement {
   if (tap.epoch !== state.epoch || !state.pending.has(tap.id)) {
     return {
       state,
       accepted: false,
       completed: false,
+      landed: false,
       reportFailure: false,
     };
   }
@@ -146,7 +156,7 @@ export function settleFoodServingAdd(
     successes += 1;
     if (!latestSuccessfulTap || tap.id > latestSuccessfulTap.id) {
       latestSuccessfulTap = tap;
-      latestSuccessfulEventId = outcome.eventId;
+      latestSuccessfulEventId = outcome.eventId ?? null;
     }
   } else {
     failures += 1;
@@ -184,6 +194,7 @@ export function settleFoodServingAdd(
     accepted: true,
     completed,
     receipt,
+    landed: completed && successes > 0,
     reportFailure,
   };
 }
