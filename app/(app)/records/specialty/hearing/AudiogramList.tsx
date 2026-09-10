@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Button from "@/components/Button";
 import NotesText from "@/components/NotesText";
 import { Notice } from "@/components/Notice";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -142,14 +143,15 @@ export default function AudiogramList({
           >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="font-medium">{a.date}</p>
-              <button
-                type="button"
-                className="btn-ghost text-sm"
-                disabled={busy === a.date}
-                onClick={() => remove(a.date)}
-              >
+              {/* One Delete per audiogram card: a per-row destructive control
+                  in a repeated list, so it stays quiet rather than taking
+                  `danger` (ruling 10, #4978). Its `text-sm` was a no-op —
+                  `btn-ghost` already applies it — so this is the ordinary 14px
+                  to 12px drop the 2026-09-05 density ruling accepted, not a
+                  mount-specific size need. */}
+              <Button disabled={busy === a.date} onClick={() => remove(a.date)}>
                 Delete
-              </button>
+              </Button>
             </div>
 
             <div className="flex flex-wrap gap-4 text-sm">
