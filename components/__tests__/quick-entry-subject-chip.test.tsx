@@ -13,6 +13,7 @@ import {
   ProfileDaysBoundary,
 } from "@/components/DayContext";
 import type { AppRoute } from "@/lib/hrefs";
+import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
 
 // COMPONENT TIER — the quick-log sheet's title-row subject chip (#4932): defaulting
 // per opener, the toggle, and a subject switch replacing the previous subject's
@@ -389,5 +390,46 @@ describe("the quick-log sheet's subject chip (#4932)", () => {
     fireEvent.click(screen.getByText("open measurements"));
     const unavailable = await screen.findByTestId("quick-entry-unavailable");
     expect(unavailable.textContent).toContain("Switch to this profile");
+  });
+});
+
+// #5756 — THE INSTRUMENT'S OWN VOCABULARY, WHERE A PERSON PICKS A TYPE. Each stool
+// tile carries its type's sentence as an accessible name and prints two words, so the
+// one surface where somebody chooses a type showed pictures and the sentence that says
+// what a picture means was reachable only after the fact, on another page, or through
+// a screen reader. The title row's info glyph is where the sheet says it — the design
+// system's existing "short explanation" row, in the `titleAdornment` slot the host
+// already passes — and its label is BUILT from the vocabulary, so the tiles, the
+// record's select and the glyph cannot come to disagree.
+describe("the stool body states the scale it is asking about (#5756)", () => {
+  it("opens the seven lines, and no other body carries a glyph", async () => {
+    renderVisit([ACTING]);
+    // The menu has no form and therefore no instrument — the absence below is a body
+    // choosing not to explain itself, not a glyph that never renders anywhere.
+    expect(screen.queryByTestId("quick-entry-help")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("visit-stool"));
+    const glyph = await screen.findByTestId("quick-entry-help");
+    // BEFORE THE SUBJECT CHIP, which is the order a reader meets them: what this
+    // instrument is, then who it is being used for.
+    expect(
+      glyph.compareDocumentPosition(
+        screen.getByTestId("quick-entry-subject-chip")
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    fireEvent.click(glyph);
+    // Seven lines, each `<n> <label> — <description>`, compared against the vocabulary
+    // itself rather than against seven retyped sentences: retyping them here would be
+    // the fourth copy this glyph exists to avoid.
+    expect(screen.getByRole("tooltip").textContent!.split("\n")).toEqual(
+      BRISTOL_STOOL_TYPES.map((t) => `${t.type} ${t.label} — ${t.description}`)
+    );
+
+    fireEvent.click(screen.getByTestId("visit-mood"));
+    await waitFor(() =>
+      expect(screen.getByTestId("visit-view").textContent).toBe("mood")
+    );
+    expect(screen.queryByTestId("quick-entry-help")).toBeNull();
   });
 });

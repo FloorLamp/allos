@@ -2,8 +2,8 @@ import { stripComments } from "./strip-comments";
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { sqlNow } from "../clock";
+import { REPO, readSource, relPath } from "./sql-scan";
 
 // Static boundary guard for the SQL-side clock (issue #1534).
 //
@@ -53,8 +53,6 @@ import { sqlNow } from "../clock";
 // goals, injuries) instead bind `sqlNow()` explicitly, each with a comment naming
 // #1534. The CI midnight backstop (.github/actions/e2e-setup) is the belt to this
 // test's braces for whatever the audit missed.
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // Directories scanned for production source.
 const SCAN_DIRS = ["lib", "app", "scripts"];
@@ -247,9 +245,9 @@ function sourceFiles(): { rel: string; text: string }[] {
     const abs = path.join(REPO, d);
     if (!fs.existsSync(abs)) continue;
     for (const full of walk(abs)) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
+      const rel = relPath(full);
       if (isExcluded(rel)) continue;
-      files.push({ rel, text: fs.readFileSync(full, "utf8") });
+      files.push({ rel, text: readSource(full) });
     }
   }
   return files;

@@ -1,17 +1,12 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { IconPlus } from "@tabler/icons-react";
 import DatedDoseControl from "@/components/medications/DatedDoseControl";
-import OfferRow from "@/components/OfferRow";
-import CardSectionHeader from "@/components/CardSectionHeader";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import {
   QuickEntryRow,
   QuickEntryRowList,
 } from "@/components/quick-entry/QuickEntryRowList";
-import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
-import { dosesPhrase } from "@/lib/usual-routine";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 import type {
   QuickEntryDose,
@@ -51,10 +46,10 @@ import type { IntakeItemKind } from "@/lib/types";
 // gate on, so the sheet cannot offer a day the write would refuse. A fourth day is a
 // different decision and is not this control's to make.
 //
-// A past day differs from today in two ways, both of them the day's own doing rather
-// than a second policy: nothing is filtered by arrived slot (every bucket of a closed
-// day has arrived), and the row carries BOTH verbs, because on a day that has already
-// ended "I skipped it" is as ordinary an answer as "I took it".
+// The day it is standing on is the ONLY thing that differs between these rows (#5753
+// leg 1): one row composition, one control, one chip — see `PastDayDoses`, which draws
+// the composition below rather than a second one of its own.
+//
 // The identity of one dose OCCURRENCE: the profile-local day it belongs to plus the
 // schedule row that asks for it. Minted in exactly one place so no reader can key on
 // half of it.
@@ -264,7 +259,6 @@ export default function QuickDoseList({
       {prn && prn.meds.length > 0 && (
         <QuickLogPrnContent
           {...prn}
-          title={null}
           profileId={subjectProfileId}
           date={day}
           onLogged={onPrnLogged}
@@ -295,8 +289,26 @@ export default function QuickDoseList({
   );
 }
 
-// One switched-to day: its still-unresolved doses, grouped by the bucket each was
-// DECLARED in, with a whole-stack one tap above any bucket holding two or more.
+// One switched-to day's still-unresolved doses, as the SAME row this file draws for
+// today (#5753 leg 1).
+//
+// THERE IS NO SECOND DOSE BODY ANY MORE. This branch used to be its own design: a
+// heading per bucket, a whole-stack `OfferRow` above any bucket of two or more, and
+// rows whose control mounted `compact` — so `DoseStatusControl` drew bare icon squares
+// where today's row read `8:00am · Take`, and under each of them a paragraph explained
+// that no amount was saved for the date. One body, two grammars, and the second one was
+// the grammar #5521 had already deleted from today.
+//
+// THE BUCKET SURVIVES AS THE CHIP'S PAYLOAD, which is where the slot has belonged since
+// #4753 ruling 1: the row prints the dose name, so the label says when it was owed
+// (`Morning · Take`) and the sectioning that used to say it has nothing left to do. The
+// bundle offer is #5663's receipt-and-toast contract rather than a second control row,
+// and the assumed-amount sentence is a FACT beside the dose it qualifies.
+//
+// WHAT THE DAY STILL DECIDES, because it is the day's own doing and not a second
+// policy: nothing is filtered by arrived slot (every bucket of a closed day has
+// arrived), and the minute is REQUIRED (#5595) — `DatedDoseControl` reads that off the
+// date it is handed, so this list states no rule of its own about it.
 function PastDayDoses({
   date,
   slots,
@@ -317,15 +329,6 @@ function PastDayDoses({
   onResolved: (doseIds: readonly number[]) => void;
   subjectProfileId?: number;
 }) {
-  const { resolveAll, bulkBlocked } = useDoseDayResolution({
-    date,
-    bulkFailureMessage:
-      "Something went wrong — reopen this sheet to see what was logged.",
-    note: onNote,
-    resolved: onResolved,
-    profileId: subjectProfileId,
-  });
-
   if (slots.length === 0) {
     return (
       <p
@@ -339,98 +342,57 @@ function PastDayDoses({
 
   return (
     <div data-testid="quick-entry-dose-day" data-date={date}>
-      {slots.map((slot) => {
-        const ids = slot.doses.map((d) => d.doseId);
-        // The promise, in the shared #3098 grammar: the profile's own name for the
-        // group when every dose in the bucket shares one, otherwise every name.
-        const phrase = dosesPhrase(slot.doses);
-        const heading = `${TIME_BUCKET_LABELS[slot.bucket]} stack (${ids.length})`;
-        return (
-          <section key={slot.bucket} className="mb-3 last:mb-0">
-            <CardSectionHeader
-              title={TIME_BUCKET_LABELS[slot.bucket]}
-              variant="label"
+      <QuickEntryRowList testId="quick-entry-dose-list">
+        {slots.flatMap((slot) =>
+          slot.doses.map((dose) => (
+            <QuickEntryRow
+              key={dose.doseId}
+              testId={`quick-entry-dose-${dose.doseId}`}
+              identity={dose.name}
+              facts={
+                <>
+                  {dose.detail && (
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">
+                      {dose.detail}
+                    </span>
+                  )}
+                  {dose.amountAssumed ? (
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">
+                      Oldest known amount
+                    </span>
+                  ) : null}
+                  {notes[occurrenceKey(date, dose.doseId)] && (
+                    <span
+                      data-testid={`quick-entry-dose-note-${dose.doseId}`}
+                      className="block text-xs font-medium text-rose-600 dark:text-rose-400"
+                    >
+                      {notes[occurrenceKey(date, dose.doseId)]}
+                    </span>
+                  )}
+                </>
+              }
+              actions={
+                <DatedDoseControl
+                  doseId={dose.doseId}
+                  date={date}
+                  profileToday={profileToday}
+                  taken={false}
+                  skipped={false}
+                  variant="pill"
+                  payload={TIME_BUCKET_LABELS[slot.bucket]}
+                  itemName={dose.name}
+                  rowLeaves
+                  profileId={subjectProfileId}
+                  onSettled={(result) => {
+                    if (result.ok) onResolved([dose.doseId]);
+                    else onNote(dose.doseId, result.error);
+                  }}
+                />
+              }
             />
-            {slot.doses.length > 1 && (
-              <OfferRow
-                tone="brand"
-                testId={`quick-entry-dose-stack-${slot.bucket}`}
-                data={{ "data-doses": ids.join(",") }}
-                ariaLabel={`${heading}: ${phrase}`}
-                disabled={bulkBlocked(ids)}
-                onAct={() => resolveAll(ids)}
-                className="mb-1.5"
-              >
-                <IconPlus
-                  className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
-                  stroke={2}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    {heading}
-                  </span>
-                  <span
-                    data-testid={`quick-entry-dose-stack-names-${slot.bucket}`}
-                    className="block truncate text-xs text-slate-600 dark:text-slate-300"
-                  >
-                    {phrase}
-                  </span>
-                </span>
-              </OfferRow>
-            )}
-            <QuickEntryRowList testId={`quick-entry-dose-slot-${slot.bucket}`}>
-              {slot.doses.map((dose) => (
-                <QuickEntryRow
-                  key={dose.doseId}
-                  testId={`quick-entry-dose-${dose.doseId}`}
-                  identity={dose.name}
-                  facts={
-                    <>
-                      {dose.detail && (
-                        <span className="block text-xs text-slate-500 dark:text-slate-400">
-                          {dose.detail}
-                        </span>
-                      )}
-                      {dose.amountAssumed ? (
-                        <span className="block text-xs text-slate-500 dark:text-slate-400">
-                          No amount was saved for this date. Using the oldest
-                          known amount.
-                        </span>
-                      ) : null}
-                      {notes[occurrenceKey(date, dose.doseId)] && (
-                        <span
-                          data-testid={`quick-entry-dose-note-${dose.doseId}`}
-                          className="block text-xs font-medium text-rose-600 dark:text-rose-400"
-                        >
-                          {notes[occurrenceKey(date, dose.doseId)]}
-                        </span>
-                      )}
-                    </>
-                  }
-                  actions={
-                    <DatedDoseControl
-                      doseId={dose.doseId}
-                      date={date}
-                      profileToday={profileToday}
-                      taken={false}
-                      skipped={false}
-                      variant="pill"
-                      compact
-                      itemName={dose.name}
-                      rowLeaves
-                      profileId={subjectProfileId}
-                      onSettled={(result) => {
-                        if (result.ok) onResolved([dose.doseId]);
-                        else onNote(dose.doseId, result.error);
-                      }}
-                    />
-                  }
-                />
-              ))}
-            </QuickEntryRowList>
-          </section>
-        );
-      })}
+          ))
+        )}
+      </QuickEntryRowList>
     </div>
   );
 }

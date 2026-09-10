@@ -43,7 +43,14 @@
 //      above is about ONE head; this one is about the merge. When the base has
 //      moved since this head's CI base by a commit that could carry a type,
 //      only a MERGED-TREE-CHECKED receipt on this exact head opens the gate.
-//      The core holds that judgment and states its own limit.
+//      The core holds that judgment and states its own limit;
+//   9. that no COMMIT MESSAGE on the PR names a model (#4995). Check 1 guards
+//      the squash SUBJECT, which the PR title becomes; this guards the squash
+//      BODY, which is the branch's commit messages concatenated — so a lane
+//      whose environment supplied its own commit template writes a model name
+//      into main's permanent history, as `96f7c30a` did. The refusal names
+//      each commit and quotes the correct trailer, and REDACTS the offending
+//      one: the first failure is published as this gate's commit status.
 //
 // It also PRINTS, without gating on it, what `e2e-main` says about the base
 // branch (#4722): that workflow reports on main, never on a PR head, so main
@@ -88,6 +95,7 @@ import {
   falsifyingPassVerdict,
   holdVerdict,
   markerLines,
+  modelTrailerVerdict,
   normaliseSession,
   ownershipVerdict,
   readinessVerdict,
@@ -301,6 +309,19 @@ if (readiness.ready) pass("PR is READY");
 const titleRefusal = titleRuleRefusal("PR", pr.title);
 if (titleRefusal) fail(titleRefusal);
 else pass(`PR title is one clause of ${titleLength(pr.title)} characters`);
+
+// WHAT THE SQUASH BODY WILL CARRY (#4995). Checked beside the title for the
+// same reason: both are text this merge writes into main's history forever,
+// and both are cheap to fix while the PR is still open. GitHub lists at most
+// 250 commits here, so a branch that fills the listing leaves the rest unread
+// — which the verdict REFUSES on rather than passing on the part it could see.
+const prCommits = paged(`repos/${repo}/pulls/${prNumber}/commits`);
+const trailers = modelTrailerVerdict(
+  prCommits.map((c) => ({ sha: c.sha, message: c.commit?.message })),
+  { truncated: prCommits.length >= 250 }
+);
+if (trailers.ok) pass(trailers.message);
+else fail(trailers.message);
 
 // WHOSE PR IS THIS (#5177). Checked here for the same reason the title is:
 // it is a property of the PR itself, and it is the question that has to be

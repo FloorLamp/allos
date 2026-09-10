@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
+import { DayContextProvider } from "@/components/DayContext";
+import { dateStrInTz } from "@/lib/date";
+import { DATED_REACH, SHEET_REACH } from "@/lib/log-manifest";
 
 // THE SHARED TIME STATEMENT'S RULES, PINNED ONCE (#4426). Four domains spelled this
 // question by hand and each carried its own answer to "what happens to the statement
@@ -365,5 +368,79 @@ describe("the PRN row spends its statement on the tap that paid for it (#4426)",
     expect(screen.queryByTestId("prn-log-when-time")).toBeNull();
     fireEvent.click(screen.getByTestId("prn-log-when-toggle"));
     expect(timeField().value).toBe("");
+  });
+});
+
+// #5753 leg 3 — THE REVEAL STATES THE TIME, AND THE DAY IS PRINTED ONCE (#4738 ruling
+// 1). A fixed day renders as text because somebody has to say which day this is; under
+// the quick-log sheet's day switcher somebody already has, so the sheet was saying
+// "Wed, Sep 9" on the switcher and again beside the time field 130px below it, on the
+// practice row, the stool picker and every past-day dose row at once.
+//
+// Driven through a real mount and through its DAY CONTEXT rather than a prop, because
+// that is the whole claim: no surface passes this, the host's context decides, and a
+// host with no switcher above it is unaffected. The pair is the discriminator — the
+// same mount, the same tap, the same field, and only the day slot differs.
+describe("the day is printed once, by whatever prints it (#5753 leg 3)", () => {
+  const today = dateStrInTz("UTC");
+  const open = () =>
+    fireEvent.click(screen.getByTestId("scheduled-dose-when-toggle"));
+
+  it("names its day where nothing above the row does", () => {
+    scheduledDose();
+    open();
+    expect(screen.getByTestId("scheduled-dose-when-time")).toBeTruthy();
+    expect(screen.getByTestId("scheduled-dose-when-date").textContent).toBe(
+      "Today"
+    );
+  });
+
+  // The record's dated door and the forms sit under a URL-backed day: a day the page
+  // navigates BETWEEN rather than a switcher the sheet moves, and nothing beside the
+  // field says which one it is. This arm is why the rule is "a switcher above me" and
+  // not "a day context above me".
+  it("still names it under a day the surface navigates rather than switches", () => {
+    render(
+      <DayContextProvider
+        profileId={1}
+        today={today}
+        reach={DATED_REACH}
+        backing={{ kind: "url", day: today, hrefForDay: () => "/history" }}
+      >
+        <ScheduledDoseAction
+          doseId={7}
+          doseLabel="50 mcg · Morning"
+          taken={false}
+          skipped={false}
+        />
+      </DayContextProvider>
+    );
+    open();
+    expect(screen.getByTestId("scheduled-dose-when-date").textContent).toBe(
+      "Today"
+    );
+  });
+
+  it("says nothing about the day under a switcher that already states it", () => {
+    render(
+      <DayContextProvider
+        profileId={1}
+        today={today}
+        reach={SHEET_REACH}
+        backing={{ kind: "state", initialDay: today }}
+      >
+        <ScheduledDoseAction
+          doseId={7}
+          doseLabel="50 mcg · Morning"
+          taken={false}
+          skipped={false}
+        />
+      </DayContextProvider>
+    );
+    open();
+    // The field the reveal exists for is still on screen, so the absence below is the
+    // day slot going quiet rather than a reveal that never opened.
+    expect(screen.getByTestId("scheduled-dose-when-time")).toBeTruthy();
+    expect(screen.queryByTestId("scheduled-dose-when-date")).toBeNull();
   });
 });

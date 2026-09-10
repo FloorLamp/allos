@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import FromThisVisit from "@/components/visit-links/FromThisVisit";
 import type { VisitLinkedRow } from "@/lib/queries";
 import type { EncounterFromVisit } from "@/lib/visit-link-suggest";
+import { loudIn } from "./loud-controls";
 
 // THE BULK ACTION IS THE SURFACE'S ONE LOUD CONTROL (#4978, PM ruling 7,
 // 2026-09-09 23:45 UTC): "a bulk commit beside per-row commits (`FromThisVisit`'s
@@ -13,11 +14,11 @@ import type { EncounterFromVisit } from "@/lib/visit-link-suggest";
 // forwarded there still typechecks and lints — that silent demotion is the defect
 // #3982 was written against, so a call-site assertion would pass through it.
 //
-// The census counts ALL FOUR loud paints, not just the rank classes. `primary` and
-// `danger` name themselves, but `duplicate-resolution-primary` and
-// `destructive-submit` are wrapper utilities that paint a solid fill onto a
-// rank-less child (#5696), so a query for the rank selectors alone under-counts and
-// would let a second fill arrive here unseen.
+// The census comes from `./loud-controls`, the one definition of a loud control
+// (#5696). This file used to widen its own selector list to reach past the two
+// wrapper utilities that painted a fill onto a rank-LESS child; those wrappers now
+// state their rank on the button, so the rank classes are the whole census and a
+// second fill arriving here cannot hide behind a wrapper.
 
 vi.mock("@/app/(app)/visit-link-actions", () => ({
   linkAllFromVisitAction: async () => {},
@@ -64,16 +65,6 @@ const suggestions: EncounterFromVisit = {
     },
   ],
 };
-
-/** Every loud control on the surface — all four paints that render a solid fill. */
-function loudIn(surface: HTMLElement): string[] {
-  return Array.from(
-    surface.querySelectorAll(
-      ".button-control-primary, .button-control-danger, .duplicate-resolution-primary > .button-control, .destructive-submit > .button-control"
-    ),
-    (el) => (el.textContent ?? "").trim()
-  );
-}
 
 describe("the visit-links bulk action takes the rank the doctrine gives it", () => {
   it("fills 'Link all' and nothing else on the card it sits in", () => {

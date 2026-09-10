@@ -939,9 +939,9 @@
      owned by the primitive: default secondary, explicit primary.
      ADMISSION: it marks the action a surface exists for — at most one per surface.
 
-     PAINT ONLY, ADDED TO `button-control` RATHER THAN REPLACING IT — the
-     `duplicate-resolution-primary` construction above, applied to the primitive's
-     own class. The box, the reserved border, `whitespace-nowrap`, the focus ring
+     PAINT ONLY, ADDED TO `button-control` RATHER THAN REPLACING IT, so the rank
+     and the fill are one thing on one element rather than a wrapper repainting a
+     child. The box, the reserved border, `whitespace-nowrap`, the focus ring
      and the pending spinner are therefore the SAME declarations in both variants
      rather than two lists that have to be kept equal. Scoped away from the
      disabled states so the family's ONE disabled treatment (#1450 cluster B)
@@ -981,17 +981,24 @@
   }
 }
 
-@utility duplicate-resolution-primary {
-  @apply contents;
-  & > .button-control:not(:disabled) {
-    @apply border-transparent bg-(--btn) text-(--btn-fg) hover:bg-(--btn-hover);
-  }
-}
-
 @utility destructive-submit {
+  /* GEOMETRY ONLY — THE PAINT IS THE BUTTON'S OWN RANK (#5696). This wrapper and
+     the retired `duplicate-resolution-primary` both filled a `.button-control`
+     CHILD, which left the button carrying no rank class: a card could render two
+     solid controls while every census of `button-control-primary` /
+     `button-control-danger` counted one, and the census had to know each wrapper
+     by name to see past it. `DestructiveSubmit` states `variant="danger"`
+     instead, so the fill arrives the way every other filled control's does —
+     including the family's ONE disabled treatment, which the hand-rolled
+     `disabled:` overrides here only restated.
+     What is left is the retiring `.btn-danger` SHAPE — wider padding, larger
+     type, the shared control radius — which rank does not spell. Do not paint a
+     fill on this child again: it would leave the button with no rank class and
+     put a second solid control on a card that every rank census reads as one.
+     Nothing checks that mechanically today — #5765 carries the guard. */
   @apply contents;
   & > .button-control {
-    @apply gap-2 border-transparent bg-(--danger-btn) px-4 text-sm text-(--danger-btn-fg) shadow-xs hover:bg-(--danger-btn-hover) disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:bg-slate-100 dark:disabled:bg-ink-750 dark:disabled:text-slate-400 dark:disabled:hover:bg-ink-750;
+    @apply gap-2 px-4 text-sm shadow-xs;
     border-radius: var(--radius-control);
   }
 }
