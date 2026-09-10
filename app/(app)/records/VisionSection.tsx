@@ -66,6 +66,7 @@ export default function VisionSection({ scope }: { scope: ProfileScope }) {
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-6">
         <AddEntryPanel
+          formId="optical-prescription"
           testId="add-prescription-panel"
           panelId="add-prescription-panel-body"
           label="Add prescription"

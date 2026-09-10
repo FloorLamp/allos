@@ -129,6 +129,14 @@ async function openAllergyDialog(page: Page) {
   await hydratedClick(page, page.getByTestId("add-allergy-panel-toggle"));
   const dialog = page.getByRole("dialog", { name: "Add allergy" });
   await expect(dialog).toBeVisible();
+  // The host's OWN render says which form it opened (#5300 rule 7). The id is
+  // type-bound, so what is unproved without this is that the modal branch of
+  // AddEntryPanel — seventeen mounts, a different branch from the record door's
+  // hand-written div — emits the declaration at all.
+  await expect(dialog.locator("[data-form-id]")).toHaveAttribute(
+    "data-form-id",
+    "allergy"
+  );
   return dialog;
 }
 
