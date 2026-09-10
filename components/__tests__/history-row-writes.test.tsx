@@ -11,6 +11,7 @@ import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import {
   detailSegment,
   historyClock,
+  historyClockFields,
   type HistoryRow,
 } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -1364,5 +1365,80 @@ describe("the record's row disclosure", () => {
     ).toBe(heading);
     // The ref is a real deep link to the record's own domain surface, not a chip.
     expect(refs.querySelector("a")?.getAttribute("href")).toBe("/medications");
+  });
+});
+
+// WHAT THE WHEN-CELL SAYS, READ OFF THE RENDERED ROW (#5618 rule 6).
+//
+// "An untimed row filed on another day reads 'logged Sep 8': the filing day, no
+// clock. Same-day rows keep 'logged 7:41am'." That is a claim about a string a person
+// reads in the day's list, so it is asserted on the cell's own text — not on what
+// `historyClock` returned, which the pure tier already covers, and not on the row
+// object, which nobody reads.
+//
+// THE CLOCK COMES THROUGH THE PRODUCTION FORMATTER, `historyClockFields`, with the
+// inputs the gather hands it. A fixture that hand-wrote "logged Sep 8" onto the row
+// would render the string whatever the rule did, and would still be green with the
+// rule deleted.
+describe("the record's when-cell on a row filed off its own day", () => {
+  // THE RULING STATES ITS TWO STRINGS IN THE 12-HOUR GRAMMAR ("logged 7:41am"), so
+  // this describe reads them in it — everything above stays on the file's 24h prefs.
+  const RULE_6: DisplayFormatPrefs = { timeFormat: "12h", dateFormat: "mdy" };
+  const FILED_AT = "07:41";
+
+  // ONE INSTANT, TWO DAYS UNDER IT. Both rows are untimed and both were filed at
+  // 07:41; the only thing that differs is whether that filing fell on the day the row
+  // sits under. So the two cells cannot both be right, and neither can be produced by
+  // reading the minute alone.
+  function filedRow(id: string, rowDay: string, filedDay: string): HistoryRow {
+    return row({
+      id,
+      kind: "food",
+      title: "Berries",
+      date: rowDay,
+      ...historyClockFields(FILED_AT, "logged", RULE_6, { filedDay, rowDay }),
+    });
+  }
+
+  function clocks(): string[] {
+    return screen
+      .getAllByTestId("history-row-clock")
+      .map((cell) => cell.textContent ?? "");
+  }
+
+  it("reads the filing day on the row filed elsewhere and the clock on the one filed here", () => {
+    openRow([
+      filedRow("food:1", "2026-09-10", "2026-09-10"),
+      filedRow("food:2", "2026-09-08", "2026-09-10"),
+    ]);
+    expect(clocks()).toEqual(["logged 7:41am", "logged Sep 10"]);
+  });
+
+  // THE RULING'S OWN EXAMPLE, END TO END: the row sits on Sep 10 and was filed on
+  // Sep 8, and the cell reads the day it was filed on.
+  it("names the day the filing fell on, not the day the row sits under", () => {
+    openRow([filedRow("food:3", "2026-09-10", "2026-09-08")]);
+    expect(clocks()).toEqual(["logged Sep 8"]);
+    // AND NO MINUTE SURVIVES IT. The 07:41 is true of no minute of Sep 10, which is
+    // the whole reason the rule drops it rather than qualifying it.
+    expect(clocks()[0]).not.toMatch(/\d:\d\d|\d\d:\d\d/);
+  });
+
+  // A ROW NOTHING FILED AT A KNOWABLE INSTANT stays date-only: no cell at all, which
+  // is what the record already does for a substance day total or an undated reading.
+  it("renders no when-cell when there is no instant to read", () => {
+    openRow([
+      row({
+        id: "food:4",
+        kind: "food",
+        title: "Berries",
+        date: "2026-09-10",
+        ...historyClockFields(null, "logged", RULE_6, {
+          filedDay: null,
+          rowDay: "2026-09-10",
+        }),
+      }),
+    ]);
+    expect(screen.queryByTestId("history-row-clock")).toBeNull();
   });
 });

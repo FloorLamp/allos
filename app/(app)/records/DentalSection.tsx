@@ -59,6 +59,7 @@ export default function DentalSection({ scope }: { scope: ProfileScope }) {
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-6">
         <AddEntryPanel
+          formId="dental-procedure"
           testId="add-dental-record-panel"
           panelId="add-dental-record-panel-body"
           label="Add dental record"

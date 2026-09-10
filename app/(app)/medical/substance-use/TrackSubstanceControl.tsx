@@ -96,6 +96,7 @@ export default function TrackSubstanceControl() {
 
   return (
     <AddEntryPanel
+      formId="tracked-substance"
       label="Track another substance"
       panelId="track-substance-panel-body"
       testId="track-substance-panel"

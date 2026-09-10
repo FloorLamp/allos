@@ -26,6 +26,7 @@ import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 import { logHeading, type LogDomain } from "@/lib/log-manifest";
+import { FORM_ID_OF_LOG_DOMAIN } from "@/lib/form-grammar";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
@@ -465,7 +466,15 @@ export default function HistoryAddDoor({
           {/* THE PANEL MARKER STAYS ON THE FORM'S OWN WRAPPER, not on the host: it is
               what every spec on this door identifies the form by, and the host's
               chrome is the host's to assert. */}
-          <div data-testid={`history-add-panel-${kind}`}>{form()}</div>
+          <div
+            data-testid={`history-add-panel-${kind}`}
+            // WHICH FORM THIS DOOR OPENED (#5300 rule 7). The id comes from the
+            // registry's own log-domain bridge rather than from a string here, so a
+            // ninth log domain cannot reach this door without declaring its grammar.
+            data-form-id={FORM_ID_OF_LOG_DOMAIN[kind]}
+          >
+            {form()}
+          </div>
         </ModalShell>
       ) : null}
     </>
