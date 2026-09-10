@@ -198,19 +198,37 @@ describe("activityClockHHMM — the one reading of a stated activity clock", () 
     expect(activityClockHHMM("14:75")).toBeNull();
   });
 
-  // #4550: the bare-clock half is `parseClockHhmm`'s now, so it is ANCHORED where
-  // this used to match a prefix, and it reads the legacy 12-hour display form the
-  // owner has always accepted instead of silently dropping the meridiem.
+  // #4550: the CANONICAL parse is `parseClockHhmm`'s now and runs first, so a
+  // legacy 12-hour display clock is read instead of having its meridiem silently
+  // dropped. These were wrong by twelve hours in both directions.
   it("reads a 12-hour display clock rather than dropping its meridiem", () => {
     expect(activityClockHHMM("2:30 pm")).toBe("14:30");
-    expect(activityClockHHMM("12:00 AM")).toBe("00:00");
+    expect(activityClockHHMM("1:00pm")).toBe("13:00");
     expect(activityClockHHMM("11:59 p.m.")).toBe("23:59");
+    expect(activityClockHHMM("12:00 AM")).toBe("00:00");
+    expect(activityClockHHMM("12:00 a.m.")).toBe("00:00");
+    // Noon is the other twelve and was already right.
+    expect(activityClockHHMM("12:00 pm")).toBe("12:00");
   });
 
-  it("no longer takes a clock-shaped PREFIX off a longer string", () => {
-    expect(activityClockHHMM("14:30x")).toBeNull();
-    expect(activityClockHHMM("07:00 UTC")).toBeNull();
-    expect(activityClockHHMM("14:30 PM")).toBeNull();
+  // THE PREFIX TOLERANCE, which nothing pinned before #4550 — and its absence is
+  // why a convergence onto the owner's ANCHORED patterns nearly landed here. This
+  // regex is unanchored on purpose: it is the mechanism behind the VERBATIM rule
+  // above. An extracted value can carry a trailing zone or fraction the model
+  // invented, and the clock the user stated is still the fact. Answering null for
+  // these would DISCARD a stated time, which is worse than ignoring a fake zone.
+  it("still takes the stated clock off a value carrying an invented tail", () => {
+    expect(activityClockHHMM("07:00 UTC")).toBe("07:00");
+    expect(activityClockHHMM("07:00+")).toBe("07:00");
+    expect(activityClockHHMM("14:30:00.000")).toBe("14:30");
+    expect(activityClockHHMM("14:30:00.000Z")).toBe("14:30");
+    expect(activityClockHHMM("14:30x")).toBe("14:30");
+    // Not a legal 12-hour clock, so the owner declines and the prefix answers —
+    // exactly as it did before, rather than losing the digits altogether.
+    expect(activityClockHHMM("14:30 PM")).toBe("14:30");
+    expect(activityClockHHMM("13:00 pm")).toBe("13:00");
+    expect(activityClockHHMM("7:05a")).toBe("07:05");
+    expect(activityClockHHMM("0:30 am")).toBe("00:30");
   });
 });
 
