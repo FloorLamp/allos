@@ -180,6 +180,56 @@ describe("the copy is gated on the SUBJECT, and the caller stays who they are", 
     expect(res.ok).toBe(false);
     expect(itemCount(ada.id)).toBe(0);
   });
+
+  // A BOTTLE THE CALLER CAN SEE, CARRYING A MEMBER THEY CANNOT.
+  //
+  // THE FIXTURE'S DISTINGUISHING PROPERTY IS THAT `isLinkableSupply` PASSES. In the
+  // test above the bottle itself is invisible, so the linkability check refuses first
+  // and the source's profile is never examined — that test cannot reach this case, and
+  // a fixture drifted back into it would prove nothing. Here the caller's OWN member
+  // makes the bottle linkable, and `poolMembers` is cross-profile by construction
+  // (lib/queries/intake/supply-pool.ts), so a forged POST may name any member of it —
+  // including another login's household member, whose plan the caller has no read on.
+  // `!scope.ids.includes(sourceProfileId)` is then the ENTIRE defence, and the honest
+  // tap at the end is what holds the fixture in place: it lands, so the bottle really
+  // was visible. Do not delete it, and do not unlink the caller's own member.
+  it("refuses a member the caller cannot see, on a bottle they can", async () => {
+    const t = tag();
+    const login = createLogin({ role: "member", username: `m_${t}` });
+    const ada = createProfile(`Ada ${t}`, login.id);
+    const bo = createProfile(`Bo ${t}`, login.id);
+    const otherLogin = createLogin({ role: "member", username: `o_${t}` });
+    const theirs = createProfile(`Zed ${t}`, otherLogin.id);
+    actAs(login, ada);
+
+    const supplyId = bottle();
+    const ownItem = member(ada.id, supplyId);
+    const hiddenItem = member(theirs.id, supplyId);
+    // A plan the caller can reach no other way — the one the exploit pulled across.
+    db.prepare(
+      "UPDATE intake_items SET cadence_kind = 'weekly', cadence_weekdays = '1,3,5' WHERE id = ?"
+    ).run(hiddenItem);
+
+    const forged = await alsoForAction(
+      post(supplyId, theirs.id, hiddenItem, bo)
+    );
+    expect(forged.ok).toBe(false);
+    expect(forged.reason).toBe("no-bottle");
+    expect(itemCount(bo.id)).toBe(0);
+
+    // The same bottle, from the member the caller CAN see, lands — so the refusal above
+    // was the source's profile and not an unreachable bottle — and what it wrote is
+    // Ada's daily plan, never the hidden member's weekly one.
+    const honest = await alsoForAction(post(supplyId, ada.id, ownItem, bo));
+    expect(honest.ok).toBe(true);
+    expect(
+      db
+        .prepare(
+          "SELECT cadence_kind, cadence_weekdays FROM intake_items WHERE profile_id = ?"
+        )
+        .all(bo.id)
+    ).toEqual([{ cadence_kind: "daily", cadence_weekdays: null }]);
+  });
 });
 
 // The decline touches the RECIPIENT's suppression row, so it carries the same two gates
