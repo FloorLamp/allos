@@ -197,6 +197,13 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
       { tone: "error" }
     );
     expect(screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`)).toBeTruthy();
+    // AND THE ROW IS STILL OFFERING THE DOSE (#3728). This control's receipt is
+    // BECOMING its done state, so the row's own verb is the value a refusal has to
+    // restore — and asserting only that a refusal was reported passes just as
+    // happily when the row settles into "taken" for a dose the write refused.
+    expect(screen.getByTestId("dose-take").getAttribute("aria-label")).toBe(
+      "8:00am · Take"
+    );
   });
 
   it("keeps the tap instant when the explicit profile day differs from the browser day", async () => {
