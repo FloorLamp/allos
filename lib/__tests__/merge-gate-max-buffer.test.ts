@@ -79,7 +79,10 @@ case "$*" in
       exit 7
     fi
     cat ${JSON.stringify(comparePath)}; printf '\\n200' ;;
-  *reviews*|*comments*) printf '[]\\n200' ;;
+  # The gate reads the PR's commits for #4995's trailer check; this fixture
+  # has nothing to say about them, so they are an empty list. It must be
+  # matched BEFORE *pulls/12*, which would otherwise serve the PR object.
+  *pulls/12/commits*|*reviews*|*comments*) printf '[]\\n200' ;;
   *check-runs*) printf '{"total_count":1,"check_runs":[{"id":1,"name":"a-check","status":"completed","conclusion":"success"}]}\\n200' ;;
   */status*) printf '{"state":"success","statuses":[]}\\n200' ;;
   *pulls/12*)

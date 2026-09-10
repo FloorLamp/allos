@@ -71,7 +71,10 @@
 
 - Squash merge only a green EXACT HEAD, through the transport this host
   grants (MCP, else REST `PUT /pulls/N/merge` squash). Re-read `head.sha` in
-  the same breath as the merge call: GitHub merges the head it finds.
+  the same breath as the merge call: GitHub merges the head it finds. Always
+  supply `commit_title` and `commit_message`: the DEFAULT body concatenates the
+  branch's commits, trailers and closing keywords included. It narrows the gate
+  (#4995), never replaces it.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
 - A green exact head merges in the TURN that finds it green. An unrelated
