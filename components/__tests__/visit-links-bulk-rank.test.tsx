@@ -30,7 +30,12 @@ vi.mock("@/app/(app)/visit-link-actions", () => ({
 afterEach(cleanup);
 
 const linkedRows: VisitLinkedRow[] = [
-  { domain: "procedure", id: 11, label: "Knee arthroscopy", date: "2026-03-04" },
+  {
+    domain: "procedure",
+    id: 11,
+    label: "Knee arthroscopy",
+    date: "2026-03-04",
+  },
 ];
 
 const suggestions: EncounterFromVisit = {
