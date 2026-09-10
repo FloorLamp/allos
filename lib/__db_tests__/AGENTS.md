@@ -25,7 +25,7 @@ what a boot task does on a first boot. Those tests are why the chain still runs.
 
 Never slice `MIGRATIONS` by position: "all but the newest" means "before X" for
 one day, then silently rebuilds the future into the "before" database while
-still passing (#3565). `migration-historical-fixture-scan.test.ts` fails on it.
+still passing (#3565). ESLint refuses it.
 
 `./migrated-db-parity.test.ts` holds the snapshot to a real replay — same
 schema, same version, same seeded rows — and proves the copies are independent.
