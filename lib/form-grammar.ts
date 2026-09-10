@@ -11,13 +11,16 @@
 // Rule 7 originally asked for a reflection test that listed every `*Form.tsx` under
 // `app/` and `components/` and failed on one not registered. That clause is STRUCK.
 // A file listing answers "is there a file whose name ends in Form" — which is not the
-// question. Sixteen of the ids below are forms with no `Form` in their names
-// (`MeasurementsQuickAdd`, `PracticeEditor`, `RoutineBuilder`, `InjuryBar`, the
-// screening instrument views), and three `*Form.tsx` files are the login screen. The
+// question. Twenty of the ids below name forms with no `*Form.tsx` file of their own
+// (`MeasurementsQuickAdd`, `PracticeEditor`, `RoutineBuilder`, `InjuryBar`,
+// `EndurancePlanBar`, the screening instrument views), and three `*Form.tsx` files are
+// the login screen. The
 // set that matters is the forms the app HOSTS, and the host
 // can ask for the id itself: `components/AddEntryPanel.tsx` requires a `FormId`, so
 // hosting implies registration and there is nothing to scan. A form mounted outside a
-// host is the defect #2774 already names, not this registry's job to catch.
+// host is #2774's convergence question rather than this registry's to catch — and it
+// is also, exactly, the form this mechanism cannot see. The boundary section below
+// says that out loud instead of leaving it to be discovered.
 //
 // HOW FAR THAT MECHANISM REACHES TODAY, stated so nobody reads it as universal: the
 // nineteen forms `AddEntryPanel` hosts cannot compile without an id, and neither can a
@@ -51,14 +54,36 @@
 // `IssueRef` the type demands, so "excluded" can never be a bare boolean. Measurements
 // is the exclusion rule 7 names first.
 //
-// ── The one boundary, stated rather than left silent ─────────────────────────
+// ── The boundaries, and WHICH ONE a missing form fell over ───────────────────
 //
 // `FormId` covers the app's ADD AND EDIT FORMS over a profile's records and its
-// preferences. The three authentication forms under `app/(auth)` are outside it:
-// they establish an identity rather than write anything a profile owns, they render
-// no facts a person could disagree with before saving, and none of the six rules has
-// anything to say to them. Nothing else that renders a form is left out — a form that
-// does not state facts is here with its argument, not absent.
+// preferences. Two boundaries bound it and they are different in kind, so an id that
+// is not here means two different things depending on which one it fell over.
+//
+// RULED. The three authentication forms under `app/(auth)` are outside it: they
+// establish an identity rather than write anything a profile owns, they render no
+// facts a person could disagree with before saving, and none of the six rules has
+// anything to say to them. Absence there is a decision.
+//
+// DERIVED, and therefore NOT a census. This set was read off the two hosts' call
+// sites and the log-domain door. Over those three the set is complete and the type
+// keeps it complete. An INLINE-hosted form — one that renders `<form>` in its own
+// surface with no host between — is reachable by none of them, so it is here only
+// because somebody declared it, and absence there means UNREGISTERED, not excluded.
+// The inline ids came from ONE sweep of `<form>` under `app/` and `components/`
+// (#5790's review): four are grouped under "Inline-hosted" below, `crisis-resources`
+// sits with the preference family it belongs to, and the mobility card's one-tap
+// accept is argued inside `frequency-target` rather than given an id. That sweep does
+// not run on every push, so this paragraph claims nothing about inline forms it did
+// not look for.
+//
+// The two blind spots are mirror images, which is the part worth carrying back to
+// #5300. The struck file scan saw FILES and missed hosts — it would have demanded
+// three login screens and missed every form whose file is named for its surface. A
+// host-derived set sees HOSTS and misses files. Only the type-enforced part is a
+// guarantee, and it covers the three doors named above and nothing else. #5787 widens
+// the enforced part by giving the dialog host a form-hosting variant; nothing on the
+// table widens it over inline forms.
 //
 // PURE: every import is `import type`, erased at build, so a server component, a
 // client form and a test all read this the same way.
@@ -129,6 +154,11 @@ export type FormId =
   | "illness-episode"
   | "document-upload"
   | "food-suggestions"
+  // ── Inline-hosted, declared rather than required (#5790 review) ────────────
+  | "endurance-plan"
+  | "provider"
+  | "frequency-target"
+  | "food-habit"
   // ── Settings and background (#5287) ────────────────────────────────────────
   | "profile"
   | "own-profile"
@@ -142,7 +172,8 @@ export type FormId =
   | "anxiety-scale"
   | "mental-health-privacy"
   | "smoking-history"
-  | "risk-factors";
+  | "risk-factors"
+  | "crisis-resources";
 
 /** What the chip row does with a fact when the person has not stated it. */
 export type FactRole = "essential" | "optional";
@@ -406,7 +437,7 @@ export const FORM_GRAMMAR = {
     "#5302"
   ),
   result: fields(
-    "A lab result is a value, a unit and a reference range against a measured day — the analyte's definition supplies the rest. Its adoption is the prose, host and heading rules.",
+    "`ResultForm.tsx` renders fifteen labelled fields, and four of them — `fasting`, `specimen`, `result_status` and `flag` — are facts the person states about THIS result rather than anything the analyte's definition supplies. The value, unit and reference range are the least of what it asks for. A pending adoption with the rest of the family, on the family's terms.",
     "#5302"
   ),
   "imaging-study": fields(
@@ -420,9 +451,12 @@ export const FORM_GRAMMAR = {
 
   // ── Everything else the hosts open ─────────────────────────────────────────
 
+  // Re-derived from the form rather than from the record's shape (#5790 review). The
+  // exclusion this entry used to carry does not survive that reading, and saying so is
+  // the point of re-deriving it.
   cycle: fields(
-    "Two dates that bound one period. A chip row over a start and an end would state the same span twice.",
-    "#5300"
+    "NOT an exclusion. `CycleForm.tsx` renders four fields, not two dates: a required start, an optional end, an optional `flow` over the closed `FLOW_LEVELS` vocabulary, and an optional note. The coded vocabulary is the primitive's third precondition MET, and three optional facts against one essential is the exact split the chip row and its trailing more-line exist for. This is a pending adoption on the clinical family's terms — labelled fields today, and nothing here rules that it should stay that way.",
+    "#3218"
   ),
   "tracked-substance": fields(
     "One name, which is the identifying field rule 1 already puts above the chips. There is no second fact for the row to hold.",
@@ -430,7 +464,7 @@ export const FORM_GRAMMAR = {
   ),
   "substance-cap": fields("One weekly number. The form is the field.", "#5300"),
   "provider-affiliation": fields(
-    "A link between two records the person picks, plus its role. The picker IS the form; a chip row would open an editor onto the same combobox.",
+    "One field. The link's other end is DERIVED, not chosen — an individual affiliates with an organization and an organization with an individual, computed from the record the dialog hangs off and posted as a hidden value — so the person states nothing but the counterpart. The picker IS the whole form, and a chip row would open an editor onto the same combobox.",
     "#5300"
   ),
   "fitness-check": fields(
@@ -474,10 +508,44 @@ export const FORM_GRAMMAR = {
     "#5300"
   ),
 
+  // ── Inline-hosted, declared rather than required ───────────────────────────
+  //
+  // These render `<form>` in their own surface with no host between, so nothing in
+  // the type system reached them and the first derivation missed all of them. They
+  // are here because #5790's review swept `<form>` under `app/` and `components/`.
+  // Registering them does not make the sweep a mechanism: read the boundary section
+  // at the head of this file before treating this list as complete.
+
+  // app/(app)/training/EndurancePlanBar.tsx.
+  "endurance-plan": fields(
+    "NOT an exclusion — an unconverted CANDIDATE, said plainly because silence here would read as a ruling. The add form states an event kind over suggested words, an optional discipline over a closed three-value vocabulary, a name, a date and two targets: several independent facts, most of them optional, which is the shape the essential/optional split exists for. What it lacks is a facts module to import keys from, and building one is an adoption rather than a declaration. Registered so the next reader sees the candidacy instead of a gap.",
+    "#3218"
+  ),
+
+  // app/(app)/providers/ProviderIdentityCard.tsx. Its sibling form on the same record
+  // family, `provider-affiliation`, is above.
+  provider: fields(
+    "The provider's identity, edited in place: name, kind, NPI, identifier, specialty over the curated NUCC labels, phone, address. These are TRANSCRIBED off a card, a letterhead or a portal rather than stated by the person, so the chip row's question — which one of these do you disagree with before saving — has nothing to bite on. Seven fields is the right shape for seven transcriptions.",
+    "#5300"
+  ),
+
+  // app/(app)/training/FrequencyTargets.tsx.
+  "frequency-target": fields(
+    "A scope and a count: which muscle region, body group, activity type or mobility region, and how many times a week. The two selects are one fact stated in two steps — the second's options are the first's — so a chip row would hold one chip and a number. The one-tap accepts that write the same record elsewhere (the mobility suggestions) post scope and count as hidden values with no field at all; those state nothing, so they are controls rather than forms and have no entry.",
+    "#5300"
+  ),
+
+  // app/(app)/nutrition/WeeklyHabits.tsx, which writes the same `frequency_targets`
+  // table under a `food_group` scope.
+  "food-habit": fields(
+    "The nutrition card's twin of the frequency target — a food group and a weekly count, into the same table. Two facts, one of them a number, on the same argument.",
+    "#5300"
+  ),
+
   // ── Settings and background ────────────────────────────────────────────────
   //
-  // Family 4 of the census, and ONE argument covers all thirteen, so it is stated
-  // once rather than paraphrased thirteen times. Each of these AUTOSAVES (they run
+  // Family 4 of the census, and ONE argument covers all fourteen, so it is stated
+  // once rather than paraphrased fourteen times. Each of these AUTOSAVES (they run
   // `useSaveStatus`, and several flush on hide), which is not an implementation
   // detail here: the chip row exists to show what a form is ABOUT TO WRITE so the
   // person can disagree with one fact before Save. A form with no Save has no before,
@@ -501,6 +569,11 @@ export const FORM_GRAMMAR = {
   "mental-health-privacy": fields(PREFERENCE, "#5287"),
   "smoking-history": fields(PREFERENCE, "#5287"),
   "risk-factors": fields(PREFERENCE, "#5287"),
+  // components/CrisisResourcesEditor.tsx, the fourteenth — inline-hosted, and missed
+  // by the same derivation as the four above (#5790 review). Two mounts, and one of
+  // them is the INSTANCE-wide default an admin sets rather than a profile's own
+  // override; the argument holds for both, because neither has a Save.
+  "crisis-resources": fields(PREFERENCE, "#5287"),
 } as const satisfies Record<FormId, FormGrammar>;
 
 // The bridge between this registry and the log domains (#4425's own pattern, one
