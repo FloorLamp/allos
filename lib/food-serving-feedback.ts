@@ -53,11 +53,15 @@ export interface FoodServingBurstState {
   truthRevision: number;
   // WHAT BECAME OF EACH SETTLED TAP, counted apart because they answer different
   // questions. `landed` is on the server. `kept` failed with its optimistic +1 still
-  // on the counter. `discarded` failed and had that +1 taken back — and, being the
-  // offline-capture refusal, has already said so in its own words.
+  // on the counter. `discarded` and `unwitnessed` both had that +1 taken back and have
+  // both already said so in their own words — they are counted apart because only one
+  // of them can be BELIEVED. A `discarded` tap never left the device. An `unwitnessed`
+  // one did, and its ANSWER is what went missing, so the server may hold the write the
+  // refusal just told the person it does not.
   landed: number;
   kept: number;
   discarded: number;
+  unwitnessed: number;
 }
 
 export interface FoodServingBurstReceipt {
@@ -77,9 +81,17 @@ export type FoodServingAddOutcome =
   // The write did not land AND the optimistic +1 is still on the counter — an online
   // refusal, or a request that died online. Nobody has been told yet.
   | { kind: "kept" }
-  // The write did not land and its +1 has been taken back. The offline-capture refusal,
-  // which said so in its own words on the way past.
-  | { kind: "discarded" };
+  // The write did not land and its +1 has been taken back. The offline-capture refusal
+  // the DEVICE made before anything was sent, which said so in its own words on the way
+  // past. Nothing reached the server, so there is nothing to go and look for.
+  | { kind: "discarded" }
+  // THE REQUEST LEFT AND ITS ANSWER DID NOT COME BACK (#3728). The queue then refused to
+  // keep the tap, so the +1 is off the counter and the refusal has spoken — but a
+  // dropped connection loses the RESPONSE, not necessarily the write, so the server may
+  // already hold the serving. Identical to `discarded` on the counter and in what has
+  // been said; different in that it is the one disposition nothing has verified, and so
+  // the one that still owes an authoritative read.
+  | { kind: "unwitnessed" };
 
 export interface FoodServingBurstSettlement {
   state: FoodServingBurstState;
@@ -91,7 +103,10 @@ export interface FoodServingBurstSettlement {
   // (#3728). A failed online add deliberately KEEPS its +1 — the read is the only thing
   // that ever takes it back, and the only thing that reports the failure — so gating
   // that read on having written strands a phantom serving and says nothing. A burst
-  // whose taps were all refused offline has nothing standing and nobody to tell.
+  // whose taps were all refused BEFORE LEAVING THE DEVICE has nothing standing and
+  // nobody to tell. A burst whose taps left and lost their answers has nothing standing
+  // either, but it has a CLAIM standing — the refusal said "not saved" about a write
+  // that may have committed — and only this read can withdraw it.
   reconcile: boolean;
   // Did this completed burst put any serving on the server? Distinct from `receipt`,
   // which additionally needs a row id to bind an Undo to. This gates the WORDING around
@@ -118,6 +133,7 @@ export function emptyFoodServingBurst(
     landed: 0,
     kept: 0,
     discarded: 0,
+    unwitnessed: 0,
   };
 }
 
@@ -154,6 +170,7 @@ export function beginFoodServingAdd(
       landed: starting ? 0 : state.landed,
       kept: starting ? 0 : state.kept,
       discarded: starting ? 0 : state.discarded,
+      unwitnessed: starting ? 0 : state.unwitnessed,
     },
   };
 }
@@ -180,6 +197,7 @@ export function settleFoodServingAdd(
   let landed = state.landed;
   let kept = state.kept;
   let discarded = state.discarded;
+  let unwitnessed = state.unwitnessed;
   if (outcome.kind === "landed") {
     landed += 1;
     if (!latestSuccessfulTap || tap.id > latestSuccessfulTap.id) {
@@ -188,6 +206,8 @@ export function settleFoodServingAdd(
     }
   } else if (outcome.kind === "kept") {
     kept += 1;
+  } else if (outcome.kind === "unwitnessed") {
+    unwitnessed += 1;
   } else {
     discarded += 1;
   }
@@ -219,6 +239,7 @@ export function settleFoodServingAdd(
         landed,
         kept,
         discarded,
+        unwitnessed,
       };
   return {
     state: next,
@@ -226,8 +247,9 @@ export function settleFoodServingAdd(
     completed,
     receipt,
     // Anything still painted on the counter — a landing awaiting the server's own
-    // figure, or a failure whose guess nothing has taken back yet.
-    reconcile: completed && landed + kept > 0,
+    // figure, or a failure whose guess nothing has taken back yet — or an unwitnessed
+    // tap, which painted nothing but left an unverified "not saved" behind it.
+    reconcile: completed && landed + kept + unwitnessed > 0,
     landed: completed && landed > 0,
     reportFailure,
   };

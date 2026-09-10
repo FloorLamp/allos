@@ -1956,21 +1956,85 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
-  // THE CONNECTION DYING MID-TAP, then the queue refusing what it caught. The tap
-  // never reaches `settle` — `onError` handles it — and that arm rolls back, so it is
-  // `discarded` like the offline-preflight refusal beside it. Calling it `kept` would
-  // send a doomed read after a refusal that has already spoken, which is the shape
-  // this branch exists to remove: reachable whenever a connection dies while
-  // `navigator.onLine` is still true, on a day the queue cannot stamp.
-  it("asks the server nothing when a dropped tap is then refused by the queue", async () => {
+  // THE CONNECTION DYING MID-TAP, then the queue refusing what it caught — the case
+  // the offline-preflight refusal above looks identical to and is not.
+  //
+  // The tap never reaches `settle`: `write` got past its own `navigator.onLine` check
+  // and called `logFoodServing`, so THE REQUEST LEFT, and `onError` is handling a
+  // "Failed to fetch" that means the ANSWER was lost. Whether the server committed
+  // first is exactly what nobody on this device knows. The queue then refuses to keep
+  // the tap and says "This entry wasn't saved", the counter rolls back — and that
+  // sentence is an unverified claim, so the authoritative read still has to run. It is
+  // the only thing that can withdraw it, and settling this tap as `discarded` (the
+  // disposition the device-side refusal correctly uses, where nothing was ever sent)
+  // skips the read and leaves a real serving unreconciled under a "not saved".
+  //
+  // Both directions are asserted, on the RENDERED COUNT: the read confirms a serving
+  // that did commit, and it confirms the refusal when none did.
+  it.each([
+    {
+      name: "corrects the counter when the lost write had in fact committed",
+      truth: {
+        ok: true,
+        servings: 3,
+        mealServings: { Morning: 0, Midday: 3, Evening: 0 },
+      },
+      count: "3",
+      total: "3 servings",
+    },
+    {
+      name: "confirms the refusal when the lost write had not committed",
+      truth: {
+        ok: true,
+        servings: 2,
+        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+      },
+      count: "2",
+      total: "2 servings",
+    },
+  ])(
+    "reads the server after a dropped tap the queue refused, and $name",
+    async ({ truth, count, total }) => {
+      actions.logFoodServing
+        .mockReset()
+        .mockRejectedValue(new TypeError("Failed to fetch"));
+      actions.readFoodServingTruth.mockReset().mockResolvedValue(truth);
+      mountBar({ day: TWO_SERVINGS });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+      await act(async () => {});
+
+      expect(
+        await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+      ).toBeTruthy();
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe(count);
+      expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
+        count
+      );
+      expect(screen.getByTestId("food-day-total").textContent).toBe(total);
+      // Nothing invents a receipt out of a write nobody witnessed: there is no row id
+      // to bind an Undo to, and no claim that anything saved.
+      expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+      expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+    }
+  );
+
+  // AND WHEN THE REPAIR READ ITSELF CANNOT RUN — which is what a dropped connection
+  // actually does to it — the refusal stands alone. Settling this tap as `kept` would
+  // reach the same read, so the count assertions above cannot separate those two; this
+  // one does, on rendered text: `kept` marks a failure nobody has heard about yet, and
+  // the read's failure arm would then print "Couldn't save that serving — try again."
+  // beside a sentence that already said the same thing in different words, on a day the
+  // person was told to retry once back online.
+  it("says nothing more when the repair read dies after a dropped tap the queue refused", async () => {
     actions.logFoodServing
       .mockReset()
       .mockRejectedValue(new TypeError("Failed to fetch"));
-    actions.readFoodServingTruth.mockReset().mockResolvedValue({
-      ok: true,
-      servings: 2,
-      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
-    });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockRejectedValue(new TypeError("Failed to fetch"));
     mountBar({ day: TWO_SERVINGS });
 
     await act(async () => {
@@ -1981,7 +2045,10 @@ describe("FoodLogBar projection publication", () => {
     expect(
       await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
     ).toBeTruthy();
-    expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Couldn't save that serving — try again.")
+    ).toBeNull();
+    expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
     expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
   });
@@ -2076,10 +2143,12 @@ describe("FoodLogBar projection publication", () => {
 
   // THE ONE PATH WHERE `commitProjection`'s MOUNT GUARD IS THE ONLY CHECK.
   // Everywhere else `isCurrentMutation()` answers first — it calls `isMountedProfile()`
-  // itself — so the guard looks redundant and deleting it stays green across the whole
-  // suite. `onError`'s offline arm for a decrement does not consult it: it returns
-  // `rollback` unconditionally, and the guard is what stops a bar that is gone from
-  // writing its stale snapshot into the provider that outlived it.
+  // itself — so the guard looks redundant. `onError`'s offline arm for a decrement does
+  // not consult it: it returns `rollback` unconditionally, and the guard is what stops a
+  // bar that is gone from writing its stale snapshot into the provider that outlived it.
+  // THIS CASE IS THE ONE THAT CATCHES IT, and it is the only one: delete the guard and
+  // this assertion reds with `expected '2' to be '5'` while the other 44 cases in this
+  // file and the three other FoodLogBar-rendering specs stay green.
   it("does not let an unmounted bar's offline-undo rollback clobber the live count", async () => {
     let rejectUndo!: (error: unknown) => void;
     const undoing = new Promise((_resolve, reject) => {
