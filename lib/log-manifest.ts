@@ -291,6 +291,24 @@ export type WriteConventions =
     };
 
 export interface LogDomainManifest {
+  // THE DOMAIN'S ONE NOUN (#5300 rule 6, adopted by #5617). Every heading over this
+  // domain's form is built from it — `Log <noun>` to add, `Edit <noun>` to correct —
+  // so the quick sheet, the record's add door and the dialog cannot name one domain
+  // three ways. Before this the record's door renamed four of them ("Log a check-in",
+  // "Log a use", "Log a reading", "Log a movement") and put an article in front of
+  // three more, while the sheet next door said "Log mood", "Log substance", "Log
+  // measurements", "Log practice".
+  //
+  // A BARE NOUN, not a phrase: the verb is the heading's, so a noun that already
+  // carries one ("past dose") would print it twice the moment a second verb reads
+  // this column.
+  //
+  // ONE ENTRY IS DELIBERATELY TWO WORDS — `stool`, whose noun is the published
+  // instrument's name ("stool form", the Bristol Stool Form Scale). The rule strips
+  // the app's OWN articles and renamings, not a measure's real name; the argument is
+  // written out at that entry, which is where a reader shortening this column will be
+  // standing when they reach it.
+  readonly noun: string;
   // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
   // names the others a domain rides, so `lib/offline/queue.ts` can derive its
   // domain-grain rows from here instead of restating them.
@@ -326,6 +344,7 @@ export interface LogDomainManifest {
 
 export const LOG_MANIFEST = {
   food: {
+    noun: "food",
     offline: { kind: "covered", flow: "food" },
     surfaces: {
       sheet: { kind: "covered", via: "log-food" },
@@ -370,6 +389,7 @@ export const LOG_MANIFEST = {
   },
 
   dose: {
+    noun: "dose",
     offline: { kind: "covered", flow: "dose", alsoFlows: ["skip-dose"] },
     surfaces: {
       sheet: { kind: "covered", via: "log-dose" },
@@ -443,6 +463,7 @@ export const LOG_MANIFEST = {
   },
 
   practice: {
+    noun: "practice",
     offline: { kind: "covered", flow: "practice" },
     surfaces: {
       sheet: { kind: "covered", via: "log-practice" },
@@ -496,6 +517,7 @@ export const LOG_MANIFEST = {
   },
 
   mood: {
+    noun: "mood",
     offline: { kind: "covered", flow: "mood" },
     surfaces: {
       sheet: { kind: "covered", via: "log-mood" },
@@ -523,6 +545,7 @@ export const LOG_MANIFEST = {
   },
 
   symptom: {
+    noun: "symptom",
     // THE FIRST TENANT (#4425). Until this entry symptoms had no date bound at all:
     // `parseDate` in app/(app)/symptom-actions.ts regex-matched `\d{4}-\d{2}-\d{2}`
     // without `isRealIsoDate` — so `2026-13-45` reached the core as a literal string
@@ -572,6 +595,28 @@ export const LOG_MANIFEST = {
   },
 
   stool: {
+    // ── THE ONE EXCEPTION TO RULE 6'S BARE NOUN (PM ruling, 2026-09-10, on #5617) ──
+    //
+    // "stool form" IS THE NOUN. It is not a house phrase with a spare word in it: the
+    // Bristol Stool Form Scale is the published instrument this domain records against
+    // — seven types, each with its own description, and the picker's buttons ARE that
+    // scale. "Form" is the instrument's own word for what a type IS, so dropping it
+    // does not shorten a phrase, it stops naming the measure.
+    //
+    // SO DO NOT "FIX" THIS ENTRY. Rule 6 strips ARTICLES ("a practice") and HOUSE
+    // RENAMINGS ("a movement", "a check-in", "a use", "a reading") — words the app
+    // invented for a domain that already had a name. It does not reach a name the app
+    // did not choose. A reader applying the rule mechanically down this column will
+    // read "Log stool form" as one of the phrases it retires; it is the opposite, and
+    // this entry is where that stops.
+    //
+    // #5617 step 2 enumerates `Log stool` among the eight phrases and this shipped as
+    // `stool` for one commit on that reading. The ruling reverses it: the enumeration
+    // was applying a rule about the app's own vocabulary to a word that is not in it.
+    // The record door's "Log a movement" still retires — "movement" is exactly the
+    // euphemism the rule is about — it retires TO the instrument's name rather than to
+    // a bare noun, and every surface reads the same phrase because they all read here.
+    noun: "stool form",
     // THE SECOND TENANT (#4425). Until that entry `logBristolStool` ran only
     // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
     // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
@@ -597,7 +642,7 @@ export const LOG_MANIFEST = {
     },
     pieces: {
       // #4424's stool leg. `StoolForm` is add AND full-statement edit — the record's
-      // "Log a movement" door, on any day it is standing on, and that row's correction.
+      // "Log stool form" door, on any day it is standing on, and that row's correction.
       //
       // A CORRECTION MOVES THE TYPE AND NOTHING ELSE, which is the store's shape rather
       // than a missing field: a Bristol reading's natural key IS its instant, so
@@ -623,6 +668,7 @@ export const LOG_MANIFEST = {
   },
 
   substance: {
+    noun: "substance",
     offline: {
       kind: "excluded",
       reason:
@@ -656,6 +702,10 @@ export const LOG_MANIFEST = {
   },
 
   body: {
+    // `measurements`, not `reading`: the domain's one form is `MeasurementsQuickAdd`
+    // and it states a whole sitting, so the noun names what a person fills in rather
+    // than one row of it.
+    noun: "measurements",
     offline: {
       kind: "covered",
       flow: "body-metric",
@@ -729,6 +779,26 @@ export const LOG_MANIFEST = {
     writeConventions: { kind: "convention" },
   },
 } as const satisfies Record<LogDomain, LogDomainManifest>;
+
+// ── THE HEADINGS, BUILT FROM THE ONE NOUN (#5617 step 2) ─────────────────────
+//
+// ONE VERB over one column, so a domain is named once and read everywhere. It does
+// not take a string: the argument is a `LogDomain`, so a caller cannot pass a phrase
+// it invented, and a new domain gets its heading from the same `tsc` error that makes
+// it answer every other column.
+//
+// THERE IS NO `editHeading`, and that is a finding rather than an omission. #5617
+// step 2 asks for `Edit <noun>` in edit mode, but every mount of these eight forms
+// that CORRECTS is opened from a record row — the record's ⋯, the nutrition day
+// ledger's serving row, the dose history panel's amend — and the issue's own recorded
+// decision titles a sheet over a record row by the ROW's name ("Refined grains ·
+// Evening"), which is what those hosts do. `Edit <noun>` has no host to sit over
+// until one of these forms is corrected from somewhere that is not a row.
+
+/** The heading over this domain's form when it is ADDING a row. */
+export function logHeading(domain: LogDomain): string {
+  return `Log ${LOG_MANIFEST[domain].noun}`;
+}
 
 // ── THE DERIVED CORES COLUMN (#4614) ─────────────────────────────────────────
 //

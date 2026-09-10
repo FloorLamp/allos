@@ -83,9 +83,9 @@ test("a dialog's declared size decides how wide it renders", async ({
   await page.goto("/wellness");
   await hydratedClick(page, page.getByTestId("practice-create-trigger"));
   await expect(
-    page.getByRole("dialog", { name: "Add a practice" })
+    page.getByRole("dialog", { name: "Add practice" })
   ).toBeVisible();
-  const small = await panelWidth(page, "Add a practice");
+  const small = await panelWidth(page, "Add practice");
 
   await page.goto("/longevity#protocols");
   await hydratedClick(

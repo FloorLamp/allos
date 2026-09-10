@@ -111,7 +111,7 @@ describe("grouping a high-frequency day", () => {
     expect(day.skipped).toBe(6);
     expect(syncDayAttention(day)).toEqual({
       label: "6 skipped",
-      tone: "caution",
+      tone: "warn",
     });
   });
 
@@ -184,7 +184,7 @@ describe("failures inside a day", () => {
     });
     expect(syncDayAttention({ failed: 0, partial: 1, skipped: 5 })).toEqual({
       label: "partial",
-      tone: "caution",
+      tone: "warn",
     });
     expect(syncDayAttention({ failed: 0, partial: 0, skipped: 0 })).toBeNull();
   });
@@ -226,7 +226,7 @@ describe("repeated identical partials inside a day", () => {
     expect(day.partial).toBe(4);
     expect(syncDayAttention(day)).toEqual({
       label: "partial",
-      tone: "caution",
+      tone: "warn",
     });
   });
 

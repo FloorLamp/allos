@@ -16,7 +16,8 @@ import type {
   SyncDayView,
   SyncRunView,
 } from "@/lib/integrations/sync-history-view";
-import StatusBadge, { STATUS_TEXT_TONE, STATUS_TONE } from "./StatusBadge";
+import StatusBadge from "./StatusBadge";
+import { verdictBadge, verdictText } from "@/lib/chart-colors";
 import SyncTimestamp from "./SyncTimestamp";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 import RawPayloadDialog from "@/components/RawPayloadDialog";
@@ -104,7 +105,7 @@ function RunLine({
           {run.isLatest && <LatestBadge />}
         </div>
         <span
-          className={`text-sm font-medium ${STATUS_TEXT_TONE[run.verdict.tone]}`}
+          className={`text-sm font-medium ${verdictText[run.verdict.tone].class}`}
         >
           {run.verdict.label}
         </span>
@@ -124,7 +125,7 @@ function RunLine({
           )}
           {run.skipped > 0 && (
             <span
-              className={`badge ${STATUS_TONE.caution}`}
+              className={`badge ${verdictBadge.warn.class}`}
               data-testid={`sync-skipped-${run.id}`}
             >
               {run.skipped} skipped
@@ -251,7 +252,7 @@ function RangeLine({
 const REPEAT_RUN_STYLE = {
   "failure-run": {
     verdict: "Failed",
-    tone: STATUS_TEXT_TONE.bad,
+    tone: verdictText.bad.class,
     reasonClass: "text-rose-700 dark:text-rose-300",
     fallback: "No error detail was recorded.",
     testId: "sync-history-failure-run",
@@ -259,7 +260,7 @@ const REPEAT_RUN_STYLE = {
   },
   "partial-run": {
     verdict: "Partial",
-    tone: STATUS_TEXT_TONE.caution,
+    tone: verdictText.warn.class,
     reasonClass: "text-amber-700 dark:text-amber-300",
     fallback: "No detail was recorded.",
     testId: "sync-history-partial-run",

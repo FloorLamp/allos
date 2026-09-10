@@ -16,6 +16,7 @@
 // here, where all three change together.
 
 import type { IntegrationKind } from "@/lib/types/integrations";
+import type { VerdictTone } from "@/lib/chart-colors";
 import { formatSplitLabel, formatWindow } from "./sync-log";
 import { isTruncatedSyncEvent, metricLabel } from "./sync-details";
 import { formatTolerance, isSyncStale } from "./staleness";
@@ -106,9 +107,10 @@ export function syncRunNounForKind(kind: IntegrationKind): SyncRunNoun | null {
   }
 }
 
-// The semantic tone of a status/outcome, resolved to classes in exactly one place
-// (components/integrations/StatusBadge.tsx). Surfaces never pick colors themselves.
-export type StatusTone = "good" | "caution" | "bad" | "neutral";
+// The semantic tone of a status/outcome is the app's shared VerdictTone (#5187):
+// this module's own vocabulary was those four words with `caution` for `warn`.
+// Resolved to classes in exactly one place — the shared palette in
+// lib/chart-colors.ts. Surfaces never pick colors themselves.
 
 // ---- Standing --------------------------------------------------------------
 
@@ -335,7 +337,7 @@ function scheduledStanding(s: SourceStandingFacts): ScheduledStanding {
 
 export interface SourceBadge {
   label: string;
-  tone: StatusTone;
+  tone: VerdictTone;
 }
 
 // The attended family's word for one run — "import" for an `archive`, "upload" for an
@@ -372,9 +374,9 @@ export function standingBadge(
     case "healthy":
       return { label: "Connected", tone: "good" };
     case "partial":
-      return { label: "Partial sync", tone: "caution" };
+      return { label: "Partial sync", tone: "warn" };
     case "intermittent":
-      return { label: "Intermittent", tone: "caution" };
+      return { label: "Intermittent", tone: "warn" };
     case "failing":
       return { label: "Sync failing", tone: "bad" };
     // `bad`, not `caution`: the grid's StatusCard paints its rose border off
@@ -385,14 +387,14 @@ export function standingBadge(
     case "needs-reauth":
       return { label: "Needs reconnect", tone: "bad" };
     case "not-connected":
-      return { label: "Not connected", tone: "caution" };
+      return { label: "Not connected", tone: "warn" };
     case "never-synced":
       return { label: "Connected", tone: "good" };
     // ── attended: never green, because nothing here is a connection ──
     case "imported":
       return { label: `Last ${word.run}`, tone: "neutral" };
     case "attempt-failed":
-      return { label: `Last ${word.run} failed`, tone: "caution" };
+      return { label: `Last ${word.run} failed`, tone: "warn" };
     case "never-imported":
       return {
         label: `Nothing ${word.past.toLowerCase()} yet`,
@@ -707,9 +709,9 @@ export function formatSyncOutcome(
 export function eventVerdict(
   ev: SyncEventFacts,
   vocabulary: SyncVocabulary = "records"
-): { label: string; tone: StatusTone } {
+): { label: string; tone: VerdictTone } {
   if (!ev.ok) return { label: "Failed", tone: "bad" };
-  if (isTruncatedSyncEvent(ev)) return { label: "Partial", tone: "caution" };
+  if (isTruncatedSyncEvent(ev)) return { label: "Partial", tone: "warn" };
   return {
     label: vocabulary === "forecast" ? "Refreshed" : "Synced",
     tone: "good",
@@ -717,7 +719,7 @@ export function eventVerdict(
 }
 
 // The tone of an event's outcome line — green success, amber partial, red failure.
-export function outcomeTone(ev: SyncEventFacts): StatusTone {
+export function outcomeTone(ev: SyncEventFacts): VerdictTone {
   return eventVerdict(ev).tone;
 }
 

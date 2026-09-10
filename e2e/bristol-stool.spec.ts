@@ -486,7 +486,20 @@ test.describe("the record's stool rows (#4433)", () => {
   }) => {
     test.slow();
     const day = localDay(-2);
-    await page.goto(`/history?kind=stool&day=${day}`);
+    // A CHIP IS EARNED BY THE PROFILE'S OWN KINDS (#4851's presence gate), and since
+    // #5618 ruling 1 the chip IS the door — so the record offers to add a movement
+    // because this profile records movements. Seeded a day EARLIER than the one under
+    // test, so the assertion below still names which day the door wrote on.
+    const earlier = localDay(-3);
+    seedBristol(earlier, "09:00:00", 3);
+    // Read back what the seed stored rather than restating its shape: the comparison
+    // below is still over the WHOLE set, and this file's one interpolated wall clock
+    // stays the one the door itself is being asked to write.
+    const seeded = bristolRows();
+    // AND NO `?kind=`: the reader is on the day, not filtered to a kind. That is the
+    // whole of ruling 1 — the chip opens the form without narrowing the record — and
+    // this test used to have to type the filter into the URL to reach a door at all.
+    await page.goto(`/history?day=${day}`);
 
     await hydratedClick(page, page.getByTestId("history-add-open-stool"));
     const panel = page.getByTestId("history-add-panel-stool");
@@ -504,8 +517,10 @@ test.describe("the record's stool rows (#4433)", () => {
       page.getByTestId("history-row").filter({ hasText: "Type 5" })
     ).toHaveCount(1);
     // Filed on the day it names, at the minute it states — not on today, which is
-    // what `logStoolForm` re-derived before this leg.
+    // what `logStoolForm` re-derived before this leg. The whole set is compared, so a
+    // door that wrote onto the seeded day instead would fail by naming it.
     expect(bristolRows()).toEqual([
+      ...seeded,
       { date: day, started_at: `${day}T07:05:00`, value: 5 },
     ]);
   });

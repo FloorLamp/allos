@@ -14,8 +14,8 @@
 // So the regression was never "the fix stopped holding". A PER-SITE fix cannot
 // cover sites that do not exist yet, and this tree grew twenty more of them. The
 // only fix that cannot regress the same way is one that (a) every site shares and
-// (b) a guard REQUIRES every site to use — `./tmp-dir-census.test.ts` fails the
-// build on a raw `mkdtempSync` under a test directory.
+// (b) a guard REQUIRES every site to use — ESLint (eslint.config.mjs, #3248) refuses
+// a raw `mkdtemp` under a test directory.
 //
 // ONE DEFENCE, DELIBERATELY: A SWEEP AT CREATION TIME. Before making a directory
 // we unlink the `/tmp/allos-*` entries that are older than any live run could be.
@@ -72,8 +72,8 @@ export const TMP_PREFIX = "allos-";
 // keeps state in `/tmp`. So the widening is exactly seven strings, each matched
 // WHOLE-PREFIX with its trailing dash, and each with a call site behind it:
 // `fact-census-` must never reach `artifact-census-`, `nul-census-` must never
-// reach `annul-census-`. `./tmp-dir-census.test.ts` plants that near-miss pair
-// for every entry, and ablating the match to `includes` reds them.
+// reach `annul-census-`. `./tmp-dir.test.ts` plants that near-miss pair for
+// every entry, and ablating the match to `includes` reds them.
 //
 // THE BAR FOR ADDING ONE: name the call site that used to write it and the change
 // that converted it, in a sentence, here. A prefix nobody can trace is not known
@@ -110,9 +110,9 @@ export const RETIRED_TMP_PREFIXES = [
  * WHOLE-PREFIX ONLY, in both halves. `startsWith` is what keeps
  * `sibling.allos-scratch` and `artifact-census-*` alive; `includes` — or a
  * dash-less entry — would put every neighbour that merely mentions one of these
- * words in scope. Exported so the census can drive the predicate directly.
+ * words in scope.
  */
-export function isSweepableTmpName(name: string): boolean {
+function isSweepableTmpName(name: string): boolean {
   if (name.startsWith(TMP_PREFIX)) return true;
   return RETIRED_TMP_PREFIXES.some((prefix) => name.startsWith(prefix));
 }
@@ -158,8 +158,8 @@ let swept = false;
  * plus `RETIRED_TMP_PREFIXES` — whose mtime is older than `STALE_AFTER_MS`.
  * Returns how many entries it removed.
  *
- * Exported so the census test can drive it against a corpus rather than against
- * the real `/tmp`, and so a human can call it deliberately.
+ * Exported so `./tmp-dir.test.ts` can drive it against a corpus rather than
+ * against the real `/tmp`, and so a human can call it deliberately.
  */
 export function sweepStaleTmpEntries(
   root: string = os.tmpdir(),
@@ -230,59 +230,4 @@ export function makeTmpDir(label: string): string {
   }
   sweepOnce();
   return fs.mkdtempSync(path.join(os.tmpdir(), `${TMP_PREFIX}${label}-`));
-}
-
-// ---------------------------------------------------------------------------
-// The guard's scanner (driven by ./tmp-dir-census.test.ts).
-//
-// Kept beside the helper rather than inside the test file so the rule and the
-// thing that enforces it live together, and so the census can run the scanner
-// over a corpus authored to BREAK it.
-
-/** One test-tree source that makes a temp directory without going through here. */
-export interface RawTmpCallSite {
-  file: string;
-  line: number;
-  text: string;
-}
-
-// The construct as this repo actually spells it, in every variant present when
-// the census was written:
-//   fs.mkdtempSync(path.join(os.tmpdir(), "allos-jsonl-"))
-//   mkdtempSync(path.join(os.tmpdir(), "nul-census-"))       // named import
-//   fsMod.mkdtempSync(...)                                    // aliased namespace
-//   fs.mkdtemp(...)  /  fs.promises.mkdtemp(...)              // async, none today
-// So: match the METHOD NAME, with or without a receiver, rather than any
-// particular import spelling — a census keyed to one import style is blind to the
-// other two, which are both in the tree.
-const RAW_MKDTEMP = /(?:^|[^\w.])(?:[\w$]+\.)*mkdtemp(?:Sync)?\s*\(/;
-
-/**
- * Find every raw `mkdtemp` call in the given sources. Pure over (path, source)
- * pairs so the census can feed it a synthetic corpus.
- *
- * `allowed` is the small set of paths that may name the construct: this module,
- * which is the one place that calls it, and the census, which must QUOTE it in a
- * corpus authored to break the guard. Anything else is a leak waiting to happen.
- */
-export function findRawTmpCallSites(
-  sources: ReadonlyArray<{ file: string; source: string }>,
-  allowed: readonly string[]
-): RawTmpCallSite[] {
-  const out: RawTmpCallSite[] = [];
-  for (const { file, source } of sources) {
-    if (allowed.includes(file)) continue;
-    const lines = source.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const text = lines[i] ?? "";
-      // A comment or a doc line that NAMES the construct in order to argue about
-      // it is not a call site. Several already exist (this file has four), and a
-      // guard that cried wolf on them would be deleted within a week — taking the
-      // real guard with it.
-      const code = text.replace(/^\s*(\/\/|\*|\/\*).*$/, "");
-      if (!RAW_MKDTEMP.test(code)) continue;
-      out.push({ file, line: i + 1, text: text.trim() });
-    }
-  }
-  return out;
 }

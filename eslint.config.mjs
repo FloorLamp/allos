@@ -572,6 +572,75 @@ const IMPORT_PATTERNS_SHIPPED = [
 const IMPORT_PATTERNS_LIB_APP = [...IMPORT_PATTERNS_SHIPPED, STREAK_MODULE_BAN];
 const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
 
+// ── The test-tree scanners (#5350 siblings) ──────────────────────────────────
+//
+// Two more Vitest walkers, over the test tiers rather than the product trees, each
+// with a shipped defect behind the shape it bans. The blocks at the end of the config
+// re-state the level their files sit on (the mechanic above); the two owners keep
+// every other ban of that level through a converse block.
+
+// #3248 — a raw mkdtemp in a test file has no teardown a killed run can honour, and a
+// prefix of its own is invisible to the stale-entry sweep: 19,221 stranded directories
+// (24 GB) through twenty call sites written after #2529 fixed the first one. Every
+// test temp directory comes from makeTmpDir, which sweeps by construction. Both
+// spellings the tree used are matched: the property (`fs.mkdtempSync`,
+// `fsMod.mkdtempSync`, `fs.promises.mkdtemp`) and the named import. scripts/ stays
+// out, as it was under the scan: those run by hand, once, and clean up after
+// themselves. (was lib/__tests__/tmp-dir-census.test.ts)
+const RAW_MKDTEMP_MESSAGE =
+  'Use makeTmpDir("<label>") from lib/__tests__/tmp-dir.ts — a raw mkdtemp is invisible to the stale-entry sweep, so an interrupted run strands the directory forever (#3248).';
+const RAW_MKDTEMP_PROPERTY_BANS = ["mkdtempSync", "mkdtemp"].map(
+  (property) => ({ property, message: RAW_MKDTEMP_MESSAGE })
+);
+const RAW_MKDTEMP_IMPORT_BAN = {
+  group: ["fs", "node:fs", "fs/promises", "node:fs/promises"],
+  importNames: ["mkdtempSync", "mkdtemp"],
+  message: RAW_MKDTEMP_MESSAGE,
+};
+const IMPORT_PATTERNS_TEST_TREES = [
+  ...IMPORT_PATTERNS_PRODUCTION,
+  RAW_MKDTEMP_IMPORT_BAN,
+];
+const TMP_DIR_MAKER = "lib/__tests__/tmp-dir.ts";
+
+// #3565 — a historical-shape fixture names the migration it stops before. Slicing the
+// registry by POSITION (`MIGRATIONS.slice(0, -1)`, "every migration but the newest")
+// is right on exactly the day X is newest; the next migration to land pushes X into
+// the prefix and the "before" database silently receives the future while the test
+// stays green — one fixture measured somebody else's migration for weeks that way.
+// `migrationsBefore(name)` (lib/migrations/versions/index.ts) throws on an unknown
+// name instead. `NUMBERED_MIGRATIONS.slice` is the closed numbered era's own remedy
+// and `MIGRATIONS[0]` / `.find((m) => m.id === 41)` are identity, so only the two
+// positional calls on the bare registry are matched. Two owners: the runner test,
+// whose subject IS the registry's positional invariants, and the replay census, which
+// visits every prefix in turn (#3590).
+// (was lib/__tests__/migration-historical-fixture-scan.test.ts)
+const MIGRATION_POSITIONAL_BAN = {
+  selector:
+    "CallExpression > MemberExpression.callee[object.name='MIGRATIONS'][property.name=/^(?:slice|findIndex)$/]",
+  message:
+    'Position is not identity: MIGRATIONS.slice / .findIndex means "before X" on exactly one day, then silently rebuilds the future into the "before" database and keeps passing (#3565) — use migrationsBefore("<migration name>") from @/lib/migrations/versions.',
+};
+const MIGRATION_RUNNER_TEST = "lib/__db_tests__/runner.test.ts";
+const MIGRATION_REPLAY_CENSUS = "scripts/migration-replay-census.ts";
+
+// The unit tiers and the blessed e2e interaction module sit on the app-surface level
+// (the revalidate block); the action tier sits on SYNTAX_ALL alone; a JavaScript
+// source under any of these roots sits on no syntax level at all.
+const UNIT_TEST_TREES = [
+  "lib/__tests__/**/*.{ts,tsx}",
+  "lib/__db_tests__/**/*.{ts,tsx}",
+  "components/__tests__/**/*.{ts,tsx}",
+];
+const ACTION_TEST_TREE = "lib/__action_tests__/**/*.{ts,tsx}";
+const TEST_TREE_SCRIPTS = [
+  "lib/__tests__/**/*.{js,jsx,mjs,cjs}",
+  "lib/__db_tests__/**/*.{js,jsx,mjs,cjs}",
+  "lib/__action_tests__/**/*.{js,jsx,mjs,cjs}",
+  "components/__tests__/**/*.{js,jsx,mjs,cjs}",
+  "e2e/**/*.{js,jsx,mjs,cjs}",
+];
+
 // ── e2e/**: the hygiene scan's zero-allowlist bans (#5350) ───────────────────
 //
 // Each ban below was a per-file COUNT frozen at zero with an EMPTY allowlist in
@@ -649,6 +718,8 @@ const E2E_PROPERTY_BANS = [
     message: `.toPass( proves "passes within N attempts", not "works", and hides which step raced — await the actual signal, or carry a \`topass-ok: <why>\` disable line for a reviewed last resort; ${HYGIENE_DOC}`,
   },
   { object: "Date", property: "now", message: WALL_CLOCK_MESSAGE },
+  // #3248 — the temp-dir ban reaches e2e/** as it did under its scan.
+  ...RAW_MKDTEMP_PROPERTY_BANS,
 ];
 // The harness reads the wall clock ONCE, to derive the frozen now every spec then
 // asks for — so it is the one surface that drops `Date.now`, exactly as it drops the
@@ -836,7 +907,11 @@ const E2E_SHARED_ACTIVITY_DELETE = (() => {
 //
 // e2e/ already sits on APP_SURFACE_SYNTAX (the revalidate block lists it), so that
 // is what these build on rather than SYNTAX_ALL.
-const SYNTAX_E2E_BASE = [...SYNTAX_APP_SURFACE, ...E2E_SETTLE_BANS];
+const SYNTAX_E2E_BASE = [
+  ...SYNTAX_APP_SURFACE,
+  ...E2E_SETTLE_BANS,
+  MIGRATION_POSITIONAL_BAN,
+];
 const SYNTAX_E2E_ALL = [
   ...SYNTAX_E2E_BASE,
   ...E2E_FAMILY_BANS,
@@ -1354,15 +1429,15 @@ const config = [
   // post-workout-queue.ts reaches workout-presence.ts that way.
   // (was lib/__tests__/notification-import-cycles.test.ts)
   //
-  // ONE PRE-EXISTING CYCLE IS NAMED RATHER THAN HIDDEN. post-workout-marker.ts →
-  // ../settings → (export *) settings/notifications → queries/sleep →
-  // derived-situations → cycle-store → undo-delete-db → merge-activity →
-  // post-workout-marker.ts, closed by 141207621 (#2597); the scan only walked
-  // sibling edges and never saw it. Every other cycle touching this directory has a
-  // second member here that still reports it.
+  // The one cycle this block used to name rather than hide is GONE (#5719).
+  // post-workout-marker.ts → ../settings → (export *) settings/notifications →
+  // queries/sleep → derived-situations → cycle-store → undo-delete-db →
+  // merge-activity → post-workout-marker.ts, closed by 141207621 (#2597), was broken
+  // at its last hop: writeActivityFold now takes the announcement carry as a required
+  // parameter instead of importing it, so the write path holds no edge into
+  // lib/notifications and every file in this directory is covered with no exemption.
   {
     files: ["lib/notifications/**/*.{ts,tsx}"],
-    ignores: ["lib/notifications/post-workout-marker.ts"],
     rules: {
       "import/no-cycle": [
         "error",
@@ -1386,7 +1461,7 @@ const config = [
     rules: {
       "no-restricted-imports": restrictImports(
         [REVALIDATE_PATH_BAN, E2E_HARNESS_IMPORT_BAN],
-        IMPORT_PATTERNS_PRODUCTION
+        IMPORT_PATTERNS_TEST_TREES
       ),
       "no-restricted-syntax": ["error", ...SYNTAX_E2E_ALL],
       "no-restricted-properties": ["error", ...E2E_PROPERTY_BANS],
@@ -1414,7 +1489,7 @@ const config = [
     rules: {
       "no-restricted-imports": restrictImports(
         [REVALIDATE_PATH_BAN],
-        IMPORT_PATTERNS_PRODUCTION
+        IMPORT_PATTERNS_TEST_TREES
       ),
       "no-restricted-syntax": ["error", ...SYNTAX_E2E_WORKER_HARNESS],
       "no-restricted-properties": [
@@ -1431,6 +1506,87 @@ const config = [
     files: ["e2e/**/*.spec.ts"],
     rules: {
       "no-restricted-syntax": ["error", ...SYNTAX_E2E_SPEC],
+    },
+  },
+  // ── The test-tree scanners' rules (#5350 siblings) ──────────────────────────
+  // The unit tiers plus e2e/helpers.ts: the app-surface level with both bans. The
+  // temp-dir maker and the migration runner test each own one ban and keep the other
+  // through the two converse blocks after it.
+  {
+    files: [...UNIT_TEST_TREES, E2E_HELPERS],
+    ignores: [TMP_DIR_MAKER, MIGRATION_RUNNER_TEST],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN],
+        IMPORT_PATTERNS_TEST_TREES
+      ),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_APP_SURFACE,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  {
+    files: [TMP_DIR_MAKER],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_APP_SURFACE,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  {
+    files: [MIGRATION_RUNNER_TEST],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN],
+        IMPORT_PATTERNS_TEST_TREES
+      ),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+    },
+  },
+  // The action tier mocks next/cache and sits outside the revalidate block.
+  {
+    files: [ACTION_TEST_TREE],
+    rules: {
+      "no-restricted-imports": restrictImports([], IMPORT_PATTERNS_TEST_TREES),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_ALL,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  // scripts/ slices the registry only in the replay census; its temp directories
+  // were never the scan's business.
+  {
+    files: ["scripts/**/*.{ts,tsx}"],
+    ignores: [...TEST_TREES, MIGRATION_REPLAY_CENSUS],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_PRODUCTION_KEYED,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  {
+    files: ["scripts/**/*.{js,jsx,mjs,cjs}"],
+    rules: {
+      "no-restricted-syntax": ["error", MIGRATION_POSITIONAL_BAN],
+    },
+  },
+  // A JavaScript source under the test roots (the two e2e build helpers today).
+  {
+    files: TEST_TREE_SCRIPTS,
+    rules: {
+      "no-restricted-imports": restrictImports([], IMPORT_PATTERNS_TEST_TREES),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+      "no-restricted-syntax": ["error", MIGRATION_POSITIONAL_BAN],
     },
   },
 ];

@@ -5,6 +5,13 @@
 // its deadline. They share colors, not business semantics, so the palette lives
 // here instead of making cadence consumers import the outcome-goal module.
 
+import { verdictBadge, verdictFill } from "./chart-colors";
+
+// KEPT as its own vocabulary rather than aliased to VerdictTone (#5187): `met`
+// and `on-pace` are not the same verdict — one is done, one is on track — and
+// the surface paints them differently on purpose. So the type stays and the
+// THREE entries that are plain verdicts read the shared palette, while
+// `on-pace` keeps the brand accent green the #2719 review chose for it.
 export type ProgressPaceTone = "met" | "on-pace" | "behind" | "failed";
 
 export const PACE_FILL_CLASS: Record<ProgressPaceTone, string> = {
@@ -12,10 +19,12 @@ export const PACE_FILL_CLASS: Record<ProgressPaceTone, string> = {
   // squares are the same green as links and the active tab now, so a goals
   // page shows one accent green instead of stacking a brighter "data green"
   // on top of it.
-  met: "bg-emerald-600",
+  met: verdictFill.good.class,
   "on-pace": "bg-brand-600",
-  behind: "bg-amber-500",
-  failed: "bg-rose-500",
+  // `bg-amber-500` and `bg-rose-500` were 1.99:1 and 3.49:1 on the light
+  // surface; the palette's per-theme pair clears 3:1 on both.
+  behind: verdictFill.warn.class,
+  failed: verdictFill.bad.class,
 };
 
 export const PACE_BORDER_CLASS: Record<ProgressPaceTone, string> = {
@@ -26,9 +35,9 @@ export const PACE_BORDER_CLASS: Record<ProgressPaceTone, string> = {
 };
 
 export const PACE_BADGE_CLASS: Record<ProgressPaceTone, string> = {
-  met: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  met: verdictBadge.good.class,
   "on-pace":
     "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300",
-  behind: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  failed: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+  behind: verdictBadge.warn.class,
+  failed: verdictBadge.bad.class,
 };

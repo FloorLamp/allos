@@ -1,9 +1,9 @@
 "use client";
 /* eslint-disable no-restricted-properties -- USER-initiated repaint (#1878): follows the user's own submit in the record's Add door (#4045) — the door writes a row into the very feed they are reading, and without the repaint it closes over a record that still shows the gap they opened it to fill */
 
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import InlineError from "@/components/InlineError";
+import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { UsualRoutineOfferCard } from "@/components/dashboard/UsualRoutineControl";
@@ -25,6 +25,7 @@ import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
+import { logHeading, type LogDomain } from "@/lib/log-manifest";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
@@ -65,18 +66,14 @@ import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 // form instead, which carries the whole field set, the sitting's optional Time through
 // the shared `WhenControl`, and `addMeasurements` with its never-the-future day bound.
 
-const KIND_LABEL = {
-  food: "Log food",
-  dose: "Log past dose",
-  practice: "Log a practice",
-  mood: "Log a check-in",
-  substance: "Log a use",
-  body: "Log a reading",
-  symptom: "Log a symptom",
-  stool: "Log a movement",
-} as const;
-
-export type HistoryAddKind = keyof typeof KIND_LABEL;
+// THE DOOR NO LONGER NAMES ITS OWN KINDS (#5300 rule 6, #5617 step 2). It carried a
+// second vocabulary for the eight domains the quick sheet had already named — four
+// RENAMINGS ("Log a check-in" for mood, "Log a use" for substance, "Log a reading"
+// for body, "Log a movement" for stool) and three articles ("Log a practice", "Log a
+// symptom", "Log past dose") — so one domain answered to two phrases depending on
+// which surface a person opened it from. The noun is declared once on the domain's
+// manifest entry and every heading is built from it.
+export type HistoryAddKind = LogDomain;
 
 /** The per-kind vocabulary the server reads once for the page. */
 export interface HistoryAddVocabulary {
@@ -119,7 +116,7 @@ export interface HistoryAddVocabulary {
 // The composed one-tap is an OFFER over foods and stacks (#4477's vocabulary) and never
 // a food: the tap writes servings AND doses. Under `Log food` the label under-named it,
 // and a reader reconstructing a day met the bundle behind the food door and the per-dose
-// backfill behind `Log a dose`. So the add door LEADS with the day's standing offers, in
+// backfill behind `Log dose`. So the add door LEADS with the day's standing offers, in
 // the same accent offer chip the quick-log sheet's food overlay leads with, and the door
 // row keeps its per-kind grammar beneath.
 //
@@ -171,6 +168,10 @@ export function HistoryUsualOffers({
 
 export default function HistoryAddDoor({
   kind,
+  label,
+  open,
+  onOpen,
+  onClose,
   date,
   maxDate,
   vocabulary,
@@ -178,15 +179,30 @@ export default function HistoryAddDoor({
   defaultPractice = null,
 }: {
   kind: HistoryAddKind;
+  /**
+   * WHAT THE CHIP READS (#5618 ruling 1). The trigger is the record's own kind chip
+   * now, so it carries the chip row's short plural word ("Substances") rather than a
+   * second phrase of the door's own. The HEADING over the form is still the manifest's
+   * `Log <noun>` (below) — one vocabulary names the domain, one names the filter, and
+   * neither is invented here.
+   */
+  label: string;
+  /**
+   * Whether this kind's form is the one showing. THE ROW OWNS IT, not the door: a
+   * record has one add layer and one form open in it, and a door that kept its own
+   * closed state was the thing nothing could open (#5618, the owner's report).
+   */
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
   /** The day the reader is looking at, or today. */
   date: string;
   maxDate: string;
   vocabulary: HistoryAddVocabulary;
   /**
-   * The window the day chart was showing when a kind chip was tapped (#4950), as
-   * `HH:MM` clocks on `date`. It arrives from the URL rather than from the chart, so
-   * this door needs no client state of its own and the window survives a reload of the
-   * link with the form open.
+   * The window the day chart is showing (#4950), as `HH:MM` clocks on `date`. It comes
+   * from the add row, which reads the chart's own live view — a chip no longer
+   * navigates, so there is no URL round trip left to mint it (#5618 ruling 1).
    *
    * Every form treats it as a DEFAULT a person can change, never as a write: a stated
    * window is a stated time, not a claim about what happened.
@@ -194,9 +210,10 @@ export default function HistoryAddDoor({
   window?: { from: string; to?: string } | null;
   /**
    * The practice this profile usually does at the window's moment (#4950 item 4),
-   * decided server-side from its own weekly rhythm and always one of `practices`. A
-   * prefill a tap confirms, never a claim about what happened — and null whenever the
-   * rhythm is unknown, which leaves the picker exactly as it is without a window.
+   * decided by the add row from the rhythms the server read, and always one of
+   * `practices`. A prefill a tap confirms, never a claim about what happened — and
+   * null whenever the rhythm is unknown, which leaves the picker as it is without a
+   * window.
    */
   defaultPractice?: string | null;
 }) {
@@ -213,18 +230,12 @@ export default function HistoryAddDoor({
     window == null
       ? null
       : (statedInstantOnDate(date, window.from, tz)?.toISOString() ?? null);
-  const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (kind === "dose" && vocabulary.doseItems.length === 0) return null;
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
   if (kind === "substance" && vocabulary.substances.length === 0) return null;
   if (kind === "symptom" && vocabulary.symptoms.length === 0) return null;
 
-  function close(): void {
-    setOpen(false);
-    setError(null);
-  }
   function form(): ReactNode {
     switch (kind) {
       case "food":
@@ -242,10 +253,10 @@ export default function HistoryAddDoor({
             testId="history-add-food"
             onSaved={() => {
               toast("Added to the record.");
-              close();
+              onClose();
               router.refresh();
             }}
-            onCancel={close}
+            onCancel={onClose}
           />
         );
       case "dose":
@@ -269,7 +280,7 @@ export default function HistoryAddDoor({
             defaultTime={window?.from ?? vocabulary.doseDefaultTime}
             repeatAfterAdd
             onSaved={() => router.refresh()}
-            onDone={close}
+            onDone={onClose}
           />
         );
       case "practice":
@@ -289,10 +300,10 @@ export default function HistoryAddDoor({
             defaultEndTime={window?.to ?? null}
             defaultPractice={defaultPractice}
             onSaved={() => {
-              close();
+              onClose();
               router.refresh();
             }}
-            onCancel={close}
+            onCancel={onClose}
           />
         );
       case "substance":
@@ -309,10 +320,10 @@ export default function HistoryAddDoor({
             maxDate={maxDate}
             defaultStatedAt={windowStatedAt}
             onSaved={() => {
-              close();
+              onClose();
               router.refresh();
             }}
-            onCancel={close}
+            onCancel={onClose}
           />
         );
       case "mood":
@@ -327,7 +338,7 @@ export default function HistoryAddDoor({
             dateReach="dated"
             repeatAfterSave
             onSaved={() => router.refresh()}
-            onCancel={close}
+            onCancel={onClose}
           />
         );
       case "symptom":
@@ -345,10 +356,10 @@ export default function HistoryAddDoor({
             symptoms={vocabulary.symptoms}
             date={date}
             onSaved={() => {
-              close();
+              onClose();
               router.refresh();
             }}
-            onCancel={close}
+            onCancel={onClose}
           />
         );
       case "stool":
@@ -363,10 +374,10 @@ export default function HistoryAddDoor({
             maxDate={maxDate}
             defaultStatedAt={windowStatedAt}
             onSaved={() => {
-              close();
+              onClose();
               router.refresh();
             }}
-            onCancel={close}
+            onCancel={onClose}
           />
         );
       case "body":
@@ -378,7 +389,7 @@ export default function HistoryAddDoor({
         // the #4211 requirement absorbed into #4424: the form resets its own fields and
         // keeps its date, so five readings backfilled onto one past day are five quick
         // saves rather than five re-openings. `router.refresh()` is what puts each of
-        // them into the record the reader is standing in; `close()` is deliberately NOT
+        // them into the record the reader is standing in; `onClose()` is deliberately NOT
         // called, and the form's own toast is the confirmation.
         return (
           <MeasurementsQuickAdd
@@ -405,18 +416,57 @@ export default function HistoryAddDoor({
         type="button"
         className="btn-ghost btn-sm shrink-0"
         aria-expanded={open}
+        aria-haspopup="dialog"
         data-testid={`history-add-open-${kind}`}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => (open ? onClose() : onOpen())}
       >
-        {KIND_LABEL[kind]}
+        {label}
       </button>
       {open ? (
-        <div className="mt-2" data-testid={`history-add-panel-${kind}`}>
-          {form()}
-          <InlineError data-testid={`history-add-error-${kind}`}>
-            {error}
-          </InlineError>
-        </div>
+        // ONE HOST (#5300 rule 5, adopted by #5617 step 1). This was an inline panel
+        // under the button — `<div className="mt-2">` holding the domain's form — so
+        // the same eight forms had three hosts between them: this panel, the record
+        // row's in-row editor, and the converged sheet/dialog the quick logger and
+        // the nutrition day correction already used. A sheet below `md` and a centred
+        // card above is what every other transactional capture in the app opens as,
+        // and it is what the owner ruled the record's forms open in ("we do the
+        // sheet").
+        //
+        // WHAT THE MOVE BUYS beyond uniformity: the form no longer competes with the
+        // record it is writing into for the reader's screen — the add layer sits
+        // under a day chart and above the rows, so an opened panel pushed the rows it
+        // was about off the fold. It gains the host's body-scroll lock, its
+        // dirty-discard guard on a flick or a scrim tap, and its focus trap; none of
+        // those were reachable from an inline div.
+        //
+        // THE TRIGGER KEEPS ITS IDENTITY (#3911) and its `aria-expanded`: the control
+        // still says what it is FOR rather than turning into Cancel, and dismissal
+        // still belongs to the surface it opened. `aria-haspopup` is what changed —
+        // the content it discloses is a dialog now, and a reader is owed that.
+        //
+        // AND THE TRIGGER IS THE KIND CHIP ITSELF (#5618 ruling 1). It was a second
+        // control below a chip that had already navigated: "I click Substances — every
+        // row on the left gets filtered away. Then I still have to click Log a use, a
+        // button that doesn't have an expanded state." One chip, one tap, the rows
+        // stay, and the expanded state the reader was owed is the chip's.
+        //
+        // THE SIZE MIRRORS THE QUICK SHEET'S (#4977 item 1): the measurements grid is
+        // a multi-column tool and declares `lg` there, every other body a column of
+        // rows at `sm`. It is stated here rather than read from the manifest because
+        // the size vocabulary is `components/overlay`'s and `lib/log-manifest.ts` is
+        // dependency-free by contract — see #5617 for the unification that would
+        // need.
+        <ModalShell
+          title={logHeading(kind)}
+          onClose={onClose}
+          size={kind === "body" ? "lg" : "sm"}
+          testId={`history-add-sheet-${kind}`}
+        >
+          {/* THE PANEL MARKER STAYS ON THE FORM'S OWN WRAPPER, not on the host: it is
+              what every spec on this door identifies the form by, and the host's
+              chrome is the host's to assert. */}
+          <div data-testid={`history-add-panel-${kind}`}>{form()}</div>
+        </ModalShell>
       ) : null}
     </>
   );

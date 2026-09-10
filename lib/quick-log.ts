@@ -39,6 +39,7 @@ import {
   parseTab,
   retiredFitnessTabTarget,
 } from "./trends-tabs";
+import { logHeading } from "./log-manifest";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
 // registry stays pure/serializable, like PALETTE_ACTIONS).
@@ -195,7 +196,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-food",
-    label: "Log food",
+    label: logHeading("food"),
     hint: "Today's servings by food group",
     icon: "salad",
     // The SAME FoodLogBar the Nutrition → Food tab renders, mounted in the
@@ -204,7 +205,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-dose",
-    label: "Log dose",
+    label: logHeading("dose"),
     hint: "Confirm a scheduled or as-needed dose",
     icon: "pill",
     // Today's due doses with the existing confirm control (markDoseTaken, whose
@@ -214,7 +215,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-measurements",
-    label: "Log measurements",
+    label: logHeading("body"),
     hint: "Weight, blood pressure, oxygen, sleep",
     icon: "scale",
     // ONE row, not two (issue #1506). The sheet used to carry "Log weight" and
@@ -227,7 +228,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-practice",
-    label: "Log practice",
+    label: logHeading("practice"),
     hint: "Sauna, meditation, or another tracked practice",
     icon: "sparkles",
     // One-tap practice logging, which the Telegram bot has had since #1259 while the web
@@ -238,7 +239,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-mood",
-    label: "Log mood",
+    label: logHeading("mood"),
     hint: "How are you — today or an earlier day",
     icon: "mood",
     // #2130: mood and symptom were the two remaining daily-loop one-tap logs —
@@ -252,7 +253,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-symptom",
-    label: "Log symptom",
+    label: logHeading("symptom"),
     hint: "How you feel today, illness or not",
     icon: "heartbeat",
     // #4064, and the overturn of this domain's argued exclusion (see the census at the
@@ -291,7 +292,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-stool",
-    label: "Log stool form",
+    label: logHeading("stool"),
     hint: "Bristol type 1-7, one tap",
     icon: "toilet",
     // Bristol stool form (#2785). The overlay mounts a seven-button picker over the
@@ -303,7 +304,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
   },
   {
     id: "log-substance",
-    label: "Log substance",
+    label: logHeading("substance"),
     hint: "A use of something you track",
     icon: "flask",
     // #3327, and the overturn of this domain's argued exclusion (see the census at

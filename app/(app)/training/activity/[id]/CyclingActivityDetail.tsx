@@ -1,5 +1,6 @@
 // Cycling's declared extras on the canonical activity detail page.
 import Link from "next/link";
+import { verdictText } from "@/lib/chart-colors";
 import { notFound } from "next/navigation";
 import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
@@ -81,11 +82,7 @@ function RideSummaryComparisonDelta({
     metric.median,
     distanceUnit
   );
-  const tone = {
-    neutral: "text-slate-600 dark:text-slate-300",
-    good: "text-emerald-700 dark:text-emerald-300",
-    watch: "text-amber-700 dark:text-amber-300",
-  }[comparisonTone(metric, difference.relation)];
+  const tone = verdictText[comparisonTone(metric, difference.relation)].class;
 
   return (
     <span

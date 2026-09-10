@@ -303,3 +303,149 @@ export const chartBristolMarks = {
   bar: { class: "bg-violet-500", hex: chartSeries.violet },
   dot: { class: "bg-violet-500", hex: chartSeries.violet },
 } as const;
+
+// ── Verdict tones (#5187) ────────────────────────────────────────────────────
+//
+// The colour a good / warn / bad word wears. Before this the app declared that
+// judgment fourteen times under fourteen names and painted it in nine private
+// `Record<…Tone, string>` maps of raw Tailwind — each picking its own emerald,
+// amber and rose steps, no two agreeing on `neutral`, and nothing checking any
+// of them for contrast. Three of those maps rendered their light-mode text at
+// the `-600` step, which is 3.40:1 (emerald), 2.98:1 (amber) and 4.21:1 (rose)
+// on the Botanical light surface — under WCAG AA for body text. The `-700`
+// step below clears it on all four tones.
+//
+// THIS IS NOT A SERIES PALETTE. `chartSeries` colours carry identity: the hue IS
+// which line you are looking at, so its slots must separate under CVD. A verdict
+// never travels alone — it colours a word the reader is already reading (the
+// badge's own label, the metric's name, `VERDICT_TONE_LABEL` beside the value),
+// which is the #1220 rule and the reason the checks below are CONTRAST checks,
+// not separation checks. `lib/__tests__/chart-palette.test.ts` prints the
+// separation numbers anyway so a future edit can see what it is trading.
+//
+// Each entry ships the Tailwind classes the DOM actually renders AND the hexes
+// they equal (per theme), exactly as `chartActivityRamp` and
+// `chartActivityTypeBlock` do — the class scan cannot read a Tailwind class, so
+// the two halves travel together or the validation is checking a fiction.
+
+export type VerdictTone = "good" | "warn" | "bad" | "neutral";
+
+/** The vocabulary in fixed order, for exhaustive iteration in tests and guards. */
+export const VERDICT_TONES = ["good", "warn", "bad", "neutral"] as const;
+
+/**
+ * The NON-COLOUR channel for a verdict (WCAG 1.4.1, #1220), landing once here
+ * instead of once per component. `neutral` is deliberately null: it makes no
+ * judgment, so there is nothing to announce — a surface renders no chip at all
+ * rather than a chip that says "Neutral".
+ */
+export const VERDICT_TONE_LABEL: Record<VerdictTone, string | null> = {
+  good: "Good",
+  warn: "Fair",
+  bad: "Poor",
+  neutral: null,
+};
+
+/** A single-colour verdict swatch (text ink, or a solid fill) with its hexes. */
+export interface VerdictInk {
+  /** The classes the DOM carries, both themes. */
+  class: string;
+  /** The same colour as a hex, per theme — what the contrast checks read. */
+  light: string;
+  dark: string;
+}
+
+/** A tinted verdict pill: a background AND the text that sits on it. */
+export interface VerdictPill {
+  class: string;
+  light: { bg: string; fg: string };
+  dark: { bg: string; fg: string };
+}
+
+/**
+ * Verdict TEXT on the page surface — a judged value, an outcome line, an icon.
+ * Light takes the `-700` step (the `-600` the app shipped is under AA); dark
+ * keeps the vivid `-400`, which is both legible on `--surface` and the widest
+ * separation the four tones get in dark mode.
+ */
+export const verdictText = {
+  good: {
+    class: "text-emerald-700 dark:text-emerald-400",
+    light: "#007a55",
+    dark: "#00d492",
+  },
+  warn: {
+    class: "text-amber-700 dark:text-amber-400",
+    light: "#bb4d00",
+    dark: "#ffb900",
+  },
+  bad: {
+    class: "text-rose-700 dark:text-rose-400",
+    light: "#c70036",
+    dark: "#ff637e",
+  },
+  // No judgment → the plain body ink, not a muted grey. A `neutral` verdict is a
+  // stated outcome ("nothing to flag"), not chrome, so it reads at full weight.
+  neutral: {
+    class: "text-slate-700 dark:text-slate-200",
+    light: "#2f4237",
+    dark: "#d9e8de",
+  },
+} as const satisfies Record<VerdictTone, VerdictInk>;
+
+/**
+ * Verdict BADGE — the `.badge` pill's tint and its label ink. This is the one
+ * map the app had already converged on by accident (three of the four private
+ * badge maps agreed on `-100`/`-700` light and `-950`/`-300` dark), so adopting
+ * it changes nothing on those surfaces; the `neutral` entry and integrations'
+ * brand-green `good` are the reconciliations.
+ */
+export const verdictBadge = {
+  good: {
+    class:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+    light: { bg: "#d0fae5", fg: "#007a55" },
+    dark: { bg: "#121d13", fg: "#aecf9f" },
+  },
+  warn: {
+    class: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+    light: { bg: "#fef3c6", fg: "#bb4d00" },
+    dark: { bg: "#171a10", fg: "#d9c887" },
+  },
+  bad: {
+    class: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+    light: { bg: "#ffe4e6", fg: "#c70036" },
+    dark: { bg: "#1c1315", fg: "#d8aca8" },
+  },
+  neutral: {
+    class: "bg-slate-100 text-slate-700 dark:bg-ink-800 dark:text-slate-300",
+    light: { bg: "#ecf2e8", fg: "#2f4237" },
+    dark: { bg: "#141c16", fg: "#b2c6b9" },
+  },
+} as const satisfies Record<VerdictTone, VerdictPill>;
+
+/**
+ * Verdict FILL — a solid mark: a progress bar, a chip square, a dot. A fill is a
+ * graphical object, so it clears 3:1 against the surface rather than AA text
+ * contrast. `warn` and `bad` take a per-theme pair because the single steps the
+ * app used (`bg-amber-500` at 1.99:1, `bg-rose-500` at 3.49:1 on light) do not
+ * survive the light surface at one shade for both themes.
+ */
+export const verdictFill = {
+  good: { class: "bg-emerald-600", light: "#009966", dark: "#009966" },
+  warn: {
+    class: "bg-amber-700 dark:bg-amber-500",
+    light: "#bb4d00",
+    dark: "#fe9a00",
+  },
+  bad: {
+    class: "bg-rose-600 dark:bg-rose-500",
+    light: "#ec003f",
+    dark: "#ff2056",
+  },
+  neutral: {
+    class: "bg-slate-500 dark:bg-slate-400",
+    light: "#4e6354",
+    dark: "#86a190",
+  },
+} as const satisfies Record<VerdictTone, VerdictInk>;

@@ -194,11 +194,13 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   await expect(speedComparison).toHaveClass(/text-amber-700/);
   await expect(page.getByTestId("ride-summary-comparison-power")).toBeVisible();
   // The neutral tone is SLATE (#3500 item 1) — it used to be sky, which at
-  // font-medium is this app's most link-like non-link. The tone rule as a whole
-  // (nothing sky, speed still directional, both themes) is measured in
-  // "the ride comparison deltas read as statements…" below.
+  // font-medium is this app's most link-like non-link. Since #5187 it is the
+  // shared verdict neutral (`text-slate-700`), one step darker than the -600 this
+  // row picked for itself. The tone rule as a whole (nothing sky, speed still
+  // directional, both themes) is measured in "the ride comparison deltas read as
+  // statements…" below.
   await expect(page.getByTestId("ride-summary-comparison-power")).toHaveClass(
-    /text-slate-600/
+    /text-slate-700/
   );
   await expect(
     page.getByTestId("ride-summary-comparison-weighted-power")
@@ -842,7 +844,8 @@ test("the ride summary states each fact once and uses the whole phone (#3500)", 
   ).toEqual([]);
 
   // The painted proof, in BOTH themes: every non-speed delta is the same colour
-  // as a plain `text-slate-600 dark:text-slate-300` run on this page, and speed's
+  // as a plain `text-slate-700 dark:text-slate-200` run on this page — the shared
+  // verdict neutral since #5187 — and speed's
   // directional tone is a different colour from it. The reference span is forged
   // rather than borrowed from a neighbour so the reading cannot drift with an
   // unrelated component's styling, and it is planted and read inside ONE
@@ -854,7 +857,7 @@ test("the ride summary states each fact once and uses the whole phone (#3500)", 
   }> =>
     page.evaluate(() => {
       const probe = document.createElement("span");
-      probe.className = "text-slate-600 dark:text-slate-300";
+      probe.className = "text-slate-700 dark:text-slate-200";
       probe.textContent = "reference";
       document.body.appendChild(probe);
       const reference = getComputedStyle(probe).color;

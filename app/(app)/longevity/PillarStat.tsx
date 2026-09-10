@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { Pillar } from "@/lib/longevity-pillars";
 import {
-  PILLAR_TONE_CLASS,
   PillarToneBadge,
   TrendArrow,
 } from "@/components/dashboard/HealthspanPillarPresentation";
+import { verdictText } from "@/lib/chart-colors";
 
 // The Longevity page's rendering of ONE pillar's compact facts — the same
 // label/value/detail/tone/trend the dashboard presentation card shows (#1042 phase 4),
@@ -35,7 +35,7 @@ export default function PillarStat({
       <span className="section-label">{pillar.label}</span>
       <span className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
         <span
-          className={`text-lg font-bold tabular-nums ${PILLAR_TONE_CLASS[pillar.tone]}`}
+          className={`text-lg font-bold tabular-nums ${verdictText[pillar.tone].class}`}
           data-testid={`longevity-pillar-${pillar.key}-value`}
         >
           {pillar.value}

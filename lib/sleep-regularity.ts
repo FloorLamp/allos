@@ -48,6 +48,7 @@
 // even across a spring-forward, where the absolute duration of that night is 23h.
 
 import type { OutcomeComparison } from "./protocol-compare";
+import type { VerdictTone } from "./chart-colors";
 import { populationSd } from "./robust-stats";
 import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 import { recordedUsual, USUAL_KINDS } from "./usual";
@@ -466,11 +467,11 @@ export interface SleepRegularity {
   socialJetlagMin: number | null;
 }
 
-export type SriTone = "good" | "warn" | "bad";
-
 export interface SriPresentation {
   text: string;
-  tone: SriTone;
+  // The shared verdict (#5187): this was good/warn/bad under a domain name.
+  // SRI is always judged, so `neutral` is not one of its answers.
+  tone: Exclude<VerdictTone, "neutral">;
   // The rounded index on its own, sign-normalized — for a surface that supplies its
   // own noun ("Sleep regularity 94") and would otherwise render "Sleep regularity ·
   // SRI 94", an acronym beside a naked number.
@@ -491,7 +492,8 @@ export interface SriPresentation {
 export function sriPresentation(sri: number): SriPresentation {
   const rounded = Math.round(sri);
   const value = rounded < 0 ? `−${Math.abs(rounded)}` : String(rounded);
-  const tone: SriTone = rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad";
+  const tone: Exclude<VerdictTone, "neutral"> =
+    rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad";
   return {
     text: `SRI ${value}`,
     tone,
