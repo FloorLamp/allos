@@ -13,13 +13,13 @@ import { showLogRow } from "./log-sheet-helpers";
 // code as its own chunk.
 //
 // WHAT "ABSENT FROM THE INITIAL REQUESTS" MEANS HERE, and why it is read off the
-// SERVER-RENDERED HTML rather than off the browser's resource timeline. The
-// provider WARMS the chunk as soon as it mounts, so by the time a person can tap
-// anything the code is already in the browser — that is the point, and it is what
-// keeps an offline open working. A timeline snapshot would therefore be racing the
-// warm and would answer a different question every run. The HTML's own script set
-// is the honest, timing-free statement of what a page load COSTS before it is
-// interactive: those are the chunks the browser must have to hydrate.
+// SERVER-RENDERED HTML rather than off everything the browser fetched. The provider
+// WARMS the chunk as soon as it mounts, so by the time a person can tap anything the
+// code is already in the browser — that is the point, and it is what keeps an
+// offline open working. "Everything fetched" would therefore be racing the warm and
+// would answer a different question every run. The HTML's own script set is the
+// honest, timing-free statement of what a page load COSTS before it is interactive:
+// those are the chunks the browser must have to hydrate.
 //
 // THE POSITIVE CONTROL matters more than usual here, because the absence half of
 // this test would pass just as well if somebody renamed the two literals it looks
@@ -66,6 +66,16 @@ async function chunkSizes(
 test("the closed activity editor is not in the dashboard's initial JavaScript (#5206)", async ({
   page,
 }) => {
+  // What the browser actually asked for, recorded from the harness side: this
+  // suite runs on a patched clock, which leaves `performance.getEntries()` empty
+  // in the page, so the browser's own resource timeline cannot answer here.
+  const requested: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/_next/static/") && path.endsWith(".js"))
+      requested.push(path);
+  });
+
   await page.goto("/");
   const trigger = page.locator("aside").getByTestId("sidebar-log");
   await awaitHydrated(trigger);
@@ -75,24 +85,9 @@ test("the closed activity editor is not in the dashboard's initial JavaScript (#
   const initialUrls = scriptUrlsIn(html);
   expect(initialUrls.length).toBeGreaterThan(0);
   const initial = await chunkSizes(page, initialUrls);
-  const nav = await page.evaluate(() => {
-    const entry = performance.getEntriesByType(
-      "navigation"
-    )[0] as PerformanceNavigationTiming;
-    return {
-      ttfb: Math.round(entry.responseStart - entry.requestStart),
-      dcl: Math.round(entry.domContentLoadedEventEnd - entry.startTime),
-    };
-  });
   console.log(
-    `[#5206] dashboard initial JS: ${initialUrls.length} chunks, ${initial.bytes} bytes; ` +
-      `TTFB ${nav.ttfb} ms, DCL ${nav.dcl} ms`
+    `[#5206] dashboard initial JS: ${initialUrls.length} chunks, ${initial.bytes} bytes`
   );
-
-  expect(
-    initial.withEditor,
-    "the closed editor's code is in the dashboard's initial JavaScript"
-  ).toEqual([]);
 
   // First open, from the desktop sidebar's "+ Log" panel — the flow the issue's
   // baseline timed. The click and the visible field are one interaction, so the
@@ -104,30 +99,34 @@ test("the closed activity editor is not in the dashboard's initial JavaScript (#
   );
   const startedAt = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: measures this spec's own elapsed wall time, never a stored instant
   await row.click();
-  const form = page.getByTestId("activity-form");
-  await expect(form).toBeVisible();
+  await expect(page.getByTestId("activity-form")).toBeVisible();
   console.log(
     `[#5206] first open (click -> form visible): ${Date.now() - startedAt} ms` // eslint-disable-line no-restricted-properties -- clock-ok: elapsed wall time for the measurement above
   );
 
+  // Whatever JavaScript the initial HTML did not ask for, and which of it carries
+  // the editor.
+  const extra = [...new Set(requested)].filter(
+    (path) => !initialUrls.includes(path)
+  );
+  const onDemand = await chunkSizes(page, extra);
+  console.log(
+    `[#5206] editor chunks loaded on demand: ${onDemand.withEditor.join(", ") || "none"}`
+  );
+
+  // EVERY MEASUREMENT IS PRINTED BEFORE ANYTHING IS ASSERTED, so a run that fails
+  // this boundary still reports the budget it measured rather than dying halfway
+  // through it. That is what makes a before-and-after possible at all.
+  expect(
+    initial.withEditor,
+    "the closed editor's code is in the dashboard's initial JavaScript"
+  ).toEqual([]);
+
   // THE POSITIVE CONTROL. The editor's code did arrive — in a chunk the initial
   // HTML never asked for. Without this, renaming either marker would turn the
   // absence assertion above into a test that cannot fail.
-  const loaded = await page.evaluate(() =>
-    performance
-      .getEntriesByType("resource")
-      .map((entry) => entry.name)
-      .filter((name) => name.includes("/_next/static/") && name.includes(".js"))
-  );
-  const extra = loaded
-    .map((name) => new URL(name).pathname)
-    .filter((path) => !initialUrls.includes(path));
-  const editorChunks = (await chunkSizes(page, extra)).withEditor;
   expect(
-    editorChunks.length,
+    onDemand.withEditor.length,
     "the editor's code was not found in any chunk outside the initial set"
   ).toBeGreaterThan(0);
-  console.log(
-    `[#5206] editor chunks loaded on demand: ${editorChunks.join(", ")}`
-  );
 });
