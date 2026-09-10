@@ -213,6 +213,15 @@ function ProfilesCard({
             placeholder="Name"
             className="input"
           />
+          {/* THE CARD'S OWN COMMIT, filled under the same ruling 6 reading.
+              ONE OVERLAP IS REPORTED RATHER THAN SETTLED HERE: the per-profile
+              Delete opener above is a quiet text control, but its confirm step's
+              "Delete permanently" is filled, and ruling 10 keeps the destructive
+              fill exactly there. That confirm stands open BESIDE this commit
+              inside the same card, so while it is up the card carries two filled
+              controls — the shape ruling 6's carve-out forbids. Neither ruling
+              yields to the other, and demoting either mount locally would make
+              this card an exception no reader could trace, so it goes to #4978. */}
           <Button
             onClick={add}
             disabled={pending || !newName.trim()}
@@ -628,6 +637,18 @@ function LoginsCard({
             </>
           )}
         </div>
+        {/* THE CARD'S ONE LOUD CONTROL, AND WHAT PAYS FOR IT (#4978, PM ruling
+            6 2026-09-09 23:35 UTC, owner ruling 10 2026-09-10 01:30 UTC).
+            Ruling 6 makes the CARD the surface rather than the route, so this
+            card's own commit is the one control allowed to be loud on it.
+
+            The budget it spends is only free because the Delete on every login
+            row below is QUIET. Ruling 10 settled that a filled `danger` SPENDS
+            the surface's loud-control budget rather than sitting outside it, so
+            per-row destructive actions in a repeated list went quiet and left
+            this fill unspent. They are ONE budget, not a loud budget and a
+            separate destructive one: fill the row Deletes again and this mount
+            is what has to give its fill back. */}
         <div className="flex items-center gap-3">
           <Button
             onClick={create}
