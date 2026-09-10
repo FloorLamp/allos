@@ -172,8 +172,7 @@ export const SESSION_TRAILER = "Claude-Session: <session URL>";
 // the constant and with the check that enforces it rather than in a third copy.
 // dispatch-brief.mjs prints this verbatim; nothing about the brief a lane reads
 // changes by living here.
-export const COMMIT_TRAILER_BRIEF =
-  `- Commit trailers for a Claude session, the second holding the real URL:
+export const COMMIT_TRAILER_BRIEF = `- Commit trailers for a Claude session, the second holding the real URL:
     ${COMMIT_TRAILER}
     ${SESSION_TRAILER}
   Other harnesses follow their own attribution instructions; never invent a
