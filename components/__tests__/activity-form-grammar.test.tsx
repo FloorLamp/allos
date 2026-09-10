@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import IntensityPicker from "@/components/activity-form/IntensityPicker";
 import SessionRecapView from "@/components/SessionRecapView";
+import ActivityPartRows from "@/components/activity/ActivityPartRows";
 import { INTENSITIES } from "@/lib/activity-form-model";
 import { recapSessionFromPayload, sessionRecap } from "@/lib/session-recap";
 import type { ExerciseHistoryMap } from "@/lib/queries";
@@ -35,29 +36,64 @@ beforeEach(() => {
   );
 });
 
-const WARMUP_NOTE = "Warmup sets do not count toward volume or target markers.";
+const WARMUP_MECHANIC =
+  "warmup sets do not count toward volume or target markers";
 
-describe("the warmup note (#5726 item 1)", () => {
+// One recorded set, so the part opens as a grid with a W toggle on its row.
+const recordedSet = (over: Record<string, unknown> = {}) => ({
+  weight: "60",
+  reps: "8",
+  weightRight: "",
+  repsRight: "",
+  duration: "",
+  durationRight: "",
+  warmup: false,
+  rpe: null,
+  plan: null,
+  ...over,
+});
+const twoExercises = () => [
+  part({ sets: [recordedSet()] }),
+  part({ name: "Barbell Row", sets: [recordedSet()] }),
+];
+
+describe("the warmup mechanic (#5726 item 1)", () => {
   // TWO EXERCISES IS THE TEST. The reported defect is a two-exercise workout carrying
-  // the sentence twice, so a single-part mount cannot observe it at all.
-  it("states itself once, however many exercises show a set grid", () => {
-    renderList([part(), part({ name: "Barbell Row" })]);
+  // the sentence twice as standing prose, so a single-part mount cannot observe it.
+  it("is standing prose under no exercise, however many show a set grid", () => {
+    renderList(twoExercises());
 
     expect(screen.getAllByTestId("activity-part")).toHaveLength(2);
     expect(screen.getAllByTestId("set-column-headings")).toHaveLength(2);
-    // One affordance in the whole form, and it is the info glyph, not prose.
-    expect(screen.getAllByLabelText(WARMUP_NOTE)).toHaveLength(1);
-    expect(screen.queryByText(WARMUP_NOTE)).toBeNull();
+    // No paragraph anywhere in the form states it — not once, not twice.
+    const prose = [...document.body.querySelectorAll("p")].filter((node) =>
+      /warmup/i.test(node.textContent ?? "")
+    );
+    expect(prose).toHaveLength(0);
   });
 
-  it("rides the set-column headings row that owns the W control", () => {
-    renderList([part(), part({ name: "Barbell Row" })]);
+  it("is stated by the W control it governs, at every width", () => {
+    renderList(twoExercises());
 
-    const headings = screen.getAllByTestId("set-column-headings");
-    expect(
-      within(headings[0]).getByTestId("warmup-note").getAttribute("aria-label")
-    ).toBe(WARMUP_NOTE);
-    expect(within(headings[1]).queryByTestId("warmup-note")).toBeNull();
+    // The control NAMES the exclusion: one string, which ControlTooltip writes as the
+    // aria-label and reveals on hover and focus — so pointer, keyboard and touch all
+    // reach it, and nothing about it is hidden at a phone width.
+    const toggles = screen.getAllByTestId("set1-warmup");
+    expect(toggles.length).toBeGreaterThan(0);
+    for (const toggle of toggles) {
+      const label = toggle.getAttribute("aria-label") ?? "";
+      expect(label).toContain("Mark warmup set");
+      expect(label).toContain(WARMUP_MECHANIC);
+    }
+  });
+
+  it("says the same thing once a set IS a warmup", () => {
+    renderList([part({ sets: [recordedSet({ warmup: true })] })]);
+
+    const label =
+      screen.getByTestId("set1-warmup").getAttribute("aria-label") ?? "";
+    expect(label).toContain("Unmark warmup set");
+    expect(label).toContain(WARMUP_MECHANIC);
   });
 });
 
@@ -126,19 +162,7 @@ describe("a missed target (#5726 item 3)", () => {
   };
   const missedPart = part({
     targetReps: "8",
-    sets: [
-      {
-        weight: "60",
-        reps: "6",
-        weightRight: "",
-        repsRight: "",
-        duration: "",
-        durationRight: "",
-        warmup: false,
-        rpe: null,
-        plan: null,
-      },
-    ],
+    sets: [recordedSet({ reps: "6" })],
   });
 
   it("is spelled the same way in the form and in the recent-session rows", () => {
@@ -149,6 +173,25 @@ describe("a missed target (#5726 item 3)", () => {
     );
     expect(screen.getAllByText("Missed target").length).toBeGreaterThan(1);
     expect(screen.queryByText("Below target")).toBeNull();
+  });
+
+  it("is spelled that way on the part rows of the saved activity", () => {
+    render(
+      <ActivityPartRows
+        parts={[
+          {
+            kind: "strength",
+            name: "Barbell Bench Press",
+            muscle: "Chest",
+            text: "1 × 6 at 60 kg",
+            status: "missed",
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Missed target")).toBeTruthy();
+    expect(screen.queryByText("Target missed")).toBeNull();
   });
 
   it("is spelled that way in the recap the finish step renders", () => {

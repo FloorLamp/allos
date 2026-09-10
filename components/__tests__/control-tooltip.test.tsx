@@ -291,11 +291,17 @@ function renderForm() {
   );
 }
 
+// What a warmup set is excluded from, folded into the W toggle's own label (#5726).
+const MECHANIC = "warmup sets do not count toward volume or target markers";
+
 describe("the activity form's glyph controls name themselves", () => {
   // The reported census. Each name is the string that ALREADY existed as an
   // aria-label — this issue makes them reachable, it does not rewrite any of them.
+  // The W is the one exception since #5726: its label now also states what a warmup
+  // set is excluded from, which is the copy that used to stand as a paragraph under
+  // every exercise's grid.
   it.each([
-    "Mark warmup set",
+    `Mark warmup set — ${MECHANIC}`,
     "Remove set",
     "Decrease RPE",
     "Increase RPE",
@@ -327,7 +333,9 @@ describe("the activity form's glyph controls name themselves", () => {
     // carries `aria-pressed` and is the only way to say a set was a warmup.
     renderForm();
     expect(
-      screen.getAllByRole("button", { name: "Mark warmup set" })[0].tabIndex
+      screen.getAllByRole("button", {
+        name: `Mark warmup set — ${MECHANIC}`,
+      })[0].tabIndex
     ).toBe(0);
     expect(
       screen.getAllByRole("button", { name: "Decrease RPE" })[0].tabIndex

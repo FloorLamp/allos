@@ -4,7 +4,6 @@ import { formatCount } from "@/lib/format-number";
 
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
 import ControlTooltip from "@/components/ControlTooltip";
-import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import IconButton from "@/components/IconButton";
 import ExerciseHistory from "./ExerciseHistory";
 import { useEffect, useRef, useState } from "react";
@@ -82,6 +81,16 @@ import type { SetFill } from "./useActivityParts";
 
 // The four set-row steppers share one frame; only the border says whether the field
 // is what a stuck change is waiting on.
+// WHAT A WARMUP SET IS EXCLUDED FROM (#5726, #5300 rule 4). This used to be a standing
+// paragraph under EVERY exercise's set grid — a two-exercise workout stated it twice,
+// with no set marked W. It is mechanics copy about ONE control, so it rides that
+// control's own tooltip: the W toggle names what it does and what that costs, in one
+// string, reachable by pointer, keyboard and touch at every width (#3970, #4511). The
+// set-column headings row cannot hold it — below `sm` that row carries only the value
+// schema (#1612), so a glyph there would state the fact nowhere on a phone.
+const WARMUP_MECHANIC =
+  "warmup sets do not count toward volume or target markers";
+
 const fieldBorder = (blocked: boolean) =>
   blocked ? blockedField : "border-black/10 dark:border-white/10";
 
@@ -541,7 +550,6 @@ export default function StrengthSets({
   editedDate,
   equipmentList,
   showBodyweightPrompt,
-  showWarmupNote,
   bwInput,
   bwSaving,
   onBwInput,
@@ -583,11 +591,6 @@ export default function StrengthSets({
   editedDate: string | null;
   equipmentList: Equipment[];
   showBodyweightPrompt: boolean;
-  // Does this part carry the form's ONE warmup explainer (#5726)? What a warmup set
-  // is excluded from is a constant fact about the W column, not about this exercise,
-  // so the list names a single owner (ActivityPartsList) and every other part renders
-  // nothing — the same shape `showBodyweightPrompt` above already uses.
-  showWarmupNote: boolean;
   bwInput: string;
   bwSaving: boolean;
   onBwInput: (v: string) => void;
@@ -1319,21 +1322,8 @@ export default function StrengthSets({
                 {timed ? "Hold time" : "Reps"}
               </span>
             )}
-            {/* THE COLUMN'S OWN EXPLAINER (#5726, #5300 rule 4). "Warmup sets do not
-                count toward volume or target markers" used to be a standing paragraph
-                under EVERY exercise's grid; it is a constant fact about the W control
-                in this column, so it states itself once, at the heading that owns it
-                (docs/internals/copy.md, "Explainers on rows"). The glyph rides INSIDE
-                the existing `w-28` cell, so the columns still line up with the
-                steppers under them (#1612). */}
-            <span className="hidden w-28 shrink-0 items-center justify-end gap-1 text-right sm:flex">
+            <span className="hidden w-28 shrink-0 text-right sm:block">
               Options
-              {showWarmupNote && (
-                <InfoTooltipIcon
-                  label="Warmup sets do not count toward volume or target markers."
-                  data-testid="warmup-note"
-                />
-              )}
             </span>
           </div>
           <div className="mt-2 space-y-2">
@@ -1454,7 +1444,8 @@ export default function StrengthSets({
                     )}
                     {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
-                set (both sides of a per-side set share it).
+                set (both sides of a per-side set share it). Its label SAYS that
+                exclusion (#5726) — see WARMUP_MECHANIC at the top of the file.
 
                 A TAB STOP SINCE #4511, where it was `tabIndex={-1}`. It is not
                 pointer sugar the way the RPE steppers above are: those step a
@@ -1464,7 +1455,9 @@ export default function StrengthSets({
                 keyboard cannot reach is not a control. The bare "W" now says
                 what it does on hover and on keyboard focus. */}
                     <ControlTooltip
-                      label={s.warmup ? "Unmark warmup set" : "Mark warmup set"}
+                      label={`${
+                        s.warmup ? "Unmark warmup set" : "Mark warmup set"
+                      } — ${WARMUP_MECHANIC}`}
                     >
                       {(anchor) => (
                         <button
@@ -1563,9 +1556,9 @@ export default function StrengthSets({
               ) : (
                 <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
               )}
-              {/* ONE SPELLING (#5726). The recent-session rows (ExerciseHistory) and
-                  the recap (SessionRecapView) both say "Missed target" for this same
-                  status, and all three can be on screen at once. */}
+              {/* ONE SPELLING (#5726). The recent-session rows (ExerciseHistory), the
+                  recap (SessionRecapView) and the part rows (ActivityPartRows) all say
+                  "Missed target" for this same status, and they share a screen. */}
               {targetStatus === "missed" ? "Missed target" : "Target met"}
             </span>
           )}
