@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { LoginEmailNotify } from "@/lib/settings";
 import { saveLoginEmailNotify, sendTestEmailNotification } from "../actions";
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
@@ -152,26 +153,26 @@ export default function EmailNotificationSettings({
         </fieldset>
       )}
 
+      {/* RULING 6 (#4978): the card is the surface — here the `ChannelRow`
+          disclosure — so this card's own commit takes the fill and the test
+          diagnostic beside it goes quiet. */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={busy}
-          className="btn"
           data-testid="login-email-save"
+          variant="primary"
         >
           Save
-        </button>
+        </Button>
         {enabled && (
-          <button
-            type="button"
+          <Button
             onClick={test}
             disabled={busy}
-            className="btn-ghost"
             data-testid="login-email-send-test"
           >
             Send test
-          </button>
+          </Button>
         )}
         <SaveStatus {...status} />
       </div>
