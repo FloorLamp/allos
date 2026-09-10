@@ -18,7 +18,7 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCRIPT = path.join(REPO, "scripts/orchestration/reconcile-apply.ts");
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
 
-/** Serves GET issue, PATCH body, POST comment from a JSON state file. */
+/** Serves GET issue, GET open PRs, PATCH body/state, POST comment from a JSON state file. */
 const STUB_CURL = `#!${process.execPath}
 const fs = require("node:fs");
 const args = process.argv.slice(2);
@@ -39,8 +39,11 @@ const emit = (value) => {
 };
 const one = url.match(/\\/issues\\/(\\d+)$/);
 if (method === "GET" && one) emit(state[one[1]]);
+if (method === "GET" && url.includes("/pulls?state=open")) {
+  emit(url.includes("page=1") ? state.pulls : []);
+}
 if (method === "PATCH" && one) {
-  state[one[1]].body = JSON.parse(at("--data-binary")).body;
+  Object.assign(state[one[1]], JSON.parse(at("--data-binary")));
   fs.writeFileSync(process.env.STUB_STATE, JSON.stringify(state));
   emit(state[one[1]]);
 }
@@ -60,10 +63,26 @@ interface Call {
   body: string | null;
 }
 
+interface StubIssue {
+  body: string;
+  comments: number;
+  labels?: string[];
+  assignees?: string[];
+  created_at?: string;
+}
+
 function runApply(
-  issues: Record<string, { body: string; comments: number }>,
+  issues: Record<string, StubIssue>,
   plan: Record<string, unknown>,
-  extraArgs: readonly string[]
+  extraArgs: readonly string[],
+  tracker: {
+    /** Open PRs the stub serves. */
+    pulls?: { number: number; title: string; body: string }[];
+    /** Issues an active ledger row holds. */
+    claimed?: number[];
+    /** A gather's evidence, passed via --evidence. */
+    staleP3?: { issue: number; ageDays: number; detail: string }[];
+  } = {}
 ): { status: number | null; stdout: string; calls: Call[]; dir: string } {
   const dir = makeTmpDir("reconcile-apply-script");
   const bin = path.join(dir, "bin");
@@ -73,26 +92,56 @@ function runApply(
   const log = path.join(dir, "calls.jsonl");
   fs.writeFileSync(
     state,
-    JSON.stringify(
-      Object.fromEntries(
+    JSON.stringify({
+      pulls: tracker.pulls ?? [],
+      ...Object.fromEntries(
         Object.entries(issues).map(([n, i]) => [
           n,
-          { body: i.body, state: "open", comments: i.comments },
+          {
+            number: Number(n),
+            title: `issue ${n}`,
+            body: i.body,
+            state: "open",
+            comments: i.comments,
+            labels: (i.labels ?? []).map((name) => ({ name })),
+            assignees: (i.assignees ?? []).map((login) => ({ login })),
+            created_at: i.created_at ?? "2026-09-01T00:00:00Z",
+          },
         ])
-      )
-    )
+      ),
+    })
   );
   fs.writeFileSync(log, "");
   const planFile = path.join(dir, "plan.json");
   fs.writeFileSync(planFile, JSON.stringify(plan));
+  // A ledger of this test's own, so the container's live lanes never count.
+  const ledger = path.join(dir, "ledger.jsonl");
+  fs.writeFileSync(
+    ledger,
+    tracker.claimed?.length
+      ? JSON.stringify({
+          at: "2026-09-10T00:00:00Z",
+          status: "active",
+          branch: "some-lane",
+          issues: tracker.claimed.map(String),
+        }) + "\n"
+      : ""
+  );
+  const args = [SCRIPT, planFile, ...extraArgs];
+  if (tracker.staleP3) {
+    const evidence = path.join(dir, "evidence.json");
+    fs.writeFileSync(evidence, JSON.stringify({ staleP3: tracker.staleP3 }));
+    args.push("--evidence", evidence);
+  }
 
-  const run = spawnSync(TSX, [SCRIPT, planFile, ...extraArgs], {
+  const run = spawnSync(TSX, args, {
     cwd: REPO,
     encoding: "utf8",
     env: {
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       GH_TOKEN: "stub token 1",
+      ALLOS_DISPATCH_LEDGER: ledger,
       STUB_STATE: state,
       STUB_LOG: log,
     },
@@ -189,5 +238,66 @@ describe("reconcile-apply visibility contract", () => {
     expect(run.status).toBe(0);
     expect(run.calls.filter((c) => c.method !== "GET")).toEqual([]);
     expect(run.stdout).toContain("would also comment");
+  });
+});
+
+describe("the stale-P3 close (#5671)", () => {
+  // The gather listed these; the applier re-reads each and re-runs the rule
+  // before writing, so a claim, owner or label that arrived since keeps it open.
+  const old = "2026-07-01T00:00:00Z";
+  const stale = (issue: number) => ({
+    issue,
+    ageDays: 60,
+    detail: "P3 filed 60 days ago — no claim, no assignee, no open PR",
+  });
+  const p3 = (over: Partial<StubIssue> = {}): StubIssue => ({
+    body: "an old P3",
+    comments: 0,
+    labels: ["P3", "docs"],
+    created_at: old,
+    ...over,
+  });
+
+  it("--apply closes the qualifying issue with the one comment, not_planned", () => {
+    const run = runApply(
+      {
+        "31": p3(),
+        "32": p3({ assignees: ["someone"] }),
+        "33": p3(),
+        "34": p3({ labels: ["P3", "docs", "needs-human"] }),
+        "35": p3(),
+      },
+      {},
+      ["--apply"],
+      {
+        staleP3: [31, 32, 33, 34, 35].map(stale),
+        claimed: [33],
+        pulls: [{ number: 900, title: "Towards #35", body: "" }],
+      }
+    );
+    expect(run.status).toBe(0);
+    const writes = run.calls.filter((c) => c.method !== "GET");
+    expect(writes.map((c) => [c.method, c.url.split("/issues/")[1]])).toEqual([
+      ["POST", "31/comments"],
+      ["PATCH", "31"],
+    ]);
+    expect(JSON.parse(writes[0].body ?? "{}")).toEqual({
+      body: "Unclaimed for 30 days. Reopen with a claim or an owner priority.",
+    });
+    expect(JSON.parse(writes[1].body ?? "{}")).toEqual({
+      state: "closed",
+      state_reason: "not_planned",
+    });
+    expect(run.stdout).toContain("#31 stale-p3: closed not_planned");
+    expect(run.stdout).toContain("stale P3 closed 1, kept 4");
+  });
+
+  it("a dry run lists each qualifying issue with its reason and writes nothing", () => {
+    const run = runApply({ "31": p3() }, {}, [], { staleP3: [stale(31)] });
+    expect(run.status).toBe(0);
+    expect(run.calls.filter((c) => c.method !== "GET")).toEqual([]);
+    expect(run.stdout).toMatch(
+      /#31 stale-p3: would close not_planned — P3 filed \d+ days ago — no claim, no assignee, no open PR/
+    );
   });
 });

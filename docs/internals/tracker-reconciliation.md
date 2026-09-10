@@ -5,10 +5,11 @@ schedule remains unwired under the condition below.
 
 Reconciliation checks tracker claims against the current repository. It may
 refresh factual status markers, cross-references, paths, symbols, and permitted
-labels. The scripts never close issues or change scope or decisions. The agent
-may fold and sequence issues under the reconciliation protocol's separate closure
-bounds, introduced in [#5382](https://github.com/FloorLamp/allos/pull/5382). Preserve
-owner rulings and flag judgments that the evidence cannot settle.
+labels. The scripts never change scope or decisions, and their one close is the
+stale-P3 rule below. The agent may fold and sequence issues under the
+reconciliation protocol's separate closure bounds, introduced in
+[#5382](https://github.com/FloorLamp/allos/pull/5382). Preserve owner rulings and
+flag judgments that the evidence cannot settle.
 
 Use the [reconciliation protocol](../../.claude/skills/reconcile-tracker/SKILL.md)
 for the ordered run procedure and the [change and test policy](../change-policy.md)
@@ -23,7 +24,7 @@ it is not a mandate to build more detectors.
 | [reconcile-tracker.ts](../../scripts/orchestration/reconcile-tracker.ts)           | Read-only entrypoint: GitHub reads, repository files, clock, and watermark. |
 | [reconcile-repo-index.ts](../../scripts/orchestration/reconcile-repo-index.ts)     | Shared tracked-file index and lazy source reads.                            |
 | [reconcile-patch.ts](../../scripts/orchestration/reconcile-patch.ts)               | Exact-anchor patch validation and application.                              |
-| [reconcile-apply.ts](../../scripts/orchestration/reconcile-apply.ts)               | Issue-body writes, conditional change notices, and applied-patch outcomes.  |
+| [reconcile-apply.ts](../../scripts/orchestration/reconcile-apply.ts)               | Issue-body writes, change notices, patch outcomes, and the stale-P3 close.  |
 | [reconcile-labels.ts](../../scripts/orchestration/reconcile-labels.ts)             | Retired-label removals, ruled priorities, and planned domain additions.     |
 | [reconcile-watermark.ts](../../scripts/orchestration/reconcile-watermark.ts)       | Read or advance the tracker-owned sweep watermark.                          |
 | [reconcile-run-summary.ts](../../scripts/orchestration/reconcile-run-summary.ts)   | Record one dated run summary on #865.                                       |
@@ -33,6 +34,7 @@ npm run reconcile
 npm run reconcile -- --json evidence.json --out report.md
 npm run reconcile -- --issue 2603,2589
 npm run reconcile:apply -- plan.json --outcome outcome.json
+npm run reconcile:apply -- --evidence evidence.json
 npm run reconcile:summary -- --evidence evidence.json --outcome outcome.json
 npm run reconcile:watermark
 npm run reconcile:watermark -- stamp --evidence evidence.json
@@ -108,10 +110,14 @@ fill an empty domain slot on an open issue; existing labels and additions earlie
 in the same plan both count as occupied. Reclassification is outside this routine. Use the core's label
 decisions instead of recreating them in a writer.
 
-The watermark writer is confined to its fixed-title carrier issue. The summary
-writer posts to the issue named by `RUN_SUMMARY_ISSUE`. None of these writers has
-an issue-close operation; preserve that boundary when changing their payloads or
-allowed tools.
+The applier's `--evidence` pass closes the gather's `staleP3` findings — an open
+`P3` filed 30 or more days ago with no dispatch-ledger claim, assignee, or open
+PR referencing it, and neither `needs-human` nor `parked` (ruled 2026-09-09,
+#5671) — as `not_planned` with one fixed comment, after re-reading the issue and
+re-running the same rule. The close payload is a literal; nothing else in the
+toolchain closes an issue. The watermark writer is confined to its fixed-title
+carrier issue. The summary writer posts to the issue named by `RUN_SUMMARY_ISSUE`.
+Preserve these boundaries when changing payloads or allowed tools.
 
 ## Watermark and run summaries
 

@@ -56,7 +56,9 @@ concrete gap required by the change policy.
 A finding earns its own issue when it is user-reachable, breaks main or a merge,
 has a measured reproduction no open issue covers, or removes a parallel concept.
 Otherwise attach it to the existing mechanism or owning task: scan gaps to their
-adopter, harness details to the harness issue, and flakes to their cause.
+adopter, harness details to the harness issue, and flakes to their cause. A P3
+nobody claims, takes or opens a PR for within 30 days closes `not_planned` in
+the reconcile pass, so file at P3 only work worth doing this month.
 
 Lanes return findings rather than filing. The orchestrator checks current scope,
 duplicates, and [filing instructions](../../.agents/skills/file-issue/SKILL.md)
