@@ -123,19 +123,15 @@ symptom or day, need distinct keys, and a surface with one value can omit it.
 Rollback restores the last accepted or queued value rather than an earlier tap's
 snapshot, refreshing from the surface only while that value has nothing in flight.
 
-### Local optimistic state that survives
+### Local optimistic state
 
-A value the shared channel does not own needs its own reason. Three have one:
+Every survivor, and why:
 
-- **FoodLogBar** — one figure per day _and_ per meal window, moved by four writes
-  and settled by a separate authoritative read, not by any one write's answer.
-  The last surface off the pipeline.
-- **DoseStatusControl** — an override set _after_ settlement and only for a
-  capture, which has no revalidation behind it. Never a pre-tap paint.
-- **SubstanceUnitControl** — adoption only: the week count arrives with the
-  write's answer, painted after it.
-
-Everything else declares `optimistic`, or shows no value and uses the cooldown.
+- **FoodLogBar** — day and meal-window figures, settled by one authoritative
+  read, not any single write.
+- **DoseStatusControl** — post-settlement capture override, never a pre-tap
+  paint.
+- **SubstanceUnitControl** — adoption only.
 
 Repeat semantics determine whether a cadence confirmation applies:
 
