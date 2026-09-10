@@ -87,8 +87,14 @@ type DestructiveSubmitProps = Pick<
   "children" | "pendingLabel" | "disabled" | "data-testid"
 >;
 
+// The filled destructive submit. It states its rank through the primitive like
+// any other filled control (#5696): the wrapper used to paint the fill onto a
+// rank-LESS child, so a card could show two solid controls while every query for
+// a rank class reported one. The wrapper survives for the GEOMETRY that rank
+// cannot spell — the wider padding and larger type of the retiring `.btn-danger`
+// shape — and paints nothing.
 export const DestructiveSubmit = (props: DestructiveSubmitProps) => (
   <span className="destructive-submit">
-    <Button {...props} type="submit" />
+    <Button {...props} type="submit" variant="danger" />
   </span>
 );

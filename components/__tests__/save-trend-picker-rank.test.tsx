@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SaveTrendPicker from "@/components/SaveTrendPicker";
+import { loudIn } from "./loud-controls";
 
 // THE ★ ADD-TILE FORM'S ONE COMMIT (#4014, under #4978's 2026-09-04 13:05 UTC
 // form rule: the surface is the FORM, and its commit is the primary).
@@ -21,6 +22,11 @@ import SaveTrendPicker from "@/components/SaveTrendPicker";
 // fold's own door is the same action as its commit rather than a rival primary
 // (#4978, 2026-09-05); this pins that it is still a summary, since turning it
 // into a button would put a second loud control on the surface.
+//
+// The count is `loudIn`, the one definition (#5696). It used to read
+// `button-control-primary` alone, which is the NARROWEST of the shapes that had
+// drifted across these specs: a filled `danger` beside this commit — ruling 10
+// spends the surface's budget on it — would not have moved the number.
 
 vi.mock("@/app/(app)/saved-actions", () => ({
   toggleSavedItem: async () => {},
@@ -51,15 +57,13 @@ describe("the ★ add-tile picker's rank (#4014)", () => {
   it("spends exactly one loud control on the surface", () => {
     const form = mount();
     expect(form.querySelectorAll('button[type="submit"]')).toHaveLength(1);
-    expect(form.querySelectorAll(".button-control-primary")).toHaveLength(1);
+    expect(loudIn(form)).toHaveLength(1);
 
     // The door into the fold is a summary, so it is not a rival control.
     const door = screen.getByTestId("save-trend-picker-toggle");
     expect(door.tagName).toBe("SUMMARY");
     expect(
-      screen
-        .getByTestId("save-trend-picker-disclosure")
-        .querySelectorAll(".button-control-primary")
+      loudIn(screen.getByTestId("save-trend-picker-disclosure"))
     ).toHaveLength(1);
   });
 });

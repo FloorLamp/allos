@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
+import { loudIn } from "./loud-controls";
 import AuditRetentionSettings from "@/app/(app)/settings/server/AuditRetentionSettings";
 import TwoFactorSettings from "@/app/(app)/settings/TwoFactorSettings";
 import AiTierSettings from "@/app/(app)/settings/ai/AiTierSettings";
@@ -27,12 +28,16 @@ import ServerTelegramSettings from "@/app/(app)/settings/notifications/ServerTel
 // the CARD the commit lives in, never over the document, because a per-route
 // total is exactly the number ruling 6 says does not exist.
 //
-// THE BUDGET COUNTS BOTH LOUD PAINTS, NOT JUST `primary`. Ruling 10 settled that
+// THE BUDGET COUNTS EVERY LOUD PAINT, NOT JUST `primary`. Ruling 10 settled that
 // a filled `danger` control SPENDS the card's one loud control rather than
 // sitting outside it, so counting only `button-control-primary` here would let a
-// card go loud twice and still pass. `loudIn` therefore reads both, which is
-// also what couples the logins case below to the per-row Deletes: those went
-// quiet under the same ruling, and if they come back this fails.
+// card go loud twice and still pass. That is also what couples the logins case
+// below to the per-row Deletes: those went quiet under the same ruling, and if
+// they come back this fails. `loudIn` is the shared definition in
+// `./loud-controls` rather than a selector list private to this file (#5696):
+// settings hosts no `DestructiveSubmit` today, so the list here had no blind
+// spot — it acquired one the moment a destructive submit arrived on a card, and
+// this file is the pattern the other slices copy.
 //
 // The two carve-outs ruling 6 names are pinned as their own cases, because they
 // are what a later lane would "finish" by mistake: a fold commit that can be
@@ -103,14 +108,6 @@ function cardOf(control: HTMLElement): HTMLElement {
     throw new Error("control is not inside a settings card");
   }
   return card;
-}
-
-/** Every loud control on the card — both paints ruling 10 counts against it. */
-function loudIn(card: HTMLElement): string[] {
-  return Array.from(
-    card.querySelectorAll(".button-control-primary, .button-control-danger"),
-    (el) => (el.textContent ?? "").trim()
-  );
 }
 
 describe("a settings card spends its one loud control on its own commit", () => {
