@@ -22,7 +22,9 @@ import {
   TL_CHROME_BUSY_DAY,
   TL_CHROME_QUIET_DAY,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
 
 // The record day view's phone chrome (issue #1517), inherited from `/timeline` when
 // #3958 phase 2 retired that route and `/history?day=` became the app's one "that
@@ -1188,6 +1190,238 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
           glyphBox.width
         )}px glyph`
       ).toBeLessThan(glyphBox.width * 2);
+    } finally {
+      await page.context().close();
+    }
+  });
+});
+
+// ── SELECTION MODE IS THE RECORD'S TOO (#5618 ruling 4, over #4118) ─────────────
+//
+// The ledger's Select, pick boxes and three verbs are one component both day surfaces
+// mount (components/DaySelection.tsx), over the SAME per-row correction cores. What a
+// browser is needed for is the half a component test cannot see: that the record's day
+// really re-times and re-dates the rows a person checked, through the ledger's cores,
+// with nothing seeded on the ledger's side.
+//
+// A DAY OF THIS FILE'S OWN, seeded and cleared by the test rather than by the fixture:
+// the other two writing tests here own the quiet day, and a selection has to be able to
+// move rows OFF the day it starts on. Deep past like every other day here, and the
+// stated time is 19:05 — the acceptance criterion's own minute, which is safely behind
+// the run's frozen clock on a January day.
+const SELECT_DAY = "2026-01-13";
+// SIXTY DAYS BACK, which is the point: no seven-day offer could hold it, and the record
+// is the surface a person opens when a row belongs further back than a week.
+const SELECT_MOVED_DAY = "2025-11-14";
+const SELECT_GROUPS = [
+  { key: "berries", label: "Berries" },
+  { key: "whole_grains", label: "Whole grains" },
+  { key: "leafy_greens", label: "Leafy greens" },
+];
+// The filing minutes the three rows arrive with — untimed servings, so the record
+// prints "logged …" on each one. That is the day this repairs.
+const SELECT_FILED_AT = "08:00";
+const SELECT_STATED_AT = "19:05";
+
+function selectionZone(): string {
+  return pinnedTimezone(frozenNow().toISOString()).zone;
+}
+
+/** A wall time on a profile-local day, as an instant — the run's pinned zone applied. */
+function selectionInstant(day: string, hhmm: string): number {
+  const at = zonedWallTimeToUtc(selectionZone(), day, hhmm);
+  if (!at) throw new Error(`no instant for ${day} ${hhmm}`);
+  return at.getTime();
+}
+
+/** As a SQL stamp, for the seed — the shape every other fixture instant is written in. */
+function selectionStamp(day: string, hhmm: string): string {
+  return utcSqlString(new Date(selectionInstant(day, hhmm)));
+}
+
+function clearSelectionFood(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const id = profileIdNamed(TL_CHROME_WELL_PROFILE);
+    // EVERY food row this profile has, not just the two days: the profile is seeded
+    // with none, so "none at all" is the state to return it to whatever a half-finished
+    // move left behind.
+    db.prepare("DELETE FROM food_log_events WHERE profile_id = ?").run(id);
+    db.prepare("DELETE FROM food_daily_totals WHERE profile_id = ?").run(id);
+  } finally {
+    db.close();
+  }
+}
+
+function seedSelectionFood(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const id = profileIdNamed(TL_CHROME_WELL_PROFILE);
+    const event = db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, ?, ?, ?)`
+    );
+    const total = db.prepare(
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+       VALUES (?, ?, ?, 1)
+       ON CONFLICT(profile_id, date, group_key)
+         DO UPDATE SET servings = servings + 1`
+    );
+    for (const group of SELECT_GROUPS) {
+      event.run(
+        id,
+        group.key,
+        SELECT_DAY,
+        selectionStamp(SELECT_DAY, SELECT_FILED_AT)
+      );
+      total.run(id, SELECT_DAY, group.key);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+/** What the store says about this profile's servings — the day and the stated instant. */
+function selectionServings(): { date: string; occurredAt: number | null }[] {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return db
+      .prepare(
+        `SELECT date, occurred_at AS occurredAt FROM food_log_events
+          WHERE profile_id = ? ORDER BY group_key`
+      )
+      .all(profileIdNamed(TL_CHROME_WELL_PROFILE))
+      .map((row) => {
+        const { date, occurredAt } = row as {
+          date: string;
+          occurredAt: string | null;
+        };
+        // COMPARED AS INSTANTS, never as text: the seed writes the repo's SQL stamp
+        // shape and the correction cores write an ISO one, and those are the same
+        // moment spelled two ways.
+        return {
+          date,
+          occurredAt:
+            occurredAt === null ? null : new Date(occurredAt).getTime(),
+        };
+      });
+  } finally {
+    db.close();
+  }
+}
+
+test.describe("selection mode on the record (#5618 ruling 4)", () => {
+  test.beforeEach(() => {
+    clearSelectionFood();
+    seedSelectionFood();
+  });
+  test.afterAll(clearSelectionFood);
+
+  test("three checked rows are re-timed, then moved to a day no seven-day list holds", async ({
+    browser,
+  }) => {
+    test.slow();
+    // A DESKTOP CONTEXT OF ITS OWN, not this file's phone `signIn`. Under a coarse
+    // pointer the checkbox primitive's 44px reach pseudo-element (app/globals.css,
+    // #3954) sits over its own 16px box, so the thing a finger taps is the LABEL — a
+    // real fact about the control, and a different test from this one. What this test
+    // is about is the repair, driven the way somebody repairing a month of misfiled
+    // rows drives it.
+    const page = await loginAs(
+      browser,
+      { username: E2E_LOGIN_TL_CHROME, password: E2E_MEMBER_PASSWORD },
+      { viewport: DESKTOP }
+    );
+    try {
+      await page.goto(dayUrl(SELECT_DAY));
+      const content = appContent(page);
+      const rows = content.getByTestId("history-row");
+      await expect(rows).toHaveCount(3);
+      // THE DAY THIS REPAIRS: three servings nobody timed, each printing the minute
+      // they were FILED. That is the reported defect, on the surface that shows it.
+      for (const group of SELECT_GROUPS)
+        await expect(
+          rows.filter({ hasText: group.label }).getByTestId("history-row-clock")
+        ).toContainText("logged");
+
+      // ── Select lives in the day bar ────────────────────────────────────────
+      await hydratedClick(page, content.getByTestId("history-select-toggle"));
+      await expect(content.getByTestId("history-selection-bar")).toBeVisible();
+      await expect(content.getByTestId("history-selection-count")).toHaveText(
+        "0 selected"
+      );
+
+      const boxes = content.getByTestId(/^history-pick-serving-/);
+      await expect(boxes).toHaveCount(3);
+      for (let i = 0; i < 3; i++) await boxes.nth(i).click();
+      await expect(content.getByTestId("history-selection-count")).toHaveText(
+        "3 selected"
+      );
+
+      // ── Set time 19:05 moves all three, through the ledger's cores ─────────
+      await hydratedClick(
+        page,
+        content.getByTestId("history-selection-set-time")
+      );
+      await content
+        .getByTestId("history-selection-when-time")
+        .fill(SELECT_STATED_AT);
+      await hydratedClick(
+        page,
+        content.getByTestId("history-selection-time-apply")
+      );
+
+      const stated = selectionInstant(SELECT_DAY, SELECT_STATED_AT);
+      await expect
+        .poll(() => selectionServings().map((row) => row.occurredAt))
+        .toEqual([stated, stated, stated]);
+      // AND THE ROWS SAY SO. A stated row drops the "logged" prefix — the whole
+      // difference between "when it was typed" and "when it happened".
+      for (const group of SELECT_GROUPS) {
+        const clock = rows
+          .filter({ hasText: group.label })
+          .getByTestId("history-row-clock");
+        await expect(clock).not.toContainText("logged");
+        await expect(clock).toHaveText(/7:05|19:05/);
+      }
+      // The mode is over: no bar, no boxes left on the rows.
+      await expect(content.getByTestId("history-selection-bar")).toHaveCount(0);
+      await expect(content.getByTestId(/^history-pick-serving-/)).toHaveCount(
+        0
+      );
+
+      // ── Move to day… reaches sixty days back ──────────────────────────────
+      await hydratedClick(page, content.getByTestId("history-select-toggle"));
+      const again = content.getByTestId(/^history-pick-serving-/);
+      await expect(again).toHaveCount(3);
+      for (let i = 0; i < 3; i++) await again.nth(i).click();
+      await hydratedClick(
+        page,
+        content.getByTestId("history-selection-move-day")
+      );
+      await content
+        .getByTestId("history-selection-day-field")
+        .fill(SELECT_MOVED_DAY);
+      await hydratedClick(
+        page,
+        content.getByTestId("history-selection-day-apply")
+      );
+
+      await expect
+        .poll(() => selectionServings().map((row) => row.date))
+        .toEqual([SELECT_MOVED_DAY, SELECT_MOVED_DAY, SELECT_MOVED_DAY]);
+      // THE CLOCK CAME WITH THE DAY: 19:05 on the day they moved to, not the one they
+      // left — the same re-anchoring a single-row correction gets.
+      expect(selectionServings().map((row) => row.occurredAt)).toEqual(
+        Array(3).fill(selectionInstant(SELECT_MOVED_DAY, SELECT_STATED_AT))
+      );
+      // And the day a person is looking at is empty now, while the far day holds them.
+      await expect(rows).toHaveCount(0);
+      await page.goto(dayUrl(SELECT_MOVED_DAY));
+      await expect(content.getByTestId("history-row")).toHaveCount(3);
     } finally {
       await page.context().close();
     }
