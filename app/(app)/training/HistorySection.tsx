@@ -1,7 +1,8 @@
 import { Fragment } from "react";
-import Link from "next/link";
 import { IconChevronDown } from "@tabler/icons-react";
-import DestinationLink from "@/components/DestinationLink";
+import DestinationLink, {
+  DestinationActionLink,
+} from "@/components/DestinationLink";
 import { EmptyState } from "@/components/ui";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import HistoryRows from "@/app/(app)/history/HistoryRows";
@@ -407,8 +408,7 @@ export default async function HistorySection({
       {hasMore && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {show < HISTORY_MAX_SHOW && (
-            <Link
-              className="btn-ghost btn-sm"
+            <DestinationActionLink
               data-testid="training-log-show-more"
               href={trainingLogHref({
                 ...query,
@@ -419,7 +419,7 @@ export default async function HistorySection({
               })}
             >
               Show more
-            </Link>
+            </DestinationActionLink>
           )}
           <DestinationLink
             href={historyHref({ family: "training", everyone })}

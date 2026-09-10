@@ -13,7 +13,7 @@ import type { CreateVisitOffer } from "@/lib/queries";
 // so a late-arriving encounter self-heals the prompt away.
 //
 // Server component: create/decline are plain server-action <form>s (no client JS),
-// each settling as a POST the e2e helpers await. `profileId` rides each form as the
+// each settling as a POST the e2e helpers await. `profile_id` rides each form as the
 // cross-profile write target.
 
 const DOMAIN_HINT: Record<CreateVisitOffer["domain"], string> = {
@@ -60,7 +60,7 @@ export default function CreateVisitFromRecord({
             </span>
             <div className="flex shrink-0 items-center gap-3">
               <form action={createVisitFromRecordAction}>
-                <input type="hidden" name="profileId" value={profileId} />
+                <input type="hidden" name="profile_id" value={profileId} />
                 <input type="hidden" name="domain" value={o.domain} />
                 <input type="hidden" name="recordId" value={o.id} />
                 <button
@@ -72,7 +72,7 @@ export default function CreateVisitFromRecord({
                 </button>
               </form>
               <form action={declineCreateVisitAction}>
-                <input type="hidden" name="profileId" value={profileId} />
+                <input type="hidden" name="profile_id" value={profileId} />
                 <input type="hidden" name="domain" value={o.domain} />
                 <input type="hidden" name="recordId" value={o.id} />
                 <button

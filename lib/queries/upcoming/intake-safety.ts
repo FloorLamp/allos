@@ -41,7 +41,6 @@ import {
   poolIdsForProfile,
   poolPushes,
 } from "../intake/supply-pool";
-import { getEffectiveActiveSituations } from "../derived-situations";
 import { getWeatherDay, weatherSituationHolds } from "../weather-situations";
 import { getWeatherMedWarnings } from "../intake/warnings";
 import {
@@ -95,7 +94,7 @@ import {
 } from "../../medication-monitoring";
 import { medMonitoringReason } from "../../reasons";
 import type { AppRoute } from "../../hrefs";
-import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
+import { intakeDayContext } from "../intake/day-context";
 import { getUvDoseForDay } from "../weather";
 import { decideUvOverexposure } from "../../uv-overexposure";
 // Doses pending TODAY across active intake items (reuses the
@@ -189,20 +188,20 @@ function scheduledDoseRows(
   const intakeItems = getIntakeItems(profileId);
   const doses = getIntakeDoses(profileId);
   const taken = getTakenDoseIds(profileId, today);
-  // Derived context (#1292/#1298) widens the active set so a Poor sleep / Period
-  // situational dose surfaces on Upcoming + dashboard placement + the digest exactly while its
-  // derived context holds — the SAME effective set the Supplements bar uses.
-  const activeSituations = getEffectiveActiveSituations(profileId, today);
-  const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
-  // #558: a pre_workout dose is pending on a predicted training day, before a
-  // session is logged; the logged signal is the fallback when no cadence is known.
-  const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
-  const ctx = {
-    date: today,
-    isWorkoutDay,
-    activeSituations,
-    predictedWorkoutDay,
-  };
+  // THE SHARED DAY CONTEXT (#5321), not a local assembly of it. Upcoming RENDERS LIVE,
+  // so it wants every field the medications page has, including the one that is a
+  // verdict about the current minute: this read four of the five, and the missing
+  // `postWorkoutReady` fell to `?? true` in conditionAppliesOn — so a post-workout dose
+  // the page HELD until the session's end time was scheduled here anyway, and the same
+  // dose on the same day read two ways on two surfaces.
+  //
+  // The builder carries what this function used to read one at a time: the derived
+  // context (#1292/#1298) that widens the active set, so a Poor sleep / Period
+  // situational dose surfaces on Upcoming, dashboard placement and the digest exactly
+  // while its derived context holds — the SAME effective set the Supplements bar uses —
+  // and the predicted training day a pre_workout dose keys on before a session is
+  // logged (#558).
+  const ctx = intakeDayContext(profileId, today);
 
   const byId = new Map(intakeItems.map((item) => [item.id, item]));
   const shortLabels = shortLabelsById(intakeItems);
@@ -320,15 +319,9 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
   const intakeItems = getIntakeItems(profileId);
   const shortLabels = shortLabelsById(intakeItems);
   const doses = getIntakeDoses(profileId);
-  const activeSituations = getEffectiveActiveSituations(profileId, today);
-  const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
-  const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
-  const ctx = {
-    date: today,
-    isWorkoutDay,
-    activeSituations,
-    predictedWorkoutDay,
-  };
+  // The SAME builder the due rows above read (#5321) — an offer and a due row must
+  // not disagree about whether the session has ended.
+  const ctx = intakeDayContext(profileId, today);
 
   const dosesByItem = new Map<number, typeof doses>();
   for (const d of doses) {

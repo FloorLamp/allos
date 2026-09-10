@@ -23,6 +23,7 @@ import {
   updateFoodLogEvent,
   type FoodEventEditResult,
 } from "@/app/(app)/nutrition/actions";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
 // THE FOOD DOMAIN'S ONE FORM (#4424 ruling 1), named by `LOG_MANIFEST.food.pieces.form`.
@@ -325,14 +326,9 @@ export default function FoodServingForm({
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
-        <button
-          className="btn-ghost"
-          type="button"
-          data-testid={`${testId}-cancel`}
-          onClick={onCancel}
-        >
+        <Button data-testid={`${testId}-cancel`} onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

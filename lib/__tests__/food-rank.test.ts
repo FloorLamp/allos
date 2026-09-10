@@ -358,7 +358,7 @@ describe("proteinSplitIndex (#2061)", () => {
 describe("the ranking gather's slot signal (#2269)", () => {
   it("SELECTs no meal_slot in gatherFoodRankingSignals", () => {
     const src = fs.readFileSync(
-      path.join(process.cwd(), "lib/queries/nutrition.ts"),
+      path.join(process.cwd(), "lib/queries/nutrition/ledger.ts"),
       "utf8"
     );
     const start = src.indexOf("function gatherFoodRankingSignals");

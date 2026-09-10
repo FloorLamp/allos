@@ -163,23 +163,17 @@ export default function EndEpisodeReconcile({
             Selected meds move to Past. You can restart them later.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Button
+              variant="primary"
               data-testid="episode-med-reconcile-confirm"
               disabled={pending}
               onClick={() => submit([...selected])}
-              className="btn"
             >
               {pending ? "Ending…" : "End episode"}
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => setOpen(false)}
-              className="btn-ghost"
-            >
+            </Button>
+            <Button disabled={pending} onClick={() => setOpen(false)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </ModalShell>
       )}

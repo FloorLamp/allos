@@ -80,14 +80,12 @@ export default function EndurancePlanBar({
             </p>
           )}
         </div>
-        <button
-          type="button"
+        <Button
           onClick={() => setShowForm((v) => !v)}
-          className="btn-ghost flex items-center gap-1 text-sm"
           data-testid="endurance-add-toggle"
         >
           <IconPlus size={16} /> Add event
-        </button>
+        </Button>
       </div>
 
       {plans.length > 0 && (
@@ -299,13 +297,7 @@ export default function EndurancePlanBar({
             >
               Add event
             </SubmitButton>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="btn-ghost"
-            >
-              Cancel
-            </button>
+            <Button onClick={() => setShowForm(false)}>Cancel</Button>
           </div>
         </form>
       )}

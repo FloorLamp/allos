@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { IconClockQuestion } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import Button from "@/components/Button";
 import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
 import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 import { dismissStaleNudgeAction } from "@/app/(app)/medical/episodes/actions";
@@ -62,8 +63,7 @@ export default function StaleEpisodeNudge({
           triggerTestId="stale-episode-end"
           successMessage={`Episode ended as of ${lastActivityDate}.`}
         />
-        <button
-          type="button"
+        <Button
           data-testid="stale-episode-dismiss"
           disabled={pending}
           onClick={() =>
@@ -78,10 +78,9 @@ export default function StaleEpisodeNudge({
               toast("Keeping the episode open.");
             })
           }
-          className="btn-ghost"
         >
           Keep open
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -315,9 +315,13 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
     count: 2,
     why: "the family safety gather selects and orders the latest administration event, with immutable capture as the fallback for rows whose event is unstated. Both operations must remain database-side across all family members.",
   },
-  "lib/queries/nutrition.ts": {
-    count: 3,
-    why: "three database-side food-ledger operations must pair stated eating time with immutable capture before rows reach JS: the server-paged history's stable within-day order, plus the recent-food check's bounded MAX and WHERE. JS projections use bestKnownInstant and are not allowlisted.",
+  "lib/queries/nutrition/ledger.ts": {
+    count: 1,
+    why: "the food ledger's server-paged history needs its stable within-day order — stated eating time, immutable capture as the fallback — computed database-side, before rows reach JS, because the page total counts the same rows the bound returns. The ledger's JS projections use bestKnownInstant and are not allowlisted.",
+  },
+  "lib/queries/nutrition/regularity.ts": {
+    count: 2,
+    why: "the recent-food check behind a dose's declared timing pairs stated eating time with immutable capture twice database-side: the bounded MAX that picks the profile's latest serving, and the WHERE that holds the scan to the check's own lookback window. Both must stay in SQL so the read is a handful of rows on the busiest day.",
   },
   "lib/queries/substance.ts": {
     count: 1,

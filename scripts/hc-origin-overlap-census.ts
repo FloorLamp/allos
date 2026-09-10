@@ -36,7 +36,6 @@ import { parseHealthConnectPayload } from "../lib/integrations/health-connect";
 import { windowsOverlap } from "../lib/metric-window-overlap";
 
 const log = (line: string) => {
-  // eslint-disable-next-line no-console
   console.log(line);
 };
 

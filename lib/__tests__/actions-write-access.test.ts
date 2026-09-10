@@ -240,6 +240,23 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "public auth entry point (issue #985); consumes a single-use invite/reset token to set the login's OWN password, runs before any session exists — no profile-owned data",
   },
   // --- Thin wrappers that delegate to a gated helper ---
+  ...[
+    "linkRecordVisitAction",
+    "declineRecordVisitAction",
+    "linkAllFromVisitAction",
+    "dismissAllFromVisitAction",
+    "unlinkRecordVisitAction",
+    "createVisitFromRecordAction",
+    "declineCreateVisitAction",
+    "linkEpisodeVisitAction",
+    "declineEpisodeVisitAction",
+    "unlinkEpisodeVisitAction",
+  ].map((fn) => ({
+    file: "app/(app)/visit-link-actions.ts",
+    fn,
+    gate: "gateItemProfile",
+    why: "visit-link writes authorize the posted subject through gateItemProfile before calling profile-scoped cores",
+  })),
   {
     file: "app/(app)/actions.ts",
     fn: "dismissDataQualityGap",

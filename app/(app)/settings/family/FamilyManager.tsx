@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import Avatar from "@/components/Avatar";
+import Button from "@/components/Button";
 import {
   reopenAfterRefusedSignOut,
   reopenUnlessSessionEnded,
@@ -212,14 +213,9 @@ function ProfilesCard({
             placeholder="Name"
             className="input"
           />
-          <button
-            type="button"
-            onClick={add}
-            disabled={pending || !newName.trim()}
-            className="btn shrink-0"
-          >
+          <Button onClick={add} disabled={pending || !newName.trim()}>
             Add
-          </button>
+          </Button>
         </div>
         <div className="mt-2">
           <Msg result={result} />
@@ -286,14 +282,9 @@ function ProfileRow({
             onChange={(e) => setName(e.target.value)}
             className="input"
           />
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy || !dirty}
-            className="btn-ghost shrink-0"
-          >
+          <Button onClick={save} disabled={busy || !dirty}>
             Rename
-          </button>
+          </Button>
         </div>
         <PhotoPicker
           hasPhoto={!!profile.photo_path}
@@ -384,25 +375,22 @@ function ProfileRow({
               />
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <Button
                 onClick={del}
                 disabled={busy || typedName.trim() !== profile.name}
-                className="btn-danger shrink-0"
+                variant="danger"
               >
                 Delete permanently
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 onClick={() => {
                   setConfirmOpen(false);
                   setTypedName("");
                 }}
                 disabled={pending}
-                className="btn-ghost shrink-0"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -637,14 +625,12 @@ function LoginsCard({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+          <Button
             onClick={create}
             disabled={pending || !username.trim() || (!invitePath && !password)}
-            className="btn"
           >
             Create login
-          </button>
+          </Button>
           <Msg result={result} />
         </div>
       </div>
@@ -881,48 +867,46 @@ function LoginRow({
             {login.email ? login.email : "no email"}
           </span>
         </div>
+        {/* THE ROW'S ACTIONS, CONVERTED AS ONE (#4978 item 3, owner ruling
+            2026-09-05 (3)). Delete used to be a red-TINTED ghost — the quiet box
+            with rose text — which is a third treatment by another name; the owner
+            ruled at 2026-09-09 20:05 UTC that destructive actions look the same
+            everywhere, so it takes the primitive's one destructive paint and no
+            tinted-ghost variant exists to spell. Its four neighbours convert with
+            it rather than after it, because a filled red beside four raw ghosts is
+            the half-converted state ruling (3) declines.
+
+            None of the six controls in this row is a form commit: LoginRow renders
+            no <form> — every action here posts through a Server Action from an
+            onClick — so under the 2026-09-04 13:05 UTC form reading there is no
+            surface primary to spend, and the row is one rank plus the destructive
+            paint. The row also renders once PER LOGIN, so a primary here would be
+            one per row rather than one per surface. */}
         <div className="flex flex-wrap items-center gap-1">
           {canInvite && login.email && (
-            <button
-              type="button"
+            <Button
               onClick={invite}
               disabled={pending}
-              className="btn-ghost"
               data-testid="send-invite"
             >
               Send invite
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            onClick={() => setEmailOpen((v) => !v)}
-            className="btn-ghost"
-          >
-            Email
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="btn-ghost"
-          >
-            Reset password
-          </button>
-          <button
-            type="button"
+          <Button onClick={() => setEmailOpen((v) => !v)}>Email</Button>
+          <Button onClick={() => setOpen((v) => !v)}>Reset password</Button>
+          <Button
             onClick={revokeSessions}
             disabled={pending || sessionCount === 0}
-            className="btn-ghost"
           >
             Sign out devices
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             onClick={del}
             disabled={pending || isLastAdmin}
-            className="btn-ghost text-rose-600 dark:text-rose-400"
+            variant="danger"
           >
             Delete
-          </button>
+          </Button>
         </div>
         {(sessionCount === 0 || isLastAdmin) && (
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -947,15 +931,16 @@ function LoginRow({
             data-testid="edit-email"
             className="input"
           />
-          <button
-            type="button"
+          {/* `shrink-0` is not restated: `button-control` already declares it, so
+              the fold's commit holds its width beside the field exactly as the raw
+              class did. */}
+          <Button
             onClick={saveEmail}
             disabled={pending}
-            className="btn shrink-0"
             data-testid="save-email"
           >
             Save
-          </button>
+          </Button>
         </div>
       )}
       {open && (
@@ -968,14 +953,9 @@ function LoginRow({
             autoComplete="new-password"
             className="input"
           />
-          <button
-            type="button"
-            onClick={reset}
-            disabled={pending || !password}
-            className="btn shrink-0"
-          >
+          <Button onClick={reset} disabled={pending || !password}>
             Set
-          </button>
+          </Button>
         </div>
       )}
       <div className="mt-2">
@@ -1092,18 +1072,18 @@ function GrantsSummaryRow({
             ? "— all profiles (admin)"
             : grantCountSummary(granted, profiles.length)}
         </span>
-        <button
-          type="button"
-          data-testid={`grant-edit-${login.username}`}
-          onClick={() => {
-            setEverOpened(true);
-            setOpen((v) => !v);
-          }}
-          aria-expanded={open}
-          className="btn-ghost ml-auto"
-        >
-          {open ? "Done" : "Edit"}
-        </button>
+        <span className="ml-auto inline-flex">
+          <Button
+            data-testid={`grant-edit-${login.username}`}
+            onClick={() => {
+              setEverOpened(true);
+              setOpen((v) => !v);
+            }}
+            aria-expanded={open}
+          >
+            {open ? "Done" : "Edit"}
+          </Button>
+        </span>
       </div>
       {everOpened && (
         <div className={open ? "block" : "hidden"}>
@@ -1278,15 +1258,13 @@ function GrantsRow({
         })}
       </div>
       <div className="mt-3 flex items-center gap-3">
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={pending}
           data-testid={`grant-save-${login.username}`}
-          className="btn-ghost"
         >
           Save access
-        </button>
+        </Button>
         <Msg result={result} />
       </div>
     </div>

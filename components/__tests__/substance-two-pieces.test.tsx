@@ -253,6 +253,33 @@ describe("SubstanceForm is ONE form for add and for edit", () => {
     }
   );
 
+  // THE FORM'S TWO RANKS, ASSERTED AS A PAIR (#4978 slice 1, owner ruling
+  // 2026-09-05 (1) and (3)). The commit is the one filled control on the form and
+  // its neighbour is the quiet one — and the two are checked TOGETHER, because the
+  // state the owner declined is exactly the half-converted one: a commit on the
+  // primitive's smaller box beside a Cancel still wearing the raw family's larger
+  // type, which measured 1.84x the commit's width. Read off the RENDERED classes,
+  // not off the call site, so the wrapper silently dropping `variant` (the demotion
+  // #3982 was written against) reddens here.
+  it("paints the commit primary and the Cancel beside it secondary, once per form", () => {
+    openForm();
+    const commit = screen.getByRole("button", { name: "Add" });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+
+    expect(commit.getAttribute("type")).toBe("submit");
+    expect(commit.className).toContain("button-control-primary");
+    expect(cancel.className).toContain("button-control");
+    expect(cancel.className).not.toContain("button-control-primary");
+
+    // Neither control is on the retiring raw family any more, and the form spends
+    // its ONE primary on the commit rather than on a neighbour.
+    for (const el of [commit, cancel])
+      expect(el.className).not.toMatch(/\b(btn|btn-ghost|btn-danger|btn-sm)\b/);
+    expect(document.querySelectorAll(".button-control-primary")).toHaveLength(
+      1
+    );
+  });
+
   it("gives two substances with different unit words two different labels", () => {
     openForm(undefined, "alcohol");
     const drinks = screen

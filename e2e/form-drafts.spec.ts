@@ -457,7 +457,6 @@ test("the reactive unsaved signature is cheap enough to run per keystroke (#3371
     expect(measured!.real.bytes).toBeGreaterThan(200);
     expect(measured!.fat.bytes).toBeGreaterThan(measured!.real.bytes * 10);
 
-    // eslint-disable-next-line no-console -- the measurement IS the deliverable (#3371); a number nobody can read is not one
     console.log(
       `[#3371] draft signature over IntakeItemForm: ${measured!.real.meanMs.toFixed(4)} ms/keystroke ` +
         `over ${Math.round(measured!.real.bytes)} bytes; ` +

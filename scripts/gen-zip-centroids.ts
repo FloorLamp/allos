@@ -98,7 +98,6 @@ function writeDataset(): void {
   // Compact (single-line) JSON: ~33k rows pretty-printed would triple the file for
   // no benefit — this dataset is machine-read, not hand-diffed line by line.
   fs.writeFileSync(OUT, JSON.stringify(map) + "\n");
-  // eslint-disable-next-line no-console
   console.log(`Wrote ${n} ZCTA centroids to ${OUT}`);
 }
 

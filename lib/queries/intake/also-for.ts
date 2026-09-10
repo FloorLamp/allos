@@ -18,8 +18,6 @@
 
 import { db, today, writeTx } from "../../db";
 import { snapshotCached } from "../../read-snapshot";
-import { getLatestBodyMetricDated } from "../metrics";
-import { profileAgeMonths } from "../../settings";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { allergenConflict, type AllergenHit } from "../../supplement-safety";
 import { isHiddenUnderPolicy } from "../../lifecycle";
@@ -29,6 +27,7 @@ import {
   getFindingSuppressions,
 } from "../upcoming/suppressions";
 import { getIntakeSafetyContext } from "./safety";
+import { getPediatricFormContext } from "./medications";
 import { createIntakeItemCore } from "../../intake-item-create";
 import { prnLabelIdentityFor } from "../../prn-defaults";
 import {
@@ -183,15 +182,7 @@ const pediatricContextFor = snapshotCached(
 );
 
 function pediatricContextForUncached(profileId: number): PediatricFormContext {
-  const todayStr = today(profileId);
-  const weight = getLatestBodyMetricDated(profileId, "weight");
-  return {
-    ageMonths: profileAgeMonths(profileId, todayStr),
-    weightKg: weight?.value ?? null,
-    weightDate: weight?.date ?? null,
-    weightUnit: "kg",
-    today: todayStr,
-  };
+  return getPediatricFormContext(profileId);
 }
 
 // The recorded allergen this bottle meets for this person, or null — FOR THE RECEIPT,

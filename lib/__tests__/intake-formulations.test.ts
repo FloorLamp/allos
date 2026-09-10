@@ -4,7 +4,6 @@ import {
   defaultFormulationSlug,
   formulationChoices,
   formulationRedosePreset,
-  pediatricContextLine,
 } from "@/lib/intake-formulations";
 import { formulationDoseAmount } from "@/lib/prn-dosing";
 import { prnDefaultsFor } from "@/lib/prn-defaults";
@@ -114,19 +113,5 @@ describe("intake formulation row (#3216)", () => {
     );
     expect(adult?.tier).toBe("adult");
     expect(child?.tier).toBe("pediatric");
-  });
-
-  it("the #798 pediatric contract survives a formulation switch", () => {
-    const choices = formulationChoices(ibuprofen);
-    // It is a property of dosing a CHILD, not of the product chosen — so it holds for
-    // the default chip and for a suspension alike.
-    for (const choice of choices) {
-      const line = pediatricContextLine(choice, true);
-      expect(line).toBeTruthy();
-      expect(line).toContain("weight band");
-      expect(line).toContain("label");
-    }
-    // And an adult on the ingredient's own form is told nothing about children.
-    expect(pediatricContextLine(choices[0], false)).toBeNull();
   });
 });

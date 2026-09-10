@@ -180,7 +180,6 @@ export function useActivityEditor(
     const wrapped = { ...ctx } as ActivityEditorContext;
     for (const name of OPENERS) {
       const original = ctx[name] as (...args: never[]) => void;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (wrapped as any)[name] = (...args: never[]) => {
         declareOpenedFrom(surface);
         original(...args);

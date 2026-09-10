@@ -44,6 +44,7 @@ function childContext(
     weightDate: "2026-09-01",
     weightUnit: "kg",
     today: "2026-09-09",
+    declinedDoseUpdates: [],
     ...overrides,
   };
 }

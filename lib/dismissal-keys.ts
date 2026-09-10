@@ -288,3 +288,48 @@ export const ALSO_FOR_OFFER_PREFIX = "also-for:";
 export function alsoForOfferKey(supplyId: number): string {
   return `${ALSO_FOR_OFFER_PREFIX}${supplyId}`;
 }
+
+// ---- The child dose-band update offer (issue #5538) ---------------------------
+//
+// A growing child crosses a label weight band and the item's STORED dose goes stale:
+// the row states the current band while every tap still records the old figure. The
+// owner's ruling is to follow the current weight and ASK — the dose row offers to
+// rewrite the stored amount once — and a DECLINE has to be recorded somewhere, or the
+// offer returns on every page load (an unrecorded decline is byte-identical to never
+// having asked).
+//
+// THE ANCHOR IS THE BAND'S OWN FIGURE, and that is the whole mechanism. `anchored`,
+// not `id-keyed`: an id-keyed decline would silence the offer forever, which is the
+// opposite of "the offer does not return until the band moves again". The tail is
+// `<intakeItemId>:<bandMg>` — the id half is an AUTOINCREMENT row id (never recycles,
+// #203) and the mg half is the episode: a decline says "do not change this medicine to
+// 150 mg", so growing into a band with a different figure mints a different key and the
+// offer arrives un-silenced. The figure rather than the lb range because the figure is
+// what the offer proposes, what its copy quotes, and what the restore row names.
+export const DOSE_BAND_UPDATE_PREFIX = "dose-band-update:";
+
+export function doseBandUpdateKey(itemId: number, bandMg: number): string {
+  return `${DOSE_BAND_UPDATE_PREFIX}${itemId}:${bandMg}`;
+}
+
+// The (item, band figure) a stored `dose-band-update:` key denotes, or null for a key
+// outside the namespace or one this builder would not have written. The answer path is
+// the only consumer: it re-derives the offer from live rows and refuses anything the
+// current band does not still agree with.
+export function parseDoseBandUpdateKey(
+  key: string
+): { itemId: number; bandMg: number } | null {
+  if (!key.startsWith(DOSE_BAND_UPDATE_PREFIX)) return null;
+  const [itemPart, mgPart, ...rest] = key
+    .slice(DOSE_BAND_UPDATE_PREFIX.length)
+    .split(":");
+  if (rest.length) return null;
+  const itemId = Number(itemPart);
+  const bandMg = Number(mgPart);
+  return Number.isSafeInteger(itemId) &&
+    itemId > 0 &&
+    Number.isFinite(bandMg) &&
+    key === doseBandUpdateKey(itemId, bandMg)
+    ? { itemId, bandMg }
+    : null;
+}

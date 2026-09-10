@@ -290,8 +290,9 @@ function gatherWindowDoses(
     // TODAY ONLY, the same split (#4019). The prediction is a rhythm inferred from a
     // trailing window ending NOW, and `conditionAppliesOn` reads it as
     // `predictedWorkoutDay ?? isWorkoutDay` — so on a closed day a guess made today
-    // overrides the training already on the record. Undefined falls back to
-    // `isWorkoutDay`, which is what the strip and `pendingDayDoses` both answer.
+    // overrides the training already on the record. `null` — "no cadence is known" —
+    // falls back to `isWorkoutDay`, which is what the strip and `pendingDayDoses`
+    // both answer.
     //
     // THE WRITE MOVES BOTH WAYS, and the second way is the one to say out loud: a
     // PREDICTED training day with no session logged loses its pre-workout dose from
@@ -304,7 +305,7 @@ function gatherWindowDoses(
     // the record is all a closed day leaves to read.
     predictedWorkoutDay: isForToday
       ? isPredictedWorkoutDay(profileId, date)
-      : undefined,
+      : null,
     postWorkoutReady: isPostWorkoutReady(
       activitiesToday.map((a) => a.end_time ?? a.start_time),
       nowMinutes
@@ -435,6 +436,9 @@ function gatherWindowDoses(
           date: d,
           isWorkoutDay: workoutDays.has(d),
           activeSituations: situationsOn(d),
+          // The strip scores days from the record (#5321): `null` is the
+          // no-prediction state `conditionAppliesOn` falls back to `isWorkoutDay` on.
+          predictedWorkoutDay: null,
         }),
       dd?.taken ?? new Set<string>(),
       dd?.skipped ?? new Set<string>(),

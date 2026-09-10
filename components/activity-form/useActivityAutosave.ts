@@ -517,7 +517,6 @@ export function useActivityAutosave({
     if (!canSave) return;
     const h = setTimeout(() => void persistLatest(), 700);
     return () => clearTimeout(h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formSig, canSave, savedAt, adoptPending, persistLatest]);
 
   // Flush any pending change when the form goes away (e.g. switching cards,

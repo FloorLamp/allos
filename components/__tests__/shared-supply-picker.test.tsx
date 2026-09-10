@@ -186,7 +186,14 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
   expect(screen.queryByText(new RegExp(`^${excluded}`))).toBeNull();
   fireEvent.mouseDown(option);
   await waitFor(() => expect((input as HTMLInputElement).value).toBe(name));
-  if (kind === "medication") await screen.findByTestId("rxcui-current");
+  // The confirmed code is stated by its own chip now (#5301); wait for it rather than
+  // pressing Add while the pick's RxNorm confirm is still in flight.
+  if (kind === "medication")
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("intake-fact-rxnorm").getAttribute("data-fact-state")
+      ).toBe("stated")
+    );
   screen.getByRole("button", { name: "Add" }).click();
   await waitFor(() => expect(action).toHaveBeenCalledOnce());
   return action.mock.calls[0]![0];

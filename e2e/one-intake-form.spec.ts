@@ -35,23 +35,25 @@ test("changing only the formulation chip adds the children's suspension, in a 39
   // eslint-disable-next-line no-restricted-properties -- first-ok: transient combobox list this test just opened
   await comboboxRows(page).filter({ hasText: "Advil" }).first().click();
 
-  // One ingredient, several products — the choice is a derived chip row, not a select
-  // buried in a dose block.
-  const formulations = form.getByTestId("intake-formulation-row");
+  // One ingredient, several products — the choice is a derived chip row, and since
+  // #5301 it is a row INSIDE the dose editor rather than a labelled button group
+  // standing above the chips, where it stated the product the dose chip already stated.
+  const editor = await openFact(page, "dose", panel);
+  const formulations = editor.getByTestId("intake-formulation-row");
   await expect(formulations).toBeVisible();
   const suspension = formulations
     .getByTestId("intake-formulation-choice")
     .filter({ hasText: "Children's oral suspension" });
   await expect(suspension).toHaveAttribute("aria-pressed", "false");
 
-  // CHANGE ONLY THE FORMULATION. No editor is opened; the chip row is the whole
-  // interaction, and the form still posts every other fact the pick seeded.
+  // CHANGE ONLY THE FORMULATION. Nothing else is touched, and the form still posts
+  // every other fact the pick seeded.
   await suspension.click();
   await expect(suspension).toHaveAttribute("aria-pressed", "true");
+  await closeEditor(page, panel);
   await expect(form.getByTestId("intake-fact-dose")).toContainText(
     "Children's oral suspension"
   );
-  await expect(form.getByTestId("intake-editor")).toHaveCount(0);
 
   // The 390px host takes it without horizontal overflow (#2014's intrinsic layout).
   await expectNoClippedContent(page);

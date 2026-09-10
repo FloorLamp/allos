@@ -130,9 +130,12 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
         /\/medications\/\d+\?action=edit$/
       );
       await followLink(page, cta, /\/medications\/\d+\?action=edit$/);
-      // The edit form is open, with the RxNorm confirm affordance on it.
+      // The edit form is open, with the RxNorm confirm affordance on it — a fact chip
+      // since #5301, prompting the match it does not have yet.
       await expect(page.getByRole("combobox", { name: "Name" })).toBeVisible();
-      await expect(page.getByTestId("rxcui-affordance")).toBeVisible();
+      const rxnorm = page.getByTestId("intake-fact-rxnorm");
+      await expect(rxnorm).toBeVisible();
+      await expect(rxnorm).toHaveAttribute("data-fact-state", "missing");
     } finally {
       await page.context().close();
     }

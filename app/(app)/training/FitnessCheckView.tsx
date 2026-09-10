@@ -33,6 +33,7 @@ import {
   setFitnessCadence,
   type SaveFitnessTestResult,
 } from "./fitness-actions";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
 const DOMAIN_LABEL: Record<string, string> = {
@@ -855,14 +856,9 @@ function OutcomePanel({
           </div>
         </div>
       </Notice>
-      <button
-        type="button"
-        onClick={onDone}
-        className="btn"
-        data-testid={`fitness-outcome-done-${testKey}`}
-      >
+      <Button onClick={onDone} data-testid={`fitness-outcome-done-${testKey}`}>
         Done
-      </button>
+      </Button>
     </div>
   );
 }

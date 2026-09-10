@@ -112,19 +112,14 @@ export async function listSharedSupplyOptions(): Promise<SupplyOption[]> {
   );
 }
 
-// Create a shared bottle. The gate here is the ordinary active-profile write gate; when
-// `item_id` is posted the creating item is linked in the same step and its own gate
-// applies too — that is the "create a pool from the item" flow.
+// Create a shared bottle FROM an item — the only way there is. The gate here is the
+// ordinary active-profile write gate, and the creating item's own gate applies too,
+// since the item is linked in the same step.
 //
-// RULED, AND NOT IMPLEMENTED HERE (#5122, owner ruling 2026-09-09): a bottle with no
-// member cannot be created by anyone, and the refusal points the user at linking from an
-// item instead. That refusal rides the storage-convergence lane; this one carries only
-// the member-less ACCESS rule, so the empty create still passes the gate above.
-//
-// Nothing depends on it in the meantime: the one caller in the shipped UI
-// (components/intake/SharedSupplyPicker.tsx) always posts an `item_id`, so every bottle
-// born through the app has a member from the start, and an empty create is reachable
-// only by hand-posting this action.
+// A bottle with no member cannot be created by anyone (#5122, owner ruling 2026-09-09),
+// so `item_id` is required and the refusal points the person at linking from an item
+// instead. That gives every bottle a member from birth; the other half of the same rule
+// — a bottle that has LOST its members is admin-only — lives on the pool gates.
 //
 // It INHERITS the item's product identity (#1705), not just its count: name and strength
 // (the item's first active dose amount — where a strength is actually typed) seed the
@@ -137,21 +132,21 @@ export async function createPoolAction(
 ): Promise<SupplyResult> {
   await requireWriteAccess();
   const itemId = Number(formData.get("item_id") ?? 0);
-  let quantity = parseQuantityOnHand(formData.get("quantity_on_hand"));
-  let itemProfileId = 0;
-  let productSeed: { name: string; strength: string | null } | null = null;
-  if (itemId) {
-    itemProfileId = await requireItemWriteAccess(itemId);
-    if (!itemProfileId) return fail("Couldn't find that item.");
-    const facts = getItemProductFacts(itemProfileId, itemId);
-    if (!facts) return fail("Couldn't find that item.");
-    productSeed = poolSeedFromItem(facts);
-    if (!formData.has("quantity_on_hand")) quantity = facts.quantityOnHand;
-  }
-  const f = fields(formData, productSeed);
+  if (!itemId)
+    return fail(
+      "Start a shared bottle from an item — open the item and create it under Shared supply."
+    );
+  const itemProfileId = await requireItemWriteAccess(itemId);
+  if (!itemProfileId) return fail("Couldn't find that item.");
+  const facts = getItemProductFacts(itemProfileId, itemId);
+  if (!facts) return fail("Couldn't find that item.");
+  const quantity = formData.has("quantity_on_hand")
+    ? parseQuantityOnHand(formData.get("quantity_on_hand"))
+    : facts.quantityOnHand;
+  const f = fields(formData, poolSeedFromItem(facts));
   if (!f) return fail("Enter a name for the shared bottle.");
   const supplyId = createSharedSupply(f, quantity);
-  if (itemId && itemProfileId) linkItemToPool(itemProfileId, itemId, supplyId);
+  linkItemToPool(itemProfileId, itemId, supplyId);
   revalidateSupplies();
   return ok({
     id: supplyId,

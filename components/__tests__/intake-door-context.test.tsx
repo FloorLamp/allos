@@ -112,6 +112,7 @@ function context(ageMonths: number): IntakeFormContext {
       weightDate: TODAY,
       weightUnit: "kg",
       today: TODAY,
+      declinedDoseUpdates: [],
     },
     todayStr: TODAY,
   };
@@ -344,14 +345,16 @@ describe("every add door feeds IntakeItemForm the same subject context (#4609)",
       { rxcui: "99999", name: "Acetaminophen / codeine", score: 100 },
     ]);
     vi.mocked(lookupRxcuiIngredients).mockResolvedValueOnce(["161", "2670"]);
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("rxcui-lookup"));
-    });
+    // Opening the RxNorm chip IS the lookup (#5301); the candidates are its editor.
+    fireEvent.click(screen.getByTestId("intake-fact-rxnorm"));
+    await act(async () => {});
     await act(async () => {
       fireEvent.click(screen.getByTestId("rxcui-use-99999"));
     });
-    expect(screen.getByTestId("medication-pediatric-no-chart")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("intake-editor-done"));
     fireEvent.click(screen.getByTestId("intake-fact-dose"));
+    // The refused chart says so in the dose editor, beside the label's other refusals.
+    expect(screen.getByTestId("medication-pediatric-no-chart")).toBeTruthy();
     expect(
       (screen.getByRole("combobox", { name: "Amount" }) as HTMLInputElement)
         .value

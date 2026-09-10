@@ -211,6 +211,183 @@ const FITBIT_SURFACES = [
   "lib/integrations/registry.ts",
 ];
 
+// ── The Tailwind/JSX scanners (#5347 slice 2) ────────────────────────────────
+//
+// Each of these was a Vitest file matching class strings or JSX text by regex over
+// app/ and components/ (lib/ too, for the contrast pair). Only the guards with a
+// recorded catch or a shipped user-visible defect behind them moved here; the
+// design-system censuses with neither were deleted under the 2026-09-06 ruling on
+// #5346. A grandfathered file is a `files` override below, never a disable comment.
+
+// A class-string ban applies to both spellings of a literal.
+const classLiteral = (pattern) =>
+  `:matches(Literal[value=${pattern}], TemplateElement[value.raw=${pattern}])`;
+
+// #794 8a — the muted secondary-text pairing that fails WCAG in BOTH modes
+// (slate-400 on white 2.56:1, slate-500 on ink-950 4.18:1); the passing pairing is
+// `text-slate-500 dark:text-slate-400`. Base tokens only — a `placeholder:`,
+// `disabled:` or `hover:` variant is a different affordance. No exemptions: there is
+// no correct place for base muted text at that contrast. Caught #814's onboarding
+// surfaces. (was lib/__tests__/muted-text-contrast.test.ts)
+const MUTED_TEXT_CONTRAST = [
+  String.raw`/(?<![\w:-])text-slate-400(?:\s+\S+)*\s+dark:text-slate-500(?![\w-])/`,
+  String.raw`/dark:text-slate-500(?:\s+\S+)*\s+(?<![\w:-])text-slate-400(?![\w-])/`,
+].map((pattern) => ({
+  selector: classLiteral(pattern),
+  message:
+    "text-slate-400 dark:text-slate-500 fails WCAG in both modes (2.56:1 light, 4.18:1 dark) — muted text is text-slate-500 dark:text-slate-400 (#794).",
+}));
+
+// #794 9a — one grey-border language. A structural grey border speaks the alpha pair
+// (`border-black/10 dark:border-white/10`, `/5` for a subtle divider), which is what
+// .card/.input/.btn-ghost use; literal border-slate-{100,200} was the second
+// vocabulary #794 swept. Caught #662's palette hit-action chips. The exemptions are
+// the NEUTRAL members of a semantic tone set — a grey sibling of tinted tones, where
+// slate is the tone rather than chrome — restated in the converse blocks below.
+// (was lib/__tests__/border-alpha-language.test.ts, which read .tsx only; the .ts tone
+// map in components/fitness-heat.ts is the same shape and joins the exemptions)
+const BORDER_SLATE_BAN = {
+  selector: classLiteral(
+    String.raw`/(?<![\w-])border(?:-[xytblr])?-slate-(?:100|200)(?![\w-])/`
+  ),
+  message:
+    "A structural grey border is the alpha pair — border-black/10 dark:border-white/10, or /5 for a subtle divider — not a literal border-slate-{100,200} (#794). A grey member of a tinted tone set is exempted by file in eslint.config.mjs.",
+};
+
+// #794 4+8b — the tinted message block is <Notice>. Its signature is a bordered
+// tint, `border-{tone}-{200,300}` with a SOLID `bg-{tone}-50`, over every
+// NOTICE_TONE key (#833 widened it from three tones to six); hand-rolled copies had
+// drifted on border weight, radius, dark treatment and contrast (amber-600 on
+// amber-50 is 3.07:1). A hover state, a `fixed` toast or a `rounded-full` pill
+// wearing the tint is not a message block, and a `/60` tint is a panel. Caught
+// #955's fitness-check timer tint. NOTICE_TONE itself and the trend chip's map are
+// exempt below. (was lib/__tests__/notice-block.test.ts)
+const NOTICE_TONE = "(?:amber|rose|slate|emerald|sky|violet)";
+const NOT_A_NOTICE = String.raw`/hover:bg-|(?<![\w-])fixed(?![\w-])|rounded-full/`;
+const noticeSignature = (field) =>
+  `[${field}=/border-${NOTICE_TONE}-(?:200|300)(?![\\w-])/][${field}=/(?<![:\\w-])bg-${NOTICE_TONE}-50(?![\\w\\x2F])/]`;
+const NOTICE_BLOCK_BAN = {
+  // A template literal is judged WHOLE: `fixed ${layer} … border-rose-300 bg-rose-50`
+  // is one toast even though its tokens land in different quasis.
+  selector: `:matches(Literal${noticeSignature("value")}:not([value=${NOT_A_NOTICE}]), TemplateLiteral:not(:has(TemplateElement[value.raw=${NOT_A_NOTICE}])) > TemplateElement${noticeSignature("value.raw")})`,
+  message:
+    "A bordered tinted message block is <Notice tone=…> (or NOTICE_TONE / FindingCard), not a hand-rolled border-{tone}-{200,300} bg-{tone}-50 (#794).",
+};
+// The two tone maps own both the notice signature and a slate tone.
+const NOTICE_TONE_MAPS = [
+  "components/Notice.tsx",
+  "components/TrendDigestChip.tsx",
+];
+// Slate as the neutral member of a tinted tone set, on the lib/app level…
+const SLATE_TONE_SIBLINGS = [
+  // The 'info' finding tone beside the amber 'warning' tone (#1496).
+  "components/FindingRow.tsx",
+  // The uncovered-gap status border beside the emerald 'covered' branch.
+  "components/CoverageGaps.tsx",
+  // The HeatTone tile map's neutral bucket beside five tinted ones (#1132).
+  "components/fitness-heat.ts",
+];
+// …and the one on the training level: the rollup row wrapping FindingRow (#1496).
+const SLATE_TONE_SIBLING_TRAINING = "app/(app)/training/TrainingWatchCard.tsx";
+
+// #794 6 — every rendered <table> has a narrow-viewport strategy. <main> clips
+// horizontal overflow, so a table wider than a phone silently loses its rightmost
+// columns: no scrollbar, no hint, the data unreachable. A strategy is an ANCESTOR
+// scroll container in the same file (`overflow-x-auto`, or the `overflow-auto`
+// sticky-header wrappers), <ScrollFade>, or <ResponsiveTable>, which stacks the same
+// DOM as cards below `sm` (#1426). The retired scan accepted a marker anywhere in
+// the 800 characters above the tag; asking for an ancestor means a wrapper around a
+// SIBLING no longer excuses a table (#1491 guard 12b's shape).
+// (was lib/__tests__/table-mobile-scroll.test.ts)
+const OVERFLOW_WRAPPER = "/overflow-(?:x-)?auto/";
+const UNWRAPPED_TABLE_BAN = {
+  selector: `JSXOpeningElement[name.name='table']:not(JSXElement[openingElement.name.name=/^(?:ScrollFade|ResponsiveTable)$/] JSXOpeningElement):not(JSXElement:has(> JSXOpeningElement:has(> JSXAttribute[name.name='className']:has(:matches(Literal[value=${OVERFLOW_WRAPPER}], TemplateElement[value.raw=${OVERFLOW_WRAPPER}])))) JSXOpeningElement)`,
+  message:
+    'A <table> with no narrow-viewport strategy clips its columns on a phone (#794). Render it through <ResponsiveTable> (cards below sm, #1426), or put <div className="overflow-x-auto"> / <ScrollFade> around it in this file.',
+};
+// The card-stacking primitive IS the strategy: it emits the `<table className=
+// "table-cards">` the CSS re-lays below `sm`, so it cannot wrap itself in a scroller.
+const TABLE_PRIMITIVE = "components/ResponsiveTable.tsx";
+
+// #1447 — spacing around an inline span in rendered copy. The all-pages census found
+// "At minimaldetail", "A read-onlygrant", and the space was in the source every time:
+// the server render drops the leading space of a text node that follows an element
+// or expression when that node also carries an HTML entity. So the TRIGGER is banned
+// — write ’ “ ” as the characters themselves (`{" "}` does not survive prettier) —
+// and with it the two plain authoring slips that have no legitimate use: a span
+// butted against a word, and the separating space parked inside the emphasis.
+// (was lib/__tests__/emphasis-spacing.test.ts)
+const INLINE_SPAN = "/^(?:strong|em|b|code|a)$/";
+const EMPHASIS_SPAN = "/^(?:strong|em|b)$/";
+const BUTTED_SPAN_MESSAGE =
+  "An emphasis span butted against the word beside it renders without the space (#1447) — put the space in the text node.";
+const SPACE_INSIDE_MESSAGE =
+  "The separating space belongs outside the emphasis element, not bolded inside it (#1447).";
+const EMPHASIS_SPACING = [
+  {
+    selector: `:matches(JSXElement[openingElement.name.name=${INLINE_SPAN}], JSXExpressionContainer) + JSXText[raw=/^ [\\s\\S]*&(?:[a-zA-Z]+|#[0-9]+);/]`,
+    message:
+      "An HTML entity in a text node that follows a tag or expression and starts with a space loses that space in the server render (#1447) — write the character itself (’ “ ”).",
+  },
+  {
+    selector: `JSXElement[openingElement.name.name=${INLINE_SPAN}] + JSXText[raw=/^[A-Za-z0-9]/]`,
+    message: BUTTED_SPAN_MESSAGE,
+  },
+  {
+    selector: `JSXText[raw=/[A-Za-z0-9]$/] + JSXElement[openingElement.name.name=${EMPHASIS_SPAN}]`,
+    message: BUTTED_SPAN_MESSAGE,
+  },
+  {
+    selector: `JSXElement[openingElement.name.name=${EMPHASIS_SPAN}] > JSXText:first-child[raw=/^ /]`,
+    message: SPACE_INSIDE_MESSAGE,
+  },
+  {
+    selector: `JSXElement[openingElement.name.name=${EMPHASIS_SPAN}] > JSXText:last-child[raw=/ $/]`,
+    message: SPACE_INSIDE_MESSAGE,
+  },
+];
+
+// #794 11a — free text renders through <NotesText>. Seventeen surfaces rendered a
+// `.notes` value bare, so an imported multi-line note flattened to one run-on line
+// and a pasted URL clipped in a min-w-0 cell. NotesText applies whitespace-pre-wrap
+// and wrap-break-word, and takes the note as a PROP so the bare JSX child is the
+// shape to ban; `notes={x.notes}` and `${x.notes}` are not renders.
+// (was lib/__tests__/notes-text.test.ts)
+const BARE_NOTES_BAN = [
+  "MemberExpression[property.name='notes']",
+  "LogicalExpression[operator=/^(?:\\?\\?|\\|\\|)$/] > MemberExpression.left[property.name='notes']",
+].map((tail) => ({
+  selector: `:matches(JSXElement, JSXFragment) > JSXExpressionContainer > ${tail}`,
+  message:
+    "Render free-text notes through <NotesText notes={…} /> (components/NotesText.tsx) so they wrap and keep their line breaks (#794).",
+}));
+
+const UI_SYNTAX = [
+  ...MUTED_TEXT_CONTRAST,
+  BORDER_SLATE_BAN,
+  NOTICE_BLOCK_BAN,
+  UNWRAPPED_TABLE_BAN,
+  ...EMPHASIS_SPACING,
+  ...BARE_NOTES_BAN,
+];
+
+// #1891 — a sortable item translates, it does not scale. `CSS.Transform.toString()`
+// carries rectSortingStrategy's scaleX/scaleY, which morphs the dragged item toward
+// the slot it passes over — invisible on uniform tiles, an owner-reported squash and
+// stretch on dashboard cards of differing heights. `CSS.Translate.toString()` is the
+// translation alone, which is all a reorder needs. (was the ban half of
+// lib/__tests__/sortable-transform-scan.test.ts; its other half pinned the list of
+// useSortable consumers, which is a registry rather than a defect)
+const SORTABLE_TRANSFORM_BAN = {
+  object: "CSS",
+  property: "Transform",
+  message:
+    "Position a sortable item with CSS.Translate.toString(transform) — CSS.Transform carries scaleX/scaleY and distorts an item whose neighbours differ in size (#1891).",
+};
+
+// A grandfathered file keeps every ban of its level but the one it owns.
+const without = (level, ...bans) => level.filter((ban) => !bans.includes(ban));
+
 // Accumulating levels, narrowest last — see the mechanic at the top of this section.
 const SYNTAX_ALL = TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
   selector,
@@ -241,7 +418,9 @@ const APP_SURFACE_SYNTAX = [
 // The level `app/`, `components/`, `lib/`, `scripts/` and `e2e/` already sit on —
 // named so the e2e blocks below can spread it rather than re-listing its members.
 const SYNTAX_APP_SURFACE = [...SYNTAX_ALL, ...APP_SURFACE_SYNTAX];
-const SYNTAX_PRODUCTION = [...SYNTAX_APP_SURFACE, RPE_BRAND_CAST];
+// Production code is also where the #794/#1447/#1891 UI shapes are banned; a test
+// tier may quote any of them.
+const SYNTAX_PRODUCTION = [...SYNTAX_APP_SURFACE, RPE_BRAND_CAST, ...UI_SYNTAX];
 const SYNTAX_PRODUCTION_KEYED = [...SYNTAX_PRODUCTION, ...RPE_KEY_LITERAL];
 const SYNTAX_LIB_APP = [
   ...SYNTAX_PRODUCTION_KEYED,
@@ -275,8 +454,8 @@ const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
 // bans that most plausibly co-occur with a marked line are split onto
 // `no-restricted-properties` and `no-restricted-imports` where the shape allows, so
 // the collision surface is smaller than one rule holding all of them — but it is not
-// zero, and `reportUnusedDisableDirectives` is still off (#5363), so a directive that
-// stops excusing anything is silent until that lands.
+// zero. `reportUnusedDisableDirectives` is on (#5347), so a directive that stops
+// excusing anything is reported instead of silently kept.
 //
 // ONE SCAN RULE DID NOT COME: the offline-navigation guard (#3002) asks whether a
 // `.goto()` sits BETWEEN a `setOffline(true)` and a `setOffline(false)` with no
@@ -616,6 +795,14 @@ const ROUTER_REFRESH_BAN = {
   message:
     "Decide which this is: CHROME (a background actor — repaint through useChromeRefresh so a half-typed form is not emptied) or USER (the person asked for it — keep the direct call and say why on an eslint-disable line) (#1878).",
 };
+// #2888 — named so the converse block for the training tone sibling can restate it.
+const TRAINING_SCOPE_KIND_BAN = {
+  selector:
+    "BinaryExpression[operator=/^[!=]==?$/][right.type='Literal']:matches([left.name='scope_kind'], [left.property.name='scope_kind'])",
+  message:
+    'Filter with getFrequencyTargetProgressForHome(profileId, "training") — a private scope_kind list is the subtraction #2888 removed.',
+};
+const SYNTAX_TRAINING = [...SYNTAX_LIB_APP, TRAINING_SCOPE_KIND_BAN];
 
 const config = [
   // Global ignores: other checkouts, build output, dependencies, and runtime data.
@@ -638,13 +825,11 @@ const config = [
       "playwright/.cache/",
     ],
   },
-  // ESLint 9 flat config defaults linterOptions.reportUnusedDisableDirectives to
-  // "warn", but the old `.eslintrc.json` + `next lint` path left it off — keep it
-  // off so the reported set stays identical (no newly-surfaced warnings on
-  // existing dead eslint-disable comments).
+  // A disable comment whose ban has gone quiet is reported as an error instead of
+  // silently kept (#5347). Delete the directive; do not leave it as documentation.
   {
     linterOptions: {
-      reportUnusedDisableDirectives: "off",
+      reportUnusedDisableDirectives: "error",
     },
   },
   ...nextCoreWebVitals,
@@ -891,18 +1076,23 @@ const config = [
   // person asked for calls the router directly and carries its reason on a file-level
   // disable, which is the granularity the retired allowlist had (it listed FILES).
   // (was the first test of lib/__tests__/chrome-refresh-scan.test.ts)
+  // #1891's sortable transform ban rides beside it: the same trees, the same rule.
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     ignores: TEST_TREES,
     rules: {
-      "no-restricted-properties": ["error", ROUTER_REFRESH_BAN],
+      "no-restricted-properties": [
+        "error",
+        ROUTER_REFRESH_BAN,
+        SORTABLE_TRANSFORM_BAN,
+      ],
     },
   },
   // #5338 — the clock seam, over every production tree except the on-touch
   // population. lib/date.ts needs no exemption: the seam is built on `parseUtcSql`,
-  // which appends the `Z` itself. app/ and components/ re-state #1878 beside it so
-  // the narrower block above does not switch the ban off for them; an on-touch file
-  // there falls back to that block and keeps #1878 alone.
+  // which appends the `Z` itself. app/ and components/ re-state #1878 and #1891
+  // beside it so the narrower block above does not switch those bans off for them;
+  // an on-touch file there falls back to that block and keeps #1878 and #1891 alone.
   {
     files: PRODUCTION_TREES,
     ignores: [...TEST_TREES, ...DATE_PARSE_ON_TOUCH],
@@ -914,7 +1104,12 @@ const config = [
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     ignores: [...TEST_TREES, ...DATE_PARSE_ON_TOUCH],
     rules: {
-      "no-restricted-properties": ["error", DATE_PARSE_BAN, ROUTER_REFRESH_BAN],
+      "no-restricted-properties": [
+        "error",
+        DATE_PARSE_BAN,
+        ROUTER_REFRESH_BAN,
+        SORTABLE_TRANSFORM_BAN,
+      ],
     },
   },
   // #2888 — the training surfaces reach the registry. `scope_kind !== "practice"` was a
@@ -926,15 +1121,45 @@ const config = [
     files: ["app/(app)/training/**/*.{ts,tsx}"],
     ignores: TEST_TREES,
     rules: {
+      "no-restricted-syntax": ["error", ...SYNTAX_TRAINING],
+    },
+  },
+  // ── The grandfathered files of the #794 class bans (#5347 slice 2) ──────────
+  // Each drops exactly the ban its file owns and keeps every other ban of the level
+  // it sits on — the shape the two vendor allowlists above use.
+  {
+    files: NOTICE_TONE_MAPS,
+    rules: {
       "no-restricted-syntax": [
         "error",
-        ...SYNTAX_LIB_APP,
-        {
-          selector:
-            "BinaryExpression[operator=/^[!=]==?$/][right.type='Literal']:matches([left.name='scope_kind'], [left.property.name='scope_kind'])",
-          message:
-            'Filter with getFrequencyTargetProgressForHome(profileId, "training") — a private scope_kind list is the subtraction #2888 removed.',
-        },
+        ...without(SYNTAX_LIB_APP, BORDER_SLATE_BAN, NOTICE_BLOCK_BAN),
+      ],
+    },
+  },
+  {
+    files: SLATE_TONE_SIBLINGS,
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, BORDER_SLATE_BAN),
+      ],
+    },
+  },
+  {
+    files: [SLATE_TONE_SIBLING_TRAINING],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_TRAINING, BORDER_SLATE_BAN),
+      ],
+    },
+  },
+  {
+    files: [TABLE_PRIMITIVE],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, UNWRAPPED_TABLE_BAN),
       ],
     },
   },

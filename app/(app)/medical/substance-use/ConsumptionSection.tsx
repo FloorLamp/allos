@@ -32,6 +32,7 @@ import {
   setSubstanceTargetAction,
 } from "./actions";
 import Disclosure from "@/components/Disclosure";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import Link from "next/link";
 
@@ -346,13 +347,7 @@ export default function ConsumptionSection({
               </p>
             ) : null}
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setCapOpen(false)}
-              >
-                Cancel
-              </button>
+              <Button onClick={() => setCapOpen(false)}>Cancel</Button>
               <SubmitButton
                 variant="primary"
                 disabled={pending || capInput === ""}
