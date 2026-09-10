@@ -778,10 +778,8 @@ test.describe("the throttled phone's first open (#5206)", () => {
     // eslint-disable-next-line no-restricted-properties -- clock-ok: this spec's own elapsed wall time, never a stored timestamp
     const startedAt = Date.now();
     await row.click();
-    await expect(page.getByTestId("activity-form")).toBeVisible({
-      // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
-      timeout: 60_000,
-    });
+    const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+    await expect(form).toBeVisible({ timeout: 60_000 });
     // eslint-disable-next-line no-restricted-properties -- clock-ok: elapsed wall time for the measurement above
     return Date.now() - startedAt;
   }
