@@ -1039,13 +1039,45 @@ const declared = (text) => {
   return m ? (m[1] ?? m[2]) : null;
 };
 
+// A column-0 `}`, `)` or `]` closes a prettier-formatted top-level declaration.
+const TOP_LEVEL_CLOSER = /^[})\]]/;
+
 /**
- * The `{file, symbol}` pairs whose declaration hunk a PR's patches touch,
- * sorted, deduplicated. `files` is `GET /pulls/N/files`: `filename`, `status`,
- * `patch` (absent for a binary or an oversized diff, which contributes nothing).
+ * The changed declaration at `lines[i]`, whitespace-normalised: its own side
+ * of the hunk from the declaring line through the column-0 closer, or up to
+ * the next blank or column-0 line. Lines from the hunk's other side are
+ * skipped; a context line, hunk header or the patch's end ends the text.
+ */
+const declarationText = (lines, i) => {
+  const sign = lines[i][0];
+  const out = [];
+  for (let j = i; j < lines.length; j++) {
+    const line = lines[j];
+    if (line[0] !== sign) {
+      if (line[0] === "+" || line[0] === "-") continue;
+      break;
+    }
+    const code = line.slice(1);
+    const closes = TOP_LEVEL_CLOSER.test(code);
+    if (j > i && !closes && (!code.trim() || /^\S/.test(code))) break;
+    out.push(code.trim().replace(/\s+/g, " "));
+    if (j > i && closes) break;
+  }
+  return out.join("\n");
+};
+
+/**
+ * The `{file, symbol, added}` triples whose declaration hunk a PR's patches
+ * touch, sorted, deduplicated. `files` is `GET /pulls/N/files`: `filename`,
+ * `status`, `patch` (absent for a binary or an oversized diff, which
+ * contributes nothing). A declaration removed from one file and added
+ * verbatim to another file of the same PR is a move, not a change, and is
+ * dropped from both (#5710); a moved body with any other line changed stays.
+ * `added` is true when the PR introduces the declaration: every hunk that
+ * names it adds it, so it is not on the PR's base tree.
  */
 export function changedDerivations(files) {
-  const out = new Map();
+  const seen = [];
   for (const file of files ?? []) {
     const name = file.filename ?? "";
     if (
@@ -1055,12 +1087,42 @@ export function changedDerivations(files) {
       !file.patch
     )
       continue;
-    for (const line of file.patch.split("\n")) {
-      const symbol = /^[+-]/.test(line)
+    const lines = file.patch.split("\n");
+    lines.forEach((line, i) => {
+      const changed = /^[+-]/.test(line);
+      const symbol = changed
         ? declared(line.slice(1))
         : declared(HUNK_CONTEXT.exec(line)?.[1] ?? "");
-      if (symbol) out.set(`${name}#${symbol}`, { file: name, symbol });
+      if (symbol)
+        seen.push({
+          file: name,
+          symbol,
+          sign: changed ? line[0] : " ",
+          text: changed ? declarationText(lines, i) : null,
+        });
+    });
+  }
+  const bySide = new Map();
+  for (const entry of seen)
+    if (entry.sign !== " ") {
+      const key = `${entry.symbol}\0${entry.text}`;
+      if (!bySide.has(key)) bySide.set(key, { "+": [], "-": [] });
+      bySide.get(key)[entry.sign].push(entry);
     }
+  const moved = new Set();
+  for (const sides of bySide.values())
+    for (const removed of sides["-"])
+      for (const added of sides["+"])
+        if (removed.file !== added.file) moved.add(removed).add(added);
+  const out = new Map();
+  for (const { file, symbol, sign } of seen.filter((e) => !moved.has(e))) {
+    const key = `${file}#${symbol}`;
+    const prior = out.get(key);
+    out.set(key, {
+      file,
+      symbol,
+      added: (prior?.added ?? true) && sign === "+",
+    });
   }
   return [...out.keys()].sort().map((key) => out.get(key));
 }
@@ -1112,9 +1174,12 @@ const firstLine = (error) => {
  * @param {(file: string, symbol: string) => {terminals: string[]}} input.reachFn
  *   `scripts/reach.ts --json` or a stand-in; `terminals` are the CLI's
  *   `"<kind> <file> <name>"` strings. It may throw; the throw becomes a row.
+ * @param {string} [input.walkedOn] the sha of the tree `reachFn` walks; a
+ *   decline names it, and says so when the PR itself adds the symbol, which
+ *   is then absent from any tree but the PR head or merge tree (#5710).
  * @returns {string[]} messages, without the `NOTE: ` prefix, in a stable order
  */
-export function reachVerdict({ files, body, reachFn }) {
+export function reachVerdict({ files, body, reachFn, walkedOn }) {
   const text = String(body ?? "");
   const candidates = changedDerivations(files);
   const walked = candidates.slice(0, REACH_CAP);
@@ -1125,12 +1190,19 @@ export function reachVerdict({ files, body, reachFn }) {
         `diff; only the first ${REACH_CAP} (sorted by path) were walked`
     );
   const table = hasConsumerTable(text);
-  for (const { file, symbol } of walked) {
+  const tree = walkedOn ? ` (walked on ${shortSha(walkedOn)})` : "";
+  for (const { file, symbol, added } of walked) {
     let terminals;
     try {
       terminals = [...new Set(reachFn(file, symbol).terminals ?? [])].sort();
     } catch (error) {
-      rows.push(`reach — could not answer for ${symbol}: ${firstLine(error)}`);
+      rows.push(
+        `reach — could not answer for ${symbol}${tree}: ${firstLine(error)}` +
+          (added
+            ? `; ${symbol} is added by this PR and is not on the walked tree; ` +
+              "resolve on the PR head or merge tree"
+            : "")
+      );
       continue;
     }
     if (!terminals.length) continue;

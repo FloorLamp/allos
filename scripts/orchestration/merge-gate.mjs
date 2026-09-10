@@ -482,7 +482,9 @@ else fail(baseMoved.message);
 // tree THIS gate runs in (the merge commit under the CI wrapper's pull_request
 // checkout; whatever is checked out interactively), one process per symbol,
 // 60 s each. A child that fails — tsx missing, a symbol the walker cannot find
-// on this tree — becomes its own NOTE through the core and never a closure.
+// on this tree — becomes its own NOTE through the core and never a closure;
+// the row names the walked HEAD, since a symbol the PR adds is on no other
+// tree (#5710).
 const changedFiles = [];
 for (let page = 1; ; page++) {
   const batch = gh(
@@ -517,10 +519,15 @@ const reachOverChild = (file, symbol) => {
     );
   return JSON.parse(run.stdout);
 };
+const walkedOn = spawnSync("git", ["rev-parse", "HEAD"], {
+  cwd: repoRoot,
+  encoding: "utf8",
+}).stdout?.trim();
 for (const row of reachVerdict({
   files: changedFiles,
   body: pr.body,
   reachFn: reachOverChild,
+  walkedOn,
 }))
   console.log(`NOTE: ${row}`);
 

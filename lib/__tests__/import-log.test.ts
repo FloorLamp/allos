@@ -46,11 +46,11 @@ describe("jobLogStatus", () => {
 
 describe("statusBadge", () => {
   it("assigns a label and tone to every status", () => {
-    expect(statusBadge("done")).toEqual({ label: "done", tone: "green" });
-    expect(statusBadge("partial")).toEqual({ label: "partial", tone: "amber" });
-    expect(statusBadge("processing").tone).toBe("amber");
-    expect(statusBadge("failed").tone).toBe("rose");
-    expect(statusBadge("skipped").tone).toBe("slate");
+    expect(statusBadge("done")).toEqual({ label: "done", tone: "good" });
+    expect(statusBadge("partial")).toEqual({ label: "partial", tone: "warn" });
+    expect(statusBadge("processing").tone).toBe("warn");
+    expect(statusBadge("failed").tone).toBe("bad");
+    expect(statusBadge("skipped").tone).toBe("neutral");
   });
 });
 

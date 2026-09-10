@@ -24,7 +24,7 @@ describe("session comparison presentation (#2566 convergence)", () => {
     // is not a better session, and colouring it as one tells the reader
     // something untrue about their own body.
     expect(comparisonTone(metric("speed", 12, 10), "above")).toBe("good");
-    expect(comparisonTone(metric("speed", 8, 10), "below")).toBe("watch");
+    expect(comparisonTone(metric("speed", 8, 10), "below")).toBe("warn");
     for (const key of [
       "heart_rate",
       "power",
