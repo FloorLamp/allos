@@ -68,7 +68,12 @@ import {
   pediatricRefusalLine,
   type PediatricFormContext,
 } from "./prn-dosing";
-import { prnDefaultsFor } from "./prn-defaults";
+import {
+  prnDefaultsFor,
+  prnProductsNamedIn,
+  type PrnDefaultEntry,
+} from "./prn-defaults";
+import { ingredientCuiKey } from "./medication-family";
 import type { AppRoute } from "./hrefs";
 import type { IntakeCondition, IntakeObligation } from "./types";
 
@@ -99,7 +104,7 @@ export function strengthKey(strength: string | null): string {
 //                  offered — and the reason is SAID on the card (owner ruling,
 //                  2026-09-09 16:10 UTC). A withhold is never a silent absence.
 export type AlsoForDose =
-  | { kind: "amount"; amount: string; basis: string }
+  | { kind: "amount"; amount: string; basis: string; ingredient: string }
   | { kind: "none"; reason: string }
   | { kind: "withheld"; reason: string };
 
@@ -118,23 +123,153 @@ export interface AlsoForLabelIdentity {
   rxcuiIngredients: string[] | null;
 }
 
+// ---- WHAT THE BOTTLE IS, before what it doses ------------------------------
+//
+// IDENTITY FIRST (#5230 ruling 11). A dose is derived from a product, so the question
+// "which product is this" has to be answered — or refused — before any figure is
+// reached for. Two independent readings can disagree: the bottle's NAME, which is what
+// the household wrote on it, and the source member's stored CODE, which is what a
+// scan or a prescription put on their row. The six states below are the whole of that
+// disagreement, they are evaluated in order, and they are mutually exclusive.
+//
+//   A plural      the name lists two or more medicines. No single identity to dose.
+//   B mismatch    one named product, one coded product, and they disagree.
+//   C agreement   one named product, one coded product, the same one.
+//   D coded-only  the name says nothing this app knows; the code does. The code wins.
+//   E name-only   NO code is stored at all, and the name resolves. Unchanged behaviour.
+//   F no-product  neither reading lands on a curated label. Nothing to dose from.
+//
+// THE DIVIDING PREDICATE IS "IS A CODE STORED", never "does the code resolve".
+// `prnDefaultsFor` is code-first WITH a name fallback and `ingredientCuiKey` falls back
+// to the raw rxcui, so ANY stored code at all suppresses the name fallback, resolvable
+// or not: an uncoded bottle named `Aspirin` resolves and withholds for a child with the
+// Reye's sentence, while the same bottle carrying an unrecognised code resolves to
+// nothing and lands dose-less. Branching on "does it resolve" instead gets state F
+// wrong in whichever direction the reader was leaning.
+export type AlsoForIdentityState =
+  | "plural"
+  | "mismatch"
+  | "agreement"
+  | "coded-only"
+  | "name-only"
+  | "no-product";
+
+export interface AlsoForIdentity {
+  state: AlsoForIdentityState;
+  // The curated products the NAME says this bottle is (#5230 ruling 9's detector).
+  detected: readonly PrnDefaultEntry[];
+  // The curated label a dose may derive from, or null when identity refuses to answer.
+  // Null for `plural`, `mismatch` and `no-product` — the three dose-less states.
+  product: PrnDefaultEntry | null;
+  // What the source row's stored CODE resolves to, independent of the name. Only the
+  // mismatch receipt reads it — it is the half of the disagreement the name did not say.
+  coded: PrnDefaultEntry | null;
+}
+
+// A DISPUTED identity yields no verdict at all: no dose, and no life-stage gate either,
+// because running the label's own age refusal against one of two disagreeing products
+// answers about the wrong medicine. `plural` and `mismatch` are the two disputes.
+export function alsoForIdentityDisputed(state: AlsoForIdentityState): boolean {
+  return state === "plural" || state === "mismatch";
+}
+
+// #5230's precedence. Pure, and the ONE place the six states are decided — the dose,
+// the receipt, the allergy composition and the decline key all read this answer rather
+// than each re-deriving it from the name.
+export function alsoForIdentity(label: AlsoForLabelIdentity): AlsoForIdentity {
+  const item = {
+    name: label.name,
+    rxcui: label.rxcui,
+    rxcuiIngredients: label.rxcuiIngredients,
+  };
+  const detected = prnProductsNamedIn(label.name);
+  const resolved = prnDefaultsFor(item);
+  const hasCode = ingredientCuiKey(item) != null;
+  const codedProduct = hasCode ? resolved : null;
+  const nameProduct = hasCode ? null : resolved;
+
+  const coded = codedProduct;
+  if (detected.length >= 2) {
+    return { state: "plural", detected, product: null, coded };
+  }
+  if (detected.length === 1 && codedProduct) {
+    return detected[0].slug === codedProduct.slug
+      ? { state: "agreement", detected, product: codedProduct, coded }
+      : { state: "mismatch", detected, product: null, coded };
+  }
+  if (codedProduct) {
+    return { state: "coded-only", detected, product: codedProduct, coded };
+  }
+  if (nameProduct) {
+    return { state: "name-only", detected, product: nameProduct, coded };
+  }
+  return { state: "no-product", detected, product: null, coded };
+}
+
+// The sorted curated slugs a bottle's name detects, or the reserved empty literal. This
+// is the identity half of the decline key (#5230), derived server-side at BOTH the
+// write and the read from the bottle's own name — one helper, or a decline could be
+// written under one tail and looked for under another.
+export const ALSO_FOR_NO_DETECTION = "none";
+
+export function alsoForDetectedSlugs(poolName: string): string[] {
+  return prnProductsNamedIn(poolName)
+    .map((entry) => entry.slug)
+    .sort();
+}
+
 // The recipient's dose from the LABEL, never from the bottle and never from the source
 // member. The child path is the #798 weight band (#4713's canonical result and its own
 // refusal reasons); the adult path is the label's low adult figure; a product with no
 // curated label states nothing, which is a dose-less copy rather than a guess.
+//
+// IDENTITY IS ASKED FIRST (`alsoForIdentity`). Where the two readings of what this
+// bottle is disagree, the answer is no figure AND no life-stage gate, with the receipt
+// saying which check could not run — not a figure derived from whichever reading the
+// resolver happened to prefer. The shipped resolver is code-first, so a bottle named
+// `Tylenol Extra Strength` over an ibuprofen-coded row used to hand a six-year-old
+// 200 mg of ibuprofen, and a child's Reye's refusal used to be quoted about a product
+// nobody had named.
 //
 // Deliberately NOT `prnDoseBandStatement`: that wrapper describes an EXISTING row
 // against its stored amount, which a brand-new item does not have.
 export function resolveAlsoForDose(input: {
   label: AlsoForLabelIdentity;
   pediatric: PediatricFormContext | null;
+  // Who the plan is being copied FROM, and what their own row calls the medicine. Only
+  // the two refusals that have to name the disagreement read these.
+  source?: { personName: string; itemName: string | null } | null;
 }): AlsoForDose {
-  const entry = prnDefaultsFor({
-    name: input.label.name,
-    rxcui: input.label.rxcui,
-    rxcuiIngredients: input.label.rxcuiIngredients,
-  });
-  if (!entry) return { kind: "none", reason: NO_LABEL_REASON };
+  const identity = alsoForIdentity(input.label);
+  const sourceName = input.source?.personName ?? null;
+
+  if (identity.state === "plural") {
+    return {
+      kind: "none",
+      reason: `this bottle's name lists more than one medicine, ${NO_LABEL_REASON}`,
+    };
+  }
+  if (identity.state === "mismatch") {
+    const named = identity.detected[0].label;
+    const whose = sourceName ? `${sourceName}'s item` : "the source's item";
+    return {
+      kind: "none",
+      reason: `the bottle is named ${named} but ${whose} is ${identity.coded?.label ?? named}, ${NO_LABEL_REASON}`,
+    };
+  }
+  const entry = identity.product;
+  if (!entry) {
+    const rowName = clean(input.source?.itemName ?? null);
+    const whose = sourceName
+      ? rowName
+        ? `${sourceName}'s ${rowName}`
+        : `${sourceName}'s row`
+      : (rowName ?? "this bottle");
+    return {
+      kind: "none",
+      reason: `no label dose for ${whose}, ${NO_LABEL_REASON}`,
+    };
+  }
 
   const pediatric = input.pediatric;
   const ageMonths = pediatric?.ageMonths ?? null;
@@ -165,6 +300,7 @@ export function resolveAlsoForDose(input: {
         kind: "amount",
         amount: formulationDoseAmount(result.mg),
         basis: `from the ${result.bandLabel} label band`,
+        ingredient: entry.label,
       };
     }
     // The label's hard age gate is a refusal to dose this person at all.
@@ -183,6 +319,7 @@ export function resolveAlsoForDose(input: {
     kind: "amount",
     amount: formulationDoseAmount(entry.adult.doseMgLow),
     basis: "from the adult label dose",
+    ingredient: entry.label,
   };
 }
 
