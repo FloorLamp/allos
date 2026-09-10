@@ -20,6 +20,7 @@
 // computation").
 
 import type { Sex } from "@/lib/types";
+import type { VerdictTone } from "./chart-colors";
 import type { WeightUnit } from "@/lib/settings";
 import { fmtWeight } from "@/lib/units";
 import { assistedBaseLift, defaultEquipment, variantOf } from "@/lib/lifts";
@@ -494,8 +495,7 @@ export function strengthStandingPercent(
 }
 
 // Tone bucket for the healthspan pillar / any badge coloring, from a level.
-export type StrengthTone = "good" | "warn" | "bad" | "neutral";
-export function strengthTone(level: StrengthLevel): StrengthTone {
+export function strengthTone(level: StrengthLevel): VerdictTone {
   if (level === "advanced" || level === "elite") return "good";
   if (level === "intermediate" || level === "novice") return "warn";
   return "bad"; // beginner / untrained

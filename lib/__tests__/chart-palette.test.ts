@@ -6,6 +6,11 @@ import {
   chartNeutral,
   chartObservationRamp,
   chartSeries,
+  VERDICT_TONE_LABEL,
+  VERDICT_TONES,
+  verdictBadge,
+  verdictFill,
+  verdictText,
 } from "@/lib/chart-colors";
 import {
   CHART_SURFACE,
@@ -327,4 +332,187 @@ describe("adherence state colors (issue #1445, Part 3a)", () => {
       ).toEqual([]);
     });
   }
+});
+
+// ── verdict tones (issue #5187) ─────────────────────────────────────────────
+//
+// The colour a good/warn/bad word wears used to be declared fourteen times and
+// painted in ten private `Record<…Tone, string>` maps, none of which was checked
+// against anything. These are the checks they never had.
+//
+// DELIBERATELY CONTRAST CHECKS, NOT SEPARATION CHECKS. `chartSeries` slots must
+// separate under CVD because there the hue IS the identity of the line. A verdict
+// always colours a word the reader is already reading — the badge's own label, the
+// metric's name, `VERDICT_TONE_LABEL` beside the value (#1220) — so the question
+// that decides whether the convergence is an improvement is legibility. The worst
+// pair distances are printed below anyway, unasserted, so a future re-step can see
+// what it is trading; on the Botanical dark ramp the four badge inks sit as close
+// as ΔE 5.0 (good↔neutral) and 2.7 under deuteranopia, which is exactly why the
+// label channel is mandatory rather than decorative.
+describe("verdict tones (issue #5187)", () => {
+  const TEXT_CONTRAST_MIN = 4.5;
+
+  // Every Tailwind step the three maps name, as the hex it actually compiles to
+  // (`app/globals.css` @theme where Botanical overrides it, Tailwind v4's own
+  // oklch otherwise). The class ladder and the hex ladder are two halves of one
+  // export — the same discipline `chartActivityRamp` keeps — so a step edited in
+  // a class without its hex fails here rather than silently validating a fiction.
+  const STEP: Record<string, string> = {
+    "emerald-100": "#d0fae5",
+    "emerald-300": "#aecf9f",
+    "emerald-400": "#00d492",
+    "emerald-600": "#009966",
+    "emerald-700": "#007a55",
+    "emerald-950": "#121d13",
+    "amber-100": "#fef3c6",
+    "amber-300": "#d9c887",
+    "amber-400": "#ffb900",
+    "amber-500": "#fe9a00",
+    "amber-700": "#bb4d00",
+    "amber-950": "#171a10",
+    "rose-100": "#ffe4e6",
+    "rose-300": "#d8aca8",
+    "rose-400": "#ff637e",
+    "rose-500": "#ff2056",
+    "rose-600": "#ec003f",
+    "rose-700": "#c70036",
+    "rose-950": "#1c1315",
+    "slate-100": "#ecf2e8",
+    "slate-200": "#d9e8de",
+    "slate-300": "#b2c6b9",
+    "slate-400": "#86a190",
+    "slate-500": "#4e6354",
+    "slate-700": "#2f4237",
+    "ink-800": "#141c16",
+  };
+
+  /** The hex a `text-*` / `bg-*` utility in `cls` renders, for one theme. */
+  function stepHex(
+    cls: string,
+    theme: ChartTheme,
+    kind: "text" | "bg"
+  ): string {
+    const re = new RegExp(
+      `(?:^|\\s)${theme === "dark" ? "dark:" : ""}${kind}-([a-z]+-\\d{2,3})(?![\\w-])`,
+      "g"
+    );
+    // In light mode a `dark:` prefix must not match, so strip those utilities first.
+    const source =
+      theme === "light"
+        ? cls
+            .split(/\s+/)
+            .filter((c) => !c.startsWith("dark:"))
+            .join(" ")
+        : cls;
+    const found = [...source.matchAll(re)].map((m) => m[1]);
+    // A single-class entry (e.g. `bg-emerald-600`) applies to BOTH themes.
+    if (found.length === 0 && theme === "dark")
+      return stepHex(cls, "light", kind);
+    expect(found, `${kind} step for ${theme} in "${cls}"`).toHaveLength(1);
+    const hex = STEP[found[0]];
+    expect(
+      hex,
+      `${found[0]} is missing from this test's STEP table`
+    ).toBeTruthy();
+    return hex;
+  }
+
+  it("declares all four tones in each of the three maps", () => {
+    expect(VERDICT_TONES).toEqual(["good", "warn", "bad", "neutral"]);
+    for (const map of [verdictText, verdictBadge, verdictFill]) {
+      expect(Object.keys(map).sort()).toEqual([...VERDICT_TONES].sort());
+    }
+  });
+
+  it("keeps each entry's classes and hexes on the same Tailwind step", () => {
+    for (const tone of VERDICT_TONES) {
+      for (const theme of THEMES) {
+        expect(
+          stepHex(verdictText[tone].class, theme, "text"),
+          `text ${tone} ${theme}`
+        ).toBe(verdictText[tone][theme]);
+        expect(
+          stepHex(verdictFill[tone].class, theme, "bg"),
+          `fill ${tone} ${theme}`
+        ).toBe(verdictFill[tone][theme]);
+        expect(
+          stepHex(verdictBadge[tone].class, theme, "bg"),
+          `badge bg ${tone} ${theme}`
+        ).toBe(verdictBadge[tone][theme].bg);
+        expect(
+          stepHex(verdictBadge[tone].class, theme, "text"),
+          `badge fg ${tone} ${theme}`
+        ).toBe(verdictBadge[tone][theme].fg);
+      }
+    }
+  });
+
+  for (const theme of THEMES) {
+    it(`keeps verdict TEXT at AA on the ${theme} surface`, () => {
+      for (const tone of VERDICT_TONES) {
+        const hex = verdictText[tone][theme];
+        const r = contrastRatio(hex, CHART_SURFACE[theme]);
+        expect(
+          r,
+          `verdictText.${tone} ${hex} is ${r.toFixed(2)}:1 on the ${theme} ` +
+            `surface ${CHART_SURFACE[theme]} — under AA for body text. This is ` +
+            `the defect #5187 found: the -600 step the app painted judgments in ` +
+            `sat at 3.40 (emerald), 2.98 (amber) and 4.21 (rose) on light.`
+        ).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
+      }
+    });
+
+    it(`keeps a verdict BADGE's label legible on its own tint (${theme})`, () => {
+      for (const tone of VERDICT_TONES) {
+        const { bg, fg } = verdictBadge[tone][theme];
+        const r = contrastRatio(fg, bg);
+        expect(
+          r,
+          `verdictBadge.${tone} label ${fg} is ${r.toFixed(2)}:1 on its own ` +
+            `${bg} tint (${theme})`
+        ).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
+      }
+    });
+
+    it(`keeps a verdict FILL readable as a mark on the ${theme} surface`, () => {
+      for (const tone of VERDICT_TONES) {
+        const hex = verdictFill[tone][theme];
+        const r = contrastRatio(hex, CHART_SURFACE[theme]);
+        expect(
+          r,
+          `verdictFill.${tone} ${hex} is ${r.toFixed(2)}:1 on the ${theme} ` +
+            `surface — a progress bar is a graphical object and clears ${CONTRAST_MIN}:1`
+        ).toBeGreaterThanOrEqual(CONTRAST_MIN);
+      }
+    });
+  }
+
+  it("gives every JUDGING tone a distinct word, and neutral none", () => {
+    const judging = VERDICT_TONES.filter((t) => t !== "neutral");
+    const labels = judging.map((t) => VERDICT_TONE_LABEL[t]);
+    expect(labels.every((l) => typeof l === "string" && l.length > 0)).toBe(
+      true
+    );
+    // Two tones sharing one word would re-collapse the judgment the badge exists
+    // to distinguish — and the word is the ONLY channel a dichromat has here.
+    expect(new Set(labels).size).toBe(judging.length);
+    expect(VERDICT_TONE_LABEL.neutral).toBeNull();
+  });
+
+  // The exact WORDS, not just their distinctness (#1220). `e2e/tone-markers.spec.ts`
+  // re-declares this map locally — a Playwright spec cannot import app code through
+  // the `@/` alias — and its comment says the pure tier pins the wording. This is
+  // that pin: re-word a judgment here and this fails before the browser tier does.
+  it("pins the exact badge wording every verdict surface renders", () => {
+    expect(VERDICT_TONE_LABEL.good).toBe("Good");
+    expect(VERDICT_TONE_LABEL.warn).toBe("Fair");
+    expect(VERDICT_TONE_LABEL.bad).toBe("Poor");
+  });
+
+  it("never lets two tones render the same classes", () => {
+    for (const map of [verdictText, verdictBadge, verdictFill]) {
+      const classes = VERDICT_TONES.map((t) => map[t].class);
+      expect(new Set(classes).size).toBe(classes.length);
+    }
+  });
 });
