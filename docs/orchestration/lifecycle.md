@@ -43,13 +43,7 @@ For an authorized live session:
   owns the command, coverage limits, and evidence review.
 - Evaluate Dependabot minors under the normal green-head merge requirements;
   send majors through `dependabot-eval-brief.mjs` within a day.
-- Diagnose and rerun CI under [E2E and CI](e2e-ci.md). Wait for the run to settle
-  before rerunning failed jobs. A failed job with green listed steps needs its
-  annotations and setup/cleanup result inspected before calling it infrastructure.
-
-Keep recurring rules in their owning tooling or guide. Remove incident narratives;
-git and PR history retain their context. New scans and tests still need the
-concrete gap required by the change policy.
+- Diagnose and rerun CI under [E2E and CI](e2e-ci.md).
 
 ## Filing bar
 

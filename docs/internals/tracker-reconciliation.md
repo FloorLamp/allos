@@ -13,8 +13,7 @@ flag judgments that the evidence cannot settle.
 
 Use the [reconciliation protocol](../../.claude/skills/reconcile-tracker/SKILL.md)
 for the ordered run procedure and the [change and test policy](../change-policy.md)
-for implementation scope. This guide describes the current tools and their limits;
-it is not a mandate to build more detectors.
+for implementation scope.
 
 ## Owners and commands
 
@@ -42,8 +41,7 @@ npm run reconcile:watermark -- stamp --evidence evidence.json
 
 The writer commands above default to dry runs; `--apply` performs their writes.
 Read the report and review proposed changes before applying them. Keep evidence
-and outcomes from the same run together. A dry-run outcome reports zero applied
-patches, and omitting an outcome tells the summary that nothing was applied.
+and outcomes from the same run together.
 
 ## Evidence and its limits
 
@@ -149,15 +147,9 @@ live in `summarizeRun` and `boringVerdict`; consumers should not recalculate the
 Run on demand after substantial tracker changes. The weekly cron remains unwired
 under the [recorded decision on #865](https://github.com/FloorLamp/allos/issues/865).
 Three consecutive boring run summaries unblock it; the change wiring the schedule
-must cite those comments. Do not infer readiness from an empty report or a count
-of runs alone.
+must cite those comments.
 
 Use a standalone `Depends-on: #123, #456` line for dependencies. Free-text forms
 remain supported, but the structured form is unambiguous. When a PR completes part
 of a checklist issue, verify the shipped artifact and update its matching box;
 a title claiming completion is not enough evidence.
-
-Existing reconciliation core and script tests cover anchors, refusals, writer
-boundaries, outcomes, watermark handling, and summary arithmetic. Extend the
-relevant existing test only for a missing behavioral failure; do not add assertions
-that merely pin this guide's wording.
