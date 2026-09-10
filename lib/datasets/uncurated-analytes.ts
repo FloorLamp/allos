@@ -371,8 +371,9 @@ function dexaDecompositionRows(): [string, UncuratedAnalyte][] {
 // Every declared spelling with its decision: the dataset's own `names`, in entry order,
 // then the DEXA cross product.
 const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
-  ...uncuratedAnalytesDataset.entries.flatMap((e): [string, UncuratedAnalyte][] =>
-    (e.names ?? []).map((name) => [name, declaration(e.id)])
+  ...uncuratedAnalytesDataset.entries.flatMap(
+    (e): [string, UncuratedAnalyte][] =>
+      (e.names ?? []).map((name) => [name, declaration(e.id)])
   ),
   ...dexaDecompositionRows(),
 ];

@@ -67,7 +67,9 @@ describe("uncurated-analytes.json dataset", () => {
       // The MetricKnowledge `{ source: "none"; reason }` rule, at the DATA boundary:
       // canonical-name.test.ts pins it on the resolved declarations, this pins it on
       // the rows, so an entry the generator never mints cannot ship blank either.
-      expect(e.reason.trim().length, `${e.id}: empty reason`).toBeGreaterThan(0);
+      expect(e.reason.trim().length, `${e.id}: empty reason`).toBeGreaterThan(
+        0
+      );
       if (e.kind === "covered-elsewhere") {
         // `instead` is what a surface LINKS to; the old union made it non-optional.
         expect(
@@ -77,9 +79,10 @@ describe("uncurated-analytes.json dataset", () => {
       } else {
         // An `instead` on an out-of-scope row is a target the shape says does not
         // exist — the loader drops it, so it would be a promise nothing keeps.
-        expect("instead" in e, `${e.id}: out-of-scope carries an \`instead\``).toBe(
-          false
-        );
+        expect(
+          "instead" in e,
+          `${e.id}: out-of-scope carries an \`instead\``
+        ).toBe(false);
       }
     }
   });
@@ -89,7 +92,8 @@ describe("uncurated-analytes.json dataset", () => {
     expect(new Set(ids).size, `duplicate id in ${ids.join(", ")}`).toBe(
       ids.length
     );
-    for (const id of ids) expect(id, `${id}: not a slug`).toMatch(/^[a-z0-9-]+$/);
+    for (const id of ids)
+      expect(id, `${id}: not a slug`).toMatch(/^[a-z0-9-]+$/);
     // Two entries declaring one normalized key would resolve by whichever the map
     // wrote last — the registry's own collision, invisible to the framework harness
     // because the harness keys on `id`.
@@ -99,7 +103,10 @@ describe("uncurated-analytes.json dataset", () => {
         expect(name.trim(), `${e.id}: blank declared name`).not.toBe("");
         const key = normalizeCanonicalKey(name);
         const prev = seen.get(key);
-        expect(prev, `${e.id}: "${name}" collides with ${prev}`).toBeUndefined();
+        expect(
+          prev,
+          `${e.id}: "${name}" collides with ${prev}`
+        ).toBeUndefined();
         seen.set(key, e.id);
       }
     }
