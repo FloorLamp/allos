@@ -1,0 +1,92 @@
+The Understand and Set up bands keep three open and fold the rest behind a counted door (#4971)
+
+* Understand and Setup fold with a cap, three open, newest first (#4065)
+
+Owner ruling 2026-09-03: admission stays total for statement and setup
+rows (nothing was ever dropped for these two bands — the premise audit
+found everythingTail() already exhaustive), but Understand and Setup
+each show at most three moment blocks open, newest first, with the
+rest behind one fold per band showing the true row count ("N more").
+
+The cap unit is the moment block, not the underlying candidate: a
+family that already shares one groupKey (coaching observations, data
+quality findings) reads as one entry under one header and stays that
+way, so a block never splits across open and folded — splitting it
+would print its own title twice, which is what #4076's "no two blocks
+share a title" guard exists to forbid. The fold's count is a row
+count, not a block count, so a folded family of eight says "8 more".
+
+The new fold reuses the app's one Disclosure primitive directly,
+uncontrolled and closed by default — the same mechanism #4232 made the
+page's one fold, not a second one, and stateless because
+lib/disclosure-memory.ts's own allowlist holds findings-class folds
+out of remembered-open state on purpose.
+
+No new decay: rows leave the tail only by resolving, exactly as
+before.
+
+Fixes #4065
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UMmsmTxfHSFuJMRuVHrsqb
+
+* Scope dashboard-all's summary locator past the per-band fold (#4065)
+
+Nesting a per-band <Disclosure> inside dashboard-all (the "fold with a
+cap" ruling) made every getByTestId("dashboard-all").locator("summary")
+ambiguous once a band capped: it now resolves to the outer control's
+summary AND the nested band fold's summary, so openDashboardAll and the
+three specs that built that locator directly hit Playwright's strict
+mode.
+
+Fix the shared helper once: export dashboardAllSummary(page), which
+addresses the outer control by its own dashboard-all-summary testid
+instead of "the first summary inside", and have openDashboardAll and
+the direct call sites (dashboard-dormancy, disclosure-motion) use it.
+
+coaching-observations.spec.ts's two dashboard rollup tests target rows
+that now sit behind Understand's own fold once the fixture crosses the
+three-block cap, so they open it explicitly via the new
+openEverythingFold(page, "understand") rather than reaching into hidden
+DOM. The same test also carries a guard: with the fold open, the naive
+locator genuinely resolves to more than one summary while
+dashboardAllSummary still resolves to exactly one — proving the fix
+keeps addressing the outer control once nesting is real, not only on a
+fresh profile.
+
+Co-Authored-By: Claude Fictional 9 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UMmsmTxfHSFuJMRuVHrsqb
+
+* Open capped band folds before reading their block titles/content (#4065)
+
+Two more specs hit the same class as the last fix, surfaced by CI on
+e2383eef:
+
+dashboard-tail-grammar.spec.ts's "no two blocks in the tail share a
+title" collects every block header's innerText. Diagnosed before
+touching anything: printed the four flagged elements' real
+textContent, and they are four DISTINCT titles ("Data quality",
+"Next appointment", "Coaching observations", "Weekly recap …") sitting
+inside the closed dashboard-everything-understand-fold. A closed
+native <details> is unrendered, so innerText reads its children as ""
+regardless of their real text — the four "duplicates" were a visibility
+artifact of allInnerTexts(), not a real violation of #4076's invariant
+that deviation 1 rests on. Confirmed: this is case (a), a test
+artifact. Fixed by opening both possible band folds before the census
+(a no-op where a band didn't cap), so every block's real title is
+readable — never by filtering the empties, which would hide a genuine
+duplicate forever.
+
+prn-family.spec.ts's dashboard coaching-rollup test targets the same
+Understand-band content class already fixed in
+coaching-observations.spec.ts: the fixture's Understand band crosses
+the three-block cap, so the therapeutic-duplication note sits behind
+Understand's own fold. Opens it via the existing openEverythingFold
+helper, same discipline as before.
+
+Co-Authored-By: Claude Fictional 9 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UMmsmTxfHSFuJMRuVHrsqb
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com>

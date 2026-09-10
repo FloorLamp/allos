@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { openConfirm } from "./helpers";
 // Exercises the calendar feed customization controls (issue #12): the setup UI
 // gains category toggles, a reminder switch, and past/future window selects, all
 // persisted per profile and reflected in the served `.ics`. This drives the real
@@ -55,7 +56,14 @@ test.describe("Calendar feed customization", () => {
     await page.getByTestId("calendar-category-goal").uncheck();
     await page.getByTestId("calendar-feed-options-save").click();
     await expect(page.getByText("Saved")).toBeVisible();
-    await page.getByRole("button", { name: "Disable feed" }).click();
+    // The Disable went quiet under #4978's ruling 12, and its confirm step now
+    // carries the red — so the teardown answers the confirm rather than
+    // assuming the click disabled anything.
+    const confirm = await openConfirm(
+      page,
+      page.getByRole("button", { name: "Disable feed" })
+    );
+    await confirm.getByRole("button", { name: "Disable feed" }).click();
     await expect(
       page.getByRole("button", { name: "Enable feed" })
     ).toBeVisible();

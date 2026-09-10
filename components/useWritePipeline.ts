@@ -10,7 +10,10 @@ import {
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import type { StampedFormData } from "@/lib/logged-via";
-import { useUndoableAction } from "@/components/useUndoableAction";
+import {
+  useUndoableAction,
+  type ReceiptSession,
+} from "@/components/useUndoableAction";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   OFFLINE_QUEUE_COVERAGE,
@@ -147,6 +150,23 @@ export type WriteSpec<A extends OneTapAffordance, R, V = void> = {
   // The value this tap moves, when the surface shows one. Omitted by a surface whose
   // server action revalidates and re-renders it.
   readonly optimistic?: OptimisticValue<V>;
+  // THE KEYED RECEIPT SLOT (#5738). A surface whose announcement is ABOUT SOMETHING —
+  // a target that can be tapped again, corrected, or undone — declares the slot its
+  // receipt occupies. Everything this run says then lands there: owned by this tap, so
+  // an inverse finishing after a newer tap cannot publish over the newer receipt;
+  // stamped with the profile that ran it, so a switch clears it; and dismissed when the
+  // surface unmounts. The opener and the slot travel TOGETHER because naming one
+  // without the other is the bug — a key with no owner is the append-only toast wearing
+  // a slot's clothes. Hand `useKeyedReceipt(subject)` straight in as `open`: the
+  // pipeline calls it at the TAP, which is what the guard compares against.
+  //
+  // Omitted, an announcement is the append-only toast every caller had before. A
+  // surface with one transient sentence and no target to re-announce about has nothing
+  // to put in a slot.
+  readonly receipt?: {
+    readonly open: () => ReceiptSession;
+    readonly key: string;
+  };
   // What to say when the request itself did not complete and nothing was captured.
   readonly failureMessage: string;
 } & OfflineHalf<A>;
@@ -161,6 +181,9 @@ export interface WritePipeline<A extends OneTapAffordance, V = void> {
 // What one attempt ended up doing, plus the server's own figure when it named one.
 type Attempted<V> = { readonly result: WriteResult; readonly value?: V };
 
+// This run's claim on the receipt slot it declared, opened once at the tap.
+type OpenSlot = { readonly session: ReceiptSession; readonly key: string };
+
 export function useWritePipeline<A extends OneTapAffordance, V = void>(
   affordance: A
 ): WritePipeline<A, V> {
@@ -173,8 +196,17 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
 
   // ONE announcement path. An Undo rides only where `lib/undo-offer.ts` says it may.
   const say = useCallback(
-    (announcement: WriteAnnouncement) => {
+    (announcement: WriteAnnouncement, slot: OpenSlot | null) => {
       if (announcement === "silent") return;
+      if (slot) {
+        slot.session.announce({
+          key: slot.key,
+          message: announcement.message,
+          tone: announcement.tone,
+          undo: announcement.undo,
+        });
+        return;
+      }
       if (announcement.undo) {
         announceUndoable({
           message: announcement.message,
@@ -197,19 +229,23 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
   const capture = useCallback(
     async (
       decision: OfflineDecision,
-      capturedContext: QueuedCapture | null
+      capturedContext: QueuedCapture | null,
+      slot: OpenSlot | null
     ): Promise<WriteResult> => {
       if (decision.kind === "attempt") return "nothing";
       if (decision.kind === "refuse") {
-        say({ message: decision.message, tone: "error", undo: null });
+        say({ message: decision.message, tone: "error", undo: null }, slot);
         return "nothing";
       }
       if (!capturedContext) {
-        say({
-          message: OFFLINE_CAPTURE_REFUSED_MESSAGE,
-          tone: "error",
-          undo: null,
-        });
+        say(
+          {
+            message: OFFLINE_CAPTURE_REFUSED_MESSAGE,
+            tone: "error",
+            undo: null,
+          },
+          slot
+        );
         return "nothing";
       }
       // READ THE ANSWER (#3038): the device can refuse the capture — logged out, or no
@@ -219,16 +255,19 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
         (await enqueue(decision.flow, decision.payload, capturedContext)) ===
         "kept";
       if (!kept) {
-        say({
-          message: OFFLINE_CAPTURE_REFUSED_MESSAGE,
-          tone: "error",
-          undo: null,
-        });
+        say(
+          {
+            message: OFFLINE_CAPTURE_REFUSED_MESSAGE,
+            tone: "error",
+            undo: null,
+          },
+          slot
+        );
         return "nothing";
       }
       // A queued intent has no server row yet, so there is nothing an inverse could
       // re-derive: an offline capture never carries an Undo.
-      say({ message: decision.keptMessage, undo: null });
+      say({ message: decision.keptMessage, undo: null }, slot);
       return "captured";
     },
     [enqueue, say]
@@ -239,7 +278,8 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       spec: WriteSpec<A, R, V>,
       tappedAt: Date,
       offlineDecision: OfflineDecision | undefined,
-      capturedContext: QueuedCapture | null
+      capturedContext: QueuedCapture | null,
+      slot: OpenSlot | null
     ): Promise<Attempted<V>> => {
       // Resolve the existing write-gate generation before starting the slow action.
       // A later profile switch/logout then invalidates the exact token this tap spends
@@ -252,7 +292,7 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
         // `attempt` falls through to the network on purpose — a cross-profile write has
         // no offline path but is still worth trying, and a failure is reported below.
         if (decision.kind !== "attempt")
-          return { result: await capture(decision, capturedContext) };
+          return { result: await capture(decision, capturedContext, slot) };
       }
 
       const formData = stampLoggedVia(new FormData());
@@ -269,13 +309,13 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
         ) {
           const decision = offlineDecision;
           if (decision.kind !== "attempt")
-            return { result: await capture(decision, capturedContext) };
+            return { result: await capture(decision, capturedContext, slot) };
         }
-        say({ message: spec.failureMessage, tone: "error", undo: null });
+        say({ message: spec.failureMessage, tone: "error", undo: null }, slot);
         return { result: "nothing" };
       }
       const settled = spec.settle(result);
-      say(settled.announce);
+      say(settled.announce, slot);
       return settled.wrote
         ? { result: "wrote", value: settled.value }
         : { result: "nothing" };
@@ -291,6 +331,11 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
       // once here as well: a mutable form or selected day may change while an online
       // action is in flight, and its failure still belongs to this tap's payload.
       const tappedAt = new Date();
+      // Opened HERE rather than where the announcement is made: the guard's whole job
+      // is to compare the world at the tap with the world the answer arrives in.
+      const slot: OpenSlot | null = spec.receipt
+        ? { session: spec.receipt.open(), key: spec.receipt.key }
+        : null;
       const offline = spec.offline as
         ((at: Date) => OfflineDecision) | undefined;
       const offlineDecision = offline?.(tappedAt);
@@ -317,7 +362,8 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
             spec,
             tappedAt,
             offlineDecision,
-            capturedContext
+            capturedContext,
+            slot
           );
         },
         settle: () => {
@@ -328,7 +374,10 @@ export function useWritePipeline<A extends OneTapAffordance, V = void>(
         },
         onError: () => {
           outcome = { result: "nothing" };
-          say({ message: spec.failureMessage, tone: "error", undo: null });
+          say(
+            { message: spec.failureMessage, tone: "error", undo: null },
+            slot
+          );
           return { kind: "rollback" };
         },
       });

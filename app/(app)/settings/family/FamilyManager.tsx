@@ -213,15 +213,15 @@ function ProfilesCard({
             placeholder="Name"
             className="input"
           />
-          {/* THE CARD'S OWN COMMIT, filled under the same ruling 6 reading.
-              ONE OVERLAP IS REPORTED RATHER THAN SETTLED HERE: the per-profile
-              Delete opener above is a quiet text control, but its confirm step's
-              "Delete permanently" is filled, and ruling 10 keeps the destructive
-              fill exactly there. That confirm stands open BESIDE this commit
-              inside the same card, so while it is up the card carries two filled
-              controls — the shape ruling 6's carve-out forbids. Neither ruling
-              yields to the other, and demoting either mount locally would make
-              this card an exception no reader could trace, so it goes to #4978. */}
+          {/* THE CARD'S OWN COMMIT, filled under the same ruling 6 reading, and
+              it KEEPS that fill while a profile row's confirm stands open beside
+              it (#4978 owner ruling 12, 2026-09-10, which settled the overlap
+              this comment used to report). Ruling 3 governs: a commit is never
+              outweighed. The rule the ruling applied is that a standalone
+              destructive control goes quiet beside a card's commit and the red
+              moves to its confirm step — which is what this card already does,
+              the "Delete profile" opener being a quiet text control and
+              "Delete permanently" the filled step behind it. */}
           <Button
             onClick={add}
             disabled={pending || !newName.trim()}

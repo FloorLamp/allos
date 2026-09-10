@@ -190,7 +190,20 @@ export default async function WithingsPage(props: {
                 />
               </div>
               <div>
-                <SubmitButton variant="primary" data-testid="withings-save">
+                {/* ONE COMMIT PER CARD (#4978 PM ruling 6; the pair was flagged
+                  on the 03:20Z escalation and sent to this lane by owner ruling
+                  12). Both submits live on this one card, so while credentials
+                  exist the card carried two filled controls. They are not the
+                  peers ruling 7 covers and not the doors ruling 6 carves out —
+                  they are ORDERED, and the copy below already says so
+                  ("Credentials saved. Connect ... to start syncing"). Once
+                  credentials exist this form is a maintenance edit and Connect
+                  is the action the card exists for, so the fill follows the
+                  goal. With no credentials yet, this IS that action. */}
+                <SubmitButton
+                  variant={hasCreds ? undefined : "primary"}
+                  data-testid="withings-save"
+                >
                   {hasCreds ? "Update credentials" : "Save credentials"}
                 </SubmitButton>
               </div>

@@ -60,7 +60,11 @@ export default function GrowthChartsCard({
             }
             description={`${view.referenceSource} ${view.label.toLowerCase()}-for-age reference`}
             detailHref={
-              detailHref ? growthTrendsHref(view.metric, range) : null
+              detailHref
+                ? growthTrendsHref(view.metric, range)
+                : {
+                    none: "the composite detail page itself — its own cards would link to the page they are on",
+                  }
             }
             detailTitle={view.percentileTitle}
             footer={

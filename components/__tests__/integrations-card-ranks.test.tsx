@@ -183,19 +183,21 @@ describe("a patient-portals card spends one filled control on its own commit", (
 
 function renderCalendarFeed() {
   render(
-    <CalendarFeedConfig
-      enabled={true}
-      detail="minimal"
-      categories={[]}
-      reminders={false}
-      pastWindowDays={30}
-      futureWindowDays={null}
-      baseUrl="https://allos.test"
-      status="active"
-      createdAt="2026-09-01T10:00:00Z"
-      lastUsedAt={null}
-      expiresOnDay={null}
-    />
+    <ConfirmProvider>
+      <CalendarFeedConfig
+        enabled={true}
+        detail="minimal"
+        categories={[]}
+        reminders={false}
+        pastWindowDays={30}
+        futureWindowDays={null}
+        baseUrl="https://allos.test"
+        status="active"
+        createdAt="2026-09-01T10:00:00Z"
+        lastUsedAt={null}
+        expiresOnDay={null}
+      />
+    </ConfirmProvider>
   );
   const save = screen.getByTestId("calendar-feed-options-save");
   const card = save.closest(".card");
@@ -204,29 +206,40 @@ function renderCalendarFeed() {
 }
 
 describe("a calendar-feed card spends its one rank on its own commit", () => {
-  it("fills the feed-options Save and renders the disconnect loud beside it", () => {
+  it("spends its one loud control on the Save (ruling 12)", async () => {
     const { save, card } = renderCalendarFeed();
     expectRank(save, true);
 
-    // TWO FILLS ON ONE CARD, AND THE POINT IS THAT THE COUNT NOW SAYS SO. The
-    // Disable beside the Save is a `DestructiveSubmit`; until #5696 the fill came
-    // from `.destructive-submit` repainting a rank-LESS child, so this spec could
-    // — and did — assert "exactly one filled control" while the card rendered
-    // two. The wrapper states `variant="danger"` now, so the second fill is in
-    // the census, and this pins what the card actually renders today.
-    expect(loudIn(card)).toEqual(["Save feed options", "Disable feed"]);
-  });
+    // OWNER RULING 12 (#4978, 2026-09-10): on this card the Save keeps the fill
+    // and the standalone Disable beside it goes quiet, because ruling 10's
+    // filled danger survives only on a surface with NO commit of its own. Until
+    // #5757 this assertion could not even be written honestly — the fill came
+    // from `.destructive-submit` repainting a rank-LESS child, so the card
+    // rendered two solid controls while a rank census reported one.
+    //
+    // Asserted as the card's budget WHOLE rather than one control at a time: a
+    // per-control check cannot see a second fill arriving beside the one it
+    // checks, and a document-wide count answers for cards this test is not
+    // about.
+    const disable = screen.getByRole("button", { name: "Disable feed" });
+    expectRank(disable, false);
+    expect(loudIn(card)).toEqual(["Save feed options"]);
 
-  // OWNER RULING 12 (#4978, 2026-09-10): on this card the Save keeps the fill,
-  // the Disable goes quiet, and the red moves to its confirm step — a standalone
-  // destructive control stays filled only on a surface with no commit of its
-  // own. That conversion reaches `IntegrationDisconnectButton` across the seven
-  // integration pages that pair a disconnect with a commit and is sequenced as
-  // its own lane after #5726, so it is not made here. This is the assertion that
-  // lane makes true; it is skipped rather than deleted so the card's budget has
-  // a stated target instead of only a pinned overspend.
-  it.skip("spends its one loud control on the Save (ruling 12)", () => {
-    const { card } = renderCalendarFeed();
+    // AND THE RED IS RELOCATED, NOT DELETED — asserted in the state that proves
+    // it. The fill the Disable gave up lives on its confirm step, which exists
+    // only once the control is pressed, so a render of the closed card would
+    // say nothing about where the danger paint went.
+    fireEvent.click(disable);
+    const dialog = await screen.findByTestId("confirm-dialog");
+    const confirmed = within(dialog).getByRole("button", {
+      name: "Disable feed",
+    });
+    // The dialog is still on the retiring raw family (#4978 item 4 deletes it
+    // with its last caller), so this reads the destructive paint by the class
+    // that carries it there rather than by the primitive's rank.
+    expect(confirmed.className).toContain("btn-danger");
+    // The confirm is a `z-110` overlay, not a control on the card, so the
+    // card's budget is unchanged while it stands open.
     expect(loudIn(card)).toEqual(["Save feed options"]);
   });
 });
