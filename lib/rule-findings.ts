@@ -71,9 +71,9 @@ import {
 
 // ---- #449: the unified coaching-findings collection -------------------------
 
-// The four observational domains below (training balance/plateau, body-metric
-// hygiene, goal pacing, adherence patterns) are the #45 "coaching" reach tier: calm,
-// observational FYIs — never a push, never dashboard Now. Each
+// The observational domains collected below (training balance/plateau, body-metric
+// hygiene, goal pacing, adherence patterns and the rest) are the #45 "coaching" reach
+// tier: calm, observational FYIs — never a push, never dashboard Now. Each
 // renders on its own tab today, so a stale-exercise or off-pace-goal finding a user
 // never opens that tab for is invisible (issue #449). This ONE aggregator is the
 // single computation the dashboard "Coaching observations" rollup AND the four tabs
@@ -83,26 +83,6 @@ import {
 // findings-bus filter (activeFindings) exactly like each tab does. No owned SQL is
 // added (it reads through the already profile-scoped builders), so the profile-scoping
 // guard is unaffected.
-
-// `prefs` (#1020): the viewer's date shape for the dates some finding texts embed
-// (fitness-check, weight-anomaly) — the same threading precedent as `wu` for
-// weights (#1019). Defaults keep login-less callers on the documented fixed shape.
-// Memoized until the next commit (#5073) — the heaviest of the six gathers above the
-// dashboard's first candidate. The day is already an argument; `prefs` is two closed
-// unions and both join the key. NOT the suppression bus: `getFindingSuppressions` and
-// `routineOrder` stay per request, so a dismissal taken since the last commit is still
-// read fresh over this set. `closureFindingSnapshot` above is deliberately separate and
-// unmemoized — it is read on BOTH sides of a write.
-export const collectCoachingFindings = commitCached(
-  "rule-findings.coaching",
-  (
-    profileId: number,
-    today: string,
-    wu: WeightUnit,
-    prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
-  ) => `${profileId}:${today}:${wu}:${prefs.timeFormat}:${prefs.dateFormat}`,
-  collectCoachingFindingsUncached
-);
 
 // What the collection hands each builder. The four values are the collection's own
 // arguments: a builder takes the ones it needs and ignores the rest, so an entry is a
@@ -250,6 +230,26 @@ function collectCoachingFindingsUncached(
   const c: CoachingCollectionContext = { profileId, today, wu, prefs };
   return COACHING_COLLECTION.flatMap((entry) => entry.run(c));
 }
+
+// `prefs` (#1020): the viewer's date shape for the dates some finding texts embed
+// (fitness-check, weight-anomaly) — the same threading precedent as `wu` for
+// weights (#1019). Defaults keep login-less callers on the documented fixed shape.
+// Memoized until the next commit (#5073) — the heaviest of the six gathers above the
+// dashboard's first candidate. The day is already an argument; `prefs` is two closed
+// unions and both join the key. NOT the suppression bus: `getFindingSuppressions` and
+// `routineOrder` stay per request, so a dismissal taken since the last commit is still
+// read fresh over this set. `closureFindingSnapshot` below is deliberately separate and
+// unmemoized — it is read on BOTH sides of a write.
+export const collectCoachingFindings = commitCached(
+  "rule-findings.coaching",
+  (
+    profileId: number,
+    today: string,
+    wu: WeightUnit,
+    prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  ) => `${profileId}:${today}:${wu}:${prefs.timeFormat}:${prefs.dateFormat}`,
+  collectCoachingFindingsUncached
+);
 
 // The finding snapshot for the closure loop (#1305): the builders whose findings a
 // satisfier WRITE can plausibly clear, gathered for the DECLARED prefixes only. Prefix-
