@@ -34,6 +34,11 @@
 //     copy the food engine attaches.
 //   • "Already in your stack" uses the shared substance tokenizer (tokenContains).
 //
+// WHAT THIS FILE IS NOW (issue #5173): a DECLARATION. The loop, the direction pick, the
+// trigger match and the withhold-or-annotate screen are THE curated-suggestion engine in
+// lib/curated-suggest.ts, shared with the food twin. What stays here is what is about
+// SUPPLEMENTS: which table, which screens, which copy — see suggestCuratedSupplements.
+//
 // Framing is informational, never prescriptive, and NO suggestion carries a dose — the
 // map does not contain one to carry.
 

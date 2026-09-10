@@ -9,8 +9,14 @@
 // This is the food twin of lib/supplement-suggest.ts, but with a load-bearing
 // difference: the suggestions come ONLY from the curated, human-reviewable map — never
 // from free AI generation. The engine here is PURE (no DB/network/clock): the DB gather
-// lives in lib/queries/nutrition/adequacy.ts (getFoodSuggestions), which both surfaces (the
-// biomarker detail page and the coaching tab) format — "one question, one computation."
+// lives in lib/queries/nutrition/adequacy.ts (getFoodSuggestions), which both surfaces
+// (the biomarker detail page and the coaching tab) format — "one question, one
+// computation."
+//
+// WHAT THIS FILE IS NOW (issue #5173): a DECLARATION. The loop, the direction pick, the
+// trigger match and the withhold-or-annotate screen are THE curated-suggestion engine in
+// lib/curated-suggest.ts, shared with the supplement twin. What stays here is what is
+// about FOOD: which table, which screens, which copy — see suggestFoods below.
 //
 // Safety screens (each reuses/inverts existing machinery):
 //   • Allergies — allergenConflict (lib/supplement-safety.ts): direct + cross-reactive
@@ -32,7 +38,7 @@
 // (protein and fibre, which have no assay here). Everything after selection is identical,
 // because everything after selection is about the FOOD: the same allergy screen, the same
 // food–drug inverse, the same contraindications, the same preference filter, the same
-// dedupe namespaces. See TargetTrigger below.
+// dedupe namespaces. See TargetTrigger (lib/curated-suggest.ts).
 //
 // Framing is informational, food-first, never prescriptive — and the ABSENCE of a
 // suggestion is never an all-clear.
