@@ -454,8 +454,8 @@ const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
 // bans that most plausibly co-occur with a marked line are split onto
 // `no-restricted-properties` and `no-restricted-imports` where the shape allows, so
 // the collision surface is smaller than one rule holding all of them — but it is not
-// zero, and `reportUnusedDisableDirectives` is still off (#5363), so a directive that
-// stops excusing anything is silent until that lands.
+// zero. `reportUnusedDisableDirectives` is on (#5347), so a directive that stops
+// excusing anything is reported instead of silently kept.
 //
 // ONE SCAN RULE DID NOT COME: the offline-navigation guard (#3002) asks whether a
 // `.goto()` sits BETWEEN a `setOffline(true)` and a `setOffline(false)` with no
@@ -825,13 +825,11 @@ const config = [
       "playwright/.cache/",
     ],
   },
-  // ESLint 9 flat config defaults linterOptions.reportUnusedDisableDirectives to
-  // "warn", but the old `.eslintrc.json` + `next lint` path left it off — keep it
-  // off so the reported set stays identical (no newly-surfaced warnings on
-  // existing dead eslint-disable comments).
+  // A disable comment whose ban has gone quiet is reported as an error instead of
+  // silently kept (#5347). Delete the directive; do not leave it as documentation.
   {
     linterOptions: {
-      reportUnusedDisableDirectives: "off",
+      reportUnusedDisableDirectives: "error",
     },
   },
   ...nextCoreWebVitals,

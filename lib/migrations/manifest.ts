@@ -139,7 +139,6 @@ export function main(
   // is to commit the entry's REMOVAL and then regenerate — it is then `added`, not
   // `changed`. Do that only with the origin/main check in hand and recorded.
   if (plan.changed.length > 0) {
-    // eslint-disable-next-line no-console
     console.error(
       `REFUSING to write ${MANIFEST_IN_REPO}: ${plan.changed.length} ` +
         `SHIPPED migration(s) hash differently than the committed manifest:\n` +
@@ -156,7 +155,6 @@ export function main(
   // — and dropping the entry is how a rename smuggles an edit past the
   // immutability guard, which only checks the files that are still there.
   if (plan.removed.length > 0) {
-    // eslint-disable-next-line no-console
     console.error(
       `REFUSING to write ${MANIFEST_IN_REPO}: ${plan.removed.length} ` +
         `SHIPPED migration(s) in the committed manifest have no file:\n` +
@@ -175,7 +173,6 @@ export function main(
   fs.writeFileSync(MANIFEST_PATH, next);
 
   const count = Object.keys(plan.next).length;
-  // eslint-disable-next-line no-console
   console.log(
     [
       // Said out loud, because it is the one state where the generator freezes
