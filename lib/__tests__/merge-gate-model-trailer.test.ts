@@ -88,6 +88,13 @@ describe("which commit messages name a model (#4995)", () => {
         "Claude-Session: https://claude.ai/code/session_01x",
     ],
     ["a message with no trailers at all", "Subject\n\nBody.\n"],
+    // Shape 2 is available and not shipped (PM, 2026-09-10): this repo holds
+    // real model ids as production config, so a message naming one is honest.
+    // If this row ever has to change, the revisit trigger in the core has fired.
+    [
+      "a bare model id, which this repo legitimately writes",
+      "Move the recommendation run to claude-fictional-9",
+    ],
     ["an absent message", undefined],
   ])("permits %s", (_case, message) => {
     expect(modelIdentifierLines(message as string)).toEqual([]);
@@ -103,11 +110,6 @@ describe("which commit messages name a model (#4995)", () => {
       "extra whitespace around the name",
       "Co-Authored-By:  Claude   Fictional 9  <noreply@anthropic.com>",
       "Co-Authored-By:  Claude … <noreply@anthropic.com>",
-    ],
-    [
-      "a bare model id in prose",
-      "Move the run to claude-fictional-9 for the summary",
-      "Move the run to claude-… for the summary",
     ],
   ])("refuses %s", (_case, message, redacted) => {
     expect(modelIdentifierLines(message)).toEqual([redacted]);

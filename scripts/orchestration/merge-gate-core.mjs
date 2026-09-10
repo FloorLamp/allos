@@ -179,30 +179,34 @@ export const COMMIT_TRAILER_BRIEF = `- Commit trailers for a Claude session, the
   session. No model identifier in pushed content — merge-gate.mjs refuses a
   commit whose message names one.`;
 
-// WHAT IS REFUSED — two SHAPES, and deliberately no list of model names. An
+// WHAT IS REFUSED — ONE SHAPE, and deliberately no list of model names. An
 // enumeration goes stale the day a new name exists, and a stale enumeration
 // fails into a silent pass, which is the one direction a guard may not fail.
 //
-//  1. A `Co-Authored-By` whose `Claude` is followed by anything but the
-//     address. The discriminator is the ANGLE BRACKET, not the word before it,
-//     so this knows no model's name: `Co-Authored-By: Claude <noreply@…>` is
-//     the correct trailer and opens the gate, while a name sitting where no
-//     name belongs closes it. Git reads a trailer key case-insensitively and
-//     both spellings are in this history, so this reads it that way too.
-//  2. A bare model id, whose shape is `claude-` and then segments of which one
-//     is numeric. THAT NUMERAL is the whole discriminator: it is what separates
-//     an id from `claude-code` and from `Claude-Session`, which are ordinary
-//     content here and name nothing.
+// A `Co-Authored-By` whose `Claude` is followed by anything but the address.
+// The discriminator is the ANGLE BRACKET, not the word before it, so this knows
+// no model's name: `Co-Authored-By: Claude <noreply@…>` is the correct trailer
+// and opens the gate, while a name sitting where no name belongs closes it. Git
+// reads a trailer key case-insensitively and both spellings are in this
+// history, so this reads it that way too.
 //
 // WHAT IS NOT REFUSED, stated because a guard's blind spots are part of its
 // contract: a model's marketing name in prose with no `Co-Authored-By` around
 // it, another vendor's id, and a co-author line naming a model without the word
 // `Claude`. Catching any of those needs the list of names this refuses to keep.
-// Measured 2026-09-10 over every commit ahead of main on the five open
-// branches: 12 offending lines, all of them shape 1, none shape 2.
+//
+// A SECOND SHAPE IS AVAILABLE AND NOT SHIPPED (PM ruling, 2026-09-10): a bare
+// model id, `claude-` then segments of which one is numeric, the numeral being
+// what separates an id from `claude-code` and `Claude-Session`. It is out
+// because nothing has ever exhibited it — measured 2026-09-10, 22 offending
+// lines across the five open branches and main's last 60 commits, every one of
+// them the shape above — while `lib/ai-client.ts` and `lib/ai-tiers.ts` hold
+// real ids as production config, so it would refuse an honest commit message
+// naming one. That is a fact about today. REVISIT ON THE FIRST OBSERVED
+// INSTANCE: the pattern is `/\bclaude-(?:[a-z]+-)*\d[\w.]*/i`, and it needs a
+// second `redact` clause so the refusal still does not repeat what it refuses.
 const MODEL_ATTRIBUTION =
   /^[^\S\n]*co-authored-by:[^\S\n]*claude[^\S\n]+(?=[^<\s])[^\n]*/gim;
-const MODEL_ID = /\bclaude-(?:[a-z]+-)*\d[\w.]*/i;
 
 // THE REFUSAL MAY NOT REPEAT WHAT IT REFUSES. merge-gate.mjs's first failure
 // becomes the `merge-gate` commit status description, which the workflow POSTS
@@ -210,17 +214,13 @@ const MODEL_ID = /\bclaude-(?:[a-z]+-)*\d[\w.]*/i;
 // name it exists to keep out, on the repository, under this gate's own name.
 // The shape is what the writer needs to see anyway; the identifier is not.
 const redact = (line) =>
-  line
-    .replace(/(co-authored-by:[^\S\n]*claude)[^\S\n]+[^<\n]*/i, "$1 … ")
-    .replace(/\bclaude-(?:[a-z]+-)*\d[\w.]*/gi, "claude-…");
+  line.replace(/(co-authored-by:[^\S\n]*claude)[^\S\n]+[^<\n]*/i, "$1 … ");
 
 /** The model-naming lines one commit message carries, redacted to their shape. */
 export function modelIdentifierLines(message) {
   const lines = new Set();
   for (const [line] of (message ?? "").matchAll(MODEL_ATTRIBUTION))
     lines.add(redact(line.trim()));
-  for (const line of (message ?? "").split("\n"))
-    if (MODEL_ID.test(line)) lines.add(redact(line.trim()));
   return [...lines];
 }
 
