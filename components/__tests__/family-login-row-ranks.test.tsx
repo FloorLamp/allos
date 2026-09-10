@@ -17,7 +17,8 @@ import FamilyManager from "@/app/(app)/settings/family/FamilyManager";
 // once per login, so the filled Delete was one loud control per login on a single
 // card — 194 of them on the e2e fixture. Delete is now the plain secondary like its
 // neighbours, and the filled danger lives where ruling (10) puts it: the standalone
-// action and the confirm step (ProfileCard's "Delete permanently").
+// action and the confirm step (`ProfileRow`'s "Delete permanently", behind its
+// type-the-name confirm).
 //
 // So this asserts that the whole row is quiet, never Delete alone: every control in
 // it carries the plain `button-control` with no raw family class left on it, and
@@ -125,8 +126,11 @@ describe("the family login row ranks its destructive action against its neighbou
     mount();
     const row = memberRow();
 
-    // The six controls of the converted row. `Send invite` only renders when the
-    // instance can send mail AND the login has an address — both true above.
+    // The five controls of the row's action strip — the whole of it. `Send
+    // invite` only renders when the instance can send mail AND the login has an
+    // address, both true above. The row's other two controls are the Email and
+    // Reset password FOLD commits, which are the settings-card test's subject
+    // (ruling 6 carve-out 1) rather than this one's.
     for (const name of [
       "Send invite",
       "Email",

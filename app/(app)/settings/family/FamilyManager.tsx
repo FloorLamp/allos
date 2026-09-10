@@ -905,11 +905,13 @@ function LoginRow({
             treatment and absence of `variant` IS it, so there is nothing to spell
             and the rose tint that #5677 replaced does not come back. The filled
             danger stays where ruling 10 puts it — the standalone action and the
-            confirm step, which is the "Delete permanently" mount in ProfileCard.
+            confirm step — here, `ProfileRow`'s "Delete permanently" behind its
+            type-the-name confirm.
 
-            None of the six controls in this row is a form commit either: LoginRow
-            renders no <form> — every action here posts through a Server Action from
-            an onClick — so under the 2026-09-04 13:05 UTC form reading there is no
+            None of this row's SEVEN controls is a form commit either: LoginRow
+            renders no <form> at all, and the five in this action strip and the
+            two fold commits below it alike post through a Server Action from an
+            onClick — so under the 2026-09-04 13:05 UTC form reading there is no
             primary here to spend. PM ruling 6 (2026-09-09 23:35 UTC) then named the
             CARD as the surface, and this card spends its one loud control on
             "Create login" above; the row renders once PER LOGIN, so a primary here
