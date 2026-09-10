@@ -84,9 +84,20 @@ export default function TodaysSessionCard({
             ))}
           </ul>
         </div>
+        {/* THIS CARD'S OWN ACTION ROW, AND IT IS NOT `TrainingOverviewActions`
+            (#5711). It writes that component's unstacked shape by hand, but the
+            controls differ: the primary here is `log-this-session`, which hands
+            the routine slate over, where `TrainingOverviewActions` renders
+            `training-overview-start-workout`. Both rows answered to
+            `training-overview-actions` until #5711, so a reader following the
+            name from a spec landed on whichever file they opened first — which
+            is the likeliest reason #4978's ruling 8 names this mount while the
+            directive it defers to is about the other one. That discrepancy is
+            recorded, not resolved: the two controls are still different
+            controls. One name, one row. */}
         <div
           className="flex shrink-0 flex-wrap gap-2"
-          data-testid="training-overview-actions"
+          data-testid="todays-session-actions"
         >
           {canStartWorkout && (
             // FILLED BECAUSE IT IS THIS CARD'S ONE LOUD CONTROL, not because it
