@@ -182,6 +182,7 @@ export default function VisitsSection({
         data-lead={upcomingEmpty ? "past" : "upcoming"}
       >
         <AddEntryPanel
+          formId="visit"
           testId="add-visit-panel"
           panelId="add-visit-panel-body"
           label="Add visit"

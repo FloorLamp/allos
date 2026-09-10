@@ -85,6 +85,7 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
           }
           action={
             <AddEntryPanel
+              formId="imaging-study"
               testId="add-imaging-panel"
               panelId="add-imaging-panel-body"
               label="Add imaging study"

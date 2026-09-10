@@ -8,7 +8,10 @@
 //      mutability), the unit the issue names. Every kind's gather produces this shape
 //      and nothing else, so a new kind cannot bring a new row grammar with it.
 //   2. THE CLOCK GRAMMAR (`historyClock`) — a stated time renders bare ("10:07am");
-//      a filing-time fallback renders "logged 10:07am". One meridiem style, page-wide.
+//      a filing-time fallback renders "logged 10:07am", or "logged Sep 8" when the
+//      filing fell on a DIFFERENT day than the row sits under (#5618 rule 6, since a
+//      minute from another day is true of no minute of this one). One meridiem style
+//      and one date shape, page-wide.
 //      This retires the shipped drift: food's ledger said "Ate 2:03 PM" and the dose
 //      ledger said "recorded 12:02pm" on the same app.
 //   3. THE DETAIL SEGMENT (`detailSegment`) — quantity → context → source, joined with
@@ -32,7 +35,11 @@
 // forbids; the generalization that let one engine serve both feeds is a type
 // parameter, not a fork.
 
-import { formatClockValue, type DisplayFormatPrefs } from "./format-date";
+import {
+  formatClockValue,
+  formatMonthDay,
+  type DisplayFormatPrefs,
+} from "./format-date";
 import type { FoodSlot, FoodSlotBoundaries } from "./food-slot";
 import { FOOD_GROUPS } from "./food-groups";
 import { ALCOHOL_FOOD_GROUP } from "./substance-use";
@@ -477,18 +484,63 @@ export function detailSegment(
 }
 
 /**
+ * WHERE THE FILING STAMP FELL, relative to the day the row sits under (#5618 rule 6).
+ *
+ * Both days are PROFILE-LOCAL calendar days, resolved in the row's own zone before
+ * they get here — the comparison is "same day for this person", and a UTC-date
+ * comparison would answer a different question every time the zone crosses midnight.
+ *
+ * `filedDay` is null whenever nothing filed the row at a knowable instant: a row with
+ * no record stamp at all, and a row whose clock is the event's own (a stated time is
+ * never a filing time, so the question does not arise).
+ */
+export interface HistoryFiling {
+  /** The profile-local day the row was FILED on, or null when nothing filed it. */
+  filedDay: string | null;
+  /** The profile-local day the row COUNTS for — `HistoryRow.date`, never re-derived. */
+  rowDay: string;
+}
+
+/**
  * THE CLOCK, PAGE-WIDE. A stated time renders bare; a filing-time fallback says so.
  *
  * "logged" is lower-case and leads the clock because the row's identity is already
  * the title — the word is a qualifier on the time, not a second label. The meridiem
  * style is `lower-nospace` ("10:07am") everywhere, which is the decision that retires
  * the two spellings the ledgers shipped.
+ *
+ * A FILING CLOCK FROM ANOTHER DAY IS A DAY, NOT A TIME (#5618 rule 6: "an untimed row
+ * filed on another day reads 'logged Sep 8': the filing day, no clock. Same-day rows
+ * keep 'logged 7:41am'"). Backfilling yesterday at 7:41 this morning printed "logged
+ * 7:41am" UNDER YESTERDAY — a clock that is true of no minute of the day it sits on,
+ * and the one reading of it a person can form is the wrong one. The minute is dropped
+ * rather than qualified because it says nothing once it is off its own day: what the
+ * row can honestly state is WHEN IT WAS FILED, and that is a date.
+ *
+ * Same-day filing keeps the minute, because there the clock is about the day the
+ * reader is looking at and orders the row against its neighbours.
  */
 export function historyClock(
   hhmm: string | null,
   clockKind: HistoryClockKind,
-  prefs: DisplayFormatPrefs
+  prefs: DisplayFormatPrefs,
+  filing?: HistoryFiling | null
 ): HistoryClock | null {
+  if (
+    clockKind === "logged" &&
+    filing?.filedDay &&
+    filing.filedDay !== filing.rowDay
+  ) {
+    // The in-app dense date shape, through the ONE vocabulary (#1448) so the record
+    // spells a day the way every other in-app chip does. The auto-year reference is
+    // the ROW's day, not the wall clock: this module is pure and has no clock, and
+    // anchoring it to the row keeps the string stable for a given row forever — the
+    // year appears exactly when the filing crossed one, which is when it is news.
+    const day = formatMonthDay(filing.filedDay, prefs, {
+      today: filing.rowDay,
+    });
+    return `logged ${day}` as HistoryClock;
+  }
   const clock = formatClockValue(hhmm, prefs.timeFormat, "", "lower-nospace");
   if (!clock) return null;
   return (clockKind === "stated" ? clock : `logged ${clock}`) as HistoryClock;
@@ -498,15 +550,21 @@ export function historyClock(
  * A ROW'S THREE TIME FIELDS, ANSWERED ONCE (#4452). Nine gathers spelled the
  * (sortTime, clock, clockKind) triple out by hand, two computing the same ternary
  * twice — one minute in, one call. It is also how a gather obtains a `clock` at all.
+ *
+ * `sortTime` STAYS THE MINUTE even where the clock became a day (#5618 rule 6). The
+ * ruling is about what the row READS; ordering is `mergeMemberTimelines`' contract and
+ * is not this module's to change, and a row that lost its sort key here would sink
+ * below the day's timed rows as a side effect of a formatting rule.
  */
 export function historyClockFields(
   hhmm: string | null,
   clockKind: HistoryClockKind,
-  prefs: DisplayFormatPrefs
+  prefs: DisplayFormatPrefs,
+  filing?: HistoryFiling | null
 ): Pick<HistoryRow, "sortTime" | "clock" | "clockKind"> {
   return {
     sortTime: hhmm,
-    clock: historyClock(hhmm, clockKind, prefs),
+    clock: historyClock(hhmm, clockKind, prefs, filing),
     clockKind,
   };
 }

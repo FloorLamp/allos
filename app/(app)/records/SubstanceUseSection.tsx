@@ -182,6 +182,7 @@ export default function SubstanceUseSection({
           />
         </div>
         <AddEntryPanel
+          formId="substance-screening"
           testId="add-substance-screening-panel"
           panelId="add-substance-screening-panel-body"
           label="Add screening"
