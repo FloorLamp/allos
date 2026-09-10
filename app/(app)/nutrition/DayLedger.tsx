@@ -365,7 +365,6 @@ export default function DayLedger({
           doseId={dose.doseId}
           date={date}
           profileToday={profileToday}
-          itemName={dose.name}
           taken={false}
           skipped={false}
           variant="circle"
@@ -508,7 +507,6 @@ export default function DayLedger({
               doseId={row.doseId}
               date={date}
               profileToday={profileToday}
-              itemName={row.name}
               taken={row.status === "taken"}
               skipped={row.status === "skipped"}
               variant="circle"

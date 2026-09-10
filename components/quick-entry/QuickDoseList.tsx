@@ -241,7 +241,6 @@ export default function QuickDoseList({
                   doseId={dose.doseId}
                   date={today === profileToday ? undefined : today}
                   profileToday={profileToday}
-                  itemName={dose.title}
                   taken={false}
                   skipped={false}
                   variant="pill"

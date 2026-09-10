@@ -56,6 +56,13 @@ export default function DatedDoseControl({
   taken: boolean;
   skipped: boolean;
   variant: DoseVariant;
+  /**
+   * WHICH DOSE, for the accessible name AND the minute field's label. It reaches
+   * `DoseStatusControl` unchanged, so only a host whose buttons ALREADY named their
+   * dose passes one — #2615 item 2 left the ledger's controls unnamed on purpose, and
+   * adding the prompt is not a reason to rename them. A host without one gets "this
+   * dose" on the field, beside a row that prints the name anyway.
+   */
   itemName?: string;
   payload?: string;
   compact?: boolean;
