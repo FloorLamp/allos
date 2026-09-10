@@ -38,7 +38,7 @@ import {
   type PracticeWindowRow,
   type SleepStage,
 } from "../intraday";
-import { isDraftActivityRow } from "../activity-draft";
+import { isDraftActivityRow, type DraftCandidateRow } from "../activity-draft";
 import type { TimelineEvent } from "../timeline-format";
 import { getHrMinutes, getSleepSessionsSince } from "./metrics";
 import { getProfileZoneModel } from "./zones";
@@ -155,19 +155,15 @@ export function getIntradayDayWindows(
 ): TimelineEvent[] {
   const activities = db
     .prepare(
-      `SELECT id, date, type, title, duration_min, distance_km, intensity,
+      `SELECT id, date, type, title, duration_min, distance_km,
               start_time, end_time, notes, source, components,
               (SELECT COUNT(*) FROM exercise_sets s WHERE s.activity_id = activities.id) AS set_count
          FROM activities
         WHERE profile_id = ? AND date = ?
         ORDER BY id DESC`
     )
-    .all(profileId, date) as (ActivityWindowRow & {
-    distance_km: number | null;
-    notes: string | null;
-    source: string | null;
-    set_count: number;
-  })[];
+    .all(profileId, date) as (ActivityWindowRow &
+    DraftCandidateRow & { set_count: number })[];
   const sessions = db
     .prepare(
       `SELECT id, date, practice, start_time, end_time, duration_min, live,

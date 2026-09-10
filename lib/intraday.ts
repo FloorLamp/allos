@@ -119,7 +119,7 @@ export interface IntradayInput {
 // block built from the same row by two different pieces of code is two answers to
 // "what is this session called, and where does tapping it go".
 
-/** The `activities` columns a block needs. `set_count` is the draft rule's input. */
+/** The `activities` columns a block needs — the draft rule reads its own. */
 export interface ActivityWindowRow {
   id: number;
   date: string;
