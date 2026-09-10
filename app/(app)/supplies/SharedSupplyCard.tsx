@@ -11,9 +11,14 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import type { AppRoute } from "@/lib/hrefs";
 import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
-import { switchProfileAction } from "@/app/(app)/profile-context-actions";
-import { updatePoolAction, deletePoolAction } from "./actions";
+import {
+  updatePoolAction,
+  deletePoolAction,
+  alsoForAction,
+  declineAlsoForAction,
+} from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import Link from "next/link";
 
 export interface SharedSupplyCardData {
   id: number;
@@ -39,14 +44,30 @@ export interface SharedSupplyCardData {
     profile: AvatarProfile;
     acting: boolean;
   }[];
-  // "Add for another person" (#1705). `addHref` opens the add form for this bottle's
-  // kind, pre-seeded and pre-linked; `addTargets` is every accessible profile the caller
-  // may WRITE, acting first. A SELECT rather than a chip per person: an admin reaches
-  // every profile in the instance, and a card cannot render a hundred chips. The item is
-  // created under the TARGET profile's own write gate — submitting switches the active
-  // profile first, then the ordinary add form runs — never the acting profile's.
-  addHref: AppRoute;
-  addTargets: { id: number; name: string }[];
+  // "Also for" (#5230). `sources` are the members whose plan may be copied — the ones
+  // this viewer can actually SEE, because a plan behind a grant is not a plan they may
+  // copy. `offers` are the people the copy is offered FOR: every person the caller may
+  // write who is not already a member and has not declined this bottle. Allergy,
+  // interactions and product identity do NOT withhold an offer — they are said in the
+  // receipt after the tap — and the ONE clinical gate that remains, the product's life
+  // stage, arrives as `withheld` TEXT rather than as a missing chip.
+  //
+  // Each offer carries, per source, the BASIS it was derived from — including the
+  // RECIPIENT's own day. The tap posts it back and the write refuses a stale one with a
+  // named reason rather than copying a different member's plan.
+  alsoFor: {
+    sources: {
+      itemId: number;
+      profileId: number;
+      personName: string;
+      scheduleLabel: string;
+    }[];
+    offers: {
+      profileId: number;
+      name: string;
+      bySource: Record<number, { basis: string; withheld: string | null }>;
+    }[];
+  };
   canWrite: boolean;
 }
 
@@ -64,6 +85,86 @@ export default function SharedSupplyCard({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const confirm = useConfirm();
+  // The source is a choice about THIS displayed offer, not a saved household default.
+  // One readable member IS the choice and is named above; several start empty.
+  const alsoForSources = pool.alsoFor.sources;
+  const [sourceItemId, setSourceItemId] = useState(
+    alsoForSources.length === 1 ? String(alsoForSources[0].itemId) : ""
+  );
+  // The href is OPTIONAL: a cross-profile SUPPLEMENT copy has no row to open — every
+  // supplement door resolves to the CALLER's own Nutrition tab and no route in the app
+  // takes a profile parameter — so the action returns none and the receipt stands on its
+  // own rather than linking to the wrong person's supplements (#5230).
+  const [receipt, setReceipt] = useState<{
+    text: string;
+    href: AppRoute | null;
+  } | null>(null);
+  const source =
+    alsoForSources.find((s) => String(s.itemId) === sourceItemId) ?? null;
+  // PAST A CHIP COUNT THE CARD FALLS BACK TO A SELECT, with the same verb (#5230
+  // shape item 1). A household card carries a handful of chips in one wrapping row;
+  // an ADMIN reaches every profile in the instance, and a card cannot render a
+  // hundred of them. Four is the layout number, not a rule about people.
+  const manyOffers = pool.alsoFor.offers.length > 4;
+  // The card RE-RENDERS after the tap (the action revalidates /supplies), so the person
+  // just added is a member now and their offer is gone. The receipt must outlive that —
+  // it is what says the tap worked and where the new row is — so the block stays while
+  // a receipt is standing, with the controls hidden once there is nobody left to offer.
+  const offersOpen = pool.alsoFor.offers.length > 0;
+  const [offerProfileId, setOfferProfileId] = useState("");
+  const offer =
+    pool.alsoFor.offers.find((o) => String(o.profileId) === offerProfileId) ??
+    null;
+
+  // What the SELECTED source would give one person: the basis to post, and the life
+  // stage's own words when the product refuses them. Null until a source is picked.
+  const forOffer = (offer: {
+    bySource: Record<number, { basis: string; withheld: string | null }>;
+  }): { basis: string; withheld: string | null } | null =>
+    source ? (offer.bySource[source.itemId] ?? null) : null;
+
+  const alsoFor = (offer: {
+    profileId: number;
+    bySource: Record<number, { basis: string; withheld: string | null }>;
+  }): void => {
+    const entry = forOffer(offer);
+    if (!source || !entry || entry.withheld) return;
+    setError(null);
+    setReceipt(null);
+    start(async () => {
+      const fd = new FormData();
+      fd.set("supply_id", String(pool.id));
+      fd.set("source_item_id", String(source.itemId));
+      fd.set("source_profile_id", String(source.profileId));
+      fd.set("profile_id", String(offer.profileId));
+      fd.set("basis", entry.basis);
+      const res = await alsoForAction(fd);
+      if (!res.ok || !res.receipt) {
+        // The refusal's own sentence. Every one of them names the fact that moved, and
+        // the ones a fresh render fixes say "tap again" — the action has already
+        // re-validated /supplies, so this card is re-rendering with the new basis
+        // behind the message.
+        setError(res.error ?? "Couldn’t add it.");
+        return;
+      }
+      setReceipt({ text: res.receipt, href: res.href ?? null });
+    });
+  };
+
+  // "Not for them": one row on the suppression bus under that person's own profile, and
+  // the offer does not come back (#5230, "every chip is dismissible without
+  // recurrence"). Restore lives in their "Snoozed & dismissed".
+  const decline = (profileId: number): void => {
+    setError(null);
+    setReceipt(null);
+    start(async () => {
+      const fd = new FormData();
+      fd.set("supply_id", String(pool.id));
+      fd.set("profile_id", String(profileId));
+      const res = await declineAlsoForAction(fd);
+      if (!res.ok) setError(res.error ?? "Couldn’t dismiss it.");
+    });
+  };
 
   const submit = (formData: FormData): void => {
     setError(null);
@@ -236,50 +337,185 @@ export default function SharedSupplyCard({
             delete it — nothing is removed on your behalf.
           </p>
         )}
-        {/* The bottle → item direction (#1705). A household bottle is only useful to a
-            second person if adding it for them is ONE step: this switches to the chosen
-            profile and opens its add form already seeded with the bottle's product facts
-            and already linked to it. */}
-        {pool.addTargets.length > 0 && (
-          <form
-            action={switchProfileAction}
-            className="mt-3 flex flex-wrap items-end gap-2"
-            data-testid="shared-supply-add-for"
-          >
-            <div>
-              <label className="label" htmlFor={`pool-add-for-${pool.id}`}>
-                Add for another person
-              </label>
-              {/* ONE CONTROL HEIGHT IN THIS ROW (#3481). The select was a bare
-                  `.input` beside a `btn btn-sm` submit: 38px against 32px on desktop
-                  (the shape the phone review reported) and 38px against 44px at
-                  390px, where the `.btn` family's rendered tap floor (#3486/#3514)
-                  lifts the button and the select is left short. Dropping `btn-sm`
-                  fixes the desktop half; `h-9` puts the select on the `.btn` desktop
-                  height (36px). The phone half was a local `min-h-11 sm:min-h-0` and
-                  is now the `.input` family's own floor (#3708) — one number, in one
-                  place, for every field. Both readings are RENDERED boxes; the guard
-                  is e2e/shared-supply-pool.spec.ts. */}
-              <select
-                id={`pool-add-for-${pool.id}`}
-                name="profileId"
-                className="input max-w-xs"
-                data-testid="shared-supply-add-for-select"
-                defaultValue={String(pool.addTargets[0].id)}
-              >
-                {pool.addTargets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
+        {/* The bottle → item direction (#5230). A shared bottle is one PRODUCT, so
+            adding it for someone else is a ROW COPY, not a form: one tap copies the
+            named member's obligation and schedule and derives that person's own dose.
+            The caller never becomes anyone else — their active profile is untouched.
+
+            THE SOURCE IS ALWAYS NAMED (owner ruling, 2026-09-09). Members can keep
+            different schedules on one bottle, so the offer states whose plan it will
+            copy. With one readable member that is a sentence; with several it is a
+            selector with NOTHING preselected, and the actions stay disabled until the
+            person picks — even when the schedules read the same, because the copy still
+            takes one specific member's plan. Never the first SQL row, never the acting
+            profile. */}
+        {alsoForSources.length > 0 &&
+          (pool.alsoFor.offers.length > 0 || receipt) && (
+            <div className="mt-3" data-testid="shared-supply-also-for">
+              {offersOpen &&
+                (alsoForSources.length === 1 ? (
+                  <p
+                    className="text-sm text-slate-600 dark:text-slate-300"
+                    data-testid="shared-supply-also-for-source"
+                  >
+                    Copying {alsoForSources[0].personName}’s schedule ·{" "}
+                    {alsoForSources[0].scheduleLabel}
+                  </p>
+                ) : (
+                  <div>
+                    <label
+                      className="label"
+                      htmlFor={`pool-also-for-${pool.id}`}
+                    >
+                      Copy schedule from
+                    </label>
+                  </div>
                 ))}
-              </select>
+              {/* ONE CONTROL HEIGHT IN THIS ROW (#3481). The row mixes the two control
+                families, so both are pinned to the same 36px box: `h-9` on the `.input`
+                selects and on the `.btn` actions, which render 38px and 34px left to
+                themselves. Each family's phone tap floor (#3708/#3514) still applies
+                and lifts both together. Guarded by e2e/shared-supply-pool.spec.ts. */}
+              {offersOpen && (
+                <div
+                  className="mt-1 flex flex-wrap items-end gap-2"
+                  data-testid="shared-supply-also-for-row"
+                >
+                  {alsoForSources.length > 1 && (
+                    <select
+                      id={`pool-also-for-${pool.id}`}
+                      className="input h-9 max-w-xs"
+                      data-testid="shared-supply-also-for-select"
+                      value={sourceItemId}
+                      onChange={(e) => {
+                        setSourceItemId(e.target.value);
+                        setReceipt(null);
+                      }}
+                    >
+                      <option value="">Choose a person</option>
+                      {alsoForSources.map((s) => (
+                        <option key={s.itemId} value={s.itemId}>
+                          {s.personName} · {s.scheduleLabel}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {manyOffers ? (
+                    <>
+                      <select
+                        aria-label="Also for"
+                        className="input h-9 max-w-xs"
+                        data-testid="shared-supply-also-for-person"
+                        value={offerProfileId}
+                        onChange={(e) => {
+                          setOfferProfileId(e.target.value);
+                          setReceipt(null);
+                        }}
+                      >
+                        <option value="">Choose a person</option>
+                        {pool.alsoFor.offers.map((o) => (
+                          <option key={o.profileId} value={o.profileId}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </select>
+                      {/* THE LIFE STAGE SAYS WHY, it does not just disappear (owner
+                          ruling, 2026-09-09 16:10). An adult-only product with a
+                          curated label withholds the copy for a child — and the
+                          label's own sentence stands where the action would be. */}
+                      {offer && forOffer(offer)?.withheld ? (
+                        <span
+                          className="text-sm text-slate-600 dark:text-slate-300"
+                          data-testid="shared-supply-also-for-withheld"
+                        >
+                          {offer.name} · {forOffer(offer)?.withheld}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn h-9"
+                          data-testid="shared-supply-also-for-chip"
+                          disabled={pending || source == null || offer == null}
+                          onClick={() => offer && alsoFor(offer)}
+                        >
+                          Also for
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn h-9"
+                        data-testid="shared-supply-also-for-dismiss"
+                        aria-label={
+                          offer
+                            ? `Don’t offer this bottle for ${offer.name}`
+                            : "Don’t offer this bottle"
+                        }
+                        disabled={pending || offer == null}
+                        onClick={() => offer && decline(offer.profileId)}
+                      >
+                        Not for them
+                      </button>
+                    </>
+                  ) : (
+                    pool.alsoFor.offers.map((o) => {
+                      const entry = forOffer(o);
+                      return (
+                        <span
+                          key={o.profileId}
+                          className="inline-flex items-center gap-1"
+                        >
+                          {entry?.withheld ? (
+                            <span
+                              className="text-sm text-slate-600 dark:text-slate-300"
+                              data-testid="shared-supply-also-for-withheld"
+                            >
+                              {o.name} · {entry.withheld}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn h-9"
+                              data-testid="shared-supply-also-for-chip"
+                              disabled={pending || source == null}
+                              onClick={() => alsoFor(o)}
+                            >
+                              {o.name} · Also for
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn h-9"
+                            data-testid="shared-supply-also-for-dismiss"
+                            aria-label={`Don’t offer this bottle for ${o.name}`}
+                            disabled={pending}
+                            onClick={() => decline(o.profileId)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+              {receipt && (
+                <p
+                  className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+                  data-testid="shared-supply-also-for-receipt"
+                >
+                  {receipt.text}
+                  {receipt.href && (
+                    <>
+                      {" "}
+                      <Link className="link" href={receipt.href}>
+                        Open their row
+                      </Link>
+                    </>
+                  )}
+                </p>
+              )}
             </div>
-            <input type="hidden" name="returnTo" value={pool.addHref} />
-            <SubmitButton data-testid="shared-supply-add-for-submit">
-              Add this bottle
-            </SubmitButton>
-          </form>
-        )}
+          )}
         {pool.hiddenMemberCount > 0 && (
           <p
             className="mt-1 text-xs text-slate-500 dark:text-slate-400"
