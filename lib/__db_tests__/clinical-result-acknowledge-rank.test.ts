@@ -81,10 +81,14 @@ describe("the clinical result's acknowledgment rank (#4014)", () => {
   });
 
   it("would see a loud control if one were there", () => {
-    // `children` goes IN the props object: `ButtonProps.children` is required, and
-    // `createElement`'s positional children never satisfy a required `children` in the
-    // props type. Moving "Loud" back out to a third argument is a compile error.
+    // `children` goes IN the props object because `ButtonProps.children` is
+    // REQUIRED and `createElement`'s positional children never satisfy a required
+    // `children` in the props type — `createElement(Button, props, "Loud")` is a
+    // compile error (TS2769). JSX would spell it the usual way, but this tier's
+    // files are `.ts` (vitest.db.config.ts includes `**/*.test.ts`), so the
+    // lint rule and the type checker disagree here and the type checker wins.
     const markup = renderToStaticMarkup(
+      // eslint-disable-next-line react/no-children-prop -- see above: the positional form does not typecheck against a required `children`
       createElement(Button, { variant: "primary" as const, children: "Loud" })
     );
     expect(isLoud((markup.match(CONTROL) ?? [])[0])).toBe(true);
