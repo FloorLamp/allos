@@ -3460,24 +3460,58 @@ export async function touchSwipeFrom(
   }
 }
 
-// ── Streamed-reveal guard (#1644/#1674) ──────────────────────────────────────
+// ── Streamed-reveal guard (#1644/#1674, widened at the ARRIVAL by #5040) ─────
 //
-// A page that streams a Suspense boundary (the Trends landing surface's body
-// census) delivers the boundary's content in a `<div hidden id="S:n">` staging
-// node at the end of `<body>`; React then MOVES it into place, on a schedule of
-// its own (a rAF, or a coalescing timeout). Until that reveal runs, a testid
-// inside the streamed content matches TWO nodes — the hidden staged copy and,
-// mid-move, the revealed one — which a strict-mode locator reports as a
-// duplicated-element bug, and on a loaded CI shard the reveal can lag SECONDS
-// behind the load event, so per-spec waits with default 5s ceilings kept losing.
+// A page that streams a Suspense boundary (the Trends body census, the Training
+// hub's selected tab — components/StreamedSection.tsx) delivers the boundary's
+// content in a `<div hidden id="S:n">` staging node at the end of `<body>` and
+// leaves the designed PendingSection placeholder in its place. React then MOVES
+// the content in, on a schedule of its own — measured here at 60–350ms AFTER
+// `document.readyState` reaches "complete", because React 19 defers the reveal
+// until the boundary's own stylesheets have loaded, and longer still on a loaded
+// CI shard. Until that reveal runs, every testid inside the streamed content is
+// in the DOM but HIDDEN, so a spec reading it reads the staged copy: a
+// visibility assertion fails on a node that is really there, a count or a text
+// read answers from a copy the reader cannot see, and where hydration renders
+// the boundary before the reveal relocates it the same testid matches TWICE and
+// a strict-mode locator reports a duplicated-element bug (#4890).
 //
-// This guard closes the class at the harness level: every full-document
-// navigation (goto/reload/back/forward — client-side navigations render in
-// place and never stage) waits until no staging node remains before returning,
-// with a generous named ceiling. Installed once, on every page of every
-// context, by the `browser` fixture's newContext patch — so no spec ever calls
-// anything, and a future spec cannot forget to.
+// WHAT THIS GUARD USED TO COVER, AND THE HOLE #5040 FOUND. It wrapped exactly
+// four page methods — goto/reload/goBack/goForward — so THOSE arrivals waited
+// the staging window out. But a full-document navigation the BROWSER starts runs
+// none of them: a GET-form submit (the Training Log's search, #4079) and a link
+// click that lands before hydration both fetch a whole new document without any
+// Playwright navigation method being called, and all four known #4890
+// occurrences arrive exactly that way. The old doc claimed "any FUTURE streamed
+// boundary on any page is covered"; it was covering the arrivals that were easy
+// to wrap and missing the ones that fail.
+//
+// HOW THE HOLE IS CLOSED: A LATCH, NOT A WAIT. The browser's own arrivals
+// announce themselves on `framenavigated`, but a Playwright event handler cannot
+// BLOCK the spec's next line — so the event only SETS a latch, and the latch is
+// DRAINED at the next point the spec actually looks at the page (a Locator
+// action or read, a waitForURL/waitForLoadState, or the next navigation method).
+// That is what makes this affordable: the check is an in-memory boolean on every
+// call, and the settle itself — measured at ~8ms on a page that is already
+// revealed — runs at most ONCE per navigation, not once per call.
+//
+// The drain waits for `domcontentloaded` FIRST. At commit the boundary has not
+// been flushed yet, so "no staging node remains" is trivially true and a settle
+// placed at the navigation's start is a no-op that returns onto a staged page.
+// Parsing complete is the earliest moment at which every staging node this
+// document will ever have exists.
 const STREAM_REVEAL_TIMEOUT_MS = 30_000;
+
+type ArrivalLatch = {
+  /** A main-frame navigation has committed and has not been settled yet. */
+  pending: boolean;
+  /** A drain is in flight — re-entry from the methods the drain itself calls. */
+  settling: boolean;
+  /** Captured before wrapping, so the drain never re-enters its own wrapper. */
+  waitForLoadState: Page["waitForLoadState"];
+};
+
+const arrivalLatches = new WeakMap<Page, ArrivalLatch>();
 
 async function settleStreamedReveal(page: Page): Promise<void> {
   try {
@@ -3500,7 +3534,116 @@ async function settleStreamedReveal(page: Page): Promise<void> {
   }
 }
 
+// Drain a pending arrival. Free (one boolean) when nothing has navigated.
+async function settleArrival(page: Page): Promise<void> {
+  const latch = arrivalLatches.get(page);
+  if (!latch || !latch.pending || latch.settling) return;
+  latch.settling = true;
+  try {
+    try {
+      await latch.waitForLoadState("domcontentloaded", {
+        timeout: STREAM_REVEAL_TIMEOUT_MS,
+      });
+    } catch {
+      // A page that cannot answer (closed, navigated out from under us, a
+      // download) is not a stuck reveal. settleStreamedReveal draws the same
+      // line for its own errors.
+      latch.pending = false;
+      return;
+    }
+    await settleStreamedReveal(page);
+    latch.pending = false;
+  } finally {
+    latch.settling = false;
+  }
+}
+
+// THE METHODS A SPEC LOOKS AT THE PAGE THROUGH. Every one of these resolves a
+// locator against the live DOM, which is exactly where a staged copy is either
+// read by mistake or counted twice — so each drains a pending arrival first.
+// Patched on the PROTOTYPE, once per process: a Locator is constructed per call,
+// there is no per-page object to wrap, and the per-page latch is reached through
+// `locator.page()`. Methods that only BUILD a locator (`getByTestId`, `nth`,
+// `filter`) are deliberately untouched: they are synchronous, they touch no DOM,
+// and wrapping them would make every chained expression a promise.
+const LOCATOR_ARRIVAL_METHODS = [
+  "all",
+  "allInnerTexts",
+  "allTextContents",
+  "blur",
+  "boundingBox",
+  "check",
+  "clear",
+  "click",
+  "count",
+  "dblclick",
+  "dispatchEvent",
+  "dragTo",
+  "elementHandle",
+  "elementHandles",
+  "fill",
+  "focus",
+  "getAttribute",
+  "hover",
+  "innerHTML",
+  "innerText",
+  "inputValue",
+  "isChecked",
+  "isDisabled",
+  "isEditable",
+  "isEnabled",
+  "isHidden",
+  "isVisible",
+  "press",
+  "pressSequentially",
+  "screenshot",
+  "selectOption",
+  "selectText",
+  "setInputFiles",
+  "tap",
+  "textContent",
+  "uncheck",
+  "waitFor",
+] as const;
+
+let locatorPrototypePatched = false;
+
+function patchLocatorPrototype(sample: Locator): void {
+  if (locatorPrototypePatched) return;
+  locatorPrototypePatched = true;
+  const proto = Object.getPrototypeOf(sample) as Record<string, unknown>;
+  for (const method of LOCATOR_ARRIVAL_METHODS) {
+    const original = proto[method];
+    if (typeof original !== "function") continue;
+    const call = original as (this: Locator, ...args: unknown[]) => unknown;
+    proto[method] = async function (this: Locator, ...args: unknown[]) {
+      await settleArrival(this.page());
+      return call.apply(this, args);
+    };
+  }
+}
+
 export function installStreamRevealGuard(page: Page): void {
+  const latch: ArrivalLatch = {
+    pending: false,
+    settling: false,
+    waitForLoadState: page.waitForLoadState.bind(page),
+  };
+  arrivalLatches.set(page, latch);
+  patchLocatorPrototype(page.locator("html"));
+
+  // The browser's OWN arrivals — a GET-form submit, a pre-hydration link click,
+  // a `location.assign` — announce themselves here and nowhere else. Same-
+  // document navigations (the App Router's soft transitions) also land here;
+  // they never stage, so their drain is one already-true predicate and the
+  // latch clears at the same ~8ms the wrapped methods cost.
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) latch.pending = true;
+  });
+
+  // The four the harness drives itself. These have always settled
+  // unconditionally on the way out and still do — arming the latch immediately
+  // before the drain keeps that guarantee whether or not the event fired.
   for (const method of ["goto", "reload", "goBack", "goForward"] as const) {
     const original = page[method].bind(page) as (
       ...args: unknown[]
@@ -3509,7 +3652,30 @@ export function installStreamRevealGuard(page: Page): void {
       ...args: unknown[]
     ) => {
       const result = await original(...args);
-      await settleStreamedReveal(page);
+      latch.pending = true;
+      await settleArrival(page);
+      return result;
+    };
+  }
+
+  // The ways a spec synchronises ON a browser-started navigation. These are the
+  // drain point that closes the known #4890 arrivals: every one of them waits
+  // for the URL the GET form or the link produced, and then reads the page.
+  for (const method of [
+    "waitForURL",
+    "waitForLoadState",
+    "waitForNavigation",
+  ] as const) {
+    const existing = (page as unknown as Record<string, unknown>)[method];
+    if (typeof existing !== "function") continue;
+    const original = (
+      existing as (...args: unknown[]) => Promise<unknown>
+    ).bind(page);
+    (page as unknown as Record<string, unknown>)[method] = async (
+      ...args: unknown[]
+    ) => {
+      const result = await original(...args);
+      await settleArrival(page);
       return result;
     };
   }
