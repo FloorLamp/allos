@@ -110,16 +110,21 @@ function logAdmin(
   // logAdministration stamps from the dose row). Null = a legacy/amount-less row.
   amount: string | null = null
 ): number {
-  const recordedAt = utcSqlString(
-    new Date(now.getTime() - hoursAgo * 3_600_000)
-  );
+  const at = utcSqlString(new Date(now.getTime() - hoursAgo * 3_600_000));
+  // IT STATES THE ADMINISTRATION INSTANT, because the real PRN writer always does
+  // (`logAdministrationTx` binds `occurred_at` on every insert). Leaving it NULL made
+  // every row in this file an UNPLACED dose, which since #4686 arms nothing — and
+  // before it, quietly handed the interval clock the capture stamp these tests were
+  // written to be about. `lib/__db_tests__/untimed-dose-arming.test.ts` owns the
+  // genuinely-untimed row.
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
-         VALUES (?, ?, ?, ?, 'taken', ?)`
+        `INSERT INTO intake_item_logs
+           (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+         VALUES (?, ?, ?, ?, ?, 'taken', ?)`
       )
-      .run(doseId, itemId, date, recordedAt, amount).lastInsertRowid
+      .run(doseId, itemId, date, at, at, amount).lastInsertRowid
   );
 }
 
@@ -159,8 +164,11 @@ describe("getMedicationFamilyStates — the two-ibuprofen family (#1027)", () =>
     expect(state.memberIds.sort()).toEqual([otc.itemId, rx.itemId].sort());
     // The family's latest administration is the Rx dose an hour ago, and the
     // combined count spans both items.
-    expect(state.latestId).toBe(rxAdmin);
-    expect(state.latestItemId).toBe(rx.itemId);
+    expect(state.arming).toMatchObject({
+      kind: "placed",
+      administrationId: rxAdmin,
+      itemId: rx.itemId,
+    });
     expect(state.countInWindow).toBe(2);
     expect(state.minConfirmedMax).toBe(4);
   });
@@ -498,7 +506,10 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
     expect(state.memberIds.sort()).toEqual(
       [a1.itemId, a2.itemId, a3.itemId].sort()
     );
-    expect(state.latestId).toBe(arming);
+    expect(state.arming).toMatchObject({
+      kind: "placed",
+      administrationId: arming,
+    });
     expect(state.countInWindow).toBe(2);
     expect(state.minConfirmedMax).toBe(6);
 

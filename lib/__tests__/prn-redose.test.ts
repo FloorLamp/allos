@@ -7,17 +7,36 @@ import {
   PRN_MAX_PREFIX,
   parseAmountMg,
   prnDayExposure,
+  type FamilyArming,
+  type RedoseStatus,
 } from "@/lib/prn-redose";
+import { utcInstant } from "@/lib/date";
 
 // The arming administration was given at a fixed instant; `now` is offset from it.
 const GIVEN = new Date("2026-07-15T10:00:00Z");
 const hoursAfter = (h: number) => new Date(GIVEN.getTime() + h * 3_600_000);
 
+const placed = (at: Date, id = 42): FamilyArming => ({
+  kind: "placed",
+  administrationId: id,
+  givenAt: utcInstant(at),
+  itemId: 7,
+  itemName: "Ibuprofen",
+});
+
+// The window arm, narrowed. `RedoseStatus` is a union whose UNKNOWN arm has no `open`
+// and no elapsed/remaining field at all (#4686), so a test reading one has to say which
+// arm it expected — which is the point of the union.
+function windowArm(status: RedoseStatus | null) {
+  if (status?.kind !== "window")
+    throw new Error(`expected a window status, got ${status?.kind ?? "null"}`);
+  return status;
+}
+
 const base = {
   minIntervalHours: 6,
   maxDailyCount: 4,
-  latestAdministrationId: 42,
-  latestGivenAt: GIVEN,
+  arming: placed(GIVEN),
   countInWindow: 1,
   now: hoursAfter(6),
   notifiedAdministrationId: null as number | null,
@@ -43,11 +62,7 @@ describe("redoseNoticeDecision — one-shot window", () => {
 
   it("NOT-ARMED when nothing has been logged", () => {
     expect(
-      redoseNoticeDecision({
-        ...base,
-        latestAdministrationId: null,
-        latestGivenAt: null,
-      }).kind
+      redoseNoticeDecision({ ...base, arming: { kind: "none" } }).kind
     ).toBe("not-armed");
   });
 
@@ -80,7 +95,7 @@ describe("redoseNoticeDecision — one-shot window", () => {
     const d = redoseNoticeDecision({
       ...base,
       // The interval opens at 03:00 — the overnight case, inside the first band.
-      latestGivenAt: new Date("2026-07-15T21:00:00Z"),
+      arming: placed(new Date("2026-07-15T21:00:00Z")),
       now: overnight,
     });
     expect(d.kind).toBe("fire");
@@ -102,13 +117,41 @@ describe("redoseNoticeDecision — one-shot window", () => {
   });
 });
 
+// #4686. A taken row that states no administration instant is not a duration anybody
+// can compute, and the safety line must not compute one anyway. These pin that the
+// unplaced arm is refused BEFORE the one-shot marker and before any arithmetic — the
+// notice cannot fire, whatever the marker says and however long ago the row was
+// captured.
+describe("redoseNoticeDecision — the unplaced arm never fires", () => {
+  const unplaced = {
+    ...base,
+    arming: { kind: "unplaced" as const, administrationId: 51 },
+  };
+
+  it("refuses with its own kind rather than firing or reading as not-armed", () => {
+    expect(redoseNoticeDecision(unplaced).kind).toBe("unplaced-dose");
+  });
+
+  it("stays refused however far past the interval the clock has run", () => {
+    expect(
+      redoseNoticeDecision({ ...unplaced, now: hoursAfter(60) }).kind
+    ).toBe("unplaced-dose");
+  });
+
+  it("is decided before the one-shot marker, so no marker can turn it into a fire", () => {
+    expect(
+      redoseNoticeDecision({ ...unplaced, notifiedAdministrationId: 50 }).kind
+    ).toBe("unplaced-dose");
+  });
+});
+
 describe("redoseWindowStatus — marker-agnostic surfacing", () => {
   it("null when nothing logged", () => {
     expect(
       redoseWindowStatus({
         minIntervalHours: 6,
         maxDailyCount: 4,
-        latestGivenAt: null,
+        arming: { kind: "none" },
         countInWindow: 0,
         now: GIVEN,
       })
@@ -116,24 +159,28 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
   });
 
   it("open + not-at-max before/after the interval", () => {
-    const closed = redoseWindowStatus({
-      minIntervalHours: 6,
-      maxDailyCount: 4,
-      latestGivenAt: GIVEN,
-      countInWindow: 2,
-      now: hoursAfter(3),
-    })!;
+    const closed = windowArm(
+      redoseWindowStatus({
+        minIntervalHours: 6,
+        maxDailyCount: 4,
+        arming: placed(GIVEN),
+        countInWindow: 2,
+        now: hoursAfter(3),
+      })
+    );
     expect(closed.open).toBe(false);
     expect(closed.opensInHours).toBeCloseTo(3, 5);
     expect(closed.atMax).toBe(false);
 
-    const open = redoseWindowStatus({
-      minIntervalHours: 6,
-      maxDailyCount: 4,
-      latestGivenAt: GIVEN,
-      countInWindow: 4,
-      now: hoursAfter(7),
-    })!;
+    const open = windowArm(
+      redoseWindowStatus({
+        minIntervalHours: 6,
+        maxDailyCount: 4,
+        arming: placed(GIVEN),
+        countInWindow: 4,
+        now: hoursAfter(7),
+      })
+    );
     expect(open.open).toBe(true);
     expect(open.atMax).toBe(true);
   });
@@ -144,26 +191,29 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
 // status must exist; only the ceiling half degrades.
 describe("redoseWindowStatus — interval-only config (#1458)", () => {
   it("describes the window with no confirmed daily max, and is never atMax", () => {
-    const before = redoseWindowStatus({
-      minIntervalHours: 6,
-      maxDailyCount: null,
-      latestGivenAt: GIVEN,
-      countInWindow: 1,
-      now: hoursAfter(1),
-    })!;
-    expect(before).not.toBeNull();
+    const before = windowArm(
+      redoseWindowStatus({
+        minIntervalHours: 6,
+        maxDailyCount: null,
+        arming: placed(GIVEN),
+        countInWindow: 1,
+        now: hoursAfter(1),
+      })
+    );
     expect(before.open).toBe(false);
     expect(before.opensInHours).toBeCloseTo(5, 5);
     expect(before.maxDailyCount).toBeNull();
     expect(before.atMax).toBe(false);
 
-    const after = redoseWindowStatus({
-      minIntervalHours: 6,
-      maxDailyCount: null,
-      latestGivenAt: GIVEN,
-      countInWindow: 9,
-      now: hoursAfter(7),
-    })!;
+    const after = windowArm(
+      redoseWindowStatus({
+        minIntervalHours: 6,
+        maxDailyCount: null,
+        arming: placed(GIVEN),
+        countInWindow: 9,
+        now: hoursAfter(7),
+      })
+    );
     expect(after.open).toBe(true);
     // An unconfigured ceiling is never a reached one, however high the count runs.
     expect(after.atMax).toBe(false);
@@ -174,11 +224,52 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
       redoseWindowStatus({
         minIntervalHours: 6,
         maxDailyCount: null,
-        latestGivenAt: null,
+        arming: { kind: "none" },
         countInWindow: 0,
         now: GIVEN,
       })
     ).toBeNull();
+  });
+});
+
+// The union's whole point: the COUNT keeps its window, the INTERVAL has none, and no
+// field of the unknown arm can be read as an elapsed time because none exists.
+describe("redoseWindowStatus — the unknown arm (#4686)", () => {
+  const status = redoseWindowStatus({
+    minIntervalHours: 6,
+    maxDailyCount: 4,
+    arming: { kind: "unplaced", administrationId: 51 },
+    countInWindow: 3,
+    now: hoursAfter(9),
+  })!;
+
+  it("is a status, not a null — the ceiling half is still answerable", () => {
+    expect(status.kind).toBe("unknown");
+    expect(status.countInWindow).toBe(3);
+    expect(status.maxDailyCount).toBe(4);
+    expect(status.atMax).toBe(false);
+  });
+
+  it("carries no elapsed or remaining figure at all", () => {
+    expect(Object.keys(status).sort()).toEqual([
+      "administrationId",
+      "atMax",
+      "countInWindow",
+      "exposure",
+      "kind",
+      "maxDailyCount",
+    ]);
+  });
+
+  it("still reaches the ceiling: an unplaced dose at the max is at the max", () => {
+    const atMax = redoseWindowStatus({
+      minIntervalHours: 6,
+      maxDailyCount: 4,
+      arming: { kind: "unplaced", administrationId: 51 },
+      countInWindow: 4,
+      now: hoursAfter(9),
+    })!;
+    expect(atMax.atMax).toBe(true);
   });
 });
 
@@ -387,7 +478,7 @@ describe("redoseWindowStatus × exposure (#1854)", () => {
     const s = redoseWindowStatus({
       minIntervalHours: 6,
       maxDailyCount: 6,
-      latestGivenAt: GIVEN,
+      arming: placed(GIVEN),
       countInWindow: 3,
       now: hoursAfter(7),
       exposure,

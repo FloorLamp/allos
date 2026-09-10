@@ -94,10 +94,14 @@ function logAdmin(
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
-         VALUES (?, ?, ?, ?, 'taken')`
+        // States the administration instant, as the real PRN writer always does
+        // (`logAdministrationTx` binds `occurred_at` on every insert). Since #4686 a
+        // row carrying only a capture stamp is an UNPLACED dose and arms no window.
+        `INSERT INTO intake_item_logs
+           (dose_id, item_id, date, recorded_at, occurred_at, status)
+         VALUES (?, ?, ?, ?, ?, 'taken')`
       )
-      .run(doseId, itemId, date, recordedAt).lastInsertRowid
+      .run(doseId, itemId, date, recordedAt, recordedAt).lastInsertRowid
   );
 }
 

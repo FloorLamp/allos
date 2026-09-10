@@ -212,10 +212,13 @@ function logAdminAt(
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
-         VALUES (?, ?, ?, ?, 'taken')`
+        // States the administration instant, as the real PRN writer always does; a row
+        // with only a capture stamp is an UNPLACED dose since #4686 and arms no window.
+        `INSERT INTO intake_item_logs
+           (dose_id, item_id, date, recorded_at, occurred_at, status)
+         VALUES (?, ?, ?, ?, ?, 'taken')`
       )
-      .run(med.doseId, med.itemId, today(profileId), at).lastInsertRowid
+      .run(med.doseId, med.itemId, today(profileId), at, at).lastInsertRowid
   );
 }
 

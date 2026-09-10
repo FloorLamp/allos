@@ -10,7 +10,7 @@ import {
   MED_DUP_PREFIX,
   type MedFamilyItem,
 } from "@/lib/medication-family";
-import { redoseNoticeDecision } from "@/lib/prn-redose";
+import { redoseNoticeDecision, type FamilyArming } from "@/lib/prn-redose";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 
 // Pure-tier pins for the #1027 medication ingredient-family derivation (the #482
@@ -250,10 +250,21 @@ describe("medicationDuplicationNote / isIndistinguishableFamily (#3069 / #3125)"
 // The #1027 decision cases: the redose decision consuming FAMILY-derived inputs.
 // The decision engine itself is unchanged — the safety math widens at the gather —
 // so these pin that family inputs produce the protective answers.
+// One family-latest administration, placed: the union the family gather hands the
+// decision (#4686).
+const armedAt = (id: number, iso: string): FamilyArming => ({
+  kind: "placed",
+  administrationId: id,
+  givenAt: iso.replace("T", " ").replace("Z", ""),
+  itemId: null,
+  itemName: null,
+});
+
 describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
   const base = {
     minIntervalHours: 6,
     maxDailyCount: 3,
+    arming: armedAt(1, "2026-07-19T04:00:00Z"),
     notifiedAdministrationId: null,
     now: new Date("2026-07-19T12:00:00Z"),
     tickMinutes: 60,
@@ -264,8 +275,8 @@ describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
     // the family latest arms the clock.
     const d = redoseNoticeDecision({
       ...base,
-      latestAdministrationId: 77, // the sibling's ledger row
-      latestGivenAt: new Date("2026-07-19T11:00:00Z"),
+      // the sibling's ledger row arms the family clock
+      arming: armedAt(77, "2026-07-19T11:00:00Z"),
       countInWindow: 2,
     });
     expect(d.kind).toBe("not-yet");
@@ -274,8 +285,7 @@ describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
   it("the family count at the most conservative max suppresses the notice", () => {
     const d = redoseNoticeDecision({
       ...base,
-      latestAdministrationId: 78,
-      latestGivenAt: new Date("2026-07-19T04:00:00Z"), // interval elapsed
+      arming: armedAt(78, "2026-07-19T04:00:00Z"), // interval elapsed
       countInWindow: 3, // combined across items = min confirmed max
     });
     expect(d.kind).toBe("suppressed-max");
@@ -286,8 +296,7 @@ describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
     // its administration is a fact: it both arms the clock and joins the count.
     const d = redoseNoticeDecision({
       ...base,
-      latestAdministrationId: 79, // the unconfirmed sibling's row
-      latestGivenAt: new Date("2026-07-19T05:00:00Z"),
+      arming: armedAt(79, "2026-07-19T05:00:00Z"), // the unconfirmed sibling's row
       countInWindow: 1,
     });
     expect(d.kind).toBe("fire");
