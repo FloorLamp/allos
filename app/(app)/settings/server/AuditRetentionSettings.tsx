@@ -64,6 +64,7 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
           onClick={save}
           disabled={status.pending}
           data-testid="audit-retention-save"
+          variant="primary"
         >
           Save
         </Button>

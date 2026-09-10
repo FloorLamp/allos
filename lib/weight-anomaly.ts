@@ -3,7 +3,7 @@
 // lb/kg entry mix-up gets caught before it poisons every downstream trend, chart,
 // and goal projection.
 //
-// Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings.ts
+// Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings/body-goals.ts
 // (getWeights → these functions → Finding[]), surfaced as a dismissible finding on
 // the Trends → Overview → body census. The complementary guard — rejecting IMPOSSIBLE values at
 // ENTRY — lives in lib/body-metric-input.ts (validateBodyMetricInput). Every

@@ -22,26 +22,9 @@
 // the thing nobody thought to record.
 
 import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
-import { db, today, writeTx } from "@/lib/db";
-import { utcInstant, shiftDateStr } from "@/lib/date";
-import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
-import { reconcileFlags } from "@/lib/queries";
-import { saveFitnessEntry } from "@/lib/fitness-assessment";
-import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
-import { getTimezone } from "@/lib/settings";
-import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
-import { episodesForSituation } from "@/lib/symptom-episode";
-import {
-  diffSituations,
-  serializeSituationEvents,
-} from "@/lib/trend-annotations";
-import {
-  completeOnboardingState,
-  initialOnboardingState,
-  normalizeOnboardingFocuses,
-  serializeOnboardingState,
-} from "@/lib/onboarding";
-import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
+import { db } from "@/lib/db";
+import { PERSONAS } from "../../scripts/seed-personas";
+import { personaContextFor } from "@/lib/__db_tests__/persona-fixture";
 import {
   allProfileIds,
   installStatementTrace,
@@ -78,50 +61,6 @@ function newProfile(name: string): number {
   );
 }
 
-// The persona seeding context, exactly as lib/__db_tests__/dashboard-placement-manifest
-// .test.ts builds it — the personas are the shared fixture, so the two route budgets are
-// measured against the same six people.
-function ctxFor(profileId: number): PersonaContext {
-  const daysAgo = (n: number) => shiftDateStr(today(profileId), -n);
-  return {
-    db,
-    profileId,
-    daysAgo,
-    shiftDateStr,
-    occurredAt: (day, hhmm) => {
-      const [y, m, d] = day.split("-").map(Number);
-      const [h, min] = hhmm.split(":").map(Number);
-      return utcInstant(
-        zonedWallTimeToUtc(y, m, d, h, min, getTimezone(profileId))
-      );
-    },
-    reconcileFlags,
-    saveFitnessEntry: (pid, entry) => saveFitnessEntry(pid, entry, "page"),
-    recordGlucoseTrace,
-    seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
-    writeTx,
-    diffSituations,
-    serializeSituationEvents,
-    episodesForSituation,
-    onboardingStateJson: (profilePath, focuses) =>
-      serializeOnboardingState(
-        completeOnboardingState(
-          {
-            ...initialOnboardingState(),
-            profilePath,
-            focuses: normalizeOnboardingFocuses(focuses),
-            basicsComplete: true,
-            dataReviewed: true,
-            notificationIntent: "later",
-            notificationsReviewed: true,
-            checklistDismissed: true,
-          },
-          new Date().toISOString()
-        )
-      ),
-  };
-}
-
 describe("/sleep route query budget (#3993)", () => {
   beforeEach(() => vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z")));
   beforeAll(async () => {
@@ -138,7 +77,7 @@ describe("/sleep route query budget (#3993)", () => {
     for (const persona of PERSONAS) {
       const before = new Set(allProfileIds());
       const profileId = newProfile(`sleep:${persona.name}`);
-      persona.apply(ctxFor(profileId));
+      persona.apply(personaContextFor(profileId));
       const createdIds = allProfileIds().filter((id) => !before.has(id));
       session.accessible = profiles(createdIds);
       session.profile = session.accessible.find((p) => p.id === profileId)!;

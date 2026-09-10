@@ -138,7 +138,10 @@ describe("the (item_id, best administration instant) index", () => {
       profileId,
       ceilingWindowEndMinute(new Date())
     ).get(itemId);
-    expect(state?.latestId).toBe(newestId);
+    expect(state?.arming).toMatchObject({
+      kind: "placed",
+      administrationId: newestId,
+    });
     // ONE of the thirty, and that is the point of #4686's window: every row here is
     // dated today while its `occurred_at` walks back a month, so a `date`-keyed count
     // called this "30 today". The ceiling counts administration INSTANTS inside the

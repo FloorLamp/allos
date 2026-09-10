@@ -213,7 +213,20 @@ function ProfilesCard({
             placeholder="Name"
             className="input"
           />
-          <Button onClick={add} disabled={pending || !newName.trim()}>
+          {/* THE CARD'S OWN COMMIT, filled under the same ruling 6 reading.
+              ONE OVERLAP IS REPORTED RATHER THAN SETTLED HERE: the per-profile
+              Delete opener above is a quiet text control, but its confirm step's
+              "Delete permanently" is filled, and ruling 10 keeps the destructive
+              fill exactly there. That confirm stands open BESIDE this commit
+              inside the same card, so while it is up the card carries two filled
+              controls — the shape ruling 6's carve-out forbids. Neither ruling
+              yields to the other, and demoting either mount locally would make
+              this card an exception no reader could trace, so it goes to #4978. */}
+          <Button
+            onClick={add}
+            disabled={pending || !newName.trim()}
+            variant="primary"
+          >
             Add
           </Button>
         </div>
@@ -624,10 +637,23 @@ function LoginsCard({
             </>
           )}
         </div>
+        {/* THE CARD'S ONE LOUD CONTROL, AND WHAT PAYS FOR IT (#4978, PM ruling
+            6 2026-09-09 23:35 UTC, owner ruling 10 2026-09-10 01:30 UTC).
+            Ruling 6 makes the CARD the surface rather than the route, so this
+            card's own commit is the one control allowed to be loud on it.
+
+            The budget it spends is only free because the Delete on every login
+            row below is QUIET. Ruling 10 settled that a filled `danger` SPENDS
+            the surface's loud-control budget rather than sitting outside it, so
+            per-row destructive actions in a repeated list went quiet and left
+            this fill unspent. They are ONE budget, not a loud budget and a
+            separate destructive one: fill the row Deletes again and this mount
+            is what has to give its fill back. */}
         <div className="flex items-center gap-3">
           <Button
             onClick={create}
             disabled={pending || !username.trim() || (!invitePath && !password)}
+            variant="primary"
           >
             Create login
           </Button>
@@ -867,21 +893,29 @@ function LoginRow({
             {login.email ? login.email : "no email"}
           </span>
         </div>
-        {/* THE ROW'S ACTIONS, CONVERTED AS ONE (#4978 item 3, owner ruling
-            2026-09-05 (3)). Delete used to be a red-TINTED ghost — the quiet box
-            with rose text — which is a third treatment by another name; the owner
-            ruled at 2026-09-09 20:05 UTC that destructive actions look the same
-            everywhere, so it takes the primitive's one destructive paint and no
-            tinted-ghost variant exists to spell. Its four neighbours convert with
-            it rather than after it, because a filled red beside four raw ghosts is
-            the half-converted state ruling (3) declines.
+        {/* THE ROW IS ENTIRELY QUIET, AND THAT IS THE RULE (#4978 item 3, owner
+            rulings 2026-09-05 (3), 2026-09-09 20:05 UTC (5), 2026-09-10 01:30 UTC
+            (10)). Ruling 5 gave Delete the primitive's one destructive paint, and
+            #5677 filled it. Ruling 10 then settled what that paint COSTS: a filled
+            danger control SPENDS the surface's loud-control budget rather than
+            sitting outside it, so a per-row destructive action in a repeated list
+            goes quiet. This row renders once per login — 194 of them on the e2e
+            fixture — so a filled Delete here was 194 loud controls on one card.
+            Delete is therefore the plain secondary: the primitive has one quiet
+            treatment and absence of `variant` IS it, so there is nothing to spell
+            and the rose tint that #5677 replaced does not come back. The filled
+            danger stays where ruling 10 puts it — the standalone action and the
+            confirm step — here, `ProfileRow`'s "Delete permanently" behind its
+            type-the-name confirm.
 
-            None of the six controls in this row is a form commit: LoginRow renders
-            no <form> — every action here posts through a Server Action from an
+            None of this row's SEVEN controls is a form commit either: LoginRow
+            renders no <form> at all, and the five in this action strip and the
+            two fold commits below it alike post through a Server Action from an
             onClick — so under the 2026-09-04 13:05 UTC form reading there is no
-            surface primary to spend, and the row is one rank plus the destructive
-            paint. The row also renders once PER LOGIN, so a primary here would be
-            one per row rather than one per surface. */}
+            primary here to spend. PM ruling 6 (2026-09-09 23:35 UTC) then named the
+            CARD as the surface, and this card spends its one loud control on
+            "Create login" above; the row renders once PER LOGIN, so a primary here
+            would be one per row rather than one per card. */}
         <div className="flex flex-wrap items-center gap-1">
           {canInvite && login.email && (
             <Button
@@ -900,11 +934,7 @@ function LoginRow({
           >
             Sign out devices
           </Button>
-          <Button
-            onClick={del}
-            disabled={pending || isLastAdmin}
-            variant="danger"
-          >
+          <Button onClick={del} disabled={pending || isLastAdmin}>
             Delete
           </Button>
         </div>

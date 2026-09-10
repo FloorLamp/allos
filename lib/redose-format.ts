@@ -6,6 +6,7 @@
 // OWN confirmed numbers — never "you can take more".
 
 import type {
+  FamilyArming,
   PrnDayExposure,
   PrnExposureBasis,
   RedoseStatus,
@@ -134,6 +135,14 @@ export function redoseNoticeMessage(input: {
 // because an unconfigured maximum is not a reached one.
 // `familyMemberCount` (#1027) > 1 appends "across N items" so a counter fed by a
 // same-ingredient sibling's doses says so ("the cross-item counter line").
+//
+// AND ON THE UNKNOWN ARM IT OPENS A DOOR (#4686, owner ruling 1). A dose that states no
+// minute leaves the interval unanswerable — the count is still exact, so it is still
+// printed — and the line that used to stand here, "Last dose time not recorded", was a
+// dead end: a fact about the record with nothing a reader could do about it. It names
+// the one place that fixes it, which is the Dose history section on this same
+// medication. NOT the Telegram correction chip: `restampDoseLogsCore` filters
+// `occurred_at IS NOT NULL` and will not touch a row that states no instant.
 export function redoseCardLabel(
   status: RedoseStatus | null,
   familyMemberCount = 1
@@ -151,16 +160,25 @@ export function redoseCardLabel(
     status.maxDailyCount == null && status.exposure == null
       ? " · no 24h limit on record"
       : "";
+  if (status.kind === "unknown")
+    return `${UNPLACED_DOSE_LINE} · ${count}${across}${missingLimit}`;
   if (status.open)
     return `Redose OK — min interval passed · ${count}${across}${missingLimit}`;
   return `Next dose in ~${hoursLabel(status.opensInHours)} · ${count}${across}${missingLimit}`;
 }
 
+// The verdict half of the unknown arm's line: what happened, then the one step that
+// fixes it, named by the on-screen section that does it.
+export const UNPLACED_DOSE_LINE =
+  "Last dose has no time yet — add it in Dose history";
+
 // A redose window is guidance, not a hard gate: logging always remains available.
 // It receives CTA emphasis only when there is no configured window yet, or when the
 // confirmed interval has passed and the daily maximum has not been reached.
 export function redoseActionIsPrimary(status: RedoseStatus | null): boolean {
-  return status == null || (status.open && !status.atMax);
+  return (
+    status == null || (status.kind === "window" && status.open && !status.atMax)
+  );
 }
 
 // ---- The `/dose` quick-log list (issue #1717) -------------------------------------
@@ -290,20 +308,24 @@ export function medChipsStatusLine(
     given === 0 ? "Nothing given in 24h" : `${given} given in 24h`,
   ];
   const atMax = windows.filter((status) => status.atMax).length;
-  const open = windows.filter((status) => status.open && !status.atMax).length;
-  if (windows.length > 0) {
+  // A medication whose latest dose states no minute has no window state to tally
+  // (#4686) — its ceiling still counts into `given` and `atMax` above, but it is not
+  // "open" and it is not "not open yet", so it is named by neither.
+  const timed = windows.filter((status) => status.kind === "window");
+  const open = timed.filter((status) => status.open && !status.atMax).length;
+  if (timed.length > 0) {
     parts.push(
       open === 0
-        ? windows.length === 1
+        ? timed.length === 1
           ? "window not open yet"
           : "no windows open yet"
-        : open === windows.length
-          ? windows.length === 1
+        : open === timed.length
+          ? timed.length === 1
             ? "window open"
-            : windows.length === 2
+            : timed.length === 2
               ? "both windows open"
               : "all windows open"
-          : `${open} of ${windows.length} windows open`
+          : `${open} of ${timed.length} windows open`
     );
   }
   if (atMax > 0) parts.push(`${atMax} at max`);
@@ -324,7 +346,7 @@ export function prnRowStatus(
     minIntervalHours: number | null;
     maxDailyCount: number | null;
     familyCount: number;
-    familyLastGivenAt: string | null;
+    familyArming: FamilyArming;
     familyMaxDailyCount: number | null;
     familyExposure?: PrnDayExposure | null;
     familyMemberCount: number;

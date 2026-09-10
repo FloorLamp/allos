@@ -36,8 +36,14 @@ export default function SaveTrendKeyPicker({
   const [label, setLabel] = useState("");
 
   const picked = byLabel.get(label.trim());
+  // THE FORM'S ONE COMMIT, SO IT IS THE PRIMARY (#4014; the form rule, #4978
+  // 2026-09-04 13:05 UTC). The `<form>` is in the PARENT, SaveTrendPicker, which
+  // is why a file-local census reads this as a submit with no form and skips it.
+  // The fold's door is that parent's `<summary>`, and a fold's own door is the
+  // same action as its commit rather than a rival primary (#4978 2026-09-05).
   const star = (
     <SubmitButton
+      variant="primary"
       disabled={enhanced && !picked}
       layout={enhanced && !picked ? "hidden-below-sm" : undefined}
     >

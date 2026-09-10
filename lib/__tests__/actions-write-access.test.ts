@@ -1229,6 +1229,168 @@ function exportedAsyncFunctions(src: string): { name: string; body: string }[] {
 
 const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
 
+// ── Every posted-subject branch gates (#5348) ─────────────────────────────────
+//
+// GATE_RE reads the WHOLE body, so an action shaped `if (posted) { … } else { await
+// requireWriteAccess(); … }` passed with its `if` arm gating nothing: the #5675 pass
+// took `requireProfileWriteAccess(target)` off the posted-`profileId` arm of the
+// child-dose-band update and this file stayed green. This walk follows the action's
+// top-level control flow instead — `if`/`else` arms, ternaries and short-circuits,
+// early returns. Once one arm gates, every sibling path must gate before it runs
+// anything but a plain `return`/`throw`. Straight-line actions and the pre-gate
+// parse/validate prefix — `if (!ok) return fail(…)` included — read as before.
+const BRANCH_GATES = [
+  "requireWriteAccess",
+  "requireAdmin",
+  "requireProfileWriteAccess",
+] as const;
+
+const SHORT_CIRCUIT = new Set([
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+]);
+
+// Whether every evaluation of `node` runs a gate, only some do (one arm of a ternary,
+// the right side of a short-circuit), or none does.
+type Coverage = "all" | "some" | "none";
+
+function gateCoverage(node: ts.Node, gates: ReadonlySet<string>): Coverage {
+  if (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    gates.has(node.expression.text)
+  ) {
+    return "all";
+  }
+  if (ts.isConditionalExpression(node)) {
+    if (gateCoverage(node.condition, gates) === "all") return "all";
+    const whenTrue = gateCoverage(node.whenTrue, gates);
+    const whenFalse = gateCoverage(node.whenFalse, gates);
+    return whenTrue === whenFalse ? whenTrue : "some";
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    SHORT_CIRCUIT.has(node.operatorToken.kind)
+  ) {
+    const left = gateCoverage(node.left, gates);
+    if (left === "all") return "all";
+    return gateCoverage(node.right, gates) === "none" ? left : "some";
+  }
+  let out: Coverage = "none";
+  node.forEachChild((child) => {
+    const coverage = gateCoverage(child, gates);
+    if (coverage === "all" || (coverage === "some" && out === "none")) {
+      out = coverage;
+    }
+  });
+  return out;
+}
+
+// One path through an action: whether it has gated, and whether a sibling arm gated
+// where it did not (`forked`) — past that point anything but a plain exit is a write
+// reached without a gate.
+type Path = { gated: boolean; forked: boolean };
+
+function branchGateViolations(
+  body: ts.Block,
+  gates: ReadonlySet<string>,
+  sf: ts.SourceFile
+): string[] {
+  const out = new Set<string>();
+  const text = (node: ts.Node) =>
+    node.getText(sf).replace(/\s+/g, " ").slice(0, 60);
+  const distinct = (paths: Path[]) =>
+    paths.filter(
+      (p, i) =>
+        paths.findIndex((q) => q.gated === p.gated && q.forked === p.forked) ===
+        i
+    );
+  // Run `node` on every live path. A one-armed gate is a finding; so is an ungated
+  // forked path running anything but a gate — it has reached a write. A path ends at
+  // its first finding rather than reporting every statement after it.
+  const run = (node: ts.Node, live: Path[]): Path[] => {
+    const coverage = gateCoverage(node, gates);
+    if (coverage === "all") return [{ gated: true, forked: false }];
+    if (coverage === "some") {
+      out.add(`\`${text(node)}\` gates only one of its arms`);
+      return live.filter((p) => p.gated);
+    }
+    if (live.some((p) => !p.gated && p.forked)) {
+      out.add(
+        `a branch reaches \`${text(node)}\` without the gate its sibling arm took`
+      );
+    }
+    return live.filter((p) => p.gated || !p.forked);
+  };
+  const walk = (stmt: ts.Statement, live: Path[]): Path[] => {
+    if (live.length === 0) return live;
+    if (ts.isBlock(stmt)) {
+      return stmt.statements.reduce((paths, s) => walk(s, paths), live);
+    }
+    if (ts.isIfStatement(stmt)) {
+      const after = run(stmt.expression, live);
+      const arms = [stmt.thenStatement, stmt.elseStatement];
+      const armGates = arms.some(
+        (arm) => arm && gateCoverage(arm, gates) !== "none"
+      );
+      const thenPaths = walk(stmt.thenStatement, after);
+      const elsePaths = stmt.elseStatement
+        ? walk(stmt.elseStatement, after)
+        : after;
+      return distinct(
+        [...thenPaths, ...elsePaths].map((p) =>
+          p.gated || !armGates ? p : { gated: false, forked: true }
+        )
+      );
+    }
+    if (ts.isReturnStatement(stmt)) {
+      if (stmt.expression) run(stmt.expression, live);
+      return [];
+    }
+    if (ts.isThrowStatement(stmt)) return [];
+    return run(stmt, live);
+  };
+  walk(body, [{ gated: false, forked: false }]);
+  return [...out];
+}
+
+// The branch check over every exported async action in `src` that gates at all; `rel`
+// selects the ALLOW / MODULE_ALLOW gates the action may take beside the default ones.
+function actionBranchScan(rel: string, src: string): string[] {
+  const sf = ts.createSourceFile(
+    "scan.ts",
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const moduleGates =
+    MODULE_ALLOW.find((entry) => entry.file === rel)?.gates ?? [];
+  const violations: string[] = [];
+  for (const statement of sf.statements) {
+    if (!ts.isFunctionDeclaration(statement) || !statement.name) continue;
+    const { body } = statement;
+    if (!body) continue;
+    const modifiers = ts.getModifiers(statement) ?? [];
+    const has = (kind: ts.SyntaxKind) => modifiers.some((m) => m.kind === kind);
+    if (!has(ts.SyntaxKind.ExportKeyword) || !has(ts.SyntaxKind.AsyncKeyword)) {
+      continue;
+    }
+    const name = statement.name.text;
+    const allowGate = ALLOW.find((a) => a.file === rel && a.fn === name)?.gate;
+    const gates = new Set<string>([...BRANCH_GATES, ...moduleGates]);
+    if (allowGate) gates.add(allowGate);
+    if (gateCoverage(body, gates) === "none") continue;
+    for (const why of branchGateViolations(body, gates, sf)) {
+      violations.push(
+        `${rel}#${name}: ${why} — gate every posted-subject branch (#5348)`
+      );
+    }
+  }
+  return violations;
+}
+
 function routeWriteScan(
   rel: string,
   src: string
@@ -1393,6 +1555,8 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
       const rel = path.relative(REPO, file).split(path.sep).join("/");
       const src = stripComments(rawSrc);
       const moduleAllow = MODULE_ALLOW.find((entry) => entry.file === rel);
+      // A gate somewhere in the body is not a gate on every branch (#5348).
+      violations.push(...actionBranchScan(rel, src));
       for (const { name, body } of exportedAsyncFunctions(src)) {
         scanned++;
         if (GATE_RE.test(body)) continue; // write-gated (or admin-gated)
@@ -1451,6 +1615,81 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
       staleModules,
       `stale module allowlist entries: ${staleModules.join(", ")}`
     ).toEqual([]);
+  });
+
+  // The posted-subject shapes, each intact and with one gate taken away. The first
+  // pair is the child-dose-band update as shipped and as the #5675 pass mutated it:
+  // the `else` arm still gates, so GATE_RE alone reads the mutant as gated.
+  const DOSE_BAND = (postedArm: string) => `
+    const target = Number(formData.get("profileId"));
+    let profileId: number;
+    if (Number.isInteger(target) && target > 0) {
+      ${postedArm}
+      profileId = target;
+    } else {
+      profileId = (await requireWriteAccess()).profile.id;
+    }
+    const offer = standingOffer(profileId, String(formData.get("dedupe_key") ?? "").trim());
+    if (!offer) return formError(DOSE_UPDATE_STALE);
+    const outcome = setStoredDoseAmount(profileId, offer.itemId, offer.storedAmount, offer.bandAmount);
+    if (outcome.kind === "stale") return formError(DOSE_UPDATE_STALE);
+    return formOk();`;
+  const TERNARY = (postedArm: string) => `
+    const profileId = target > 0 ? ${postedArm} : (await requireWriteAccess()).profile.id;
+    return core(profileId);`;
+  const EARLY_RETURN = (continuation: string) => `
+    if (!parsed.ok) return fail(parsed.error);
+    if (target > 0) { await requireProfileWriteAccess(target); return core(target); }
+    ${continuation}
+    return core(profileId);`;
+
+  it.each([
+    [
+      "the dose-band update as shipped",
+      DOSE_BAND("await requireProfileWriteAccess(target);"),
+      null,
+    ],
+    [
+      "the #5675 dose-band mutant",
+      DOSE_BAND(""),
+      "a branch reaches `const offer = standingOffer(profileId,",
+    ],
+    [
+      "a ternary gating both arms",
+      TERNARY("(await requireProfileWriteAccess(target), target)"),
+      null,
+    ],
+    [
+      "a ternary gating one arm",
+      TERNARY("target"),
+      "gates only one of its arms",
+    ],
+    [
+      "an early return gating both paths",
+      EARLY_RETURN("await requireProfileWriteAccess(profileId);"),
+      null,
+    ],
+    [
+      "an early return whose continuation lost its gate",
+      EARLY_RETURN(""),
+      "a branch reaches `core(profileId)` without the gate its sibling arm took",
+    ],
+    [
+      "a validation exit before the action's gate",
+      `
+    if (!parsed.ok) return fail(parsed.error);
+    const { profile } = await requireWriteAccess();
+    return core(profile.id);`,
+      null,
+    ],
+  ])("branch scan: %s", (_shape, body, flagged) => {
+    const violations = actionBranchScan(
+      "app/(app)/medications/actions.ts",
+      `export async function acceptDoseBandUpdate(formData: FormData) {${body}\n}`
+    );
+    expect(violations).toEqual(
+      flagged === null ? [] : [expect.stringContaining(flagged)]
+    );
   });
 });
 

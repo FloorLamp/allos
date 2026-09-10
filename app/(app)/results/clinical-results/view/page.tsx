@@ -821,7 +821,20 @@ export default async function ClinicalResultDetailPage(props: {
             dashboard flag atom write (owner ruling 2026-08-20: one state, not two), so
             it also quiets the analyte's flag and its trajectory watch, and the next
             draw of the family re-arms all three. The reading itself is untouched: it
-            still reads "High" here and still lists on /results. */}
+            still reads "High" here and still lists on /results.
+
+            IT STAYS SECONDARY, AND THAT IS HELD DELIBERATELY (#4014, 2026-09-10).
+            Mechanically it is a form's one commit, so #4978's 2026-09-04 13:05 UTC
+            form rule would fill it. That rule ranks controls; it does not weigh what
+            they do. This block renders only for `isNotableFlag`, so the surface is
+            always an ABNORMAL result, and one tap here quiets the analyte's flag, its
+            trajectory watch and the dashboard atom together. The Recheck scheduler
+            beside it does the opposite — it keeps the finding in clinical view.
+            Filling this one makes the loudest control on the page the one that
+            silences the warning while the one that preserves it stays quiet. That is
+            visible safety direction, which is the owner's to rule and not a rank
+            rule's to decide, so the promotion is withheld until they do.
+            `lib/__db_tests__/clinical-result-acknowledge-rank.test.ts` pins it. */}
         {isNotableFlag(latest.flag) && (
           <div data-testid="result-acknowledge">
             <div className="label">Acknowledge</div>
