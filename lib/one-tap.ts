@@ -27,6 +27,8 @@
 // Pure by construction: no DB, no clock, no React. Every caller supplies its own
 // `nowMs`/`today` so a frozen test clock and a real one behave identically.
 
+import { formatRelativeSeconds } from "./format-date";
+
 // ── 1. The feedback family ───────────────────────────────────────────────────────
 
 // How a one-tap affordance answers "did my tap land?". These are the four designs
@@ -375,18 +377,19 @@ export function shouldConfirmRelog(check: RelogCheck): boolean {
   return elapsedDays < refillConfirmWindowDays(check.supplyCycleDays);
 }
 
-// "just now" / "12 minutes ago" / "2 hours ago" / "3 days ago" — the elapsed phrase
-// the refill confirm names its previous tap with. Coarse on purpose: the sentence is
-// "was that you, a moment ago?", not a duration readout.
+// "just now" / "12 minutes ago" / "Yesterday" / "2 weeks ago" — the elapsed phrase
+// the refill confirm names its previous tap with. The app-wide ladder
+// (`formatRelativeSeconds`, lib/format-date.ts), not a second one: this used to floor
+// where that rounds, stop at days so a 400-day-old tap read "400 days ago", and draw
+// its own "just now" line at 60s against the ladder's ±45s clock-skew tolerance
+// (#4550). One instant now reads the same everywhere.
+//
+// The ONE thing kept: a NEGATIVE elapsed time is "just now". Elapsed time here only
+// ever decides whether to ask "was that you?", and a clock that moved backwards must
+// not turn the previous tap into a future one ("you marked this refilled in 1 hour").
 export function elapsedPhrase(elapsedMs: number): string {
-  if (!Number.isFinite(elapsedMs) || elapsedMs < 60_000) return "just now";
-  const minutes = Math.floor(elapsedMs / 60_000);
-  if (minutes < 60)
-    return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} ${days === 1 ? "day" : "days"} ago`;
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return "just now";
+  return formatRelativeSeconds(Math.round(elapsedMs / 1000));
 }
 
 // A fill size as the confirm prints it: whole numbers bare, fractions to at most two

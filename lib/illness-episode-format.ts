@@ -13,6 +13,7 @@ import { daysBetweenDateStr, shiftDateStr, zonedWallTimeToUtc } from "./date";
 import {
   formatClockValue,
   formatCompactRelativeTime,
+  formatRelativeDays,
   parseClockHhmm,
   type TimeFormat,
 } from "./format-date";
@@ -281,17 +282,17 @@ export function illnessTimelineEvents(
   );
 }
 
+// The app-wide relative ladder over the episode's calendar days (#4550). This used
+// to be its own: it stopped at days, so a reading a year old read "366 days ago"
+// where every other surface says "1 year ago", and it capitalized its forward half
+// ("In 3 days") against the shared lowercase.
 export function relativeEpisodeDateLabel(
   date: string,
   asOf: string
 ): string | null {
   const daysAgo = daysBetweenDateStr(date, asOf);
   if (daysAgo == null) return null;
-  if (daysAgo === 0) return "Today";
-  if (daysAgo === 1) return "Yesterday";
-  if (daysAgo > 1) return `${daysAgo} days ago`;
-  if (daysAgo === -1) return "Tomorrow";
-  return `In ${Math.abs(daysAgo)} days`;
+  return formatRelativeDays(daysAgo);
 }
 
 function severityLabelForTimeline(severity: number): string {
