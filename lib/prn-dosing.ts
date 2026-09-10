@@ -332,9 +332,23 @@ export function reofferPediatricDose(input: {
   currentAmount: string;
 }): PediatricReoffer {
   const { entry, next } = input;
-  // No entry and no age are the same answer: there is no chart to re-read, so the
-  // amount on screen is not the label's to change.
-  if (!entry || next.ageMonths == null) return { kind: "keep" };
+  // NO ENTRY: nothing to re-derive, so the amount is not this policy's to touch — the
+  // inline original returned early here for the same reason.
+  if (!entry) return { kind: "keep" };
+  // NO AGE ON FILE: WITHDRAW, and it has to be spelled out because it is the one input
+  // the extraction could have quietly changed. The inline original cast `ageMonths as
+  // number` and let a null run into the lookup, where it compares as 0 — so every
+  // curated entry answered `ask-doctor` or `no-pediatric`, never `dose`, and the call
+  // site withdrew. Verified by execution against every entry in the dataset and every
+  // shape of weight, not inferred from the types.
+  //
+  // The shipped form cannot reach this: the pediatric section's own memo returns null
+  // when `ageMonths` is null, so `PediatricWeightUpdate` never mounts, and when it does
+  // mount it hands `onSaved` back the exact `ageMonths` it was given (both executed
+  // against the real add door). It is stated anyway because the alternative — `keep` —
+  // is the permissive answer: a profile with no age has no chart, and leaving the
+  // label's standing figure on screen is #798's refusal inverted.
+  if (next.ageMonths == null) return { kind: "withdraw" };
   const result = pediatricDoseSuggestion({
     entry,
     ageMonths: next.ageMonths,

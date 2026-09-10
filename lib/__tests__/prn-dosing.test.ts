@@ -459,10 +459,20 @@ describe("reofferPediatricDose — a new weight re-derives the label's offer", (
     ).toEqual({ kind: "withdraw" });
   });
 
-  it("keeps everything when there is no curated entry or no age on file", () => {
+  it("keeps everything when the name resolves to no curated entry", () => {
     expect(reoffer({ entry: null })).toEqual({ kind: "keep" });
-    expect(reoffer({ next: context({ ageMonths: null }) })).toEqual({
-      kind: "keep",
-    });
+  });
+
+  // The one input where "relocated faithfully" and "reads tidily" pull apart. The
+  // inline original cast a null age into the lookup, where it compares as 0 — every
+  // curated entry answered `ask-doctor` or `no-pediatric`, so the call site withdrew.
+  // A profile with no age has no chart, so withdraw is also the conservative answer;
+  // `keep` would leave the label's figure standing over a person it cannot band.
+  it("withdraws when there is no age on file, whatever the weight says", () => {
+    for (const weightKg of [17, 9, null]) {
+      expect(reoffer({ next: context({ ageMonths: null, weightKg }) })).toEqual(
+        { kind: "withdraw" }
+      );
+    }
   });
 });
