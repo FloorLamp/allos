@@ -1,3 +1,12 @@
+// Training-domain rule findings (#2962).
+//
+// The core of this module is one dependency cluster: lib/training-observations,
+// lib/routines, lib/lifts and the muscle-volume/coverage/injury readers are shared by
+// the balance, plateau and volume builders, and the plateau FORM HINT reuses the
+// balance builder's own envelope mapper — none of them can be separated without
+// duplicating a mapper. The retest, mobility and endurance nudges join them because
+// they read the same training surfaces and land on the same tab.
+
 import {
   getStrengthByExercise,
   getExerciseSetCountsSince,

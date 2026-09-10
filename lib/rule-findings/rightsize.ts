@@ -1,3 +1,11 @@
+// Frequency-target right-sizing rule findings (#2962).
+//
+// One dependency cluster of its own: lib/target-rightsize plus the frequency-target
+// ledger. It spans practice, training and food targets, so it belongs with none of
+// those domains — what its builders share is the weekly-floor question, not a surface.
+// The per-candidate envelope is exported so each domain's own card runs its candidates
+// through the SAME suppression filter without gathering them twice.
+
 import { getFrequencyTargetWeeklyHistory } from "../queries";
 import { frequencyScopeLabel } from "../frequency-targets";
 import type { Finding } from "../findings";

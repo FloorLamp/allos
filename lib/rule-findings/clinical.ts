@@ -1,3 +1,11 @@
+// Clinical and reproductive rule findings (#2962).
+//
+// Oral health, prolonged bleeding, the trying-to-conceive workup prompt and sun
+// exposure each read a clinical record — a condition, a cycle, a profile attribute, a
+// biomarker — rather than a log of behavior, and each stays a calm COACHING observation
+// by product ruling (docs/internals/findings.md): none of them notifies, and none
+// interprets a result for the person.
+
 import {
   getIntakeSafetyContext,
   getBiomarkerSeries,

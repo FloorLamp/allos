@@ -1,3 +1,11 @@
+// Wellbeing rule findings (#2962).
+//
+// The mood observation and the sleep-mood bridge share ONE low-mood window verdict
+// (lowMoodWindowFor below), so they cannot disagree about whether mood has been low;
+// that shared verdict is why they cannot be separated. The clock-skew and paired-factor
+// observations join them as the other readings taken from what the person recorded
+// about themselves rather than from a measurement of their training or intake.
+
 import { getProfileAge } from "../settings";
 import { isMinor } from "../life-stage";
 import {

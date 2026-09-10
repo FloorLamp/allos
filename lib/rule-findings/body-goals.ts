@@ -1,3 +1,10 @@
+// Body-metric and goal-pacing rule findings (#2962).
+//
+// The two builders answer the same shape of question — is a measured quantity moving
+// the way its owner expects — and they read the same body-metric series through
+// lib/units' display conversion. The hygiene builder is the data half (a jump that is
+// probably a mis-log) and the pacing builder the intent half (a goal off its own pace).
+
 import {
   getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,

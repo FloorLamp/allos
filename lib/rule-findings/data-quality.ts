@@ -1,3 +1,9 @@
+// Structural data-quality rule findings (#2962).
+//
+// The setup-shaped half of the collection: gaps in the profile's own configuration
+// rather than observations about its days. One gather feeds both the coaching finding
+// and the household rollup, so every surface keys on the same gap model.
+
 import {
   getProfileSex,
   getProfileAge,

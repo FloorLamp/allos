@@ -1,3 +1,10 @@
+// Intake and medication rule findings (#2962).
+//
+// Adherence patterns and obligation demotion share the dose schedule (lib/intake-
+// schedule) and the one item-level history gather, and the therapeutic-duplication note
+// is the medication half of the same page. All three are observations ABOUT a profile's
+// intake record; none of them writes an obligation — the user's tap is the only write.
+
 import { profileDayZone, travelExcusalResolver } from "../travel-excusal";
 import {
   getIntakeItems,

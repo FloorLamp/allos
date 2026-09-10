@@ -1,3 +1,10 @@
+// Nutrition rule findings (#2962).
+//
+// Protein, fiber, food suggestions, weekly food habits and substance caps all read the
+// nutrition query surface and act on the /nutrition and /records nutrition tabs. Each
+// one maps an EXISTING adequacy/progress computation into the Finding envelope, so the
+// card a page already draws and the finding can never disagree about the same week.
+
 import { joinNamesForSentence } from "../summarize-names";
 import {
   getFoodSuggestions,
