@@ -124,6 +124,10 @@ export function newestBuildInputMtime(root) {
  * fingerprint exists to authorize, and neither says anything about the bytes the
  * compiler would read. The declaration itself is folded in, so widening
  * `BUILD_INPUT_DIRS` invalidates every record written under the old one.
+ *
+ * @typedef {{ algo: string, fingerprint: string, fileCount: number,
+ *             bytes: number }} BuildInputFingerprint
+ * @returns {BuildInputFingerprint}
  */
 export function buildInputFingerprint(root) {
   const files = listBuildInputs(root);
@@ -195,12 +199,25 @@ export function readBuildRecord(distDir) {
  * Record the fingerprint of `root`'s build inputs beside the build in `distDir`.
  * Call it AFTER a successful build and never before: the record's whole claim is
  * "these inputs produced that build id".
+ *
+ * @param {string} root
+ * @param {string} distDir
+ * @param {Record<string, unknown>} [extra]
+ * @param {BuildInputFingerprint | null} [inputs] — see below.
+ *
+ * `inputs` is a fingerprint the caller ALREADY took, and is how `ensureBuild`
+ * records what it verified rather than what it can see now (#5772). Recomputing
+ * here would re-read the tree a third time, after the caller established the tree
+ * had not moved during the build — and a tree that moves in that last gap would be
+ * recorded as the build's provenance without anybody having checked it. Omit it and
+ * the fingerprint is taken here, which is right for a caller holding no earlier one.
  */
-export function writeBuildRecord(root, distDir, extra = {}) {
+export function writeBuildRecord(root, distDir, extra = {}, inputs = null) {
   const buildId = readBuildId(distDir);
   if (!buildId)
     throw new Error(`no BUILD_ID in ${distDir} — nothing to record`);
-  const { algo, fingerprint, fileCount, bytes } = buildInputFingerprint(root);
+  const { algo, fingerprint, fileCount, bytes } =
+    inputs ?? buildInputFingerprint(root);
   const record = {
     algo,
     fingerprint,
@@ -215,4 +232,99 @@ export function writeBuildRecord(root, distDir, extra = {}) {
     JSON.stringify(record, null, 2) + "\n"
   );
   return record;
+}
+
+/** Enough of a fingerprint to tell two apart in a log line, and no more. */
+function shortPrint(fingerprint) {
+  return fingerprint ? fingerprint.slice(0, 12) : "none";
+}
+
+/**
+ * IS THE BUILD IN `distDir` THE ONE THIS TREE WOULD COMPILE? (#5772)
+ *
+ * Over FACTS and nothing else — no filesystem, no clock — the same shape
+ * `seedDecision` in ./build-seed.mjs uses, and deliberately so: seeding already
+ * asks "would a build of THIS tree produce the bytes sitting in THAT tree", and
+ * staleness is that question asked of the build sitting in this one. One model,
+ * asked twice, rather than two models that can disagree.
+ *
+ * WHY NOT MTIMES, which this replaced. `ensureBuild` compared the newest build
+ * input's mtime against `.next/BUILD_ID`'s, and `BUILD_ID` is written at the END
+ * of a build that takes minutes — so a source edited after the build STARTED and
+ * before `BUILD_ID` landed carries an mtime BELOW it and reads as fresh, for good,
+ * until something else touches that file. The hole was never the same-second
+ * coincidence #5772 describes; it was as wide as a build. A content fingerprint
+ * cannot care how close two operations landed.
+ *
+ * AND AN UNANSWERABLE COMPARISON IS NOT A FRESH BUILD. Every branch below that
+ * cannot establish what the build was compiled from returns `fresh: false`, which
+ * costs a rebuild — the direction whose failure is slow rather than wrong.
+ *
+ * The `reason` is the product, exactly as it is for `seedDecision`: it is printed
+ * either way, because a run that silently reuses a build is what let #5772's false
+ * green go unnoticed for a whole afternoon.
+ *
+ * @typedef {{ fresh: boolean, reason: string }} BuildFreshness
+ * @returns {BuildFreshness}
+ */
+export function buildFreshnessDecision(facts) {
+  const { hasBuild, recorded, treeFingerprint } = facts;
+  if (!hasBuild) {
+    return { fresh: false, reason: "there is no production build" };
+  }
+  if (!treeFingerprint) {
+    return {
+      fresh: false,
+      reason: "this worktree's build inputs could not be read",
+    };
+  }
+  if (!recorded) {
+    return {
+      fresh: false,
+      reason:
+        "the build carries no usable record of what it was compiled from " +
+        `(no readable ${BUILD_RECORD_BASENAME} naming this build id), so it cannot ` +
+        "be shown to match this tree",
+    };
+  }
+  if (recorded.fingerprint !== treeFingerprint) {
+    return {
+      fresh: false,
+      reason:
+        "it was compiled from different sources than this worktree has " +
+        `(recorded ${shortPrint(recorded.fingerprint)}, tree ${shortPrint(treeFingerprint)})`,
+    };
+  }
+  return {
+    fresh: true,
+    reason:
+      `its recorded inputs are this worktree's (${shortPrint(treeFingerprint)}, ` +
+      `${recorded.fileCount} files)`,
+  };
+}
+
+/**
+ * `buildFreshnessDecision` with the facts read off disk.
+ *
+ * The tree is fingerprinted only when there IS a build to compare it against —
+ * hashing ~2 700 files costs ~190 ms, which is nothing beside the build it decides
+ * about but is pure waste when the answer is already "build it".
+ *
+ * @returns {BuildFreshness}
+ */
+export function readBuildFreshness(root, distDir) {
+  const hasBuild = readBuildId(distDir) !== null;
+  let treeFingerprint = null;
+  if (hasBuild) {
+    try {
+      treeFingerprint = buildInputFingerprint(root).fingerprint;
+    } catch {
+      treeFingerprint = null;
+    }
+  }
+  return buildFreshnessDecision({
+    hasBuild,
+    recorded: hasBuild ? readBuildRecord(distDir) : null,
+    treeFingerprint,
+  });
 }

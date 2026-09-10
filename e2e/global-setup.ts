@@ -3,9 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { FullConfig } from "@playwright/test";
 import {
-  BUILD_INPUT_DIRS,
-  BUILD_INPUT_FILES,
-  NON_BUILD_DIRS,
+  buildInputFingerprint,
+  readBuildFreshness,
   writeBuildRecord,
 } from "./build-inputs.mjs";
 import { seedNextBuild } from "./build-seed.mjs";
@@ -40,31 +39,14 @@ import {
 // Seeding is the expensive step (~20 s); copying is milliseconds.
 
 const REPO_ROOT = process.cwd();
-const BUILD_ID = path.join(REPO_ROOT, ".next", "BUILD_ID");
 const BUILD_HEAP_MB = 4096;
 
-// What invalidates the production build — the declaration lives in
-// ./build-inputs.mjs because the worktree seeding step (#2605) asks a different
-// question of the same set, and two copies of an invalidation rule is the shape
-// that fails by serving a stale bundle rather than by throwing. e2e/** is
-// deliberately absent from it: specs are not compiled into the app, so editing a
-// spec must not trigger a rebuild.
-
-function newestMtime(target: string, newest = 0): number {
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(target);
-  } catch {
-    return newest;
-  }
-  if (!stat.isDirectory()) return Math.max(newest, stat.mtimeMs);
-  let best = newest;
-  for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
-    if (NON_BUILD_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
-    best = newestMtime(path.join(target, entry.name), best);
-  }
-  return best;
-}
+// What invalidates the production build — the declaration AND the comparison over
+// it both live in ./build-inputs.mjs, because the worktree seeding step (#2605)
+// asks a different question of the same set, and two copies of an invalidation
+// rule is the shape that fails by serving a stale bundle rather than by throwing.
+// e2e/** is deliberately absent from it: specs are not compiled into the app, so
+// editing a spec must not trigger a rebuild.
 
 function run(
   cmd: string,
@@ -86,8 +68,9 @@ function run(
   });
 }
 
-function bin(name: string): string {
-  return path.join(REPO_ROOT, "node_modules", ".bin", name);
+/** A binary from `root`'s node_modules — the repo root unless a test says otherwise. */
+function bin(name: string, root: string = REPO_ROOT): string {
+  return path.join(root, "node_modules", ".bin", name);
 }
 
 /**
@@ -97,38 +80,49 @@ function bin(name: string): string {
  * its own on-demand compile of every route it touches. One shared production
  * build instead boots each worker in ~200 ms.
  *
- * Rebuild when the build is missing or older than any build input, so an agent who
- * edits a component and runs the suite is never served a stale bundle. Escape
- * hatches: E2E_SKIP_BUILD=1 (never build — CI, which builds in its own step),
- * E2E_FORCE_BUILD=1 (always build).
+ * Build unless the build in `.next` can be SHOWN to be this tree's — by the
+ * fingerprint of the sources it was compiled from, recorded beside it, matching
+ * the fingerprint of the sources here (#5772). An unanswerable comparison costs a
+ * rebuild; it never counts as a pass. Escape hatches: E2E_SKIP_BUILD=1 (never
+ * build — CI, which builds in its own step), E2E_FORCE_BUILD=1 (always build).
+ *
+ * WHICHEVER IT DID, IT SAYS SO. A reuse announces itself as loudly as a rebuild:
+ * #5772's false green survived a whole afternoon because a run that reused a build
+ * printed nothing at all, and the lane that found it only did so on a hunch.
+ *
+ * `root` is a parameter so the decision and both of its outcomes can be driven over
+ * a real tree in a test (lib/__tests__/e2e-build-freshness.test.ts) rather than
+ * modelled; the suite itself always passes the repo root.
  */
-async function ensureBuild(): Promise<void> {
-  if (process.env.E2E_SKIP_BUILD === "1") return;
+export async function ensureBuild(root: string = REPO_ROOT): Promise<void> {
+  const distDir = path.join(root, ".next");
+  const buildIdPath = path.join(distDir, "BUILD_ID");
+  if (process.env.E2E_SKIP_BUILD === "1") {
+    console.log(
+      "[e2e] E2E_SKIP_BUILD=1 — serving whatever is in .next, unchecked"
+    );
+    return;
+  }
   // CI owns its own build step (.github/actions/e2e-setup) — never rebuild there,
   // but fail loudly rather than boot workers against a missing build. The app both
   // paths serve is identical, so nothing ASSERTED differs between them (#2648).
   // eslint-disable-next-line no-restricted-syntax -- ci-ok: build orchestration, not an assertion — who runs `npm run build` IS a genuine runner fact
   if (process.env.CI) {
-    if (!fs.existsSync(BUILD_ID)) {
+    if (!fs.existsSync(buildIdPath)) {
       throw new Error(
         "no production build found (.next/BUILD_ID) — CI must run `npm run build` before the e2e suite"
       );
     }
+    console.log("[e2e] CI — serving the build CI's own build step made");
     return;
   }
-  const built = fs.existsSync(BUILD_ID);
-  let stale = !built;
-  if (built && process.env.E2E_FORCE_BUILD !== "1") {
-    const builtAt = fs.statSync(BUILD_ID).mtimeMs;
-    let newest = 0;
-    for (const dir of BUILD_INPUT_DIRS)
-      newest = Math.max(newest, newestMtime(path.join(REPO_ROOT, dir)));
-    for (const file of BUILD_INPUT_FILES)
-      newest = Math.max(newest, newestMtime(path.join(REPO_ROOT, file)));
-    stale = newest > builtAt;
+  const forced = process.env.E2E_FORCE_BUILD === "1";
+  const verdict = readBuildFreshness(root, distDir);
+  if (verdict.fresh && !forced) {
+    console.log(`[e2e] reusing the production build — ${verdict.reason}`);
+    return;
   }
-  if (process.env.E2E_FORCE_BUILD === "1") stale = true;
-  if (!stale) return;
+  const built = fs.existsSync(buildIdPath);
   // A fresh agent worktree has no build at all, and compiling one costs ~200 s
   // before a single browser assertion runs (#2605). A sibling worktree branched
   // from the same commit usually has an identical one already; take it rather than
@@ -136,7 +130,7 @@ async function ensureBuild(): Promise<void> {
   // is never replaced — and only against proven-identical build inputs, never a
   // commit or an mtime. E2E_NO_SEED=1 opts out.
   if (!built && process.env.E2E_NO_SEED !== "1") {
-    const seeded = seedNextBuild({ to: REPO_ROOT });
+    const seeded = seedNextBuild({ to: root });
     if (seeded.seed) {
       console.log(
         `[e2e] seeded the production build from ${seeded.from} in ${seeded.ms}ms ` +
@@ -151,10 +145,19 @@ async function ensureBuild(): Promise<void> {
     }
   }
   console.log(
-    built
-      ? "[e2e] production build is stale — rebuilding (set E2E_SKIP_BUILD=1 to skip)"
-      : "[e2e] no production build found — building (set E2E_SKIP_BUILD=1 to skip)"
+    `[e2e] ${built ? "rebuilding" : "building"} the production bundle — ` +
+      `${forced ? "E2E_FORCE_BUILD=1" : verdict.reason} ` +
+      "(set E2E_SKIP_BUILD=1 to skip)"
   );
+  // FINGERPRINT BEFORE THE COMPILER READS ANYTHING, and again after it stops.
+  //
+  // This is the same hole one level in, and it is the one #5772's body did not
+  // see: a record written from the tree AFTER the build would describe sources the
+  // compiler never read, because the compiler read them minutes earlier. An edit
+  // that lands mid-build would then be certified INTO the build it is missing
+  // from — a wrong answer that outlives this run, since every later run would
+  // compare against that record and agree.
+  const beforeBuild = buildInputFingerprint(root);
   // Next's compile plus TypeScript phase crosses V8's automatic ~2 GiB old-space
   // limit on the full app. Keep this direct bootstrap path aligned with the
   // repository's `npm run build` script: local Playwright runs deliberately build
@@ -162,23 +165,44 @@ async function ensureBuild(): Promise<void> {
   // able to OOM before a single browser assertion runs.
   await run(
     process.execPath,
-    [`--max-old-space-size=${BUILD_HEAP_MB}`, bin("next"), "build"],
+    [`--max-old-space-size=${BUILD_HEAP_MB}`, bin("next", root), "build"],
     {
-      cwd: REPO_ROOT,
+      cwd: root,
       env: process.env,
       label: "next build",
     }
   );
-  // Record WHAT this build was compiled from, beside the build (#2605). A fresh
-  // agent worktree can then be handed this build instead of paying its own ~200 s
-  // cold one, but only against a recorded fact — never an inference from mtimes,
-  // which the copy destroys. Written only here, only after a build this process
-  // just made, so the record can never describe a build it did not see.
+  // Record WHAT this build was compiled from, beside the build (#2605, #5772). A
+  // fresh agent worktree can then be handed this build instead of paying its own
+  // ~200 s cold one, and THIS worktree's next run can tell whether the build is
+  // still the one its tree would compile — both against a recorded fact, never an
+  // inference from mtimes, which the copy destroys and which a build's own duration
+  // defeats. Written only here, only after a build this process just made, so the
+  // record can never describe a build it did not see.
   //
+  // …AND ONLY IF THE TREE HELD STILL. A build input that changed while the compiler
+  // ran means this bundle's provenance is genuinely unknown — the compiler read
+  // some of the old bytes and possibly some of the new ones, and nothing can tell
+  // which. Refusing the record is what makes the next run build again instead of
+  // inheriting the ambiguity as a fact; the alternative, rebuilding here, cannot
+  // converge against a tree that is still being edited and would just pay another
+  // four minutes for the same question. So: no record, and say so — this run's own
+  // results are the ones to distrust, and the only way anyone learns that is if it
+  // is printed.
+  const afterBuild = buildInputFingerprint(root);
+  if (afterBuild.fingerprint !== beforeBuild.fingerprint) {
+    console.log(
+      "[e2e] *** a build input CHANGED WHILE THIS BUILD RAN — what it compiled " +
+        "cannot be established, so no input record is written and the next run " +
+        "will build again. Treat this run's results as being about an unknown " +
+        "tree (#5772). ***"
+    );
+    return;
+  }
   // Advisory: a failure here costs the next worktree a cold build and nothing
   // else, and must not fail a suite that has already built successfully.
   try {
-    const record = writeBuildRecord(REPO_ROOT, path.dirname(BUILD_ID));
+    const record = writeBuildRecord(root, distDir, {}, afterBuild);
     console.log(
       `[e2e] recorded ${record.fileCount} build inputs for seeding (#2605)`
     );
