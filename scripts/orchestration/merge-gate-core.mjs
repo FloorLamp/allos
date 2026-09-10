@@ -150,6 +150,118 @@ export function independenceClaim(body) {
   };
 }
 
+// ── THE COMMIT TRAILER, IN ONE PLACE (#4995) ────────────────────────────────
+//
+// A squash merge concatenates the branch's commit messages into the squash
+// body, so whatever a lane wrote in a trailer becomes main's permanent history.
+// `96f7c30a` landed two `Co-Authored-By` lines naming a model that way — beside
+// a correct one in the same body — and nothing between the lane and the merge
+// looked at it. The dispatch brief STATED the correct trailer in prose, and
+// prose is what drifts, so the trailer is a value here: dispatch-brief.mjs
+// interpolates these two lines into every brief and the verdict below refuses
+// against them. One string, two readers, the shape title-rule.mjs already has.
+export const COMMIT_TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>";
+
+// The session line the brief requires beside it. It is a URL and names no
+// model, which is exactly why the refusal below must not fire on it: a pattern
+// reading `Claude-` as the opening of an identifier would refuse every
+// conforming commit in this repo.
+export const SESSION_TRAILER = "Claude-Session: <session URL>";
+
+// The brief's whole trailer instruction, so the STATEMENT of the rule sits with
+// the constant and with the check that enforces it rather than in a third copy.
+// dispatch-brief.mjs prints this verbatim; nothing about the brief a lane reads
+// changes by living here.
+export const COMMIT_TRAILER_BRIEF = `- Commit trailers for a Claude session, the second holding the real URL:
+    ${COMMIT_TRAILER}
+    ${SESSION_TRAILER}
+  Other harnesses follow their own attribution instructions; never invent a
+  session. No model identifier in pushed content — merge-gate.mjs refuses a
+  commit whose message names one.`;
+
+// WHAT IS REFUSED — ONE SHAPE, and deliberately no list of model names. An
+// enumeration goes stale the day a new name exists, and a stale enumeration
+// fails into a silent pass, which is the one direction a guard may not fail.
+//
+// A `Co-Authored-By` whose `Claude` is followed by anything but the address.
+// The discriminator is the ANGLE BRACKET, not the word before it, so this knows
+// no model's name: `Co-Authored-By: Claude <noreply@…>` is the correct trailer
+// and opens the gate, while a name sitting where no name belongs closes it. Git
+// reads a trailer key case-insensitively and both spellings are in this
+// history, so this reads it that way too.
+//
+// WHAT IS NOT REFUSED, stated because a guard's blind spots are part of its
+// contract: a model's marketing name in prose with no `Co-Authored-By` around
+// it, another vendor's id, and a co-author line naming a model without the word
+// `Claude`. Catching any of those needs the list of names this refuses to keep.
+//
+// A SECOND SHAPE IS AVAILABLE AND NOT SHIPPED (PM ruling, 2026-09-10): a bare
+// model id, `claude-` then segments of which one is numeric, the numeral being
+// what separates an id from `claude-code` and `Claude-Session`. It is out
+// because nothing has ever exhibited it — measured 2026-09-10, 22 offending
+// lines across the five open branches and main's last 60 commits, every one of
+// them the shape above — while `lib/ai-client.ts` and `lib/ai-tiers.ts` hold
+// real ids as production config, so it would refuse an honest commit message
+// naming one. That is a fact about today. REVISIT ON THE FIRST OBSERVED
+// INSTANCE: the pattern is `/\bclaude-(?:[a-z]+-)*\d[\w.]*/i`, and it needs a
+// second `redact` clause so the refusal still does not repeat what it refuses.
+const MODEL_ATTRIBUTION =
+  /^[^\S\n]*co-authored-by:[^\S\n]*claude[^\S\n]+(?=[^<\s])[^\n]*/gim;
+
+// THE REFUSAL MAY NOT REPEAT WHAT IT REFUSES. merge-gate.mjs's first failure
+// becomes the `merge-gate` commit status description, which the workflow POSTS
+// to GitHub — so a refusal quoting the offending line would publish the model
+// name it exists to keep out, on the repository, under this gate's own name.
+// The shape is what the writer needs to see anyway; the identifier is not.
+const redact = (line) =>
+  line.replace(/(co-authored-by:[^\S\n]*claude)[^\S\n]+[^<\n]*/i, "$1 … ");
+
+/** The model-naming lines one commit message carries, redacted to their shape. */
+export function modelIdentifierLines(message) {
+  const lines = new Set();
+  for (const [line] of (message ?? "").matchAll(MODEL_ATTRIBUTION))
+    lines.add(redact(line.trim()));
+  return [...lines];
+}
+
+/**
+ * Whether the messages that will be concatenated into the squash body name a
+ * model. `commits` are `{ sha, message }`; `truncated` says GitHub's listing
+ * was capped, which REFUSES rather than passing on the part it could read —
+ * unread commits are the case this check exists for.
+ */
+export function modelTrailerVerdict(commits, { truncated = false } = {}) {
+  const offenders = commits
+    .map((commit) => ({
+      sha: (commit.sha ?? "").slice(0, 8) || "an unnamed commit",
+      lines: modelIdentifierLines(commit.message),
+    }))
+    .filter((commit) => commit.lines.length);
+  if (offenders.length)
+    return {
+      ok: false,
+      message:
+        `${offenders.length} of ${commits.length} commit(s) name a model: ` +
+        `${offenders.map((o) => `${o.sha} (${o.lines.join(", ")})`).join(", ")}` +
+        `. A squash concatenates these into the body that lands on main, so ` +
+        `reword each one; the trailer is exactly "${COMMIT_TRAILER}" with ` +
+        `"${SESSION_TRAILER}" under it (#4995)`,
+    };
+  if (truncated)
+    return {
+      ok: false,
+      message:
+        "cannot tell whether these commits name a model — GitHub lists at " +
+        "most 250 commits on a PR and this one filled that, so the rest went " +
+        "UNREAD. Shorten the branch or read them by hand; the trailer is " +
+        `exactly "${COMMIT_TRAILER}" (#4995)`,
+    };
+  return {
+    ok: true,
+    message: `${commits.length} commit message(s) name no model`,
+  };
+}
+
 export function readinessVerdict(pr) {
   const failures = [];
   if (pr.state !== "open") {

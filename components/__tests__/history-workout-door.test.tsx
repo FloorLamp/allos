@@ -23,13 +23,24 @@ vi.mock("@/components/ActivityEditorProvider", () => ({
   }),
 }));
 
-const CHIPS = [
-  {
-    kind: "practice" as const,
-    label: "Practice",
-    params: { kind: "practice" as const, day: "2026-09-03" },
-  },
-];
+// NO KIND CHIPS HERE. Each one mounts that kind's whole backfill form since #5618, and
+// the workouts door is a door to the TRAINING editor rather than a ninth kind — so the
+// row is rendered with the chip list empty and this control is what is left in it.
+const CHIPS: [] = [];
+
+// The row takes the day and the bound every kind's form opens on; the workouts door
+// reads neither (it carries its own `workoutsDate`), and no chip is here to read them.
+const VOCABULARY = {
+  practices: [],
+  substances: [],
+  symptoms: [],
+  doseItems: [],
+  doseDefaultTime: "08:00",
+  measurements: {},
+  moodDay: { date: "2026-09-03", label: "Sep 3", mood: null },
+  moodShowCalm: false,
+  foodSlotBoundaries: { midday: 660, evening: 1020 },
+} as unknown as Parameters<typeof HistoryAddRow>[0]["vocabulary"];
 
 // The chart's own two interactions, as controls: a zoom IS the window, and at full day
 // a pinned minute is a start alone.
@@ -52,6 +63,9 @@ function row(workoutsDate: string | null): void {
       <HistoryAddRow
         chips={CHIPS}
         timeFormat="24h"
+        date={workoutsDate ?? "2026-09-03"}
+        maxDate="2026-09-03"
+        vocabulary={VOCABULARY}
         workoutsDate={workoutsDate}
       />
       <Driver />

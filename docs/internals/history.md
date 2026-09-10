@@ -137,11 +137,10 @@ show that wait.
 ## Adding from a day
 
 Chart zoom supplies a window; at full day, a crosshair supplies only a start.
-The add row reflects that selection. Zoom stays local until a kind is chosen,
-when its window travels in `from`/`to`. `parseIntradayWindow` snaps to the shared
-bucket size and requires a valid minimum span; malformed or inverted windows
-are dropped, not repaired. A URL window survives reload and remains under the
-open form.
+The add row reflects that selection. A kind chip opens that kind's form in the
+sheet on the current window, never filtering the record; the pills stay the
+only filter. Window parsing snaps to the shared bucket size and requires a
+valid minimum span; malformed or inverted windows are dropped, not repaired.
 
 The practice form receives both clocks and may select a practice by its recorded
 weekly rhythm and usual duration. Dose, food, body, stool, and substance entries

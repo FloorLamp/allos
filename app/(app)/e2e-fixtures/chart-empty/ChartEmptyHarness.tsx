@@ -28,7 +28,7 @@ function FixtureCard({
   return (
     <ChartCard
       title={testid}
-      detailHref={null} /* detail-none: E2E-only geometry. */
+      detailHref={{ none: "E2E-only geometry." }}
       testid={testid}
     >
       {children}

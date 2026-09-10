@@ -31,6 +31,10 @@ import {
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  OFFLINE_OTHER_SUBJECT_MESSAGE,
+} from "@/lib/offline/queue";
 
 function FoodSelectedDateProvider({
   today,
@@ -1794,6 +1798,463 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.getByTestId("projection-slot-morning").textContent).toBe("0");
     expect(screen.getByTestId("projection-slot-evening").textContent).toBe("1");
     expect(frames).toHaveLength(1);
+  });
+
+  // ── WHAT THE COUNTER SAYS AFTER A REFUSAL (#3728) ─────────────────────────
+  //
+  // The bar's adopter case for the shared optimistic channel, and it is written
+  // against THE NUMBER ON SCREEN rather than against the fact that a call was
+  // refused. That distinction is the whole point: a restore that puts back the
+  // wrong figure, or that puts back anything at all over a serving that landed
+  // while it was in flight, refuses exactly as loudly as a correct one. Only the
+  // count tells them apart, so every assertion below reads the count — the meal
+  // figure the row shows, the day total beside it, and the slot projection the
+  // probe renders — and never the mock.
+  const TWO_SERVINGS: FoodLogDay = {
+    ...DAY,
+    counts: { cruciferous: 2 },
+    slotCounts: { Morning: {}, Midday: { cruciferous: 2 }, Evening: {} },
+  };
+
+  it("puts the servings back on the counter when the row's − is refused", async () => {
+    mountBar({ day: TWO_SERVINGS });
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    });
+
+    // The refusal is the server's own sentence, and the two servings are still
+    // there: the person did not lose one by asking to.
+    expect(
+      await screen.findByText("That serving count has changed.")
+    ).toBeTruthy();
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("2 servings");
+  });
+
+  it("does not take back a serving that landed while a refused − was in flight", async () => {
+    const refusal = deferred<{ ok: false; error: string }>();
+    actions.undoFoodServing.mockReturnValue(refusal.promise);
+    // One authoritative read answers the add; anything the stale − asks for after
+    // it never returns, so the figure left standing is the one the channel chose
+    // and not a later snapshot that would mask a wrong restore.
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        servings: 3,
+        mealServings: { Morning: 0, Midday: 3, Evening: 0 },
+      })
+      .mockReturnValue(new Promise(() => {}));
+    mountBar({ day: TWO_SERVINGS });
+
+    // The − is fired first and paints 1 …
+    fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+
+    // … then a "+" lands underneath it, and the server says the day holds three.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("3")
+    );
+
+    await act(async () => {
+      refusal.resolve({ ok: false, error: "That serving count has changed." });
+    });
+
+    // The − was fired from a 2. Putting that back would erase the serving the
+    // "+" recorded — a figure the person successfully logged, gone because a
+    // different tap failed.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("3");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("3");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("3 servings");
+  });
+
+  it("rolls the counter back when the device will not keep an offline tap", async () => {
+    const online = vi
+      .spyOn(window.navigator, "onLine", "get")
+      .mockReturnValue(false);
+    try {
+      mountBar({ day: TWO_SERVINGS });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+
+      // Nothing was kept, so nothing is claimed: a phantom third serving would
+      // outlive the session and never be contradicted.
+      expect(
+        await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+      ).toBeTruthy();
+      expect(actions.logFoodServing).not.toHaveBeenCalled();
+      // And nothing goes looking for a total for a serving that was never sent —
+      // the read that used to follow every burst is where "Saved, but couldn't
+      // refresh the count" came from, on a tap that saved nothing.
+      expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
+      expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+      expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
+        "2"
+      );
+      expect(screen.getByTestId("food-day-total").textContent).toBe(
+        "2 servings"
+      );
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  // THE OTHER DIRECTION, and the one a gate on "did this burst write" loses. A failed
+  // online + deliberately does NOT roll back — the burst may still have taps in the
+  // air, and a partial rollback would fight them — so the authoritative read is the
+  // only thing that ever takes the guess back, and the only thing that says the write
+  // failed. None of these paths revalidate, and the projection is seeded once, so a
+  // skipped read leaves a serving on the counter that the Day ledger beside it does
+  // not list, until a reload.
+  it.each([
+    {
+      name: "the server refuses it",
+      answer: () =>
+        actions.logFoodServing.mockResolvedValue({
+          ok: false,
+          error: "Couldn't save that serving.",
+        }),
+    },
+    {
+      name: "the request dies online",
+      answer: () =>
+        actions.logFoodServing.mockRejectedValue(new Error("server exploded")),
+    },
+  ])("corrects the counter and reports it when $name", async ({ answer }) => {
+    actions.logFoodServing.mockReset();
+    answer();
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 2,
+      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+    });
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("2 servings");
+    // And the person is told. A phantom serving that says nothing is worse than one
+    // that says something: nothing later contradicts it.
+    expect(
+      screen.queryByText("Couldn't save one of those servings — try again.")
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  // THE CONNECTION DYING MID-TAP, then the queue refusing what it caught — the case
+  // the offline-preflight refusal above looks identical to and is not.
+  //
+  // The tap never reaches `settle`: `write` got past its own `navigator.onLine` check
+  // and called `logFoodServing`, so THE REQUEST LEFT, and `onError` is handling a
+  // "Failed to fetch" that means the ANSWER was lost. Whether the server committed
+  // first is exactly what nobody on this device knows. The queue then refuses to keep
+  // the tap and says "This entry wasn't saved", the counter rolls back — and that
+  // sentence is an unverified claim, so the authoritative read still has to run. It is
+  // the only thing that can withdraw it, and settling this tap as `discarded` (the
+  // disposition the device-side refusal correctly uses, where nothing was ever sent)
+  // skips the read and leaves a real serving unreconciled under a "not saved".
+  //
+  // Both directions are asserted, on the RENDERED COUNT: the read confirms a serving
+  // that did commit, and it confirms the refusal when none did.
+  it.each([
+    {
+      name: "corrects the counter when the lost write had in fact committed",
+      truth: {
+        ok: true,
+        servings: 3,
+        mealServings: { Morning: 0, Midday: 3, Evening: 0 },
+      },
+      count: "3",
+      total: "3 servings",
+    },
+    {
+      name: "confirms the refusal when the lost write had not committed",
+      truth: {
+        ok: true,
+        servings: 2,
+        mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+      },
+      count: "2",
+      total: "2 servings",
+    },
+  ])(
+    "reads the server after a dropped tap the queue refused, and $name",
+    async ({ truth, count, total }) => {
+      actions.logFoodServing
+        .mockReset()
+        .mockRejectedValue(new TypeError("Failed to fetch"));
+      actions.readFoodServingTruth.mockReset().mockResolvedValue(truth);
+      mountBar({ day: TWO_SERVINGS });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+      await act(async () => {});
+
+      expect(
+        await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+      ).toBeTruthy();
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe(count);
+      expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
+        count
+      );
+      expect(screen.getByTestId("food-day-total").textContent).toBe(total);
+      // Nothing invents a receipt out of a write nobody witnessed: there is no row id
+      // to bind an Undo to, and no claim that anything saved.
+      expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+      expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+    }
+  );
+
+  // AND WHEN THE REPAIR READ ITSELF CANNOT RUN — which is what a dropped connection
+  // actually does to it — the refusal stands alone. Settling this tap as `kept` would
+  // reach the same read, so the count assertions above cannot separate those two; this
+  // one does, on rendered text: `kept` marks a failure nobody has heard about yet, and
+  // the read's failure arm would then print "Couldn't save that serving — try again."
+  // beside a sentence that already said the same thing in different words, on a day the
+  // person was told to retry once back online.
+  it("says nothing more when the repair read dies after a dropped tap the queue refused", async () => {
+    actions.logFoodServing
+      .mockReset()
+      .mockRejectedValue(new TypeError("Failed to fetch"));
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockRejectedValue(new TypeError("Failed to fetch"));
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(
+      await screen.findByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("Couldn't save that serving — try again.")
+    ).toBeNull();
+    expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
+  });
+
+  // THE OTHER HALF OF THE SAME SENTENCE. A serving that landed and a repair read that
+  // died is the one case that may say "Saved" — and must, because reporting a landed
+  // serving as unsaved invites a duplicate re-tap, which is the more expensive error
+  // of the two to make.
+  it("says the serving saved when only the repair read fails", async () => {
+    actions.logFoodServing.mockReset().mockResolvedValue({
+      ok: true,
+      eventId: 41,
+      servings: 3,
+      mealSlot: "Midday",
+      mealServings: 3,
+    });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockRejectedValue(new Error("offline"));
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(
+      screen.queryByText(
+        "Saved, but couldn't refresh the count — reload to check it."
+      )
+    ).not.toBeNull();
+    expect(
+      screen.queryByText("Couldn't save that serving — try again.")
+    ).toBeNull();
+    // The optimistic count stands: the serving is on the server, the figure is just
+    // unconfirmed, and taking it back would be the same lie the other way round.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("3");
+  });
+
+  // The read is also the failure channel, so when the read itself cannot run the
+  // sentence still has to be true: a burst that landed nothing may not say "Saved".
+  it("does not claim a save when the repair read fails after a refused +", async () => {
+    actions.logFoodServing
+      .mockReset()
+      .mockResolvedValue({ ok: false, error: "Couldn't save that serving." });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockRejectedValue(new Error("offline"));
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+    expect(
+      screen.queryByText("Couldn't save that serving — try again.")
+    ).not.toBeNull();
+  });
+
+  // THE CALL SITE THAT PRODUCES A NAMELESS LANDING (#3728). The write core's success
+  // arm does not promise an event id, and reading that as a failure would report a
+  // serving the server took as one it refused.
+  it("treats a landing the server did not name as saved, with nothing to undo", async () => {
+    actions.logFoodServing.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 3,
+      mealSlot: "Midday",
+      mealServings: 3,
+    });
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 3,
+      mealServings: { Morning: 0, Midday: 3, Evening: 0 },
+    });
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("3");
+    // No row id, so no Undo — and no failure sentence either, because it landed.
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(
+      screen.queryByText("Couldn't save one of those servings — try again.")
+    ).toBeNull();
+  });
+
+  // THE ONE PATH WHERE `commitProjection`'s MOUNT GUARD IS THE ONLY CHECK.
+  // Everywhere else `isCurrentMutation()` answers first — it calls `isMountedProfile()`
+  // itself — so the guard looks redundant. `onError`'s offline arm for a decrement does
+  // not consult it: it returns `rollback` unconditionally, and the guard is what stops a
+  // bar that is gone from writing its stale snapshot into the provider that outlived it.
+  // THIS CASE IS THE ONE THAT CATCHES IT, and it is the only one: delete the guard and
+  // this assertion reds with `expected '2' to be '5'` while the other 44 cases in this
+  // file and the three other FoodLogBar-rendering specs stay green.
+  it("does not let an unmounted bar's offline-undo rollback clobber the live count", async () => {
+    let rejectUndo!: (error: unknown) => void;
+    const undoing = new Promise((_resolve, reject) => {
+      rejectUndo = reject;
+    });
+    undoing.catch(() => {});
+    actions.undoFoodServing.mockReset().mockReturnValue(undoing);
+    actions.logFoodServing.mockReset().mockResolvedValue({
+      ok: true,
+      eventId: 55,
+      servings: 5,
+      mealSlot: "Midday",
+      mealServings: 5,
+    });
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 5,
+      mealServings: { Morning: 0, Midday: 5, Evening: 0 },
+    });
+
+    const view = render(barTree({ day: TWO_SERVINGS, barKey: "bar-a" }));
+    fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+
+    // The bar is swapped; the projection provider around it lives on.
+    view.rerender(barTree({ day: TWO_SERVINGS, barKey: "bar-b" }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("5")
+    );
+
+    await act(async () => {
+      rejectUndo(new TypeError("Failed to fetch"));
+      await Promise.resolve();
+    });
+    await act(async () => {});
+
+    // 5 is the server's own figure for a serving that landed. 2 is a snapshot from a
+    // bar that no longer exists, and writing it erases a serving the person logged.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("5");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("5");
+  });
+
+  it("says why a serving for someone else cannot wait offline, and rolls it back", async () => {
+    const online = vi
+      .spyOn(window.navigator, "onLine", "get")
+      .mockReturnValue(false);
+    try {
+      // A caregiver's bar, aimed at another subject. Their OWN taps queue offline;
+      // this one cannot, because the queue is stamped to the acting profile and
+      // carries no subject beside it.
+      mountBar({ profileId: 7, subjectProfileId: 8, day: TWO_SERVINGS });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+
+      // The reason, not the generic capture refusal: nothing is wrong with the
+      // device, so "try again once you're back online" would mislead about which
+      // taps this person can still make.
+      expect(
+        await screen.findByText(OFFLINE_OTHER_SUBJECT_MESSAGE)
+      ).toBeTruthy();
+      expect(screen.queryByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeNull();
+      expect(actions.logFoodServing).not.toHaveBeenCalled();
+      expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+      expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
+        "2"
+      );
+      expect(screen.getByTestId("food-day-total").textContent).toBe(
+        "2 servings"
+      );
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it("leaves the switched-to subject's counter alone when the old subject's − is refused", async () => {
+    const refusal = deferred<{ ok: false; error: string }>();
+    actions.undoFoodServing.mockReturnValue(refusal.promise);
+    const other: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 9 },
+      slotCounts: { Morning: {}, Midday: { cruciferous: 9 }, Evening: {} },
+    };
+    const view = mountBar({ profileId: 7, day: TWO_SERVINGS });
+
+    fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+
+    view.rerender(barTree({ profileId: 8, day: other }));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
+
+    await act(async () => {
+      refusal.resolve({ ok: false, error: "That serving count has changed." });
+    });
+
+    // The restore belongs to a day nobody is looking at any more. Writing 2 here
+    // would put one subject's servings on another subject's counter.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("9");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("9 servings");
+    expect(screen.queryByText("That serving count has changed.")).toBeNull();
   });
 });
 

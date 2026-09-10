@@ -10,6 +10,7 @@ import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
 import PortalsSurface from "@/app/(app)/integrations/patient-portals/PortalsSurface";
 import CalendarFeedConfig from "@/app/(app)/integrations/calendar-feed/CalendarFeedConfig";
+import { loudIn } from "./loud-controls";
 
 // THE INTEGRATIONS CARDS' TWO RANKS, ASSERTED AS A PAIR (#4978 slice 6, PM
 // ruling 6 of 2026-09-09: on a multi-card route the surface is the CARD).
@@ -140,7 +141,7 @@ describe("a patient-portals card spends one filled control on its own commit", (
     const card = screen.getByTestId("portal-add-card");
     expectRank(within(card).getByTestId("portal-add"), true);
     expectRank(within(card).getByTestId("portal-add-cancel"), false);
-    expect(card.querySelectorAll(".button-control-primary")).toHaveLength(1);
+    expect(loudIn(card)).toEqual(["Add portal"]);
   });
 
   it("keeps a row's single action loud and every doored commit quiet", () => {
@@ -159,7 +160,7 @@ describe("a patient-portals card spends one filled control on its own commit", (
       '[data-portal-name="Community Health"]'
     )!;
     expectRank(within(waiting).getByTestId("portal-add-login-cta"), false);
-    expect(waiting.querySelectorAll(".button-control-primary")).toHaveLength(0);
+    expect(loudIn(waiting)).toEqual([]);
 
     // CARVE-OUT 1 OF RULING 6, ASSERTED BY THE STATE THAT PROVES IT RATHER THAN
     // BY ONE FOLD AT A TIME. Every commit on a portal card sits behind a door
@@ -176,43 +177,56 @@ describe("a patient-portals card spends one filled control on its own commit", (
     expectRank(within(waiting).getByTestId("account-add-cancel"), false);
     expectRank(bindAdd, false);
     expectRank(within(waiting).getByTestId("prebind-cancel"), false);
-    expect(waiting.querySelectorAll(".button-control-primary")).toHaveLength(0);
+    expect(loudIn(waiting)).toEqual([]);
   });
 });
 
+function renderCalendarFeed() {
+  render(
+    <CalendarFeedConfig
+      enabled={true}
+      detail="minimal"
+      categories={[]}
+      reminders={false}
+      pastWindowDays={30}
+      futureWindowDays={null}
+      baseUrl="https://allos.test"
+      status="active"
+      createdAt="2026-09-01T10:00:00Z"
+      lastUsedAt={null}
+      expiresOnDay={null}
+    />
+  );
+  const save = screen.getByTestId("calendar-feed-options-save");
+  const card = save.closest(".card");
+  if (!(card instanceof HTMLElement)) throw new Error("save is not on a card");
+  return { save, card };
+}
+
 describe("a calendar-feed card spends its one rank on its own commit", () => {
-  it("fills the feed-options Save as the card's one RANKED control", () => {
-    render(
-      <CalendarFeedConfig
-        enabled={true}
-        detail="minimal"
-        categories={[]}
-        reminders={false}
-        pastWindowDays={30}
-        futureWindowDays={null}
-        baseUrl="https://allos.test"
-        status="active"
-        createdAt="2026-09-01T10:00:00Z"
-        lastUsedAt={null}
-        expiresOnDay={null}
-      />
-    );
-    const save = screen.getByTestId("calendar-feed-options-save");
+  it("fills the feed-options Save and renders the disconnect loud beside it", () => {
+    const { save, card } = renderCalendarFeed();
     expectRank(save, true);
-    expect(document.querySelectorAll(".button-control-primary")).toHaveLength(
-      1
-    );
-    // RANKED, not filled — and the difference is a finding rather than a
-    // quibble. The Disable beside the Save is a `DestructiveSubmit`, which
-    // `.destructive-submit` paints a solid red from CSS instead of through
-    // `variant`, so it is a SECOND filled control on this card that no query
-    // for a rank class can see. Owner ruling 10 (#4978, 2026-09-10) makes a
-    // filled danger spend the surface's loud-control budget, which this card
-    // therefore overspends. Both paints predate the ruling — `.btn` was already
-    // solid here — so this slice changes neither and asserts what the card
-    // actually renders; which of the two loses its fill is reported on #4978.
-    expect(
-      document.querySelectorAll(".destructive-submit > .button-control")
-    ).toHaveLength(1);
+
+    // TWO FILLS ON ONE CARD, AND THE POINT IS THAT THE COUNT NOW SAYS SO. The
+    // Disable beside the Save is a `DestructiveSubmit`; until #5696 the fill came
+    // from `.destructive-submit` repainting a rank-LESS child, so this spec could
+    // — and did — assert "exactly one filled control" while the card rendered
+    // two. The wrapper states `variant="danger"` now, so the second fill is in
+    // the census, and this pins what the card actually renders today.
+    expect(loudIn(card)).toEqual(["Save feed options", "Disable feed"]);
+  });
+
+  // OWNER RULING 12 (#4978, 2026-09-10): on this card the Save keeps the fill,
+  // the Disable goes quiet, and the red moves to its confirm step — a standalone
+  // destructive control stays filled only on a surface with no commit of its
+  // own. That conversion reaches `IntegrationDisconnectButton` across the seven
+  // integration pages that pair a disconnect with a commit and is sequenced as
+  // its own lane after #5726, so it is not made here. This is the assertion that
+  // lane makes true; it is skipped rather than deleted so the card's budget has
+  // a stated target instead of only a pinned overspend.
+  it.skip("spends its one loud control on the Save (ruling 12)", () => {
+    const { card } = renderCalendarFeed();
+    expect(loudIn(card)).toEqual(["Save feed options"]);
   });
 });
