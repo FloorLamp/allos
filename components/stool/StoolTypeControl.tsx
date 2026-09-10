@@ -10,6 +10,7 @@ import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { useOptionalDayContext } from "@/components/DayContext";
+import { OFFLINE_OTHER_SUBJECT_MESSAGE } from "@/lib/offline/queue";
 
 // THE STOOL DOMAIN'S ROW CONTROL (#4424 ruling 7), named by
 // `LOG_MANIFEST.stool.pieces.rowControl`: the Bristol Stool Form Scale as seven one-tap
@@ -172,7 +173,7 @@ export default function StoolTypeControl({
         subjectProfileId != null
           ? {
               kind: "refuse",
-              message: "You're offline — reconnect to log for someone else.",
+              message: OFFLINE_OTHER_SUBJECT_MESSAGE,
             }
           : {
               kind: "capture",
