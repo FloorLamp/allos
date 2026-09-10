@@ -245,20 +245,23 @@ const WHEN_MOUNTS = new Map<string, WhenMount>([
     },
   ],
   [
-    "app/(app)/nutrition/DayLedger.tsx",
+    "app/(app)/trends/MeasurementsQuickAdd.tsx",
+    {
+      kind: "field",
+      why: "the sitting's one shared Time, above the groups (#2154)",
+    },
+  ],
+  [
+    "components/DaySelection.tsx",
     {
       kind: "field",
       why:
         "#4118's selection-edit `Set time…` — the web's AFTER-THE-FACT correction " +
         "path, reached by selecting rows and asking for it. #4426 is explicit that " +
-        "this stays where it is; the shared statement only tells the time AT the tap",
-    },
-  ],
-  [
-    "app/(app)/trends/MeasurementsQuickAdd.tsx",
-    {
-      kind: "field",
-      why: "the sitting's one shared Time, above the groups (#2154)",
+        "this stays where it is; the shared statement only tells the time AT the tap. " +
+        "ONE mount for both day surfaces since #5618 ruling 4 — it moved here from " +
+        "app/(app)/nutrition/DayLedger.tsx when the record took up the same mode, " +
+        "which is one fewer mount rather than a second one",
     },
   ],
   [
