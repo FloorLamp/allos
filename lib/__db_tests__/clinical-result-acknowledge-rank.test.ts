@@ -81,8 +81,11 @@ describe("the clinical result's acknowledgment rank (#4014)", () => {
   });
 
   it("would see a loud control if one were there", () => {
+    // `children` goes IN the props object: `ButtonProps.children` is required, and
+    // `createElement`'s positional children never satisfy a required `children` in the
+    // props type. Moving "Loud" back out to a third argument is a compile error.
     const markup = renderToStaticMarkup(
-      createElement(Button, { variant: "primary" as const }, "Loud")
+      createElement(Button, { variant: "primary" as const, children: "Loud" })
     );
     expect(isLoud((markup.match(CONTROL) ?? [])[0])).toBe(true);
   });
