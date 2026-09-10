@@ -1,7 +1,9 @@
 "use client";
 
-import { useConfirm } from "@/components/ConfirmDialog";
-import SubmitButton, { DestructiveSubmit } from "@/components/SubmitButton";
+import SubmitButton, {
+  DestructiveSubmit,
+  useDestructiveSubmitGate,
+} from "@/components/SubmitButton";
 
 type Kind = "disconnect" | "disable" | "calendar-feed" | "family-feed";
 type Action =
@@ -64,13 +66,9 @@ export default function IntegrationDisconnectButton(props: Props) {
 }
 
 // The quiet half, as its OWN component so the loud six never require a
-// `ConfirmProvider` above them for a dialog they do not open.
-//
-// The confirm is awaited INSIDE the form action, which is the shape #5336
-// settled for this app (components/IntakeItemForm.tsx does the same): the
-// dialog's store is external, so React commits the sheet even while the action
-// is pending, and the caller stays a plain `<form action>` with the primitive
-// owning its submission state.
+// `ConfirmProvider` above them for a dialog they do not open. The confirm step
+// itself is `useDestructiveSubmitGate`, shared with the per-row Revoke on
+// components/PassportControls.tsx so there is ONE destructive-confirm mechanism.
 function ConfirmedDisconnect({
   kind,
   action,
@@ -82,7 +80,7 @@ function ConfirmedDisconnect({
   disabled?: boolean;
   message: string;
 }) {
-  const confirm = useConfirm();
+  const gate = useDestructiveSubmitGate();
   const [label, pendingLabel] = copy[kind];
   // A no-argument action is assignable to the one-argument form; naming that
   // here keeps the call below free of a cast.
@@ -90,15 +88,7 @@ function ConfirmedDisconnect({
   return (
     <form
       data-integration-disconnect=""
-      action={async (formData) => {
-        const ok = await confirm({
-          title: `${label}?`,
-          message,
-          confirmLabel: label,
-          danger: true,
-        });
-        if (ok) await run(formData);
-      }}
+      action={gate({ title: `${label}?`, message, confirmLabel: label }, run)}
     >
       <SubmitButton
         pendingLabel={pendingLabel}
