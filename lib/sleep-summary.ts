@@ -13,7 +13,12 @@
 // Angeles. A profile that has never moved passes a plain zone name and nothing
 // changes.
 
-import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "./date";
+import {
+  daysBetweenDateStr,
+  hhmmToMinutes,
+  shiftDateStr,
+  zonedDateParts,
+} from "./date";
 import { isStreamActive } from "./stream-activity";
 import {
   formatClockMinutes,
@@ -402,13 +407,6 @@ export interface ConsistencyNight {
   bedDeviationMin: number | null;
   wakeDeviationMin: number | null;
   offSchedule: boolean;
-}
-
-// Minute-of-day (0..1439) of a local "HH:MM". The model emits this NUMBER so the
-// render layer formats the clock through the login's 12h/24h pref (#1163).
-function hhmmToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
 }
 
 function clockHour(hhmm: string): number {

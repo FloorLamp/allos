@@ -17,6 +17,8 @@ import {
   ageInMonthsFromBirthdate,
   ageInMonthsExact,
   ageMonthsFrom,
+  hhmmFromMinutes,
+  hhmmToMinutes,
 } from "@/lib/date";
 
 // A single instant that lands on different calendar dates / weekdays / hours
@@ -97,6 +99,46 @@ describe("zonedDateParts / zonedMinuteStr — profile-tz attribution", () => {
     expect(zonedMinuteStr("America/New_York", localMidnight)).toBe(
       "2026-06-16T00:00"
     );
+  });
+});
+
+describe('hhmmFromMinutes — the one minute-of-day → "HH:MM" (#4550)', () => {
+  it("renders a minute of the day zero-padded and 24-hour", () => {
+    expect(hhmmFromMinutes(0)).toBe("00:00");
+    expect(hhmmFromMinutes(5)).toBe("00:05");
+    expect(hhmmFromMinutes(9 * 60 + 5)).toBe("09:05");
+    expect(hhmmFromMinutes(16 * 60 + 2)).toBe("16:02");
+    expect(hhmmFromMinutes(1439)).toBe("23:59");
+  });
+
+  it('wraps past the end of the day instead of answering "24:00"', () => {
+    expect(hhmmFromMinutes(1440)).toBe("00:00");
+    expect(hhmmFromMinutes(1500)).toBe("01:00");
+    expect(hhmmFromMinutes(36 * 60)).toBe("12:00"); // noon-anchored hour
+  });
+
+  // The pinned regression (#4550). A negative minute used to reach a spelling that
+  // kept JS's sign through `%` and let `padStart` no-op on "-1", so `clockAtMinute`
+  // answered "-1:-30" for -30. No caller could reach it, but no caller can reach it
+  // HERE either — the normalization is the point of having one function.
+  it('wraps a negative minute rather than answering "-1:-30"', () => {
+    expect(hhmmFromMinutes(-30)).toBe("23:30");
+    expect(hhmmFromMinutes(-1)).toBe("23:59");
+    expect(hhmmFromMinutes(-1440)).toBe("00:00");
+    expect(hhmmFromMinutes(-1470)).toBe("23:30");
+  });
+
+  it("rounds a fractional minute and folds a non-finite one to midnight", () => {
+    expect(hhmmFromMinutes(90.4)).toBe("01:30");
+    expect(hhmmFromMinutes(90.6)).toBe("01:31");
+    expect(hhmmFromMinutes(Number.NaN)).toBe("00:00");
+    expect(hhmmFromMinutes(Number.POSITIVE_INFINITY)).toBe("00:00");
+  });
+
+  it("round-trips against hhmmToMinutes, its inverse", () => {
+    for (const m of [0, 1, 59, 60, 599, 720, 1234, 1439]) {
+      expect(hhmmToMinutes(hhmmFromMinutes(m))).toBe(m);
+    }
   });
 });
 

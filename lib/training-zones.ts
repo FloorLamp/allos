@@ -13,7 +13,7 @@
 // lactate/ventilatory threshold beats any formula — surfaces note this and the
 // override is the escape hatch.
 
-import { shiftDateStr, startOfWeekStr } from "./date";
+import { hhmmFromMinutes, shiftDateStr, startOfWeekStr } from "./date";
 import { weeklyChartWeeks } from "./weekly-fill";
 
 // ---- Zone definitions ----
@@ -212,9 +212,7 @@ function addMinutesLocal(local: string, add: number): string {
     total += 1440;
     d = shiftDateStr(d, -1);
   }
-  const hh = String(Math.floor(total / 60)).padStart(2, "0");
-  const mm = String(total % 60).padStart(2, "0");
-  return `${d}T${hh}:${mm}`;
+  return `${d}T${hhmmFromMinutes(total)}`;
 }
 
 // The local time window an activity occupies, or null when it can't be bounded
