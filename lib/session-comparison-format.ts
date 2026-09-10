@@ -97,7 +97,6 @@ export function comparisonHasDirection(
   return key === "speed";
 }
 
-
 // The tone a difference earns. A metric with no direction is always neutral, no
 // matter how far from the median it sits.
 export function comparisonTone(

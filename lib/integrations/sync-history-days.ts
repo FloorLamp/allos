@@ -267,8 +267,7 @@ export function syncDayAttention(day: {
 }): { label: string; tone: VerdictTone } | null {
   if (day.failed > 0) return { label: `${day.failed} failed`, tone: "bad" };
   if (day.partial > 0) return { label: "partial", tone: "warn" };
-  if (day.skipped > 0)
-    return { label: `${day.skipped} skipped`, tone: "warn" };
+  if (day.skipped > 0) return { label: `${day.skipped} skipped`, tone: "warn" };
   return null;
 }
 
