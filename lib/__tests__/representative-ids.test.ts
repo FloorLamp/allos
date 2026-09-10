@@ -89,12 +89,12 @@ const GOLDEN: { site: string; was: string; got: string }[] = [
     got: representativeIds(REPRESENTATIVE_SPECS.encounters),
   },
   {
-    site: "medical_records — lib/queries/medical.ts DEDUP_IDS_CTE",
+    site: "medical_records — lib/queries/medical/common.ts DEDUP_IDS_CTE",
     was: `deduped AS ( SELECT id FROM ( SELECT id, ROW_NUMBER() OVER ( PARTITION BY profile_id, ${FAMILY_KEY} COLLATE NOCASE, date, value, value_num, unit ORDER BY (document_id IS NULL) DESC, id DESC ) AS rn FROM medical_records WHERE profile_id = ? ) WHERE rn = 1 )`,
     got: representativeCte("deduped", medicalDedupSpec(FAMILY_KEY)),
   },
   {
-    site: "medical_records — lib/queries/medical.ts LATEST_IDS_CTE",
+    site: "medical_records — lib/queries/medical/common.ts LATEST_IDS_CTE",
     was: `latest AS ( SELECT id FROM ( SELECT id, ROW_NUMBER() OVER ( PARTITION BY profile_id, ${FAMILY_KEY} COLLATE NOCASE ORDER BY date DESC, id DESC ) AS rn FROM medical_records WHERE profile_id = ? AND id IN (SELECT id FROM deduped) ) WHERE rn = 1 )`,
     got: representativeCte("latest", medicalLatestSpec(FAMILY_KEY), {
       where: inRepresentativeCte("deduped"),
