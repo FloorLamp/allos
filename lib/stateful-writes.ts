@@ -63,6 +63,7 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     table: "intake_item_logs",
     cores: [
       "lib/queries/intake/adherence.ts",
+      "lib/queries/intake/administration-delete.ts",
       "lib/queries/intake/dose-time-correction.ts",
     ],
     // No `offerState`, honestly: DoseStatusControl already renders from the dose's
