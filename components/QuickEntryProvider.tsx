@@ -42,6 +42,7 @@ import {
   type DayContextValue,
 } from "./DayContext";
 import BoundedDaySwitcher from "./BoundedDaySwitcher";
+import { CREATE_ACTIONS } from "./CreateAction";
 import { isWithinReach, logHeading, SHEET_REACH } from "@/lib/log-manifest";
 import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
 import { shiftDateStr } from "@/lib/date";
@@ -349,14 +350,12 @@ function sheetForEntry(entry: QuickEntrySession): {
   title: string;
   size: OverlaySize;
 } {
+  // THE SAME NOUN THE TRIGGER CARRIES (#5300 rule 6). This spelled "Add medication"
+  // and "Add supplement" itself, which is the create registry's own copy — a second
+  // vocabulary for two forms that already had one, and `IntakeItemKind`'s two members
+  // are exactly two of its kinds.
   return entry.view.kind === "intake"
-    ? {
-        title:
-          entry.view.intakeKind === "medication"
-            ? "Add medication"
-            : "Add supplement",
-        size: "lg",
-      }
+    ? { title: CREATE_ACTIONS[entry.view.intakeKind].label, size: "lg" }
     : SHEET[entry.form];
 }
 
