@@ -138,6 +138,15 @@ function hashOf(rel: string): string {
   return crypto.createHash("sha256").update(read(rel)).digest("hex");
 }
 
+/**
+ * Capture what the run SAYS. Announcing the outcome is half of #5772's fix, so it
+ * is asserted rather than eyeballed.
+ */
+function sayings(): () => string {
+  const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+  return () => spy.mock.calls.map((c) => String(c[0])).join("\n");
+}
+
 /** Wait until the stub compiler has read the sources and is mid-build. */
 async function untilCompiling(): Promise<void> {
   for (let i = 0; i < 3000; i++) {
@@ -171,6 +180,7 @@ afterEach(() => {
 
 describe("ensureBuild over a real tree", () => {
   it("REBUILDS after a source edited WHILE the previous build ran — the mtime rule read that as fresh (#5772)", async () => {
+    const said = sayings();
     write(HOLD, "");
     const building = ensureBuild(root);
     await untilCompiling();
@@ -218,6 +228,15 @@ describe("ensureBuild over a real tree", () => {
     // that is missing it, and every later run would have agreed with it. So the
     // raced build wrote no record at all.
     expect(racedBuildLeftARecord).toBe(false);
+
+    // AND IT SAID BOTH THINGS. The run that raced the edit named the race, and the
+    // run after it named why it was building. A silent correct answer and a silent
+    // wrong one are indistinguishable from the outside, which is how #5772 survived
+    // an afternoon — so the sentence is part of the fix, not commentary on it.
+    expect(said()).toContain("CHANGED WHILE THIS BUILD RAN");
+    expect(said()).toContain(
+      "rebuilding the production bundle — the build carries no usable record"
+    );
   });
 
   it("REBUILDS after an edit stamped with the build's own mtime — the same-second case #5772 reported", async () => {
@@ -231,10 +250,14 @@ describe("ensureBuild over a real tree", () => {
     const stamp = new Date(builtAt);
     fs.utimesSync(path.join(root, "components/Card.tsx"), stamp, stamp);
 
+    const said = sayings();
     await ensureBuild(root);
     expect(buildId()).not.toBe(first);
     expect(compiledFrom()["components/Card.tsx"]).toBe(
       hashOf("components/Card.tsx")
+    );
+    expect(said()).toContain(
+      "it was compiled from different sources than this worktree has"
     );
   });
 
@@ -242,12 +265,10 @@ describe("ensureBuild over a real tree", () => {
     await ensureBuild(root);
     const first = buildId();
 
-    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    const said = sayings();
     await ensureBuild(root);
     expect(buildId()).toBe(first);
-    expect(said.mock.calls.map((c) => String(c[0])).join("\n")).toContain(
-      "reusing the production build"
-    );
+    expect(said()).toContain("reusing the production build");
   });
 
   it("REUSES the build after a SPEC or a unit test changed — neither is compiled into the app", async () => {
