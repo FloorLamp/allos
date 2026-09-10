@@ -134,7 +134,11 @@ import {
 import { documentFootprintByKind } from "../import-persist";
 import { portalById } from "../portals";
 import { createLogger } from "../log";
-import { collapsedOfferAction, offerTailNeedsRefresh } from "./offer-tail";
+import {
+  collapsedOfferAction,
+  offerHeldByWorkoutLine,
+  offerTailNeedsRefresh,
+} from "./offer-tail";
 import { recommendWorkout } from "./recommend";
 import { digestWorkoutLine } from "./workout-format";
 import type { CoachingInput } from "../coaching";
@@ -145,7 +149,10 @@ import {
   getDigestTailPointer,
   setDigestTailPointer,
 } from "../settings";
-import { getOfferedIntakeForSlot } from "../queries/intake";
+import {
+  getIntakeOffersForSlot,
+  getOfferedIntakeForSlot,
+} from "../queries/intake";
 import { profileDayZone } from "../travel-excusal";
 
 const log = createLogger("notify");
@@ -639,6 +646,7 @@ export function gatherDigestInput(
     date: td,
     isWorkoutDay: false,
     activeSituations: effectiveSituations,
+    predictedWorkoutDay: null,
   });
   // The digest has no login context (the notify tick runs per PROFILE), so weather
   // figures render in canonical °C — the default. A weather situation's activation is a
@@ -722,15 +730,28 @@ export function gatherDigestInput(
     // The guaranteed access tail (#1505). Scoped to the slot the digest is BUILT in;
     // the tick re-labels it at each boundary and the expansion re-scopes at tap, so a
     // morning-born keyboard never offers breakfast items at bedtime.
+    //
+    // BOTH HALVES FROM ONE READ (#5321): the same gather also returns the `may` items
+    // the post-workout timing gate is holding out of this slot's offer, and the digest
+    // NAMES them. Without that line a profile whose only `may` item is post-workout has
+    // an empty tail mid-session, and the minimal-digest guard would suppress the whole
+    // message — the guaranteed access path, gone on the day they trained. Owner ruling,
+    // 2026-09-09: keep the send, do not offer what the medications page holds, say the
+    // hold. `getIntakeOffersForSlot` rather than two calls because a second call is a
+    // second `intakeDayContext` and a second timezone read on the tick's counted path.
     ...(() => {
       const nowHhmm = zonedDateParts(getTimezone(profileId), now()).hhmm;
-      const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+      const { offered, heldByWorkoutTiming } = getIntakeOffersForSlot(
+        profileId,
+        nowHhmm
+      );
       return {
         offerCount: offered.length,
         offerTail:
           offered.length > 0
             ? collapsedOfferAction(profileId, td, offered.length)
             : null,
+        offerHeldLine: offerHeldByWorkoutLine(heldByWorkoutTiming),
       };
     })(),
     weightKg: weightRow?.weight_kg ?? null,

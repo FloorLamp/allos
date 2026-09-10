@@ -17,6 +17,7 @@ const ctx = (active: string[] = []) => ({
   date: "2026-03-04",
   isWorkoutDay: false,
   activeSituations: new Set(active),
+  predictedWorkoutDay: null,
 });
 
 describe("heldBySituation", () => {

@@ -353,6 +353,10 @@ export function intakeAdherenceStrip(
       date,
       isWorkoutDay: workoutDays.has(date),
       activeSituations: situationsOn(date),
+      // A CLOSED DAY HAS NO PREDICTION (#5321). `null` is the state
+      // `conditionAppliesOn` falls back to `isWorkoutDay` on, so a scored day
+      // is judged by the training on its record, not by a rhythm inferred today.
+      predictedWorkoutDay: null,
     });
     if (!applicable) return { date, state: "na" };
     // TRAVEL NARROWS THE SAME DENOMINATOR (#3263), the way the calendar does
