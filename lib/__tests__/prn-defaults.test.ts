@@ -3,6 +3,7 @@ import {
   prnDefaultEntries,
   prnDefaultsFor,
   prnLabelIdentityFor,
+  prnProductsNamedIn,
 } from "@/lib/prn-defaults";
 import {
   prnDefaultsDataset,
@@ -141,5 +142,107 @@ describe("prn-defaults dataset", () => {
 
   it("returns null for an unknown ingredient", () => {
     expect(prnDefaultsFor({ name: "Metformin", rxcui: null })).toBeNull();
+  });
+});
+
+// ── #5230 ruling 9's IDENTITY detector ──────────────────────────────────────────
+//
+// A different question from `prnDefaultsFor` above. Derivation asks "what may this
+// bottle's dose be taken from" and keeps its strict whole-name match; DETECTION asks
+// "what does this name say the bottle IS", and it has to answer for a name nobody typed
+// exactly — `Kirkland Ibuprofen 200 mg` detects ibuprofen and derives nothing.
+//
+// Every row below names the wrong implementation it rules out. A control that cannot
+// tell the correct rule from a specific broken one is not a control, and the pairing
+// this issue kept prescribing (`Aspirin-free pain relief` with a `Sugar-free ibuprofen`
+// control) is green under a rule with no `-free` leg AND under a rule with no
+// `no`/`without` leg — which is why N1, N2, N3, N6 and N7 exist.
+describe("prnProductsNamedIn — what the name says the bottle is (#5230)", () => {
+  const slugs = (name: string): string[] =>
+    prnProductsNamedIn(name).map((e) => e.slug);
+
+  it.each([
+    {
+      id: "N1",
+      name: "Non-Aspirin Pain Reliever",
+      expected: [],
+      rulesOut:
+        "a `free`-only guard: returns aspirin on an acetaminophen product",
+    },
+    {
+      id: "N2",
+      name: "No aspirin formula",
+      expected: [],
+      rulesOut: "a guard honouring `non` and `free` but dropping `no`",
+    },
+    {
+      id: "N3",
+      name: "Cold relief without acetaminophen",
+      expected: [],
+      rulesOut: "a guard honouring `non` and `free` but dropping `without`",
+    },
+    {
+      id: "N4",
+      name: "Aspirin-free pain relief",
+      expected: [],
+      rulesOut: "a preceded-only guard, with no trailing `free` leg at all",
+    },
+    {
+      id: "N5",
+      name: "Sugar-free ibuprofen",
+      expected: ["ibuprofen"],
+      rulesOut:
+        "a symmetric `free anywhere negates` guard — it kills the commonest shelf modifier there is",
+    },
+    {
+      id: "N6",
+      name: "Non-aspirin pain reliever with ibuprofen",
+      expected: ["ibuprofen"],
+      rulesOut:
+        "a `negator anywhere in the name` guard; nothing else here tells adjacency from presence",
+    },
+    {
+      id: "N7",
+      name: "Acetylsalicylic acid-free rub",
+      expected: [],
+      rulesOut:
+        "adjacency read off the synonym's FIRST token instead of its last — the one multi-token synonym with no shorter sibling inside it",
+    },
+    {
+      id: "N8",
+      name: "Ibuprofen 200 mg",
+      expected: ["ibuprofen"],
+      rulesOut: "a detector that never matches — ruling 9's own control",
+    },
+  ])("$id $name → $expected (rules out $rulesOut)", ({ name, expected }) => {
+    expect(slugs(name)).toEqual(expected);
+  });
+
+  // Ruling 10 has to COUNT the products a name lists, which a boolean cannot do.
+  it("returns entries, and a combination name returns two of them", () => {
+    const hits = prnProductsNamedIn("Advil Dual Action with Acetaminophen");
+    expect(hits.map((e) => e.slug).sort()).toEqual([
+      "acetaminophen",
+      "ibuprofen",
+    ]);
+    expect(hits[0].label).toBeTruthy();
+  });
+
+  // Rules out carrying `isAntipyreticIntakeItem`'s CUI leg into the detector: the
+  // mismatch check would compare the source's stored code to itself, and #5230's state B
+  // would be unreachable. The detector reads the NAME and nothing else.
+  it("detects from the name only — a stored code is not a detection", () => {
+    expect(slugs("Mira's painkillers")).toEqual([]);
+    expect(
+      prnDefaultsFor({ name: "Mira's painkillers", rxcui: "5640" })?.slug
+    ).toBe("ibuprofen");
+  });
+
+  // Detection is looser than derivation, deliberately, and neither loosens the other.
+  it("detects a name the strict dose matcher declines", () => {
+    expect(slugs("Kirkland Ibuprofen 200 mg")).toEqual(["ibuprofen"]);
+    expect(
+      prnDefaultsFor({ name: "Kirkland Ibuprofen 200 mg", rxcui: null })
+    ).toBeNull();
   });
 });
