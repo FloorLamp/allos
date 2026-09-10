@@ -600,9 +600,11 @@ test.describe("the nav drawer declares itself a modal (#3463)", () => {
 // device or a throttled link: the byte counts are exact and the millisecond is a
 // local upper bound that includes Playwright's action overhead.
 
-// Two literals that exist only inside the editor's own code: the exercise name
+// Two literals that exist only inside the form's own code: the exercise name
 // field's placeholder (components/activity-form/ActivityPartsList.tsx) and the form
-// root's test id (components/ActivityForm.tsx).
+// root's test id (components/ActivityForm.tsx). Nothing that stays in the shell may
+// echo either — the workspace's own pending and retry ids are deliberately
+// `activity-editor-*` rather than `activity-form-*` for exactly that reason.
 const EDITOR_MARKERS = ["What did you do", "activity-form"] as const;
 
 /** The `/_next/static/**.js` paths the server-rendered HTML itself pulls in. */

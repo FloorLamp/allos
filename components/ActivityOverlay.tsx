@@ -321,7 +321,7 @@ export default function ActivityOverlay({
             stickyFooter
           />
         ) : (
-          <div data-testid="activity-form-pending">
+          <div data-testid="activity-editor-loading">
             <p
               role={form.status === "failed" ? "alert" : "status"}
               className="text-sm text-slate-500 dark:text-slate-400"
@@ -333,7 +333,7 @@ export default function ActivityOverlay({
             {form.status === "failed" && (
               <button
                 type="button"
-                data-testid="activity-form-retry"
+                data-testid="activity-editor-retry"
                 onClick={retryForm}
                 className="btn-ghost mt-2"
               >
