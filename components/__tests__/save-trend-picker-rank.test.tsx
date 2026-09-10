@@ -62,8 +62,8 @@ describe("the ★ add-tile picker's rank (#4014)", () => {
     // The door into the fold is a summary, so it is not a rival control.
     const door = screen.getByTestId("save-trend-picker-toggle");
     expect(door.tagName).toBe("SUMMARY");
-    expect(loudIn(screen.getByTestId("save-trend-picker-disclosure"))).toHaveLength(
-      1
-    );
+    expect(
+      loudIn(screen.getByTestId("save-trend-picker-disclosure"))
+    ).toHaveLength(1);
   });
 });
