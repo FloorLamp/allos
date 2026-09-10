@@ -13,8 +13,7 @@ public APIs; styling variants belong to the primitive, not each caller.
 | Lifecycle writes and one-tap feedback    | [Stateful affordances](stateful-affordances.md)                                      |
 | Scope and test selection                 | [Change and test policy](../change-policy.md), [component tests](component-tests.md) |
 
-Update the owning guide rather than copying it. Reuse existing tests; visual
-changes do not automatically require new guards or assertions.
+Update the owning guide rather than copying it.
 
 ## 1. Tokens and themes
 
@@ -87,46 +86,47 @@ layer: Header/standard Cell 16→20px, compact Cell 8→20px, Action 8→12px.
 ## 3. Control grammar
 
 Use typed `Button`: secondary by default, `primary` for a commit, `danger` for
-destructive paint, one ghost-only `dashed` shape. No size or class axis.
-`DestinationActionLink` composes navigation. Raw `btn` families retire with
-their last caller.
+destructive paint, one ghost-only `dashed` shape, no size or class axis.
+`DestinationActionLink` composes navigation; raw `btn` families retire with their
+last caller.
 
-One loud control per surface: a form's commit, a card's commit, a row's single
-action. Destructive paint is loud; only rank classes fill, not wrappers. Peers
-share no rank; a bulk action over rows is loud. A fold's door, app-shell chrome,
-commits that can stand open together, read-narrowing submits, repeated-row
-destructive actions, a warning's acknowledge-or-silence action, and the
-`DoseConfirmButton` row affordance take no rank. Rare or destructive row actions
-confirm through `OverflowMenu` ([Overlays](overlays.md)).
+One loud control per surface — a form's commit, a card's commit, a row's single
+action — and only rank classes fill, never wrappers. Peers share no rank; a bulk
+action over rows is loud. No rank goes to a fold's door, commits that can stand
+open together, read-narrowing submits, a warning's acknowledge-or-silence action,
+the `DoseConfirmButton` row affordance, or a destructive action repeated per row
+or beside a commit, whose confirm step carries the fill. App-shell chrome takes
+none, bar its one log affordance (dock puck, sidebar `+ Log`), spending no
+surface's budget. Rare or destructive row actions confirm through `OverflowMenu`
+([Overlays](overlays.md)).
 
 The shared `--control-box` is 34px at every viewport, padding from `1lh` and a
 reserved border. It covers chips, the button family, typed fields, native
-selects, and summaries marked `fold-control`. Row disclosures do not become
-control-sized summaries. `IconButton`, `StarButton`, and dose-status circles
-consume the box directly; segmented options, checkboxes, and Combobox option
-rows keep their own 44px targets.
+selects, and summaries marked `fold-control` — never row disclosures.
+`IconButton`, `StarButton`, and dose-status circles consume it directly, while
+segmented options, checkboxes, and Combobox option rows keep their own 44px
+targets.
 
 Typed fields retain ≥16px text to prevent focus zoom and derive padding from the
-shared box. Do not add call-site height pins; taller textareas retain their
-minimum height. Keep one control height per row.
+shared box. No call-site height pins; taller textareas keep their minimum height,
+one control height per row.
 
-On coarse pointers, supported controls extend reach 6px per side; adjacent hit
-regions need at least twice that gap. The effective target floor is 44px.
-Native inputs/selects cannot render the reach pseudo-element, so their box is
-the target; migration to an owned picker is opportunistic. Geometry constants
-live in `lib/tap-floor-tokens.ts`.
+On coarse pointers, supported controls extend reach 6px per side, adjacent hit
+regions need at least twice that gap, and the effective target floor is 44px.
+Native inputs/selects cannot render it, so their box is the target; migrating to
+an owned picker is opportunistic. Constants live in `lib/tap-floor-tokens.ts`.
 
 Controls sized by imported/user names need `min-w-0` and truncation within a
-width cap. Preserve access to the full value. Exercise the long-name corpus in
+width cap, the full value still reachable; exercise
 `scripts/seed-long-names.ts` (`SEED_RNG=3`) when adding that shape.
 
-`TabList` owns scrollbar suppression while preserving horizontal scrolling;
-callers do not repeat its CSS.
+`TabList` suppresses scrollbars while preserving horizontal scrolling; callers do
+not repeat its CSS.
 
-`components/catalog.tsx` declares catalog adoption and equipment’s form, facts, usage
-reader, and lifecycle. `CatalogRow`, `CatalogLifecycleControl`, and `CatalogEditor`
-share row, action, and responsive form hosting. Pending kinds retain their domain
-lifecycles.
+`components/catalog.tsx` declares catalog adoption and equipment’s form, facts,
+usage reader, and lifecycle; `CatalogRow`, `CatalogLifecycleControl`, and
+`CatalogEditor` share row, action, and responsive form hosting. Pending kinds
+retain their domain lifecycles.
 
 ### Chip roles
 
@@ -142,8 +142,8 @@ lifecycles.
 `Chip` owns its private presentation tokens and one geometry, with no density,
 paint, class, or ARIA overrides. `FilterPills` composes single-choice groups:
 choose links or buttons for the whole group and scroll, wrap, or Timeline's
-phone-scroll/`sm`-wrap layout. `undefined` means no selection; `null` can be an
-“All” option. Timeline's closed `linkBehavior="timeline"` preserves pending,
+phone-scroll/`sm`-wrap layout; `undefined` means no selection, `null` an “All”
+option. Timeline's closed `linkBehavior="timeline"` preserves pending,
 repeat-tap, and scroll-restoration behavior.
 
 `SegmentedControl` options own their targets; track padding is not clickable.

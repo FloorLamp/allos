@@ -392,10 +392,20 @@ export default function CalendarFeedConfig({
           >
             <IconRefresh className="h-4 w-4" /> Rotate link
           </button>
+          {/* OWNER RULING 12 (#4978, 2026-09-10). This is the card the ruling
+              is about: `Save feed options` above and this Disable share ONE
+              card, separated only by a `border-t`, so two filled controls sat
+              on a surface whose budget is one. Ruling 3 keeps the Save filled
+              (a commit is never outweighed), so the Disable takes the quiet
+              paint and the red moves to the confirm step below — the #5704
+              shape. It is the only one of this control's seven mounts with a
+              commit on its card; the other six are unchanged. */}
           <IntegrationDisconnectButton
             kind="calendar-feed"
             action={onDisable}
             disabled={busy}
+            besideCommit
+            confirmMessage="The subscribe link stops working right away, and any calendar using it stops updating. You can enable a new feed afterward, with a new link."
           />
         </div>
       </div>

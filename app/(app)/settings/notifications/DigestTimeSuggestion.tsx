@@ -8,6 +8,7 @@ import {
 } from "@/lib/digest-time-suggestion";
 import { formatNotifyTime } from "@/lib/notifications/schedule";
 import type { TimeFormat } from "@/lib/format-date";
+import Button from "@/components/Button";
 import { Notice } from "@/components/Notice";
 import {
   applyDigestTimeSuggestion,
@@ -36,26 +37,22 @@ import {
 // that (`copy.tradeoff`, two clock times, no adjectives) rather than leaving the
 // ranking asserted by styling. The in-digest keyboard carries the same order.
 //
-// THREE WEIGHTS OUT OF TWO BUTTON CLASSES PLUS A LINK (#2255 owner ruling). The app
-// has exactly one non-primary button weight, so the two REAL choices take both of
-// them — `btn` for the mode switch, `btn-ghost` for "Use <proposed>" — and the
-// decline leaves the button vocabulary entirely for the muted text link the Notice
-// family already uses for a decline (`DraftRestoreBanner`'s "Discard"). An exit
-// should not compete visually with the two choices it is an exit from, and minting a
-// third button weight to say so would be a design-system change every surface pays
-// for, driven by one card. It stays a <button>: same dismiss action, focusable and
-// activated by Enter AND Space, which an href-less <a> is not.
+// TWO QUIET PEERS PLUS A LINK (#4978 owner ruling 14, 2026-09-10, superseding
+// #2255's ruling ON THIS MOUNT ONLY). #2255 ranked the two remedies by giving them
+// two different button weights — `btn` for the mode switch, `btn-ghost` for "Use
+// <proposed>" — because the app then had two quiet weights to rank with. The
+// convergence folds ghost into the one secondary and deletes that premise, and the
+// only way to keep a visible ranking would be to fill the mode switch: a loud
+// control on an advisory Notice inside a card with no commit of its own, which is
+// the shape rulings 7 and 11 each declined. So the two remedies are peers, and the
+// ranking lives where it already reads in words — `copy.tradeoff`, two clock times,
+// no adjectives. The in-digest keyboard carries the same order.
 //
-// STILL ON THE RAW CLASSES, DELIBERATELY (#4978 slice 7). Every other control in
-// this subtree moved onto the typed `Button`; these two did not, because the
-// convergence DELETES the premise the #2255 ruling above rests on. That ruling
-// ranks the two remedies by giving them two different button weights — and after
-// the convergence there is exactly one quiet weight, so the only way to keep the
-// ranking visible is to promote the mode switch to the `primary` rank. That is a
-// filled control on an advisory Notice inside a card that has no commit of its
-// own, which is the shape rulings 7 and 11 keep declining. Neither reading is
-// derivable from a recorded ruling, so this is REPORTED on #4978 rather than
-// swept: an unclassified conversion is worse than a leftover.
+// The decline is UNTOUCHED by that ruling and stays outside the button vocabulary,
+// on the muted text link the Notice family already uses for a decline
+// (`DraftRestoreBanner`'s "Discard"): an exit should not compete visually with the
+// two choices it is an exit from. It stays a <button>: same dismiss action,
+// focusable and activated by Enter AND Space, which an href-less <a> is not.
 //
 // Nothing here carries the proposed minute into the write. Each action re-resolves the
 // live suggestion server-side, so a tab left open across a week of drifting statistics
@@ -102,18 +99,14 @@ export default function DigestTimeSuggestionRow({
       <p className="mt-1">{copy.tradeoff}</p>
       <p className="mt-0.5 text-xs opacity-80">{copy.evidence}</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="btn btn-sm"
+        <Button
           disabled={pending}
           data-testid="digest-time-dynamic"
           onClick={() => run(switchDigestToDynamic, { digest_mode: "dynamic" })}
         >
           {copy.dynamicLabel}
-        </button>
-        <button
-          type="button"
-          className="btn-ghost btn-sm"
+        </Button>
+        <Button
           disabled={pending}
           data-testid="digest-time-use"
           onClick={() =>
@@ -125,7 +118,7 @@ export default function DigestTimeSuggestionRow({
           }
         >
           {copy.useLabel}
-        </button>
+        </Button>
         <button
           type="button"
           className="font-medium opacity-70 underline-offset-2 hover:underline disabled:opacity-50"
