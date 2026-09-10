@@ -12,7 +12,7 @@ import JumpRailScrubber, {
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
-import HistoryAddDoor, { HistoryUsualOffers } from "./HistoryAddDoor";
+import { HistoryUsualOffers } from "./HistoryAddDoor";
 import HistoryFoldCard from "./HistoryFoldCard";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
@@ -35,7 +35,6 @@ import {
   getPracticeRhythms,
   getTrackedPractices,
 } from "@/lib/queries/wellness";
-import { practiceFittingWindow } from "@/lib/practice";
 import { getTimelineDates } from "@/lib/timeline";
 import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
@@ -53,10 +52,7 @@ import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
 import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
 import HistoryAddRow from "./HistoryAddRow";
-import {
-  intradayWindowParams,
-  parseIntradayWindow,
-} from "@/lib/intraday-window";
+import { parseIntradayWindow } from "@/lib/intraday-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { solarDay } from "@/lib/sun";
 import {
@@ -75,11 +71,7 @@ import {
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
-import {
-  historyHref,
-  type HistoryHrefParams,
-  type AppRoute,
-} from "@/lib/hrefs";
+import { historyHref, type AppRoute } from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
   HISTORY_DEFAULT_SHOW,
@@ -301,14 +293,14 @@ export default async function HistoryPage(props: {
   // pre-filter and means nothing on any other kind, so a chip that leaves doses must
   // not carry it: a row of chips whose "All" still says `class=medication` is a
   // control that does not do what it is called.
-  // Split from the speller (#4950) so a client surface can take the PARAMS these rules
-  // produce and add to them, rather than re-deriving the rules or editing a finished
-  // URL. `historyHref` stays the one place a history URL is spelled.
-  const chipHrefParams = (next: {
+  // ONE SPELLER AGAIN. #4950 split the params out so the add row could take them and
+  // add a window; #5618 ruling 1 deleted the add row's links, and with them the only
+  // caller that wanted the rules without the URL.
+  const chipHref = (next: {
     kind?: HistoryKind;
     family?: HistoryFamily;
     media?: boolean;
-  }): HistoryHrefParams => {
+  }): AppRoute => {
     const nextKind = "kind" in next ? next.kind : kind;
     // A FAMILY CHIP DROPS THE KIND INSIDE IT. Moving to Clinical while `?kind=dose` was
     // set would produce a URL that contradicts itself (a kind implies its family), and
@@ -316,7 +308,7 @@ export default async function HistoryPage(props: {
     // have navigated back to Doses.
     const nextFamily =
       "family" in next ? next.family : "kind" in next ? undefined : family;
-    return {
+    return historyHref({
       family: nextKind ? undefined : nextFamily,
       kind: nextKind,
       class: nextKind === "dose" ? doseClass : undefined,
@@ -325,14 +317,8 @@ export default async function HistoryPage(props: {
       day,
       everyone,
       show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-    };
+    });
   };
-
-  const chipHref = (next: {
-    kind?: HistoryKind;
-    family?: HistoryFamily;
-    media?: boolean;
-  }): AppRoute => historyHref(chipHrefParams(next));
 
   // THE DAY NAV'S TWO DESTINATIONS. Same day, one step either way, and every other
   // filter the reader has set rides across — walking days inside `?kind=dose` stays
@@ -467,125 +453,101 @@ export default async function HistoryPage(props: {
   // member in a zone ahead of theirs. The server already bounds on the gated profile;
   // this is the client half saying the same thing.
   const maxDates = Object.fromEntries(memberIds.map((id) => [id, today(id)]));
-  // THE OTHER FOUR DOORS' VOCABULARY, read once and only for the kind that is showing
-  // one. Each list is a shared reader the kind's own surface already uses — no fifth
-  // derivation of "what can this profile log".
-  // WHICH KINDS THE ADD DOOR CAN BE (#3958: "Log kinds only"). Clinical, training and
-  // life records are created on their domain surfaces, and sleep arrives from an
-  // integration and is corrected at its source.
-  const addKind =
-    kind === "food" ||
-    kind === "dose" ||
-    kind === "practice" ||
-    kind === "mood" ||
-    kind === "substance" ||
-    kind === "body" ||
-    kind === "symptom" ||
-    kind === "stool"
-      ? kind
-      : null;
+  // WHICH KINDS THE ADD ROW OFFERS (#3958: "Log kinds only"; #4851's presence gate).
+  // Clinical, training and life records are created on their domain surfaces, and sleep
+  // arrives from an integration and is corrected at its source.
+  //
+  // NOT KIND-RESOLVED ANY MORE (#5618 ruling 1). This was `addKind` — the ONE kind the
+  // `?kind=` filter had narrowed to — and every list below was read only for it, because
+  // a chip navigated before any form existed. A chip opens its own form now, so the row
+  // offers every kind at once and the vocabulary is read for all of them. `presentKinds`
+  // is filter-independent by contract (lib/history.ts), which is what makes the add row
+  // on `?kind=substance` identical to All's.
+  const addKinds = canWrite ? historyAddKinds(presentKinds) : [];
+  const offers = (candidate: (typeof addKinds)[number]): boolean =>
+    addKinds.includes(candidate);
   const defaultTime = zonedDateParts(
     getTimezone(actingProfileId),
     new Date()
   ).hhmm;
-  const trackedPractices =
-    canWrite && addKind === "practice"
-      ? getTrackedPractices(actingProfileId)
-      : [];
-  // WHICH PRACTICE THE WINDOW LOOKS LIKE (#4950 item 4), read only when there IS a
-  // window and a practice door to prefill — so no other view of this page pays for it.
-  // Habit, never physiology: `practiceFittingWindow` never sees a heart rate, and a
-  // practice with no rhythm cannot fit, which leaves the picker exactly as it is today.
+  const trackedPractices = offers("practice")
+    ? getTrackedPractices(actingProfileId)
+    : [];
+  // WHICH PRACTICES A WINDOW COULD LOOK LIKE (#4950 item 4). The MATCH moved to the add
+  // row, because the window is the chart's live one now rather than a param a chip
+  // navigated with; what stays here is the read. Only on a day view, where there is a
+  // chart to state a window at all, so no other view of this page pays for it.
   const practiceRhythms =
-    day && chartWindow && trackedPractices.length > 0
+    day && trackedPractices.length > 0
       ? getPracticeRhythms(actingProfileId)
       : null;
-  const windowPractice =
-    day && chartWindow && practiceRhythms
-      ? practiceFittingWindow(
-          trackedPractices.flatMap((practice) => {
-            const rhythm = practiceRhythms.get(practice.identity);
-            return rhythm
-              ? [
-                  {
-                    name: practice.name,
-                    rhythm,
-                    usualDurationMin: practice.previousDurationMin,
-                  },
-                ]
-              : [];
+  const practiceCandidates = practiceRhythms
+    ? trackedPractices.flatMap((practice) => {
+        const rhythm = practiceRhythms.get(practice.identity);
+        return rhythm
+          ? [
+              {
+                name: practice.name,
+                rhythm,
+                usualDurationMin: practice.previousDurationMin,
+              },
+            ]
+          : [];
+      })
+    : [];
+  // THE ADD ROW'S VOCABULARY. Each list is a shared reader the kind's own surface
+  // already uses — no fifth derivation of "what can this profile log" — and each is
+  // read only where its own chip is offered.
+  const addVocabulary = canWrite
+    ? {
+        practices: trackedPractices.map((p) => p.name),
+        substances: offers("substance")
+          ? getProfileSubstanceKeys(actingProfileId).map((key) => ({
+              key,
+              label: substanceDef(key).label,
+            }))
+          : [],
+        // THE SAME VOCABULARY THE BAR OFFERS, in the same ranked order (#857): this
+        // profile's history first, then the curated catalog, then its own customs.
+        // Free text still logs — `logSymptomCore` is the one place a custom key is
+        // minted, so the door never has to guess one.
+        symptoms: offers("symptom")
+          ? [
+              ...new Set([
+                ...getSymptomLogOrder(actingProfileId),
+                ...PICKER_SYMPTOMS.map((entry) => entry.slug),
+                ...getCustomSymptomNames(actingProfileId),
+              ]),
+            ].map((key) => ({ key, label: symptomLabel(key) }))
+          : [],
+        // ONLY ITEMS WITH A LIVE DOSE: an item whose schedule is entirely retired keeps
+        // its history and takes no new rows. THE DOOR IS THE ONE PLACE THAT DECIDES
+        // (#5618): an empty list renders no dose chip, where the deleted `hasAddDoor`
+        // branch drew the chip row again — a chip whose only destination was itself.
+        doseItems: offers("dose") ? loggable : [],
+        doseDefaultTime: defaultTime,
+        // WHAT THE BODY DOMAIN'S ONE FORM NEEDS ON THE DAY BEING READ (#4424
+        // ruling 2) — the same reader the quick-log sheet's measurements overlay
+        // uses, asked for this day instead of today, so the door and the sheet
+        // cannot disagree about which fields a body sitting has.
+        measurements: measurementsQuickEntry(
+          loginId,
+          actingProfileId,
+          day ?? todayStr
+        ),
+        moodDay: {
+          date: day ?? todayStr,
+          label: formatMonthDay(day ?? todayStr, prefs, {
+            today: todayStr,
           }),
-          day,
-          chartWindow
-        )
-      : null;
-  const addVocabulary =
-    canWrite && addKind
-      ? {
-          practices: trackedPractices.map((p) => p.name),
-          substances:
-            addKind === "substance"
-              ? getProfileSubstanceKeys(actingProfileId).map((key) => ({
-                  key,
-                  label: substanceDef(key).label,
-                }))
-              : [],
-          // THE SAME VOCABULARY THE BAR OFFERS, in the same ranked order (#857): this
-          // profile's history first, then the curated catalog, then its own customs.
-          // Free text still logs — `logSymptomCore` is the one place a custom key is
-          // minted, so the door never has to guess one.
-          symptoms:
-            addKind === "symptom"
-              ? [
-                  ...new Set([
-                    ...getSymptomLogOrder(actingProfileId),
-                    ...PICKER_SYMPTOMS.map((entry) => entry.slug),
-                    ...getCustomSymptomNames(actingProfileId),
-                  ]),
-                ].map((key) => ({ key, label: symptomLabel(key) }))
-              : [],
-          // ONLY ITEMS WITH A LIVE DOSE, which is the dose door's own presence rule
-          // (`hasAddDoor` below reads the same list): an item whose schedule is
-          // entirely retired keeps its history and takes no new rows.
-          doseItems: addKind === "dose" ? loggable : [],
-          doseDefaultTime: defaultTime,
-          // WHAT THE BODY DOMAIN'S ONE FORM NEEDS ON THE DAY BEING READ (#4424
-          // ruling 2) — the same reader the quick-log sheet's measurements overlay
-          // uses, asked for this day instead of today, so the door and the sheet
-          // cannot disagree about which fields a body sitting has.
-          measurements: measurementsQuickEntry(
-            loginId,
-            actingProfileId,
-            day ?? todayStr
-          ),
-          moodDay: {
-            date: day ?? todayStr,
-            label: formatMonthDay(day ?? todayStr, prefs, {
-              today: todayStr,
-            }),
-            mood: getMoodOnDate(actingProfileId, day ?? todayStr),
-          },
-          moodShowCalm: isAnxietyScaleRelevant(actingProfileId),
-          // The acting profile's meal-bucket boundaries, so the food form's Meal
-          // follows a stated hour here exactly as it does in the nutrition bar.
-          foodSlotBoundaries: profileFoodSlotBoundaries(actingProfileId),
-        }
-      : null;
-  // WHETHER THIS KIND HAS A DOOR AT ALL — the dose door's own presence rule, which the
-  // other kinds inherit: a picker with nothing in it is worse than no control. A kind
-  // that cannot offer one falls back to the kind chooser rather than to an empty row,
-  // which is what the dose branch already did.
-  const hasAddDoor = addVocabulary
-    ? addKind === "dose"
-      ? addVocabulary.doseItems.length > 0
-      : addKind === "practice"
-        ? addVocabulary.practices.length > 0
-        : addKind === "substance"
-          ? addVocabulary.substances.length > 0
-          : addKind === "symptom"
-            ? addVocabulary.symptoms.length > 0
-            : true
-    : false;
+          mood: getMoodOnDate(actingProfileId, day ?? todayStr),
+        },
+        moodShowCalm: isAnxietyScaleRelevant(actingProfileId),
+        // The acting profile's meal-bucket boundaries, so the food form's Meal
+        // follows a stated hour here exactly as it does in the nutrition bar.
+        foodSlotBoundaries: profileFoodSlotBoundaries(actingProfileId),
+      }
+    : null;
   // THE DAY'S STANDING COMPOSED OFFERS (#4118), read for the day being looked at rather
   // than for a kind (#4310 ruling): the usual is an offer over foods and stacks, never a
   // food, so it leads the add door above the per-kind row instead of sitting inside
@@ -1200,13 +1162,13 @@ export default async function HistoryPage(props: {
               {/* THE ADD LAYER SITS ABOVE THE ROWS IT CREATES (#4918 ruling 2) — under the
           chart, not above it.
 
-          THE ADD DOOR, KIND-RESOLVED. Filtered to a kind it IS that kind's backfill,
-          MOUNTED IN PLACE — the form opens here rather than sending the reader to the
-          domain surface, which is what #3958 asked for and what only the dose kind
-          shipped (#4045 §1). Log kinds only — clinical, training and life records are
-          created on their own surfaces — and never the future: every door here is
-          bounded by today. */}
-              {canWrite ? (
+          ONE ROW OF KIND CHIPS, EACH ONE ITS OWN BACKFILL DOOR (#5618 ruling 1). The
+          form opens from the chip rather than sending the reader to the domain surface
+          (#3958/#4045 §1) AND rather than first filtering the record to that kind:
+          "otherwise the whole page changes when you want to add something". Log kinds
+          only — clinical, training and life records are created on their own surfaces —
+          and never the future: every door here is bounded by today. */}
+              {canWrite && addVocabulary ? (
                 <div
                   className={`mb-2 text-sm ${railGutter}`}
                   data-testid="history-add"
@@ -1217,46 +1179,28 @@ export default async function HistoryPage(props: {
                     offers={usualOffers}
                     date={day ?? todayStr}
                   />
-                  {!hasAddDoor ? (
-                    /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
-                 FIRST, which on a record page is the same act as narrowing to it. It
-                 scrolls rather than wraps for the same reason the filter row does. */
-                    /* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+                  {/* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
                  `historyAddKinds` is the one computation that knows it, so the exemption
                  cannot drift out of step with the rest of the gate. The row itself is a
-                 client component (#4950): it reads the window the chart is showing and
-                 adds it to the params these rules produced. */
-                    <HistoryAddRow
-                      timeFormat={prefs.timeFormat}
-                      /* Only the day view has a chart, so only it has a window and a day for
+                 client component (#4950): it reads the window the chart is showing, and
+                 since #5618 hands it to the form it opens rather than to a URL. */}
+                  <HistoryAddRow
+                    timeFormat={prefs.timeFormat}
+                    /* Only the day view has a chart, so only it has a window and a day for
                    the workouts door to open on (#4950 item 5). */
-                      workoutsDate={day}
-                      chips={historyAddKinds(presentKinds).map((candidate) => ({
-                        kind: candidate,
-                        label: HISTORY_KIND_LABELS[candidate],
-                        params: chipHrefParams({ kind: candidate }),
-                      }))}
-                    />
-                  ) : addVocabulary && addKind ? (
-                    <HistoryAddDoor
-                      kind={addKind}
-                      /* The window the chip carried, already parsed and refused if it was not
-                   one (#4950). It rides the URL rather than client state, so it survives
-                   a reload with the form open. */
-                      window={
-                        chartWindow ? intradayWindowParams(chartWindow) : null
-                      }
-                      /* The practice this profile usually does at that moment — a prefill a tap
-                   confirms, never a claim about what happened. */
-                      defaultPractice={windowPractice}
-                      // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
-                      // this door at all, so the form opens on that day rather than on today —
-                      // the context the redirect used to throw away.
-                      date={day ?? todayStr}
-                      maxDate={todayStr}
-                      vocabulary={addVocabulary}
-                    />
-                  ) : null}
+                    workoutsDate={day}
+                    chips={addKinds.map((candidate) => ({
+                      kind: candidate,
+                      label: HISTORY_KIND_LABELS[candidate],
+                    }))}
+                    // THE DAY THE READER WAS LOOKING AT. Finding a gap is the reason to open
+                    // one of these doors at all, so the form opens on that day rather than
+                    // on today — the context the redirect used to throw away.
+                    date={day ?? todayStr}
+                    maxDate={todayStr}
+                    vocabulary={addVocabulary}
+                    practiceCandidates={practiceCandidates}
+                  />
                 </div>
               ) : null}
             </div>

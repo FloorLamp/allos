@@ -210,7 +210,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(chart.getByTestId("intraday-hr")).toBeVisible();
       const svg = chart.getByTestId("intraday-svg");
       const label = appContent(member).getByTestId("history-add-label");
-      const doses = appContent(member).getByTestId("history-add-dose");
+      const doses = appContent(member).getByTestId("history-add-open-dose");
       const selection = chart.getByTestId("intraday-selection");
 
       const readout = chart.getByTestId("intraday-readout");
@@ -233,7 +233,12 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(label).toHaveText("Add");
       await doses.hover();
       await expect(label).toHaveText("Add");
-      await expect(doses).not.toHaveAttribute("href", /[?&]from=/);
+      // AND THE CHIP IS A DISCLOSURE, NOT A LINK (#5618 ruling 1). It was
+      // `<a href="?kind=dose&from=…">`, so the window rode a navigation that filtered
+      // the record away; it opens the kind's form on the window in place now, which is
+      // asserted end-to-end on the practice chip in this spec's mobile twin.
+      await expect(doses).not.toHaveAttribute("href", /./);
+      await expect(doses).toHaveAttribute("aria-expanded", "false");
 
       await member.mouse.click(x, y);
       await expect(label).toHaveText("Add at 12:20");
@@ -243,8 +248,9 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await doses.hover();
       await expect(label).toHaveText("Add at 12:20");
       expect(await settledBoxes([label, doses])).toEqual(beforeHover);
-      await expect(doses).toHaveAttribute("href", /[?&]from=12%3A20(?:&|$)/);
-      await expect(doses).not.toHaveAttribute("href", /[?&]to=/);
+      // A pinned start arms nothing on its own: the chip stays closed until it is
+      // tapped, and the window it would open on is what the label states.
+      await expect(doses).toHaveAttribute("aria-expanded", "false");
       await expect(selection).toBeVisible();
       expect(Number(await selection.getAttribute("x"))).toBeCloseTo(pinX, 1);
       await expect(readout).toContainText("12:20");
@@ -254,7 +260,6 @@ test.describe("the day view's intraday panel (#1068)", () => {
         x + ((60 * plotWidth) / 1440 / geo.viewBoxWidth) * box.width;
       await member.mouse.click(movedX, y);
       await expect(label).toHaveText("Add at 13:20");
-      await expect(doses).toHaveAttribute("href", /[?&]from=13%3A20(?:&|$)/);
       expect(Number(await selection.getAttribute("x"))).toBeCloseTo(
         pinX + (60 / 1440) * plotWidth,
         1
@@ -295,7 +300,6 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(selection).toHaveCount(0);
       await expect(label).toHaveText(/^Add at \d{2}:\d{2}–\d{2}:\d{2}$/);
       const rangeLabel = await label.textContent();
-      const rangeHref = await doses.getAttribute("href");
       const [zoomBox] = await settledBoxes([svg]);
       await member.mouse.click(
         zoomBox.x + zoomBox.width / 2,
@@ -303,7 +307,6 @@ test.describe("the day view's intraday panel (#1068)", () => {
       );
       await expect(selection).toHaveCount(0);
       await expect(label).toHaveText(rangeLabel!);
-      await expect(doses).toHaveAttribute("href", rangeHref!);
 
       // The finer series replaces the 5-minute line IN PLACE — no loading box ever
       // appears, and the HR layer stays drawn throughout.
