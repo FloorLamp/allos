@@ -9,6 +9,8 @@
   path when the diff cannot demonstrate the behavior.
 - Check a consumer table with `npx tsx scripts/reach.ts <module> <symbol>`: the
   terminals it prints are the rows the table must name, never the nearest one.
+  The merge gate prints that reach as a row for a PR whose diff changes a
+  shared `lib/` derivation; a terminal the table does not name is a NOTE today.
 - Relay evidence exactly and make only conclusions you independently derived.
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
