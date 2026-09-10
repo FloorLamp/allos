@@ -52,16 +52,19 @@ let unique = 0;
  * `medication_courses` row, so `updateHistoricalDose`'s course check passes on its
  * "this item has no courses" arm instead of needing a window seeded around every date.
  */
-function seedMedication(profileId: number): { itemId: number; doseId: number } {
+function seedMedication(
+  profileId: number,
+  obligation: "may" | "must" = "may"
+): { itemId: number; doseId: number } {
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items
            (profile_id, name, active, kind, condition, obligation,
             quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'medication', 'pain', 'may', 20, 1)`
+         VALUES (?, ?, 1, 'medication', 'pain', ?, 20, 1)`
       )
-      .run(profileId, `Ibuprofen ${++unique}`).lastInsertRowid
+      .run(profileId, `Ibuprofen ${++unique}`, obligation).lastInsertRowid
   );
   const doseId = Number(
     db
@@ -165,11 +168,15 @@ interface Arm {
  * audit table starts empty and every row in it afterwards was written by the correction
  * under test.
  */
-function seedArm(back: number, clocks: string[] = ["08:00"]): Arm {
+function seedArm(
+  back: number,
+  clocks: string[] = ["08:00"],
+  obligation: "may" | "must" = "may"
+): Arm {
   const login = createLogin({});
   const profile = createProfile(`lsm-${++unique}`, login.id);
   actAs(login, profile);
-  const { itemId, doseId } = seedMedication(profile.id);
+  const { itemId, doseId } = seedMedication(profile.id, obligation);
   const date = shiftDateStr(today(profile.id), -back);
   const logIds = clocks.map((hhmm) =>
     administer(profile.id, itemId, doseId, date, hhmm)
@@ -410,6 +417,99 @@ describe("Widening the kind widened nothing else", () => {
       occurredAt: `${theirs.date}T08:00:00Z`,
     });
     expect(auditTrail(theirs.profile.id, theirs.itemId)).toEqual([]);
+  });
+
+  // THE ONE REFUSAL ONLY A MEDICATION CAN MEET. `medication_courses` is a medication
+  // table, so a batch that could not reach a medication could never reach this arm. The
+  // amend core refuses a correction that would carry a SCHEDULED dose outside its
+  // course, and the batch has to carry that refusal BY NAME and write no audit row for
+  // it — a batch that recorded an amend it did not make is worse than one that made an
+  // amend it should not have, because the audit would then disagree with the ledger.
+  it("carries the amend core's outside-course refusal and audits nothing for it", async () => {
+    const arm = seedArm(3, ["08:00"], "must");
+    // A course that opened the day AFTER the dose was given and never stopped: the
+    // administration is history and stays amendable, but re-dating it further back
+    // walks it out of every course this item has.
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on, stopped_on)
+       VALUES (?, ?, NULL)`
+    ).run(arm.itemId, shiftDateStr(arm.date, 1));
+    const target = shiftDateStr(arm.date, -10);
+
+    act(arm);
+    expect(
+      await moveLedgerSelectionToDay(batchForm(arm, { to_date: target }))
+    ).toEqual({
+      ok: true,
+      applied: 0,
+      refused: [
+        {
+          row: `dose:${arm.logIds[0]}`,
+          reason: "This medication was not active on that date.",
+        },
+      ],
+    });
+
+    // The row did not move, and nothing claims it did.
+    expect(doseRow(arm.logIds[0])).toEqual({
+      date: arm.date,
+      occurredAt: `${arm.date}T08:00:00Z`,
+    });
+    expect(auditTrail(arm.profile.id, arm.itemId)).toEqual([]);
+  });
+
+  // AND THE PRN ARM OF THAT SAME QUESTION, which does NOT refuse: `updateHistoricalDose`
+  // walks a `may` course's start backward to cover a dose amended before it, and the
+  // batch inherits that because it inherits the core. Pinned rather than discovered:
+  // it is a write to `medication_courses` — a table no supplement has — reachable from
+  // a batch verb for the first time, and the amend core is the only thing deciding it.
+  it("extends a PRN medication's course backward exactly as the ⋯ amend does", async () => {
+    const batch = seedArm(3, ["08:00"], "may");
+    const single = seedArm(3, ["08:00"], "may");
+    const courseOpens = (arm: Arm) =>
+      (
+        db
+          .prepare(
+            "SELECT started_on AS startedOn FROM medication_courses WHERE item_id = ?"
+          )
+          .get(arm.itemId) as { startedOn: string }
+      ).startedOn;
+
+    for (const arm of [batch, single])
+      db.prepare(
+        `INSERT INTO medication_courses (item_id, started_on, stopped_on)
+         VALUES (?, ?, NULL)`
+      ).run(arm.itemId, shiftDateStr(arm.date, 1));
+    const target = shiftDateStr(batch.date, -10);
+
+    act(batch);
+    expect(
+      await moveLedgerSelectionToDay(batchForm(batch, { to_date: target }))
+    ).toEqual({ ok: true, applied: 1, refused: [] });
+
+    act(single);
+    expect(
+      await updateHistoricalDose(
+        fd({
+          id: single.itemId,
+          log_id: single.logIds[0],
+          date: target,
+          time: "08:00",
+        })
+      )
+    ).toEqual({ ok: true });
+
+    expect(courseOpens(batch)).toBe(target);
+    expect(courseOpens(single)).toBe(target);
+    const expected = [
+      {
+        action: AUDIT_ACTIONS.doseLogAmend,
+        target: "the-item",
+        detail: target,
+      },
+    ];
+    expect(auditTrail(batch.profile.id, batch.itemId)).toEqual(expected);
+    expect(auditTrail(single.profile.id, single.itemId)).toEqual(expected);
   });
 
   it("still refuses a SKIPPED medication dose, which no correction core accepts", async () => {
