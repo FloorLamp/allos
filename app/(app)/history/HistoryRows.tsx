@@ -65,10 +65,12 @@ import { isSubstanceFoodGroup } from "@/lib/substance-use";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import {
   HISTORY_KIND_LABELS,
+  historyRowPick,
   type HistoryKind,
   type HistoryRollup,
   type HistoryRow,
 } from "@/lib/history-format";
+import { DayPickBox } from "@/components/DaySelection";
 import type { AppRoute } from "@/lib/hrefs";
 import TimelineFilterLink, {
   useHistoryFoldNavigate,
@@ -324,6 +326,7 @@ export default function HistoryRows({
   subjectNames,
   rowClassName = "",
   showGlyphs = true,
+  selectionSubjectId,
 }: {
   rows: HistoryRow[];
   /**
@@ -369,6 +372,12 @@ export default function HistoryRows({
    * could be any kind.
    */
   showGlyphs?: boolean;
+  /**
+   * WHOSE rows a selection may pick, on a surface that mounts one (#5618 ruling 4) —
+   * the day view, and one subject, because one batch names one `profile_id`. Absent on
+   * the feed, which spans many days and therefore has no day for a batch to name.
+   */
+  selectionSubjectId?: number;
 }) {
   const prefs = useFormatPrefs();
   const confirm = useConfirm();
@@ -404,6 +413,15 @@ export default function HistoryRows({
   // control on the rows that carry nothing.
   const hasPanel = (row: HistoryRow) =>
     (row.detailItems?.length ?? 0) > 0 || (row.linkedRefs?.length ?? 0) > 0;
+
+  // WHICH ROWS A SELECTION MAY PICK, asked through the one predicate the server also
+  // counted with (`historyRowPick`) and gated by the same write access the ⋯ is gated
+  // by — a box on a row this login may not write would be an affordance the action
+  // refuses.
+  const pick = (row: HistoryRow) =>
+    selectionSubjectId !== undefined && writable.has(row.profileId)
+      ? historyRowPick(row, selectionSubjectId)
+      : null;
 
   // AND SO IS "TODAY" — the row's subject decides how far forward its date field
   // reaches, for the same reason its zone decides what a wall clock means.
@@ -824,6 +842,7 @@ export default function HistoryRows({
 
   const renderRow = (row: HistoryRow) => {
     const Glyph = KIND_GLYPH[row.kind];
+    const pickable = pick(row);
     const subject = subjectNames[row.profileId];
     return (
       <Fragment key={row.id}>
@@ -852,6 +871,17 @@ export default function HistoryRows({
             data-testid="history-row-content"
             className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
           >
+            {/* THE PICK BOX (#5618 ruling 4), on the rows the ledger's three verbs can
+                actually reach and gated by the SAME write question the ⋯ is gated by.
+                It renders nothing at all outside selection mode, so the row grammar is
+                unchanged for every reader who never taps Select. */}
+            {pickable ? (
+              <DayPickBox
+                kind={pickable.kind}
+                id={pickable.id}
+                label={`Select ${menuName(row)}`}
+              />
+            ) : null}
             <LoggedEventRow
               icon={
                 showGlyphs ? (
