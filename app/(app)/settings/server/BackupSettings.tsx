@@ -318,7 +318,7 @@ export default function BackupSettings({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={save} disabled={busy}>
+        <Button onClick={save} disabled={busy} variant="primary">
           Save
         </Button>
         <Button onClick={runNow} disabled={busy}>

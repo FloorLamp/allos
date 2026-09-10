@@ -69,7 +69,7 @@ export default function PublicUrlSettings({
             className="input"
           />
         </div>
-        <Button onClick={save} disabled={status.pending}>
+        <Button onClick={save} disabled={status.pending} variant="primary">
           Save
         </Button>
       </div>
