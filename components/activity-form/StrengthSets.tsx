@@ -81,6 +81,16 @@ import type { SetFill } from "./useActivityParts";
 
 // The four set-row steppers share one frame; only the border says whether the field
 // is what a stuck change is waiting on.
+// WHAT A WARMUP SET IS EXCLUDED FROM (#5726, #5300 rule 4). This used to be a standing
+// paragraph under EVERY exercise's set grid — a two-exercise workout stated it twice,
+// with no set marked W. It is mechanics copy about ONE control, so it rides that
+// control's own tooltip: the W toggle names what it does and what that costs, in one
+// string, reachable by pointer, keyboard and touch at every width (#3970, #4511). The
+// set-column headings row cannot hold it — below `sm` that row carries only the value
+// schema (#1612), so a glyph there would state the fact nowhere on a phone.
+const WARMUP_MECHANIC =
+  "warmup sets do not count toward volume or target markers";
+
 const fieldBorder = (blocked: boolean) =>
   blocked ? blockedField : "border-black/10 dark:border-white/10";
 
@@ -1434,7 +1444,8 @@ export default function StrengthSets({
                     )}
                     {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
-                set (both sides of a per-side set share it).
+                set (both sides of a per-side set share it). Its label SAYS that
+                exclusion (#5726) — see WARMUP_MECHANIC at the top of the file.
 
                 A TAB STOP SINCE #4511, where it was `tabIndex={-1}`. It is not
                 pointer sugar the way the RPE steppers above are: those step a
@@ -1444,7 +1455,9 @@ export default function StrengthSets({
                 keyboard cannot reach is not a control. The bare "W" now says
                 what it does on hover and on keyboard focus. */}
                     <ControlTooltip
-                      label={s.warmup ? "Unmark warmup set" : "Mark warmup set"}
+                      label={`${
+                        s.warmup ? "Unmark warmup set" : "Mark warmup set"
+                      } — ${WARMUP_MECHANIC}`}
                     >
                       {(anchor) => (
                         <button
@@ -1543,7 +1556,10 @@ export default function StrengthSets({
               ) : (
                 <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
               )}
-              {targetStatus === "missed" ? "Below target" : "Target met"}
+              {/* ONE SPELLING (#5726). The recent-session rows (ExerciseHistory), the
+                  recap (SessionRecapView) and the part rows (ActivityPartRows) all say
+                  "Missed target" for this same status, and they share a screen. */}
+              {targetStatus === "missed" ? "Missed target" : "Target met"}
             </span>
           )}
           {total > 0 && (
@@ -1553,11 +1569,6 @@ export default function StrengthSets({
           )}
         </span>
       </div>
-      {showGrid && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Warmup sets do not count toward volume or target markers.
-        </p>
-      )}
       {badDuration && (
         <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
           Enter hold time as m:ss (e.g. 1:30) or seconds (e.g. 90).
