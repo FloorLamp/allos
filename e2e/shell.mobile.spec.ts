@@ -720,7 +720,22 @@ test("the closed activity editor is not in the shell's initial JavaScript (#5206
 // AND IT RUNS ON THE PRE-SPLIT TREE TOO, which is what makes it a comparison rather
 // than a number. On a tree that ships the editor eagerly there is nothing to starve,
 // so the cold arm reports itself not applicable and the other two are measured
-// exactly as they are here — same runner, same run, same code.
+// exactly as they are here — same runner, same spec, same code. Taken that way, with
+// the split's two files reverted and nothing else changed (medians of five, three for
+// the load):
+//
+//                                  pre-split        this tree
+//   shell initial JS           46 chunks / 2,304,384 B   43 / 2,068,830 B
+//   editor code in that set    219,976 B (shared)        none — 118,926 B on demand
+//   throttled shell load       8,314 ms                  7,898 ms   (8,278–8,442 vs 7,789–7,910)
+//   first open, throttled      296 ms                    283 ms     (292–308 vs 264–337)
+//   repeat open, throttled     212 ms                    211 ms
+//
+// FIRST OPEN DID NOT MOVE, in either direction: 296 → 283 ms sits inside the two
+// spreads, which overlap. What did move is the load — 416 ms off becoming interactive
+// on a slow phone, and the two spreads there do NOT overlap — and that is the whole
+// deliverable. The repeat opens agreeing to a millisecond across the two trees is the
+// check that the arms are measuring the same thing on both sides.
 test.describe("the throttled phone's first open (#5206)", () => {
   test.use({ serviceWorkers: "block" });
 
@@ -894,10 +909,12 @@ test.describe("the throttled phone's first open (#5206)", () => {
     //   warmed 263 / 283 ms · resident 225 / 211 ms · cold 1106 / 1173 ms
     //
     // So the warm costs 38–72 ms against having shipped the form eagerly, and buys
-    // 843–890 ms on a slow phone. THAT IS THE WHOLE CASE FOR IDLE WARMING, and the
-    // reason the answer is not an unconditional preload: a preload would put those
-    // bytes back on every visit, including the ones that never open the editor,
-    // which is the cost this change exists to remove.
+    // 843–890 ms on a slow phone: starved, a first open is 1,173 ms against the
+    // pre-split tree's 296 ms, and that WOULD be a regression this issue refuses.
+    // THAT IS THE WHOLE CASE FOR IDLE WARMING, and also the reason the answer is not
+    // an unconditional preload: a preload puts those bytes back on every visit,
+    // including every visit that never opens the editor, which is the cost this
+    // change exists to remove.
     if (shipsEditorEagerly) return;
 
     // The change, stated as a budget: a warmed first open is indistinguishable from
