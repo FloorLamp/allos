@@ -232,7 +232,7 @@ describe("isCrossProfileSqlModule: registry membership (fixture-pinned)", () => 
     // Suffix match is anchored on the full registered path, so a same-basename file
     // under a different directory does NOT ride the registration.
     expect(match("app/(app)/some/other/records.ts")).toBe(false);
-    expect(match("lib/queries/medical.ts")).toBe(false);
+    expect(match("lib/queries/medical/records.ts")).toBe(false);
     expect(match("lib/household.ts")).toBe(false);
   });
 

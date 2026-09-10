@@ -1,15 +1,11 @@
-import { activityComponentSportNames } from "./activity-icon";
 import {
   eventDetail,
   eventTitle,
   type EndurancePlanDiscipline,
 } from "./endurance-plan";
-import {
-  trainingTabHref,
-  trainingActivityPageHref,
-  trainingEventPageHref,
-} from "./hrefs";
+import { trainingTabHref, trainingEventPageHref } from "./hrefs";
 import { isDraftActivityRow } from "./activity-draft";
+import { activityWindowEvent } from "./intraday";
 import { trainingPhotoCounts } from "./training-photo-write";
 import { shiftDateStr } from "./date";
 import { db, today } from "./db";
@@ -434,32 +430,18 @@ function collectEvents(
       pushLimited(
         events,
         {
-          id: `activity:${a.id}`,
-          date: a.date,
-          category: "activity",
-          title: a.title,
-          subtitle: compactList(meta, 4),
-          detail: a.notes,
-          href: trainingActivityPageHref(
-            a.id,
+          // The window half — title, destination, glyph and the window itself — is the
+          // ONE composition the chart's own day gather also builds (lib/intraday.ts).
+          // What the feed adds on top of it is what only a listed row needs.
+          ...activityWindowEvent(
+            a,
             options.subjectQualifiedHrefs ? profileId : undefined
           ),
-          sortTime: a.start_time,
-          // The raw local window inputs for the intraday panel's block (#1068) —
-          // resolved through the canonical activityWindow(), so an activity with no
-          // start (or no derivable end) simply has no block.
-          clockWindow: {
-            date: a.date,
-            start_time: a.start_time,
-            end_time: a.end_time,
-            duration_min: a.duration_min,
-          },
+          subtitle: compactList(meta, 4),
+          detail: a.notes,
           meta: a.source ? [a.source] : undefined,
           detailItems: setSummaries.get(a.id),
           media: trainingPhotos().byActivity.get(a.id) ?? 0,
-          iconType: a.type,
-          iconTitle: a.title,
-          iconSportNames: activityComponentSportNames(a.components),
         },
         options
       );

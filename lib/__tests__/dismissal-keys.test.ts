@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
+  ALSO_FOR_OFFER_PREFIX,
+  alsoForOfferKey,
   biomarkerDismissalKey,
   biomarkerFlagDismissalKey,
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
   preventiveDismissalKey,
 } from "../dismissal-keys";
+import { dismissalKeyEntryFor } from "../dismissal-classes";
 
 describe("preventiveDismissalKey (issue #1024)", () => {
   it("reproduces the item/nudge `<kind>:<ruleKey>` signal by resolving the rule kind", () => {
@@ -166,5 +169,42 @@ describe("immunizationCodesLosingBacking", () => {
 
   it("ignores an unknown slug (it credits no series)", () => {
     expect(immunizationCodesLosingBacking("made_up_shot", [])).toEqual([]);
+  });
+});
+
+// ── The shared bottle's "Also for" offer key (#5230) ────────────────────────────
+//
+// THE REGISTRY'S TEETH CHECK PRESENCE, NOT SHAPE: `dismissal-classes.test.ts` asserts
+// that every namespace is classified and that the shape string is non-empty, and nothing
+// compares the declared class against what the builder actually mints. A wrong class
+// therefore ships SILENTLY, which is why this pins the builder and the class together.
+describe("alsoForOfferKey (#5230)", () => {
+  // Rules out the shipped `id-keyed` registration. The tail is a DERIVED IDENTITY, not
+  // an autoincrement id: ruling 7 says correcting a bottle's name brings the declined
+  // offer back, and an id-keyed decline would silence it forever. `anchored` is the
+  // class whose own definition is "a new occurrence mints a new key".
+  it("is registered anchored, not id-keyed", () => {
+    expect(
+      dismissalKeyEntryFor(alsoForOfferKey(42, ["ibuprofen"]))
+    ).toMatchObject({ prefix: ALSO_FOR_OFFER_PREFIX, keyClass: "anchored" });
+  });
+
+  // …and the builder actually behaves that way, so the class is a description rather
+  // than a claim. Rules out a key that carries the bottle alone.
+  it("mints a new key when the detected identity changes, and the same one when it does not", () => {
+    const tylenol = alsoForOfferKey(42, ["acetaminophen"]);
+    expect(alsoForOfferKey(42, ["ibuprofen"])).not.toBe(tylenol);
+    expect(alsoForOfferKey(42, ["acetaminophen"])).toBe(tylenol);
+    // A different bottle is still a different offer.
+    expect(alsoForOfferKey(43, ["acetaminophen"])).not.toBe(tylenol);
+  });
+
+  // The tail is always present, and its order is the builder's promise: two callers
+  // deriving the same slugs in two orders must not write and read two different keys.
+  it("sorts the identity tail and spells the empty list", () => {
+    expect(alsoForOfferKey(42, ["ibuprofen", "acetaminophen"])).toBe(
+      alsoForOfferKey(42, ["acetaminophen", "ibuprofen"])
+    );
+    expect(alsoForOfferKey(42, [])).toBe("also-for:42-none");
   });
 });
