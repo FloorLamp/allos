@@ -36,7 +36,6 @@ import { ceilingWindowEndMinute, redoseNoticeDecision } from "../prn-redose";
 import { redoseNoticeMessage } from "../redose-format";
 import { formatGivenAtNoticeTime } from "../administration-format";
 import { getProfileSetting, setProfileSetting, getTimezone } from "../settings";
-import { parseUtcSql } from "../date";
 import { now as clockNow } from "../clock";
 import { createLogger } from "../log";
 import type { NotificationAction } from "./types";
@@ -87,37 +86,36 @@ export async function runRedoseNotices(
   let failed = false;
   for (const item of items) {
     const fam = families.get(item.id);
-    const arming = fam ?? {
-      // A notice item is always an active med, so it's always in the family map;
-      // this per-item fallback only guards a race with a just-paused item.
-      ...getRedoseArmingState(profileId, item.id, nowMinute),
-      latestItemId: null as number | null,
-      latestItemName: null as string | null,
-      minConfirmedMax: null as number | null,
-      exposure: null,
-    };
+    // A notice item is always an active med, so it's always in the family map; this
+    // per-item read only guards a race with a just-paused item. IT ANSWERS IN THE SAME
+    // UNION (#4686): this used to spread a differently-shaped per-item state and let
+    // `??` decide, which is the collapse this issue exists to remove — and the exact
+    // path where a planted one-line deletion once turned a suppression into a live
+    // "your minimum interval has passed" push with a Log-dose button, CI green.
+    const armed = fam ?? getRedoseArmingState(profileId, item.id, nowMinute);
+    const arming = armed.arming;
     const markerRaw = getProfileSetting(profileId, redoseMarkerKey(item.id));
     const notifiedAdministrationId = markerRaw
       ? Number(markerRaw) || null
       : null;
 
+    const minConfirmedMax = fam?.minConfirmedMax ?? null;
     const effectiveMax =
-      arming.minConfirmedMax != null
-        ? Math.min(item.maxDailyCount, arming.minConfirmedMax)
+      minConfirmedMax != null
+        ? Math.min(item.maxDailyCount, minConfirmedMax)
         : item.maxDailyCount;
     const decision = redoseNoticeDecision({
       minIntervalHours: item.minIntervalHours,
       maxDailyCount: effectiveMax,
-      latestAdministrationId: arming.latestId,
-      latestGivenAt: parseUtcSql(arming.latestGivenAt),
-      countInWindow: arming.countInWindow,
+      arming,
+      countInWindow: armed.countInWindow,
       now,
       notifiedAdministrationId,
       tickMinutes,
       // The amount-aware ceiling (#1854): with a confirmed mg/day max and
       // parseable snapshotted amounts, 3 × 800 mg suppresses at 2400 mg even
       // though "3 of 6 doses" reads calm — same verdict every other surface uses.
-      exposure: arming.exposure,
+      exposure: fam?.exposure ?? null,
     });
     if (decision.kind !== "fire") continue;
 
@@ -126,7 +124,7 @@ export async function runRedoseNotices(
       amount: item.amount,
       product: item.product,
       sinceHours: decision.sinceHours,
-      lastClock: formatGivenAtNoticeTime(tz, arming.latestGivenAt, date),
+      lastClock: formatGivenAtNoticeTime(tz, decision.lastGivenAt, date),
       countInWindow: decision.countInWindow,
       maxDailyCount: decision.maxDailyCount,
       // The same basis the ceiling was judged on (#1854): the body reads
@@ -135,8 +133,10 @@ export async function runRedoseNotices(
       // When a same-ingredient SIBLING's dose armed the clock (#1027), the body
       // names it on the last-dose line instead of implying this item.
       sinceName:
-        arming.latestItemId != null && arming.latestItemId !== item.id
-          ? arming.latestItemName
+        arming.kind === "placed" &&
+        arming.itemId != null &&
+        arming.itemId !== item.id
+          ? arming.itemName
           : null,
     });
     // This notice's button is bound to the administration that armed THIS window.

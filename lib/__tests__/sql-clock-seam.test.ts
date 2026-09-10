@@ -175,7 +175,7 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "shared_supplies.updated_at — an audit stamp.",
   },
-  "lib/queries/integrations.ts": {
+  "lib/queries/integrations/decisions.ts": {
     count: 1,
     why: "import_pair_decisions.created_at — audit stamp on a decision keyed by pair_signature.",
   },

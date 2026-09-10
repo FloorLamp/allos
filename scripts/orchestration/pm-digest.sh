@@ -198,7 +198,7 @@ TMP="$TMP" SINCE="$SINCE" SINCE_DAY="$SINCE_DAY" NOW="$NOW" PROC_PATHS="$PROC_PA
   const lanes=heads.filter(b=>/\d{4}/.test(b));
   console.log(`\n  Lane branches on origin (${lanes.length}) — in flight or banked:`);
   console.log("  "+(lanes.join("  ")||"(none)"));
-  console.log("\n  Priority state: the Ladder issue #4769 (rungs, slices, landing order).");
+  console.log("\n  Priority state: the pinned Ladder issue (rungs, slices, landing order).");
 '
 
 # Is main green right now? One function decides for both surfaces (the merge

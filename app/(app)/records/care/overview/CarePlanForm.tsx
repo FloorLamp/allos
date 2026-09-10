@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
@@ -304,9 +305,9 @@ export default function CarePlanForm({
           </SubmitButton>
         </div>
         {editing && onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
+          // Quiet beside the form's filled commit (ruling 6, #4978); the drop to
+          // the control box's 12px ends the "Cancel larger than Add" inversion.
+          <Button onClick={onDone}>Cancel</Button>
         )}
       </div>
     </form>

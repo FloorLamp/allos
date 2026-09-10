@@ -341,7 +341,7 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       // already write this exact marker, and `scheduledStanding` turns it into
       // "partial". Nothing new renders; the run simply stops lying.
       expect(isTruncatedSyncEvent(ev)).toBe(true);
-      expect(eventVerdict(ev)).toEqual({ label: "Partial", tone: "caution" });
+      expect(eventVerdict(ev)).toEqual({ label: "Partial", tone: "warn" });
       // The Review line names the half that failed and carries the upstream reason,
       // rather than the shared default's page-cap/rate-limit sentence, which would be
       // false here.

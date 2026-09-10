@@ -195,14 +195,18 @@ describe("goalBarClass", () => {
     expect(goalBarClass(0)).toBe("bg-brand-600");
     expect(goalBarClass(40)).toBe("bg-brand-600");
     expect(goalBarClass(100)).toBe("bg-emerald-600");
-    // A blown dated deadline short of target is the only rose.
+    // A blown dated deadline short of target is the only rose. The light step is
+    // a shade darker than the `bg-rose-500` this shipped with (#5187): the bar is
+    // a graphical object and rose-500 sat at 3.49:1 on the Botanical light
+    // surface while amber-500 sat at 1.99:1, so the shared fill takes a per-theme
+    // pair that clears 3:1 on both.
     expect(
       goalBarClass(80, {
         createdAt: "2026-01-01",
         targetDate: "2026-02-01",
         today: "2026-06-01",
       })
-    ).toBe("bg-rose-500");
+    ).toBe("bg-rose-600 dark:bg-rose-500");
     // Behind a live deadline → amber.
     expect(
       goalBarClass(20, {
@@ -210,7 +214,7 @@ describe("goalBarClass", () => {
         targetDate: "2026-07-01",
         today: "2026-04-01",
       })
-    ).toBe("bg-amber-500");
+    ).toBe("bg-amber-700 dark:bg-amber-500");
   });
 });
 

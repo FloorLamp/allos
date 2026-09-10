@@ -86,17 +86,18 @@ layer: Header/standard Cell 16→20px, compact Cell 8→20px, Action 8→12px.
 
 ## 3. Control grammar
 
-Use typed `Button` for ordinary actions: secondary by default, `primary` for a
-commit, `danger` for destructive paint. No ghost, size, class, or style variants.
-`DestinationActionLink` composes navigation separately. Raw `btn` / `btn-ghost` /
-`btn-sm` / `btn-danger` mounts remain during migration to typed controls; do not
-remove their CSS until callers are gone.
+Use typed `Button`: secondary by default, `primary` for a commit, `danger` for
+destructive paint, one ghost-only `dashed` shape. No size or class axis.
+`DestinationActionLink` composes navigation. Raw `btn` families retire with
+their last caller.
 
-Each form has one primary commit (`SubmitButton variant="primary"`). A submit
-that only filters, searches, or changes a read range stays secondary. Per-row
-controls, including `DoseConfirmButton`, are row affordances rather than repeated
-primaries. Rare and destructive row actions use `OverflowMenu`; destructive
-items confirm. [Overlays](overlays.md) owns the responsive action-sheet host.
+One loud control per surface: a form's commit (`SubmitButton
+variant="primary"`), a card's commit, a row's single action. Destructive paint
+is loud. Peers share no rank; a bulk action over rows is loud. A fold's door,
+app-shell chrome, commits that can stand open together, read-narrowing submits,
+repeated-row destructive actions, a warning's acknowledge-or-silence action, and
+the `DoseConfirmButton` row affordance take no rank. Rare or destructive row
+actions confirm through `OverflowMenu`, hosted by [Overlays](overlays.md).
 
 The shared `--control-box` is 34px at every viewport, with padding derived from
 `1lh` and a reserved border. It covers chips, the button family, typed fields,
@@ -151,8 +152,8 @@ the accessible names.
 
 ## 4. Affordance grammar
 
-`CreateAction` owns canonical “Add X” trigger copy, distinct grammatical dialog
-titles, and housing. Pass `{ kind, control, available? }` to `PageHeader` or
+`CreateAction` owns “Add X” trigger copy and housing; dialogs take their trigger’s
+phrase. Pass `{ kind, control, available? }` to `PageHeader` or
 `TabFirstPage` for page creates, `SectionCreateHeader` for section creates, or the
 specialized intake context's existing action cell. Unavailable declarations
 remove host chrome. Forms and `AddEntryPanel` keep their own semantics; the dock

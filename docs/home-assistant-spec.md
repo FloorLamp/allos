@@ -91,7 +91,7 @@ names on the display. Explain that visibility and revocation during setup.
 
 Accept `{ doseId, date, action: "taken" | "skipped" }` and require action
 permission. Call `markDoseTaken` or `markDoseSkipped` in
-[shared adherence writes](../lib/queries/intake/adherence.ts), passing the token's
+[shared dose-status writes](../lib/queries/intake/dose-status.ts), passing the token's
 profile and the required write provenance.
 
 Return the shared typed outcome and render it honestly: a stale, inactive, or

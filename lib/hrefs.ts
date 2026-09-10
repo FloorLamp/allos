@@ -437,11 +437,37 @@ export function dayHistoryAddHref(
 }
 
 // The Data hub's deep-linkable sections. Source of truth for the union — the page
-// (`app/(app)/data/page.tsx`) imports it, so a section rename is one edit and
-// every caller of `dataSectionHref` is re-checked by the compiler (typedRoutes
-// validates the `/data` path but NOT the `?section=` value — this union does).
-export const DATA_SECTIONS = ["import", "review", "manage"] as const;
+// (`app/(app)/data/page.tsx`) imports it AND parses `?section=` through
+// `parseDataSection` below, so a section rename is one edit and every caller of
+// `dataSectionHref` is re-checked by the compiler (typedRoutes validates the
+// `/data` path but NOT the `?section=` value — this union does).
+//
+// THE PARSER LIVES HERE, NOT ON THE PAGE (#4541). It used to be a private
+// `SECTIONS` on the page, which made the page a SECOND declaration of this union
+// — and the two drifted: this one listed three sections while the page served
+// five, so `dataSectionHref("coverage")` was a type error against a section the
+// hub actually renders and 27 links hand-built the literal the helper owns.
+// A union whose parser sits somewhere else is a union anyone can silently
+// re-declare; keeping both together is what `NUTRITION_TABS` already does, and
+// `DATA_TAB_FIRST_PAGE.tabs` is `satisfies`-bound to this type so the tab strip
+// cannot name a section that is not here either.
+export const DATA_SECTIONS = [
+  "import",
+  "review",
+  "coverage",
+  "manage",
+  "trash",
+] as const;
 export type DataSection = (typeof DATA_SECTIONS)[number];
+
+export function parseDataSection(
+  value: string | string[] | undefined
+): DataSection {
+  const first = Array.isArray(value) ? value[0] : value;
+  return DATA_SECTIONS.includes(first as DataSection)
+    ? (first as DataSection)
+    : "import";
+}
 
 // Link to a section of the Data hub, with an optional in-page hash
 // (e.g. "paste-import"). `section` is union-typed so a typo can't strand a caller.

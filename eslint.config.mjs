@@ -362,6 +362,79 @@ const BARE_NOTES_BAN = [
     "Render free-text notes through <NotesText notes={…} /> (components/NotesText.tsx) so they wrap and keep their line breaks (#794).",
 }));
 
+// ── The JSX-attribute scanners (#5347 slice 3) ──────────────────────────────
+//
+// The same bar as slice 2: a guard moved here only when a shipped defect stands
+// behind the shape it bans. The consolidation censuses, the icon-button pair and
+// the guards a type already carries (typed routes) were deleted instead.
+
+// #2535 — `aria-pressed` is a toggle-BUTTON state. An <a href> is role="link",
+// which does not support it, so assistive technology announces NO selected state:
+// four URL-state selectors shipped that way before SegmentedControl gained a link
+// binding. A link that is the current view carries aria-current.
+// (was lib/__tests__/link-aria-pressed-scan.test.ts)
+const LINK_ARIA_PRESSED_BAN = {
+  selector:
+    "JSXOpeningElement[name.name=/^(?:a|Link)$/] > JSXAttribute[name.name='aria-pressed']",
+  message:
+    'aria-pressed is a toggle-button state and a link is role="link", so the selected state is announced to nobody (#2535) — use aria-current, or <SegmentedControl> with an href per option.',
+};
+
+// #3375/#3729 — information that exists only on hover does not exist on a phone:
+// a `title=` renders nothing on touch and a non-interactive element cannot be
+// focused. Explanatory text goes through a touch-reachable primitive
+// (InfoTooltipIcon, ControlTooltip) and a control's name through aria-label plus
+// an sr-only span. Intrinsic elements, plus the components that hand `title`
+// straight to their anchor. (was lib/__tests__/raw-title-boundary.test.ts, which
+// also resolved a renamed import; this keys on the tag name as written)
+const RAW_TITLE_BAN = {
+  selector:
+    "JSXOpeningElement[name.name=/^(?:[a-z]|(?:Link|DestinationLink|DestinationActionLink|StandingDestinationLink|CardFootnote)$)/] > JSXAttribute[name.name='title']",
+  message:
+    "A title= attribute is hover-only, so its text does not exist on a phone (#3375) — explain through InfoTooltipIcon / ControlTooltip, and name a control with aria-label plus an sr-only span (#3729).",
+};
+
+// #3677 — 47 raw <details> each snapped open. components/Disclosure.tsx is the one
+// that renders the element: it carries the continuity motion (#3676) and the
+// marker suppression, and is exempted below. (was lib/__tests__/disclosure-owner-scan.test.ts)
+const RAW_DETAILS_BAN = {
+  selector: "JSXOpeningElement[name.name='details']",
+  message:
+    "A raw <details> snaps open — render <Disclosure> (components/Disclosure.tsx), which carries the continuity motion (#3677).",
+};
+const DISCLOSURE_OWNER = "components/Disclosure.tsx";
+
+// #5181 — a command inside a role="menu" panel that carries no menu role is not
+// counted or announced as an item of it: the episode kebab read as "menu, 1 item"
+// over three. A panel is <OverflowMenu> (which hands role="menu" to its
+// AnchoredPanel) or an element declaring the role itself; the population is the
+// button / a / Link elements written among its CHILDREN in the same file — not its
+// trigger prop, and not a wrapper component mounted there, which the render tier
+// holds. NOTE the nesting: esquery honours `:has(> X)` one level at a time, so
+// `:has(> A:has(> B))` is the spelling; `:has(> A > B)` matches nothing.
+// (was lib/__tests__/menu-item-role-scan.test.ts)
+const MENU_PANEL =
+  ":matches(JSXElement[openingElement.name.name='OverflowMenu'], JSXElement:has(> JSXOpeningElement:has(> JSXAttribute[name.name='role']:has(> Literal[value='menu']))))";
+const MENU_ITEM_ROLE_BAN = {
+  selector: `${MENU_PANEL} > :not(JSXOpeningElement, JSXClosingElement) JSXOpeningElement[name.name=/^(?:button|a|Link)$/]:not(:has(> JSXAttribute[name.name='role']:has(> Literal[value=/^menuitem(?:checkbox|radio)?$/])))`,
+  message:
+    'A command inside a role="menu" panel announces itself as an item of it — add role="menuitem" (menuitemcheckbox / menuitemradio for a stateful one), or a screen reader does not count it (#5181).',
+};
+
+// #4924 — a recharts curve written as a literal. `type="monotone"` sat at nine
+// call sites across six cards, so five weigh-ins drew the invented spline a
+// ninety-point series gets; the curve is the scaffold's `chartCurve`. An axis'
+// type="number" / "category" is a different prop of the same name and stays
+// silent. (was the curve half of lib/__tests__/chart-scaffold-scan.test.ts; its
+// dash, tooltip and recharts-importer registry halves had no catch and are gone)
+const CHART_CURVES =
+  "basis|basisClosed|basisOpen|bumpX|bumpY|cardinal|catmullRom|linear|linearClosed|monotone|monotoneX|monotoneY|natural|step|stepAfter|stepBefore";
+const RAW_CURVE_BAN = {
+  selector: `JSXAttribute[name.name='type'] > Literal[value=/^(?:${CHART_CURVES})$/]`,
+  message:
+    "A line's curve is chart vocabulary decided once — pass type={chartCurve} from components/chart-scaffold.tsx, not a literal (#4924).",
+};
+
 const UI_SYNTAX = [
   ...MUTED_TEXT_CONTRAST,
   BORDER_SLATE_BAN,
@@ -369,7 +442,61 @@ const UI_SYNTAX = [
   UNWRAPPED_TABLE_BAN,
   ...EMPHASIS_SPACING,
   ...BARE_NOTES_BAN,
+  LINK_ARIA_PRESSED_BAN,
+  RAW_TITLE_BAN,
+  RAW_DETAILS_BAN,
+  MENU_ITEM_ROLE_BAN,
+  RAW_CURVE_BAN,
 ];
+
+// #544/#551 — a loose `flag !== "normal"` compare sorted the good "immune" titer
+// to the top as if abnormal, and the same shape pushed it as a care-tier
+// notification. Notability routes through isOutOfRange / isNonOptimal
+// (lib/reference-range); the compare is banned in either order on any
+// flag-named value. lib/reference-range/qualitative.ts MAPS parsed results onto
+// flag values rather than deciding notability, and is exempted below.
+// (was lib/__tests__/flag-notability.test.ts)
+const FLAG_NORMAL_BAN = {
+  selector:
+    "BinaryExpression[operator=/^(?:===|!==|==|!=)$/]:matches([right.value='normal']:matches([left.name=/flag$/i], [left.property.name=/flag$/i]), [left.value='normal']:matches([right.name=/flag$/i], [right.property.name=/flag$/i]))",
+  message:
+    'Do not decide notability by comparing a flag to "normal" — a neutral flag such as "immune" is miscategorized (#544). Route through isOutOfRange / isNonOptimal from @/lib/reference-range.',
+};
+const FLAG_VALUE_MAPPER = "lib/reference-range/qualitative.ts";
+
+// #454 — every outbound Telegram obligation (length and keyboard limits, the
+// "[Name] " attribution prefix, escaping, delivery accounting) is owned by
+// lib/notifications/telegram.ts, so it alone imports the three raw send/edit
+// primitives. A callback handler that edited a message directly is how the prefix
+// was dropped (#377), and a builder reaching the wire is how the 4096-char cap was
+// missed (#379). scripts/reach-graph.ts names the same three as SENDERS for reach
+// derivation — a different question, not a second copy of this ban.
+// (was the import half of lib/__tests__/telegram-chokepoint.test.ts; the raw
+// call() is module-private, so the module system carries that half)
+const TELEGRAM_RAW_SEND_BAN = {
+  group: ["**/telegram-api"],
+  importNames: [
+    "sendMessageRaw",
+    "editMessageTextRaw",
+    "editMessageReplyMarkupRaw",
+  ],
+  message:
+    "Only lib/notifications/telegram.ts sends or edits on the wire — go through telegramChannel / sendTelegramMessage / rebuildMessage so limits, the [Name] prefix and delivery accounting apply (#454).",
+};
+const TELEGRAM_CHOKEPOINT = "lib/notifications/telegram.ts";
+
+// #985 — every email leaves through lib/email.ts, the sole importer of nodemailer:
+// that is where TLS is enforced, where "not configured" refuses rather than sends,
+// and where the deterministic test capture lives. A second importer of the raw
+// transport would send without those. A security boundary rather than a caught
+// defect (owner ruling on #5347 slice 3), kept as the Telegram ban's twin.
+// (was lib/__tests__/email-chokepoint.test.ts)
+const EMAIL_RAW_SEND_BAN = {
+  group: ["nodemailer", "nodemailer/*"],
+  message:
+    "Only lib/email.ts imports nodemailer — send through sendEmail there so TLS enforcement, the not-configured refusal and delivery capture apply (#985).",
+};
+const EMAIL_CHOKEPOINT = "lib/email.ts";
 
 // #1891 — a sortable item translates, it does not scale. `CSS.Transform.toString()`
 // carries rectSortingStrategy's scaleX/scaleY, which morphs the dragged item toward
@@ -418,9 +545,14 @@ const APP_SURFACE_SYNTAX = [
 // The level `app/`, `components/`, `lib/`, `scripts/` and `e2e/` already sit on —
 // named so the e2e blocks below can spread it rather than re-listing its members.
 const SYNTAX_APP_SURFACE = [...SYNTAX_ALL, ...APP_SURFACE_SYNTAX];
-// Production code is also where the #794/#1447/#1891 UI shapes are banned; a test
-// tier may quote any of them.
-const SYNTAX_PRODUCTION = [...SYNTAX_APP_SURFACE, RPE_BRAND_CAST, ...UI_SYNTAX];
+// Production code is also where the #794/#1447/#1891 UI shapes and the #544 flag
+// compare are banned; a test tier may quote any of them.
+const SYNTAX_PRODUCTION = [
+  ...SYNTAX_APP_SURFACE,
+  RPE_BRAND_CAST,
+  ...UI_SYNTAX,
+  FLAG_NORMAL_BAN,
+];
 const SYNTAX_PRODUCTION_KEYED = [...SYNTAX_PRODUCTION, ...RPE_KEY_LITERAL];
 const SYNTAX_LIB_APP = [
   ...SYNTAX_PRODUCTION_KEYED,
@@ -429,11 +561,85 @@ const SYNTAX_LIB_APP = [
 ];
 const IMPORT_PATHS_PRODUCTION = [REVALIDATE_PATH_BAN, RPE_MINTER_BAN];
 const IMPORT_PATTERNS_PRODUCTION = [TYPESCRIPT_API_PATTERN];
-const IMPORT_PATTERNS_LIB_APP = [
+// Shipped code only: a test tier stubs the raw Telegram primitives (the callback
+// DB tests mock telegram-api's network hop), and the revalidate block above reads
+// the test trees too, so the ban joins at the first level that ignores them.
+const IMPORT_PATTERNS_SHIPPED = [
   ...IMPORT_PATTERNS_PRODUCTION,
-  STREAK_MODULE_BAN,
+  TELEGRAM_RAW_SEND_BAN,
+  EMAIL_RAW_SEND_BAN,
 ];
+const IMPORT_PATTERNS_LIB_APP = [...IMPORT_PATTERNS_SHIPPED, STREAK_MODULE_BAN];
 const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
+
+// ── The test-tree scanners (#5350 siblings) ──────────────────────────────────
+//
+// Two more Vitest walkers, over the test tiers rather than the product trees, each
+// with a shipped defect behind the shape it bans. The blocks at the end of the config
+// re-state the level their files sit on (the mechanic above); the two owners keep
+// every other ban of that level through a converse block.
+
+// #3248 — a raw mkdtemp in a test file has no teardown a killed run can honour, and a
+// prefix of its own is invisible to the stale-entry sweep: 19,221 stranded directories
+// (24 GB) through twenty call sites written after #2529 fixed the first one. Every
+// test temp directory comes from makeTmpDir, which sweeps by construction. Both
+// spellings the tree used are matched: the property (`fs.mkdtempSync`,
+// `fsMod.mkdtempSync`, `fs.promises.mkdtemp`) and the named import. scripts/ stays
+// out, as it was under the scan: those run by hand, once, and clean up after
+// themselves. (was lib/__tests__/tmp-dir-census.test.ts)
+const RAW_MKDTEMP_MESSAGE =
+  'Use makeTmpDir("<label>") from lib/__tests__/tmp-dir.ts — a raw mkdtemp is invisible to the stale-entry sweep, so an interrupted run strands the directory forever (#3248).';
+const RAW_MKDTEMP_PROPERTY_BANS = ["mkdtempSync", "mkdtemp"].map(
+  (property) => ({ property, message: RAW_MKDTEMP_MESSAGE })
+);
+const RAW_MKDTEMP_IMPORT_BAN = {
+  group: ["fs", "node:fs", "fs/promises", "node:fs/promises"],
+  importNames: ["mkdtempSync", "mkdtemp"],
+  message: RAW_MKDTEMP_MESSAGE,
+};
+const IMPORT_PATTERNS_TEST_TREES = [
+  ...IMPORT_PATTERNS_PRODUCTION,
+  RAW_MKDTEMP_IMPORT_BAN,
+];
+const TMP_DIR_MAKER = "lib/__tests__/tmp-dir.ts";
+
+// #3565 — a historical-shape fixture names the migration it stops before. Slicing the
+// registry by POSITION (`MIGRATIONS.slice(0, -1)`, "every migration but the newest")
+// is right on exactly the day X is newest; the next migration to land pushes X into
+// the prefix and the "before" database silently receives the future while the test
+// stays green — one fixture measured somebody else's migration for weeks that way.
+// `migrationsBefore(name)` (lib/migrations/versions/index.ts) throws on an unknown
+// name instead. `NUMBERED_MIGRATIONS.slice` is the closed numbered era's own remedy
+// and `MIGRATIONS[0]` / `.find((m) => m.id === 41)` are identity, so only the two
+// positional calls on the bare registry are matched. Two owners: the runner test,
+// whose subject IS the registry's positional invariants, and the replay census, which
+// visits every prefix in turn (#3590).
+// (was lib/__tests__/migration-historical-fixture-scan.test.ts)
+const MIGRATION_POSITIONAL_BAN = {
+  selector:
+    "CallExpression > MemberExpression.callee[object.name='MIGRATIONS'][property.name=/^(?:slice|findIndex)$/]",
+  message:
+    'Position is not identity: MIGRATIONS.slice / .findIndex means "before X" on exactly one day, then silently rebuilds the future into the "before" database and keeps passing (#3565) — use migrationsBefore("<migration name>") from @/lib/migrations/versions.',
+};
+const MIGRATION_RUNNER_TEST = "lib/__db_tests__/runner.test.ts";
+const MIGRATION_REPLAY_CENSUS = "scripts/migration-replay-census.ts";
+
+// The unit tiers and the blessed e2e interaction module sit on the app-surface level
+// (the revalidate block); the action tier sits on SYNTAX_ALL alone; a JavaScript
+// source under any of these roots sits on no syntax level at all.
+const UNIT_TEST_TREES = [
+  "lib/__tests__/**/*.{ts,tsx}",
+  "lib/__db_tests__/**/*.{ts,tsx}",
+  "components/__tests__/**/*.{ts,tsx}",
+];
+const ACTION_TEST_TREE = "lib/__action_tests__/**/*.{ts,tsx}";
+const TEST_TREE_SCRIPTS = [
+  "lib/__tests__/**/*.{js,jsx,mjs,cjs}",
+  "lib/__db_tests__/**/*.{js,jsx,mjs,cjs}",
+  "lib/__action_tests__/**/*.{js,jsx,mjs,cjs}",
+  "components/__tests__/**/*.{js,jsx,mjs,cjs}",
+  "e2e/**/*.{js,jsx,mjs,cjs}",
+];
 
 // ── e2e/**: the hygiene scan's zero-allowlist bans (#5350) ───────────────────
 //
@@ -512,6 +718,8 @@ const E2E_PROPERTY_BANS = [
     message: `.toPass( proves "passes within N attempts", not "works", and hides which step raced — await the actual signal, or carry a \`topass-ok: <why>\` disable line for a reviewed last resort; ${HYGIENE_DOC}`,
   },
   { object: "Date", property: "now", message: WALL_CLOCK_MESSAGE },
+  // #3248 — the temp-dir ban reaches e2e/** as it did under its scan.
+  ...RAW_MKDTEMP_PROPERTY_BANS,
 ];
 // The harness reads the wall clock ONCE, to derive the frozen now every spec then
 // asks for — so it is the one surface that drops `Date.now`, exactly as it drops the
@@ -699,7 +907,11 @@ const E2E_SHARED_ACTIVITY_DELETE = (() => {
 //
 // e2e/ already sits on APP_SURFACE_SYNTAX (the revalidate block lists it), so that
 // is what these build on rather than SYNTAX_ALL.
-const SYNTAX_E2E_BASE = [...SYNTAX_APP_SURFACE, ...E2E_SETTLE_BANS];
+const SYNTAX_E2E_BASE = [
+  ...SYNTAX_APP_SURFACE,
+  ...E2E_SETTLE_BANS,
+  MIGRATION_POSITIONAL_BAN,
+];
 const SYNTAX_E2E_ALL = [
   ...SYNTAX_E2E_BASE,
   ...E2E_FAMILY_BANS,
@@ -923,7 +1135,7 @@ const config = [
     rules: {
       "no-restricted-imports": restrictImports(
         IMPORT_PATHS_PRODUCTION,
-        IMPORT_PATTERNS_PRODUCTION
+        IMPORT_PATTERNS_SHIPPED
       ),
       "no-restricted-syntax": ["error", ...SYNTAX_PRODUCTION],
     },
@@ -1163,6 +1375,80 @@ const config = [
       ],
     },
   },
+  // ── The owners of the #5347 slice 3 bans ────────────────────────────────────
+  // The disclosure renders the <details>, the qualitative classifier maps onto the
+  // flag values, and the two chokepoints import their raw transports; each keeps
+  // every other ban of its level.
+  {
+    files: [DISCLOSURE_OWNER],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, RAW_DETAILS_BAN),
+      ],
+    },
+  },
+  {
+    files: [FLAG_VALUE_MAPPER],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, FLAG_NORMAL_BAN),
+      ],
+    },
+  },
+  {
+    files: [TELEGRAM_CHOKEPOINT],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        IMPORT_PATHS_PRODUCTION,
+        without(IMPORT_PATTERNS_LIB_APP, TELEGRAM_RAW_SEND_BAN)
+      ),
+    },
+  },
+  {
+    files: [EMAIL_CHOKEPOINT],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        IMPORT_PATHS_PRODUCTION,
+        without(IMPORT_PATTERNS_LIB_APP, EMAIL_RAW_SEND_BAN)
+      ),
+    },
+  },
+  // ── lib/notifications: no runtime import cycle (#2961 AC 3) ─────────────────
+  // A module in a cycle evaluates against a partially initialised partner, and a
+  // module-scope `const` read in that window is `undefined` — here a callback prefix
+  // or a byte budget. The shipped case: callback-data.ts imported INTAKE_SEND_SLOTS
+  // from intake-format.ts, which imported callbackDataFits back, and #5169 recorded
+  // the edge gone while it was still there. `import type` is erased before anything
+  // runs, so the rule skips type-only edges, as the scan did; the scan read
+  // `import … from "./x"` and nothing else, so a value re-export
+  // (`export { x } from "./y"`) closed a cycle it could not see (#5390) — the
+  // plugin's graph carries re-exports. A dynamic `import()` is not counted either:
+  // it runs after both modules have finished evaluating, which is why
+  // post-workout-queue.ts reaches workout-presence.ts that way.
+  // (was lib/__tests__/notification-import-cycles.test.ts)
+  //
+  // The one cycle this block used to name rather than hide is GONE (#5719).
+  // post-workout-marker.ts → ../settings → (export *) settings/notifications →
+  // queries/sleep → derived-situations → cycle-store → undo-delete-db →
+  // merge-activity → post-workout-marker.ts, closed by 141207621 (#2597), was broken
+  // at its last hop: writeActivityFold now takes the announcement carry as a required
+  // parameter instead of importing it, so the write path holds no edge into
+  // lib/notifications and every file in this directory is covered with no exemption.
+  {
+    files: ["lib/notifications/**/*.{ts,tsx}"],
+    rules: {
+      "import/no-cycle": [
+        "error",
+        {
+          maxDepth: Infinity,
+          ignoreExternal: true,
+          allowUnsafeDynamicCyclicDependency: true,
+        },
+      ],
+    },
+  },
   // ── e2e/**: the retired hygiene scan's zero-allowlist bans (#5350) ──────────
   // The scan read `e2e/**/*.ts` — specs AND the driver/helper modules, because a
   // settle anti-pattern can hide in a helper the specs import (#868 phase 2). Only
@@ -1175,7 +1461,7 @@ const config = [
     rules: {
       "no-restricted-imports": restrictImports(
         [REVALIDATE_PATH_BAN, E2E_HARNESS_IMPORT_BAN],
-        IMPORT_PATTERNS_PRODUCTION
+        IMPORT_PATTERNS_TEST_TREES
       ),
       "no-restricted-syntax": ["error", ...SYNTAX_E2E_ALL],
       "no-restricted-properties": ["error", ...E2E_PROPERTY_BANS],
@@ -1203,7 +1489,7 @@ const config = [
     rules: {
       "no-restricted-imports": restrictImports(
         [REVALIDATE_PATH_BAN],
-        IMPORT_PATTERNS_PRODUCTION
+        IMPORT_PATTERNS_TEST_TREES
       ),
       "no-restricted-syntax": ["error", ...SYNTAX_E2E_WORKER_HARNESS],
       "no-restricted-properties": [
@@ -1220,6 +1506,87 @@ const config = [
     files: ["e2e/**/*.spec.ts"],
     rules: {
       "no-restricted-syntax": ["error", ...SYNTAX_E2E_SPEC],
+    },
+  },
+  // ── The test-tree scanners' rules (#5350 siblings) ──────────────────────────
+  // The unit tiers plus e2e/helpers.ts: the app-surface level with both bans. The
+  // temp-dir maker and the migration runner test each own one ban and keep the other
+  // through the two converse blocks after it.
+  {
+    files: [...UNIT_TEST_TREES, E2E_HELPERS],
+    ignores: [TMP_DIR_MAKER, MIGRATION_RUNNER_TEST],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN],
+        IMPORT_PATTERNS_TEST_TREES
+      ),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_APP_SURFACE,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  {
+    files: [TMP_DIR_MAKER],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_APP_SURFACE,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  {
+    files: [MIGRATION_RUNNER_TEST],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        [REVALIDATE_PATH_BAN],
+        IMPORT_PATTERNS_TEST_TREES
+      ),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+    },
+  },
+  // The action tier mocks next/cache and sits outside the revalidate block.
+  {
+    files: [ACTION_TEST_TREE],
+    rules: {
+      "no-restricted-imports": restrictImports([], IMPORT_PATTERNS_TEST_TREES),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_ALL,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  // scripts/ slices the registry only in the replay census; its temp directories
+  // were never the scan's business.
+  {
+    files: ["scripts/**/*.{ts,tsx}"],
+    ignores: [...TEST_TREES, MIGRATION_REPLAY_CENSUS],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...SYNTAX_PRODUCTION_KEYED,
+        MIGRATION_POSITIONAL_BAN,
+      ],
+    },
+  },
+  {
+    files: ["scripts/**/*.{js,jsx,mjs,cjs}"],
+    rules: {
+      "no-restricted-syntax": ["error", MIGRATION_POSITIONAL_BAN],
+    },
+  },
+  // A JavaScript source under the test roots (the two e2e build helpers today).
+  {
+    files: TEST_TREE_SCRIPTS,
+    rules: {
+      "no-restricted-imports": restrictImports([], IMPORT_PATTERNS_TEST_TREES),
+      "no-restricted-properties": ["error", ...RAW_MKDTEMP_PROPERTY_BANS],
+      "no-restricted-syntax": ["error", MIGRATION_POSITIONAL_BAN],
     },
   },
 ];

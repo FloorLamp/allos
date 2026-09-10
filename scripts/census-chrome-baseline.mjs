@@ -205,9 +205,8 @@ export const CHROME_LANDMARK_NAMES = CHROME_LANDMARKS.map((l) => l.name);
  * compares clean on the desktop half that remains. Both floors below are checked by
  * lib/__tests__/census-chrome-baseline.test.ts and again by the e2e recorder.
  *
- * PER VIEWPORT and not only in total, for the reason the temp-dir census states
- * (lib/__tests__/tmp-dir-census.test.ts): a total clears a global floor while one
- * root has silently dropped out. Ten desktop surfaces would carry a floor of 8 on
+ * PER VIEWPORT and not only in total, for the reason the retired temp-dir census
+ * stated: a total clears a global floor while one root has silently dropped out. Ten desktop surfaces would carry a floor of 8 on
  * their own while every phone reading had gone.
  */
 export const MIN_SURFACES = 8;

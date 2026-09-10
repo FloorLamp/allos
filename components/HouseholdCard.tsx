@@ -14,11 +14,8 @@ import Avatar from "@/components/Avatar";
 import IconButton from "@/components/IconButton";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
-import {
-  PILLAR_TONE_CLASS,
-  PillarToneBadge,
-} from "@/components/dashboard/HealthspanPillarPresentation";
-import type { PillarTone } from "@/lib/longevity-pillars";
+import { PillarToneBadge } from "@/components/dashboard/HealthspanPillarPresentation";
+import { verdictText, type VerdictTone } from "@/lib/chart-colors";
 import type { AvatarProfile } from "@/components/Avatar";
 import {
   openProfileAction,
@@ -89,7 +86,7 @@ export interface HouseholdCardData {
   // marker at all, which is the same condition that omits the pillar entirely.
   // This replaced a bare rose count of every out-of-lab-range analyte; that OOR read
   // left this page with it (#2479 explains why both were "right").
-  biomarkers: { optimal: number; total: number; tone: PillarTone } | null;
+  biomarkers: { optimal: number; total: number; tone: VerdictTone } | null;
   goals: GoalHighlight[];
   // A one-line "sick day N · 101.3°F" chip when this profile has an OPEN illness
   // episode (issue #801), else null — the household mirror of the dashboard card.
@@ -246,12 +243,19 @@ function AttentionLink({ attention }: { attention: number }) {
 // re-hand-rolled as a literal `text-sky-700 dark:text-sky-300` pair on both sites while
 // three brand links rendered on the same screen (#3487 item 2). The `action` tone here
 // stays sky by the tone map's own rule; the links are ruled by #2719.
+//
+// FindingTone is NOT the four verdict words renamed, which is why the map
+// survives as a boundary: `action` ("go do it") is a call to act, not a judgment,
+// and keeps the sky the tone map's own rule gave it. The four entries that ARE
+// verdicts read the shared palette (#5187) instead of hand-picking amber/emerald
+// steps, and `info` and `neutral` — two spellings of "no judgment" — resolve to
+// the one neutral rather than to two slightly different greys.
 const SETUP_TONE_TEXT: Record<FindingTone, string> = {
-  caution: "text-amber-700 dark:text-amber-300",
+  caution: verdictText.warn.class,
   action: "text-sky-700 dark:text-sky-300",
-  info: "text-slate-600 dark:text-slate-300",
-  neutral: "text-slate-600 dark:text-slate-300",
-  positive: "text-emerald-700 dark:text-emerald-300",
+  info: verdictText.neutral.class,
+  neutral: verdictText.neutral.class,
+  positive: verdictText.good.class,
 };
 
 function SetupCheckRow({
@@ -468,7 +472,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
               className="flex flex-wrap items-center gap-1.5"
               data-testid="household-biomarkers"
             >
-              <span className={PILLAR_TONE_CLASS[biomarkers.tone]}>
+              <span className={verdictText[biomarkers.tone].class}>
                 {biomarkers.optimal} of {biomarkers.total}
               </span>
               {/* The tone's TEXT twin (#1220): the verdict may never travel by colour

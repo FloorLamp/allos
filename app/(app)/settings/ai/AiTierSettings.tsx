@@ -36,6 +36,13 @@ export default function AiTierSettings({
         </p>
       </div>
 
+      {/* TWO SUB-PANELS, ONE CARD, SO NEITHER "Apply" IS FILLED (#4978, PM
+          ruling 6 2026-09-09 23:35 UTC and ruling 7 23:45 UTC). Both TierBlocks
+          render at once inside this single `card`, and both commits post
+          `saveAiTierConfig` with a different `tier` — peers, whose rank would
+          belong to the choice rather than to either option. A fill on both is
+          two loud controls on one card; a fill on one ranks Heavy over Light
+          for no reason a reader could name. */}
       <TierBlock
         tier="heavy"
         label="Heavy — extraction"

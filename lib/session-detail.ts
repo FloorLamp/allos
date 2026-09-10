@@ -1,4 +1,5 @@
 import { formatSessionElapsed } from "./cycling-analytics";
+import type { VerdictTone } from "./chart-colors";
 import { speedKmh } from "./coaching/cardio";
 import {
   cyclingActivityName,
@@ -30,8 +31,6 @@ export interface SessionZoneRow {
   percent: number;
 }
 
-export type SessionHighlightTone = "neutral" | "positive" | "caution";
-
 // A session's short, presentation-ready recap grammar. Domain derivations own
 // what is notable; every surface owns only layout, so cycling, sport, and future
 // post-workout moments cannot drift into different tile vocabularies.
@@ -40,7 +39,11 @@ export interface SessionHighlight {
   label: string;
   value: string;
   detail: string;
-  tone: SessionHighlightTone;
+  // The app's shared verdict (#5187): this was those words with `positive` for
+  // `good` and `caution` for `warn`. A highlight never renders `bad` — a recap
+  // tile states what happened, it does not fail the session — so the field keeps
+  // that narrowing and the surface's map stays exhaustive over three keys.
+  tone: Exclude<VerdictTone, "bad">;
   markerColor?: string;
   href?: AppRoute;
 }
@@ -379,7 +382,7 @@ export function cyclingHighlights({
       label: "Best efforts",
       value,
       detail,
-      tone: "positive",
+      tone: "good",
     });
   }
 
@@ -395,7 +398,7 @@ export function cyclingHighlights({
         : improved
           ? "Improved in the second half"
           : "Fell in the second half",
-      tone: stable ? "neutral" : improved ? "positive" : "caution",
+      tone: stable ? "neutral" : improved ? "good" : "warn",
     });
   }
   return highlights;

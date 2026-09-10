@@ -29,6 +29,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { writeActivityFold, ACTIVITY_CHILD_LINKS } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 
 const key = (table: string, column: string) => `${table}.${column}`;
 
@@ -141,7 +142,13 @@ describe("activity-child links: the schema's set and the merge's decisions agree
         string,
         unknown
       >;
-    writeActivityFold(profileId, keepId, row(keepId), [row(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      row(keepId),
+      [row(dropId)],
+      carryPostWorkoutMarker
+    );
 
     const stillOnDrop = moves.filter((link) => {
       const [table, column] = link.split(".");

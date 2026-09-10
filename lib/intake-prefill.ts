@@ -183,12 +183,6 @@ export interface IntakePrefill extends AppliedPrefill {
   ingredientNote: string | null;
 }
 
-// Whether the profile is a child for whom the OTC pediatric weight-band chart, not the
-// adult figure, is the dose-amount source (#798). Adult otherwise.
-function isChild(pediatric: PediatricFormContext | null | undefined): boolean {
-  return isChildProfileAge(pediatric?.ageMonths);
-}
-
 // Resolve the dose-amount suggestion: the pediatric weight-band mg for a child (only
 // when the band actually resolves to a dose — a refusal/needs-weight yields no
 // prefill, the form's own pediatric block surfaces that), else the adult OTC low
@@ -198,7 +192,7 @@ function resolveDoseAmount(
   pediatric: PediatricFormContext | null | undefined
 ): string | null {
   if (!prn) return null;
-  if (isChild(pediatric) && prn.pediatric && pediatric) {
+  if (isChildProfileAge(pediatric?.ageMonths) && prn.pediatric && pediatric) {
     const ped = pediatricDoseSuggestion({
       entry: prn,
       ageMonths: pediatric.ageMonths as number,
@@ -234,7 +228,10 @@ function medicationOffer(
   // label figure (never guess below the label's floor; the adult max would over-dose a
   // child, e.g. acetaminophen 6 vs 5). redoseLabelDefaults encodes the refusal.
   if (prn) {
-    const redose = redoseLabelDefaults(prn, isChild(pediatric));
+    const redose = redoseLabelDefaults(
+      prn,
+      isChildProfileAge(pediatric?.ageMonths)
+    );
     if (redose) {
       offer.minIntervalHours = redose.minIntervalHours;
       offer.maxDailyCount = redose.maxDailyCount;

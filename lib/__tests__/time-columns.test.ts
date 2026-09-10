@@ -307,13 +307,17 @@ describe("the published index cannot fall behind the declaration", () => {
 // point of the ledger is that each of these is a decision somebody made rather than a
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
-  "lib/queries/intake/adherence.ts": {
-    count: 9,
-    why: "SQL readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated. The shared dose-history ordering keeps three scopes identical; the redose readers require the same database-side ordering and aggregation.",
-  },
-  "lib/queries/intake/prn-family.ts": {
+  "lib/queries/intake/dose-status.ts": {
     count: 2,
-    why: "the family safety gather selects and orders the latest administration event, with immutable capture as the fallback for rows whose event is unstated. Both operations must remain database-side across all family members.",
+    why: "the scheduled row's printed clock — the taken-dose times the day's check-offs render beside each dose, ordered and selected by the administration event with immutable capture as the fallback for rows whose event was never stated. #4686 took the ARMING readers out of this file — the redose clock now reads a placed instant or nothing — so what is left renders a fact beside the day it happened on, never a duration a safety line turns into a verdict. #2960 moved this reader out of adherence.ts whole — same SELECT, same ORDER BY, new file.",
+  },
+  "lib/queries/intake/dose-history.ts": {
+    count: 3,
+    why: "the shared dose-history ordering, moved out of adherence.ts whole by #2960 — `DOSE_HISTORY_ORDER` (#2417) plus the two day-scoped administration reads that sort the same way. Three scopes, one identical ordering, which is the reason the string is shared rather than repeated: a row must not rank differently on the med card than in the ledger. DISPLAY reads throughout — the pairing decides where a row SITS in a list printed beside its day, never a duration.",
+  },
+  "lib/queries/intake/prn-quick-log.ts": {
+    count: 1,
+    why: "the quick-log gather's own 'Last dose 8:05pm' column, moved out of adherence.ts whole by #2960 — the same MAX, in a new file. It is a DISPLAY clock beside the day it happened on: deleting the fallback would make a PRN medication read 'No doses logged' after any past-day check-off. The SAFETY half of the same row (`familyArming`) is the one #4686 took off capture stamps, and it is deliberately NOT computed through this pairing.",
   },
   "lib/queries/nutrition/ledger.ts": {
     count: 1,
@@ -340,8 +344,8 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
     why: "as school-return-data: the event-to-capture ORDER BY only. The row read uses bestKnownInstant.",
   },
   "app/(app)/medications/med-data.ts": {
-    count: 2,
-    why: "the medication detail's administration list and its 'last taken' label use the event instant with capture fallback, matching the shared dose history semantics.",
+    count: 1,
+    why: "the medication detail's administration list, a DISPLAY read on a card that prints the day next to it. The 'Last dose 4:02pm' clock beside it was the second pairing until #4686/#2228 decision 4: it fed the redose verdict (a paused as-needed medication computed 'Redose OK' off a capture stamp), the window math now reads `FamilyArming`, and the label itself asks `bestKnownInstant` so a record-chain clock renders 'recorded 4:02pm' instead of claiming an administration time.",
   },
   "lib/food-slot-count.ts": {
     count: 1,

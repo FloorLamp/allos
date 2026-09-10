@@ -987,3 +987,245 @@ export function baseMovedVerdict({
       unread,
   };
 }
+
+// ── WHAT A CHANGED DERIVATION REACHES, BESIDE THE TABLE THAT CLAIMS IT (#5680) ─
+//
+// A converted shared derivation is only as safe as the reviewer's list of who
+// consumes it, and that list was a hand-written table in the PR body. On #5645
+// three careful rounds each named the NEAREST surface and stopped, while the
+// value travelled further — into a tappable control that writes, a Server
+// Action, the priority-1 send. #5687 made the answer derivable
+// (`scripts/reach.ts`); this puts the derived answer next to the claimed one at
+// the moment a merge is decided.
+//
+// ADVISORY, by the PM's sequencing: every row here is a NOTE and never a
+// failure. The step that turns a missing row into a FAIL is the PM's to take,
+// once the rows have been read against real PRs for a while.
+//
+// WHICH SYMBOLS. The diff is the trigger, read the way `typeBearing` reads
+// paths: an exported top-level function under `lib/` (not a test tree) is a
+// candidate when the diff touches its DECLARATION HUNK — a `+`/`-` line that
+// declares it, or a hunk whose git function context (the text after the second
+// `@@`) is its declaration, which is how a change inside the body shows up.
+// The context is git's nearest-preceding-heading guess, so a hunk that only
+// adds a NEW function after another's body over-reports the neighbour; that
+// direction is safe. What this misses: a symbol renamed only in a barrel's
+// `export { a as b }` list (no function declaration on either side), and a
+// body change whose hunk's context line git resolves to something other than
+// the declaration (a preceding `export interface`, a nested block that starts
+// at column 0). Capped at twenty per PR, sorted, so a sweep cannot turn the
+// gate into a minute per file.
+//
+// WHICH TABLE. A consumer table is a markdown table whose header row mentions
+// consumer(s), reaches, surface or terminal, or any heading that contains
+// "consumer" — read from the body's SPEAKING lines (#5183), as every other
+// claim here is. A terminal is NAMED when the body mentions its path: the full
+// repo-relative path, or a suffix of it two or more segments long
+// (`history/page.tsx`, `notifications/tick.ts:451`), case-sensitively, anywhere
+// in the body including fenced blocks — pasting the CLI's own output IS naming
+// the consumers. A bare basename (`page.tsx`) names nothing.
+
+const REACH_CAP = 20;
+const DERIVATION_FILE = /^lib\/.*\.tsx?$/;
+const TEST_TREE = /(^|\/)__(?:tests|db_tests|action_tests)__\//;
+// `export function f(` / `export async function f(` / `export const f =` (or
+// `export const f: T =`), at the start of a changed line or of git's hunk context.
+const DECLARES =
+  /^\s*export\s+(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)|^\s*export\s+const\s+([A-Za-z_$][\w$]*)\s*[:=]/;
+const HUNK_CONTEXT = /^@@[^@]*@@ ?(.*)$/;
+
+const declared = (text) => {
+  const m = DECLARES.exec(text);
+  return m ? (m[1] ?? m[2]) : null;
+};
+
+// A column-0 `}`, `)` or `]` closes a prettier-formatted top-level declaration.
+const TOP_LEVEL_CLOSER = /^[})\]]/;
+
+/**
+ * The changed declaration at `lines[i]`, whitespace-normalised: its own side
+ * of the hunk from the declaring line through the column-0 closer, or up to
+ * the next blank or column-0 line. Lines from the hunk's other side are
+ * skipped; a context line, hunk header or the patch's end ends the text.
+ */
+const declarationText = (lines, i) => {
+  const sign = lines[i][0];
+  const out = [];
+  for (let j = i; j < lines.length; j++) {
+    const line = lines[j];
+    if (line[0] !== sign) {
+      if (line[0] === "+" || line[0] === "-") continue;
+      break;
+    }
+    const code = line.slice(1);
+    const closes = TOP_LEVEL_CLOSER.test(code);
+    if (j > i && !closes && (!code.trim() || /^\S/.test(code))) break;
+    out.push(code.trim().replace(/\s+/g, " "));
+    if (j > i && closes) break;
+  }
+  return out.join("\n");
+};
+
+/**
+ * The `{file, symbol, added}` triples whose declaration hunk a PR's patches
+ * touch, sorted, deduplicated. `files` is `GET /pulls/N/files`: `filename`,
+ * `status`, `patch` (absent for a binary or an oversized diff, which
+ * contributes nothing). A declaration removed from one file and added
+ * verbatim to another file of the same PR is a move, not a change, and is
+ * dropped from both (#5710); a moved body with any other line changed stays.
+ * `added` is true when the PR introduces the declaration: every hunk that
+ * names it adds it, so it is not on the PR's base tree.
+ */
+export function changedDerivations(files) {
+  const seen = [];
+  for (const file of files ?? []) {
+    const name = file.filename ?? "";
+    if (
+      !DERIVATION_FILE.test(name) ||
+      TEST_TREE.test(name) ||
+      file.status === "removed" ||
+      !file.patch
+    )
+      continue;
+    const lines = file.patch.split("\n");
+    lines.forEach((line, i) => {
+      const changed = /^[+-]/.test(line);
+      const symbol = changed
+        ? declared(line.slice(1))
+        : declared(HUNK_CONTEXT.exec(line)?.[1] ?? "");
+      if (symbol)
+        seen.push({
+          file: name,
+          symbol,
+          sign: changed ? line[0] : " ",
+          text: changed ? declarationText(lines, i) : null,
+        });
+    });
+  }
+  const bySide = new Map();
+  for (const entry of seen)
+    if (entry.sign !== " ") {
+      const key = `${entry.symbol}\0${entry.text}`;
+      if (!bySide.has(key)) bySide.set(key, { "+": [], "-": [] });
+      bySide.get(key)[entry.sign].push(entry);
+    }
+  const moved = new Set();
+  for (const sides of bySide.values())
+    for (const removed of sides["-"])
+      for (const added of sides["+"])
+        if (removed.file !== added.file) moved.add(removed).add(added);
+  const out = new Map();
+  for (const { file, symbol, sign } of seen.filter((e) => !moved.has(e))) {
+    const key = `${file}#${symbol}`;
+    const prior = out.get(key);
+    out.set(key, {
+      file,
+      symbol,
+      added: (prior?.added ?? true) && sign === "+",
+    });
+  }
+  return [...out.keys()].sort().map((key) => out.get(key));
+}
+
+const TABLE_HEADER = /consumers?|reaches|surface|terminal/i;
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+
+/** Does the body carry a consumer table (or a heading that announces one)? */
+export function hasConsumerTable(body) {
+  const { asserting } = speechLines(body);
+  for (let i = 0; i < asserting.length; i++) {
+    const line = asserting[i];
+    if (/^\s*#{1,6}\s/.test(line) && /consumer/i.test(line)) return true;
+    if (
+      /^\s*\|/.test(line) &&
+      TABLE_HEADER.test(line) &&
+      TABLE_SEPARATOR.test(asserting[i + 1] ?? "")
+    )
+      return true;
+  }
+  return false;
+}
+
+/** Is this repo-relative path named in the body, by itself or by a ≥2-segment suffix? */
+const namedIn = (body, file) => {
+  const parts = file.split("/");
+  for (let i = 0; i <= parts.length - 2; i++)
+    if (body.includes(parts.slice(i).join("/"))) return true;
+  return false;
+};
+
+// The first line of the child's complaint, cut so a walker listing every
+// declaration a file has ("it has: a, b, c, …") stays one readable row.
+const firstLine = (error) => {
+  const line =
+    String(error?.message ?? error)
+      .split("\n")
+      .map((l) => l.trim())
+      .find(Boolean) ?? "no reason given";
+  return line.length > 160 ? `${line.slice(0, 157)}...` : line;
+};
+
+/**
+ * The reach rows for one PR — every one a NOTE, never a failure.
+ *
+ * @param {object} input
+ * @param {{filename: string, status?: string, patch?: string}[]} input.files
+ * @param {string|null|undefined} input.body the PR body
+ * @param {(file: string, symbol: string) => {terminals: string[]}} input.reachFn
+ *   `scripts/reach.ts --json` or a stand-in; `terminals` are the CLI's
+ *   `"<kind> <file> <name>"` strings. It may throw; the throw becomes a row.
+ * @param {string} [input.walkedOn] the sha of the tree `reachFn` walks; a
+ *   decline names it, and says so when the PR itself adds the symbol, which
+ *   is then absent from any tree but the PR head or merge tree (#5710).
+ * @returns {string[]} messages, without the `NOTE: ` prefix, in a stable order
+ */
+export function reachVerdict({ files, body, reachFn, walkedOn }) {
+  const text = String(body ?? "");
+  const candidates = changedDerivations(files);
+  const walked = candidates.slice(0, REACH_CAP);
+  const rows = [];
+  if (candidates.length > REACH_CAP)
+    rows.push(
+      `reach — ${candidates.length} changed exported lib/ functions in this ` +
+        `diff; only the first ${REACH_CAP} (sorted by path) were walked`
+    );
+  const table = hasConsumerTable(text);
+  const tree = walkedOn ? ` (walked on ${shortSha(walkedOn)})` : "";
+  for (const { file, symbol, added } of walked) {
+    let terminals;
+    try {
+      terminals = [...new Set(reachFn(file, symbol).terminals ?? [])].sort();
+    } catch (error) {
+      rows.push(
+        `reach — could not answer for ${symbol}${tree}: ${firstLine(error)}` +
+          (added
+            ? `; ${symbol} is added by this PR and is not on the walked tree; ` +
+              "resolve on the PR head or merge tree"
+            : "")
+      );
+      continue;
+    }
+    if (!terminals.length) continue;
+    const terminalFiles = [
+      ...new Set(terminals.map((t) => t.split(" ")[1] ?? t)),
+    ].sort();
+    const head = `reach — ${symbol} (${file}) reaches ${terminals.length} terminal(s)`;
+    if (!table) {
+      const shown = terminalFiles.slice(0, 8);
+      rows.push(
+        `${head}; no consumer table in the body (advisory): ${shown.join(", ")}` +
+          (terminalFiles.length > shown.length
+            ? `, +${terminalFiles.length - shown.length} more`
+            : "")
+      );
+      continue;
+    }
+    const missing = terminalFiles.filter((f) => !namedIn(text, f));
+    rows.push(
+      missing.length
+        ? `${head}; ${missing.length} not named in the body's consumer table: ${missing.join(", ")}`
+        : `${head}; all named in the body's consumer table`
+    );
+  }
+  return rows;
+}

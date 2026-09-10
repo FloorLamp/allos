@@ -4,35 +4,23 @@ import {
   IconMinus,
 } from "@tabler/icons-react";
 import {
-  PILLAR_TONE_LABEL,
-  type Pillar,
-  type PillarTone,
-} from "@/lib/longevity-pillars";
-
-export const PILLAR_TONE_CLASS: Record<PillarTone, string> = {
-  good: "text-emerald-600 dark:text-emerald-400",
-  warn: "text-amber-600 dark:text-amber-400",
-  bad: "text-rose-600 dark:text-rose-400",
-  neutral: "text-slate-700 dark:text-slate-200",
-};
-
-const PILLAR_TONE_BADGE_CLASS: Record<PillarTone, string> = {
-  good: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-  warn: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  bad: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
-  neutral: "",
-};
+  VERDICT_TONE_LABEL,
+  verdictBadge,
+  type VerdictTone,
+} from "@/lib/chart-colors";
+import type { Pillar } from "@/lib/longevity-pillars";
 
 // The non-color channel for a pillar's judgment (WCAG 1.4.1, issue #1220): the
-// PILLAR_TONE_LABEL text as a chip beside the colored value. Renders nothing for
-// `neutral` (no judgment → nothing to announce). Shared by Standing and the
-// Longevity page's PillarStat so both surfaces style the same facts identically.
-export function PillarToneBadge({ tone }: { tone: PillarTone }) {
-  const label = PILLAR_TONE_LABEL[tone];
+// VERDICT_TONE_LABEL text as a chip beside the colored value. Renders nothing for
+// `neutral` (no judgment → nothing to announce), which is also why the badge
+// never needs the palette's neutral pill. Shared by Standing and the Longevity
+// page's PillarStat so both surfaces style the same facts identically.
+export function PillarToneBadge({ tone }: { tone: VerdictTone }) {
+  const label = VERDICT_TONE_LABEL[tone];
   if (!label) return null;
   return (
     <span
-      className={`badge ${PILLAR_TONE_BADGE_CLASS[tone]}`}
+      className={`badge ${verdictBadge[tone].class}`}
       data-testid="pillar-tone-badge"
     >
       {label}

@@ -26,6 +26,31 @@ describe("antipyretic classification", () => {
     }
   });
 
+  // PRESENCE IS NOT IDENTITY, and this predicate asks presence (#5230).
+  //
+  // `Non-Aspirin Pain Reliever` IS acetaminophen and IS a fever reducer, and it reaches
+  // the curated dataset only through the word `aspirin`. #5230's identity detector
+  // composes a NEGATION GUARD on the same containment core; if that guard ever travelled
+  // into this predicate's name leg, all five names below would flip to false and
+  // lib/school-return-data.ts would stop counting a fever reducer as fever-masking — a
+  // child cleared to return to school on a fever-free count a masking dose was hiding.
+  //
+  // No other test in the repository covers a negated name here: the existing coverage
+  // samples Advil, Tylenol, Benadryl and Magnesium Glycinate, all of which stay green
+  // through that regression. This is the writer's finding turned into a guard.
+  it.each([
+    "Non-Aspirin Pain Reliever",
+    "Walgreens Non-Aspirin Pain Reliever, Extra Strength",
+    "CVS Health Non Aspirin Pain Reliever PM",
+    "Aspirin-free pain relief",
+    "Cold relief without acetaminophen",
+  ])(
+    "still classifies a NEGATED antipyretic name as fever-masking: %s",
+    (name) => {
+      expect(isAntipyreticIntakeItem({ name, rxcui: null })).toBe(true);
+    }
+  );
+
   it("does NOT classify a non-antipyretic PRN as a fever reducer", () => {
     // Diphenhydramine (Benadryl) is in the dataset but is an antihistamine.
     const entry = prnDefaultsFor({ name: "Benadryl", rxcui: null });

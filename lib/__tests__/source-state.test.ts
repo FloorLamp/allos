@@ -200,7 +200,7 @@ describe("providerStanding + standingBadge", () => {
         latest: ev(),
       })
     ).toBe("not-connected");
-    expect(standingBadge("not-connected").tone).toBe("caution");
+    expect(standingBadge("not-connected").tone).toBe("warn");
   });
 
   it("reads the run window for a connected provider", () => {
@@ -321,7 +321,7 @@ describe("providerStanding + standingBadge", () => {
   it("names the intermittent standing with a calm caution badge", () => {
     expect(standingBadge("intermittent")).toEqual({
       label: "Intermittent",
-      tone: "caution",
+      tone: "warn",
     });
   });
 });
@@ -439,7 +439,7 @@ describe("eventVerdict", () => {
     });
     expect(eventVerdict(ev({ details: truncatedSyncDetails() }))).toEqual({
       label: "Partial",
-      tone: "caution",
+      tone: "warn",
     });
     expect(eventVerdict(ev())).toEqual({ label: "Synced", tone: "good" });
     expect(eventVerdict(ev(), "forecast").label).toBe("Refreshed");

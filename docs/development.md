@@ -11,7 +11,7 @@ before editing; read only the contract matching the task.
 | Authorization and profile scope | `lib/auth.ts`, `lib/cross-profile.ts`, `lib/queries/`        | `app/AGENTS.md`, `lib/AGENTS.md`, `lib/queries/AGENTS.md`                                                            |
 | Dated readings or units         | `lib/reading-model.ts`, `lib/date.ts`, `lib/row-instants.ts` | [Reading model](internals/reading-model.md), [time model](internals/time-model.md)                                   |
 | Weekly frequency or stale data  | `lib/cadence.ts`, `lib/freshness.ts`                         | [Cadence](internals/cadence-ledger.md), [freshness](internals/freshness.md)                                          |
-| Medication/supplement intake    | `lib/queries/intake/adherence.ts`, `lib/intake-cadence.ts`   | [Intake](internals/supplements.md)                                                                                   |
+| Medication/supplement intake    | `lib/queries/intake/*`, `lib/intake-cadence.ts`              | [Intake](internals/supplements.md)                                                                                   |
 | Notifications or attention      | `lib/notifications/`, `lib/queries/upcoming/`                | [Notifications](internals/notifications.md), [findings](internals/findings.md)                                       |
 | Connected sources and imports   | `lib/integrations/`, `app/(app)/data/`                       | [Sync](internals/integrations-sync.md), [import actions](internals/import-actions.md)                                |
 | Action writes and refresh       | `app/`, `lib/revalidate.ts`                                  | [Refresh](internals/server-action-refresh.md); [deployment skew](internals/deploy-skew.md) for compatibility changes |
@@ -55,10 +55,11 @@ appending another version. Link to code for implementation detail.
 and dispatch/brief source files. New and short files have a 1,500-word limit;
 existing oversized files cannot exceed their word count at the comparison base.
 This applies to generated Markdown too: keep generated reference data separate
-from growing prose. Rewritten files inherit the smaller ceiling after merging.
-The check includes untracked files and fails if the comparison base is unavailable.
-Use `npm run docs:check -- --base <ref>` for an explicit base; the default is the
-merge base with `origin/main`. CI supplies its event's base commit.
+from growing prose. The total across all checked files must not exceed the total
+at the base, so new text displaces old; the summary line prints both totals and
+the delta. The check includes untracked files and fails if the comparison base is
+unavailable. Use `npm run docs:check -- --base <ref>` for an explicit base; the
+default is the merge base with `origin/main`.
 
 The guard measures length, not usefulness. Do not compress code, split a single
 rule across arbitrary files, or remove important contracts just to pass it.

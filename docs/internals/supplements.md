@@ -59,7 +59,7 @@ caller-specific exception.
 
 ## One write core
 
-`lib/queries/intake/adherence.ts` owns scheduled status transitions:
+`lib/queries/intake/dose-status.ts` owns scheduled status transitions:
 
 - One-way `markDoseTaken` and `markDoseSkipped` stop on an existing row and report
   its actual status. Retries must not flip an already resolved dose.
@@ -120,6 +120,37 @@ resolve current access at the request boundary using the existing authorized
 profile set. Do not manufacture grants or expose unrelated members' data through
 a shared bottle. Product-fact exchange reuses the pool/item model rather than
 copying independent inventories. The cabinet is reached from its consumers.
+
+Adding a bottle for a second person copies ONE named member's row; it never
+switches the caller's active profile and never opens the add form. It takes the
+product, that member's obligation and schedule, and nothing else: the amount is
+derived for the recipient — their own weight band, else the label's adult dose,
+else no rows — with no start date, weight, history or stock.
+With several readable members the source is picked explicitly; with one it is
+named. A stopped link is not membership: that person is offered
+the bottle again and a tap starts a fresh item, though the card still lists the
+stopped one. Source, membership, decline state and dose basis are
+re-read inside the write, in the RECIPIENT's day; a stale offer refuses by naming
+the fact that moved, and `REFRESHES` says which a fresh render fixes.
+Every offer is declinable per person, and returns on Restore or when a rename
+changes what the bottle reads as.
+
+WHAT THE BOTTLE IS is decided before what it doses, because its name and the
+source member's stored code can disagree. A name listing two medicines, or one
+naming a different product than the code, yields no amount and no life-stage
+answer, and the receipt says which check could not run. Otherwise a stored code wins, an
+uncoded name stands alone, and where neither resolves the receipt names the
+source row's text. Detection is looser than derivation and never feeds a figure.
+
+Eligibility asks only what this door owns: may the caller write this person, are
+they on the bottle, have they declined it. Everything else is stated, not
+withheld. Allergy does not gate it; the receipt states every hit from BOTH
+matchers — food/cross-reactivity and drug-allergy — deduped by allergen: only the
+first says "shrimp, via krill" or reaches a stored supplement row, and only the
+second knows a penicillin allergy meets amoxicillin. No bottle carries a product code,
+so the duplicate question goes unasked and the receipt says so. Life stage is the
+one gate left: a curated adult-only product withholds the copy for a child with
+the label's reason on screen; an uncurated one is dose-less.
 
 ## Amount parsing and suggestions
 

@@ -15,6 +15,7 @@ import {
   // (movedRouteIdForMerge removed in #1081 — writeActivityFold returns the move)
   dropSetIds,
 } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 
 // A synthetic public-park loop polyline (canonical Google example vector, remote CA
 // wilderness) — never a real home route, per the no-real-PHI fixture rule.
@@ -166,7 +167,13 @@ describe("merge keeper-wins + undo moves the route back (#569)", () => {
     const keeperBefore = snapshotKeeperFold(keep);
     const movedSetIds = dropSetIds(dropId);
 
-    const moves = writeActivityFold(profileId, keepId, keep, [drop]);
+    const moves = writeActivityFold(
+      profileId,
+      keepId,
+      keep,
+      [drop],
+      carryPostWorkoutMarker
+    );
     const movedRouteId = moves[0].movedRouteId;
     expect(movedRouteId).not.toBeNull();
     // Keeper-wins: the route is now on the keeper.
@@ -214,7 +221,13 @@ describe("merge keeper-wins + undo moves the route back (#569)", () => {
     const drop = db
       .prepare("SELECT * FROM activities WHERE id = ?")
       .get(dropId) as Record<string, unknown>;
-    const moves = writeActivityFold(profileId, keepId, keep, [drop]);
+    const moves = writeActivityFold(
+      profileId,
+      keepId,
+      keep,
+      [drop],
+      carryPostWorkoutMarker
+    );
     // Keeper already had a route, so nothing moved for the drop.
     expect(moves[0].movedRouteId).toBeNull();
     // Keeper keeps its OWN route; the drop's stays on the drop (until it's deleted).

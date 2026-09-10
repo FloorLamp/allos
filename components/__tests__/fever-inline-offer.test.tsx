@@ -128,7 +128,7 @@ const ANTIPYRETIC: PrnMedForQuickLog = {
   minIntervalHours: 6,
   maxDailyCount: 4,
   familyCount: 0,
-  familyLastGivenAt: null,
+  familyArming: { kind: "none" },
   familyMaxDailyCount: 4,
   familyExposure: null,
   familyMemberCount: 1,

@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import DateField from "@/components/DateField";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
@@ -171,14 +172,18 @@ export default function ConditionForm({
               </span>{" "}
               ({ICD10_SYSTEM})
             </span>
-            <button
-              type="button"
+            {/* Filling a field is not the form's commit, so it takes no rank
+                (ruling 6, #4978). Measured rather than eyeballed: `text-xs`
+                already matched the control box, and `py-0.5` never applied at
+                all — the box's derived `padding-block` is unlayered and
+                outranks a `@layer utilities` padding — so the rendered box is
+                unchanged at 34px and only the side padding moves. */}
+            <Button
               data-testid="icd10-suggestion-apply"
-              className="btn-ghost px-2 py-0.5 text-xs"
               onClick={applySuggestion}
             >
               Use code
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -326,9 +331,9 @@ export default function ConditionForm({
           </SubmitButton>
         </div>
         {editing && onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
+          // Quiet beside the form's filled commit (ruling 6, #4978); the drop to
+          // the control box's 12px ends the "Cancel larger than Add" inversion.
+          <Button onClick={onDone}>Cancel</Button>
         )}
       </div>
     </form>

@@ -59,7 +59,7 @@ test("Today's session card renders the resolved routine day (#740)", async ({
     ).toBeVisible();
     // Cold start (no history): the prescription shows sets × rep range, no load.
     await expect(card.getByText("4 × 5–8").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: several exercises in the scoped card share the 4×5–8 scheme — order-agnostic presence
-    const actions = card.getByTestId("training-overview-actions");
+    const actions = card.getByTestId("todays-session-actions");
     await expect(actions.getByTestId("log-this-session")).toBeVisible();
     await expect(
       actions.getByTestId("training-overview-log-activity")
@@ -67,7 +67,15 @@ test("Today's session card renders the resolved routine day (#740)", async ({
     await expect(
       actions.getByTestId("training-overview-start-workout")
     ).toHaveCount(0);
-    await expect(actions.locator("button.btn")).toHaveCount(1);
+    // ONE LOUD CONTROL ON THIS CARD (#4978 ruling 6), AND IT IS THE COMMIT.
+    // The selector was `button.btn` while this row was raw; the rank now lives
+    // on the primitive's paint utility, which is the only DOM evidence a rank
+    // leaves. Read as a single element on purpose — a second filled control in
+    // the row fails it as a strict-mode violation, and the fill moving to "Log
+    // activity" fails it on the id.
+    await expect(
+      actions.locator("button.button-control-primary")
+    ).toHaveAttribute("data-testid", "log-this-session");
   } finally {
     await page.context().close();
   }

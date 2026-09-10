@@ -187,7 +187,9 @@ export default function ActivityPartRows({
                 {part.status === "missed" && (
                   <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
                     <IconAlertTriangle className="h-4 w-4" stroke={2} />
-                    Target missed
+                    {/* ONE SPELLING (#5726): the form, the recent-session rows and the
+                        recap all say this, and they share a screen family. */}
+                    Missed target
                   </span>
                 )}
                 {rowHelp ? (

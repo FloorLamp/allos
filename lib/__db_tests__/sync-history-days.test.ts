@@ -144,7 +144,7 @@ describe("a day of ~70 pushes, as the source page receives it", () => {
     expect(day.runs).toBe(PUSHES);
     expect(syncDayAttention(day)).toEqual({
       label: `${ANOMALY_SKIPPED} skipped`,
-      tone: "caution",
+      tone: "warn",
     });
 
     // Opening the day itemizes only the newest push and the anomaly; the other 68

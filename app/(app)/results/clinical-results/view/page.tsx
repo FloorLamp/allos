@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { verdictFill } from "@/lib/chart-colors";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import DestinationLink from "@/components/DestinationLink";
 import { redirect } from "next/navigation";
@@ -299,13 +300,10 @@ export default async function ClinicalResultDetailPage(props: {
     );
     return [{ r, polarity: c?.polarity ?? ("neutral" as const) }];
   });
-  // Tone for a qualitative dot/chip by its classified polarity: good = emerald,
-  // bad = rose, neutral = slate. Mirrors the flag tone tiers.
-  const qualitativeTone: Record<"good" | "bad" | "neutral", string> = {
-    good: "bg-emerald-500",
-    bad: "bg-rose-500",
-    neutral: "bg-slate-400",
-  };
+  // The dot for a qualitative result reads the shared verdict FILL (#5187). The
+  // hand-picked -500/-400 steps it used were 2.30:1 (emerald) and 2.60:1 (slate)
+  // on the light surface — a mark a reader could barely find.
+  const qualitativeTone = verdictFill;
 
   // Charting unit + points + bands. When the biomarker has a canonical unit, we
   // chart in THAT unit, converting every reading we can (so mg/dL and mmol/L

@@ -1,6 +1,6 @@
 // Frequency-target RIGHT-SIZING suggestions (issue #1670). Pure and client-safe —
 // no DB, no network. The server builder (buildTargetRightSizeFindings,
-// lib/rule-findings.ts) assembles the per-target weekly history from the already
+// lib/rule-findings/rightsize.ts) assembles the per-target weekly history from the already
 // profile-scoped `frequency_targets` reads and hands it here.
 //
 // This is the #1505 demotion engine's shape, generalized off intakes and onto the ONE

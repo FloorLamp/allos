@@ -25,9 +25,10 @@ the agent may close, sequence, and group issues within these limits:
 - Before closing, comment with the absorbing issue, then use the host's separately
   authorized issue writer with `not_planned` for a fold. These actions
   require the session's write and communication authorization.
-- The scripts remain confined factual writers with no issue-close operation.
-  Keep closure authority separate from their body, label, watermark, and summary
-  payloads. Do not bypass a writer refusal with a hand edit or broader shell grant.
+- Scripts remain confined factual writers; only the applier's stale-P3 pass
+  closes. Keep closure authority separate from their body, label, watermark, and
+  summary payloads. Do not bypass a writer refusal with a hand edit or broader
+  shell grant.
 
 Coordinate with the orchestrator before writes; do not overlap another
 reconciliation or triage sweep. Tool availability is not permission to post or
@@ -96,6 +97,10 @@ The writer rereads open issues before changing labels.
 Compare `docs/` status lines and README navigation with shipped behavior. Record
 mismatches; a mechanical correction can become a focused reviewed change. Do not
 turn the pass into a new scanner project.
+
+Remove contracts that `main` has superseded, naming in the PR what each removed
+section protected. There is no numeric prune target; `npm run docs:check` holds
+the total steady, and this pass is where superseded text leaves.
 
 ## 6. Review the report and apply
 

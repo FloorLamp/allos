@@ -58,13 +58,10 @@ relevant code and checks.
 
 ## Development configuration
 
-Do not add tests or guards asserting on ESLint/Vitest/TypeScript configuration,
+Do not add tests or guards that read ESLint/Vitest/TypeScript configuration,
 `package.json`, `.nvmrc`, workflow definitions, gate trigger/skip sets, or Node
-flags. Run the configuration instead of maintaining a second copy in assertions.
-
-A test may execute configuration or query a real tool's resolved behavior. It
-must not read configuration files and restate their text, keys, flags, lists, or
-wiring as assertions.
+flags and restate their text, keys, lists, or wiring as assertions. A test may
+execute configuration or query a real tool's resolved behavior.
 
 The only existing dev-config exceptions are the `ci-skip-set` and
 `db-gate-trigger-set` count ratchets. Their limits may only decrease in the change
@@ -79,3 +76,10 @@ coverage cannot cover. Report production and test additions/deletions separately
 use the counts to scrutinize growth, not to reward compressed code or lost coverage.
 Verification cleanup is subtractive first, neutral next, and additive only for a
 named defect or security gap. A conversion that deletes nothing is unfinished.
+
+A PR that edits a product file over 1,500 lines lands with that file shorter
+than it found it; both counts exclude comment lines. The only exemption is a
+P0/P1 defect fix, stated in the PR. Moving code to a new file counts only when
+the moved code gains an owner named in the [development guide](development.md).
+The reviewer reads `git diff --stat`; there is no scanner. Branches banked or
+dispatched before 2026-09-09 20:49 UTC land under the old rule.

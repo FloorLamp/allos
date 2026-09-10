@@ -47,7 +47,11 @@
 //
 // It also PRINTS, without gating on it, what `e2e-main` says about the base
 // branch (#4722): that workflow reports on main, never on a PR head, so main
-// stayed red there for eight merges while every PR read green.
+// stayed red there for eight merges while every PR read green — and, for a PR
+// whose diff changes an exported `lib/` function, what that function REACHES
+// (#5680): `scripts/reach.ts --json` walked on this checkout, one NOTE per
+// symbol naming the terminals the body's consumer table does not. Advisory in
+// this step; the core says what it reads and what it misses.
 //
 // Usage:
 //   node scripts/orchestration/merge-gate.mjs <pr-number> [--repo owner/name]
@@ -73,6 +77,7 @@
 //   silently passes reads as safe — the ci-watch lesson).
 
 import { execFileSync, spawnSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
@@ -86,6 +91,7 @@ import {
   normaliseSession,
   ownershipVerdict,
   readinessVerdict,
+  reachVerdict,
   receiptVerdict,
   RECEIPT_MARKER,
   baseMovedVerdict,
@@ -468,6 +474,62 @@ const baseMoved = baseMovedVerdict({
 });
 if (baseMoved.ok) pass(baseMoved.message);
 else fail(baseMoved.message);
+
+// WHAT THE CHANGED DERIVATIONS REACH (#5680). Advisory: every row is a NOTE,
+// and nothing on this path calls `fail()`. The patches come from the files
+// endpoint (a `soft` read — a diff that cannot be read prints one line and
+// moves on); the walk is `scripts/reach.ts --json` as a child process, on the
+// tree THIS gate runs in (the merge commit under the CI wrapper's pull_request
+// checkout; whatever is checked out interactively), one process per symbol,
+// 60 s each. A child that fails — tsx missing, a symbol the walker cannot find
+// on this tree — becomes its own NOTE through the core and never a closure;
+// the row names the walked HEAD, since a symbol the PR adds is on no other
+// tree (#5710).
+const changedFiles = [];
+for (let page = 1; ; page++) {
+  const batch = gh(
+    `repos/${repo}/pulls/${prNumber}/files?per_page=100&page=${page}`,
+    true
+  );
+  // A read that went dark, or answered something other than a file list, is
+  // "not walked" and nothing more: this row may not take the gate down.
+  if (!Array.isArray(batch)) {
+    changedFiles.length = 0;
+    console.log("NOTE: reach — could not read the PR's files; not walked");
+    break;
+  }
+  changedFiles.push(...batch);
+  if (batch.length < 100) break;
+}
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../.."
+);
+const reachOverChild = (file, symbol) => {
+  const run = spawnSync(
+    "npx",
+    ["tsx", "scripts/reach.ts", file, symbol, "--json"],
+    { cwd: repoRoot, encoding: "utf8", timeout: 60_000, maxBuffer: MAX_BUFFER }
+  );
+  if (run.error) throw new Error(run.error.message);
+  if (run.status !== 0)
+    throw new Error(
+      (run.stderr ?? "").trim() ||
+        (run.signal ? `terminated by ${run.signal}` : `exit ${run.status}`)
+    );
+  return JSON.parse(run.stdout);
+};
+const walkedOn = spawnSync("git", ["rev-parse", "HEAD"], {
+  cwd: repoRoot,
+  encoding: "utf8",
+}).stdout?.trim();
+for (const row of reachVerdict({
+  files: changedFiles,
+  body: pr.body,
+  reachFn: reachOverChild,
+  walkedOn,
+}))
+  console.log(`NOTE: ${row}`);
 
 // BOTH ENDPOINTS, ONE VERDICT (#5022). Statuses live on their own endpoint and
 // are invisible to `/check-runs`, so until now a red posted by anything but

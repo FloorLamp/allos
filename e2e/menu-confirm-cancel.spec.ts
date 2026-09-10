@@ -96,11 +96,13 @@ test("cancelling a confirm opened from an overflow menu leaves the page able to 
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
 
-  // THE CONSEQUENCE: an ordinary Server Action form on the same page still
-  // submits. Before the fix this timed out with "NO same-origin POST was seen at
-  // all", because the click never reached the button.
-  await settledClick(page, bottle.getByTestId("shared-supply-add-for-submit"));
-  await expect(page).toHaveURL(/\/nutrition\?tab=supplements&supply=\d+/);
+  // THE CONSEQUENCE: the next taps on the same page still land. Re-open the ⋯ menu,
+  // ask for Edit, and submit the bottle form — an ordinary Server Action POST. Before
+  // the fix this timed out with "NO same-origin POST was seen at all", because the
+  // click never reached the control.
+  await hydratedClick(page, bottle.getByTestId("overflow-menu-trigger"));
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await settledClick(page, bottle.getByTestId("shared-supply-save"));
 
   // …and the cancel really did cancel: the bottle is still in the cabinet.
   await page.goto("/supplies");
