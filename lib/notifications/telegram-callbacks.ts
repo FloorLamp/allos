@@ -1639,11 +1639,11 @@ async function handleUsualRoutineTap(
   const messageId = cq.message?.message_id;
   const notifyMessageId =
     messageId != null ? messagePointerIdAt(profileId, chatId, messageId) : null;
-  // THIS TAP STATES NO EATING TIME, AND #4438 ITEM 3 ASKED IT TO — LEFT UNDONE ON
-  // PURPOSE, because doing it moves the servings out of the window the button promised.
+  // THIS TAP STATES NO EATING TIME, AND THAT IS THE RULING (#4438 item 3, owner
+  // 2026-09-02) rather than an omission waiting on one.
   //
-  // The sibling `food:` and protein buttons on this keyboard do stamp
-  // `{ eatenAt: tapAt, source: "tap" }`, and item 3 asks for parity. But their label
+  // The sibling `food:` and protein buttons on this keyboard DO stamp
+  // `{ eatenAt: tapAt, source: "tap" }`, and item 3 asked for parity. But their label
   // names a GROUP; this one names a WINDOW — "Your usual Morning" — and
   // `logFoodServingCore`'s one chokepoint (#2269) stores no `meal_slot` beside a stated
   // instant and derives the window FROM it. Measured on the DB tier, whose clock sits at
@@ -1652,10 +1652,15 @@ async function handleUsualRoutineTap(
   // not hold. In production that is hour-of-day dependent — right for a nudge tapped
   // inside its own window, wrong for one tapped late.
   //
-  // Which way that resolves is an owner question (does the bundle's window follow the
-  // tap, or does the bundle keep stating no hour?), not a lane's, so the WEB half of
-  // item 3 landed — the bar's sticky statement, where the person names the time and the
-  // surface says out loud which window it lands in — and this half waits for the ruling.
+  // So the bundle's write honours the window its label names, and the eating time is
+  // specified here the way it is everywhere else in this chat: BY CORRECTING AFTER THE
+  // TAP. The rebuilt host below carries the same time-correction chips the per-group
+  // taps carry — reached through this act's bundle id, so one chip moves every member
+  // together (lib/bundle-time-correction.ts).
+  //
+  // The WEB half of the same item answers differently and deliberately: the nutrition
+  // bar's sticky statement rides its bundle, because there the person names the hour and
+  // the bar's own note says which window it will land in before the tap.
   const outcome = logUsualRoutineCore(
     profileId,
     offer.window,
