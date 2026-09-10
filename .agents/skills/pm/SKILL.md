@@ -46,6 +46,7 @@ watch checks:
 4. Issue updates, dispatch claims, and pending owner questions.
 5. Remote branches for duplicate claims or overlapping work.
 6. Whether active work follows the highest ready Ladder rungs.
+7. Is the convergence slot filled in each session?
 
 Use [dispatch policy](../../../docs/orchestration/dispatch.md) for machine and
 E2E capacity. Seek useful saturation within those limits; do not fill lanes while

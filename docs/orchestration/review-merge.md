@@ -16,6 +16,10 @@
   handling, and shared one-question-one-computation models.
 - Apply [the change and test policy](../change-policy.md): inspect new abstractions,
   unique test value, and production/test line deltas.
+- A product file over 1,500 non-comment lines that the diff edits leaves shorter
+  than it arrived (`git diff --stat`); moved code counts only when it gains an
+  owner named in the development guide. Exempt: a P0/P1 fix stated in the PR, or
+  a branch dispatched before 2026-09-09 20:49 UTC ([policy](../change-policy.md#review)).
 - A guard's existence is not its coverage. Ask which widths, states and
   roles it runs at, and say which in the review.
 - A REMOVAL is checked against the issue's acceptance criteria: unreachable
@@ -23,6 +27,8 @@
 - Inspect cross-PR conflicts, stale shared signatures, binary-looking diffs,
   measured-count claims, and unintended generated-data changes.
 - Flag owner-visible judgment calls in the COMMENT review.
+- Consult [verification failure modes](../internals/verification-failure-modes.md)
+  before writing a guard or dispatching a lens.
 
 ## Adversarial lane
 
@@ -52,18 +58,10 @@
   a blocker is fixed as a new commit on the owner's branch, stated on the
   PR — never rebase, amend or force-push it (owner 2026-09-04).
 
-## What a lens looks for, and how verification lies
-
-[Verification failure modes](../internals/verification-failure-modes.md) explains
-coverage gaps and diagnostic checks. Consult the relevant section before writing
-a guard or dispatching a lens.
-
 ## Migrations
 
-- Applied migrations are keyed by name; numbered migrations 001–185 are closed.
-- Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, then run
-  `npm run gen:migration-manifest` for its hash. Never edit a shipped migration.
-- Merge order defines migration order. An APPEND-ONLY file (`versions/index.ts`,
+- [Migration instructions](../../lib/migrations/AGENTS.md) own the procedure.
+  Merge order defines migration order. An APPEND-ONLY file (`versions/index.ts`,
   a barrel like `lib/queries.ts`) conflicts whenever two lanes append: keep BOTH
   entries, later merge last, never pick a side. Re-run the generator for
   `manifest.json` hashes rather than hand-resolving them.
@@ -78,15 +76,13 @@ a guard or dispatching a lens.
   refresh or reconcile affected branches.
 - A green exact head merges in the TURN that finds it green. An unrelated
   `e2e-main` run on `main` is not a reason to hold it; a red `main` is.
-- Only the landing candidate opens or refreshes a ready PR and consumes final
-  CI/review. Banked work stays branch-only until promotion. Use
-  `landing-independence.mjs` as advice; the merge gate checks base movement.
 - A banked branch is reported as green on the local tiers (no browser tier runs
   before promotion); a branch whose diff changes a rendered string or a selector
   runs its own affected e2e specs once locally before it is called banked.
-- Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it, base-bound
-  as a pass is head-bound: run it and merge in one pass. A notes batch moves
-  every open PR's base: `lib/release-notes.json` is type-bearing under `/^lib\//`.
+- The merge gate checks base movement; its refusal names the `MERGED-TREE-CHECKED`
+  receipt that clears it, base-bound as a pass is head-bound: run it and merge in
+  one pass. A notes batch moves every open PR's base: `lib/release-notes.json` is
+  type-bearing under `/^lib\//`.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
