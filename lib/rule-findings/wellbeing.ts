@@ -80,10 +80,6 @@ export function buildMoodFindings(
       detail: low.detail,
       // Calm FYI — a neutral observation from the user's own log, never an alarm.
       tone: "info",
-      // This class's ONLY surface is the dashboard rollup (#449 inverted: no
-      // origin tab renders it), so it declares rollup reach explicitly — the
-      // tone-derived default would leave it rendering nowhere (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "From your own daily check-ins — a subjective self-rating, not a screen " +
         "or a diagnosis.",
