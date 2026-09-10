@@ -3,6 +3,7 @@
 // cadence, or relative effort is context rather than an achievement (#3023).
 
 import { kmTo, round } from "./units";
+import type { VerdictTone } from "./chart-colors";
 import type { DistanceUnit } from "./settings";
 import type {
   SessionComparisonMetric,
@@ -96,16 +97,14 @@ export function comparisonHasDirection(
   return key === "speed";
 }
 
-export type ComparisonTone = "good" | "watch" | "neutral";
-
 // The tone a difference earns. A metric with no direction is always neutral, no
 // matter how far from the median it sits.
 export function comparisonTone(
   metric: SessionComparisonMetric,
   relation: ComparisonDifference["relation"]
-): ComparisonTone {
+): VerdictTone {
   if (!comparisonHasDirection(metric.key)) return "neutral";
   if (relation === "above") return "good";
-  if (relation === "below") return "watch";
+  if (relation === "below") return "warn";
   return "neutral";
 }

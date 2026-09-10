@@ -1,13 +1,17 @@
 import type { SessionHighlight } from "@/lib/session-detail";
 import Link from "next/link";
 
+// A LEFT-ACCENT TINTED BLOCK — a border edge plus a 60%-opacity wash, which is
+// none of the three roles the verdict palette owns (text, badge, fill). The
+// vocabulary is now the shared VerdictTone (#5187), but the classes stay local
+// and this file is named in the palette-membership guard's allowlist with that
+// reason; converging the role itself needs a `verdictBlock` the app does not
+// have yet (Notice's tinted-block family is the other holder).
 const TONE_CLASS: Record<SessionHighlight["tone"], string> = {
   neutral:
     "border-slate-300 bg-slate-50/60 dark:border-slate-600 dark:bg-ink-800",
-  positive:
-    "border-emerald-500 bg-emerald-50/60 dark:border-emerald-400 dark:bg-emerald-950/20",
-  caution:
-    "border-amber-500 bg-amber-50/60 dark:border-amber-400 dark:bg-amber-950/20",
+  good: "border-emerald-500 bg-emerald-50/60 dark:border-emerald-400 dark:bg-emerald-950/20",
+  warn: "border-amber-500 bg-amber-50/60 dark:border-amber-400 dark:bg-amber-950/20",
 };
 
 export default function SessionHighlights({

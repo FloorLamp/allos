@@ -7,6 +7,8 @@
 // (no DB/network), so the DB reads (lib/queries/imports.ts) stay thin and this
 // logic is unit-tested in lib/__tests__/import-log.test.ts.
 
+import type { VerdictTone } from "./chart-colors";
+
 // The five statuses the log badges. `partial` is a paste/CSV job whose extraction
 // finished but is still awaiting the user's review/save (it produced nothing yet);
 // `processing` is an in-flight extraction (a document or a job); the rest mirror
@@ -50,27 +52,29 @@ export function jobLogStatus(status: string): ImportLogStatus {
   }
 }
 
-// A color token for the status badge; the component maps the token to classes so
-// the light/dark palette lives in one place (and stays out of this pure module).
-export type BadgeTone = "green" | "amber" | "rose" | "slate";
-
+// The badge's tone is the app's shared VerdictTone (#5187) — this module spelled
+// those four words as colour names (green/amber/rose/slate), which is how it kept
+// a palette opinion inside a pure module. The surface resolves the tone through
+// `verdictBadge`; the colours stay out of here entirely.
 export interface StatusBadge {
   label: string;
-  tone: BadgeTone;
+  tone: VerdictTone;
 }
 
 export function statusBadge(status: ImportLogStatus): StatusBadge {
   switch (status) {
     case "done":
-      return { label: "done", tone: "green" };
+      return { label: "done", tone: "good" };
     case "partial":
-      return { label: "partial", tone: "amber" };
+      return { label: "partial", tone: "warn" };
+    // In flight, not a warning — but amber is the colour it has always worn, and
+    // the palette has no in-flight tone to move it to.
     case "processing":
-      return { label: "processing", tone: "amber" };
+      return { label: "processing", tone: "warn" };
     case "failed":
-      return { label: "failed", tone: "rose" };
+      return { label: "failed", tone: "bad" };
     case "skipped":
-      return { label: "skipped", tone: "slate" };
+      return { label: "skipped", tone: "neutral" };
   }
 }
 
