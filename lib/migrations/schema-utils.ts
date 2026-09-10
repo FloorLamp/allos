@@ -129,7 +129,6 @@ export function acquireBootLock(dbPath: string): BootLock | null {
     // Fail open: an advisory lock must never break a boot that could otherwise
     // succeed. The unserialized path is still busy-tolerant (busy_timeout +
     // runBootTx) — this is a liveness fallback, not the normal path.
-    // eslint-disable-next-line no-console
     console.warn(
       `[allos] boot lock unavailable (${String(err)}) — booting unserialized`
     );

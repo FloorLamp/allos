@@ -1238,7 +1238,6 @@ describe("the dose-history panel collects its subject's wall clock (#4693)", () 
       addListener: () => {},
       removeListener: () => {},
       dispatchEvent: () => false,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })) as any;
   });
   afterEach(() => vi.useRealTimers());

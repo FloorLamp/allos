@@ -61,7 +61,6 @@ import {
 } from "../lib/dose-amount-census";
 
 const log = (line: string) => {
-  // eslint-disable-next-line no-console
   console.log(line);
 };
 
