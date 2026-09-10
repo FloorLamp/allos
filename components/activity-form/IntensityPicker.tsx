@@ -5,6 +5,14 @@ import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // The activity form's intensity selector (a 3-up toggle grid). Presentational
 // only — extracted from ActivityForm so the parent stays composition (#319).
+
+// WHAT THE PICKER MEANS, STATED ONCE (#5726, #5300 rule 4). The three descriptors
+// and the fact that the level feeds the calorie estimate are mechanics copy, so they
+// live behind the info affordance rather than under the buttons as standing prose.
+const INTENSITY_HELP = `${INTENSITIES.map(
+  (option) => `${option.label}: ${option.hint}`
+).join(" · ")} · Affects the calorie estimate`;
+
 export default function IntensityPicker({
   intensity,
   onChange,
@@ -12,15 +20,15 @@ export default function IntensityPicker({
   intensity: string;
   onChange: (v: string) => void;
 }) {
-  const selected = INTENSITIES.find((o) => o.value === intensity);
   return (
     <fieldset>
-      <legend className="label">Intensity</legend>
-      <InfoTooltipIcon
-        label={INTENSITIES.map(
-          (option) => `${option.label}: ${option.hint}`
-        ).join(" · ")}
-      />
+      {/* The glyph sits INSIDE the legend, so it reads as part of the label rather
+          than stranded on its own line between the label and the buttons. `.label`
+          stays a block; the affordance is inline-flex, so it flows after the word. */}
+      <legend className="label">
+        Intensity{" "}
+        <InfoTooltipIcon label={INTENSITY_HELP} data-testid="intensity-help" />
+      </legend>
       {/* `gap-3` is the reach floor (#3938). */}
       <div className="grid grid-cols-3 gap-3">
         {INTENSITIES.map((opt) => {
@@ -46,13 +54,6 @@ export default function IntensityPicker({
           );
         })}
       </div>
-      {/* Explain the selected level and that it drives the calorie estimate — the
-          control used to silently feed the MET tier with no descriptor (#336). */}
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        {selected
-          ? `${selected.hint} · affects the calorie estimate`
-          : "Sets effort level — affects the calorie estimate"}
-      </p>
     </fieldset>
   );
 }

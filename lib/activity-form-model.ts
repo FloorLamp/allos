@@ -758,9 +758,9 @@ export function partTotal(p: PartEntry): number {
 export const INTENSITIES: {
   value: string;
   label: string;
-  // One-line RPE-style descriptor so the level isn't unexplained (#336). Shown
-  // under the picker for the selected level; the choice feeds the calorie MET
-  // tier (lib/calorie-estimate), so a note there says the estimate depends on it.
+  // One-line RPE-style descriptor so the level isn't unexplained (#336). All three
+  // read from the picker's own info affordance (#5726), together with the fact that
+  // the choice feeds the calorie MET tier (lib/calorie-estimate).
   hint: string;
 }[] = [
   {
