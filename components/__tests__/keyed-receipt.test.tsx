@@ -200,7 +200,7 @@ describe("a receipt belongs to the interaction that earned it", () => {
     fireEvent.click(screen.getByRole("button", { name: "A tap" }));
     expect(receipts()).toEqual(["A logged."]);
 
-    view.rerender(<ToastProvider />);
+    view.rerender(<ToastProvider>{null}</ToastProvider>);
     expect(receipts()).toEqual([]);
   });
 
