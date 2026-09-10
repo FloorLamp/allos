@@ -105,6 +105,22 @@ export const BRISTOL_STOOL_TYPES: readonly BristolStoolType[] = [
   },
 ];
 
+/**
+ * The scale, whole, as one label — `1 Hard lumps — Separate hard lumps, like nuts, and
+ * hard to pass` through `7 Liquid — Watery, no solid pieces, entirely liquid`, one type
+ * per line.
+ *
+ * BUILT FROM THE VOCABULARY, never retyped (#5756). The tiles show a picture and two
+ * words, the record's correction form lists the sentences in its select, and the sheet
+ * shows them behind an info glyph; all three read this array, so the sentence that says
+ * what a picture means cannot come to differ from the sentence stored beside the type.
+ */
+export function bristolScaleLines(): string {
+  return BRISTOL_STOOL_TYPES.map(
+    (t) => `${t.type} ${t.label} — ${t.description}`
+  ).join("\n");
+}
+
 const BY_TYPE = new Map(BRISTOL_STOOL_TYPES.map((t) => [t.type, t]));
 
 /**
