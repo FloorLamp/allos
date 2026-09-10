@@ -25,6 +25,7 @@ import type { FoodSlotBoundaries } from "@/lib/food-slot";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
+import { logHeading, type LogDomain } from "@/lib/log-manifest";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
@@ -65,18 +66,14 @@ import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 // form instead, which carries the whole field set, the sitting's optional Time through
 // the shared `WhenControl`, and `addMeasurements` with its never-the-future day bound.
 
-const KIND_LABEL = {
-  food: "Log food",
-  dose: "Log past dose",
-  practice: "Log a practice",
-  mood: "Log a check-in",
-  substance: "Log a use",
-  body: "Log a reading",
-  symptom: "Log a symptom",
-  stool: "Log a movement",
-} as const;
-
-export type HistoryAddKind = keyof typeof KIND_LABEL;
+// THE DOOR NO LONGER NAMES ITS OWN KINDS (#5300 rule 6, #5617 step 2). It carried a
+// second vocabulary for the eight domains the quick sheet had already named — four
+// RENAMINGS ("Log a check-in" for mood, "Log a use" for substance, "Log a reading"
+// for body, "Log a movement" for stool) and three articles ("Log a practice", "Log a
+// symptom", "Log past dose") — so one domain answered to two phrases depending on
+// which surface a person opened it from. The noun is declared once on the domain's
+// manifest entry and every heading is built from it.
+export type HistoryAddKind = LogDomain;
 
 /** The per-kind vocabulary the server reads once for the page. */
 export interface HistoryAddVocabulary {
@@ -408,7 +405,7 @@ export default function HistoryAddDoor({
         data-testid={`history-add-open-${kind}`}
         onClick={() => setOpen((value) => !value)}
       >
-        {KIND_LABEL[kind]}
+        {logHeading(kind)}
       </button>
       {open ? (
         <div className="mt-2" data-testid={`history-add-panel-${kind}`}>

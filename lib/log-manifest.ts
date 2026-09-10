@@ -291,6 +291,18 @@ export type WriteConventions =
     };
 
 export interface LogDomainManifest {
+  // THE DOMAIN'S ONE NOUN (#5300 rule 6, adopted by #5617). Every heading over this
+  // domain's form is built from it — `Log <noun>` to add, `Edit <noun>` to correct —
+  // so the quick sheet, the record's add door and the dialog cannot name one domain
+  // three ways. Before this the record's door renamed four of them ("Log a check-in",
+  // "Log a use", "Log a reading", "Log a movement") and put an article in front of
+  // three more, while the sheet next door said "Log mood", "Log substance", "Log
+  // measurements", "Log practice".
+  //
+  // A BARE NOUN, not a phrase: the verb is the heading's, so a noun that already
+  // carries one ("past dose") would print it twice as soon as a second verb reads
+  // this column. `editHeading` is that second verb.
+  readonly noun: string;
   // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
   // names the others a domain rides, so `lib/offline/queue.ts` can derive its
   // domain-grain rows from here instead of restating them.
@@ -326,6 +338,7 @@ export interface LogDomainManifest {
 
 export const LOG_MANIFEST = {
   food: {
+    noun: "food",
     offline: { kind: "covered", flow: "food" },
     surfaces: {
       sheet: { kind: "covered", via: "log-food" },
@@ -370,6 +383,7 @@ export const LOG_MANIFEST = {
   },
 
   dose: {
+    noun: "dose",
     offline: { kind: "covered", flow: "dose", alsoFlows: ["skip-dose"] },
     surfaces: {
       sheet: { kind: "covered", via: "log-dose" },
@@ -443,6 +457,7 @@ export const LOG_MANIFEST = {
   },
 
   practice: {
+    noun: "practice",
     offline: { kind: "covered", flow: "practice" },
     surfaces: {
       sheet: { kind: "covered", via: "log-practice" },
@@ -496,6 +511,7 @@ export const LOG_MANIFEST = {
   },
 
   mood: {
+    noun: "mood",
     offline: { kind: "covered", flow: "mood" },
     surfaces: {
       sheet: { kind: "covered", via: "log-mood" },
@@ -523,6 +539,7 @@ export const LOG_MANIFEST = {
   },
 
   symptom: {
+    noun: "symptom",
     // THE FIRST TENANT (#4425). Until this entry symptoms had no date bound at all:
     // `parseDate` in app/(app)/symptom-actions.ts regex-matched `\d{4}-\d{2}-\d{2}`
     // without `isRealIsoDate` — so `2026-13-45` reached the core as a literal string
@@ -572,6 +589,10 @@ export const LOG_MANIFEST = {
   },
 
   stool: {
+    // `stool`, not `stool form`: the quick sheet's row and its title read "Log stool
+    // form" after the Bristol Stool Form scale the picker is drawn from. That is the
+    // SCALE's name, not this domain's, and rule 6 asks for one bare noun.
+    noun: "stool",
     // THE SECOND TENANT (#4425). Until that entry `logBristolStool` ran only
     // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
     // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
@@ -623,6 +644,7 @@ export const LOG_MANIFEST = {
   },
 
   substance: {
+    noun: "substance",
     offline: {
       kind: "excluded",
       reason:
@@ -656,6 +678,10 @@ export const LOG_MANIFEST = {
   },
 
   body: {
+    // `measurements`, not `reading`: the domain's one form is `MeasurementsQuickAdd`
+    // and it states a whole sitting, so the noun names what a person fills in rather
+    // than one row of it.
+    noun: "measurements",
     offline: {
       kind: "covered",
       flow: "body-metric",
@@ -729,6 +755,23 @@ export const LOG_MANIFEST = {
     writeConventions: { kind: "convention" },
   },
 } as const satisfies Record<LogDomain, LogDomainManifest>;
+
+// ── THE HEADINGS, BUILT FROM THE ONE NOUN (#5617 step 2) ─────────────────────
+//
+// Two verbs over one column, so a domain is named once and read everywhere. Neither
+// takes a string: the argument is a `LogDomain`, so a caller cannot pass a phrase it
+// invented, and a new domain gets its headings from the same `tsc` error that makes
+// it answer every other column.
+
+/** The heading over this domain's form when it is ADDING a row. */
+export function logHeading(domain: LogDomain): string {
+  return `Log ${LOG_MANIFEST[domain].noun}`;
+}
+
+/** The heading over this domain's form when it is CORRECTING one. */
+export function editHeading(domain: LogDomain): string {
+  return `Edit ${LOG_MANIFEST[domain].noun}`;
+}
 
 // ── THE DERIVED CORES COLUMN (#4614) ─────────────────────────────────────────
 //

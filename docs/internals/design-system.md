@@ -152,8 +152,8 @@ the accessible names.
 
 ## 4. Affordance grammar
 
-`CreateAction` owns canonical “Add X” trigger copy, distinct grammatical dialog
-titles, and housing. Pass `{ kind, control, available? }` to `PageHeader` or
+`CreateAction` owns “Add X” trigger copy and housing; a dialog takes its trigger’s
+phrase. Pass `{ kind, control, available? }` to `PageHeader` or
 `TabFirstPage` for page creates, `SectionCreateHeader` for section creates, or the
 specialized intake context's existing action cell. Unavailable declarations
 remove host chrome. Forms and `AddEntryPanel` keep their own semantics; the dock

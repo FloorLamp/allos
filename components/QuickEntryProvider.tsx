@@ -42,7 +42,7 @@ import {
   type DayContextValue,
 } from "./DayContext";
 import BoundedDaySwitcher from "./BoundedDaySwitcher";
-import { isWithinReach, SHEET_REACH } from "@/lib/log-manifest";
+import { isWithinReach, logHeading, SHEET_REACH } from "@/lib/log-manifest";
 import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
 import { shiftDateStr } from "@/lib/date";
 import { formatRelativeTime, formatWeekdayDate } from "@/lib/format-date";
@@ -315,7 +315,7 @@ export function useQuickEntry(): QuickEntryApi {
 // renders at today; measurements declares `lg`, the bucket
 // `OVERLAY_PANEL_MAX_WIDTH`'s own note already assigns to "the measurements grid".
 const SHEET: Record<QuickEntryForm, { title: string; size: OverlaySize }> = {
-  food: { title: "Log food", size: "sm" },
+  food: { title: logHeading("food"), size: "sm" },
   // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
   // #3361: the form renders body content, so the sheet prints its heading.
   //
@@ -324,24 +324,24 @@ const SHEET: Record<QuickEntryForm, { title: string; size: OverlaySize }> = {
   // the only thing standing between this mount and the two-row Vitals group the
   // Trends modal already renders was a container that never said how wide it was.
   // Nothing in the form changes; it flows to four fields a row on its own.
-  measurements: { title: "Log measurements", size: "lg" },
-  dose: { title: "Log dose", size: "sm" },
-  practice: { title: "Log practice", size: "sm" },
+  measurements: { title: logHeading("body"), size: "lg" },
+  dose: { title: logHeading("dose"), size: "sm" },
+  practice: { title: logHeading("practice"), size: "sm" },
   // #1892: the sheet's period row. The panel owns no heading — the verb is on the
   // button, which is the point.
   cycle: { title: "Log period", size: "sm" },
   // #2130: the sheet's mood row — the same check-in write, a second mount.
-  mood: { title: "Log mood", size: "sm" },
+  mood: { title: logHeading("mood"), size: "sm" },
   // #2785: the sheet's stool row. The panel owns no heading — the seven buttons ARE
   // the question, and a printed one above them would say it twice.
-  stool: { title: "Log stool form", size: "sm" },
+  stool: { title: logHeading("stool"), size: "sm" },
   // #3327: the sheet's substance row. The panel owns no heading — the rows ARE the
   // question, and each carries its own verb.
-  substance: { title: "Log substance", size: "sm" },
+  substance: { title: logHeading("substance"), size: "sm" },
   // #4064: the sheet's symptom row. The panel owns no heading — the bar's own
   // "Daily symptoms" label is suppressed the way the illness cockpit suppresses it,
   // so the sheet prints the one heading.
-  symptom: { title: "Log symptom", size: "sm" },
+  symptom: { title: logHeading("symptom"), size: "sm" },
   document: { title: "Add document", size: "sm" },
 };
 

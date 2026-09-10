@@ -10,6 +10,7 @@ import HistoryAddDoor, {
   HistoryUsualOffers,
   type HistoryAddKind,
 } from "@/app/(app)/history/HistoryAddDoor";
+import { logHeading } from "@/lib/log-manifest";
 
 // WHAT THE RECORD'S ADD DOOR POSTS (#4045 §1).
 //
@@ -523,8 +524,12 @@ describe("the record's Add door posts to the domain's own create action", () => 
     // #3911's defect, not inherited (#2816): the dose launcher swaps its label to
     // "Cancel" while open. Dismissal belongs to the form these doors open.
     open("practice");
+    // THE DOMAIN'S ONE HEADING (#5300 rule 6, #5617 step 2), read from the manifest
+    // rather than restated — the door used to say "Log a practice" while the quick
+    // sheet next door said "Log practice". The claim under test is unchanged: the
+    // control still says what it is FOR while its form is open.
     expect(screen.getByTestId("history-add-open-practice").textContent).toBe(
-      "Log a practice"
+      logHeading("practice")
     );
     // And a profile with no practices gets no door at all rather than a select with
     // nothing in it — the same rule the dose door applies to items with no live dose.

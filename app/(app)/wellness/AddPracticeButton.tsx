@@ -3,10 +3,7 @@
 import { useRef, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
-import {
-  useCreateActionDialogTitle,
-  useCreateActionLabel,
-} from "@/components/CreateAction";
+import { useCreateActionLabel } from "@/components/CreateAction";
 import PracticeEditor from "./PracticeEditor";
 
 export default function AddPracticeButton({
@@ -15,8 +12,11 @@ export default function AddPracticeButton({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // ONE PHRASE FOR THE TRIGGER AND ITS DIALOG (#5300 rule 6, #5617 step 2). The
+  // registry used to carry a second title for this one kind — "Add a practice" over
+  // the dialog, "Add practice" on the control that opened it — and it was the only
+  // entry that did, so the whole seam existed to hold one article.
   const label = useCreateActionLabel();
-  const dialogTitle = useCreateActionDialogTitle();
   const practiceInputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -33,7 +33,7 @@ export default function AddPracticeButton({
       </button>
       {open && (
         <ModalShell
-          title={dialogTitle}
+          title={label}
           onClose={() => setOpen(false)}
           initialFocusRef={practiceInputRef}
           size="sm"
