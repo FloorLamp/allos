@@ -19,9 +19,9 @@ describe("firstStringArgs reads a statement split across `+`-joined literals", (
   // not. A truncated `UPDATE … SET x` is not a shorter statement, it is a
   // DIFFERENT and more alarming one.
   it("joins two double-quoted literals", () => {
-    expect(texts('db.prepare("SELECT * FROM " + "users WHERE id = ?")')).toEqual(
-      ["SELECT * FROM users WHERE id = ?"]
-    );
+    expect(
+      texts('db.prepare("SELECT * FROM " + "users WHERE id = ?")')
+    ).toEqual(["SELECT * FROM users WHERE id = ?"]);
   });
 
   it("joins backtick literals split across lines, the shape the tree uses", () => {
@@ -40,7 +40,10 @@ describe("firstStringArgs reads a statement split across `+`-joined literals", (
     // `composed` marks a literal whose statement POSITION is an interpolation.
     // Concatenation only appends, so it cannot change what the statement starts
     // with — and a trailing piece must not be able to clear the flag.
-    const [a] = firstStringArgs("db.prepare(`${verb} FROM t ` + `WHERE x`)", prep);
+    const [a] = firstStringArgs(
+      "db.prepare(`${verb} FROM t ` + `WHERE x`)",
+      prep
+    );
     expect(a).toEqual({
       kind: "sql",
       text: "${verb} FROM t WHERE x",
@@ -51,7 +54,9 @@ describe("firstStringArgs reads a statement split across `+`-joined literals", (
   it("stops at a `+` whose right side is not a literal — a stated limit", () => {
     // The scan cannot know what an expression holds; reading a prefix is honest,
     // guessing is not. Documented so a future reader does not read this as a bug.
-    expect(texts("db.prepare(`SELECT ` + col + ` FROM t`)")).toEqual(["SELECT"]);
+    expect(texts("db.prepare(`SELECT ` + col + ` FROM t`)")).toEqual([
+      "SELECT",
+    ]);
   });
 
   it("does not swallow a NEXT prepare call while looking for a `+`", () => {
@@ -103,8 +108,6 @@ describe("relPath is the posix repo-relative path every allowlist is keyed on", 
   it("agrees with the expression the guards used to inline", () => {
     const f = path.join(REPO, "lib", "db.ts");
     expect(relPath(f)).toBe("lib/db.ts");
-    expect(relPath(f)).toBe(
-      path.relative(REPO, f).split(path.sep).join("/")
-    );
+    expect(relPath(f)).toBe(path.relative(REPO, f).split(path.sep).join("/"));
   });
 });
