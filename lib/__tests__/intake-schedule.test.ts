@@ -102,6 +102,7 @@ describe("isDueOn", () => {
     date: "2026-03-04",
     isWorkoutDay: false,
     activeSituations: new Set<string>(),
+    predictedWorkoutDay: null,
     ...over,
   });
 
@@ -283,6 +284,7 @@ describe("situational dueness survives the isDueOn/isOfferedOn split (#1505)", (
     date: "2026-03-04",
     isWorkoutDay: false,
     activeSituations: new Set(activeSituations),
+    predictedWorkoutDay: null,
   });
   const situational = (obligation: "must" | "should" | "may") => ({
     condition: "situational" as const,

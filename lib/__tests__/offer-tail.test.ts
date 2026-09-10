@@ -14,6 +14,7 @@ import {
   collapsedOfferAction,
   reminderOfferAction,
   expandedOfferActions,
+  offerHeldByWorkoutLine,
   offerTailNeedsRefresh,
   offerTextTail,
   OFFER_COLLAPSE_PREFIX,
@@ -34,6 +35,7 @@ const ctx = {
   date: "2026-03-04",
   isWorkoutDay: false,
   activeSituations: new Set<string>(),
+  predictedWorkoutDay: null,
 };
 
 describe("slotHintBucket", () => {
@@ -412,5 +414,32 @@ describe("the prn: keyboard discriminator", () => {
       );
     expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS - 1))).toBe(true);
     expect(hasCollapse(list(TELEGRAM_MAX_BUTTONS))).toBe(false);
+  });
+});
+
+describe("the workout-timing hold's line (#5321)", () => {
+  // THE JOIN IS THE RULING, so it is pinned at every length that decides it (PM
+  // 2026-09-09 23:15 UTC). The line names a subject and makes ONE claim about all of
+  // it, which is the sentence shape lib/summarize-names.ts documents, so two names read
+  // "and" — not the roster middot a rollup uses. Three is the boundary where the
+  // sentence join stops and the separator takes over; four proves the counted overflow
+  // still reads correctly on the other side of it.
+  it("says nothing when nothing is held", () => {
+    expect(offerHeldByWorkoutLine([])).toBeNull();
+  });
+
+  it("joins the shown names as a sentence, and counts the rest past three", () => {
+    expect(offerHeldByWorkoutLine(["Ibuprofen"])).toBe(
+      "Ibuprofen waits until your session ends"
+    );
+    expect(offerHeldByWorkoutLine(["Ibuprofen", "Magnesium"])).toBe(
+      "Ibuprofen and Magnesium wait until your session ends"
+    );
+    expect(offerHeldByWorkoutLine(["A", "B", "C"])).toBe(
+      "A · B · C wait until your session ends"
+    );
+    expect(offerHeldByWorkoutLine(["A", "B", "C", "D"])).toBe(
+      "A · B · C and 1 more wait until your session ends"
+    );
   });
 });
