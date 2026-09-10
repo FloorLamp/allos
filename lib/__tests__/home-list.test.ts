@@ -264,7 +264,7 @@ describe("the Now band pins what is owed", () => {
       key: "biomarker:LDL",
       domain: "biomarker",
       title: "LDL",
-      href: "/biomarkers",
+      href: "/results",
       dueDate: TODAY,
     } as UpcomingItem;
     expect(seats(composeHomeList(input({ attention: [reading] })))).toEqual([]);
