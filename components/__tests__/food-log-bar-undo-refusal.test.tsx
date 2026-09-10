@@ -31,7 +31,10 @@ import {
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
-import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  OFFLINE_OTHER_SUBJECT_MESSAGE,
+} from "@/lib/offline/queue";
 
 function FoodSelectedDateProvider({
   today,
@@ -1893,6 +1896,41 @@ describe("FoodLogBar projection publication", () => {
       // refresh the count" came from, on a tap that saved nothing.
       expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
       expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+      expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
+        "2"
+      );
+      expect(screen.getByTestId("food-day-total").textContent).toBe(
+        "2 servings"
+      );
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it("says why a serving for someone else cannot wait offline, and rolls it back", async () => {
+    const online = vi
+      .spyOn(window.navigator, "onLine", "get")
+      .mockReturnValue(false);
+    try {
+      // A caregiver's bar, aimed at another subject. Their OWN taps queue offline;
+      // this one cannot, because the queue is stamped to the acting profile and
+      // carries no subject beside it.
+      mountBar({ profileId: 7, subjectProfileId: 8, day: TWO_SERVINGS });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("log-cruciferous"));
+      });
+
+      // The reason, not the generic capture refusal: nothing is wrong with the
+      // device, so "try again once you're back online" would mislead about which
+      // taps this person can still make.
+      expect(
+        await screen.findByText(OFFLINE_OTHER_SUBJECT_MESSAGE)
+      ).toBeTruthy();
+      expect(screen.queryByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeNull();
+      expect(actions.logFoodServing).not.toHaveBeenCalled();
+      expect(actions.readFoodServingTruth).not.toHaveBeenCalled();
       expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
       expect(screen.getByTestId("projection-slot-midday").textContent).toBe(
         "2"

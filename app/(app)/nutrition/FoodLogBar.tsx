@@ -79,6 +79,7 @@ import {
 } from "@/components/OfflineQueueProvider";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  OFFLINE_OTHER_SUBJECT_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import {
@@ -1306,8 +1307,20 @@ export default function FoodLogBar({
         });
     };
     const queueOffline = async (): Promise<boolean> => {
-      if (subjectProfileId != null && subjectProfileId !== activeProfileId)
+      // SOMEBODY ELSE'S SERVING, AND IT SAYS SO. This arm and the one below are the
+      // same refusal — nothing was captured, the counts go back — but not the same
+      // sentence, because the remedies differ: there the device would keep nothing,
+      // here the queue works and simply cannot carry a subject. The caregiver's own
+      // taps on their own bar queue offline, so a refusal with no reason reads as
+      // arbitrary. This one used to be mute, which was worse: the shared sentence
+      // below made the function look like it always explained itself.
+      if (subjectProfileId != null && subjectProfileId !== activeProfileId) {
+        if (isCurrentMutation() || !isMountedProfile())
+          profileToast(noticeScope, OFFLINE_OTHER_SUBJECT_MESSAGE, {
+            tone: "error",
+          });
         return false;
+      }
       // NO DAY TO REPLAY INTO IS A REFUSAL, AND IT SAYS SO (#3038). The bar has
       // its own day picker, so a tap on a day the queue cannot stamp — a past day
       // the mounted day context does not name — reaches here routinely. It used to
