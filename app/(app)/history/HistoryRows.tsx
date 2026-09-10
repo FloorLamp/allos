@@ -72,12 +72,10 @@ import {
 } from "@/lib/history-format";
 import {
   DayPickBox,
+  LedgerBatchWhen,
   useLedgerBatch,
   type LedgerBatchTarget,
 } from "@/components/DaySelection";
-import WhenControl from "@/components/WhenControl";
-import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm, whenOnDay, type WhenValue } from "@/lib/stated-time";
 import {
   deleteLedgerSelection,
   moveLedgerSelectionToDay,
@@ -402,7 +400,6 @@ export default function HistoryRows({
   selectionSubjectId?: number;
 }) {
   const prefs = useFormatPrefs();
-  const tz = useTimezone();
   const batch = useLedgerBatch();
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
@@ -427,7 +424,6 @@ export default function HistoryRows({
     id: string;
     sheet: "time" | "day";
   } | null>(null);
-  const [bundleWhen, setBundleWhen] = useState<WhenValue | null>(null);
   const [bundleDay, setBundleDay] = useState("");
   const itemById = new Map(doseItems.map((item) => [item.id, item]));
 
@@ -1331,7 +1327,6 @@ export default function HistoryRows({
                     data-testid="history-bundle-edit"
                     onClick={() => {
                       close();
-                      setBundleWhen(whenOnDay(bundle.date, tz));
                       setBundleSheet({ id: bundle.id, sheet: "time" });
                     }}
                     className={MENU_ITEM}
@@ -1370,46 +1365,34 @@ export default function HistoryRows({
           ) : null}
         </li>
         {expanded ? bundle.members.map(renderRow) : null}
-        {openSheet === "time" && bundleWhen ? (
+        {openSheet === "time" ? (
           <ModalShell
             title={name}
             onClose={closeSheet}
             size="sm"
             testId={`history-bundle-edit-sheet-${bundle.id}`}
           >
+            {/* THE WHEN ROW ONLY (the ruling), and it is the SAME control selection
+                mode's Set time… opens — the record does not grow a second `WhenControl`
+                composition for the correction path it already shares (#4426's register
+                argues that file as the one mount). An act is a selection nobody had to
+                make by hand, so its Edit is that control over the act's members. */}
             <div data-testid="history-row-editing" className="space-y-3">
-              {/* THE WHEN ROW ONLY (the ruling), in the app's one time vocabulary and
-                  with its day FIXED to the one being read: min === max, so the control
-                  renders the day as text and re-dating stays Move to day…'s question.
-                  The wall clock is what travels; the core re-anchors it on the day and
-                  refuses a time that has not happened yet through the same gate a
-                  single-row correction passes. */}
-              <WhenControl
-                mode="state"
-                grain="minute"
-                timeRequired
-                value={bundleWhen}
-                onChange={setBundleWhen}
-                minDate={bundle.date}
-                maxDate={bundle.date}
-                timeLabel="Time for this act"
+              <LedgerBatchWhen
+                date={bundle.date}
                 testId="history-bundle-when"
-              />
-              <Button
-                data-testid="history-bundle-time-apply"
-                disabled={batch.busy || bundleWhen.statedAt === null}
-                onClick={() =>
+                timeLabel="Time for this act"
+                applyTestId="history-bundle-time-apply"
+                applyLabel="Save"
+                busy={batch.busy}
+                onApply={(time) =>
                   void batch
-                    .run("Updated", setLedgerSelectionTime, target, {
-                      time: statedHhmm(bundleWhen.statedAt, tz),
-                    })
+                    .run("Updated", setLedgerSelectionTime, target, { time })
                     .then((landed) => {
                       if (landed) closeSheet();
                     })
                 }
-              >
-                Save
-              </Button>
+              />
             </div>
           </ModalShell>
         ) : null}

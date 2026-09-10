@@ -266,6 +266,75 @@ export function useLedgerBatch(): {
   };
 }
 
+/**
+ * THE ONE `WhenControl` MOUNT ON THE AFTER-THE-FACT CORRECTION PATH.
+ *
+ * #4426 keeps this composition where it is — the shared time statement tells the time
+ * AT a tap, and this is the correction people reach for afterwards by naming rows and
+ * asking for it. What #5618 ruling 5 adds is a second surface asking the same question
+ * of a FIXED selection: a composed act is a selection nobody had to make by hand, so
+ * its Edit is this control over the act's members. It lives here rather than growing a
+ * second mount on the record, exactly as ruling 4's Set time… moved here rather than
+ * being re-grown — one mount for every surface that corrects a batch.
+ *
+ * THE DAY IS FIXED to the one being read (min === max), so the control renders it as
+ * text and the pair rule holds trivially. The wall clock is what travels; the core
+ * re-anchors it on that day, so a time that has not happened yet is refused THERE by
+ * the same gate every other stated instant passes rather than talked out of here.
+ * Re-dating is Move to day…'s question, and giving this a day picker too would be two
+ * answers to one.
+ */
+export function LedgerBatchWhen({
+  date,
+  testId,
+  timeLabel,
+  applyTestId,
+  applyLabel = "Apply",
+  busy,
+  onApply,
+}: {
+  /** The day the rows sit on — the control's floor, ceiling and rendered text. */
+  date: string;
+  /** The `WhenControl` id stem; its time input is `${testId}-time`. */
+  testId: string;
+  /** The visible label on the control's time field. */
+  timeLabel: string;
+  applyTestId: string;
+  applyLabel?: string;
+  /** Whether a batch this control's host started is still in flight. */
+  busy: boolean;
+  /** The stated profile-local "HH:MM" the host posts as the batch's `time`. */
+  onApply: (hhmm: string) => void;
+}) {
+  const tz = useTimezone();
+  const [when, setWhen] = useState<WhenValue>(() => whenOnDay(date, tz));
+  return (
+    <>
+      <WhenControl
+        mode="state"
+        grain="minute"
+        timeRequired
+        value={when}
+        onChange={setWhen}
+        minDate={date}
+        maxDate={date}
+        timeLabel={timeLabel}
+        testId={testId}
+      />
+      <Button
+        data-testid={applyTestId}
+        disabled={busy || when.statedAt === null}
+        onClick={() => {
+          if (when.statedAt === null) return;
+          onApply(statedHhmm(when.statedAt, tz));
+        }}
+      >
+        {applyLabel}
+      </Button>
+    </>
+  );
+}
+
 // The verbs' own state — which sheet is open, what it holds, whether a batch is in
 // flight — lives BELOW the mode's gate, so leaving selection discards a half-filled
 // sheet by unmounting it rather than by remembering to clear four things.
@@ -280,16 +349,8 @@ function SelectionVerbs({ value }: { value: DaySelectionValue }) {
     leave,
   } = value;
   const confirm = useConfirm();
-  const tz = useTimezone();
   const { busy, run } = useLedgerBatch();
   const [sheet, setSheet] = useState<"time" | "day" | null>(null);
-  // THE ONE "WHEN" CONTROL (#2236/#3273), with its day FIXED to the one being read:
-  // min === max, so it renders the day as text and the pair rule holds trivially. The
-  // batch never re-dates through this control — Move to day… is the other verb, and
-  // giving Set time… a day picker too would be two answers to one question.
-  const [batchWhen, setBatchWhen] = useState<WhenValue>(() =>
-    whenOnDay(date, tz)
-  );
   const [batchDay, setBatchDay] = useState("");
 
   // The mode's own wrapper around the shared poster: same batch, and leaving selection
@@ -359,33 +420,18 @@ function SelectionVerbs({ value }: { value: DaySelectionValue }) {
       </Button>
       {sheet === "time" && (
         <span className="flex items-center gap-2">
-          {/* ONE time for the batch, in the app's one time vocabulary. The wall
-              clock is what travels; the core re-anchors it on the day being
-              rendered, so a time that has not happened yet is refused THERE by the
-              same gate every other stated instant passes, rather than talked out
-              of here. */}
-          <WhenControl
-            mode="state"
-            grain="minute"
-            timeRequired
-            value={batchWhen}
-            onChange={setBatchWhen}
-            minDate={date}
-            maxDate={date}
-            timeLabel="Time for the selected rows"
+          {/* ONE time for the batch, in the app's one time vocabulary — and the same
+              control the record's bundle row opens, above. */}
+          <LedgerBatchWhen
+            date={date}
             testId={`${testIdPrefix}-selection-when`}
-          />
-          <Button
-            data-testid={`${testIdPrefix}-selection-time-apply`}
-            disabled={busy || batchWhen.statedAt === null}
-            onClick={() =>
-              void runBatch("Updated", setLedgerSelectionTime, {
-                time: statedHhmm(batchWhen.statedAt, tz),
-              })
+            timeLabel="Time for the selected rows"
+            applyTestId={`${testIdPrefix}-selection-time-apply`}
+            busy={busy}
+            onApply={(time) =>
+              void runBatch("Updated", setLedgerSelectionTime, { time })
             }
-          >
-            Apply
-          </Button>
+          />
         </span>
       )}
       {sheet === "day" && (
