@@ -22,7 +22,7 @@ import {
   getCoverageGapCandidates,
 } from "@/lib/queries/coverage";
 import { biomarkerCoverageKey } from "@/lib/coverage-gaps";
-import { uncuratedAnalyte } from "@/lib/canonical-name";
+import { uncuratedAnalyte } from "@/lib/datasets/uncurated-analytes";
 
 const DATE = "2019-05-06";
 
