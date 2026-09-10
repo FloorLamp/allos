@@ -529,7 +529,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
   },
   {
     // The household bottle's "Also for" offer (#5230), declined for this profile:
-    // `also-for:<sharedSupplyId>`. Not under `offer-asked:` — it is not an offer family
+    // `also-for:<sharedSupplyId>-<detected slugs, or `none`>`. The label is a CONSTANT,
+    // so the identity anchor in the tail renders exactly as the short tail did: neither
+    // half reads back as a name a person would recognise, and the anchor's job is to
+    // re-arm the offer when the bottle's name changes what it is, not to be displayed.
+    // Not under `offer-asked:` — it is not an offer family
     // (no notification kind, no setting written) — and not in RULE_FINDING_REGISTRY for
     // the same reason `pool-refill:` isn't: no rule builder emits it. Restore puts the
     // chip back on the cabinet card.

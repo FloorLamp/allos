@@ -110,11 +110,17 @@ export default async function SuppliesPage() {
       alsoFor: canManage(pool)
         ? alsoForCardModel({
             pool,
-            visibleMembers: stamped.map((m) => ({
-              itemId: m.itemId,
-              profileId: m.profileId,
-              name: m.subject.name,
-            })),
+            // ACTIVE MEMBERS ONLY as SOURCE OPTIONS (owner ruling 8): a stopped link is
+            // not a plan anyone is on, so it is not a plan to copy. Filtered HERE and
+            // never on `stamped` above — that array also feeds the rendered member
+            // roster at `members:`, where a stopped member must still appear.
+            visibleMembers: stamped
+              .filter((m) => m.active)
+              .map((m) => ({
+                itemId: m.itemId,
+                profileId: m.profileId,
+                name: m.subject.name,
+              })),
             candidates: alsoForCandidates,
           })
         : { sources: [], offers: [] },

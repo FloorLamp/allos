@@ -15,6 +15,8 @@ import {
   sourcePlanRows,
   travellingDoseRows,
   resolveAlsoForDose,
+  alsoForIdentity,
+  alsoForAllergenNotes,
   type AlsoForCandidateFacts,
   type AlsoForDose,
   type AlsoForNotes,
@@ -34,6 +36,10 @@ const IBUPROFEN = {
 };
 
 const BOTTLE = { name: "Ibuprofen", strength: "200 mg" };
+
+// A receipt with nothing to add: identity settled, no allergy hit. The duplicate clause
+// still prints — it is unconditional.
+const clean: AlsoForNotes = { allergens: [], identity: "name-only" };
 
 function childContext(
   overrides: Partial<PediatricFormContext> = {}
@@ -141,12 +147,239 @@ describe("the recipient's own dose", () => {
   });
 });
 
+// ── WHAT THE BOTTLE IS, BEFORE WHAT IT DOSES (#5230 ruling 11) ─────────────────
+//
+// Six mutually exclusive states over two independent readings — the bottle's NAME and
+// the source row's stored CODE. The shipped resolver was code-first with a name
+// fallback, so a bottle named `Tylenol Extra Strength` over an ibuprofen-coded row
+// handed a six-year-old 200 mg of ibuprofen (executed), and an uncoded `Aspirin` bottle
+// quoted a Reye's refusal about a product nobody had named.
+//
+// THE BLOCK CARRIES CODED ROWS. The banked dose suite above is entirely `rxcui: null`,
+// which is a claim about half the state space and the specific hole this round closes.
+describe("what the bottle is, decided before what it doses", () => {
+  const label = (
+    name: string,
+    rxcui: string | null = null,
+    rxcuiIngredients: string[] | null = null
+  ) => ({ name, rxcui, rxcuiIngredients });
+  const source = { personName: "Mira", itemName: "Ibuprofen 200 mg" };
+  const bigKid = (): PediatricFormContext => ({
+    ageMonths: 72,
+    weightKg: 22.7,
+    weightDate: "2026-09-01",
+    weightUnit: "kg",
+    today: "2026-09-10",
+    declinedDoseUpdates: [],
+  });
+  const grown = (): PediatricFormContext => ({ ...bigKid(), ageMonths: 480 });
+
+  it.each([
+    { id: "F1", l: label("Advil"), state: "name-only" },
+    { id: "F3", l: label("Aspirin"), state: "name-only" },
+    { id: "F6", l: label("Kirkland Ibuprofen 200 mg"), state: "no-product" },
+    { id: "F9", l: label("Mira's painkillers"), state: "no-product" },
+    { id: "F10", l: label("Aspirin", "197803"), state: "no-product" },
+    { id: "F11", l: label("Advil", "723"), state: "no-product" },
+    { id: "F14", l: label("Advil", "5640"), state: "agreement" },
+    {
+      id: "F15",
+      l: label("Children's Motrin", "197803", ["5640"]),
+      state: "agreement",
+    },
+    {
+      id: "F16",
+      l: label("Tylenol Extra Strength", "5640"),
+      state: "mismatch",
+    },
+    { id: "F17", l: label("Mira's painkillers", "5640"), state: "coded-only" },
+    {
+      id: "F18",
+      l: label("Advil Dual Action with Acetaminophen"),
+      state: "plural",
+    },
+    {
+      id: "F20",
+      l: label("Advil Dual Action with Acetaminophen", "1191"),
+      state: "plural",
+    },
+  ])("$id reads as $state", ({ l, state }) => {
+    expect(alsoForIdentity(l).state).toBe(state);
+  });
+
+  // RULING 7'S DEFECT WITH THE NUMBER ON IT. Rules out the shipped code-first resolver,
+  // which wrote 200 mg of ibuprofen under a bottle named Tylenol — for an adult AND for
+  // a six-year-old.
+  it("F16: a name and a code that disagree write no figure, at any age", () => {
+    const l = label("Tylenol Extra Strength", "5640");
+    for (const pediatric of [grown(), bigKid()]) {
+      const dose = resolveAlsoForDose({ label: l, pediatric, source });
+      expect(dose.kind).toBe("none");
+    }
+  });
+
+  // Rules out running ruling 6's gate on the DISPUTED code: the shipped resolver
+  // answered the child's question about the wrong product entirely.
+  it("F16: the life-stage gate does not run under a mismatch", () => {
+    const dose = resolveAlsoForDose({
+      label: label("Children's Tylenol", "1191"),
+      pediatric: bigKid(),
+      source,
+    });
+    // Aspirin-coded: code-first, the shipped resolver refused with the Reye's sentence
+    // about a product the bottle's own name never mentions.
+    expect(dose.kind).toBe("none");
+    expect(dose.kind === "none" && dose.reason).not.toMatch(
+      /children's dosing chart/
+    );
+  });
+
+  it("F16: the refusal names BOTH products", () => {
+    const dose = resolveAlsoForDose({
+      label: label("Tylenol Extra Strength", "5640"),
+      pediatric: grown(),
+      source,
+    });
+    expect(dose.kind === "none" && dose.reason).toContain("Acetaminophen");
+    expect(dose.kind === "none" && dose.reason).toContain("Ibuprofen");
+    expect(dose.kind === "none" && dose.reason).toContain("Mira");
+  });
+
+  // Rules out deriving a figure from ONE ingredient of a combination bottle — whether
+  // the coded product is among the detected set (F19) or outside it entirely (F20,
+  // where the shipped resolver would hand out 325 mg of ASPIRIN).
+  it.each([
+    { id: "F18", l: label("Advil Dual Action with Acetaminophen") },
+    { id: "F19", l: label("Advil Dual Action with Acetaminophen", "5640") },
+    { id: "F20", l: label("Advil Dual Action with Acetaminophen", "1191") },
+  ])("$id: a name listing two medicines writes no figure", ({ l }) => {
+    const dose = resolveAlsoForDose({ label: l, pediatric: grown(), source });
+    expect(dose.kind).toBe("none");
+    expect(dose.kind === "none" && dose.reason).toContain(
+      "more than one medicine"
+    );
+  });
+
+  // Rules out a plural refusal that also runs the age gate on one of the listed
+  // products: a plural identity has nothing single to gate on.
+  it("F18: the life-stage gate does not run under a plural name either", () => {
+    expect(
+      resolveAlsoForDose({
+        label: label("Aspirin and acetaminophen rub"),
+        pediatric: bigKid(),
+        source,
+      }).kind
+    ).toBe("none");
+  });
+
+  // STATE E IS NOT A MISMATCH — there is only one identity, so nothing disagrees. Rules
+  // out a spec that made an uncoded bottle dose-less: it would retire the one clinical
+  // gate this door keeps, silently, for exactly the bottles most people own.
+  it.each([
+    { id: "F3", name: "Aspirin" },
+    { id: "F4", name: "Bayer" },
+  ])(
+    "$id: an uncoded $name still withholds for a child, with the Reye's sentence",
+    ({ name }) => {
+      const dose = resolveAlsoForDose({
+        label: label(name),
+        pediatric: bigKid(),
+        source,
+      });
+      expect(dose.kind).toBe("withheld");
+      expect(dose.kind === "withheld" && dose.reason).toContain(
+        "no children's dosing chart"
+      );
+    }
+  );
+
+  it("F1: an uncoded Advil still derives the adult label dose", () => {
+    expect(
+      resolveAlsoForDose({ label: label("Advil"), pediatric: grown(), source })
+    ).toMatchObject({
+      kind: "amount",
+      amount: "200 mg",
+      ingredient: "Ibuprofen",
+    });
+  });
+
+  // THE DIVIDING PREDICATE IS "IS A CODE STORED", never "does the code resolve".
+  // `ingredientCuiKey` falls back to the raw rxcui, so any stored code at all suppresses
+  // the name fallback — F10 is the same bottle as F3 with an unrecognised code on the
+  // row, and it lands dose-less. Rules out a state split on "resolvable code".
+  it("F10: a stored code the dataset does not know suppresses the name fallback", () => {
+    const dose = resolveAlsoForDose({
+      label: label("Aspirin", "197803"),
+      pediatric: bigKid(),
+      source,
+    });
+    expect(dose.kind).toBe("none");
+    expect(dose.kind === "none" && dose.reason).not.toMatch(/but .* item is/);
+  });
+
+  // Rules out the STRICT reading of state F, which would tell the owner of an ordinary
+  // bottle that the app cannot confirm what it is — and suppress their allergy check —
+  // because a code nobody recognises is sitting on the source's row.
+  it.each([
+    { id: "F10", l: label("Aspirin", "197803") },
+    { id: "F11", l: label("Advil", "723") },
+    { id: "F12", l: label("Tylenol Extra Strength", "723") },
+    { id: "F13", l: label("Children's Motrin", "197803") },
+  ])("$id declares no mismatch", ({ l }) => {
+    expect(alsoForIdentity(l).state).toBe("no-product");
+  });
+
+  // Rules out "no known word is no signal" implemented as "no signal ⇒ dose-less"
+  // (ruling 9): the code is a reading, and with nothing to disagree with it, it wins.
+  it("F17: a name this app knows nothing about defers to the code, and the receipt names the coded product", () => {
+    const dose = resolveAlsoForDose({
+      label: label("Mira's painkillers", "5640"),
+      pediatric: grown(),
+      source,
+    });
+    expect(dose).toMatchObject({
+      kind: "amount",
+      amount: "200 mg",
+      ingredient: "Ibuprofen",
+    });
+    const written = alsoForWritten(
+      dose,
+      [
+        {
+          amount: "200 mg",
+          time_of_day: "08:00",
+          food_timing: "any",
+          weekdays: null,
+          start_date: null,
+          end_date: null,
+        },
+      ],
+      "2026-09-10"
+    );
+    expect(alsoForReceipt("Ada", written, clean)).toContain("of Ibuprofen");
+  });
+
+  // State F names what the SOURCE's own row says, not a product nobody resolved
+  // (ruling 10's second consequence, which belongs here rather than to the mismatch).
+  it("F6: with no curated product either way, the receipt names the source's own row", () => {
+    const dose = resolveAlsoForDose({
+      label: label("Kirkland Ibuprofen 200 mg"),
+      pediatric: grown(),
+      source,
+    });
+    expect(dose.kind === "none" && dose.reason).toContain(
+      "Mira's Ibuprofen 200 mg"
+    );
+  });
+});
+
 describe("the schedule a new person inherits", () => {
   const today = "2026-09-09";
   const amount: AlsoForDose = {
     kind: "amount",
     amount: "160 mg",
     basis: "from the 24–35 lb label band",
+    ingredient: "Ibuprofen",
   };
 
   it("copies the times and the food rule, with the RECIPIENT's amount", () => {
@@ -315,7 +548,12 @@ describe("a stale offer cannot be tapped into a different plan", () => {
       schedule: schedule(),
       targetProfileId: 7,
       targetDay: "2026-09-09",
-      dose: { kind: "amount", amount: "200 mg", basis: "adult" },
+      dose: {
+        kind: "amount",
+        amount: "200 mg",
+        basis: "adult",
+        ingredient: "Ibuprofen",
+      },
       ...over,
     });
   const moved = (
@@ -493,6 +731,7 @@ describe("a receipt may only claim what was written, and only what is live", () 
     kind: "amount",
     amount: "200 mg",
     basis: "from the adult label dose",
+    ingredient: "Ibuprofen",
   };
   const seed = (start: string | null) => ({
     amount: "200 mg",
@@ -508,6 +747,7 @@ describe("a receipt may only claim what was written, and only what is live", () 
       kind: "dose",
       amount: "200 mg",
       basis: "from the adult label dose",
+      ingredient: "Ibuprofen",
     });
   });
 
@@ -527,18 +767,13 @@ describe("a receipt may only claim what was written, and only what is live", () 
   });
 
   function receipt(written: ReturnType<typeof alsoForWritten>): string {
-    return alsoForReceipt("Ada", written, {
-      allergen: null,
-      productMatched: true,
-    });
+    return alsoForReceipt("Ada", written, clean);
   }
 });
 
 // ── THE RECEIPT IS WHERE THE RETIRED GATES NOW SPEAK ────────────────────────────
 describe("the receipt", () => {
-  const clean: AlsoForNotes = { allergen: null, productMatched: true };
-
-  it("names the person, the amount and where it came from", () => {
+  it("names the person, the amount, the INGREDIENT and where it came from", () => {
     expect(
       alsoForReceipt(
         "Ada",
@@ -546,10 +781,34 @@ describe("the receipt", () => {
           kind: "dose",
           amount: "160 mg",
           basis: "from the 24–35 lb label band",
+          ingredient: "Ibuprofen",
         },
         clean
       )
-    ).toBe("Added for Ada · 160 mg from the 24–35 lb label band");
+    ).toContain(
+      "Added for Ada · 160 mg of Ibuprofen from the 24–35 lb label band"
+    );
+  });
+
+  // Ruling 10's third consequence. `Tylenol PM`, `Advil Cold & Sinus` and `Aleve-D`
+  // each detect exactly ONE curated product (executed), so the plural rule never sees
+  // them and the figure is that one ingredient's label dose, not the bottle's. Rules
+  // out a receipt that keeps presenting a per-ingredient figure as the bottle's dose.
+  it("names the ingredient on a pending dose too", () => {
+    expect(
+      alsoForReceipt(
+        "Ada",
+        {
+          kind: "pending",
+          amount: "200 mg",
+          basis: "from the adult label dose",
+          ingredient: "Ibuprofen",
+        },
+        clean
+      )
+    ).toContain(
+      "200 mg of Ibuprofen from the adult label dose, nothing due yet"
+    );
   });
 
   it("says there is no dose yet, and why", () => {
@@ -559,7 +818,7 @@ describe("the receipt", () => {
         { kind: "none", reason: "set the amount on the new row" },
         clean
       )
-    ).toBe("Added for Ada · no dose yet — set the amount on the new row");
+    ).toContain("Added for Ada · no dose yet — set the amount on the new row");
   });
 
   // The shrimp/krill case both passes measured. The chip is offered, the tap succeeds,
@@ -569,15 +828,18 @@ describe("the receipt", () => {
     expect(
       alsoForReceipt(
         "Ada",
-        { kind: "dose", amount: "1 g", basis: "from the adult label dose" },
         {
-          allergen: { allergen: "Shrimp", viaCrossReactivity: "krill" },
-          productMatched: true,
+          kind: "dose",
+          amount: "1 g",
+          basis: "from the adult label dose",
+          ingredient: "Ibuprofen",
+        },
+        {
+          allergens: [{ allergen: "Shrimp", viaCrossReactivity: "krill" }],
+          identity: "name-only",
         }
       )
-    ).toBe(
-      "Added for Ada · 1 g from the adult label dose · Ada has a Shrimp allergy recorded, and this is krill"
-    );
+    ).toContain("Ada has a Shrimp allergy recorded, and this is krill");
   });
 
   it("names a direct allergen hit without inventing a cross-reaction", () => {
@@ -585,23 +847,209 @@ describe("the receipt", () => {
       alsoForReceipt(
         "Ada",
         { kind: "none", reason: "no label" },
-        {
-          allergen: { allergen: "Fish" },
-          productMatched: true,
-        }
+        { allergens: [{ allergen: "Fish" }], identity: "name-only" }
       )
     ).toContain("Ada has a Fish allergy recorded");
   });
 
+  // ONE CLAUSE PER DEDUPED HIT. Rules out a receipt that kept the single-hit shape and
+  // states only the first of a person's recorded allergies on one bottle.
+  it("states every hit, one clause each", () => {
+    const line = alsoForReceipt(
+      "Ada",
+      { kind: "none", reason: "no label" },
+      {
+        allergens: [
+          { allergen: "Soybean" },
+          { allergen: "Shrimp", viaCrossReactivity: "krill" },
+        ],
+        identity: "no-product",
+      }
+    );
+    expect(line).toContain("Ada has a Soybean allergy recorded");
+    expect(line).toContain(
+      "Ada has a Shrimp allergy recorded, and this is krill"
+    );
+  });
+
   // A bottle carries no code, so the duplicate question cannot be asked at all — and
-  // silence would read like a clean check.
+  // silence would read like a clean check. UNCONDITIONAL: the flag that used to gate
+  // this line could only ever be false.
   it("says the duplicate question could not be asked", () => {
     expect(
       alsoForReceipt(
         "Ada",
-        { kind: "dose", amount: "200 mg", basis: "from the adult label dose" },
-        { allergen: null, productMatched: false }
+        {
+          kind: "dose",
+          amount: "200 mg",
+          basis: "from the adult label dose",
+          ingredient: "Ibuprofen",
+        },
+        clean
       )
     ).toContain("we couldn’t check whether Ada already has this");
+  });
+
+  // ── RULING 11: a disputed identity says which check could not run ──────────────
+  //
+  // Rules out a dose-less refusal that lands SILENTLY. Both states withhold the
+  // life-stage gate, so both must say so; only the mismatch withholds the allergy
+  // composition, so only the mismatch names allergies in the same sentence.
+  it("says the children's check could not run under a plural name", () => {
+    const line = alsoForReceipt(
+      "Ada",
+      {
+        kind: "none",
+        reason: "this bottle's name lists more than one medicine",
+      },
+      { allergens: [], identity: "plural" }
+    );
+    expect(line).toContain(
+      "we couldn’t confirm what this bottle is, so we couldn’t check whether it’s for children"
+    );
+    expect(line).not.toContain("allergies");
+  });
+
+  it("says the allergy check could not run under a mismatch, in the same sentence", () => {
+    expect(
+      alsoForReceipt(
+        "Ada",
+        { kind: "none", reason: "the bottle is named Acetaminophen" },
+        { allergens: [], identity: "mismatch" }
+      )
+    ).toContain(
+      "so we couldn’t check whether it’s for children or against Ada’s allergies"
+    );
+  });
+
+  // Rules out printing the identity clause on every receipt — an undisputed identity
+  // WAS confirmed, and saying otherwise is a false statement about a check that ran.
+  it("says nothing about the identity when the two readings agree", () => {
+    for (const identity of [
+      "agreement",
+      "coded-only",
+      "name-only",
+      "no-product",
+    ] as const) {
+      expect(
+        alsoForReceipt(
+          "Ada",
+          { kind: "none", reason: "no label" },
+          { allergens: [], identity }
+        )
+      ).not.toContain("we couldn’t confirm what this bottle is");
+    }
+  });
+});
+
+// ── THE ALLERGY COMPOSITION: BOTH MATCHERS, DEDUPED ────────────────────────────
+//
+// Ruled by the PM on 2026-09-09 18:45 UTC. Neither matcher's silence is clearance and
+// neither one alone reaches the whole cabinet, so the receipt states the UNION. Every
+// row names the wrong implementation it rules out.
+describe("the allergy composition", () => {
+  const notes = (
+    allergens: string[],
+    name: string,
+    rxcui: string | null = null
+  ): { allergen: string; viaCrossReactivity?: string }[] =>
+    alsoForAllergenNotes({
+      label: { name, rxcui, rxcuiIngredients: null },
+      allergens,
+      records: allergens.map((substance) => ({
+        substance,
+        substanceCode: null,
+        substanceCodeSystem: null,
+      })),
+    });
+
+  // Rules out a code-only / drug-only composition: `crossCheckDrugAllergies` returns
+  // nothing here, and a krill-oil supplement carries no RxCUI to run it on. This is
+  // ruling 4's own case and the only place in the app a supplement's allergen is said.
+  it("G1: shrimp → krill, which only the food matcher can say", () => {
+    expect(notes(["Shrimp"], "Krill Oil 500 mg")).toEqual([
+      { allergen: "Shrimp", viaCrossReactivity: "krill" },
+    ]);
+  });
+
+  // Rules out a food-only composition: `allergenConflict` returns null on both — the
+  // bottle's name shares no token with the recorded substance.
+  it.each([
+    {
+      id: "G5",
+      allergens: ["Penicillin"],
+      name: "Amoxicillin 500 mg",
+      rxcui: "723",
+    },
+    {
+      id: "G6",
+      allergens: ["Aspirin"],
+      name: "Ibuprofen 200 mg",
+      rxcui: "5640",
+    },
+  ])(
+    "$id: $allergens → $name, which only the drug matcher can say",
+    ({ allergens, name, rxcui }) => {
+      expect(notes(allergens, name, rxcui)).toHaveLength(1);
+      expect(notes(allergens, name, rxcui)[0].allergen).toBe(allergens[0]);
+    }
+  );
+
+  // Rules out a code-only composition on the DRUG side too: this hit fires on the name.
+  it("G7: an uncoded Advil still meets an ibuprofen allergy", () => {
+    expect(notes(["Ibuprofen"], "Advil")).toEqual([{ allergen: "Ibuprofen" }]);
+    expect(notes(["Ibuprofen"], "Advil", "5640")).toEqual([
+      { allergen: "Ibuprofen" },
+    ]);
+  });
+
+  // Rules out a composition that always states something.
+  it("G9: no hit is no clause", () => {
+    expect(notes(["Peanut"], "Vitamin D3 2000 IU")).toEqual([]);
+  });
+
+  // THE DEDUPE. Both matchers fire on the same allergy, and the drug hit fires on a NULL
+  // code. Rules out keying drug hits on `allergyId` and food hits on the trigger string:
+  // two key spaces that can never collide, so that union states one penicillin allergy
+  // twice in one line (executed on the shipped code — UNION(2)).
+  it("G4: one allergy both matchers find is ONE clause", () => {
+    expect(notes(["Penicillin"], "Penicillin VK 500 mg")).toEqual([
+      { allergen: "Penicillin" },
+    ]);
+  });
+
+  // Rules out the CROSS-REACTIVE short-circuit: on the shipped matcher the krill hit is
+  // dropped because Soybean appears in the name and the direct loop returned first.
+  it("G2: a direct hit does not swallow a cross-reactive one", () => {
+    expect(notes(["Shrimp", "Soybean"], "Krill Oil with Soybean Oil")).toEqual([
+      { allergen: "Soybean" },
+      { allergen: "Shrimp", viaCrossReactivity: "krill" },
+    ]);
+  });
+
+  // Rules out the DIRECT-loop short-circuit — the half a fix aimed only at
+  // cross-reactivity leaves behind. NOTE: the spec's G3 (`Peanut Soy Bar`) cannot rule
+  // this out, because "Soybean" does not token-match "Soy" and never hits at all; this
+  // fixture is G3 with a name both recorded allergens actually match.
+  it("G3′: two recorded allergens the same name matches are two clauses", () => {
+    expect(notes(["Peanut", "Soybean"], "Peanut Soybean Bar")).toEqual([
+      { allergen: "Peanut" },
+      { allergen: "Soybean" },
+    ]);
+  });
+
+  // Rules out keying a cross-reactive hit on its JOINED display string: "Shrimp, Crab"
+  // is a pseudo-allergen `normalizeAllergenSubstance` returns unchanged, and it can
+  // never compare equal to either half.
+  it("G10: a cross-reactive hit keys on its unjoined triggers", () => {
+    expect(notes(["Shrimp", "Crab"], "Krill Oil 500 mg")).toEqual([
+      { allergen: "Shrimp, Crab", viaCrossReactivity: "krill" },
+    ]);
+    // Shrimp stated directly leaves only Crab for the cross-reactive clause; keying on
+    // the joined string would restate shrimp.
+    expect(notes(["Shrimp", "Crab"], "Shrimp Krill Oil")).toEqual([
+      { allergen: "Shrimp" },
+      { allergen: "Crab", viaCrossReactivity: "krill" },
+    ]);
   });
 });

@@ -279,14 +279,39 @@ export const NOTIFICATION_CHANNEL_ASKED_KEY = offerAskedKey(
 // that registry requires a `NotificationKind` and a `writes()` that flips a
 // notification setting, and this Yes tap creates an intake item and touches neither.
 //
-// ONE OFFER PER BOTTLE × RECIPIENT, and the recipient is the ROW'S PROFILE:
-// `upcoming_dismissals` is profile-scoped, so the recipient's own id is already half of
-// the pair and the tail carries only the bottle. That also puts the row in the
-// RECIPIENT's own "Snoozed & dismissed", which is where Restore re-arms it.
+// ONE OFFER PER BOTTLE × RECIPIENT × WHAT THE BOTTLE IS, and the recipient is the ROW'S
+// PROFILE: `upcoming_dismissals` is profile-scoped, so the recipient's own id is already
+// half of the pair and the tail carries the bottle and the identity its NAME detects.
+// That also puts the row in the RECIPIENT's own "Snoozed & dismissed", which is where
+// Restore re-arms it.
+//
+// THE IDENTITY HALF IS AN ANCHOR, not decoration. Ruling 7 sends the resolution of a
+// name/code disagreement to the moment the name is fixed, so correcting a bottle named
+// `Tylenol Extra Strength` over an ibuprofen-coded row to `Advil` has to bring the
+// declined offer BACK: a decline is a statement about the bottle the person was looking
+// at, and that is no longer the same bottle. Renaming WITHIN one identity (`Tylenol` →
+// `Tylenol Extra Strength`) keeps the decline. The accepted cost, ruled in these words
+// and not a defect to re-file: a BENIGN rename off the detected set (`Tylenol` → `the
+// blue bottle`) un-declines too, and so does a change to the curated synonym list or the
+// negation guard — the app's answer about what the bottle is has changed, so the offer
+// re-arms.
 export const ALSO_FOR_OFFER_PREFIX = "also-for:";
 
-export function alsoForOfferKey(supplyId: number): string {
-  return `${ALSO_FOR_OFFER_PREFIX}${supplyId}`;
+// How the tail spells "the name says nothing this app knows". It carries nothing the
+// un-decline rule does not already accept; it exists only because the tail is ALWAYS
+// present, so the empty list needs a spelling.
+const ALSO_FOR_NO_DETECTION = "none";
+
+export function alsoForOfferKey(
+  supplyId: number,
+  detected: readonly string[]
+): string {
+  // Sorted HERE, because this is where the shape is promised: two callers deriving the
+  // same slugs in two orders must not write and read two different keys.
+  const tail = detected.length
+    ? [...detected].sort().join("+")
+    : ALSO_FOR_NO_DETECTION;
+  return `${ALSO_FOR_OFFER_PREFIX}${supplyId}-${tail}`;
 }
 
 // ---- The child dose-band update offer (issue #5538) ---------------------------

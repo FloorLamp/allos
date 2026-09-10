@@ -91,9 +91,13 @@ export default function SharedSupplyCard({
   const [sourceItemId, setSourceItemId] = useState(
     alsoForSources.length === 1 ? String(alsoForSources[0].itemId) : ""
   );
+  // The href is OPTIONAL: a cross-profile SUPPLEMENT copy has no row to open — every
+  // supplement door resolves to the CALLER's own Nutrition tab and no route in the app
+  // takes a profile parameter — so the action returns none and the receipt stands on its
+  // own rather than linking to the wrong person's supplements (#5230).
   const [receipt, setReceipt] = useState<{
     text: string;
-    href: AppRoute;
+    href: AppRoute | null;
   } | null>(null);
   const source =
     alsoForSources.find((s) => String(s.itemId) === sourceItemId) ?? null;
@@ -135,7 +139,7 @@ export default function SharedSupplyCard({
       fd.set("profile_id", String(offer.profileId));
       fd.set("basis", entry.basis);
       const res = await alsoForAction(fd);
-      if (!res.ok || !res.receipt || !res.href) {
+      if (!res.ok || !res.receipt) {
         // The refusal's own sentence. Every one of them names the fact that moved, and
         // the ones a fresh render fixes say "tap again" — the action has already
         // re-validated /supplies, so this card is re-rendering with the new basis
@@ -143,7 +147,7 @@ export default function SharedSupplyCard({
         setError(res.error ?? "Couldn’t add it.");
         return;
       }
-      setReceipt({ text: res.receipt, href: res.href });
+      setReceipt({ text: res.receipt, href: res.href ?? null });
     });
   };
 
@@ -499,10 +503,15 @@ export default function SharedSupplyCard({
                   className="mt-2 text-sm text-slate-600 dark:text-slate-300"
                   data-testid="shared-supply-also-for-receipt"
                 >
-                  {receipt.text}{" "}
-                  <Link className="link" href={receipt.href}>
-                    Open their row
-                  </Link>
+                  {receipt.text}
+                  {receipt.href && (
+                    <>
+                      {" "}
+                      <Link className="link" href={receipt.href}>
+                        Open their row
+                      </Link>
+                    </>
+                  )}
                 </p>
               )}
             </div>

@@ -16,13 +16,16 @@
 //   • ALLERGY IS NOT A GATE (owner ruling, 2026-09-09). No model in this app blocks a
 //     write on allergy grounds, and neither candidate matcher's silence is clearance.
 //     The chip stands; the copied row takes the ordinary warning path, and the receipt
-//     NAMES a hit `allergenConflict` returns — which is the only place a supplement's
-//     allergen can ever be said, because `getIntakeSafetyContext` screens medications
-//     only and `crossCheckDrugAllergies` carries no food cross-reactivity.
+//     NAMES every hit BOTH matchers return, composed and deduped (PM, 18:45 UTC): the
+//     food/cross-reactivity one is the only thing that can say "shrimp, via krill" and
+//     the only one a supplement reaches at all, and the drug one is the only one that
+//     knows a penicillin allergy meets amoxicillin. Running one was half a check read
+//     back as a whole one.
 //   • THE DUPLICATE QUESTION IS NOT ASKED. #4717 owns product identity; a bottle has no
 //     code column and none may be minted by scanning its membership, so the answer is
-//     "unknown" for every bottle — which the receipt says, rather than withholding on a
-//     guess. "Already on this bottle" stays: that one is a fact about membership.
+//     "unknown" for every bottle — which the receipt says UNCONDITIONALLY, rather than
+//     withholding on a guess. "Already on this bottle" stays: that one is a fact about
+//     membership.
 //   • THE LIFE-STAGE GATE STAYS AND IS STATED. A curated adult-only product withholds
 //     the chip for a child WITH ITS REASON ON SCREEN (#3067's one clinical gate); an
 //     uncurated product is still offered dose-less, which is the same asymmetry the
@@ -74,6 +77,9 @@ import {
   type PrnDefaultEntry,
 } from "./prn-defaults";
 import { ingredientCuiKey } from "./medication-family";
+import { allergenConflicts } from "./supplement-safety";
+import { drugAllergyMatch, type DrugAllergySubstance } from "./drug-allergy";
+import { normalizeAllergenSubstance } from "./allergen-vocabulary";
 import type { AppRoute } from "./hrefs";
 import type { IntakeCondition, IntakeObligation } from "./types";
 
@@ -206,16 +212,13 @@ export function alsoForIdentity(label: AlsoForLabelIdentity): AlsoForIdentity {
   return { state: "no-product", detected, product: null, coded };
 }
 
-// The sorted curated slugs a bottle's name detects, or the reserved empty literal. This
-// is the identity half of the decline key (#5230), derived server-side at BOTH the
-// write and the read from the bottle's own name — one helper, or a decline could be
-// written under one tail and looked for under another.
-export const ALSO_FOR_NO_DETECTION = "none";
-
+// The curated slugs a bottle's NAME detects — the identity half of the decline key
+// (#5230). Derived server-side at BOTH the write and the read from the bottle's own
+// name: one helper, or a decline is written under one tail and looked for under another
+// and can never be read back. `alsoForOfferKey` owns the tail's ORDER and its spelling
+// of the empty list.
 export function alsoForDetectedSlugs(poolName: string): string[] {
-  return prnProductsNamedIn(poolName)
-    .map((entry) => entry.slug)
-    .sort();
+  return prnProductsNamedIn(poolName).map((entry) => entry.slug);
 }
 
 // The recipient's dose from the LABEL, never from the bottle and never from the source
@@ -488,8 +491,8 @@ export function alsoForDoseSeeds(
 //                 not say the recipient has a dose now.
 //   • `none`    — no row carries an amount, so there is no dose at all.
 export type AlsoForWritten =
-  | { kind: "dose"; amount: string; basis: string }
-  | { kind: "pending"; amount: string; basis: string }
+  | { kind: "dose"; amount: string; basis: string; ingredient: string }
+  | { kind: "pending"; amount: string; basis: string; ingredient: string }
   | { kind: "none"; reason: string };
 
 export function alsoForWritten(
@@ -511,6 +514,7 @@ export function alsoForWritten(
     kind: anyDoseLiveOn(seeds, recipientDay) ? "dose" : "pending",
     amount: dose.amount,
     basis: dose.basis,
+    ingredient: dose.ingredient,
   };
 }
 
@@ -668,6 +672,12 @@ export type AlsoForRefusal =
 // re-validates the cabinet for these, so the card re-reads a FRESH offer and the next
 // tap works — which is why their messages say "tap again" and never "reload".
 const REFRESHES: ReadonlySet<AlsoForRefusal> = new Set<AlsoForRefusal>([
+  // A bottle that is gone, foreign, or unreachable is ONE reason with ONE message, and
+  // it refreshes unconditionally. Refreshing only for a genuinely DELETED bottle would
+  // make the refresh itself an oracle: "the card reloaded" would mean "that bottle
+  // existed and you may not see it", which is the disclosure the single reason exists to
+  // prevent. The card the person is looking at stops showing a bottle that is not there.
+  "no-bottle",
   "source-gone",
   "already-member",
   "declined",
@@ -689,7 +699,7 @@ export function alsoForRefusalMessage(
     case "no-offer":
       return "Couldn’t read that offer.";
     case "no-bottle":
-      return "Couldn’t find that shared bottle.";
+      return "Couldn’t find that shared bottle. The card is up to date.";
     case "source-gone":
       return "That member no longer draws from this bottle. The card is up to date — pick a source again.";
     case "already-member":
@@ -737,17 +747,102 @@ export function alsoForBasisRefusal(
 
 // ---- The receipt -----------------------------------------------------------
 
+// ---- The allergy composition ------------------------------------------------
+
+// Every recorded allergy this bottle meets for this person — FOR THE RECEIPT, never for
+// a gate (owner ruling, 2026-09-09) — as the UNION OF BOTH MATCHERS, deduplicated by
+// allergen (PM ruling, 2026-09-09 18:45 UTC).
+//
+// NEITHER MATCHER ALONE IS THE CHECK, which is the whole reason this is a composition:
+//
+//   • `allergenConflicts` covers ingestibles and the #153 food cross-reactivity
+//     families. It is the only thing in the repository that can answer "shrimp, via
+//     krill", and a krill-oil supplement carries no RxCUI at all — so a code-only
+//     composition deletes ruling 4's own case.
+//   • `drugAllergyMatch` is the only one that knows a penicillin allergy meets
+//     amoxicillin, or an aspirin allergy meets ibuprofen. It matches on the NAME too:
+//     its ingredient tier is folded token containment, so it fires on an uncoded row.
+//
+// Both are fed the SAME label identity the dose reads — the bottle's name over the
+// source row's codes. There is no code-only mode and no name-only mode.
+//
+// It does not run at all under a MISMATCH (ruling 11): with two disagreeing identities
+// there is nothing single to check against, and the receipt says so instead. The caller
+// owns that gate; this function answers the question it is asked.
+export function alsoForAllergenNotes(input: {
+  label: AlsoForLabelIdentity;
+  // The recorded substances, as the food/cross-reactivity matcher takes them.
+  allergens: readonly string[];
+  // The SAME recorded allergies with their coded allergen, as the drug matcher takes
+  // them. One gather builds both, so the two sides carry the same strings.
+  records: readonly DrugAllergySubstance[];
+}): AlsoForAllergenNote[] {
+  const notes: AlsoForAllergenNote[] = [];
+  // DIRECT HITS KEY ON THE CANONICAL SUBSTANCE — `normalizeAllergenSubstance` returns
+  // "the form the safety cross-checks match on", which is exactly this question, so
+  // "Penicillin" from the drug matcher and "Penicillin" from the food matcher are ONE
+  // allergy. Keying the drug side on its allergy row id and the food side on the trigger
+  // string does not dedupe at all: two key spaces that can never collide, and the person
+  // reads their one penicillin allergy back twice in one line.
+  const stated = new Set<string>();
+  const stateDirect = (substance: string): void => {
+    const key = normalizeAllergenSubstance(substance);
+    if (stated.has(key)) return;
+    stated.add(key);
+    notes.push({ allergen: substance });
+  };
+
+  for (const record of input.records) {
+    if (drugAllergyMatch(record, input.label)) stateDirect(record.substance);
+  }
+  const foodHits = allergenConflicts(input.label.name, input.allergens);
+  for (const hit of foodHits) {
+    if (!hit.triggers) stateDirect(hit.allergen);
+  }
+  // CROSS-REACTIVE HITS KEY ON THEIR UNJOINED TRIGGERS, never on the joined display
+  // string: "Shrimp, Crab" is a pseudo-allergen no vocabulary knows and can never
+  // compare equal to either half. A trigger a direct hit already stated drops out of the
+  // clause, and a hit with nothing left says nothing at all.
+  for (const hit of foodHits) {
+    if (!hit.triggers) continue;
+    const left = hit.triggers.filter(
+      (t) => !stated.has(normalizeAllergenSubstance(t))
+    );
+    if (left.length === 0) continue;
+    for (const t of left) stated.add(normalizeAllergenSubstance(t));
+    notes.push({
+      allergen: left.join(", "),
+      viaCrossReactivity: hit.viaCrossReactivity,
+    });
+  }
+  return notes;
+}
+
+// One recorded allergy this bottle meets, as the receipt states it.
+export interface AlsoForAllergenNote {
+  // The recorded substance, or for a cross-reactive hit the trigger(s) this receipt has
+  // not already stated.
+  allergen: string;
+  // The family member the bottle carried, when the match was INDIRECT (#153).
+  viaCrossReactivity?: string;
+}
+
 // The facts the copy could not check, or wants said. Each is TEXT ON A LINE, never a
 // withheld chip — which is the whole of the 2026-09-09 model.
 export interface AlsoForNotes {
-  // A recorded allergen the bottle's product matches (allergenConflict, #153). Stated
-  // whatever the kind: `getIntakeSafetyContext` screens medications only, so for a
-  // supplement this line is the only place in the app the hit can ever be said.
-  allergen: { allergen: string; viaCrossReactivity?: string } | null;
-  // Whether "does this person already keep this product" could be asked at all. Today
-  // it never can — a bottle carries no code and none is derived from its members
-  // (#4717) — so the receipt says so rather than letting silence read as "checked, no".
-  productMatched: boolean;
+  // EVERY recorded allergy this bottle meets, from BOTH matchers composed and deduped
+  // (PM ruling, 2026-09-09 18:45 UTC) — the food/cross-reactivity matcher, which is the
+  // only thing in the app that can say "shrimp, via krill" and the only one a supplement
+  // reaches at all, and the drug-allergy matcher, which is the only one that knows a
+  // penicillin allergy meets amoxicillin. Neither one's silence is clearance, so one
+  // alone was half a check read back as a whole one. A LIST, because "N clauses" is what
+  // a person with two recorded allergies on one bottle is owed.
+  allergens: readonly AlsoForAllergenNote[];
+  // What the two readings of this bottle said it is (§2 of #5230's precedence). The
+  // receipt reads it for one thing: a DISPUTED identity has to say which check could not
+  // run, because a plural or contradicted name means the life-stage gate — and, under a
+  // mismatch, the allergy composition — was not asked at all (ruling 11).
+  identity: AlsoForIdentityState;
 }
 
 export function alsoForReceipt(
@@ -756,26 +851,46 @@ export function alsoForReceipt(
   notes: AlsoForNotes
 ): string {
   const parts: string[] = [];
+  // THE DOSE CLAUSE NAMES THE INGREDIENT, always (ruling 10's third consequence). A
+  // combination-style name that happens to detect exactly ONE curated product —
+  // `Tylenol PM`, `Advil Cold & Sinus`, `Aleve-D` (each executed, each one hit) — is
+  // invisible to the plural rule, so the figure is the LABEL's dose for that one
+  // ingredient and not the bottle's. The receipt cannot tell those names from ordinary
+  // ones, so it stops claiming the figure is the bottle's on every dose it states.
   if (written.kind === "dose") {
-    parts.push(`Added for ${name} · ${written.amount} ${written.basis}`);
+    parts.push(
+      `Added for ${name} · ${written.amount} of ${written.ingredient} ${written.basis}`
+    );
   } else if (written.kind === "pending") {
     parts.push(
-      `Added for ${name} · ${written.amount} ${written.basis}, nothing due yet`
+      `Added for ${name} · ${written.amount} of ${written.ingredient} ${written.basis}, nothing due yet`
     );
   } else {
     parts.push(`Added for ${name} · no dose yet — ${written.reason}`);
   }
-  if (notes.allergen) {
-    const hit = notes.allergen;
+  // A WITHHOLD IS NEVER SILENT, and neither is a check that could not run (ruling 11).
+  // Under a mismatch the allergy composition did not run either, so the same sentence
+  // carries both halves rather than leaving the allergy half as an absence.
+  if (alsoForIdentityDisputed(notes.identity)) {
+    parts.push(
+      notes.identity === "mismatch"
+        ? `we couldn’t confirm what this bottle is, so we couldn’t check whether it’s for children or against ${name}’s allergies`
+        : `we couldn’t confirm what this bottle is, so we couldn’t check whether it’s for children`
+    );
+  }
+  for (const hit of notes.allergens) {
     parts.push(
       hit.viaCrossReactivity
         ? `${name} has a ${hit.allergen} allergy recorded, and this is ${hit.viaCrossReactivity}`
         : `${name} has a ${hit.allergen} allergy recorded`
     );
   }
-  if (!notes.productMatched) {
-    parts.push(`we couldn’t check whether ${name} already has this`);
-  }
+  // UNCONDITIONAL. "Does this person already keep this product" cannot be asked at all:
+  // a bottle carries no code column and none is derived from its membership (ruling 2;
+  // #4717 owns that seam), so there is no state of the world in which this line is
+  // wrong. It was a flag that could only ever be false — a literal standing in for a
+  // check nobody can run — and silence here would read like a clean check.
+  parts.push(`we couldn’t check whether ${name} already has this`);
   return parts.join(" · ");
 }
 

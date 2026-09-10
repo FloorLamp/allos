@@ -237,6 +237,23 @@ export async function unlinkItemAction(
   return ok(null);
 }
 
+// A BOTTLE THIS CALLER CANNOT ACT ON IS ONE REASON WITH ONE MESSAGE — deleted, foreign
+// and unreachable all read the same — and it REFRESHES THE CARD (#5230, PM 18:45 UTC:
+// "a bottle deleted between render and tap refreshes the card"). Both halves matter:
+// without the refresh the card keeps offering a bottle that is gone and the message
+// reads as a dead end; if only a genuinely deleted bottle refreshed, the refresh itself
+// would be an oracle separating "deleted" from "you may not see it". Every `no-bottle`
+// return in this file goes through here, including the two in the decline action, which
+// has no refusal-refresh branch of its own.
+function noBottle(): AlsoForResult {
+  revalidateSupplies();
+  return {
+    ok: false,
+    reason: "no-bottle",
+    error: alsoForRefusalMessage("no-bottle", "them"),
+  };
+}
+
 // "Also for" (#5230): copy ONE bottle member's plan onto another person, in one tap,
 // without the caller ever becoming that person.
 //
@@ -269,11 +286,7 @@ export async function alsoForAction(
   const targetProfileId = Number(formData.get("profile_id") ?? 0);
   const basis = String(formData.get("basis") ?? "");
   if (!supplyId || !sourceItemId || !sourceProfileId || !targetProfileId) {
-    return {
-      ok: false,
-      reason: "no-bottle",
-      error: alsoForRefusalMessage("no-bottle", "them"),
-    };
+    return noBottle();
   }
   await requireProfileWriteAccess(targetProfileId);
   const scope = await requireScope();
@@ -281,11 +294,7 @@ export async function alsoForAction(
     !isLinkableSupply(cabinetViewer(scope.ids, scope.role), supplyId) ||
     !scope.ids.includes(sourceProfileId)
   ) {
-    return {
-      ok: false,
-      reason: "no-bottle",
-      error: alsoForRefusalMessage("no-bottle", "them"),
-    };
+    return noBottle();
   }
   await requirePoolWriteAccess(supplyId);
   const target = scope.profiles.find((p) => p.id === targetProfileId);
@@ -294,6 +303,9 @@ export async function alsoForAction(
     supplyId,
     sourceProfileId,
     sourceItemId,
+    sourceName:
+      scope.profiles.find((p) => p.id === sourceProfileId)?.name ??
+      "the source",
     targetProfileId,
     targetName,
     basis,
@@ -311,13 +323,24 @@ export async function alsoForAction(
     };
   }
   revalidateSupplies();
+  // "OPEN THEIR ROW" MUST LAND ON THEIR ROW, or it is not offered at all. A medication
+  // has a cross-profile detail page, so the link is the recipient's own row and reads
+  // correctly for anyone who may see them. A SUPPLEMENT has no such route: every
+  // supplement door in lib/hrefs.ts resolves to /nutrition?tab=supplements, which is the
+  // CALLER's own tab, and the nutrition page takes no profile parameter — so for a
+  // cross-profile supplement copy the link would show the wrong person's supplements.
+  // No link, and the receipt's own "set the amount on the new row" stands. (Adding a
+  // profile parameter no reader honours would be worse than either.)
+  const ownRow =
+    result.kind === "medication" || targetProfileId === scope.actingProfileId;
   return {
     ok: true,
     receipt: result.receipt,
-    href:
-      result.kind === "medication"
+    href: ownRow
+      ? result.kind === "medication"
         ? medicationHref(result.itemId)
-        : intakeHref(result.kind),
+        : intakeHref(result.kind)
+      : undefined,
   };
 }
 
@@ -333,24 +356,18 @@ export async function declineAlsoForAction(
 ): Promise<AlsoForResult> {
   const supplyId = Number(formData.get("supply_id") ?? 0);
   const targetProfileId = Number(formData.get("profile_id") ?? 0);
-  if (!supplyId || !targetProfileId) {
-    return {
-      ok: false,
-      reason: "no-bottle",
-      error: alsoForRefusalMessage("no-bottle", "them"),
-    };
-  }
+  if (!supplyId || !targetProfileId) return noBottle();
   await requireProfileWriteAccess(targetProfileId);
   const scope = await requireScope();
   if (!isLinkableSupply(cabinetViewer(scope.ids, scope.role), supplyId)) {
-    return {
-      ok: false,
-      reason: "no-bottle",
-      error: alsoForRefusalMessage("no-bottle", "them"),
-    };
+    return noBottle();
   }
   await requirePoolWriteAccess(supplyId);
-  declineAlsoForOffer(supplyId, targetProfileId);
+  // THE DECLINE'S KEY CARRIES WHAT THE BOTTLE IS, derived server-side from the bottle's
+  // own name — this action posts a bottle and a person and nothing else, so a client
+  // cannot choose the tail it is written under. A bottle that vanished under the tap
+  // takes the same door as any other missing bottle.
+  if (!declineAlsoForOffer(supplyId, targetProfileId)) return noBottle();
   revalidateSupplies();
   return { ok: true };
 }

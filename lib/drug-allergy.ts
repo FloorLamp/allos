@@ -127,6 +127,79 @@ const MATCH_RANK: Record<DrugAllergyMatchKind, number> = {
   "cross-class": 2,
 };
 
+// The recorded allergen a match is asked about, WITHOUT its row id.
+export type DrugAllergySubstance = Omit<AllergyRecordInput, "id" | "reaction">;
+
+// The thing being matched AGAINST, without an intake_items id: a name and whatever
+// codes it carries.
+export type DrugAllergySubject = Omit<DrugAllergyMedInput, "id">;
+
+// How ONE recorded allergen meets ONE named product, or null when it does not. The
+// three tiers, most specific first, exactly as the cross-check has always ranked them.
+//
+// ID-FREE ON PURPOSE (#5230). `DrugAllergyHit` carries a `dedupeKey` built from the two
+// AUTOINCREMENT row ids, and the "Also for" receipt composes this match BEFORE the
+// recipient's item exists — so it has an allergy row id and no med id at all. Fabricating
+// one would put a made-up value in `allergy-med:<allergyId>-<itemId>`'s key space, where
+// the natural fabrication (the bottle's supply id) collides with real item ids: dismissing
+// a receipt line could then suppress a genuine allergy finding on a medication row. A
+// caller with no med id gets the MATCH and no key.
+export function drugAllergyMatch(
+  allergen: DrugAllergySubstance,
+  subject: DrugAllergySubject
+): { match: DrugAllergyMatchKind; note: string; source: string } | null {
+  const substance = allergen.substance.trim();
+  if (!substance) return null;
+  const allergenNorm = normalizeDrugTerm(substance);
+  const rxCode = isRxNormCodeSystem(allergen.substanceCodeSystem)
+    ? (allergen.substanceCode?.trim() ?? "")
+    : "";
+  const allergenKeys = classKeysFor({ name: substance, rxcui: rxCode || null });
+
+  const subjectNorm = normalizeDrugTerm(subject.name);
+  const subjectCuis = itemRxcuis(subject);
+  const subjectKeys = classKeysFor(subject);
+
+  // 1. Ingredient — code-first (the allergen's RxNorm CUI against every CUI the
+  //    subject carries), then folded token containment in either direction.
+  if (
+    (rxCode && subjectCuis.has(rxCode)) ||
+    (allergenNorm &&
+      subjectNorm &&
+      (drugTermContains(subjectNorm, allergenNorm) ||
+        drugTermContains(allergenNorm, subjectNorm)))
+  ) {
+    return {
+      match: "ingredient",
+      note: `${subject.name} matches the recorded allergen directly.`,
+      source: DIRECT_SOURCE,
+    };
+  }
+
+  // 2. Same class — both sides resolve to one curated class concept.
+  for (const key of allergenKeys) {
+    if (!subjectKeys.has(key)) continue;
+    const entry = CLASS_BY_KEY.get(key);
+    if (!entry) continue;
+    return {
+      match: "class",
+      note: `${subject.name} ${entry.note}`,
+      source: entry.source,
+    };
+  }
+
+  // 3. Documented cross-class reactivity (either direction of the stored pair).
+  for (const rule of DRUG_ALLERGY_CROSS_RULES) {
+    const covers =
+      (allergenKeys.has(rule.a) && subjectKeys.has(rule.b)) ||
+      (allergenKeys.has(rule.b) && subjectKeys.has(rule.a));
+    if (covers)
+      return { match: "cross-class", note: rule.note, source: rule.source };
+  }
+
+  return null;
+}
+
 // Detect every drug-allergy note between the recorded (non-resolved) allergies and
 // the active medication stack. Each (allergy, med) pair yields AT MOST ONE hit — the
 // most specific matching tier. Deterministically ordered (substance, then med name,
@@ -139,92 +212,22 @@ export function crossCheckDrugAllergies(
   for (const allergy of allergies) {
     const substance = allergy.substance.trim();
     if (!substance) continue;
-    const allergenNorm = normalizeDrugTerm(substance);
-    const rxCode = isRxNormCodeSystem(allergy.substanceCodeSystem)
-      ? (allergy.substanceCode?.trim() ?? "")
-      : "";
-    const allergenKeys = classKeysFor({
-      name: substance,
-      rxcui: rxCode || null,
-    });
-
     for (const med of meds) {
-      const medNorm = normalizeDrugTerm(med.name);
-      const medCuis = itemRxcuis(med);
-      const medKeys = classKeysFor(med);
-
-      let best: {
-        kind: DrugAllergyMatchKind;
-        note: string;
-        source: string;
-      } | null = null;
-      const consider = (
-        kind: DrugAllergyMatchKind,
-        note: string,
-        source: string
-      ) => {
-        if (!best || MATCH_RANK[kind] < MATCH_RANK[best.kind]) {
-          best = { kind, note, source };
-        }
-      };
-
-      // 1. Ingredient — code-first (the allergen's RxNorm CUI against every CUI the
-      //    med carries), then folded token containment in either direction.
-      if (
-        (rxCode && medCuis.has(rxCode)) ||
-        (allergenNorm &&
-          medNorm &&
-          (drugTermContains(medNorm, allergenNorm) ||
-            drugTermContains(allergenNorm, medNorm)))
-      ) {
-        consider(
-          "ingredient",
-          `${med.name} matches the recorded allergen directly.`,
-          DIRECT_SOURCE
-        );
-      }
-
-      // 2. Same class — both sides resolve to one curated class concept.
-      if (!best) {
-        for (const key of allergenKeys) {
-          if (!medKeys.has(key)) continue;
-          const entry = CLASS_BY_KEY.get(key);
-          if (!entry) continue;
-          consider("class", `${med.name} ${entry.note}`, entry.source);
-          break;
-        }
-      }
-
-      // 3. Documented cross-class reactivity (either direction of the stored pair).
-      if (!best) {
-        for (const rule of DRUG_ALLERGY_CROSS_RULES) {
-          const covers =
-            (allergenKeys.has(rule.a) && medKeys.has(rule.b)) ||
-            (allergenKeys.has(rule.b) && medKeys.has(rule.a));
-          if (!covers) continue;
-          consider("cross-class", rule.note, rule.source);
-          break;
-        }
-      }
-
-      if (best) {
-        const { kind, note, source } = best as {
-          kind: DrugAllergyMatchKind;
-          note: string;
-          source: string;
-        };
-        hits.push({
-          allergyId: allergy.id,
-          substance,
-          reaction: allergy.reaction?.trim() || null,
-          medId: med.id,
-          medName: med.name,
-          match: kind,
-          note,
-          source,
-          dedupeKey: drugAllergySignalKey(allergy.id, med.id),
-        });
-      }
+      // The MATCH is the pure core above; everything this loop adds is the two row ids
+      // and the key built from them.
+      const found = drugAllergyMatch(allergy, med);
+      if (!found) continue;
+      hits.push({
+        allergyId: allergy.id,
+        substance,
+        reaction: allergy.reaction?.trim() || null,
+        medId: med.id,
+        medName: med.name,
+        match: found.match,
+        note: found.note,
+        source: found.source,
+        dedupeKey: drugAllergySignalKey(allergy.id, med.id),
+      });
     }
   }
   return hits.sort(

@@ -182,6 +182,7 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -218,6 +219,7 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: child,
       targetName: "Ada",
@@ -251,6 +253,7 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: child,
       targetName: "Ada",
@@ -304,6 +307,7 @@ describe("one tap copies the plan and derives the recipient's own dose", () => {
     const res = copyPoolMemberPlan({
       supplyId: bottle,
       sourceProfileId: other,
+      sourceName: "Mira",
       sourceItemId: item,
       targetProfileId: target,
       targetName: "Ada",
@@ -378,6 +382,7 @@ describe("a stale intent refuses instead of copying a different plan", () => {
     const first = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -387,6 +392,7 @@ describe("a stale intent refuses instead of copying a different plan", () => {
     const second = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -403,6 +409,7 @@ describe("a stale intent refuses instead of copying a different plan", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -417,6 +424,7 @@ describe("a stale intent refuses instead of copying a different plan", () => {
       copyPoolMemberPlan({
         supplyId,
         sourceProfileId: source,
+        sourceName: "Mira",
         sourceItemId: sourceItem,
         targetProfileId: target,
         targetName: "Ada",
@@ -434,6 +442,7 @@ describe("a stale intent refuses instead of copying a different plan", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -449,6 +458,7 @@ describe("a stale intent refuses instead of copying a different plan", () => {
       copyPoolMemberPlan({
         supplyId,
         sourceProfileId: source,
+        sourceName: "Mira",
         sourceItemId: sourceItem,
         targetProfileId: target,
         targetName: "Ada",
@@ -511,6 +521,7 @@ describe("allergy warns in the receipt, it never withholds the chip", () => {
       const res = copyPoolMemberPlan({
         supplyId: bottleId,
         sourceProfileId: owner,
+        sourceName: "Mira",
         sourceItemId: item,
         targetProfileId: target,
         targetName: "Ada",
@@ -555,6 +566,7 @@ describe("allergy warns in the receipt, it never withholds the chip", () => {
     const res = copyPoolMemberPlan({
       supplyId: bottleId,
       sourceProfileId: owner,
+      sourceName: "Mira",
       sourceItemId: item,
       targetProfileId: target,
       targetName: "Ada",
@@ -572,6 +584,7 @@ describe("allergy warns in the receipt, it never withholds the chip", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -593,6 +606,7 @@ describe("allergy warns in the receipt, it never withholds the chip", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -625,6 +639,7 @@ describe("the duplicate question is not asked, and the receipt says so", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -686,6 +701,7 @@ describe("a curated adult-only product withholds with its reason on screen", () 
     const res = copyPoolMemberPlan({
       supplyId: bottleId,
       sourceProfileId: owner,
+      sourceName: "Mira",
       sourceItemId: item,
       targetProfileId: child,
       targetName: "Ada",
@@ -730,6 +746,7 @@ describe("a curated adult-only product withholds with its reason on screen", () 
     const res = copyPoolMemberPlan({
       supplyId: bottleId,
       sourceProfileId: owner,
+      sourceName: "Mira",
       sourceItemId: item,
       targetProfileId: child,
       targetName: "Ada",
@@ -778,6 +795,7 @@ describe("a source with nothing still in force is still a source, and says so", 
     const res = copyPoolMemberPlan({
       supplyId: bottleId,
       sourceProfileId: owner,
+      sourceName: "Mira",
       sourceItemId: item,
       targetProfileId: target,
       targetName: "Ada",
@@ -824,6 +842,7 @@ describe("a source with nothing still in force is still a source, and says so", 
     const res = copyPoolMemberPlan({
       supplyId: bottleId,
       sourceProfileId: owner,
+      sourceName: "Mira",
       sourceItemId: item,
       targetProfileId: target,
       targetName: "Ada",
@@ -876,6 +895,7 @@ describe("a source with nothing still in force is still a source, and says so", 
     const res = copyPoolMemberPlan({
       supplyId: bottleId,
       sourceProfileId: owner,
+      sourceName: "Mira",
       sourceItemId: item,
       targetProfileId: target,
       targetName: "Ada",
@@ -906,6 +926,7 @@ describe("the basis binds every field the copy carries off the source", () => {
       const res = copyPoolMemberPlan({
         supplyId,
         sourceProfileId: source,
+        sourceName: "Mira",
         sourceItemId: sourceItem,
         targetProfileId: target,
         targetName: "Ada",
@@ -933,6 +954,7 @@ describe("the basis binds every field the copy carries off the source", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -1001,6 +1023,7 @@ describe("the offer lives in the RECIPIENT's day", () => {
       const res = copyPoolMemberPlan({
         supplyId: bottleId,
         sourceProfileId: abroad,
+        sourceName: "Mira",
         sourceItemId: item,
         targetProfileId: target,
         targetName: "Ada",
@@ -1024,6 +1047,7 @@ describe("the offer lives in the RECIPIENT's day", () => {
     const refused = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -1039,6 +1063,7 @@ describe("the offer lives in the RECIPIENT's day", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",
@@ -1064,6 +1089,7 @@ describe("a declined offer does not come back", () => {
     const res = copyPoolMemberPlan({
       supplyId,
       sourceProfileId: source,
+      sourceName: "Mira",
       sourceItemId: sourceItem,
       targetProfileId: target,
       targetName: "Ada",

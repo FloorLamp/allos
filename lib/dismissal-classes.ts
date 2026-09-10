@@ -360,15 +360,6 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     shape: "`<intakeItemId>` (one supply offer per item)",
   },
   {
-    prefix: ALSO_FOR_OFFER_PREFIX,
-    keyClass: "id-keyed",
-    shape: "`<sharedSupplyId>` (one bottle offer per recipient, #5230)",
-    // The "Also for" offer on a household bottle, declined for the row's own profile.
-    // The tail is the bottle's autoincrement id and the profile is the row's, so the
-    // pair is bottle × recipient and neither half recycles — a deleted bottle leaves an
-    // inert, restorable row exactly as `pool-refill:` does.
-  },
-  {
     prefix: OFFER_ASKED_PREFIX,
     keyClass: "catalog",
     shape: "`<offerFamilyId>` (lib/offers.ts registry vocabulary)",
@@ -543,6 +534,23 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // is an AUTOINCREMENT id, so nothing in the tail recycles and there is no sweep to
     // name; a stale row can only ever re-decline the identical proposal about the
     // identical item.
+  },
+  {
+    prefix: ALSO_FOR_OFFER_PREFIX,
+    keyClass: "anchored",
+    shape: "`<sharedSupplyId>-<sorted detected slug list, or `none`>` (#5230)",
+    // The "Also for" offer on a household bottle, declined for the row's own profile.
+    // ANCHORED and deliberately not id-keyed, on the `dose-band-update:` precedent
+    // above: the anchor is WHAT THE BOTTLE'S NAME SAYS IT IS, and ruling 7 sends the
+    // resolution of a name/code disagreement to the moment the name is fixed — so
+    // correcting the name has to bring the declined offer back, which an id-keyed
+    // decline would silence forever. Nothing in the tail is a user string: the bottle
+    // half is an autoincrement id and the identity half is curated slugs from the PRN
+    // dataset (`none` when the name detects nothing), so a stale row can only ever
+    // re-decline the identical bottle read as the identical product, and there is no
+    // sweep to name. ACCEPTED UN-DECLINE, ruled in these words: a benign rename off the
+    // detected set re-arms the offer too, and so does a change to the curated synonyms
+    // or the negation guard — the app's answer about the bottle has changed.
   },
   {
     prefix: "digest-time:",
