@@ -1322,15 +1322,20 @@ function branchGateViolations(
       const armGates = arms.some(
         (arm) => arm && gateCoverage(arm, gates) !== "none"
       );
-      const thenPaths = walk(stmt.thenStatement, after);
-      const elsePaths = stmt.elseStatement
-        ? walk(stmt.elseStatement, after)
-        : after;
-      return distinct(
-        [...thenPaths, ...elsePaths].map((p) =>
+      const fork = (paths: Path[]) =>
+        paths.map((p) =>
           p.gated || !armGates ? p : { gated: false, forked: true }
-        )
-      );
+        );
+      // An arm that gates nothing while its sibling does is forked from its first
+      // statement, so a write made inside it (or a `return` of one) is a finding even
+      // when the arm never reaches the statements after the `if`.
+      const enter = (arm: ts.Statement) =>
+        gateCoverage(arm, gates) === "none" ? fork(after) : after;
+      const thenPaths = walk(stmt.thenStatement, enter(stmt.thenStatement));
+      const elsePaths = stmt.elseStatement
+        ? walk(stmt.elseStatement, enter(stmt.elseStatement))
+        : after;
+      return distinct(fork([...thenPaths, ...elsePaths]));
     }
     if (ts.isReturnStatement(stmt)) {
       if (stmt.expression) run(stmt.expression, live);
@@ -1630,6 +1635,19 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
     if (target > 0) { await requireProfileWriteAccess(target); return core(target); }
     ${continuation}
     return core(profileId);`;
+  // The #5689 pass's fourth mutant: the posted arm writes and returns inside itself,
+  // so nothing after the `if` runs on that path.
+  const ARM_EXIT = (postedArm: string) => `
+    const target = Number(formData.get("profileId"));
+    let profileId: number;
+    if (Number.isInteger(target) && target > 0) {
+      ${postedArm}
+      setStoredDoseAmount(target, 1, 1, 1);
+      return formOk();
+    } else {
+      profileId = (await requireWriteAccess()).profile.id;
+    }
+    return core(profileId);`;
 
   it.each([
     [
@@ -1640,7 +1658,7 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
     [
       "the #5675 dose-band mutant",
       DOSE_BAND(""),
-      "a branch reaches `const offer = standingOffer(profileId,",
+      "a branch reaches `profileId = target;` without the gate its sibling arm took",
     ],
     [
       "a ternary gating both arms",
@@ -1661,6 +1679,16 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
       "an early return whose continuation lost its gate",
       EARLY_RETURN(""),
       "a branch reaches `core(profileId)` without the gate its sibling arm took",
+    ],
+    [
+      "a posted arm that gates, writes and returns inside itself",
+      ARM_EXIT("await requireProfileWriteAccess(target);"),
+      null,
+    ],
+    [
+      "the #5689 arm-exit mutant",
+      ARM_EXIT(""),
+      "a branch reaches `setStoredDoseAmount(target, 1, 1, 1);` without the gate its sibling arm took",
     ],
     [
       "a validation exit before the action's gate",
