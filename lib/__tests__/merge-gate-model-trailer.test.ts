@@ -124,7 +124,10 @@ describe("which commit messages name a model (#4995)", () => {
   it("names every offending commit, and not the clean ones", () => {
     const verdict = modelTrailerVerdict([
       { sha: SHA, message: LANDED },
-      { sha: "1111111122222222333333334444444455555555", message: EXPLICIT_SQUASH },
+      {
+        sha: "1111111122222222333333334444444455555555",
+        message: EXPLICIT_SQUASH,
+      },
       {
         sha: "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee",
         message: `Subject\n\nCo-Authored-By: Claude Fictional 9 <noreply@anthropic.com>`,
@@ -140,7 +143,10 @@ describe("which commit messages name a model (#4995)", () => {
   it("opens on a branch carrying only correct trailers", () => {
     const verdict = modelTrailerVerdict([
       { sha: SHA, message: LANDED_CORRECTED },
-      { sha: "1111111122222222333333334444444455555555", message: EXPLICIT_SQUASH },
+      {
+        sha: "1111111122222222333333334444444455555555",
+        message: EXPLICIT_SQUASH,
+      },
     ]);
     expect(verdict.ok).toBe(true);
     expect(verdict.message).toBe("2 commit message(s) name no model");
