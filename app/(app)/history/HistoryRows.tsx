@@ -1249,9 +1249,12 @@ export default function HistoryRows({
     const closeSheet = () => setBundleSheet(null);
     const memberCount = bundle.servingIds.length + bundle.doseLogIds.length;
     const removeBundle = async () => {
+      // ONE CONFIRMATION FOR THE ACT, the batch's own contract rather than the ⋯'s
+      // per-row Undo toast: the question is asked once and the rows are still
+      // recoverable from the Trash, which is where both paths' captures land.
       const ok = await confirm({
         title: `Delete all ${memberCount} rows?`,
-        message: `Remove everything ${bundle.title} logged. They move to the Trash, where they can be restored.`,
+        message: `Remove every row ${bundle.title} wrote. They move to the Trash, where they can be restored.`,
         confirmLabel: "Delete all",
         danger: true,
       });
@@ -1315,7 +1318,7 @@ export default function HistoryRows({
           ) : null}
           {writableHere ? (
             <OverflowMenu
-              kind="act"
+              kind="Act"
               itemName={name}
               open={menuOpenId === bundle.id}
               onOpenChange={(open) => setMenuOpenId(open ? bundle.id : null)}
