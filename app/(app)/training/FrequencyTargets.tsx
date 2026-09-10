@@ -268,9 +268,7 @@ export default function FrequencyTargets({
             fill, which is the step ruling 10 protects. Ruling 5 (2026-09-09
             20:05 UTC) filled this exact mount by name, before ruling 10 existed
             to narrow it; this is that superseded reading, not an oversight. */}
-            {selectedId != null && (
-              <Button onClick={remove}>Delete</Button>
-            )}
+            {selectedId != null && <Button onClick={remove}>Delete</Button>}
           </form>
         </div>
       </Collapse>

@@ -67,9 +67,7 @@ const routine: RoutineWithDays = {
 // says otherwise.
 function loudIn(card: HTMLElement): string[] {
   return [
-    ...card.querySelectorAll(
-      ".button-control-primary, .button-control-danger"
-    ),
+    ...card.querySelectorAll(".button-control-primary, .button-control-danger"),
   ].map((el) => el.textContent?.trim() ?? "");
 }
 
