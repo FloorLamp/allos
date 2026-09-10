@@ -1426,4 +1426,46 @@ test.describe("selection mode on the record (#5618 ruling 4)", () => {
       await page.context().close();
     }
   });
+
+  test("Select rides the phone day bar without spending its chrome budget", async ({
+    browser,
+  }) => {
+    // #1517'S BUDGET, ASKED OF THE NEW CONTROL. The day bar is the pinned slot on a
+    // phone and it was three items wide; Select is a fourth. The other tests in this
+    // file read a day with nothing selectable, so the bar they measure is the bar
+    // WITHOUT it — this is the only place the loaded bar is observed at 390px.
+    const page = await signIn(browser);
+    try {
+      await page.goto(dayUrl(SELECT_DAY));
+      const content = appContent(page);
+      await expect(content.getByTestId("history-row")).toHaveCount(3);
+      const nav = page.getByTestId("timeline-day-nav"); // testid-scope-ok: the day bar is the page frame, outside any streamed boundary
+      const toggle = content.getByTestId("history-select-toggle");
+      await expect(toggle).toBeVisible();
+
+      // ONE LINE, NO SIDEWAYS SCROLL. The day name is what gives (`truncate`), so the
+      // failure this catches is the bar growing a scroller or a second row.
+      const [scrollWidth, clientWidth, height] = await nav.evaluate((el) => [
+        el.scrollWidth,
+        el.clientWidth,
+        el.getBoundingClientRect().height,
+      ]);
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+      const [navBox, toggleBox, nameBox] = await settledBoxes([
+        nav,
+        toggle,
+        content.getByTestId("timeline-day-name"),
+      ]);
+      // The control is INSIDE the bar, and the bar is still one row of controls.
+      expect(toggleBox.y).toBeGreaterThanOrEqual(navBox.y - 1);
+      expect(toggleBox.y + toggleBox.height).toBeLessThanOrEqual(
+        navBox.y + navBox.height + 1
+      );
+      expect(height).toBeLessThan(toggleBox.height * 2);
+      // And the day is still named beside it, which is what the bar is for (#4918).
+      expect(nameBox.width).toBeGreaterThan(0);
+    } finally {
+      await page.context().close();
+    }
+  });
 });
