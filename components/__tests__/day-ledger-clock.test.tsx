@@ -112,14 +112,17 @@ function groups(rows: (LedgerServing | LedgerDose)[]): LedgerGroup[] {
  * The ledger on `DAY`, in 12-hour so a surviving minute reads "7:41am" — a shape no
  * date could be mistaken for, in either direction.
  */
-function renderLedger(rows: (LedgerServing | LedgerDose)[]) {
+function renderLedger(
+  rows: (LedgerServing | LedgerDose)[],
+  dateFormat: "iso" | "mdy" | "dmy" = "iso"
+) {
   render(
     <DayLedger
       date={DAY}
       profileToday={DAY}
       groups={groups(rows)}
       doseWritable
-      prefs={{ timeFormat: "12h", dateFormat: "iso" }}
+      prefs={{ timeFormat: "12h", dateFormat }}
       keepApart={[]}
       dayContext={null}
       moveDays={[]}
@@ -173,6 +176,23 @@ describe("a ledger row filed on another day says which day, not a clock", () => 
       (renderLedger([dose(23, FILED_ELSEWHERE)]), cellText("ledger-dose-23"));
     expect(text).toContain(`logged ${FILED_ELSEWHERE}`);
     expect(text).not.toMatch(A_CLOCK);
+  });
+
+  // THE RULING'S OWN WORDS, in the format it quoted them in: "an untimed row filed on
+  // another day reads 'logged Sep 8'". The date goes through the shared vocabulary
+  // (#1448), so the shape follows the PROFILE's date format rather than being spelled
+  // here — which is why the same row reads "logged 2026-09-08" above. Both are pinned,
+  // so a change to either is a decision somebody makes on purpose.
+  it("spells the ruling's own 'logged Sep 8' on a month-day profile", () => {
+    renderLedger([serving(16, FILED_ELSEWHERE)], "mdy");
+    const text = cellText("ledger-serving-16");
+    expect(text).toContain("logged Sep 8");
+    expect(text).not.toMatch(A_CLOCK);
+  });
+
+  it("spells it '8 Sep' on a day-month profile", () => {
+    renderLedger([serving(17, FILED_ELSEWHERE)], "dmy");
+    expect(cellText("ledger-serving-17")).toContain("logged 8 Sep");
   });
 
   // THE REAL BACKFILL DIRECTION — the row sits BEHIND the day it was filed from, which
