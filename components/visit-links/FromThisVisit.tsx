@@ -17,6 +17,11 @@ import SubmitButton from "@/components/SubmitButton";
 // accepts) — #1050. Server component: every accept/dismiss/unlink is a plain
 // server-action <form>, so it needs no client JS and settles as a POST the e2e
 // helpers await. `profile_id` rides each form as the cross-profile write target.
+//
+// RANK: "Link all" is filled and the per-row Link/Dismiss are not, because a bulk
+// action over rows is the surface's one loud control (#4978 ruling 7). "Dismiss all"
+// and the per-row "Unlink" are muted text rather than buttons: a decline is not a
+// rank the button vocabulary spells.
 
 const DOMAIN_LABEL: Record<Exclude<VisitLinkDomain, "episode">, string> = {
   medication: "Medication started",
@@ -167,7 +172,7 @@ export default function FromThisVisit({
                 name="pairs"
                 value={pairsJson(suggestions.suggestions)}
               />
-              <SubmitButton data-testid="link-all-from-visit">
+              <SubmitButton variant="primary" data-testid="link-all-from-visit">
                 Link all
               </SubmitButton>
             </form>
