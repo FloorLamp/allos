@@ -46,6 +46,17 @@ import {
 // for, driven by one card. It stays a <button>: same dismiss action, focusable and
 // activated by Enter AND Space, which an href-less <a> is not.
 //
+// STILL ON THE RAW CLASSES, DELIBERATELY (#4978 slice 7). Every other control in
+// this subtree moved onto the typed `Button`; these two did not, because the
+// convergence DELETES the premise the #2255 ruling above rests on. That ruling
+// ranks the two remedies by giving them two different button weights — and after
+// the convergence there is exactly one quiet weight, so the only way to keep the
+// ranking visible is to promote the mode switch to the `primary` rank. That is a
+// filled control on an advisory Notice inside a card that has no commit of its
+// own, which is the shape rulings 7 and 11 keep declining. Neither reading is
+// derivable from a recorded ruling, so this is REPORTED on #4978 rather than
+// swept: an unclassified conversion is worse than a leftover.
+//
 // Nothing here carries the proposed minute into the write. Each action re-resolves the
 // live suggestion server-side, so a tab left open across a week of drifting statistics
 // can only ever write what the detector currently proposes — or refuse and say so.
