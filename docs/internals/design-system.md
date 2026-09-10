@@ -152,7 +152,7 @@ the accessible names.
 
 ## 4. Affordance grammar
 
-`CreateAction` owns “Add X” trigger copy and housing; a dialog takes its trigger’s
+`CreateAction` owns “Add X” trigger copy and housing; dialogs take their trigger’s
 phrase. Pass `{ kind, control, available? }` to `PageHeader` or
 `TabFirstPage` for page creates, `SectionCreateHeader` for section creates, or the
 specialized intake context's existing action cell. Unavailable declarations
