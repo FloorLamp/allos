@@ -90,6 +90,11 @@ vi.mock("@/app/(app)/settings/photo-actions", () => ({
 }));
 
 afterEach(cleanup);
+// Unconditionally, so a throwing test cannot leave a stubbed global behind. The
+// component tier reuses its worker threads, and `lib/sw-update.ts` — which the
+// save-status specs import — reads `navigator.onLine`, so a leaked navigator
+// decides another file's verdict rather than this one's.
+afterEach(() => vi.unstubAllGlobals());
 
 /** The `.card` box the given control lives in — the surface ruling 6 names. */
 function cardOf(control: HTMLElement): HTMLElement {
@@ -214,14 +219,21 @@ describe("a settings card spends its one loud control on its own commit", () => 
     // controls do not render at all without them. `getSubscription` is what
     // decides which arm of the enable/disable ternary mounts.
     let subscription: object | null = null;
-    vi.stubGlobal("navigator", {
-      ...navigator,
-      serviceWorker: {
-        ready: Promise.resolve({
-          pushManager: { getSubscription: async () => subscription },
-        }),
-      },
-    });
+    // DERIVED FROM THE REAL NAVIGATOR, NOT SPREAD FROM IT. `onLine`, `userAgent`
+    // and the rest live on the prototype, so `{...navigator}` yields an object
+    // missing every one of them — which is a broken navigator, not a stubbed one.
+    vi.stubGlobal(
+      "navigator",
+      Object.create(navigator, {
+        serviceWorker: {
+          value: {
+            ready: Promise.resolve({
+              pushManager: { getSubscription: async () => subscription },
+            }),
+          },
+        },
+      })
+    );
     vi.stubGlobal("PushManager", class {});
     vi.stubGlobal("Notification", { permission: "granted" });
 
@@ -257,7 +269,6 @@ describe("a settings card spends its one loud control on its own commit", () => 
     const disable = screen.getByTestId("push-disable");
     expect(screen.getByTestId("push-test")).toBeTruthy();
     expect(loudIn(cardOf(disable))).toEqual([]);
-    vi.unstubAllGlobals();
   });
 
   it("fills the bot card's own commit and leaves the webhook follow-up quiet", () => {
