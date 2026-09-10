@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { IconX } from "@tabler/icons-react";
+import { useRowList } from "@/components/RowRepeater";
 import type { IntakeConditionOption } from "@/lib/types";
 import {
   GOAL_PURPOSES,
@@ -92,17 +93,18 @@ export default function PurposesEditor({
   biomarkers?: string[];
   fid: string | number;
 }) {
+  const purposeRows = useRowList(setRows);
   const chosen = new Set(rows.map(draftKey));
   // What the picker OFFERS: only active conditions — nobody files a new reason against
   // something they have marked resolved. The labels above read the full list.
   const activeConditions = conditions.filter((c) => c.status === "active");
+  // A purpose is DECLARED ONCE: the same reason picked twice is the same row, so the
+  // dedup has to see the list it is appending to. That is the repeater's `add` with a
+  // guard the primitive has no business knowing about, not a different `add`.
   function add(d: PurposeDraft) {
     setRows((rs) =>
       rs.some((r) => draftKey(r) === draftKey(d)) ? rs : [...rs, d]
     );
-  }
-  function removeAt(i: number) {
-    setRows((rs) => rs.filter((_, j) => j !== i));
   }
 
   const suggested = suggestGoalPurposes({
@@ -139,7 +141,7 @@ export default function PurposesEditor({
                   type="button"
                   data-testid={`purpose-remove-${i}`}
                   aria-label={`Remove ${chipLabel(r, conditions)}`}
-                  onClick={() => removeAt(i)}
+                  onClick={() => purposeRows.remove(i)}
                   className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 >
                   <IconX className="h-3.5 w-3.5" />
