@@ -108,6 +108,7 @@ export default function MentalHealthSection({
       </section>
 
       <AddEntryPanel
+        formId="mental-health-screening"
         testId="add-mental-health-screening-panel"
         panelId="add-mental-health-screening-panel-body"
         label="Add screening"

@@ -42,6 +42,7 @@ export default function ProceduresSection({
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-6">
         <AddEntryPanel
+          formId="procedure"
           testId="add-procedure-panel"
           panelId="add-procedure-panel-body"
           label="Add procedure"

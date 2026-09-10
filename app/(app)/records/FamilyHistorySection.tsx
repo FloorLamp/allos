@@ -25,6 +25,7 @@ export default function FamilyHistorySection({
   return (
     <div className="space-y-6">
       <AddEntryPanel
+        formId="family-history"
         testId="add-family-history-panel"
         panelId="add-family-history-panel-body"
         label="Add family history"

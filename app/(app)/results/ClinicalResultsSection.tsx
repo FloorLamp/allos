@@ -186,6 +186,7 @@ export default function ClinicalResultsSection({
               }
               action={
                 <AddEntryPanel
+                  formId="result"
                   // A same-route ?new=1 Link preserves this client component. Change
                   // its identity only when route intent changes so defaultOpen is
                   // deliberately re-applied without making the modal controlled.
