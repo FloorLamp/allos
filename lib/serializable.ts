@@ -54,8 +54,7 @@ export type Serializable<T> =
           ? T
           : T extends symbol
             ? never
-            : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              T extends (...args: any[]) => unknown
+            : T extends (...args: any[]) => unknown
               ? never
               : T extends Date | RegExp | Error | URL
                 ? T
@@ -105,7 +104,6 @@ export type AssertSerializable<T> = [T] extends [Serializable<T>]
  * that quietly resolves to a marker nobody reads.
  */
 export type SerializableActions<M> = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [K in keyof M]: M[K] extends (...args: infer A) => Promise<infer R>
     ? (...args: A) => Promise<AssertSerializable<R>>
     : M[K];

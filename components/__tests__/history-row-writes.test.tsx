@@ -179,7 +179,6 @@ beforeEach(() => {
     addListener: () => {},
     removeListener: () => {},
     dispatchEvent: () => false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   })) as any;
   vi.stubGlobal(
     "ResizeObserver",
