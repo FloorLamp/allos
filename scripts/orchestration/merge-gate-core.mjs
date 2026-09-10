@@ -168,6 +168,18 @@ export const COMMIT_TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>";
 // conforming commit in this repo.
 export const SESSION_TRAILER = "Claude-Session: <session URL>";
 
+// The brief's whole trailer instruction, so the STATEMENT of the rule sits with
+// the constant and with the check that enforces it rather than in a third copy.
+// dispatch-brief.mjs prints this verbatim; nothing about the brief a lane reads
+// changes by living here.
+export const COMMIT_TRAILER_BRIEF =
+  `- Commit trailers for a Claude session, the second holding the real URL:
+    ${COMMIT_TRAILER}
+    ${SESSION_TRAILER}
+  Other harnesses follow their own attribution instructions; never invent a
+  session. No model identifier in pushed content — merge-gate.mjs refuses a
+  commit whose message names one.`;
+
 // WHAT IS REFUSED — two SHAPES, and deliberately no list of model names. An
 // enumeration goes stale the day a new name exists, and a stale enumeration
 // fails into a silent pass, which is the one direction a guard may not fail.

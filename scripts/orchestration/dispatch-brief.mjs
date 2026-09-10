@@ -30,9 +30,8 @@ import { helpGuard, isMain } from "./usage.mjs";
 import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
 import {
   bodySession,
-  COMMIT_TRAILER,
+  COMMIT_TRAILER_BRIEF,
   normaliseSession,
-  SESSION_TRAILER,
 } from "./merge-gate-core.mjs";
 import {
   activeDispatches,
@@ -420,11 +419,7 @@ ${landingLines}
   captured yourself, including servers you started, before handing off.
 - PR body: one closing keyword per issue per line; describe the final change and
   checks. Explain each new abstraction/test file and production/test line deltas.
-- Commit trailers for a Claude session (real URL in the second):
-    ${COMMIT_TRAILER}
-    ${SESSION_TRAILER}
-  Others follow their own; never invent a session. merge-gate.mjs refuses a
-  commit message naming a model.
+${COMMIT_TRAILER_BRIEF}
 ${opts.candidate ? "- Open or refresh the PR READY (not draft) via REST, base main." : "- Do not open a PR while this branch is banked; promotion changes this instruction."}
 - Return ${opts.candidate ? "PR number/URL" : "branch and exact head SHA"}, PINNED_BASE_SHA,
   per-issue outcome, actual gate results, remaining failures, and scope decisions.

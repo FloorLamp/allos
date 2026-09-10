@@ -31,6 +31,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
 import {
   COMMIT_TRAILER,
+  COMMIT_TRAILER_BRIEF,
   modelIdentifierLines,
   modelTrailerVerdict,
   SESSION_TRAILER,
@@ -73,6 +74,9 @@ describe("which commit messages name a model (#4995)", () => {
     ["the corrected twin of the landed body", LANDED_CORRECTED],
     ["a squash body supplied explicitly", EXPLICIT_SQUASH],
     ["the trailer the dispatch brief prints", COMMIT_TRAILER],
+    // The whole block a lane copies out of its brief, which is the drift this
+    // shared constant exists to make impossible.
+    ["the brief's whole trailer block", COMMIT_TRAILER_BRIEF],
     ["the session line the brief prints beside it", SESSION_TRAILER],
     [
       "a human co-author",
