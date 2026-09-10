@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { saveHouseholdRound, sendTestHouseholdRound } from "../profile/actions";
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
@@ -130,16 +131,17 @@ export default function HouseholdRoundSettings({
             ))}
           </fieldset>
 
+          {/* RULING 6 (#4978): this card autosaves on change and has no commit of
+              its own, so its one loud control is unclaimed — "Send test" is a
+              diagnostic, never the card's commit, and stays the plain secondary. */}
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="btn-ghost"
+            <Button
               onClick={runTest}
               disabled={testing || !isOn || selected.length === 0}
               data-testid="household-round-test"
             >
               {testing ? "Sending…" : "Send test"}
-            </button>
+            </Button>
             {!telegramConfigured && (
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 Telegram isn&rsquo;t set up for your login yet.
