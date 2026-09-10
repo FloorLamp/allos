@@ -166,8 +166,22 @@ describe("dataSectionHref", () => {
     );
   });
 
-  it("DATA_SECTIONS is the source-of-truth union the page mirrors", () => {
-    expect([...DATA_SECTIONS]).toEqual(["import", "review", "manage"]);
+  // The two sections this helper could not spell until #4541. `coverage` and
+  // `trash` were served by the page and missing from the union, so every link to
+  // them had to hand-build the literal.
+  it("links to the sections the union used to omit", () => {
+    expect(dataSectionHref("coverage")).toBe("/data?section=coverage");
+    expect(dataSectionHref("trash")).toBe("/data?section=trash");
+  });
+
+  it("DATA_SECTIONS is the source-of-truth union the page imports", () => {
+    expect([...DATA_SECTIONS]).toEqual([
+      "import",
+      "review",
+      "coverage",
+      "manage",
+      "trash",
+    ]);
   });
 });
 

@@ -1,6 +1,7 @@
 import DestinationIndicator from "@/components/DestinationIndicator";
 import OverlayDestination from "@/components/OverlayDestination";
 import SyncTimestamp from "./integrations/SyncTimestamp";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // The link from a ONE-OFF archive importer's page (Fitbit Takeout) to its entries in
 // Data → Review's chronological Imports feed.
@@ -22,7 +23,7 @@ export default function IntegrationSyncHistoryLink({
 }) {
   return (
     <OverlayDestination
-      href="/data?section=review"
+      href={dataSectionHref("review")}
       label="Open import history"
       data-testid="sync-history-link"
     >

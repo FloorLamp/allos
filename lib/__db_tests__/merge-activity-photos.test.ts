@@ -33,6 +33,7 @@ import { db } from "@/lib/db";
 import type { ProcessedPhoto } from "@/lib/photo/ingest";
 import { addTrainingPhotoCore } from "@/lib/training-photo-write";
 import { writeActivityFold, snapshotKeeperFold } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 import { captureDelete } from "@/lib/undo-delete-db";
 
@@ -242,7 +243,13 @@ describe("the Review resolver's permanent merge (#5481 — no undo behind it)", 
 
     // Exactly what review-actions.ts does at :178 and :230 — the shared fold, then a
     // bare DELETE with no capture. The cascade is live (foreign_keys is ON).
-    writeActivityFold(profileId, keepId, fullRow(keepId), [fullRow(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      fullRow(keepId),
+      [fullRow(dropId)],
+      carryPostWorkoutMarker
+    );
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
       dropId,
       profileId
@@ -279,7 +286,13 @@ describe("the undoable Training Log merge (#5481)", () => {
     // a form-check clip has, so it follows the merged session rather than the deleted
     // row.
     snapshotKeeperFold(fullRow(keepId));
-    writeActivityFold(profileId, keepId, fullRow(keepId), [fullRow(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      fullRow(keepId),
+      [fullRow(dropId)],
+      carryPostWorkoutMarker
+    );
     captureDelete("activity", profileId, dropId);
 
     expect(
@@ -315,7 +328,13 @@ describe("the per-profile content-hash dedup (#5481, question 1)", () => {
 
     // A plain UPDATE — not UPDATE OR IGNORE — therefore moves everything, and the merge
     // is clean.
-    writeActivityFold(profileId, keepId, fullRow(keepId), [fullRow(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      fullRow(keepId),
+      [fullRow(dropId)],
+      carryPostWorkoutMarker
+    );
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
       dropId,
       profileId

@@ -13,6 +13,7 @@ import {
   BODY_METRIC_DOMAIN,
 } from "@/lib/import-review/detect";
 import { writeActivityFold } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import {
   clearDocumentTombstone,
@@ -175,7 +176,14 @@ export async function mergeActivityPair(formData: FormData) {
     // delete below can no longer take typed-in sets down with it — the sets now
     // belong to the keeper before its parent row is removed. (The N-way core takes a
     // drops[] list; a pair is the drops.length === 1 case.)
-    writeActivityFold(profile.id, keepId, keep, [drop], overrides);
+    writeActivityFold(
+      profile.id,
+      keepId,
+      keep,
+      [drop],
+      carryPostWorkoutMarker,
+      overrides
+    );
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
       dropId,
       profile.id
@@ -227,7 +235,14 @@ export async function mergeActivityCluster(formData: FormData) {
     }
     if (drops.length === 0) return false;
 
-    writeActivityFold(profile.id, keepId, keep, drops, overrides);
+    writeActivityFold(
+      profile.id,
+      keepId,
+      keep,
+      drops,
+      carryPostWorkoutMarker,
+      overrides
+    );
     for (const drop of drops) {
       db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
         drop.id as number,

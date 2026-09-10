@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { toKm } from "@/lib/units";
 import { db } from "@/lib/db";
 import { writeActivityFold } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 import {
   upsertActivities,
@@ -114,7 +115,13 @@ describe("writeActivityFold — N-way core (#1081/#199)", () => {
           unknown
         >
     );
-    const moves = writeActivityFold(profileId, keepId, keep, drops);
+    const moves = writeActivityFold(
+      profileId,
+      keepId,
+      keep,
+      drops,
+      carryPostWorkoutMarker
+    );
     expect(moves).toHaveLength(3);
 
     // All four rows' sets are now on the keeper (#199 across N children).
@@ -158,7 +165,9 @@ describe("writeActivityFold — N-way core (#1081/#199)", () => {
           unknown
         >
     );
-    writeActivityFold(profileId, keepId, keep, drops, { distance_km: d2 });
+    writeActivityFold(profileId, keepId, keep, drops, carryPostWorkoutMarker, {
+      distance_km: d2,
+    });
 
     const merged = db
       .prepare("SELECT * FROM activities WHERE id = ?")

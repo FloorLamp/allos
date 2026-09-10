@@ -30,6 +30,7 @@ import {
   ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
 } from "@/lib/import-review/candidate-sql";
 import { writeActivityFold } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import {
   recordPairDecision,
@@ -113,7 +114,13 @@ export function autoMergeActivityDuplicates(profileId: number): number {
           if (drop) drops.push(drop);
         }
         if (drops.length === 0) return 0;
-        writeActivityFold(profileId, decision.keepId, keep, drops);
+        writeActivityFold(
+          profileId,
+          decision.keepId,
+          keep,
+          drops,
+          carryPostWorkoutMarker
+        );
         for (const drop of drops) {
           db.prepare(
             "DELETE FROM activities WHERE id = ? AND profile_id = ?"
