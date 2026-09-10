@@ -25,6 +25,7 @@ import {
   snapshotKeeperFold,
   dropSetIds,
 } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { loadImportTombstones } from "@/lib/integrations/tombstones";
 import {
   recordPairDecision,
@@ -101,7 +102,13 @@ function mergeAbsorbingStrava(
     .get(dropId) as Record<string, unknown>;
   const keeperBefore = snapshotKeeperFold(keep);
   const movedSetIds = dropSetIds(dropId);
-  const moves = writeActivityFold(profileId, keepId, keep, [drop]);
+  const moves = writeActivityFold(
+    profileId,
+    keepId,
+    keep,
+    [drop],
+    carryPostWorkoutMarker
+  );
   const movedRouteId = moves[0].movedRouteId;
   const signature = pairSignature(
     activityToken(keep as { id: number; external_id: string | null }),

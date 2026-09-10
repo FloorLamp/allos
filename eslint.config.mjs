@@ -1354,15 +1354,15 @@ const config = [
   // post-workout-queue.ts reaches workout-presence.ts that way.
   // (was lib/__tests__/notification-import-cycles.test.ts)
   //
-  // ONE PRE-EXISTING CYCLE IS NAMED RATHER THAN HIDDEN. post-workout-marker.ts →
-  // ../settings → (export *) settings/notifications → queries/sleep →
-  // derived-situations → cycle-store → undo-delete-db → merge-activity →
-  // post-workout-marker.ts, closed by 141207621 (#2597); the scan only walked
-  // sibling edges and never saw it. Every other cycle touching this directory has a
-  // second member here that still reports it.
+  // The one cycle this block used to name rather than hide is GONE (#5719).
+  // post-workout-marker.ts → ../settings → (export *) settings/notifications →
+  // queries/sleep → derived-situations → cycle-store → undo-delete-db →
+  // merge-activity → post-workout-marker.ts, closed by 141207621 (#2597), was broken
+  // at its last hop: writeActivityFold now takes the announcement carry as a required
+  // parameter instead of importing it, so the write path holds no edge into
+  // lib/notifications and every file in this directory is covered with no exemption.
   {
     files: ["lib/notifications/**/*.{ts,tsx}"],
-    ignores: ["lib/notifications/post-workout-marker.ts"],
     rules: {
       "import/no-cycle": [
         "error",
