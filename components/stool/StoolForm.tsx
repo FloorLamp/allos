@@ -12,7 +12,7 @@ import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 
 // THE STOOL DOMAIN'S ONE FORM (#4424 ruling 1), named by
-// `LOG_MANIFEST.stool.pieces.form`: the record's "Log a movement" door and that row's
+// `LOG_MANIFEST.stool.pieces.form`: the record's "Log stool" door and that row's
 // correction. `row` absent posts the log action on the day the mount is standing on;
 // `row` present seeds from that row and posts the correction. ONE layout — the mode
 // decides seed, action and which fields the row's ADDRESS has already fixed.

@@ -618,7 +618,7 @@ export const LOG_MANIFEST = {
     },
     pieces: {
       // #4424's stool leg. `StoolForm` is add AND full-statement edit — the record's
-      // "Log a movement" door, on any day it is standing on, and that row's correction.
+      // "Log stool" door, on any day it is standing on, and that row's correction.
       //
       // A CORRECTION MOVES THE TYPE AND NOTHING ELSE, which is the store's shape rather
       // than a missing field: a Bristol reading's natural key IS its instant, so

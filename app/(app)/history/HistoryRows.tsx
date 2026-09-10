@@ -806,7 +806,7 @@ export default function HistoryRows({
         // value is a one-field inline edit, and this row drew a second copy of the
         // readings table's cell rather than mounting it. Nothing about a reading's
         // WHEN is editable from either mount, so there is no full-statement half here
-        // for the ⋯ to open — the record's `Log a reading` door is where a body
+        // for the ⋯ to open — the record's `Log measurements` door is where a body
         // sitting is stated.
         return (
           <ReadingValueControl

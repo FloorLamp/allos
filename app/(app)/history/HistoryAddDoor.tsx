@@ -116,7 +116,7 @@ export interface HistoryAddVocabulary {
 // The composed one-tap is an OFFER over foods and stacks (#4477's vocabulary) and never
 // a food: the tap writes servings AND doses. Under `Log food` the label under-named it,
 // and a reader reconstructing a day met the bundle behind the food door and the per-dose
-// backfill behind `Log a dose`. So the add door LEADS with the day's standing offers, in
+// backfill behind `Log dose`. So the add door LEADS with the day's standing offers, in
 // the same accent offer chip the quick-log sheet's food overlay leads with, and the door
 // row keeps its per-kind grammar beneath.
 //
