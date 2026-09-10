@@ -41,6 +41,7 @@
 
 import {
   dateStrInTz,
+  hhmmFromMinutes,
   parseUtcSql,
   shiftDateStr,
   tzOffsetMs,
@@ -381,11 +382,7 @@ export function localMinuteProjector(
           local -= 1440;
           dayIndex = 2;
         }
-        return (
-          `${day.dates[dayIndex]}T` +
-          `${String((local / 60) | 0).padStart(2, "0")}:` +
-          `${String(local % 60).padStart(2, "0")}`
-        );
+        return `${day.dates[dayIndex]}T${hhmmFromMinutes(local)}`;
       }
     }
     // Any other shape `Date` understands goes the long way; true garbage yields null,
