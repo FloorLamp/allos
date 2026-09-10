@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { LEDGERS_WITH_LOGGED_VIA } from "@/lib/logged-via";
 import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
+import { REPO, readSource, relPath } from "./sql-scan";
 
 // THE USER-WRITE LEDGER CENSUS (#3087).
 //
@@ -56,8 +56,6 @@ import { makeTmpDir } from "./tmp-dir";
 // provenance for a person who does not exist — and unlike the seeds, an e2e fixture
 // ships no demo instance anybody reads. If a future feature reads `logged_via` in an e2e
 // assertion, that fixture will name the column because its spec needs it to.
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 /**
  * Extensions this census reads.
@@ -326,7 +324,7 @@ function columnListVisible(statement: string): boolean {
 function inserts(root: string): Insert[] {
   const out: Insert[] = [];
   for (const file of sourceFilesUnder(root)) {
-    const src = fs.readFileSync(file, "utf8");
+    const src = readSource(file);
     for (const m of src.matchAll(INSERT_RE)) {
       // From the INSERT forward — enough to see whether `logged_via` is named,
       // without trying to parse SQL out of a template literal.
@@ -423,7 +421,7 @@ const TRANCHE_MIGRATIONS = [
 
 function migrationTranche(root: string): string[] {
   return TRANCHE_MIGRATIONS.flatMap((file) =>
-    trancheFromSource(fs.readFileSync(path.join(root, file), "utf8"))
+    trancheFromSource(readSource(path.join(root, file)))
   );
 }
 
@@ -796,7 +794,7 @@ describe("the census's reach", () => {
         .filter(Boolean)
     );
     const untracked = sourceFilesUnder(REPO)
-      .map((f) => path.relative(REPO, f).split(path.sep).join("/"))
+      .map(relPath)
       .filter((rel) => !tracked.has(rel));
     expect(untracked).toEqual([]);
   });

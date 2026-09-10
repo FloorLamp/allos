@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
+import {
+  applyFoodServingPlacements,
+  applyFoodServingTruth,
+  setFoodServingCount,
+} from "@/lib/food-serving-projection";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const RECEIPT_SCOPE_CAPTURE =
@@ -177,5 +181,79 @@ describe("applyFoodServingPlacements", () => {
       expect(mutant).not.toBe(bar);
       expect(receiptScopeErrors(mutant)).not.toEqual([]);
     }
+  });
+});
+
+describe("setFoodServingCount", () => {
+  it("moves the day and meal halves of one coordinate together and floors at zero", () => {
+    const projected = setFoodServingCount(
+      { "2026-08-24": { berries: 1, nuts_seeds: 4 } },
+      {
+        "2026-08-24": {
+          Morning: { berries: 1 },
+          Midday: { nuts_seeds: 4 },
+          Evening: {},
+        },
+      },
+      "2026-08-24",
+      "Morning",
+      "berries",
+      (prev) => ({ day: prev.day - 3, meal: prev.meal - 3 })
+    );
+    expect(projected.countsByDate["2026-08-24"]).toEqual({
+      berries: 0,
+      nuts_seeds: 4,
+    });
+    expect(projected.slotCountsByDate["2026-08-24"].Morning).toEqual({
+      berries: 0,
+    });
+    // The sibling windows the tap did not name are untouched.
+    expect(projected.slotCountsByDate["2026-08-24"].Midday).toEqual({
+      nuts_seeds: 4,
+    });
+  });
+
+  it("starts a day the projection has never seen from zero", () => {
+    const projected = setFoodServingCount(
+      {},
+      {},
+      "2026-08-25",
+      "Evening",
+      "berries",
+      (prev) => ({ day: prev.day + 1, meal: prev.meal + 1 })
+    );
+    expect(projected.countsByDate["2026-08-25"]).toEqual({ berries: 1 });
+    expect(projected.slotCountsByDate["2026-08-25"].Evening).toEqual({
+      berries: 1,
+    });
+    expect(projected.slotCountsByDate["2026-08-25"].Morning).toEqual({});
+  });
+});
+
+describe("applyFoodServingTruth", () => {
+  // EVERY WINDOW, not just the one that moved. A burst can spread across meals, so a
+  // repair that named only the latest window would leave an earlier row optimistic
+  // under a day total that had already been corrected — the two visibly disagreeing.
+  it("sets the day total and all three meal windows from one server snapshot", () => {
+    const projected = applyFoodServingTruth(
+      { "2026-08-24": { berries: 9, nuts_seeds: 4 } },
+      {
+        "2026-08-24": {
+          Morning: { berries: 5 },
+          Midday: { berries: 4, nuts_seeds: 4 },
+          Evening: { berries: 7 },
+        },
+      },
+      "2026-08-24",
+      "berries",
+      { servings: 3, mealServings: { Morning: 1, Midday: 2, Evening: 0 } }
+    );
+    expect(projected.countsByDate["2026-08-24"].berries).toBe(3);
+    expect(projected.slotCountsByDate["2026-08-24"].Morning.berries).toBe(1);
+    expect(projected.slotCountsByDate["2026-08-24"].Midday.berries).toBe(2);
+    expect(projected.slotCountsByDate["2026-08-24"].Evening.berries).toBe(0);
+    // Another group in the same windows is not part of this coordinate's truth.
+    expect(projected.countsByDate["2026-08-24"].nuts_seeds).toBe(4);
+    expect(projected.slotCountsByDate["2026-08-24"].Midday.nuts_seeds).toBe(4);
   });
 });

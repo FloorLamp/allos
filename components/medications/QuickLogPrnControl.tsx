@@ -7,6 +7,7 @@ import { useResettableState } from "@/components/useResettableState";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdate";
 import TodayMedRow from "@/components/medications/TodayMedRow";
+import { QuickEntryRow } from "@/components/quick-entry/QuickEntryRowList";
 import { LabeledVerbChip } from "@/components/OfferRow";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -125,7 +126,12 @@ export default function QuickLogPrnControl({
   // a caregiver logs a household member's PRN dose without switching — the action gates on
   // the TARGET (requireProfileWriteAccess). Absent on the dashboard/medications mounts.
   profileId?: number;
-  rowVariant?: "inset" | "embedded";
+  // WHICH FRAME THIS ROW WEARS, and every one of them is a host's rather than this
+  // row's: the medications page's inset card, the grouped card's borderless row, and
+  // the quick-log sheet's shared list row (#5753 leg 2). No `li` in that sheet carries
+  // a frame of its own (#5521 leg 2), so there is nothing for `TodayMedRow` to draw
+  // there — the row IS the sheet's `QuickEntryRow`.
+  rowVariant?: "inset" | "embedded" | "quick-entry";
   // The medication detail card already establishes the medication identity and dose.
   // Its Today block needs only status + actions; list/dashboard hosts keep the full row.
   layout?: "row" | "detail";
@@ -518,6 +524,40 @@ export default function QuickLogPrnControl({
           </div>
         ) : null}
       </div>
+    );
+  }
+
+  // THE SHEET'S AS-NEEDED ROWS JOIN THE FRAME ABOVE THEM (#5753 leg 2). This row used
+  // to mount its inset card inside the dose body, so the sheet drew one bordered card
+  // per as-needed medication beneath a list of borderless scheduled rows — two frames
+  // in one body, and the second was the shape #5521 had already retired for the rows
+  // above it. The name is PLAIN here rather than link-coloured: the medications page's
+  // row is the one that offers the detail page, and a sheet is not a place to leave
+  // from. Everything else is what it was — the same chip, the same payload, the same
+  // statement in the same two pieces.
+  if (rowVariant === "quick-entry") {
+    return (
+      <QuickEntryRow
+        testId="quick-log-prn-item"
+        identity={name}
+        facts={sublines}
+        actions={
+          <>
+            {control}
+            {/* The refusal, the offer and the retro-time options are two-field
+                editors, so they take the row's full-width wrap rather than its narrow
+                left cell — the same seat `DatedDoseControl` gives the statement's
+                reveal on the scheduled rows above. */}
+            {bandNote || doseUpdateOffer || options ? (
+              <div className="w-full space-y-2">
+                {bandNote}
+                {doseUpdateOffer}
+                {options}
+              </div>
+            ) : null}
+          </>
+        }
+      />
     );
   }
 

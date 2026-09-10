@@ -12,14 +12,14 @@ A plain “Log” button is appropriate. Whether a repeated log adds, replaces, 
 leaves a fact unchanged depends on the domain’s write semantics.
 
 A lifecycle write changes existing state: closing a period, pausing an intake
-item, or resuming a workout. Derive its available action and label from shared
-**offer state**. Post the intended transition, such as “pause,” rather than asking
-the server to invert whatever state it finds. A stale tab’s Pause must not Resume.
-Supply counters also need a shared write owner to preserve concurrent adjustments.
+item, resuming a workout. Derive its action and label from shared **offer
+state**, and post the intended transition — “pause” — rather than asking the
+server to invert whatever it finds: a stale tab’s Pause must not Resume. Supply
+counters need a shared write owner to preserve concurrent adjustments.
 
-The UI snapshot can become stale. The core must recheck the relevant state inside
-the transaction and return a typed outcome when the transition no longer applies.
-Render that outcome; do not turn a refusal or no-op into unconditional success.
+The UI snapshot goes stale, so the core rechecks the state inside the transaction
+and returns a typed outcome when the transition no longer applies. Render that
+outcome; never turn a refusal or no-op into unconditional success.
 
 ## Transaction boundary
 
@@ -106,24 +106,32 @@ feedback, repeat semantics, and expected interval. Reuse its existing designs:
 | `outcome-toast`    | Answer from the write’s typed result, including refusals.                             |
 | `recency-line`     | Show a recent additive write beside the button without prohibiting another.           |
 
-[useOptimisticLedger](../../components/useOptimisticLedger.ts) owns the shared
-write phase, rollback, reconciliation, and cooldown timer. The surface retains
-its displayed state and supplies the pre-tap value, optimistic value, commit
-callback, and result settlement. Adopt authoritative totals on success. Map
-refusals to rollback so retry is immediate; a thrown write rolls back unless the
-caller handles it, such as by successfully capturing an offline write.
+[useOptimisticLedger](../../components/useOptimisticLedger.ts) owns the write
+phase, rollback, reconciliation, and cooldown timer; the surface keeps its
+displayed state and supplies the pre-tap value, projection, commit callback and
+settlement. Adopt authoritative totals on success and roll back a refusal so
+retry is immediate. A thrown write rolls back unless the caller handles it, such
+as by capturing it offline.
 
 The hook absorbs taps while writing and during `POST_SUCCESS_COOLDOWN_MS` after
 success. This is a UI debounce, not a persistence gate. Surfaces with an optimistic
 count can absorb silently; those without one can disable through `blocked()`.
 Use separate write keys for independent actions, including an undo beside a log.
 When several actions change one displayed value, give their taps the same
-`valueKey` (the pipeline's `optimistic.key`). A pipeline with one displayed value
-can omit that key. Rollback uses
-the last accepted
-or queued value, rather than an earlier tap's snapshot. Different symptoms or days
-need distinct value keys. The baseline refreshes from the surface only while that
-value has no writes in flight.
+`valueKey` (the pipeline's `optimistic.key`); distinct values, such as another
+symptom or day, need distinct keys, and a surface with one value can omit it.
+Rollback restores the last accepted or queued value rather than an earlier tap's
+snapshot, refreshing from the surface only while that value has nothing in flight.
+
+### Local optimistic state
+
+Every survivor, and why:
+
+- **FoodLogBar** — day and meal-window figures, settled by one authoritative
+  read, not any single write.
+- **DoseStatusControl** — post-settlement capture override, never a pre-tap
+  paint.
+- **SubstanceUnitControl** — adoption only.
 
 Repeat semantics determine whether a cadence confirmation applies:
 
@@ -134,11 +142,10 @@ Repeat semantics determine whether a cadence confirmation applies:
   `shouldConfirmRelog`; allow the user to proceed.
 
 The cadence helper compares profile-local dates for daily logs and elapsed time
-for supply cycles. Refill confirmation uses the fill duration when known, with a
-bounded window. Keep those calculations and constants in `lib/one-tap.ts`.
-An already idempotent, single-flight form does not need the hook merely to appear
-in the registry. Toggles such as [StarButton](../../components/StarButton.tsx)
-are different: their second tap undoes the first and must remain possible.
+for supply cycles; refill uses the fill duration when known. Keep those
+calculations in `lib/one-tap.ts`. An idempotent single-flight form does not need
+the hook merely to appear in the registry, and a toggle such as
+[StarButton](../../components/StarButton.tsx) must keep its undoing second tap.
 
 ## Logging contract
 
@@ -147,30 +154,27 @@ A tap writes the profile's usual payload with an honest time (#4424, #4425,
 time nobody meant, is a defect.
 
 - The payload comes from the shared usual-payload helper, never a per-surface
-  guess. Body readings never prefill a value.
+  guess, and body readings never prefill.
 - Each domain has two shared client pieces: the form (add and full edit in one
-  component, taking a date) and the row control (taps and one-field
-  corrections). The quick sheet, the `/history` add door, and the domain page
-  mount the same two; `LogDomainManifest` declares the set. A row action that is
-  neither piece is the defect.
+  dated component) and the row control (taps and one-field corrections). The
+  quick sheet, the `/history` add door and the domain page mount the same two,
+  declared by `LogDomainManifest`. A row action that is neither is the defect.
 - Time is stated or absent, never guessed. A past-day tap writes no instant.
   "Happened earlier" is the one statement control, spelled by the clock glyph
   right of the action; the verb never says "now".
-- Windows bind offers, not domains. Every write core accepts any real past day
-  and never the future; do not mint a per-domain backfill window.
+- Windows bind offers, not domains: every write core accepts any real past day
+  and never the future. Do not mint a per-domain backfill window.
 - The labeled-verb chip (`Midday · Take`, `15 min · Log`) is the tap's visual
   form: one control-height pill, for one-tap writes only.
 
 ## Coverage boundaries
 
 The [one-tap call-site scan](../../lib/__tests__/one-tap-call-sites.test.ts) checks
-hook declarations against the registry. The offline queue’s
-[OFFLINE_QUEUE_COVERAGE](../../lib/offline/queue.ts) maps affordances to queue flows
-or explained exclusions. Neither substitutes for checking the actual write and
-its feedback.
+hook declarations against the registry, and
+[OFFLINE_QUEUE_COVERAGE](../../lib/offline/queue.ts) maps affordances to queue
+flows or explained exclusions. Neither substitutes for checking the write.
 
-The quick-log, palette, and Telegram domain coverage records share
+The quick-log, palette, and Telegram coverage records share
 [LOGGABLE_DOMAINS](../../lib/loggable-domains.ts). A domain missing from that axis
-is invisible to all of those records; type completeness only covers declared
-members. Update the existing owners when adding a domain, without maintaining a
-second census in prose.
+is invisible to all of them, because type completeness only covers declared
+members. Update those owners rather than keeping a second census in prose.

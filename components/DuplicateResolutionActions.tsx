@@ -54,8 +54,14 @@ function ResolutionControl({ action, pending }: ControlProps) {
       : kind === "dismiss"
         ? IconEyeOff
         : null;
+  // The merge keeper is the surface's one loud control, and it says so through
+  // the primitive's rank rather than through a wrapper that repaints its child
+  // (#5696). `duplicate-resolution-primary` predated `variant="primary"` and
+  // hand-rolled the same fill onto a rank-LESS button, so every census of a
+  // card's loud controls had to know this file existed to count it.
   const props = {
     disabled: pending,
+    variant: primary ? ("primary" as const) : undefined,
     "data-testid":
       kind === "keeper"
         ? "dup-merge-primary"
@@ -74,11 +80,9 @@ function ResolutionControl({ action, pending }: ControlProps) {
 
   if (action.length === 3) {
     return (
-      <span className={primary ? "duplicate-resolution-primary" : "contents"}>
-        <Button onClick={action[2]} {...props}>
-          {contents}
-        </Button>
-      </span>
+      <Button onClick={action[2]} {...props}>
+        {contents}
+      </Button>
     );
   }
   return (
@@ -86,11 +90,9 @@ function ResolutionControl({ action, pending }: ControlProps) {
       {Object.entries(action[3]).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <span className={primary ? "duplicate-resolution-primary" : "contents"}>
-        <Button type="submit" {...props}>
-          {contents}
-        </Button>
-      </span>
+      <Button type="submit" {...props}>
+        {contents}
+      </Button>
     </form>
   );
 }

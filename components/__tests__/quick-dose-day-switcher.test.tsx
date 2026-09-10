@@ -65,13 +65,8 @@ const TODAY = "2026-08-28";
 // naming it keeps them independent of whatever zone the test host runs in.
 const DEFAULT_TZ = "UTC";
 
-function dose(
-  doseId: number,
-  name: string,
-  stack: string | null = null,
-  amountAssumed = false
-) {
-  return { doseId, name, detail: "1 scoop", stack, amountAssumed };
+function dose(doseId: number, name: string, amountAssumed = false) {
+  return { doseId, name, detail: "1 scoop", amountAssumed };
 }
 
 // A DAILY dose is the SAME `intake_item_doses` row on every day it is unlogged, so
@@ -83,21 +78,17 @@ const DAILY_DOSE = 11;
 const PAST_DAYS = [
   {
     date: "2026-08-27",
-    label: "Yesterday",
     slots: [
       {
         bucket: "Morning" as const,
-        doses: [
-          dose(DAILY_DOSE, "Creatine", "Morning stack", true),
-          dose(12, "Collagen", "Morning stack"),
-        ],
+        doses: [dose(DAILY_DOSE, "Creatine", true), dose(12, "Collagen")],
       },
       { bucket: "Before sleep" as const, doses: [dose(13, "Melatonin")] },
     ],
   },
   // Already settled — still LISTED. A day that vanished would read as "there is
   // nothing back there" when the truth is "that day is done".
-  { date: "2026-08-26", label: "Wed, Aug 26", slots: [] },
+  { date: "2026-08-26", slots: [] },
 ];
 
 function DoseHarness({ onDone }: { onDone: () => void }) {
@@ -197,6 +188,13 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
       { tone: "error" }
     );
     expect(screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`)).toBeTruthy();
+    // AND THE ROW IS STILL OFFERING THE DOSE (#3728). This control's receipt is
+    // BECOMING its done state, so the row's own verb is the value a refusal has to
+    // restore — and asserting only that a refusal was reported passes just as
+    // happily when the row settles into "taken" for a dose the write refused.
+    expect(screen.getByTestId("dose-take").getAttribute("aria-label")).toBe(
+      "8:00am · Take"
+    );
   });
 
   it("keeps the tap instant when the explicit profile day differs from the browser day", async () => {
@@ -384,51 +382,52 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
     expect(screen.queryByTestId("quick-entry-dose-day")).toBeNull();
   });
 
-  it.each([
-    {
-      day: "Yesterday",
-      heading: "Morning stack (2)",
-      // Every rider shares one stack, so the promise compresses to the profile's own
-      // name for exactly those two (#3098) instead of enumerating them.
-      names: "Morning stack (2)",
-      rows: ["Creatine", "Collagen", "Melatonin"],
-    },
-  ])(
-    "switching to $day renders that day's unresolved doses with both verbs",
-    ({ heading, names, rows }) => {
-      renderSheet();
-      fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+  // #5753 leg 1. THE SECOND DESIGN IS THE SUBJECT. A switched-to day used to draw a
+  // heading per bucket, a whole-stack offer row above any bucket of two or more, and
+  // rows whose control was mounted `compact` — bare icon squares under a paragraph
+  // explaining the amount — while today's rows one branch away read `8:00am · Take`
+  // in a labelled chip. What is asserted is the ROW A PERSON SEES on the past day, and
+  // that the pieces of the retired design are not on screen beside it.
+  it("switching to a past day renders the row today renders", () => {
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
 
-      const day = screen.getByTestId("quick-entry-dose-day");
-      expect(day.getAttribute("data-date")).toBe("2026-08-27");
-      for (const name of rows) {
-        expect(within(day).getByText(name)).toBeTruthy();
-      }
-      expect(
-        within(day).getByText(
-          "No amount was saved for this date. Using the oldest known amount."
-        )
-      ).toBeTruthy();
-      // Tri-state: every row offers take AND skip, because on a closed day "I skipped
-      // it" is as ordinary an answer as "I took it".
-      expect(within(day).getAllByTestId("dose-take")).toHaveLength(rows.length);
-      expect(within(day).getAllByTestId("dose-skip")).toHaveLength(rows.length);
+    const day = screen.getByTestId("quick-entry-dose-day");
+    expect(day.getAttribute("data-date")).toBe("2026-08-27");
+    const rowFor = (name: string) =>
+      within(day)
+        .getAllByRole("listitem")
+        .find((row) => within(row).queryByText(name))!;
+    expect(
+      within(day)
+        .getAllByRole("listitem")
+        .map((row) => within(row).getByTestId("dose-take").textContent)
+    ).toEqual(["MorningTake", "MorningTake", "BedtimeTake"]);
+    // ONE LIST, and it is the one today's rows sit in. The per-bucket sectioning that
+    // used to say the slot has nothing left to say: the chip says it.
+    expect(within(day).getAllByRole("list")).toHaveLength(1);
+    expect(within(day).getByTestId("quick-entry-dose-list")).toBeTruthy();
+    expect(screen.queryByTestId("quick-entry-dose-slot-Morning")).toBeNull();
 
-      // The bulk row: one per bucket of TWO OR MORE. The single bedtime dose gets no
-      // stack row — a one-dose stack would name a group while writing one member.
-      const stack = within(day).getByTestId("quick-entry-dose-stack-Morning");
-      expect(stack.textContent).toContain(heading);
-      expect(
-        within(day).getByTestId("quick-entry-dose-stack-names-Morning")
-          .textContent
-      ).toBe(names);
-      // The ids the tap will name are the two the label counted, and no other.
-      expect(stack.getAttribute("data-doses")).toBe("11,12");
-      expect(
-        within(day).queryByTestId("quick-entry-dose-stack-Before sleep")
-      ).toBeNull();
-    }
-  );
+    // Tri-state: every row offers take AND skip, because on a closed day "I skipped
+    // it" is as ordinary an answer as "I took it".
+    expect(within(day).getAllByTestId("dose-skip")).toHaveLength(3);
+
+    // The assumed amount is a FACT in the row's facts column, beside the dose it
+    // qualifies, rather than a paragraph of its own under every row.
+    expect(
+      within(rowFor("Creatine")).getByText("Oldest known amount")
+    ).toBeTruthy();
+    expect(within(day).queryByText(/No amount was saved/)).toBeNull();
+    expect(
+      within(rowFor("Collagen")).queryByText("Oldest known amount")
+    ).toBeNull();
+
+    // The bundle offer is #5663's receipt contract, not a second control row.
+    expect(
+      within(day).queryByTestId("quick-entry-dose-stack-Morning")
+    ).toBeNull();
+  });
 
   it("says a settled past day is settled rather than hiding it", () => {
     renderSheet();

@@ -333,13 +333,14 @@ describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
     ).toBe(false);
   });
 
-  it("groups a past day by declared bucket and labels the first one Yesterday", async () => {
+  it("groups a past day by declared bucket, newest day first", async () => {
     const { doses } = seedProfile(`slots-${tz}`, tz);
     const data = await readyQuickEntry("dose");
     if (data.form !== "dose") throw new Error("expected the dose form");
     const yesterday = data.pastDays[0]!;
     expect(yesterday.date).toBe(shiftDateStr(localToday, -1));
-    expect(yesterday.label).toBe("Yesterday");
+    // The bucket is what the row's chip says (#5753 leg 1) — the day's own name is the
+    // switcher's, and this payload carries no second spelling of it.
     expect(
       yesterday.slots.map((slot) => [
         slot.bucket,
@@ -348,12 +349,6 @@ describe.each(ZONES)("in $tz", ({ tz, localToday, statedPastInstant }) => {
     ).toEqual([
       ["Morning", [doses.creatine, doses.collagen]],
       ["Before sleep", [doses.melatonin]],
-    ]);
-    // The stack label the bulk row's promise compresses to (#3098) travels with the
-    // dose rather than being re-read from the item by the client.
-    expect(yesterday.slots[0]!.doses.map((d) => d.stack)).toEqual([
-      "Morning stack",
-      "Morning stack",
     ]);
   });
 
