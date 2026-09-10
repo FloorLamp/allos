@@ -11,9 +11,10 @@
 // Rule 7 originally asked for a reflection test that listed every `*Form.tsx` under
 // `app/` and `components/` and failed on one not registered. That clause is STRUCK.
 // A file listing answers "is there a file whose name ends in Form" — which is not the
-// question. `MeasurementsQuickAdd`, `PracticeEditor` and `RoutineBuilder` are forms
-// with no `Form` in their names; `LoginForm` and `UploadForm` are not add/edit forms
-// of a record at all. The set that matters is the forms the app HOSTS, and the host
+// question. Sixteen of the ids below are forms with no `Form` in their names
+// (`MeasurementsQuickAdd`, `PracticeEditor`, `RoutineBuilder`, `InjuryBar`, the
+// screening instrument views), and three `*Form.tsx` files are the login screen. The
+// set that matters is the forms the app HOSTS, and the host
 // can ask for the id itself: `components/AddEntryPanel.tsx` requires a `FormId`, so
 // hosting implies registration and there is nothing to scan. A form mounted outside a
 // host is the defect #2774 already names, not this registry's job to catch.
