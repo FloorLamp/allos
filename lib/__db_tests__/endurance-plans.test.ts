@@ -42,6 +42,7 @@ import {
   restoreDeletedRow,
 } from "@/lib/undo-delete-db";
 import { snapshotKeeperFold, writeActivityFold } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { toKm } from "@/lib/units";
 import { saveActivityCore } from "@/lib/activity-write";
 
@@ -626,7 +627,7 @@ describe("events link their activities (#3285 item 2)", () => {
     const keep = rowOf(keepId);
     const drop = rowOf(dropId);
 
-    writeActivityFold(profileId, keepId, keep, [drop]);
+    writeActivityFold(profileId, keepId, keep, [drop], carryPostWorkoutMarker);
     expect(linkOf(keepId)).toBe(planId);
 
     const undoId = captureDelete("activity", profileId, dropId, {
@@ -885,7 +886,13 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(linkRaceActivityCore(profileId, dropId)).toBe(true);
     expect(linkOf(dropId)).toBe(planId);
 
-    writeActivityFold(profileId, keepId, rowOf(keepId), [rowOf(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      rowOf(keepId),
+      [rowOf(dropId)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepId)).toEqual({ plan: null, decided: true });
   });
 
@@ -905,7 +912,13 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(linkRaceActivityCore(profileId, keepId)).toBe(true);
     expect(decisionOf(keepId)).toEqual({ plan: planId, decided: false });
 
-    writeActivityFold(profileId, keepId, rowOf(keepId), [rowOf(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      rowOf(keepId),
+      [rowOf(dropId)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepId)).toEqual({ plan: null, decided: true });
   });
 
@@ -920,7 +933,13 @@ describe("events link their activities (#3285 item 2)", () => {
     const dropId = lastRunId(profileId);
     expect(linkEventActivityCore(profileId, planId, dropId)).toBe(true);
 
-    writeActivityFold(profileId, keepId, rowOf(keepId), [rowOf(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      rowOf(keepId),
+      [rowOf(dropId)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepId)).toEqual({ plan: planId, decided: true });
   });
 
@@ -937,7 +956,13 @@ describe("events link their activities (#3285 item 2)", () => {
     const dropId = lastRunId(profileId);
 
     const keep = rowOf(keepId);
-    writeActivityFold(profileId, keepId, keep, [rowOf(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      keep,
+      [rowOf(dropId)],
+      carryPostWorkoutMarker
+    );
     const undoId = captureDelete("activity", profileId, dropId, {
       keeperId: keepId,
       mergeId: "merge-undo-detach",
@@ -1053,7 +1078,13 @@ describe("events link their activities (#3285 item 2)", () => {
     addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
     const dropA = lastRunId(profileId);
     expect(linkEventActivityCore(profileId, planId, dropA)).toBe(true);
-    writeActivityFold(profileId, keepA, rowOf(keepA), [rowOf(dropA)]);
+    writeActivityFold(
+      profileId,
+      keepA,
+      rowOf(keepA),
+      [rowOf(dropA)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepA)).toEqual({ plan: planId, decided: true });
 
     // Keeper hand-linked first, drop detached after → the detach stands.
@@ -1064,7 +1095,13 @@ describe("events link their activities (#3285 item 2)", () => {
     const dropB = lastRunId(profileId);
     expect(linkEventActivityCore(profileId, planId, dropB)).toBe(true);
     expect(unlinkEventActivityCore(profileId, dropB)).toBe(true);
-    writeActivityFold(profileId, keepB, rowOf(keepB), [rowOf(dropB)]);
+    writeActivityFold(
+      profileId,
+      keepB,
+      rowOf(keepB),
+      [rowOf(dropB)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepB)).toEqual({ plan: null, decided: true });
   });
 
@@ -1082,7 +1119,13 @@ describe("events link their activities (#3285 item 2)", () => {
     const keepA = lastRunId(profileId);
     expect(linkEventActivityCore(profileId, planId, keepA)).toBe(true);
     expect(unlinkEventActivityCore(profileId, keepA)).toBe(true);
-    writeActivityFold(profileId, keepA, rowOf(keepA), [rowOf(dropA)]);
+    writeActivityFold(
+      profileId,
+      keepA,
+      rowOf(keepA),
+      [rowOf(dropA)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepA)).toEqual({ plan: null, decided: true });
 
     // Drop detached first, keeper hand-linked after → the link stands.
@@ -1093,7 +1136,13 @@ describe("events link their activities (#3285 item 2)", () => {
     addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch 2)");
     const keepB = lastRunId(profileId);
     expect(linkEventActivityCore(profileId, planId, keepB)).toBe(true);
-    writeActivityFold(profileId, keepB, rowOf(keepB), [rowOf(dropB)]);
+    writeActivityFold(
+      profileId,
+      keepB,
+      rowOf(keepB),
+      [rowOf(dropB)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepB)).toEqual({ plan: planId, decided: true });
   });
 
@@ -1116,7 +1165,13 @@ describe("events link their activities (#3285 item 2)", () => {
     addRun(profileId, RACE_DAY, 10.1, "race", "Harbor 10k");
     const drop1 = lastRunId(profileId);
     expect(linkEventActivityCore(profileId, planB, drop1)).toBe(true);
-    writeActivityFold(profileId, keep1, rowOf(keep1), [rowOf(drop1)]);
+    writeActivityFold(
+      profileId,
+      keep1,
+      rowOf(keep1),
+      [rowOf(drop1)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keep1)).toEqual({ plan: planB, decided: true });
 
     // Drop on A, then the keeper moved to B → B again. The answer follows the person,
@@ -1127,7 +1182,13 @@ describe("events link their activities (#3285 item 2)", () => {
     addRun(profileId, RACE_DAY, 10, "race", "Harbor 10k (watch 2)");
     const keep2 = lastRunId(profileId);
     expect(linkEventActivityCore(profileId, planB, keep2)).toBe(true);
-    writeActivityFold(profileId, keep2, rowOf(keep2), [rowOf(drop2)]);
+    writeActivityFold(
+      profileId,
+      keep2,
+      rowOf(keep2),
+      [rowOf(drop2)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keep2)).toEqual({ plan: planB, decided: true });
   });
 
@@ -1151,7 +1212,8 @@ describe("events link their activities (#3285 item 2)", () => {
         profileId,
         keepId,
         rowOf(keepId),
-        reversed ? drops.reverse() : drops
+        reversed ? drops.reverse() : drops,
+        carryPostWorkoutMarker
       );
       return decisionOf(keepId);
     };
@@ -1172,7 +1234,13 @@ describe("events link their activities (#3285 item 2)", () => {
     const dropId = lastRunId(profileId);
 
     const keep = rowOf(keepId);
-    writeActivityFold(profileId, keepId, keep, [rowOf(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      keep,
+      [rowOf(dropId)],
+      carryPostWorkoutMarker
+    );
     const undoId = captureDelete("activity", profileId, dropId, {
       keeperId: keepId,
       mergeId: "merge-undo-link",
@@ -1208,7 +1276,13 @@ describe("events link their activities (#3285 item 2)", () => {
     expect(linkEventActivityCore(profileId, planId, dropId)).toBe(true);
 
     const keep = rowOf(keepId);
-    writeActivityFold(profileId, keepId, keep, [rowOf(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      keep,
+      [rowOf(dropId)],
+      carryPostWorkoutMarker
+    );
     expect(decisionOf(keepId)).toEqual({ plan: planId, decided: true });
     const undoId = captureDelete("activity", profileId, dropId, {
       keeperId: keepId,

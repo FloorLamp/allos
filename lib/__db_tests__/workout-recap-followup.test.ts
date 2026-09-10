@@ -34,7 +34,10 @@ import {
 } from "@/lib/settings";
 import { setTelegramBotConfig } from "@/lib/settings";
 import { runPostWorkoutForActivity } from "@/lib/notifications/workout-presence";
-import { postWorkoutFinishMarkerKey } from "@/lib/notifications/post-workout-marker";
+import {
+  carryPostWorkoutMarker,
+  postWorkoutFinishMarkerKey,
+} from "@/lib/notifications/post-workout-marker";
 import { rebuildWorkoutRecap } from "@/lib/notifications/workout-recap-build";
 import { STRAVA_DETAILS_FOLLOW_LINE } from "@/lib/notifications/workout-recap-format";
 import { ACTIVITY_TYPE_ASK_PROMPT } from "@/lib/notifications/workout-recap-format";
@@ -149,7 +152,13 @@ function row(id: number): Record<string, unknown> {
 /** The Review resolver's shape: fold the drop into the keeper, then delete it. */
 function foldInto(profileId: number, keepId: number, dropId: number): void {
   writeTx(() => {
-    writeActivityFold(profileId, keepId, row(keepId), [row(dropId)]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      row(keepId),
+      [row(dropId)],
+      carryPostWorkoutMarker
+    );
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
       dropId,
       profileId

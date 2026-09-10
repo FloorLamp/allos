@@ -108,6 +108,7 @@ import {
   importTabHref,
   clinicalResultDetailHref,
   episodeHref,
+  dataSectionHref,
 } from "@/lib/hrefs";
 import {
   parseImportReport,
@@ -432,7 +433,7 @@ export default async function ImportDetailPage(props: {
       <CanonicalNamesProvider options={canonicalOptions}>
         <div>
           <PageHeader
-            back={{ href: "/data?section=review", destination: "Review" }}
+            back={{ href: dataSectionHref("review"), destination: "Review" }}
             title={doc.filename}
             subtitle={documentFormatLabel(doc)}
             action={
