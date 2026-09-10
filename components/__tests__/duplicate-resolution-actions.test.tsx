@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DuplicateResolutionActions from "@/components/DuplicateResolutionActions";
+import { loudIn } from "./loud-controls";
 
 describe("DuplicateResolutionActions", () => {
   it("owns the complete pair action vocabulary and dispatches keeper choices", () => {
@@ -34,6 +35,15 @@ describe("DuplicateResolutionActions", () => {
     expect(screen.getByTestId("dup-merge-secondary").textContent).toContain(
       "Manual entry"
     );
+
+    // THE KEEPER IS THE SURFACE'S ONE LOUD CONTROL, AND THE FILL IS THE
+    // PRIMITIVE'S RANK (#5696). It used to come from a `duplicate-resolution-
+    // primary` wrapper that repainted a rank-LESS child; deleting that wrapper
+    // was pinned by nothing — the only other reference is an e2e click that
+    // asserts nothing about paint — so a silent demotion here would have gone
+    // unnoticed. Read through the shared definition, so the census that ruling 6
+    // spends on this surface is the thing being asserted.
+    expect(loudIn(actions)).toEqual(["Merge, keep Strava"]);
     for (const button of buttons) fireEvent.click(button);
     for (const handler of handlers) expect(handler).toHaveBeenCalledOnce();
   });

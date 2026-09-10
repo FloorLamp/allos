@@ -91,20 +91,20 @@ destructive paint, one ghost-only `dashed` shape. No size or class axis.
 `DestinationActionLink` composes navigation. Raw `btn` families retire with
 their last caller.
 
-One loud control per surface: a form's commit (`SubmitButton
-variant="primary"`), a card's commit, a row's single action. Destructive paint
-is loud. Peers share no rank; a bulk action over rows is loud. A fold's door,
-app-shell chrome, commits that can stand open together, read-narrowing submits,
-repeated-row destructive actions, a warning's acknowledge-or-silence action, and
-the `DoseConfirmButton` row affordance take no rank. Rare or destructive row
-actions confirm through `OverflowMenu`, hosted by [Overlays](overlays.md).
+One loud control per surface: a form's commit, a card's commit, a row's single
+action. Destructive paint is loud; only rank classes fill, not wrappers. Peers
+share no rank; a bulk action over rows is loud. A fold's door, app-shell chrome,
+commits that can stand open together, read-narrowing submits, repeated-row
+destructive actions, a warning's acknowledge-or-silence action, and the
+`DoseConfirmButton` row affordance take no rank. Rare or destructive row actions
+confirm through `OverflowMenu` ([Overlays](overlays.md)).
 
-The shared `--control-box` is 34px at every viewport, with padding derived from
-`1lh` and a reserved border. It covers chips, the button family, typed fields,
-native selects, and summaries marked `fold-control`. Row disclosures do not
-become control-sized summaries. `IconButton`, `StarButton`, and dose-status
-circles consume the box directly; segmented options, checkboxes, and Combobox
-option rows keep their own 44px targets.
+The shared `--control-box` is 34px at every viewport, padding from `1lh` and a
+reserved border. It covers chips, the button family, typed fields, native
+selects, and summaries marked `fold-control`. Row disclosures do not become
+control-sized summaries. `IconButton`, `StarButton`, and dose-status circles
+consume the box directly; segmented options, checkboxes, and Combobox option
+rows keep their own 44px targets.
 
 Typed fields retain ≥16px text to prevent focus zoom and derive padding from the
 shared box. Do not add call-site height pins; taller textareas retain their

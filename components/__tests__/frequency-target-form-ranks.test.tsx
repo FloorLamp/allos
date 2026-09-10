@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import FrequencyTargets from "@/app/(app)/training/FrequencyTargets";
+import { loudIn } from "./loud-controls";
 
 // THE WEEKLY-TARGETS EDITOR IS ONE SURFACE, AND IT HAS ONE LOUD CONTROL (#4978).
 // Selecting a chip loads that target into the fold and reveals a Delete beside the
@@ -37,15 +38,6 @@ vi.mock("@/components/ConfirmDialog", () => ({
   useConfirm: () => async () => false,
 }));
 vi.mock("@/components/Toast", () => ({ useToast: () => () => {} }));
-
-// Both loud paints, scoped to the form, by label.
-function loudIn(surface: HTMLElement): string[] {
-  return [
-    ...surface.querySelectorAll(
-      ".button-control-primary, .button-control-danger"
-    ),
-  ].map((el) => el.textContent?.trim() ?? "");
-}
 
 const items = [
   {

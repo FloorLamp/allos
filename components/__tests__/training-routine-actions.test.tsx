@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import RoutinesManager from "@/app/(app)/training/RoutinesManager";
 import type { RoutineWithDays } from "@/lib/types";
+import { loudIn } from "./loud-controls";
 
 // THE ROUTINE CARD'S ACTION ROW IS ONE SURFACE (#4978 item 3, ruling 3 and
 // ruling 10). This row is the densest raw-class surface in `app/(app)/training`:
@@ -60,16 +61,6 @@ const routine: RoutineWithDays = {
     },
   ],
 } as unknown as RoutineWithDays;
-
-// Both loud paints, card-scoped, by label. `ButtonProps` is closed and `Button`
-// destructures each prop by name with no rest spread, so a rank that stopped
-// being forwarded still typechecks and still lints — only the rendered class
-// says otherwise.
-function loudIn(card: HTMLElement): string[] {
-  return [
-    ...card.querySelectorAll(".button-control-primary, .button-control-danger"),
-  ].map((el) => el.textContent?.trim() ?? "");
-}
 
 function renderCard() {
   render(

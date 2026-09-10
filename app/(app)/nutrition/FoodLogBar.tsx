@@ -65,6 +65,7 @@ import {
   finishFoodServingNonAddMutation,
   requestFoodServingTruth,
   settleFoodServingAdd,
+  type FoodServingAddOutcome,
   type FoodServingAddTap,
   type FoodServingBurstSettlement,
   type FoodServingBurstState,
@@ -79,6 +80,7 @@ import {
 } from "@/components/OfflineQueueProvider";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  OFFLINE_OTHER_SUBJECT_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import {
@@ -86,7 +88,11 @@ import {
   usualFoodOffer,
 } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
-import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
+import {
+  applyFoodServingPlacements,
+  applyFoodServingTruth,
+  setFoodServingCount,
+} from "@/lib/food-serving-projection";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
 import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
@@ -760,6 +766,14 @@ export default function FoodLogBar({
   );
 
   function commitProjection(next: FoodProjectionState) {
+    // LOAD-BEARING ON EXACTLY ONE PATH, which is why it reads as redundant. Every
+    // settlement that consults `isCurrentMutation()` is already gated — that helper
+    // calls `isMountedProfile()` itself — so on those paths this line can never be the
+    // check that decides. `onError`'s offline arm for a decrement is the exception: it
+    // returns `rollback` unconditionally, and this is the only thing standing between a
+    // bar that has been swapped out and the provider that outlived it, whose stale
+    // snapshot would overwrite a serving that landed after it. Deleting this line reds
+    // "does not let an unmounted bar's offline-undo rollback clobber the live count".
     if (!isMountedProfile()) return;
     // Keep the async mutation boundary and the provider on the exact same object.
     // Every caller below computes both halves before this one publication.
@@ -778,36 +792,16 @@ export default function FoodLogBar({
     }
   ) {
     const current = projectionRef.current;
-    const dayCounts = current.countsByDate[date] ?? {};
-    const slotDay = current.slotCountsByDate[date] ?? {
-      Morning: {},
-      Midday: {},
-      Evening: {},
-    };
-    const mealCounts = slotDay[targetSlot] ?? {};
-    const value = next({
-      day: dayCounts[slug] ?? 0,
-      meal: mealCounts[slug] ?? 0,
-    });
-    commitProjection({
-      countsByDate: {
-        ...current.countsByDate,
-        [date]: {
-          ...dayCounts,
-          [slug]: Math.max(0, value.day),
-        },
-      },
-      slotCountsByDate: {
-        ...current.slotCountsByDate,
-        [date]: {
-          ...slotDay,
-          [targetSlot]: {
-            ...mealCounts,
-            [slug]: Math.max(0, value.meal),
-          },
-        },
-      },
-    });
+    commitProjection(
+      setFoodServingCount(
+        current.countsByDate,
+        current.slotCountsByDate,
+        date,
+        targetSlot,
+        slug,
+        next
+      )
+    );
   }
 
   // Adopt one or more server-named coordinates as ONE client projection (#1934).
@@ -837,32 +831,26 @@ export default function FoodLogBar({
     truth: FoodServingTruth
   ) {
     const current = projectionRef.current;
-    const day = current.countsByDate[date] ?? {};
-    const nextCounts = {
-      ...current.countsByDate,
-      [date]: { ...day, [slug]: truth.servings },
-    };
+    commitProjection(
+      applyFoodServingTruth(
+        current.countsByDate,
+        current.slotCountsByDate,
+        date,
+        slug,
+        truth
+      )
+    );
+  }
 
-    const slotDay = current.slotCountsByDate[date] ?? {
-      Morning: {},
-      Midday: {},
-      Evening: {},
-    };
-    const nextDay = { ...slotDay };
-    for (const slot of FOOD_SLOTS) {
-      nextDay[slot] = {
-        ...(slotDay[slot] ?? {}),
-        [slug]: truth.mealServings[slot],
-      };
-    }
-    const nextSlotCounts = {
-      ...current.slotCountsByDate,
-      [date]: nextDay,
-    };
-    commitProjection({
-      countsByDate: nextCounts,
-      slotCountsByDate: nextSlotCounts,
-    });
+  // The one shape of the authoritative-read request, built in one place because both
+  // callers must ask about the same subject: the SUBJECT's counts, not the actor's.
+  function servingTruthForm(date: string, slug: string) {
+    const form = new FormData();
+    form.set("group_key", slug);
+    form.set("date", date);
+    const truthProfileId = subjectProfileId ?? activeProfileId;
+    if (truthProfileId != null) form.set("profile_id", String(truthProfileId));
+    return form;
   }
 
   async function reconcileServingTruthIfIdle(
@@ -886,14 +874,9 @@ export default function FoodLogBar({
       return;
     }
     deferredServingTruth.current.delete(receiptKey);
-    const form = new FormData();
-    form.set("group_key", slug);
-    form.set("date", date);
-    const truthProfileId = subjectProfileId ?? activeProfileId;
-    if (truthProfileId != null) form.set("profile_id", String(truthProfileId));
     let truth: FoodServingTruthResult;
     try {
-      truth = await readFoodServingTruth(form);
+      truth = await readFoodServingTruth(servingTruthForm(date, slug));
     } catch {
       return;
     }
@@ -1297,10 +1280,38 @@ export default function FoodLogBar({
     // separate from it — a non-acting subject's tap must refuse offline rather
     // than queue a serving that could replay onto somebody else (the same guard
     // MoodForm/StoolTypeControl carry).
+    // The one sentence a refused capture gets, shared with `useWritePipeline`'s
+    // own capture arm so the two never word the same refusal differently.
+    const sayCaptureRefused = () => {
+      if (isCurrentMutation() || !isMountedProfile())
+        profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE, {
+          tone: "error",
+        });
+    };
     const queueOffline = async (): Promise<boolean> => {
-      if (subjectProfileId != null && subjectProfileId !== activeProfileId)
+      // SOMEBODY ELSE'S SERVING, AND IT SAYS SO. This arm and the one below are the
+      // same refusal — nothing was captured, the counts go back — but not the same
+      // sentence, because the remedies differ: there the device would keep nothing,
+      // here the queue works and simply cannot carry a subject. The caregiver's own
+      // taps on their own bar queue offline, so a refusal with no reason reads as
+      // arbitrary. This one used to be mute, which was worse: the shared sentence
+      // below made the function look like it always explained itself.
+      if (subjectProfileId != null && subjectProfileId !== activeProfileId) {
+        if (isCurrentMutation() || !isMountedProfile())
+          profileToast(noticeScope, OFFLINE_OTHER_SUBJECT_MESSAGE, {
+            tone: "error",
+          });
         return false;
-      if (!capturedDayContext) return false;
+      }
+      // NO DAY TO REPLAY INTO IS A REFUSAL, AND IT SAYS SO (#3038). The bar has
+      // its own day picker, so a tap on a day the queue cannot stamp — a past day
+      // the mounted day context does not name — reaches here routinely. It used to
+      // roll the count back in silence, which reads as the tap never registering
+      // rather than as the save that did not happen.
+      if (!capturedDayContext) {
+        sayCaptureRefused();
+        return false;
+      }
       const kept =
         (await enqueue(
           "food",
@@ -1324,10 +1335,7 @@ export default function FoodLogBar({
       // The device can refuse the capture (#3038) — say so in the shared sentence
       // and report it, so the caller rolls the optimistic counts back.
       if (!kept) {
-        if (isCurrentMutation() || !isMountedProfile())
-          profileToast(noticeScope, OFFLINE_CAPTURE_REFUSED_MESSAGE, {
-            tone: "error",
-          });
+        sayCaptureRefused();
         return false;
       }
       if (isCurrentMutation())
@@ -1376,7 +1384,7 @@ export default function FoodLogBar({
     };
     let refreshRefusedInverseTruth = false;
     const settleAddBurst = (
-      outcome: { ok: true; eventId: number } | { ok: false }
+      outcome: FoodServingAddOutcome
     ): FoodServingBurstSettlement | null => {
       if (!addTap) return null;
       const settled = settleFoodServingAdd(
@@ -1452,10 +1460,40 @@ export default function FoodLogBar({
           return { kind: "keep" };
         }
         // Refused capture: queueOffline already said so; the counts roll back.
+        // WHICH IT IS DECIDES THE DISPOSITION, so it is read once, before the burst is
+        // told. Rolling back makes this tap `discarded` — nothing left on the counter
+        // and nothing left to say. Superseded, the paint is not ours to move, so it is
+        // still standing and the burst must still reconcile it.
+        // STRUCTURALLY UNOBSERVABLE, AND SAID SO ON PURPOSE: no test can tell the
+        // `kept` here from a `discarded`, and that is a property of the code rather
+        // than a gap in the suite. `isCurrentMutation()` is false on exactly three
+        // routes, and each one is already shadowed by a DIFFERENT guard:
+        //   (a) the epoch moved — `settleFoodServingAdd` then returns
+        //       `accepted: false` and records no disposition at all, so which one was
+        //       passed to it cannot matter;
+        //   (b) the bar unmounted — the post-burst block's own `isMountedProfile()`
+        //       skips the read;
+        //   (c) THE ACTING PROFILE CHANGED WHILE THIS BAR STAYED MOUNTED.
+        //       `isMountedProfile()` is not only about mounting: it compares
+        //       `activeProfileRef.current`, reassigned during render above, against the
+        //       `activeProfileId` this closure captured, so a handler created before
+        //       the switch fails it forever after with the bar still on screen.
+        // WHAT SHADOWS (c) IS NOT A GUARD IN THIS FILE, and getting that wrong is the
+        // dangerous kind of comment: it is `FoodProjectionProvider`'s
+        // `key={activeProfileId}` (FoodSuggestionsLayout.tsx), which remounts the whole
+        // subtree at the switch — the optimistic count reverts there, before any
+        // settlement arrives, so nothing this branch decides afterwards is visible.
+        // Delete that key and route (c) goes live, at which point the `kept` here stops
+        // being unobservable and starts being load-bearing. Reading the answer once,
+        // before telling the burst, is still the right ordering; it just cannot be
+        // proven from outside today. The same holds for the two `!isCurrentMutation()`
+        // arms in `onError`.
         if (tap.kind === "refused") {
-          const settled = settleAddBurst({ ok: false });
-          if (!settled?.accepted || !isCurrentMutation())
-            return { kind: "keep" };
+          const rollingBack = isCurrentMutation();
+          const settled = settleAddBurst(
+            rollingBack ? { kind: "discarded" } : { kind: "kept" }
+          );
+          if (!settled?.accepted || !rollingBack) return { kind: "keep" };
           return { kind: "rollback" };
         }
         if (tap.kind === "offline-undo") {
@@ -1466,12 +1504,16 @@ export default function FoodLogBar({
         const outcome = tap.outcome;
         if (outcome.ok) {
           if (delta === 1) {
+            // A LANDING THE SERVER DID NOT NAME. The write succeeded, so this is
+            // not a failure — it simply has no row id for an Undo to bind to. It
+            // still settles the burst as a success, so the authoritative re-read
+            // below still runs for the serving that is now on the counter.
             if (outcome.eventId == null) {
-              settleAddBurst({ ok: false });
+              settleAddBurst({ kind: "landed" });
               return { kind: "keep" };
             }
             const settled = settleAddBurst({
-              ok: true,
+              kind: "landed",
               eventId: outcome.eventId,
             });
             if (!settled?.accepted) return { kind: "keep" };
@@ -1560,7 +1602,10 @@ export default function FoodLogBar({
         // succeeded, the final effect publishes their cumulative receipt and
         // reports this failure separately.
         if (delta === 1) {
-          const settled = settleAddBurst({ ok: false });
+          // KEPT, NOT DISCARDED: this arm returns `keep` below, so the optimistic +1 is
+          // still on the counter and the post-burst read is the only thing that takes
+          // it back or reports the failure.
+          const settled = settleAddBurst({ kind: "kept" });
           if (
             !isMountedProfile() &&
             settled?.completed &&
@@ -1603,12 +1648,30 @@ export default function FoodLogBar({
         if (shouldQueueOffline(navigator.onLine !== false, err)) {
           if (delta === 1) {
             const kept = await queueOffline();
+            // Superseded: whatever the queue said, this tap returns `keep` below, so
+            // its guess stays on the counter and the burst still owes it a read.
             if (!isCurrentMutation()) {
-              if (!kept) settleAddBurst({ ok: false });
+              if (!kept) settleAddBurst({ kind: "kept" });
               return { kind: "keep" };
             }
+            // A capture leaves the burst entirely — the queued write owns the count
+            // until replay. A refused one rolls back, and has already said why.
+            //
+            // `unwitnessed`, NOT `discarded`, AND THE BRANCH IS THE WHOLE ARGUMENT
+            // (#3728). Reaching `onError` means `write` got past its own offline
+            // preflight and called `logFoodServing`, so the request LEFT. What failed
+            // was the answer: `shouldQueueOffline` routes any `TypeError` here
+            // (lib/offline/queue.ts), and "Failed to fetch" is what a lost response
+            // looks like whether or not the server committed first. The queue then
+            // refuses to keep the tap and says "This entry wasn't saved" — a claim
+            // nothing has checked. `discarded` would skip the post-burst read and leave
+            // that claim standing over a serving the server holds, which is the
+            // duplicate-re-tap error this surface elsewhere calls the more expensive
+            // one. The device-side refusal in `settle` above is the case that really
+            // does own its claim: there the request never left, so `discarded` is right
+            // there and only there.
             if (kept) dropAddBurst();
-            else settleAddBurst({ ok: false });
+            else settleAddBurst({ kind: "unwitnessed" });
             return kept ? { kind: "keep" } : { kind: "rollback" };
           }
           undoNeedsConnection();
@@ -1616,7 +1679,7 @@ export default function FoodLogBar({
         }
         if (!isCurrentMutation()) {
           if (delta === 1) {
-            const settled = settleAddBurst({ ok: false });
+            const settled = settleAddBurst({ kind: "kept" });
             if (
               !isMountedProfile() &&
               settled?.completed &&
@@ -1631,8 +1694,10 @@ export default function FoodLogBar({
           reconcileAfterStaleMutation();
           return { kind: "keep" };
         }
+        // A request that died online with the guess still painted: the read below is
+        // what takes it back and what reports it.
         if (delta === 1) {
-          settleAddBurst({ ok: false });
+          settleAddBurst({ kind: "kept" });
           return { kind: "keep" };
         }
         profileToast(noticeScope, "Couldn't save that serving — try again.", {
@@ -1656,21 +1721,33 @@ export default function FoodLogBar({
     }
 
     const addSettlement = addSettlementBox.value;
+    // THE POST-BURST AUTHORITATIVE READ, gated on there being A GUESS LEFT ON THE
+    // COUNTER — not on the burst having written (#3728).
+    //
+    // Both directions matter and the two are easy to conflate. It used to run on
+    // `completed` alone, so a tap the device refused to capture offline — nothing
+    // queued, the count already rolled back — still asked the server for a total and,
+    // when that request died as an offline request does, said "Saved, but couldn't
+    // refresh the count". Nothing had been saved. But gating it on having WRITTEN
+    // breaks the other direction just as badly: a failed online add deliberately
+    // returns `keep`, so its optimistic +1 is still on the counter, and this read is
+    // the ONLY thing that takes it back and the only thing that reports the failure.
+    // "Unknown food group", "Pick a valid day" and a plain 500 all reach it, none of
+    // them revalidate, and the projection is seeded once — so the phantom would sit
+    // there, contradicted by the Day ledger beside it, until a reload.
+    //
+    // `reconcile` is the question that holds in both: is anything this burst painted
+    // still standing? A discarded tap left nothing and already spoke; a kept one left
+    // a number no one has corrected.
     if (
       delta === 1 &&
       addTap &&
       addSettlement?.accepted &&
-      addSettlement.completed &&
+      addSettlement.reconcile &&
       isMountedProfile()
     ) {
       const completionEpoch = addTap.epoch;
       const completionNextTapId = addSettlement.state.nextTapId;
-      const truthForm = new FormData();
-      truthForm.set("group_key", slug);
-      truthForm.set("date", activeDate);
-      const truthProfileId = subjectProfileId ?? activeProfileId;
-      if (truthProfileId != null)
-        truthForm.set("profile_id", String(truthProfileId));
       const isStillLatest = () => {
         const currentBurst =
           servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();
@@ -1682,12 +1759,25 @@ export default function FoodLogBar({
       };
       let truth: FoodServingTruthResult;
       try {
-        truth = await readFoodServingTruth(truthForm);
+        truth = await readFoodServingTruth(servingTruthForm(activeDate, slug));
       } catch {
-        if (isStillLatest() && noticeScope) {
+        // The read is also how a kept failure gets reported, so when it cannot run the
+        // sentence still has to be true: only a burst that actually landed something
+        // may say "Saved", and only a failure NOBODY HAS HEARD YET may say anything at
+        // all. An unwitnessed burst is neither — its refusal already spoke, and the
+        // read that would have checked that refusal is the thing that just died — so it
+        // stays silent rather than printing a second, contradictory sentence beside the
+        // first.
+        if (
+          isStillLatest() &&
+          noticeScope &&
+          (addSettlement.landed || addSettlement.reportFailure)
+        ) {
           profileToast(
             noticeScope,
-            "Saved, but couldn't refresh the count — reload to check it.",
+            addSettlement.landed
+              ? "Saved, but couldn't refresh the count — reload to check it."
+              : "Couldn't save that serving — try again.",
             {
               tone: "error",
             }
