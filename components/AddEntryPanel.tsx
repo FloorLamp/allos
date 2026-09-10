@@ -11,6 +11,7 @@ import {
 import { IconChevronDown, IconPlus } from "@tabler/icons-react";
 import Collapse from "./Collapse";
 import ModalShell from "./ModalShell";
+import type { FormId } from "@/lib/form-grammar";
 
 // The shared RARE-CADENCE ENTRY disclosure (the #1497 rule), defined once.
 //
@@ -46,6 +47,7 @@ export function useAddEntryModalClose() {
 }
 
 export default function AddEntryPanel({
+  formId,
   label,
   addLabel,
   defaultOpen = false,
@@ -57,6 +59,14 @@ export default function AddEntryPanel({
   housed = false,
   children,
 }: {
+  // WHICH FORM THIS OPENS, and the reason it is required (#5300 rule 7, as amended
+  // 2026-09-05). The grammar every add form shares is declared per form in
+  // `lib/form-grammar.ts`; a host that asks for the id makes HOSTING IMPLY
+  // REGISTRATION, so a new form cannot reach a screen without saying whether it
+  // states facts or argues for fields. That replaces the reflection test rule 7
+  // originally asked for, which would have listed `*Form.tsx` files — a set that is
+  // neither all the forms nor only forms.
+  formId: FormId;
   // The heading shown when the panel is OPEN, and the fallback for the collapsed
   // button (for example, "+ Add result").
   label: string;
@@ -121,7 +131,9 @@ export default function AddEntryPanel({
                   owns the gap under the title (`mt-3` in
                   components/BottomSheet.tsx); an `mt-4` on top of it made 28px
                   by accretion under all seventeen modal mounts (#3361). */}
-              <div id={panelId}>{children}</div>
+              <div id={panelId} data-form-id={formId}>
+                {children}
+              </div>
             </AddEntryModalCloseContext.Provider>
           </ModalShell>
         ) : null}
@@ -170,7 +182,7 @@ export default function AddEntryPanel({
         )}
       </button>
       <Collapse open={open}>
-        <div id={panelId} className="pt-3">
+        <div id={panelId} className="pt-3" data-form-id={formId}>
           {children}
         </div>
       </Collapse>

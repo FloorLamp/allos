@@ -81,6 +81,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
       >
         <div className="space-y-6">
           <AddEntryPanel
+            formId="allergy"
             testId="add-allergy-panel"
             panelId="add-allergy-panel-body"
             label="Add allergy"

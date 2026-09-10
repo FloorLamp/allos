@@ -38,6 +38,7 @@ export default function HearingSection({
   return (
     <div className="space-y-6">
       <AddEntryPanel
+        formId="audiogram"
         testId="add-audiogram-panel"
         panelId="add-audiogram-panel-body"
         label="Add hearing test"
