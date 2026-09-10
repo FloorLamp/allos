@@ -300,8 +300,8 @@ export interface LogDomainManifest {
   // measurements", "Log practice".
   //
   // A BARE NOUN, not a phrase: the verb is the heading's, so a noun that already
-  // carries one ("past dose") would print it twice as soon as a second verb reads
-  // this column. `editHeading` is that second verb.
+  // carries one ("past dose") would print it twice the moment a second verb reads
+  // this column.
   readonly noun: string;
   // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
   // names the others a domain rides, so `lib/offline/queue.ts` can derive its
@@ -758,19 +758,22 @@ export const LOG_MANIFEST = {
 
 // ── THE HEADINGS, BUILT FROM THE ONE NOUN (#5617 step 2) ─────────────────────
 //
-// Two verbs over one column, so a domain is named once and read everywhere. Neither
-// takes a string: the argument is a `LogDomain`, so a caller cannot pass a phrase it
-// invented, and a new domain gets its headings from the same `tsc` error that makes
+// ONE VERB over one column, so a domain is named once and read everywhere. It does
+// not take a string: the argument is a `LogDomain`, so a caller cannot pass a phrase
+// it invented, and a new domain gets its heading from the same `tsc` error that makes
 // it answer every other column.
+//
+// THERE IS NO `editHeading`, and that is a finding rather than an omission. #5617
+// step 2 asks for `Edit <noun>` in edit mode, but every mount of these eight forms
+// that CORRECTS is opened from a record row — the record's ⋯, the nutrition day
+// ledger's serving row, the dose history panel's amend — and the issue's own recorded
+// decision titles a sheet over a record row by the ROW's name ("Refined grains ·
+// Evening"), which is what those hosts do. `Edit <noun>` has no host to sit over
+// until one of these forms is corrected from somewhere that is not a row.
 
 /** The heading over this domain's form when it is ADDING a row. */
 export function logHeading(domain: LogDomain): string {
   return `Log ${LOG_MANIFEST[domain].noun}`;
-}
-
-/** The heading over this domain's form when it is CORRECTING one. */
-export function editHeading(domain: LogDomain): string {
-  return `Edit ${LOG_MANIFEST[domain].noun}`;
 }
 
 // ── THE DERIVED CORES COLUMN (#4614) ─────────────────────────────────────────

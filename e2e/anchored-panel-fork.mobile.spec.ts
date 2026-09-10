@@ -279,8 +279,14 @@ async function exerciseWheelFormats(page: Page, wide: boolean) {
           appContent(page).getByTestId("history-add-open-dose")
         );
       }
+      // BOTH DOORS NOW OPEN THE SAME HOST (#5617 step 1): the record's add door was
+      // an inline panel under its button and is the converged sheet/dialog now, so
+      // the dose form is addressed off its dialog exactly as the measurements form
+      // already was.
       const form = composed
-        ? appContent(page).getByTestId("historical-dose-form")
+        ? page
+            .getByRole("dialog", { name: "Log dose" })
+            .getByTestId("historical-dose-form")
         : page
             .getByRole("dialog", { name: "Log measurements" })
             .getByTestId("measurements-quick-add");

@@ -1,12 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import {
-  appContent,
-  hydratedClick,
-  settledClick,
-  settledFill,
-} from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   E2E_LOGIN_SUBSTANCE,
@@ -295,9 +290,10 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const firstUse = useRows.nth(0);
     await hydratedClick(page, firstUse.getByTestId("overflow-menu-trigger"));
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    // The form opens in the row's SIBLING `<li>`, not inside the row, so it is
-    // addressed off the list rather than off the row it belongs to.
-    const editor = appContent(page).getByTestId("history-row-editing");
+    // The form opens in the record's edit SHEET (#5617 step 1) — the converged
+    // sheet/dialog, portalled to <body> — rather than in a `<li>` that swapped the
+    // row out, so it is addressed off the dialog rather than off the app shell.
+    const editor = page.getByRole("dialog").getByTestId("history-row-editing");
     await editor.getByTestId("substance-when-time").fill("20:15");
     await settledClick(page, editor.getByRole("button", { name: "Save" }));
     await expect(useRows.nth(0)).toContainText("21:30");
@@ -309,7 +305,9 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     const corrected = "E2E corrected cannabis note";
     await hydratedClick(page, noted.getByTestId("overflow-menu-trigger"));
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    const noteEditor = appContent(page).getByTestId("history-row-editing");
+    const noteEditor = page
+      .getByRole("dialog")
+      .getByTestId("history-row-editing");
     await expect(noteEditor.getByTestId("substance-notes")).toHaveValue(marker);
     await noteEditor.getByTestId("substance-notes").fill(corrected);
     await settledClick(page, noteEditor.getByRole("button", { name: "Save" }));
