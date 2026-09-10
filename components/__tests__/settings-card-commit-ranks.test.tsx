@@ -1,10 +1,20 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import AuditRetentionSettings from "@/app/(app)/settings/server/AuditRetentionSettings";
 import TwoFactorSettings from "@/app/(app)/settings/TwoFactorSettings";
 import AiTierSettings from "@/app/(app)/settings/ai/AiTierSettings";
 import FamilyManager from "@/app/(app)/settings/family/FamilyManager";
+import ChannelRow from "@/app/(app)/settings/notifications/ChannelRow";
+import LoginTelegramSettings from "@/app/(app)/settings/notifications/LoginTelegramSettings";
+import PushNotificationSettings from "@/app/(app)/settings/notifications/PushNotificationSettings";
+import ServerTelegramSettings from "@/app/(app)/settings/notifications/ServerTelegramSettings";
 
 // ONE LOUD CONTROL PER SETTINGS CARD (#4978, PM ruling 6, 2026-09-09 23:35 UTC;
 // owner ruling 10, 2026-09-10 01:30 UTC).
@@ -31,9 +41,17 @@ import FamilyManager from "@/app/(app)/settings/family/FamilyManager";
 
 vi.mock("@/app/(app)/settings/server/actions", () => ({
   saveAuditRetention: async () => {},
+  saveTelegramBotConfig: async () => {},
+  registerTelegramWebhook: async () => ({ ok: true, message: "registered" }),
 }));
 
 vi.mock("@/app/(app)/settings/actions", () => ({
+  saveLoginTelegram: async () => ({ ok: true as const }),
+  sendTestNotification: async () => ({ ok: true, message: "sent" }),
+  getPushPublicKey: async () => ({ ok: true as const, publicKey: "" }),
+  savePushSubscriptionAction: async () => ({ ok: true as const }),
+  deletePushSubscriptionAction: async () => ({ ok: true as const }),
+  sendTestPush: async () => ({ ok: true, message: "sent" }),
   begin2fa: async () => ({
     ok: true as const,
     secret: "AAAA",
@@ -160,6 +178,108 @@ describe("a settings card spends its one loud control on its own commit", () => 
     expect(screen.getByRole("button", { name: "Regenerate" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Turn off" })).toBeTruthy();
     expect(loudIn(card)).toEqual([]);
+  });
+
+  // THE NOTIFICATION CHANNEL CARDS (#4978 slice 7). The card here is the
+  // `ChannelRow` disclosure, not the route and not the component — all four
+  // channels render their controls as its children, so the card box has to come
+  // from the row for the count to be over the surface ruling 6 names.
+  it("fills the channel card's Save and leaves its test diagnostic quiet", () => {
+    render(
+      <ChannelRow
+        channel="telegram"
+        name="Telegram"
+        scope="owner"
+        state={{ state: "ready" }}
+        blocker={null}
+        profileName="Ada"
+      >
+        <LoginTelegramSettings
+          telegram={{ telegramEnabled: true, telegramChatId: "1" }}
+          botConfigured={true}
+          reviewNeeded={false}
+        />
+      </ChannelRow>
+    );
+
+    const save = screen.getByTestId("login-telegram-save");
+    // "Send test" is on the card too, and it is the coupling: the card's one
+    // fill is only defensible while the diagnostic beside it stays quiet.
+    expect(screen.getByTestId("login-telegram-test")).toBeTruthy();
+    expect(loudIn(cardOf(save))).toEqual(["Save"]);
+  });
+
+  it("fills the push card's enrollment commit and nothing once it is on", async () => {
+    // jsdom carries none of the three globals this card probes for, so its
+    // controls do not render at all without them. `getSubscription` is what
+    // decides which arm of the enable/disable ternary mounts.
+    let subscription: object | null = null;
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      serviceWorker: {
+        ready: Promise.resolve({
+          pushManager: { getSubscription: async () => subscription },
+        }),
+      },
+    });
+    vi.stubGlobal("PushManager", class {});
+    vi.stubGlobal("Notification", { permission: "granted" });
+
+    const shell = (
+      <ChannelRow
+        channel="push"
+        name="Push"
+        scope="owner"
+        state={{ state: "ready" }}
+        blocker={null}
+        profileName="Ada"
+      >
+        <PushNotificationSettings />
+      </ChannelRow>
+    );
+
+    render(shell);
+    await act(async () => {});
+    const enable = screen.getByTestId("push-enable");
+    expect(loudIn(cardOf(enable))).toEqual(["Enable push on this browser"]);
+
+    // ONCE PUSH IS ON, THE CARD HAS NO LOUD CONTROL. `Disable` is the teardown of
+    // the enrollment commit rather than a second commit — the same reading that
+    // keeps `TwoFactorSettings`' "Turn off" quiet above — and "Send test" is a
+    // diagnostic. Filling either is what a later lane would call finishing the
+    // conversion, so it is pinned here rather than argued.
+    // Remounted rather than rerendered: `subscribed` is read once from the
+    // registration on mount, so the second state is a fresh probe.
+    subscription = {};
+    cleanup();
+    render(shell);
+    await act(async () => {});
+    const disable = screen.getByTestId("push-disable");
+    expect(screen.getByTestId("push-test")).toBeTruthy();
+    expect(loudIn(cardOf(disable))).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it("fills the bot card's own commit and leaves the webhook follow-up quiet", () => {
+    render(
+      <ServerTelegramSettings
+        config={{
+          telegramBotToken: "t",
+          telegramMode: "webhook",
+          telegramWebhookSecret: "s",
+        }}
+        publicUrl="https://example.test"
+        lastError={null}
+      />
+    );
+
+    const apply = screen.getByRole("button", { name: "Apply bot settings" });
+    // "Register webhook" acts on what Apply just stored, so it is a follow-up on
+    // this card rather than a rival commit.
+    expect(
+      screen.getByRole("button", { name: "Register webhook" })
+    ).toBeTruthy();
+    expect(loudIn(cardOf(apply))).toEqual(["Apply bot settings"]);
   });
 
   it("leaves the two peer tier commits on one card quiet", () => {

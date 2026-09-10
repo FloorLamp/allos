@@ -133,7 +133,11 @@ export default function LoginTelegramSettings({
           Save
         </Button>
         {enabled && (
-          <Button onClick={test} disabled={busy} data-testid="login-telegram-test">
+          <Button
+            onClick={test}
+            disabled={busy}
+            data-testid="login-telegram-test"
+          >
             Send test
           </Button>
         )}
