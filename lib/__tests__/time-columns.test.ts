@@ -308,8 +308,12 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 6,
-    why: "DISPLAY readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated: the shared dose-history ordering (three scopes identical), the scheduled row's printed clock, and the quick-log gather's own 'Last dose 8:05pm' column. #4686 took the ARMING readers out — the redose clock now reads a placed instant or nothing, never a capture stamp — so what is left here renders a fact beside the day it happened on, never a duration a safety line turns into a verdict.",
+    count: 5,
+    why: "DISPLAY readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated: the shared dose-history ordering (three scopes identical) and the scheduled row's printed clock. #4686 took the ARMING readers out — the redose clock now reads a placed instant or nothing, never a capture stamp — so what is left here renders a fact beside the day it happened on, never a duration a safety line turns into a verdict. The count falls as #2960 moves each reader into its own module; the pairings themselves are unchanged.",
+  },
+  "lib/queries/intake/prn-quick-log.ts": {
+    count: 1,
+    why: "the quick-log gather's own 'Last dose 8:05pm' column, moved out of adherence.ts whole by #2960 — the same MAX, in a new file. It is a DISPLAY clock beside the day it happened on: deleting the fallback would make a PRN medication read 'No doses logged' after any past-day check-off. The SAFETY half of the same row (`familyArming`) is the one #4686 took off capture stamps, and it is deliberately NOT computed through this pairing.",
   },
   "lib/queries/nutrition/ledger.ts": {
     count: 1,
