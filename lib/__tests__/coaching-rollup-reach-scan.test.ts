@@ -32,7 +32,14 @@ import { describe, expect, it } from "vitest";
 import { RULE_FINDING_REGISTRY } from "@/lib/rule-finding-prefixes";
 import { REPO } from "./sql-scan";
 
-const RULE_FINDINGS = "lib/rule-findings.ts";
+// Each builder's OWNING module (#2962 split the domains out of lib/rule-findings.ts,
+// which is now the collection registry). The scan reads a producer's source, so this
+// column names where the producer lives, not where it is collected.
+const TRAINING = "lib/rule-findings/training.ts";
+const WELLBEING = "lib/rule-findings/wellbeing.ts";
+const CLINICAL = "lib/rule-findings/clinical.ts";
+const INTAKE = "lib/rule-findings/intake.ts";
+const DATA_QUALITY = "lib/rule-findings/data-quality.ts";
 const FOOD_DRUG_LEDGER_FINDINGS = "lib/food-drug-ledger-findings.ts";
 
 // The classes whose findings render NOWHERE but the dashboard rollup — no tab,
@@ -46,18 +53,18 @@ const FOOD_DRUG_LEDGER_FINDINGS = "lib/food-drug-ledger-findings.ts";
 // but it renders no finding envelope, so the rollup is the only place the
 // observation itself is reachable.
 const ROLLUP_ONLY: ReadonlyArray<{ builder: string; file: string }> = [
-  { builder: "buildMoodFindings", file: RULE_FINDINGS },
-  { builder: "buildSleepMoodBridgeFindings", file: RULE_FINDINGS },
-  { builder: "buildSunExposureFindings", file: RULE_FINDINGS },
-  { builder: "buildOralHealthFindings", file: RULE_FINDINGS },
-  { builder: "buildPairedObservationFindings", file: RULE_FINDINGS },
-  { builder: "buildTtcWorkupFindings", file: RULE_FINDINGS },
+  { builder: "buildMoodFindings", file: WELLBEING },
+  { builder: "buildSleepMoodBridgeFindings", file: WELLBEING },
+  { builder: "buildSunExposureFindings", file: CLINICAL },
+  { builder: "buildOralHealthFindings", file: CLINICAL },
+  { builder: "buildPairedObservationFindings", file: WELLBEING },
+  { builder: "buildTtcWorkupFindings", file: CLINICAL },
   { builder: "buildFoodDrugVarianceFindings", file: FOOD_DRUG_LEDGER_FINDINGS },
-  { builder: "buildFitnessCheckFindings", file: RULE_FINDINGS },
-  { builder: "buildMedicationDuplicationFindings", file: RULE_FINDINGS },
-  { builder: "buildDataQualityFindings", file: RULE_FINDINGS },
-  { builder: "buildCycleBleedingFindings", file: RULE_FINDINGS },
-  { builder: "buildSleepClockSkewFindings", file: RULE_FINDINGS },
+  { builder: "buildFitnessCheckFindings", file: TRAINING },
+  { builder: "buildMedicationDuplicationFindings", file: INTAKE },
+  { builder: "buildDataQualityFindings", file: DATA_QUALITY },
+  { builder: "buildCycleBleedingFindings", file: CLINICAL },
+  { builder: "buildSleepClockSkewFindings", file: WELLBEING },
 ];
 
 const STALE_GROUP_HELPER = "staleExerciseGroupFinding";
@@ -211,7 +218,7 @@ describe("the coaching rollup-reach census is total and enforced (#3129)", () =>
   });
 
   it("the training-stale group envelope keeps its #3095 annotation", () => {
-    expect(functionSource(read(RULE_FINDINGS), STALE_GROUP_HELPER)).toContain(
+    expect(functionSource(read(TRAINING), STALE_GROUP_HELPER)).toContain(
       ANNOTATION
     );
   });

@@ -287,7 +287,7 @@ export interface VolumeBandObservation {
  *     is fed by a guarded hook that is inert (always false) until #741 ships the
  *     week-in-cycle flag; the figure still shows real numbers, only the finding holds.
  *
- * Pure over its inputs; the DB gather lives in lib/rule-findings.ts. Ordered by the
+ * Pure over its inputs; the DB gather lives in lib/rule-findings/training.ts. Ordered by the
  * size of the shortfall (largest gap first) for a deterministic, useful order.
  */
 export function detectVolumeShortfalls(

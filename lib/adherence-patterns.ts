@@ -7,7 +7,7 @@
 // Pure and client-safe — no DB/network. The detectors run over a single dose's
 // per-day adherence strip (lib/intake-adherence.doseStrip: "taken"/"partial"/
 // "skipped"/"missed"/"na", oldest-first), which the server builder in
-// lib/rule-findings.ts assembles from the already profile-scoped intake reads. Each
+// lib/rule-findings/intake.ts assembles from the already profile-scoped intake reads. Each
 // finding rides the shared findings bus with a stable, dose-id-keyed dedupeKey
 // (ids never recycle — AGENTS.md #203) so a page dismiss silences it. Every
 // threshold is a named constant with its rationale; the boundaries are unit-tested

@@ -66,6 +66,7 @@ import {
   buildTrainingObservationFindings,
   buildTtcWorkupFindings,
   closureFindingSnapshot,
+  COACHING_COLLECTION,
   COACHING_ENTITY_FINDING_LIMITS,
   collectCoachingFindings,
   collectDataQualityGaps,
@@ -210,6 +211,13 @@ describe("the collected coaching corpus is unchanged (#2962)", () => {
     // The fan-out caps ride in the corpus: they are applied per family BEFORE shared
     // suppression, and that ordering is a collection contract, not a builder detail.
     const out: Record<string, unknown> = {
+      // The declared collection order, recorded for ALL of it rather than only for the
+      // domains the seeded population happens to trigger. This is the one part of the
+      // split a reviewer CAN check by reading: it diffs against the concatenation
+      // collectCoachingFindings used before the builders moved.
+      collectionOrder: COACHING_COLLECTION.map((entry) => entry.builder),
+      // The fan-out caps ride in the corpus: they are applied per family BEFORE shared
+      // suppression, and that ordering is a collection contract, not a builder detail.
       entityFindingLimits: COACHING_ENTITY_FINDING_LIMITS,
     };
     for (const persona of PERSONAS) {
@@ -228,9 +236,14 @@ describe("the collected coaching corpus is unchanged (#2962)", () => {
   // The corpus is only as honest as the population it was taken over: a capture that
   // happened to collect nothing would compare equal to itself forever.
   it("collects findings across the personas it was captured over", () => {
-    const { entityFindingLimits: _limits, ...recorded } = JSON.parse(
-      corpus
-    ) as Record<string, { coaching: { domain: string }[] }>;
+    const {
+      collectionOrder: _order,
+      entityFindingLimits: _limits,
+      ...recorded
+    } = JSON.parse(corpus) as Record<
+      string,
+      { coaching: { domain: string }[] }
+    >;
     expect(Object.keys(recorded)).toEqual(PERSONAS.map((p) => p.name));
     const domains = new Set<string>();
     for (const p of Object.values(recorded))

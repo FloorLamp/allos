@@ -1,6 +1,6 @@
 // Adherence-based obligation DEMOTION SUGGESTIONS (issue #1505 part 2). Pure and
 // client-safe — no DB, no network. The server builder
-// (buildDemotionSuggestionFindings, lib/rule-findings.ts) assembles the item-level
+// (buildDemotionSuggestionFindings, lib/rule-findings/intake.ts) assembles the item-level
 // adherence strips from the already profile-scoped intake reads and hands them here.
 //
 // The contract, and the reason this file DETECTS but never writes:

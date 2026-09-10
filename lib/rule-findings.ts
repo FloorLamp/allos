@@ -1,269 +1,73 @@
-// Server-side assembly for the deterministic rule domains added in issue #45
-// (domains 4–6: training balance/plateau, body-metric data hygiene, goal pacing;
-// domain 3: adherence pattern detection). Mirrors lib/trajectory-series.ts — each builder reads through already
-// PROFILE-SCOPED queries + per-profile/-login settings, runs the pure detection
-// (lib/training-observations, lib/weight-anomaly, lib/goal-pacing), and maps the
-// results into the shared Finding envelope (lib/findings) so the page surfaces filter
-// them through the one findings-bus suppression store (getFindingSuppressions +
-// activeByKey) exactly like the trajectory/coaching/digest findings.
+// The rule-findings COLLECTION REGISTRY (#2962).
 //
-// Nothing here re-implements a slope or a projection — the plateau/loss checks reuse
-// the robust helpers and goal pacing reuses projectGoal, so a finding and the chart
-// caption it rides alongside can never disagree ("one question, one computation").
-// No owned SQL is added here, so the profile-scoping guard is unaffected.
+// The domain builders live in ./rule-findings/*; what stays here is the thing they
+// share and none of them owns: ONE `Finding` envelope (lib/findings), one declared
+// collection order, the fan-out limits applied before suppression (./rule-findings/
+// limits), and the closure snapshot. Each builder reads through already PROFILE-SCOPED
+// queries + per-profile/-login settings, runs its pure detection, and maps the result
+// into that envelope, so the page surfaces filter every domain through the one
+// findings-bus suppression store (getFindingSuppressions + activeFindings) exactly
+// alike. No owned SQL is added here or in any domain module, so the profile-scoping
+// guard is unaffected.
+//
+// The re-exports below keep the historical `@/lib/rule-findings` import surface, the
+// same arrangement lib/queries.ts has: a caller does not care which domain module a
+// builder now lives in. Each builder still has exactly ONE implementation, in the
+// module that owns its domain.
+export * from "./rule-findings/limits";
+export * from "./rule-findings/training";
+export * from "./rule-findings/body-goals";
+export * from "./rule-findings/nutrition";
+export * from "./rule-findings/intake";
+export * from "./rule-findings/rightsize";
+export * from "./rule-findings/wellbeing";
+export * from "./rule-findings/clinical";
+export * from "./rule-findings/data-quality";
 
-import { joinNamesForSentence } from "./summarize-names";
 import { commitCached } from "./commit-cache";
-import { profileDayZone, travelExcusalResolver } from "./travel-excusal";
-import {
-  getStrengthByExercise,
-  getExerciseSetCountsSince,
-  getExerciseE1rmSeries,
-  getWeightsOneSourcePerDay,
-  getBodyMetricDailySeries,
-  getOutcomeGoals,
-  getIntakeItems,
-  getIntakeDoses,
-  getIntakeAdherenceEvidence,
-  getActivityDates,
-  getRecentDatedExercises,
-  getFoodSuggestions,
-  getFrequencyTargetProgress,
-  getFrequencyTargetWeeklyHistory,
-  getAllSubstanceWeekStates,
-  getIntakeSafetyContext,
-  getActiveMedicationFamilies,
-  getBiomarkerSeries,
-  getCanonicalResultDefinition,
-  getDaylightOutdoorMinutesTotal,
-  getProteinAdequacy,
-  getFiberAdequacy,
-  getFindingSuppressions,
-} from "./queries";
-import { effectiveSituationResolver } from "./queries/derived-situations";
-import { activeFindings } from "./findings";
-import { exerciseHistoryKey } from "./lifts";
-import {
-  getHomeLocation,
-  getProfileSex,
-  getProfileAge,
-  getProfileReproductiveStatus,
-  getSmokingHistory,
-  getRiskAttributesReviewed,
-} from "./settings";
-import { isAdultForClinical, isMinor } from "./life-stage";
-import {
-  decidePairedObservation,
-  pairedObservationsFor,
-} from "./paired-observations";
-import {
-  factorDaysReader,
-  gatherPairedNights,
-  outcomeSeriesReader,
-} from "./queries/paired-observations";
-import {
-  getMedicationsMissingRxcuiCount,
-  getMedicationMissingRxcuiSoleId,
-  getFailedExtractionDocumentCount,
-  getUnreadableDoseAmounts,
-  getLatestMetricSample,
-  getBioAgeReadings,
-  hasImportedSmokingHistory,
-  countPrescribersNeedingLink,
-} from "./queries";
-import { resolveSmoking } from "./smoking";
-import { PHENOAGE_INPUT_COUNT, PHENOAGE_INPUT_NAMES } from "./bio-age";
-import {
-  detectDataQualityGaps,
-  dataQualityDedupeKey,
-  DATA_QUALITY_PREFIX,
-  type DataQualityInputs,
-  type DataQualityGap,
-} from "./data-quality";
+import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "./format-date";
+import { type WeightUnit } from "./settings";
+import { type Finding } from "./findings";
+import { DATA_QUALITY_PREFIX } from "./data-quality";
+import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { buildFoodDrugVarianceFindings } from "./food-drug-ledger-findings";
-
-import { getIntakeHistory } from "./intake-history";
+import { buildDataQualityFindings } from "./rule-findings/data-quality";
 import {
-  detectDemotionCandidates,
-  demotionItemIdFromKey,
-  DEMOTION_WINDOW_DAYS,
-  type DemotionInput,
-} from "./supplement-demotion";
-import { optimalStatus } from "./reference-range";
-import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
-import { prolongedBleedingObservations } from "./cycle-observation";
-import { listCyclePeriods } from "./cycle-store";
-import { decideWorkupPrompt } from "./ttc";
-import { getTtcStart } from "./settings/profile-attrs";
-import { getRiskAttributes } from "./settings";
-import { isOnDemand } from "./intake-schedule";
-import { decidePeriodontalObservation } from "./oral-health-observation";
+  buildEndurancePlanFindings,
+  buildFitnessCheckFindings,
+  buildMobilitySuggestionFindings,
+  buildMuscleVolumeFindings,
+  buildTrainingObservationFindings,
+} from "./rule-findings/training";
 import {
-  fitnessRetestDue,
-  fitnessCheckSignalKey,
-  FITNESS_CHECK_PREFIX,
-} from "./fitness-retest";
-import { getLatestFitnessAssessmentDate } from "./fitness-assessment";
-import { getMobilitySuggestions } from "./queries/mobility";
-import { getFitnessRetestCadenceDays } from "./settings";
+  buildBodyHygieneFindings,
+  buildGoalPacingFindings,
+} from "./rule-findings/body-goals";
 import {
-  deriveRiskFactors,
-  EMPTY_RISK_ATTRIBUTES,
-} from "./risk-stratification";
-import { isGoalLive } from "./outcome-goals";
-import { frequencyScopeLabel } from "./frequency-targets";
-import { getRoutineCycleStatus } from "./routines";
+  buildFiberAdequacyFindings,
+  buildFoodHabitFindings,
+  buildFoodSuggestionFindings,
+  buildProteinAdequacyFindings,
+  buildSubstanceUseFindings,
+} from "./rule-findings/nutrition";
 import {
-  foodHabitSignalKey,
-  isFoodHabitBehind,
-  foodHabitInteractions,
-  foodHabitInteractionNote,
-} from "./food-habit";
+  buildAdherencePatternFindings,
+  buildDemotionSuggestionFindings,
+  buildMedicationDuplicationFindings,
+} from "./rule-findings/intake";
+import { buildTargetRightSizeFindings } from "./rule-findings/rightsize";
 import {
-  substanceTargetSignalKey,
-  capProgressLine,
-  substanceDef,
-} from "./substance-use";
+  buildMoodFindings,
+  buildPairedObservationFindings,
+  buildSleepClockSkewFindings,
+  buildSleepMoodBridgeFindings,
+} from "./rule-findings/wellbeing";
 import {
-  proteinAdequacySignalKey,
-  proteinAdequacyTitle,
-  proteinAdequacyDetail,
-  proteinAdequacyEvidence,
-} from "./protein";
-import {
-  fiberAdequacySignalKey,
-  fiberAdequacyTitle,
-  fiberAdequacyDetail,
-  fiberAdequacyEvidence,
-} from "./fiber";
-import {
-  detectLowMoodWindow,
-  decideSleepMoodBridge,
-  meanNightlySleepMin,
-  MOOD_LOW_WINDOW_DAYS,
-  type LowMoodWindow,
-} from "./mood-observation";
-import { getMoodLogs, getMetricDailyTotals } from "./queries";
-import { getSleepRegularityDrop } from "./queries/situation-impact";
-import {
-  getSuspectSleepSessions,
-  SLEEP_SKEW_HISTORY_DAYS,
-} from "./queries/sleep-clock-skew";
-import { sleepClockSkewSignalKey } from "./sleep-clock-skew";
-import { activityProvenanceLabel } from "./training-log-format";
-import { shiftDateStr, lastNDates } from "./date";
-import { fmtWeight, round } from "./units";
-import {
-  DEFAULT_FORMAT_PREFS,
-  formatLongDate,
-  type DisplayFormatPrefs,
-} from "./format-date";
-import { describeEta } from "./trend-projection";
-import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "./findings";
-import {
-  trainingTabHref,
-  strengthAnalyzeHref,
-  clinicalResultDetailHref,
-  nutritionTabHref,
-  MEDICATIONS_HREF,
-  PRACTICES_HREF,
-  type AppRoute,
-} from "./hrefs";
-import {
-  detectRightSizeCandidates,
-  RIGHTSIZE_WEEKS,
-  type RightSizeCandidate,
-  type RightSizeDomain,
-  type RightSizeInput,
-} from "./target-rightsize";
-import {
-  medDupSignalKey,
-  medicationDuplicationNote,
-} from "./medication-family";
-import type { FoodSuggestion } from "./food-suggest";
-import { getWeekStart, type WeightUnit } from "./settings";
-import {
-  detectPushPullImbalance,
-  detectStaleExercises,
-  detectPlateaus,
-  staleExerciseGroupEpisodeStart,
-  staleExerciseGroupFamily,
-  staleExerciseGroupSignalKey,
-  BALANCE_WINDOW_DAYS,
-  PLATEAU_WINDOW_DAYS,
-  type StaleExerciseObservation,
-  type TrainingObservation,
-} from "./training-observations";
-
-import { plateauInlineHint } from "./plateau-advice";
-import { coverageFromSets } from "./muscle-coverage";
-import {
-  detectVolumeShortfalls,
-  countDistinctWeeks,
-  VOLUME_BAND_WINDOW_DAYS,
-  type VolumeBandObservation,
-} from "./muscle-volume-bands";
-import { getInjuryConstraints } from "./injuries";
-import { excludedRegions } from "./injury-model";
-import {
-  enduranceLongSessionKey,
-  enduranceLongSessionTitle,
-  enduranceLongSessionDetail,
-} from "./endurance-plan";
-import { getEndurancePlanCards, getIllnessCoachingContext } from "./queries";
-import {
-  detectWeightAnomalies,
-  weightAnomalySignalKey,
-  type WeightAnomaly,
-} from "./weight-anomaly";
-import {
-  biomarkerGoalCheckIn,
-  biomarkerTargetOf,
-  directionMet,
-  labGoalHasCheckedIn,
-} from "./biomarker-goal";
-import { retestDaysForBiomarker } from "./biomarker-retest";
-import { biomarkerPlots } from "./queries/biomarker-plot";
-import { sameUnit } from "./unit-conversions";
-import {
-  assessGoalPace,
-  detectFastWeightLoss,
-  goalPaceSignalKey,
-  weightLossRateSignalKey,
-  weightLossRateLegacyKey,
-  GOAL_PACE_WINDOW_DAYS,
-} from "./goal-pacing";
-import {
-  detectAdherencePatterns,
-  ADHERENCE_PATTERN_DAYS,
-  type AdherencePattern,
-  type DoseAdherenceInput,
-} from "./adherence-patterns";
-import {
-  doseStrip,
-  doseWindowSince,
-  indexTakenByDose,
-  stripWithoutTrailingPending,
-} from "./intake-adherence";
-import { doseDueOn, doseSlotChangedSince, timeBucket } from "./intake-schedule";
-import { unrecordedScheduleChangeOn } from "./intake-cadence";
-
-// Profile-owned entities can grow without bound; dashboard findings cannot. Each
-// fan-out family declares its generation limit here, before shared suppression is
-// applied. That ordering is the important contract: dismissing the visible set does
-// not promote a fresh set from the same family.
-export const COACHING_ENTITY_FINDING_LIMITS = {
-  medicationDuplication: 3,
-  staleExerciseNames: 3,
-  trainingPlateau: 3,
-  bodyHygiene: 3,
-  endurancePlan: 3,
-  prolongedBleeding: 1,
-  goalPacing: 3,
-  adherencePattern: 3,
-  demotionSuggestion: 3,
-  targetRightSize: 3,
-} as const;
+  buildCycleBleedingFindings,
+  buildOralHealthFindings,
+  buildSunExposureFindings,
+  buildTtcWorkupFindings,
+} from "./rule-findings/clinical";
 
 // ---- #449: the unified coaching-findings collection -------------------------
 
@@ -279,216 +83,6 @@ export const COACHING_ENTITY_FINDING_LIMITS = {
 // findings-bus filter (activeFindings) exactly like each tab does. No owned SQL is
 // added (it reads through the already profile-scoped builders), so the profile-scoping
 // guard is unaffected.
-// The Fitness-check retest nudge (#834): a calm coaching item once a prior check has
-// aged past the per-profile cadence. Never nags a subject who has never done a check
-// (hide, don't shame — #489); never a push (coaching tier). Re-keyed by the last-check
-// date so a new check clears an old dismissal cleanly.
-// `prefs` shapes the date embedded in the detail text only (#1020 — web finding
-// strings render in the viewer's shape); the dedupeKey stays format-independent.
-export function buildFitnessCheckFindings(
-  profileId: number,
-  today: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
-): Finding[] {
-  // The check's call to action and copy are explicitly about adult-population
-  // percentiles. Historical rows stay preserved, but a minor or unknown-age
-  // profile must not get a dead-end reminder for an adult-only route.
-  if (!isAdultForClinical(getProfileAge(profileId))) return [];
-  const lastDate = getLatestFitnessAssessmentDate(profileId);
-  const cadence = getFitnessRetestCadenceDays(profileId);
-  const d = fitnessRetestDue(lastDate, cadence, today);
-  if (!d.due || !d.lastDate) return [];
-  const ago = d.daysSince != null ? ` (${d.daysSince} days ago)` : "";
-  return [
-    {
-      domain: "fitness-check",
-      dedupeKey: fitnessCheckSignalKey(d.lastDate),
-      title: "Fitness check due",
-      detail: `Your last fitness check was ${formatLongDate(d.lastDate, prefs)}${ago}. Re-run the battery to refresh your percentiles and see check-over-check change.`,
-      tone: "info",
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "Informational — you set the retest cadence in Profile settings.",
-      actionHref: "/training/fitness-check" as AppRoute,
-      actionLabel: "Start a check",
-    },
-  ];
-}
-
-// ---- Mobility deficit → habit suggestions (#840 phase 2) -------------------
-
-// SUGGEST-ONLY mobility-region habit suggestions from measured deficits (#834 sit-and-
-// reach / single-leg balance) or a #838 RECOVERING injury — the #577 "suggestions from
-// your measurements" pattern applied to movement. Coaching tier ONLY (#449): joins
-// collectCoachingFindings, rides the shared bus (MOBILITY_SUGGEST_PREFIX registered), NEVER
-// notifies / never the hero, never a rehab prescription (the injury line is soft). One
-// computation (mobilitySuggestions) shared with the Training-overview accept affordance so
-// the finding and the one-tap button can never disagree. Regions already tracked as a
-// mobility_region habit are skipped (the loop is closed once accepted, #580). No owned SQL.
-export function buildMobilitySuggestionFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  void today; // no time-relative copy; kept for signature parity with siblings
-  return getMobilitySuggestions(profileId).map((s) => ({
-    domain: "mobility-suggest",
-    dedupeKey: s.dedupeKey,
-    title: s.title,
-    detail: s.detail,
-    tone: "info",
-    evidence:
-      "Suggestion from your fitness check / recovering injuries — track it as a weekly habit, or dismiss.",
-    actionHref: trainingTabHref("overview"),
-    actionLabel: "Track it",
-  }));
-}
-
-// ---- Medication therapeutic-duplication note (#1027 ask 3) ------------------
-
-// ONE calm observation per ingredient FAMILY with two or more ACTIVE medication
-// members ("Ibuprofen appears in 2 active medications") — the visibility half of the
-// #1027 cross-item counters (the family-wide redose/over-max math is the protective
-// half). COACHING tier deliberately (#449): it joins collectCoachingFindings, its
-// dedupeKey (`med-dup:<familyKey>`, MED_DUP_PREFIX registered in
-// RULE_FINDING_PREFIXES) rides the shared suppression bus, and it NEVER notifies /
-// never reaches the hero — tracking both an OTC and an Rx strength is often
-// deliberate, so this is informational posture only. Reads through the ONE
-// profile-scoped family gather (getActiveMedicationFamilies), so the note and the
-// widened counters can never disagree about what a family is. The familyKey is
-// derived (CUI-first, cleaned-name fallback) — per #203, resolving/renaming a member
-// re-keys the family and an old dismissal goes inert (it resurfaces once).
-//
-// The COPY splits on the members' distinguishability (#3069,
-// medicationDuplicationNote): an INDISTINGUISHABLE family — one name key, no
-// strength telling any two members apart — is duplicate RECORDS (the #2919 fold
-// escape), and the note says so instead of calling "albuterol + albuterol +
-// albuterol" deliberate; a distinguishable family keeps the original #1027 copy
-// unchanged. Only the copy splits: the key, tier, action and the family math all
-// stay as they were, so an existing dismissal keeps suppressing either rendering.
-export function buildMedicationDuplicationFindings(
-  profileId: number
-): Finding[] {
-  const findings: { finding: Finding; newestMemberId: number }[] = [];
-  for (const family of getActiveMedicationFamilies(profileId)) {
-    if (family.members.length < 2) continue;
-    const copy = medicationDuplicationNote(family.members);
-    findings.push({
-      // The id of the member that made the family a duplicate — ids are AUTOINCREMENT
-      // and never recycle (#203), so the largest is the most recently added.
-      newestMemberId: Math.max(...family.members.map((m) => m.id)),
-      finding: {
-        domain: "med-dup",
-        dedupeKey: medDupSignalKey(family.familyKey),
-        title: copy.title,
-        detail: copy.detail,
-        tone: "info",
-        dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-        evidence: copy.evidence,
-        actionHref: MEDICATIONS_HREF,
-        actionLabel: "View medications",
-      },
-    });
-  }
-  // Most recently added duplicate first (#4069): the cap below truncates on this
-  // order, and the family a profile just created a second member in is the one the
-  // note is about. The sort is stable, so families that gained their newest member in
-  // the same write keep getActiveMedicationFamilies' first-member input order — the
-  // pre-ruling order, preserved as the tie-break.
-  return findings
-    .sort((a, b) => b.newestMemberId - a.newestMemberId)
-    .slice(0, COACHING_ENTITY_FINDING_LIMITS.medicationDuplication)
-    .map((x) => x.finding);
-}
-
-// ---- Structural data-quality gaps (#1045) ----------------------------------
-
-// The builder for the structural data-quality gaps: it GATHERS the profile's
-// structural inputs (the #448 builder shape) and hands them to the pure detectors
-// (lib/data-quality.ts), then maps each gap into the shared Finding envelope. Reuses
-// the EXISTING computations everywhere — lib/bio-age input-completeness (never a
-// second bio-age math), resolveSmoking (the same tri-state the preventive gates read),
-// getLatestMetricSample for height — so a gap and the surface it degrades can't
-// disagree. COACHING tier ONLY (#449): it joins collectCoachingFindings, its dedupeKey
-// (`data-quality:<gap>`, DATA_QUALITY_PREFIX registered) rides the shared suppression
-// bus, and it NEVER notifies / never reaches the hero. STRUCTURAL, one-time gaps only
-// — never behavioral nagging (the hard boundary in lib/data-quality's header). No owned
-// SQL is added here (reads through profile-scoped queries), so the scoping guard holds.
-// The ONE gather → detect for a profile's structural gaps, leverage-ranked. Shared by
-// the dashboard presentation/coaching finding (buildDataQualityFindings) and the household
-// rollup (household/page.tsx), so every surface keys on the SAME gap model (one
-// question, one computation). No owned SQL added (reads through profile-scoped queries).
-export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
-  const bioAge = getBioAgeReadings(profileId);
-  const smoking = resolveSmoking(
-    getSmokingHistory(profileId),
-    hasImportedSmokingHistory(profileId)
-  );
-  const sex = getProfileSex(profileId);
-  const unreadableDoses = getUnreadableDoseAmounts(profileId);
-  const inputs: DataQualityInputs = {
-    age: getProfileAge(profileId),
-    sexKnown: sex !== null,
-    sex,
-    reproductiveStatusKnown: getProfileReproductiveStatus(profileId) !== null,
-    heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
-    smokingKnown: smoking.source !== null,
-    medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
-    medMissingRxcuiId: getMedicationMissingRxcuiSoleId(profileId),
-    prescribersNeedingLink: countPrescribersNeedingLink(profileId),
-    phenoAgePresentCount: bioAge.presentInputs.length,
-    phenoAgeMissingCount: PHENOAGE_INPUT_COUNT - bioAge.presentInputs.length,
-    // The first missing analyte in checklist order — the #662 add-form prefill
-    // target for the phenoage CTA (#1146). Null when the panel is complete.
-    phenoAgeMissingPrimary:
-      PHENOAGE_INPUT_NAMES.find((n) => !bioAge.presentInputs.includes(n)) ??
-      null,
-    failedExtractions: getFailedExtractionDocumentCount(profileId),
-    riskAttributesReviewed: getRiskAttributesReviewed(profileId),
-    // Legacy dose amounts nothing can read (#3320). Gathered as the affected ROWS so
-    // the detector can name both the count and the surface to fix them on; the read
-    // owns no SQL (it projects the cached, profile-scoped intake reads).
-    unreadableDoseAmounts: unreadableDoses.length,
-    unreadableDoseAmountItem: unreadableDoses[0]
-      ? { id: unreadableDoses[0].itemId, kind: unreadableDoses[0].kind }
-      : null,
-  };
-  return detectDataQualityGaps(inputs);
-}
-
-export function buildDataQualityFindings(profileId: number): Finding[] {
-  return collectDataQualityGaps(profileId).map((gap) => ({
-    domain: "data-quality",
-    dedupeKey: dataQualityDedupeKey(gap.key),
-    title: gap.label,
-    detail: gap.whyLine,
-    // Calm, structural FYI — never an alarm, never a push (coaching tier).
-    tone: "info",
-    dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-    evidence: `Unblocks ${gap.leverage} ${gap.leverage === 1 ? "engine" : "engines"} once fixed.`,
-    actionHref: gap.ctaHref,
-    actionLabel: "Fix it",
-  }));
-}
-
-// The finding snapshot for the closure loop (#1305): the builders whose findings a
-// satisfier WRITE can plausibly clear, gathered for the DECLARED prefixes only. Prefix-
-// scoped by construction — a satisfier declares 1–2 prefixes (never "all"), so only those
-// builders run; each is a cheap, profile-scoped read. dedupeKeys are format-independent,
-// so default date prefs are fine here. `withFindingClosure` (lib/finding-closure) calls
-// this bracketing the write and diffs the active set pre/post. A new satisfier adds its
-// prefix's builder to this dispatch (and declares the prefix at its action).
-export function closureFindingSnapshot(
-  profileId: number,
-  prefixes: readonly string[],
-  today: string
-): Finding[] {
-  const out: Finding[] = [];
-  if (prefixes.includes(FITNESS_CHECK_PREFIX))
-    out.push(...buildFitnessCheckFindings(profileId, today));
-  if (prefixes.includes(DATA_QUALITY_PREFIX))
-    out.push(...buildDataQualityFindings(profileId));
-  return out;
-}
 
 // `prefs` (#1020): the viewer's date shape for the dates some finding texts embed
 // (fitness-check, weight-anomaly) — the same threading precedent as `wu` for
@@ -510,1491 +104,169 @@ export const collectCoachingFindings = commitCached(
   collectCoachingFindingsUncached
 );
 
+// What the collection hands each builder. The four values are the collection's own
+// arguments: a builder takes the ones it needs and ignores the rest, so an entry is a
+// call and not an adapter.
+export interface CoachingCollectionContext {
+  profileId: number;
+  today: string;
+  wu: WeightUnit;
+  prefs: DisplayFormatPrefs;
+}
+
+// ONE entry per domain builder in the collection.
+export interface CoachingCollectionEntry {
+  /**
+   * The builder's name, spelled as `RULE_FINDING_REGISTRY` (lib/rule-finding-prefixes)
+   * records it — so a caller that wants a SUBSET of the collection can select entries
+   * by joining on the prefix registry's tier column rather than keeping a second list.
+   */
+  builder: string;
+  run: (c: CoachingCollectionContext) => Finding[];
+}
+
+// THE COLLECTION ORDER, declared once and read by nothing else. It is data rather than
+// a hard-coded concatenation so that the order is inspectable, and so a surface that
+// must ask for part of the collection can filter these entries instead of growing a
+// parallel list of builder calls that would drift from this one.
+export const COACHING_COLLECTION: readonly CoachingCollectionEntry[] = [
+  {
+    builder: "buildMedicationDuplicationFindings",
+    run: (c) => buildMedicationDuplicationFindings(c.profileId),
+  },
+  {
+    builder: "buildTrainingObservationFindings",
+    run: (c) => buildTrainingObservationFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildMuscleVolumeFindings",
+    run: (c) => buildMuscleVolumeFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildBodyHygieneFindings",
+    run: (c) => buildBodyHygieneFindings(c.profileId, c.today, c.wu, c.prefs),
+  },
+  {
+    builder: "buildGoalPacingFindings",
+    run: (c) => buildGoalPacingFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildAdherencePatternFindings",
+    run: (c) => buildAdherencePatternFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildDemotionSuggestionFindings",
+    run: (c) => buildDemotionSuggestionFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildTargetRightSizeFindings",
+    run: (c) => buildTargetRightSizeFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildFoodSuggestionFindings",
+    run: (c) => buildFoodSuggestionFindings(c.profileId),
+  },
+  {
+    builder: "buildFoodHabitFindings",
+    run: (c) => buildFoodHabitFindings(c.profileId),
+  },
+  {
+    builder: "buildFoodDrugVarianceFindings",
+    run: (c) => buildFoodDrugVarianceFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildSubstanceUseFindings",
+    run: (c) => buildSubstanceUseFindings(c.profileId),
+  },
+  {
+    builder: "buildProteinAdequacyFindings",
+    run: (c) => buildProteinAdequacyFindings(c.profileId),
+  },
+  {
+    builder: "buildFiberAdequacyFindings",
+    run: (c) => buildFiberAdequacyFindings(c.profileId),
+  },
+  {
+    builder: "buildEndurancePlanFindings",
+    run: (c) => buildEndurancePlanFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildSunExposureFindings",
+    run: (c) => buildSunExposureFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildOralHealthFindings",
+    run: (c) => buildOralHealthFindings(c.profileId),
+  },
+  {
+    builder: "buildFitnessCheckFindings",
+    run: (c) => buildFitnessCheckFindings(c.profileId, c.today, c.prefs),
+  },
+  {
+    builder: "buildMobilitySuggestionFindings",
+    run: (c) => buildMobilitySuggestionFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildMoodFindings",
+    run: (c) => buildMoodFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildSleepMoodBridgeFindings",
+    run: (c) => buildSleepMoodBridgeFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildSleepClockSkewFindings",
+    run: (c) => buildSleepClockSkewFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildPairedObservationFindings",
+    run: (c) => buildPairedObservationFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildCycleBleedingFindings",
+    run: (c) => buildCycleBleedingFindings(c.profileId, c.today),
+  },
+  {
+    builder: "buildTtcWorkupFindings",
+    run: (c) => buildTtcWorkupFindings(c.profileId, c.today),
+  },
+  // LAST (#1045): the structural data-quality gaps join this ONE coaching set (so a
+  // decline rides the shared bus and silences every surface), behind the observational
+  // domains. The dashboard page maps these gaps to their own statement candidates and
+  // excludes them from coaching-observation candidates (#1533). This order still shapes
+  // the coaching tab, which shows the complete finding census.
+  {
+    builder: "buildDataQualityFindings",
+    run: (c) => buildDataQualityFindings(c.profileId),
+  },
+];
+
 function collectCoachingFindingsUncached(
   profileId: number,
   today: string,
   wu: WeightUnit,
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): Finding[] {
-  return [
-    ...buildMedicationDuplicationFindings(profileId),
-    ...buildTrainingObservationFindings(profileId, today),
-    ...buildMuscleVolumeFindings(profileId, today),
-    ...buildBodyHygieneFindings(profileId, today, wu, prefs),
-    ...buildGoalPacingFindings(profileId, today),
-    ...buildAdherencePatternFindings(profileId, today),
-    ...buildDemotionSuggestionFindings(profileId, today),
-    ...buildTargetRightSizeFindings(profileId, today),
-    ...buildFoodSuggestionFindings(profileId),
-    ...buildFoodHabitFindings(profileId),
-    ...buildFoodDrugVarianceFindings(profileId, today),
-    ...buildSubstanceUseFindings(profileId),
-    ...buildProteinAdequacyFindings(profileId),
-    ...buildFiberAdequacyFindings(profileId),
-    ...buildEndurancePlanFindings(profileId, today),
-    ...buildSunExposureFindings(profileId, today),
-    ...buildOralHealthFindings(profileId),
-    ...buildFitnessCheckFindings(profileId, today, prefs),
-    ...buildMobilitySuggestionFindings(profileId, today),
-    ...buildMoodFindings(profileId, today),
-    ...buildSleepMoodBridgeFindings(profileId, today),
-    ...buildSleepClockSkewFindings(profileId, today),
-    ...buildPairedObservationFindings(profileId, today),
-    ...buildCycleBleedingFindings(profileId, today),
-    ...buildTtcWorkupFindings(profileId, today),
-    // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
-    // set (so a decline rides the shared bus and silences every surface), behind the
-    // observational domains. The dashboard page maps these gaps to their own statement
-    // candidates and excludes them from coaching-observation candidates (#1533). This
-    // order still shapes the coaching tab, which shows the complete finding census.
-    ...buildDataQualityFindings(profileId),
-  ];
+  const c: CoachingCollectionContext = { profileId, today, wu, prefs };
+  return COACHING_COLLECTION.flatMap((entry) => entry.run(c));
 }
 
-// ---- Wellbeing (#992): the sustained low-mood observation ------------------
-
-// The ONE low-mood detection both mood builders share (one question, one
-// computation): the low-mood finding and the sleep↔mood bridge key on the same
-// window verdict, so they can never disagree about whether mood "has been low".
-function lowMoodWindowFor(
+// The finding snapshot for the closure loop (#1305): the builders whose findings a
+// satisfier WRITE can plausibly clear, gathered for the DECLARED prefixes only. Prefix-
+// scoped by construction — a satisfier declares 1–2 prefixes (never "all"), so only those
+// builders run; each is a cheap, profile-scoped read. dedupeKeys are format-independent,
+// so default date prefs are fine here. `withFindingClosure` (lib/finding-closure) calls
+// this bracketing the write and diffs the active set pre/post. A new satisfier adds its
+// prefix's builder to this dispatch (and declares the prefix at its action).
+export function closureFindingSnapshot(
   profileId: number,
-  today: string
-): LowMoodWindow | null {
-  const windowStart = shiftDateStr(today, -(MOOD_LOW_WINDOW_DAYS - 1));
-  return detectLowMoodWindow(
-    getMoodLogs(profileId, windowStart).map((m) => ({
-      date: m.date,
-      valence: m.valence,
-    })),
-    today,
-    windowStart
-  );
-}
-
-// A calm, coaching-tier observation when mood check-ins have trended low over a
-// sustained window. Coaching tier ONLY (#449, product-decided in #992): it joins
-// collectCoachingFindings, its dedupeKey rides the shared suppression bus
-// (MOOD_OBS_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER notifies
-// / never reaches the hero. The copy is observational and non-diagnostic — no
-// instrument prompt, no crisis linkage, no escalation of any kind (those belong
-// to #716/#996, never the daily layer). No owned SQL added here (reads through
-// the profile-scoped getMoodLogs).
-export function buildMoodFindings(profileId: number, today: string): Finding[] {
-  const low = lowMoodWindowFor(profileId, today);
-  if (!low) return [];
-  return [
-    {
-      domain: "mood-obs",
-      dedupeKey: low.dedupeKey,
-      title: low.title,
-      detail: low.detail,
-      // Calm FYI — a neutral observation from the user's own log, never an alarm.
-      tone: "info",
-      // This class's ONLY surface is the dashboard rollup (#449 inverted: no
-      // origin tab renders it), so it declares rollup reach explicitly — the
-      // tone-derived default would leave it rendering nowhere (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "From your own daily check-ins — a subjective self-rating, not a screen " +
-        "or a diagnosis.",
-      actionHref: "/trends#body",
-      actionLabel: "View mood trend",
-    },
-  ];
-}
-
-// ---- Sleep clock skew (#4299): the source's instants vs the body's heart rate ----
-
-// ONE coaching-tier observation when a synced sleep session's stored instants disagree
-// with the `hr_minutes` the same database holds across them — the Fitbit/Health Connect
-// sighting where every night after a return east was stamped +6h and Allos printed
-// "Bed time 5:39 AM" as fact.
-//
-// ONE finding PER EPISODE, not per night. A source whose clock reference has gone stale
-// mis-stamps every night until it heals, so the key is anchored to the OLDEST suspect
-// night still in the window: a dismissal covers the run rather than being re-minted each
-// morning, and the fan-out is bounded by construction rather than by a cap.
-//
-// The judgement is NOT here — it is the pure detector in lib/sleep-clock-skew.ts, keyed
-// on the heart-rate contradiction and on nothing else, so a genuinely shifted night (real
-// jet lag, whose HR agrees with its clocks) never reaches this builder. A recorded
-// timezone switch nearby only adds a SENTENCE to copy that already exists.
-//
-// Coaching tier ONLY (#449): it joins collectCoachingFindings, SLEEP_SKEW_PREFIX is
-// registered in RULE_FINDING_PREFIXES, and it NEVER notifies and never reaches Now — a
-// source's clock carries no obligation. No owned SQL here (reads through the
-// profile-scoped gather).
-export function buildSleepClockSkewFindings(
-  profileId: number,
+  prefixes: readonly string[],
   today: string
 ): Finding[] {
-  const suspect = getSuspectSleepSessions(
-    profileId,
-    shiftDateStr(today, -SLEEP_SKEW_HISTORY_DAYS)
-  );
-  if (suspect.length === 0) return [];
-  // The gather orders newest-first, so the newest session carries the quoted evidence
-  // and the last one anchors the episode.
-  const newest = suspect[0];
-  const firstWakeDay = suspect[suspect.length - 1].wakeDay;
-  const source = activityProvenanceLabel(newest.source);
-  const nights =
-    suspect.length === 1
-      ? "One recorded night's"
-      : `${suspect.length} recorded nights'`;
-  return [
-    {
-      domain: "sleep-clock-skew",
-      dedupeKey: sleepClockSkewSignalKey(firstWakeDay),
-      title: `${nights} sleep times disagree with your heart rate`,
-      detail:
-        // Two readings caught these nights, and each has its own true sentence. The
-        // median reading can name an equally long window elsewhere holding the
-        // overnight low; on a run finding no such window exists — that absence is why
-        // the median reading missed it — so it names the stretch inside the window
-        // instead (#5020).
-        (newest.evidence.awakeRun
-          ? // No duration in this sentence, for the same reason there is no offset in
-            // the other one: "a two-hour stretch" beside "the clock times may not be"
-            // reads as a claim about how far off the clock is, and nothing here
-            // measures that.
-            `Across the newest of them part of the recorded window ran at ` +
-            `${newest.evidence.awakeRun.bpm} bpm — a daytime level — while the window ` +
-            `as a whole sat at ${newest.evidence.claimedBpm} bpm. ` +
-            `The durations look right; the clock times ${source} recorded may not be.`
-          : `Across the newest of them your heart rate sat at ${newest.evidence.claimedBpm} bpm, ` +
-            `while an equally long window earlier the same day sat at ${newest.evidence.troughBpm} bpm — ` +
-            `the overnight low. The durations look right; the clock times ${source} recorded may not be.`) +
-        (newest.nearTimezoneSwitch
-          ? " Your travel log records a timezone change around then."
-          : ""),
-      // Calm FYI about a source, never an alarm about the person.
-      tone: "info",
-      // This class's only surface is the dashboard rollup — the Sleep page hedges the
-      // times and offers the delete, but it does not render the finding (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "Your own heart-rate record, from the same source and the same nights.",
-      actionHref: "/sleep",
-      actionLabel: "Review sleep",
-    },
-  ];
-}
-
-// ---- Wellbeing (#992): the sleep↔mood co-occurrence bridge ------------------
-
-// ONE coaching-tier finding when a sustained sleep-regularity/duration drop
-// CO-OCCURS with the low-mood window above. Deliberately a CO-OCCURRENCE note —
-// "the two often move together" — never a causal or directional claim (#992's
-// design choice). Sleep inputs reuse the SAME computations the Trends sleep
-// surfaces render: the shared trailing SRI comparison decision, and the
-// sleep_min daily totals for the duration windows — no second sleep engine.
-// Coaching tier ONLY (#449): joins collectCoachingFindings, SLEEP_MOOD_PREFIX is
-// registered, never a notification, never the hero. No owned SQL added here.
-export function buildSleepMoodBridgeFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  const low = lowMoodWindowFor(profileId, today);
-  if (!low) return [];
-
-  // Mean nightly duration, recent 14 days vs the prior 14 — the same daily
-  // totals series the body census sleep chart renders.
-  const nights = getMetricDailyTotals(profileId, "sleep_min");
-  const recentStart = shiftDateStr(today, -13);
-  const priorEnd = shiftDateStr(today, -14);
-  const priorStart = shiftDateStr(today, -27);
-
-  const obs = decideSleepMoodBridge(
-    {
-      lowMood: low,
-      regularityDrop: getSleepRegularityDrop(profileId, today),
-      recentAvgSleepMin: meanNightlySleepMin(nights, recentStart, today),
-      priorAvgSleepMin: meanNightlySleepMin(nights, priorStart, priorEnd),
-    },
-    today.slice(0, 7)
-  );
-  if (!obs) return [];
-  return [
-    {
-      domain: "sleep-mood",
-      dedupeKey: obs.dedupeKey,
-      title: obs.title,
-      detail: obs.detail,
-      // Calm FYI — a pattern note from the user's own data, never an alarm.
-      tone: "info",
-      // Rollup-only reach, declared explicitly for the same reason as the
-      // low-mood note above (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "Co-occurrence in your own data — sleep and mood often move together. " +
-        "Not a causal claim and not a diagnosis.",
-      actionHref: "/trends#body",
-      actionLabel: "View trends",
-    },
-  ];
-}
-
-// ---- Paired observations (#2177): the declared factor × outcome registry ----
-
-// One calm coaching finding per DECLARED pair whose two arms both cleared the
-// per-arm night minimum and whose means differ by at least that pair's fixed floor.
-// The registry (lib/paired-observations) is the multiplicity control — this builder
-// runs exactly the pairs someone argued for in writing, never a search — and the
-// decision, the gates and every word of the copy are pure and live there.
-//
-// Coaching tier ONLY (#449): joins collectCoachingFindings, PAIRED_OBS_PREFIX is
-// registered, never a notification, never the hero, never an obligation. Keys are
-// month-anchored (#436) and declare their stem as `episodeFamily` (#2543), so a
-// dismissal silences the pair for the month and repeat declines are read as an answer
-// (#2386) rather than accumulating unheard.
-//
-// The adult gate is asked ONCE, in the pure entry selection both this builder and its
-// tests call, so a second caller cannot walk past it (#2107); an alcohol-conditioned
-// pair simply is not in the list for a known minor. No owned SQL added here.
-export function buildPairedObservationFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  const entries = pairedObservationsFor({
-    isKnownMinor: isMinor(getProfileAge(profileId)),
-  });
-  if (entries.length === 0) return [];
-  const series = outcomeSeriesReader(profileId);
-  // One memo for the factor side too (#4775): three entries now share the alcohol
-  // factor over one window, and the factor read happens before every entry's
-  // short-circuit — so without this the registry costs a range scan per entry.
-  const days = factorDaysReader(profileId);
-  const monthAnchor = today.slice(0, 7);
   const out: Finding[] = [];
-  for (const entry of entries) {
-    const nights = gatherPairedNights(profileId, entry, today, series, days);
-    const verdict = decidePairedObservation(entry, nights, today, monthAnchor);
-    if (!verdict) continue;
-    out.push({
-      domain: "paired-obs",
-      dedupeKey: verdict.dedupeKey,
-      episodeFamily: verdict.episodeFamily,
-      title: verdict.title,
-      detail: verdict.detail,
-      // Calm FYI — a co-occurrence in the user's own logs, never an alarm.
-      tone: "info",
-      // The module's declared reach is the rollup and nothing more, so the
-      // rollup's floor must be cleared explicitly (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      // The decision sentence already owns both arm sizes and the disclaimer.
-      evidence: null,
-      actionHref: entry.actionHref,
-      actionLabel: entry.actionLabel,
-    });
-  }
+  if (prefixes.includes(FITNESS_CHECK_PREFIX))
+    out.push(...buildFitnessCheckFindings(profileId, today));
+  if (prefixes.includes(DATA_QUALITY_PREFIX))
+    out.push(...buildDataQualityFindings(profileId));
   return out;
-}
-
-// ---- Endurance plans (#839): the calm weekly long-session nudge -------------
-
-// A coaching-tier finding per active endurance plan whose scheduled LONG session for this
-// week isn't logged yet. Reads through getEndurancePlanCards — the SAME plan/trajectory
-// model the Training overview card and the recommendation arm format (one computation,
-// #221) — so the finding and the card can never disagree. Coaching tier ONLY (#449): it
-// joins collectCoachingFindings, its dedupeKey (ENDURANCE_PLAN_PREFIX, registered in
-// RULE_FINDING_PREFIXES) rides the shared suppression bus keyed on the discipline, and it
-// NEVER notifies / never reaches the hero. Held during an open illness episode (#837) —
-// plan nagging pauses while the profile is sick.
-export function buildEndurancePlanFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  if (getIllnessCoachingContext(profileId, today).openEpisode) return [];
-  const out: Finding[] = [];
-  for (const card of getEndurancePlanCards(profileId, today)) {
-    // Only surface a long session that's scheduled AND not yet done this week.
-    if (card.thisWeek.longSessionKm <= 0 || card.longSessionDone) continue;
-    out.push({
-      domain: "endurance",
-      dedupeKey: enduranceLongSessionKey(card.plan.discipline),
-      title: enduranceLongSessionTitle(card),
-      detail: enduranceLongSessionDetail(card),
-      // Calm forward-looking nudge — never an alarm, never a push.
-      tone: "info",
-      dueDate: card.plan.eventDate,
-      actionHref: "/training",
-      actionLabel: "View plan",
-    });
-  }
-  return out.slice(0, COACHING_ENTITY_FINDING_LIMITS.endurancePlan);
-}
-
-// ---- Nutrition (#767): goal-scaled protein-adequacy observation ------------
-
-// A calm, coaching-tier observation when this week's protein intake is BELOW the goal-
-// scaled band. Reads through getProteinAdequacy — the SAME computation the /nutrition
-// adequacy card formats — so the card and this finding can never disagree ("one question,
-// one computation"). Coaching tier ONLY (#449): it joins collectCoachingFindings, its
-// dedupeKey rides the shared suppression bus (PROTEIN_ADEQUACY_PREFIX is registered in
-// RULE_FINDING_PREFIXES), and it NEVER notifies / never reaches the hero. Only the `below`
-// verdict surfaces — an estimated basis is a FLOOR, so the copy hedges the shortfall
-// (mirroring the #578 RDA-adequacy split) and never asserts a deficiency. No owned SQL is
-// added here (reads through the profile-scoped gather).
-export function buildProteinAdequacyFindings(profileId: number): Finding[] {
-  const a = getProteinAdequacy(profileId);
-  if (!a || a.status !== "below") return [];
-  return [
-    {
-      domain: "protein-adequacy",
-      dedupeKey: proteinAdequacySignalKey(),
-      title: proteinAdequacyTitle(a),
-      detail: proteinAdequacyDetail(a),
-      // Calm FYI — informational, never an alarm and never a push.
-      tone: "info",
-      evidence: proteinAdequacyEvidence(a),
-      actionHref: "/nutrition",
-      actionLabel: "Log servings",
-    },
-  ];
-}
-
-// ---- Nutrition (#976): DRI-scaled fiber-adequacy observation ---------------
-
-// A calm, coaching-tier observation when this week's fiber intake is BELOW the DRI
-// adequate-intake target. Reads through getFiberAdequacy — the SAME computation the
-// /nutrition fiber-adequacy card formats — so the card and this finding can never disagree
-// ("one question, one computation"). Coaching tier ONLY (#449): it joins
-// collectCoachingFindings, its dedupeKey rides the shared suppression bus
-// (FIBER_ADEQUACY_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER notifies /
-// never reaches the hero. Only the `below` verdict surfaces — a non-tracked basis is a
-// FLOOR, so the copy hedges the shortfall and never asserts a deficiency. No owned SQL is
-// added here (reads through the profile-scoped gather).
-export function buildFiberAdequacyFindings(profileId: number): Finding[] {
-  const a = getFiberAdequacy(profileId);
-  if (!a || a.status !== "below") return [];
-  return [
-    {
-      domain: "fiber-adequacy",
-      dedupeKey: fiberAdequacySignalKey(),
-      title: fiberAdequacyTitle(a),
-      detail: fiberAdequacyDetail(a),
-      // Calm FYI — informational, never an alarm and never a push.
-      tone: "info",
-      evidence: fiberAdequacyEvidence(a),
-      actionHref: "/nutrition",
-      actionLabel: "Log servings",
-    },
-  ];
-}
-
-// ---- Oral health: diabetes↔periodontitis link (coaching tier only, #706) ----
-
-// A calm, informational coaching finding for a profile with active diabetes: the
-// bidirectional gum-health ↔ glycemic-control link, worth knowing alongside the
-// (separately surfaced) tighter dental cadence. Coaching tier ONLY (#449): it joins
-// collectCoachingFindings, its dedupeKey rides the shared suppression bus
-// (ORAL_HEALTH_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER notifies
-// / never reaches the hero. "Has diabetes" is resolved through the SAME
-// deriveRiskFactors engine the visit-cadence tightening uses, so the note and the
-// tightened dental cadence key on one answer (one question, one computation). No
-// owned SQL is added here (reads through the profile-scoped intake-safety gather).
-export function buildOralHealthFindings(profileId: number): Finding[] {
-  // Active conditions from the ONE shared intake-safety gather (#661).
-  const conditions = getIntakeSafetyContext(profileId).conditions;
-  const factors = deriveRiskFactors({
-    familyConditions: [],
-    activeConditions: conditions,
-    attributes: EMPTY_RISK_ATTRIBUTES,
-  });
-  const obs = decidePeriodontalObservation({
-    hasDiabetes: factors.has("diabetes"),
-  });
-  if (!obs) return [];
-  return [
-    {
-      domain: "oral-health",
-      dedupeKey: obs.dedupeKey,
-      title: obs.title,
-      detail: obs.detail,
-      // Calm FYI — informational, never an alarm and never a push.
-      tone: "info",
-      // Coaching-tier ONLY means the rollup is this note's whole reach, so it
-      // declares rollup relevance explicitly (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "Diabetes and periodontitis are bidirectionally linked (ADA / AAP).",
-      actionHref: "/records/history/visits",
-      actionLabel: "Dental care",
-    },
-  ];
-}
-
-// ---- Prolonged bleeding (#1682 fix b) --------------------------------------
-
-// A calm note for a recorded period at or past PROLONGED_PERIOD_DAYS bleeding days.
-// The write path deliberately STORES such a period unrefused — refusing it would make
-// the app unable to record a genuine emergency — so the observation is how the app says
-// what it noticed. COACHING tier by hard product contract (#449): it joins
-// collectCoachingFindings, its dedupeKey (`cycle-bleeding:<period_start>`,
-// CYCLE_BLEEDING_PREFIX registered) rides the shared suppression bus, and it NEVER
-// notifies / never reaches the hero — cycle carries no obligation, and a body-state
-// observation must never arrive as a push. Reads the SAME profile-scoped period history
-// every cycle surface derives from (listCyclePeriods), so the note and the recorded row
-// can't disagree about a period's length. No owned SQL added here.
-export function buildCycleBleedingFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  return prolongedBleedingObservations(listCyclePeriods(profileId), today)
-    .slice(0, COACHING_ENTITY_FINDING_LIMITS.prolongedBleeding)
-    .map((obs) => ({
-      domain: "cycle-bleeding",
-      dedupeKey: obs.dedupeKey,
-      title: obs.title,
-      detail: obs.detail,
-      // Calm, observational — never an alarm, never a push (coaching tier).
-      tone: "info",
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "Recorded from your own period log — informational, not a diagnosis.",
-      actionHref: "/medical/cycles",
-      actionLabel: "View cycle log",
-    }));
-}
-
-// ---- Trying-to-conceive workup prompt (#1680) ------------------------------
-
-// A calm note once someone has been trying for the standard threshold — 12 months, or 6
-// from age 35 — suggesting that a clinician conversation is the usual next step.
-//
-// COACHING tier by hard product contract (#449): it joins collectCoachingFindings, its
-// dedupeKey (`ttc-workup:<declared start>`, TTC_WORKUP_PREFIX registered in
-// RULE_FINDING_PREFIXES) rides the shared suppression bus, and it NEVER notifies and never
-// reaches dashboard Now. TTC carries no obligation (the attention doctrine), and a
-// fertility timeline arriving as a push would be the single worst place for it.
-//
-// Gated on the DECLARED start only — nothing here infers that someone is trying — and it
-// goes silent during a pregnancy. The copy states elapsed time and the usual next step:
-// no cause, no odds, no encouragement, no milestone (the #716/#992 sensitivity precedent).
-// No owned SQL added here.
-export function buildTtcWorkupFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  // Adult-only content, the same `!isMinor` line the other adult-topic surfaces use.
-  if (isMinor(getProfileAge(profileId))) return [];
-  const prompt = decideWorkupPrompt({
-    ttcStart: getTtcStart(profileId),
-    today,
-    age: getProfileAge(profileId),
-    pregnant: getRiskAttributes(profileId).pregnant,
-  });
-  if (!prompt) return [];
-  return [
-    {
-      domain: "ttc-workup",
-      dedupeKey: prompt.dedupeKey,
-      title: prompt.title,
-      detail: prompt.detail,
-      tone: "info",
-      // The cycles page shows elapsed months, never this workup suggestion —
-      // the rollup is the prompt's only surface, so it clears the floor
-      // explicitly (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence:
-        "Counted from the start date you recorded — informational, not a diagnosis.",
-      actionHref: "/medical/cycles",
-      actionLabel: "View cycle log",
-    },
-  ];
-}
-
-// ---- Nutrition input (#580): behind-target food-habit observations --------
-
-// One calm coaching finding per tracked food-habit target that's behind this week
-// ("2 more servings of fatty fish to hit your weekly habit"). Progress is the shared
-// getFrequencyTargetProgress (the #579 rollup, food_group branch) — one computation, no
-// parallel count. dedupeKey is keyed on the group slug (food-habit:<slug>). Coaching
-// tier only — no notification (the #245 bus-gating precedent would apply if a nudge is
-// ever added, out of scope here). No owned SQL added here.
-export function buildFoodHabitFindings(profileId: number): Finding[] {
-  // Active medications from the ONE shared intake-safety gather (#661), so the "behind
-  // this week" encouragement and any food–drug warning come from one computation and
-  // can't disagree with the medication row (#661.3).
-  const medications = getIntakeSafetyContext(profileId).medications;
-  return getFrequencyTargetProgress(profileId)
-    .filter(isFoodHabitBehind)
-    .map((p) => {
-      const label = frequencyScopeLabel("food_group", p.target.scope_value);
-      const remaining = p.per_week - p.count;
-      const notes = foodHabitInteractions(
-        p.target.scope_value,
-        medications
-      ).map(foodHabitInteractionNote);
-      const detail = [
-        `${p.count} of ${p.per_week} servings so far — ${remaining} to go to hit your weekly ${label.toLowerCase()} habit.`,
-        ...notes,
-      ].join(" ");
-      return {
-        domain: "food-habit",
-        dedupeKey: foodHabitSignalKey(p.target.scope_value),
-        title: `${label} habit is behind this week`,
-        detail,
-        tone: "info" as const,
-        actionHref: "/nutrition",
-        actionLabel: "Log servings",
-      };
-    });
-}
-
-// ---- Substance use (#998/#1078): over-target reduction observations --------
-
-// ONE calm, non-judgmental coaching finding PER SUBSTANCE whose logged units this
-// week exceed the profile's own reduction target ("9 drinks logged this week — 2
-// over your 7-drink weekly cap."). Iterates the substance catalog (#1078:
-// alcohol + nicotine + cannabis) and reads through getAllSubstanceWeekStates —
-// the SAME week-window + split-ledger rollup the substance surface renders — and
-// formats via the shared capProgressLine, so the page and the finding can never
-// disagree ("one question, one computation"). Coaching tier ONLY (#449): it joins
-// collectCoachingFindings, each dedupeKey rides the shared suppression bus
-// (SUBSTANCE_USE_PREFIX is registered in RULE_FINDING_PREFIXES, keyed per
-// substance — #203 stable), and it NEVER notifies / never reaches the hero —
-// substance data stays off every push channel. NO GAMIFICATION (#998, the #716
-// contract): nothing fires under/at the target — no "on track!" note, no streaks,
-// no milestones; silence is the success state. Nothing fires with no target set
-// (the observation exists only against the user's OWN goal). No owned SQL added
-// here (reads through the profile-scoped query layer).
-export function buildSubstanceUseFindings(profileId: number): Finding[] {
-  // The substance-use surface is adult-gated (#1174/#1279); never emit a coaching
-  // finding that deep-links a known minor to a now-redirected route.
-  if (isMinor(getProfileAge(profileId))) return [];
-  const out: Finding[] = [];
-  for (const state of getAllSubstanceWeekStates(profileId)) {
-    if (!state.status || !state.status.over) continue;
-    out.push({
-      domain: "substance-use",
-      dedupeKey: substanceTargetSignalKey(state.substance),
-      title: `${substanceDef(state.substance).label} is over your weekly target`,
-      detail: capProgressLine(state.status, state.substance),
-      // Calm FYI — informational, never an alarm and never a push.
-      tone: "info",
-      evidence: "Your own weekly reduction target.",
-      actionHref: "/records/specialty/substance-use",
-      actionLabel: "View intake",
-    });
-  }
-  return out;
-}
-
-// ---- Nutrition output (#577): deterministic biomarker→food suggestions ------
-
-// One coaching finding per safety-screened food suggestion. Informational, food-first
-// (#576): "Because your … is low, here's a food source." The dedupeKey is family-keyed
-// on the nutrient (food-suggest:<key>), so a dismiss covers the nutrient regardless of
-// which flagged member is newest (#482). Reads through getFoodSuggestions (the ONE
-// computation the biomarker detail page also formats), so a finding and the page card
-// can never disagree ("one question, one computation"). No owned SQL here.
-export function buildFoodSuggestionFindings(profileId: number): Finding[] {
-  return getFoodSuggestions(profileId).map(foodSuggestionToFinding);
-}
-
-function foodSuggestionToFinding(s: FoodSuggestion): Finding {
-  const reduce = s.direction === "reduce";
-  const because =
-    s.triggeredBy.length > 0
-      ? // The trigger side rides on the suggestion (#2754): the soluble-fiber ADD is
-        // high-triggered, so the side may not be derived from the verb. The NAMES
-        // are joined by the shared rule, never by a comma — a lab name carries its
-        // own ("Lymphocytes, Relative"), and a comma join makes two triggers read
-        // as four (#3496; docs/internals/copy.md §9).
-        `Because your ${joinNamesForSentence(s.triggeredBy)} ${s.triggeredBy.length > 1 ? "are" : "is"} ${s.side}`
-      : reduce
-        ? "Foods to reduce"
-        : "Food sources";
-  const foodLine = s.foods.map((f) => `${f.food} — ${f.serving}`).join(" ");
-  const cautions = s.safetyNotes.map((n) => n.text);
-  const detail = [because + ".", foodLine, ...cautions, s.caveat]
-    .filter(Boolean)
-    .join(" ");
-  return {
-    domain: "food-suggest",
-    dedupeKey: s.dedupeKey,
-    // Add vs reduce framing (#775): "Food for …" (eat more) vs "Cut back for …".
-    title: reduce ? `Cut back for ${s.label}` : `Food for ${s.label}`,
-    detail,
-    // Calm, informational lifestyle guidance — never a red attention flag; the reduce
-    // direction is coaching-tier too (#449), never a push/hero.
-    tone: "info",
-    evidence: `${s.evidence} Source: ${s.source}.`,
-    actionHref: clinicalResultDetailHref(s.triggeredBy[0] ?? null),
-    actionLabel: "View biomarker",
-  };
-}
-
-// ---- Domain 4: training balance + plateau (Training → Overview) -----------
-
-function trainingObservationToFinding(o: TrainingObservation): Finding {
-  return {
-    domain: `training-${o.kind}`,
-    dedupeKey: o.key,
-    // Honor a pre-#436 dismissal under the episode-less key (#436 dual-read).
-    supersedes: o.legacyKey,
-    title: o.title,
-    detail: o.detail,
-    tone: "caution",
-    actionHref: o.exercise
-      ? strengthAnalyzeHref(o.exercise)
-      : trainingTabHref("overview"),
-    actionLabel: o.exercise ? "View exercise" : "View training",
-  };
-}
-
-function listNames(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
-}
-
-function staleExerciseGroupFinding(
-  observations: readonly StaleExerciseObservation[],
-  episodeStart: string
-): Finding | null {
-  if (observations.length === 0) return null;
-  const names = observations
-    .slice(0, COACHING_ENTITY_FINDING_LIMITS.staleExerciseNames)
-    .flatMap((observation) =>
-      observation.exercise ? [observation.exercise] : []
-    );
-  const title =
-    observations.length === 1
-      ? `${names[0]} has lapsed`
-      : observations.length <= names.length
-        ? `${observations.length} lifts have lapsed — ${listNames(names)}`
-        : `Several lifts have lapsed — ${listNames(names)}`;
-  const detail =
-    observations.length === 1
-      ? `You trained ${names[0]} regularly but not in the last three to eight weeks. ` +
-        "If it is still part of your plan, work it back into the rotation."
-      : "These were trained regularly but not in the last three to eight weeks. " +
-        "If they are still part of your plan, work them back into the rotation.";
-  return {
-    domain: "training-stale",
-    dedupeKey: staleExerciseGroupSignalKey(episodeStart),
-    episodeFamily: staleExerciseGroupFamily(),
-    title,
-    detail,
-    tone: "info",
-    dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-    actionHref: trainingTabHref("overview"),
-    actionLabel: "View training",
-  };
-}
-
-// Every training-balance finding for a profile: a push/pull volume imbalance over the
-// trailing 4 weeks, stale exercises (in rotation but lapsed), and plateaued lifts
-// (estimated-1RM flat ~6 weeks). Not suppression-filtered — the caller applies the
-// shared findings-bus filter.
-export function buildTrainingObservationFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  const stats = getStrengthByExercise(profileId);
-  const since = shiftDateStr(today, -(BALANCE_WINDOW_DAYS - 1));
-  const setCounts = getExerciseSetCountsSince(profileId, since);
-  // detectPlateaus only inspects points within the trailing PLATEAU_WINDOW_DAYS, so
-  // bound the (otherwise all-history) rep-bearing scan to that same window (#389).
-  // byLoadContext (#1610): one series per (movement, registry implement), so a home
-  // chest press and a hotel chest press are never averaged into one fabricated flat
-  // slope — and their findings carry distinct dedupe keys, so dismissing one leaves
-  // the other live.
-  const e1rmSeries = getExerciseE1rmSeries(
-    profileId,
-    shiftDateStr(today, -PLATEAU_WINDOW_DAYS),
-    undefined,
-    { byLoadContext: true }
-  );
-
-  const findings: Finding[] = [];
-  const imbalance = detectPushPullImbalance(setCounts);
-  if (imbalance) findings.push(trainingObservationToFinding(imbalance));
-  const staleObservations = detectStaleExercises(
-    stats.map((s) => ({
-      exercise: s.exercise,
-      sessions: s.sessions,
-      lastDate: s.lastDate,
-    })),
-    today
-  );
-  const staleEpisodeStart = staleExerciseGroupEpisodeStart(
-    stats.flatMap((stat) =>
-      stat.volume.map(({ date }) => ({ exercise: stat.exercise, date }))
-    ),
-    today
-  );
-  if (staleEpisodeStart) {
-    const stale = staleExerciseGroupFinding(
-      staleObservations,
-      staleEpisodeStart
-    );
-    if (stale) findings.push(stale);
-  }
-  // Cross-reference the routine's mesocycle (#741): when its deload week is ≤2 weeks
-  // away, the plateau finding points at that built-in light week instead of advising
-  // an ad-hoc deload. Same ONE gather every deload surface reads.
-  const cycle = getRoutineCycleStatus(profileId, today);
-  const upcomingDeload =
-    cycle && cycle.weeksUntilDeload <= 2
-      ? { weeksUntilDeload: cycle.weeksUntilDeload }
-      : null;
-  findings.push(
-    ...detectPlateaus(e1rmSeries, today, upcomingDeload)
-      .slice(0, COACHING_ENTITY_FINDING_LIMITS.trainingPlateau)
-      .map(trainingObservationToFinding)
-  );
-
-  return findings;
-}
-
-// ---- #923: inline plateau hint for the activity form -----------------------
-
-// One active (undismissed) plateau finding, reduced to what the activity-form's inline
-// hint needs (#923): the plateaued lift's canonical exerciseHistoryKey (so the form
-// matches it to the part being entered) plus the SAME dedupeKey/legacy key the
-// Training-watch card uses — so a dismissal on the form and on the Training tab silence
-// each other through the one suppression bus (#435/#436). No second engine and no second
-// key namespace: this reuses detectPlateaus and its `training-obs:plateau:…` key exactly.
-export interface PlateauFormHint {
-  exerciseKey: string;
-  // The LOAD CONTEXT the plateau was measured in (#1610) — the registry equipment id,
-  // or null for the unassigned lane. The form matches BOTH this and exerciseKey, so
-  // selecting the hotel machine doesn't inherit the home machine's plateau hint.
-  equipmentId: number | null;
-  dedupeKey: string;
-  supersedes: string;
-  // The rendered one-liner (#1203) — the SHARED plateau-break advice (same ~10%
-  // deload magnitude + named variations as the finding/next-set surfaces), built by
-  // the one-computation helper so the inline hint is a pure formatter over it.
-  hintText: string;
-}
-
-// The active plateau hints for a profile (#923). Runs the SAME plateau detection +
-// deload cross-reference as buildTrainingObservationFindings, filters through the shared
-// findings-bus suppression store (so a dismissed plateau doesn't hint here either), and
-// keys each surviving plateau by exerciseHistoryKey. No owned SQL is added (reads through
-// the profile-scoped e1RM/cycle gathers), so the profile-scoping guard is unaffected.
-export function buildActivePlateauHints(
-  profileId: number,
-  today: string
-): PlateauFormHint[] {
-  const e1rmSeries = getExerciseE1rmSeries(
-    profileId,
-    shiftDateStr(today, -PLATEAU_WINDOW_DAYS),
-    undefined,
-    { byLoadContext: true }
-  );
-  const cycle = getRoutineCycleStatus(profileId, today);
-  const upcomingDeload =
-    cycle && cycle.weeksUntilDeload <= 2
-      ? { weeksUntilDeload: cycle.weeksUntilDeload }
-      : null;
-  const observations = detectPlateaus(e1rmSeries, today, upcomingDeload);
-  const active = activeFindings(
-    observations.map(trainingObservationToFinding),
-    getFindingSuppressions(profileId),
-    today
-  );
-  const activeKeys = new Set(active.map((f) => f.dedupeKey));
-  return observations
-    .filter((o) => o.exercise && activeKeys.has(o.key))
-    .map((o) => ({
-      exerciseKey: exerciseHistoryKey(o.exercise!),
-      equipmentId: o.equipmentId,
-      dedupeKey: o.key,
-      supersedes: o.legacyKey,
-      hintText: plateauInlineHint(o.exercise!),
-    }));
-}
-
-// ---- Domain 4b: per-muscle weekly volume bands (Training → Overview, #742) --
-
-// Deload hook (#741, activating the #742 guard). During an active routine's DELOAD
-// week the `below` volume observation is held — the week is supposed to be light —
-// via the SAME week-in-cycle flag every deload surface reads (the ONE gather
-// getRoutineCycleStatus, not per surface). No call-site change from the #742 guard:
-// it now returns true on the routine's deload week instead of always false.
-function isRoutineDeloadWeek(profileId: number, today: string): boolean {
-  return getRoutineCycleStatus(profileId, today)?.isDeloadWeek ?? false;
-}
-
-function volumeObservationToFinding(o: VolumeBandObservation): Finding {
-  return {
-    domain: "muscle-volume",
-    dedupeKey: o.key,
-    title: o.title,
-    detail: o.detail,
-    // Calm, observational FYI — never a push, never dashboard Now (#449).
-    tone: "info",
-    actionHref: trainingTabHref("overview"),
-    actionLabel: "View coverage",
-  };
-}
-
-// Every per-muscle volume-band shortfall finding for a profile: one calm observation
-// per muscle trained BELOW its weekly band floor over the trailing 7 days. Reads
-// through the SAME getRecentDatedExercises gather + coverageFromSets attribution the
-// Overview coverage list renders (one computation, #221/#482) — the list's verdict
-// chips and this finding can never disagree. Cold start (#719) and the guarded deload
-// hook (#741) are decided HERE in the one gather. Not suppression-filtered — the
-// caller applies the shared findings-bus filter. No owned SQL added (reads through the
-// profile-scoped getRecentDatedExercises).
-export function buildMuscleVolumeFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  // ONE scan: the same recent (date, exercise) rows the Overview coverage list uses.
-  const datedExercises = getRecentDatedExercises(profileId);
-  // Weekly per-muscle credited sets — the SAME attribution the list renders.
-  const coverage = coverageFromSets(
-    datedExercises,
-    today,
-    VOLUME_BAND_WINDOW_DAYS
-  );
-  const inputs = [...coverage.entries()].map(([muscle, c]) => ({
-    muscle,
-    sets: c.sets,
-  }));
-  // Cold-start signal: distinct strength-training weeks in the trailing scan.
-  const historyWeeks = countDistinctWeeks(
-    datedExercises.map((d) => d.date),
-    getWeekStart(profileId)
-  );
-  return detectVolumeShortfalls(inputs, {
-    historyWeeks,
-    deloadActive: isRoutineDeloadWeek(profileId, today),
-    monthAnchor: today.slice(0, 7), // YYYY-MM episode anchor (#436)
-    // Active-injury region exclusion (#838): a shortfall for an off-limits region is noise
-    // while it's out. The SAME injury constraints the recommendation model excludes on.
-    excludedRegions: excludedRegions(getInjuryConstraints(profileId)),
-  }).map(volumeObservationToFinding);
-}
-
-// ---- Domain 5: body-metric data hygiene (Trends → Overview → body census) -------------------
-
-function weightAnomalyToFinding(
-  a: WeightAnomaly,
-  wu: WeightUnit,
-  prefs: DisplayFormatPrefs
-): Finding {
-  const pct = Math.abs(round(a.changeFraction * 100, 1));
-  const dir = a.changeFraction > 0 ? "up" : "down";
-  const cur = fmtWeight(a.weightKg, wu);
-  const prev = fmtWeight(a.prevWeightKg, wu);
-  const detail = a.suspectedUnitError
-    ? `On ${formatLongDate(a.date, prefs)} you logged ${cur}, ${pct}% ${dir} from ` +
-      `${prev} on ${formatLongDate(a.prevDate, prefs)} — that looks like a kg/lb entry ` +
-      `mix-up. Fixing or converting it keeps your weight trend honest.`
-    : `On ${formatLongDate(a.date, prefs)} you logged ${cur}, ${pct}% ${dir} from ` +
-      `${prev} on ${formatLongDate(a.prevDate, prefs)} — a jump that big over just a ` +
-      `few days is usually a scale glitch. Check the entry and fix or delete it.`;
-  return {
-    domain: "body-hygiene",
-    dedupeKey: weightAnomalySignalKey(a.id),
-    title: "Unusual weight reading",
-    detail,
-    tone: "caution",
-    evidence: a.suspectedUnitError
-      ? "Possible kg/lb mix-up"
-      : "Possible scale glitch",
-    actionHref: "/trends#body",
-    actionLabel: "Review in Body metrics",
-  };
-}
-
-// Every body-metric hygiene finding for a profile: probable-error day-over-day weight
-// jumps. `wu` renders the weights in the login's unit.
-export function buildBodyHygieneFindings(
-  profileId: number,
-  today: string,
-  wu: WeightUnit,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
-): Finding[] {
-  // ONE source per day (id preserved), not the raw all-source getWeights rows: two
-  // scales landing the same/adjacent day would otherwise feed the day-over-day
-  // detector a false cross-source "jump", and the finding would link to a Trends →
-  // Body chart (one source/day) that never shows the flagged value (#634 — the
-  // cross-source half of #434).
-  const weights = getWeightsOneSourcePerDay(profileId).map((w) => ({
-    id: w.id,
-    date: w.date,
-    weightKg: w.weight_kg,
-  }));
-  return detectWeightAnomalies(weights, today)
-    .slice(0, COACHING_ENTITY_FINDING_LIMITS.bodyHygiene)
-    .map((a) => weightAnomalyToFinding(a, wu, prefs));
-}
-
-// ---- Domain 6: goal pacing (Training → Goals) -----------------------------
-
-// Every goal-pacing finding for a profile: body-metric goals that are off pace for
-// their target date, plus a single safe-rate caution when weight is dropping faster
-// than ~1%/week. Both reuse projectGoal / the robust slope over the weight series
-// (kept in canonical kg — the finding reports days-late and a percentage, not a
-// weight, so no unit conversion is needed).
-export function buildGoalPacingFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  const findings: Finding[] = [];
-
-  // The profile's goals, read ONCE for both loops below (they used to re-query the
-  // same list) — nothing here writes, so the two passes always saw one snapshot.
-  const goals = getOutcomeGoals(profileId);
-
-  // Weight readings in canonical kg, ascending, as projection input. The SAME
-  // primary-source-collapsed daily series (one row/day, #14) the Trends → Overview → body census
-  // chart caption charts — not the raw all-source getWeights rows — windowed to the
-  // shared GOAL_PACE_WINDOW_DAYS so the finding and the caption run projectGoal over
-  // identical points and can't disagree (#433). getBodyMetricDailySeries already
-  // returns oldest→newest.
-  const windowStart = shiftDateStr(today, -(GOAL_PACE_WINDOW_DAYS - 1));
-  const weightPoints = getBodyMetricDailySeries(profileId, "weight").filter(
-    (p) => p.date >= windowStart
-  );
-
-  // Off-pace body-metric goals. Only weight goals have a metric series here
-  // (getWeights); body-fat / resting-HR goals would need their own series and are a
-  // documented follow-up, so we pace weight goals — the common case.
-  for (const g of goals) {
-    if (findings.length >= COACHING_ENTITY_FINDING_LIMITS.goalPacing) break;
-    if (
-      !isGoalLive(g) ||
-      g.body_metric !== "weight" ||
-      g.target_value == null ||
-      g.target_date == null
-    )
-      continue;
-    const pace = assessGoalPace(
-      {
-        id: g.id,
-        title: g.title,
-        targetValue: g.target_value,
-        targetDate: g.target_date,
-        baselineValue: g.baseline_value,
-      },
-      weightPoints
-    );
-    if (!pace) continue;
-    const hedge = pace.confidence === "low" ? " (rough estimate)" : "";
-    const detail =
-      pace.status === "away"
-        ? `At your current pace you're trending away from this goal — consider ` +
-          `adjusting the target date or your plan.${hedge}`
-        : `At your current pace you'll reach it ${describeEta(-pace.daysLate!)} — ` +
-          `consider moving the target date or adjusting the plan.${hedge}`;
-    findings.push({
-      domain: "goal-pace",
-      dedupeKey: goalPaceSignalKey(pace.goalId),
-      title: `“${pace.title}” is off pace`,
-      detail,
-      tone: "caution",
-      actionHref: trainingTabHref("plan", "goals"),
-      actionLabel: "Review goal",
-    });
-  }
-
-  // Off-pace BIOMARKER goals (#1853). Same builder, same `goal-pace:` namespace, same
-  // dismiss action and therefore the same COACHING tier — a lab goal drifting is an
-  // observation about a plan, not a safety signal, so it must not reach Upcoming, the
-  // dashboard Now or a notification, and adding it here rather than to a new
-  // prefix is what guarantees that (docs/internals/findings.md).
-  //
-  // The verdict itself is `assessGoalPace` over `projectGoal` — the SAME projection
-  // the body goals above and the Trends chart captions run — fed the analyte's own
-  // charted series, so the finding and the chart cannot disagree.
-  //
-  // The GATE is what differs: a lab goal is only assessed once a result has landed
-  // since it was created (`labGoalHasCheckedIn`). A goal that has not been drawn since
-  // the user set it has nothing to be off pace about, and firing on the clock would
-  // hand someone a "you're behind" they could do nothing about on a day when nothing
-  // was measured. That is also why there is no daily re-fire: the finding changes when
-  // a tube is drawn.
-  //
-  // Every targeted analyte's plot is gathered in ONE pass (#1961) — the dashboard runs
-  // this builder on every render, and a per-goal `biomarkerPlot` re-queried the series
-  // and re-read the profile's demographics once per goal. The candidate list is
-  // filtered by the CHEAP gates first, so an archived or undated goal still costs
-  // nothing, and the emission loop below keeps the original goal order.
-  const bmCandidates = goals.flatMap((g) => {
-    if (!isGoalLive(g) || g.target_date == null) return [];
-    const target = biomarkerTargetOf(g);
-    return target ? [{ g, target, targetDate: g.target_date }] : [];
-  });
-  const bmPlots = biomarkerPlots(
-    profileId,
-    bmCandidates.map((x) => x.target.name)
-  );
-  // The biomarker half is bounded on its OWN count (#4069). One counter shared with
-  // the body-metric loop above meant three off-pace weight goals silenced EVERY lab
-  // goal — and a weight goal cannot speak for a lab goal, so a full body half must not
-  // decide that a drifting lipid panel goes unmentioned.
-  let biomarkerFindings = 0;
-  for (const { g, target, targetDate } of bmCandidates) {
-    if (biomarkerFindings >= COACHING_ENTITY_FINDING_LIMITS.goalPacing) break;
-    const plot = bmPlots.get(target.name) ?? null;
-    if (!plot || !sameUnit(target.unit, plot.unit)) continue;
-    const latest = plot.points.at(-1) ?? null;
-    if (!labGoalHasCheckedIn(g.created_at, latest?.date ?? null)) continue;
-    // Already on the wanted side of the number — nothing to pace.
-    if (latest && directionMet(target.direction, latest.value, target.value))
-      continue;
-    const pace = assessGoalPace(
-      {
-        id: g.id,
-        title: g.title,
-        targetValue: target.value,
-        targetDate,
-        baselineValue: target.baselineValue,
-      },
-      plot.points
-    );
-    if (!pace) continue;
-    const hedge = pace.confidence === "low" ? " (rough estimate)" : "";
-    const cadence = biomarkerGoalCheckIn(
-      latest?.date ?? null,
-      retestDaysForBiomarker(target.name),
-      today
-    );
-    const nextDraw = cadence.dueDate
-      ? cadence.due
-        ? " Your next result for it is due."
-        : ` Your next result for it is due around ${cadence.dueDate}.`
-      : "";
-    const detail =
-      pace.status === "away"
-        ? `Your recent results for ${target.name} are moving away from this ` +
-          `target — consider adjusting the date or the plan with your ` +
-          `clinician.${hedge}${nextDraw}`
-        : `At the trend across your recent results you'd reach it ` +
-          `${describeEta(-pace.daysLate!)} — consider moving the target date or ` +
-          `revisiting the plan.${hedge}${nextDraw}`;
-    findings.push({
-      domain: "goal-pace",
-      dedupeKey: goalPaceSignalKey(pace.goalId),
-      title: `“${pace.title}” is off pace`,
-      detail,
-      tone: "caution",
-      actionHref: trainingTabHref("plan", "goals"),
-      actionLabel: "Review goal",
-    });
-    biomarkerFindings += 1;
-  }
-
-  // Safe-rate caution — one per profile, independent of any goal.
-  const loss = detectFastWeightLoss(weightPoints, today);
-  if (loss) {
-    const pct = round(loss.fractionPerWeek * 100, 1);
-    findings.push({
-      domain: "goal-pace",
-      dedupeKey: weightLossRateSignalKey(loss.sinceMonth),
-      // Honor a pre-#436 dismissal under the episode-less key (#436 dual-read).
-      supersedes: weightLossRateLegacyKey(),
-      title: "Losing weight quickly",
-      detail:
-        `You're down about ${pct}%/week lately — faster than the ~1%/week that ` +
-        `best preserves muscle. Easing off a little protects lean mass and makes ` +
-        `the loss easier to sustain.`,
-      tone: "caution",
-      actionHref: "/trends#body",
-      actionLabel: "See weight trend",
-    });
-  }
-
-  return findings;
-}
-
-// ---- Domain 3: adherence pattern detection (Supplements & Meds) ------------
-
-// An adherence-pattern observation → the shared Finding envelope. Calm/observational
-// ("info" tone, like a stale-exercise FYI), deep-linking to the intake surface where
-// the dose can be re-timed.
-function adherencePatternToFinding(p: AdherencePattern): Finding {
-  return {
-    domain: `adherence-${p.kind}`,
-    dedupeKey: p.key,
-    // Honor a pre-#436 dismissal under the episode-less key (#436 dual-read).
-    supersedes: p.legacyKey,
-    title: p.title,
-    detail: p.detail,
-    tone: "info",
-    actionHref: nutritionTabHref("supplements"),
-    actionLabel: "View schedule",
-  };
-}
-
-// Every adherence-pattern finding for a profile: scheduled doses whose misses
-// cluster on a specific weekday ("most Fridays") or on weekends, each suggesting a
-// concrete schedule edit. Reuses the same doseStrip / isDueOn machinery the medicine
-// page's adherence strip is built from (one question, one computation) over a longer
-// ADHERENCE_PATTERN_DAYS window, so a pattern and the strip it summarizes can't
-// disagree. PRN/paused items and retired doses are excluded (they're never
-// scheduled-due). Not suppression-filtered — the caller applies the shared
-// findings-bus filter. No owned SQL is added here (it reads through profile-scoped
-// queries), so the profile-scoping guard is unaffected.
-export function buildAdherencePatternFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  const items = getIntakeItems(profileId);
-  const itemById = new Map(items.map((item) => [item.id, item]));
-  const doses = getIntakeDoses(profileId);
-  // The profile's timezone resolves the UTC creation stamps onto the same profile-local
-  // calendar the `dates` window is built from (#1442) — through the zone in force at
-  // each stamp (#4025). BOTH halves of the bound below take it: the lifetime and the
-  // legacy re-time reduce through one `max`, so a zone converted on one side only lets
-  // the unconverted side win the comparison and walk the day forward again (#4030).
-  const dayZone = profileDayZone(profileId);
-  // THE EVIDENCE, NOT THE WINDOW (#3988/#4020). This index answers two questions, and
-  // only one of them is windowed: "was this dose taken on this drawn day" is, "when did
-  // this dose first exist" is not. `getIntakeAdherenceEvidence` unions the window with
-  // each dose's earliest log ever, so a reconciled med whose only proof of existence is
-  // a backfilled administration older than 56 days is bounded at that proof rather than
-  // at `created_at` — the sixth and last caller of that bound to join the other five.
-  // The extra rows are all older than the window, so no drawn day's verdict moves.
-  const takenByDose = indexTakenByDose(
-    getIntakeAdherenceEvidence(profileId, ADHERENCE_PATTERN_DAYS)
-  );
-  const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
-  const workoutDays = new Set(getActivityDates(profileId));
-  const isExcused = travelExcusalResolver(profileId);
-  // Per-day DUENESS resolver (#654/#3993): a past day is scored against what held THAT
-  // day, declared AND derived, not today's toggle applied retroactively.
-  //
-  // This is the widest walk in the app — ADHERENCE_PATTERN_DAYS = 56 days, on the
-  // dashboard — and it is the one the cost objection was really about. It costs one
-  // gather now, not 56: the resolver reads each derived input once for the declared
-  // window. A pattern therefore counts exactly the days the strip it summarizes counts.
-  const situationsOn = effectiveSituationResolver(profileId, {
-    from: dates[0],
-    to: today,
-  });
-
-  const inputs: DoseAdherenceInput[] = [];
-  for (const d of doses) {
-    const item = itemById.get(d.item_id);
-    // Only active, scheduled (non-PRN) items produce due days to miss.
-    if (!item || !item.active || isOnDemand(item)) continue;
-    const status = takenByDose.get(d.id);
-    // Clamp the window to the dose's EXISTENCE, and to nothing else (#1973).
-    //
-    // It used to be clamped at the dose's `updated_at` as well (#430), which meant any
-    // re-time voided every day before it: the "editing a dose must not rewrite adherence
-    // history" invariant was being honoured by throwing the history away. Effective-dated
-    // schedules (migration 151) removed the need — `doseDueOn` below resolves the version
-    // in force on each day, so a pre-edit day is judged by the pre-edit rule instead of
-    // being dropped. What remains is the genuinely different question of when the dose
-    // existed at all, and `doseWindowSince` is its better answer: timezone-aware, and
-    // WIDENED by logged history, because a log is proof the dose existed on its date
-    // (#1442). It is the same bound the adherence strip clamps to, AND — since #4020 —
-    // computed from the same evidence, so a pattern and the strip it summarizes cannot
-    // disagree about a day (#221). Both halves are needed: one caller of this bound fed
-    // it a windowed read for a year, and the rule agreeing was never the part at risk.
-    const exists = doseWindowSince(
-      item.created_at,
-      d.created_at,
-      status,
-      dayZone
-    );
-    // …plus the ONE case effective-dating cannot reach: a dose re-timed BEFORE #1973
-    // shipped, whose old slot no version records. `updated_at` says a change happened
-    // but not what it replaced, so those days cannot be judged — and judging them by
-    // today's rule would be the retroactive re-accusation #430 clamped to avoid. The
-    // conservative bound stays for exactly those doses, and only until their next
-    // schedule edit records a real version (see unrecordedScheduleChangeOn).
-    const unrecorded = unrecordedScheduleChangeOn(d, dayZone);
-    const since = [exists, unrecorded]
-      .filter((v): v is string => v != null)
-      .reduce<string | null>((a, b) => (a == null || b > a ? b : a), null);
-    const windowDates = since ? dates.filter((date) => date >= since) : dates;
-    const strip = stripWithoutTrailingPending(
-      doseStrip(
-        windowDates,
-        (date) =>
-          doseDueOn(item, d, {
-            date,
-            isWorkoutDay: workoutDays.has(date),
-            activeSituations: situationsOn(date),
-            // A CLOSED DAY HAS NO PREDICTION (#5321). `null` is the state
-            // `conditionAppliesOn` falls back to `isWorkoutDay` on, so the day
-            // is judged by the training on its record rather than by a rhythm
-            // inferred today.
-            predictedWorkoutDay: null,
-          }),
-        status?.taken ?? new Set(),
-        status?.skipped ?? new Set(),
-        // Travel (#3263): a slot the profile's own wall clock jumped over is not a
-        // lapse, and a detector that counted it would accuse somebody of a habit
-        // their flight invented.
-        (date) => isExcused(d.time_of_day, date)
-      )
-    );
-    inputs.push({
-      doseId: d.id,
-      itemName: item.name,
-      bucket: timeBucket(d.time_of_day),
-      strip,
-      // Episode anchor = the current year (#436): a same-weekday habit that recurs a
-      // year after being dismissed lands in a new period and re-surfaces, rather than
-      // one dismissal silencing it forever.
-      periodAnchor: today.slice(0, 4),
-      // "Move it earlier" is wrong advice for a bedtime slot or a prescribed
-      // medication (#430.4) — fall back to the neutral reminder copy. It is equally
-      // wrong for a dose the person ALREADY MOVED inside this window (#1973): the days
-      // now stay in the window and are judged honestly by the slot they sat in, but
-      // telling someone to move a dose they re-timed last Tuesday is the re-accusation
-      // #430 clamped the whole window to avoid. Suppressing the suggestion is the
-      // proportionate answer; erasing the history was not.
-      suppressMoveSuggestion:
-        timeBucket(d.time_of_day) === "Before sleep" ||
-        item.kind === "medication" ||
-        (windowDates.length > 0 &&
-          doseSlotChangedSince(d, windowDates[0], dayZone)),
-    });
-  }
-
-  return detectAdherencePatterns(inputs)
-    .slice(0, COACHING_ENTITY_FINDING_LIMITS.adherencePattern)
-    .map(adherencePatternToFinding);
-}
-
-// ---- Domain: obligation demotion suggestions (coaching tier, issue #1505) ----
-
-// A calm, dismissible SUGGESTION that a `must`/`should` SUPPLEMENT the profile has
-// effectively stopped taking move to `may` — "tracked, never pushed" — with the
-// user's tap as the only obligation write (#559 intact; see lib/supplement-demotion for
-// the full contract and the medication/PRN/paused/cold-start exclusions).
-//
-// COACHING tier (#449) by hard product contract: it joins collectCoachingFindings,
-// rides the shared suppression bus under DEMOTION_PREFIX, renders on the Supplements
-// page and the calm dashboard rollup — and NEVER becomes a notification. Nagging
-// someone about a supplement they have chosen not to take is precisely the failure
-// mode this whole issue exists to remove, so it must not arrive as a push.
-//
-// Reads through the ONE shared item-level history gather (getIntakeHistory), the same
-// evidence the digest deltas read, so the suggestion and the digest can never
-// disagree about a day. No owned SQL.
-export function buildDemotionSuggestionFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  const inputs: DemotionInput[] = getIntakeHistory(
-    profileId,
-    today,
-    DEMOTION_WINDOW_DAYS
-  ).map(({ item, strip, existedWholeWindow }) => ({
-    itemId: item.id,
-    name: item.name,
-    kind: item.kind,
-    obligation: item.obligation,
-    asNeeded: Boolean(isOnDemand(item)),
-    active: Boolean(item.active),
-    strip,
-    existedWholeWindow,
-    // Episode anchor = the current year (#436): a lapse that recurs a year after
-    // being dismissed re-surfaces instead of being silenced forever.
-    periodAnchor: today.slice(0, 4),
-  }));
-
-  return detectDemotionCandidates(inputs)
-    .slice(0, COACHING_ENTITY_FINDING_LIMITS.demotionSuggestion)
-    .map((c) => ({
-      domain: "demote-obligation",
-      dedupeKey: c.key,
-      supersedes: c.legacyKey,
-      title: c.title,
-      detail: c.detail,
-      // Calm FYI — an observation about the user's own log, never an alarm.
-      tone: "info" as const,
-      evidence: `${c.takenDays} of ${c.occurrences} scheduled days over the last ${DEMOTION_WINDOW_DAYS} days`,
-      actionHref: nutritionTabHref("supplements"),
-      actionLabel: "Open supplements",
-    }));
-}
-
-// ---- Domain: frequency-target right-sizing (coaching tier, issue #1670) ----
-
-// Where each domain's suggestion is acted on — the surface that already owns that
-// commitment, so "open it" lands where the user would have gone anyway.
-const RIGHTSIZE_ACTION: Record<
-  RightSizeDomain,
-  { href: AppRoute; label: string }
-> = {
-  practice: { href: PRACTICES_HREF, label: "Open practices" },
-  training: {
-    href: trainingTabHref("plan", "goals"),
-    label: "Open weekly targets",
-  },
-  food: { href: nutritionTabHref("food"), label: "Open weekly habits" },
-};
-
-// The ONE gather → detect for a profile's right-size candidates: the completed-week
-// history of every floor-carrying frequency target, run through the pure detector.
-// Shared by the findings builder below AND by each domain's own suggestion card and
-// the practice nudge's ride-along, so the card, the finding and the button can never
-// disagree about whether a target is a candidate (one question, one computation).
-export function collectRightSizeCandidates(
-  profileId: number,
-  today: string
-): RightSizeCandidate[] {
-  const inputs: RightSizeInput[] = getFrequencyTargetWeeklyHistory(
-    profileId,
-    RIGHTSIZE_WEEKS
-  ).map(({ target, weeks, existedWholeWindow }) => ({
-    targetId: target.id,
-    scopeKind: target.scope_kind,
-    // The label each domain's own surface shows: the practice's own name, the
-    // food group's display name, the training scope's label.
-    label:
-      target.scope_kind === "practice"
-        ? target.scope_value
-        : frequencyScopeLabel(target.scope_kind, target.scope_value),
-    floor: target.per_week,
-    weeklyCounts: weeks.map((w) => w.count),
-    existedWholeWindow,
-    // Episode anchor = the current year (#436): a drift that recurs a year after
-    // being dismissed re-surfaces instead of being silenced forever.
-    periodAnchor: today.slice(0, 4),
-  }));
-  return detectRightSizeCandidates(inputs);
-}
-
-// A calm, dismissible SUGGESTION that a weekly floor the profile has been under for a
-// month be lowered to what they actually do — or dropped, landing in the domain's own
-// no-expectation state (logs-only practice, untracked routine, untracked food habit).
-// The user's tap is the only write (#559/#1505 doctrine, generalized off intakes; see
-// lib/target-rightsize for the full contract and the substance-cap/cold-start
-// exclusions).
-//
-// COACHING tier (#449) by the same hard product contract the demotion suggestion
-// carries: it joins collectCoachingFindings, rides the shared suppression bus under
-// RIGHTSIZE_PREFIX, renders on each domain's own page and the calm dashboard rollup —
-// and NEVER becomes a send of its own. Its only push presence is decorating the pace
-// nudge that already fires for the target's own reasons (the ride-the-nag rule), which
-// is exactly the nag this suggestion exists to end.
-//
-// Reads through the ONE shared weekly-history gather, the same per-scope counting the
-// current-week progress rollup uses, so the suggestion and the progress card can never
-// disagree about a week. No owned SQL.
-export function buildTargetRightSizeFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  return collectRightSizeCandidates(profileId, today)
-    .slice(0, COACHING_ENTITY_FINDING_LIMITS.targetRightSize)
-    .map(rightSizeCandidateFinding);
-}
-
-// One candidate's Finding envelope. Exported so a domain's own suggestion card can
-// run its candidates through the SAME suppression filter every other surface uses
-// (activeFindings over these keys) without gathering the candidates a second time —
-// the card and the coaching rollup then hide and re-appear together, by construction.
-export function rightSizeCandidateFinding(c: RightSizeCandidate): Finding {
-  return {
-    domain: "right-size",
-    dedupeKey: c.key,
-    supersedes: c.legacyKey,
-    title: c.title,
-    detail: c.detail,
-    // Calm FYI — an observation about the user's own log, never an alarm.
-    tone: "info",
-    evidence: c.evidence,
-    actionHref: RIGHTSIZE_ACTION[c.domain].href,
-    actionLabel: RIGHTSIZE_ACTION[c.domain].label,
-  };
-}
-
-// ---- Domain: sun exposure (coaching tier only, issue #571) ----------------
-
-// The vitamin-D outcome family: getBiomarkerSeries collapses D2/D3/total to one
-// series (#482), so any member name resolves the whole family. This literal is a
-// catalog member name (the passport reads the same one).
-const VITAMIN_D_CANONICAL = "Vitamin D, 25-Hydroxy";
-
-// A calm, OBSERVATIONAL coaching finding when a profile has logged little daylight-
-// outdoor time over the recent window AND its last vitamin D was below optimal.
-// Coaching tier only: it joins collectCoachingFindings, its dedupeKey rides the
-// shared suppression bus (SUN_EXPOSURE_PREFIX is registered in RULE_FINDING_PREFIXES),
-// and it NEVER notifies / never reaches the hero. Copy stays observational — sun
-// exposure is dual-edged, so it surfaces the data and prescribes nothing. Needs a
-// home location (else the daylight math is meaningless) → otherwise empty.
-export function buildSunExposureFindings(
-  profileId: number,
-  today: string
-): Finding[] {
-  const home = getHomeLocation(profileId);
-  if (!home) return [];
-
-  // Latest vitamin-D reading (family-collapsed, oldest→newest → last is latest).
-  const series = getBiomarkerSeries(profileId, VITAMIN_D_CANONICAL);
-  const latest = series.at(-1);
-  if (!latest || latest.value_num == null) return [];
-
-  const cb = getCanonicalResultDefinition(
-    latest.canonical_name ?? VITAMIN_D_CANONICAL
-  );
-  const status = optimalStatus(
-    latest.value_num,
-    cb,
-    getProfileSex(profileId),
-    getProfileAge(profileId)
-  );
-
-  // Daylight-outdoor minutes over the window — the ONE computation (lib/queries/sun),
-  // averaged to a per-week figure the copy formats.
-  const windowDays = SUN_EXPOSURE_WINDOW_WEEKS * 7;
-  const dates = lastNDates(today, windowDays);
-  const totalMin = getDaylightOutdoorMinutesTotal(profileId, dates);
-  const avgWeeklyDaylightMin = totalMin / SUN_EXPOSURE_WINDOW_WEEKS;
-
-  const obs = decideSunExposure({
-    hasHomeLocation: true,
-    avgWeeklyDaylightMin,
-    vitaminDStatus: status,
-    vitaminDValue: latest.value_num,
-    vitaminDUnit: latest.unit,
-    vitaminDDate: latest.date,
-  });
-  if (!obs) return [];
-
-  return [
-    {
-      domain: "sun-exposure",
-      dedupeKey: obs.dedupeKey,
-      title: obs.title,
-      detail: obs.detail,
-      // Calm FYI — a neutral observation, never an alarm.
-      tone: "info",
-      // Coaching-tier only with no origin tab of its own: the rollup is this
-      // observation's whole reach, declared explicitly (#3129).
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      // The biomarker browser lives on Results (#1164 merged the Trends duplicate in).
-      actionHref: "/results/clinical-results",
-      actionLabel: "View biomarkers",
-    },
-  ];
-}
-
-// The item ids that are live demotion candidates right now (#1505 part 2) — the SAME
-// detection the page card renders, exposed as a set so the reminder builder can add
-// its ⤓ May button without re-deriving the threshold.
-//
-// Deliberately NOT bus-filtered: a page dismissal hides the CARD, not the button
-// (owner-decided). The two surfaces answer different questions — "not on this screen"
-// versus "is there still an escape hatch" — and conflating them would take the only
-// affordance a tap-only user has away on a tap they made somewhere else entirely.
-export function demotionCandidateItemIds(
-  profileId: number,
-  today: string
-): Set<number> {
-  const ids = new Set<number>();
-  for (const f of buildDemotionSuggestionFindings(profileId, today)) {
-    const id = demotionItemIdFromKey(f.dedupeKey);
-    if (id != null) ids.add(id);
-  }
-  return ids;
 }

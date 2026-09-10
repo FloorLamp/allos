@@ -11,7 +11,7 @@
 // discussing with your dentist/clinician".
 //
 // Pure (no DB/clock); the DB input assembly lives in buildOralHealthFindings
-// (lib/rule-findings.ts), which reuses the ONE diabetes-detection engine
+// (lib/rule-findings/clinical.ts), which reuses the ONE diabetes-detection engine
 // (deriveRiskFactors) so this observation and the dental-cadence tightening key on
 // the same "has diabetes" answer (one question, one computation).
 

@@ -8,7 +8,7 @@
 // last vitamin D below optimal — and never prescribe UV or sun exposure.
 //
 // Pure (no DB/clock); the DB input assembly lives in lib/queries/sun +
-// buildSunExposureFindings (lib/rule-findings.ts).
+// buildSunExposureFindings (lib/rule-findings/clinical.ts).
 
 import { displayUnit } from "@/lib/display-unit";
 
