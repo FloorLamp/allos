@@ -308,8 +308,12 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 5,
-    why: "DISPLAY readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated: the shared dose-history ordering (three scopes identical) and the scheduled row's printed clock. #4686 took the ARMING readers out — the redose clock now reads a placed instant or nothing, never a capture stamp — so what is left here renders a fact beside the day it happened on, never a duration a safety line turns into a verdict. The count falls as #2960 moves each reader into its own module; the pairings themselves are unchanged.",
+    count: 2,
+    why: "the scheduled row's printed clock — the taken-dose times the day's check-offs render beside each dose, ordered and selected by the administration event with immutable capture as the fallback for rows whose event was never stated. #4686 took the ARMING readers out of this file — the redose clock now reads a placed instant or nothing — so what is left renders a fact beside the day it happened on, never a duration a safety line turns into a verdict. The count falls as #2960 moves each reader into its own module; the pairings themselves are unchanged.",
+  },
+  "lib/queries/intake/dose-history.ts": {
+    count: 3,
+    why: "the shared dose-history ordering, moved out of adherence.ts whole by #2960 — `DOSE_HISTORY_ORDER` (#2417) plus the two day-scoped administration reads that sort the same way. Three scopes, one identical ordering, which is the reason the string is shared rather than repeated: a row must not rank differently on the med card than in the ledger. DISPLAY reads throughout — the pairing decides where a row SITS in a list printed beside its day, never a duration.",
   },
   "lib/queries/intake/prn-quick-log.ts": {
     count: 1,
