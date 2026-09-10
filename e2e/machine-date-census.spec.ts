@@ -580,8 +580,9 @@ interface Census {
    */
   swept: number;
   /**
-   * The subset of `swept` that lies inside THIS ROUTE'S OWN SUBJECT SURFACE — the
-   * only nodes its `minTextNodes` floor is a claim about. Never a separate walk:
+   * The subset of `swept` that lies inside THE SURFACE ON SCREEN — a rendered
+   * dialog, or `<main>` when none is open — which is the only copy a route's
+   * `minTextNodes` floor is a claim about. Never a separate walk:
    * a node is counted here only after the sweep has already read it, so "enough
    * copy examined" cannot outrun "this copy was actually scanned".
    */
@@ -785,12 +786,12 @@ test("every census route declares one honest route-readiness proof", () => {
       strategies,
       `${route.path} must declare exactly one of minTextNodes or assertReady`
     ).toBe(1);
-    // …AND ONE SUBJECT, WHICH IS WHAT MAKES THE FLOOR SCOPABLE (#5104). The
-    // readiness count is taken over the surface that CONTAINS this route's subject
-    // rather than over a selector the route declares separately, so a route with no
-    // subject at all has nothing to scope its floor to — and a route whose subject
-    // is a dialog would silently fall back to counting `<main>`, which is the
-    // "enough copy examined about a surface it never entered" defect this closes.
+    // …AND ONE SUBJECT, WHICH IS WHAT TIES THE FLOOR TO A SURFACE (#5104). The
+    // readiness count is taken over the surface the PAGE is showing — a rendered
+    // dialog, or `<main>` when none is open — and the loop then requires this
+    // route's subject to be ON it. A route that names no subject can make that
+    // check of nothing, which is how "enough copy examined" came to be a claim
+    // about a surface the route had never entered.
     expect(
       Number(route.subject !== undefined) +
         Number(route.unitSubject !== undefined),
