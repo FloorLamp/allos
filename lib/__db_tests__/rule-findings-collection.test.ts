@@ -15,6 +15,26 @@
 // not restated here: a claim asserted at two layers is not twice the coverage, it is
 // one claim with two places to drift.
 //
+// WHAT THIS CORPUS DOES **NOT** CARRY, because a reader will otherwise over-trust it.
+// The seeded personas are a population, not a census of the domains: only 8 of the 26
+// collected builders fire for any of them (training plateau, muscle volume, goal pace,
+// food suggestions, fiber adequacy, oral health, data quality, and the food-drug
+// variance builder's silence). For the other 17 the corpus pins "STILL EMPTY" — which
+// does catch a builder that starts firing spuriously, or one that loses a default
+// argument — but it does NOT pin their keys, anchors or copy, because they emit none
+// here. What pins those is each builder's OWN db spec, and every one of the 17 has at
+// least one that seeds a firing fixture and asserts its output
+// (mood-findings-builders, sun-exposure-builder, ttc-observations, cycle-guards,
+// sleep-clock-skew, paired-observations-builder, substance-use, protein-adequacy-
+// builder, fiber-adequacy-builder, endurance-plans, target-rightsize,
+// adherence-bound-evidence, coaching-finding-caps, data-quality-builder,
+// rule-findings-builders, prn-family, intake-obligation-lifecycle). That division is
+// deliberate and is the reason this file does not grow a fixture per domain: seeding
+// the missing 17 here would copy those specs' setups, and the copy would rot first.
+// A byte-identical run of this file is therefore evidence about COLLECTION behaviour
+// over a live population — it is not, on its own, evidence that all 26 builders are
+// unchanged.
+//
 // EXACT EQUALITY, NEVER A SUBSET, the discipline the query-budget gates state at
 // length. The recorded file is regenerated deliberately, never bumped to make a run
 // green:
