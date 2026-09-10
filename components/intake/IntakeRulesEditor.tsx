@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Combobox from "@/components/Combobox";
+import { RowRemoveButton, useRowList } from "@/components/RowRepeater";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
 import { FOOD_TIMINGS, FOOD_TIMING_LABELS } from "@/lib/intake-schedule";
 import {
@@ -69,17 +70,19 @@ export default function IntakeRulesEditor({
   // between prefilling and asserting, so it is not cosmetic: `data-suggested` flips
   // from "1" to "0" on the chip, tracked-and-false rather than absent, and
   // e2e/one-intake-form.spec.ts pins both ends of that transition (#3318).
-  function patch(id: string, next: Partial<IntakeRule>) {
-    setRules(
-      rules.map((r) =>
-        r.id === id ? ({ ...r, ...next, suggested: false } as IntakeRule) : r
-      )
-    );
+  // Rows are addressed by position here as everywhere else the repeater is used; the
+  // rule's own `id` stays the React key and the control-name suffix. The two agree —
+  // ids are unique within the list — and the index is already in hand at every call.
+  const ruleRows = useRowList<IntakeRule>((update) =>
+    setRules(typeof update === "function" ? update(rules) : update)
+  );
+  function patch(i: number, next: Partial<IntakeRule>) {
+    ruleRows.patch(i, { ...next, suggested: false });
   }
 
   return (
     <div data-testid="intake-rules-editor" className="space-y-3">
-      {rules.map((rule) => (
+      {rules.map((rule, i) => (
         <div
           key={rule.id}
           data-testid="intake-rule-row"
@@ -93,7 +96,7 @@ export default function IntakeRulesEditor({
                 name={`rule-situation-${rule.id}`}
                 ariaLabel="Situation"
                 value={rule.situation}
-                onChange={(v) => patch(rule.id, { situation: v })}
+                onChange={(v) => patch(i, { situation: v })}
                 options={situationOptions}
                 allowFreeText
                 placeholder="e.g. Illness"
@@ -107,7 +110,7 @@ export default function IntakeRulesEditor({
                 name={`rule-pause-${rule.id}`}
                 ariaLabel="Pause during situation"
                 value={rule.situation}
-                onChange={(v) => patch(rule.id, { situation: v })}
+                onChange={(v) => patch(i, { situation: v })}
                 options={situationOptions}
                 allowFreeText
                 placeholder="e.g. Pre-surgery"
@@ -121,7 +124,7 @@ export default function IntakeRulesEditor({
                 aria-label="Food timing"
                 value={rule.timing}
                 onChange={(e) =>
-                  patch(rule.id, { timing: e.target.value as FoodTiming })
+                  patch(i, { timing: e.target.value as FoodTiming })
                 }
                 className="input w-auto"
               >
@@ -143,7 +146,7 @@ export default function IntakeRulesEditor({
                 aria-label="Hours apart"
                 value={rule.hours ?? ""}
                 onChange={(e) =>
-                  patch(rule.id, {
+                  patch(i, {
                     hours: e.target.value ? Number(e.target.value) : null,
                   })
                 }
@@ -154,7 +157,7 @@ export default function IntakeRulesEditor({
               <OtherItemSelect
                 value={rule.otherId}
                 others={others}
-                onChange={(id) => patch(rule.id, { otherId: id })}
+                onChange={(id) => patch(i, { otherId: id })}
               />
             </>
           )}
@@ -164,7 +167,7 @@ export default function IntakeRulesEditor({
               <OtherItemSelect
                 value={rule.otherId}
                 others={others}
-                onChange={(id) => patch(rule.id, { otherId: id })}
+                onChange={(id) => patch(i, { otherId: id })}
               />
             </>
           )}
@@ -173,14 +176,13 @@ export default function IntakeRulesEditor({
               suggested
             </span>
           )}
-          <button
-            type="button"
-            aria-label="Remove rule"
-            onClick={() => setRules(rules.filter((r) => r.id !== rule.id))}
-            className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950"
-          >
-            ×
-          </button>
+          {/* #4672: this remove was a third spelling — a literal × in a hand-rolled
+              box that #4505's convergence had reached only halfway. It is the shared
+              control now, so the icon and the dark-mode hover match the other rows. */}
+          <RowRemoveButton
+            label="Remove rule"
+            onClick={() => ruleRows.remove(i)}
+          />
         </div>
       ))}
 
