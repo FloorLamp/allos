@@ -6,6 +6,7 @@ import { fmtRecapVolume } from "@/lib/session-recap";
 import { fmtRpe } from "@/lib/rpe";
 import { dispWeight } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
+import { verdictText } from "@/lib/chart-colors";
 
 // Shared presentational view of a session Recap (#924), rendered by BOTH the live
 // "Session complete" step (in the activity form) and the finished-window dashboard
@@ -99,8 +100,17 @@ export default function SessionRecapView({
                     Personal record
                   </span>
                 )}
+                {/* The same missed-target verdict the activity form and the
+                    exercise history render, and the same shape that hid all of
+                    them from #5187 — a bare className on a conditional span, with
+                    no key for the map conversion or its guard to read (#5725).
+                    It shipped `text-amber-600`, 2.98:1 on the Botanical light
+                    surface against a 4.5 text floor; the IconAlertTriangle beside
+                    it inherits currentColor and moves with the word. */}
                 {ex.verdict === "missed" && (
-                  <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400">
+                  <span
+                    className={`inline-flex items-center gap-0.5 text-xs ${verdictText.warn.class}`}
+                  >
                     <IconAlertTriangle className="h-3.5 w-3.5" />
                     Missed target
                   </span>
