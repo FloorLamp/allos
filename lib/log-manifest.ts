@@ -302,6 +302,12 @@ export interface LogDomainManifest {
   // A BARE NOUN, not a phrase: the verb is the heading's, so a noun that already
   // carries one ("past dose") would print it twice the moment a second verb reads
   // this column.
+  //
+  // ONE ENTRY IS DELIBERATELY TWO WORDS — `stool`, whose noun is the published
+  // instrument's name ("stool form", the Bristol Stool Form Scale). The rule strips
+  // the app's OWN articles and renamings, not a measure's real name; the argument is
+  // written out at that entry, which is where a reader shortening this column will be
+  // standing when they reach it.
   readonly noun: string;
   // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
   // names the others a domain rides, so `lib/offline/queue.ts` can derive its
@@ -589,10 +595,28 @@ export const LOG_MANIFEST = {
   },
 
   stool: {
-    // `stool`, not `stool form`: the quick sheet's row and its title read "Log stool
-    // form" after the Bristol Stool Form scale the picker is drawn from. That is the
-    // SCALE's name, not this domain's, and rule 6 asks for one bare noun.
-    noun: "stool",
+    // ── THE ONE EXCEPTION TO RULE 6'S BARE NOUN (PM ruling, 2026-09-10, on #5617) ──
+    //
+    // "stool form" IS THE NOUN. It is not a house phrase with a spare word in it: the
+    // Bristol Stool Form Scale is the published instrument this domain records against
+    // — seven types, each with its own description, and the picker's buttons ARE that
+    // scale. "Form" is the instrument's own word for what a type IS, so dropping it
+    // does not shorten a phrase, it stops naming the measure.
+    //
+    // SO DO NOT "FIX" THIS ENTRY. Rule 6 strips ARTICLES ("a practice") and HOUSE
+    // RENAMINGS ("a movement", "a check-in", "a use", "a reading") — words the app
+    // invented for a domain that already had a name. It does not reach a name the app
+    // did not choose. A reader applying the rule mechanically down this column will
+    // read "Log stool form" as one of the phrases it retires; it is the opposite, and
+    // this entry is where that stops.
+    //
+    // #5617 step 2 enumerates `Log stool` among the eight phrases and this shipped as
+    // `stool` for one commit on that reading. The ruling reverses it: the enumeration
+    // was applying a rule about the app's own vocabulary to a word that is not in it.
+    // The record door's "Log a movement" still retires — "movement" is exactly the
+    // euphemism the rule is about — it retires TO the instrument's name rather than to
+    // a bare noun, and every surface reads the same phrase because they all read here.
+    noun: "stool form",
     // THE SECOND TENANT (#4425). Until that entry `logBristolStool` ran only
     // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
     // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
@@ -618,7 +642,7 @@ export const LOG_MANIFEST = {
     },
     pieces: {
       // #4424's stool leg. `StoolForm` is add AND full-statement edit — the record's
-      // "Log stool" door, on any day it is standing on, and that row's correction.
+      // "Log stool form" door, on any day it is standing on, and that row's correction.
       //
       // A CORRECTION MOVES THE TYPE AND NOTHING ELSE, which is the store's shape rather
       // than a missing field: a Bristol reading's natural key IS its instant, so
