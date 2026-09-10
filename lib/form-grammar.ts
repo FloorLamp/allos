@@ -19,6 +19,17 @@
 // hosting implies registration and there is nothing to scan. A form mounted outside a
 // host is the defect #2774 already names, not this registry's job to catch.
 //
+// HOW FAR THAT MECHANISM REACHES TODAY, stated so nobody reads it as universal: the
+// nineteen forms `AddEntryPanel` hosts cannot compile without an id, and neither can a
+// ninth log domain (`FORM_ID_OF_LOG_DOMAIN`, at the foot of this file). The forms the
+// converged DIALOG host opens register BY DECLARATION — their entries are below, but
+// nothing yet makes their mounts name one. `components/ModalShell.tsx` cannot carry the
+// requirement as it stands: it hosts about fifteen surfaces that are not forms at all
+// (the command palette, four share dialogs, the camera, the reconcile dialogs), and the
+// amendment gave no vocabulary for those. #5787 closes it with a form-hosting variant of
+// that host, and its acceptance includes correcting this paragraph — the boundary must
+// never read wider here than it is in the code.
+//
 // docs/change-policy.md states the general rule this follows: completeness belongs in
 // a typed manifest that fails `tsc` on omission, not in a census test over `app/**`.
 //
