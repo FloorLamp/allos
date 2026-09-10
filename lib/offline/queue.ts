@@ -764,6 +764,16 @@ export function syncedAnnouncement(
 export const OFFLINE_CAPTURE_REFUSED_MESSAGE =
   "This entry wasn't saved. Try again once you're back online.";
 
+// A DIFFERENT OFFLINE REFUSAL, and it needs its own words. The queue is stamped to
+// the ACTING profile and carries no subject beside it, so a tap aimed at somebody
+// else cannot be captured — it would replay onto the wrong person. Nothing is wrong
+// with the device here, which is why `OFFLINE_CAPTURE_REFUSED_MESSAGE` would
+// mislead: the person's own taps on their own surfaces queue perfectly well, and
+// without the reason the behaviour reads as arbitrary. Shared, because two surfaces
+// already carry this guard and a third must not word it a third way.
+export const OFFLINE_OTHER_SUBJECT_MESSAGE =
+  "You're offline — reconnect to log for someone else.";
+
 export const MEASUREMENTS_WAIST_REFUSED_MESSAGE =
   "Body measurements were saved. Waist circumference wasn't — add that again.";
 
