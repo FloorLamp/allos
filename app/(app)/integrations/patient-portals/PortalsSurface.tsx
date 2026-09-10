@@ -33,6 +33,7 @@ import {
   requestSyncAction,
   unbindIdentityAction,
 } from "./actions";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // The Patient portals page (#1874): the OBJECT MODEL, rendered.
 //
@@ -1600,7 +1601,7 @@ export default function PortalsSurface({
               Same as any other import — with the same review, deduplication and
               checks. See{" "}
               <Link
-                href="/data?section=review"
+                href={dataSectionHref("review")}
                 className="text-brand-700 hover:underline dark:text-brand-300"
               >
                 Data → Review

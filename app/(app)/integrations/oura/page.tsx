@@ -1,4 +1,4 @@
-import { trainingTabHref } from "@/lib/hrefs";
+import { trainingTabHref, dataSectionHref } from "@/lib/hrefs";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import LeadFold from "@/components/LeadFold";
@@ -56,7 +56,7 @@ export default async function OuraPage(props: {
       data-testid="integration-page"
     >
       <PageHeader
-        back={{ href: "/data?section=import", destination: "Import" }}
+        back={{ href: dataSectionHref("import"), destination: "Import" }}
         title={def.name}
       />
 
