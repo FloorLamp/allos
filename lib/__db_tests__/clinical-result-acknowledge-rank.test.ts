@@ -1,32 +1,45 @@
-// DB INTEGRATION TIER — the clinical-result detail page's "Seen it" is its form's
-// commit, so it carries the primary paint (#4014, under #4978's 2026-09-04
-// 13:05 UTC form rule: the surface is the FORM).
+// DB INTEGRATION TIER — the clinical-result detail page's "Seen it" stays SECONDARY,
+// and this pins that it is held rather than overlooked (#4014, 2026-09-10).
 //
-// WHY THIS TIER AND NOT THE COMPONENT ONE. The control has no component of its
-// own — it is inline in the page, and the page is a server component that reads
-// the session and the record through the real query layer. The cheapest place
-// that can render it is here, where the database already exists; the component
-// tier would have to mock the whole read layer to reach the same markup.
+// WHAT IS BEING HELD. Mechanically the control is a form's one commit, so #4978's
+// 2026-09-04 13:05 UTC form rule ("the surface is the FORM") would fill it, and a
+// census of unpromoted form commits lands on it every time. But that rule ranks
+// controls without weighing what they do. This block renders only for
+// `isNotableFlag`, so its surface is always an ABNORMAL result, and one tap writes
+// the shared analyte acknowledgment that quiets the flag, the trajectory watch and
+// the dashboard atom together. The Recheck scheduler beside it does the opposite.
+// Filling this one would make the loudest control on the page the one that silences
+// the warning. That is visible safety direction and belongs to the owner, so the
+// promotion is withheld pending their ruling.
 //
-// WHAT IT CATCHES. The rank is a class the primitive paints, and both wrappers
-// forward props BY NAME through a closed `ButtonProps` — a rank that stopped
-// being forwarded would typecheck, lint, and quietly render the secondary
-// treatment. So this reads the rendered markup, not the call site.
+// SO THE FAILURE THIS CATCHES IS A MECHANICAL RE-PROMOTION: the next lane sweeping
+// form commits promotes this mount on the rule alone, gates stay green, and the
+// held decision is lost silently. The page comment explains why; this makes it fail.
+// When the owner rules, this test is updated or deleted in the change that applies
+// the ruling — it pins a held state, not a permanent one.
 //
-// The second half is the rule's other half: the surface spends exactly one loud
-// control. The page renders two typed controls in total, and the Recheck
-// scheduler's commit — a DIFFERENT form, still quiet — is the positive control
-// that proves this harness can see a secondary rather than matching everything.
+// WHY THIS TIER. The control has no component of its own — it is inline in a server
+// page that reads the session and the record through the real query layer — so this
+// is the cheapest place that can render it. It reads the rendered markup rather than
+// the call site, because `ButtonProps` is closed and both wrappers forward by name.
+//
+// THE POSITIVE CONTROL IS REAL, NOT ASSUMED. This asserts an ABSENCE, so the last
+// case renders a known `variant="primary"` through the same markup-and-match path
+// and requires the detector to call it loud. A harness that had stopped seeing the
+// primary class would pass the two absence checks and fail that one.
 
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement, type ReactNode } from "react";
-import { ToastProvider } from "@/components/Toast";
 import { db } from "@/lib/db";
+import Button from "@/components/Button";
+import { ToastProvider } from "@/components/Toast";
 import ClinicalResultDetailPage from "@/app/(app)/results/clinical-results/view/page";
 import { seedActor } from "../__action_tests__/harness";
 
 const CONTROL = /<button[^>]*data-button-control[^>]*>/g;
+const isLoud = (control: string | undefined) =>
+  control?.includes("button-control-primary") ?? false;
 
 async function renderFlaggedResult(): Promise<string> {
   const { profile } = seedActor();
@@ -39,31 +52,38 @@ async function renderFlaggedResult(): Promise<string> {
   const page = await ClinicalResultDetailPage({
     searchParams: Promise.resolve({ name: "Total Cholesterol" }),
   });
-  // The page mounts the star, whose toast channel is a provider higher in the
-  // app shell; supplying it renders the page rather than the shell.
+  // The page mounts the star, whose toast channel is a provider higher in the app
+  // shell; supplying it renders the page rather than the shell.
   return renderToStaticMarkup(
     createElement(ToastProvider, null, page as ReactNode)
   );
 }
 
 describe("the clinical result's acknowledgment rank (#4014)", () => {
-  it("paints 'Seen it' as its form's primary, and spends only that one", async () => {
-    const html = await renderFlaggedResult();
-    const controls = html.match(CONTROL) ?? [];
+  it("leaves 'Seen it' quiet, and the page spends no loud control", async () => {
+    const controls = (await renderFlaggedResult()).match(CONTROL) ?? [];
 
     const seenIt = controls.find((c) =>
       c.includes('data-testid="result-acknowledge-submit"')
     );
-    expect(seenIt).toContain("button-control-primary");
+    expect(seenIt).toBeDefined();
+    expect(isLoud(seenIt)).toBe(false);
 
-    // The Recheck scheduler's commit is a second form on the same card and stays
-    // quiet — the positive control for the count below.
+    // The Recheck scheduler is the second form on the same card, and the control
+    // that keeps the finding in view. It is quiet too, so neither outranks the other.
     const recheck = controls.find((c) =>
       c.includes('aria-label="Track follow-up"')
     );
     expect(recheck).toBeDefined();
-    expect(recheck).not.toContain("button-control-primary");
+    expect(isLoud(recheck)).toBe(false);
 
-    expect(html.match(/button-control-primary/g) ?? []).toHaveLength(1);
+    expect(controls.filter(isLoud)).toHaveLength(0);
+  });
+
+  it("would see a loud control if one were there", () => {
+    const markup = renderToStaticMarkup(
+      createElement(Button, { variant: "primary" as const }, "Loud")
+    );
+    expect(isLoud((markup.match(CONTROL) ?? [])[0])).toBe(true);
   });
 });
