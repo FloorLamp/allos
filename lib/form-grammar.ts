@@ -39,6 +39,15 @@
 // `IssueRef` the type demands, so "excluded" can never be a bare boolean. Measurements
 // is the exclusion rule 7 names first.
 //
+// ── The one boundary, stated rather than left silent ─────────────────────────
+//
+// `FormId` covers the app's ADD AND EDIT FORMS over a profile's records and its
+// preferences. The three authentication forms under `app/(auth)` are outside it:
+// they establish an identity rather than write anything a profile owns, they render
+// no facts a person could disagree with before saving, and none of the six rules has
+// anything to say to them. Nothing else that renders a form is left out — a form that
+// does not state facts is here with its argument, not absent.
+//
 // PURE: every import is `import type`, erased at build, so a server component, a
 // client form and a test all read this the same way.
 
@@ -105,7 +114,23 @@ export type FormId =
   | "body-reading"
   | "progress-photo"
   | "sleep-retime"
-  | "illness-episode";
+  | "illness-episode"
+  | "document-upload"
+  | "food-suggestions"
+  // ── Settings and background (#5287) ────────────────────────────────────────
+  | "profile"
+  | "own-profile"
+  | "format-prefs"
+  | "unit-prefs"
+  | "training-zones"
+  | "protein-goal"
+  | "free-days"
+  | "dietary-preferences"
+  | "recommendation-cadence"
+  | "anxiety-scale"
+  | "mental-health-privacy"
+  | "smoking-history"
+  | "risk-factors";
 
 /** What the chip row does with a fact when the person has not stated it. */
 export type FactRole = "essential" | "optional";
@@ -147,6 +172,12 @@ const facts = <K extends string>(
     optional: keys.filter((k) => roles[k] === "optional"),
   };
 };
+
+// The settings family's shared argument. See the section that uses it.
+const PREFERENCE =
+  "An autosaving preference form: it has no Save, so there is no moment before the " +
+  "write for a chip row to summarise, and every preference already holds a value so " +
+  "no fact can be a missing essential.";
 
 const fields = (reason: string, ref: IssueRef): ArguedFields => ({
   kind: "fields",
@@ -422,6 +453,42 @@ export const FORM_GRAMMAR = {
     "An episode's lifecycle — its label and its open window. The episode's facts are its symptoms and doses, which live on their own rows.",
     "#5300"
   ),
+  "document-upload": fields(
+    "A file ingest, not a stated fact: the record it makes is dated by the DOCUMENT rather than by the day anyone filed it — the argument `LOG_DOMAIN_OF_LOGGABLE` already makes for the same domain.",
+    "#4425"
+  ),
+  "food-suggestions": fields(
+    "Submits a request and reports what came back. It adds no record of its own, so there is nothing for a chip row to state before saving.",
+    "#5300"
+  ),
+
+  // ── Settings and background ────────────────────────────────────────────────
+  //
+  // Family 4 of the census, and ONE argument covers all thirteen, so it is stated
+  // once rather than paraphrased thirteen times. Each of these AUTOSAVES (they run
+  // `useSaveStatus`, and several flush on hide), which is not an implementation
+  // detail here: the chip row exists to show what a form is ABOUT TO WRITE so the
+  // person can disagree with one fact before Save. A form with no Save has no before,
+  // every preference always holds a value so there is no missing essential to prompt
+  // for, and the row would restate a control the person is already looking at.
+  //
+  // What these forms DO owe this issue is rule 4: the why-it-matters copy they carry
+  // (`ProfileForm` alone has nine helper lines) becomes the data-quality gap's
+  // sentence. That adoption is #5287's, and it does not need fact keys.
+
+  profile: fields(PREFERENCE, "#5287"),
+  "own-profile": fields(PREFERENCE, "#5287"),
+  "format-prefs": fields(PREFERENCE, "#5287"),
+  "unit-prefs": fields(PREFERENCE, "#5287"),
+  "training-zones": fields(PREFERENCE, "#5287"),
+  "protein-goal": fields(PREFERENCE, "#5287"),
+  "free-days": fields(PREFERENCE, "#5287"),
+  "dietary-preferences": fields(PREFERENCE, "#5287"),
+  "recommendation-cadence": fields(PREFERENCE, "#5287"),
+  "anxiety-scale": fields(PREFERENCE, "#5287"),
+  "mental-health-privacy": fields(PREFERENCE, "#5287"),
+  "smoking-history": fields(PREFERENCE, "#5287"),
+  "risk-factors": fields(PREFERENCE, "#5287"),
 } as const satisfies Record<FormId, FormGrammar>;
 
 // The bridge between this registry and the log domains (#4425's own pattern, one
