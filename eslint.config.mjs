@@ -485,6 +485,19 @@ const TELEGRAM_RAW_SEND_BAN = {
 };
 const TELEGRAM_CHOKEPOINT = "lib/notifications/telegram.ts";
 
+// #985 — every email leaves through lib/email.ts, the sole importer of nodemailer:
+// that is where TLS is enforced, where "not configured" refuses rather than sends,
+// and where the deterministic test capture lives. A second importer of the raw
+// transport would send without those. A security boundary rather than a caught
+// defect (owner ruling on #5347 slice 3), kept as the Telegram ban's twin.
+// (was lib/__tests__/email-chokepoint.test.ts)
+const EMAIL_RAW_SEND_BAN = {
+  group: ["nodemailer", "nodemailer/*"],
+  message:
+    "Only lib/email.ts imports nodemailer — send through sendEmail there so TLS enforcement, the not-configured refusal and delivery capture apply (#985).",
+};
+const EMAIL_CHOKEPOINT = "lib/email.ts";
+
 // #1891 — a sortable item translates, it does not scale. `CSS.Transform.toString()`
 // carries rectSortingStrategy's scaleX/scaleY, which morphs the dragged item toward
 // the slot it passes over — invisible on uniform tiles, an owner-reported squash and
@@ -554,6 +567,7 @@ const IMPORT_PATTERNS_PRODUCTION = [TYPESCRIPT_API_PATTERN];
 const IMPORT_PATTERNS_SHIPPED = [
   ...IMPORT_PATTERNS_PRODUCTION,
   TELEGRAM_RAW_SEND_BAN,
+  EMAIL_RAW_SEND_BAN,
 ];
 const IMPORT_PATTERNS_LIB_APP = [...IMPORT_PATTERNS_SHIPPED, STREAK_MODULE_BAN];
 const restrictImports = (paths, patterns) => ["error", { paths, patterns }];
@@ -1288,7 +1302,7 @@ const config = [
   },
   // ── The owners of the #5347 slice 3 bans ────────────────────────────────────
   // The disclosure renders the <details>, the qualitative classifier maps onto the
-  // flag values, and the Telegram chokepoint imports the raw primitives; each keeps
+  // flag values, and the two chokepoints import their raw transports; each keeps
   // every other ban of its level.
   {
     files: [DISCLOSURE_OWNER],
@@ -1314,6 +1328,15 @@ const config = [
       "no-restricted-imports": restrictImports(
         IMPORT_PATHS_PRODUCTION,
         without(IMPORT_PATTERNS_LIB_APP, TELEGRAM_RAW_SEND_BAN)
+      ),
+    },
+  },
+  {
+    files: [EMAIL_CHOKEPOINT],
+    rules: {
+      "no-restricted-imports": restrictImports(
+        IMPORT_PATHS_PRODUCTION,
+        without(IMPORT_PATTERNS_LIB_APP, EMAIL_RAW_SEND_BAN)
       ),
     },
   },
