@@ -122,6 +122,18 @@ export function titleCase(s: string): string {
 // lists (#643). Keyed by the lowercased status; unknown values fall back to a
 // neutral slate tone. This is the single source the shared StatusBadge formats
 // over — "one presentation, many surfaces".
+// REVIEWED AND KEPT OFF THE VERDICT PALETTE (#5725). Two of these four chips are
+// already byte-identical to `verdictBadge.warn` / `.good`, so adopting the palette
+// here would be nearly free — and it would still be wrong. These keys are clinical
+// STATUS WORDS, and the palette's four are JUDGMENTS with a mandatory spoken label
+// (`VERDICT_TONE_LABEL`): routing `active` through `warn` would announce an ongoing
+// condition as "Fair", and `met` through `good` would make exactly the collapse
+// `ProgressPaceTone` was kept separate to refuse. `proposed`/`planned` have no
+// verdict at all — the same reason #5744 left `NoticeTone`'s `sky` alone.
+//
+// It is not a contrast defect either, measured against the real surfaces rather
+// than assumed: label on its own tint, light / dark — amber 4.52 / 10.54, emerald
+// 4.72 / 10.10, sky 5.09 / 8.34, slate 7.16 / 9.67. Every one clears AA.
 const STATUS_TONE_AMBER =
   "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
 const STATUS_TONE_EMERALD =
