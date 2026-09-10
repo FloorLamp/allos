@@ -21,7 +21,10 @@
 
 import { shiftDateStr } from "./date";
 import { activityWindow } from "./training-zones";
-import { derivedSessionMinutes } from "./practice";
+import { activityComponentSportNames } from "./activity-icon";
+import { trainingActivityPageHref } from "./hrefs";
+import { derivedSessionMinutes, normalizePracticeName } from "./practice";
+import { recordInstant } from "./row-instants";
 import {
   timelineEntryAnchorId,
   type TimelineCategory,
@@ -100,6 +103,112 @@ export interface IntradayInput {
   // returned a state) — never derived here, never on a past day, where the window
   // means nothing.
   expectedSleep: { bedMinutes: number; wakeMinutes: number } | null;
+}
+
+// ── The two rows a drawn WINDOW can come from ────────────────────────
+
+// A `clockWindow` is carried by exactly two producers — an ACTIVITY and one practice
+// SESSION (#3142) — and since #5262 three readers compose one: the record's feed
+// (lib/timeline.ts), the record's day gather (lib/history.ts), and the chart's own day
+// gather (lib/queries/intraday.ts), which the dashboard's "day so far" row reads
+// instead of opening the whole feed.
+//
+// SO THE COMPOSITION LIVES HERE, once, beside the model that decides what a window
+// earns. The invariant the day view got by construction — a mark can never name
+// something its list would not show — is what a second copy would quietly break: a
+// block built from the same row by two different pieces of code is two answers to
+// "what is this session called, and where does tapping it go".
+
+/** The `activities` columns a block needs — the draft rule reads its own. */
+export interface ActivityWindowRow {
+  id: number;
+  date: string;
+  type: string;
+  title: string;
+  start_time: string | null;
+  end_time: string | null;
+  duration_min: number | null;
+  components: string | null;
+}
+
+/**
+ * One logged activity as the event its window draws from. `subjectProfileId` names the
+ * subject in the destination for a merged cross-profile read (#4079) and is omitted on
+ * a single-profile one, exactly as the feed asks it.
+ */
+export function activityWindowEvent(
+  row: ActivityWindowRow,
+  subjectProfileId?: number
+): TimelineEvent {
+  return {
+    id: `activity:${row.id}`,
+    date: row.date,
+    category: "activity",
+    title: row.title,
+    href: trainingActivityPageHref(row.id, subjectProfileId),
+    sortTime: row.start_time,
+    // The raw local window inputs — resolved through the canonical activityWindow(),
+    // so an activity with no start (or no derivable end) simply has no block.
+    clockWindow: {
+      date: row.date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      duration_min: row.duration_min,
+    },
+    iconType: row.type,
+    iconTitle: row.title,
+    iconSportNames: activityComponentSportNames(row.components),
+  };
+}
+
+/** The `practice_logs` columns a block needs; `created_at` is the live row's anchor. */
+export interface PracticeWindowRow {
+  id: number;
+  date: string;
+  practice: string;
+  start_time: string | null;
+  end_time: string | null;
+  duration_min: number | null;
+  live: number;
+  derived_window: number;
+  created_at: string | null;
+}
+
+/**
+ * One practice session as the event its window draws from. A session reaches every
+ * surface as one row PER SESSION, so the `practice:<id>` id is the ROW's id — which is
+ * what makes the block scroll to the entry that represents it.
+ *
+ * `now` is passed rather than read so this stays pure: a live row's elapsed minutes are
+ * measured from its own record stamp, and the caller already knows the render's clock.
+ */
+export function practiceWindowEvent(
+  row: PracticeWindowRow,
+  now: Date
+): TimelineEvent {
+  const started = recordInstant("practice_logs", { ...row });
+  const elapsedMin =
+    row.live === 1 && started.known
+      ? Math.max(
+          0,
+          Math.round((now.getTime() - new Date(started.at).getTime()) / 60_000)
+        )
+      : null;
+  return {
+    id: `practice:${row.id}`,
+    date: row.date,
+    category: "practice",
+    title: normalizePracticeName(row.practice),
+    clockWindow: {
+      date: row.date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      duration_min: row.duration_min,
+      live: row.live === 1,
+      derived_duration: row.derived_window === 1,
+      elapsed_min: elapsedMin,
+    },
+  };
 }
 
 // ── Model (what the SVG draws) ───────────────────────────────────────────────
