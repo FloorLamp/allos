@@ -693,7 +693,10 @@ function regularityOver(
   { grid, nightsByDay }: BuiltNights,
   opts: SleepRegularityOptions
 ): SleepRegularity | null {
-  const windowDays = opts.windowDays ?? 28;
+  // The window is `USUAL_KINDS.sleepClock`'s (#5143), the same declaration
+  // `typicalSleepClockTime` above already reads — one rolling-window question, one
+  // place it is written down (#4243).
+  const windowDays = opts.windowDays ?? USUAL_KINDS.sleepClock.windowDays;
   const minNights = opts.minNights ?? 14;
 
   if (nightsByDay.size === 0) return null;
