@@ -6,6 +6,7 @@ import {
   chartNeutral,
   chartObservationRamp,
   chartSeries,
+  attentionAmber,
   VERDICT_TONE_LABEL,
   VERDICT_TONES,
   verdictBadge,
@@ -334,6 +335,71 @@ describe("adherence state colors (issue #1445, Part 3a)", () => {
   }
 });
 
+// Every Tailwind step the palette's class strings name, as the hex it compiles to
+// (`app/globals.css` @theme where Botanical overrides it, Tailwind v4's own
+// oklch otherwise). The class ladder and the hex ladder are two halves of one
+// export — the same discipline `chartActivityRamp` keeps — so a step edited in
+// a class without its hex fails here rather than silently validating a fiction.
+const STEP: Record<string, string> = {
+  "emerald-100": "#d0fae5",
+  "emerald-300": "#aecf9f",
+  "emerald-400": "#00d492",
+  "emerald-600": "#009966",
+  "emerald-700": "#007a55",
+  "emerald-950": "#121d13",
+  "amber-100": "#fef3c6",
+  "amber-300": "#d9c887",
+  "amber-400": "#ffb900",
+  "amber-500": "#fe9a00",
+  "amber-700": "#bb4d00",
+  "amber-950": "#171a10",
+  "rose-100": "#ffe4e6",
+  "rose-300": "#d8aca8",
+  "rose-400": "#ff637e",
+  "rose-500": "#ff2056",
+  "rose-600": "#ec003f",
+  "rose-700": "#c70036",
+  "rose-950": "#1c1315",
+  "slate-100": "#ecf2e8",
+  "slate-200": "#d9e8de",
+  "slate-300": "#b2c6b9",
+  "slate-400": "#86a190",
+  "slate-500": "#4e6354",
+  "slate-700": "#2f4237",
+  "ink-800": "#141c16",
+};
+
+/** The hex a `text-*` / `bg-*` utility in `cls` renders, for one theme. */
+function stepHex(
+  cls: string,
+  theme: ChartTheme,
+  kind: "text" | "bg"
+): string {
+  const re = new RegExp(
+    `(?:^|\\s)${theme === "dark" ? "dark:" : ""}${kind}-([a-z]+-\\d{2,3})(?![\\w-])`,
+    "g"
+  );
+  // In light mode a `dark:` prefix must not match, so strip those utilities first.
+  const source =
+    theme === "light"
+      ? cls
+          .split(/\s+/)
+          .filter((c) => !c.startsWith("dark:"))
+          .join(" ")
+      : cls;
+  const found = [...source.matchAll(re)].map((m) => m[1]);
+  // A single-class entry (e.g. `bg-emerald-600`) applies to BOTH themes.
+  if (found.length === 0 && theme === "dark")
+    return stepHex(cls, "light", kind);
+  expect(found, `${kind} step for ${theme} in "${cls}"`).toHaveLength(1);
+  const hex = STEP[found[0]];
+  expect(
+    hex,
+    `${found[0]} is missing from this test's STEP table`
+  ).toBeTruthy();
+  return hex;
+}
+
 // ── verdict tones (issue #5187) ─────────────────────────────────────────────
 //
 // The colour a good/warn/bad word wears used to be declared fourteen times and
@@ -349,73 +415,9 @@ describe("adherence state colors (issue #1445, Part 3a)", () => {
 // what it is trading; on the Botanical dark ramp the four badge inks sit as close
 // as ΔE 5.0 (good↔neutral) and 2.7 under deuteranopia, which is exactly why the
 // label channel is mandatory rather than decorative.
+
 describe("verdict tones (issue #5187)", () => {
   const TEXT_CONTRAST_MIN = 4.5;
-
-  // Every Tailwind step the three maps name, as the hex it actually compiles to
-  // (`app/globals.css` @theme where Botanical overrides it, Tailwind v4's own
-  // oklch otherwise). The class ladder and the hex ladder are two halves of one
-  // export — the same discipline `chartActivityRamp` keeps — so a step edited in
-  // a class without its hex fails here rather than silently validating a fiction.
-  const STEP: Record<string, string> = {
-    "emerald-100": "#d0fae5",
-    "emerald-300": "#aecf9f",
-    "emerald-400": "#00d492",
-    "emerald-600": "#009966",
-    "emerald-700": "#007a55",
-    "emerald-950": "#121d13",
-    "amber-100": "#fef3c6",
-    "amber-300": "#d9c887",
-    "amber-400": "#ffb900",
-    "amber-500": "#fe9a00",
-    "amber-700": "#bb4d00",
-    "amber-950": "#171a10",
-    "rose-100": "#ffe4e6",
-    "rose-300": "#d8aca8",
-    "rose-400": "#ff637e",
-    "rose-500": "#ff2056",
-    "rose-600": "#ec003f",
-    "rose-700": "#c70036",
-    "rose-950": "#1c1315",
-    "slate-100": "#ecf2e8",
-    "slate-200": "#d9e8de",
-    "slate-300": "#b2c6b9",
-    "slate-400": "#86a190",
-    "slate-500": "#4e6354",
-    "slate-700": "#2f4237",
-    "ink-800": "#141c16",
-  };
-
-  /** The hex a `text-*` / `bg-*` utility in `cls` renders, for one theme. */
-  function stepHex(
-    cls: string,
-    theme: ChartTheme,
-    kind: "text" | "bg"
-  ): string {
-    const re = new RegExp(
-      `(?:^|\\s)${theme === "dark" ? "dark:" : ""}${kind}-([a-z]+-\\d{2,3})(?![\\w-])`,
-      "g"
-    );
-    // In light mode a `dark:` prefix must not match, so strip those utilities first.
-    const source =
-      theme === "light"
-        ? cls
-            .split(/\s+/)
-            .filter((c) => !c.startsWith("dark:"))
-            .join(" ")
-        : cls;
-    const found = [...source.matchAll(re)].map((m) => m[1]);
-    // A single-class entry (e.g. `bg-emerald-600`) applies to BOTH themes.
-    if (found.length === 0 && theme === "dark")
-      return stepHex(cls, "light", kind);
-    expect(found, `${kind} step for ${theme} in "${cls}"`).toHaveLength(1);
-    const hex = STEP[found[0]];
-    expect(
-      hex,
-      `${found[0]} is missing from this test's STEP table`
-    ).toBeTruthy();
-    return hex;
-  }
 
   it("declares all four tones in each of the three maps", () => {
     expect(VERDICT_TONES).toEqual(["good", "warn", "bad", "neutral"]);
@@ -513,6 +515,59 @@ describe("verdict tones (issue #5187)", () => {
     for (const map of [verdictText, verdictBadge, verdictFill]) {
       const classes = VERDICT_TONES.map((t) => map[t].class);
       expect(new Set(classes).size).toBe(classes.length);
+    }
+  });
+});
+
+// ── the non-verdict attention amber (#5760) ─────────────────────────────────
+//
+// Nine surfaces wanted an amber that draws the eye without judging — a watch
+// card's icon, the `limit` food tier, an eat-less bullet, a set that moved down
+// from last session. None could take `verdictText.warn` without also taking
+// `VERDICT_TONE_LABEL.warn`, so each picked a step by hand and eight picked
+// `text-amber-500`: 1.99:1 on the light surface, against a 3.0 floor for a
+// graphical object. One owner, checked here for the same reason the verdict
+// inks are — nothing else measures it.
+describe("attention amber (issue #5760)", () => {
+  const TEXT_CONTRAST_MIN = 4.5;
+
+  it("keeps its classes and its hexes on the same Tailwind step", () => {
+    for (const theme of THEMES) {
+      expect(stepHex(attentionAmber.class, theme, "text"), theme).toBe(
+        attentionAmber[theme]
+      );
+    }
+  });
+
+  it("paints a ::marker in the same two steps as the text ink", () => {
+    // A list marker needs the `marker:` variant written out, so the steps are
+    // spelled twice; they are one colour, and this is what says so.
+    const asMarker = attentionAmber.class
+      .split(" ")
+      .map((c) =>
+        c.startsWith("dark:") ? `dark:marker:${c.slice(5)}` : `marker:${c}`
+      )
+      .join(" ");
+    expect(attentionAmber.markerClass).toBe(asMarker);
+  });
+
+  for (const theme of THEMES) {
+    it(`clears the TEXT floor on the ${theme} surface`, () => {
+      const hex = attentionAmber[theme];
+      const r = contrastRatio(hex, CHART_SURFACE[theme]);
+      expect(
+        r,
+        `attentionAmber ${hex} is ${r.toFixed(2)}:1 on the ${theme} surface ` +
+          `${CHART_SURFACE[theme]}. It paints icons, a list marker AND a word, ` +
+          `so it clears the text floor, not just the ${CONTRAST_MIN}:1 one a ` +
+          `graphical object would need.`
+      ).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
+    });
+  }
+
+  it("is not one of the four judgments — no tone renders these classes", () => {
+    for (const tone of VERDICT_TONES) {
+      expect(verdictText[tone].class).not.toBe(attentionAmber.class);
     }
   });
 });
