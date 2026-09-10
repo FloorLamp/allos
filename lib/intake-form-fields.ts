@@ -44,6 +44,7 @@ import { parseRxcuiIngredients, serializeRxcuiIngredients } from "./rxnorm";
 import { intakeKindAffordances } from "./intake-kind-affordances";
 import { FOOD_TIMINGS, type CollapsibleDose } from "./intake-schedule";
 import { normalizeWeekdays, parseWeekdays } from "./intake-cadence";
+import type { ItemCadence } from "./intake-cadence";
 import { isRealIsoDate } from "./date";
 import { strOrNull } from "./parse";
 import { itemSeedFromPool, type SupplyOption } from "./supply-product";
@@ -124,6 +125,22 @@ export interface IntakeCadenceDraft {
   weekdays: number[];
   intervalDays: string;
   anchorDate: string;
+}
+
+// The draft read as the row it will become. The draft holds the editor's shapes
+// (a weekday array, an interval still being typed); every reader of a cadence —
+// `cadenceLabel`, `cadenceOn`, `cadenceDensity` — takes the row's. One adapter so
+// the form states its cadence through the same functions every other surface does,
+// instead of re-spelling the column names inline next to each call.
+export function cadenceDraftAsItem(cadence: IntakeCadenceDraft): ItemCadence {
+  return {
+    cadence_kind: cadence.kind,
+    cadence_weekdays: cadence.weekdays.join(","),
+    cadence_interval_days: cadence.intervalDays
+      ? Number(cadence.intervalDays)
+      : null,
+    cadence_anchor_date: cadence.anchorDate,
+  };
 }
 
 export interface IntakeItemFormState {

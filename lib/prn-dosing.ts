@@ -10,6 +10,7 @@ import type {
   PrnFormulation,
   PrnPediatricDefaults,
 } from "./prn-defaults";
+import type { PrefillLedger } from "./intake-prefill";
 import type { WeightUnit } from "./settings";
 import { daysBetweenDateStr } from "./date";
 
@@ -291,6 +292,75 @@ export function pediatricDoseSuggestion(input: {
 // derives volume from the selected product's concentration; do not store it twice.
 export function formulationDoseAmount(mg: number): string {
   return `${mg} mg`;
+}
+
+// ---- The re-offer after a new weight (#798, #851 item 8) --------------------
+
+// What a fresh weight does to the dose the label already offered. Three answers, and
+// only three:
+//   • OFFER  — the new weight lands in a band, and the amount on screen is either the
+//              label's own earlier offer or still blank;
+//   • WITHDRAW — the new weight yields no dose at all (an age gate, a stale or missing
+//              weight, or a weight below the smallest band). Leaving the old figure
+//              standing would attribute a dose to a measurement that no longer
+//              supports it, which is #798's refusal posture inverted;
+//   • KEEP   — the new weight bands, but the amount belongs to the CAREGIVER (typed by
+//              hand, or read back off a saved row). A weight update never rewrites a
+//              person's own number.
+//
+// The ledger answers "is this figure still the label's?" for the first two. The extra
+// empty-check is the one thing it cannot answer: a stored row's amount was never
+// offered and never marked touched, so an edit-mode blank still counts as free.
+//
+// IT TAKES NO FORMULATION, and that is a property rather than an omission. The offered
+// figure is `band.mg`, read off the WEIGHT band; the picked product feeds only `ml` and
+// the formulation label, which this policy never reads. That is the stored-once rule
+// `formulationDoseAmount` above states — milligrams are stored, volume is derived at
+// every display boundary — so a concentration cannot move the amount by construction.
+// Threading a slug in here would advertise a dependency the architecture forbids, and
+// the next reader of a safety policy would budget care for it.
+export type PediatricReoffer =
+  | { kind: "offer"; doseAmount: string }
+  | { kind: "withdraw" }
+  | { kind: "keep" };
+
+export function reofferPediatricDose(input: {
+  // Null when the name resolves to no curated PRN entry — nothing to re-derive.
+  entry: PrnDefaultEntry | null | undefined;
+  next: PediatricFormContext;
+  ledger: PrefillLedger;
+  currentAmount: string;
+}): PediatricReoffer {
+  const { entry, next } = input;
+  // NO ENTRY: nothing to re-derive, so the amount is not this policy's to touch — the
+  // inline original returned early here for the same reason.
+  if (!entry) return { kind: "keep" };
+  // NO AGE ON FILE: WITHDRAW, and it has to be spelled out because it is the one input
+  // the extraction could have quietly changed. The inline original cast `ageMonths as
+  // number` and let a null run into the lookup, where it compares as 0 — so every
+  // curated entry answered `ask-doctor` or `no-pediatric`, never `dose`, and the call
+  // site withdrew. Verified by execution against every entry in the dataset and every
+  // shape of weight, not inferred from the types.
+  //
+  // The shipped form cannot reach this: the pediatric section's own memo returns null
+  // when `ageMonths` is null, so `PediatricWeightUpdate` never mounts, and when it does
+  // mount it hands `onSaved` back the exact `ageMonths` it was given (both executed
+  // against the real add door). It is stated anyway because the alternative — `keep` —
+  // is the permissive answer: a profile with no age has no chart, and leaving the
+  // label's standing figure on screen is #798's refusal inverted.
+  if (next.ageMonths == null) return { kind: "withdraw" };
+  const result = pediatricDoseSuggestion({
+    entry,
+    ageMonths: next.ageMonths,
+    weightKg: next.weightKg,
+    weightDate: next.weightDate,
+    today: next.today,
+  });
+  if (result.kind !== "dose") return { kind: "withdraw" };
+  const offered = input.ledger.suggested.has("doseAmount");
+  return offered || !input.currentAmount.trim()
+    ? { kind: "offer", doseAmount: formulationDoseAmount(result.mg) }
+    : { kind: "keep" };
 }
 
 // The one spelling of what a refusal SAYS. #798's gates are stated in two places now
