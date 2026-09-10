@@ -288,8 +288,14 @@ export default function RoutinesManager({
                   >
                     Edit
                   </Button>
+                  {/* Ruling 10 (#4978): a filled danger spends the surface's
+                  loud-control budget, so a per-row destructive action in a
+                  repeated list goes quiet. This Delete renders once per routine
+                  card, and it only opens `onDelete`'s confirm — the fill lives on
+                  that confirm step, which ruling 10 protects explicitly. Ruling 5
+                  filled this mount before ruling 10 narrowed the filled danger to
+                  STANDALONE destructive actions; that is why it was loud. */}
                   <Button
-                    variant="danger"
                     data-testid="routine-delete"
                     disabled={isBusy}
                     onClick={() => onDelete(r)}

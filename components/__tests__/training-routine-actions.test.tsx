@@ -4,10 +4,18 @@ import RoutinesManager from "@/app/(app)/training/RoutinesManager";
 import type { RoutineWithDays } from "@/lib/types";
 
 // THE ROUTINE CARD'S ACTION ROW IS ONE SURFACE (#4978 item 3, ruling 3 and
-// ruling 5). This row is the densest raw-class surface in `app/(app)/training`:
+// ruling 10). This row is the densest raw-class surface in `app/(app)/training`:
 // one commit-rank control (`Activate`, a raw `.btn`) beside three quiet ones
 // (`Restart cycle`, `Edit`, `Delete`, raw `.btn-ghost`), and the Delete was the
 // red-tinted ghost the owner ruled on at 2026-09-09 20:05 UTC.
+//
+// RULING 10 (2026-09-10 01:30 UTC) then narrowed ruling 5: a filled danger spends
+// the surface's loud-control budget, so a per-row destructive action in a repeated
+// list goes quiet and the fill moves to the confirm step. Ruling 6 makes the CARD
+// that surface. So the card's loud budget is asserted card-scoped and WHOLE, over
+// both loud paints at once — a per-control assertion cannot see a second fill
+// arriving beside the one it checks, and a document-wide count answers for cards
+// this test is not about.
 //
 // The row is asserted WHOLE rather than one control at a time, because the state
 // ruling (3) forbids is a MIXED row: a converted commit at the primitive's 12px
@@ -53,6 +61,18 @@ const routine: RoutineWithDays = {
   ],
 } as unknown as RoutineWithDays;
 
+// Both loud paints, card-scoped, by label. `ButtonProps` is closed and `Button`
+// destructures each prop by name with no rest spread, so a rank that stopped
+// being forwarded still typechecks and still lints — only the rendered class
+// says otherwise.
+function loudIn(card: HTMLElement): string[] {
+  return [
+    ...card.querySelectorAll(
+      ".button-control-primary, .button-control-danger"
+    ),
+  ].map((el) => el.textContent?.trim() ?? "");
+}
+
 function renderCard() {
   render(
     <RoutinesManager
@@ -90,21 +110,20 @@ describe("the routine card's action row (#4978)", () => {
     }
   });
 
-  it("paints Delete as the one destructive treatment, not a red-tinted ghost", () => {
-    renderCard();
-    const remove = screen.getByTestId("routine-delete");
-    // Owner ruling 5: destructive actions look the same everywhere, and no
-    // red-tinted ghost variant exists to spell this any other way.
-    expect(remove.className).toContain("button-control-danger");
-    expect(remove.className).not.toMatch(/text-rose/);
-  });
-
-  it("states no primary: Activate is a per-card commit, not the surface's one action", () => {
+  it("spends no loud control on the card: the per-row Delete is quiet under ruling 10", () => {
     const card = renderCard();
-    // Every card in the grid carries its own Activate, so the filled paint cannot
-    // be spent here. #4978's question about non-form commits on a multi-card route
-    // is open; promoting this control must break this line rather than land quietly.
-    expect(card.querySelectorAll(".button-control-primary")).toHaveLength(0);
+    // Ruling 10: the per-row Delete goes quiet, and the fill it gives up lands on
+    // the confirm `onDelete` opens (a `z-110` dialog, not a control on this card).
+    // Ruling 6 leaves Activate quiet too — every card in the grid carries its own,
+    // so no one of them is the route's commit. Both facts are ONE claim about this
+    // card's loud budget, and it is empty. Re-adding either fill breaks this line.
+    expect(
+      loudIn(card),
+      "ruling 10: a per-row destructive action in a repeated list is not loud"
+    ).toEqual([]);
+    expect(screen.getByTestId("routine-delete").className).not.toMatch(
+      /text-rose/
+    );
     expect(screen.getByTestId("routine-activate").className).toBe(
       screen.getByTestId("routine-edit").className
     );

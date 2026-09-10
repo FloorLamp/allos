@@ -261,10 +261,15 @@ export default function FrequencyTargets({
             <SubmitButton pendingLabel="Saving…" variant="primary">
               Save
             </SubmitButton>
+            {/* Ruling 10 (#4978): a filled danger spends the surface's
+            loud-control budget. This Delete is NOT standalone — it sits beside
+            the form's filled `primary` Save above, so filling it puts two loud
+            controls on one card. It goes quiet and `remove`'s confirm keeps the
+            fill, which is the step ruling 10 protects. Ruling 5 (2026-09-09
+            20:05 UTC) filled this exact mount by name, before ruling 10 existed
+            to narrow it; this is that superseded reading, not an oversight. */}
             {selectedId != null && (
-              <Button variant="danger" onClick={remove}>
-                Delete
-              </Button>
+              <Button onClick={remove}>Delete</Button>
             )}
           </form>
         </div>
