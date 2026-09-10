@@ -94,6 +94,7 @@
 // approaching zero is a detector that has lost its grip, not a tidy tracker.
 
 import { TITLE_MAX_CHARACTERS, titleLength } from "./title-rule.mjs";
+import { parseUtcSql } from "../../lib/date";
 
 /**
  * How the run was configured, derived from the environment and the command
@@ -171,9 +172,11 @@ export interface WatermarkCarrier {
  * not tracker claims, so it is never swept, and its stamp becomes the
  * window's lower bound.
  */
-export function extractWatermark(issues: readonly TrackerIssue[]): {
+export function extractWatermark<T extends TrackerIssue>(
+  issues: readonly T[]
+): {
   carrier: WatermarkCarrier;
-  issues: TrackerIssue[];
+  issues: T[];
 } {
   const carrierIssue =
     issues.find((i) => i.title === WATERMARK_ISSUE_TITLE) ?? null;
@@ -204,12 +207,35 @@ export interface TrackerPr {
   mergedAt: string;
 }
 
+/**
+ * An issue in the sweep: the label-tier facts plus the two the stale-P3 rule
+ * reads. Kept apart from `TrackerIssue` so the label and watermark writers,
+ * which never age an issue, are not made to invent a filing date.
+ */
+export interface SweptIssue extends TrackerIssue {
+  /** GitHub's `created_at`, ISO 8601. Age counts from filing, not last touch. */
+  createdAt: string;
+  /** Assignee logins. Any assignee is an owner. */
+  assignees: readonly string[];
+}
+
+/** One OPEN pull request, reduced to what a reference check reads. */
+export type OpenPr = Pick<TrackerPr, "number" | "title" | "body">;
+
 /** Everything the run knows about the tracker, as data. */
 export interface TrackerSnapshot {
   /** The issues to sweep. Cross-references resolve against `issueStates`. */
-  issues: readonly TrackerIssue[];
+  issues: readonly SweptIssue[];
   /** Merged PRs inside the run's window (see `ReconcileWatermark`). */
   mergedPrs: readonly TrackerPr[];
+  /** Every open PR, whatever its age: one referencing a P3 keeps it open. */
+  openPrs: readonly OpenPr[];
+  /**
+   * Issues a live lane holds, from the dispatch ledger (`ledger.mjs`
+   * `laneIssues`). The claim source the dispatcher itself consults; a claim
+   * recorded elsewhere is invisible here.
+   */
+  claimedIssues: ReadonlySet<number>;
   /**
    * open/closed for EVERY issue number the sweep may need to resolve, not just
    * the swept ones — a dependency almost always points at a closed issue, which
@@ -1174,6 +1200,90 @@ export function checkLabelHygiene(
   return out;
 }
 
+// ---- Stale P3 (#5671; owner ruling 2026-09-09: P3 is a 30-day queue, not a
+// backlog). An open P3 nobody has claimed, taken or opened a PR for in 30 days
+// is closed `not_planned` by the applier, with one comment. Every other
+// finding in this module is FLAG, never fix; this one is a rule the owner set,
+// and the six conditions below are the whole of it.
+
+export const STALE_P3_DAYS = 30;
+
+/** The one comment the close leaves. Verbatim from the ruling. */
+export const STALE_P3_CLOSE_COMMENT =
+  "Unclaimed for 30 days. Reopen with a claim or an owner priority.";
+
+/** Either label parks the clock: an owner question, or a deliberate hold. */
+const STALE_P3_HOLD_LABELS = ["needs-human", "parked"] as const;
+
+const DAY_MS = 86_400_000;
+
+export interface StaleP3Finding {
+  issue: number;
+  ageDays: number;
+  /** Why it qualifies, for the report and the applier's dry run. */
+  detail: string;
+}
+
+/** What the rule reads beyond the issue itself. */
+export interface StaleP3Context {
+  claimedIssues: ReadonlySet<number>;
+  /** Issues any open PR mentions — see `referencedByOpenPrs`. */
+  openPrIssues: ReadonlySet<number>;
+  /** The instant age is measured against: the run's own stamp. */
+  now: string;
+}
+
+/** Every `#N` an open PR's title or body mentions, closing keyword or not. */
+export function referencedByOpenPrs(prs: readonly OpenPr[]): Set<number> {
+  const out = new Set<number>();
+  for (const pr of prs) {
+    for (const m of `${pr.title}\n${pr.body}`.matchAll(/#(\d+)\b/g)) {
+      out.add(Number(m[1]));
+    }
+  }
+  return out;
+}
+
+/**
+ * The rule, over one issue. Null means it stays open; the applier calls this
+ * again on the re-read issue immediately before closing, so a claim, assignee
+ * or label added since the gather refuses the close.
+ */
+export function decideStaleP3(
+  issue: SweptIssue,
+  ctx: StaleP3Context
+): StaleP3Finding | null {
+  if (issue.state !== "open" || !issue.labels.includes("P3")) return null;
+  if (
+    issue.labels.some((l) =>
+      (STALE_P3_HOLD_LABELS as readonly string[]).includes(l)
+    )
+  ) {
+    return null;
+  }
+  if (issue.assignees.length > 0) return null;
+  if (ctx.claimedIssues.has(issue.number)) return null;
+  if (ctx.openPrIssues.has(issue.number)) return null;
+  // Both are ISO 8601 with a stated Z: GitHub's created_at and the run stamp.
+  const filedAt = parseUtcSql(issue.createdAt)?.getTime() ?? NaN;
+  const now = parseUtcSql(ctx.now)?.getTime() ?? NaN;
+  const ageDays = Math.floor((now - filedAt) / DAY_MS);
+  // Written so an unparseable date (NaN) stays open rather than closing.
+  if (!(ageDays >= STALE_P3_DAYS)) return null;
+  return {
+    issue: issue.number,
+    ageDays,
+    detail: `P3 filed ${ageDays} days ago — no claim, no assignee, no open PR`,
+  };
+}
+
+export function checkStaleP3(
+  issues: readonly SweptIssue[],
+  ctx: StaleP3Context
+): StaleP3Finding[] {
+  return issues.flatMap((issue) => decideStaleP3(issue, ctx) ?? []);
+}
+
 export function checkDocsContracts(index: RepoIndex): DocsFinding[] {
   const out: DocsFinding[] = [];
   const dirs = topLevelDirs(index);
@@ -1228,6 +1338,8 @@ export interface ReconcileEvidence {
   docs: readonly DocsFinding[];
   /** Open issues violating the two-axis label contract (flag, never fix). */
   labelFindings: readonly LabelFinding[];
+  /** Open P3s past the 30-day queue; the applier closes these (#5671). */
+  staleP3: readonly StaleP3Finding[];
   /** Issues examined whose every checkable claim held. */
   verifiedClean: readonly number[];
 }
@@ -1428,6 +1540,11 @@ export function gatherEvidence(
   ).length;
 
   const labelFindings = checkLabelHygiene(snapshot.issues);
+  const staleP3 = checkStaleP3(snapshot.issues, {
+    claimedIssues: snapshot.claimedIssues,
+    openPrIssues: referencedByOpenPrs(snapshot.openPrs),
+    now: watermark.current,
+  });
 
   return {
     watermark,
@@ -1436,6 +1553,7 @@ export function gatherEvidence(
     findings,
     docs,
     labelFindings,
+    staleP3,
     verifiedClean,
   };
 }
@@ -1556,6 +1674,16 @@ export function renderReport(evidence: ReconcileEvidence): string {
     lines.push("_none_", "");
   } else {
     for (const f of evidence.labelFindings) {
+      lines.push(`- #${f.issue} — ${f.detail}`);
+    }
+    lines.push("");
+  }
+  lines.push(`## Stale P3 — closed on apply (${evidence.staleP3.length})`);
+  lines.push("");
+  if (evidence.staleP3.length === 0) {
+    lines.push("_none_", "");
+  } else {
+    for (const f of evidence.staleP3) {
       lines.push(`- #${f.issue} — ${f.detail}`);
     }
     lines.push("");
