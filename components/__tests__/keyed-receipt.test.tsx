@@ -256,9 +256,15 @@ describe("a receipt belongs to the interaction that earned it", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "A tap" }));
     expect(receipts()).toEqual(["A logged."]);
-    // The control: the same late continuation publishes while the scope still holds.
+    // The control: the same late continuation publishes while the scope still holds —
+    // and it UPGRADES the card rather than replacing it, which is what a session that
+    // re-took its own slot would do. On a phone a rebuilt card waits its turn at the
+    // back of the one-at-a-time bar instead of upgrading the one in front of the
+    // person (#3611).
+    const card = screen.getByTestId("toast");
     fireEvent.click(screen.getByRole("button", { name: "A late" }));
     expect(receipts()).toEqual(["A again."]);
+    expect(screen.getByTestId("toast")).toBe(card);
 
     view.rerender(
       <ToastProvider>
@@ -301,12 +307,15 @@ describe("the substance row control's receipt", () => {
       fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
     );
     expect(receipts()).toEqual(["Use logged."]);
+    const card = screen.getByTestId("toast");
 
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Undo" }))
     );
     await waitFor(() => expect(receipts()).toEqual(["Use undone."]));
     expect(substanceActions.undo).toHaveBeenCalledTimes(1);
+    // The inverse's answer upgrades the receipt in place rather than queueing behind it.
+    expect(screen.getByTestId("toast")).toBe(card);
   });
 
   // ONE SLOT PER EVENT, so two uses logged a minute apart leave two receipts and each

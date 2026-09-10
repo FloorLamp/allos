@@ -131,9 +131,10 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
 // Assembling those four is what two surfaces did independently, in two vocabularies:
 // a mount ref plus a generation counter plus a claimed-owner map on
 // `SubstanceUnitControl`, an epoch map plus a lifecycle reservation on `FoodLogBar`.
-// This is that assembly written once. `useWritePipeline` announces through it
-// (`receiptKey`) and `SubstanceUnitControl` opens one per tap; the food bar's epoch
-// protocol is the third spelling and is retired by #3728.
+// This is that assembly written once. `SubstanceUnitControl` opens a session per tap
+// and `useWritePipeline` announces into one for any caller that declares a slot
+// (`WriteSpec.receipt`); the food bar's epoch protocol is the third spelling and is
+// retired by #3728.
 export interface KeyedReceipt {
   // The slot this receipt occupies. The caller names it, because only the caller knows
   // what "the same target" means — an event id for a substance unit, a day/slot
@@ -210,13 +211,19 @@ export function useKeyedReceipt(subject?: string): () => ReceiptSession {
       isCurrent,
       announce: (receipt: KeyedReceipt) => {
         if (!isCurrent()) return;
-        // One owner per slot per session, so this session's own follow-ups — the undo
-        // outcome riding the same key — keep publishing while a LATER session's claim
-        // shuts them out.
+        // ONE CLAIM PER SLOT PER SESSION. The claim is what takes the slot from
+        // whoever held it; this session's own follow-ups — the undo outcome riding the
+        // same key — must not re-take it, because claiming clears the live card and the
+        // republish would then land at the BACK of the phone's one-at-a-time queue
+        // instead of upgrading the bar in place (#3611). They simply publish, and a
+        // LATER session's claim is what shuts them out.
         const owners = ownersRef.current;
-        const owner = owners.get(receipt.key) ?? Symbol(receipt.key);
-        owners.set(receipt.key, owner);
-        claimKey(receipt.key, owner);
+        let owner = owners.get(receipt.key);
+        if (!owner) {
+          owner = Symbol(receipt.key);
+          owners.set(receipt.key, owner);
+          claimKey(receipt.key, owner);
+        }
         const offer = receipt.undo ?? null;
         announceUndoable({
           message: receipt.message,
