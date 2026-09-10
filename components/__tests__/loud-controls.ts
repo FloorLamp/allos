@@ -16,10 +16,10 @@
 // source rather than mirrored here — `DestructiveSubmit` states
 // `variant="danger"`, `DuplicateResolutionActions` states `variant="primary"`,
 // and the retired utility took its hand-rolled copy of the primary fill with it.
-// So the rank class IS the fill, and `loud-controls.test.tsx` refuses a rule in
-// `app/globals.css` that paints one where a combinator or a descendant space
-// follows the leading `&`. That file states what the match does and does not
-// reach, and pins both of its known defects as cases.
+// So the rank class IS the fill. Nothing checks that mechanically today: a CSS
+// guard was written for it and removed from this change as a scope reduction —
+// #5765 carries its redesign — so a new wrapper that painted a rank-less child
+// would re-open the blind spot silently.
 //
 // SCOPE: the typed control family. The retiring raw `btn` / `btn-danger`
 // families paint the same tokens and are solid too, but they are still mounted
