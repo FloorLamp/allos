@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconArrowsExchange } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { reassignDocument } from "@/app/(app)/medical/document-actions";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // "Move to profile…" control. Shown only when the acting
 // login can reach ≥2 profiles. Picks a destination among the login's OTHER
@@ -57,7 +58,7 @@ export default function ReassignDocument({
       }
       // The document now lives under another profile — the active-profile-scoped
       // detail page can no longer resolve it, so return to the import log.
-      router.push("/data?section=import");
+      router.push(dataSectionHref("import"));
     });
   }
 
