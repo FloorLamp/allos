@@ -992,8 +992,9 @@
      including the family's ONE disabled treatment, which the hand-rolled
      `disabled:` overrides here only restated.
      What is left is the retiring `.btn-danger` SHAPE — wider padding, larger
-     type, the shared control radius — which rank does not spell. A `@utility`
-     that paints a fill onto a `.button-control` child is what
+     type, the shared control radius — which rank does not spell. Painting one of
+     these fills onto an element a rule reaches through a COMBINATOR — here or in
+     any other rule in this file — is what
      `components/__tests__/loud-controls.test.tsx` refuses. */
   @apply contents;
   & > .button-control {

@@ -16,13 +16,24 @@
 // source rather than mirrored here — `DestructiveSubmit` states
 // `variant="danger"`, `DuplicateResolutionActions` states `variant="primary"`,
 // and the retired utility took its hand-rolled copy of the primary fill with it.
-// So the rank class IS the fill, and `loud-controls.test.tsx` refuses a new
-// `@utility` that would paint one onto a `.button-control` child again.
+// So the rank class IS the fill, and `loud-controls.test.tsx` refuses any rule in
+// `app/globals.css` that would paint one onto an element it reaches through a
+// combinator — the fill has to land on the element carrying the rank.
 //
 // SCOPE: the typed control family. The retiring raw `btn` / `btn-danger`
-// families paint the same tokens and are solid too, but 190-odd mounts still
-// carry them and they retire with their last caller (#4978); the rank specs keep
-// them off a converted surface with their own `RAW_FAMILY` assertion instead.
+// families paint the same tokens and are solid too, but they are still mounted
+// across more than a hundred files and retire with their last caller (#4978), so
+// folding them in would redden dozens of specs for debt that is not this
+// definition's.
+//
+// THAT SCOPE IS NOT FREE, and the mitigation is uneven rather than universal: on
+// a surface still carrying a raw mount, this function reports one fewer loud
+// control than a person sees. `records-form-ranks`, `training-routine-actions`
+// and `integrations-card-ranks` close that on their own surfaces with a
+// `RAW_FAMILY` assertion; `frequency-target-form-ranks` has a partial one.
+// `settings-card-commit-ranks`, `visit-links-bulk-rank` and
+// `save-trend-picker-rank` carry none, and rest on their surfaces having been
+// converted whole rather than on a check.
 export const LOUD_CONTROL = ".button-control-primary, .button-control-danger";
 
 /**
