@@ -320,6 +320,7 @@ export default async function CyclePage() {
           rides the OPEN heading and the collapsed button stays short, which is exactly
           what AddEntryPanel's addLabel is for. */}
       <AddEntryPanel
+        formId="cycle"
         testId="cycle-add-panel"
         panelId="cycle-add-panel-body"
         label="Add a period with dates — for a past or corrected period"

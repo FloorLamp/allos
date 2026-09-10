@@ -82,6 +82,7 @@ export default function ConditionsSection({
   return (
     <div className="space-y-6">
       <AddEntryPanel
+        formId="condition"
         testId="add-condition-panel"
         panelId="add-condition-panel-body"
         label="Add condition"

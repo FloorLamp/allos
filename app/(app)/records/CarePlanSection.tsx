@@ -77,6 +77,7 @@ export default function CarePlanSection({ scope }: { scope: ProfileScope }) {
           </div>
         )}
         <AddEntryPanel
+          formId="care-plan"
           testId="add-care-plan-panel"
           panelId="add-care-plan-panel-body"
           label="Add care-plan item"
