@@ -86,17 +86,18 @@ layer: Header/standard Cell 16→20px, compact Cell 8→20px, Action 8→12px.
 
 ## 3. Control grammar
 
-Use typed `Button` for ordinary actions: secondary by default, `primary` for a
-commit, `danger` for destructive paint. No ghost, size, class, or style variants.
-`DestinationActionLink` composes navigation separately. Raw `btn` / `btn-ghost` /
-`btn-sm` / `btn-danger` mounts remain during migration to typed controls; do not
-remove their CSS until callers are gone.
+Use typed `Button`: secondary by default, `primary` for a commit, `danger` for
+destructive paint, one ghost-only `dashed` shape. No size or class axis.
+`DestinationActionLink` composes navigation. Raw `btn` families retire with
+their last caller.
 
-Each form has one primary commit (`SubmitButton variant="primary"`). A submit
-that only filters, searches, or changes a read range stays secondary. Per-row
-controls, including `DoseConfirmButton`, are row affordances rather than repeated
-primaries. Rare and destructive row actions use `OverflowMenu`; destructive
-items confirm. [Overlays](overlays.md) owns the responsive action-sheet host.
+One loud control per surface: a form's commit (`SubmitButton
+variant="primary"`), a card's commit, a row's single action. Peers share no
+rank; a bulk action over rows is loud. A fold's door, app-shell chrome, and
+commits that can stand open together take no rank. Read-narrowing submits and
+the `DoseConfirmButton` row affordance stay secondary. Rare or destructive row
+actions confirm through `OverflowMenu`; [Overlays](overlays.md) hosts the action
+sheet.
 
 The shared `--control-box` is 34px at every viewport, with padding derived from
 `1lh` and a reserved border. It covers chips, the button family, typed fields,

@@ -13,13 +13,18 @@ import { openVisitFact } from "./visit-form-helpers";
 //      rather than "finish the form first" — while the admin Delete buttons
 //      hand-rolled a different grey, so one page family carried two treatments.
 //
-// B's bearer MOVED with #4978 slice 2. The census's example was Family's
-// "Create login"; that mount is now the typed secondary, because a settings
-// GROUP route hosts many independent card commits and spends its one primary on
-// none of them. Measuring the disabled treatment there would prove nothing about
-// B: a control that is never filled cannot have its fill faded. The disabled
-// primary this pins is therefore /settings/tokens' mint commit — the same shape
-// (a required field left empty) and the paint the defect is actually about.
+// B's bearer MOVED with #4978 slice 2, and the reason it moved has since been
+// overruled. The census's example was Family's "Create login". Slice 2 demoted
+// it on the reading that a settings GROUP route spends its one primary on none
+// of its cards; PM ruling 6 (2026-09-09 23:35 UTC) settled that the surface is
+// the CARD, so "Create login" is filled again. The subject STAYS on
+// /settings/tokens' mint commit anyway, and not because the Family mount is
+// unfilled: this test wants a primary that is disabled AT REST, which the mint
+// commit is (a required field left empty) on first paint. "Create login" is
+// disabled at rest for the same reason, so either would serve; leaving the
+// subject here keeps the two halves of this test on two DIFFERENT routes, which
+// is what makes the second half a check that the disabled treatment is shared
+// app-wide rather than agreed within one page.
 //
 // The assertions are structural, never pixel snapshots: "does the rendered text
 // fit the box that holds it" and "does the disabled button use the single

@@ -227,14 +227,51 @@ export function prnMaxSignalKey(itemId: number): string {
   return `${PRN_MAX_PREFIX}${itemId}`;
 }
 
+// ── WHAT ARMS THE INTERVAL CLOCK, AS A UNION (#4686) ────────────────────────
+//
+// The count and the interval want DIFFERENT rules from the same column, and four
+// adversarial passes on this window found every defect in one of two shapes: an arming
+// read silently falling back to `recorded_at`, or an absent arm that never engages.
+// This union makes the first impossible and the second checkable.
+//
+//   • `placed`   — the latest taken administration STATES its instant. That instant is
+//                  an event, so an elapsed time computed from it is a fact.
+//   • `unplaced` — some taken administration for this family states NO instant and
+//                  could be the latest. It carries the row's id and NEVER an instant:
+//                  there is no honest elapsed time, so there is no field to read one
+//                  from. No window, no anchor, no arithmetic — the question is only
+//                  "does any taken row state no instant", which is why an earlier pass
+//                  testing membership against the count's noon anchor produced an arm
+//                  that engaged for half of every day.
+//   • `none`     — nothing taken at all.
+//
+// The capture stamp appears in no arm. `recorded_at` is when the app was TOLD, and a
+// duration measured from it becomes "Redose OK" for a dose that may have been given
+// minutes ago — a number nobody can check, on the permissive side.
+export type FamilyArming =
+  | {
+      kind: "placed";
+      administrationId: number;
+      // A canonical UTC instant string (`lib/time-columns.ts`), not a Date: this value
+      // crosses the server/client boundary on the quick-log gathers.
+      givenAt: string;
+      // WHICH member's dose armed the clock, so a notice can honestly say "6h since OTC
+      // Ibuprofen" when a sibling's administration is the latest.
+      itemId: number | null;
+      itemName: string | null;
+    }
+  | { kind: "unplaced"; administrationId: number }
+  | { kind: "none" };
+
+export const NO_ARMING: FamilyArming = { kind: "none" };
+
 export interface RedoseWindowInput {
   // Confirmed per-item numbers (both > 0; guaranteed by the gather query).
   minIntervalHours: number;
   maxDailyCount: number;
-  // The latest logged administration for the item (arms the one-shot). null ⇒ nothing
-  // logged yet ⇒ not armed.
-  latestAdministrationId: number | null;
-  latestGivenAt: Date | null;
+  // What arms the one-shot (#4686). `none` ⇒ nothing logged; `unplaced` ⇒ a taken row
+  // states no instant, so there is no elapsed time and no notice.
+  arming: FamilyArming;
   // The trailing-24h administration count (#4686) — drives "N of M" + max suppression.
   countInWindow: number;
   now: Date;
@@ -259,12 +296,21 @@ export type RedoseDecision =
       countInWindow: number;
       maxDailyCount: number;
       sinceHours: number;
-      lastGivenAt: Date;
+      // The arming administration's own stated instant, canonical UTC — the notice's
+      // clock label formats it, and it comes from the `placed` arm rather than from a
+      // second reading of the row.
+      lastGivenAt: string;
       // The exposure the ceiling was judged on (null ⇒ plain count), so the
       // notice body can phrase the SAME basis ("1200 of 2400 mg in 24h").
       exposure: PrnDayExposure | null;
     }
   | { kind: "not-armed" } // no administration to arm the timer
+  // A taken administration states no instant, so there is no elapsed time to compare
+  // against the interval. THE NOTICE NEVER FIRES HERE, and it carries no duration to
+  // read: a push saying "your minimum interval has passed" with a Log-dose button, off
+  // a capture stamp, is the exact defect a planted deletion on this path once shipped
+  // with CI green (#4686, the 2026-09-02 ruling).
+  | { kind: "unplaced-dose" }
   | { kind: "already-notified" } // one-shot already fired for the latest administration
   | { kind: "not-yet"; opensInHours: number } // interval hasn't elapsed
   | { kind: "missed-window" } // the opening + bounded retry bands are both past
@@ -297,14 +343,18 @@ export function redoseAttempt(
 }
 
 export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
-  const { latestAdministrationId, latestGivenAt } = input;
+  const { arming } = input;
   // Not armed: nothing logged, so there's no window to open.
-  if (latestAdministrationId == null || latestGivenAt == null) {
-    return { kind: "not-armed" };
-  }
+  if (arming.kind === "none") return { kind: "not-armed" };
+  // A dose was given and nobody said when. Refused BEFORE the one-shot marker and
+  // before any arithmetic — there is no instant in this arm to do arithmetic with.
+  if (arming.kind === "unplaced") return { kind: "unplaced-dose" };
+  const latestGivenAt = parseUtcSql(arming.givenAt);
+  // A canonical event column that will not parse is not an instant this can subtract.
+  if (!latestGivenAt) return { kind: "not-armed" };
   // One-shot: we already notified for THIS exact administration. Only a newer
   // administration (a different id) re-arms it.
-  if (input.notifiedAdministrationId === latestAdministrationId) {
+  if (input.notifiedAdministrationId === arming.administrationId) {
     return { kind: "already-notified" };
   }
   const elapsed = hoursBetween(latestGivenAt, input.now);
@@ -326,11 +376,11 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
   }
   return {
     kind: "fire",
-    administrationId: latestAdministrationId,
+    administrationId: arming.administrationId,
     countInWindow: input.countInWindow,
     maxDailyCount: input.maxDailyCount,
     sinceHours: elapsed,
-    lastGivenAt: latestGivenAt,
+    lastGivenAt: arming.givenAt,
     exposure,
   };
 }
@@ -350,43 +400,76 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // only the interval and the last administration. The one-shot NOTIFICATION path
 // (redoseNoticeDecision above) keeps requiring both — its gather gate only returns
 // items with both confirmed.
-export interface RedoseStatus {
-  open: boolean; // the minimum interval has elapsed since the last administration
+//
+// A UNION, SO THE SEPARATE RULES ARE STRUCTURAL RATHER THAN REMEMBERED (#4686). The
+// COUNT keeps its window and its noon anchor; the INTERVAL has neither. The `unknown`
+// arm therefore has NO `open` and no `sinceHours`/`opensInHours` field at all — no
+// field of it can be misread as an elapsed time, because none exists — while `atMax`,
+// `countInWindow` and `exposure` come straight from `CEILING_WINDOW_SQL` and are as
+// answerable as ever. "Max reached" still wins on that arm.
+interface RedoseCeiling {
   atMax: boolean; // the window's exposure has reached the ceiling (false when unset)
   // Administrations inside the trailing 24 hours (#4686), NOT a calendar-day tally.
   countInWindow: number;
   maxDailyCount: number | null; // null ⇒ no confirmed count ceiling
-  sinceHours: number; // hours since the last administration
-  opensInHours: number; // hours until the window opens (0 when already open)
   // The window's amount-aware exposure (#1854), when one was computable — the "N of
   // M" fragment then reads milligrams and atMax is ITS verdict. null keeps the
   // plain count fragment/ceiling.
   exposure: PrnDayExposure | null;
 }
 
+export type RedoseStatus =
+  | (RedoseCeiling & {
+      kind: "window";
+      open: boolean; // the minimum interval has elapsed since the last administration
+      sinceHours: number; // hours since the last administration
+      opensInHours: number; // hours until the window opens (0 when already open)
+    })
+  | (RedoseCeiling & {
+      kind: "unknown";
+      // The unplaced administration, so a surface can name the row to place.
+      administrationId: number;
+    });
+
 export function redoseWindowStatus(input: {
   minIntervalHours: number;
   maxDailyCount: number | null;
-  latestGivenAt: Date | null;
+  arming: FamilyArming;
   countInWindow: number;
   now: Date;
   exposure?: PrnDayExposure | null;
 }): RedoseStatus | null {
-  if (!input.latestGivenAt) return null;
-  const elapsed = hoursBetween(input.latestGivenAt, input.now);
-  const open = elapsed >= input.minIntervalHours;
+  const { arming } = input;
+  if (arming.kind === "none") return null;
   const exposure = input.exposure ?? null;
-  return {
-    open,
+  const ceiling: RedoseCeiling = {
     atMax: exposure
       ? exposure.atMax
       : input.maxDailyCount != null &&
         input.countInWindow >= input.maxDailyCount,
     countInWindow: input.countInWindow,
     maxDailyCount: input.maxDailyCount,
+    exposure,
+  };
+  if (arming.kind === "unplaced") {
+    return {
+      kind: "unknown",
+      administrationId: arming.administrationId,
+      ...ceiling,
+    };
+  }
+  const latestGivenAt = parseUtcSql(arming.givenAt);
+  // A canonical event column that will not parse is not an instant to subtract from,
+  // and the ceiling half alone is not a redose status. Say nothing rather than guess.
+  if (!latestGivenAt) return null;
+  const elapsed = hoursBetween(latestGivenAt, input.now);
+  const open = elapsed >= input.minIntervalHours;
+  return {
+    kind: "window",
+    open,
     sinceHours: elapsed,
     opensInHours: open ? 0 : input.minIntervalHours - elapsed,
-    exposure,
+    ...ceiling,
   };
 }
 
@@ -415,7 +498,9 @@ export function prnQuickLogRedoseStatus(
     minIntervalHours: number | null;
     maxDailyCount: number | null;
     familyCount: number;
-    familyLastGivenAt: string | null;
+    // The union (#4686), never a nullable instant beside one: a nullable string next
+    // to a union is the shape a `??` re-collapses onto a capture stamp.
+    familyArming: FamilyArming;
     familyMaxDailyCount: number | null;
     // The family's amount-aware window exposure (#1854), computed by the ONE
     // getMedicationFamilyStates gather; null when no ceiling is confirmed (or on
@@ -424,14 +509,14 @@ export function prnQuickLogRedoseStatus(
   },
   now: Date
 ): RedoseStatus | null {
-  if (med.minIntervalHours == null || !med.familyLastGivenAt) return null;
+  if (med.minIntervalHours == null) return null;
   return redoseWindowStatus({
     minIntervalHours: med.minIntervalHours,
     maxDailyCount: effectiveMaxDailyCount(
       med.maxDailyCount,
       med.familyMaxDailyCount
     ),
-    latestGivenAt: parseUtcSql(med.familyLastGivenAt),
+    arming: med.familyArming,
     countInWindow: med.familyCount,
     now,
     exposure: med.familyExposure ?? null,

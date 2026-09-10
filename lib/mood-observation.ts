@@ -16,7 +16,7 @@ import type { SleepRegularityDrop } from "./sleep-regularity";
 // #996, not the daily layer).
 //
 // Pure (no DB/clock); the input assembly lives in buildMoodFindings /
-// buildSleepMoodBridgeFindings (lib/rule-findings.ts).
+// buildSleepMoodBridgeFindings (lib/rule-findings/wellbeing.ts).
 
 // dedupeKey namespaces for the suppression bus + the RULE_FINDING_PREFIXES registry.
 export const MOOD_OBS_PREFIX = "mood-obs:";

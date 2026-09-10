@@ -33,29 +33,12 @@
 // to part of their population on 2026-09-04 alone.
 
 import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
-import { db, today, writeTx } from "@/lib/db";
-import { utcInstant, shiftDateStr } from "@/lib/date";
-import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
-import { reconcileFlags } from "@/lib/queries";
-import { saveFitnessEntry } from "@/lib/fitness-assessment";
-import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
-import { getTimezone } from "@/lib/settings";
-import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
-import { episodesForSituation } from "@/lib/symptom-episode";
-import {
-  diffSituations,
-  serializeSituationEvents,
-} from "@/lib/trend-annotations";
-import {
-  completeOnboardingState,
-  initialOnboardingState,
-  normalizeOnboardingFocuses,
-  serializeOnboardingState,
-} from "@/lib/onboarding";
+import { db, today } from "@/lib/db";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { gatherRecapInput } from "@/lib/notifications/recap-data";
 import { runInTickScope } from "@/lib/tick-cache";
-import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
+import { PERSONAS } from "../../scripts/seed-personas";
+import { personaContextFor } from "@/lib/__db_tests__/persona-fixture";
 import { installStatementTrace } from "@/lib/__db_tests__/dashboard-render-harness";
 
 const digestCounts = new Map<string, number>();
@@ -68,49 +51,6 @@ function newProfile(name: string): number {
   );
 }
 
-// The persona seeding context, as the two route budgets build it — the personas are the
-// shared fixture, so a tick and a render are measured against the same six people.
-function ctxFor(profileId: number): PersonaContext {
-  const daysAgo = (n: number) => shiftDateStr(today(profileId), -n);
-  return {
-    db,
-    profileId,
-    daysAgo,
-    shiftDateStr,
-    occurredAt: (day, hhmm) => {
-      const [y, m, d] = day.split("-").map(Number);
-      const [h, min] = hhmm.split(":").map(Number);
-      return utcInstant(
-        zonedWallTimeToUtc(y, m, d, h, min, getTimezone(profileId))
-      );
-    },
-    reconcileFlags,
-    saveFitnessEntry: (pid, entry) => saveFitnessEntry(pid, entry, "page"),
-    recordGlucoseTrace,
-    seedStandardMetricSaves: (pid) => seedStandardMetricSaves(db, pid),
-    writeTx,
-    diffSituations,
-    serializeSituationEvents,
-    episodesForSituation,
-    onboardingStateJson: (profilePath, focuses) =>
-      serializeOnboardingState(
-        completeOnboardingState(
-          {
-            ...initialOnboardingState(),
-            profilePath,
-            focuses: normalizeOnboardingFocuses(focuses),
-            basicsComplete: true,
-            dataReviewed: true,
-            notificationIntent: "later",
-            notificationsReviewed: true,
-            checklistDismissed: true,
-          },
-          new Date().toISOString()
-        )
-      ),
-  };
-}
-
 describe("notification tick gather query budget (#5199)", () => {
   beforeEach(() => vi.setSystemTime(new Date("2026-08-18T13:00:00.000Z")));
   beforeAll(async () => {
@@ -121,7 +61,7 @@ describe("notification tick gather query budget (#5199)", () => {
     const trace = installStatementTrace({});
     for (const persona of PERSONAS) {
       const profileId = newProfile(`tick:${persona.name}`);
-      persona.apply(ctxFor(profileId));
+      persona.apply(personaContextFor(profileId));
       // ONE SCOPE PER PROFILE, which is what `scripts/notify.ts` opens and closes around
       // each profile's tick, so the tick memo has the lifetime it has in production.
       await runInTickScope(

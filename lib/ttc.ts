@@ -1,6 +1,6 @@
 // Trying-to-conceive: the PURE half (issue #1680). No DB/network — importable from the
 // pure test tier, the query layer, and client components alike. The DB gather/write cores
-// live in lib/ttc-store.ts; the coaching finding is assembled in lib/rule-findings.ts.
+// live in lib/ttc-store.ts; the coaching finding is assembled in lib/rule-findings/clinical.ts.
 //
 // THREE OBSERVATIONS, NO NEW TABLE. Per the "reuse an existing store" rule, every TTC
 // reading is a vocabulary extension of a shipped observation store:

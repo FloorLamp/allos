@@ -346,18 +346,18 @@ export type DoseUndoOutcome = "undone" | "not-taken" | "changed" | "stale-dose";
 // (the markDoseTaken contract) instead of unconditionally confirming a non-
 // idempotent write:
 //   logged     — a fresh administration row was written; `count` is the item's
-//                running total for `date` and `lastGivenAt` its latest intake time.
+//                running total for `date`.
 //   duplicate  — a same-dose administration already exists within the short double-
 //                tap window (a re-tapped button / retried callback); nothing written,
-//                supply untouched, and the standing count/last-time reported.
+//                supply untouched, and the standing count reported.
 //   invalid-time — the supplied recorded_at failed the window guard (#614: a forged or
 //                far-off time); nothing written.
 //   stale-item — the item isn't this profile's, has no loggable (non-retired) dose,
 //                or was deleted; nothing written.
 //   inactive   — the item is paused/stopped; nothing written.
 export type AdministrationOutcome =
-  | { kind: "logged"; count: number; lastGivenAt: string; date: string }
-  | { kind: "duplicate"; count: number; lastGivenAt: string; date: string }
+  | { kind: "logged"; count: number; date: string }
+  | { kind: "duplicate"; count: number; date: string }
   | { kind: "invalid-time" }
   | { kind: "stale-item" }
   | { kind: "inactive" };

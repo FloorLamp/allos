@@ -43,13 +43,19 @@ import {
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
 import {
+  ARMING_ORDER,
+  armingFromRow,
   CEILING_WINDOW_SQL,
   ceilingWindowBounds,
   getMedicationFamilyStates,
   redoseWindowState,
 } from "./prn-family";
 import { ceilingWindowEndMinute } from "../../prn-redose";
-import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
+import type {
+  FamilyArming,
+  PrnDayExposure,
+  PrnExposureBasis,
+} from "../../prn-redose";
 import type {
   AdministrationOutcome,
   DoseStatus,
@@ -371,32 +377,57 @@ function applyDoseStatusCore(
       target === "taken"
         ? (doseScheduleAsOf(owned, date).amount ?? null)
         : null;
+    // `recorded_at` is immutable capture; `occurred_at` is the administration the
+    // Taken action asserts. A skip records the action but asserts no administration.
+    const capturedAt = clockNow();
+    // WHAT THIS ROW STATES, DECIDED ONCE, ABOVE THE INSERT/UPDATE SPLIT (#4686/#4779).
+    // The UPDATE arm used to bind a bare `instantNow()`, so a past-day skipped→taken
+    // flip both discarded a stated minute AND stamped today's instant onto yesterday's
+    // dose — and since the arming reads then coalesced onto `recorded_at`, which on a
+    // flip is the instant of the SKIP, a caregiver who skipped the 8pm ibuprofen and
+    // gave it at 01:30 was pushed "Redose window open" at 02:10, forty minutes after
+    // the dose. The target and the options own what the row states; which arm the row
+    // happens to take does not.
+    //
+    // THREE LIMBS, AND THE THIRD IS THE ONE EVERY MOUNTED TODAY-FLIP TAKES:
+    //   • `takenAt === null`      — explicitly untimed. The tri-state action yields it
+    //                               for any day that is not the profile's today, and
+    //                               the minute prompt's "Don't know" keeps it.
+    //   • `takenAt` truthy        — the stated minute, resolved against THIS row's day.
+    //                               An unusable value costs only that precision and
+    //                               falls back to the capture instant.
+    //   • `takenAt === undefined` — the captured instant. The action yields undefined
+    //                               when nothing is stated on today's date, and
+    //                               `toggleTaken` passes no options object at all.
+    // A two-way here type-checks, keeps both suites green — nothing asserted
+    // `occurred_at` on the UPDATE arm before this change — and makes every same-day
+    // flip write NULL, which with the union above leaves the family permanently
+    // unplaced. Control C4b is the test that reds on exactly that.
+    const occurredAt =
+      target !== "taken" || opts.takenAt === null
+        ? null
+        : opts.takenAt !== undefined
+          ? utcInstant(
+              resolveQueuedTakenAt(
+                opts.takenAt,
+                getTimezone(profileId),
+                date,
+                // The APP's now (#2312), not a bare `new Date()`. This used to read
+                // real time on the reasoning that a client capture and the server's
+                // clock are two independent REAL clocks — the same reasoning the food
+                // path carried until #2287 overturned it. The guard's OTHER half
+                // already compares against `date`, which came from `today()`, i.e.
+                // from this seam: a predicate whose two halves read two different
+                // clocks is not one predicate. And under the e2e freeze the capture
+                // and the seam are the same frozen instant, so real time refuses a
+                // seconds-old stamp as hours in the future and the dose silently
+                // loses its captured minute. Inert in production, where the seam IS
+                // real time, so a genuinely fast device is still refused.
+                capturedAt
+              ) ?? capturedAt
+            )
+          : utcInstant(capturedAt);
     if (!existing) {
-      // `recorded_at` is immutable capture; `occurred_at` is the administration the
-      // Taken action asserts. An offline replay may carry the captured administration
-      // instant; an unusable value costs only that precision and falls back to the app
-      // clock. A skip records the action but asserts no administration.
-      const capturedAt = clockNow();
-      const explicitlyUntimed = opts.takenAt === null;
-      const stamp = opts.takenAt
-        ? resolveQueuedTakenAt(
-            opts.takenAt,
-            getTimezone(profileId),
-            date,
-            // The APP's now (#2312), not a bare `new Date()`. This used to read
-            // real time on the reasoning that a client capture and the server's
-            // clock are two independent REAL clocks — the same reasoning the food
-            // path carried until #2287 overturned it. The guard's OTHER half
-            // already compares against `date`, which came from `today()`, i.e.
-            // from this seam: a predicate whose two halves read two different
-            // clocks is not one predicate. And under the e2e freeze the capture
-            // and the seam are the same frozen instant, so real time refuses a
-            // seconds-old stamp as hours in the future and the dose silently
-            // loses its captured minute. Inert in production, where the seam IS
-            // real time, so a genuinely fast device is still refused.
-            capturedAt
-          )
-        : null;
       db.prepare(
         `INSERT INTO intake_item_logs
            (dose_id, item_id, date, amount, status, recorded_at, occurred_at,
@@ -409,16 +440,15 @@ function applyDoseStatusCore(
         amount,
         target,
         utcInstant(capturedAt),
-        target === "taken" && !explicitlyUntimed
-          ? utcInstant(stamp ?? capturedAt)
-          : null,
+        occurredAt,
         opts.notifyMessageId ?? null,
         loggedVia,
         opts.bundleId ?? null
       );
     } else {
-      // The immutable record stamp stays put. The explicit target owns whether this row
-      // states an administration: taken means now, skipped means none.
+      // THE IMMUTABLE RECORD STAMP STAYS PUT: `recorded_at` is not in this SET list and
+      // must not join it — a flip is an edit of an existing row, not a new tap, and a
+      // moved capture stamp would date the skip's act to the correction.
       db.prepare(
         `UPDATE intake_item_logs
             SET status = ?, amount = ?, supply_adjusted = ?, occurred_at = ?
@@ -427,7 +457,7 @@ function applyDoseStatusCore(
         target,
         amount,
         target === "taken" ? 1 : 0,
-        target === "taken" ? instantNow() : null,
+        occurredAt,
         doseId,
         date
       );
@@ -728,16 +758,14 @@ function logAdministrationTx(
   }
   const summary = db
     .prepare(
-      `SELECT COUNT(*) AS count,
-              MAX(COALESCE(occurred_at, recorded_at)) AS last
+      `SELECT COUNT(*) AS count
          FROM intake_item_logs
         WHERE item_id = ? AND date = ? AND status = 'taken'`
     )
-    .get(itemId, date) as { count: number; last: string | null };
+    .get(itemId, date) as { count: number };
   return {
     kind: dup ? "duplicate" : "logged",
     count: summary.count,
-    lastGivenAt: summary.last ?? occurredAtStr,
     date,
   };
 }
@@ -1788,15 +1816,19 @@ export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
     .all(profileId) as RedoseNoticeItem[];
 }
 
-// The arming state for one PRN item's redose one-shot: the latest administration's id
-// + its intake time (arms/re-arms the timer, keyed by id per the notify_last_*
-// discipline) and the TRAILING-24h administration count (drives the "N of M" + max
-// suppression, #4686). Profile-scoped via the parent item. `nowMinute` is the instant
-// the ceiling window ends, and the count reads the same one predicate the family gather
-// does — the two must never disagree about what is inside the window.
+// The arming state for one PRN item's redose one-shot: what arms the timer (#4686's
+// `FamilyArming`, keyed by administration id per the notify_last_* discipline) and the
+// TRAILING-24h administration count (drives the "N of M" + max suppression). Profile-
+// scoped via the parent item. `nowMinute` is the instant the ceiling window ends, and
+// the count reads the same one predicate the family gather does — the two must never
+// disagree about what is inside the window.
+//
+// THE PER-ITEM READ ANSWERS IN THE SAME UNION AS THE FAMILY GATHER, deliberately: this
+// is the fallback a caller reaches when the family map has no entry, and a fallback
+// that answered in a different shape is exactly how `recorded_at` got back into the
+// interval clock in three files.
 export interface RedoseArmingState {
-  latestId: number | null;
-  latestGivenAt: string | null;
+  arming: FamilyArming;
   countInWindow: number;
 }
 
@@ -1805,21 +1837,21 @@ export function getRedoseArmingState(
   itemId: number,
   nowMinute: number
 ): RedoseArmingState {
-  // The most-recent administration (by intake time, id as tiebreak) that arms the
-  // one-shot. Scoped through the parent item so a forged itemId can't read across
-  // profiles.
+  // The row that arms the one-shot, under the SHARED ordering (`ARMING_ORDER`) — no
+  // COALESCE, so a capture stamp can never reach the interval clock through here, and a
+  // taken row stating no instant wins outright. Scoped through the parent item so a
+  // forged itemId can't read across profiles.
   const latest = db
     .prepare(
-      `SELECT l.id AS id,
-              COALESCE(l.occurred_at, l.recorded_at) AS administeredAt
+      `SELECT l.id AS id, l.occurred_at AS givenAt
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-        ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
+        ORDER BY ${ARMING_ORDER}
         LIMIT 1`
     )
     .get(profileId, itemId) as
-    { id: number; administeredAt: string } | undefined;
+    { id: number; givenAt: string | null } | undefined;
   const count = db
     .prepare(
       `SELECT COUNT(*) AS n
@@ -1832,8 +1864,7 @@ export function getRedoseArmingState(
     n: number;
   };
   return {
-    latestId: latest?.id ?? null,
-    latestGivenAt: latest?.administeredAt ?? null,
+    arming: armingFromRow(latest ? { ...latest, itemId } : undefined),
     countInWindow: count.n,
   };
 }
@@ -1942,6 +1973,13 @@ export function getPrnOverMaxItems(
 // OTC ibuprofen dose an hour ago holds the Rx item's "redose OK"). For a solo item
 // the family values equal the per-item ones. The per-item count/lastGivenAt stay for
 // the "N today · last 4:02pm" day label (the item's own administrations).
+//
+// TWO CONSUMERS, TWO ANSWERS (#4686). `lastGivenAt` is a DISPLAY column and keeps its
+// capture fallback: deleting it would make a PRN medication read "No doses logged"
+// after any past-day check-off, hiding a dose that happened. `familyArming` is the
+// SAFETY answer and never falls back to it — including on the non-medication path,
+// which has no ingredient family and now reads its own arming halves rather than
+// inheriting the display column.
 export interface PrnMedForQuickLog {
   // Complete label identity. Its name is the linked bottle's product name when one
   // exists, otherwise the item's display name; confirmed CUIs retain precedence.
@@ -1961,7 +1999,10 @@ export interface PrnMedForQuickLog {
   // The ingredient family's administrations inside the trailing 24 hours (#4686) —
   // the ceiling's basis.
   familyCount: number;
-  familyLastGivenAt: string | null;
+  // What arms the interval clock (#4686). A discriminated value rather than a nullable
+  // instant, so the "logged but unplaced" state cannot collapse onto "nothing logged"
+  // — or onto the display column above.
+  familyArming: FamilyArming;
   // min confirmed max across the family; falls back to the item's own max.
   familyMaxDailyCount: number | null;
   // The family's amount-aware window exposure (#1854) from the ONE family gather —
@@ -1994,6 +2035,16 @@ const PRN_QUICK_LOG_STMT = hoistedStatement(
               (SELECT MAX(COALESCE(l.occurred_at, l.recorded_at)) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.status = 'taken')
                 AS lastGivenAt,
+              -- The item's OWN arming row, under the SAME ordering the family gather
+              -- and the per-item fallback use, and with no COALESCE: the only consumer
+              -- is the non-medication fallback below, which has no ingredient family to
+              -- ask. A NULL armingAt beside a non-null armingId is the unplaced arm.
+              (SELECT l.id FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.status = 'taken'
+                ORDER BY ${ARMING_ORDER} LIMIT 1) AS armingId,
+              (SELECT l.occurred_at FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.status = 'taken'
+                ORDER BY ${ARMING_ORDER} LIMIT 1) AS armingAt,
               s.min_interval_hours AS minIntervalHours,
               s.max_daily_count AS maxDailyCount
         FROM intake_items s
@@ -2015,7 +2066,7 @@ function getPrnQuickLogItems(
     PrnMedForQuickLog,
     | "identity"
     | "familyCount"
-    | "familyLastGivenAt"
+    | "familyArming"
     | "familyMaxDailyCount"
     | "familyExposure"
     | "familyMemberCount"
@@ -2024,13 +2075,23 @@ function getPrnQuickLogItems(
     rxcui_ingredients: string | null;
     supply_id: number | null;
     supply_name: string | null;
+    armingId: number | null;
+    armingAt: string | null;
   })[];
   const families = getMedicationFamilyStates(
     profileId,
     ceilingWindowEndMinute(clockNow())
   );
   return rows.map(
-    ({ rxcui, rxcui_ingredients, supply_id, supply_name, ...r }) => {
+    ({
+      rxcui,
+      rxcui_ingredients,
+      supply_id,
+      supply_name,
+      armingId,
+      armingAt,
+      ...r
+    }) => {
       const fam = families.get(r.id);
       return {
         ...r,
@@ -2042,7 +2103,17 @@ function getPrnQuickLogItems(
           rxcuiIngredients: parseRxcuiIngredients(rxcui_ingredients),
         }),
         familyCount: fam?.countInWindow ?? r.count,
-        familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
+        // The family answer when there is one, else THIS item's own union — never the
+        // display column beside it. A PRN supplement has no ingredient family, and
+        // before #4686 it inherited `lastGivenAt`, which is how the unknown arm was
+        // unreachable on the whole non-medication path.
+        familyArming:
+          fam?.arming ??
+          armingFromRow(
+            armingId == null
+              ? undefined
+              : { id: armingId, givenAt: armingAt, itemId: r.id }
+          ),
         familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
         familyExposure: fam?.exposure ?? null,
         familyMemberCount: fam?.memberIds.length ?? 1,

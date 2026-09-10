@@ -2,7 +2,8 @@
 // (calm; #449): once a user has DONE a check, if it's older than their per-profile retest
 // cadence (~quarterly by default) the coaching rollup surfaces a "Fitness check due" item
 // through the standard findings/dismissal bus — never a push notification. DB-free; the
-// builder in lib/rule-findings.ts gathers the last-check date + cadence and calls this.
+// builder in lib/rule-findings/training.ts gathers the last-check date + cadence and calls
+// this.
 //
 // Deliberately calm: a subject who has NEVER done a check is NOT nagged to start one
 // (hide, don't shame — #489); the nudge only appears once a baseline exists and has aged

@@ -44,6 +44,19 @@ import { getRecentFoodTaps } from "@/lib/queries";
 import { correctionBursts } from "@/lib/correction-time";
 import { getDoseCorrectionBursts } from "@/lib/queries/intake/adherence";
 import { getMedicationFamilyStates } from "@/lib/queries/intake/prn-family";
+
+// The instant the family's interval clock is armed from. `FamilyArming` (#4686) is a
+// union whose unplaced arm carries no instant at all, so a test asking for one has to
+// say it expected a placed administration.
+function placedGivenAt(profileId: number, itemId: number): string {
+  const arming = getMedicationFamilyStates(
+    profileId,
+    ceilingWindowEndMinute(new Date())
+  ).get(itemId)!.arming;
+  if (arming.kind !== "placed")
+    throw new Error(`expected a placed arming, got ${arming.kind}`);
+  return arming.givenAt;
+}
 import { seedLoginTelegram } from "./fixtures";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
@@ -838,19 +851,13 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     markDoseTaken(pid, doseId, itemId, today(pid), "page");
     stampTap(doseLogs(pid)[0].id, "2026-08-05 19:20:00");
 
-    const armedBefore = getMedicationFamilyStates(
-      pid,
-      ceilingWindowEndMinute(new Date())
-    ).get(itemId)!.latestGivenAt!;
+    const armedBefore = placedGivenAt(pid, itemId);
     const anchor = doseLogs(pid)[0].id;
     await handleCallbackQuery(
       cq("5552032", `dosetime:${pid}:${anchor}:60`, [])
     );
 
-    const armedAfter = getMedicationFamilyStates(
-      pid,
-      ceilingWindowEndMinute(new Date())
-    ).get(itemId)!.latestGivenAt!;
+    const armedAfter = placedGivenAt(pid, itemId);
     // The arming dose the safety read consults is the corrected one …
     expect(armedAfter).not.toBe(armedBefore);
     // … and it is EARLIER, so the computed freshness can only shrink. A correction of a
@@ -1122,11 +1129,7 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     // …and the PRN redose window arms off the CORRECTED instant, which is the safe
     // direction (#2020): a dose actually taken fourteen hours ago is not fresh, and the
     // safety read now says so instead of believing the morning tap.
-    const armed = getMedicationFamilyStates(
-      pid,
-      ceilingWindowEndMinute(new Date())
-    ).get(itemId)!.latestGivenAt!;
-    expect(armed).toBe("2026-08-05T16:00:00Z");
+    expect(placedGivenAt(pid, itemId)).toBe("2026-08-05T16:00:00Z");
   });
 
   it("an hour the LEVEL did not offer is refused, and a malformed day marker parses to nothing", async () => {

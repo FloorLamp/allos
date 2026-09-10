@@ -592,6 +592,7 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
         "no source scan can see. A surface DISAPPEARING is the direction that matters: " +
         "the rule below would then range over fewer files and go on passing.\n"
     ).toEqual([
+      "components/medications/DatedDoseControl.tsx",
       "components/medications/QuickLogPrnControl.tsx",
       "components/medications/ScheduledDoseAction.tsx",
       "components/practices/LogPracticeButton.tsx",

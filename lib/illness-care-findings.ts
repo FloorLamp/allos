@@ -13,7 +13,7 @@
 // bus ("dismiss once, silence everywhere", #449).
 //
 // Care tier, deliberately (#449): unlike the calm coaching builders in
-// lib/rule-findings.ts, this one is PUSH — its dedupeKey prefix (ILLNESS_CARE_PREFIX)
+// lib/rule-findings/*, this one is PUSH — its dedupeKey prefix (ILLNESS_CARE_PREFIX)
 // is registered in RULE_FINDING_PREFIXES, and its items are banded "today" so they
 // reach the hero. It is NOT part of collectCoachingFindings.
 

@@ -241,7 +241,7 @@ export function isIndistinguishableFamily(
 // OTC-plus-Rx case #1027 was written for, reassurance included. An
 // INDISTINGUISHABLE family is duplicate records, and the note says so instead of rationalizing
 // "albuterol + albuterol + albuterol" as a lifestyle choice. Pure — the builder
-// in lib/rule-findings.ts wraps this in the Finding envelope (key, tier, action)
+// in lib/rule-findings/intake.ts wraps this in the Finding envelope (key, tier, action)
 // unchanged, so a stored `med-dup:` dismissal keeps applying across the split.
 export interface MedicationDuplicationNoteCopy {
   title: string;

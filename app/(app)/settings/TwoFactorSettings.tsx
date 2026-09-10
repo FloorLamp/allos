@@ -124,6 +124,14 @@ export default function TwoFactorSettings({
       </div>
 
       {/* ----- Already enabled ----- */}
+      {/* THE ENABLED STATE HAS NO LOUD CONTROL, AND THAT IS THE RULE, NOT AN
+          OMISSION (#4978, PM ruling 6, 2026-09-09 23:35 UTC). The card is the
+          surface here, and Regenerate and Turn off render TOGETHER from the one
+          `enabled && !recoveryCodes` condition — neither is behind a fold and
+          neither hides the other. Filling both is the two-loud-controls-on-one-card
+          state the doctrine forbids; filling one would rank two independent
+          sub-sections by declaration order. The enrollment mounts below are filled
+          because each is the card's ONLY commit in the state that renders it. */}
       {enabled && !recoveryCodes && (
         <div className="space-y-4">
           <p
@@ -188,6 +196,7 @@ export default function TwoFactorSettings({
           onClick={beginEnroll}
           disabled={pending}
           data-testid="twofa-enable"
+          variant="primary"
         >
           Enable two-factor authentication
         </Button>
@@ -233,6 +242,7 @@ export default function TwoFactorSettings({
               onClick={activate}
               disabled={pending || !enrollCode}
               data-testid="twofa-activate"
+              variant="primary"
             >
               Verify &amp; turn on
             </Button>

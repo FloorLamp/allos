@@ -481,6 +481,7 @@ function renderLedger(date: string, dueDose = DUE_DOSE) {
   const view = render(
     <DayLedger
       date={date}
+      profileToday={TODAY}
       groups={ledgerGroups(dueDose)}
       doseWritable
       prefs={{ timeFormat: "24h", dateFormat: "iso" }}
