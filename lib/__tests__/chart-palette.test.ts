@@ -370,11 +370,7 @@ const STEP: Record<string, string> = {
 };
 
 /** The hex a `text-*` / `bg-*` utility in `cls` renders, for one theme. */
-function stepHex(
-  cls: string,
-  theme: ChartTheme,
-  kind: "text" | "bg"
-): string {
+function stepHex(cls: string, theme: ChartTheme, kind: "text" | "bg"): string {
   const re = new RegExp(
     `(?:^|\\s)${theme === "dark" ? "dark:" : ""}${kind}-([a-z]+-\\d{2,3})(?![\\w-])`,
     "g"
