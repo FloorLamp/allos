@@ -149,7 +149,10 @@ export interface CuratedDeclaration<
   screenItem: (item: I) => CuratedStrike | null;
   // The copy for a struck candidate list — `allStruck` distinguishes "the alternative is
   // showing instead" from "some sources were left out". Null pushes no note.
-  struckNote: (strikes: readonly CuratedStrike[], allStruck: boolean) => N | null;
+  struckNote: (
+    strikes: readonly CuratedStrike[],
+    allStruck: boolean
+  ) => N | null;
   // The food–drug interaction entry keys a candidate participates in — the INVERSE
   // index (#577), shared by both maps.
   drugKeys: (item: I) => readonly string[] | undefined;
@@ -257,7 +260,9 @@ function buildSuggestion<
   // 2. Map-declared condition/situation tags, via the SHARED matcher (code-first,
   //    #1030). A "drop" tag withholds the whole suggestion; a "caution" annotates it.
   for (const c of entry.contraindications) {
-    if (conditionOrSituationMatches(c.match, decl.conditions, decl.situations)) {
+    if (
+      conditionOrSituationMatches(c.match, decl.conditions, decl.situations)
+    ) {
       if ((c.severity ?? "caution") === "drop") return null;
       notes.push(decl.note("condition", c.caution));
     }
