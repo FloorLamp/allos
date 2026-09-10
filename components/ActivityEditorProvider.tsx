@@ -13,7 +13,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useHistoryBackClose } from "./useHistoryBackClose";
 import {
@@ -31,6 +30,7 @@ import type { RpeTracking } from "@/lib/rpe";
 import type { Equipment } from "@/lib/types";
 import type { WorkoutPresence } from "@/lib/workout-presence";
 import { workoutOffer, type WorkoutOffer } from "@/lib/workout-offer";
+import ActivityOverlay, { loadActivityForm } from "./ActivityOverlay";
 import type { ActivityEditData } from "./ActivityForm";
 import WorkoutDock from "./WorkoutDock";
 import {
@@ -46,87 +46,6 @@ import type { PracticeType } from "@/lib/protocol-practice";
 // This provider owns the activity workspace everywhere. Pages open it but never
 // re-parent it into page-specific chrome, so create, edit, repeat, and live sessions
 // keep one presentation and one lifecycle.
-
-// ── THE CLOSED EDITOR'S CODE IS LOADED, NOT SHIPPED WITH THE SHELL (#5206) ─────
-//
-// This provider is mounted by the app shell on EVERY authenticated route, and it
-// used to import `ActivityOverlay` — and so `ActivityForm` and the whole of
-// components/activity-form/* — statically. The heaviest client code in the app was
-// therefore downloaded, parsed and hydrated on every dashboard visit whether or not
-// anybody opened the editor. e2e/editor-on-demand.spec.ts holds that boundary and
-// prints the dashboard's initial JavaScript, so the budget is re-measured rather
-// than quoted. The provider's own API — the eligibility guards, the workout offer,
-// the dock, the presence state — is small and stays eager, because closed chrome
-// renders from it.
-//
-// WARMED AT MOUNT, which is the whole reason this is one `import()` and not
-// `next/dynamic`. Splitting the code is only half the ask: the editor is the quick
-// logger's fastest path, and the shell also promises it OPENS WITH NO CONNECTION
-// (e2e/offline-reachability.mobile.spec.ts). A chunk fetched at the tap would be a
-// slow first open online and an impossible one offline. Fetched as the shell mounts,
-// it is off the critical path — the browser hydrates without it — and in the browser
-// long before anything can be tapped. It is a fetch, not a preload hint in the HTML:
-// an unconditional `<link rel=preload>` would put the bytes back on the initial load
-// and erase the saving.
-//
-// AND A FAILED FETCH IS HANDLED HERE RATHER THAN THROWN. `next/dynamic` (React.lazy)
-// rejects into the nearest error boundary, which for a shell-mounted provider is
-// app/(app)/error.tsx — a missing chunk would replace the WHOLE APP with "Something
-// went wrong", the same regression components/ChartErrorBoundary.tsx exists to
-// contain for the chart bundles. So the module is loaded into state instead: an open
-// before it lands shows a calm sheet rather than a blank one, a failure offers Retry,
-// and the browser coming back online retries on its own.
-type OverlayComponent = (typeof import("./ActivityOverlay"))["default"];
-
-type OverlayState =
-  | { status: "loading" }
-  | { status: "ready"; Overlay: OverlayComponent }
-  | { status: "failed" };
-
-/** The workspace, while its code is on the way — or if it never arrives. */
-function ActivityEditorPlaceholder({
-  failed,
-  onRetry,
-  onClose,
-}: {
-  failed: boolean;
-  onRetry: () => void;
-  onClose: () => void;
-}) {
-  return createPortal(
-    <div
-      data-testid="activity-editor-placeholder"
-      className="fixed inset-0 z-50 flex items-start justify-end overflow-y-auto bg-surface"
-    >
-      <div className="min-h-full w-full bg-surface p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:max-w-2xl sm:border-l-2 sm:border-slate-300 sm:p-8 sm:dark:border-white/25">
-        <p
-          role={failed ? "alert" : "status"}
-          className="text-sm text-slate-500 dark:text-slate-400"
-        >
-          {failed
-            ? "Couldn't open the activity editor."
-            : "Opening the activity editor…"}
-        </p>
-        {failed && (
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              data-testid="activity-editor-retry"
-              onClick={onRetry}
-              className="btn-ghost"
-            >
-              Retry
-            </button>
-            <button type="button" onClick={onClose} className="btn-ghost">
-              Close
-            </button>
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 interface ActivityEditorApi {
   /**
@@ -330,33 +249,19 @@ export default function ActivityEditorProvider({
 }) {
   const tz = useTimezone();
   const [mountedAt] = useState(Date.now);
-  // The workspace's own code (see the note above the placeholder): fetched as the
-  // shell mounts, retried on request and when the connection returns.
-  const [overlay, setOverlay] = useState<OverlayState>({ status: "loading" });
-  const [overlayAttempt, setOverlayAttempt] = useState(0);
-  const retryOverlay = useCallback(() => {
-    setOverlay({ status: "loading" });
-    setOverlayAttempt((n) => n + 1);
+  // WARM THE EDITOR'S CODE FROM THE SHELL (#5206). ActivityOverlay loads
+  // ActivityForm on demand, and the workspace itself is only mounted while the
+  // editor is OPEN — so the warm has to be asked for by something that is always
+  // mounted, which is this. Started as the shell mounts, the fetch is off the
+  // critical path (the page hydrates without it) and lands long before anything
+  // can be tapped: a first open stays instant, and the shell keeps its promise
+  // that the editor opens with no connection at all
+  // (e2e/offline-reachability.mobile.spec.ts). It is a fetch and not a
+  // `<link rel=preload>` in the HTML, which would put the bytes back on the
+  // initial load and erase the saving.
+  useEffect(() => {
+    void loadActivityForm().catch(() => {});
   }, []);
-  useEffect(() => {
-    let live = true;
-    void import("./ActivityOverlay").then(
-      (mod) => {
-        if (live) setOverlay({ status: "ready", Overlay: mod.default });
-      },
-      () => {
-        if (live) setOverlay({ status: "failed" });
-      }
-    );
-    return () => {
-      live = false;
-    };
-  }, [overlayAttempt]);
-  useEffect(() => {
-    if (overlay.status !== "failed") return;
-    window.addEventListener("online", retryOverlay);
-    return () => window.removeEventListener("online", retryOverlay);
-  }, [overlay.status, retryOverlay]);
   const [open, setOpen] = useState(false);
   // Minimized-but-MOUNTED: the live overlay collapses to the bottom bar without
   // unmounting ActivityForm, so the running rest timer + elapsed clock survive
@@ -542,9 +447,8 @@ export default function ActivityEditorProvider({
       .catch(() => {});
   }, [editData, router, trainingRelevant]);
 
-  // Put the workspace away: the one close every route to it shares — the API's
-  // `close`, the overlay's own dismiss, and the placeholder's when its code never
-  // arrived.
+  // Put the workspace away: the one close both routes to it share — the API's
+  // `close` and the overlay's own dismiss.
   const closeEditor = useCallback(() => {
     setMinimized(false);
     setOpen(false);
@@ -934,53 +838,46 @@ export default function ActivityEditorProvider({
           honest answer is the one the open call carried in. `{children}` above is
           deliberately OUTSIDE it — that is the rest of the app, not this editor. */}
       <LoggedViaSurface value={openedFrom}>
-        {open &&
-          (overlay.status === "ready" ? (
-            <overlay.Overlay
-              key={formKey}
-              units={units}
-              suggestions={suggestions}
-              history={history}
-              equipment={equipment}
-              recentActivityEquipment={recentActivityEquipment}
-              bodyweightKg={bodyweightKg}
-              strengthTrainingAvailable={strengthTrainingAvailable}
-              editData={editData}
-              prefill={prefill}
-              initialDate={createDate ?? undefined}
-              initialStartTime={createTimes?.start}
-              initialEndTime={createTimes?.end}
-              live={live}
-              adoptRowId={live ? liveRowId : null}
-              adoptPending={live && liveCreatePending}
-              onRowOwned={live ? onLiveRowOwned : undefined}
-              deloadContext={deloadContext}
-              recoveringContext={recoveringContext}
-              plateauHints={plateauHints}
-              rpeTracking={rpeTracking}
-              // While minimized the workspace stays MOUNTED but hidden — the running
-              // rest timer + elapsed clock keep ticking; the bar restores it.
-              hidden={minimized}
-              onMinimize={live ? minimizeLive : undefined}
-              onLiveFinished={() => {
-                const id = liveOwnedRowIdRef.current ?? editData?.id;
-                if (id != null) setDismissedPresenceId(id);
-                setLive(false);
-                setLiveStartEpoch(null);
-              }}
-              onClose={closeEditor}
-              onCloseRequestReady={(requestClose) => {
-                requestCloseRef.current = requestClose;
-              }}
-              onDeleted={leaveDeletedActivityPage}
-            />
-          ) : (
-            <ActivityEditorPlaceholder
-              failed={overlay.status === "failed"}
-              onRetry={retryOverlay}
-              onClose={closeEditor}
-            />
-          ))}
+        {open && (
+          <ActivityOverlay
+            key={formKey}
+            units={units}
+            suggestions={suggestions}
+            history={history}
+            equipment={equipment}
+            recentActivityEquipment={recentActivityEquipment}
+            bodyweightKg={bodyweightKg}
+            strengthTrainingAvailable={strengthTrainingAvailable}
+            editData={editData}
+            prefill={prefill}
+            initialDate={createDate ?? undefined}
+            initialStartTime={createTimes?.start}
+            initialEndTime={createTimes?.end}
+            live={live}
+            adoptRowId={live ? liveRowId : null}
+            adoptPending={live && liveCreatePending}
+            onRowOwned={live ? onLiveRowOwned : undefined}
+            deloadContext={deloadContext}
+            recoveringContext={recoveringContext}
+            plateauHints={plateauHints}
+            rpeTracking={rpeTracking}
+            // While minimized the workspace stays MOUNTED but hidden — the running
+            // rest timer + elapsed clock keep ticking; the bar restores it.
+            hidden={minimized}
+            onMinimize={live ? minimizeLive : undefined}
+            onLiveFinished={() => {
+              const id = liveOwnedRowIdRef.current ?? editData?.id;
+              if (id != null) setDismissedPresenceId(id);
+              setLive(false);
+              setLiveStartEpoch(null);
+            }}
+            onClose={closeEditor}
+            onCloseRequestReady={(requestClose) => {
+              requestCloseRef.current = requestClose;
+            }}
+            onDeleted={leaveDeletedActivityPage}
+          />
+        )}
         {/* Spacer so the fixed bottom bar never overlaps the last of the page
           content — the layout "gains bottom padding while the dock is present". */}
         {showBar && <div className="h-20 shrink-0" aria-hidden="true" />}

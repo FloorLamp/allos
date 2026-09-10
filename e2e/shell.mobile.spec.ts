@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
+  awaitHydrated,
   expectInView,
   expectPhoneTapTargets,
   openMobileDrawer,
@@ -568,6 +569,117 @@ test.describe("the nav drawer declares itself a modal (#3463)", () => {
     await expect(reopened).toHaveCount(0);
     await expect(page.getByTestId("dock-slot-more")).toBeFocused();
   });
+});
+
+// ── WHAT THE PHONE SHELL COSTS BEFORE ANYBODY LOGS ANYTHING (#5206) ──────────
+//
+// The app shell mounts ActivityEditorProvider on every authenticated route, and
+// that provider used to reach ActivityForm — and all of components/activity-form/*
+// — through a static import chain. So the heaviest client code in the app was
+// downloaded, parsed and hydrated on every visit whether or not the editor was
+// ever opened. The form's code now arrives as its own chunk, warmed from the shell
+// so a first open is still instant and an offline open still works
+// (e2e/offline-reachability.mobile.spec.ts owns that half).
+//
+// WHAT "NOT IN THE INITIAL JAVASCRIPT" MEANS HERE, and why it is read off the
+// SERVER-RENDERED HTML rather than off everything the browser fetched: the warm
+// starts as the shell mounts, so "everything fetched" would be racing it and would
+// answer a different question every run. The HTML's own script set is the
+// timing-free statement of what a page load costs before it is interactive — those
+// are the chunks the browser must have to hydrate.
+//
+// THE POSITIVE CONTROL matters more than usual, because the absence half would pass
+// just as well if somebody renamed the two literals it looks for. So the form's code
+// also has to be FOUND, in a chunk the initial HTML never asked for.
+//
+// It PRINTS its measurements — initial chunk count and bytes, and the first open
+// from the sheet's row to a visible form — so a later lane re-takes the budget the
+// same way instead of inheriting a number:
+//   E2E_FORCE_BUILD=1 npx playwright test e2e/shell.mobile.spec.ts --retries=0
+// The phone here is a 390x844 viewport on the runner's own Chromium, not a slow
+// device or a throttled link: the byte counts are exact and the millisecond is a
+// local upper bound that includes Playwright's action overhead.
+
+// Two literals that exist only inside the editor's own code: the exercise name
+// field's placeholder (components/activity-form/ActivityPartsList.tsx) and the form
+// root's test id (components/ActivityForm.tsx).
+const EDITOR_MARKERS = ["What did you do", "activity-form"] as const;
+
+/** The `/_next/static/**.js` paths the server-rendered HTML itself pulls in. */
+function scriptPathsIn(html: string): string[] {
+  const paths = new Set<string>();
+  for (const m of html.matchAll(/["'](\/_next\/static\/[^"']+?\.js)["']/g))
+    paths.add(m[1]);
+  return [...paths];
+}
+
+async function measureChunks(
+  page: Page,
+  paths: string[]
+): Promise<{ bytes: number; withEditor: string[] }> {
+  let bytes = 0;
+  const withEditor: string[] = [];
+  for (const path of paths) {
+    const body = await (await page.request.get(path)).text();
+    bytes += Buffer.byteLength(body);
+    if (EDITOR_MARKERS.some((marker) => body.includes(marker)))
+      withEditor.push(`${path} (${Buffer.byteLength(body)} bytes)`);
+  }
+  return { bytes, withEditor };
+}
+
+test("the closed activity editor is not in the shell's initial JavaScript (#5206)", async ({
+  page,
+}) => {
+  // What the browser actually asked for, recorded from the harness side: this suite
+  // runs on a patched clock, which leaves performance.getEntries() empty in the
+  // page, so the browser's own resource timeline cannot answer here.
+  const requested: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/_next/static/") && path.endsWith(".js"))
+      requested.push(path);
+  });
+
+  await page.goto("/");
+  await awaitHydrated(page.getByTestId("dock-log-puck")); // testid-scope-ok: the dock is app chrome outside every streamed boundary, one copy
+
+  const html = await (await page.request.get("/")).text();
+  const initialPaths = scriptPathsIn(html);
+  expect(initialPaths.length).toBeGreaterThan(0);
+  const initial = await measureChunks(page, initialPaths);
+  console.log(
+    `[#5206] shell initial JS: ${initialPaths.length} chunks, ${initial.bytes} bytes`
+  );
+
+  // First open, through the quick logger's own path: puck → Train → Log activity.
+  const row = await showLogRow(await openLogSheet(page), "log-activity");
+  const startedAt = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: this spec's own elapsed wall time, never a stored timestamp
+  await row.click();
+  await expect(page.getByTestId("activity-form")).toBeVisible(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+  console.log(
+    `[#5206] first open (row tap -> form visible): ${Date.now() - startedAt} ms` // eslint-disable-line no-restricted-properties -- clock-ok: elapsed wall time for the measurement above
+  );
+
+  const onDemand = await measureChunks(
+    page,
+    [...new Set(requested)].filter((path) => !initialPaths.includes(path))
+  );
+  console.log(
+    `[#5206] editor chunks loaded on demand: ${onDemand.withEditor.join(", ") || "none"}`
+  );
+
+  // EVERY MEASUREMENT IS PRINTED BEFORE ANYTHING IS ASSERTED, so a run that fails
+  // this boundary still reports the budget it measured rather than dying halfway
+  // through it. That is what makes a before-and-after possible at all.
+  expect(
+    initial.withEditor,
+    "the closed editor's code is in the shell's initial JavaScript"
+  ).toEqual([]);
+  expect(
+    onDemand.withEditor.length,
+    "the editor's code was not found in any chunk outside the initial set"
+  ).toBeGreaterThan(0);
 });
 
 test.describe("reduced motion (#1416 F)", () => {
