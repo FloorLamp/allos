@@ -8,6 +8,7 @@ import {
 } from "@/lib/token-lifecycle";
 import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
 import { TokenRow } from "@/components/TokenRow";
+import Button from "@/components/Button";
 import IntegrationDisconnectButton from "@/components/integrations/IntegrationDisconnectButton";
 import { connectHealthConnect, disconnect } from "./actions";
 
@@ -80,14 +81,14 @@ export default function HealthConnectSetup({
         {error && (
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
         )}
-        <button
-          className="btn"
+        <Button
+          variant="primary"
           disabled={busy}
           onClick={onGenerateOrRotate}
           data-testid="health-connect-generate"
         >
           {busy ? "Generating…" : "Generate token & enable"}
-        </button>
+        </Button>
       </div>
     );
   }

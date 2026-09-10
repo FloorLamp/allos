@@ -9,6 +9,7 @@ import type {
 } from "@/lib/portal-setup-stage";
 import type { PortalLoginStatus } from "@/lib/portal-status";
 import Avatar from "@/components/Avatar";
+import Button from "@/components/Button";
 import FilterPills from "@/components/FilterPills";
 import OverflowMenu, {
   MENU_ITEM,
@@ -549,9 +550,8 @@ export default function PortalsSurface({
               onChoose={setRemapChoice}
               disabled={busy}
             />
-            <button
-              type="button"
-              className="btn text-sm"
+            <Button
+              variant="primary"
               data-testid="remap-save"
               disabled={
                 busy || remapChoice === null || remapChoice === i.profileId
@@ -570,15 +570,13 @@ export default function PortalsSurface({
               }}
             >
               Save
-            </button>
-            <button
-              type="button"
-              className="btn-ghost text-sm"
+            </Button>
+            <Button
               data-testid="remap-cancel"
               onClick={() => setRemapping(null)}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         )}
       </li>
@@ -704,25 +702,22 @@ export default function PortalsSurface({
               <span className="text-xs text-slate-600 dark:text-slate-300">
                 same name is mapped on {p.suggestion!.where}
               </span>
-              <button
-                type="button"
-                className="btn text-sm"
+              <Button
+                variant="primary"
                 data-testid="assist-map"
                 disabled={busy}
                 onClick={() => mapOnto(p.suggestion!.profileId)}
               >
                 Map
-              </button>
-              <button
-                type="button"
-                className="btn-ghost text-sm"
+              </Button>
+              <Button
                 data-testid="assist-someone-else"
                 onClick={() =>
                   setAssistDeclined((prev) => ({ ...prev, [p.id]: true }))
                 }
               >
                 Someone else…
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
@@ -736,15 +731,14 @@ export default function PortalsSurface({
                 disabled={busy}
               />
               {/* The one primary CTA of a pending row — a button, not a menu entry. */}
-              <button
-                type="button"
-                className="btn shrink-0 text-sm"
+              <Button
+                variant="primary"
                 disabled={busy || chosen === null}
                 data-testid="pending-map"
                 onClick={() => chosen !== null && mapOnto(chosen)}
               >
                 Map
-              </button>
+              </Button>
             </div>
           ))}
       </li>
@@ -794,9 +788,12 @@ export default function PortalsSurface({
             onChoose={setPrebindChoice}
             disabled={busy}
           />
-          <button
-            type="button"
-            className="btn text-sm"
+          {/* NO RANK, and the reason is carve-out 1 of PM ruling 6 (#4978): this
+              fold opens from its own boolean, so it can stand open beside the
+              card's rename, software and add-login folds. Two filled controls on
+              one card is the state the doctrine forbids, so a commit that cannot
+              be alone is quiet rather than loud by declaration order. */}
+          <Button
             disabled={busy || !prebindLabel.trim() || prebindChoice === null}
             data-testid="bind-add"
             onClick={() => {
@@ -814,15 +811,13 @@ export default function PortalsSurface({
             }}
           >
             Map
-          </button>
-          <button
-            type="button"
-            className="btn-ghost text-sm"
+          </Button>
+          <Button
             data-testid="prebind-cancel"
             onClick={() => setPrebindFor(null)}
           >
             Cancel
-          </button>
+          </Button>
           <RowNote id={key} note={note} />
         </div>
       </div>
@@ -913,9 +908,7 @@ export default function PortalsSurface({
           </span>
         ) : (
           canAct && (
-            <button
-              type="button"
-              className="btn-ghost shrink-0 text-xs"
+            <Button
               disabled={busy}
               data-testid="sync-request-ask"
               onClick={() => {
@@ -933,7 +926,7 @@ export default function PortalsSurface({
               <span className="block text-xs font-normal opacity-80">
                 Ask whoever runs the companion tool for this login to run it.
               </span>
-            </button>
+            </Button>
           )
         )}
       </>
@@ -1008,9 +1001,10 @@ export default function PortalsSurface({
           className="input"
           data-testid="account-rename-input"
         />
-        <button
-          type="button"
-          className="btn text-sm"
+        {/* Quiet for the same reason as the pre-bind commit above: `renamingAccount`
+            and `prebindFor` are independent, so both forms can stand open in one
+            login group. */}
+        <Button
           disabled={busy || !renameText.trim()}
           data-testid="account-rename-save"
           onClick={() => {
@@ -1023,15 +1017,13 @@ export default function PortalsSurface({
           }}
         >
           Save
-        </button>
-        <button
-          type="button"
-          className="btn-ghost text-sm"
+        </Button>
+        <Button
           data-testid="account-rename-cancel"
           onClick={() => setRenamingAccount(null)}
         >
           Cancel
-        </button>
+        </Button>
       </div>
     );
   }
@@ -1159,9 +1151,11 @@ export default function PortalsSurface({
               className="input"
               data-testid="portal-rename-input"
             />
-            <button
-              type="button"
-              className="btn text-sm"
+            {/* Rename, Edit software and Add a login open from three independent
+                booleans on one card, so none of them is the card's ONE loud
+                control: the card has none rather than three (PM ruling 6, #4978).
+                The row commits below keep their fill — a row is its own surface. */}
+            <Button
               disabled={busy || !renameText.trim()}
               data-testid="portal-rename-save"
               onClick={() => {
@@ -1174,15 +1168,13 @@ export default function PortalsSurface({
               }}
             >
               Save
-            </button>
-            <button
-              type="button"
-              className="btn-ghost text-sm"
+            </Button>
+            <Button
               data-testid="portal-rename-cancel"
               onClick={() => setRenamingPortal(null)}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         )}
 
@@ -1193,9 +1185,7 @@ export default function PortalsSurface({
               onChoose={setSoftwareDraft}
               disabled={busy}
             />
-            <button
-              type="button"
-              className="btn text-sm"
+            <Button
               disabled={busy}
               data-testid="portal-software-save"
               onClick={() => {
@@ -1208,15 +1198,13 @@ export default function PortalsSurface({
               }}
             >
               Save
-            </button>
-            <button
-              type="button"
-              className="btn-ghost text-sm"
+            </Button>
+            <Button
               data-testid="portal-software-cancel"
               onClick={() => setEditingSoftware(null)}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         )}
 
@@ -1249,9 +1237,7 @@ export default function PortalsSurface({
                 className="input"
                 data-testid="account-name"
               />
-              <button
-                type="button"
-                className="btn text-sm"
+              <Button
                 disabled={busy || !loginName.trim()}
                 data-testid="account-add"
                 onClick={() => {
@@ -1264,15 +1250,13 @@ export default function PortalsSurface({
                 }}
               >
                 Add login
-              </button>
-              <button
-                type="button"
-                className="btn-ghost text-sm"
+              </Button>
+              <Button
                 data-testid="account-add-cancel"
                 onClick={() => setAddingLogin(null)}
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -1302,9 +1286,7 @@ export default function PortalsSurface({
                 className="flex flex-wrap items-center gap-x-3 gap-y-1"
                 data-testid="portal-login-prompt"
               >
-                <button
-                  type="button"
-                  className="btn-ghost text-sm"
+                <Button
                   data-testid="portal-add-login-cta"
                   onClick={() => {
                     setAddingLogin(portal.id);
@@ -1312,7 +1294,7 @@ export default function PortalsSurface({
                   }}
                 >
                   ＋ Add a login
-                </button>
+                </Button>
                 <p className="min-w-0 flex-1 text-xs text-slate-500 dark:text-slate-400">
                   Only if two people sign in to {portal.name} with their own
                   accounts — and add them before that first run, because the
@@ -1392,9 +1374,8 @@ export default function PortalsSurface({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn"
+          <Button
+            variant="primary"
             disabled={busy || !addName.trim()}
             data-testid="portal-add"
             onClick={() => {
@@ -1412,16 +1393,14 @@ export default function PortalsSurface({
             }}
           >
             Add portal
-          </button>
+          </Button>
           {context === "card" && (
-            <button
-              type="button"
-              className="btn-ghost"
+            <Button
               data-testid="portal-add-cancel"
               onClick={() => setAddOpen(false)}
             >
               Cancel
-            </button>
+            </Button>
           )}
           <RowNote id="add-portal" note={note} />
         </div>
