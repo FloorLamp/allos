@@ -303,6 +303,15 @@ test("the sitting's Time (#2235): empty by default, one-tap Now, census renders 
     const timeInput = form.getByTestId("m-time");
     await expect(timeInput).toHaveValue("");
 
+    // OPTIONAL AS A PROP, NOT AS A WORD (#5617). This field was named "Time taken
+    // (optional)" — the parenthetical was `timeRequired` spelled into the accessible
+    // name, so a screen reader heard the fact and the platform did not carry it. The
+    // name is now "Time", as on every sibling log form, and the field is genuinely not
+    // required. Both halves are asserted: dropping the word without declaring the fact
+    // would leave the same gap under a shorter name.
+    await expect(timeInput).toHaveAttribute("aria-label", "Time");
+    await expect(timeInput).toHaveJSProperty("required", false);
+
     // "Now" fills an ABSOLUTE local wall time the user sees and can adjust. The
     // stated value is read back from the field (the browser clock is frozen but
     // ticks), and every later assertion compares against exactly that statement.
