@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
     ok: true as const,
   })),
   addMeasurements: vi.fn(async (_formData: FormData) => ({})),
+  deleteAdministration: vi.fn(),
+  confirm: vi.fn(),
 }));
 
 vi.mock("@/components/LoggedViaSurface", () => ({
@@ -75,8 +77,12 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
       writeToken: Promise.resolve(0),
     }),
 }));
+// The ⋯ delete asks first, so the answer is a KNOB rather than a constant: it
+// defaults to "cancelled" (what every suite here but the delete door wants) and the
+// delete door turns it on. A confirm hard-wired to false makes a delete assertion
+// pass vacuously; one hard-wired to true silently arms every other row menu.
 vi.mock("@/components/ConfirmDialog", () => ({
-  useConfirm: () => vi.fn(),
+  useConfirm: () => mocks.confirm,
   useConfirmOpen: () => false,
 }));
 // The panel's rows are the shared EntryHistoryTable, whose ⋯ delete runs through
@@ -122,7 +128,7 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   logHistoricalDose: mocks.logHistoricalDose,
   updateHistoricalDose: mocks.updateHistoricalDose,
   setDoseStatus: mocks.setDoseStatus,
-  deleteAdministration: vi.fn(),
+  deleteAdministration: mocks.deleteAdministration,
   resolveDayDoses: vi.fn(),
 }));
 
@@ -175,6 +181,11 @@ beforeEach(() => {
     posted.push(fd);
     return { ok: true, outcome: "logged" };
   });
+  mocks.deleteAdministration.mockImplementation(async (fd: FormData) => {
+    posted.push(fd);
+    return { undoId: null };
+  });
+  mocks.confirm.mockImplementation(async () => false);
 });
 afterEach(() => cleanup());
 
@@ -1178,6 +1189,92 @@ describe("the dose-history panel posts its container's subject (#4693)", () => {
       expect(fields().profile_id).toBe(expected);
     }
   );
+});
+
+// AND SO DOES THE DELETE (#4844). The panel has a THIRD door onto a profile-scoped
+// write — the row's ⋯ Delete — and it builds its own FormData, separately from the two
+// above. Nothing had ever clicked it: every suite here but the clock one mounts with an
+// empty `history`, so `EntryHistoryTable` does not render and neither row door exists
+// to click, and the `deleteAdministration` the #4801 round added to the module mock
+// stayed an inert `vi.fn()` — reached by no test, answering `undefined` if it had been.
+//
+// The gate itself is the action's (`gateItemProfile` → `requireProfileWriteAccess`),
+// pinned at the action tier in lib/__action_tests__/history-cross-profile-correction
+// .actions.test.ts. What only a mount can tell you is whether the subject ever reaches
+// that gate: a panel that omitted `profile_id` here posts a body the action reads as
+// "no subject", and the gate then falls back — correctly, by its own rules — to the
+// ACTING profile, so a caregiver's tap deletes nothing and a delete on their own record
+// is the best case. Nothing throws and no test at the action tier can see it.
+describe("the dose-history panel's ⋯ delete posts its container's subject (#4844)", () => {
+  const ROW = {
+    id: 77,
+    doseId: 11,
+    date: "2026-08-20",
+    time: "9:30am",
+    statedAt: "2026-08-20 20:30:00",
+    amount: "5 g",
+    product: null,
+  };
+  const PANEL = {
+    itemId: 7,
+    itemName: "Creatine",
+    product: null,
+    doses: [{ id: 11, amount: "5 g", time_of_day: "08:00" }],
+    asNeeded: false,
+    defaultTime: "08:00",
+    maxDate: TODAY,
+  };
+
+  async function deleteTheRow(subjectProfileId?: number): Promise<void> {
+    mocks.confirm.mockImplementation(async () => true);
+    render(
+      <DoseHistoryPanel
+        {...PANEL}
+        history={[ROW]}
+        subjectProfileId={subjectProfileId}
+      />
+    );
+    fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
+    await act(async () =>
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }))
+    );
+  }
+
+  it.each([
+    { mount: "a subject-scoped container", subjectProfileId: 42, posted: "42" },
+    {
+      mount: "a single-subject page",
+      subjectProfileId: undefined,
+      posted: undefined,
+    },
+  ])(
+    "$mount posts profile_id=$posted",
+    async ({ subjectProfileId, posted: expected }) => {
+      await deleteTheRow(subjectProfileId);
+      // The row is named by the id the action parses, and the subject beside it — the
+      // whole body, so a payload that grew a second subject field or lost the log id
+      // fails here rather than reading as a pass on one lucky key.
+      expect(fields()).toEqual({
+        log_id: "77",
+        ...(expected === undefined ? {} : { profile_id: expected }),
+      });
+    }
+  );
+
+  it("asks before deleting, and posts nothing when the question is declined", async () => {
+    // The confirm is the only thing between a mis-tapped ⋯ and a removed dose, and a
+    // suite that armed it globally could not tell a panel that asks from one that
+    // deletes on the first tap.
+    render(
+      <DoseHistoryPanel {...PANEL} history={[ROW]} subjectProfileId={42} />
+    );
+    fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
+    await act(async () =>
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }))
+    );
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteAdministration).not.toHaveBeenCalled();
+  });
 });
 
 // AND IT COLLECTS ON THAT SUBJECT'S CLOCK (#4693 fix round). The id above is only half

@@ -33,7 +33,7 @@ import {
   getTimezone,
   getUnitPrefs,
 } from "./settings";
-import { bestKnownInstant, eventInstant, recordInstant } from "./row-instants";
+import { bestKnownInstant, eventInstant } from "./row-instants";
 import { now } from "./clock";
 import { getIntakeDoseLedgerPage } from "./queries";
 import { getFoodLedgerPage } from "./queries/nutrition";
@@ -46,6 +46,7 @@ import { foodEventWindow } from "./food-slot-count";
 import type { FoodSlotBoundaries } from "./food-slot";
 import { profileFoodSlotBoundaries } from "./profile-food-slot";
 import { normalizePracticeName } from "./practice";
+import { practiceWindowEvent } from "./intraday";
 import { formatMinutes } from "./duration";
 import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
 import { historyHref, medicationHref, metricDetailHref } from "./hrefs";
@@ -618,33 +619,9 @@ export function gatherHistoryLog(
       // came from, for the same reason the feed loop pushes at its emit point: a
       // session the reader's `?kind=` or `?item=` dropped never reaches this array,
       // so the panel cannot draw a mark for something the list below does not show.
-      if (opts.day != null) {
-        const started = recordInstant("practice_logs", { ...row });
-        const elapsedMin =
-          row.live === 1 && started.known
-            ? Math.max(
-                0,
-                Math.round(
-                  (now().getTime() - new Date(started.at).getTime()) / 60_000
-                )
-              )
-            : null;
-        dayEvents.push({
-          id: `practice:${row.id}`,
-          date: row.date,
-          category: "practice",
-          title: normalizePracticeName(row.practice),
-          clockWindow: {
-            date: row.date,
-            start_time: row.start_time,
-            end_time: row.end_time,
-            duration_min: row.duration_min,
-            live: row.live === 1,
-            derived_duration: row.derived_window === 1,
-            elapsed_min: elapsedMin,
-          },
-        });
-      }
+      // Composed by `practiceWindowEvent` (lib/intraday.ts), which the chart's own day
+      // gather also calls, so a session names the same thing on both surfaces.
+      if (opts.day != null) dayEvents.push(practiceWindowEvent(row, now()));
     }
   }
 

@@ -599,10 +599,14 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // family's relatively-positioned box — which is why this reaches the figure
       // at all, sitting below every member's `<li>` in the very same box.
       //
-      // It is also why the figure is `inert` — the chart's own tick anchors name
-      // `#timeline-entry-…` fragments that exist on the day view and NOT here, so
-      // without it the keyboard would reach a link that scrolls nowhere while the
-      // pointer could not.
+      // It is also why the figure is `inert`. It used to be because the chart's own
+      // tick anchors named `#timeline-entry-…` fragments that exist on the day view
+      // and NOT here, so the keyboard reached a link that scrolls nowhere while the
+      // pointer could not. #5262 took the ticks off this chart — the dashboard row
+      // draws the day's session blocks and no feed-sourced marks — and the reason
+      // survives them: the block's own anchor is a real second destination inside a
+      // row the ruling above declares to be ONE door, so the keyboard must not reach
+      // past the door either.
       //
       // NOT asserted with a click: Playwright refuses to click an element that
       // another element intercepts, so `click(chart)` fails whether the figure is
@@ -616,35 +620,37 @@ test.describe("the day view's intraday panel (#1068)", () => {
           "a.standing-primary"
         ) as HTMLElement | null;
         if (!plot || !door)
-          return { hitHref: null, doors: 0, ticks: 0, focusable: true };
+          return { hitHref: null, doors: 0, anchors: 0, focusable: true };
         const box = plot.getBoundingClientRect();
         const hit = document.elementFromPoint(
           box.x + box.width / 2,
           box.y + box.height / 2
         );
         // Through the FIGURE's own anchors — the ones this chart actually renders,
-        // not a fresh query written to check the work.
-        const ticks = Array.from(
+        // not a fresh query written to check the work. Every anchor, not the
+        // fragment ones: since #5262 this chart draws no ticks, and the anchor left
+        // inside the figure is the workout block's own link to its session.
+        const anchors = Array.from(
           el.querySelectorAll<HTMLElement>(
-            '[data-testid="dashboard-family-figure"] a[href^="#"]'
+            '[data-testid="dashboard-family-figure"] a[href]'
           )
         );
-        const focusable = ticks.some((tick) => {
-          tick.focus();
-          return document.activeElement === tick;
+        const focusable = anchors.some((anchor) => {
+          anchor.focus();
+          return document.activeElement === anchor;
         });
         return {
           // The href of the door the pointer actually landed in, read THROUGH the
           // same element the reach is measured against.
           hitHref: door.contains(hit) ? door.getAttribute("href") : null,
           doors: el.querySelectorAll("a.standing-primary").length,
-          ticks: ticks.length,
+          anchors: anchors.length,
           focusable,
         };
       });
       // The control that keeps the focus claim from being vacuous: the figure really
-      // does render tick anchors, so "none is focusable" is about something.
-      expect(doorReach.ticks).toBeGreaterThan(0);
+      // does render an anchor, so "none is focusable" is about something.
+      expect(doorReach.anchors).toBeGreaterThan(0);
       // ONE primary surface on the row — the family declares one door, not one per
       // member — and a tap on the drawing lands on the day the drawing is of.
       expect(doorReach.doors).toBe(1);

@@ -244,6 +244,59 @@ describe("Button", () => {
     ]);
   });
 
+  // THE STATE MARKER SURVIVES THE PRIMITIVE (PM ruling 8, 2026-09-09, #4978).
+  // This asserts the RENDERED attribute, and that is the whole point: the bug it
+  // guards was a conversion whose call site read correctly, whose types, lint and
+  // class assertions all passed, and whose attribute was simply not in the DOM —
+  // TypeScript exempts a hyphenated JSX name from excess-property checking, so
+  // nothing below the browser tier could see the drop. A test that read the props
+  // it just passed would have been green through the whole outage.
+  it("forwards a data attribute to the rendered control", () => {
+    render(
+      <Button
+        variant="primary"
+        data-testid="offer"
+        data={{ "data-workout-offer": "resume" }}
+      >
+        Resume workout
+      </Button>
+    );
+
+    const button = screen.getByRole("button", { name: "Resume workout" });
+    expect(button.getAttribute("data-workout-offer")).toBe("resume");
+    // Spread LAST, so these two are what the record must not have been able to
+    // reach; the rank and the box are untouched by carrying state.
+    expect(button.getAttribute("data-testid")).toBe("offer");
+    expect(button.getAttribute("data-button-control")).toBe("");
+    expect(button.className.split(" ")).toEqual([
+      "button-control",
+      "button-control-primary",
+    ]);
+  });
+
+  // AND THE OPENING'S LIMIT IS THE TYPE. Never rendered, exactly as the dashed
+  // rank refusal above: each `@ts-expect-error` reds `npm run typecheck` the
+  // moment a mount can shadow an attribute the primitive owns, which is the only
+  // place that claim can be made against a spread that deliberately goes last.
+  // The last row proves the refusal is aimed at those two names and has not
+  // swallowed the ordinary state marker with them.
+  function ForwardedDataOwnsNothingThePrimitiveOwns() {
+    return (
+      <>
+        {/* @ts-expect-error - the primitive owns the test id every spec finds it by. */}
+        <Button data={{ "data-testid": "stolen" }}>Resume workout</Button>
+        {/* @ts-expect-error - and the attribute that marks it as the primitive at all. */}
+        <Button data={{ "data-button-control": "stolen" }}>
+          Resume workout
+        </Button>
+        <Button data={{ "data-workout-offer": "resume" }}>
+          Resume workout
+        </Button>
+      </>
+    );
+  }
+  void ForwardedDataOwnsNothingThePrimitiveOwns;
+
   it("keeps a destination a link under the same closed treatment", () => {
     render(
       <DestinationActionLink href="/upcoming" data-testid="destination">

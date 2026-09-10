@@ -1382,7 +1382,25 @@ describe("actual atomic dashboard manifests", () => {
     // type with no such field. Nothing a person sees moved: every placement manifest
     // in this file is byte-identical, which is the assertion that says so. The five
     // personas at 0 have no `hr_minutes` and never open the gather at all.
-    biohacker: 297,
+    //
+    // −35 MORE on `biohacker` and 0 on the other five (#5262, owner ruling
+    // 2026-09-09: the chart-shaped gather). The row stopped opening the record's day
+    // gather at all. Attributed by stack on this fixture, the section was 41: the
+    // `getLatestHrDay` gate 1, the chart's own layers 3, and 37 inside
+    // `gatherHistoryLog` — 21 reaching `lib/timeline.ts` and 16 `lib/history.ts`. Ten
+    // of those 16 compose only `rows`, which this page discards unread, and 29 of the
+    // 41 returned zero rows: the gather asks about twenty domains and most say nothing
+    // happened today, one statement each. The chart draws blocks and ticks, the ruling
+    // keeps the blocks and drops the feed-sourced ticks, and a block has exactly two
+    // producers — so the row now asks those two questions (the day's activities, the
+    // day's practice sessions) through `getIntradayDayWindows`. The section is 6.
+    //
+    // NOTHING A PERSON SEES MOVED ON THIS FIXTURE, which is why the placement census
+    // and every manifest below are byte-identical: biohacker's chart drew two blocks
+    // and no ticks before the change, from two practice sessions, and draws the same
+    // two after. A fixture with dose or food marks on the chart WOULD lose them, and
+    // that is the ruling.
+    biohacker: 262,
     // −1 each (#5061): `getDayLoadInputs` and `getIntensitySignal` ask the same
     // question of the same 42 days — the shared HR read, kept to the activity windows
     // that bound it — and only the READ was request-cached (#5010), so each one still
@@ -1512,7 +1530,14 @@ describe("actual atomic dashboard manifests", () => {
   // raised here because the conversation has an answer — 57 statements is what the
   // section costs, measured and attributed — but whether the section should cost that is
   // still open, and the number is now visible for the first time so that it can be asked.
-  const QUERY_CEILING = 329;
+  //
+  // 329 → 279 (#5262, the chart-shaped gather), the rule following a reduction down
+  // for the fifth time and the first time it has undone a rise. The same 17 of frozen
+  // headroom over the heaviest persona: biohacker 262 + 17 = 279. This is the number
+  // the paragraph above left open — "whether the section should cost that is still
+  // open" — answered by the owner on the measurement rather than by this file, and the
+  // ceiling goes back below where it stood before #5034 made the section visible.
+  const QUERY_CEILING = 279;
 
   it("dashboard query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
@@ -1643,7 +1668,10 @@ describe("actual atomic dashboard manifests", () => {
     // And the cold table's −11 carried through in full (#5262): the day gather sits
     // outside the commit-scoped memo, so a warm load opened it and paid the eleven
     // chip probes again. 186 → 175.
-    biohacker: 175,
+    // The cold table's −35 carried through in full for the same reason (#5262): the
+    // whole day-so-far read is outside the commit memo, so a warm load re-issued every
+    // statement of it. 175 → 140.
+    biohacker: 140,
   };
 
   it("dashboard query budget: a second load with no write in between matches its warm baseline (#5073)", () => {

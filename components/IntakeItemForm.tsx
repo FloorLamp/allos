@@ -61,6 +61,7 @@ import {
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
+  otcStrengthOptions,
   prnDefaultsFor,
   prnLabelIdentityFor,
   redoseLabelDefaults,
@@ -73,6 +74,7 @@ import {
   pediatricAgeYears,
   pediatricDoseSuggestion,
   pediatricRefusalLine,
+  reofferPediatricDose,
 } from "@/lib/prn-dosing";
 import {
   DEFAULT_FORMULATION_SLUG,
@@ -117,6 +119,7 @@ import {
   type IntakeRule,
 } from "@/lib/intake-rules";
 import {
+  cadenceDraftAsItem,
   intakeItemFormData,
   intakeItemFormStateFrom,
   type IntakeItemFormState,
@@ -517,14 +520,7 @@ export default function IntakeItemForm({
   const dosageOptions = useMemo(
     () =>
       dosageOptionsFor(affordances.dosageSource, {
-        otcStrengths: prnDefaults
-          ? [
-              ...new Set([
-                `${prnDefaults.adult.doseMgLow} mg`,
-                `${prnDefaults.adult.doseMgHigh} mg`,
-              ]),
-            ]
-          : [],
+        otcStrengths: otcStrengthOptions(prnDefaults),
         catalogDosages: catalogEntry?.dosages ?? [],
       }),
     [affordances.dosageSource, catalogEntry, prnDefaults]
@@ -864,14 +860,7 @@ export default function IntakeItemForm({
     minIntervalHours: state.minIntervalHours,
     maxDailyCount: state.maxDailyCount,
     maxDailyAmountMg: state.maxDailyAmountMg,
-    cadenceSentence: cadenceLabel({
-      cadence_kind: state.cadence.kind,
-      cadence_weekdays: state.cadence.weekdays.join(","),
-      cadence_interval_days: state.cadence.intervalDays
-        ? Number(state.cadence.intervalDays)
-        : null,
-      cadence_anchor_date: state.cadence.anchorDate,
-    }),
+    cadenceSentence: cadenceLabel(cadenceDraftAsItem(state.cadence)),
     rx: state.rx,
     rxcui: rx.rxcui ?? "",
     prescriber: state.prescriber,
@@ -1248,35 +1237,19 @@ export default function IntakeItemForm({
                     setPediatricContext(next);
                     setSelectedPediatricBandMinLbs(null);
                     // A new weight re-derives the label's OFFER, never the
-                    // caregiver's own number. An untouched suggestion follows the
-                    // new band — and is CLEARED when the new weight has no band,
-                    // because leaving the old weight's figure standing would be a
-                    // dose attributed to a measurement that no longer supports it.
-                    if (!prnDefaults) return;
-                    const nextResult = pediatricDoseSuggestion({
+                    // caregiver's own number — the policy itself, and why each of
+                    // its three answers is the one it is, lives in lib/prn-dosing.
+                    const reoffer = reofferPediatricDose({
                       entry: prnDefaults,
-                      ageMonths: next.ageMonths as number,
-                      weightKg: next.weightKg,
-                      weightDate: next.weightDate,
-                      today: next.today,
-                      formulationSlug: activeSlug || null,
+                      next,
+                      ledger: ledgerRef.current,
+                      currentAmount: state.doses[0]?.amount ?? "",
                     });
-                    // The ledger refuses a figure the caregiver typed. The extra
-                    // empty-check is the one thing it cannot answer: a stored row's
-                    // amount is neither offered nor marked touched, and a new weight
-                    // must not rewrite what was already saved.
-                    const offered =
-                      ledgerRef.current.suggested.has("doseAmount");
-                    if (
-                      nextResult.kind === "dose" &&
-                      (offered || !state.doses[0]?.amount.trim())
-                    ) {
+                    if (reoffer.kind === "offer") {
                       writePrefill(
-                        offerPrefill({
-                          doseAmount: formulationDoseAmount(nextResult.mg),
-                        })
+                        offerPrefill({ doseAmount: reoffer.doseAmount })
                       );
-                    } else if (nextResult.kind !== "dose") {
+                    } else if (reoffer.kind === "withdraw") {
                       withdrawDoseSuggestion();
                     }
                   }}

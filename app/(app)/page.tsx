@@ -38,9 +38,8 @@ import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
 import IntradayChart from "@/components/IntradayChart";
-import { getIntradayDay } from "@/lib/queries/intraday";
+import { getIntradayDay, getIntradayDayWindows } from "@/lib/queries/intraday";
 import { getLatestHrDay } from "@/lib/queries/metrics";
-import { gatherHistoryLog } from "@/lib/history";
 import { intradayFreshness } from "@/lib/intraday";
 import {
   isFoodLoggingRelevant,
@@ -327,13 +326,6 @@ import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
 
 export const dynamic = "force-dynamic";
-
-// The bound on the day gather behind the Today band's chart (#4767 item 2). It is a
-// ROW cap on one profile-local day, and the chart draws only the subset that carries
-// a clock — so this is not a limit on what the chart can show so much as a refusal to
-// read an unbounded day. A day past it has more entries than any 358px axis could
-// mark legibly, and the day view itself is one tap away with its own paging.
-const DASHBOARD_INTRADAY_DAY_ROWS = 200;
 
 // The soonest scheduled visit, flattened by the page (#171/#1215). `whenLabel`
 // carries date AND clock time through the login's display prefs — a 9am and a 4pm
@@ -1256,9 +1248,9 @@ async function renderDashboard(
   // THE DAY SO FAR (#4767 item 2) — the SAME IntradayChart the /history day view
   // draws, in whatever geometry this row's own width earns (#4973: the chart reads
   // its container, so nothing here names one). No second implementation and no
-  // model of its own: the events are `gatherHistoryLog`'s own resolved day rows, the same
-  // list the day view hands the panel, so a window drawn here can never name
-  // something that page would not show.
+  // model of its own: the blocks are composed by the same two functions the day view's
+  // own events are composed by, so a window drawn here can never name something that
+  // page would not show.
   //
   // GATED LIKE THE CARD IT REPLACES, and gated CHEAPLY FIRST. `getLatestHrDay` is one
   // indexed read; a profile with no wearable, or a morning nothing has synced into
@@ -1266,22 +1258,17 @@ async function renderDashboard(
   // no frame at all rather than an empty axis. The second half of the gate is n > 1:
   // one sample is a dot, not a day (the same rule the sparkline column applies at
   // `loneReading`).
+  //
+  // SHAPED TO WHAT THIS ROW DRAWS (#5262, owner ruling 2026-09-09): the chart's own
+  // layers plus the day's session blocks. It used to open the record's whole day
+  // gather for its `dayEvents` and throw the row list away — twenty domains asked, most
+  // of them answering "nothing happened today" one statement at a time, to place ticks
+  // this row has no list to point them at. `getIntradayDayWindows` asks the block
+  // layer's own two questions instead, through the same composers the record's day view
+  // uses, so a block here still names what that page would show.
   const intradayCandidate =
     getLatestHrDay(profile.id) === on
-      ? getIntradayDay(
-          profile.id,
-          on,
-          // NO CHIPS HERE, so no chip probes (#5262). This row reads `dayEvents` and
-          // nothing else; the eleven existence probes behind `presentKinds` are the
-          // /history page's filter row earning itself, and the dashboard draws none.
-          // Opting out returns a gather without the field rather than an empty one.
-          gatherHistoryLog(profile.id, {
-            loginId: login.id,
-            day: on,
-            limit: DASHBOARD_INTRADAY_DAY_ROWS,
-            presentKinds: false,
-          }).dayEvents
-        )
+      ? getIntradayDay(profile.id, on, getIntradayDayWindows(profile.id, on))
       : null;
   const intradayToday =
     intradayCandidate && (intradayCandidate.hr?.pointCount ?? 0) > 1
