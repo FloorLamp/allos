@@ -25,9 +25,6 @@ Prioritize remaining impact:
   Record that evidence and reassess residual work after partial fixes.
 - Agent-discovered work defaults to P3 and joins the back of its queue. Take it
   oldest first only when no owner-filed work of equal or higher priority is ready.
-  A demonstrated new P0/P1 regression or authorized priority audit can override
-  that ordering. Lanes return findings; the orchestrator decides how to track them
-  under [lifecycle's filing bar](lifecycle.md).
 
 Capacity applies to running agents, including separate review agents:
 
@@ -44,10 +41,13 @@ Capacity applies to running agents, including separate review agents:
 - Pause dispatch around three unreviewed PRs across the shared review queue.
   Banking frees agent capacity, not review capacity. Stagger starts to avoid gate
   contention; the generator warns about starts within 25 minutes. A P0 preempts.
+- Each orchestrator session keeps one worker slot on a ready `refactor` issue in
+  its slice whenever one is ready. A P0 preempts it; nothing else does. Prefer the
+  program issues (#5346, #5347, #4978, #5300, #5171, #2960) over small standalone
+  convergences.
 
 Cluster related issues by domain and files, usually two to six when their scope
-fits one bounded task. Resolve `claims <path>` before editing; an unreadable claim
-is not clearance. Sequence overlaps that cannot be fenced. Use
+fits one bounded task. Sequence overlaps that cannot be fenced. Use
 [cross-session coordination](multi-orchestrator.md) for other sessions' branches.
 
 ## Per-unit pipeline
@@ -69,16 +69,8 @@ is not clearance. Sequence overlaps that cannot be fenced. Use
    clean redundant work through [recovery](recovery.md) and
    [lifecycle](lifecycle.md); compare content before deleting branches or worktrees.
 
-Parallelize banked implementation and local review when authorized. Serialize the
-landing candidate's final remote review, CI, and merge. Do not edit a live agent's
-worktree without acknowledgement. Production replay, backfill, snapshot access,
-and migration execution remain owner operations outside a normal coding lane.
-
-A decision-held branch is banked work, not a landing candidate. Preserve its head
-and exact release condition, then give available workers the highest ready work
-in the authorized slice. Pending owner answers do not require workers to wait or
-the PM to approve routine queue advancement. Respect actual file, machine, and
-review limits; report a blocked handoff only after no eligible work remains.
+Production replay, backfill, snapshot access, and migration execution remain
+owner operations outside a normal coding lane.
 
 ## Tooling
 
@@ -114,7 +106,5 @@ with a category from [RELEASE_NOTE_CATEGORIES](../../lib/release-notes.ts). A `p
 entry needs measured time on a surface people wait for; fewer internal operations
 alone do not establish faster UX.
 
-`release-notes-gather.mjs --check` prints uncovered candidate counts and exits 0
-on a successful check even when the count is positive. Read the output, including
-fetch failures and clipped-history limits. Its path-based candidates require
-curation; `pm-digest.sh` supplies the PM's catch-up, not an additional author list.
+`release-notes-gather.mjs --check` lists path-based candidates that still need
+curation; its `--help` states the exit code and history caveats.

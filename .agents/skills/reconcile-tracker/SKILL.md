@@ -97,6 +97,10 @@ Compare `docs/` status lines and README navigation with shipped behavior. Record
 mismatches; a mechanical correction can become a focused reviewed change. Do not
 turn the pass into a new scanner project.
 
+Remove contracts that `main` has superseded, naming in the PR what each removed
+section protected. There is no numeric prune target; `npm run docs:check` holds
+the total steady, and this pass is where superseded text leaves.
+
 ## 6. Review the report and apply
 
 Keep the generated report's order: run window, **What was examined**, **Patch
