@@ -45,7 +45,11 @@ const PANEL_WIDTH_PX = 384;
 // is the action the surface exists for. Its ancestor `LogActivityButton` rendered
 // `btn w-full` here until #3759 converged it on the typed Button, which had a
 // single secondary paint — the owner reported the lost CTA colour, and the variant
-// is what gives it back.
+// is what gives it back. #4978's ruling 6 said app-shell chrome takes no rank,
+// which would have undone that a second time; owner ruling 13 (2026-09-10) narrows
+// the clause instead — chrome takes no rank EXCEPT the one log affordance the shell
+// carries, the dock puck on phones and this on desktop, and that one spends no
+// surface's budget. "It's the puck equivalent." Demoting it needs a new ruling.
 //
 // Both hosts render components/QuickLogMenu.tsx, so there is one membership list
 // (`QUICK_LOG_ITEMS`) and one grouping (`LOG_SEGMENT_CENSUS`) behind every
