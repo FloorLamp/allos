@@ -102,7 +102,7 @@ describe("zonedDateParts / zonedMinuteStr — profile-tz attribution", () => {
   });
 });
 
-describe("hhmmFromMinutes — the one minute-of-day → \"HH:MM\" (#4550)", () => {
+describe('hhmmFromMinutes — the one minute-of-day → "HH:MM" (#4550)', () => {
   it("renders a minute of the day zero-padded and 24-hour", () => {
     expect(hhmmFromMinutes(0)).toBe("00:00");
     expect(hhmmFromMinutes(5)).toBe("00:05");
@@ -111,7 +111,7 @@ describe("hhmmFromMinutes — the one minute-of-day → \"HH:MM\" (#4550)", () =
     expect(hhmmFromMinutes(1439)).toBe("23:59");
   });
 
-  it("wraps past the end of the day instead of answering \"24:00\"", () => {
+  it('wraps past the end of the day instead of answering "24:00"', () => {
     expect(hhmmFromMinutes(1440)).toBe("00:00");
     expect(hhmmFromMinutes(1500)).toBe("01:00");
     expect(hhmmFromMinutes(36 * 60)).toBe("12:00"); // noon-anchored hour
@@ -121,7 +121,7 @@ describe("hhmmFromMinutes — the one minute-of-day → \"HH:MM\" (#4550)", () =
   // kept JS's sign through `%` and let `padStart` no-op on "-1", so `clockAtMinute`
   // answered "-1:-30" for -30. No caller could reach it, but no caller can reach it
   // HERE either — the normalization is the point of having one function.
-  it("wraps a negative minute rather than answering \"-1:-30\"", () => {
+  it('wraps a negative minute rather than answering "-1:-30"', () => {
     expect(hhmmFromMinutes(-30)).toBe("23:30");
     expect(hhmmFromMinutes(-1)).toBe("23:59");
     expect(hhmmFromMinutes(-1440)).toBe("00:00");

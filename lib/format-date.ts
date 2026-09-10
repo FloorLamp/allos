@@ -492,7 +492,9 @@ export function formatRelativeTime(
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return input;
 
-  return formatRelativeSeconds(Math.round((now.getTime() - d.getTime()) / 1000));
+  return formatRelativeSeconds(
+    Math.round((now.getTime() - d.getTime()) / 1000)
+  );
 }
 
 // THE LADDER ITSELF, over a signed age in seconds: positive is the past, negative
