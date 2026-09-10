@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback } from "react";
-import { useToast } from "@/components/Toast";
+import { useCallback, useLayoutEffect, useRef } from "react";
+import {
+  useClaimToastKey,
+  useDismissToast,
+  useToast,
+  useToastProfileScopeGetter,
+} from "@/components/Toast";
 import {
   undoRefusalText,
   undoToastPlan,
@@ -111,4 +116,125 @@ export function useUndoableAction(): (announcement: UndoAnnouncement) => void {
     },
     [toast]
   );
+}
+
+// THE KEYED RECEIPT (#5738). A receipt for a write outlives the tap that made it and
+// must not outlive its subject. Four things have to hold at once, and `Toast` already
+// holds each of them separately:
+//
+//   one slot     — `key`, so a second tap on the same target upgrades in place
+//   one owner    — `owner`/`onlyIfOwner`, so an older tap's inverse finishing late
+//                  cannot overwrite the receipt a newer tap has already posted
+//   one subject  — the profile stamp, so switching profiles clears it
+//   one lifetime — `dismissKey` on unmount, so a receipt cannot outlive its surface
+//
+// Assembling those four is what two surfaces did independently, in two vocabularies:
+// a mount ref plus a generation counter plus a claimed-owner map on
+// `SubstanceUnitControl`, an epoch map plus a lifecycle reservation on `FoodLogBar`.
+// This is that assembly written once. `SubstanceUnitControl` opens a session per tap
+// and `useWritePipeline` announces into one for any caller that declares a slot
+// (`WriteSpec.receipt`); the food bar's epoch protocol is the third spelling and is
+// retired by #3728.
+export interface KeyedReceipt {
+  // The slot this receipt occupies. The caller names it, because only the caller knows
+  // what "the same target" means — an event id for a substance unit, a day/slot
+  // coordinate for a serving.
+  readonly key: string;
+  readonly message: string;
+  readonly tone?: "success" | "error";
+  // Same contract as `UndoAnnouncement.undo`: absent/null is a written "no undo". An
+  // offer that does not carry its own `isCurrent` gets the session's.
+  readonly undo?: UndoOffer | null;
+}
+
+// One interaction's claim on the receipt channel, opened at the moment the person acted
+// and answered from what is true when the write comes back.
+export interface ReceiptSession {
+  // The acting profile this session opened under, or undefined outside any profile
+  // scope. Callers that address a different SUBJECT (the quick-log sheet writing for
+  // someone else) still key by their own subject; this is who was acting.
+  readonly profileId: number | undefined;
+  // Still the same mount, the same subject, and the same profile scope. Callers use it
+  // for their own late writes too — a `setState` after an unmount or a profile switch
+  // is the same mistake as a receipt after one.
+  isCurrent: () => boolean;
+  // Claims the slot and publishes. A session that is no longer current says nothing:
+  // announcing is the last step of an interaction that has already been superseded.
+  announce: (receipt: KeyedReceipt) => void;
+}
+
+// `subject` is what this surface's receipts are ABOUT — a substance for a person on a
+// day. Changing it ends every session opened under the old one and dismisses its
+// receipts, because a control re-pointed at a new subject is not the surface that
+// earned them.
+export function useKeyedReceipt(subject?: string): () => ReceiptSession {
+  const announceUndoable = useUndoableAction();
+  const claimKey = useClaimToastKey();
+  const getProfileScope = useToastProfileScopeGetter();
+  const mountedRef = useRef(false);
+  const generationRef = useRef(0);
+  const ownersRef = useRef(new Map<string, symbol>());
+  // The dismisser is read at UNMOUNT and never during a session's life, so it is kept
+  // current in a ref rather than depended on: what ends a session is the subject
+  // changing or the surface going away, and listing a provider callback below would end
+  // every live session the moment a host handed back a new function identity.
+  const dismissKey = useDismissToast();
+  const dismissKeyRef = useRef(dismissKey);
+  useLayoutEffect(() => {
+    dismissKeyRef.current = dismissKey;
+  }, [dismissKey]);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    generationRef.current += 1;
+    const owners = ownersRef.current;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      for (const [key, owner] of owners) dismissKeyRef.current(key, owner);
+      owners.clear();
+    };
+  }, [subject]);
+
+  return useCallback(() => {
+    const generation = generationRef.current;
+    const scope = getProfileScope();
+    const isCurrent = () => {
+      if (!mountedRef.current || generationRef.current !== generation)
+        return false;
+      if (!scope) return true;
+      const now = getProfileScope();
+      return now?.profileId === scope.profileId && now.token === scope.token;
+    };
+    return {
+      profileId: scope?.profileId,
+      isCurrent,
+      announce: (receipt: KeyedReceipt) => {
+        if (!isCurrent()) return;
+        // ONE CLAIM PER SLOT PER SESSION. The claim is what takes the slot from
+        // whoever held it; this session's own follow-ups — the undo outcome riding the
+        // same key — must not re-take it, because claiming clears the live card and the
+        // republish would then land at the BACK of the phone's one-at-a-time queue
+        // instead of upgrading the bar in place (#3611). They simply publish, and a
+        // LATER session's claim is what shuts them out.
+        const owners = ownersRef.current;
+        let owner = owners.get(receipt.key);
+        if (!owner) {
+          owner = Symbol(receipt.key);
+          owners.set(receipt.key, owner);
+          claimKey(receipt.key, owner);
+        }
+        const offer = receipt.undo ?? null;
+        announceUndoable({
+          message: receipt.message,
+          tone: receipt.tone,
+          key: receipt.key,
+          profileId: scope?.profileId,
+          profileToken: scope?.token,
+          owner,
+          undo: offer && { ...offer, isCurrent: offer.isCurrent ?? isCurrent },
+        });
+      },
+    };
+  }, [announceUndoable, claimKey, getProfileScope]);
 }

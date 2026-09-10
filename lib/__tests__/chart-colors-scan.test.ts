@@ -280,6 +280,29 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
 // identity (`OfferTone`'s brand/neutral emphasis), or by domain states — those
 // are a different job, the same way the ramp rule leaves categorical status maps
 // alone.
+//
+// WHAT THIS RULE STILL CANNOT SEE, stated here rather than rediscovered (#5725).
+// It keys on a SHAPE — a keyed object literal — so a verdict written any other way
+// is invisible to it, and #5725 found four such sites the moment #5187 landed:
+// `ImportFeed`'s `ToneIcon` (a switch; `text-emerald-500` at 2.30:1 on the light
+// surface), the patient-portals status line (an inline ternary), `STATUS_TONES` in
+// lib/record-format.ts (a map keyed by clinical status WORDS, so under two verdict
+// keys) and `RANGE_BADGE_META` (keyed by range words). Three now import the palette
+// and the fourth is documented in place as deliberately not a verdict — but none of
+// them was caught here, and any of them could return tomorrow in the same shape.
+//
+// The shape-independent version #5725 sketches — scan every `text-`/`bg-` token
+// from the verdict families under app/, components/ and lib/ — was measured before
+// being declined, not assumed impractical: 100 files carry a light-mode
+// `text-rose-600`, 36 a `text-amber-600`, 29 a `text-emerald-600`. Those steps are
+// under AA on `--surface` (4.21, 2.98, 3.40) and perfectly legal on the tint a
+// badge draws under them, so a token scan cannot judge one without resolving the
+// GROUND each token sits on — a different and much larger tool than a text scan. A
+// narrower variant (files naming a `…Tone` type AND painting a verdict family)
+// reaches 14 files, but misses the portals ternary, which names no tone type at
+// all. Until one of those exists, what this file guarantees is honestly narrower
+// than "no verdict ships under its floor": verdict colours declared AS A KEYED MAP
+// live in the palette.
 
 // The four words and the spellings the app used for them before they converged.
 const VERDICT_WORDS = new Set([

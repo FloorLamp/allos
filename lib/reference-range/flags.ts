@@ -14,6 +14,7 @@ import {
   type CanonicalRanges,
 } from "./parsing";
 import { bpComponentFor } from "../bp-markers";
+import { verdictBadge } from "../chart-colors";
 import { isAdultBpRegime } from "../life-stage";
 // ---------------------------------------------------------------------------
 // Unit-mislabel plausibility cross-check (issue #761). A lab report that
@@ -671,34 +672,26 @@ export function rangeBadgeFlag(badge: RangeBadge): MedicalFlag | null {
   }
 }
 
+// The chip a judged value wears. A RangeBadge already IS a verdict — "above range"
+// is a bad outcome, "optimal" a good one, which is the pairing `rangeBadgeFlag`
+// above already makes — so reading the shared palette here asserts nothing new; it
+// just stops this surface from keeping its own copy of the emerald/amber/rose
+// steps. Being keyed by RANGE WORDS is what hid it from #5187's verdict-map guard
+// (#5725), even though five of its six chips were already byte-identical to what
+// `verdictBadge` produces — which is what makes this a rename, not a re-step.
+// `unknown` is the sixth: it moves onto the palette's `neutral`, one step darker on
+// light (slate-700 on slate-100, 9.43:1, up from slate-500's 5.69:1) and swapping a
+// stray `dark:bg-slate-800` for the ink surface every other neutral chip uses.
 export const RANGE_BADGE_META: Record<
   RangeBadge,
   { label: string; chip: string }
 > = {
-  optimal: {
-    label: "Optimal",
-    chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-  },
-  "above-optimal": {
-    label: "Above optimal",
-    chip: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  },
-  "below-optimal": {
-    label: "Below optimal",
-    chip: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  },
-  high: {
-    label: "Above range",
-    chip: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
-  },
-  low: {
-    label: "Below range",
-    chip: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
-  },
-  unknown: {
-    label: "—",
-    chip: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
-  },
+  optimal: { label: "Optimal", chip: verdictBadge.good.class },
+  "above-optimal": { label: "Above optimal", chip: verdictBadge.warn.class },
+  "below-optimal": { label: "Below optimal", chip: verdictBadge.warn.class },
+  high: { label: "Above range", chip: verdictBadge.bad.class },
+  low: { label: "Below range", chip: verdictBadge.bad.class },
+  unknown: { label: "—", chip: verdictBadge.neutral.class },
 };
 
 // The fallback retest cadence: a biomarker with no curated per-analyte interval

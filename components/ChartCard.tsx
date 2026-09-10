@@ -26,11 +26,13 @@ import ChartCaptionBand from "./ChartCaptionBand";
 //     there is no wrapping anchor anywhere near the plot, which is what preserves
 //     recharts' own pointer handling.
 //
-// THE GUARD. `detailHref` is REQUIRED and may be `null` only with a same-line
-// `detail-none: <why>` justification comment (the `first-ok` pattern) — pinned by the
-// pure source scan `lib/__tests__/chart-detail-href.test.ts`, which also fails a
-// Trends chart rendered outside this card. A new chart cannot ship as a dead end
-// silently.
+// THE CONTRACT, IN THE TYPE. `detailHref` is REQUIRED, and a card with no
+// destination says WHY in the value: `{ none: "<why>" }`. The reason is a
+// constructor argument the compiler demands, not a comment beside a `null` that only
+// a source scan could read — so a dead end cannot be written by accident, and the
+// six existing ones cannot lose their reason to a reformat (#5351). The scan in
+// `lib/__tests__/chart-detail-href.test.ts` still fails a Trends chart rendered
+// outside this card, which is the half no type can state.
 //
 // SQUARE ON MOBILE (owner-added 2026-07-26). Below `sm` the plot commits to a 1:1
 // aspect in EVERY state — populated, empty, loading, error, offline-fallback — in
@@ -122,9 +124,10 @@ export default function ChartCard({
   // sentence). A constant explainer about what the card IS belongs in `about`,
   // not here (#4927).
   note?: ReactNode;
-  // Where the card taps through to. `null` is legal ONLY with a same-line
-  // `detail-none: <why>` comment at the call site — see the guard scan.
-  detailHref: AppRoute | null;
+  // Where the card taps through to. A card that genuinely has no destination
+  // passes `{ none: "<why>" }` — the reason is REQUIRED by the type, so "this is a
+  // considered dead end" and "nobody got to it" cannot look the same.
+  detailHref: AppRoute | { none: string };
   // Overrides the noun in the phone expand icon's accessible name, when the
   // visible title reads badly in "Open X detail" (a title carrying a date, say).
   detailTitle?: string;
@@ -162,6 +165,9 @@ export default function ChartCard({
   children: ReactNode;
 }) {
   const Heading = headingLevel;
+  // The route, or nothing — a declared `{ none }` renders exactly as the old `null`
+  // did, minus the possibility of an undeclared one.
+  const href = typeof detailHref === "string" ? detailHref : null;
   const heading = (
     <>
       <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
@@ -205,9 +211,9 @@ export default function ChartCard({
       <div
         className={`mb-2 flex items-stretch justify-between gap-0 sm:mb-3 ${headerBleedClassName}`}
       >
-        {detailHref ? (
+        {href ? (
           <Link
-            href={detailHref}
+            href={href}
             data-testid="chart-card-header-link"
             className={`group flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-tl-xl px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 sm:pt-4 dark:hover:bg-brand-950/40 ${
               headerAction ? "" : "sm:rounded-tr-xl"
@@ -220,16 +226,16 @@ export default function ChartCard({
             {heading}
           </div>
         )}
-        {(headerAction || detailHref) && (
+        {(headerAction || href) && (
           <div
             className={`flex shrink-0 items-center gap-1 py-1.5 pr-2 ${
               headerAction ? "sm:pr-3" : "sm:hidden"
             }`}
           >
             {headerAction}
-            {detailHref && (
+            {href && (
               <Link
-                href={detailHref}
+                href={href}
                 data-testid="chart-card-expand"
                 aria-label={`Open ${detailTitle ?? title} detail`}
                 className="tap-target press inline-flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 sm:hidden dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-300"

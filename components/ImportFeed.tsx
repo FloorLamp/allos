@@ -8,6 +8,7 @@ import {
 import type { IntegrationId } from "@/lib/types";
 import { getIntegration } from "@/lib/integrations/registry";
 import { feedItemView, type FeedEntry, type FeedTone } from "@/lib/import-feed";
+import { verdictText } from "@/lib/chart-colors";
 import { isProvenanceMismatch } from "@/lib/import-log";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
@@ -28,19 +29,28 @@ function sourceName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
 }
 
+// A feed row's tone glyph. Written as a SWITCH rather than a `Record<FeedTone,
+// string>`, which is why #5187's convergence — and the keyed-map guard it added
+// — walked straight past it: `ok` shipped `text-emerald-500`, 2.30:1 on the
+// Botanical light surface, and the `neutral` ring shipped `text-slate-300` at
+// 1.67:1, both under the 3:1 floor a graphical object has to clear (#5725).
+// The three arms that state an outcome now read the shared verdict ink; only
+// `pending` keeps its own grey, because an in-flight extraction has no verdict
+// yet and the spinner is chrome (that is FeedTone's whole reason for existing
+// separately from VerdictTone).
 function ToneIcon({ tone }: { tone: FeedTone }) {
   switch (tone) {
     case "ok":
       return (
         <IconCircleCheck
-          className="h-4 w-4 shrink-0 text-emerald-500"
+          className={`h-4 w-4 shrink-0 ${verdictText.good.class}`}
           stroke={1.75}
         />
       );
     case "error":
       return (
         <IconAlertTriangle
-          className="h-4 w-4 shrink-0 text-rose-500"
+          className={`h-4 w-4 shrink-0 ${verdictText.bad.class}`}
           stroke={1.75}
         />
       );
@@ -54,7 +64,7 @@ function ToneIcon({ tone }: { tone: FeedTone }) {
     default:
       return (
         <IconCircle
-          className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600"
+          className={`h-4 w-4 shrink-0 ${verdictText.neutral.class}`}
           stroke={1.75}
         />
       );

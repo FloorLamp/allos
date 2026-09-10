@@ -79,11 +79,11 @@ export interface TrendChartSpec {
   // pinned by chart-tap-through.spec), so an affordance must not take width from
   // it.
   footerAction?: ReactNode;
-  // The chart's tap-through destination (#1488) — REQUIRED, `null` only with a
-  // same-line `detail-none:` justification at the call site. Every registered body
+  // The chart's tap-through destination (#1488) — REQUIRED, and a chart with none
+  // states its reason in the value (`{ none: "<why>" }`). Every registered body
   // metric has one via `metricDetailHref(slug)`; the metric detail page's OWN chart
-  // passes null (it is already the detail).
-  detailHref: AppRoute | null;
+  // declares itself the detail.
+  detailHref: AppRoute | { none: string };
   // Reference LINE colour/label already ride `referenceValue`.
   // A one-line explanation under the title, inside the tap target (the sleep card's
   // "Nightly Sleep Duration").
@@ -324,7 +324,7 @@ export default function TrendMetricCharts({
         // The detail page's own chart (#1541 fix 3): its <h1> is this title and
         // its subtitle is this headline, ~700px apart on a phone — the #1533
         // double-render shape. Suppressed together, since the card's header row
-        // is not even a tap target there (detailHref is null).
+        // is not even a tap target there (detailHref declares `none`).
         headline={headlineFor(chart)}
         description={chart.description}
         about={chart.about ?? undefined}
