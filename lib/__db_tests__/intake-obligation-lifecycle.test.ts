@@ -161,6 +161,7 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
         date: "2026-03-04",
         isWorkoutDay: false,
         activeSituations: new Set(),
+        predictedWorkoutDay: null,
       })
     ).toBe(false);
 
@@ -187,6 +188,7 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
         date: "2026-03-04",
         isWorkoutDay: getActivitiesByDate(p, day).length > 0,
         activeSituations: new Set(getActiveSituations(p)),
+        predictedWorkoutDay: null,
       },
       getTakenDoseIds(p, day)
     );
@@ -602,6 +604,7 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
       date: day,
       isWorkoutDay: false,
       activeSituations: new Set<string>(),
+      predictedWorkoutDay: null,
     };
     expect(isDueOn(item, ctx)).toBe(false);
 
@@ -694,6 +697,7 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
           date: day,
           isWorkoutDay: false,
           activeSituations: new Set(),
+          predictedWorkoutDay: null,
         }
       )
     ).toBe(false);

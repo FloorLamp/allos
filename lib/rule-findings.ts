@@ -1719,6 +1719,11 @@ export function buildAdherencePatternFindings(
             date,
             isWorkoutDay: workoutDays.has(date),
             activeSituations: situationsOn(date),
+            // A CLOSED DAY HAS NO PREDICTION (#5321). `null` is the state
+            // `conditionAppliesOn` falls back to `isWorkoutDay` on, so the day
+            // is judged by the training on its record rather than by a rhythm
+            // inferred today.
+            predictedWorkoutDay: null,
           }),
         status?.taken ?? new Set(),
         status?.skipped ?? new Set(),

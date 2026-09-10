@@ -403,6 +403,9 @@ export default async function ManageTab({
               date,
               isWorkoutDay: workoutDays.has(date),
               activeSituations: situationsOn(date),
+              // A CLOSED DAY HAS NO PREDICTION (#5321) — `null` falls back to
+              // `isWorkoutDay`, the training that day actually recorded.
+              predictedWorkoutDay: null,
             };
       const dueDoseIds = itemsFor(
         (supplement) => !isMed(supplement) && !!supplement.active

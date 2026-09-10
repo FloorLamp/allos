@@ -182,6 +182,10 @@ function windowAdherence(
           date: d,
           isWorkoutDay,
           activeSituations: situationsOn(d),
+          // A CLOSED DAY HAS NO PREDICTION (#5321) — this loop only ever runs
+          // `d < today`. `null` falls back to `isWorkoutDay`, so a recap scores
+          // the training each day recorded rather than a rhythm inferred now.
+          predictedWorkoutDay: null,
         })
       )
       .map((dose) => dose.id);

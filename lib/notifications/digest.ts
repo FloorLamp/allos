@@ -302,6 +302,17 @@ export interface DigestInput {
   // How many may items that tail covers, for the plain-text channels that cannot
   // render an expandable keyboard (Web Push, Home Assistant).
   offerCount?: number;
+  // What the workout timing gate is holding OUT of that tail (#5321, owner-ruled):
+  // "Ibuprofen waits until your session ends", or null when nothing is held. The
+  // counterpart to the two fields above — they say what is on offer, this says what is
+  // not yet and why, in the same words the medications page uses.
+  //
+  // It is a LINE, not a count, and it renders in the Today section beside the pause
+  // hold (#1296) rather than on the keyboard: there is nothing to tap, and a control
+  // for an item the app is deliberately holding would be the offer this exists to
+  // withhold. Its presence also keeps the message alive — see the minimal-digest guard
+  // below, whose "no sections" arm this line can no longer reach.
+  offerHeldLine?: string | null;
   // Today's recommended workout, preformatted by the SAME formatter the dedicated
   // nudge uses (#1712 §2 / #221) in its BARE variant — the standalone "Today:" prefix
   // is right in the nudge and restates the heading here (#1819 item 3). Null when
@@ -590,6 +601,22 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (heldLine)
     todayLines.push(
       formatEmphasizedLine({ glyph: GLYPH.paused, head: heldLine })
+    );
+  // The workout timing hold (#5321), directly beside the pause hold above because a
+  // reader's question is the same one — why is something I expected to see not here.
+  // ⏳ rather than ⏸️: this hold lifts by itself the moment the session's recorded end
+  // passes, with nothing for the reader to do and no time named, which is exactly what
+  // that glyph's role declares.
+  //
+  // THIS LINE IS WHY THE DIGEST STILL ARRIVES. When a profile's only `may` item is
+  // post-workout, the gate empties both `offerTail` and `offerCount`, and the guard
+  // below suppresses a message with no sections and no tail — so the one send a
+  // tap-only reader is promised would go missing on the day they trained. Pushing the
+  // line into `todayLines` gives the message a section, so the guard is answered by
+  // the disclosure itself rather than by a second exception beside it.
+  if (input.offerHeldLine)
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.waiting, head: input.offerHeldLine })
     );
   // Derived-context acknowledgment (#1292/#1298): the SAME basis-aware lines the bar +
   // check-in show ("Rough night (…) — N sleep-support items active today (auto)";
