@@ -105,7 +105,7 @@ export function TooltipPanel({
       // `pointer-events-none` is load-bearing, not polish: a tooltip that could be
       // hit would be a tap target the control did not have before, and #3970's
       // per-row affordance budget is counted in tap targets.
-      className={`pointer-events-none fixed z-100 w-max rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-left text-xs leading-4 text-slate-100 shadow-lg dark:bg-ink-700 dark:text-slate-100 ${
+      className={`pointer-events-none fixed z-100 w-max rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-left text-xs leading-4 whitespace-pre-line text-slate-100 shadow-lg dark:bg-ink-700 dark:text-slate-100 ${
         microMotionPlan("promote", reduceMotion).className
       }`}
     >
