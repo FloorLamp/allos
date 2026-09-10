@@ -151,17 +151,19 @@ export default function ActivityOverlay({
     setFormAttempt((n) => n + 1);
   }, []);
   useEffect(() => {
-    let live = true;
+    // `mounted`, not `live` — this panel already has a `live` prop and it means a
+    // running workout.
+    let mounted = true;
     void loadActivityForm().then(
       (mod) => {
-        if (live) setForm({ status: "ready", Form: mod.default });
+        if (mounted) setForm({ status: "ready", Form: mod.default });
       },
       () => {
-        if (live) setForm({ status: "failed" });
+        if (mounted) setForm({ status: "failed" });
       }
     );
     return () => {
-      live = false;
+      mounted = false;
     };
   }, [formAttempt]);
   useEffect(() => {
@@ -169,6 +171,18 @@ export default function ActivityOverlay({
     window.addEventListener("online", retryForm);
     return () => window.removeEventListener("online", retryForm);
   }, [form.status, retryForm]);
+  // THE DIALOG IS STILL THE LANDING SPOT (#5095), which loading the form on demand
+  // silently took away. A child's effects run before its parent's, so while the form
+  // was rendered in the same commit as this panel the trap's focus always ran LAST
+  // and won; a form that mounts a commit later runs its own autofocus after the trap
+  // and takes the landing spot back — measured on a phone, where the workspace opened
+  // with focus inside the form instead of on the dialog. Put it back, once, when the
+  // body lands. A minimized workspace is skipped: it is not trapping focus at all,
+  // and restoring it focuses the panel through the trap's own effect.
+  useEffect(() => {
+    if (form.status !== "ready" || hidden) return;
+    panelRef.current?.focus();
+  }, [form.status, hidden]);
   const minimizeRunningWorkout = workoutRunning ? onMinimize : undefined;
   const panelRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
