@@ -33,6 +33,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/dependabot-eval-brief.mjs",
   "scripts/orchestration/dispatch-brief.mjs",
   "scripts/orchestration/host.mjs",
+  "scripts/orchestration/issue-body-write.ts",
   "scripts/orchestration/landing-independence.mjs",
   "scripts/orchestration/ledger.mjs",
   "scripts/orchestration/main-red-history.mjs",

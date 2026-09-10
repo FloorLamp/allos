@@ -18,8 +18,9 @@
 // guardrail is that the routine never closes an issue. Granting the run a
 // close-capable tool and instructing it not to close things is the same
 // theatre as gating a Server Action in the UI only. So the run is granted THIS
-// and not that: the body PATCH, whose payload is constructed from one field,
-// and a comment POST that announces a body edit to an issue with READERS (a
+// and not that: the body PATCH (through `issue-body-write.ts`, which saves the
+// current body first and builds its payload from one field, #5673), and a
+// comment POST that announces a body edit to an issue with READERS (a
 // non-empty comment chain, or an in-flight issue named via --notify), because
 // a body PATCH is silent — no notification, no timeline event — and the
 // thread's readers would keep working from the pre-edit text (2026-08-30).
@@ -47,6 +48,7 @@
 import "../load-env";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { writeIssueBody } from "./issue-body-write";
 import { buildRepoIndex } from "./reconcile-repo-index";
 import { applyPatchPlan, type AnchoredPatch } from "./reconcile-patch";
 import {
@@ -193,21 +195,6 @@ function readOpenPrs(): OpenPr[] {
 }
 
 /**
- * The body write. The payload is built here, from one field; the only other
- * non-GET in the file is the comment POST below, equally confined.
- */
-function writeBody(issue: string, body: string): void {
-  curlJson([
-    "-X",
-    "PATCH",
-    ...authHeaders(),
-    "--data-binary",
-    JSON.stringify({ body }),
-    issueUrl(issue),
-  ]);
-}
-
-/**
  * The visibility write. A body PATCH is SILENT — no notification, no timeline
  * event — so an issue with readers (a comment chain, or an in-flight lane
  * named via --notify) also gets a comment saying what changed; without it the
@@ -305,7 +292,7 @@ for (const [issue, patches] of Object.entries(plan)) {
   if (body === before) continue;
   const hasReaders = comments > 0 || notify.has(issue);
   if (APPLY) {
-    writeBody(issue, body);
+    writeIssueBody({ repo: config.repo, token: config.token, issue, body });
     if (hasReaders) {
       writeComment(issue, reconciliationNote(entries));
       console.log(
