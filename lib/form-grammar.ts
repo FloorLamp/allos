@@ -54,6 +54,11 @@
 // `IssueRef` the type demands, so "excluded" can never be a bare boolean. Measurements
 // is the exclusion rule 7 names first.
 //
+// A `fields` entry is not always an EXCLUSION. Some say the form should adopt and has
+// not yet (`cycle`, `endurance-plan`, the #5302 family), and those say it in the reason
+// rather than dressing a deferral as a ruling — a reason that reads settled when it is
+// not is the failure mode this arm is most prone to.
+//
 // ── The boundaries, and WHICH ONE a missing form fell over ───────────────────
 //
 // `FormId` covers the app's ADD AND EDIT FORMS over a profile's records and its
@@ -189,8 +194,10 @@ export interface FactsDeclaration {
 
 /**
  * A form that states its data as labelled fields, and why. The #4425 shape: the
- * reason and a tracker reference are both required by the type, so an exclusion
- * always carries its argument and somewhere to read the rest of it.
+ * reason and a tracker reference are both required by the type, so a declaration
+ * always carries its argument and somewhere to read the rest of it. The reason says
+ * whether it is an exclusion or an adoption not yet made; the type cannot tell them
+ * apart, so the prose must.
  */
 export interface ArguedFields {
   readonly kind: "fields";
