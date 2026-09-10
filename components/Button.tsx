@@ -13,6 +13,13 @@ import {
 
 type NativeButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
+type ForwardedDataAttributes = Readonly<
+  Record<`data-${string}`, string | number | undefined>
+> & {
+  readonly "data-testid"?: never;
+  readonly "data-button-control"?: never;
+};
+
 export interface ButtonProps {
   children: ReactNode;
   type?: "button" | "submit" | "reset";
@@ -27,6 +34,30 @@ export interface ButtonProps {
   "aria-expanded"?: boolean;
   "aria-controls"?: string;
   "data-testid"?: string;
+  /**
+   * THE ONE OPENING IN THE CLOSED PROP SET, AND IT CAN CARRY NOTHING BUT STATE
+   * (PM ruling 8, 2026-09-09, #4978). Converting a raw element onto this
+   * primitive used to DROP its hyphenated attributes in silence: the prop set is
+   * closed and the render below is an explicit list, and TypeScript exempts a
+   * name like `data-workout-offer` from excess-property checking because it is
+   * not an identifier. So `typecheck`, `lint` and a class-asserting component
+   * test all stayed green while the attribute vanished from the page, and only
+   * a browser-tier assertion could see it.
+   *
+   * This closes that by admitting the state markers alone, and it cannot widen
+   * into the escape hatch #3720 and #3954 refuse: the KEY type is
+   * `data-${string}`, so no `className`, `style`, `role`, `aria-*` or handler
+   * can be spelled through it, and the VALUE type is a scalar, so nothing here
+   * renders. It is one named prop rather than an index signature on this
+   * interface or a rest spread on the component, so every prop that is not a
+   * `data-*` attribute is still refused exactly as it was.
+   *
+   * The two attributes the primitive OWNS are typed `never`, because the record
+   * is spread LAST and would otherwise let a mount shadow them — the type is
+   * the admission rule here exactly as it is for `variant`, `layout` and
+   * `dashed`.
+   */
+  data?: ForwardedDataAttributes;
   /**
    * The ONE rank plus the one destructive paint a caller may state (#3982,
    * `danger` added #4978). Absence IS the secondary treatment, so there is no
@@ -103,6 +134,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonMountProps>(function Button(
     "aria-expanded": ariaExpanded,
     "aria-controls": ariaControls,
     "data-testid": testId,
+    data,
     variant,
     layout,
     dashed = false,
@@ -136,6 +168,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonMountProps>(function Button(
       ]
         .filter(Boolean)
         .join(" ")}
+      {...data}
     >
       {busy && (
         <IconLoader2 className="size-4 motion-safe:animate-spin" aria-hidden />

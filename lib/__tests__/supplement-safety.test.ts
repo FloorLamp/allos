@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   allergenConflict,
+  allergenConflicts,
   interactionConflict,
   conditionConflict,
   screenSuggestionSafety,
@@ -193,5 +194,53 @@ describe("screenSuggestionSafety (#413)", () => {
         }
       )
     ).toBeNull();
+  });
+});
+
+// ── allergenConflicts: the plural sibling (#5230) ───────────────────────────────
+//
+// `allergenConflict` returns at the first DIRECT hit and again at the first
+// CROSS-REACTIVE hit. A screen that drops the whole suggestion can only use one, so
+// that is right for it; a RECEIPT that states what was found reads a second hit as a
+// silence. Both loops, one change.
+describe("allergenConflicts (#5230)", () => {
+  // Rules out fixing only the cross-reactive loop.
+  it("returns every direct hit, not just the first", () => {
+    expect(
+      allergenConflicts("Peanut Soybean Bar", ["Peanut", "Soybean"])
+    ).toEqual([{ allergen: "Peanut" }, { allergen: "Soybean" }]);
+  });
+
+  // Rules out fixing only the direct loop: on the shipped matcher the krill hit is
+  // dropped outright because Soybean is found in the name first.
+  it("keeps a cross-reactive hit a direct hit used to swallow", () => {
+    const hits = allergenConflicts("Krill Oil with Soybean Oil", [
+      "Shrimp",
+      "Soybean",
+    ]);
+    expect(hits.map((h) => h.allergen)).toEqual(["Soybean", "Shrimp"]);
+    expect(hits[1].viaCrossReactivity).toBe("krill");
+  });
+
+  // The unjoined triggers, which is what a composing caller dedupes on — the joined
+  // display string is a pseudo-allergen ("Shrimp, Crab") no vocabulary knows.
+  it("carries a cross-reactive hit's triggers unjoined, and a direct hit's not at all", () => {
+    const [cross] = allergenConflicts("Krill Oil", ["Shrimp", "Crab"]);
+    expect(cross.allergen).toBe("Shrimp, Crab");
+    expect(cross.triggers).toEqual(["Shrimp", "Crab"]);
+    expect(allergenConflicts("Fish Oil", ["Fish"])[0].triggers).toBeUndefined();
+  });
+
+  // The singular form is exactly the first of these — one core, two callers.
+  it("is the same answer allergenConflict gives, first element", () => {
+    for (const [text, allergens] of [
+      ["Krill Oil with Soybean Oil", ["Shrimp", "Soybean"]],
+      ["Magnesium Glycinate", ["fish"]],
+      ["Fish Oil", ["fish"]],
+    ] as const) {
+      expect(allergenConflict(text, [...allergens])).toEqual(
+        allergenConflicts(text, [...allergens])[0] ?? null
+      );
+    }
   });
 });
