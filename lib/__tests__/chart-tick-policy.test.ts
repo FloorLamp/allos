@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 // recharts publishes its declarations under ./types, not beside ./lib, so this
 // deep CJS path has none. The signature is re-declared below rather than guessed:
 // it is the one `combineNiceTicks` calls with the scaffold's two props.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error no declaration file at this deep path
 import * as rechartsTicks from "recharts/lib/util/scale/getNiceTickValues.js";
 
