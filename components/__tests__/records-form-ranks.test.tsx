@@ -6,6 +6,7 @@ import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import ConditionForm from "@/app/(app)/records/problems/conditions/ConditionForm";
 import AudiogramList from "@/app/(app)/records/specialty/hearing/AudiogramList";
 import type { Allergy } from "@/lib/types";
+import { loudIn as loudLabels } from "./loud-controls";
 
 // THE RECORDS FORMS' ONE LOUD CONTROL, ASSERTED AS THE WHOLE SURFACE'S BUDGET
 // (#4978, ruling 6 and ruling 10).
@@ -21,30 +22,16 @@ import type { Allergy } from "@/lib/types";
 // Read off the RENDERED classes, never the call site, so a mount that lost its
 // `variant` in a refactor reddens here too.
 //
-// The budget is collected rather than sampled. `.button-control-primary` and
-// `.button-control-danger` are the two RANK paints, but `.destructive-submit`
-// and `.duplicate-resolution-primary` paint a fill onto rank-less children from
-// CSS (#5696), so a query for rank classes alone cannot see a card's real loud
-// count. Neither wrapper is rendered anywhere under `app/(app)/records` today —
-// checked, not assumed — and collecting all four is what keeps that true.
+// The budget is collected rather than sampled, and it comes from the one
+// definition in `./loud-controls` rather than a list private to this file
+// (#5696). The two wrapper utilities that used to paint a fill onto a rank-LESS
+// child — which is why this file once carried a four-selector list — now state
+// their rank on the button, so the rank classes are the whole census.
 
 vi.mock("@/app/(app)/records/problems/allergies/actions", () => ({}));
 vi.mock("@/app/(app)/records/problems/conditions/actions", () => ({}));
 
 const RAW_FAMILY = /\b(btn|btn-ghost|btn-danger|btn-sm)\b/;
-const LOUD =
-  ".button-control-primary, .button-control-danger," +
-  " .destructive-submit > .button-control," +
-  " .duplicate-resolution-primary > .button-control";
-
-// Every loud control on a surface, named by its label. An exact array, so a new
-// fill anywhere on the surface fails rather than passing unnoticed.
-function loudLabels(surface: HTMLElement): string[] {
-  return [...surface.querySelectorAll<HTMLElement>(LOUD)].map((el) =>
-    (el.getAttribute("aria-label") ?? el.textContent ?? "").trim()
-  );
-}
-
 // Every quiet control the primitive owns, as RENDERED: on the one control box,
 // off the retiring raw family, and carrying no rank.
 function expectQuiet(el: HTMLElement) {
