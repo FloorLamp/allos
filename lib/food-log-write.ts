@@ -69,10 +69,12 @@ export interface FoodEatingTime {
 // two different meal sections depending on which core happened to take it. The
 // disagreement is gone because the question is: neither core has a rule to remember.
 //
-// WHICH ONE WINS WHEN A SURFACE HAS BOTH IS NOT DECIDED HERE, and deliberately is not
-// (#4438 item 3 is open). A surface holding a declared tab AND a stated hour reduces
-// them at ITS OWN boundary, where the user's gesture is still legible; what this type
-// settles is only that the ambiguity cannot travel any further down.
+// WHICH ONE WINS WHEN A SURFACE HAS BOTH IS NOT DECIDED HERE, and deliberately is not.
+// A surface holding a declared tab AND a stated hour reduces them at ITS OWN boundary,
+// where the user's gesture is still legible; what this type settles is only that the
+// ambiguity cannot travel any further down. #4438 is where the two food surfaces made
+// that call — the nutrition bar's statement wins over its tab, the Telegram composed
+// tap states no hour at all — and neither answer is spelled in here.
 export type FoodPlacement = FoodSlot | FoodEatingTime;
 
 // The three placement columns a `food_log_events` row carries, derived from the one

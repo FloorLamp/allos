@@ -46,17 +46,27 @@
 //
 // NO DB, NO AMBIENT CLOCK — every function takes its `now`.
 
-import { statedHoursOnDate } from "./stated-time";
+import {
+  statedHoursOnDate,
+  statedInstantOnDate,
+  type StatedTimeVerdict,
+} from "./stated-time";
+import { statedHourInstant } from "./correction-time";
+import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "./date";
+import { normalizeClockTime } from "./vitals-input";
+import type { FoodPlacement } from "./food-log-write";
 import {
   foodSlotForHhmm,
   type FoodSlot,
   type FoodSlotBoundaries,
 } from "./food-slot";
 
-export {
+import {
   judgeStatedAt as judgeEatenAt,
   STATED_FUTURE_SKEW_MS as EATEN_AT_FUTURE_SKEW_MS,
 } from "./stated-time";
+
+export { judgeEatenAt, EATEN_AT_FUTURE_SKEW_MS };
 
 // ---- The CORRECTION sheet's offer (#2227) ----
 
@@ -111,3 +121,86 @@ export function eatingHoursOnDate(
 // The two changes are complements, and the order matters: #2287 removes the SPURIOUS
 // refusals (a clock the app itself moved), #2296 makes the ones that remain — a
 // genuinely fast device clock, a statement on another day — audible instead of silent.
+
+// ---- The POSTED statement, judged (#4438) ----
+
+// The verdict on the wall time a web form posted about a serving, for the row's own
+// `date`. Both food write paths ask it — the single-serving add and the composed usual
+// bundle — so the two cannot answer "what did they say, and may we keep it" differently
+// for the same field on the same bar.
+//
+// The wire shape is an ABSOLUTE profile-local "HH:MM" and never a client instant: the
+// server resolves it against its own clock and the profile's timezone, so no browser
+// converts a profile-local hour with its own locale. An absent or unusable statement
+// records NO eating time — the validate-never-drop rule — and the VERDICT is what lets
+// the caller tell the user the minute went missing instead of dropping it in silence
+// (#2296).
+//
+// WHICH DAY A BARE WALL TIME MEANS, and the two cases are genuinely different.
+//
+//   THE ROW'S DAY IS TODAY — THE DAY RULE, with the acceptance gate's own clock
+//   tolerance, as it has been since #3273 moved the offer client-side.
+//   `statedHourInstant` reads a wall time later than `now` as YESTERDAY's: right for a
+//   picker whose hours the server enumerated, wrong for a field the browser filled from
+//   its own clock, so the skew rides along. Measured: a 90-second skew re-dated the
+//   statement and lost it. The re-dating is what keeps the caller's backfill guard
+//   non-vacuous for the today case.
+//
+//   THE ROW'S DAY IS A PAST DAY — ANCHORED ON THAT DAY, by construction (#4118's
+//   past-day amendment). The form NAMES its day, the surface offered that day's own
+//   hours, and `statedInstantOnDate` enforces the (date, hhmm) pair or refuses: a wall
+//   time that does not exist there (a spring-forward gap) comes back null and is
+//   reported as malformed rather than settling silently onto a different reading.
+//   Re-dating relative to `now` here is simply wrong — "8pm" stated about last Tuesday
+//   is last Tuesday's, and the day rule would resolve it to today or yesterday and then
+//   refuse it as "not on that day", which is how the amendment's sticky-time batch would
+//   have silently lost every minute it set. This is the same split `offeredHourInstant`
+//   already makes between its `today` and `prev` levels.
+//
+// THE REFUSAL IS RIGHT; ITS REASON WAS NOT. Past the tolerance a fast clock's wall time
+// re-dates to yesterday and is refused for missing the row's day — correct to refuse,
+// and re-anchoring on the row's date instead would make the backfill guard vacuous. But
+// "it isn't on that day" is untrue when the day is the one the person is standing in,
+// and it blames the wrong machine. Same outcome, and the reason the queued path already
+// reports for this. Both conditions carry weight: `aheadOfServer` separates a fast clock
+// from an hour genuinely meant as yesterday's, and the row's date being today is what
+// makes "that day" theirs — a real backfill off its day is still told so.
+export function judgePostedEatingTime(
+  posted: unknown,
+  date: string,
+  tz: string,
+  now: Date
+): StatedTimeVerdict {
+  const stated = normalizeClockTime(String(posted ?? ""));
+  if (!stated) return { kind: "unstated" };
+  const localToday = dateStrInTz(tz, now);
+  const resolved =
+    date === localToday
+      ? statedHourInstant(stated, now, tz, EATEN_AT_FUTURE_SKEW_MS)
+      : statedInstantOnDate(date, stated, tz);
+  const judged: StatedTimeVerdict =
+    resolved === null
+      ? { kind: "refused", reason: "malformed" }
+      : judgeEatenAt(resolved, tz, date, now);
+  if (judged.kind !== "refused" || judged.reason !== "other-day") return judged;
+  const onToday = zonedWallTimeToUtc(tz, localToday, stated);
+  const aheadOfServer =
+    onToday !== null &&
+    onToday.getTime() > now.getTime() + EATEN_AT_FUTURE_SKEW_MS;
+  return aheadOfServer && date === localToday
+    ? { kind: "refused", reason: "future" }
+    : judged;
+}
+
+// The placement a judged statement makes, or the tab's declaration when nobody stated a
+// time and when the one they stated could not be kept. #4729's one-placement rule
+// reduced at the boundary that can still see the gesture: 'stated' for a human answer
+// ("now" and "13:00" are equally one), never the Telegram button's 'tap'.
+export function statedFoodPlacement<T extends FoodSlot | undefined>(
+  verdict: StatedTimeVerdict,
+  declared: T
+): FoodPlacement | T {
+  return verdict.kind === "accepted"
+    ? { eatenAt: utcInstant(verdict.at), source: "stated" }
+    : declared;
+}

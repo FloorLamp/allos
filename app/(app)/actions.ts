@@ -6,10 +6,13 @@ import {
   requireSession,
   requireWriteAccess,
 } from "@/lib/auth";
-import { setIllnessNowUi } from "@/lib/settings";
+import { getTimezone, setIllnessNowUi } from "@/lib/settings";
 import { dismissRecentlyResolvedEpisode } from "@/lib/recently-resolved";
 import { today } from "@/lib/db";
-import { isRealIsoDate, shiftDateStr } from "@/lib/date";
+import { now as clockNow } from "@/lib/clock";
+import { judgePostedEatingTime } from "@/lib/food-eating-time";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
+import { isRealIsoDate, shiftDateStr, utcInstant } from "@/lib/date";
 import { snoozeUntil } from "@/lib/upcoming";
 import {
   snoozeFinding,
@@ -66,6 +69,12 @@ export type UsualRoutineResult =
       // confirm a dose, and no fast can suppress a dose reminder — that reach is a
       // closed one-kind allowlist in lib/fasting-standdown.ts.
       endFastOffer?: true;
+      // The bar STATED an eating time and the gate refused it (#2296, extended to the
+      // bundle by #4438). The servings landed — validate-never-drop is the log path's
+      // whole posture — but the minute did not, so the answer carries WHY and the bar
+      // says so on the same toast rather than losing it in silence. Absent whenever
+      // nobody stated a time, which is every surface but the nutrition bar.
+      statedTimeRefused?: StatedTimeRefusal;
     }
   | { ok: false; error: string };
 
@@ -309,6 +318,18 @@ export async function logUsualRoutine(
   const day = today(profile.id);
   const rawDate = String(formData.get("date") ?? "").trim();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : day;
+  // THE EATING HOUR THE BAR STATED (#4438), judged by the SAME gate the single-serving
+  // add on that bar passes — one field, one wire shape ("HH:MM", profile-local), one
+  // day rule, so a sticky statement cannot mean one thing for a "+" and another for the
+  // bundle beside it. Every other host of this action posts no such field and gets
+  // `unstated`, which writes the declared window on every member exactly as before.
+  const at = clockNow();
+  const statedTime = judgePostedEatingTime(
+    formData.get("occurred_at"),
+    date,
+    getTimezone(profile.id),
+    at
+  );
   const outcome = logUsualRoutineCore(
     profile.id,
     rawWindow,
@@ -328,7 +349,12 @@ export async function logUsualRoutine(
     // the core re-derives whether protein still stands and writes nothing if it does
     // not, so a forged number on a window with no protein habit lands nowhere. What the
     // number itself may be is `addProteinGramsCore`'s own bound.
-    proteinGrams > 0 ? proteinGrams : undefined
+    proteinGrams > 0 ? proteinGrams : undefined,
+    // A REFUSED statement leaves the declaration standing (#2296): the bundle lands in
+    // the window it named, and the answer below reports the minute that was lost.
+    statedTime.kind === "accepted"
+      ? { eatenAt: utcInstant(statedTime.at), source: "stated" }
+      : undefined
   );
   if (outcome.kind === "invalid-date")
     return { ok: false, error: "That day is out of range." };
@@ -361,6 +387,9 @@ export async function logUsualRoutine(
     doses: outcome.doses,
     protein: outcome.protein,
     ...(endFastOffer ? { endFastOffer: true as const } : {}),
+    ...(statedTime.kind === "refused"
+      ? { statedTimeRefused: statedTime.reason }
+      : {}),
   };
 }
 
