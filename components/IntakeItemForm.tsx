@@ -61,6 +61,7 @@ import {
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
+  otcStrengthOptions,
   prnDefaultsFor,
   prnLabelIdentityFor,
   redoseLabelDefaults,
@@ -118,6 +119,7 @@ import {
   type IntakeRule,
 } from "@/lib/intake-rules";
 import {
+  cadenceDraftAsItem,
   intakeItemFormData,
   intakeItemFormStateFrom,
   type IntakeItemFormState,
@@ -518,14 +520,7 @@ export default function IntakeItemForm({
   const dosageOptions = useMemo(
     () =>
       dosageOptionsFor(affordances.dosageSource, {
-        otcStrengths: prnDefaults
-          ? [
-              ...new Set([
-                `${prnDefaults.adult.doseMgLow} mg`,
-                `${prnDefaults.adult.doseMgHigh} mg`,
-              ]),
-            ]
-          : [],
+        otcStrengths: otcStrengthOptions(prnDefaults),
         catalogDosages: catalogEntry?.dosages ?? [],
       }),
     [affordances.dosageSource, catalogEntry, prnDefaults]
@@ -865,14 +860,7 @@ export default function IntakeItemForm({
     minIntervalHours: state.minIntervalHours,
     maxDailyCount: state.maxDailyCount,
     maxDailyAmountMg: state.maxDailyAmountMg,
-    cadenceSentence: cadenceLabel({
-      cadence_kind: state.cadence.kind,
-      cadence_weekdays: state.cadence.weekdays.join(","),
-      cadence_interval_days: state.cadence.intervalDays
-        ? Number(state.cadence.intervalDays)
-        : null,
-      cadence_anchor_date: state.cadence.anchorDate,
-    }),
+    cadenceSentence: cadenceLabel(cadenceDraftAsItem(state.cadence)),
     rx: state.rx,
     rxcui: rx.rxcui ?? "",
     prescriber: state.prescriber,
