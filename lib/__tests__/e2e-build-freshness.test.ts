@@ -187,10 +187,12 @@ describe("ensureBuild over a real tree", () => {
     const first = buildId();
 
     // THE HOLE, present in the fixture exactly as it was measured on the repo: the
-    // edit is OLDER than BUILD_ID, so `newest > builtAt` is false and the retired
-    // rule called this build current.
+    // edit is NOT newer than BUILD_ID, so the retired rule's `newest > builtAt` is
+    // false and it called this build current. Asserted as the retired rule spelled
+    // it — `>=` rather than `>` — because "not newer" is the whole condition, and a
+    // tie is a case #5772 reported in its own right.
     const builtAt = fs.statSync(path.join(root, ".next/BUILD_ID")).mtimeMs;
-    expect(builtAt).toBeGreaterThan(editedAt);
+    expect(builtAt).toBeGreaterThanOrEqual(editedAt);
 
     // …and the build really is the pre-edit one. What is in `.next` was compiled
     // from source that is no longer in the tree.
