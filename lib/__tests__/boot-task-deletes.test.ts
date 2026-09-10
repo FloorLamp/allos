@@ -36,11 +36,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import ts from "typescript-api";
 import { describe, expect, it } from "vitest";
+import { REPO, norm, readSource } from "./sql-scan";
 
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ENTRY = path.join(REPO, "lib/migrations/boot-tasks.ts");
 
 /**
@@ -113,7 +112,7 @@ function resolveSpecifier(from: string, spec: string): string | null {
 function parse(file: string): ts.SourceFile {
   return ts.createSourceFile(
     file,
-    fs.readFileSync(file, "utf8"),
+    readSource(file),
     ts.ScriptTarget.Latest,
     true
   );
@@ -178,7 +177,7 @@ function findDeletes(file: string, src: string): FoundDelete[] {
           file,
           line: sf.getLineAndCharacterOfPosition(start + m.index).line + 1,
           table: name ? name[0] : null,
-          text: `${m[0]}${rest.slice(0, 40)}`.replace(/\s+/g, " ").trim(),
+          text: norm(`${m[0]}${rest.slice(0, 40)}`),
         });
       }
       return; // a template's own substitutions are text, already covered above
@@ -190,10 +189,7 @@ function findDeletes(file: string, src: string): FoundDelete[] {
 }
 
 function deletesIn(relFile: string): FoundDelete[] {
-  return findDeletes(
-    relFile,
-    fs.readFileSync(path.join(REPO, relFile), "utf8")
-  );
+  return findDeletes(relFile, readSource(path.join(REPO, relFile)));
 }
 
 const MODULES = bootTaskModules();

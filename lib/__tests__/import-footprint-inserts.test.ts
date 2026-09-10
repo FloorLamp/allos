@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { IMPORT_FOOTPRINT_TABLES } from "@/lib/import-footprint";
+import { REPO, readSource } from "./sql-scan";
 
 // Reflection binding: the footprint list ⇄ the persist core's actual INSERTs.
 //
@@ -19,8 +18,6 @@ import { IMPORT_FOOTPRINT_TABLES } from "@/lib/import-footprint";
 // non-footprint write). It also checks the reverse: every footprint table is
 // actually written by the persist core, so a stale entry for a table nothing
 // inserts is caught too.
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // The persist core's INSERT surface. `lib/import-persist.ts` holds all of it except
 // the projected medication's own row and dose rows, which the core delegates to the
@@ -57,7 +54,7 @@ function insertTargets(src: string): string[] {
 
 describe("import footprint: reflection-bound to the persist core's INSERTs", () => {
   const inserted = PERSIST_FILES.flatMap((rel) =>
-    insertTargets(fs.readFileSync(path.join(REPO, rel), "utf8"))
+    insertTargets(readSource(path.join(REPO, rel)))
   );
   const insertedSet = new Set(inserted);
   const footprint = new Set(IMPORT_FOOTPRINT_TABLES.map((t) => t.table));
