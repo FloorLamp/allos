@@ -180,8 +180,8 @@ describe("a patient-portals card spends one filled control on its own commit", (
   });
 });
 
-describe("a calendar-feed card spends one filled control on its own commit", () => {
-  it("fills the feed-options Save and leaves the card with exactly one filled control", () => {
+describe("a calendar-feed card spends its one rank on its own commit", () => {
+  it("fills the feed-options Save as the card's one RANKED control", () => {
     render(
       <CalendarFeedConfig
         enabled={true}
@@ -202,5 +202,17 @@ describe("a calendar-feed card spends one filled control on its own commit", () 
     expect(document.querySelectorAll(".button-control-primary")).toHaveLength(
       1
     );
+    // RANKED, not filled — and the difference is a finding rather than a
+    // quibble. The Disable beside the Save is a `DestructiveSubmit`, which
+    // `.destructive-submit` paints a solid red from CSS instead of through
+    // `variant`, so it is a SECOND filled control on this card that no query
+    // for a rank class can see. Owner ruling 10 (#4978, 2026-09-10) makes a
+    // filled danger spend the surface's loud-control budget, which this card
+    // therefore overspends. Both paints predate the ruling — `.btn` was already
+    // solid here — so this slice changes neither and asserts what the card
+    // actually renders; which of the two loses its fill is reported on #4978.
+    expect(
+      document.querySelectorAll(".destructive-submit > .button-control")
+    ).toHaveLength(1);
   });
 });
