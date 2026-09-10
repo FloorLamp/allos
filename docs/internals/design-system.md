@@ -92,12 +92,12 @@ destructive paint, one ghost-only `dashed` shape. No size or class axis.
 their last caller.
 
 One loud control per surface: a form's commit (`SubmitButton
-variant="primary"`), a card's commit, a row's single action. Peers share no
-rank; a bulk action over rows is loud. A fold's door, app-shell chrome, and
-commits that can stand open together take no rank. Read-narrowing submits and
-the `DoseConfirmButton` row affordance stay secondary. Rare or destructive row
-actions confirm through `OverflowMenu`; [Overlays](overlays.md) hosts the action
-sheet.
+variant="primary"`), a card's commit, a row's single action. Destructive paint
+is loud. Peers share no rank; a bulk action over rows is loud. A fold's door,
+app-shell chrome, commits that can stand open together, read-narrowing submits,
+repeated-row destructive actions, a warning's acknowledge-or-silence action, and
+the `DoseConfirmButton` row affordance take no rank. Rare or destructive row
+actions confirm through `OverflowMenu`, hosted by [Overlays](overlays.md).
 
 The shared `--control-box` is 34px at every viewport, with padding derived from
 `1lh` and a reserved border. It covers chips, the button family, typed fields,
