@@ -1242,7 +1242,6 @@ export default function IntakeItemForm({
                     const reoffer = reofferPediatricDose({
                       entry: prnDefaults,
                       next,
-                      formulationSlug: activeSlug || null,
                       ledger: ledgerRef.current,
                       currentAmount: state.doses[0]?.amount ?? "",
                     });

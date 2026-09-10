@@ -384,7 +384,6 @@ describe("reofferPediatricDose — a new weight re-derives the label's offer", (
     reofferPediatricDose({
       entry: IBUPROFEN,
       next: context(),
-      formulationSlug: null,
       ledger: ledgerOffering("doseAmount"),
       currentAmount: "100 mg",
       ...over,
@@ -410,11 +409,10 @@ describe("reofferPediatricDose — a new weight re-derives the label's offer", (
     ).toEqual({ kind: "keep" });
   });
 
-  it("stores milligrams behind a picked formulation, not its volume", () => {
-    expect(reoffer({ formulationSlug: "childrens_susp_100_5" })).toEqual({
-      kind: "offer",
-      doseAmount: "100 mg",
-    });
+  // The offer is the BAND's milligrams whatever product is picked — the property the
+  // signature now states by taking no formulation at all.
+  it("offers milligrams, which no concentration can move", () => {
+    expect(reoffer()).toEqual({ kind: "offer", doseAmount: "100 mg" });
   });
 
   // #798's refusals. Each one must CLEAR the standing offer: leaving the old weight's

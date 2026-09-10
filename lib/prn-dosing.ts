@@ -311,6 +311,14 @@ export function formulationDoseAmount(mg: number): string {
 // The ledger answers "is this figure still the label's?" for the first two. The extra
 // empty-check is the one thing it cannot answer: a stored row's amount was never
 // offered and never marked touched, so an edit-mode blank still counts as free.
+//
+// IT TAKES NO FORMULATION, and that is a property rather than an omission. The offered
+// figure is `band.mg`, read off the WEIGHT band; the picked product feeds only `ml` and
+// the formulation label, which this policy never reads. That is the stored-once rule
+// `formulationDoseAmount` above states — milligrams are stored, volume is derived at
+// every display boundary — so a concentration cannot move the amount by construction.
+// Threading a slug in here would advertise a dependency the architecture forbids, and
+// the next reader of a safety policy would budget care for it.
 export type PediatricReoffer =
   | { kind: "offer"; doseAmount: string }
   | { kind: "withdraw" }
@@ -320,7 +328,6 @@ export function reofferPediatricDose(input: {
   // Null when the name resolves to no curated PRN entry — nothing to re-derive.
   entry: PrnDefaultEntry | null | undefined;
   next: PediatricFormContext;
-  formulationSlug: string | null;
   ledger: PrefillLedger;
   currentAmount: string;
 }): PediatricReoffer {
@@ -334,7 +341,6 @@ export function reofferPediatricDose(input: {
     weightKg: next.weightKg,
     weightDate: next.weightDate,
     today: next.today,
-    formulationSlug: input.formulationSlug,
   });
   if (result.kind !== "dose") return { kind: "withdraw" };
   const offered = input.ledger.suggested.has("doseAmount");
