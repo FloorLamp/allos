@@ -1,11 +1,8 @@
 import { dateStrInTz, parseUtcSql } from "../date";
 import { isTruncatedSyncEvent, parseSyncEventDetails } from "./sync-details";
 import { pluralRunNoun, type SyncRunNoun } from "./sync-run-vocabulary";
-import type {
-  StatusTone,
-  SyncEventFacts,
-  SyncVocabulary,
-} from "./source-state";
+import type { SyncEventFacts, SyncVocabulary } from "./source-state";
+import type { VerdictTone } from "@/lib/chart-colors";
 
 // Sync history, GROUPED BY DAY (#1991).
 //
@@ -267,11 +264,11 @@ export function syncDayAttention(day: {
   failed: number;
   partial: number;
   skipped: number;
-}): { label: string; tone: StatusTone } | null {
+}): { label: string; tone: VerdictTone } | null {
   if (day.failed > 0) return { label: `${day.failed} failed`, tone: "bad" };
-  if (day.partial > 0) return { label: "partial", tone: "caution" };
+  if (day.partial > 0) return { label: "partial", tone: "warn" };
   if (day.skipped > 0)
-    return { label: `${day.skipped} skipped`, tone: "caution" };
+    return { label: `${day.skipped} skipped`, tone: "warn" };
   return null;
 }
 

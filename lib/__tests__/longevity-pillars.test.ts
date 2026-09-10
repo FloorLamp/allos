@@ -3,10 +3,9 @@ import {
   bareOptimalHitRate,
   buildPillars,
   optimalRangeHitRate,
-  PILLAR_TONE_LABEL,
   type BiomarkerReading,
-  type PillarTone,
 } from "@/lib/longevity-pillars";
+import { VERDICT_TONE_LABEL, type VerdictTone } from "@/lib/chart-colors";
 import { formatPercentile, type FitnessPercentile } from "@/lib/fitness-norms";
 import { bioAgeDelta, bioAgeDeltaCompact } from "@/lib/bio-age";
 import { strengthLevelLabel } from "@/lib/strength-standards";
@@ -66,10 +65,10 @@ describe("optimalRangeHitRate", () => {
   });
 });
 
-describe("PILLAR_TONE_LABEL (the non-color channel, #1220)", () => {
+describe("VERDICT_TONE_LABEL (the non-color channel, #1220)", () => {
   it("pairs every judging tone with a distinct, non-empty text label", () => {
-    const judging: PillarTone[] = ["good", "warn", "bad"];
-    const labels = judging.map((t) => PILLAR_TONE_LABEL[t]);
+    const judging: VerdictTone[] = ["good", "warn", "bad"];
+    const labels = judging.map((t) => VERDICT_TONE_LABEL[t]);
     for (const label of labels) {
       expect(label).toBeTruthy();
       expect(typeof label).toBe("string");
@@ -80,13 +79,13 @@ describe("PILLAR_TONE_LABEL (the non-color channel, #1220)", () => {
   });
 
   it("pins the exact badge wording each pillar surface renders", () => {
-    expect(PILLAR_TONE_LABEL.good).toBe("Good");
-    expect(PILLAR_TONE_LABEL.warn).toBe("Fair");
-    expect(PILLAR_TONE_LABEL.bad).toBe("Poor");
+    expect(VERDICT_TONE_LABEL.good).toBe("Good");
+    expect(VERDICT_TONE_LABEL.warn).toBe("Fair");
+    expect(VERDICT_TONE_LABEL.bad).toBe("Poor");
   });
 
   it("neutral makes no judgment, so it carries no label", () => {
-    expect(PILLAR_TONE_LABEL.neutral).toBeNull();
+    expect(VERDICT_TONE_LABEL.neutral).toBeNull();
   });
 });
 
