@@ -350,9 +350,8 @@ const ROUTES: CensusRoute[] = [
     // across every state, so a floor over it distinguishes nothing. The reference
     // hint below is the readiness proof, and it is a stronger one.
     assertReady: async (page) => {
-      await expect(
-        page.getByTestId("goal-clinical-result-reference")
-      ).toBeVisible(); // testid-scope-ok: the goal form is hosted in a ModalShell, outside <main>
+      const hint = page.getByTestId("goal-clinical-result-reference"); // testid-scope-ok: the goal form is hosted in a ModalShell, so it renders outside <main> and no appContent() scoping can reach it
+      await expect(hint).toBeVisible();
     },
     kinds: ["lab-unit"],
     unitSubject: (page) => page.getByTestId("goal-clinical-result-reference"),
@@ -590,12 +589,10 @@ interface Census {
   /** The counted surface, named for the floor's failure message. */
   surface: string;
   /**
-   * False when the anchor is not inside the surface derived from it, which can only
-   * mean the anchor detached mid-read — a stale node's `closest()` is null, so its
-   * surface falls back to `<main>` and the count would silently be about the wrong
-   * one.
+   * Which selector the counted surface came from, so the caller can assert its own
+   * subject is on it without a second, disagreeing definition of "the surface".
    */
-  surfaceHoldsAnchor: boolean;
+  surfaceSelector: "main" | '[role="dialog"]';
   offenders: {
     kind: "date" | "lab-unit";
     text: string;
@@ -625,40 +622,41 @@ interface Census {
  * which is what `surface` below is for — the floor is scoped, the sweep is not.
  * (Narrowing the collector to keep a floor honest would re-open exactly this bug.)
  *
- * `matcherSource` is handed in rather than closed over: `page.evaluate` serializes
+ * `matcherSource` is handed in rather than closed over: the evaluate call serializes
  * its argument into the browser, so the rules from lib/machine-date-census and
  * lib/machine-lab-unit-census travel with it and there is no second copy of either
  * pattern living in this file.
  *
- * THE ANCHOR IS A LOCATOR, AND THE SWEEP RUNS THROUGH IT — `anchor.evaluate` rather
- * than `page.evaluate` — for a reason that is measured, not stylistic. The counted
- * surface is derived from the route's own subject element (the nearest enclosing
- * `[role="dialog"]`, or `<main>` when there is none), so a route cannot forget to
- * declare where its copy lives. Resolving that element in Node and handing the
- * HANDLE to a separate `page.evaluate` opened a gap: on /import/908 the analyte grid
- * re-rendered inside it and the census got a DETACHED node, whose `closest()` is null
- * and whose surface silently falls back to `<main>` — the exact mis-scoping this is
- * built to prevent, arriving as a flake. Playwright resolves a locator and invokes
- * the callback in one injected call, so through the locator there is no gap at all.
- * `page.locator("main")` is the anchor for a route whose subject is ordinary page
- * copy; it resolves to `<main>`, `closest('[role="dialog"]')` is null, and the
- * surface is `<main>` with no special case in the collector.
+ * ── THE COUNTED SURFACE IS RESOLVED IN THE BROWSER, NOT CARRIED INTO IT ────────
+ *
+ * A rendered dialog is the surface; `<main>` is the surface when none is open. Both
+ * are found HERE, inside the walk, from a selector — never handed in as an element
+ * resolved by an earlier round trip. That was the first shape of this and it was
+ * wrong in a way worth recording: the route's own subject was resolved in Node and
+ * passed as a handle, and on /import/908 (and again on /import/908?tab=visits) the
+ * page re-rendered in the gap between the two calls, so the census received a
+ * DETACHED node. A stale node's `closest()` is null, which silently scopes the count
+ * back to `<main>` — the exact mis-scoping this is built to prevent, arriving as an
+ * intermittent one. `locator.evaluate` does not close that gap either: it resolves
+ * the selector and evaluates in two calls, so a re-render between them detaches the
+ * element without erroring. Nothing here now survives across a round trip.
+ *
+ * What the caller still owes: proving its route's subject is ON that surface. It
+ * does that with an ordinary auto-retrying assertion against `surfaceSelector`,
+ * which re-resolves on every poll and so cannot go stale (see the loop).
  */
 async function census(
-  anchor: Locator,
+  page: Page,
   matcherSources: { date: string; labUnit: string }
 ): Promise<Census> {
-  return anchor.evaluate(
-    (
-      anchorEl: Element,
-      {
-        patterns,
-        exemptSelectors,
-      }: {
-        patterns: { date: string; labUnit: string };
-        exemptSelectors: string[];
-      }
-    ) => {
+  return page.evaluate(
+    ({
+      patterns,
+      exemptSelectors,
+    }: {
+      patterns: { date: string; labUnit: string };
+      exemptSelectors: string[];
+    }) => {
       const matchers = [
         { kind: "date" as const, re: new RegExp(patterns.date, "g") },
         { kind: "lab-unit" as const, re: new RegExp(patterns.labUnit, "g") },
@@ -670,21 +668,25 @@ async function census(
           swept: 0,
           examined: 0,
           surface: "nothing rendered",
-          surfaceHoldsAnchor: false,
+          surfaceSelector: "main" as const,
           offenders: [],
         };
-      // THE SURFACE THE FLOOR IS A CLAIM ABOUT. A route whose subject is a dialog
-      // gets counted on that dialog; every other route gets `<main>`, which is what
-      // its floor was measured against.
-      const surface = anchorEl.closest('[role="dialog"]') ?? main;
-      const surfaceTestId = surface.closest("[data-testid]");
-      const surfaceName =
-        surface === main
-          ? "<main>"
-          : `[role="dialog"]` +
-            (surfaceTestId
-              ? ` inside [data-testid="${surfaceTestId.getAttribute("data-testid")}"]`
-              : "");
+      // THE SURFACE THE FLOOR IS A CLAIM ABOUT. A rendered dialog IS the surface
+      // while one is open — it is what a person is looking at, and the page behind it
+      // is what the old `<main>` count was mistaking for evidence. `<main>` is the
+      // surface the rest of the time, which is what every existing floor was measured
+      // against. A dialog that is mounted but not rendered is neither.
+      const dialogs = [...root.querySelectorAll('[role="dialog"]')].filter(
+        (el) => el.getClientRects().length > 0
+      );
+      const surfaces: Element[] = dialogs.length ? dialogs : [main];
+      const surfaceName = dialogs.length
+        ? `[role="dialog"]` +
+          (dialogs.length > 1 ? ` (${dialogs.length} open)` : "") +
+          (dialogs[0].closest("[data-testid]")
+            ? ` inside [data-testid="${dialogs[0].closest("[data-testid]")?.getAttribute("data-testid")}"]`
+            : "")
+        : "<main>";
       const exempt = exemptSelectors.flatMap((s) => [
         ...root.querySelectorAll(s),
       ]);
@@ -725,7 +727,7 @@ async function census(
         if (!shown) continue;
         if (exempt.some((el) => el.contains(n))) continue;
         swept += 1;
-        if (surface.contains(n)) examined += 1;
+        if (surfaces.some((el) => el.contains(n))) examined += 1;
         for (const matcher of matchers) {
           matcher.re.lastIndex = 0;
           const hits = [...text.matchAll(matcher.re)].map((m) => m[0]);
@@ -753,9 +755,9 @@ async function census(
         swept,
         examined,
         surface: surfaceName,
-        // Belt to the locator's braces: a detached anchor is contained by nothing,
-        // so this is false and the loop reds instead of quietly counting `<main>`.
-        surfaceHoldsAnchor: surface.contains(anchorEl),
+        surfaceSelector: dialogs.length
+          ? ('[role="dialog"]' as const)
+          : ("main" as const),
         offenders: out,
       };
     },
@@ -835,10 +837,10 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
       // table would otherwise be censused between the two, and empty is the state
       // that flatters an absence assertion.
       //
-      // The subject is ALSO the census's anchor: the readiness count below is taken
-      // on the surface that holds it (#5104). The date subject anchors when a route
-      // declares one — this is a date census first — and the unit subject otherwise.
-      let anchor: Locator | undefined;
+      // Every subject proved out here is ALSO required, below, to be ON THE SURFACE
+      // the readiness count is taken over (#5104) — so the two halves of the route's
+      // claim cannot describe different parts of the screen.
+      const subjects: { what: string; locator: Locator }[] = [];
       if (route.subject) {
         const dated = page
           .locator(route.subject)
@@ -850,7 +852,9 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
             `the display shape, so this route's silence about machine dates means ` +
             `nothing — ${route.why}`
         ).toBeVisible();
-        anchor = subject;
+        // The unfiltered locator for the containment check below: Playwright refuses
+        // a `has:` locator that has already been narrowed to an index.
+        subjects.push({ what: `subject \`${route.subject}\``, locator: dated });
       }
 
       if (route.unitSubject) {
@@ -871,21 +875,11 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
           `${route.path}: the fixture-owned micro-unit result was not visible — ` +
             `${route.why}`
         ).toBeVisible();
-        anchor ??= unitSubject;
-        // ONE SURFACE PER ROUTE. Two subjects that straddle the `<main>`/dialog
-        // boundary would leave the floor a claim about one of them and silence about
-        // the other, which is the shape of the defect this whole change is closing.
-        // Asked of each locator separately, so neither read can go stale.
-        expect(
-          await unitSubject.evaluate((el) => !!el.closest('[role="dialog"]')),
-          `${route.path}: its subject and its unitSubject are on different sides of ` +
-            `the dialog boundary, so no single surface can carry this route's ` +
-            `readiness count — ${route.why}`
-        ).toBe(await anchor.evaluate((el) => !!el.closest('[role="dialog"]')));
+        subjects.push({ what: "unitSubject", locator: unitSubject });
       }
 
-      const { swept, examined, surface, surfaceHoldsAnchor, offenders } =
-        await census(anchor ?? page.locator("main"), BROWSER_PATTERNS);
+      const { swept, examined, surface, surfaceSelector, offenders } =
+        await census(page, BROWSER_PATTERNS);
 
       // (1) THE ROUTE-READINESS PROOF, COUNTED ON THE SURFACE THE ROUTE IS IN THE
       // CENSUS FOR (#5104). It used to be counted on `<main>` for every route, so a
@@ -897,18 +891,21 @@ test("no rendered copy states machine dates or ASCII microgram lab units (#3492/
       // cannot reach them, one level up.
       //
       // Three things hold it honest, and each fails LOUDLY rather than open:
-      //   * the surface is DERIVED from the subject element, not declared, so it
-      //     cannot be forgotten on the next dialog route somebody adds;
-      //   * the anchor must still be inside it — a detached read scopes to `<main>`
-      //     by accident, which is the mis-scoping arriving as a flake;
+      //   * the surface follows THE PAGE — an open dialog is the surface — so it is
+      //     nothing a route can forget to declare when the next dialog route lands;
+      //   * every subject this route made a claim about has to be ON that surface,
+      //     asserted here, so a floor and a subject can never be about different
+      //     things;
       //   * a counted node is a SWEPT node, asserted, so "examined" can never
       //     describe copy the offender sweep did not read.
-      expect(
-        surfaceHoldsAnchor,
-        `${route.path}: the census anchor was not inside ${surface} when the sweep ` +
-          `ran — it detached mid-read, so the readiness count is about the wrong ` +
-          `surface. ${route.why}`
-      ).toBe(true);
+      for (const { what, locator } of subjects) {
+        await expect(
+          page.locator(surfaceSelector).filter({ has: locator }),
+          `${route.path}: its ${what} is not inside ${surface}, the surface the ` +
+            `readiness count is taken over — the count and the subject are claims ` +
+            `about different parts of the screen. ${route.why}`
+        ).not.toHaveCount(0);
+      }
       expect(
         examined,
         `${route.path}: the readiness count (${examined}) exceeds what the offender ` +
@@ -1002,7 +999,7 @@ test("(3) the census catches synthetic offenders planted in the live DOM", async
   await page.goto("/results/clinical-results");
   await expect(page.getByRole("main")).toBeVisible();
 
-  const clean = await census(page.locator("main"), BROWSER_PATTERNS);
+  const clean = await census(page, BROWSER_PATTERNS);
   expect(clean.examined).toBeGreaterThan(0);
   expect(clean.offenders).toEqual([]);
 
@@ -1018,7 +1015,7 @@ test("(3) the census catches synthetic offenders planted in the live DOM", async
     main?.appendChild(p);
   });
 
-  const dirty = await census(page.locator("main"), BROWSER_PATTERNS);
+  const dirty = await census(page, BROWSER_PATTERNS);
   expect(dirty.offenders.map((o) => [o.kind, o.text])).toEqual([
     ["date", "2014-03-09"],
     ["lab-unit", "uU"],
@@ -1050,7 +1047,7 @@ test("(3b) the census catches a synthetic offender planted in a DIALOG (#5104)",
   const palette = page.getByRole("dialog", { name: "Search" });
   await expect(palette).toBeVisible();
 
-  const clean = await census(page.locator("main"), BROWSER_PATTERNS);
+  const clean = await census(page, BROWSER_PATTERNS);
   expect(clean.offenders).toEqual([]);
 
   // The palette's own copy has to be IN the sweep for its silence to mean anything —
@@ -1084,7 +1081,7 @@ test("(3b) the census catches a synthetic offender planted in a DIALOG (#5104)",
     el.appendChild(p);
   });
 
-  const dirty = await census(page.locator("main"), BROWSER_PATTERNS);
+  const dirty = await census(page, BROWSER_PATTERNS);
   expect(
     dirty.offenders.map((o) => [o.kind, o.text]),
     "a machine date rendered in a dialog did not red the offender sweep — the " +
@@ -1117,9 +1114,9 @@ test("a dialog route's readiness floor counts the dialog, not the page under it 
   const palette = page.getByRole("dialog", { name: "Search" });
   await expect(palette).toBeVisible();
 
-  const scoped = await census(input, BROWSER_PATTERNS);
+  const scoped = await census(page, BROWSER_PATTERNS);
   expect(scoped.surface).toContain('[role="dialog"]');
-  expect(scoped.surfaceHoldsAnchor).toBe(true);
+  expect(scoped.surfaceSelector).toBe('[role="dialog"]');
   expect(scoped.examined).toBeGreaterThan(0);
   expect(
     scoped.examined,
@@ -1138,7 +1135,7 @@ test("a dialog route's readiness floor counts the dialog, not the page under it 
     }
   });
 
-  const after = await census(input, BROWSER_PATTERNS);
+  const after = await census(page, BROWSER_PATTERNS);
   expect(
     after.swept,
     "the offender sweep did not read the copy added to <main> — it is not reading " +
