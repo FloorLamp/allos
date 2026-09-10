@@ -309,21 +309,22 @@ describe("CreateAction", () => {
     }
   });
 
-  it("keeps the practice dialog's grammatical title in registry-owned copy", () => {
+  // ONE PHRASE, TRIGGER AND DIALOG (#5300 rule 6, adopted by #5617). This used to
+  // pin the opposite — a registry-owned dialog title carrying an article over a
+  // control that had none — and practice was the only kind that carried a second
+  // title at all. The article form retires with the record door's four renamings, so
+  // the seam that held it is gone rather than restated shorter.
+  it("titles the practice dialog with the same phrase as its trigger", () => {
     render(housedAction("practice", <AddPracticeButton />));
 
     fireEvent.click(screen.getByRole("button", { name: "Add practice" }));
-    expect(screen.getByRole("dialog", { name: "Add a practice" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Add practice" })).toBeTruthy();
   });
 
   it("keeps the registry closed to canonical copy and housing", () => {
     expect(CREATE_ACTIONS).toEqual({
       medication: { label: "Add medication", housing: ["page", "section"] },
-      practice: {
-        label: "Add practice",
-        dialogTitle: "Add a practice",
-        housing: ["page"],
-      },
+      practice: { label: "Add practice", housing: ["page"] },
       "training-activity": { label: "Add activity", housing: ["page"] },
       protocol: { label: "Add protocol", housing: ["section"] },
       goal: { label: "Add goal", housing: ["section"] },

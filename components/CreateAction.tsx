@@ -21,7 +21,6 @@ export const CREATE_ACTIONS = {
   },
   practice: {
     label: "Add practice",
-    dialogTitle: "Add a practice",
     housing: ["page"],
   },
   "training-activity": {
@@ -52,7 +51,6 @@ export const CREATE_ACTIONS = {
   string,
   {
     label: `Add ${string}`;
-    dialogTitle?: `Add ${string}`;
     housing: readonly [CreateActionHousing, ...CreateActionHousing[]];
   }
 >;
@@ -87,11 +85,6 @@ function useCreateActionKind(): CreateActionKind {
 
 export function useCreateActionLabel(): CreateActionLabel {
   return CREATE_ACTIONS[useCreateActionKind()].label;
-}
-
-export function useCreateActionDialogTitle(): `Add ${string}` {
-  const action = CREATE_ACTIONS[useCreateActionKind()];
-  return "dialogTitle" in action ? action.dialogTitle : action.label;
 }
 
 export default function CreateAction<H extends CreateActionHousing>({

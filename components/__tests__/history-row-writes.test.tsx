@@ -282,6 +282,54 @@ function only(action: string): Record<string, string> {
   );
 }
 
+// ONE HOST, AND THE ROW STAYS (#5300 rule 5, adopted by #5617 step 1).
+//
+// A correction used to REPLACE its own row: `renderRow` returned a different `<li>`
+// while `editingId === row.id`, so the line the reader had just tapped ⋯ on left the
+// screen at the moment it was being corrected. That is the "inline draft that swaps a
+// row out" rule 5 forbids, and it is what these two claims pin against coming back —
+// the row is still on screen, and the form is in a dialog rather than in the list.
+describe("the record's correction opens over its row, never in place of it", () => {
+  it("leaves the row rendered and opens the form in a dialog", async () => {
+    await openEdit([
+      row({
+        id: "feed:stool:3",
+        kind: "stool",
+        title: "Type 4",
+        clock: historyClock("07:41", "stated", H24),
+        edit: { kind: "stool", rowId: 3, type: 4 },
+      }),
+    ]);
+
+    // THE ROW IS STILL THERE, with its own title cell — the half the swap lost.
+    expect(screen.getByTestId("history-row")).toBeTruthy();
+    expect(screen.getByTestId("history-row-title").textContent).toBe("Type 4");
+
+    // AND THE FORM IS NOT IN THE LIST. `ModalShell` portals to <body>, so the
+    // list's geometry is unchanged while a row is being corrected.
+    const editor = screen.getByTestId("history-row-editing");
+    expect(screen.getByTestId("history-rows").contains(editor)).toBe(false);
+    expect(editor.closest('[role="dialog"]')).not.toBeNull();
+  });
+
+  it("titles the dialog with the row's name and clock, the ⋯'s own name", async () => {
+    // THE SAME STRING THE CONTROL THAT OPENED IT CARRIES. Two doses of one item on
+    // one day are told apart only by the clock, which is why the clock is in the
+    // name — and why the sheet cannot be titled by the bare noun without losing
+    // which row it is over.
+    await openEdit([
+      row({
+        id: "feed:stool:3",
+        kind: "stool",
+        title: "Type 4",
+        clock: historyClock("07:41", "stated", H24),
+        edit: { kind: "stool", rowId: 3, type: 4 },
+      }),
+    ]);
+    expect(screen.getByRole("dialog", { name: "Type 4 — 07:41" })).toBeTruthy();
+  });
+});
+
 describe("the record's ⋯ posts to the domain's own action", () => {
   it("keeps mood changes local until one Save posts the complete statement", async () => {
     await openEdit([
