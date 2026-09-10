@@ -3462,29 +3462,44 @@ export async function touchSwipeFrom(
 
 // ── Streamed-reveal guard (#1644/#1674, widened at the ARRIVAL by #5040) ─────
 //
-// A page that streams a Suspense boundary (the Trends body census, the Training
-// hub's selected tab — components/StreamedSection.tsx) delivers the boundary's
+// A page that streams a Suspense boundary — four routes do, through
+// components/StreamedSection.tsx: the Trends body census, the Training hub's
+// selected tab, /upcoming's tail and a medical episode's context sections —
+// delivers the boundary's
 // content in a `<div hidden id="S:n">` staging node at the end of `<body>` and
 // leaves the designed PendingSection placeholder in its place. React then MOVES
-// the content in, on a schedule of its own — measured here at 60–350ms AFTER
-// `document.readyState` reaches "complete", because React 19 defers the reveal
-// until the boundary's own stylesheets have loaded, and longer still on a loaded
-// CI shard. Until that reveal runs, every testid inside the streamed content is
-// in the DOM but HIDDEN, so a spec reading it reads the staged copy: a
-// visibility assertion fails on a node that is really there, a count or a text
-// read answers from a copy the reader cannot see, and where hydration renders
-// the boundary before the reveal relocates it the same testid matches TWICE and
-// a strict-mode locator reports a duplicated-element bug (#4890).
+// the content in, on a schedule of its own — measured on this branch at 60–350ms
+// AFTER `document.readyState` has reached "complete", and longer on a loaded CI
+// shard. WHY it lags the load event was not pinned down here, and nothing below
+// depends on the answer; what was measured is THAT it does.
+//
+// Until the reveal runs, every testid inside the streamed content is in the DOM
+// but HIDDEN and the designed PendingSection placeholder holds its slot — so a
+// spec reading the section reads the staged copy. Measured at the demonstration
+// point: all 17 Training Log rows inside the staging node, none live. A
+// visibility assertion then fails on a node that is really there, a count or a
+// text read answers from a copy the reader cannot see, and a `.click()` waits
+// out a window nobody named. (#1644's note also describes the same testid
+// matching TWO nodes mid-move. That state was NOT reproduced here in ~40
+// instrumented arrivals — an in-page MutationObserver watching every arrival
+// never saw a count above one — so treat the duplicate as the documented
+// signature it was written from rather than as something this guard was
+// re-verified against. The remedy is the same either way: no staging node, no
+// second copy and no hidden first one.)
 //
 // WHAT THIS GUARD USED TO COVER, AND THE HOLE #5040 FOUND. It wrapped exactly
 // four page methods — goto/reload/goBack/goForward — so THOSE arrivals waited
 // the staging window out. But a full-document navigation the BROWSER starts runs
 // none of them: a GET-form submit (the Training Log's search, #4079) and a link
 // click that lands before hydration both fetch a whole new document without any
-// Playwright navigation method being called, and all four known #4890
-// occurrences arrive exactly that way. The old doc claimed "any FUTURE streamed
-// boundary on any page is covered"; it was covering the arrivals that were easy
-// to wrap and missing the ones that fail.
+// Playwright navigation method being called. #5040 reads the four known #4890
+// occurrences as all arriving that way; three of the arrival sites really do
+// (training-log-search-depth, unclassified-activity, entry-ergonomics — each a
+// bare `.click()` on a GET-form submit or a type chip, then `waitForURL`), while
+// routine-builder/update-notice reach `/training?tab=routines` by `page.goto`,
+// which was wrapped all along. The old doc claimed "any FUTURE streamed boundary
+// on any page is covered"; it was covering the arrivals that were easy to wrap
+// and missing the ones that fail.
 //
 // HOW THE HOLE IS CLOSED: A LATCH, NOT A WAIT. The browser's own arrivals
 // announce themselves on `framenavigated`, but a Playwright event handler cannot
@@ -3581,6 +3596,9 @@ const LOCATOR_ARRIVAL_METHODS = [
   "dragTo",
   "elementHandle",
   "elementHandles",
+  "evaluate",
+  "evaluateAll",
+  "evaluateHandle",
   "fill",
   "focus",
   "getAttribute",
