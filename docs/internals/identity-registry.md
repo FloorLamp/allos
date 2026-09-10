@@ -40,7 +40,7 @@ use `biomarkerFamily`. Collapsing the picker by family would remove separately
 selectable fractions. Family identity groups facts; it does not redefine which
 curated row the person chose.
 
-[Medical query helpers](../../lib/queries/medical.ts) expose
+[Medical query helpers](../../lib/queries/medical/common.ts) expose
 `biomarkerFamilyKey` and `biomarkerPanelKey`. They call the pure family/panel
 functions through the SQLite functions registered in
 [sql-functions.ts](../../lib/sql-functions.ts). Reuse these expressions instead

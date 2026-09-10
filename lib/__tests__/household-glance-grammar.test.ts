@@ -40,7 +40,7 @@ describe("the member card speaks the broad panel, not the widest net (#3487 item
     // The ruling moved this line's AXIS; it retired nothing. A guard that had
     // actually deleted the query would be reporting a different, larger change.
     const queries = fs.readFileSync(
-      path.join(REPO, "lib/queries/medical.ts"),
+      path.join(REPO, "lib/queries/medical/records.ts"),
       "utf8"
     );
     expect(queries).toContain("countClinicalObservations");
