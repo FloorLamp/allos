@@ -46,7 +46,7 @@ describe("gap limits and continuity spans", () => {
         limit,
         `${id}: a gap limit above its continuity span would leave holes the ` +
           `stroke may not fairly cross going unnamed`
-      ).toBeLessThanOrEqual(METRIC_CONTINUITY_DAYS[id]);
+      ).toBeLessThanOrEqual(METRIC_CONTINUITY_DAYS[id] ?? 0);
     }
     expect(BIO_GAP_LIMIT_DAYS).toBeLessThanOrEqual(540);
   });

@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { REPO, norm, readSource } from "./sql-scan";
 
 // SQLite's CASE FOLD IS NOT THIS APP'S CASE FOLD (#3325).
 //
@@ -43,8 +42,6 @@ import { describe, expect, it } from "vitest";
 // wolf is a guard somebody deletes. The `LOWER(` / `UPPER(` half needs no such scoping:
 // that spelling appears nowhere in the tree today, on any column, so it is checked
 // everywhere and starts from zero.
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // The ledgers that REGISTER a free-text vocabulary key (lib/vocabulary-store.ts), and the
 // column in each that holds the spelling.
@@ -168,10 +165,9 @@ export function foldSites(file: string, source: string): FoldSite[] {
       if (!foldsAVocabularyColumn(literal, m.index)) continue;
       found.push({
         file,
-        snippet: literal
-          .slice(Math.max(0, m.index - 40), m.index + m[0].length)
-          .replace(/\s+/g, " ")
-          .trim(),
+        snippet: norm(
+          literal.slice(Math.max(0, m.index - 40), m.index + m[0].length)
+        ),
         why: "COLLATE NOCASE folds ASCII only",
       });
     }
@@ -196,7 +192,7 @@ function trackedSources(): string[] {
 describe("the vocabulary SQL case-fold census (#3325)", () => {
   it("finds no SQL folding a vocabulary key by SQLite's ASCII rules", () => {
     const sites = trackedSources().flatMap((relative) =>
-      foldSites(relative, readFileSync(path.join(REPO, relative), "utf8"))
+      foldSites(relative, readSource(path.join(REPO, relative)))
     );
     expect(
       sites.map(
@@ -220,7 +216,7 @@ describe("the vocabulary SQL case-fold census (#3325)", () => {
       "lib/queries/imports.ts",
     ];
     for (const relative of sorted) {
-      const source = readFileSync(path.join(REPO, relative), "utf8");
+      const source = readSource(path.join(REPO, relative));
       expect(source).toMatch(/collate nocase/i); // the fixture still has something to say
       expect(foldSites(relative, source)).toEqual([]);
     }

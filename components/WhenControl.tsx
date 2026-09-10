@@ -95,6 +95,12 @@ export interface WhenControlProps {
   dateLabel?: string;
   timeLabel?: string;
   disabled?: boolean;
+  // THE DAY IS ALREADY ON SCREEN, SAID BY THE SURFACE ABOVE (#4738 ruling 1, applied
+  // by #5753 leg 3). A fixed day is normally rendered as text because somebody has to
+  // say which day this is; under a day switcher somebody already has, and the slot
+  // renders nothing rather than printing the sheet's own answer a second time. Only
+  // the fixed-day arm has anything to suppress — a picker is the day being CHOSEN.
+  daySaidAbove?: boolean;
   // Prefix for stable ids/test ids: `{testId}-date`, `{testId}-time`,
   // `{testId}-now`, `{testId}-not-stated` — and, where the pair composes into one
   // door (see the header), `{testId}-when` over `{testId}-when-panel` /
@@ -121,6 +127,7 @@ export default function WhenControl({
   dateLabel = "Date",
   timeLabel = "Time",
   disabled = false,
+  daySaidAbove = false,
   testId,
 }: WhenControlProps) {
   const contextTz = useTimezone();
@@ -251,15 +258,17 @@ export default function WhenControl({
       ) : (
         <>
           {fixedDay ? (
-            <span
-              className={`inline-flex items-center ${DATE_SLOT} text-slate-600 dark:text-slate-300`}
-              data-testid={`${testId}-date`}
-            >
-              {(card && cockpitDayLabel(card, value.date)) ??
-                (value.date === today
-                  ? "Today"
-                  : formatWeekdayDate(value.date, prefs))}
-            </span>
+            daySaidAbove ? null : (
+              <span
+                className={`inline-flex items-center ${DATE_SLOT} text-slate-600 dark:text-slate-300`}
+                data-testid={`${testId}-date`}
+              >
+                {(card && cockpitDayLabel(card, value.date)) ??
+                  (value.date === today
+                    ? "Today"
+                    : formatWeekdayDate(value.date, prefs))}
+              </span>
+            )
           ) : (
             <label className="block">
               <span className="sr-only">{dateLabel}</span>

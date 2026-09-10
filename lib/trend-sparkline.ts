@@ -172,9 +172,27 @@ type MetricSeriesId =
   | "volume"
   | (RenderOnlySeriesKey extends `metric:${infer Id}` ? Id : never);
 
-// Check declarations against the closed vocabulary; allow string lookups for
-// persisted/unknown keys, whose rendering fallbacks remain intentional.
-export const METRIC_GAP: Readonly<Record<string, SeriesGap>> = {
+/**
+ * A per-series registry keyed on the closed metric vocabulary, read by open key.
+ *
+ * The `Record<MetricSeriesId, V>` half is the part `tsc` tracks: a series that
+ * gains an id and no entry does not compile, so completeness is the type's job
+ * rather than a test's. The index signature is the OPEN half, and it is
+ * deliberate — `seriesGapForMetric` and `gapLimitDaysForSeriesKey` are handed
+ * persisted and unrecognized keys and fall back on purpose. Typing that read
+ * `V | undefined` is what keeps those fallbacks live: the plain
+ * `Record<string, V>` these used to be declared as told every caller that any
+ * string it held was a registered id, which made each `??` a branch the type
+ * said could never be taken.
+ *
+ * The index signature cannot reject a key from OUTSIDE the union, so each
+ * registry keeps its `satisfies Record<MetricSeriesId, V>` clause, which can.
+ */
+type SeriesIdRegistry<V> = Readonly<Record<MetricSeriesId, V>> & {
+  readonly [id: string]: V | undefined;
+};
+
+export const METRIC_GAP: SeriesIdRegistry<SeriesGap> = {
   // ── levels ────────────────────────────────────────────────────────────────
   weight: "bridge",
   bodyfat: "bridge",
@@ -357,7 +375,7 @@ const SLOW_CONTINUITY = 730;
 export const BIO_CONTINUITY_DAYS = 540;
 
 // Continuity span per metric: the longest interval a stroke may imply.
-export const METRIC_CONTINUITY_DAYS: Readonly<Record<string, number>> = {
+export const METRIC_CONTINUITY_DAYS: SeriesIdRegistry<number> = {
   // ── levels ────────────────────────────────────────────────────────────────
   weight: HABIT_CONTINUITY,
   bodyfat: HABIT_CONTINUITY,
@@ -640,7 +658,7 @@ const SLOW_GAP_LIMIT = 365;
 export const BIO_GAP_LIMIT_DAYS = 540;
 
 // Longest unlogged run before the chart names the gap.
-export const METRIC_GAP_LIMIT_DAYS: Readonly<Record<string, number>> = {
+export const METRIC_GAP_LIMIT_DAYS: SeriesIdRegistry<number> = {
   // ── levels ────────────────────────────────────────────────────────────────
   weight: HABIT_GAP_LIMIT,
   bodyfat: HABIT_GAP_LIMIT,

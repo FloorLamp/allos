@@ -1,8 +1,8 @@
 import { stripComments } from "./strip-comments";
+import { REPO, norm, readSource, relPath } from "./sql-scan";
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 // Static boundary guard for the STORED-INSTANT convention (issue #2205, phase 1).
 //
@@ -48,8 +48,6 @@ import { fileURLToPath } from "node:url";
 //     registry does not claim them.
 //   • Column DEFAULTs live in shipped, immutable migrations and cannot be scanned
 //     from source. A canonical table's DEFAULT is pinned by its own migration test.
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const SCAN_DIRS = ["lib", "app", "scripts"];
 
@@ -218,9 +216,9 @@ function sourceFiles(): SourceFile[] {
     const abs = path.join(REPO, d);
     if (!fs.existsSync(abs)) continue;
     for (const full of walk(abs)) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
+      const rel = relPath(full);
       if (isExcluded(rel)) continue;
-      const text = fs.readFileSync(full, "utf8");
+      const text = readSource(full);
       // Rules A/B can only see a SQL keyword, and rule C deliberately considers
       // only SQL-writing modules plus its argued allowlist. Gate before the shared
       // comment projection so irrelevant source cannot pay parser cost.
@@ -492,7 +490,7 @@ describe("stored-instant convention (issue #2205, phase 1)", () => {
               `clock. Its instants are stored as 'YYYY-MM-DDTHH:MM:SSZ' and SQLite ` +
               `renders 'now' as 'YYYY-MM-DD HH:MM:SS', so the comparison is between ` +
               `two serializations and sorts wrong. Bind the instant/cutoff from ` +
-              `utcInstant() instead.\n  ${sql.replace(/\s+/g, " ").trim().slice(0, 160)}`
+              `utcInstant() instead.\n  ${norm(sql).slice(0, 160)}`
           );
         }
       }
