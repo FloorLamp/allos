@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { gatherHistoryLog, historyMemberFeed } from "@/lib/history";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import { HISTORY_LOG_KINDS } from "@/lib/history-format";
-import { setLoginSetting } from "@/lib/settings";
+import { setLoginSetting, setProfileSetting } from "@/lib/settings";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { logBristolStool } from "@/lib/offline/writes";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
@@ -1181,5 +1181,108 @@ describe("stool rows on the record", () => {
     const gather = gatherHistoryLog(p, { loginId, limit: 200 });
     expect(gather.presentKinds).not.toContain("stool");
     expect(gather.rows.some((r) => r.kind === "stool")).toBe(false);
+  });
+});
+
+// THE FILING DAY, AT THE TIER THAT RESOLVES IT (#5618 rule 6).
+//
+// "An untimed row filed on another day reads 'logged Sep 8': the filing day, no
+// clock. Same-day rows keep 'logged 7:41am'."
+//
+// WHY HERE AND NOT ONLY IN THE PURE TIER. The rule's whole content is a comparison of
+// two PROFILE-LOCAL days, and the profile's zone is a database read — so the tier that
+// can be wrong about it is this one. Every case below writes a real `food_log_events`
+// row with a `recorded_at` and no `occurred_at`, which is exactly the state the usual
+// bundle leaves behind on a past day, and reads back the string the row renders.
+describe("an untimed row filed on another day (#5618 rule 6)", () => {
+  // The zone is the PROFILE's and the clock grammar is the LOGIN's, so both halves of
+  // the rendered string come from a read rather than from the runner's host.
+  function zonedProfile(name: string, tz: string): number {
+    const id = profile(name);
+    setProfileSetting(id, "timezone", tz);
+    return id;
+  }
+
+  function twelveHourLogin(): number {
+    const id = login();
+    setLoginSetting(id, "time_format", "12h");
+    return id;
+  }
+
+  /** A serving that states no eating time, filed at a named UTC instant. */
+  function filedServing(profileId: number, date: string, at: string): void {
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, 'berries', ?, ?)`
+    ).run(profileId, date, at);
+  }
+
+  function clockOf(profileId: number, loginId: number): string | null {
+    const [row] = gatherHistoryLog(profileId, { loginId, limit: 200 }).rows;
+    return row.clock;
+  }
+
+  it("keeps the minute when the filing fell on the day the row sits under", () => {
+    const p = zonedProfile("rule6 same day", "UTC");
+    filedServing(p, "2026-06-01", "2026-06-01T07:41:00.000Z");
+    expect(clockOf(p, twelveHourLogin())).toBe("logged 7:41am");
+  });
+
+  it("reads the filing day, with no clock, when the filing fell elsewhere", () => {
+    const p = zonedProfile("rule6 other day", "UTC");
+    filedServing(p, "2026-06-01", "2026-06-03T07:41:00.000Z");
+    expect(clockOf(p, twelveHourLogin())).toBe("logged Jun 3");
+  });
+
+  // THE SAME CALENDAR DAY, SEEN FROM A ZONE THAT IS NOT UTC. 2026-06-02T05:00Z is
+  // 22:00 on 2026-06-01 in Los Angeles, so the filing DID land on the row's own day
+  // and the minute stands. A comparison made on the stored UTC date would call this
+  // another day and print "logged Jun 2" — a date for a filing that happened while
+  // the person was still living the row's evening.
+  it("is the profile's own day, not the stored instant's UTC one", () => {
+    const p = zonedProfile("rule6 west of utc", "America/Los_Angeles");
+    filedServing(p, "2026-06-01", "2026-06-02T05:00:00.000Z");
+    expect(clockOf(p, twelveHourLogin())).toBe("logged 10:00pm");
+  });
+
+  // AND THE CONVERSE, east of UTC: 2026-06-01T23:00Z is 11:00 on 2026-06-02 in
+  // Auckland, so the filing crossed a day the stored UTC date agrees about with the
+  // row's. A UTC comparison would print "logged 11:00am" under a day nobody filed it
+  // on. The two cases fail in opposite directions, so neither can be passed by
+  // guessing the comparison's zone.
+  it("crosses a day the stored UTC date does not, east of UTC", () => {
+    const p = zonedProfile("rule6 east of utc", "Pacific/Auckland");
+    filedServing(p, "2026-06-01", "2026-06-01T23:00:00.000Z");
+    expect(clockOf(p, twelveHourLogin())).toBe("logged Jun 2");
+  });
+
+  // A STATED TIME IS THE ROW'S OWN. `occurred_at` on another day is a re-dated
+  // serving, not a filing stamp, and it renders bare — the rule is about the fallback.
+  it("leaves a stated time bare, however far the filing fell from it", () => {
+    const p = zonedProfile("rule6 stated", "UTC");
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at, occurred_at)
+       VALUES (?, 'berries', ?, ?, ?)`
+    ).run(
+      p,
+      "2026-06-01",
+      "2026-06-03T07:41:00.000Z",
+      "2026-06-01T19:05:00.000Z"
+    );
+    expect(clockOf(p, twelveHourLogin())).toBe("7:05pm");
+  });
+
+  // ORDERING IS UNTOUCHED. The row still carries the minute it was filed at as its
+  // sort key, so a rule about what the cell READS cannot sink the row below the day's
+  // timed ones as a side effect (lib/history-format.ts says so; this checks it).
+  it("keeps the row's sort minute while the cell becomes a day", () => {
+    const p = zonedProfile("rule6 sort", "UTC");
+    filedServing(p, "2026-06-01", "2026-06-03T07:41:00.000Z");
+    const [row] = gatherHistoryLog(p, {
+      loginId: twelveHourLogin(),
+      limit: 200,
+    }).rows;
+    expect(row.sortTime).toBe("07:41");
+    expect(row.date).toBe("2026-06-01");
   });
 });
