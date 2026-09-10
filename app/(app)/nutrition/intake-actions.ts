@@ -1572,18 +1572,12 @@ function applyLedgerSelection(
   //
   // The REVALIDATE stays deduped — it is a cache instruction, not a record, and asking
   // twice for the same path is noise where a second audit row is a second fact.
-  for (const { itemId, date: onDate } of outcome.auditedDoses) {
-    recordAudit({
-      loginId,
-      profileId,
-      action:
-        edit.kind === "delete"
-          ? AUDIT_ACTIONS.doseLogDelete
-          : AUDIT_ACTIONS.doseLogAmend,
-      target: String(itemId),
-      detail: onDate,
-    });
-  }
+  const action =
+    edit.kind === "delete"
+      ? AUDIT_ACTIONS.doseLogDelete
+      : AUDIT_ACTIONS.doseLogAmend;
+  for (const { itemId, date: detail } of outcome.auditedDoses)
+    recordAudit({ loginId, profileId, action, target: String(itemId), detail });
   for (const itemId of new Set(outcome.auditedDoses.map((d) => d.itemId)))
     revalidateRoute(`/medications/${itemId}`);
   if (outcome.applied > 0) {
