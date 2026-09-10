@@ -1574,12 +1574,14 @@ test.describe("selection mode on the record (#5618 ruling 4)", () => {
     try {
       await page.goto(dayUrl(MED_DAY));
       const content = appContent(page);
+      // THE ROW, NAMED — not `.first()` off a shared surface. `history-row` is every
+      // spec's row testid, so the medication is reached through the fixture's own name
+      // and the day's row count is asserted beside it: one row, and it is this one.
       const rows = content.getByTestId("history-row");
-      // ONE ROW ON THIS DAY, and it is the medication. Nothing food-shaped can be
-      // carrying the assertions below.
+      const medRow = rows.filter({ hasText: MED_NAME });
       await expect(rows).toHaveCount(1);
-      await expect(rows.first()).toContainText(MED_NAME);
-      await expect(rows.first().getByTestId("history-row-clock")).toContainText(
+      await expect(medRow).toHaveCount(1);
+      await expect(medRow.getByTestId("history-row-clock")).toContainText(
         "logged"
       );
 
@@ -1613,9 +1615,9 @@ test.describe("selection mode on the record (#5618 ruling 4)", () => {
         content.getByTestId("history-selection-time-apply")
       );
       // The row stops saying "logged" and states the minute somebody named.
-      await expect(
-        rows.first().getByTestId("history-row-clock")
-      ).not.toContainText("logged");
+      await expect(medRow.getByTestId("history-row-clock")).not.toContainText(
+        "logged"
+      );
 
       const after = selectionMedState(itemId);
       expect(after.row).toEqual({
