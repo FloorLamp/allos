@@ -5,11 +5,13 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { useState, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HistoryAddDoor, {
   HistoryUsualOffers,
   type HistoryAddKind,
 } from "@/app/(app)/history/HistoryAddDoor";
+import { HISTORY_KIND_LABELS } from "@/lib/history-format";
 import { logHeading } from "@/lib/log-manifest";
 
 // WHAT THE RECORD'S ADD DOOR POSTS (#4045 §1).
@@ -249,9 +251,34 @@ const VOCABULARY = {
   doseDefaultTime: "08:00",
 };
 
+/**
+ * THE ROW OWNS THE OPEN CHIP (#5618 ruling 1), so a door mounted on its own needs the
+ * one-chip harness the record's add row is. Nothing else about these cases changed:
+ * the trigger is still `history-add-open-<kind>` and still opens the same host — it is
+ * the record's kind chip now rather than a second button below one, which is why the
+ * label it carries is the chip's word.
+ */
+function Door(
+  props: Omit<
+    ComponentProps<typeof HistoryAddDoor>,
+    "label" | "open" | "onOpen" | "onClose"
+  >
+): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <HistoryAddDoor
+      {...props}
+      label={HISTORY_KIND_LABELS[props.kind]}
+      open={open}
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
+    />
+  );
+}
+
 function open(kind: HistoryAddKind): void {
   render(
-    <HistoryAddDoor
+    <Door
       kind={kind}
       date={FOUND_DAY}
       maxDate={TODAY}
@@ -267,7 +294,7 @@ function openAt(
   window: { from: string; to?: string }
 ): void {
   render(
-    <HistoryAddDoor
+    <Door
       kind={kind}
       date={FOUND_DAY}
       maxDate={TODAY}
@@ -287,7 +314,7 @@ function addDoor(kind: HistoryAddKind, usual: UsualOffer[] = []): void {
   render(
     <>
       <HistoryUsualOffers offers={usual} date={FOUND_DAY} />
-      <HistoryAddDoor
+      <Door
         kind={kind}
         date={FOUND_DAY}
         maxDate={TODAY}
@@ -550,18 +577,23 @@ describe("the record's Add door posts to the domain's own create action", () => 
     // #3911's defect, not inherited (#2816): the dose launcher swaps its label to
     // "Cancel" while open. Dismissal belongs to the form these doors open.
     open("practice");
-    // THE DOMAIN'S ONE HEADING (#5300 rule 6, #5617 step 2), read from the manifest
-    // rather than restated — the door used to say "Log a practice" while the quick
-    // sheet next door said "Log practice". The claim under test is unchanged: the
-    // control still says what it is FOR while its form is open.
+    // THE CONTROL IS THE KIND CHIP NOW (#5618 ruling 1), so what it says while its form
+    // is open is the chip row's own short plural word. The claim under test is
+    // unchanged: it still says what it is FOR rather than turning into Cancel.
     expect(screen.getByTestId("history-add-open-practice").textContent).toBe(
-      logHeading("practice")
+      HISTORY_KIND_LABELS.practice
     );
+    // AND THE DOMAIN'S ONE HEADING IS STILL OVER THE FORM (#5300 rule 6, #5617 step 2),
+    // read from the manifest rather than restated. Two vocabularies, each in its own
+    // place: the chip names a filter, the heading names the domain.
+    expect(
+      screen.getByRole("dialog", { name: logHeading("practice") })
+    ).toBeTruthy();
     // And a profile with no practices gets no door at all rather than a select with
     // nothing in it — the same rule the dose door applies to items with no live dose.
     cleanup();
     render(
-      <HistoryAddDoor
+      <Door
         kind="practice"
         date={FOUND_DAY}
         maxDate={TODAY}
@@ -864,7 +896,7 @@ describe("a window the chart stated opens each kind's time control", () => {
     // person who framed 19:10 on the trace has said when, and the seed is what to
     // offer when nobody has — so this vocabulary carries a seed for the window to beat.
     render(
-      <HistoryAddDoor
+      <Door
         kind="body"
         date={FOUND_DAY}
         maxDate={TODAY}
@@ -887,7 +919,7 @@ describe("a window the chart stated opens each kind's time control", () => {
 
   it("keeps the day's own seed when no window was stated", () => {
     render(
-      <HistoryAddDoor
+      <Door
         kind="body"
         date={FOUND_DAY}
         maxDate={TODAY}
