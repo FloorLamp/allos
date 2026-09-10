@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { LoginTelegram } from "@/lib/settings";
 import { saveLoginTelegram, sendTestNotification } from "../actions";
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
@@ -117,26 +118,28 @@ export default function LoginTelegramSettings({
         </div>
       )}
 
+      {/* RULING 6 (#4978): the CARD is the surface, and this channel's card is the
+          `ChannelRow` disclosure that hosts these controls — so Save, the card's
+          own commit, is the one control allowed to be loud on it. "Send test"
+          sends nothing new to the server beyond what Save just wrote; it is a
+          diagnostic beside the commit, so it goes quiet. */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={busy}
-          className="btn"
           data-testid="login-telegram-save"
+          variant="primary"
         >
           Save
-        </button>
+        </Button>
         {enabled && (
-          <button
-            type="button"
+          <Button
             onClick={test}
             disabled={busy}
-            className="btn-ghost"
             data-testid="login-telegram-test"
           >
             Send test
-          </button>
+          </Button>
         )}
         <SaveStatus {...status} />
       </div>

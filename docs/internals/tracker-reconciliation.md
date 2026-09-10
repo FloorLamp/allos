@@ -5,15 +5,15 @@ schedule remains unwired under the condition below.
 
 Reconciliation checks tracker claims against the current repository. It may
 refresh factual status markers, cross-references, paths, symbols, and permitted
-labels. The scripts never close issues or change scope or decisions. The agent
-may fold and sequence issues under the reconciliation protocol's separate closure
-bounds, introduced in [#5382](https://github.com/FloorLamp/allos/pull/5382). Preserve
-owner rulings and flag judgments that the evidence cannot settle.
+labels. The scripts never change scope or decisions, and their one close is the
+stale-P3 rule below. The agent may fold and sequence issues under the
+reconciliation protocol's separate closure bounds, introduced in
+[#5382](https://github.com/FloorLamp/allos/pull/5382). Preserve owner rulings and
+flag judgments that the evidence cannot settle.
 
 Use the [reconciliation protocol](../../.claude/skills/reconcile-tracker/SKILL.md)
 for the ordered run procedure and the [change and test policy](../change-policy.md)
-for implementation scope. This guide describes the current tools and their limits;
-it is not a mandate to build more detectors.
+for implementation scope.
 
 ## Owners and commands
 
@@ -23,7 +23,8 @@ it is not a mandate to build more detectors.
 | [reconcile-tracker.ts](../../scripts/orchestration/reconcile-tracker.ts)           | Read-only entrypoint: GitHub reads, repository files, clock, and watermark. |
 | [reconcile-repo-index.ts](../../scripts/orchestration/reconcile-repo-index.ts)     | Shared tracked-file index and lazy source reads.                            |
 | [reconcile-patch.ts](../../scripts/orchestration/reconcile-patch.ts)               | Exact-anchor patch validation and application.                              |
-| [reconcile-apply.ts](../../scripts/orchestration/reconcile-apply.ts)               | Issue-body writes, conditional change notices, and applied-patch outcomes.  |
+| [reconcile-apply.ts](../../scripts/orchestration/reconcile-apply.ts)               | Issue-body writes, change notices, patch outcomes, and the stale-P3 close.  |
+| [issue-body-write.ts](../../scripts/orchestration/issue-body-write.ts)             | Body PATCH guard: scratch copy first; refuses empty or half-length bodies.  |
 | [reconcile-labels.ts](../../scripts/orchestration/reconcile-labels.ts)             | Retired-label removals, ruled priorities, and planned domain additions.     |
 | [reconcile-watermark.ts](../../scripts/orchestration/reconcile-watermark.ts)       | Read or advance the tracker-owned sweep watermark.                          |
 | [reconcile-run-summary.ts](../../scripts/orchestration/reconcile-run-summary.ts)   | Record one dated run summary on #865.                                       |
@@ -33,6 +34,7 @@ npm run reconcile
 npm run reconcile -- --json evidence.json --out report.md
 npm run reconcile -- --issue 2603,2589
 npm run reconcile:apply -- plan.json --outcome outcome.json
+npm run reconcile:apply -- --evidence evidence.json
 npm run reconcile:summary -- --evidence evidence.json --outcome outcome.json
 npm run reconcile:watermark
 npm run reconcile:watermark -- stamp --evidence evidence.json
@@ -40,8 +42,7 @@ npm run reconcile:watermark -- stamp --evidence evidence.json
 
 The writer commands above default to dry runs; `--apply` performs their writes.
 Read the report and review proposed changes before applying them. Keep evidence
-and outcomes from the same run together. A dry-run outcome reports zero applied
-patches, and omitting an outcome tells the summary that nothing was applied.
+and outcomes from the same run together.
 
 ## Evidence and its limits
 
@@ -53,8 +54,7 @@ issue's premise or proposed fix remains correct.
 Read the owning code when deciding whether behavior exists, a proposed fix can
 work, or a partially shipped issue still has unmet requirements. Existence checks
 cannot detect the inverse claim: an issue saying something is absent when it
-has since shipped. Reconcile that claim against the implementation rather than
-assuming a detector covers it.
+has since shipped.
 
 Path and symbol findings use these distinctions:
 
@@ -105,13 +105,17 @@ The label writer removes retired labels, resets priority to an unambiguous rulin
 in the issue's body, and accepts planned domain additions. It refuses removals
 that would strand an issue and contested priority slots. A domain addition must
 fill an empty domain slot on an open issue; existing labels and additions earlier
-in the same plan both count as occupied. Reclassification is outside this routine. Use the core's label
-decisions instead of recreating them in a writer.
+in the same plan both count as occupied. Use the core's label decisions instead
+of recreating them in a writer.
 
-The watermark writer is confined to its fixed-title carrier issue. The summary
-writer posts to the issue named by `RUN_SUMMARY_ISSUE`. None of these writers has
-an issue-close operation; preserve that boundary when changing their payloads or
-allowed tools.
+The applier's `--evidence` pass closes the gather's `staleP3` findings — an open
+`P3` filed 30 or more days ago with no dispatch-ledger claim, assignee, or open
+PR referencing it, and neither `needs-human` nor `parked` (ruled 2026-09-09,
+#5671) — as `not_planned` with one fixed comment, after re-reading the issue and
+re-running the same rule. The close payload is a literal; nothing else in the
+toolchain closes an issue. The watermark writer is confined to its fixed-title
+carrier issue. The summary writer posts to the issue named by `RUN_SUMMARY_ISSUE`.
+Preserve these boundaries when changing payloads or allowed tools.
 
 ## Watermark and run summaries
 
@@ -143,15 +147,9 @@ live in `summarizeRun` and `boringVerdict`; consumers should not recalculate the
 Run on demand after substantial tracker changes. The weekly cron remains unwired
 under the [recorded decision on #865](https://github.com/FloorLamp/allos/issues/865).
 Three consecutive boring run summaries unblock it; the change wiring the schedule
-must cite those comments. Do not infer readiness from an empty report or a count
-of runs alone.
+must cite those comments.
 
 Use a standalone `Depends-on: #123, #456` line for dependencies. Free-text forms
 remain supported, but the structured form is unambiguous. When a PR completes part
 of a checklist issue, verify the shipped artifact and update its matching box;
 a title claiming completion is not enough evidence.
-
-Existing reconciliation core and script tests cover anchors, refusals, writer
-boundaries, outcomes, watermark handling, and summary arithmetic. Extend the
-relevant existing test only for a missing behavioral failure; do not add assertions
-that merely pin this guide's wording.

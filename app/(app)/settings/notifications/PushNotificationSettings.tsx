@@ -7,6 +7,7 @@ import {
   deletePushSubscriptionAction,
   sendTestPush,
 } from "../actions";
+import Button from "@/components/Button";
 import { useHydrated } from "@/components/useHydrated";
 
 // Web Push opt-in (issue #17), LOGIN-scoped: a subscription belongs to THIS
@@ -191,39 +192,39 @@ export default function PushNotificationSettings() {
             </span>
           </p>
 
+          {/* RULING 6 (#4978) ON A CARD WHOSE COMMIT IS AN ENROLLMENT. The card is
+              the `ChannelRow` disclosure, and the action it exists for is
+              subscribing THIS browser — so `Enable` is the card's own commit and
+              takes the fill. `Disable` is that commit's teardown, not a second
+              commit, and it goes quiet: `TwoFactorSettings` is the landed
+              precedent on the same reading (its "Enable two-factor
+              authentication" is filled; its "Turn off" is not). So once push is
+              on, this card carries no loud control — which ruling 7 already
+              establishes is a legitimate state, not a gap. */}
           <div className="flex flex-wrap items-center gap-2">
             {!subscribed ? (
-              <button
-                type="button"
+              <Button
                 onClick={enable}
                 disabled={busy || permission === "denied"}
-                className="btn"
                 data-testid="push-enable"
+                variant="primary"
               >
                 Enable push on this browser
-              </button>
+              </Button>
             ) : (
-              <button
-                type="button"
+              <Button
                 onClick={disable}
                 disabled={busy}
-                className="btn-ghost"
                 data-testid="push-disable"
               >
                 Disable
-              </button>
+              </Button>
             )}
             {/* Test targets every browser subscribed under this login, so it's
                 useful even when THIS browser isn't subscribed. */}
-            <button
-              type="button"
-              onClick={test}
-              disabled={busy}
-              className="btn-ghost"
-              data-testid="push-test"
-            >
+            <Button onClick={test} disabled={busy} data-testid="push-test">
               Send test
-            </button>
+            </Button>
           </div>
         </>
       )}

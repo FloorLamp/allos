@@ -15,20 +15,22 @@ a tool being available does not authorize messages or new sessions.
 
 ## Durable priority state
 
-The pinned Ladder issue, #4769, holds rung order, prerequisites, and each
-orchestrator's slice. Verify its current contents; do not reconstruct priority
-from remembered session state.
+The pinned Ladder issue holds rung order, prerequisites, and each orchestrator's
+slice. Verify its current contents; do not reconstruct priority from remembered
+session state.
 
 Update the Ladder when the owner reorders work, a prerequisite lands, or an
 orchestrator is added. Keep current state in its body with a timestamp. Put
 standing rules in their runbook and per-issue decisions in that issue; the Ladder
 links to them instead of copying policy.
 
+Every Monday, open a fresh pinned Ladder issue carrying the current body, pin
+it, close the previous one with a pointer each way, and update the PM inbox.
+
 ## Bootstrap and watches
 
 Use the current host's [agent tools](../../../docs/orchestration/environment.md#agent-tools).
 After an account, host, or session change, query live sessions before trusting a saved identifier.
-GitHub branches, PRs, claims, `main`, and the Ladder provide the durable work state.
 
 For an assigned PM session, discover the recorded orchestrator sessions. If none
 remain and creating the replacement is authorized, start exactly one in the repo
@@ -46,6 +48,7 @@ watch checks:
 4. Issue updates, dispatch claims, and pending owner questions.
 5. Remote branches for duplicate claims or overlapping work.
 6. Whether active work follows the highest ready Ladder rungs.
+7. Is the convergence slot filled in each session?
 
 Use [dispatch policy](../../../docs/orchestration/dispatch.md) for machine and
 E2E capacity. Seek useful saturation within those limits; do not fill lanes while
@@ -118,10 +121,7 @@ Keep coupled UI work in one slice. Tell each authorized session its sibling IDs
 and scope; verify claims before dispatch and check other sessions' branches for
 file conflicts.
 
-Each session may have one landing candidate, with merges serialized repository-wide.
 After another merge, candidates reassess through `landing-independence.mjs`.
-Do not demand PRs for every banked branch. The first watch after a split checks
-for duplicate claims and overlapping files.
 
 ## Report and stop cleanly
 

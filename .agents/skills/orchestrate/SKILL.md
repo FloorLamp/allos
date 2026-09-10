@@ -32,7 +32,7 @@ Run at each live wake and after a gap. Read its persisted state and dispatch
 roster, including the tooling version, before acting on remembered status. After a
 restart, preserve in-flight branches before diagnosing the interruption.
 
-Read the Ladder issue (#4769) for recorded scope, outcomes, termination, slice,
+Read the pinned Ladder issue for recorded scope, outcomes, termination, slice,
 order, and prerequisites. Follow [lifecycle](../../../docs/orchestration/lifecycle.md)
 for holds, the next authorized check-in, and the status pulse. The PM owns the
 catch-up digest. Missing scope does not authorize a broader queue.

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconFileImport } from "@tabler/icons-react";
 import DestinationLink from "@/components/DestinationLink";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // Points at the Import page, where health-record uploads live alongside lab/scan
 // documents. A MyChart "Download Summary" (CCD/XDM) or SMART Health Card imported
@@ -25,7 +26,7 @@ export default function MyChartImport({
   if (menuItemClass) {
     return (
       <Link
-        href="/data?section=import"
+        href={dataSectionHref("import")}
         role="menuitem"
         className={menuItemClass}
         data-testid="immunization-import-link"
@@ -38,7 +39,7 @@ export default function MyChartImport({
 
   if (compact) {
     return (
-      <Link href="/data?section=import" className="btn-ghost text-sm">
+      <Link href={dataSectionHref("import")} className="btn-ghost text-sm">
         <IconFileImport className="h-4 w-4" stroke={1.75} />
         Import records
       </Link>
@@ -47,7 +48,7 @@ export default function MyChartImport({
 
   return (
     <DestinationLink
-      href="/data?section=import"
+      href={dataSectionHref("import")}
       className="card flex items-center gap-3 transition hover:border-brand-400 hover:bg-brand-50/40 dark:hover:bg-brand-950/30"
     >
       <IconFileImport

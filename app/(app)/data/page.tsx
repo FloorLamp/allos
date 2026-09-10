@@ -23,6 +23,7 @@ import { getImportJobs } from "@/app/(app)/data/actions";
 import { listDocumentTombstones } from "@/lib/document-tombstones";
 import { listCorrectionSources } from "@/lib/bulk-correction-db";
 import { isCorrectionFieldId } from "@/lib/bulk-correction";
+import { dataSectionHref, parseDataSection } from "@/lib/hrefs";
 import {
   getImportDocumentsFeed,
   getConnectedSources,
@@ -36,14 +37,6 @@ import {
 } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
-
-const SECTIONS = ["import", "review", "coverage", "manage", "trash"] as const;
-type Section = (typeof SECTIONS)[number];
-
-function parseSection(value: string | string[] | undefined): Section {
-  const first = Array.isArray(value) ? value[0] : value;
-  return SECTIONS.includes(first as Section) ? (first as Section) : "import";
-}
 
 // The consolidated data hub: one "Data" umbrella for
 // everything you do with your data. The "Import" tab is every way to bring data
@@ -72,7 +65,7 @@ export default async function DataPage(
   const strengthTrainingAvailable = isStrengthTrainingRelevant(
     getProfileAge(profile.id)
   );
-  const section = parseSection(searchParams.section);
+  const section = parseDataSection(searchParams.section);
   // Demo mode (#181): disable the medical-upload input (a PHI-entry vector) with a
   // hint. The write is already blocked server-side; this is the UX on top.
   const demo = isDemoRestricted(isDemoMode(), login.role);
@@ -207,7 +200,7 @@ export default async function DataPage(
             feed — so there's a single source of truth for everything imported
             (documents, pastes, and background syncs), not two competing logs. */}
         <DestinationLink
-          href="/data?section=review"
+          href={dataSectionHref("review")}
           className="card flex items-center justify-between gap-3 transition hover:border-brand-300 dark:hover:border-brand-800"
         >
           <div>

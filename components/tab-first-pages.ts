@@ -1,4 +1,4 @@
-import type { AppRoute, NutritionTab } from "@/lib/hrefs";
+import type { AppRoute, DataSection, NutritionTab } from "@/lib/hrefs";
 import { trainingTabStrip } from "@/lib/training-tabs";
 
 interface TabFirstPageBase {
@@ -41,6 +41,9 @@ export const DATA_TAB_FIRST_PAGE = {
   mobileColumns: 4,
   mobileLayout: "scroll",
   testId: "data-tabs",
+  // `satisfies DataSection` below (#4541): the ids ARE the `?section=` grammar,
+  // so binding them to the union makes a strip that names a section the hub does
+  // not serve a compile error rather than a dead tab, the way NUTRITION does.
   tabs: [
     { id: "import", label: "Import" },
     // Deliberately NO unresolved-item count here (it used to read "Review (3)").
@@ -54,7 +57,7 @@ export const DATA_TAB_FIRST_PAGE = {
     { id: "coverage", label: "Coverage" },
     { id: "manage", label: "Manage & export" },
     { id: "trash", label: "Trash" },
-  ],
+  ] satisfies readonly { id: DataSection; label: string }[],
 } as const satisfies TabFirstPageConfig;
 
 export const NUTRITION_TAB_FIRST_PAGE = {

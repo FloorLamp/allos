@@ -595,7 +595,9 @@ describe("carryPostWorkoutMarker", () => {
     const dropRow = db
       .prepare("SELECT * FROM activities WHERE id = ?")
       .get(drop) as Record<string, unknown>;
-    writeTx(() => writeActivityFold(p, keep, keepRow, [dropRow]));
+    writeTx(() =>
+      writeActivityFold(p, keep, keepRow, [dropRow], carryPostWorkoutMarker)
+    );
 
     expect(marker(p, keep)).toBe("2026-07-17");
   });

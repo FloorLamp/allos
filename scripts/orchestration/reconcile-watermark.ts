@@ -16,11 +16,12 @@
 // and verifies the stamp landed (§GitHub access: no write believed until
 // re-read).
 //
-// Confinement (pinned in lib/__tests__/reconcile-tracker.test.ts): one PATCH
-// whose payload is built from exactly one field (`body`), and one POST that
-// can only CREATE the carrier — its title is the pinned constant — when none
-// exists yet. No other verb, no state field anywhere, so this writer cannot
-// close, relabel, or edit any real tracker issue.
+// Confinement (pinned in lib/__tests__/reconcile-tracker.test.ts): one body
+// write through `issue-body-write.ts` (which saves the current body first and
+// builds its payload from exactly one field), and one POST that can only
+// CREATE the carrier — its title is the pinned constant — when none exists
+// yet. No other verb, no state field anywhere, so this writer cannot close,
+// relabel, or edit any real tracker issue.
 //
 // Exit codes: 0 done (or dry run printed) · 1 refused (rewind, bad ISO,
 // verify failed) · 2 cannot run (no token, API trouble).
@@ -35,6 +36,7 @@ import {
   extractWatermark,
   type TrackerIssue,
 } from "./reconcile-tracker-core";
+import { writeIssueBody } from "./issue-body-write";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
@@ -223,22 +225,12 @@ function main(): void {
 
   let number: number;
   if (carrier) {
-    const body = carrierBody(next);
-    const { status } = curl([
-      "-H",
-      `Authorization: Bearer ${token}`,
-      "-H",
-      "Accept: application/vnd.github+json",
-      "-X",
-      "PATCH",
-      "-d",
-      JSON.stringify({ body }),
-      `${API}/issues/${carrier.number}`,
-    ]);
-    if (status !== 200) {
-      console.error(`PATCH issue #${carrier.number} -> ${status}`);
-      process.exit(2);
-    }
+    writeIssueBody({
+      repo,
+      token,
+      issue: carrier.number,
+      body: carrierBody(next),
+    });
     number = carrier.number;
   } else {
     const { status, body: reply } = curl([

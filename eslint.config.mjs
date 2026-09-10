@@ -1340,6 +1340,40 @@ const config = [
       ),
     },
   },
+  // ── lib/notifications: no runtime import cycle (#2961 AC 3) ─────────────────
+  // A module in a cycle evaluates against a partially initialised partner, and a
+  // module-scope `const` read in that window is `undefined` — here a callback prefix
+  // or a byte budget. The shipped case: callback-data.ts imported INTAKE_SEND_SLOTS
+  // from intake-format.ts, which imported callbackDataFits back, and #5169 recorded
+  // the edge gone while it was still there. `import type` is erased before anything
+  // runs, so the rule skips type-only edges, as the scan did; the scan read
+  // `import … from "./x"` and nothing else, so a value re-export
+  // (`export { x } from "./y"`) closed a cycle it could not see (#5390) — the
+  // plugin's graph carries re-exports. A dynamic `import()` is not counted either:
+  // it runs after both modules have finished evaluating, which is why
+  // post-workout-queue.ts reaches workout-presence.ts that way.
+  // (was lib/__tests__/notification-import-cycles.test.ts)
+  //
+  // The one cycle this block used to name rather than hide is GONE (#5719).
+  // post-workout-marker.ts → ../settings → (export *) settings/notifications →
+  // queries/sleep → derived-situations → cycle-store → undo-delete-db →
+  // merge-activity → post-workout-marker.ts, closed by 141207621 (#2597), was broken
+  // at its last hop: writeActivityFold now takes the announcement carry as a required
+  // parameter instead of importing it, so the write path holds no edge into
+  // lib/notifications and every file in this directory is covered with no exemption.
+  {
+    files: ["lib/notifications/**/*.{ts,tsx}"],
+    rules: {
+      "import/no-cycle": [
+        "error",
+        {
+          maxDepth: Infinity,
+          ignoreExternal: true,
+          allowUnsafeDynamicCyclicDependency: true,
+        },
+      ],
+    },
+  },
   // ── e2e/**: the retired hygiene scan's zero-allowlist bans (#5350) ──────────
   // The scan read `e2e/**/*.ts` — specs AND the driver/helper modules, because a
   // settle anti-pattern can hide in a helper the specs import (#868 phase 2). Only

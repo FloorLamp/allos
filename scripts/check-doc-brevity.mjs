@@ -2,12 +2,12 @@
 // Check all Markdown and dispatch/brief sources against a word budget.
 // Usage: node scripts/check-doc-brevity.mjs [--base <git-ref>]
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync } from "node:fs";
 
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
   console.log(
-    "Usage: npm run docs:check -- [--base <git-ref>]\nNew/short files: 1500 words. Oversized files: no growth from the base."
+    "Usage: npm run docs:check -- [--base <git-ref>]\nNew/short files: 1500 words. Oversized files and the total: no growth from the base."
   );
   process.exit(0);
 }
@@ -31,23 +31,33 @@ try {
     args[1] || process.env.DOC_BREVITY_BASE || "origin/main";
   const base = git("merge-base", "HEAD", requestedBase).trim();
   const previous = new Set(
-    git("ls-tree", "-rz", "--name-only", base).split("\0")
+    git("ls-tree", "-rz", "--name-only", base).split("\0").filter(covered)
   );
   const files = [
-    ...new Set(
-      git("ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    ...new Set([
+      ...git("ls-files", "-z", "--cached", "--others", "--exclude-standard")
         .split("\0")
-        .filter(covered)
-    ),
+        .filter(covered),
+      ...previous, // Files deleted since the base still count toward its total.
+    ]),
   ].sort();
   let failures = 0;
   let checked = 0;
+  let total = 0;
+  let oldTotal = 0;
   for (const file of files) {
-    if (!existsSync(file)) continue; // Deleted files have no remaining prose.
-    const count = words(readFileSync(file, "utf8"));
     const oldCount = previous.has(file)
       ? words(git("show", `${base}:${file}`))
       : 0;
+    oldTotal += oldCount;
+    if (!existsSync(file)) continue; // Deleted files have no remaining prose.
+    // A symlink counts as git stores it: its target path, not the target file.
+    const count = words(
+      lstatSync(file).isSymbolicLink()
+        ? readlinkSync(file)
+        : readFileSync(file, "utf8")
+    );
+    total += count;
     const limit = Math.max(1500, oldCount);
     checked++;
     if (count > limit) {
@@ -57,8 +67,15 @@ try {
       failures++;
     }
   }
+  const delta = `${total >= oldTotal ? "+" : ""}${total - oldTotal}`;
+  if (total > oldTotal) {
+    console.error(
+      `Total: ${total} words; base ${oldTotal} (${delta}). New text displaces old: remove as many words as you add.`
+    );
+    failures++;
+  }
   console.log(
-    `Doc brevity: ${checked} files checked against ${base.slice(0, 12)}; ${failures} over budget.`
+    `Doc brevity: ${checked} files checked against ${base.slice(0, 12)}; ${total} words, ${oldTotal} at base (${delta}); ${failures} over budget.`
   );
   process.exitCode = failures ? 1 : 0;
 } catch (error) {

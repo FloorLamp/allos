@@ -1,4 +1,4 @@
-import { onboardingStepHref } from "@/lib/hrefs";
+import { onboardingStepHref, dataSectionHref } from "@/lib/hrefs";
 import Link from "next/link";
 import { IconCheck, IconLock } from "@tabler/icons-react";
 import DestinationIndicator from "@/components/DestinationIndicator";
@@ -435,7 +435,7 @@ export default async function OnboardingPage({
         {activeStep === 4 && (
           <section className="card" data-testid="onboarding-first-value">
             <DestinationLink
-              href="/data?section=import#integrations"
+              href={dataSectionHref("import", "integrations")}
               className="group mb-5 flex items-center justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50 p-4 transition hover:border-brand-400 dark:border-brand-500/25 dark:bg-brand-500/10 dark:hover:border-brand-500/50"
             >
               <span>
