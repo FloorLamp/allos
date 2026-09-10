@@ -188,11 +188,17 @@ export const HISTORY_ROLLUP_KINDS: readonly HistoryKind[] =
 // does not see a door for it — EXCEPT symptom, which the ruling exempts: "a first
 // symptom is exactly what people backfill", so the door has to exist before the
 // profile has anything for the gate to key on. The other kinds keep the gate.
+//
+// SLEEP IS EXCLUDED IN THE TYPE, not merely in the filter. Every chip this returns now
+// MOUNTS that kind's form (#5618 ruling 1), and the eight kinds with a form are exactly
+// `LogDomain` — the same union as `Exclude<HistoryLogKind, "sleep">`. Stating it here is
+// what lets the add row take these kinds directly instead of re-narrowing them, and
+// `lib/log-manifest.ts` cannot be imported for the name because it imports this file.
 export function historyAddKinds(
   presentKinds: readonly HistoryKind[]
-): HistoryLogKind[] {
+): Exclude<HistoryLogKind, "sleep">[] {
   return HISTORY_LOG_KINDS.filter(
-    (kind) =>
+    (kind): kind is Exclude<HistoryLogKind, "sleep"> =>
       kind !== "sleep" &&
       (kind === "symptom" ||
         presentKinds.length === 0 ||

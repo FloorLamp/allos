@@ -445,19 +445,26 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
         await expect(page.getByTestId("history-symptom-entry")).toHaveCount(0);
         await expect(page.getByTestId("history-symptom-toggle")).toHaveCount(0);
 
-        // THE CHIP, in the row with its siblings rather than on a line of its own.
-        const chip = page.getByTestId("history-add-symptom");
+        // THE CHIP, in the row with its siblings rather than on a line of its own —
+        // and ONE TAP, which is #5618 ruling 1: the chip was a link to `?kind=symptom`
+        // and the form was a second button below it, so "every row on the left gets
+        // filtered away" before anything opened.
+        const chip = page.getByTestId("history-add-open-symptom");
         await expect(chip).toHaveText("Symptoms");
-        await followLink(page, chip, /kind=symptom/);
-        // The day rode across the chip: the door can only be about the day being read
-        // if the navigation kept it.
+        const rows = appContent(page).getByTestId("history-row");
+        const rowsBefore = await rows.count();
+        await hydratedClick(page, chip);
+        const panel = page.getByTestId("history-add-panel-symptom");
+        await expect(panel).toBeVisible();
+        // THE RECORD STAYED. No navigation, no `kind`, the day still in hand, and the
+        // rows behind the sheet still the day's own — a chip is a disclosure now, and
+        // the filter pills are the only filter.
+        expect(new URL(page.url()).searchParams.get("kind")).toBeNull();
         expect(new URL(page.url()).searchParams.get("day")).toBe(
           TL_CHROME_QUIET_DAY
         );
-
-        await hydratedClick(page, page.getByTestId("history-add-open-symptom"));
-        const panel = page.getByTestId("history-add-panel-symptom");
-        await expect(panel).toBeVisible();
+        await expect(chip).toHaveAttribute("aria-expanded", "true");
+        expect(await rows.count()).toBe(rowsBefore);
         await settledPickOption(
           page,
           panel.getByRole("combobox", { name: "Symptom" }),

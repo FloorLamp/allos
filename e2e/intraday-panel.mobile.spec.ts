@@ -255,19 +255,18 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
         .replace("Add at ", "")
         .split("–");
 
-      // The chip carries it. The URL learns the window HERE and not on the drag:
-      // zoom itself stays ephemeral.
-      await appContent(member).getByTestId("history-add-practice").click();
-      await expect(member).toHaveURL(
-        new RegExp(`day=${date}.*from=${from.replace(":", "%3A")}`)
-      );
-      await expect(member).toHaveURL(/to=/);
-
-      // And the form behind that door opens on both clocks — a default the person
-      // confirms. The door is a toggle, as every kind's is (#4045 §1).
+      // ONE TAP ON THE CHIP, and the form opens on both clocks — a default the person
+      // confirms. This was TWO taps and a navigation (#5618 ruling 1): the chip was a
+      // link to `?kind=practice`, so the record filtered itself away, the whole add
+      // row swapped for a single door button, and that button was still closed.
       await appContent(member).getByTestId("history-add-open-practice").click();
       await expect(member.locator("#practice-start-time")).toHaveValue(from);
       await expect(member.locator("#practice-end-time")).toHaveValue(to);
+      // THE RECORD STAYED PUT: same day, no kind, and the zoom still ephemeral —
+      // nothing minted the window into the URL because nothing navigated.
+      await expect(member).toHaveURL(new RegExp(`day=${date}`));
+      await expect(member).not.toHaveURL(/[?&]kind=/);
+      await expect(member).not.toHaveURL(/[?&]from=/);
     } finally {
       await member.context().close();
     }
@@ -320,14 +319,16 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       await expect(selection).toBeVisible();
       expect(Number(await selection.getAttribute("x"))).toBeCloseTo(pinX, 1);
       const from = "12:20";
-      const practice = appContent(member).getByTestId("history-add-practice");
-      await expect(practice).toHaveAttribute("href", /[?&]from=12%3A20(?:&|$)/);
-      await practice.tap();
-      await expect(member).toHaveURL(
-        new RegExp(`from=${from.replace(":", "%3A")}`)
+      const practice = appContent(member).getByTestId(
+        "history-add-open-practice"
       );
-      await expect(member).not.toHaveURL(/[?&]to=/);
-      await appContent(member).getByTestId("history-add-open-practice").click();
+      // A CHIP IS A DISCLOSURE, NOT A LINK (#5618 ruling 1): it has no href to carry
+      // the start, it opens the form on the start it is already showing, and the
+      // record it was opened from is still on the page behind it.
+      await expect(practice).not.toHaveAttribute("href", /./);
+      await practice.tap();
+      await expect(practice).toHaveAttribute("aria-expanded", "true");
+      await expect(member).not.toHaveURL(/[?&]kind=/);
       await expect(member.locator("#practice-start-time")).toHaveValue(from);
       // The End shortcut's job, not this window's: an end nobody stated is a length
       // nobody gave.
