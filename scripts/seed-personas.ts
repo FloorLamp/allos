@@ -1053,6 +1053,27 @@ const bodybuilder: SeedPersona = {
       notes: "Zinc + magnesium before bed",
       doses: [["1 serving", "Before sleep", "empty_stomach"]],
     });
+    // THE ON-DEMAND ITEM (#5321). `may` + post-workout + no slot hint, and each of the
+    // three is load-bearing rather than flavour:
+    //
+    //   • `may` is the shape the offer surfaces answer about at all — the digest's tail,
+    //     the reminder's ride-along row, the quick-log sheet. Before this, not one
+    //     persona's OWN profile held an active `may` item (the two that exist belong to
+    //     family members), so `getOfferedIntakeForSlot` early-returned on every gather
+    //     the budget in tick-gather-budget.test.ts walks and contributed zero to a
+    //     number that is supposed to be the tick's real cost.
+    //   • post-workout ties it to the gate this persona actually meets: Marcus trains,
+    //     so the offer is genuinely held for part of his day and genuinely offered for
+    //     the rest.
+    //   • no slot hint keeps it offered in every slot, so the count does not depend on
+    //     the hour a gather happens to run at.
+    intake.supplement({
+      name: "Tart Cherry",
+      notes: "After sessions, when the legs are sore",
+      condition: "post_workout",
+      obligation: "may",
+      doses: [["1 serving", null, "any"]],
+    });
     logAdherence(ctx);
 
     // High-protein macros for the nutrition chart (~2.2 g/kg).

@@ -46,6 +46,7 @@ const ctx = (date: string) => ({
   date,
   isWorkoutDay: false,
   activeSituations: new Set<string>(),
+  predictedWorkoutDay: null,
 });
 
 describe("doseScheduleAsOf: the version in force on a day", () => {

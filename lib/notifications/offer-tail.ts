@@ -24,6 +24,7 @@
 
 import { currentTimeBucket } from "../intake-schedule";
 import { intakeShortLabels } from "../intake-short-name";
+import { summarizeNamesForSentence } from "../summarize-names";
 import type { IntakeItemKind } from "../types";
 import { DIGEST_TAIL_ROW, type NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
@@ -168,6 +169,36 @@ export function expandedOfferActions(
 export function offerTextTail(count: number): string | null {
   if (count <= 0) return null;
   return `${count} more supplement${count === 1 ? "" : "s"} you can log any time`;
+}
+
+// The WITHHELD line (#5321, owner-ruled 2026-09-09). The counterpart to the tail above:
+// the tail says what is on offer, this says what is not yet, and why.
+//
+// It exists because the timing gate can empty the tail. A profile whose only `may` item
+// is post-workout has no offer between the tick and the session's recorded end, and the
+// minimal-digest guarantee suppresses a message with no sections and no tail — so the
+// one send a tap-only reader is promised would go missing on exactly the day they
+// trained. The ruling: the digest still arrives and NAMES the hold. It does not offer
+// what the medications page holds; it says the same thing the page says.
+//
+// The names are the reader's own items, so they are named rather than counted — "1 item
+// waits" answers nothing you would act on. Past `SUMMARY_NAME_LIMIT` the shared
+// summarizer counts the rest, so a long regimen cannot flood one line. No terminal
+// punctuation: this renders as a digest bullet beside `heldSummaryLine`, which is the
+// same disclosure one hold over.
+//
+// THE SENTENCE FORM, NOT THE ROSTER ONE (PM ruling 2026-09-09 23:15 UTC). This line
+// names a subject and then makes one claim about all of it — "A and B wait" — which is
+// the shape lib/summarize-names.ts documents `joinNamesForSentence` for, and the shape
+// its every other production caller has. A rollup's roster is the other shape and keeps
+// the middot. The counted overflow past three is unchanged, and the conjunction can
+// never meet the count: the sentence join is only reached while the list is whole.
+export function offerHeldByWorkoutLine(
+  names: readonly string[]
+): string | null {
+  if (names.length === 0) return null;
+  const verb = names.length === 1 ? "waits" : "wait";
+  return `${summarizeNamesForSentence(names)} ${verb} until your session ends`;
 }
 
 // Whether the collapsed tail's LABEL is now stale — i.e. the slot turned over since

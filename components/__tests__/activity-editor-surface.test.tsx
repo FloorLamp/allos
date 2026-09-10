@@ -123,7 +123,6 @@ const PROVIDER_PROPS = {
   trainingRelevant: true,
   strengthTrainingAvailable: true,
   deloadContext: { deloadWeek: false, lifts: [] },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any;
 
 function renderShell(children: React.ReactNode) {
@@ -152,7 +151,6 @@ beforeEach(() => {
     addListener: () => {},
     removeListener: () => {},
     dispatchEvent: () => false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   })) as any;
 });
 
