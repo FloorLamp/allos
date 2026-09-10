@@ -12,7 +12,7 @@ a ceiling: it does not guarantee a push or urgent dashboard placement. Each find
 must still earn its attention state and meet the channel/consent requirements.
 
 `lib/rule-findings.ts` and `lib/rule-finding-prefixes.ts` own builder registration
-and identity. A new engine joins the existing registry and declares its prefix,
+and identity; the domain builders themselves live in `lib/rule-findings/`. A new engine joins the existing registry and declares its prefix,
 reach, and relevant builder behavior. Dedupe keys follow stable subject/evidence
 identity, not display labels. A finding about a run is keyed to that run.
 

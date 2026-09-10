@@ -10,7 +10,7 @@
 // double-progression engine's vocabulary (lib/coaching.ts): a deload (drop the load
 // and rebuild) or a variation to restart progression.
 //
-// Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings.ts
+// Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings/training.ts
 // (buildTrainingObservationFindings), which maps each finding into the shared Finding
 // envelope carrying the stable dedupeKey below so a page dismiss/snooze silences it
 // (issue #227); these render on the Training tab. Every threshold is a named constant

@@ -53,7 +53,7 @@ list accessible; color and the figure supplement the text.
 [Volume bands](../lib/muscle-volume-bands.ts) own the checked-in working-set
 ranges, verdicts, and presentation palette. The coverage list, anatomy, and
 findings consume that shared interpretation. `buildMuscleVolumeFindings` in
-`lib/rule-findings.ts` gathers the seven-day coverage and history context.
+`lib/rule-findings/training.ts` gathers the seven-day coverage and history context.
 Shortfall findings require at least two distinct training weeks in the history
 window and a positive trained volume below the band. They are suppressed during
 deload weeks and for regions excluded by an active injury. Untrained muscles
