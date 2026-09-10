@@ -110,10 +110,11 @@ const FIXTURES = [
     ],
   },
   {
-    symbol: "getOfferedIntakeForSlot",
-    file: "lib/queries/intake/adherence.ts",
-    // Sends only. The Upcoming and ICS rows the table gave this gather belong to
-    // scheduledDoseRows above; the walker finds no binding from here to either.
+    symbol: "getIntakeOffersForSlot",
+    file: "lib/queries/intake/offers.ts",
+    // Sends only, through its `getOfferedIntakeForSlot` shape as well. The Upcoming
+    // and ICS rows the table gave this gather were never a consumer relation: they
+    // belong to scheduledDoseRows above, and no binding leads from here to either.
     terminals: [
       "route app/api/telegram/webhook/route.ts POST",
       "send lib/notifications/digest-data.ts refreshDigestOfferTail",
