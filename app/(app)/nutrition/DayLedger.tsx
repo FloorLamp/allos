@@ -16,7 +16,6 @@ import Button from "@/components/Button";
 import DatedDoseControl from "@/components/medications/DatedDoseControl";
 import type { DoseStatusResult } from "@/app/(app)/nutrition/intake-actions";
 import { EmptyState } from "@/components/ui";
-import { useToast } from "@/components/Toast";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
 import { bulkLabel, dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
@@ -31,17 +30,12 @@ import {
   type LedgerStack,
 } from "@/lib/day-ledger";
 import type { PendingDayDose } from "@/lib/queries/usual-routine";
-import CheckboxControl from "@/components/CheckboxControl";
-import WhenControl from "@/components/WhenControl";
-import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm, whenOnDay, type WhenValue } from "@/lib/stated-time";
-import { useConfirm } from "@/components/ConfirmDialog";
 import {
-  deleteLedgerSelection,
-  moveLedgerSelectionToDay,
-  setLedgerSelectionTime,
-  type LedgerSelectionEditResult,
-} from "./intake-actions";
+  DayPickBox,
+  DaySelectToggle,
+  DaySelectionBar,
+  DaySelectionProvider,
+} from "@/components/DaySelection";
 
 // THE DAY LEDGER (#3987 phase 1).
 //
@@ -132,7 +126,6 @@ export default function DayLedger({
   onRemoveServing,
   removingServingId,
 }: DayLedgerProps) {
-  const toast = useToast();
   const [resolved, setResolved] = useState<Set<string>>(() => new Set());
   // The last outcome per occurrence that did NOT resolve it — shown inline, so the
   // reason a row is still there is legible without hunting for the toast.
@@ -187,124 +180,17 @@ export default function DayLedger({
     resolved: markResolved,
   });
 
-  // ── SELECTION MODE (#4118) ──────────────────────────────────────────────────
+  // ── SELECTION MODE (#4118, one component with the record's — #5618 ruling 4) ──
   //
-  // A day reconstructed late is wrong the SAME way on every row it holds — the reported
-  // case is a whole morning logged the next afternoon — so the repair is one gesture over
-  // many rows, not the ⋯ menu N times. What a selection can do is deliberately the three
-  // things the ⋯ menu can do to one row, and each one goes through the SAME correction
-  // core (lib/day-ledger-edit.ts): there is no bulk write path here, only a bulk caller of
-  // the per-row ones.
+  // A day reconstructed late is wrong the SAME way on every row it holds, so the repair
+  // is one gesture over many rows rather than the ⋯ menu N times. The mode, its three
+  // verbs and their batch all live in components/DaySelection.tsx now, which /history's
+  // day view mounts over the same cores — the ledger keeps only the question no shared
+  // component can answer: WHICH of this day's rows a selection may act on.
   //
   // SELECTABLE IS "already a record": servings and TAKEN doses, stack members included. A
   // still-due dose has no row to correct, and a SKIPPED one is re-answered on its own row
   // rather than amended — both cores that could act on a skip scope themselves to taken.
-  const confirm = useConfirm();
-  const [selecting, setSelecting] = useState(false);
-  const [picked, setPicked] = useState<{ servings: number[]; doses: number[] }>(
-    () => ({ servings: [], doses: [] })
-  );
-  const [busy, setBusy] = useState(false);
-  const [sheet, setSheet] = useState<"time" | "day" | null>(null);
-  // THE ONE "WHEN" CONTROL (#2236/#3273), with its day FIXED to the ledger's own:
-  // min === max, so it renders the day as text and the pair rule holds trivially. The
-  // batch never re-dates through this control — Move to day… is the other verb, and
-  // giving Set time… a day picker too would be two answers to one question.
-  const tz = useTimezone();
-  const [batchWhen, setBatchWhen] = useState<WhenValue>(() =>
-    whenOnDay(date, tz)
-  );
-  const [batchDay, setBatchDay] = useState("");
-  const pickedCount = picked.servings.length + picked.doses.length;
-
-  function togglePick(kind: "servings" | "doses", id: number): void {
-    setPicked((prev) => {
-      const list = prev[kind];
-      return {
-        ...prev,
-        [kind]: list.includes(id)
-          ? list.filter((x) => x !== id)
-          : [...list, id],
-      };
-    });
-  }
-
-  function leaveSelection(): void {
-    setSelecting(false);
-    setSheet(null);
-    setPicked({ servings: [], doses: [] });
-    setBatchWhen(whenOnDay(date, tz));
-  }
-
-  /** The box a selectable row carries while selection mode is on, and nothing otherwise. */
-  function pickBox(kind: "servings" | "doses", id: number, label: string) {
-    if (!selecting) return null;
-    return (
-      <CheckboxControl
-        label={label}
-        checked={picked[kind].includes(id)}
-        onChange={() => togglePick(kind, id)}
-        data-testid={`ledger-pick-${kind === "servings" ? "serving" : "dose"}-${id}`}
-      />
-    );
-  }
-
-  // Post one batch and SAY WHAT LANDED. The action answers with the rows it wrote and
-  // every row it refused, each carrying the reason its own core gave — so a batch that
-  // half-lands says so rather than confirming all of it (#232's contract, at batch
-  // grain). The rows themselves come back from the server revalidation the action ran.
-  async function runBatch(
-    verb: "Updated" | "Removed",
-    action: (fd: FormData) => Promise<LedgerSelectionEditResult>,
-    extra: Record<string, string>
-  ): Promise<void> {
-    const fd = new FormData();
-    fd.set("date", date);
-    fd.set("serving_ids", picked.servings.join(","));
-    fd.set("dose_log_ids", picked.doses.join(","));
-    for (const [key, value] of Object.entries(extra)) fd.set(key, value);
-    setBusy(true);
-    try {
-      const result = await action(fd);
-      if (!result.ok) {
-        toast(result.error, { tone: "error" });
-        return;
-      }
-      if (result.applied === 0) {
-        toast(result.refused[0]?.reason ?? "Nothing changed.", {
-          tone: "error",
-        });
-        return;
-      }
-      toast(
-        result.refused.length === 0
-          ? `${verb} ${result.applied} ${result.applied === 1 ? "row" : "rows"}.`
-          : `${verb} ${result.applied} of ${result.applied + result.refused.length} — ${result.refused[0]!.reason}`,
-        result.refused.length === 0 ? undefined : { tone: "error" }
-      );
-      leaveSelection();
-    } catch {
-      toast("Something went wrong — reload to see what changed.", {
-        tone: "error",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeSelection(): Promise<void> {
-    // ONE confirmation for the batch (the ruling). The per-row ⋯ removal offers an Undo
-    // toast instead; a batch trades that for the question asked once, and the rows are
-    // still recoverable from the Trash, which is where both paths' captures land.
-    const ok = await confirm({
-      title: `Remove ${pickedCount} ${pickedCount === 1 ? "row" : "rows"}?`,
-      message: "They move to the Trash, where they can be restored.",
-      confirmLabel: "Remove",
-      danger: true,
-    });
-    if (!ok) return;
-    await runBatch("Removed", deleteLedgerSelection, {});
-  }
 
   const pending = (dose: PendingDayDose) =>
     !resolved.has(occurrenceKey(date, dose.doseId));
@@ -406,7 +292,11 @@ export default function DayLedger({
           }`}
         >
           {gutter(label)}
-          {pickBox("servings", row.eventId, `Select the ${row.name} serving`)}
+          <DayPickBox
+            kind="servings"
+            id={row.eventId}
+            label={`Select the ${row.name} serving`}
+          />
           <LoggedEventRow
             icon={
               <FoodGroupIcon
@@ -479,9 +369,13 @@ export default function DayLedger({
           {gutter(label)}
           {/* Only a TAKEN row: a skip is re-answered on its own control, and both cores
               a batch could reach scope themselves to taken. */}
-          {row.status === "taken"
-            ? pickBox("doses", row.logId, `Select the ${row.name} dose`)
-            : null}
+          {row.status === "taken" ? (
+            <DayPickBox
+              kind="doses"
+              id={row.logId}
+              label={`Select the ${row.name} dose`}
+            />
+          ) : null}
           <LoggedEventRow icon={<DoseGlyph />}>
             {row.name}
             <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
@@ -633,9 +527,13 @@ export default function DayLedger({
                 data-status={dose.status}
                 className={LOGGED_EVENT_ROW}
               >
-                {dose.status === "taken"
-                  ? pickBox("doses", dose.logId, `Select the ${dose.name} dose`)
-                  : null}
+                {dose.status === "taken" ? (
+                  <DayPickBox
+                    kind="doses"
+                    id={dose.logId}
+                    label={`Select the ${dose.name} dose`}
+                  />
+                ) : null}
                 <LoggedEventRow icon={<DoseGlyph />}>
                   {dose.name}
                   <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
@@ -679,182 +577,94 @@ export default function DayLedger({
   const census = dayCountsLabel(totals.servings, totals.doses);
 
   return (
-    <section data-testid="day-ledger" className="space-y-4">
-      <CardSectionHeader title="Ledger" variant="label">
-        <span className="flex items-center gap-3">
-          <p
-            data-testid="day-ledger-census"
-            className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
-          >
-            {census}
-            {dayContext ? ` · ${dayContext}` : ""}
-          </p>
-          {selectableCount > 0 && (
-            <Button
-              data-testid="ledger-select-toggle"
-              onClick={() =>
-                selecting ? leaveSelection() : setSelecting(true)
-              }
+    // ONE SELECTION MODE FOR BOTH DAY SURFACES (#5618 ruling 4). The provider spans the
+    // header that holds Select and the rows that hold the boxes; the record's day view
+    // mounts the same three pieces around its own frame, and its only difference is
+    // where Move to day… reads a day from — a date field there, this page's own
+    // seven-day offer here.
+    <DaySelectionProvider
+      config={{
+        date,
+        testIdPrefix: "ledger",
+        selectable: selectableCount > 0,
+        moveTarget: { kind: "days", days: moveDays },
+      }}
+    >
+      <section data-testid="day-ledger" className="space-y-4">
+        <CardSectionHeader title="Ledger" variant="label">
+          <span className="flex items-center gap-3">
+            <p
+              data-testid="day-ledger-census"
+              className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
             >
-              {selecting ? "Cancel" : "Select"}
-            </Button>
-          )}
-        </span>
-      </CardSectionHeader>
-      {selecting && (
-        <div
-          data-testid="ledger-selection-bar"
-          className="flex flex-wrap items-center gap-2 rounded-md border border-(--divider) bg-slate-50 px-3 py-2 dark:bg-slate-900"
-        >
-          <span
-            data-testid="ledger-selection-count"
-            className="text-sm font-medium tabular-nums text-slate-700 dark:text-slate-200"
-          >
-            {pickedCount} selected
+              {census}
+              {dayContext ? ` · ${dayContext}` : ""}
+            </p>
+            <DaySelectToggle />
           </span>
-          <Button
-            data-testid="ledger-selection-set-time"
-            disabled={pickedCount === 0 || busy}
-            onClick={() => setSheet(sheet === "time" ? null : "time")}
-          >
-            Set time…
-          </Button>
-          <Button
-            data-testid="ledger-selection-move-day"
-            disabled={pickedCount === 0 || busy || moveDays.length === 0}
-            onClick={() => setSheet(sheet === "day" ? null : "day")}
-          >
-            Move to day…
-          </Button>
-          <Button
-            data-testid="ledger-selection-delete"
-            disabled={pickedCount === 0 || busy}
-            onClick={() => void removeSelection()}
-          >
-            Delete
-          </Button>
-          {sheet === "time" && (
-            <span className="flex items-center gap-2">
-              {/* ONE time for the batch, in the app's one time vocabulary. The wall
-                  clock is what travels; the core re-anchors it on the day being
-                  rendered, so a time that has not happened yet is refused THERE by the
-                  same gate every other stated instant passes, rather than talked out
-                  of here. */}
-              <WhenControl
-                mode="state"
-                grain="minute"
-                timeRequired
-                value={batchWhen}
-                onChange={setBatchWhen}
-                minDate={date}
-                maxDate={date}
-                timeLabel="Time for the selected rows"
-                testId="ledger-selection-when"
-              />
-              <Button
-                data-testid="ledger-selection-time-apply"
-                disabled={busy || batchWhen.statedAt === null}
-                onClick={() =>
-                  void runBatch("Updated", setLedgerSelectionTime, {
-                    time: statedHhmm(batchWhen.statedAt, tz),
-                  })
-                }
-              >
-                Apply
-              </Button>
-            </span>
-          )}
-          {sheet === "day" && (
-            <span className="flex items-center gap-2">
-              <select
-                aria-label="Day to move the selected rows to"
-                data-testid="ledger-selection-day-select"
-                className="input"
-                value={batchDay}
-                onChange={(event) => setBatchDay(event.target.value)}
-              >
-                <option value="">Choose a day…</option>
-                {moveDays.map((day) => (
-                  <option key={day.date} value={day.date}>
-                    {day.label}
-                  </option>
-                ))}
-              </select>
-              <Button
-                data-testid="ledger-selection-day-apply"
-                disabled={busy || batchDay === ""}
-                onClick={() =>
-                  void runBatch("Updated", moveLedgerSelectionToDay, {
-                    to_date: batchDay,
-                  })
-                }
-              >
-                Apply
-              </Button>
-            </span>
-          )}
-        </div>
-      )}
-      {groups.length === 0 ? (
-        <EmptyState
-          compact
-          testId="day-ledger-empty"
-          message="Nothing logged yet."
-        />
-      ) : (
-        // ONE STREAM, ONE FRAME (#4477's blessed shape). The day used to be N framed
-        // lists, each under its own heading and count; it is one list now, with the
-        // bucket in the gutter of its first row. Named so "the ledger's rows" is
-        // addressable as itself — the ground colour the accent is measured against is
-        // read off THIS element.
-        <div data-testid="ledger-rows" className={LOGGED_EVENT_LIST}>
-          {groups.map((group) => {
-            const warnings = keepApart.find(
-              (entry) => entry.bucket === group.bucket
-            )?.content;
-            const labelledIndex = group.rows.findIndex(
-              (row) => row.kind !== "due" || row.doses.some(pending)
-            );
-            return (
-              <section
-                key={group.bucket}
-                data-testid={`ledger-group-${group.bucket
-                  .toLowerCase()
-                  .replaceAll(" ", "-")}`}
-                // The hairline BETWEEN buckets. Each bucket's own `ul` drops the top
-                // border of its first row (`first:border-t-0`), which is right inside a
-                // run and wrong at the seam, so the seam is drawn here.
-                className="border-t border-(--divider) first:border-t-0"
-              >
-                {/* Keep-apart guidance is rendered WHERE THE DUE DOSES ARE (#3987's
+        </CardSectionHeader>
+        <DaySelectionBar />
+        {groups.length === 0 ? (
+          <EmptyState
+            compact
+            testId="day-ledger-empty"
+            message="Nothing logged yet."
+          />
+        ) : (
+          // ONE STREAM, ONE FRAME (#4477's blessed shape). The day used to be N framed
+          // lists, each under its own heading and count; it is one list now, with the
+          // bucket in the gutter of its first row. Named so "the ledger's rows" is
+          // addressable as itself — the ground colour the accent is measured against is
+          // read off THIS element.
+          <div data-testid="ledger-rows" className={LOGGED_EVENT_LIST}>
+            {groups.map((group) => {
+              const warnings = keepApart.find(
+                (entry) => entry.bucket === group.bucket
+              )?.content;
+              const labelledIndex = group.rows.findIndex(
+                (row) => row.kind !== "due" || row.doses.some(pending)
+              );
+              return (
+                <section
+                  key={group.bucket}
+                  data-testid={`ledger-group-${group.bucket
+                    .toLowerCase()
+                    .replaceAll(" ", "-")}`}
+                  // The hairline BETWEEN buckets. Each bucket's own `ul` drops the top
+                  // border of its first row (`first:border-t-0`), which is right inside a
+                  // run and wrong at the seam, so the seam is drawn here.
+                  className="border-t border-(--divider) first:border-t-0"
+                >
+                  {/* Keep-apart guidance is rendered WHERE THE DUE DOSES ARE (#3987's
                     anti-drop gate): it is current safety advice about what to take
                     together, so it belongs beside the taps, not on a management list.
                     Inside the frame now, as a band above the bucket's rows. */}
-                {warnings && (
-                  <div className="border-t border-(--divider) px-3 pt-2 first:border-t-0">
-                    {warnings}
-                  </div>
-                )}
-                <ul>
-                  {group.rows.map((row, index) =>
-                    renderRow(
-                      row,
-                      // THE LABEL RIDES THE FIRST ROW THAT ACTUALLY DRAWS. A due row
-                      // whose doses this session has already resolved renders null, and
-                      // pinning the label to index 0 would take the bucket's name off
-                      // the page under the finger that cleared it.
-                      index === labelledIndex
-                        ? TIME_BUCKET_LABELS[group.bucket]
-                        : null
-                    )
+                  {warnings && (
+                    <div className="border-t border-(--divider) px-3 pt-2 first:border-t-0">
+                      {warnings}
+                    </div>
                   )}
-                </ul>
-              </section>
-            );
-          })}
-        </div>
-      )}
-    </section>
+                  <ul>
+                    {group.rows.map((row, index) =>
+                      renderRow(
+                        row,
+                        // THE LABEL RIDES THE FIRST ROW THAT ACTUALLY DRAWS. A due row
+                        // whose doses this session has already resolved renders null, and
+                        // pinning the label to index 0 would take the bucket's name off
+                        // the page under the finger that cleared it.
+                        index === labelledIndex
+                          ? TIME_BUCKET_LABELS[group.bucket]
+                          : null
+                      )
+                    )}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </DaySelectionProvider>
   );
 }
 

@@ -1,8 +1,7 @@
 import CardSectionHeader from "@/components/CardSectionHeader";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
+import { QuickEntryRowList } from "@/components/quick-entry/QuickEntryRowList";
 import type { PrnMedForQuickLog } from "@/lib/queries";
-import type { ReactNode } from "react";
-import type { AppRoute } from "@/lib/hrefs";
 import { now as clockNow } from "@/lib/clock";
 import { prnRowStatus } from "@/lib/redose-format";
 import type { TimeFormat } from "@/lib/format-date";
@@ -10,27 +9,24 @@ import {
   doseUpdateOfferSeat,
   type PediatricFormContext,
 } from "@/lib/prn-dosing";
-import Disclosure from "@/components/Disclosure";
 
-// PRN (as-needed) medication quick-log content (#797). The one-tap
-// retro-entry home: each active PRN med gets a one-tap dose control plus an "Earlier
-// dose" statement — an absolute time today via the shared WhenControl (#2236).
-// The per-day count + last time is computed here
-// (server, with the profile tz) and passed down so the client control stays a thin
-// formatter over one server computation. Dashboard candidates and illness context
-// compose the same dose controls inside their own card/group shells.
+// The quick-log sheet's AS-NEEDED list (#797, reframed by #5753 leg 2). The one-tap
+// retro-entry home for PRN medications: each active PRN med gets a one-tap dose control
+// plus an "Earlier dose" statement — an absolute time today via the shared WhenControl
+// (#2236). The per-day count + last time is computed here (server, with the profile tz)
+// and passed down so the client control stays a thin formatter over one server
+// computation. The medications page, the dashboard and the illness cockpit compose the
+// same `QuickLogPrnControl` inside their own card shells.
+//
+// ONE FRAME PER BODY. These rows sit in the dose body under one `As needed` eyebrow, in
+// the same `QuickEntryRowList` composition the scheduled rows above them use, because a
+// bordered card per medication under a list of borderless rows is two designs in one
+// sheet (#5521 leg 2). `TodayMedRow`'s inset card is the medications page's and stays
+// there.
 export default function QuickLogPrnContent({
   meds,
   tz,
-  title = "Log a dose",
   profileId,
-  headingVariant = "card",
-  compact = false,
-  rowVariant = "inset",
-  headerAction,
-  intro,
-  emptyMessage,
-  titleHref,
   timeFormat,
   nowIso,
   pediatric,
@@ -39,25 +35,13 @@ export default function QuickLogPrnContent({
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
-  // The heading this content draws for itself. A HOST that already states what the
-  // card is passes `null` and the content renders body only — the dialog-body chrome
-  // rule (#3361), which the dashboard's one card shell applies too (#3365).
-  title?: string | null;
   profileId?: number;
-  headingVariant?: "card" | "section";
-  compact?: boolean;
-  rowVariant?: "inset" | "embedded";
-  headerAction?: ReactNode;
-  intro?: ReactNode;
-  emptyMessage?: string;
-  titleHref?: AppRoute;
   timeFormat?: TimeFormat;
   // The redose-window "now", as an ISO instant from the nearest SERVER boundary.
-  // REQUIRED whenever this content is mounted under a "use client" parent (the
-  // illness cockpit/episode logger): in the browser, lib/clock's env override
-  // doesn't exist, so a locally-computed now diverges from the clock-stamped
-  // recorded_at under ALLOS_TEST_NOW (the frozen e2e clock). Server mounts may omit
-  // it (the local clockNow() below is the same server clock).
+  // REQUIRED whenever this content is mounted under a "use client" parent: in the
+  // browser, lib/clock's env override doesn't exist, so a locally-computed now diverges
+  // from the clock-stamped recorded_at under ALLOS_TEST_NOW (the frozen e2e clock).
+  // Server mounts may omit it (the local clockNow() below is the same server clock).
   nowIso?: string;
   // The SUBJECT's pediatric dosing context (#4713), forwarded to every row so the
   // label band is evaluated at the tap rather than only inside the add form. Absent
@@ -88,76 +72,38 @@ export default function QuickLogPrnContent({
     meds.map((m) => ({ ...m, name: m.displayName ?? m.name })),
     pediatric
   );
-  const visibleMeds = compact ? meds.slice(0, 3) : meds;
-  const remainingMeds = compact ? meds.slice(3) : [];
-  const medControl = (m: PrnMedForQuickLog) => {
-    const row = prnRowStatus(m, tz, now, timeFormat);
-    return (
-      <QuickLogPrnControl
-        key={m.id}
-        itemId={m.id}
-        identity={m.identity}
-        name={m.displayName ?? m.name}
-        doseAmount={m.amount}
-        product={m.product}
-        dayLabel={row.dayLabel}
-        redoseLine={row.redoseLine}
-        redosePrimary={row.redosePrimary}
-        linkToDetail={m.kind === "medication"}
-        profileId={profileId}
-        rowVariant={rowVariant}
-        compactActions={compact}
-        tz={tz}
-        pediatric={pediatric}
-        offerSeat={m.id === offerSeatId}
-        date={date}
-        onLogged={onLogged}
-      />
-    );
-  };
 
   return (
     <div data-testid="quick-log-prn">
-      {title != null && (
-        <CardSectionHeader
-          title={title}
-          href="/medications"
-          variant={headingVariant}
-          titleHref={titleHref}
-        >
-          {headerAction}
-        </CardSectionHeader>
-      )}
-      {intro}
-      {meds.length === 0 && emptyMessage ? (
-        <p
-          data-testid="quick-log-prn-empty"
-          className="mb-3 text-xs text-slate-500 dark:text-slate-400"
-        >
-          {emptyMessage}
-        </p>
-      ) : null}
-      <div
-        className={
-          rowVariant === "embedded" ? "flex flex-col" : "flex flex-col gap-2"
-        }
-      >
-        {visibleMeds.map(medControl)}
-        {remainingMeds.length > 0 && (
-          /* Deliberately NOT remembered (#2652 behavior 3) — see the "tap path"
-             exclusion in lib/disclosure-memory.ts. Per-device state is invisible to the
-             server, so a remembered-open fold necessarily opens AFTER hydration, and
-             this one sits directly above a Log button. */
-          <Disclosure data-testid="quick-log-prn-more">
-            <summary className="fold-control text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
-              More medications ({remainingMeds.length})
-            </summary>
-            <div className="mt-2 flex flex-col gap-2">
-              {remainingMeds.map(medControl)}
-            </div>
-          </Disclosure>
-        )}
-      </div>
+      {/* ONE EYEBROW OVER THE WHOLE LIST, not a heading per medication. It is a label
+          rather than a link: the sheet is a place to log from, and the page link the
+          card version offers would take a reader out of the write they opened. */}
+      <CardSectionHeader title="As needed" variant="label" />
+      <QuickEntryRowList testId="quick-entry-prn-list">
+        {meds.map((m) => {
+          const row = prnRowStatus(m, tz, now, timeFormat);
+          return (
+            <QuickLogPrnControl
+              key={m.id}
+              itemId={m.id}
+              identity={m.identity}
+              name={m.displayName ?? m.name}
+              doseAmount={m.amount}
+              product={m.product}
+              dayLabel={row.dayLabel}
+              redoseLine={row.redoseLine}
+              redosePrimary={row.redosePrimary}
+              profileId={profileId}
+              rowVariant="quick-entry"
+              tz={tz}
+              pediatric={pediatric}
+              offerSeat={m.id === offerSeatId}
+              date={date}
+              onLogged={onLogged}
+            />
+          );
+        })}
+      </QuickEntryRowList>
     </div>
   );
 }

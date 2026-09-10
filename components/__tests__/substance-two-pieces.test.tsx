@@ -10,7 +10,6 @@ import SubstanceForm from "@/components/substances/SubstanceForm";
 import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
 import QuickSubstanceList from "@/components/quick-entry/QuickSubstanceList";
 import { MAX_SUBSTANCE_ENTRY_AMOUNT, substanceDef } from "@/lib/substance-use";
-import type { UndoAnnouncement } from "@/components/useUndoableAction";
 import { DayContextProvider } from "@/components/DayContext";
 
 // THE SUBSTANCE DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.substance.pieces`).
@@ -78,26 +77,19 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
   },
 }));
 
+// The toast stack is stubbed HERE because these cases are about the form's field set,
+// its refusals and the row control's arms — not about what a receipt does once it is
+// posted. The receipt lifecycle is asserted against the real cards in
+// `keyed-receipt.test.tsx`, which is the only place that can see it.
 const toasts: string[] = [];
-const undoAnnouncements: UndoAnnouncement[] = [];
-const claimedToastKeys: string[] = [];
-const dismissedToastKeys: string[] = [];
-let toastScope: { profileId: number; token: number } | null = {
-  profileId: 7,
-  token: 11,
-};
+const toastScope = { profileId: 7, token: 11 };
 const getToastScope = () => toastScope;
-const claimToastKey = (key: string) => claimedToastKeys.push(key);
-const dismissToastKey = (key: string) => dismissedToastKeys.push(key);
+const noop = () => {};
 vi.mock("@/components/Toast", () => ({
   useToast: () => (text: string) => toasts.push(text),
   useToastProfileScopeGetter: () => getToastScope,
-  useClaimToastKey: () => claimToastKey,
-  useDismissToast: () => dismissToastKey,
-}));
-vi.mock("@/components/useUndoableAction", () => ({
-  useUndoableAction: () => (announcement: UndoAnnouncement) =>
-    undoAnnouncements.push(announcement),
+  useClaimToastKey: () => noop,
+  useDismissToast: () => noop,
 }));
 
 const TODAY = "2026-08-20";
@@ -114,10 +106,6 @@ beforeEach(() => {
   cleanup();
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
-  undoAnnouncements.length = 0;
-  claimedToastKeys.length = 0;
-  dismissedToastKeys.length = 0;
-  toastScope = { profileId: 7, token: 11 };
   addResult = { kind: "added", id: 1, capProgress: null };
   updateResult = { kind: "updated", eventId: 4, date: "2026-08-18" };
   logResult = {
@@ -424,10 +412,10 @@ describe("SubstanceUnitControl is ONE row control", () => {
   });
 
   // THE REACH, at the sheet. The record's card is driven by e2e/substance-use.spec.ts;
-  // this is the surface the cap line had to keep on the way through the convergence,
-  // and the one that gained the undo it used to send people to another page for.
-  it("gives each sheet log its exact-event undo while the page keeps its legacy control", async () => {
-    vi.useFakeTimers();
+  // this is the surface the cap line had to keep on the way through the convergence.
+  // What the sheet's log EARNS — its own receipt and the undo riding it — is asserted
+  // against the rendered toast in `keyed-receipt.test.tsx`.
+  it("keeps the legacy undo control on the page arm and off the sheet's", async () => {
     render(
       <QuickSubstanceList
         date={FOUND_DAY}
@@ -449,8 +437,6 @@ describe("SubstanceUnitControl is ONE row control", () => {
     expect(
       screen.queryByTestId("quick-entry-substance-undo-nicotine")
     ).toBeNull();
-
-    logResult = { ok: true, weekCount: 3, eventId: 41, date: FOUND_DAY };
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
     );
@@ -459,36 +445,10 @@ describe("SubstanceUnitControl is ONE row control", () => {
       substance: "nicotine",
       date: FOUND_DAY,
     });
-    const older = undoAnnouncements[0];
-    expect(older).toMatchObject({
-      message: "Use logged.",
-      profileId: 7,
-      profileToken: 11,
-    });
-    expect(claimedToastKeys).toEqual([older.key]);
-
-    await act(async () => vi.advanceTimersByTimeAsync(2_001));
-    logResult = { ok: true, weekCount: 4, eventId: 42, date: FOUND_DAY };
-    await act(async () =>
-      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
-    );
-    expect(undoAnnouncements).toHaveLength(2);
-    expect(undoAnnouncements[1].key).not.toBe(older.key);
-
-    logResult = { ok: true, weekCount: 3, eventId: 42, date: FOUND_DAY };
-    expect(await older.undo?.run()).toEqual({ ok: true });
-    expect(payload("undo")).toMatchObject({
-      profile_id: "42",
-      substance: "nicotine",
-      event_id: "41",
-      date: FOUND_DAY,
-    });
 
     cleanup();
     control(null, 2);
     expect(screen.getByTestId("substance-undo-nicotine")).toBeTruthy();
-    expect(undoAnnouncements).toHaveLength(2);
-    vi.useRealTimers();
   });
 
   it("posts the selected day and an optional stated instant from its clock door", async () => {
@@ -528,121 +488,6 @@ describe("SubstanceUnitControl is ONE row control", () => {
       date: FOUND_DAY,
       stated_at: `${FOUND_DAY}T09:15:00.000Z`,
     });
-  });
-
-  it("invalidates a sheet receipt when its subject changes", async () => {
-    const view = render(
-      <QuickSubstanceList
-        date={TODAY}
-        substances={[
-          {
-            key: "nicotine",
-            label: "Nicotine",
-            logLabel: "Log a use",
-            capProgress: null,
-          },
-        ]}
-        subjectProfileId={42}
-      />
-    );
-    await act(async () =>
-      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
-    );
-    const receipt = undoAnnouncements[0];
-    expect(receipt.undo?.isCurrent?.()).toBe(true);
-
-    view.rerender(
-      <QuickSubstanceList
-        date={TODAY}
-        substances={[
-          {
-            key: "nicotine",
-            label: "Nicotine",
-            logLabel: "Log a use",
-            capProgress: null,
-          },
-        ]}
-        subjectProfileId={43}
-      />
-    );
-    expect(receipt.undo?.isCurrent?.()).toBe(false);
-    expect(await receipt.undo?.run()).toEqual({ ok: false, reason: "changed" });
-    expect(posted.undo).toBeUndefined();
-    expect(dismissedToastKeys).toContain(receipt.key);
-  });
-
-  it("suppresses a stale completion and invalidates a fresh receipt when the acting scope changes", async () => {
-    let finishLog!: (result: typeof logResult) => void;
-    logReply = () =>
-      new Promise<typeof logResult>((resolve) => {
-        finishLog = resolve;
-      });
-    const view = render(
-      <QuickSubstanceList
-        date={TODAY}
-        substances={[
-          {
-            key: "nicotine",
-            label: "Nicotine",
-            logLabel: "Log a use",
-            capProgress: null,
-          },
-        ]}
-        subjectProfileId={42}
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Log a use" }));
-    toastScope = { profileId: 8, token: 12 };
-    view.rerender(
-      <QuickSubstanceList
-        date={TODAY}
-        substances={[
-          {
-            key: "nicotine",
-            label: "Nicotine",
-            logLabel: "Log a use",
-            capProgress: null,
-          },
-        ]}
-        subjectProfileId={42}
-      />
-    );
-    await act(async () =>
-      finishLog({ ok: false, error: "Couldn't log that." })
-    );
-    expect(undoAnnouncements).toHaveLength(0);
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Log a use" }).hasAttribute("disabled")
-    ).toBe(false);
-
-    logReply = async () => ({
-      ok: true,
-      weekCount: 3,
-      eventId: 43,
-      date: TODAY,
-    });
-    await act(async () =>
-      fireEvent.click(screen.getByRole("button", { name: "Log a use" }))
-    );
-    const current = undoAnnouncements[0];
-    expect(current.undo?.isCurrent?.()).toBe(true);
-    toastScope = { profileId: 9, token: 13 };
-    view.rerender(
-      <QuickSubstanceList
-        date={TODAY}
-        substances={[
-          {
-            key: "nicotine",
-            label: "Nicotine",
-            logLabel: "Log a use",
-            capProgress: null,
-          },
-        ]}
-        subjectProfileId={42}
-      />
-    );
-    expect(current.undo?.isCurrent?.()).toBe(false);
   });
 });
 
