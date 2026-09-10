@@ -499,6 +499,16 @@ describe("verdict tones (issue #5187)", () => {
     expect(VERDICT_TONE_LABEL.neutral).toBeNull();
   });
 
+  // The exact WORDS, not just their distinctness (#1220). `e2e/tone-markers.spec.ts`
+  // re-declares this map locally — a Playwright spec cannot import app code through
+  // the `@/` alias — and its comment says the pure tier pins the wording. This is
+  // that pin: re-word a judgment here and this fails before the browser tier does.
+  it("pins the exact badge wording every verdict surface renders", () => {
+    expect(VERDICT_TONE_LABEL.good).toBe("Good");
+    expect(VERDICT_TONE_LABEL.warn).toBe("Fair");
+    expect(VERDICT_TONE_LABEL.bad).toBe("Poor");
+  });
+
   it("never lets two tones render the same classes", () => {
     for (const map of [verdictText, verdictBadge, verdictFill]) {
       const classes = VERDICT_TONES.map((t) => map[t].class);
