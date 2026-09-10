@@ -70,7 +70,24 @@ import {
   type HistoryRollup,
   type HistoryRow,
 } from "@/lib/history-format";
-import { DayPickBox } from "@/components/DaySelection";
+import {
+  DayPickBox,
+  useLedgerBatch,
+  type LedgerBatchTarget,
+} from "@/components/DaySelection";
+import WhenControl from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm, whenOnDay, type WhenValue } from "@/lib/stated-time";
+import {
+  deleteLedgerSelection,
+  moveLedgerSelectionToDay,
+  setLedgerSelectionTime,
+} from "@/app/(app)/nutrition/intake-actions";
+import {
+  isHistoryBundle,
+  type HistoryBundle,
+  type HistoryEntry,
+} from "@/lib/history-bundle";
 import type { AppRoute } from "@/lib/hrefs";
 import TimelineFilterLink, {
   useHistoryFoldNavigate,
@@ -328,7 +345,12 @@ export default function HistoryRows({
   showGlyphs = true,
   selectionSubjectId,
 }: {
-  rows: HistoryRow[];
+  /**
+   * The day's entries in the order the record put them in — plain rows, and the
+   * COMPOSED ACTS collapsed to one row each (#5618 ruling 5). A bundle takes the
+   * position of its first member, so nothing here re-sorts anything.
+   */
+  rows: HistoryEntry[];
   /**
    * The day's collapsed log lines (#3958 phase 2), rendered as the day's FIXED LAST
    * lines. Empty on every view but Everything — filtered to a family the page is the
@@ -380,6 +402,8 @@ export default function HistoryRows({
   selectionSubjectId?: number;
 }) {
   const prefs = useFormatPrefs();
+  const tz = useTimezone();
+  const batch = useLedgerBatch();
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const toast = useToast();
@@ -393,6 +417,18 @@ export default function HistoryRows({
   // else. Same tier as `editingId` and `menuOpenId` beside it: one row at a time, so
   // opening a second closes the first and the list never grows two panels deep.
   const [openPanelId, setOpenPanelId] = useState<string | null>(null);
+  // ONE ACT OPEN AT A TIME, the same tier as `openPanelId` above and for the same
+  // reason: opening a second bundle closes the first and the list never grows two
+  // expansions deep. Client state, because the members already arrived on the row.
+  const [openBundleId, setOpenBundleId] = useState<string | null>(null);
+  // WHICH VERB OF A BUNDLE ROW'S ⋯ IS OPEN, as `bundle:<id>` plus the sheet. The three
+  // verbs are the batch's three, so the state that drives them is the batch's too.
+  const [bundleSheet, setBundleSheet] = useState<{
+    id: string;
+    sheet: "time" | "day";
+  } | null>(null);
+  const [bundleWhen, setBundleWhen] = useState<WhenValue | null>(null);
+  const [bundleDay, setBundleDay] = useState("");
   const itemById = new Map(doseItems.map((item) => [item.id, item]));
 
   // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one — for EVERY
@@ -1174,6 +1210,253 @@ export default function HistoryRows({
     );
   };
 
+  // ── A COMPOSED ACT, AS ONE ROW (#5618 ruling 5) ──────────────────────────────
+  //
+  // THE LEDGER'S STACK ROW, IN THE RECORD'S GRAMMAR. Same shape as
+  // `DayLedger`'s `renderStack`: the name and its census are one disclosure button, the
+  // act's single clock sits in the trailing cell, and the members are SIBLING `<li>`s
+  // beneath — never children, because a row `<li>` is `flex items-center` on the shared
+  // primitive and every geometry assertion on this page measures it (#4045 §4, the same
+  // rule the detail panel and the rollup's rows follow). One row, expandable, is what
+  // "a bundle is one row" and "as the ledger does" say together.
+  //
+  // AND NO NEW WRITE PATH, which is the half worth stating. An act is a FIXED selection
+  // of exactly the two id spaces selection mode picks by hand, so its three verbs are
+  // the three the ledger's batch already had — `setLedgerSelectionTime`,
+  // `moveLedgerSelectionToDay`, `deleteLedgerSelection` — posted through the one shared
+  // poster in components/DaySelection.tsx. Every member therefore travels through the
+  // per-row correction core its own domain owns, with the server re-deriving the day and
+  // narrowing the ids it was handed; the member list on this row is an upper bound and
+  // never an instruction. That is why the record can offer "one time for the act"
+  // without a core of its own, and why a member a core refuses (a medication dose, until
+  // its own slice lands) is REPORTED by the batch rather than silently skipped.
+  //
+  // EDIT IS THE WHEN ROW AND NOTHING ELSE, per the ruling. An act has one time; what its
+  // members ARE is each member's own ⋯, one row down.
+  const renderBundle = (bundle: HistoryBundle) => {
+    const expanded = openBundleId === bundle.id;
+    const writableHere = writable.has(bundle.profileId);
+    const target: LedgerBatchTarget = {
+      date: bundle.date,
+      profileId: bundle.profileId,
+      servings: bundle.servingIds,
+      doses: bundle.doseLogIds,
+    };
+    const name = [bundle.title, bundle.clock ?? bundle.date]
+      .filter(Boolean)
+      .join(" — ");
+    const openSheet = bundleSheet?.id === bundle.id ? bundleSheet.sheet : null;
+    const closeSheet = () => setBundleSheet(null);
+    const memberCount = bundle.servingIds.length + bundle.doseLogIds.length;
+    const removeBundle = async () => {
+      const ok = await confirm({
+        title: `Delete all ${memberCount} rows?`,
+        message: `Remove everything ${bundle.title} logged. They move to the Trash, where they can be restored.`,
+        confirmLabel: "Delete all",
+        danger: true,
+      });
+      if (!ok) return;
+      await batch.run("Removed", deleteLedgerSelection, target);
+    };
+    return (
+      <Fragment key={bundle.id}>
+        <li
+          id={timelineEntryAnchorId(bundle.id)}
+          data-testid="history-bundle"
+          data-history-row-id={bundle.id}
+          data-bundle-id={bundle.bundleId}
+          className={`${LOGGED_EVENT_ROW} band card-gutter-action scroll-mt-24`}
+        >
+          <div
+            data-testid="history-row-content"
+            className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
+          >
+            <button
+              type="button"
+              data-testid="history-bundle-toggle"
+              aria-expanded={expanded}
+              onClick={() => setOpenBundleId(expanded ? null : bundle.id)}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
+            >
+              <IconChevronDown
+                aria-hidden
+                className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition ${
+                  expanded ? "rotate-180" : ""
+                }`}
+                stroke={2}
+              />
+              <span className="flex min-w-0 items-baseline gap-1.5 truncate">
+                <span
+                  className="min-w-0 truncate"
+                  data-testid="history-row-title"
+                >
+                  {bundle.title}
+                </span>
+                {/* THE CENSUS IS THE DETAIL CELL, so #5074 B's "Your usual Morning ·
+                    6 doses" is the row's own two cells rather than a sentence some
+                    formatter builds — and `dayCountsLabel` is the ledger's own count,
+                    not a second spelling of it. */}
+                <span
+                  className={`truncate text-xs font-normal text-slate-500 dark:text-slate-400 ${DETAIL_GIVES_WAY_FIRST}`}
+                  data-testid="history-row-detail"
+                >
+                  {bundle.detail}
+                </span>
+              </span>
+            </button>
+          </div>
+          {bundle.clock ? (
+            <span
+              className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
+              data-testid="history-row-clock"
+            >
+              {bundle.clock}
+            </span>
+          ) : null}
+          {writableHere ? (
+            <OverflowMenu
+              kind="act"
+              itemName={name}
+              open={menuOpenId === bundle.id}
+              onOpenChange={(open) => setMenuOpenId(open ? bundle.id : null)}
+            >
+              {({ close }) => (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="history-bundle-edit"
+                    onClick={() => {
+                      close();
+                      setBundleWhen(whenOnDay(bundle.date, tz));
+                      setBundleSheet({ id: bundle.id, sheet: "time" });
+                    }}
+                    className={MENU_ITEM}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="history-bundle-move-day"
+                    onClick={() => {
+                      close();
+                      setBundleDay("");
+                      setBundleSheet({ id: bundle.id, sheet: "day" });
+                    }}
+                    className={MENU_ITEM}
+                  >
+                    Move to day…
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="history-bundle-delete"
+                    disabled={batch.busy}
+                    onClick={() => {
+                      close();
+                      void removeBundle();
+                    }}
+                    className={MENU_ITEM_DANGER}
+                  >
+                    Delete all
+                  </button>
+                </>
+              )}
+            </OverflowMenu>
+          ) : null}
+        </li>
+        {expanded ? bundle.members.map(renderRow) : null}
+        {openSheet === "time" && bundleWhen ? (
+          <ModalShell
+            title={name}
+            onClose={closeSheet}
+            size="sm"
+            testId={`history-bundle-edit-sheet-${bundle.id}`}
+          >
+            <div data-testid="history-row-editing" className="space-y-3">
+              {/* THE WHEN ROW ONLY (the ruling), in the app's one time vocabulary and
+                  with its day FIXED to the one being read: min === max, so the control
+                  renders the day as text and re-dating stays Move to day…'s question.
+                  The wall clock is what travels; the core re-anchors it on the day and
+                  refuses a time that has not happened yet through the same gate a
+                  single-row correction passes. */}
+              <WhenControl
+                mode="state"
+                grain="minute"
+                timeRequired
+                value={bundleWhen}
+                onChange={setBundleWhen}
+                minDate={bundle.date}
+                maxDate={bundle.date}
+                timeLabel="Time for this act"
+                testId="history-bundle-when"
+              />
+              <Button
+                data-testid="history-bundle-time-apply"
+                disabled={batch.busy || bundleWhen.statedAt === null}
+                onClick={() =>
+                  void batch
+                    .run("Updated", setLedgerSelectionTime, target, {
+                      time: statedHhmm(bundleWhen.statedAt, tz),
+                    })
+                    .then((landed) => {
+                      if (landed) closeSheet();
+                    })
+                }
+              >
+                Save
+              </Button>
+            </div>
+          </ModalShell>
+        ) : null}
+        {openSheet === "day" ? (
+          <ModalShell
+            title={name}
+            onClose={closeSheet}
+            size="sm"
+            testId={`history-bundle-day-sheet-${bundle.id}`}
+          >
+            <div className="space-y-3">
+              {/* ANY REAL PAST DAY (#5618 ruling 4's reach, inherited), through the
+                  field the app already uses to name one. Bounded forward at the
+                  SUBJECT's own today, which is what `maxDates` carries per row. */}
+              <label className="sr-only" htmlFor={`${bundle.id}-day-field`}>
+                Day to move this act to
+              </label>
+              <DateField
+                value={bundleDay}
+                onChange={setBundleDay}
+                max={maxDates[bundle.profileId]}
+                id={`${bundle.id}-day-field`}
+                data-testid="history-bundle-day-field"
+                inputClassName="w-40"
+              />
+              <Button
+                data-testid="history-bundle-day-apply"
+                disabled={batch.busy || bundleDay === ""}
+                onClick={() =>
+                  void batch
+                    .run("Updated", moveLedgerSelectionToDay, target, {
+                      to_date: bundleDay,
+                    })
+                    .then((landed) => {
+                      if (landed) closeSheet();
+                    })
+                }
+              >
+                Move
+              </Button>
+            </div>
+          </ModalShell>
+        ) : null}
+      </Fragment>
+    );
+  };
+
+  const renderEntry = (entry: HistoryEntry) =>
+    isHistoryBundle(entry) ? renderBundle(entry) : renderRow(entry);
+
   return (
     // `band` (app/globals.css) is what a hand-rolled `rounded-xl border bg-surface`
     // frame says when it is really a BAND: below `sm` it goes full-bleed and drops
@@ -1188,7 +1471,7 @@ export default function HistoryRows({
       className={`${LOGGED_EVENT_LIST} band px-0!`}
       data-testid="history-rows"
     >
-      {rows.map(renderRow)}
+      {rows.map(renderEntry)}
       {/* THE DAY'S FIXED LAST LINES (#3958). An aggregate has no honest single instant,
           so it takes a fixed position rather than competing for one in the sort — and
           an expanded rollup's rows render directly beneath their own line, which is

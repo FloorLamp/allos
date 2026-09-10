@@ -65,6 +65,8 @@ import {
   type HistoryKind,
   type HistoryRow,
 } from "./history-format";
+import type { HistoryBundleFact } from "./history-bundle";
+import { timeBucket } from "./intake-schedule";
 import type { MemberTimeline } from "./timeline-multi";
 import { shiftDateStr } from "./date";
 import { getSleepSessions, getSleepSessionsSince } from "./queries/metrics";
@@ -182,6 +184,19 @@ export interface HistoryGatherCore {
    * lists them one per session, so each gets its own mark on its own anchor.
    */
   dayEvents: TimelineEvent[];
+  /**
+   * WHICH OF THESE ROWS WERE ONE ACT (#5618 ruling 5), keyed by `HistoryRow.id`.
+   *
+   * Only the composed rows are in it: a row whose table recorded no `bundle_id` — every
+   * row written before 2026-09-04, and every single tap since — has no entry, so a
+   * reader can never key a group on the absence of an id. `lib/history-bundle.ts` turns
+   * this into rows; nothing here decides what collapses.
+   *
+   * EMPTY ON EVERY READ BUT A DAY'S. Composition is a question about one day's rows
+   * side by side, and the scrolling feed pays nothing for an answer it does not draw —
+   * the same bound `dayEvents` above carries, for the same reason.
+   */
+  bundleFacts: Map<string, HistoryBundleFact>;
 }
 
 export interface HistoryGather extends HistoryGatherCore {
@@ -225,6 +240,87 @@ function filedOn(tz: string, when: BestInstant, rowDay: string): HistoryFiling {
         : null,
     rowDay,
   };
+}
+
+/**
+ * WHICH OF ONE DAY'S ROWS WERE ONE COMPOSED ACT (#5618 ruling 5).
+ *
+ * The record had no bundle awareness at all: a usual tap wrote two servings and six
+ * dose confirms and this page listed eight rows while the Nutrition Day ledger, reading
+ * the same column, listed one. This is the read behind the record's half of that; the
+ * grouping and the naming are pure and live in lib/history-bundle.ts.
+ *
+ * TWO TABLES, AND ONLY TWO. `food_log_events` and `intake_item_logs` are the only
+ * tables a composed writer actually stamps today — `practice_logs` and `body_metrics`
+ * carry the column ahead of a writer (20260904-act-bundle-columns), and a single write
+ * never mints. They are also exactly the two id spaces the batch correction cores take
+ * (`lib/day-ledger-edit.ts`), so a bundle row's menu can never offer a verb over a
+ * member its core would refuse for want of an id space. When a composed writer reaches
+ * a third table this read grows a third arm and the collapse follows it.
+ *
+ * `bundle_id IS NOT NULL` IS IN THE SQL, not in a filter afterwards. A row that records
+ * no act is not a fact about composition, and the map this returns is read by key — so
+ * a null could not become a key here even by accident.
+ *
+ * The two narrowings match the composers above row for row: servings drop the reserved
+ * `__`-prefixed keys the record never lists, and doses are taken-only, exactly as
+ * `getIntakeDoseLedgerPage` reads them.
+ */
+export function historyDayBundleFacts(
+  profileId: number,
+  date: string
+): Map<string, HistoryBundleFact> {
+  const facts = new Map<string, HistoryBundleFact>();
+  // ONE LITERAL STATEMENT PER TABLE, for the reason `historyPresentKinds` below spells
+  // out: the scoping scanner reads the SQL text, and a helper taking it as a parameter
+  // is one it cannot read.
+  const servings = db
+    .prepare(
+      `SELECT id, bundle_id AS bundleId, meal_slot AS mealSlot
+         FROM food_log_events
+        WHERE profile_id = ? AND date = ? AND bundle_id IS NOT NULL
+          AND substr(group_key, 1, 2) != '__'`
+    )
+    .all(profileId, date) as {
+    id: number;
+    bundleId: string;
+    mealSlot: string | null;
+  }[];
+  for (const row of servings)
+    facts.set(`food:${row.id}`, {
+      bundleId: row.bundleId,
+      // THE WINDOW THE ACT DECLARED, as stored. The usual tap files its servings as a
+      // slot declaration (#4438), so `meal_slot` is the offer's own window rather than
+      // a window derived back out of a filing minute — which is what makes the row's
+      // name and the button that wrote it the same word.
+      window: row.mealSlot,
+      stack: null,
+      bucket: null,
+    });
+  const doses = db
+    .prepare(
+      `SELECT l.id AS id, l.bundle_id AS bundleId, s.stack AS stack,
+              d.time_of_day AS timeOfDay
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+         LEFT JOIN intake_item_doses d ON d.id = l.dose_id
+        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'
+          AND l.bundle_id IS NOT NULL`
+    )
+    .all(profileId, date) as {
+    id: number;
+    bundleId: string;
+    stack: string | null;
+    timeOfDay: string | null;
+  }[];
+  for (const row of doses)
+    facts.set(`dose:${row.id}`, {
+      bundleId: row.bundleId,
+      window: null,
+      stack: row.stack?.trim() || null,
+      bucket: timeBucket(row.timeOfDay),
+    });
+  return facts;
 }
 
 /**
@@ -1422,6 +1518,9 @@ export function gatherHistoryLog(
     mediaApplied,
     today: todayStr,
     dayEvents,
+    bundleFacts: opts.day
+      ? historyDayBundleFacts(profileId, opts.day)
+      : new Map(),
   };
   // THE ELEVEN PROBES ARE THE LAST THING THIS GATHER DOES, and a caller that said it
   // does not draw chips stops here (#5262). The dashboard's day-so-far row reads

@@ -182,6 +182,90 @@ export function DaySelectionBar() {
   return <SelectionVerbs value={value} />;
 }
 
+/** The rows one batch names, in the two id spaces the correction cores take. */
+export interface LedgerBatchTarget {
+  /** The day whose rows these are. The core re-derives it and narrows to it. */
+  date: string;
+  /** The subject, where the surface holds several (#4009 item 1). */
+  profileId?: number;
+  /** `food_log_events.id` for each serving. */
+  servings: readonly number[];
+  /** `intake_item_logs.id` for each taken dose. */
+  doses: readonly number[];
+}
+
+/**
+ * POST ONE BATCH AND SAY WHAT LANDED — the whole of what a surface needs to drive the
+ * three Server Actions, and deliberately the only spelling of it.
+ *
+ * The action answers with the rows it wrote and every row it refused, each carrying the
+ * reason its own core gave, so a batch that half-lands says so rather than confirming
+ * all of it (#232's contract, at batch grain). The rows themselves come back from the
+ * server revalidation the action ran.
+ *
+ * A HOOK RATHER THAN A FUNCTION because the wording is a toast and the in-flight state
+ * is a render, and both belong to whichever surface is posting. Selection mode's bar is
+ * one caller; the record's bundle row (#5618 ruling 5) is the other — one composed act
+ * is a fixed selection of exactly these two id spaces, so it drives the same three
+ * actions over the same cores rather than growing a fourth verb of its own.
+ *
+ * Answers whether the batch LANDED, which is the one thing the caller has to branch on:
+ * selection mode leaves the mode, a bundle row closes its sheet.
+ */
+export function useLedgerBatch(): {
+  busy: boolean;
+  run: (
+    verb: "Updated" | "Removed",
+    action: (fd: FormData) => Promise<LedgerSelectionEditResult>,
+    target: LedgerBatchTarget,
+    extra?: Record<string, string>
+  ) => Promise<boolean>;
+} {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return {
+    busy,
+    run: async (verb, action, target, extra) => {
+      const fd = new FormData();
+      fd.set("date", target.date);
+      if (target.profileId !== undefined)
+        fd.set("profile_id", String(target.profileId));
+      fd.set("serving_ids", target.servings.join(","));
+      fd.set("dose_log_ids", target.doses.join(","));
+      for (const [key, value] of Object.entries(extra ?? {}))
+        fd.set(key, value);
+      setBusy(true);
+      try {
+        const result = await action(fd);
+        if (!result.ok) {
+          toast(result.error, { tone: "error" });
+          return false;
+        }
+        if (result.applied === 0) {
+          toast(result.refused[0]?.reason ?? "Nothing changed.", {
+            tone: "error",
+          });
+          return false;
+        }
+        toast(
+          result.refused.length === 0
+            ? `${verb} ${result.applied} ${result.applied === 1 ? "row" : "rows"}.`
+            : `${verb} ${result.applied} of ${result.applied + result.refused.length} — ${result.refused[0]!.reason}`,
+          result.refused.length === 0 ? undefined : { tone: "error" }
+        );
+        return true;
+      } catch {
+        toast("Something went wrong — reload to see what changed.", {
+          tone: "error",
+        });
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+  };
+}
+
 // The verbs' own state — which sheet is open, what it holds, whether a batch is in
 // flight — lives BELOW the mode's gate, so leaving selection discards a half-filled
 // sheet by unmounting it rather than by remembering to clear four things.
@@ -195,10 +279,9 @@ function SelectionVerbs({ value }: { value: DaySelectionValue }) {
     pickedCount,
     leave,
   } = value;
-  const toast = useToast();
   const confirm = useConfirm();
   const tz = useTimezone();
-  const [busy, setBusy] = useState(false);
+  const { busy, run } = useLedgerBatch();
   const [sheet, setSheet] = useState<"time" | "day" | null>(null);
   // THE ONE "WHEN" CONTROL (#2236/#3273), with its day FIXED to the one being read:
   // min === max, so it renders the day as text and the pair rule holds trivially. The
@@ -209,48 +292,20 @@ function SelectionVerbs({ value }: { value: DaySelectionValue }) {
   );
   const [batchDay, setBatchDay] = useState("");
 
-  // Post one batch and SAY WHAT LANDED. The action answers with the rows it wrote and
-  // every row it refused, each carrying the reason its own core gave — so a batch that
-  // half-lands says so rather than confirming all of it (#232's contract, at batch
-  // grain). The rows themselves come back from the server revalidation the action ran.
+  // The mode's own wrapper around the shared poster: same batch, and leaving selection
+  // is what this surface does with a landing.
   async function runBatch(
     verb: "Updated" | "Removed",
     action: (fd: FormData) => Promise<LedgerSelectionEditResult>,
     extra: Record<string, string>
   ): Promise<void> {
-    const fd = new FormData();
-    fd.set("date", date);
-    if (profileId !== undefined) fd.set("profile_id", String(profileId));
-    fd.set("serving_ids", picked.servings.join(","));
-    fd.set("dose_log_ids", picked.doses.join(","));
-    for (const [key, value] of Object.entries(extra)) fd.set(key, value);
-    setBusy(true);
-    try {
-      const result = await action(fd);
-      if (!result.ok) {
-        toast(result.error, { tone: "error" });
-        return;
-      }
-      if (result.applied === 0) {
-        toast(result.refused[0]?.reason ?? "Nothing changed.", {
-          tone: "error",
-        });
-        return;
-      }
-      toast(
-        result.refused.length === 0
-          ? `${verb} ${result.applied} ${result.applied === 1 ? "row" : "rows"}.`
-          : `${verb} ${result.applied} of ${result.applied + result.refused.length} — ${result.refused[0]!.reason}`,
-        result.refused.length === 0 ? undefined : { tone: "error" }
-      );
-      leave();
-    } catch {
-      toast("Something went wrong — reload to see what changed.", {
-        tone: "error",
-      });
-    } finally {
-      setBusy(false);
-    }
+    const landed = await run(
+      verb,
+      action,
+      { date, profileId, servings: picked.servings, doses: picked.doses },
+      extra
+    );
+    if (landed) leave();
   }
 
   async function removeSelection(): Promise<void> {
