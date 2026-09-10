@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
+import Button from "@/components/Button";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import Combobox from "@/components/Combobox";
@@ -202,28 +203,33 @@ export default function AllergyForm({
                 )}
               </select>
               {reactions.length > 1 && (
-                <button
-                  type="button"
-                  className="btn-ghost px-2 text-xs"
+                // A per-row destructive control in a repeated list goes quiet
+                // rather than taking `danger` (ruling 10, #4978) — the same
+                // shape as the activity form's per-set remove. `px-2 text-xs`
+                // already rendered the control box's own 12px type, so only the
+                // side padding moves (8px to 10px).
+                <Button
                   aria-label={`Remove reaction ${i + 1}`}
                   onClick={() =>
                     setReactions((rows) => rows.filter((_, j) => j !== i))
                   }
                 >
                   Remove
-                </button>
+                </Button>
               )}
             </div>
           </div>
         ))}
-        <button
-          type="button"
-          className="btn-ghost text-xs"
+        {/* Adding a row is not this form's commit — the filled Save/Add below
+            is — so it takes no rank (ruling 6, #4978). `text-xs` already
+            matched the control box's type size; the mount only loses 2px of
+            side padding. */}
+        <Button
           data-testid={`allergy-add-reaction-${uid}`}
           onClick={() => setReactions((rows) => [...rows, { ...EMPTY_ROW }])}
         >
           Add reaction
-        </button>
+        </Button>
       </fieldset>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -352,9 +358,9 @@ export default function AllergyForm({
           </SubmitButton>
         </div>
         {editing && onDone && (
-          <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
+          // Quiet beside the form's filled commit (ruling 6, #4978); the drop to
+          // the control box's 12px ends the "Cancel larger than Add" inversion.
+          <Button onClick={onDone}>Cancel</Button>
         )}
       </div>
     </form>
