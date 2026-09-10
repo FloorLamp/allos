@@ -1908,6 +1908,158 @@ describe("FoodLogBar projection publication", () => {
     }
   });
 
+  // THE OTHER DIRECTION, and the one a gate on "did this burst write" loses. A failed
+  // online + deliberately does NOT roll back — the burst may still have taps in the
+  // air, and a partial rollback would fight them — so the authoritative read is the
+  // only thing that ever takes the guess back, and the only thing that says the write
+  // failed. None of these paths revalidate, and the projection is seeded once, so a
+  // skipped read leaves a serving on the counter that the Day ledger beside it does
+  // not list, until a reload.
+  it.each([
+    {
+      name: "the server refuses it",
+      answer: () =>
+        actions.logFoodServing.mockResolvedValue({
+          ok: false,
+          error: "Couldn't save that serving.",
+        }),
+    },
+    {
+      name: "the request dies online",
+      answer: () =>
+        actions.logFoodServing.mockRejectedValue(new Error("server exploded")),
+    },
+  ])("corrects the counter and reports it when $name", async ({ answer }) => {
+    actions.logFoodServing.mockReset();
+    answer();
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 2,
+      mealServings: { Morning: 0, Midday: 2, Evening: 0 },
+    });
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("2");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("2 servings");
+    // And the person is told. A phantom serving that says nothing is worse than one
+    // that says something: nothing later contradicts it.
+    expect(
+      screen.queryByText("Couldn't save one of those servings — try again.")
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  // The read is also the failure channel, so when the read itself cannot run the
+  // sentence still has to be true: a burst that landed nothing may not say "Saved".
+  it("does not claim a save when the repair read fails after a refused +", async () => {
+    actions.logFoodServing
+      .mockReset()
+      .mockResolvedValue({ ok: false, error: "Couldn't save that serving." });
+    actions.readFoodServingTruth
+      .mockReset()
+      .mockRejectedValue(new Error("offline"));
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(screen.queryByText(/^Saved, but couldn/)).toBeNull();
+    expect(
+      screen.queryByText("Couldn't save that serving — try again.")
+    ).not.toBeNull();
+  });
+
+  // THE CALL SITE THAT PRODUCES A NAMELESS LANDING (#3728). The write core's success
+  // arm does not promise an event id, and reading that as a failure would report a
+  // serving the server took as one it refused.
+  it("treats a landing the server did not name as saved, with nothing to undo", async () => {
+    actions.logFoodServing.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 3,
+      mealSlot: "Midday",
+      mealServings: 3,
+    });
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 3,
+      mealServings: { Morning: 0, Midday: 3, Evening: 0 },
+    });
+    mountBar({ day: TWO_SERVINGS });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await act(async () => {});
+
+    expect(actions.readFoodServingTruth).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("3");
+    // No row id, so no Undo — and no failure sentence either, because it landed.
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(
+      screen.queryByText("Couldn't save one of those servings — try again.")
+    ).toBeNull();
+  });
+
+  // THE ONE PATH WHERE `commitProjection`'s MOUNT GUARD IS THE ONLY CHECK.
+  // Everywhere else `isCurrentMutation()` answers first — it calls `isMountedProfile()`
+  // itself — so the guard looks redundant and deleting it stays green across the whole
+  // suite. `onError`'s offline arm for a decrement does not consult it: it returns
+  // `rollback` unconditionally, and the guard is what stops a bar that is gone from
+  // writing its stale snapshot into the provider that outlived it.
+  it("does not let an unmounted bar's offline-undo rollback clobber the live count", async () => {
+    let rejectUndo!: (error: unknown) => void;
+    const undoing = new Promise((_resolve, reject) => {
+      rejectUndo = reject;
+    });
+    undoing.catch(() => {});
+    actions.undoFoodServing.mockReset().mockReturnValue(undoing);
+    actions.logFoodServing.mockReset().mockResolvedValue({
+      ok: true,
+      eventId: 55,
+      servings: 5,
+      mealSlot: "Midday",
+      mealServings: 5,
+    });
+    actions.readFoodServingTruth.mockReset().mockResolvedValue({
+      ok: true,
+      servings: 5,
+      mealServings: { Morning: 0, Midday: 5, Evening: 0 },
+    });
+
+    const view = render(barTree({ day: TWO_SERVINGS, barKey: "bar-a" }));
+    fireEvent.click(screen.getByTestId("undo-cruciferous"));
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+
+    // The bar is swapped; the projection provider around it lives on.
+    view.rerender(barTree({ day: TWO_SERVINGS, barKey: "bar-b" }));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("count-cruciferous").textContent).toBe("5")
+    );
+
+    await act(async () => {
+      rejectUndo(new TypeError("Failed to fetch"));
+      await Promise.resolve();
+    });
+    await act(async () => {});
+
+    // 5 is the server's own figure for a serving that landed. 2 is a snapshot from a
+    // bar that no longer exists, and writing it erases a serving the person logged.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("5");
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("5");
+  });
+
   it("says why a serving for someone else cannot wait offline, and rolls it back", async () => {
     const online = vi
       .spyOn(window.navigator, "onLine", "get")

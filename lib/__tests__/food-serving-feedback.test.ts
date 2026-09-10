@@ -61,14 +61,14 @@ describe("foodServingFeedback", () => {
     // the first response knows only its own total. It must not publish a count
     // that would roll the UI 3→1 while the other taps are still pending.
     const first = settleFoodServingAdd(state, morning.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 11,
     });
     expect(first.completed).toBe(false);
     expect(first.receipt).toBeUndefined();
 
     const second = settleFoodServingAdd(first.state, evening.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 12,
     });
     expect(second.completed).toBe(false);
@@ -78,7 +78,7 @@ describe("foodServingFeedback", () => {
     // lower. The coordinator accepts only success/tap identity; response totals
     // never enter this protocol, and the caller performs one fresh read now.
     const final = settleFoodServingAdd(second.state, midday.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 13,
     });
 
@@ -98,7 +98,7 @@ describe("foodServingFeedback", () => {
     );
     const afterRemoval = invalidateFoodServingBurst(begun.state);
     const stale = settleFoodServingAdd(afterRemoval, begun.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 11,
     });
     expect(stale.accepted).toBe(false);
@@ -119,7 +119,7 @@ describe("foodServingFeedback", () => {
     expect(requested.state.truthDeferred).toBe(true);
     expect(
       settleFoodServingAdd(requested.state, add.tap, {
-        ok: true,
+        kind: "landed",
         eventId: 11,
       }).accepted
     ).toBe(false);
@@ -184,11 +184,11 @@ describe("foodServingFeedback", () => {
     );
     const second = beginFoodServingAdd(first.state, "evening", "Evening");
     const laterTapFirst = settleFoodServingAdd(second.state, second.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 32,
     });
     const completed = settleFoodServingAdd(laterTapFirst.state, first.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 31,
     });
     expect(completed.receipt).toEqual({
@@ -207,11 +207,11 @@ describe("foodServingFeedback", () => {
     state = first.state;
     const second = beginFoodServingAdd(state, "evening", "Evening");
     const success = settleFoodServingAdd(second.state, first.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 21,
     });
     const failure = settleFoodServingAdd(success.state, second.tap, {
-      ok: false,
+      kind: "kept",
     });
     expect(failure.receipt).toEqual({
       coordinate: "morning",
@@ -222,53 +222,71 @@ describe("foodServingFeedback", () => {
     expect(failure.reportFailure).toBe(true);
   });
 
-  // WHETHER ANYTHING WAS WRITTEN, which is a different question from whether an
-  // Undo can be offered: everything the bar does after a burst — the authoritative
-  // re-read and the "saved" wording around it — is answered from this one and not
-  // from `receipt` or `completed`.
-  it("reports a nameless landing as landed and a refused-only burst as not", () => {
-    const nameless = beginFoodServingAdd(
+  // THE THREE DISPOSITIONS, and the two different questions they answer.
+  // `reconcile` asks whether a guess is still on the counter for the authoritative
+  // read to settle; `landed` asks whether anything reached the server, which is what
+  // the wording around that read may claim. Only `discarded` answers no to both, and
+  // only because it rolled its own paint back and said so on the way past.
+  it.each([
+    {
+      name: "a landing owes a read and may say it saved",
+      outcome: { kind: "landed" as const },
+      reconcile: true,
+      landed: true,
+      reportFailure: false,
+    },
+    {
+      name: "a kept failure owes a read and may not",
+      outcome: { kind: "kept" as const },
+      reconcile: true,
+      landed: false,
+      reportFailure: true,
+    },
+    {
+      name: "a discarded tap owes nothing and has already spoken",
+      outcome: { kind: "discarded" as const },
+      reconcile: false,
+      landed: false,
+      reportFailure: false,
+    },
+  ])("$name", ({ outcome, reconcile, landed, reportFailure }) => {
+    const tap = beginFoodServingAdd(
       emptyFoodServingBurst(),
       "morning",
       "Morning"
     );
-    const wrote = settleFoodServingAdd(nameless.state, nameless.tap, {
-      ok: true,
-    });
-    // Nothing to bind an Undo to, but a serving is on the counter.
-    expect(wrote.receipt).toBeUndefined();
-    expect(wrote.reportFailure).toBe(false);
-    expect(wrote.landed).toBe(true);
-
-    const refused = beginFoodServingAdd(
-      emptyFoodServingBurst(),
-      "morning",
-      "Morning"
-    );
-    const nothing = settleFoodServingAdd(refused.state, refused.tap, {
-      ok: false,
-    });
-    expect(nothing.completed).toBe(true);
-    expect(nothing.landed).toBe(false);
+    const settled = settleFoodServingAdd(tap.state, tap.tap, outcome);
+    expect(settled.completed).toBe(true);
+    expect(settled.reconcile).toBe(reconcile);
+    expect(settled.landed).toBe(landed);
+    expect(settled.reportFailure).toBe(reportFailure);
+    // A nameless landing has nothing to bind an Undo to either way.
+    expect(settled.receipt).toBeUndefined();
   });
 
-  // A burst is only finished once, so `landed` answers for the WHOLE burst: an
-  // earlier serving that landed still owes the day an authoritative read even when
-  // the tap that completes the burst is the one that failed.
-  it("still reports landed when the completing tap is the failure", () => {
-    let state = emptyFoodServingBurst();
-    const first = beginFoodServingAdd(state, "morning", "Morning");
-    state = first.state;
-    const second = beginFoodServingAdd(state, "morning", "Morning");
+  // A burst is finished once, so both questions answer for the WHOLE burst. An
+  // earlier serving that landed still owes the day a read when the tap that
+  // completes the burst is the one that failed — and a tap whose guess is still
+  // standing still owes one when the burst's only landing was somebody else's.
+  it("answers for the whole burst, not for its completing tap", () => {
+    const first = beginFoodServingAdd(
+      emptyFoodServingBurst(),
+      "morning",
+      "Morning"
+    );
+    const second = beginFoodServingAdd(first.state, "morning", "Morning");
     const success = settleFoodServingAdd(second.state, first.tap, {
-      ok: true,
+      kind: "landed",
       eventId: 21,
     });
     expect(success.completed).toBe(false);
-    expect(success.landed).toBe(false);
+    expect(success.reconcile).toBe(false);
     const failure = settleFoodServingAdd(success.state, second.tap, {
-      ok: false,
+      kind: "discarded",
     });
+    // The completing tap took its own guess back, but the first tap's serving is
+    // still on the counter awaiting the server's figure.
+    expect(failure.reconcile).toBe(true);
     expect(failure.landed).toBe(true);
   });
 

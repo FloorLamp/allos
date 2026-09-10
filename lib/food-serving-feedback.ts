@@ -51,8 +51,13 @@ export interface FoodServingBurstState {
   nonAddPending: ReadonlySet<number>;
   truthDeferred: boolean;
   truthRevision: number;
-  successes: number;
-  failures: number;
+  // WHAT BECAME OF EACH SETTLED TAP, counted apart because they answer different
+  // questions. `landed` is on the server. `kept` failed with its optimistic +1 still
+  // on the counter. `discarded` failed and had that +1 taken back — and, being the
+  // offline-capture refusal, has already said so in its own words.
+  landed: number;
+  kept: number;
+  discarded: number;
 }
 
 export interface FoodServingBurstReceipt {
@@ -61,17 +66,39 @@ export interface FoodServingBurstReceipt {
   eventId: number;
 }
 
+// WHAT ONE SETTLED TAP DID TO THE COUNTER, which is the fact the burst has to carry:
+// the caller decides the ledger settlement at the same moment, and a boolean `ok` cannot
+// tell a failure that rolled its paint back from one that left it standing.
+export type FoodServingAddOutcome =
+  // The server took it. `eventId` is optional because the write core's success arm does
+  // not promise one; a nameless landing is still a landing, it simply has no row for an
+  // Undo to bind to.
+  | { kind: "landed"; eventId?: number }
+  // The write did not land AND the optimistic +1 is still on the counter — an online
+  // refusal, or a request that died online. Nobody has been told yet.
+  | { kind: "kept" }
+  // The write did not land and its +1 has been taken back. The offline-capture refusal,
+  // which said so in its own words on the way past.
+  | { kind: "discarded" };
+
 export interface FoodServingBurstSettlement {
   state: FoodServingBurstState;
   accepted: boolean;
   completed: boolean;
   receipt?: FoodServingBurstReceipt;
-  // Did this completed burst put ANY serving on the server? Distinct from
-  // `receipt`, which additionally needs a row id to bind an Undo to: a write can
-  // land without naming one. Nothing that follows a burst — the authoritative
-  // re-read, its "saved" wording — may run for a burst that wrote nothing, or it
-  // reports a save that did not happen (#3728).
+  // IS THERE A GUESS LEFT ON THE COUNTER FOR THE AUTHORITATIVE READ TO SETTLE? That is
+  // the question the post-burst read is gated on, and it is NOT "did the burst write"
+  // (#3728). A failed online add deliberately KEEPS its +1 — the read is the only thing
+  // that ever takes it back, and the only thing that reports the failure — so gating
+  // that read on having written strands a phantom serving and says nothing. A burst
+  // whose taps were all refused offline has nothing standing and nobody to tell.
+  reconcile: boolean;
+  // Did this completed burst put any serving on the server? Distinct from `receipt`,
+  // which additionally needs a row id to bind an Undo to. This gates the WORDING around
+  // the read — nothing may claim a save that did not happen — never the read itself.
   landed: boolean;
+  // A failure nobody has heard about yet: a tap that failed with its guess standing.
+  // A discarded tap is not one, and counting it here would say the same thing twice.
   reportFailure: boolean;
 }
 
@@ -88,8 +115,9 @@ export function emptyFoodServingBurst(
     nonAddPending: new Set(),
     truthDeferred: false,
     truthRevision: 0,
-    successes: 0,
-    failures: 0,
+    landed: 0,
+    kept: 0,
+    discarded: 0,
   };
 }
 
@@ -123,8 +151,9 @@ export function beginFoodServingAdd(
       pending,
       latestSuccessfulTap: starting ? null : state.latestSuccessfulTap,
       latestSuccessfulEventId: starting ? null : state.latestSuccessfulEventId,
-      successes: starting ? 0 : state.successes,
-      failures: starting ? 0 : state.failures,
+      landed: starting ? 0 : state.landed,
+      kept: starting ? 0 : state.kept,
+      discarded: starting ? 0 : state.discarded,
     },
   };
 }
@@ -132,16 +161,14 @@ export function beginFoodServingAdd(
 export function settleFoodServingAdd(
   state: FoodServingBurstState,
   tap: FoodServingAddTap,
-  // `eventId` is optional because the write core's success arm does not promise
-  // one. A nameless landing is still a landing: it counts toward `landed` and it
-  // is not a failure, it simply has no row for an Undo to bind to.
-  outcome: { ok: true; eventId?: number } | { ok: false }
+  outcome: FoodServingAddOutcome
 ): FoodServingBurstSettlement {
   if (tap.epoch !== state.epoch || !state.pending.has(tap.id)) {
     return {
       state,
       accepted: false,
       completed: false,
+      reconcile: false,
       landed: false,
       reportFailure: false,
     };
@@ -150,21 +177,24 @@ export function settleFoodServingAdd(
   pending.delete(tap.id);
   let latestSuccessfulTap = state.latestSuccessfulTap;
   let latestSuccessfulEventId = state.latestSuccessfulEventId;
-  let successes = state.successes;
-  let failures = state.failures;
-  if (outcome.ok) {
-    successes += 1;
+  let landed = state.landed;
+  let kept = state.kept;
+  let discarded = state.discarded;
+  if (outcome.kind === "landed") {
+    landed += 1;
     if (!latestSuccessfulTap || tap.id > latestSuccessfulTap.id) {
       latestSuccessfulTap = tap;
       latestSuccessfulEventId = outcome.eventId ?? null;
     }
+  } else if (outcome.kind === "kept") {
+    kept += 1;
   } else {
-    failures += 1;
+    discarded += 1;
   }
   const completed = pending.size === 0;
   const receipt =
     completed &&
-    successes > 0 &&
+    landed > 0 &&
     latestSuccessfulTap &&
     latestSuccessfulEventId != null
       ? {
@@ -173,7 +203,7 @@ export function settleFoodServingAdd(
           eventId: latestSuccessfulEventId,
         }
       : undefined;
-  const reportFailure = completed && failures > 0;
+  const reportFailure = completed && kept > 0;
   const next = completed
     ? {
         ...emptyFoodServingBurst(state.epoch, state.nextTapId),
@@ -186,15 +216,19 @@ export function settleFoodServingAdd(
         pending,
         latestSuccessfulTap,
         latestSuccessfulEventId,
-        successes,
-        failures,
+        landed,
+        kept,
+        discarded,
       };
   return {
     state: next,
     accepted: true,
     completed,
     receipt,
-    landed: completed && successes > 0,
+    // Anything still painted on the counter — a landing awaiting the server's own
+    // figure, or a failure whose guess nothing has taken back yet.
+    reconcile: completed && landed + kept > 0,
+    landed: completed && landed > 0,
     reportFailure,
   };
 }
