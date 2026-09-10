@@ -43,20 +43,16 @@ For an authorized live session:
   owns the command, coverage limits, and evidence review.
 - Evaluate Dependabot minors under the normal green-head merge requirements;
   send majors through `dependabot-eval-brief.mjs` within a day.
-- Diagnose and rerun CI under [E2E and CI](e2e-ci.md). Wait for the run to settle
-  before rerunning failed jobs. A failed job with green listed steps needs its
-  annotations and setup/cleanup result inspected before calling it infrastructure.
-
-Keep recurring rules in their owning tooling or guide. Remove incident narratives;
-git and PR history retain their context. New scans and tests still need the
-concrete gap required by the change policy.
+- Diagnose and rerun CI under [E2E and CI](e2e-ci.md).
 
 ## Filing bar
 
 A finding earns its own issue when it is user-reachable, breaks main or a merge,
 has a measured reproduction no open issue covers, or removes a parallel concept.
 Otherwise attach it to the existing mechanism or owning task: scan gaps to their
-adopter, harness details to the harness issue, and flakes to their cause.
+adopter, harness details to the harness issue, and flakes to their cause. A P3
+nobody claims, takes or opens a PR for within 30 days closes `not_planned` in
+the reconcile pass, so file at P3 only work worth doing this month.
 
 Lanes return findings rather than filing. The orchestrator checks current scope,
 duplicates, and [filing instructions](../../.agents/skills/file-issue/SKILL.md)

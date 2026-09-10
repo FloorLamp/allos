@@ -35,10 +35,11 @@ const emit = (rows) => {
 if (url.includes("/issues?")) {
   emit(
     page <= Number(process.env.STUB_ISSUE_PAGES)
-      ? full((n) => ({ number: n, title: "an ordinary open issue", body: "", state: "open", labels: [] }))
+      ? full((n) => ({ number: n, title: "an ordinary open issue", body: "", state: "open", labels: [], created_at: "2026-09-01T00:00:00Z", assignees: [] }))
       : []
   );
 }
+if (url.includes("/pulls?state=open")) emit([]);
 if (url.includes("/pulls?")) {
   emit(
     page <= Number(process.env.STUB_PR_PAGES)
@@ -64,6 +65,7 @@ function runGather(issuePages: number, prPages: number) {
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       GH_TOKEN: "stub token 1",
+      ALLOS_DISPATCH_LEDGER: path.join(dir, "no-ledger.jsonl"),
       STUB_ISSUE_PAGES: String(issuePages),
       STUB_PR_PAGES: String(prPages),
     },

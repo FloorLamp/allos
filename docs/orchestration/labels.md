@@ -5,6 +5,9 @@ Two axes are load-bearing; `reconcile-tracker` flags violations of both
 
 - **Exactly one priority-slot label**: `P0`–`P3` or `parked`. Never two — a
   `P2` + `parked` issue is in no queue and every queue at once.
+- `P3` is a 30-day queue, not a backlog (ruled 2026-09-09): an open P3 with no
+  claim, assignee or open PR 30 days after filing closes `not_planned` in the
+  reconcile pass (`stale-p3`). Reopen with a claim or an owner priority.
 - **At least one domain label.** Cross-cutting design/UX work takes `design` —
   a real domain, not a missing one.
 - Every ready P0/P1 preempts feature and presentation work, with or without
