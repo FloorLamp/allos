@@ -28,7 +28,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { helpGuard, isMain } from "./usage.mjs";
 import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
-import { bodySession, normaliseSession } from "./merge-gate-core.mjs";
+import {
+  bodySession,
+  COMMIT_TRAILER,
+  normaliseSession,
+  SESSION_TRAILER,
+} from "./merge-gate-core.mjs";
 import {
   activeDispatches,
   ledgerPath as resolveLedgerPath,
@@ -415,11 +420,11 @@ ${landingLines}
   captured yourself, including servers you started, before handing off.
 - PR body: one closing keyword per issue per line; describe the final change and
   checks. Explain each new abstraction/test file and production/test line deltas.
-- For Claude sessions, use these commit trailers, with the actual session URL:
-    Co-Authored-By: Claude <noreply@anthropic.com>
-    Claude-Session: <session URL>
-  Other harnesses follow their own attribution instructions; never invent a session.
-- No model identifiers in pushed content.
+- Commit trailers for a Claude session (real URL in the second):
+    ${COMMIT_TRAILER}
+    ${SESSION_TRAILER}
+  Others follow their own; never invent a session. merge-gate.mjs refuses a
+  commit message naming a model.
 ${opts.candidate ? "- Open or refresh the PR READY (not draft) via REST, base main." : "- Do not open a PR while this branch is banked; promotion changes this instruction."}
 - Return ${opts.candidate ? "PR number/URL" : "branch and exact head SHA"}, PINNED_BASE_SHA,
   per-issue outcome, actual gate results, remaining failures, and scope decisions.
