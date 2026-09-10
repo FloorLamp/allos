@@ -1,6 +1,313 @@
 {
   "days": [
     {
+      "date": "2026-09-10",
+      "entries": [
+        {
+          "pr": 5627,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Add a medication or supplement straight from Quick Log’s Dose panel",
+          "issues": [3203]
+        },
+        {
+          "pr": 5659,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Medication and supplement forms state each fact once, as chips",
+          "issues": [5301]
+        },
+        {
+          "pr": 5645,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Doses held for a workout are held on every page, and the digest says so",
+          "issues": [5321]
+        },
+        {
+          "pr": 5637,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Medications, the household card and offline view agree on today’s doses",
+          "issues": [5321]
+        },
+        {
+          "pr": 5683,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Redose timing waits for a stated dose time, never the filing time",
+          "issues": [4686]
+        },
+        {
+          "pr": 5675,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Offer to raise a child’s stored dose when their weight band moves up",
+          "issues": [5538]
+        },
+        {
+          "pr": 5705,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Also-for refuses to dose a shared bottle whose name and code disagree",
+          "issues": [5230]
+        },
+        {
+          "pr": 5705,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Also-for names every allergy a shared bottle meets, not just the first",
+          "issues": [5230]
+        },
+        {
+          "pr": 5716,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A child’s dose offer clears when their age cannot be confirmed",
+          "issues": [4672]
+        },
+        {
+          "pr": 5729,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "One “List what’s in this” button on the medication form",
+          "issues": [4672]
+        },
+        {
+          "pr": 5641,
+          "kind": "security",
+          "category": "Medications",
+          "title": "A shared bottle with no members is visible only to an admin",
+          "issues": [5122]
+        },
+        {
+          "pr": 5657,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Shared bottles start from an item; an empty bottle can’t be created",
+          "issues": [5122]
+        },
+        {
+          "pr": 5644,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Imports no longer record a guessed prescriber as if it were confirmed",
+          "issues": []
+        },
+        {
+          "pr": 5633,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Editing a missing medication or supplement says which kind was not found",
+          "issues": [4671]
+        },
+        {
+          "pr": 5702,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Correct a logged meal’s time to the minute",
+          "issues": [5617]
+        },
+        {
+          "pr": 5702,
+          "kind": "fix",
+          "category": "History",
+          "title": "A substance log’s stated time can be cleared again",
+          "issues": [5617]
+        },
+        {
+          "pr": 5620,
+          "kind": "fix",
+          "category": "History",
+          "title": "Correcting a logged act’s time moves every part of it together",
+          "issues": [5415]
+        },
+        {
+          "pr": 5636,
+          "kind": "fix",
+          "category": "History",
+          "title": "The substance history door opens on the day you were viewing",
+          "issues": [5615]
+        },
+        {
+          "pr": 5622,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Rest countdowns stay accurate when the browser delays timers",
+          "issues": [3700]
+        },
+        {
+          "pr": 5647,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Play after Pause resumes the rest where it stopped",
+          "issues": [3700]
+        },
+        {
+          "pr": 5635,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Opt in to a browser notification when rest ends while the page is hidden",
+          "issues": [3700]
+        },
+        {
+          "pr": 5629,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Training Overview and Analyze use the same heart-rate zones",
+          "issues": [4079]
+        },
+        {
+          "pr": 5704,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Routine and target deletes stay quiet until you confirm",
+          "issues": [4978]
+        },
+        {
+          "pr": 5676,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Training buttons share one style, with one filled control per card",
+          "issues": [4978]
+        },
+        {
+          "pr": 5628,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "Workout-complete messages use each recipient’s distance and weight units",
+          "issues": [5598]
+        },
+        {
+          "pr": 5626,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Time wheel changes commit reliably on every phone keyboard",
+          "issues": [5594]
+        },
+        {
+          "pr": 5630,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Open pages refresh after data changes elsewhere",
+          "issues": [3075]
+        },
+        {
+          "pr": 5636,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Switching who a quick-log entry is for keeps the other drafts",
+          "issues": [5624]
+        },
+        {
+          "pr": 5638,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Search results show dates in your chosen date format",
+          "issues": [5105]
+        },
+        {
+          "pr": 5639,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Back links name where they go and stay visible above the page title",
+          "issues": [5411]
+        },
+        {
+          "pr": 5643,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Screen readers no longer hear a control’s name twice on focus",
+          "issues": [4893]
+        },
+        {
+          "pr": 5658,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Cancel no longer outweighs Save beside a form’s commit",
+          "issues": [4978]
+        },
+        {
+          "pr": 5678,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Illness fact rows show a dashed placeholder while a detail is missing",
+          "issues": [4978]
+        },
+        {
+          "pr": 5695,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Each settings card’s own Save is its one filled control",
+          "issues": [4978]
+        },
+        {
+          "pr": 5664,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Settings buttons use the shared style",
+          "issues": [4978]
+        },
+        {
+          "pr": 5677,
+          "kind": "fix",
+          "category": "Household",
+          "title": "Family login rows use the shared buttons; deletes stay quiet until confirmed",
+          "issues": [4978]
+        },
+        {
+          "pr": 5697,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Integration cards use the shared buttons; open folds share no fill",
+          "issues": [4978]
+        },
+        {
+          "pr": 5718,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Notification cards fill one commit each; test controls stay quiet",
+          "issues": [4978]
+        },
+        {
+          "pr": 5722,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Record forms’ Cancel matches its Save in size",
+          "issues": [4978]
+        },
+        {
+          "pr": 5727,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "“Link all” on a visit stands out as the block’s one action",
+          "issues": [4978]
+        },
+        {
+          "pr": 5684,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Saving a trend tile: the star is the form’s filled commit",
+          "issues": [4014, 4978]
+        },
+        {
+          "pr": 5646,
+          "kind": "security",
+          "category": "Medical",
+          "title": "Every visit-link change checks access to the profile it edits",
+          "issues": [4780]
+        },
+        {
+          "pr": 5715,
+          "kind": "fix",
+          "category": "General",
+          "title": "Home’s day-so-far chart drops its tick marks; they stay on the day view",
+          "issues": [5262]
+        }
+      ],
+      "operatorNotes": []
+    },
+    {
       "date": "2026-09-09",
       "entries": [
         {
