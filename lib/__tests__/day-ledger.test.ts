@@ -34,6 +34,10 @@ function serving(
     bucket,
     hhmm,
     clockKind,
+    // These fixtures are about GROUPING and ORDER, not the clock grammar — a row nothing
+    // filed at a knowable instant, which is what `null` states. The filing day's own
+    // rendering is pinned where it renders, in components/__tests__/day-ledger-clock.
+    filedDay: null,
   };
 }
 
@@ -57,6 +61,7 @@ function dose(
     bucket,
     hhmm,
     clockKind: "logged",
+    filedDay: null,
     // The ordinary one-at-a-time tap composed nothing, so it carries no bundle — the
     // default a fixture must OPT OUT of to be a member of a composed write.
     bundleId: null,
