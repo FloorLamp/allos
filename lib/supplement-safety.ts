@@ -65,11 +65,18 @@ export function tokenContains(haystack: string, needle: string): boolean {
 
 // A recorded allergy a supplement suggestion conflicts with.
 export interface AllergenHit {
-  // The recorded substance that conflicts (display form).
+  // The recorded substance that conflicts (display form). For a CROSS-REACTIVE hit this
+  // is the family's triggers JOINED for display, which can be a phrase no allergen
+  // vocabulary knows ("Shrimp, Crab").
   allergen: string;
   // The cross-reactive family member the suggestion carried, when the match was
   // INDIRECT (via the #153 dataset) rather than a direct substance match.
   viaCrossReactivity?: string;
+  // The recorded allergens that placed the profile in the family, UNJOINED — present
+  // only on a cross-reactive hit. Additive (#5230): a caller composing this matcher
+  // with another has to dedupe against what the other one already said, and the joined
+  // display string is a pseudo-allergen that can never compare equal to either half.
+  triggers?: readonly string[];
 }
 
 // The recorded allergen a supplement suggestion conflicts with, or null when it's
@@ -86,21 +93,41 @@ export function allergenConflict(
   text: string,
   allergens: readonly string[]
 ): AllergenHit | null {
+  return allergenConflicts(text, allergens)[0] ?? null;
+}
+
+// EVERY recorded allergy the text meets, direct hits first and cross-reactive after —
+// the plural sibling of `allergenConflict`, which is exactly its first element.
+//
+// The two exist because they answer two different questions. A SCREEN drops the whole
+// suggestion on the first hit, so one is all it can use; a RECEIPT states what was found
+// (#5230), and "one" is a silent omission there. Executed on the shipped single form:
+// with Shrimp and Soybean recorded, `Krill Oil with Soybean Oil` returned Soybean only
+// and the cross-reactive krill hit was dropped — and with Peanut and Soybean recorded,
+// `Peanut Soy Bar` returned Peanut only. Both loops returned early, so the fix is both.
+//
+// One hit per cross-reactive FAMILY, not per related member: a family is one recorded
+// allergy, and naming it twice because the text carries two of its members reads back as
+// two allergies.
+export function allergenConflicts(
+  text: string,
+  allergens: readonly string[]
+): AllergenHit[] {
   const clean = allergens.map((a) => (a ?? "").trim()).filter(Boolean);
+  const hits: AllergenHit[] = [];
   for (const allergen of clean) {
-    if (tokenContains(text, allergen)) return { allergen };
+    if (tokenContains(text, allergen)) hits.push({ allergen });
   }
   for (const match of findCrossReactivity(clean)) {
-    for (const related of match.related) {
-      if (tokenContains(text, related)) {
-        return {
-          allergen: match.triggers.join(", "),
-          viaCrossReactivity: related,
-        };
-      }
-    }
+    const related = match.related.find((r) => tokenContains(text, r));
+    if (related === undefined) continue;
+    hits.push({
+      allergen: match.triggers.join(", "),
+      viaCrossReactivity: related,
+      triggers: match.triggers,
+    });
   }
-  return null;
+  return hits;
 }
 
 // IntakeItem/ingredient tokens a food–drug interaction entry warns about, keyed by

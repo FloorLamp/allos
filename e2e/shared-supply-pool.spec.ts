@@ -3,12 +3,15 @@ import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { switchToProfile } from "./family-helpers";
 import {
+  appContent,
   hydratedClick,
   settledClick,
   settledFill,
+  settledSelect,
   followLink,
 } from "./helpers";
 import { medicationsToday, scheduledTodayItem } from "./med-card-helpers";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_SUPPLY,
@@ -469,14 +472,125 @@ test.describe("shared supply pools", () => {
       await page.context().close();
     }
   });
+  // ── "ALSO FOR": ONE TAP, AND THE CALLER STAYS WHO THEY ARE (#5230) ──────────
+  //
+  // The door this replaces POSTED `switchProfileAction`: it made the caller become the
+  // other person and dropped them in a 28-field form. The acceptance criterion is
+  // exactly the thing that went wrong, so it is asserted on the real surface — the
+  // identity bar, before and after the tap.
+  //
+  // FIXTURE (#868 hygiene): SPEC-OWNED, created through the shipped item → bottle flow
+  // and named per repeat, because the tap ADDS a member and a bottle can only offer a
+  // person once. The seeded bottles are left exactly as they are.
+  test("Also for copies a member's plan without changing the acting profile", async ({
+    browser,
+  }, testInfo) => {
+    const suffix = `${testInfo.repeatEachIndex}-${testInfo.retry}`;
+    const itemName = `Also-for item ${suffix}`;
+    const bottleName = `Also-for bottle ${suffix}`;
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_SUPPLY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // A bottle of this case's own, with the acting profile as its ONE member.
+      await page.goto("/nutrition?tab=supplements");
+      await page.getByTestId("supplement-add-toggle").click(); // testid-scope-ok: the tab's own add toggle, outside every streamed row boundary
+      const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+      await settledFill(page, addDialog.getByLabel("Name"), itemName);
+      const doseEditor = await openFact(page, "dose", addDialog);
+      await hydratedClick(
+        page,
+        doseEditor.getByRole("button", { name: "Add dose", exact: true })
+      );
+      await settledFill(page, doseEditor.getByLabel("Amount"), "10 mg");
+      await closeEditor(page, addDialog);
+      await addDialog.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(addDialog).toHaveCount(0);
+
+      const row = appContent(page)
+        .getByTestId("supplement-row")
+        .filter({ hasText: itemName });
+      await hydratedClick(
+        page,
+        row.getByRole("button", { name: "Supplement actions" })
+      );
+      await page.getByRole("menuitem", { name: "Edit" }).click();
+      const editDialog = page.getByRole("dialog", { name: `Edit ${itemName}` });
+      const picker = (await openFact(page, "supply", editDialog)).getByTestId(
+        "shared-supply-picker"
+      );
+      await settledSelect(page, picker.getByLabel("Shared supply"), "__new__");
+      await settledFill(
+        page,
+        picker.getByLabel("New shared bottle name"),
+        bottleName
+      );
+      await picker.getByTestId("shared-supply-apply").click();
+      await expect(picker.getByTestId("shared-supply-success")).toContainText(
+        bottleName
+      );
+
+      await page.goto(CABINET);
+      const bottle = bottleCard(page, bottleName);
+      const identity = page.getByTestId("profile-identity-bar"); // testid-scope-ok: the identity bar is app chrome, outside every streamed page boundary
+      const before = await identity.getAttribute("aria-label");
+
+      // ONE readable member, so the card NAMES whose plan it will copy rather than
+      // asking (the owner's 2026-09-09 source ruling).
+      await expect(
+        bottle.getByTestId("shared-supply-also-for-source")
+      ).toContainText(SUPPLY_PARENT_PROFILE);
+      await expect(
+        bottle.getByTestId("shared-supply-also-for-select")
+      ).toHaveCount(0);
+
+      const chip = bottle.getByTestId("shared-supply-also-for-chip");
+      await expect(chip).toHaveText(`${SUPPLY_CHILD_PROFILE} · Also for`);
+      // EVERY OFFER IS DECLINABLE (#5230). Since allergy stopped withholding the chip,
+      // every writable non-member gets one permanently, so the decline sits beside it
+      // on the same row and names the person it would silence. What the decline WRITES
+      // — one suppression row under that person's own profile, and no recurrence — is
+      // pinned at the db and action tiers; what only a real page can show is that the
+      // affordance is there, next to the chip, before anyone taps.
+      await expect(
+        bottle.getByTestId("shared-supply-also-for-dismiss")
+      ).toHaveAttribute(
+        "aria-label",
+        `Don’t offer this bottle for ${SUPPLY_CHILD_PROFILE}`
+      );
+      await settledClick(page, chip);
+
+      await expect(
+        bottle.getByTestId("shared-supply-also-for-receipt")
+      ).toContainText(`Added for ${SUPPLY_CHILD_PROFILE}`);
+      // THE POINT OF THE FEATURE: no profile switch, no form, no redirect.
+      await expect(page).toHaveURL(new RegExp(`${CABINET}$`));
+      await expect(identity).toHaveAttribute("aria-label", before ?? "");
+
+      // The new member is really on the bottle, under the OTHER profile — and the
+      // offer for that person is spent, so a second tap has nothing to repeat.
+      await expect(
+        bottle
+          .getByTestId("shared-supply-member-link")
+          .filter({ hasText: SUPPLY_CHILD_PROFILE })
+      ).toHaveCount(1);
+      await expect(
+        bottle.getByTestId("shared-supply-also-for-chip")
+      ).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
 });
 
-// ── ONE CONTROL HEIGHT IN THE ADD-FOR ROW (#3481) ────────────────────────────────
+// ── ONE CONTROL HEIGHT IN THE CABINET'S ACTION ROW (#3481) ──────────────────────
 //
-// The cabinet's "Add for another person" row paired a `.input` select with a
-// `btn btn-sm` submit, and the mismatch had two different shapes depending on where
-// you looked — which is why the class needs a RENDERED measurement rather than a class
-// string, and at BOTH widths rather than one. Measured on origin/main, 2026-08-23:
+// The cabinet's own action row paired a `.input` select with a `.btn` submit, and the
+// mismatch had two different shapes depending on where you looked — which is why the
+// class needs a RENDERED measurement rather than a class string, and at BOTH widths
+// rather than one. Measured on origin/main, 2026-08-23, on the "Add for another
+// person" row this replaced:
 //
 //   1280px — select 38px, submit 32px, spread 6. The direction the phone review
 //            reported ("the select is visibly taller than 'Add this bottle'").
@@ -486,6 +600,13 @@ test.describe("shared supply pools", () => {
 //            filed as "button too short" is now "select too short". A guard written
 //            only at desktop would have gone green on a phone the day the floor
 //            landed, which is the same day the defect changed direction.
+//
+// #5230 replaced that row with the "Also for" row, which mixes the SAME two families:
+// the "Copy schedule from" select appears beside the recipient actions whenever the
+// bottle has several readable members, and the "past a chip count" fallback puts a
+// person select there too. So the measurement moves to that row and stops naming two
+// specific controls: EVERY control in it is measured, which is also what makes the
+// guard cover the fallback shapes this fixture does not happen to produce.
 //
 // The tolerance is the geometry census's own (scripts/ux-geometry-census.mjs,
 // GEOMETRY_THRESHOLDS.controlHeightTolerancePx = 2 PIXELS OF RENDERED HEIGHT): a
@@ -497,7 +618,7 @@ for (const [label, viewport] of [
   ["390px", { width: 390, height: 844 }],
   ["1280px", { width: 1280, height: 900 }],
 ] as const) {
-  test(`the cabinet's add-for row has ONE control height at ${label} (#3481)`, async ({
+  test(`the cabinet's Also-for row has ONE control height at ${label} (#3481)`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -506,39 +627,43 @@ for (const [label, viewport] of [
     // a box of zeros, and zeros compare EQUAL — the direction that flatters. So: wait
     // for the rows to be there, then require every reading to be a real rendered box
     // below, which is what actually closes that hole. Nothing here picks an arbitrary
-    // row: every add-for row on the surface is measured and asserted.
-    const rows = page.getByTestId("shared-supply-add-for");
+    // row: every Also-for row on the surface is measured and asserted.
+    const rows = page.getByTestId("shared-supply-also-for-row");
     await expect(rows).not.toHaveCount(0);
 
-    const spreads = await rows.evaluateAll((forms) =>
-      forms.map((form) => {
-        const select = form.querySelector(
-          '[data-testid="shared-supply-add-for-select"]'
-        )!;
-        const submit = form.querySelector(
-          '[data-testid="shared-supply-add-for-submit"]'
-        )!;
-        const s = select.getBoundingClientRect().height;
-        const b = submit.getBoundingClientRect().height;
-        return { select: s, submit: b, spread: Math.abs(s - b) };
+    const readings = await rows.evaluateAll((found) =>
+      found.map((row) => {
+        const controls = [...row.querySelectorAll("select, button")].map(
+          (el) => ({
+            what: el.getAttribute("data-testid") ?? el.tagName.toLowerCase(),
+            height: el.getBoundingClientRect().height,
+          })
+        );
+        const heights = controls.map((c) => c.height);
+        return {
+          controls,
+          spread: Math.max(...heights) - Math.min(...heights),
+        };
       })
     );
-    expect(spreads.length).toBeGreaterThan(0);
+    expect(readings.length).toBeGreaterThan(0);
     // KEEP THIS, reviewer: it is how the numbers in the comment above were taken, and
     // it is what makes a red here say WHICH control moved instead of only that one did.
-    console.log(`[#3481] ${label} add-for rows: ${JSON.stringify(spreads)}`);
-    for (const r of spreads) {
+    console.log(`[#3481] ${label} Also-for rows: ${JSON.stringify(readings)}`);
+    for (const r of readings) {
       expect(
-        r.select,
-        `select measured ${r.select}px at ${label}`
+        r.controls.length,
+        `no controls measured at ${label}`
       ).toBeGreaterThan(0);
-      expect(
-        r.submit,
-        `submit measured ${r.submit}px at ${label}`
-      ).toBeGreaterThan(0);
+      for (const c of r.controls) {
+        expect(
+          c.height,
+          `${c.what} measured ${c.height}px at ${label}`
+        ).toBeGreaterThan(0);
+      }
       expect(
         r.spread,
-        `select ${r.select}px vs submit ${r.submit}px at ${label}`
+        `${JSON.stringify(r.controls)} at ${label}`
       ).toBeLessThanOrEqual(CONTROL_HEIGHT_TOLERANCE_PX);
     }
   });
