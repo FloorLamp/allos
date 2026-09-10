@@ -47,13 +47,19 @@ const dose = (
     ...over,
   }) as UpcomingItem;
 
-// The owner's own day: one dose in each slot the app has.
+// The owner's own day: every slot the app has, each holding a run the model groups
+// into one act (#5063).
 const SCHEDULE = [
   dose(1, "Creatine", "morning"),
-  dose(2, "Magnesium", "midday"),
-  dose(3, "Omega-3", "evening"),
-  dose(4, "Glycine", "before sleep"),
-  dose(5, "Electrolytes", "anytime"),
+  dose(2, "Vitamin D", "morning"),
+  dose(3, "Magnesium", "midday"),
+  dose(4, "Zinc", "midday"),
+  dose(5, "Omega-3", "evening"),
+  dose(6, "Curcumin", "evening"),
+  dose(7, "Glycine", "before sleep"),
+  dose(8, "Melatonin", "before sleep"),
+  dose(9, "Electrolytes", "anytime"),
+  dose(10, "Creatine top-up", "anytime"),
 ];
 
 const PRACTICE: UpcomingItem = {
@@ -184,12 +190,12 @@ describe("the owner's 07:40", () => {
       })
     );
     expect(list.later?.entries.map((entry) => entry.content)).toEqual([
-      { kind: "dose-slot", bucket: "Midday", count: 1, opensAt: 11 * 60 },
-      { kind: "dose-slot", bucket: "Evening", count: 1, opensAt: 15 * 60 },
+      { kind: "dose-slot", bucket: "Midday", count: 2, opensAt: 11 * 60 },
+      { kind: "dose-slot", bucket: "Evening", count: 2, opensAt: 15 * 60 },
       {
         kind: "dose-slot",
         bucket: "Before sleep",
-        count: 1,
+        count: 2,
         opensAt: 21 * 60,
       },
       { kind: "commitment", name: "Dentist", on: shiftDateStr(TODAY, 2) },
@@ -213,7 +219,9 @@ describe("the Later fold", () => {
       expect(Object.keys(entry.content).sort()).toEqual(
         entry.content.kind === "dose-slot"
           ? ["bucket", "count", "kind", "opensAt"]
-          : ["kind", "name", "on"]
+          : entry.content.kind === "action"
+            ? ["kind", "name", "opensAt"]
+            : ["kind", "name", "on"]
       );
   });
 
@@ -251,12 +259,43 @@ describe("the Now band pins what is owed", () => {
       dueDate: shiftDateStr(TODAY, -1),
     });
     const list = composeHomeList(
-      input({ minutesOfDay: 2 * 60, attention: [overdue] })
+      input({
+        minutesOfDay: 2 * 60,
+        attention: [overdue, dose(6, "Curcumin", "evening")],
+      })
     );
     expect(list.later).toBeNull();
-    expect(list.now?.rows.map((row) => row.content)).toEqual([
-      { kind: "dose-slot", bucket: "Evening", items: [overdue], overdue: true },
+    expect(list.now?.rows.map((row) => row.content.kind)).toEqual([
+      "dose-slot",
     ]);
+    expect(
+      list.now?.rows[0]?.content.kind === "dose-slot" &&
+        list.now.rows[0].content.overdue
+    ).toBe(true);
+  });
+
+  // THE MODEL'S OWN GROUPING DECIDES, on both sides of the rule (#5063): a bucket
+  // holding one dose is that dose, keeping the id its Upcoming twin has, and the fold
+  // names it instead of counting it.
+  it("leaves a bucket of one as the dose itself", () => {
+    const lone = dose(3, "Omega-3", "evening");
+    const later = composeHomeList(
+      input({ minutesOfDay: 2 * 60, attention: [lone] })
+    );
+    expect(later.later?.entries).toEqual([
+      {
+        id: "attention.fact:dose:3",
+        factKey: "upcoming.dose:3",
+        subject,
+        applicable: true,
+        content: { kind: "action", name: "Omega-3", opensAt: 15 * 60 },
+      },
+    ]);
+    const now = composeHomeList(
+      input({ minutesOfDay: 16 * 60, attention: [lone] })
+    );
+    expect(now.now?.rows[0]?.id).toBe("attention.fact:dose:3");
+    expect(now.now?.rows[0]?.content).toEqual({ kind: "item", item: lone });
   });
 
   it("seats a dated fact nowhere: only actions sit under the rule", () => {

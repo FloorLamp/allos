@@ -94,6 +94,12 @@ export type HomeLaterContent =
   // A dose slot whose window has not opened yet. `count` is what the fold summarizes
   // ("Evening 3"); the bucket names the slot and carries its own opening minute.
   | { kind: "dose-slot"; bucket: TimeBucket; count: number; opensAt: number }
+  // A single action declared for later today, named rather than counted — a lone dose
+  // in a slot the model does not group (#5063), which is the only reader that declares
+  // a clock window today. Care, follow-up and practice actions carry no time of day in
+  // the shared model, so they are current whenever they are due; the day one of them
+  // declares a window is the day it arrives here beside the doses.
+  | { kind: "action"; name: string; opensAt: number }
   // A dated commitment in the 1–7 day tail, or the one next appointment beyond it.
   | { kind: "commitment"; name: string; on: string | null };
 
@@ -343,20 +349,25 @@ function partitionActions(input: HomeListInput): PartitionedActions {
   const commitments: UpcomingItem[] = [];
   const beyond: UpcomingItem[] = [];
 
-  // A slot holding one dose reaches this as the dose itself; its window is the same
-  // bucket's either way, so both arms place it the same way.
-  const placeDoseSlot = (
+  // A dose's window is its bucket's whether the model grouped the bucket into a slot or
+  // left a lone dose as itself (#5063), so both arms decide the same way and only what
+  // they place differs: the slot is counted, the lone dose is named.
+  const placeDose = (
     bucket: TimeBucket,
     items: readonly UpcomingItem[],
-    order: number
+    key: string,
+    order: number,
+    later: HomeLaterContent,
+    now: HomeNowContent
   ) => {
     const opensAt = TIME_BUCKET_OPENS_AT[bucket];
-    // AN OVERDUE SLOT PINS TO NOW whatever its window says (§3.2). A dose still owed
-    // from a window that opened hours ago is the one thing that must not sink into the
-    // record, and it is also the one thing a window comparison alone would sink.
-    const overdue = items.some((item) => daysAhead(item, today) < 0);
-    const key = doseSlotKey(bucket);
-    if (!overdue && minutesOfDay < opensAt) {
+    // AN OVERDUE DOSE PINS TO NOW whatever its window says (§3.2). One still owed from a
+    // window that opened hours ago is the one thing that must not sink into the record,
+    // and it is also the one thing a window comparison alone would sink.
+    if (
+      !items.some((item) => daysAhead(item, today) < 0) &&
+      minutesOfDay < opensAt
+    ) {
       laterToday.push({
         opensAt,
         order,
@@ -365,30 +376,53 @@ function partitionActions(input: HomeListInput): PartitionedActions {
           factKey: dashboardAttentionFactKey(key),
           subject: input.subject,
           applicable: true,
-          content: { kind: "dose-slot", bucket, count: items.length, opensAt },
+          content: later,
         },
       });
       return;
     }
-    doses.push(
-      attentionRow(input, key, "dose", {
-        kind: "dose-slot",
-        bucket,
-        items,
-        overdue,
-      })
-    );
+    doses.push(attentionRow(input, key, "dose", now));
   };
 
   for (const entry of attentionEntries(input.attention)) {
     if (entry.kind === "dose-slot") {
-      placeDoseSlot(entry.bucket, entry.items, entry.sourceIndex);
+      const key = doseSlotKey(entry.bucket);
+      const opensAt = TIME_BUCKET_OPENS_AT[entry.bucket];
+      placeDose(
+        entry.bucket,
+        entry.items,
+        key,
+        entry.sourceIndex,
+        {
+          kind: "dose-slot",
+          bucket: entry.bucket,
+          count: entry.items.length,
+          opensAt,
+        },
+        {
+          kind: "dose-slot",
+          bucket: entry.bucket,
+          items: entry.items,
+          overdue: entry.items.some((item) => daysAhead(item, today) < 0),
+        }
+      );
       continue;
     }
     const item = entry.item;
     const bucket = doseBucket(item);
     if (bucket != null) {
-      placeDoseSlot(bucket, [item], entry.sourceIndex);
+      placeDose(
+        bucket,
+        [item],
+        item.key,
+        entry.sourceIndex,
+        {
+          kind: "action",
+          name: itemName(item),
+          opensAt: TIME_BUCKET_OPENS_AT[bucket],
+        },
+        { kind: "item", item }
+      );
       continue;
     }
     const band = bandForItem(item, today);
