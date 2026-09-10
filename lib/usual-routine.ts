@@ -45,6 +45,10 @@
 
 import type { FoodSlot } from "./food-slot";
 import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
+import {
+  STATED_TIME_REFUSAL_NOTE,
+  type StatedTimeRefusal,
+} from "./stated-time";
 
 // One dose the offer would confirm. Ids and label material only: the button names it,
 // the write core re-resolves it, and nothing downstream reads a dose row from here.
@@ -254,15 +258,27 @@ export function usualRoutineWriteAnswer(
     doses: readonly { name: string; outcome: string }[];
     // Grams the tap actually wrote, or null/absent when protein was not part of it.
     protein?: number | null;
+    // The surface STATED an eating time and the gate refused it (#2296, #4438). Only
+    // the nutrition bar can carry one — every other host's button names a window and
+    // states no hour — so absent is the answer for the dashboard, the record door and
+    // the Telegram ack, and this clause never reaches them.
+    statedTimeRefused?: StatedTimeRefusal;
   }
 ): string {
   const wrote = new Set(written.groups.map((g) => g.groupKey));
   if (written.protein != null) wrote.add(PROTEIN_NUDGE_KEY);
   const landed = (outcome: string) =>
     outcome === "logged" || outcome === "logged-off-day";
-  return usualRoutineAnswerText(
+  const answer = usualRoutineAnswerText(
     named.filter((f) => wrote.has(f.slug)).map((f) => f.name),
     written.doses.filter((d) => landed(d.outcome)).map((d) => d.name),
     written.doses.filter((d) => !landed(d.outcome)).map((d) => d.name)
   );
+  // THE MINUTE THAT WAS LOST, ON THE SAME SENTENCE (#2296). The bundle landed, so a
+  // second error-toned notice would read as "your tap failed" over rows that are
+  // sitting right there — and a surface that had to spell this itself would be the
+  // fourth spelling of an answer this function exists to hold to one.
+  return written.statedTimeRefused
+    ? `${answer}. Time not saved \u2014 ${STATED_TIME_REFUSAL_NOTE[written.statedTimeRefused]}.`
+    : answer;
 }
