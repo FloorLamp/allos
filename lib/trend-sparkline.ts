@@ -375,12 +375,7 @@ const SLOW_CONTINUITY = 730;
 export const BIO_CONTINUITY_DAYS = 540;
 
 // Continuity span per metric: the longest interval a stroke may imply.
-//
-// Still declared open rather than as a `SeriesIdRegistry`: `chart-gap-limit`
-// indexes this map by an open string and hands the result straight to a numeric
-// matcher, so the honest `number | undefined` read reds that file's typecheck.
-// The `satisfies` clause below already closes the completeness half.
-export const METRIC_CONTINUITY_DAYS: Readonly<Record<string, number>> = {
+export const METRIC_CONTINUITY_DAYS: SeriesIdRegistry<number> = {
   // ── levels ────────────────────────────────────────────────────────────────
   weight: HABIT_CONTINUITY,
   bodyfat: HABIT_CONTINUITY,
