@@ -13,7 +13,8 @@ public APIs; styling variants belong to the primitive, not each caller.
 | Lifecycle writes and one-tap feedback    | [Stateful affordances](stateful-affordances.md)                                      |
 | Scope and test selection                 | [Change and test policy](../change-policy.md), [component tests](component-tests.md) |
 
-Update the owning guide rather than copying it.
+Update the owning guide rather than copying it. Reuse existing tests; visual
+changes do not automatically require new guards or assertions.
 
 ## 1. Tokens and themes
 
@@ -90,14 +91,13 @@ destructive paint, one ghost-only `dashed` shape, no size or class axis.
 `DestinationActionLink` composes navigation; raw `btn` families retire with their
 last caller.
 
-One loud control per surface — a form's commit, a card's commit, a row's single
-action — and only rank classes fill, never wrappers. Peers share no rank; a bulk
-action over rows is loud. No rank goes to a fold's door, commits that can stand
-open together, read-narrowing submits, a warning's acknowledge-or-silence action,
-the `DoseConfirmButton` row affordance, or a destructive action repeated per row
-or beside a commit, whose confirm step carries the fill. App-shell chrome takes
-none, bar its one log affordance (dock puck, sidebar `+ Log`), spending no
-surface's budget. Rare or destructive row actions confirm through `OverflowMenu`
+One loud control per surface: a form's commit, a card's commit, a row's single
+action; only rank classes fill, never wrappers. Peers share no rank; a bulk
+action over rows is loud. No rank goes to a fold's door, app-shell chrome bar its
+one log affordance, commits that can stand open together, read-narrowing submits,
+a warning's acknowledge-or-silence action, the `DoseConfirmButton` row affordance,
+or a destructive action repeated per row or beside a commit, whose confirm step
+carries the fill. Rare or destructive row actions confirm through `OverflowMenu`
 ([Overlays](overlays.md)).
 
 The shared `--control-box` is 34px at every viewport, padding from `1lh` and a
