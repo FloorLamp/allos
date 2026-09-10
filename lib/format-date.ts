@@ -1,5 +1,6 @@
 import {
   daysBetweenDateStr,
+  hhmmFromMinutes,
   MONTHS_LONG,
   MONTHS_SHORT,
   WEEKDAYS_LONG,
@@ -72,8 +73,10 @@ export function formatClockMinutes(
   minutesOfDay: number,
   meridiem: "upper-space" | "lower-nospace" = "upper-space"
 ): string {
-  const total = (((Math.round(minutesOfDay) % 1440) + 1440) % 1440) | 0;
-  return formatClock(timeFormat, Math.floor(total / 60), total % 60, meridiem);
+  // The normalization is `hhmmFromMinutes`'s (lib/date.ts, #4550) — this seam adds
+  // only the login's clock convention on top of the digits it decides.
+  const [h, m] = hhmmFromMinutes(minutesOfDay).split(":");
+  return formatClock(timeFormat, Number(h), Number(m), meridiem);
 }
 
 // Stored clock text as a canonical "HH:MM", or NULL when the text is not a clock at

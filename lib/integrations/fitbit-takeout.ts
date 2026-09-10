@@ -1,4 +1,10 @@
-import { utcMinute, zonedDateParts, zonedWallIsoToUtc } from "@/lib/date";
+import {
+  hhmmFromMinutes,
+  hhmmToMinutes,
+  utcMinute,
+  zonedDateParts,
+  zonedWallIsoToUtc,
+} from "@/lib/date";
 import {
   boundedOrNull,
   canonicalDistanceKm,
@@ -1015,20 +1021,12 @@ export function fitbitActivityIdentity(
   return { name, type };
 }
 
-// `MM/DD/YY HH:MM:SS` — US-ordered local wall time, the only form the JSON families
-// use. Returns the calendar date and the "HH:MM" clock, both verbatim: this is the
-// "HH:MM" <-> minutes-of-day. The activity clock fields are wall times, not
-// instants, so an end past midnight wraps rather than rolling a date — matching how
-// the Health Connect path derives its own end clock.
-export function hhmmToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
-
-export function minutesToHhmm(total: number): string {
-  const t = ((total % 1440) + 1440) % 1440;
-  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-}
+// The "HH:MM" <-> minutes-of-day pair this file used to keep privately is
+// `hhmmToMinutes` / `hhmmFromMinutes` in lib/date.ts (#4550), imported above. The
+// activity clock fields are wall times, not instants, so an end past midnight wraps
+// rather than rolling a date — matching how the Health Connect path derives its own
+// end clock, and exactly what the shared formatter's modulo-the-day normalization
+// already does.
 
 // `MM/DD/YY HH:MM:SS` — US-ordered, and in UTC despite carrying no marker.
 // Converted through the profile zone to the local date and "HH:MM" clock.
@@ -1157,7 +1155,7 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
       // (measured: three real Strava/Takeout duplicate rides went undetected).
       // Wraps past midnight the same way the Health Connect path does, since this is
       // a wall clock rather than a date.
-      end_time: minutesToHhmm(hhmmToMinutes(stamp.hhmm) + (durationMin ?? 0)),
+      end_time: hhmmFromMinutes(hhmmToMinutes(stamp.hhmm) + (durationMin ?? 0)),
       avg_hr:
         typeof log.averageHeartRate === "number"
           ? boundedOrNull("heart_rate_bpm", log.averageHeartRate)

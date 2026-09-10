@@ -38,7 +38,12 @@
 //
 // PURE: no DB, no queries, no `lib/auth`. `zonedDateParts` is Intl arithmetic.
 
-import { daysBetweenDateStr, zonedDateParts, hhmmToMinutes } from "./date";
+import {
+  daysBetweenDateStr,
+  hhmmFromMinutes,
+  hhmmToMinutes,
+  zonedDateParts,
+} from "./date";
 
 export const MINUTES_PER_DAY = 1440;
 
@@ -158,9 +163,7 @@ export const MORNING_CANDIDATE_MIN = MAX_PLAUSIBLE_OFFSET_MIN;
 
 /** A minute of the day as the "HH:MM" clock the row stores. */
 export function clockAtMinute(minutes: number): string {
-  const h = Math.floor(minutes / 60) % 24;
-  const m = minutes % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  return hhmmFromMinutes(minutes);
 }
 
 export const EVENING_CANDIDATE_CLOCK = clockAtMinute(EVENING_CANDIDATE_MIN);
