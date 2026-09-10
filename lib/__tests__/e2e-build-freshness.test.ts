@@ -40,7 +40,15 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { ensureBuild } from "../../e2e/global-setup";
 import {
@@ -141,9 +149,18 @@ function hashOf(rel: string): string {
 /**
  * Capture what the run SAYS. Announcing the outcome is half of #5772's fix, so it
  * is asserted rather than eyeballed.
+ *
+ * The spy is registered for an individual restore rather than left to
+ * `vi.restoreAllMocks()`: this project shares one module registry across the files
+ * a worker packs together (`isolate: false`), so a blanket restore is a mutation of
+ * shared state on behalf of files this one knows nothing about. Undo exactly what
+ * this file installed.
  */
+const spies: MockInstance[] = [];
+
 function sayings(): () => string {
   const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+  spies.push(spy);
   return () => spy.mock.calls.map((c) => String(c[0])).join("\n");
 }
 
@@ -174,7 +191,7 @@ afterEach(() => {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key];
   }
-  vi.restoreAllMocks();
+  while (spies.length) spies.pop()?.mockRestore();
   fs.rmSync(root, { recursive: true, force: true });
 });
 

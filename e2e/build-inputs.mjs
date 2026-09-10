@@ -1,12 +1,14 @@
 // What the production build READS, and the fingerprint over it (#2605).
 //
-// `ensureBuild` (e2e/global-setup.ts) has always owned this declaration, to answer
-// "is `.next` older than any source the build compiled". The seeding step in
-// scripts/orchestration/seed-next-build.mjs asks a DIFFERENT question of the same
-// declaration — "would a build of THIS tree produce the bytes already sitting in
-// THAT tree" — so the declaration moved here rather than being copied. Two copies
-// of an invalidation rule is the one shape that fails silently: the copy that is
-// wrong does not throw, it serves a stale bundle.
+// `ensureBuild` (e2e/global-setup.ts) has always owned this declaration. It used to
+// ask "is `.next` older than any source the build compiled"; since #5772 it asks
+// "was `.next` compiled from the sources this tree holds", because the older,
+// timestamp-shaped question cannot see an edit made while the build itself was
+// running. The seeding step in scripts/orchestration/seed-next-build.mjs asks that
+// same question of ANOTHER tree's build — "would a build of THIS tree produce the
+// bytes already sitting in THAT tree" — so the declaration moved here rather than
+// being copied. Two copies of an invalidation rule is the one shape that fails
+// silently: the copy that is wrong does not throw, it serves a stale bundle.
 //
 // It lives under `e2e/` and not under `scripts/orchestration/` on purpose. The CI
 // no-runtime-surface skip set claims nothing in the app or the e2e harness imports
@@ -84,12 +86,17 @@ export function listBuildInputs(root) {
 /**
  * The newest mtime across the build inputs, and the path carrying it.
  *
- * DIRECTORIES COUNT HERE, unlike in `ensureBuild`'s own walk. Deleting a source
- * file changes no surviving file's mtime, only its parent directory's — so a
- * file-only walk cannot see a deletion, and would call a build fresh that no
- * longer matches the tree. `ensureBuild` can live with that (it errs toward not
- * rebuilding a build the agent just made); a SEED cannot, because the same
- * blindness would ship one worktree's bundle into another.
+ * ITS ONE READER IS `seedDecision`'s DERIVED BRANCH (./build-seed.mjs) — the only
+ * evidence available about a source build that carries no input record. Since
+ * #5772 `ensureBuild` compares fingerprints and reads no mtime at all, so nothing
+ * about LOCAL staleness comes through here any more.
+ *
+ * DIRECTORIES COUNT HERE, which is what makes it more than a cheap cousin of
+ * `buildInputFingerprint`. Deleting a source file changes no surviving file's
+ * mtime, only its parent directory's — so a file-only walk cannot see a deletion
+ * and would call a build current that no longer matches the tree, which for a SEED
+ * would ship one worktree's bundle into another. (A fingerprint sees a deletion
+ * with no help at all: the file simply leaves the list.)
  */
 export function newestBuildInputMtime(root) {
   let newestMs = 0;
