@@ -24,6 +24,11 @@ export async function openAddPeriodPanel(page: Page): Promise<Locator> {
   await expect(panel).toHaveAttribute("data-open", "false");
   await hydratedClick(page, page.getByTestId("cycle-add-panel-toggle"));
   await expect(panel).toHaveAttribute("data-open", "true");
+  // The same declaration on the host's other branch — the disclosure (#5300 rule 7).
+  await expect(panel.locator("[data-form-id]")).toHaveAttribute(
+    "data-form-id",
+    "cycle"
+  );
   const form = page.getByTestId("cycle-add-form");
   await expect(form).toBeVisible();
   return form;

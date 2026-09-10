@@ -5,6 +5,7 @@ import {
   clampHistoryDay,
   detailSegment,
   historyClock,
+  historyClockFields,
   parseHistoryShow,
   resolveHistoryDoseClass,
   resolveHistoryFamily,
@@ -70,6 +71,87 @@ describe("historyClock", () => {
       expect(out).not.toMatch(/AM|PM/);
       expect(out).not.toMatch(/\b(Ate|recorded|Logged)\b/);
     }
+  });
+
+  // #5618 RULE 6, the whole rule as a table: "an untimed row filed on another day
+  // reads 'logged Sep 8': the filing day, no clock. Same-day rows keep 'logged
+  // 7:41am'." The minute in the first two rows is the SAME minute — 07:41 on both —
+  // so the only thing that can move the output is where the filing fell.
+  describe("a filing clock from another day is a day, not a time (#5618 rule 6)", () => {
+    it.each([
+      ["2026-09-08", "2026-09-08", "logged 7:41am"],
+      ["2026-09-08", "2026-09-10", "logged Sep 8"],
+      ["2026-01-02", "2026-12-31", "logged Jan 2"],
+    ] as const)("filed %s under %s reads %s", (filedDay, rowDay, expected) => {
+      expect(historyClock("07:41", "logged", H12, { filedDay, rowDay })).toBe(
+        expected
+      );
+    });
+
+    // THE DATE SHAPE IS THE LOGIN'S, like every other in-app date (#964/#1448) —
+    // a hard-coded "Sep 8" would be the record growing a second date vocabulary.
+    it.each([
+      [{ timeFormat: "12h", dateFormat: "dmy" }, "logged 8 Sep"],
+      [{ timeFormat: "12h", dateFormat: "iso" }, "logged 2026-09-08"],
+    ] as const)("honours the dateFormat pref: %j", (prefs, expected) => {
+      expect(
+        historyClock("07:41", "logged", prefs, {
+          filedDay: "2026-09-08",
+          rowDay: "2026-09-10",
+        })
+      ).toBe(expected);
+    });
+
+    // THE YEAR IS NEWS ONLY WHEN THE FILING CROSSED ONE, and the reference is the
+    // ROW's day rather than the wall clock: the same row renders the same string in
+    // 2026 and in 2031, which a `new Date()` year rule could not promise.
+    it("carries the year when the filing fell in another one", () => {
+      expect(
+        historyClock("07:41", "logged", H12, {
+          filedDay: "2025-12-31",
+          rowDay: "2026-01-02",
+        })
+      ).toBe("logged Dec 31, 2025");
+    });
+
+    // A STATED TIME IS THE ROW'S OWN, so where the typing happened is not a question
+    // it answers — the bare clock stands even when the filing fell elsewhere.
+    it("leaves a stated clock bare however far the filing fell", () => {
+      expect(
+        historyClock("07:41", "stated", H12, {
+          filedDay: "2026-09-08",
+          rowDay: "2026-09-10",
+        })
+      ).toBe("7:41am");
+    });
+
+    // THE ROW WITH NO INSTANT AT ALL stays date-only. `filedDay: null` is the state
+    // the gathers hand over for a row nothing filed at a knowable instant, and it
+    // must not turn into a day label sourced from the row's own date.
+    it.each([
+      [null, "2026-09-10"],
+      ["2026-09-10", "2026-09-10"],
+    ] as const)(
+      "has no clock at all when the instant is null (filedDay %j)",
+      (filedDay, rowDay) => {
+        expect(
+          historyClock(null, "logged", H12, { filedDay, rowDay })
+        ).toBeNull();
+      }
+    );
+
+    // ORDERING IS NOT THIS RULE'S TO CHANGE (lib/history-format.ts's own note): the
+    // row still sorts on the minute it was filed at, so a rule about what a row READS
+    // cannot sink it below the day's timed rows as a side effect.
+    it("keeps the sort minute while the clock becomes a day", () => {
+      const fields = historyClockFields("07:41", "logged", H12, {
+        filedDay: "2026-09-08",
+        rowDay: "2026-09-10",
+      });
+      expect(fields.sortTime).toBe("07:41");
+      expect(fields.clock).toBe("logged Sep 8");
+      expect(fields.clockKind).toBe("logged");
+    });
   });
 });
 

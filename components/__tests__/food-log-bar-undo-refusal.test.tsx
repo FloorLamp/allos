@@ -2493,37 +2493,65 @@ describe("FoodLogBar composed usual bundle", () => {
     expect(screen.queryByTestId("food-usual-offer")).toBeNull();
   });
 
-  // THE STICKY STATEMENT DOES NOT RIDE THE BUNDLE, and this is the converse of the
-  // single-serving assertion above it rather than a gap. The statement is per-DAY and
-  // this button names a WINDOW, so carrying it would file the servings outside the
-  // window the offer was derived for — after which the offer never reduces and the tap
-  // double-logs without bound (proved at the action tier, `food-usual.actions.test.ts`).
-  it("does not carry the bar's day-wide stated time onto the bundle", async () => {
+  // THE STICKY STATEMENT RIDES THE BUNDLE (#4438, ruled 2026-09-02), on the same field
+  // and the same wire shape the single-serving add beside it posts. The pair is the
+  // assertion: one mount, one statement, and both writes on this bar carry it — which
+  // is what makes "the bundle carries it" mean something rather than "this mount states
+  // nothing at all". Where the servings then FILE is the server's, proved on the rows at
+  // the action tier (`food-usual.actions.test.ts`).
+  it("carries the bar's stated time onto the bundle and onto a single add", async () => {
     mount([offer("Midday")]);
     await act(async () => {
       fireEvent.change(screen.getByTestId("food-when-time"), {
         target: { value: new Date(`${DATE}T20:00:00.000Z`).toISOString() },
       });
     });
-    // THE FIXTURE REACHES THE STATE THE ASSERTION FORBIDS: the statement really is set,
-    // so this is "the bundle declines to carry it" and not "nothing was there to carry".
+    // THE FIXTURE REACHES THE STATE THE ASSERTION NEEDS: the statement really is set.
     expect(screen.getByTestId("food-when-set").textContent).toBe("20:00");
     await act(async () =>
       fireEvent.click(screen.getByTestId("food-usual-offer"))
     );
     const sent = appActions.logUsualRoutine.mock.calls[0][0] as FormData;
-    expect(sent.get("occurred_at")).toBeNull();
+    expect(sent.get("occurred_at")).toBe("20:00");
+    // The POST still names the tab it was tapped on: that is the window the offer was
+    // derived and labelled for, and the core re-derives from it.
+    expect(sent.get("meal_slot")).toBe("Midday");
 
-    // AND THE SINGLE-SERVING ADD BESIDE IT STILL STATES THE HOUR — the converse, and
-    // the half that makes the assertion above mean "the bundle declines it" rather than
-    // "this mount states nothing at all". Read off `logFoodServing`'s OWN FormData: an
-    // earlier spelling asserted `sent.get("meal_slot")` here, which is the BUNDLE's
-    // post, so it could not fail however the single-serving path behaved.
+    // Read off `logFoodServing`'s OWN FormData: an earlier spelling asserted
+    // `sent.get("meal_slot")` here, which is the BUNDLE's post, so it could not fail
+    // however the single-serving path behaved.
     await act(async () => {
       fireEvent.click(screen.getByTestId("log-cruciferous"));
     });
     const single = actions.logFoodServing.mock.calls[0][0] as FormData;
     expect(single.get("occurred_at")).toBe("20:00");
+  });
+
+  // NEVER SILENTLY (#2296). A statement the server refuses costs the minute and not the
+  // servings, so the bundle's one answer says both things — asserted on the RENDERED
+  // sentence, which is the only place a user meets this.
+  it("says the minute went missing on the bundle's own answer", async () => {
+    appActions.logUsualRoutine.mockResolvedValue({
+      ok: true,
+      window: "Midday",
+      date: DATE,
+      groups: [
+        { groupKey: "cruciferous", servings: 1, mealServings: 1 },
+        { groupKey: "berries", servings: 1, mealServings: 1 },
+      ],
+      doses: [],
+      statedTimeRefused: "future",
+    });
+    mount([offer("Midday")]);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("food-usual-offer"))
+    );
+    const said = screen
+      .getAllByTestId("toast")
+      .map((t) => t.textContent)
+      .join(" ");
+    expect(said).toContain("Logged");
+    expect(said).toContain("Time not saved");
   });
 
   it("re-reads the dose half when the day picker moves, and drops a late answer for a day already left", async () => {

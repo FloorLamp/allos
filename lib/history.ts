@@ -33,7 +33,11 @@ import {
   getTimezone,
   getUnitPrefs,
 } from "./settings";
-import { bestKnownInstant, eventInstant } from "./row-instants";
+import {
+  bestKnownInstant,
+  eventInstant,
+  type BestInstant,
+} from "./row-instants";
 import { now } from "./clock";
 import { getIntakeDoseLedgerPage } from "./queries";
 import { getFoodLedgerPage } from "./queries/nutrition";
@@ -57,6 +61,7 @@ import {
   resolveHistoryItem,
   HISTORY_KINDS,
   type HistoryFamily,
+  type HistoryFiling,
   type HistoryKind,
   type HistoryRow,
 } from "./history-format";
@@ -197,6 +202,29 @@ function wants(opts: HistoryGatherOptions, kind: HistoryKind): boolean {
 function localClock(tz: string, at: string): string | null {
   const parts = zonedDateParts(tz, new Date(at));
   return parts.hhmm || null;
+}
+
+/**
+ * WAS THIS ROW FILED ON THE DAY IT SITS UNDER? (#5618 rule 6.)
+ *
+ * The filing day is only ever asked of a `record` answer. An `event` answer is a time
+ * somebody STATED, and a stated time is the row's own — it renders bare and the
+ * question of where the typing happened never arises. So the `semantic` field, which
+ * `bestKnownInstant` exists to expose, is what decides whether there is a filing day
+ * at all: null on a stated row and on a row nothing filed at a knowable instant.
+ *
+ * The day is resolved in the ROW's zone, the same zone its clock is read in. A UTC
+ * comparison would call a 23:40 filing in Auckland "another day" on its own day, and
+ * miss a 19:00 filing in Los Angeles that genuinely crossed one.
+ */
+function filedOn(tz: string, when: BestInstant, rowDay: string): HistoryFiling {
+  return {
+    filedDay:
+      when.known && when.semantic === "record"
+        ? zonedDateParts(tz, new Date(when.at)).date || null
+        : null,
+    rowDay,
+  };
 }
 
 /**
@@ -429,7 +457,12 @@ export function gatherHistoryLog(
         profileId,
         tz,
         date: row.date,
-        ...historyClockFields(hhmm, stated ? "stated" : "logged", prefs),
+        ...historyClockFields(
+          hhmm,
+          stated ? "stated" : "logged",
+          prefs,
+          filedOn(tz, when, row.date)
+        ),
         title: row.item_name,
         // A MEDICATION HAS A HOME AND A SUPPLEMENT DOES NOT (#4045 §5, extended).
         // The title link is a PER-ITEM question — "does this thing have a home" — and
@@ -527,7 +560,12 @@ export function gatherHistoryLog(
         profileId,
         tz,
         date: row.date,
-        ...historyClockFields(hhmm, stated ? "stated" : "logged", prefs),
+        ...historyClockFields(
+          hhmm,
+          stated ? "stated" : "logged",
+          prefs,
+          filedOn(tz, when, row.date)
+        ),
         // Identity is the FOOD at this scope (#3937): a day of servings differs by
         // what was eaten, not by the date every one of them shares.
         title: foodGroupBySlug(row.group_key)?.name ?? row.group_key,
@@ -589,7 +627,12 @@ export function gatherHistoryLog(
         profileId,
         tz,
         date: row.date,
-        ...historyClockFields(hhmm, stated ? "stated" : "logged", prefs),
+        ...historyClockFields(
+          hhmm,
+          stated ? "stated" : "logged",
+          prefs,
+          filedOn(tz, when, row.date)
+        ),
         title: normalizePracticeName(row.practice),
         href: null,
         // quantity → context → source, source always the muted tail.
@@ -743,7 +786,12 @@ export function gatherHistoryLog(
           profileId,
           tz,
           date: row.date,
-          ...historyClockFields(hhmm, stated ? "stated" : "logged", prefs),
+          ...historyClockFields(
+            hhmm,
+            stated ? "stated" : "logged",
+            prefs,
+            filedOn(tz, when, row.date)
+          ),
           title: def.label,
           href: null,
           // ONE EVENT IS ONE UNIT. The day's arithmetic moved to the rows, so the
@@ -839,7 +887,12 @@ export function gatherHistoryLog(
         profileId,
         tz,
         date: row.date,
-        ...historyClockFields(hhmm, stated ? "stated" : "logged", prefs),
+        ...historyClockFields(
+          hhmm,
+          stated ? "stated" : "logged",
+          prefs,
+          filedOn(tz, when, row.date)
+        ),
         title: def.label,
         // PLAIN, LIKE THE FOOD GROUPS BESIDE IT (#4045 §5). The title link is a
         // PER-ITEM question — "does this thing have a home" — and a substance has

@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  openConfirm,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 import {
   E2E_LOGIN_SUBSTANCE,
@@ -443,12 +448,15 @@ test.describe("substance use (#998/#1078/#1085)", () => {
         await anonContext.close();
       }
       // eslint-disable-next-line no-restricted-properties -- first-ok: newest-first; this test just created the newest link
-      await page
+      const revoke = page
         .locator("li")
         .filter({ has: page.getByRole("button", { name: "Revoke" }) })
         .first()
-        .getByRole("button", { name: "Revoke" })
-        .click();
+        .getByRole("button", { name: "Revoke" });
+      // The per-row Revoke went quiet under #4978's ruling 10 and its confirm
+      // step carries the red, so answering the confirm is part of revoking.
+      const revokeConfirm = await openConfirm(page, revoke);
+      await revokeConfirm.getByRole("button", { name: "Revoke" }).click();
     } finally {
       await page.emulateMedia({ media: "screen" });
       await page.goto("/profile#emergency");

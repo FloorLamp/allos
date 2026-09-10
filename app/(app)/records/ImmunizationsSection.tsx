@@ -221,6 +221,7 @@ export default function ImmunizationsSection({
             Print and share keep their #1849 acting-profile scoping untouched. */}
         <div className="section-seam mb-6 flex flex-wrap items-center gap-2">
           <AddEntryPanel
+            formId="immunization"
             testId="add-immunization-panel"
             panelId="add-immunization-panel-body"
             label="Add immunization"

@@ -6,7 +6,9 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { IconShare } from "@tabler/icons-react";
 import CreatedShareLink from "@/components/CreatedShareLink";
 import ModalShell from "@/components/ModalShell";
-import SubmitButton, { DestructiveSubmit } from "@/components/SubmitButton";
+import SubmitButton, {
+  useDestructiveSubmitGate,
+} from "@/components/SubmitButton";
 import PrintButton from "@/components/PrintButton";
 import {
   SHARE_FIELDS,
@@ -110,6 +112,12 @@ export default function PassportControls({
     await revokeShareLinkAction(fd);
   }
 
+  // OWNER RULING 10 (#4978), applied here 2026-09-10: a per-row destructive
+  // action in a repeated list is not loud, and the fill it gives up lives on its
+  // confirm step. Same gate as the integration disconnects, so this is one
+  // mechanism rather than a second confirm pattern.
+  const gate = useDestructiveSubmitGate();
+
   return (
     <div className="flex items-center gap-2 print:hidden">
       <PrintButton region="passport" />
@@ -210,11 +218,31 @@ export default function PassportControls({
                       </div>
                     </div>
                     {l.status === "valid" && (
-                      <form action={onRevoke} className="shrink-0">
+                      <form
+                        // THE CONFIRM NAMES ITS ROW. Every row's control reads
+                        // "Revoke", so a confirm that only asked "are you sure"
+                        // would be answerable without knowing which link is
+                        // about to die — worse on a repeated list than no
+                        // confirm at all. The description and expiry here are
+                        // the same two facts the row itself shows, which is what
+                        // makes them checkable against it.
+                        action={gate(
+                          {
+                            title: "Revoke this link?",
+                            message: `${linkDescription(l)}, expiring ${fmtDate(
+                              l.expiresAt,
+                              formatPrefs
+                            )}. Anyone holding the link loses access straight away, and it can't be restored.`,
+                            confirmLabel: "Revoke",
+                          },
+                          onRevoke
+                        )}
+                        className="shrink-0"
+                      >
                         <input type="hidden" name="id" value={l.id} />
-                        <DestructiveSubmit pendingLabel="Revoking…">
+                        <SubmitButton pendingLabel="Revoking…">
                           Revoke
-                        </DestructiveSubmit>
+                        </SubmitButton>
                       </form>
                     )}
                   </li>

@@ -38,6 +38,7 @@ export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
     <div className="space-y-4">
       <div>
         <AddEntryPanel
+          formId="genomic-variant"
           testId="add-genomic-panel"
           panelId="add-genomic-panel-body"
           label="Add genomic variant"

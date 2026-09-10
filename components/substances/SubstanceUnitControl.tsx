@@ -1,15 +1,10 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { useUndoableAction } from "@/components/useUndoableAction";
-import {
-  useClaimToastKey,
-  useDismissToast,
-  useToastProfileScopeGetter,
-} from "@/components/Toast";
+import { useKeyedReceipt } from "@/components/useUndoableAction";
 import { substanceDef } from "@/lib/substance-use";
 import { LabeledVerbChip } from "@/components/OfferRow";
 import { useQuickEntryRow } from "@/components/quick-entry/QuickEntryRowList";
@@ -74,43 +69,21 @@ export default function SubstanceUnitControl({
     timeLabel: "Time used",
     testId: `${testIdPrefix}-when-${substance}`,
   });
-  const announceUndoable = useUndoableAction();
-  const getToastProfileScope = useToastProfileScopeGetter();
-  const claimToastKey = useClaimToastKey();
-  const dismissToast = useDismissToast();
-  const mountedRef = useRef(false);
-  const generationRef = useRef(0);
-  const receiptOwnersRef = useRef(new Map<string, symbol>());
-
-  useLayoutEffect(() => {
-    mountedRef.current = true;
-    generationRef.current += 1;
-    const receiptOwners = receiptOwnersRef.current;
-    return () => {
-      mountedRef.current = false;
-      generationRef.current += 1;
-      for (const [key, owner] of receiptOwners) dismissToast(key, owner);
-      receiptOwners.clear();
-    };
-  }, [dismissToast, subjectProfileId, substance, writeDate]);
+  // The receipt lifecycle this control used to spell by hand (#5738): a mount ref, a
+  // generation counter, an origin toast scope and a claimed-owner map. The subject is
+  // what a receipt here is ABOUT, so re-pointing the row at another person, substance
+  // or day ends the receipts earned under the old one.
+  const openReceipt = useKeyedReceipt(
+    `${subjectProfileId ?? ""}:${substance}:${writeDate ?? ""}`
+  );
 
   async function tap(kind: "log" | "undo"): Promise<void> {
     setError(null);
     const stated = statement.at;
     const statedInstant = statement.instant;
-    const originGeneration = generationRef.current;
-    const originScope = getToastProfileScope();
-    const originProfileId = subjectProfileId ?? originScope?.profileId;
-    const isCurrent = () => {
-      if (!mountedRef.current || generationRef.current !== originGeneration)
-        return false;
-      if (!originScope) return true;
-      const currentScope = getToastProfileScope();
-      return (
-        currentScope?.profileId === originScope.profileId &&
-        currentScope.token === originScope.token
-      );
-    };
+    const receipt = openReceipt();
+    const isCurrent = receipt.isCurrent;
+    const originProfileId = subjectProfileId ?? receipt.profileId;
     // #2007: additive substance taps never confirm — several a day is the use case.
     // The ledger's inert window absorbs an accidental double click; undo carries its
     // own key, so a correction straight after a log is not absorbed by it.
@@ -141,32 +114,24 @@ export default function SubstanceUnitControl({
         if (
           kind === "log" &&
           inQuickEntryRow &&
-          originScope &&
-          originProfileId != null &&
+          receipt.profileId != null &&
           "eventId" in result
         ) {
           const { eventId, date } = result;
-          const key = `substance-log:${originProfileId}:${substance}:${eventId}`;
-          const owner = Symbol(key);
-          receiptOwnersRef.current.set(key, owner);
-          claimToastKey(key, owner);
+          const subject = subjectProfileId ?? receipt.profileId;
           const unit =
             substanceDef(substance).unitSingular === "drink"
               ? "Standard drink"
               : "Use";
-          announceUndoable({
+          receipt.announce({
+            key: `substance-log:${subject}:${substance}:${eventId}`,
             message: `${unit} logged.`,
-            key,
-            profileId: originScope.profileId,
-            profileToken: originScope.token,
-            owner,
             undo: {
               undoneMessage: `${unit} undone.`,
-              isCurrent,
               run: async () => {
                 if (!isCurrent()) return { ok: false, reason: "changed" };
                 const undoFd = new FormData();
-                undoFd.set("profile_id", String(originProfileId));
+                undoFd.set("profile_id", String(subject));
                 undoFd.set("substance", substance);
                 undoFd.set("event_id", String(eventId));
                 undoFd.set("date", date);

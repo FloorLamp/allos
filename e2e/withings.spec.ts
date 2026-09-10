@@ -40,5 +40,16 @@ test.describe("Withings integration", () => {
 
     // Credentials saved → the OAuth connect button appears (no redirect triggered).
     await expect(main.getByTestId("withings-connect")).toBeVisible();
+
+    // ONE COMMIT PER CARD (#4978 ruling 6): both submits now sit on this card, and
+    // Connect is the action it exists for, so the credentials form drops to the
+    // maintenance edit it has become. Counted whole rather than per control — a
+    // per-control check cannot see a second fill arriving beside the one it
+    // checks. Only the WITH-credentials state is asserted: the empty card's fill
+    // cannot be re-observed on a shared DB, because nothing in this UI unsaves a
+    // credential (#868 fixture ownership).
+    await expect(
+      main.locator(".button-control-primary, .button-control-danger")
+    ).toHaveText(["Connect with Withings"]);
   });
 });

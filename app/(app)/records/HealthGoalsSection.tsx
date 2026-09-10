@@ -49,6 +49,7 @@ export default function HealthGoalsSection({ scope }: { scope: ProfileScope }) {
   return (
     <div className="space-y-6">
       <AddEntryPanel
+        formId="care-goal"
         testId="add-health-goal-panel"
         panelId="add-health-goal-panel-body"
         label="Add health goal"

@@ -112,8 +112,8 @@ need nearest-time synchronization rather than array indices.
 
 [ChartCard](../../components/ChartCard.tsx) owns the header link, plot footprint,
 and footer band. The header links to detail; the plot remains outside the link so
-touch can inspect a point. `detailHref` is required. A `null` destination needs a
-same-line `detail-none: <why>` comment. Use `metricDetailHref` for metric detail,
+touch can inspect a point. `detailHref` is required; no destination is
+`{ none: "<why>" }`. Use `metricDetailHref` for metric detail,
 `clinicalResultDetailHref` for clinical readings, and the existing full-depth
 surface for aggregate charts.
 
