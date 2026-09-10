@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   validateVitalsInput,
   normalizeVitalsInput,
+  normalizeClockTime,
   sleepWindowFromClocks,
   celsiusToF,
   mmolToMgdl,
@@ -9,6 +10,29 @@ import {
 } from "@/lib/vitals-input";
 
 const empty: VitalsRawInput = {};
+
+// #4550: this is `parseClockHhmm` now — the documented owner of "stored clock text
+// -> canonical HH:MM", of which this had been a third private copy.
+describe("normalizeClockTime", () => {
+  it("still lands the shapes it always did", () => {
+    expect(normalizeClockTime("07:00")).toBe("07:00");
+    expect(normalizeClockTime("7:00")).toBe("07:00");
+    expect(normalizeClockTime(" 23:59 ")).toBe("23:59");
+    expect(normalizeClockTime(null)).toBeNull();
+    expect(normalizeClockTime(undefined)).toBeNull();
+    expect(normalizeClockTime("")).toBeNull();
+    expect(normalizeClockTime("Morning")).toBeNull();
+    expect(normalizeClockTime("0700")).toBeNull();
+    expect(normalizeClockTime("24:00")).toBeNull();
+    expect(normalizeClockTime("07:60")).toBeNull();
+  });
+
+  it("now also reads the owner's two extra shapes rather than rejecting them", () => {
+    expect(normalizeClockTime("07:00:30")).toBe("07:00");
+    expect(normalizeClockTime("2:30 pm")).toBe("14:30");
+    expect(normalizeClockTime("12:00 AM")).toBe("00:00");
+  });
+});
 
 describe("celsiusToF / mmolToMgdl (match the Health Connect parser)", () => {
   it("converts body temperature °C → °F", () => {
