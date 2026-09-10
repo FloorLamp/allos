@@ -33,6 +33,7 @@ import {
 } from "@tabler/icons-react";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import ActivityIcon from "@/components/ActivityIcon";
+import ModalShell from "@/components/ModalShell";
 import DateField from "@/components/DateField";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import LoggedEventRow, {
@@ -805,7 +806,7 @@ export default function HistoryRows({
         // value is a one-field inline edit, and this row drew a second copy of the
         // readings table's cell rather than mounting it. Nothing about a reading's
         // WHEN is editable from either mount, so there is no full-statement half here
-        // for the ⋯ to open — the record's `Log a reading` door is where a body
+        // for the ⋯ to open — the record's `Log measurements` door is where a body
         // sitting is stated.
         return (
           <ReadingValueControl
@@ -824,17 +825,6 @@ export default function HistoryRows({
   const renderRow = (row: HistoryRow) => {
     const Glyph = KIND_GLYPH[row.kind];
     const subject = subjectNames[row.profileId];
-    if (editingId === row.id) {
-      return (
-        <li
-          key={row.id}
-          data-testid="history-row-editing"
-          className={`band card-gutter-action border-t border-(--divider) py-2 first:border-t-0 ${rowClassName}`}
-        >
-          {editForm(row, () => setEditingId(null))}
-        </li>
-      );
-    }
     return (
       <Fragment key={row.id}>
         <li
@@ -1110,6 +1100,45 @@ export default function HistoryRows({
               ) : null}
             </div>
           </li>
+        ) : null}
+        {/* ONE HOST (#5300 rule 5, adopted by #5617 step 1), and the inline draft the
+            rule names by name. A correction used to REPLACE its own row: the `<li>`
+            the reader tapped ⋯ on was swapped out for a `<li>` holding the form, so
+            the thing being corrected left the screen at the moment it was being
+            corrected, and the row above and below closed over the gap. That is the
+            "inline draft that swaps a row out" #5237 found on the catalog list and
+            #5300 forbids everywhere.
+
+            The row now STAYS, and the form opens over it in the same converged
+            sheet/dialog the quick logger and the nutrition day correction use — a
+            sheet below `md`, a centred card above ("we do the sheet", the owner on
+            the History Day Editing arc).
+
+            TITLED BY THE RECORD'S NAME, not by `Edit <noun>` (#5617 step 2's recorded
+            decision, reading #5300 rule 6's "a page-hosted edit keeps the record's
+            name" as covering a sheet opened from the row). It is `menuName(row)` —
+            the identity plus the whole when-cell — which is already the ⋯'s own
+            accessible name, so the control that opened the sheet and the sheet's
+            title cannot name two different rows. Two doses of one item on one day are
+            told apart only by the clock, which is why the clock is in the name.
+
+            A PORTAL, so this is not an `<li>` inside the `<ul>` above: `ModalShell`
+            renders through `BottomSheet` to `<body>`, and nothing about the list's
+            geometry — which several specs on this page measure — changes when a row
+            is being corrected. */}
+        {editingId === row.id ? (
+          <ModalShell
+            title={menuName(row)}
+            onClose={() => setEditingId(null)}
+            size="sm"
+            testId={`history-row-edit-sheet-${row.id}`}
+          >
+            {/* THE MARKER STAYS ON THE FORM'S WRAPPER, where every spec on this page
+                already looks for it; the host's chrome is the host's to assert. */}
+            <div data-testid="history-row-editing">
+              {editForm(row, () => setEditingId(null))}
+            </div>
+          </ModalShell>
         ) : null}
       </Fragment>
     );

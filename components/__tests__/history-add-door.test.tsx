@@ -10,6 +10,7 @@ import HistoryAddDoor, {
   HistoryUsualOffers,
   type HistoryAddKind,
 } from "@/app/(app)/history/HistoryAddDoor";
+import { logHeading } from "@/lib/log-manifest";
 
 // WHAT THE RECORD'S ADD DOOR POSTS (#4045 §1).
 //
@@ -519,12 +520,42 @@ describe("the record's Add door posts to the domain's own create action", () => 
     }
   });
 
+  // ONE HOST (#5300 rule 5, adopted by #5617 step 1). The door used to open its form
+  // in a `<div className="mt-2">` under the button, so the eight forms had three hosts
+  // between them — this panel, the record row's in-row editor, and the converged
+  // sheet/dialog the quick logger already used. Asserted per kind, because the mount
+  // is per kind and a converged seven with one left inline is the state this is about.
+  it.each([
+    "food",
+    "dose",
+    "practice",
+    "mood",
+    "substance",
+    "body",
+    "symptom",
+    "stool",
+  ] as HistoryAddKind[])(
+    "opens the %s form in the converged dialog, titled by the domain's heading",
+    (kind) => {
+      open(kind);
+      const panel = screen.getByTestId(`history-add-panel-${kind}`);
+      expect(panel.closest('[role="dialog"]')).not.toBeNull();
+      expect(
+        screen.getByRole("dialog", { name: logHeading(kind) })
+      ).toBeTruthy();
+    }
+  );
+
   it("keeps ONE identity while its form is open, and offers nothing it cannot write", () => {
     // #3911's defect, not inherited (#2816): the dose launcher swaps its label to
     // "Cancel" while open. Dismissal belongs to the form these doors open.
     open("practice");
+    // THE DOMAIN'S ONE HEADING (#5300 rule 6, #5617 step 2), read from the manifest
+    // rather than restated — the door used to say "Log a practice" while the quick
+    // sheet next door said "Log practice". The claim under test is unchanged: the
+    // control still says what it is FOR while its form is open.
     expect(screen.getByTestId("history-add-open-practice").textContent).toBe(
-      "Log a practice"
+      logHeading("practice")
     );
     // And a profile with no practices gets no door at all rather than a select with
     // nothing in it — the same rule the dose door applies to items with no live dose.
