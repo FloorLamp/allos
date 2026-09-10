@@ -62,36 +62,28 @@ import { HOUSEHOLD_SETUP_PREFIX } from "./household-setup";
 import { RECORDS_RECENCY_PREFIX } from "./records-recency";
 import type { ReasonCode } from "./reasons";
 
-// The two reach tiers (#449). CARE is push: Upcoming + dashboard placement + (where wired)
-// the Telegram nudge. COACHING is calm: its own tab + dashboard placement — never a
-// notification, never dashboard Now.
-export type FindingTier = "care" | "coaching";
-
-// WHERE a coaching class's observation can be read (#3129, #4241). The dashboard rollup
-// applies a relevance floor, so a class whose only surface IS the rollup renders nowhere
-// on the tone-derived default — that is the fact this column states, and it is what makes
-// `dashboardRelevance` a required field on the producer's findings rather than a literal
-// a source scan had to look for.
+// WHERE a coaching class's observation can be READ (#3129, #4241). The dashboard rollup
+// applies a relevance floor, so a class with no surface of its own renders nowhere on the
+// tone-derived default. Declaring that here is what makes `dashboardRelevance` a required
+// FIELD on the producer's findings instead of a literal a source scan had to look for.
 export type FindingReach =
-  // The rollup is the whole reach. The builder returns `RollupOnlyFinding`, so tsc
-  // requires the relevance declaration on every finding it emits.
+  // The rollup is the whole reach: the builder returns `RollupOnlyFinding`, so tsc
+  // requires the declaration on every finding it emits.
   | "rollup-only"
-  // A domain surface of its own renders the observation, so the rollup keeps the
-  // tone-derived default and stays quiet about what that tab already shows. The row names
-  // the surface file and the symbol that surface reads — the builder itself, or the
-  // shared computation/formatter the builder maps into the envelope.
+  // A surface of its own renders the observation, so the rollup keeps the tone-derived
+  // default and stays quiet about what that tab already shows. The row names the file and
+  // the symbol it reads — the builder, or the computation the builder maps into the
+  // envelope.
   | { surface: string; symbol: string }
-  // Not aggregated by collectCoachingFindings: an Upcoming generator or a per-surface
-  // resolver that registers a namespace here for the suppression bus only, so the
-  // rollup's floor never applies to it.
+  // Not aggregated by collectCoachingFindings (an Upcoming generator or a per-surface
+  // resolver registering a namespace for the suppression bus alone), so no floor applies.
   | "not-aggregated";
 
 // One registered finding namespace: the dedupeKey PREFIX its builder keys under, the
 // reach TIER it travels, the BUILDER that emits it (for docs + test messages), and the
 // closed set of #656 Reason CODES a finding under this prefix may carry (empty when the
 // builder attaches no structured reason today — the common case). A COACHING entry also
-// declares its dashboard REACH; care findings reach Upcoming and the hero by definition,
-// so the question is not asked of them.
+// declares its REACH; care findings reach Upcoming and the hero by definition.
 interface RuleFindingRegistryBase {
   prefix: string;
   builder: string;
@@ -101,6 +93,11 @@ interface RuleFindingRegistryBase {
 export type RuleFindingRegistryEntry =
   | (RuleFindingRegistryBase & { tier: "care" })
   | (RuleFindingRegistryBase & { tier: "coaching"; reach: FindingReach });
+
+// The two reach tiers (#449), read off the entry union so there is one list. CARE is
+// push: Upcoming + dashboard placement + (where wired) the Telegram nudge. COACHING is
+// calm: its own tab + dashboard placement — never a notification, never dashboard Now.
+export type FindingTier = RuleFindingRegistryEntry["tier"];
 
 // The single source of truth. Every finding-producing builder in the codebase appears
 // exactly once. COACHING members are precisely the builders aggregated by
