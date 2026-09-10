@@ -67,7 +67,15 @@ test("Today's session card renders the resolved routine day (#740)", async ({
     await expect(
       actions.getByTestId("training-overview-start-workout")
     ).toHaveCount(0);
-    await expect(actions.locator("button.btn")).toHaveCount(1);
+    // ONE LOUD CONTROL ON THIS CARD (#4978 ruling 6), AND IT IS THE COMMIT.
+    // The selector was `button.btn` while this row was raw; the rank now lives
+    // on the primitive's paint utility, which is the only DOM evidence a rank
+    // leaves. Read as a single element on purpose — a second filled control in
+    // the row fails it as a strict-mode violation, and the fill moving to "Log
+    // activity" fails it on the id.
+    await expect(
+      actions.locator("button.button-control-primary")
+    ).toHaveAttribute("data-testid", "log-this-session");
   } finally {
     await page.context().close();
   }

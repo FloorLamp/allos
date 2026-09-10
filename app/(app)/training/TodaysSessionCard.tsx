@@ -2,6 +2,7 @@
 
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import type { ActivityEditData } from "@/components/ActivityForm";
+import Button from "@/components/Button";
 import LogActivityButton from "@/components/LogActivityButton";
 import type { ReactNode } from "react";
 
@@ -88,11 +89,19 @@ export default function TodaysSessionCard({
           data-testid="training-overview-actions"
         >
           {canStartWorkout && (
-            <button
-              type="button"
-              className="btn"
+            // FILLED BECAUSE IT IS THIS CARD'S ONE LOUD CONTROL, not because it
+            // is a form commit (#4978 rulings 5-neighbour and 6): the surface is
+            // the card, and the action this card exists for is starting the day
+            // it just described. "Log activity" beside it stays quiet.
+            //
+            // `data` is how the offer state reaches the DOM (#4978 ruling 8).
+            // The primitive's prop set is closed, so writing
+            // `data-workout-offer` as a bare JSX attribute here would compile,
+            // lint and test green while dropping the attribute off the page.
+            <Button
+              variant="primary"
               data-testid="log-this-session"
-              data-workout-offer={workoutOffer.kind}
+              data={{ "data-workout-offer": workoutOffer.kind }}
               onClick={() => openSession(prefill)}
             >
               {/* The label names the write (#1893/#1892): while a session is already
@@ -103,7 +112,7 @@ export default function TodaysSessionCard({
               {workoutOffer.kind === "resume"
                 ? workoutOffer.label
                 : "Log this session"}
-            </button>
+            </Button>
           )}
           <LogActivityButton testId="training-overview-log-activity">
             Log activity
