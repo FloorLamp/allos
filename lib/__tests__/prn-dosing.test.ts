@@ -13,9 +13,11 @@ import {
   prnDoseUpdateOffer,
   doseUpdateOfferSeat,
   prnDoseBandStatement,
+  reofferPediatricDose,
 } from "@/lib/prn-dosing";
 import { doseBandUpdateKey } from "@/lib/dismissal-keys";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
+import type { PrefillField, PrefillLedger } from "@/lib/intake-prefill";
 import { prnDefaultsFor, type PediatricBand } from "@/lib/prn-defaults";
 
 const IBUPROFEN = prnDefaultsFor({ name: "Ibuprofen", rxcui: "5640" })!;
@@ -353,5 +355,124 @@ describe("prnDoseUpdateOffer — the stale stored dose", () => {
       doseUpdateOfferSeat([{ ...item, amount: "150 mg" }, acetaminophen], GROWN)
     ).toBe(32);
     expect(doseUpdateOfferSeat([item], null)).toBeNull();
+  });
+});
+
+// The re-offer after a caregiver updates the child's weight in place (#798, #4672).
+// This ran for a year inside a JSX prop, so the case it exists FOR — a new weight that
+// no longer bands, whose old figure must not be left standing — had no test at all.
+describe("reofferPediatricDose — a new weight re-derives the label's offer", () => {
+  const context = (over: Partial<PediatricFormContext> = {}) =>
+    ({
+      ageMonths: 48,
+      weightKg: 13.6, // ≈30 lb → ibuprofen's 24–35 band, 100 mg
+      weightDate: "2026-06-01",
+      weightUnit: "lb",
+      today: "2026-07-15",
+      declinedDoseUpdates: [],
+      ...over,
+    }) satisfies PediatricFormContext;
+
+  const ledgerOffering = (...fields: PrefillField[]): PrefillLedger => ({
+    suggested: new Set(fields),
+    touched: new Set(),
+  });
+
+  const reoffer = (
+    over: Partial<Parameters<typeof reofferPediatricDose>[0]> = {}
+  ) =>
+    reofferPediatricDose({
+      entry: IBUPROFEN,
+      next: context(),
+      ledger: ledgerOffering("doseAmount"),
+      currentAmount: "100 mg",
+      ...over,
+    });
+
+  it("offers the new band's milligrams when the standing figure is the label's", () => {
+    // 17 kg ≈ 37.5 lb → the 36–47 band, 150 mg.
+    expect(reoffer({ next: context({ weightKg: 17 }) })).toEqual({
+      kind: "offer",
+      doseAmount: "150 mg",
+    });
+  });
+
+  it("offers into a blank amount that was never suggested (an edit-mode row)", () => {
+    expect(reoffer({ ledger: ledgerOffering(), currentAmount: "   " })).toEqual(
+      { kind: "offer", doseAmount: "100 mg" }
+    );
+  });
+
+  it("keeps a figure the caregiver typed, even when the new weight bands", () => {
+    expect(
+      reoffer({ ledger: ledgerOffering(), currentAmount: "250 mg" })
+    ).toEqual({ kind: "keep" });
+  });
+
+  // The offer is the BAND's milligrams whatever product is picked — the property the
+  // signature now states by taking no formulation at all.
+  it("offers milligrams, which no concentration can move", () => {
+    expect(reoffer()).toEqual({ kind: "offer", doseAmount: "100 mg" });
+  });
+
+  // #798's refusals. Each one must CLEAR the standing offer: leaving the old weight's
+  // figure on screen attributes a dose to a measurement that no longer supports it.
+  it("withdraws when the new weight falls below the smallest band", () => {
+    // 9 kg ≈ 19.8 lb, under ibuprofen's 24 lb floor.
+    expect(reoffer({ next: context({ weightKg: 9 }) })).toEqual({
+      kind: "withdraw",
+    });
+  });
+
+  it("withdraws when the new weight is missing", () => {
+    expect(reoffer({ next: context({ weightKg: null }) })).toEqual({
+      kind: "withdraw",
+    });
+  });
+
+  it("withdraws when the new weight is too old to band from", () => {
+    expect(reoffer({ next: context({ weightDate: "2026-01-01" }) })).toEqual({
+      kind: "withdraw",
+    });
+  });
+
+  it("withdraws behind the label's hard age gate", () => {
+    expect(reoffer({ next: context({ ageMonths: 4 }) })).toEqual({
+      kind: "withdraw",
+    });
+  });
+
+  it("withdraws for an ingredient whose chart has no pediatric tier", () => {
+    expect(reoffer({ entry: ASPIRIN })).toEqual({ kind: "withdraw" });
+  });
+
+  // The withdraw verdict is stated for a typed amount too — the executor's own ledger
+  // check is what spares the caregiver's number, and stating it here pins that the
+  // policy does not quietly become a second, weaker guard.
+  it("still says withdraw when the amount is the caregiver's own", () => {
+    expect(
+      reoffer({
+        next: context({ weightKg: 9 }),
+        ledger: ledgerOffering(),
+        currentAmount: "250 mg",
+      })
+    ).toEqual({ kind: "withdraw" });
+  });
+
+  it("keeps everything when the name resolves to no curated entry", () => {
+    expect(reoffer({ entry: null })).toEqual({ kind: "keep" });
+  });
+
+  // The one input where "relocated faithfully" and "reads tidily" pull apart. The
+  // inline original cast a null age into the lookup, where it compares as 0 — every
+  // curated entry answered `ask-doctor` or `no-pediatric`, so the call site withdrew.
+  // A profile with no age has no chart, so withdraw is also the conservative answer;
+  // `keep` would leave the label's figure standing over a person it cannot band.
+  it("withdraws when there is no age on file, whatever the weight says", () => {
+    for (const weightKg of [17, 9, null]) {
+      expect(reoffer({ next: context({ ageMonths: null, weightKg }) })).toEqual(
+        { kind: "withdraw" }
+      );
+    }
   });
 });

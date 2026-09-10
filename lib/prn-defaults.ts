@@ -173,6 +173,19 @@ export function redoseLabelDefaults(
   };
 }
 
+// The strength suggestions an OTC label offers for the amount field: the adult
+// tier's low and high figures, de-duplicated for the ingredients whose label states
+// one strength twice. Empty for anything the curated dataset does not name — the
+// suggestion list stays silent rather than inventing a strength (#846).
+export function otcStrengthOptions(
+  entry: PrnDefaultEntry | null | undefined
+): string[] {
+  if (!entry) return [];
+  return [
+    ...new Set([`${entry.adult.doseMgLow} mg`, `${entry.adult.doseMgHigh} mg`]),
+  ];
+}
+
 // A resolved ingredient set takes precedence over the display name. Unresolved
 // names must match a whole curated synonym; extra wording may name another product.
 export function prnDefaultsFor(item: PrnItem): PrnDefaultEntry | null {
