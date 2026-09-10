@@ -11,6 +11,7 @@ import {
 } from "@/app/(app)/medical/document-actions";
 import type { ReprocessFromRawResult } from "@/lib/medical-pipeline";
 import type { ImportActionExplainers } from "@/lib/import-actions-copy";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // The re-run + delete actions on the import-detail page (#1071). Re-extraction
 // is preview-first ONLY (ReprocessDiffPanel: "Preview changes" → "Save changes")
@@ -121,7 +122,7 @@ export default function ImportDetailActions({
     fd.set("id", String(id));
     startDelete(async () => {
       await deleteMedicalDocument(fd);
-      router.push("/data?section=import");
+      router.push(dataSectionHref("import"));
     });
   }
 

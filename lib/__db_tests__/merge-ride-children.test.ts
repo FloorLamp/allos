@@ -32,6 +32,7 @@ import {
   snapshotKeeperFold,
   dropSetIds,
 } from "@/lib/merge-activity";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 
 const DATE = "2026-08-19";
 
@@ -191,9 +192,13 @@ describe("merging twin uploads of one ride (#3193)", () => {
   it("keeps the keeper's own laps and efforts and DISCARDS the drop's same-source rows", () => {
     const { keepId, dropId } = seedTwinUploads();
 
-    const moves = writeActivityFold(profileId, keepId, activityRow(keepId), [
-      activityRow(dropId),
-    ]);
+    const moves = writeActivityFold(
+      profileId,
+      keepId,
+      activityRow(keepId),
+      [activityRow(dropId)],
+      carryPostWorkoutMarker
+    );
 
     // The fact the bug produced was a UNION: four laps and four efforts on the
     // keeper, every traversal twice. The keeper now carries exactly its own set.
@@ -232,9 +237,13 @@ describe("merging twin uploads of one ride (#3193)", () => {
     const keeperBefore = snapshotKeeperFold(keep);
     const movedSetIds = dropSetIds(dropId);
 
-    const moves = writeActivityFold(profileId, keepId, keep, [
-      activityRow(dropId),
-    ]);
+    const moves = writeActivityFold(
+      profileId,
+      keepId,
+      keep,
+      [activityRow(dropId)],
+      carryPostWorkoutMarker
+    );
     const undoId = captureDelete("activity", profileId, dropId, {
       keeperId: keepId,
       domain: "activity",
@@ -300,9 +309,13 @@ describe("merging twin uploads of one ride (#3193)", () => {
       "health-connect"
     );
 
-    const moves = writeActivityFold(profileId, keepId, activityRow(keepId), [
-      activityRow(dropId),
-    ]);
+    const moves = writeActivityFold(
+      profileId,
+      keepId,
+      activityRow(keepId),
+      [activityRow(dropId)],
+      carryPostWorkoutMarker
+    );
 
     // Per TABLE and per SOURCE: the keeper has strava laps, so nothing about laps
     // from a source it lacks is blocked, and its empty efforts table blocks nothing.
@@ -339,9 +352,13 @@ describe("merging twin uploads of one ride (#3193)", () => {
       "strava"
     );
 
-    writeActivityFold(profileId, keepId, activityRow(keepId), [
-      activityRow(dropId),
-    ]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      activityRow(keepId),
+      [activityRow(dropId)],
+      carryPostWorkoutMarker
+    );
 
     expect(lapsOn(keepId)).toEqual(["strava/lap-keep-1"]);
     expect(lapsOn(dropId)).toHaveLength(3);
@@ -365,10 +382,13 @@ describe("merging twin uploads of one ride (#3193)", () => {
       "strava"
     );
 
-    const moves = writeActivityFold(profileId, keepId, activityRow(keepId), [
-      activityRow(d1),
-      activityRow(d2),
-    ]);
+    const moves = writeActivityFold(
+      profileId,
+      keepId,
+      activityRow(keepId),
+      [activityRow(d1), activityRow(d2)],
+      carryPostWorkoutMarker
+    );
 
     expect(effortsOn(keepId)).toHaveLength(1);
     const movedTotal = moves.flatMap((m) => m.movedSegmentEffortIds);
@@ -395,9 +415,13 @@ describe("merging twin uploads of one ride (#3193)", () => {
        VALUES (?, 'Front Squat', 1, 50, 5)`
     ).run(dropId);
 
-    writeActivityFold(profileId, keepId, activityRow(keepId), [
-      activityRow(dropId),
-    ]);
+    writeActivityFold(
+      profileId,
+      keepId,
+      activityRow(keepId),
+      [activityRow(dropId)],
+      carryPostWorkoutMarker
+    );
 
     expect(
       (

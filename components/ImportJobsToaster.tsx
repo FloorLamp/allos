@@ -10,6 +10,7 @@ import {
   isImportJobState,
   observeStates,
 } from "@/lib/toaster-poll";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // The import-job statuses that count as terminal (extraction no longer running).
 const isImportTerminal = (status: string) =>
@@ -118,7 +119,7 @@ export default function ImportJobsToaster({
                 action: {
                   label: "Review",
                   onClick: () =>
-                    router.push("/data?section=import#paste-import"),
+                    router.push(dataSectionHref("import", "paste-import")),
                 },
               }
             );

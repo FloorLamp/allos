@@ -22,7 +22,6 @@ import {
   orderDropsForFold,
 } from "./import-review/detect";
 import { deletePairDecision } from "./queries/integrations";
-import { carryPostWorkoutMarker } from "./notifications/post-workout-marker";
 import { parsePayload, type MergeUndoContext, type Row } from "./undo-delete";
 
 // What writeActivityFold actually moved for one dropped row, returned so an undoable
@@ -44,6 +43,34 @@ export interface DropFoldMove {
   movedLapIds: number[];
   movedSegmentEffortIds: number[];
 }
+
+// THE ANNOUNCEMENT CARRY, PASSED IN RATHER THAN IMPORTED (#5719).
+//
+// `carryPostWorkoutMarker` (lib/notifications/post-workout-marker.ts) is what the fold
+// runs below, and this module used to import it directly. That single edge was the only
+// one from the write path into `lib/notifications`, and it closed an eight-hop value
+// cycle back onto the marker module itself — post-workout-marker → lib/settings →
+// settings/notifications → queries/sleep → queries/derived-situations → cycle-store →
+// undo-delete-db → merge-activity → post-workout-marker — which is why `import/no-cycle`
+// could not cover that file.
+//
+// A caller-supplied function rather than a module-scope registration hook, deliberately:
+// with the import gone, NO merge entry point (both Review resolvers, the Training Log's
+// manual merge, the unattended auto-merge behind Strava and Health Connect ingest) loads
+// the marker module any more, so a hook the notifications side registers would sit
+// unregistered on every real merge unless each entry point added a side-effect import —
+// a wiring no type checks and no existing test would catch, since the tests that assert
+// the carry import the marker themselves and would stay green while production quietly
+// stopped carrying it. That is #2570 all over again. A required parameter puts the same
+// wiring in the type system, which is the only place that cannot forget it.
+//
+// Declared structurally (and returning void, so the marker's `number | null` fits) so
+// this module needs no import of any kind from lib/notifications.
+export type MergeAnnouncementCarry = (
+  profileId: number,
+  keepId: number,
+  dropIds: readonly number[]
+) => void;
 
 // EVERY WAY A ROW CAN POINT AT AN ACTIVITY, AND WHAT A MERGE DOES WITH IT (#5481).
 //
@@ -223,6 +250,7 @@ export function writeActivityFold(
   keepId: number,
   keep: Record<string, unknown>,
   drops: Record<string, unknown>[],
+  carryAnnouncement: MergeAnnouncementCarry,
   overrides: OverrideChoices = {}
 ): DropFoldMove[] {
   // Fold every drop into the keeper in a DETERMINISTIC order (by activityToken, #1081)
@@ -360,13 +388,15 @@ export function writeActivityFold(
   // the fold columns. This carries the one thing about a dropped row that is not data and is
   // not recoverable from it: that the user has already been told about this session.
   //
-  // It belongs HERE, at the point where the identity the marker is keyed on is
+  // The CALL belongs HERE, at the point where the identity the marker is keyed on is
   // destroyed, and it fixes every merge path at once — the unattended auto-merge that
   // manufactured the third send, the Review resolver, and the Training Log's manual
   // pair merge — for the same reason the child re-parenting lives here: no caller can
   // forget it. Read BEFORE the caller's delete, which is why it is inside the fold and
-  // not beside it.
-  carryPostWorkoutMarker(
+  // not beside it. Only the BINDING moved out to the callers (#5719, see
+  // MergeAnnouncementCarry above); every caller passes carryPostWorkoutMarker, and the
+  // required parameter is what now makes it unforgettable.
+  carryAnnouncement(
     profileId,
     keepId,
     moves.map((m) => m.dropId)

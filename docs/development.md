@@ -55,10 +55,11 @@ appending another version. Link to code for implementation detail.
 and dispatch/brief source files. New and short files have a 1,500-word limit;
 existing oversized files cannot exceed their word count at the comparison base.
 This applies to generated Markdown too: keep generated reference data separate
-from growing prose. Rewritten files inherit the smaller ceiling after merging.
-The check includes untracked files and fails if the comparison base is unavailable.
-Use `npm run docs:check -- --base <ref>` for an explicit base; the default is the
-merge base with `origin/main`. CI supplies its event's base commit.
+from growing prose. The total across all checked files must not exceed the total
+at the base, so new text displaces old; the summary line prints both totals and
+the delta. The check includes untracked files and fails if the comparison base is
+unavailable. Use `npm run docs:check -- --base <ref>` for an explicit base; the
+default is the merge base with `origin/main`.
 
 The guard measures length, not usefulness. Do not compress code, split a single
 rule across arbitrary files, or remove important contracts just to pass it.

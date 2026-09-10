@@ -1,4 +1,5 @@
 import { permanentRedirect } from "next/navigation";
+import { dataSectionHref } from "@/lib/hrefs";
 
 // `/integrations` has never been a page — the integrations grid lives at Data → Import,
 // and every per-integration setup page is a CHILD of this path (`/integrations/strava`,
@@ -15,5 +16,5 @@ import { permanentRedirect } from "next/navigation";
 // It forwards to where the grid ACTUALLY is, section anchor included, so the URL a person
 // guessed lands on the thing they were guessing at.
 export default function IntegrationsIndexPage() {
-  permanentRedirect("/data?section=import");
+  permanentRedirect(dataSectionHref("import"));
 }

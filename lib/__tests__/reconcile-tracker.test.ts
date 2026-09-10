@@ -24,6 +24,9 @@ import {
   checkDocsContracts,
   checkLabelHygiene,
   checkLineCitation,
+  checkStaleP3,
+  decideStaleP3,
+  referencedByOpenPrs,
   decideDomainAdd,
   decideLabelRemoval,
   decidePriorityLabel,
@@ -53,6 +56,7 @@ import {
   symbolExists,
   topLevelDirs,
   type RepoIndex,
+  type SweptIssue,
   type TrackerIssue,
   type TrackerPr,
 } from "../../scripts/orchestration/reconcile-tracker-core";
@@ -76,12 +80,14 @@ function repo(files: Record<string, string>): RepoIndex {
   };
 }
 
-function issue(over: Partial<TrackerIssue> & { number: number }): TrackerIssue {
+function issue(over: Partial<SweptIssue> & { number: number }): SweptIssue {
   return {
     title: "an issue",
     body: "",
     state: "open",
     labels: [],
+    createdAt: "2026-09-01T00:00:00Z",
+    assignees: [],
     ...over,
   };
 }
@@ -434,6 +440,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map([[900, "closed"]]),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -471,6 +479,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -495,6 +505,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -529,6 +541,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       twice,
       watermark
@@ -555,6 +569,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -578,6 +594,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -595,6 +613,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -617,6 +637,8 @@ describe("gatherEvidence", () => {
         ],
         issueStates: new Map([[794, "open"]]),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -641,6 +663,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -678,6 +702,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -695,6 +721,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -705,6 +733,8 @@ describe("gatherEvidence", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       watermark
@@ -741,6 +771,8 @@ describe("gatherEvidence", () => {
           mergedPrs: prs,
           issueStates: new Map([[900, "closed"]]),
           prsTruncated: truncated,
+          openPrs: [],
+          claimedIssues: new Set(),
         },
         index,
         window
@@ -762,6 +794,8 @@ describe("gatherEvidence", () => {
           mergedPrs: [],
           issueStates: new Map(),
           prsTruncated: false,
+          openPrs: [],
+          claimedIssues: new Set(),
         },
         index,
         window
@@ -889,6 +923,8 @@ describe("label hygiene (docs/orchestration/labels.md)", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       repo({ "lib/real.ts": "" }),
       { previous: null, current: "2026-08-15T00:00:00Z" }
@@ -897,6 +933,79 @@ describe("label hygiene (docs/orchestration/labels.md)", () => {
     const report = renderReport(evidence);
     expect(report).toContain("## Label hygiene (1)");
     expect(report).toContain("#8");
+  });
+});
+
+describe("stale P3 — the 30-day queue (#5671)", () => {
+  // Owner ruling 2026-09-09: P3 is a 30-day queue, not a backlog. Six
+  // conditions, each pinned by the one fixture that differs from #1 in it.
+  const now = "2026-09-10T12:00:00Z";
+  const filed = (daysAgo: number): string =>
+    new Date(Date.parse(now) - daysAgo * 86_400_000).toISOString();
+  const p3 = (over: Partial<SweptIssue> & { number: number }): SweptIssue =>
+    issue({ labels: ["P3", "docs"], createdAt: filed(30), ...over });
+  const ctx = {
+    claimedIssues: new Set([2]),
+    openPrIssues: new Set([4]),
+    now,
+  };
+
+  it("lists the unclaimed, unowned, unlinked P3 on its 30th day, and says why", () => {
+    const findings = checkStaleP3(
+      [
+        p3({ number: 1 }),
+        p3({ number: 2 }), // claimed in the ledger
+        p3({ number: 3, assignees: ["someone"] }),
+        p3({ number: 4 }), // an open PR references it
+        p3({ number: 5, labels: ["P3", "docs", "needs-human"] }),
+        p3({ number: 6, labels: ["P3", "docs", "parked"] }),
+        p3({ number: 7, createdAt: filed(29) }),
+        p3({ number: 8, labels: ["P2", "docs"] }),
+        p3({ number: 9, state: "closed" }),
+      ],
+      ctx
+    );
+    expect(findings).toEqual([
+      {
+        issue: 1,
+        ageDays: 30,
+        detail: "P3 filed 30 days ago — no claim, no assignee, no open PR",
+      },
+    ]);
+  });
+
+  it("keeps an issue open when its filing date cannot be read", () => {
+    expect(decideStaleP3(p3({ number: 1, createdAt: "" }), ctx)).toBeNull();
+  });
+
+  it("reads a reference out of an open PR's title or body, closing keyword or not", () => {
+    expect(
+      referencedByOpenPrs([
+        { number: 50, title: "Fix the thing (#12)", body: "Refs #13, #14." },
+        { number: 51, title: "Nothing here", body: "" },
+      ])
+    ).toEqual(new Set([12, 13, 14]));
+  });
+
+  it("rides gatherEvidence into the report's own section", () => {
+    const evidence = gatherEvidence(
+      {
+        issues: [p3({ number: 21, createdAt: "2026-08-01T00:00:00Z" })],
+        mergedPrs: [],
+        openPrs: [],
+        claimedIssues: new Set(),
+        issueStates: new Map(),
+        prsTruncated: false,
+      },
+      repo({ "lib/real.ts": "" }),
+      { previous: null, current: now }
+    );
+    expect(evidence.staleP3.map((f) => f.issue)).toEqual([21]);
+    // A stale P3 is a queue fact, not a claim about main: #21 stays clean.
+    expect(evidence.verifiedClean).toEqual([21]);
+    const report = renderReport(evidence);
+    expect(report).toContain("## Stale P3 — closed on apply (1)");
+    expect(report).toContain("- #21 — P3 filed 40 days ago");
   });
 });
 
@@ -1656,20 +1765,23 @@ describe("a patch batch", () => {
   });
 });
 
-describe("the toolchain granted to a reconciliation run closes only through the one MCP writer", () => {
+describe("the toolchain granted to a reconciliation run closes only through the MCP writer and the stale-P3 close", () => {
   // STRUCTURAL, not instructed. Until 2026-09-05 the routine's first guardrail
   // was "never closes issues" and no close-capable tool was granted, so the
   // bound held by construction (#1279/#2107's lesson). The owner then ruled
   // that reconciliation CLOSES, SEQUENCES and GROUPS issues to reduce work, so
-  // the close now rides exactly one grant, `mcp__github__issue_write`, in the
-  // skill's own tool list — never a shell escape, never a script. The scripts
-  // below still hold no close capability at all.
+  // the judged close rides exactly one grant, `mcp__github__issue_write`, in
+  // the skill's own tool list — never a shell escape. The one scripted close
+  // is the applier's stale-P3 close (#5671, ruled 2026-09-09), a literal
+  // payload pinned below; every other script holds no close capability.
+  const APPLIER = "scripts/orchestration/reconcile-apply.ts";
   const MODULES = [
     "scripts/orchestration/reconcile-tracker.ts",
     "scripts/orchestration/reconcile-tracker-core.ts",
     "scripts/orchestration/reconcile-repo-index.ts",
     "scripts/orchestration/reconcile-patch.ts",
     "scripts/orchestration/reconcile-apply.ts",
+    "scripts/orchestration/issue-body-write.ts",
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
     "scripts/orchestration/reconcile-watermark.ts",
@@ -1699,12 +1811,26 @@ describe("the toolchain granted to a reconciliation run closes only through the 
   it.each(MODULES)("%s holds no close capability", (rel) => {
     const text = source(rel);
     for (const [name, re] of CLOSE_CAPABILITIES) {
+      const permitted = rel === APPLIER && name === "a close reason";
       expect({ rel, name, found: re.test(text) }).toEqual({
         rel,
         name,
-        found: false,
+        found: permitted,
       });
     }
+  });
+
+  it("the applier's close is one literal payload: closed, not_planned, nothing else", () => {
+    // No plan entry, evidence field or argument reaches the payload, so the
+    // only state this file can set is `closed` and the only reason
+    // `not_planned`; the issue it closes was re-judged by the core's own rule
+    // on a fresh read immediately before.
+    const applier = source(APPLIER);
+    expect(applier.match(/state_reason/g)).toHaveLength(1);
+    expect(applier).toContain(
+      'JSON.stringify({ state: "closed", state_reason: "not_planned" })'
+    );
+    expect(applier).toContain("decideStaleP3(readIssue(issue).issue, ctx)");
   });
 
   it("the skill's only close capability is the MCP issue writer", () => {
@@ -1728,32 +1854,46 @@ describe("the toolchain granted to a reconciliation run closes only through the 
     }
   });
 
-  // FIVE writers now, each confined to a different endpoint, and the point of
-  // this block is that no confinement rests on intent. The body applier can
-  // name only `body`; the label writer sends no body at all; the label deleter
-  // holds one verb against the repo's own label collection and no issue URL
-  // whatsoever; the watermark writer can PATCH one body and CREATE one
-  // fixed-title carrier; the run-summary writer can POST one comment to one
-  // pinned issue. Everything else in the toolchain holds no write verb.
+  // SIX writers now, each confined to a different endpoint, and the point of
+  // this block is that no confinement rests on intent. The body writer holds
+  // the ONE body PATCH, naming only `body`, and the applier and the watermark
+  // writer reach a body only through it (#5673); the label writer sends no
+  // body at all; the label deleter holds one verb against the repo's own
+  // label collection and no issue URL whatsoever; the watermark writer can
+  // CREATE one fixed-title carrier; the run-summary writer can POST one
+  // comment to one pinned issue. Everything else in the toolchain holds no
+  // write verb.
+  const BODY_WRITER = "scripts/orchestration/issue-body-write.ts";
   const WRITERS = [
     "scripts/orchestration/reconcile-apply.ts",
+    BODY_WRITER,
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
     "scripts/orchestration/reconcile-watermark.ts",
     "scripts/orchestration/reconcile-run-summary.ts",
   ];
 
-  it("the body applier holds two confined writes: body PATCH and comment POST", () => {
+  it("the body writer holds the one body PATCH, its payload one field", () => {
+    // Every body edit in the toolchain lands here, after the current body is
+    // saved to scratch and the new one judged (empty or half-length refuses
+    // without --force; `./reconcile-apply-script.test.ts` drives that). The
+    // payload has nowhere for an issue's status to ride.
+    const writer = source(BODY_WRITER);
+    expect(writer.match(/"PATCH"/g)).toHaveLength(1);
+    expect(writer).toContain("JSON.stringify({ body })");
+    expect(writer).not.toMatch(/"(?:POST|PUT|DELETE)"/);
+  });
+
+  it("the body applier holds two confined writes of its own: close PATCH and comment POST", () => {
     // The comment POST exists because a body PATCH is SILENT — no
     // notification, no timeline event — so an issue with a comment chain or
     // an in-flight lane (--notify) gets its edit announced where its readers
-    // are (2026-08-30). One verb each, one payload field each, and the POST
-    // can reach only the comments collection; neither endpoint has a field an
-    // issue's status could ride in.
-    const applier = source("scripts/orchestration/reconcile-apply.ts");
+    // are (2026-08-30). The body write rides the body writer, a literal for
+    // the close, and the POST can reach only the comments collection.
+    const applier = source(APPLIER);
     expect(applier.match(/"PATCH"/g)).toHaveLength(1);
     expect(applier.match(/"POST"/g)).toHaveLength(1);
-    expect(applier).toContain("JSON.stringify({ body })");
+    expect(applier).toContain("writeIssueBody(");
     expect(applier).toContain("JSON.stringify({ body: note })");
     expect(applier).toContain("${issueUrl(issue)}/comments");
     expect(applier).not.toMatch(/"(?:PUT|DELETE)"/);
@@ -1788,16 +1928,15 @@ describe("the toolchain granted to a reconciliation run closes only through the 
     expect(del).not.toContain("/issues");
   });
 
-  it("the watermark writer PATCHes one body and can only CREATE the carrier", () => {
-    // One PATCH whose payload is exactly the applier's shape ({ body }), one
-    // POST whose payload names its title from the pinned constant — so the
-    // only issue it can ever bring into existence is the carrier, and the
-    // only thing it can ever edit is a body. No other verb, no state field.
+  it("the watermark writer edits a body only through the body writer and can only CREATE the carrier", () => {
+    // No PATCH of its own — the stamp rides the body writer — and one POST
+    // whose payload names its title from the pinned constant, so the only
+    // issue it can ever bring into existence is the carrier, and the only
+    // thing it can ever edit is a body. No other verb, no state field.
     const wm = source("scripts/orchestration/reconcile-watermark.ts");
-    expect(wm.match(/"PATCH"/g)).toHaveLength(1);
+    expect(wm).not.toMatch(/"(?:PATCH|PUT|DELETE)"/);
     expect(wm.match(/"POST"/g)).toHaveLength(1);
-    expect(wm).not.toMatch(/"(?:PUT|DELETE)"/);
-    expect(wm).toContain("JSON.stringify({ body })");
+    expect(wm).toContain("writeIssueBody(");
     expect(wm).toContain("title: WATERMARK_ISSUE_TITLE");
   });
 
@@ -1822,7 +1961,7 @@ describe("the toolchain granted to a reconciliation run closes only through the 
     ]);
   });
 
-  it("nothing outside the five writers holds a write verb at all", () => {
+  it("nothing outside the six writers holds a write verb at all", () => {
     for (const rel of MODULES.filter((m) => !WRITERS.includes(m))) {
       expect({
         rel,
@@ -1844,7 +1983,7 @@ describe("the run summary line (#865)", () => {
 
   function run(
     over: {
-      issues?: TrackerIssue[];
+      issues?: SweptIssue[];
       prsTruncated?: boolean;
       previous?: string | null;
     } = {}
@@ -1855,6 +1994,8 @@ describe("the run summary line (#865)", () => {
         mergedPrs: [],
         issueStates: new Map(),
         prsTruncated: over.prsTruncated ?? false,
+        openPrs: [],
+        claimedIssues: new Set(),
       },
       index,
       {

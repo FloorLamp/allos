@@ -1769,32 +1769,22 @@ export default function IntakeItemForm({
 
       case "composition":
         return affordances.composition ? (
-          <div className="sm:col-span-2">
-            {state.ingredients.length === 0 ? (
-              <button
-                type="button"
-                data-testid="add-ingredients"
-                onClick={() => patch({ ingredients: [emptyIngredient()] })}
-                className="btn-ghost btn-sm"
-              >
-                List what&apos;s in this
-              </button>
-            ) : (
-              <IngredientsEditor
-                rows={state.ingredients}
-                setRows={(update) => {
-                  changeProductIdentity();
-                  patch((current) => ({
-                    ingredients:
-                      typeof update === "function"
-                        ? update(current.ingredients)
-                        : update,
-                  }));
-                }}
-                seedNote={ingredientSeedNote}
-              />
-            )}
-          </div>
+          <IngredientsEditor
+            rows={state.ingredients}
+            setRows={(update) => {
+              changeProductIdentity();
+              patch((current) => ({
+                ingredients:
+                  typeof update === "function"
+                    ? update(current.ingredients)
+                    : update,
+              }));
+            }}
+            // The first blank row is a reveal, not a stated composition, so it does not
+            // retire the product identity the way an edit to the rows does.
+            onStartList={() => patch({ ingredients: [emptyIngredient()] })}
+            seedNote={ingredientSeedNote}
+          />
         ) : null;
 
       case "purpose":

@@ -30,13 +30,15 @@ import {
   gatherEvidence,
   renderReport,
   resolveRunConfig,
+  type OpenPr,
   type ReconcileWatermark,
   type RunConfig,
-  type TrackerIssue,
+  type SweptIssue,
   type TrackerPr,
 } from "./reconcile-tracker-core";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
+import { laneIssues, readLedger } from "./ledger.mjs";
 helpGuard(process.argv, import.meta.url);
 
 interface GhLabel {
@@ -48,6 +50,8 @@ interface GhIssue {
   body: string | null;
   state: string;
   labels: GhLabel[];
+  created_at: string;
+  assignees: { login: string }[];
   pull_request?: unknown;
 }
 interface GhPr {
@@ -147,12 +151,14 @@ function main(): void {
   const rawIssues = issuePages.items as GhIssue[];
   const openIssues = rawIssues.filter((i) => !i.pull_request);
   const wanted = new Set(config.only);
-  const allIssues: TrackerIssue[] = openIssues.map((i) => ({
+  const allIssues: SweptIssue[] = openIssues.map((i) => ({
     number: i.number,
     title: i.title,
     body: i.body ?? "",
     state: "open" as const,
     labels: i.labels.map((l) => l.name),
+    createdAt: i.created_at,
+    assignees: i.assignees.map((a) => a.login),
   }));
 
   // The carrier issue is machine state, never a sweep subject; its stamp is
@@ -177,6 +183,23 @@ function main(): void {
       body: p.body ?? "",
       mergedAt: p.merged_at!,
     }));
+
+  // Every open PR, for the stale-P3 rule (#5671): one that mentions a P3 keeps
+  // it open. Refused on truncation for the open-issue reason — a PR behind the
+  // cap would let the issue it references close.
+  const openPrPages = ghGetAll(config, "/pulls?state=open");
+  if (openPrPages.truncated) {
+    console.error(
+      "reconcile-tracker: the open-PR fetch hit its page cap. A PR past it " +
+        "could be the one holding a stale P3 open. Refusing."
+    );
+    process.exit(2);
+  }
+  const openPrs: OpenPr[] = (openPrPages.items as GhPr[]).map((p) => ({
+    number: p.number,
+    title: p.title,
+    body: p.body ?? "",
+  }));
 
   // Resolve every cross-referenced number, including the closed ones that are
   // by definition absent from the open list — a dependency that still reads as
@@ -204,7 +227,15 @@ function main(): void {
   }
 
   const evidence = gatherEvidence(
-    { issues, mergedPrs, issueStates: states, prsTruncated: prPages.truncated },
+    {
+      issues,
+      mergedPrs,
+      openPrs,
+      // The dispatch ledger is the claim record the dispatcher itself checks.
+      claimedIssues: new Set(laneIssues(readLedger()).keys()),
+      issueStates: states,
+      prsTruncated: prPages.truncated,
+    },
     buildRepoIndex(process.cwd()),
     watermark
   );
