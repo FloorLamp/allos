@@ -42,7 +42,7 @@
 // PURE: every import is `import type`, erased at build, so a server component, a
 // client form and a test all read this the same way.
 
-import type { IssueRef } from "./log-manifest";
+import type { IssueRef, LogDomain } from "./log-manifest";
 import type { IntakeFactKey } from "./intake-facts";
 import type { ActivitySessionFactKey } from "./activity-session-facts";
 import type { PartFactKey } from "./activity-part-facts";
@@ -107,6 +107,9 @@ export type FormId =
   | "sleep-retime"
   | "illness-episode";
 
+/** What the chip row does with a fact when the person has not stated it. */
+export type FactRole = "essential" | "optional";
+
 /** A form that summarises itself in the shared chip row, and the facts it states. */
 export interface FactsDeclaration {
   readonly kind: "facts";
@@ -129,12 +132,21 @@ export interface ArguedFields {
 
 export type FormGrammar = FactsDeclaration | ArguedFields;
 
-// The form's own fact-key union is the argument, so a key it does not have fails here
-// rather than in a render nobody runs.
+// Every fact the form has, classified — `Record<K, FactRole>` over the form's own
+// `*FactKey` union, so a fact added to a form fails `tsc` here until this says what
+// the row does with it, and a fact renamed or retired fails as an unknown key. That
+// is the same enforcement `LogDomainManifest` gets from its columns (#4425), one
+// level down: the declaration cannot go stale in the quiet direction.
 const facts = <K extends string>(
-  essential: readonly K[],
-  optional: readonly K[]
-): FactsDeclaration => ({ kind: "facts", essential, optional });
+  roles: Record<K, FactRole>
+): FactsDeclaration => {
+  const keys = Object.keys(roles) as K[];
+  return {
+    kind: "facts",
+    essential: keys.filter((k) => roles[k] === "essential"),
+    optional: keys.filter((k) => roles[k] === "optional"),
+  };
+};
 
 const fields = (reason: string, ref: IssueRef): ArguedFields => ({
   kind: "fields",
@@ -147,66 +159,107 @@ export const FORM_GRAMMAR = {
 
   // components/IntakeItemForm.tsx. `timing` is optional because an as-needed item
   // with no confirmed ceiling has no schedule to state; a scheduled one always does.
-  "intake-item": facts<IntakeFactKey>(
-    ["dose", "importance", "prescription", "rxnorm", "supply"],
-    [
-      "timing",
-      "indication",
-      "identity",
-      "stopDate",
-      "composition",
-      "purpose",
-      "notes",
-    ]
-  ),
+  "intake-item": facts<IntakeFactKey>({
+    dose: "essential",
+    // An as-needed item with no confirmed ceiling has no schedule to state, so timing
+    // reaches the more-line there; a scheduled item always states one.
+    timing: "optional",
+    importance: "essential",
+    prescription: "essential",
+    indication: "optional",
+    identity: "optional",
+    rxnorm: "essential",
+    supply: "essential",
+    stopDate: "optional",
+    composition: "optional",
+    purpose: "optional",
+    notes: "optional",
+  }),
 
   // components/ActivityForm.tsx states facts at TWO scopes, and they are two chip
   // rows with two key unions rather than one row with a mixed vocabulary: the session
   // (what the whole workout used) and each part (what one exercise did). `equipment`
   // is optional at the session — a ride with no bike on file is complete — and
   // essential at the part, where a bare variant base cannot be saved without one.
-  "activity-session": facts<ActivitySessionFactKey>([], ["equipment"]),
-  "activity-part": facts<PartFactKey>(
-    ["equipment"],
-    ["sides", "intent", "effort"]
-  ),
+  "activity-session": facts<ActivitySessionFactKey>({ equipment: "optional" }),
+  "activity-part": facts<PartFactKey>({
+    equipment: "essential",
+    sides: "optional",
+    intent: "optional",
+    effort: "optional",
+  }),
 
   // app/(app)/training/GoalForm.tsx. The deadline is essential rather than optional
   // on purpose: a goal with no target date is invisible to pacing and to Upcoming.
-  goal: facts<GoalFactKey>(
-    ["subject", "kind", "target", "equipment", "deadline"],
-    ["startingFrom", "title", "category", "notes"]
-  ),
+  goal: facts<GoalFactKey>({
+    subject: "essential",
+    kind: "essential",
+    target: "essential",
+    equipment: "essential",
+    deadline: "essential",
+    startingFrom: "optional",
+    title: "optional",
+    category: "optional",
+    notes: "optional",
+  }),
 
   // app/(app)/protocols/ProtocolForm.tsx. Cadence is an essential of the PRACTICE,
   // so it is stated only once a practice is picked.
-  protocol: facts<ProtocolFactKey>(
-    ["practice", "cadence", "window"],
-    ["link", "situation", "notes"]
-  ),
+  protocol: facts<ProtocolFactKey>({
+    practice: "essential",
+    cadence: "essential",
+    window: "essential",
+    link: "optional",
+    situation: "optional",
+    notes: "optional",
+  }),
 
   // app/(app)/encounters/AppointmentForm.tsx and EncounterForm.tsx read one facts
   // module. The one essential is the date: both writes reject a visit without one.
   // Only the encounter states diagnoses.
-  appointment: facts<VisitFactKey>(
-    ["when"],
-    ["provider", "kind", "reason", "location", "notes"]
-  ),
-  encounter: facts<VisitFactKey>(
-    ["when"],
-    ["provider", "kind", "reason", "location", "notes", "diagnoses"]
-  ),
+  appointment: facts<VisitFactKey>({
+    when: "essential",
+    provider: "optional",
+    kind: "optional",
+    reason: "optional",
+    location: "optional",
+    notes: "optional",
+    // Stated by the encounter only; the appointment form has no diagnoses field, so
+    // its chip is one the row never renders.
+    diagnoses: "optional",
+  }),
+  encounter: facts<VisitFactKey>({
+    when: "essential",
+    provider: "optional",
+    kind: "optional",
+    reason: "optional",
+    location: "optional",
+    notes: "optional",
+    diagnoses: "optional",
+  }),
 
   // app/(app)/training/InjuryBar.tsx. The two essentials are the two the write
   // refuses without; the status is always stated because a new injury is born active.
-  injury: facts<InjuryFactKey>(
-    ["label", "regions", "status"],
-    ["laterality", "movements", "exercises", "loadFactor", "reviewDate"]
-  ),
+  injury: facts<InjuryFactKey>({
+    label: "essential",
+    regions: "essential",
+    // Always stated: a new injury is born active, and a default the form will write is
+    // exactly the kind of fact the row exists to show before it is written.
+    status: "essential",
+    laterality: "optional",
+    movements: "optional",
+    exercises: "optional",
+    loadFactor: "optional",
+    reviewDate: "optional",
+  }),
 
   // app/(app)/sleep/SleepMoodEditDialog.tsx. Nothing is optional: the night chip is
   // offered only where the date is editable, and the other two are what the dialog is.
-  "sleep-mood": facts<SleepFactKey>(["night", "duration", "mood"], []),
+  "sleep-mood": facts<SleepFactKey>({
+    night: "essential",
+    duration: "essential",
+    mood: "essential",
+  }),
 
   // ── The log domains' field forms ───────────────────────────────────────────
 
@@ -370,3 +423,19 @@ export const FORM_GRAMMAR = {
     "#5300"
   ),
 } as const satisfies Record<FormId, FormGrammar>;
+
+// The bridge between this registry and the log domains (#4425's own pattern, one
+// level down). Without it "a log domain has a registered form" would be true only of
+// the eight ids above, and a NINTH domain — added to `LOG_DOMAINS`, which is the list
+// a new dated write core actually joins — could ship with no grammar declared at all.
+// Its form is what the record's add door opens.
+export const FORM_ID_OF_LOG_DOMAIN = {
+  food: "food-serving",
+  dose: "historical-dose",
+  practice: "practice-session",
+  mood: "mood",
+  symptom: "symptom",
+  stool: "stool",
+  substance: "substance-entry",
+  body: "measurements",
+} as const satisfies Record<LogDomain, FormId>;
