@@ -3,6 +3,7 @@ import {
   MOBILITY_ACTIVITIES,
   SPORTS,
 } from "./activities-catalog";
+import { parseClockHhmm } from "./format-date";
 import { liftInfo } from "./lifts";
 import type { ActivityType } from "./types";
 import type { LocalTime } from "./temporal-types";
@@ -221,6 +222,27 @@ export function legacyActivityName(
 //
 // The display path reads through this too, so "what clock does this row state" is one
 // computation rather than a parse per surface.
+// NOT A FORK OF `parseClockHhmm`, AND NOT TO BE "CONVERGED" INTO ONE (#4550, ruled).
+// The CANONICAL parse is the owner's — `parseClockHhmm` (lib/format-date.ts) reads
+// "HH:MM[:SS]" and the legacy 12-hour display form, and it runs first here, which is
+// what fixed this site reading "2:30 pm" as 02:30. The two regexes below are this
+// site's own EXTRACTOR TOLERANCE layered on top of that parse, the same documented
+// superset shape the ISO branch has always been:
+//
+//   ISO_CLOCK      — the #2245 branch: a model may hand back "…T14:30:00Z" for a
+//                    clock a training log stated as "14:30", and the column takes
+//                    one shape, so the persist boundary folds the other into it.
+//   ACTIVITY_CLOCK — UNANCHORED ON PURPOSE. It is the mechanism that implements the
+//                    VERBATIM rule stated above: an extracted value can carry a
+//                    trailing zone or fraction the model invented ("07:00 UTC",
+//                    "14:30:00.000Z"), and the stated clock is still the fact. The
+//                    owner's patterns are anchored, so on its own it would answer
+//                    null for those — discarding a time the user stated, which is a
+//                    worse outcome than the invented zone the rule exists to ignore.
+//
+// Order is load-bearing: owner, then ISO, then prefix. Every input that resolved to a
+// clock before still resolves to the SAME clock; only the meridiem forms the owner
+// reads correctly changed.
 const ACTIVITY_CLOCK = /^(\d{1,2}):(\d{2})/;
 const ISO_CLOCK = /^\d{4}-\d{2}-\d{2}[T ](\d{1,2}):(\d{2})/;
 
@@ -230,9 +252,16 @@ export function activityClockHHMM(
   if (typeof raw !== "string") return null;
   const value = raw.trim();
   if (!value) return null;
-  const m = ACTIVITY_CLOCK.exec(value) ?? ISO_CLOCK.exec(value);
-  if (!m) return null;
-  const [h, min] = [Number(m[1]), Number(m[2])];
+  let h: number;
+  let min: number;
+  const canonical = parseClockHhmm(value);
+  if (canonical) {
+    [h, min] = canonical.split(":").map(Number);
+  } else {
+    const m = ISO_CLOCK.exec(value) ?? ACTIVITY_CLOCK.exec(value);
+    if (!m) return null;
+    [h, min] = [Number(m[1]), Number(m[2])];
+  }
   if (h > 23 || min > 59) return null;
   // eslint-disable-next-line no-restricted-syntax -- LocalTime minter: hour and minute range-checked above
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}` as LocalTime;

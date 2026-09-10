@@ -44,6 +44,7 @@ import {
   illnessThresholdsDataset,
   illnessThresholdSlugStrategy,
 } from "./illness-thresholds";
+import { liftsDataset, liftNameStrategy } from "./lifts";
 import {
   medicationDescriptionsDataset,
   medDescriptionsStrategy,
@@ -162,6 +163,10 @@ export const DATASETS: RegisteredDataset[] = [
   {
     dataset: illnessThresholdsDataset,
     strategy: illnessThresholdSlugStrategy,
+  },
+  {
+    dataset: liftsDataset,
+    strategy: liftNameStrategy,
   },
   {
     dataset: medicationDescriptionsDataset,

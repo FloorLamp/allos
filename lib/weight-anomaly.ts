@@ -10,6 +10,8 @@
 // threshold is a named constant with its rationale; boundaries are unit-tested in
 // lib/__tests__/weight-anomaly.test.ts.
 
+import { daysBetweenDateStr } from "./date";
+
 // A single dated weight reading (canonical kg) with its row id, so a finding can
 // link to the exact entry to fix/convert/delete.
 export interface DatedWeight {
@@ -62,19 +64,19 @@ export const ANOMALY_LOOKBACK_DAYS = 60;
 
 // Whole days from an ISO date to `today` (both YYYY-MM-DD), or Infinity if
 // unparseable.
+// The day arithmetic is `daysBetweenDateStr`'s (lib/date.ts, #4553 item 6), of which
+// these two were private copies. It answers NULL for an unparseable date where they
+// answered Infinity; Infinity is what both readers below want, and the decision is
+// explicit rather than cast away: an undated reading falls OUT of the lookback window
+// and OUT of the adjacency gap, so a corrupt row is never flagged as an anomaly.
 function daysSince(dateISO: string, today: string): number {
-  const a = Date.parse(`${dateISO}T00:00:00Z`);
-  const b = Date.parse(`${today}T00:00:00Z`);
-  if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
-  return Math.round((b - a) / 86_400_000);
+  return daysBetweenDateStr(dateISO, today) ?? Infinity;
 }
 
 // Whole days between two ISO dates (absolute), or Infinity if unparseable.
 function daysBetween(a: string, b: string): number {
-  const ta = Date.parse(`${a}T00:00:00Z`);
-  const tb = Date.parse(`${b}T00:00:00Z`);
-  if (Number.isNaN(ta) || Number.isNaN(tb)) return Infinity;
-  return Math.abs(Math.round((tb - ta) / 86_400_000));
+  const days = daysBetweenDateStr(a, b);
+  return days == null ? Infinity : Math.abs(days);
 }
 
 // Whether the ratio of two readings looks like a kg↔lb entry mix-up.

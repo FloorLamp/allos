@@ -24,7 +24,7 @@ import {
   type MuscleRegion,
   type BodyGroup,
 } from "./lifts";
-import { weekdayOfDateStr, WEEKDAYS_LONG } from "./date";
+import { daysBetweenDateStr, weekdayOfDateStr, WEEKDAYS_LONG } from "./date";
 import { daysLeftPhrase, reachableWithoutToday } from "./effort-class";
 import {
   deRankUnavailableLifts,
@@ -122,15 +122,16 @@ export function regionRecoveryDays(region: MuscleRegion): number {
   return REGION_RECOVERY_DAYS[region] ?? SMALL_REGION_RECOVERY_DAYS;
 }
 
-// ---- Shared date helpers (pure, self-contained) ----
+// ---- Shared date helpers ----
 
 // Whole days from an ISO date to `today` (both YYYY-MM-DD), or Infinity if
-// unparseable.
+// unparseable. The arithmetic is `daysBetweenDateStr`'s (lib/date.ts, #4553 item 6),
+// of which this was a private copy; only the unparseable ANSWER is decided here.
+// Infinity, not null: every reader is a "how recent is this?" test, and an undated
+// row must fall out of the window rather than into it — a row with no readable date
+// is not evidence that a muscle is still resting or that a lift was done this week.
 function daysBetween(dateISO: string, today: string): number {
-  const a = Date.parse(`${dateISO}T00:00:00Z`);
-  const b = Date.parse(`${today}T00:00:00Z`);
-  if (Number.isNaN(a) || Number.isNaN(b)) return Infinity;
-  return Math.round((b - a) / 86_400_000);
+  return daysBetweenDateStr(dateISO, today) ?? Infinity;
 }
 
 function within(dateISO: string, today: string, days: number): boolean {

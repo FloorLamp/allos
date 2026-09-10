@@ -1,5 +1,6 @@
 import {
   daysBetweenDateStr,
+  hhmmFromMinutes,
   MONTHS_LONG,
   MONTHS_SHORT,
   WEEKDAYS_LONG,
@@ -72,8 +73,10 @@ export function formatClockMinutes(
   minutesOfDay: number,
   meridiem: "upper-space" | "lower-nospace" = "upper-space"
 ): string {
-  const total = (((Math.round(minutesOfDay) % 1440) + 1440) % 1440) | 0;
-  return formatClock(timeFormat, Math.floor(total / 60), total % 60, meridiem);
+  // The normalization is `hhmmFromMinutes`'s (lib/date.ts, #4550) — this seam adds
+  // only the login's clock convention on top of the digits it decides.
+  const [h, m] = hhmmFromMinutes(minutesOfDay).split(":");
+  return formatClock(timeFormat, Number(h), Number(m), meridiem);
 }
 
 // Stored clock text as a canonical "HH:MM", or NULL when the text is not a clock at
@@ -429,14 +432,10 @@ export function formatTimestamp(
 export function formatRelativeDate(iso: string, todayStr: string): string {
   const days = daysBetweenDateStr(iso, todayStr); // today − iso
   if (days == null) return iso;
+  // A future date is "Today" HERE — this reader's dates are facts already recorded,
+  // so it has no forward vocabulary to reach for. `formatRelativeDays` has one.
   if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days} days ago`;
-  const plural = (n: number, unit: string) =>
-    `${n} ${unit}${n === 1 ? "" : "s"} ago`;
-  if (days < 30) return plural(Math.round(days / 7), "week");
-  if (days < 365) return plural(Math.round(days / 30), "month");
-  return plural(Math.round(days / 365), "year");
+  return formatRelativeDays(days);
 }
 
 // Compact "age" label for dense, always-visible contexts where the full
@@ -493,9 +492,32 @@ export function formatRelativeTime(
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return input;
 
-  const secs = Math.round((now.getTime() - d.getTime()) / 1000);
-  if (Math.abs(secs) < RELATIVE_SKEW_SECS) return "just now";
+  return formatRelativeSeconds(
+    Math.round((now.getTime() - d.getTime()) / 1000)
+  );
+}
+
+// THE LADDER ITSELF, over a signed age in seconds: positive is the past, negative
+// the future, and `RELATIVE_SKEW_SECS` either side of zero is "just now". Exported
+// because a caller can hold the ELAPSED TIME without holding the instant — the
+// refill confirm names its own previous tap by how long ago it was (#4550, which
+// found `lib/one-tap.ts` keeping a second ladder that floored where this rounds and
+// stopped at days, so a 400-day fact read "400 days ago"). A non-finite age reads
+// "just now": every caller is naming a moment, not reporting a duration.
+export function formatRelativeSeconds(secs: number): string {
+  if (!Number.isFinite(secs) || Math.abs(secs) < RELATIVE_SKEW_SECS)
+    return "just now";
   return secs < 0 ? forwardLabel(-secs) : pastLabel(secs);
+}
+
+// The same ladder over a signed WHOLE-DAY difference (positive = days ago), for the
+// callers whose facts are calendar dates rather than instants. Day 0 is "Today"; the
+// rest is `pastLabel`/`forwardLabel` verbatim, so a date and a timestamp of the same
+// age never disagree on their bucket or their capitalization (#4550 — the illness
+// episode ladder stopped at days and capitalized "In 3 days" against this lowercase).
+export function formatRelativeDays(days: number): string {
+  if (!Number.isFinite(days) || days === 0) return "Today";
+  return days < 0 ? forwardLabel(-days * 86400) : pastLabel(days * 86400);
 }
 
 // The past half: "N minutes ago" … "N years ago", with "Yesterday" at one day.
