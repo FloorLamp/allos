@@ -10,6 +10,7 @@ import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
+import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   writeActivityFold,
@@ -299,7 +300,14 @@ export async function mergeActivities(
     // The N-way core folds every drop into the keeper and re-parents their children,
     // returning the ACTUAL per-drop route move so each undo context inverts exactly
     // what happened (#569).
-    const moves = writeActivityFold(profile.id, keepId, keep, drops, overrides);
+    const moves = writeActivityFold(
+      profile.id,
+      keepId,
+      keep,
+      drops,
+      carryPostWorkoutMarker,
+      overrides
+    );
     const movedRouteByDrop = new Map(
       moves.map((m) => [m.dropId, m.movedRouteId])
     );
