@@ -59,7 +59,7 @@ caller-specific exception.
 
 ## One write core
 
-`lib/queries/intake/adherence.ts` owns scheduled status transitions:
+`lib/queries/intake/dose-status.ts` owns scheduled status transitions:
 
 - One-way `markDoseTaken` and `markDoseSkipped` stop on an existing row and report
   its actual status. Retries must not flip an already resolved dose.

@@ -141,7 +141,7 @@ const CANONICAL_INSTANT_COLUMNS: Record<
 // shrinking. Adding an entry means asserting "no column receives this string in a
 // shape the column did not declare" — say why.
 const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
-  "lib/queries/intake/adherence.ts": {
+  "lib/queries/intake/dose-time-correction.ts": {
     count: 4,
     why: "the dose-burst reader and restamp core re-serialize already-stored stamps (parseUtcSql → toISOString) into the in-memory `tapAt` / `statedAt` values the pure burst grouping compares — immutable `recorded_at` for identity and freshness, mutable `occurred_at` for the administration instant (#2206, #2876). The write itself serializes through utcInstant.",
   },
