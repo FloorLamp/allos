@@ -1,6 +1,7 @@
 "use client";
 
 import { formatCount } from "@/lib/format-number";
+import { verdictBadge } from "@/lib/chart-colors";
 
 import { useEffect, useRef, useState } from "react";
 import type { AiEvent, AiStatus } from "@/lib/ai-log";
@@ -11,10 +12,13 @@ import { formatTimestamp } from "@/lib/format-date";
 
 const MAX_ROWS = 500;
 
+// AiStatus mapped to the shared verdict badge (#5187) at its boundary. `ok` is
+// deliberately NEUTRAL, not `good`: a call that worked is unremarkable, and a
+// wall of green would drown the two rows a reader is actually scanning for.
 const STATUS_BADGE: Record<AiStatus, string> = {
-  ok: "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300",
-  skipped: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  failed: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+  ok: verdictBadge.neutral.class,
+  skipped: verdictBadge.warn.class,
+  failed: verdictBadge.bad.class,
 };
 
 // Live-streams AI events over SSE, seeded by the server-rendered snapshot. A

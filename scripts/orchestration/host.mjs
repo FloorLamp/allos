@@ -2,7 +2,9 @@
 // many harnesses ask it (#3710).
 //
 //   node scripts/orchestration/host.mjs state-dir   # print (and create) the state dir
-//   node scripts/orchestration/host.mjs node-bin    # print the .nvmrc-major node bin dir
+//   node scripts/orchestration/host.mjs node-bin [ref]  # print the .nvmrc-major node bin dir
+//       — .nvmrc from the working tree, or from <ref> (a SHA or origin/main) when
+//       given, so a checkout behind main cannot answer for main (#4960).
 //
 // The work bootstrap grew up on one Linux container and hard-coded
 // its shape: state in /home/user/scratch, node under /opt/nvm, a token always
@@ -157,11 +159,24 @@ if (
       "..",
       ".."
     );
-    const major = fs
-      .readFileSync(path.join(repoRoot, ".nvmrc"), "utf8")
-      .trim()
-      .replace(/^v/, "")
-      .split(".")[0];
+    const ref = process.argv[3];
+    let nvmrc;
+    try {
+      nvmrc = ref
+        ? execFileSync("git", ["-C", repoRoot, "show", `${ref}:.nvmrc`], {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "inherit"],
+          })
+        : fs.readFileSync(path.join(repoRoot, ".nvmrc"), "utf8");
+    } catch {
+      // Exit 2, apart from 1 (no node): the caller must not print "no node
+      // installed" over a .nvmrc it never read.
+      console.error(
+        `host.mjs: could not read .nvmrc at ${ref ?? "the working tree"}`
+      );
+      process.exit(2);
+    }
+    const major = nvmrc.trim().replace(/^v/, "").split(".")[0];
     const bin = discoverNodeBin(major);
     if (!bin) {
       console.error(`host.mjs: no node ${major} found (.nvmrc)`);

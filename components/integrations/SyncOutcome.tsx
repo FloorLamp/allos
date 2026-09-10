@@ -9,7 +9,7 @@ import {
   originChoiceLabel,
   parseSyncEventDetails,
 } from "@/lib/integrations/sync-details";
-import { STATUS_TEXT_TONE } from "./StatusBadge";
+import { verdictText } from "@/lib/chart-colors";
 
 // The ONE rendering of "what did this run do" (#1772). Every surface that shows a
 // sync outcome — the grid card, the setup-page status header, its history table, and
@@ -33,7 +33,7 @@ export function SyncOutcomeLine({
   return (
     <span className={`inline-flex items-center gap-1.5 ${className}`}>
       <Icon
-        className={`h-4 w-4 shrink-0 ${STATUS_TEXT_TONE[tone]}`}
+        className={`h-4 w-4 shrink-0 ${verdictText[tone].class}`}
         stroke={1.75}
       />
       <span
@@ -49,7 +49,7 @@ export function SyncOutcomeLine({
       </span>
       {/* A truncated run SUCCEEDED as far as it got, but a page cap / rate limit left
           data upstream (#1614) — so it must not read as a clean green success. */}
-      {tone === "caution" && ev.ok !== 0 && (
+      {tone === "warn" && ev.ok !== 0 && (
         <span
           className="font-medium text-amber-600 dark:text-amber-400"
           data-testid={`sync-partial-${ev.id}`}

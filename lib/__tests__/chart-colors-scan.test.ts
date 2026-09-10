@@ -261,3 +261,243 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
     ).toEqual([]);
   });
 });
+
+// ── the class scan's other blind spot: VERDICT maps (issue #5187) ────────────
+//
+// The ramp rule above catches an ARRAY of same-hue bg-classes. It does not
+// catch a KEYED map of mixed hues — which is precisely the shape "good, warn,
+// bad, neutral" takes, and there were ten of them: `PILLAR_TONE_CLASS`,
+// `PILLAR_TONE_BADGE_CLASS`, `STATUS_TONE`, `STATUS_TEXT_TONE`, the trend chip's
+// `TONE_CLASS`, `SETUP_TONE_TEXT`, the three `PACE_*_CLASS` maps and an inline
+// literal in the cycling ride summary, each with its own emerald/amber/rose
+// steps and its own idea of `neutral`. Three of them painted light-mode text at
+// the `-600` step, which is under WCAG AA on the Botanical surface.
+//
+// The rule, deliberately narrow like the ramp rule: an object literal keyed by
+// TWO OR MORE VERDICT WORDS whose values carry `bg-`/`text-`/`border-` colour
+// utilities must live in a file that imports the palette. It says nothing about
+// maps keyed by colour names (Notice's six-member tint family), by a non-verdict
+// identity (`OfferTone`'s brand/neutral emphasis), or by domain states — those
+// are a different job, the same way the ramp rule leaves categorical status maps
+// alone.
+
+// The four words and the spellings the app used for them before they converged.
+const VERDICT_WORDS = new Set([
+  "good",
+  "warn",
+  "bad",
+  "neutral",
+  "caution",
+  "watch",
+  "attention",
+  "positive",
+  "ok",
+  "failed",
+  "info",
+  "default",
+]);
+
+// A colour utility inside a class string. `border-` counts: a tinted block's
+// border is as much a verdict colour as its text.
+const COLOR_UTILITY =
+  /(?<![\w-])(?:dark:)?(?:bg|text|border)-[a-z]+-\d{2,3}(?![\w-])/;
+
+// An object-literal entry: `good:` / `"on-pace":` at the head of a line.
+const ENTRY_KEY = /^\s*(?:"([\w-]+)"|([A-Za-z_$][\w$]*))\s*:/;
+
+/**
+ * Runs of adjacent object-literal entries that paint colour classes. A run ends
+ * at a line that is neither an entry nor a continuation of one, so two separate
+ * maps in one file are two runs.
+ */
+function verdictColorMaps(text: string): string[] {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let keys: string[] = [];
+  let colored = false;
+  let firstLine = 0;
+  const flush = () => {
+    const verdicts = keys.filter((k) => VERDICT_WORDS.has(k));
+    if (colored && new Set(verdicts).size >= 2) {
+      out.push(`line ${firstLine + 1}: { ${keys.join(", ")} }`);
+    }
+    keys = [];
+    colored = false;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const m = ENTRY_KEY.exec(lines[i]);
+    if (m) {
+      if (keys.length === 0) firstLine = i;
+      keys.push(m[1] ?? m[2]);
+      // The value may wrap onto the next line (prettier does this constantly).
+      if (
+        COLOR_UTILITY.test(lines[i]) ||
+        COLOR_UTILITY.test(lines[i + 1] ?? "")
+      )
+        colored = true;
+      continue;
+    }
+    // A wrapped value line keeps the run open; anything else closes it.
+    if (keys.length > 0 && /^\s*["`']/.test(lines[i])) continue;
+    if (keys.length > 0) flush();
+  }
+  flush();
+  return out;
+}
+
+const PALETTE_IMPORT =
+  /from\s+["'](?:@\/lib\/chart-colors|\.{1,2}\/chart-colors)["']/;
+
+// Files that declare a verdict-keyed colour map and are allowed NOT to import
+// the palette, with the reason. Each is a role the three shared maps (text,
+// badge, fill) do not cover — not a licence to re-pick emerald.
+const VERDICT_ALLOWLIST = new Map<string, string>([
+  [
+    "lib/chart-colors.ts",
+    "the palette itself — this is where a verdict colour lives",
+  ],
+  [
+    "components/fitness-heat.ts",
+    "an ORDINAL five-step great→bad ramp (#1132), not the four-word verdict: " +
+      "collapsing lime and orange into good/bad would delete two steps the " +
+      "Fitness-check tiles actually display",
+  ],
+  [
+    "components/SessionHighlights.tsx",
+    "a LEFT-ACCENT tinted block — a -500 border edge plus a 60%-opacity wash — " +
+      "which is none of the three roles the palette owns (text, badge, fill)",
+  ],
+]);
+
+describe("verdict tone maps (issue #5187)", () => {
+  it("no surface hand-rolls a good/warn/bad colour map — read @/lib/chart-colors", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of rampScanFiles()) {
+      if (VERDICT_ALLOWLIST.has(rel)) continue;
+      const maps = verdictColorMaps(text);
+      if (maps.length === 0 || PALETTE_IMPORT.test(text)) continue;
+      for (const m of maps) offenders.push(`${rel}: ${m}`);
+    }
+    expect(
+      offenders,
+      `A keyed map of good/warn/bad/neutral colour classes is a PALETTE ` +
+        `decision, and the ten that existed before #5187 disagreed with each ` +
+        `other on every tone — three of them under WCAG AA. Import verdictText / ` +
+        `verdictBadge / verdictFill from @/lib/chart-colors, or map at the ` +
+        `boundary and keep only the entries that are genuinely not verdicts ` +
+        `(lib/pace-presentation.ts is the worked example). A role the three maps ` +
+        `do not cover gets an entry, with its reason, in this test's ` +
+        `VERDICT_ALLOWLIST:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("every verdict-allowlist entry still declares such a map (no stale entries)", () => {
+    const stale: string[] = [];
+    for (const rel of VERDICT_ALLOWLIST.keys()) {
+      const abs = path.join(REPO, rel);
+      if (
+        !fs.existsSync(abs) ||
+        verdictColorMaps(fs.readFileSync(abs, "utf8")).length === 0
+      ) {
+        stale.push(rel);
+      }
+    }
+    expect(
+      stale,
+      `These VERDICT_ALLOWLIST entries no longer declare a verdict colour map:\n${stale.join("\n")}`
+    ).toEqual([]);
+  });
+});
+
+// ── the completeness list (issue #5187) ─────────────────────────────────────
+//
+// #5187 counted FOURTEEN `…Tone` vocabularies for one judgment. Eight of them
+// were the four words renamed and are gone. The ones that remain each have to
+// state WHY they are not `VerdictTone` — otherwise the count grows back one
+// well-meaning domain type at a time, which is exactly how it reached fourteen.
+// A new `export type …Tone` fails this test until it is classified here.
+const TONE_VOCABULARIES = new Map<string, string>([
+  [
+    "VerdictTone",
+    "the vocabulary itself — good | warn | bad | neutral, in the palette",
+  ],
+  [
+    "ChartCellTone",
+    "not a vocabulary: a union of the RENDERED class strings a density/adherence " +
+      "cell may carry, used to type a cell prop",
+  ],
+  [
+    "CoachingTone",
+    "`action` is a call to act — go do this — which is neither a good outcome " +
+      "nor a bad one; flattening it would delete the distinction a nudge exists for",
+  ],
+  [
+    "FindingTone",
+    "CoachingTone plus `info`, so it inherits `action` and adds a second " +
+      "no-judgment word; mapped at its boundary in components/HouseholdCard.tsx",
+  ],
+  [
+    "HeatTone",
+    "an ORDINAL five-step ramp (great/good/mid/weak/bad) the Fitness-check tiles " +
+      "display as five steps; four words cannot hold it",
+  ],
+  [
+    "ProgressPaceTone",
+    "`met` and `on-pace` are different answers — achieved vs on track — and the " +
+      "goals page paints them differently on purpose; mapped at its boundary in " +
+      "lib/pace-presentation.ts, which reads the palette for the other three",
+  ],
+  [
+    "FeedTone",
+    "`pending` is an in-flight extraction, a state with no verdict yet; the feed " +
+      "renders it as a spinner rather than a colour",
+  ],
+  [
+    "FlagTone",
+    "`default` is TimelineEvent's own word for its unflagged tone, and FlagTone " +
+      "being a strict subset of TimelineEvent['tone'] is load-bearing (it slots " +
+      "into timeline events directly)",
+  ],
+  [
+    "PortalStatusTone",
+    "`idle` and `ok` are lifecycle states a portal login renders as muted chrome, " +
+      "not judgments; only `attention` is a verdict",
+  ],
+  [
+    "NoticeTone",
+    "not a verdict vocabulary: the tinted-BLOCK tint family, keyed by colour name " +
+      "and six wide — `sky` and `violet` name no judgment at all",
+  ],
+  [
+    "OfferTone",
+    "not a verdict: brand-vs-neutral EMPHASIS for an offer row's call to action",
+  ],
+]);
+
+const TONE_TYPE = /^export type (\w*Tone)\b/gm;
+
+describe("tone vocabulary census (issue #5187)", () => {
+  it("classifies every exported …Tone type", () => {
+    const found = new Map<string, string>();
+    for (const { rel, text } of rampScanFiles()) {
+      for (const m of text.matchAll(TONE_TYPE)) found.set(m[1], rel);
+    }
+    const unclassified = [...found]
+      .filter(([name]) => !TONE_VOCABULARIES.has(name))
+      .map(([name, rel]) => `${name} (${rel})`);
+    expect(
+      unclassified,
+      `A new tone vocabulary. If it is the four verdict words under another ` +
+        `name, delete it and use VerdictTone from @/lib/chart-colors. If its ` +
+        `extra words carry meaning, keep it, paint it from the palette at its ` +
+        `boundary, and add it to TONE_VOCABULARIES with the reason:\n` +
+        unclassified.join("\n")
+    ).toEqual([]);
+
+    const gone = [...TONE_VOCABULARIES.keys()].filter((n) => !found.has(n));
+    expect(
+      gone,
+      `These classified vocabularies no longer exist — delete their entries:\n${gone.join("\n")}`
+    ).toEqual([]);
+  });
+});
