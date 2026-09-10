@@ -8,7 +8,7 @@ ledgers do not establish what another session is doing. Follow
 
 ## The slice
 
-The PM assigns domain and file slices in the Ladder issue (#4769). Dispatch only
+The PM assigns domain and file slices in the pinned Ladder issue. Dispatch only
 inside the assigned slice, including its explicit file exclusions. Resolve a
 needed cross-slice edit with the owning session and PM before proceeding. Use the
 session's authorized communication channels; tool availability alone is not

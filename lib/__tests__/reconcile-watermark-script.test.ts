@@ -33,13 +33,16 @@ const method = at("-X") ?? "GET";
 const state = JSON.parse(fs.readFileSync(process.env.STUB_STATE, "utf8"));
 fs.appendFileSync(
   process.env.STUB_LOG,
-  JSON.stringify({ method, url, data: at("-d") }) + "\\n"
+  JSON.stringify({ method, url, data: at("-d") ?? at("--data-binary") }) + "\\n"
 );
 const save = () =>
   fs.writeFileSync(process.env.STUB_STATE, JSON.stringify(state));
+// The script asks for the status with -w; the body writer it routes through
+// uses --fail-with-body and parses bare JSON, so answer each in its own style.
 const reply = (code, body) => {
-  process.stdout.write(JSON.stringify(body) + "\\n" + code);
-  process.exit(0);
+  const wantsCode = args.includes("-w");
+  process.stdout.write(JSON.stringify(body) + (wantsCode ? "\\n" + code : ""));
+  process.exit(!wantsCode && code >= 400 ? 22 : 0);
 };
 if (method === "GET" && url.includes("/issues?")) {
   // STUB_FULL_PAGES serves that many FULL pages of ordinary open issues, so the
@@ -65,7 +68,7 @@ if (method === "GET" && one) {
 }
 if (method === "PATCH" && one) {
   const found = state.issues.find((i) => i.number === Number(one[1]));
-  found.body = JSON.parse(at("-d")).body;
+  found.body = JSON.parse(at("-d") ?? at("--data-binary")).body;
   save();
   reply(200, found);
 }
@@ -99,6 +102,7 @@ function runScript(state: State, scriptArgs: readonly string[], fullPages = 0) {
   const log = path.join(dir, "calls.jsonl");
   fs.writeFileSync(stateFile, JSON.stringify(state));
   fs.writeFileSync(log, "");
+  const scratch = path.join(dir, "scratch");
   const run = spawnSync(TSX, [SCRIPT, ...scriptArgs], {
     cwd: REPO,
     encoding: "utf8",
@@ -106,6 +110,7 @@ function runScript(state: State, scriptArgs: readonly string[], fullPages = 0) {
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       GH_TOKEN: "stub token 1",
+      SCRATCH: scratch,
       STUB_STATE: stateFile,
       STUB_LOG: log,
       STUB_FULL_PAGES: String(fullPages),
@@ -119,6 +124,7 @@ function runScript(state: State, scriptArgs: readonly string[], fullPages = 0) {
   return {
     ...run,
     calls,
+    scratch,
     state: JSON.parse(fs.readFileSync(stateFile, "utf8")) as State,
   };
 }
@@ -154,10 +160,16 @@ describe("reconcile-watermark.ts", () => {
     expect(run.status).toBe(0);
     expect(run.stdout).toContain(`stamped #4200: ${OLD} → ${NEW} (verified)`);
     expect(run.state.issues[0].body).toContain(`"lastRunAt":"${NEW}"`);
-    // Exactly one write, and it is the body PATCH.
+    // Exactly one write, and it is the body PATCH — made through the body
+    // writer, which kept the pre-stamp body in scratch first (#5673).
     const writes = run.calls.filter((c) => c.method !== "GET");
     expect(writes).toHaveLength(1);
     expect(writes[0].method).toBe("PATCH");
+    const kept = fs.readdirSync(path.join(run.scratch, "issue-bodies"));
+    expect(kept).toHaveLength(1);
+    expect(
+      fs.readFileSync(path.join(run.scratch, "issue-bodies", kept[0]), "utf8")
+    ).toBe(carrier(OLD).body);
   });
 
   it("the FIRST --apply creates the carrier, labeled out of the queue", () => {

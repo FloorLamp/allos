@@ -24,6 +24,7 @@ for implementation scope.
 | [reconcile-repo-index.ts](../../scripts/orchestration/reconcile-repo-index.ts)     | Shared tracked-file index and lazy source reads.                            |
 | [reconcile-patch.ts](../../scripts/orchestration/reconcile-patch.ts)               | Exact-anchor patch validation and application.                              |
 | [reconcile-apply.ts](../../scripts/orchestration/reconcile-apply.ts)               | Issue-body writes, change notices, patch outcomes, and the stale-P3 close.  |
+| [issue-body-write.ts](../../scripts/orchestration/issue-body-write.ts)             | Body PATCH guard: scratch copy first; refuses empty or half-length bodies.  |
 | [reconcile-labels.ts](../../scripts/orchestration/reconcile-labels.ts)             | Retired-label removals, ruled priorities, and planned domain additions.     |
 | [reconcile-watermark.ts](../../scripts/orchestration/reconcile-watermark.ts)       | Read or advance the tracker-owned sweep watermark.                          |
 | [reconcile-run-summary.ts](../../scripts/orchestration/reconcile-run-summary.ts)   | Record one dated run summary on #865.                                       |
@@ -53,8 +54,7 @@ issue's premise or proposed fix remains correct.
 Read the owning code when deciding whether behavior exists, a proposed fix can
 work, or a partially shipped issue still has unmet requirements. Existence checks
 cannot detect the inverse claim: an issue saying something is absent when it
-has since shipped. Reconcile that claim against the implementation rather than
-assuming a detector covers it.
+has since shipped.
 
 Path and symbol findings use these distinctions:
 
@@ -105,8 +105,8 @@ The label writer removes retired labels, resets priority to an unambiguous rulin
 in the issue's body, and accepts planned domain additions. It refuses removals
 that would strand an issue and contested priority slots. A domain addition must
 fill an empty domain slot on an open issue; existing labels and additions earlier
-in the same plan both count as occupied. Reclassification is outside this routine. Use the core's label
-decisions instead of recreating them in a writer.
+in the same plan both count as occupied. Use the core's label decisions instead
+of recreating them in a writer.
 
 The applier's `--evidence` pass closes the gather's `staleP3` findings — an open
 `P3` filed 30 or more days ago with no dispatch-ledger claim, assignee, or open
