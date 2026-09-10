@@ -6,6 +6,7 @@ import {
   saveHomeAssistantPrefs,
   sendTestHomeAssistant,
 } from "../profile/actions";
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { REFUSED, useSaveStatus } from "@/components/useSaveStatus";
 
@@ -174,26 +175,22 @@ export default function HomeAssistantNotificationSettings({
           unscoped clicks ambiguous. The strip settles that properly: each channel's
           controls live inside its own row, so a spec scopes to the row (or to the
           per-channel testid) instead of the label carrying the disambiguation. */}
+      {/* RULING 6 (#4978): the card is the surface — here the `ChannelRow`
+          disclosure — so this card's own commit takes the fill and the test
+          diagnostic beside it goes quiet. */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
+        <Button
           onClick={save}
           disabled={busy}
-          className="btn"
           data-testid="ha-save"
+          variant="primary"
         >
           Save
-        </button>
+        </Button>
         {enabled && (
-          <button
-            type="button"
-            onClick={test}
-            disabled={busy}
-            className="btn-ghost"
-            data-testid="ha-test"
-          >
+          <Button onClick={test} disabled={busy} data-testid="ha-test">
             Send test
-          </button>
+          </Button>
         )}
         <SaveStatus {...status} />
       </div>

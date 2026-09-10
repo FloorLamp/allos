@@ -9,6 +9,7 @@ import {
   saveTelegramBotConfig,
   registerTelegramWebhook,
 } from "../server/actions";
+import Button from "@/components/Button";
 import SaveStatus from "@/components/SaveStatus";
 import { NOTICE_TONE } from "@/components/Notice";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -177,18 +178,17 @@ export default function ServerTelegramSettings({
             pre-existing bare getByRole("button", { name: "Save" }) clicks on this
             page strict-mode ambiguous (same reasoning as the HA card's distinct
             verb). A distinct verb keeps exactly one "Save"-named button per page. */}
-        <button type="button" onClick={save} disabled={busy} className="btn">
+        {/* RULING 6 (#4978): this card's own commit takes the fill, matching the
+            sibling cards on Settings → Server (`SmtpSettings`, `BackupSettings`).
+            "Register webhook" acts on what this commit just stored, so it is a
+            follow-up beside the commit rather than a second one, and goes quiet. */}
+        <Button onClick={save} disabled={busy} variant="primary">
           Apply bot settings
-        </button>
+        </Button>
         {mode === "webhook" && (
-          <button
-            type="button"
-            onClick={register}
-            disabled={busy}
-            className="btn-ghost"
-          >
+          <Button onClick={register} disabled={busy}>
             Register webhook
-          </button>
+          </Button>
         )}
       </div>
 
