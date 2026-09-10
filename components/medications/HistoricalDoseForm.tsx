@@ -330,7 +330,7 @@ export default function HistoricalDoseForm({
             minDate={minDate}
             maxDate={maxDate}
             dateLabel="Date"
-            timeLabel="Time taken"
+            timeLabel="Time"
             testId="historical-dose"
           />
         </div>

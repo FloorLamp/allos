@@ -1211,7 +1211,13 @@ export default function MeasurementsQuickAdd({
           sitting's statement — #2154 folded the two per-measure time inputs
           (temperature, peak flow) into it, and the write boundary carries it to
           body_metrics and medical_records `occurred_at` and the peak-flow
-          sample's own instant alike. */}
+          sample's own instant alike.
+
+          THE TIME IS OPTIONAL AS A PROP, NOT AS A WORD (#5617). This label read
+          "Time taken (optional)" — the accessible name of the input carrying a fact the
+          control already models. `timeRequired` is what decides whether the field is
+          required, so it says so here and the name is just "Time", as it is on every
+          sibling form. */}
       <input
         type="hidden"
         name="date"
@@ -1231,11 +1237,12 @@ export default function MeasurementsQuickAdd({
           grain="minute"
           value={when}
           onChange={updateWhen}
+          timeRequired={false}
           minDate={ownedDate ?? undefined}
           maxDate={ownedDate ?? maxDate}
           testId="m"
           dateLabel="Date"
-          timeLabel="Time taken (optional)"
+          timeLabel="Time"
         />
       </div>
       {metric ? (
