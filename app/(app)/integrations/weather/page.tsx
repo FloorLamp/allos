@@ -17,6 +17,7 @@ import SyncNowButton from "@/components/SyncNowButton";
 import { enableWeatherAction, disconnectWeatherAction } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import SetupStepsCard from "@/components/integrations/SetupStepsCard";
+import { dataSectionHref } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,7 @@ export default async function WeatherPage(props: {
       data-testid="integration-page"
     >
       <PageHeader
-        back={{ href: "/data?section=import", destination: "Import" }}
+        back={{ href: dataSectionHref("import"), destination: "Import" }}
         title={def.name}
       />
 

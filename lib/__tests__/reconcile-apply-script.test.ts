@@ -13,9 +13,16 @@ import { makeTmpDir } from "./tmp-dir";
 // every dead-path fix is tracker noise). That conditional lives in the
 // script's control flow, which the source scans in
 // `./reconcile-tracker.test.ts` cannot reach.
+//
+// The same stub drives the body writer the applier routes through (#5673):
+// the guard that saves the current body first and refuses a blanking write.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCRIPT = path.join(REPO, "scripts/orchestration/reconcile-apply.ts");
+const BODY_WRITER = path.join(
+  REPO,
+  "scripts/orchestration/issue-body-write.ts"
+);
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
 
 /** Serves GET issue, GET open PRs, PATCH body/state, POST comment from a JSON state file. */
@@ -71,19 +78,17 @@ interface StubIssue {
   created_at?: string;
 }
 
-function runApply(
-  issues: Record<string, StubIssue>,
-  plan: Record<string, unknown>,
-  extraArgs: readonly string[],
-  tracker: {
-    /** Open PRs the stub serves. */
-    pulls?: { number: number; title: string; body: string }[];
-    /** Issues an active ledger row holds. */
-    claimed?: number[];
-    /** A gather's evidence, passed via --evidence. */
-    staleP3?: { issue: number; ageDays: number; detail: string }[];
-  } = {}
-): { status: number | null; stdout: string; calls: Call[]; dir: string } {
+interface Tracker {
+  /** Open PRs the stub serves. */
+  pulls?: { number: number; title: string; body: string }[];
+  /** Issues an active ledger row holds. */
+  claimed?: number[];
+  /** A gather's evidence, passed via --evidence. */
+  staleP3?: { issue: number; ageDays: number; detail: string }[];
+}
+
+/** The stub curl on PATH, its state and call log, and this run's scratch. */
+function stubTracker(issues: Record<string, StubIssue>, tracker: Tracker) {
   const dir = makeTmpDir("reconcile-apply-script");
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);
@@ -112,8 +117,6 @@ function runApply(
     })
   );
   fs.writeFileSync(log, "");
-  const planFile = path.join(dir, "plan.json");
-  fs.writeFileSync(planFile, JSON.stringify(plan));
   // A ledger of this test's own, so the container's live lanes never count.
   const ledger = path.join(dir, "ledger.jsonl");
   fs.writeFileSync(
@@ -127,31 +130,92 @@ function runApply(
         }) + "\n"
       : ""
   );
+  const scratch = path.join(dir, "scratch");
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${process.env.PATH}`,
+    GH_TOKEN: "stub token 1",
+    ALLOS_DISPATCH_LEDGER: ledger,
+    SCRATCH: scratch,
+    STUB_STATE: state,
+    STUB_LOG: log,
+  };
+  const calls = (): Call[] =>
+    fs
+      .readFileSync(log, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Call);
+  const bodyOf = (issue: string): string =>
+    (
+      JSON.parse(fs.readFileSync(state, "utf8")) as Record<
+        string,
+        { body: string }
+      >
+    )[issue].body;
+  /** The pre-write bodies the body writer kept, oldest first. */
+  const kept = (): string[] => {
+    const at = path.join(scratch, "issue-bodies");
+    if (!fs.existsSync(at)) return [];
+    return fs
+      .readdirSync(at)
+      .sort()
+      .map((name) => fs.readFileSync(path.join(at, name), "utf8"));
+  };
+  return { dir, env, calls, bodyOf, kept };
+}
+
+function runApply(
+  issues: Record<string, StubIssue>,
+  plan: Record<string, unknown>,
+  extraArgs: readonly string[],
+  tracker: Tracker = {}
+) {
+  const stub = stubTracker(issues, tracker);
+  const planFile = path.join(stub.dir, "plan.json");
+  fs.writeFileSync(planFile, JSON.stringify(plan));
   const args = [SCRIPT, planFile, ...extraArgs];
   if (tracker.staleP3) {
-    const evidence = path.join(dir, "evidence.json");
+    const evidence = path.join(stub.dir, "evidence.json");
     fs.writeFileSync(evidence, JSON.stringify({ staleP3: tracker.staleP3 }));
     args.push("--evidence", evidence);
   }
-
   const run = spawnSync(TSX, args, {
     cwd: REPO,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
-      GH_TOKEN: "stub token 1",
-      ALLOS_DISPATCH_LEDGER: ledger,
-      STUB_STATE: state,
-      STUB_LOG: log,
-    },
+    env: stub.env,
   });
-  const calls = fs
-    .readFileSync(log, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Call);
-  return { status: run.status, stdout: run.stdout, calls, dir };
+  return {
+    status: run.status,
+    stdout: run.stdout,
+    calls: stub.calls(),
+    kept: stub.kept(),
+  };
+}
+
+/** The body writer as the PM runs it: `issue-body-write.ts <issue> <file>`. */
+function runBodyWrite(
+  issues: Record<string, StubIssue>,
+  issue: string,
+  body: string | null,
+  extraArgs: readonly string[] = []
+) {
+  const stub = stubTracker(issues, {});
+  const file = path.join(stub.dir, "body.md");
+  if (body !== null) fs.writeFileSync(file, body);
+  const run = spawnSync(TSX, [BODY_WRITER, issue, file, ...extraArgs], {
+    cwd: REPO,
+    encoding: "utf8",
+    env: stub.env,
+  });
+  return {
+    status: run.status,
+    stdout: run.stdout,
+    stderr: run.stderr,
+    calls: stub.calls(),
+    body: stub.bodyOf(issue),
+    kept: stub.kept(),
+  };
 }
 
 const PATCH = {
@@ -189,6 +253,9 @@ describe("reconcile-apply visibility contract", () => {
       "_Generated by [Claude Code](https://claude.ai/code)_"
     );
     expect(run.stdout).toContain("in flight");
+    // Each body edit went through the body writer, which kept the pre-edit
+    // body in scratch first (#5673).
+    expect(run.kept).toEqual([BODY, BODY, BODY]);
   });
 
   it("--outcome records how many patches landed, for the run summary line", () => {
@@ -299,5 +366,82 @@ describe("the stale-P3 close (#5671)", () => {
     expect(run.stdout).toMatch(
       /#31 stale-p3: would close not_planned — P3 filed \d+ days ago — no claim, no assignee, no open PR/
     );
+  });
+});
+
+describe("the body-write guard (#5673)", () => {
+  // One PATCH from a missing file blanked #4959's body, and the body is the
+  // only state the pinned Ladder issue has. So the writer saves the current
+  // body to $SCRATCH before judging the new one, and refuses an empty body or
+  // one under half the current length unless --force says so.
+  const LADDER = [
+    "# Priority ladder — updated 2026-09-08 14:00Z",
+    "",
+    "## Rungs",
+    "",
+    "1. #5671 stale-P3 close (landed 2026-09-09).",
+    "2. #5673 Ladder rotation and guarded body writes (dispatched).",
+    "3. #5674 documentation word cap (banked, awaiting review).",
+    "",
+    "## Slices",
+    "",
+    "- Orchestrator F: `docs/orchestration/**`, `scripts/orchestration/**`.",
+    "- Orchestrator G: `app/(app)/history/**`, `components/IntradayChart.tsx`.",
+    "",
+    "## Landing order",
+    "",
+    "Green heads land serially; a red main takes priority over routine landing.",
+    "",
+  ].join("\n");
+  const tracker = { "7": { body: LADDER, comments: 0 } };
+  const half = LADDER.slice(0, Math.floor(LADDER.length / 2) - 1);
+  const writes = (calls: Call[]) => calls.filter((c) => c.method !== "GET");
+
+  it.each([
+    ["an empty file", ""],
+    ["a half-length body", half],
+  ])(
+    "%s is refused, naming both lengths, after the current body is saved",
+    (_name, body) => {
+      const run = runBodyWrite(tracker, "7", body);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(
+        `refusing #7: the new body is ${body.length} chars, the current body ${LADDER.length}`
+      );
+      expect(run.stderr).toContain("--force");
+      expect(writes(run.calls)).toEqual([]);
+      expect(run.body).toBe(LADDER);
+      expect(run.kept).toEqual([LADDER]);
+    }
+  );
+
+  it("a missing body file never reaches the network", () => {
+    const run = runBodyWrite(tracker, "7", null);
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("does not exist");
+    expect(run.calls).toEqual([]);
+    expect(run.body).toBe(LADDER);
+  });
+
+  it("a normal update is applied, with the pre-edit body kept in scratch", () => {
+    const next = LADDER.replace("(dispatched)", "(banked, awaiting review)");
+    const run = runBodyWrite(tracker, "7", next);
+    expect(run.status).toBe(0);
+    expect(
+      writes(run.calls).map((c) => [c.method, JSON.parse(c.body ?? "{}")])
+    ).toEqual([["PATCH", { body: next }]]);
+    expect(run.body).toBe(next);
+    expect(run.kept).toEqual([LADDER]);
+    expect(run.stdout).toMatch(
+      /saved the current body of #7 \(\d+ chars\) to \S+\/issue-bodies\/7-\S+\.md/
+    );
+  });
+
+  it("--force writes the short body, still after saving the current one", () => {
+    const run = runBodyWrite(tracker, "7", half, ["--force"]);
+    expect(run.status).toBe(0);
+    expect(writes(run.calls).map((c) => c.method)).toEqual(["PATCH"]);
+    expect(run.body).toBe(half);
+    expect(run.kept).toEqual([LADDER]);
   });
 });

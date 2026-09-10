@@ -1,4 +1,9 @@
-import { trainingTabHref, MEDICATIONS_HREF, type AppRoute } from "./hrefs";
+import {
+  trainingTabHref,
+  MEDICATIONS_HREF,
+  type AppRoute,
+  dataSectionHref,
+} from "./hrefs";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 import { DIGEST_DEFAULT_MINUTE } from "./notifications/digest-schedule";
 import type { NotifySchedule } from "./settings/notifications";
@@ -111,7 +116,7 @@ export const ONBOARDING_FOCUS_DEFS: readonly OnboardingFocusDef[] = [
     label: "Organize medical records",
     description: "Import a portal export, PDF, scan, or photo and review it.",
     actionLabel: "Import a health record",
-    actionHref: "/data?section=import",
+    actionHref: dataSectionHref("import"),
   },
   {
     id: "medications",
@@ -154,7 +159,7 @@ export const ONBOARDING_FOCUS_DEFS: readonly OnboardingFocusDef[] = [
     label: "Explore everything",
     description: "Keep the broad dashboard and start with any useful record.",
     actionLabel: "Explore ways to add data",
-    actionHref: "/data?section=import",
+    actionHref: dataSectionHref("import"),
   },
 ] as const;
 

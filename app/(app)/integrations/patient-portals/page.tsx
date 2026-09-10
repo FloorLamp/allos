@@ -40,6 +40,7 @@ import PortalsSurface, {
   type PortalView,
   type ProfileChoice,
 } from "./PortalsSurface";
+import { dataSectionHref } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -323,7 +324,7 @@ export default async function PatientPortalsPage() {
     <PageContainer width="flow" className="space-y-6">
       <div>
         <PageHeader
-          back={{ href: "/data?section=import", destination: "Import" }}
+          back={{ href: dataSectionHref("import"), destination: "Import" }}
           title={def.name}
         />
       </div>

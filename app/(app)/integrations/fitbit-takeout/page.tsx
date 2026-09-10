@@ -14,6 +14,7 @@ import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import TakeoutUpload from "./TakeoutUpload";
+import { dataSectionHref } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function FitbitTakeoutPage() {
     <div className="space-y-6">
       <div>
         <PageHeader
-          back={{ href: "/data?section=import", destination: "Import" }}
+          back={{ href: dataSectionHref("import"), destination: "Import" }}
           title={def.name}
         />
       </div>

@@ -1781,6 +1781,7 @@ describe("the toolchain granted to a reconciliation run closes only through the 
     "scripts/orchestration/reconcile-repo-index.ts",
     "scripts/orchestration/reconcile-patch.ts",
     "scripts/orchestration/reconcile-apply.ts",
+    "scripts/orchestration/issue-body-write.ts",
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
     "scripts/orchestration/reconcile-watermark.ts",
@@ -1853,31 +1854,46 @@ describe("the toolchain granted to a reconciliation run closes only through the 
     }
   });
 
-  // FIVE writers now, each confined to a different endpoint, and the point of
-  // this block is that no confinement rests on intent. The body applier can
-  // name only `body`; the label writer sends no body at all; the label deleter
-  // holds one verb against the repo's own label collection and no issue URL
-  // whatsoever; the watermark writer can PATCH one body and CREATE one
-  // fixed-title carrier; the run-summary writer can POST one comment to one
-  // pinned issue. Everything else in the toolchain holds no write verb.
+  // SIX writers now, each confined to a different endpoint, and the point of
+  // this block is that no confinement rests on intent. The body writer holds
+  // the ONE body PATCH, naming only `body`, and the applier and the watermark
+  // writer reach a body only through it (#5673); the label writer sends no
+  // body at all; the label deleter holds one verb against the repo's own
+  // label collection and no issue URL whatsoever; the watermark writer can
+  // CREATE one fixed-title carrier; the run-summary writer can POST one
+  // comment to one pinned issue. Everything else in the toolchain holds no
+  // write verb.
+  const BODY_WRITER = "scripts/orchestration/issue-body-write.ts";
   const WRITERS = [
     "scripts/orchestration/reconcile-apply.ts",
+    BODY_WRITER,
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
     "scripts/orchestration/reconcile-watermark.ts",
     "scripts/orchestration/reconcile-run-summary.ts",
   ];
 
-  it("the body applier holds three confined writes: body PATCH, close PATCH and comment POST", () => {
+  it("the body writer holds the one body PATCH, its payload one field", () => {
+    // Every body edit in the toolchain lands here, after the current body is
+    // saved to scratch and the new one judged (empty or half-length refuses
+    // without --force; `./reconcile-apply-script.test.ts` drives that). The
+    // payload has nowhere for an issue's status to ride.
+    const writer = source(BODY_WRITER);
+    expect(writer.match(/"PATCH"/g)).toHaveLength(1);
+    expect(writer).toContain("JSON.stringify({ body })");
+    expect(writer).not.toMatch(/"(?:POST|PUT|DELETE)"/);
+  });
+
+  it("the body applier holds two confined writes of its own: close PATCH and comment POST", () => {
     // The comment POST exists because a body PATCH is SILENT — no
     // notification, no timeline event — so an issue with a comment chain or
     // an in-flight lane (--notify) gets its edit announced where its readers
-    // are (2026-08-30). One payload field for the body, a literal for the
-    // close, and the POST can reach only the comments collection.
+    // are (2026-08-30). The body write rides the body writer, a literal for
+    // the close, and the POST can reach only the comments collection.
     const applier = source(APPLIER);
-    expect(applier.match(/"PATCH"/g)).toHaveLength(2);
+    expect(applier.match(/"PATCH"/g)).toHaveLength(1);
     expect(applier.match(/"POST"/g)).toHaveLength(1);
-    expect(applier).toContain("JSON.stringify({ body })");
+    expect(applier).toContain("writeIssueBody(");
     expect(applier).toContain("JSON.stringify({ body: note })");
     expect(applier).toContain("${issueUrl(issue)}/comments");
     expect(applier).not.toMatch(/"(?:PUT|DELETE)"/);
@@ -1912,16 +1928,15 @@ describe("the toolchain granted to a reconciliation run closes only through the 
     expect(del).not.toContain("/issues");
   });
 
-  it("the watermark writer PATCHes one body and can only CREATE the carrier", () => {
-    // One PATCH whose payload is exactly the applier's shape ({ body }), one
-    // POST whose payload names its title from the pinned constant — so the
-    // only issue it can ever bring into existence is the carrier, and the
-    // only thing it can ever edit is a body. No other verb, no state field.
+  it("the watermark writer edits a body only through the body writer and can only CREATE the carrier", () => {
+    // No PATCH of its own — the stamp rides the body writer — and one POST
+    // whose payload names its title from the pinned constant, so the only
+    // issue it can ever bring into existence is the carrier, and the only
+    // thing it can ever edit is a body. No other verb, no state field.
     const wm = source("scripts/orchestration/reconcile-watermark.ts");
-    expect(wm.match(/"PATCH"/g)).toHaveLength(1);
+    expect(wm).not.toMatch(/"(?:PATCH|PUT|DELETE)"/);
     expect(wm.match(/"POST"/g)).toHaveLength(1);
-    expect(wm).not.toMatch(/"(?:PUT|DELETE)"/);
-    expect(wm).toContain("JSON.stringify({ body })");
+    expect(wm).toContain("writeIssueBody(");
     expect(wm).toContain("title: WATERMARK_ISSUE_TITLE");
   });
 
@@ -1946,7 +1961,7 @@ describe("the toolchain granted to a reconciliation run closes only through the 
     ]);
   });
 
-  it("nothing outside the five writers holds a write verb at all", () => {
+  it("nothing outside the six writers holds a write verb at all", () => {
     for (const rel of MODULES.filter((m) => !WRITERS.includes(m))) {
       expect({
         rel,
