@@ -236,17 +236,22 @@ describe("a bundle is one row, named now", () => {
     draw(USUAL_ROWS, USUAL_FACTS);
     expect(screen.getAllByTestId("history-bundle")).toHaveLength(1);
     expect(screen.queryAllByTestId("history-row")).toHaveLength(0);
-    expect(screen.getByTestId("history-row-title").textContent).toBe(
+    expect(screen.getByTestId("history-bundle-title").textContent).toBe(
       "Your usual Morning"
     );
     // #5074 B's "Your usual Morning · 6 doses" as the row's own two cells.
-    expect(screen.getByTestId("history-row-detail").textContent).toBe(
+    expect(screen.getByTestId("history-bundle-detail").textContent).toBe(
       "2 servings · 2 doses"
     );
     // Ruling 6's clock, on the act: a past day filed today says which day, no clock.
-    expect(screen.getByTestId("history-row-clock").textContent).toBe(
+    expect(screen.getByTestId("history-bundle-clock").textContent).toBe(
       "logged 2026-09-10"
     );
+    // ITS OWN CELLS, not the plain row's. The act reuses the row grammar, not the row's
+    // test ids: several specs count `history-row-*` and a collapsed act must not move a
+    // number they measure.
+    expect(screen.queryByTestId("history-row-title")).toBeNull();
+    expect(screen.queryByTestId("history-row-clock")).toBeNull();
   });
 
   it("hangs its members beneath it, each still its own row", () => {
@@ -301,10 +306,10 @@ describe("a bundle is one row, named now", () => {
         ],
       ])
     );
-    expect(screen.getByTestId("history-row-title").textContent).toBe(
+    expect(screen.getByTestId("history-bundle-title").textContent).toBe(
       "Sleep stack"
     );
-    expect(screen.getByTestId("history-row-detail").textContent).toBe(
+    expect(screen.getByTestId("history-bundle-detail").textContent).toBe(
       "2 doses"
     );
   });

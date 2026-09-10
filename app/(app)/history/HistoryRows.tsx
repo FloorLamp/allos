@@ -1288,7 +1288,7 @@ export default function HistoryRows({
               <span className="flex min-w-0 items-baseline gap-1.5 truncate">
                 <span
                   className="min-w-0 truncate"
-                  data-testid="history-row-title"
+                  data-testid="history-bundle-title"
                 >
                   {bundle.title}
                 </span>
@@ -1298,7 +1298,7 @@ export default function HistoryRows({
                     not a second spelling of it. */}
                 <span
                   className={`truncate text-xs font-normal text-slate-500 dark:text-slate-400 ${DETAIL_GIVES_WAY_FIRST}`}
-                  data-testid="history-row-detail"
+                  data-testid="history-bundle-detail"
                 >
                   {bundle.detail}
                 </span>
@@ -1308,7 +1308,7 @@ export default function HistoryRows({
           {bundle.clock ? (
             <span
               className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
-              data-testid="history-row-clock"
+              data-testid="history-bundle-clock"
             >
               {bundle.clock}
             </span>
