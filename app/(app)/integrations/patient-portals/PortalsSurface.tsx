@@ -34,6 +34,7 @@ import {
   unbindIdentityAction,
 } from "./actions";
 import { dataSectionHref } from "@/lib/hrefs";
+import { verdictText } from "@/lib/chart-colors";
 
 // The Patient portals page (#1874): the OBJECT MODEL, rendered.
 //
@@ -876,10 +877,18 @@ export default function PortalsSurface({
   function accountStatusLine(account: AccountView) {
     return (
       <>
+        {/* Only `attention` is a verdict (#5725). `ok` and `idle` are lifecycle
+            states a login renders as muted chrome — that is why PortalStatusTone
+            stays its own vocabulary rather than becoming VerdictTone — so the
+            warn ink is mapped in HERE, at the boundary, exactly as
+            lib/pace-presentation.ts does for the tones it does share. Written as
+            an inline ternary, this colour was invisible to the keyed-map guard;
+            `data-tone` still carries the untranslated PortalStatusTone, which is
+            what e2e/portal-status-scope.spec.ts asserts. */}
         <span
           className={
             account.status.tone === "attention"
-              ? "text-xs text-amber-700 dark:text-amber-300"
+              ? `text-xs ${verdictText.warn.class}`
               : "text-xs text-slate-500 dark:text-slate-400"
           }
           data-testid="login-status"

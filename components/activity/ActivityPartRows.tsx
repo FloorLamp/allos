@@ -8,6 +8,7 @@ import type { ProgressDelta } from "@/lib/progress-delta";
 import type { ActivityStrengthRecord } from "@/lib/training-activity-detail";
 import type { MuscleId } from "@/lib/lifts";
 import { SET_STATUS_TITLES } from "@/lib/training-log-format";
+import { verdictText } from "@/lib/chart-colors";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 function strengthRecordPresentation(record: ActivityStrengthRecord): {
@@ -184,8 +185,20 @@ export default function ActivityPartRows({
                     Target met
                   </span>
                 )}
+                {/* A missed target is a verdict, so it reads the shared warn ink
+                    (#5725) — the same conversion the form (StrengthSets), the
+                    recent-session rows (ExerciseHistory) and the recap
+                    (SessionRecapView) take. As a bare className on a conditional
+                    span it had no key for #5187's map conversion, or #5744's
+                    keyed-map guard, to read: it shipped `text-amber-500`, 1.99:1
+                    on the Botanical light surface against a 4.5 text floor. The
+                    IconAlertTriangle inherits currentColor and moves with the
+                    word. `met` above stays brand-600, which is this surface's own
+                    affirmation rather than one of the four verdicts. */}
                 {part.status === "missed" && (
-                  <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs ${verdictText.warn.class}`}
+                  >
                     <IconAlertTriangle className="h-4 w-4" stroke={2} />
                     {/* ONE SPELLING (#5726): the form, the recent-session rows and the
                         recap all say this, and they share a screen family. */}
