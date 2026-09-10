@@ -92,8 +92,9 @@ export interface CurrentSession {
 //
 // Minted by exactly three gates: `requireWriteAccess` (the acting profile),
 // `requireProfileWriteAccess` (the posted target) and `requireAdmin` (the acting
-// profile; an admin holds implicit all-write). `writeSession` below is the only
-// minter and stays private for the same reason lib/cross-profile's `seal` does.
+// profile). `requireAdmin` brands the acting profile without the demo or access
+// checks because an admin passes both by construction. `writeSession` below is the
+// only minter and stays private for the same reason lib/cross-profile's `seal` does.
 declare const WRITE_AUTHORIZED: unique symbol;
 export type WriteAuthorizedProfileId = number & {
   readonly [WRITE_AUTHORIZED]: true;

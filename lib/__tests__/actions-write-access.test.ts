@@ -1225,8 +1225,8 @@ const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
 // child-dose-band update and this file stayed green. This walk follows the action's
 // top-level control flow instead — `if`/`else` arms, ternaries and short-circuits,
 // early returns. Once one arm gates, every sibling path must gate before it runs
-// anything but a plain `return`/`throw`, and no ungated path may return a call.
-// Straight-line actions and the pre-gate parse/validate prefix read as before.
+// anything but a plain `return`/`throw`. Straight-line actions and the pre-gate
+// parse/validate prefix — `if (!ok) return fail(…)` included — read as before.
 const BRANCH_GATES = [
   "requireWriteAccess",
   "requireAdmin",
@@ -1273,12 +1273,6 @@ function gateCoverage(node: ts.Node, gates: ReadonlySet<string>): Coverage {
     }
   });
   return out;
-}
-
-function containsCall(node: ts.Node): boolean {
-  return (
-    ts.isCallExpression(node) || (node.forEachChild(containsCall) ?? false)
-  );
 }
 
 // One path through an action: whether it has gated, and whether a sibling arm gated
@@ -1339,14 +1333,7 @@ function branchGateViolations(
       );
     }
     if (ts.isReturnStatement(stmt)) {
-      if (!stmt.expression) return [];
-      const after = run(stmt.expression, live);
-      if (
-        containsCall(stmt.expression) &&
-        after.some((p) => !p.gated && !p.forked)
-      ) {
-        out.add(`returns \`${text(stmt.expression)}\` before any gate`);
-      }
+      if (stmt.expression) run(stmt.expression, live);
       return [];
     }
     if (ts.isThrowStatement(stmt)) return [];
@@ -1638,11 +1625,11 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
   const TERNARY = (postedArm: string) => `
     const profileId = target > 0 ? ${postedArm} : (await requireWriteAccess()).profile.id;
     return core(profileId);`;
-  const EARLY_RETURN = (postedArm: string) => `
-    if (!parsed.ok) return { ok: false, error: parsed.error };
-    if (target > 0) { ${postedArm} return core(target); }
-    const { profile } = await requireWriteAccess();
-    return core(profile.id);`;
+  const EARLY_RETURN = (continuation: string) => `
+    if (!parsed.ok) return fail(parsed.error);
+    if (target > 0) { await requireProfileWriteAccess(target); return core(target); }
+    ${continuation}
+    return core(profileId);`;
 
   it.each([
     [
@@ -1667,13 +1654,21 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
     ],
     [
       "an early return gating both paths",
-      EARLY_RETURN("await requireProfileWriteAccess(target);"),
+      EARLY_RETURN("await requireProfileWriteAccess(profileId);"),
       null,
     ],
     [
-      "an early return that lost its gate",
+      "an early return whose continuation lost its gate",
       EARLY_RETURN(""),
-      "returns `core(target)` before any gate",
+      "a branch reaches `core(profileId)` without the gate its sibling arm took",
+    ],
+    [
+      "a validation exit before the action's gate",
+      `
+    if (!parsed.ok) return fail(parsed.error);
+    const { profile } = await requireWriteAccess();
+    return core(profile.id);`,
+      null,
     ],
   ])("branch scan: %s", (_shape, body, flagged) => {
     const violations = actionBranchScan(
