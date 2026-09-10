@@ -11,7 +11,7 @@
 // columns; an episode is a READING over them, the way `computeWorkoutPresence`
 // already reads `activities`. Nothing new is stored.
 
-import { shiftDateStr } from "./date";
+import { daysBetweenDateStr, shiftDateStr } from "./date";
 import type { LocalDay } from "./temporal-types";
 
 // ── What the reading is over ────────────────────────────────────────────────────
@@ -157,6 +157,24 @@ export const EPISODE_DAY_BOUNDS = {
   period: { staleDays: 10, abandonDays: null },
 } as const satisfies Record<DayEpisodeKind, EpisodeDayBounds>;
 
+// A day-keyed episode. The mirror of `OpenEpisode` above, and the two differences are
+// the unit: the freshest evidence is a profile-local DAY rather than an epoch instant,
+// and there is no `expectedEnd` — see `DayEpisodeState` for why that absence is the
+// model's answer rather than a gap in it.
+export interface OpenDayEpisode {
+  kind: DayEpisodeKind;
+
+  // THE FRESHEST EVIDENCE THIS EPISODE IS STILL HAPPENING, as a profile-local day.
+  // A period is logged as a start date and nothing after it, so its start IS its last
+  // signal, exactly as a fast's first tap is (`OpenEpisode.lastSignalAt`).
+  //
+  // A `LocalDay` rather than the stored text, because that is what makes the quiet
+  // below a number rather than a `number | null` with an unreachable arm: a day that
+  // came through a validator cannot fail to subtract. The reader mints it where it
+  // reads the row.
+  lastSignalOn: LocalDay;
+}
+
 /**
  * The last day a day-counted episode still reads as running: its last signal plus
  * `staleDays − 1`, the signal day being day 1. THE one expression of a day bound —
@@ -170,10 +188,61 @@ export function dayEpisodeClaimEnd(
   return shiftDateStr(lastSignalOn, EPISODE_DAY_BOUNDS[kind].staleDays - 1);
 }
 
-// A `DayEpisodeKind` has bounds and a claim end here, and deliberately NO episode type
-// and NO state reading yet: `OpenDayEpisode` and the four-word day state land with the
-// first reader that needs them, rather than shipping ahead of a caller. Nothing is
-// missing by oversight — the day reading is the next step, not an omission.
+// ── The day reading ─────────────────────────────────────────────────────────────
+//
+// THE SAME OUTCOME VOCABULARY AS `EpisodeState`, IN DAYS, AND ONE ARM SHORTER.
+//
+//   running   — inside its bounds, and the app expects more of it.
+//   stale     — past `staleDays`. STILL OPEN: every resolution the person had is still
+//               offered. A suggest never takes an answer away.
+//   abandoned — past `abandonDays`. Unreachable for `period`, whose `abandonDays` is
+//               null; the arm exists because the bounds table admits the number, and a
+//               day kind that carries one must not have to invent a word for it.
+//
+// THERE IS NO `finished`, AND THAT IS AN ANSWER RATHER THAN AN OMISSION (#5142, settled
+// against the first consumer — Home's Period row, #5435). A minute episode reaches
+// `finished` through `expectedEnd`: the row knew its own end — a usual duration stamped
+// at Start, a measured trace end, a wearable session — so the reading can report an end
+// no sweep got around to writing. A day-counted episode has no such supplier. Nothing
+// in this app predicts the day a period will end; the only thing that ends one is the
+// person's tap, and that tap writes `period_end`, at which point the row is a CLOSED
+// period and there is no open episode left to ask about.
+//
+// So the closed case is carried by the ABSENCE of an `OpenDayEpisode`, not by a fourth
+// arm, and Home renders it the same way: a closed period contributes no state row (a
+// row earns its seat by being an open episode or an eligible action, #5435 §2), and the
+// forecast-window offer that does render on such a day is a claim about the CYCLE, not
+// a reading of a finished episode. A `finished` arm here would be a word for a state
+// this half of the model can never observe.
+export type DayEpisodeState =
+  | { kind: "running"; quietDays: number }
+  | { kind: "stale"; quietDays: number }
+  | { kind: "abandoned"; quietDays: number };
+
+/**
+ * Is this day-counted episode still going, on the profile-local day `on`?
+ *
+ * The signal day is day 1, so quiet is the days ELAPSED since it and the comparison
+ * convention is the minute half's: reaching the bound raises the suggest, and the
+ * episode must pass `abandonDays` before the app gives up.
+ */
+export function dayEpisodeState(
+  episode: OpenDayEpisode,
+  on: LocalDay
+): DayEpisodeState {
+  const bounds = EPISODE_DAY_BOUNDS[episode.kind];
+  const quietDays = daysBetweenDateStr(episode.lastSignalOn, on);
+  if (bounds.abandonDays != null && quietDays > bounds.abandonDays)
+    return { kind: "abandoned", quietDays };
+  // `staleDays − 1` rather than `staleDays`, for the same reason `dayEpisodeClaimEnd`
+  // shifts by it: the signal day is day 1 of the episode, so a ten-day bound is
+  // outrun on the day AFTER the ninth elapsed day. Written through the claim end so
+  // the two readings of one bound cannot drift — the day the row stops reading as
+  // running is the day after the last day it still claims.
+  return on > dayEpisodeClaimEnd(episode.kind, episode.lastSignalOn)
+    ? { kind: "stale", quietDays }
+    : { kind: "running", quietDays };
+}
 
 // ── The reading ─────────────────────────────────────────────────────────────────
 //
@@ -228,7 +297,16 @@ export type OpenEpisodeState = Extract<
 /**
  * Is this still an episode the app will complete — one a tap, a measurement or a
  * sweep can still resolve? `stale` is open: it has a suggest on it, not a verdict.
+ *
+ * ONE PREDICATE OVER BOTH UNITS. "Still going" is the question this whole module
+ * exists to ask once, and the answer is the same two words in minutes and in days —
+ * so a consumer holding a mixed set of episodes (Home's Training, Fast and Period
+ * rows, #5435) asks it once rather than switching on the unit first. Generic rather
+ * than widened to `EpisodeState | DayEpisodeState`, so the caller keeps the arm it
+ * handed in and `quietMin` / `quietDays` survive the narrowing.
  */
-export function episodeIsOpen(state: EpisodeState): state is OpenEpisodeState {
+export function episodeIsOpen<S extends EpisodeState | DayEpisodeState>(
+  state: S
+): state is Extract<S, { kind: "running" | "stale" }> {
   return state.kind === "running" || state.kind === "stale";
 }
