@@ -68,6 +68,7 @@ import {
   accessForProfile,
   createSession,
   requireProfileWriteAccess,
+  type WriteAuthorizedProfileId,
 } from "@/lib/auth";
 import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
 import { fd } from "@/lib/__action_tests__/harness";
@@ -202,6 +203,14 @@ describe("requireProfileWriteAccess (the shipped body)", () => {
     if (outcome === "pass") {
       const session = await requireProfileWriteAccess(target);
       expect(session.login.id).toBe(login);
+      // The id the gate authorized, as the type only a gate can produce (#5348). The
+      // forge beside it is checked by `npm run typecheck`, not by running: a plain
+      // number is refused, so this file reds at typecheck if the brand ever loosens.
+      const authorized: WriteAuthorizedProfileId = session.writeProfileId;
+      expect(authorized).toBe(target);
+      // @ts-expect-error the posted target is a number, not a gate's answer
+      const forged: WriteAuthorizedProfileId = target;
+      expect(forged).toBe(target);
     } else {
       // One refusal for both shapes, and that is the shipped behaviour: a read-only grant
       // and an unreachable profile are bounced to the app root identically, so nothing

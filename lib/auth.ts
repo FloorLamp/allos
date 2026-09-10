@@ -80,6 +80,36 @@ export interface CurrentSession {
   deviceSessionKey: string;
 }
 
+// ── The write-authorized profile id (#5348) ───────────────────────────────────
+//
+// The profile id a write gate answers with, as a type only this module can produce.
+// It is `Tx`'s argument (lib/db.ts, #2133) applied to authorization: a write core that
+// takes `WriteAuthorizedProfileId` instead of `profileId: number` cannot be called
+// from an action that never gated, because nothing outside the three gates below can
+// make one — `tsc` refuses a plain number, and the brand symbol is not exported, so
+// no other file can even spell the type's shape. A branded number is still a number,
+// so it passes anywhere `number` is accepted and no read path changes.
+//
+// Minted by exactly three gates: `requireWriteAccess` (the acting profile),
+// `requireProfileWriteAccess` (the posted target) and `requireAdmin` (the acting
+// profile). `requireAdmin` brands the acting profile without the demo or access
+// checks because an admin passes both by construction. `writeSession` below is the
+// only minter and stays private for the same reason lib/cross-profile's `seal` does.
+declare const WRITE_AUTHORIZED: unique symbol;
+export type WriteAuthorizedProfileId = number & {
+  readonly [WRITE_AUTHORIZED]: true;
+};
+// What a write gate returns: the session, plus the id it authorized for writes.
+export interface WriteSession extends CurrentSession {
+  writeProfileId: WriteAuthorizedProfileId;
+}
+function writeSession(
+  session: CurrentSession,
+  profileId: number
+): WriteSession {
+  return { ...session, writeProfileId: profileId as WriteAuthorizedProfileId };
+}
+
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -452,10 +482,10 @@ export async function requireSession(): Promise<CurrentSession> {
 
 // Admin-only guard. Members are bounced to the app root. (No admin-only surface
 // ships in Phase 1; provided for the Phase 4 admin UI.)
-export async function requireAdmin(): Promise<CurrentSession> {
+export async function requireAdmin(): Promise<WriteSession> {
   const session = await requireSession();
   if (session.login.role !== "admin") redirect("/");
-  return session;
+  return writeSession(session, session.profile.id);
 }
 
 // Write guard (issue #33): the gate every MUTATING Server Action must call in
@@ -467,7 +497,7 @@ export async function requireAdmin(): Promise<CurrentSession> {
 // UI affordances are only a convenience. A source-scanning test
 // (lib/__tests__/actions-write-access.test.ts) fails the build if a mutating
 // action forgets to call this.
-export async function requireWriteAccess(): Promise<CurrentSession> {
+export async function requireWriteAccess(): Promise<WriteSession> {
   const session = await requireSession();
   // Demo mode (#181): belt-and-braces. In a public demo every non-admin write is
   // refused HERE regardless of the grant, so a misconfigured 'write' grant can't
@@ -475,7 +505,7 @@ export async function requireWriteAccess(): Promise<CurrentSession> {
   // maintain the instance. This is independent of the #33 access check below.
   assertNotDemoRestricted(session.login.role);
   if (session.access !== "write") redirect("/");
-  return session;
+  return writeSession(session, session.profile.id);
 }
 
 // The ONE demo-mode refusal, shared by every guard that blocks demo mutations
@@ -514,7 +544,7 @@ export async function requireLoginWriteAccess(): Promise<CurrentSession> {
 // throws NEXT_REDIRECT, aborting a forged POST before any mutation runs).
 export async function requireProfileWriteAccess(
   profileId: number
-): Promise<CurrentSession> {
+): Promise<WriteSession> {
   const session = await requireSession();
   const { login } = session;
   // Demo mode (#181): the same belt-and-braces block as requireWriteAccess — a
@@ -527,7 +557,7 @@ export async function requireProfileWriteAccess(
   if (!reachable) redirect("/");
   if (accessForProfile(login.id, login.role, profileId) !== "write")
     redirect("/");
-  return session;
+  return writeSession(session, profileId);
 }
 
 // The profiles the current login may switch to (for the header switcher).
