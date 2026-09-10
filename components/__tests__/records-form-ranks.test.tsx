@@ -6,7 +6,7 @@ import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import ConditionForm from "@/app/(app)/records/problems/conditions/ConditionForm";
 import AudiogramList from "@/app/(app)/records/specialty/hearing/AudiogramList";
 import type { Allergy } from "@/lib/types";
-import { loudIn as loudLabels } from "./loud-controls";
+import { loudIn } from "./loud-controls";
 
 // THE RECORDS FORMS' ONE LOUD CONTROL, ASSERTED AS THE WHOLE SURFACE'S BUDGET
 // (#4978, ruling 6 and ruling 10).
@@ -88,7 +88,7 @@ describe("a records form spends its one loud control on its own commit", () => {
     const form = screen.getByTestId("allergy-form-actions").closest("form")!;
 
     // Ruling 6: the commit is the one control allowed to be loud here.
-    expect(loudLabels(form)).toEqual(["Save"]);
+    expect(loudIn(form)).toEqual(["Save"]);
 
     // Ruling 6 again — neither helper is this form's commit.
     expectQuiet(screen.getByRole("button", { name: "Cancel" }));
@@ -127,7 +127,7 @@ describe("a records form spends its one loud control on its own commit", () => {
       />
     );
     const form = screen.getByTestId("condition-form-actions").closest("form")!;
-    expect(loudLabels(form)).toEqual(["Save"]);
+    expect(loudIn(form)).toEqual(["Save"]);
     expectQuiet(screen.getByRole("button", { name: "Cancel" }));
   });
 
@@ -144,7 +144,7 @@ describe("a records form spends its one loud control on its own commit", () => {
     );
     // Two repeated cards, and the whole surface spends nothing loud: a Delete
     // per card is the repeated-row destructive shape, not a standalone one.
-    expect(loudLabels(document.body)).toEqual([]);
+    expect(loudIn(document.body)).toEqual([]);
     for (const date of ["2026-08-01", "2026-02-01"]) {
       const card = screen.getByTestId(`audiogram-${date}`);
       expectQuiet(within(card).getByRole("button", { name: "Delete" }));
