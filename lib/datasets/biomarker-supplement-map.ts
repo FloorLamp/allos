@@ -7,7 +7,10 @@
 import rawMap from "./data/biomarker-supplement-map.json";
 import { loadDataset } from "./loader";
 import { createMatcher, fieldStrategy } from "./matcher";
-import type { BiomarkerSupplementEntry } from "@/scripts/gen-biomarker-supplement-map";
+import type {
+  BiomarkerSupplementEntry,
+  SupplementSource,
+} from "@/scripts/gen-biomarker-supplement-map";
 
 export type {
   BiomarkerSupplementEntry,
@@ -29,8 +32,18 @@ const matcher = createMatcher(
   supplementMapKeyStrategy
 );
 
-export const BIOMARKER_SUPPLEMENT_ENTRIES: BiomarkerSupplementEntry[] =
-  biomarkerSupplementMapDataset.entries;
+// A map entry as the shared curated-suggestion engine reads it (lib/curated-suggest.ts,
+// #5173): the engine names every entry's candidate list `items`, this map spells it
+// `supplements`. Named ONCE here — the committed JSON is untouched.
+export type BiomarkerSupplementMapEntry = BiomarkerSupplementEntry & {
+  readonly items: SupplementSource[];
+};
+
+export const BIOMARKER_SUPPLEMENT_ENTRIES: BiomarkerSupplementMapEntry[] =
+  biomarkerSupplementMapDataset.entries.map((e) => ({
+    ...e,
+    items: e.supplements,
+  }));
 
 // The map entry for a nutrient key, or null when the map doesn't cover it.
 export function biomarkerSupplementEntryForKey(
