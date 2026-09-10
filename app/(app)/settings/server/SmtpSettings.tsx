@@ -205,7 +205,12 @@ export default function SmtpSettings({
       <div className="flex flex-wrap items-center gap-2">
         {/* Distinct verb, not "Save" (#928): keep exactly one "Save"-named button
             per page for Playwright's substring role matching. */}
-        <Button onClick={save} disabled={busy} data-testid="smtp-apply">
+        <Button
+          onClick={save}
+          disabled={busy}
+          data-testid="smtp-apply"
+          variant="primary"
+        >
           Apply email settings
         </Button>
       </div>

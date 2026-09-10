@@ -68,6 +68,7 @@ export default function TrashRetentionSettings({ days }: { days: number }) {
           onClick={save}
           disabled={status.pending}
           data-testid="trash-retention-save"
+          variant="primary"
         >
           Save
         </Button>
