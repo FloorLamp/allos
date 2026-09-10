@@ -881,7 +881,10 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
       itemId,
       ceilingWindowEndMinute(new Date())
     );
-    expect(before.latestGivenAt).toContain("10:00");
+    expect(before.arming).toMatchObject({ kind: "placed" });
+    expect(
+      before.arming.kind === "placed" ? before.arming.givenAt : ""
+    ).toContain("10:00");
 
     // Moving the administration event moves the safety clock without changing row id.
     updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
@@ -890,8 +893,15 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
       itemId,
       ceilingWindowEndMinute(new Date())
     );
-    expect(after.latestGivenAt).toContain("14:00");
-    expect(after.latestId).toBe(before.latestId);
+    expect(after.arming).toMatchObject({
+      kind: "placed",
+      // Same row id: moving the administration event moves the clock, not the ledger.
+      administrationId:
+        before.arming.kind === "placed" ? before.arming.administrationId : -1,
+    });
+    expect(
+      after.arming.kind === "placed" ? after.arming.givenAt : ""
+    ).toContain("14:00");
 
     // A different event time is not a duplicate…
     expect(
@@ -918,15 +928,15 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
       )
     ).toEqual({ kind: "duplicate" });
 
-    // Clearing the event makes the safety read fall back to immutable capture.
-    // State that as the identity it is: the read IS the row's own recorded_at.
-    // Asserting the absence of "14:00" instead reds for the minute the real clock
-    // spells it, because the fallback value is that clock (#3180).
+    // CLEARING THE EVENT NO LONGER HANDS THE SAFETY CLOCK A CAPTURE STAMP (#4686).
+    // It used to read back the row's own `recorded_at` — when the app was TOLD, not
+    // when the dose was given — and a duration measured from that becomes "Redose OK"
+    // for a dose that may have been given minutes ago. The row is now `unplaced`: it
+    // names the administration and states no instant at all.
     updateHistoricalDose(p, itemId, logId, date, null, null);
     expect(
-      getRedoseArmingState(p, itemId, ceilingWindowEndMinute(new Date()))
-        .latestGivenAt
-    ).toBe(logRow(logId).recorded_at);
+      getRedoseArmingState(p, itemId, ceilingWindowEndMinute(new Date())).arming
+    ).toEqual({ kind: "unplaced", administrationId: logId });
   });
 });
 

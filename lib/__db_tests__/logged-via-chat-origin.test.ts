@@ -568,11 +568,20 @@ describe("a redose notice tap records telegram-nudge", () => {
         )
         .run(itemId).lastInsertRowid
     );
-    // One administration seven hours ago: the window is open.
+    // One administration seven hours ago: the window is open. It STATES that instant —
+    // the real PRN writer always does, and since #4686 a row carrying only a capture
+    // stamp is an unplaced dose that arms no window.
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, logged_via)
-       VALUES (?, ?, ?, ?, 'taken', 'page')`
-    ).run(doseId, itemId, today(profileId), "2026-06-17 07:00:00");
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, recorded_at, occurred_at, status, logged_via)
+       VALUES (?, ?, ?, ?, ?, 'taken', 'page')`
+    ).run(
+      doseId,
+      itemId,
+      today(profileId),
+      "2026-06-17 07:00:00",
+      "2026-06-17 07:00:00"
+    );
 
     await runRedoseNotices(profileId, today(profileId), new Date());
     const notice = sentTo(CHAT).find((s) =>

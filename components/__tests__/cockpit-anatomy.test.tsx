@@ -175,7 +175,7 @@ function med(over: Partial<PrnMedForQuickLog> & { id: number; name: string }) {
     minIntervalHours: 6,
     maxDailyCount: 4,
     familyCount: 0,
-    familyLastGivenAt: null,
+    familyArming: { kind: "none" } as const,
     familyMaxDailyCount: 4,
     familyExposure: null,
     familyMemberCount: 1,
@@ -470,7 +470,13 @@ describe("the open med panel states the last dose and its day (#5488 fix 3)", ()
             count: 0,
             lastGivenAt: "2026-09-05 17:44:00",
             familyCount: 2,
-            familyLastGivenAt: "2026-09-05 17:44:00",
+            familyArming: {
+              kind: "placed",
+              administrationId: 900,
+              givenAt: "2026-09-05 17:44:00",
+              itemId: 31,
+              itemName: "Ibuprofen",
+            },
           }),
         ]}
         tz="UTC"

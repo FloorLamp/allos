@@ -277,6 +277,71 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
   });
 });
 
+// #4686 owner ruling 2. Since the interval clock stopped guessing an instant for a row
+// that states none, an ordinary catch-off — check off yesterday's dose — leaves the
+// redose window unanswerable. That cost is paid by ASKING for the minute on a day that
+// has ended, and by naming the escape for a caregiver who genuinely does not know.
+describe("a past-day check-off asks for the minute (#4686)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function pastRow() {
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    const day = screen.getByTestId("quick-entry-dose-day");
+    return within(day)
+      .getAllByRole("listitem")
+      .find((row) => within(row).queryByText("Collagen"))!;
+  }
+
+  it("today's row is untouched — the tap instant already states the minute", () => {
+    renderSheet();
+    const todayRow = screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`);
+    expect(
+      within(todayRow).queryByTestId(/dated-dose-when-.*-time/)
+    ).toBeNull();
+  });
+
+  it("a day that has ended opens the field with no way to close it", () => {
+    const row = pastRow();
+    expect(within(row).getByTestId("dated-dose-when-12-time")).toBeTruthy();
+    // `required` takes the disclosure away: there is no door to shut the question with.
+    expect(within(row).queryByTestId("dated-dose-when-12-toggle")).toBeNull();
+  });
+
+  it("posts the stated minute with the row's own day", async () => {
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
+    const row = pastRow();
+    fireEvent.change(within(row).getByTestId("dated-dose-when-12-time"), {
+      target: { value: "07:05" },
+    });
+    await act(async () => {
+      fireEvent.click(within(row).getByTestId("dose-take"));
+    });
+    const posted = mocks.setDoseStatus.mock.calls[0]![0] as FormData;
+    expect({ at: posted.get("at"), date: posted.get("date") }).toEqual({
+      at: "07:05",
+      date: "2026-08-27",
+    });
+  });
+
+  it("an explicit don't-know keeps the row untimed", async () => {
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
+    const row = pastRow();
+    fireEvent.change(within(row).getByTestId("dated-dose-when-12-time"), {
+      target: { value: "07:05" },
+    });
+    fireEvent.click(within(row).getByTestId("dated-dose-when-12-unknown"));
+    await act(async () => {
+      fireEvent.click(within(row).getByTestId("dose-take"));
+    });
+    const posted = mocks.setDoseStatus.mock.calls[0]![0] as FormData;
+    // Nothing on the wire, which is what the action reads as "this row states no
+    // administration instant" for a day that is not today.
+    expect(posted.get("at")).toBeNull();
+    expect(posted.get("date")).toBe("2026-08-27");
+  });
+});
+
 describe("the quick-log dose sheet's day switcher (#3936)", () => {
   it("queues a past-day take for profile-local normalization on replay", async () => {
     vi.clearAllMocks();
