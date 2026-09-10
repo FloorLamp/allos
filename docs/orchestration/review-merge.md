@@ -7,6 +7,8 @@
 - Read the full diff and the issue's complete comment thread.
 - Verify repository claims with searches and focused reads. Exercise the write
   path when the diff cannot demonstrate the behavior.
+- Check a consumer table with `npx tsx scripts/reach.ts <module> <symbol>`: the
+  terminals it prints are the rows the table must name, never the nearest one.
 - Relay evidence exactly and make only conclusions you independently derived.
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
@@ -77,6 +79,9 @@ a guard or dispatching a lens.
 - Only the landing candidate opens or refreshes a ready PR and consumes final
   CI/review. Banked work stays branch-only until promotion. Use
   `landing-independence.mjs` as advice; the merge gate checks base movement.
+- A banked branch is reported as green on the local tiers (no browser tier runs
+  before promotion); a branch whose diff changes a rendered string or a selector
+  runs its own affected e2e specs once locally before it is called banked.
 - Its refusal names the `MERGED-TREE-CHECKED` receipt that clears it, base-bound
   as a pass is head-bound: run it and merge in one pass. A notes batch moves
   every open PR's base: `lib/release-notes.json` is type-bearing under `/^lib\//`.

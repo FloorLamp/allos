@@ -29,7 +29,6 @@ export default function AppleIcon() {
     >
       {/* Wave mark; aspect ratio 164:106 ≈ 1.55. next/og renders via satori, which
           only supports a raw <img>; next/image doesn't work here. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         width={130}
         height={84}

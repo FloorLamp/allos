@@ -779,7 +779,6 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
       .first();
     const stackBox = await firstStackRow.boundingBox();
     expect(stackBox).not.toBeNull();
-    // eslint-disable-next-line no-console
     console.log(`MANAGE_FIRST_STACK_ROW_Y=${Math.round(stackBox!.y)}`);
     // A ceiling, not the number: the gate is that the chrome above the stack cannot
     // grow back. 520px is the SAME ceiling the Day ledger's first row is held to —

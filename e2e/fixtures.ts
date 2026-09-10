@@ -336,7 +336,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // with no e2e event layer) against its own template, and its one spec drives the
   // demo login rather than acting as the shared admin.
   noSharedProfileLeak: [
-    // eslint-disable-next-line react-hooks/rules-of-hooks
     async ({ workerApp, sharedProfileLeftovers }, use, testInfo) => {
       // The BEFORE reading of the saved-row diff (#3946). It is taken here rather
       // than in a `beforeEach` so that a `beforeAll` fixture — which runs before
@@ -393,7 +392,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           throw new Error(sharedRowGapMessage(culprit, gap, at));
         }
       }
-      // eslint-disable-next-line react-hooks/rules-of-hooks
       await use();
       if (workerApp.demo) return;
       const stranded = takeStrandedDrafts(workerApp.dbPath);
@@ -430,7 +428,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { auto: true },
   ],
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   sharedProfileLeftovers: [NO_LEFTOVERS, { option: true }],
 
   // THE BROWSER RUNS ON THE APP'S FROZEN CLOCK (#1538 follow-up).
@@ -619,7 +616,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // Point the built-in page/context — and any manual browser.newContext(), which
   // inherits these options — at THIS worker's server. (`use` is Playwright's
   // fixture-setup callback, not a React hook; the lint rule only sees the name.)
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   baseURL: async ({ workerApp }, use) => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(workerApp.baseURL);
@@ -627,7 +623,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   // Start authenticated against THIS worker's database. The demo project drives
   // its own login, so it stays anonymous.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   storageState: async ({ workerApp }, use) => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(workerApp.demo ? undefined : workerAuthPath(workerApp.index));
@@ -660,7 +655,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   //
   // A spec that WANTS the two to disagree still says so per context
   // (`browser.newContext({ timezoneId })`), which is untouched by this.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   timezoneId: async ({}, use) => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(pinnedZone());

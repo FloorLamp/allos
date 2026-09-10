@@ -18,10 +18,8 @@ const DOC = path.join(
 const doc = fs.readFileSync(DOC, "utf8");
 const next = spliceTimeColumnIndex(doc);
 if (next === doc) {
-  // eslint-disable-next-line no-console
   console.log(`${TIME_COLUMN_INDEX_DOC} already current`);
 } else {
   fs.writeFileSync(DOC, next);
-  // eslint-disable-next-line no-console
   console.log(`wrote ${TIME_COLUMN_INDEX_DOC}`);
 }

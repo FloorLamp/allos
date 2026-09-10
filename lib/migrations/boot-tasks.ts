@@ -411,7 +411,6 @@ export function bootstrapAuth(db: MaintenanceDatabase) {
   }
 
   if (!envPassword) {
-    // eslint-disable-next-line no-console
     console.log(
       `\n[allos] Created admin login "${username}" with a generated password:\n` +
         `    ${password}\n` +
