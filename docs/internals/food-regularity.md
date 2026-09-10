@@ -36,7 +36,7 @@ role in preparing a write; the recap only reports recorded frequency.
 ## Evidence and exclusions
 
 The profile-scoped readers live in
-[nutrition.ts](../../lib/queries/nutrition.ts):
+[nutrition/regularity.ts](../../lib/queries/nutrition/regularity.ts):
 
 - `getFoodRegularity` reads recent `food_log_events`. `foodEventWindow` in
   [food-slot-count.ts](../../lib/food-slot-count.ts) resolves declared windows,
