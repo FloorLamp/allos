@@ -10,7 +10,7 @@ import {
   addSubstanceDailyTotalAction,
   correctSubstanceUseAction,
 } from "@/app/(app)/medical/substance-use/actions";
-import Button from "@/components/Button";
+import FormDismissAction from "@/components/FormDismissAction";
 import SubmitButton from "@/components/SubmitButton";
 import { whenOnDay } from "@/lib/stated-time";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -231,11 +231,11 @@ export default function SubstanceForm({
         />
       </label>
       <InlineError>{error}</InlineError>
-      <div className="flex items-end gap-2 sm:col-span-2">
+      <div className="flex flex-col items-start gap-1 sm:col-span-2">
         <SubmitButton variant="primary" disabled={pending}>
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
-        <Button onClick={onCancel}>Cancel</Button>
+        <FormDismissAction onClick={onCancel}>Cancel</FormDismissAction>
       </div>
     </form>
   );

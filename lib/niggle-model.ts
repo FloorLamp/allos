@@ -205,7 +205,14 @@ export interface NiggleTemper {
   // surface, because the phrase needs `today` and the pure formatters downstream
   // (`contextNotes`, the Training-tab chips) do not have it — the same shape
   // `endurancePlanArm.note` and `ConditionConsideration.note` already use.
+  //
+  // A TEMPER note: it claims the target moved. Only true for a session this niggle
+  // actually covers a lift in — see `presenceNote` below and `nigglesCoveringSession`.
   note: string;
+  // The line for the other case (#4872): the niggle is live but moved nothing today.
+  // Carried here for the same reason `note` is — the formatters have no `today` — and
+  // rendered here so the two sentences about one niggle cannot drift apart.
+  presenceNote: string;
 }
 
 // "Tuesday" / "yesterday" / "2 weeks ago" — when the person said it, in the shape that
@@ -232,6 +239,30 @@ export function niggleTemperLine(
     t.lastReportedDay,
     today
   )}`;
+}
+
+// "right knee" → "Right knee". The niggle label is the person's own words, stored as
+// they typed them; a line that LEADS with it has to lift the first letter.
+function capitalizeLabel(label: string): string {
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+// "Right knee niggle from Tuesday — nothing in today's session loads it" (#4872, the
+// owner's copy verbatim). The line for a live niggle that tempered NOTHING today: the
+// temper line above would claim an adjustment that did not happen, and saying nothing at
+// all would drop a live niggle off the one surface that exists to report the context.
+//
+// The leading fragment is `niggleTemperLine`/`niggleHeadsUpLine`'s "<label> niggle from
+// <when>" so one niggle reads the same wherever the app mentions it; only the clause
+// after the dash is new.
+export function nigglePresenceLine(
+  t: Pick<NiggleTemper, "label" | "lastReportedDay">,
+  today: string
+): string {
+  return `${capitalizeLabel(t.label)} niggle from ${reportedWhen(
+    t.lastReportedDay,
+    today
+  )} — nothing in today's session loads it`;
 }
 
 // The tempers a live niggle set produces, with the INJURY EXCLUSION APPLIED: a region an
@@ -261,6 +292,7 @@ export function niggleTempers(
       lastReportedDay: n.lastReportedDay,
       sourceExercise: n.sourceExercise ?? null,
       note: niggleTemperLine(n, today),
+      presenceNote: nigglePresenceLine(n, today),
     }));
 }
 
@@ -274,6 +306,27 @@ export function nigglesCoveringExercise(
   const region = regionForExercise(exerciseName);
   if (region == null) return [];
   return tempers.filter((t) => t.region === region);
+}
+
+// The tempers that MOVED A TARGET in today's session (#4872) — the ones covering at
+// least one lift the session actually programs. Asked through `nigglesCoveringExercise`
+// once per listed lift rather than re-deriving the test, because this is precisely the
+// set `resolveTrainingTemper` tempers: a surface describing the plan and the plan itself
+// must not be able to disagree about which niggles bit.
+//
+// NARROWER THAN `nigglesTouchingSession` BELOW, and not a duplicate of it. That one asks
+// what today's session GOES NEAR, and answers yes for a focus region or the blamed lift
+// even when no programmed lift is in the niggle's region — right for a pre-workout push,
+// wrong here, because going near a niggle does not move a target. This one asks what the
+// session LOADS. Input order preserved.
+export function nigglesCoveringSession(
+  tempers: readonly NiggleTemper[],
+  exercises: readonly string[]
+): NiggleTemper[] {
+  const covering = new Set<NiggleTemper>();
+  for (const name of exercises)
+    for (const t of nigglesCoveringExercise(tempers, name)) covering.add(t);
+  return tempers.filter((t) => covering.has(t));
 }
 
 // The composed verdict for ONE lift across all three tiers, in their fixed order. This
@@ -409,7 +462,7 @@ export function niggleHeadsUpLine(
   t: Pick<NiggleTemper, "label" | "lastReportedDay" | "sourceExercise">,
   today: string
 ): string {
-  const label = t.label.charAt(0).toUpperCase() + t.label.slice(1);
+  const label = capitalizeLabel(t.label);
   const lift = t.sourceExercise
     ? ` after ${exerciseDisplayName(t.sourceExercise)}`
     : "";
