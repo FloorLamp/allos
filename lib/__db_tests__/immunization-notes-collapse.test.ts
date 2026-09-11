@@ -181,6 +181,30 @@ describe("a collapsed immunization keeps every contributor's note (#4731)", () =
     expect(searchFinds("Lot 33333")).toBe(1);
   });
 
+  // The gathering is NEW SQL with its own `profile_id = ?`, and the thing it gathers
+  // is free text — so a leak here would put one person's note on another's Timeline.
+  // Two profiles holding the SAME (vaccine, date, dose label) is the shape that would
+  // show it.
+  it("never carries one profile's note onto another profile's dose", () => {
+    importDose(newDocument("A.ccd"), LOWER_NOTE);
+    importDose(newDocument("B.ccd"), null);
+    const mine = profileId;
+
+    profileId = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES (?)")
+        .run("imm-notes-4731-other").lastInsertRowid
+    );
+    importDose(newDocument("C.ccd"), HIGHER_NOTE);
+    importDose(newDocument("D.ccd"), null);
+
+    expect(timelineDetails()).toEqual([HIGHER_NOTE]);
+    expect(searchFinds("Lot 12345")).toBe(0);
+    profileId = mine;
+    expect(timelineDetails()).toEqual([LOWER_NOTE]);
+    expect(searchFinds("Lot 67890")).toBe(0);
+  });
+
   // THE LIMIT THIS FIX DOES NOT CROSS, asserted so nobody reads the comment as a
   // wider claim than the code makes. getImmunizations is untouched — its rows feed
   // ImmunizationForm's notes field, which updateImmunization writes straight back —
