@@ -161,7 +161,7 @@
           "pr": 5867,
           "kind": "fix",
           "category": "Medical",
-          "title": "A collapsed immunization keeps every contributor’s note",
+          "title": "A collapsed immunization’s notes stay findable in the timeline and search",
           "issues": [4731]
         },
         {
@@ -182,14 +182,14 @@
           "pr": 5873,
           "kind": "fix",
           "category": "Training",
-          "title": "A niggle that changed nothing today says so instead of claiming an adjustment",
+          "title": "Your coaching notes no longer claim an adjustment a niggle did not make",
           "issues": [4872]
         },
         {
           "pr": 5858,
           "kind": "fix",
           "category": "General",
-          "title": "The intraday lag sentence anchors on a device stream, not a hand-logged practice",
+          "title": "A hand-logged practice no longer moves the intraday “no data since” sentence",
           "issues": [4863]
         },
         {
