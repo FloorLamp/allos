@@ -91,7 +91,7 @@ function cacheDay(
 function cacheHours(
   profileId: number,
   date: string,
-  mmByHour: readonly number[]
+  mmByHour: readonly (number | null)[]
 ): void {
   const home = homeByProfile.get(profileId)!;
   upsertUvHours(
@@ -355,6 +355,58 @@ describe("the parked figure reads in the reason's own unit (#1967)", () => {
     const nw = recommendNextWorkout(gatherCoachingInput(p, "kg", "km"));
     const line = contextNotes(nw).find((n) => n.startsWith("Too wet"))!;
     expect(line).toContain("Too wet for cycling (heavy rain)");
+  });
+
+  // ── #1985, THE TWO LEGACY CACHE STATES ────────────────────────────────────────
+  // These ran in the browser until Home v3 (#5435 §4). They read the line off the
+  // dashboard's Show-everything fold, which rendered a coaching row's `notes` array;
+  // Home's next-workout seat carries the recommendation's TITLE only, so no rendered
+  // surface reads `contextNotes` any more. The claim is about what the DESCRIPTION may
+  // say given a partial cache, not about who prints it, so it belongs at the tier that
+  // already owns `contextNotes` — and it is stronger here, because the two states are
+  // set by caching them rather than by an UPDATE against a seeded fixture.
+  it("names no precipitation kind when the cache has no weather code", () => {
+    // A cache row written before the WMO code was stored: the day is measurably wet,
+    // but nothing in it can distinguish rain from snow. The ride is still parked; the
+    // description must render NO parenthesized figure rather than guess a kind.
+    const p = newProfile("wt-wet-nocode");
+    seedRides(p, "Cycling", [16, 18, 19, 20, 22, 23, 25, 27]);
+    const anchor = today(p);
+    cacheDay(p, anchor, {
+      tempMaxC: 18,
+      precipitationMm: 45,
+      weatherCode: null,
+    });
+
+    const nw = recommendNextWorkout(gatherCoachingInput(p, "kg", "km"));
+    const line = contextNotes(nw).find((n) => n.startsWith("Too wet"))!;
+    expect(line).toBe(
+      "Too wet for cycling — picking something indoors instead. Outdoor cycling resumes when it dries out."
+    );
+    expect(line).not.toContain("(");
+  });
+
+  it("names the intensity but no timing when the hourly cache is still NULL", () => {
+    // Migration 149 added hourly precipitation to an ALREADY-POPULATED cache, so until
+    // the next sync those hourly values are NULL while the daily row is complete. The
+    // daily WMO code can name heavy rain; the absent hours cannot honestly place it in
+    // the morning, the afternoon or the evening.
+    const p = newProfile("wt-wet-legacy-hours");
+    seedRides(p, "Cycling", [16, 18, 19, 20, 22, 23, 25, 27]);
+    const anchor = today(p);
+    cacheDay(p, anchor, { tempMaxC: 18, precipitationMm: 45, weatherCode: 65 });
+    cacheHours(
+      p,
+      anchor,
+      Array.from({ length: 24 }, () => null)
+    );
+
+    const nw = recommendNextWorkout(gatherCoachingInput(p, "kg", "km"));
+    const line = contextNotes(nw).find((n) => n.startsWith("Too wet"))!;
+    expect(line).toBe(
+      "Too wet for cycling (heavy rain) — picking something indoors instead. Outdoor cycling resumes when it dries out."
+    );
+    expect(line).not.toMatch(/morning|afternoon|evening/);
   });
 
   it("a COLD park reads in the LOGIN's temperature scale on a surface that has one", () => {
