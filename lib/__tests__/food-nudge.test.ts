@@ -1,6 +1,7 @@
 // Pure food-nudge rendering: ranked buttons offer writes, and the tally states day totals.
 
 import { describe, it, expect } from "vitest";
+import { TODAY_PERIOD } from "@/lib/nutrient-adequacy";
 import {
   renderFoodNudge,
   foodLogCallbackData,
@@ -94,6 +95,7 @@ describe("renderFoodNudge", () => {
       leanMassKg: null,
     })!; // 95–130
     const todayIntake = proteinIntake({
+      period: TODAY_PERIOD,
       dailyTracked: null,
       dailyLogged: 30,
       dailyEstimated: 25,

@@ -21,6 +21,7 @@
 
 import type { HabitWeekCell } from "./food-habit-trend";
 import { proteinIntake } from "./protein";
+import { dayPeriod } from "./nutrient-adequacy";
 import { defineRankTable, itemsFromLayout, rankedIds } from "./rank-core";
 import type { LensWeekCaps } from "./trends";
 
@@ -69,7 +70,11 @@ const g = (n: number): number => Math.round(n);
 // (#2258) is what decides how the chart draws a day nobody logged.
 export function mergeProteinSources(
   tracked: DatedValue[],
-  logged: DatedValue[]
+  logged: DatedValue[],
+  // The profile's today, so each day's figure carries the period it describes (#4485).
+  // Only the SERIES VALUE is read here; the period rides along on the composition so the
+  // chart's day and a card's day are the same result, not two.
+  todayStr: string
 ): DatedValue[] {
   const byTracked = byDate(tracked);
   const byLogged = byDate(logged);
@@ -80,6 +85,7 @@ export function mergeProteinSources(
       dailyTracked: byTracked.get(date) ?? null,
       dailyLogged: byLogged.get(date) ?? null,
       dailyEstimated: 0,
+      period: dayPeriod(date, todayStr),
     });
     if (intake) out.push({ date, value: intake.grams });
   }

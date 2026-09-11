@@ -46,10 +46,15 @@ describe("orderNutritionSections (#2399)", () => {
 });
 
 describe("mergeProteinSources (#2414)", () => {
+  // Every fixture day is in the past relative to this anchor, so each carries a
+  // completed-day period (#4485). The merge reads only the composed grams.
+  const TODAY = "2026-02-01";
+
   it("lets a tracked reading override the same day's hand-logged grams", () => {
     const out = mergeProteinSources(
       [{ date: "2026-01-02", value: 140 }],
-      [{ date: "2026-01-02", value: 30 }]
+      [{ date: "2026-01-02", value: 30 }],
+      TODAY
     );
     // Never 170: a day carrying both sources would double-count the same meals.
     expect(out).toEqual([{ date: "2026-01-02", value: 140 }]);
@@ -62,7 +67,8 @@ describe("mergeProteinSources (#2414)", () => {
         { date: "2026-01-01", value: 30 },
         { date: "2026-01-02", value: 30 },
         { date: "2026-01-03", value: 55 },
-      ]
+      ],
+      TODAY
     );
     expect(out).toEqual([
       { date: "2026-01-01", value: 30 },
@@ -77,7 +83,8 @@ describe("mergeProteinSources (#2414)", () => {
         { date: "2026-01-02", value: 140 },
         { date: "2026-01-01", value: 120 },
       ],
-      []
+      [],
+      TODAY
     );
     expect(out).toEqual([
       { date: "2026-01-01", value: 120 },
@@ -88,10 +95,10 @@ describe("mergeProteinSources (#2414)", () => {
   it("omits a day neither source has, rather than charting a zero", () => {
     // The gap-fill (#2258) decides how an unlogged day draws; the merge must not
     // pre-empt it with a zero-gram row asserting a fast nobody recorded.
-    expect(mergeProteinSources([], [])).toEqual([]);
-    expect(mergeProteinSources([{ date: "2026-01-01", value: 0 }], [])).toEqual(
-      []
-    );
+    expect(mergeProteinSources([], [], TODAY)).toEqual([]);
+    expect(
+      mergeProteinSources([{ date: "2026-01-01", value: 0 }], [], TODAY)
+    ).toEqual([]);
   });
 });
 
