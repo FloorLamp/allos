@@ -7,11 +7,12 @@
 - Read the full diff and the issue's complete comment thread.
 - Verify repository claims with searches and focused reads. Exercise the write
   path when the diff cannot demonstrate the behavior.
-- Check a consumer table with `npx tsx scripts/reach.ts <module> <symbol>`: the
-  terminals it prints are the rows the table must name, never the nearest one.
-  The merge gate prints that reach as a NOTE row for a PR whose diff changes a
-  shared `lib/` derivation, naming the terminals the table omits and the tree
-  it walked; a declaration moved verbatim between files prints no row.
+- Check a consumer table with `npx tsx scripts/reach.ts <module> <symbol>`: its
+  terminals are the rows the table must name, never the nearest. The merge gate
+  prints it as a NOTE for a PR changing a shared `lib/` derivation, naming
+  the omitted terminals and tree walked; a verbatim move between files prints
+  none. A landing session pastes the gate's `TALLY #5710` line onto #5710,
+  answering right/wrong.
 - Relay evidence exactly and make only conclusions you independently derived.
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
