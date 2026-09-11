@@ -115,7 +115,11 @@ describe("the PRN sweep is a dormancy tenant (#4242)", () => {
 
   it("the default threshold used by the sweep is that interval", () => {
     const justInside = dormantPrnCandidates(
-      [m({ lastAdministration: shiftDateStr(TODAY, -(DORMANCY_DEFAULT_DAYS - 1)) })],
+      [
+        m({
+          lastAdministration: shiftDateStr(TODAY, -(DORMANCY_DEFAULT_DAYS - 1)),
+        }),
+      ],
       TODAY
     );
     const atTheInterval = dormantPrnCandidates(

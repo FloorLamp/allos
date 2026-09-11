@@ -644,9 +644,8 @@ describe("light-exposure line (#1723 part 1)", () => {
   // #4242 — "is this profile's sun surface live?" is asked over THE SUN SURFACE'S OWN
   // window. This gate used to reach back thirty days for a surface that speaks over six
   // weeks, so a profile the sun card still had something to say about was judged to have
-  // no sun card. The band this widens is enumerated on the issue: day 30 through day 41
-  // inclusive now count where they did not. Nothing narrows — a gate that said yes
-  // before still says yes.
+  // no sun card. The band this widens: day 30 through day 41 inclusive now count where
+  // they did not. Nothing narrows — a gate that said yes before still says yes.
   function outdoorProfile(name: string, daysAgo: number): number {
     const pid = newProfile(name);
     setHomeLocation(pid, { lat: LAT, lng: LNG });

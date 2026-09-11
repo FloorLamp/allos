@@ -8,10 +8,10 @@ Never compute staleness in a component.
 
 `freshnessState(ageDays, intervalDays, { exempt })` returns:
 
-| State            | Meaning                                                                                                    |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- |
-| `current`        | Age at or below the interval. |
-| `due`            | Age strictly greater than the interval; still real data. |
+| State            | Meaning                                                    |
+| ---------------- | ---------------------------------------------------------- |
+| `current`        | Age at or below the interval.                              |
+| `due`            | Age strictly greater than the interval; still real data.   |
 | `not-applicable` | Exempt, or age/interval missing, nonfinite or nonpositive. |
 
 A reading exactly one interval old is current. Never fold `not-applicable` into
@@ -26,12 +26,12 @@ nonempty date as zero — so do not claim they all reject malformed dates.
 
 ## Different uses of the comparison
 
-| Policy             | Question                                                 | Consequence                                                                               |
-| ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Retest clock       | Is a result past its retest interval? | Domain logic may raise a retest finding or reminder. |
-| Presentation floor | May the latest reading be framed as current? | Show its age or as-of date; nothing is hidden and no reminder is made. |
+| Policy             | Question                                      | Consequence                                                                      |
+| ------------------ | --------------------------------------------- | -------------------------------------------------------------------------------- |
+| Retest clock       | Is a result past its retest interval?         | Domain logic may raise a retest finding or reminder.                             |
+| Presentation floor | May the latest reading be framed as current?  | Show its age or as-of date; nothing is hidden and no reminder is made.           |
 | Dormancy           | Has a recorded domain stopped receiving data? | Replace an empty, window-bounded presentation with a dated statement and action. |
-| Attention recency  | Does recency itself claim placement? | A reading inside the window claims an attention tier, notable or not. |
+| Attention recency  | Does recency itself claim placement?          | A reading inside the window claims an attention tier, notable or not.            |
 
 Presentation floors are surface policy, never profile settings or grounds for an
 Upcoming item or notification.
@@ -59,14 +59,14 @@ values and cross-reference comments calling that agreement coincidental.
 
 ## Existing adapters
 
-| Owner                                                               | Interval and scope                                                                                                                                                                                                                                                                                                |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner                                                               | Interval and scope                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Biomarker retest status](../../lib/reference-range/qualitative.ts) | Curated positive `retest_days`, else the [retest default](../../lib/reference-range/retest.ts). Exempts genomics, non-lab categories (`reference`, `vitals`, `instrument`, `derived`), durable immune positives, immutable attributes and QC results. Missing dates are `not-applicable`. |
-| [Fitness freshness](../../lib/fitness-freshness.ts)                 | Per battery test: profile retest cadence for performed protocols; body fat and resting HR take the trend-metric floor by reference. An undeclared key falls back to profile cadence. `missingFreshnessPolicies` finds missing declarations, `fitnessFloorsNotShared` restated numbers. |
-| [Recent labs](../../lib/recent-labs.ts)                             | A 365-day presentation floor plus the attention-recency window above. An undatable reading is not fresh. |
-| [Latest vitals](../../lib/vitals-latest.ts)                         | Presentation floors of 14 days for resting HR, 180 for blood pressure, resolved per quantity. |
-| [Trend metrics](../../lib/trend-metric-freshness.ts)                | `TREND_METRIC_PRESENTATION_FLOORS`, total over `TrendMetricSlug`. Systolic, diastolic and resting HR reuse the vital policies by reference. |
-| [BMI paired height](../../lib/growth-series.ts)                     | `PAIRED_HEIGHT_INTERVAL_DAYS`: 92 days for infants; 183 for early childhood, children and adolescents; no clock for adults, older adults or an unknown birthdate.                                                                                                                                                 |
+| [Fitness freshness](../../lib/fitness-freshness.ts)                 | Per battery test: profile retest cadence for performed protocols; body fat and resting HR take the trend-metric floor by reference. An undeclared key falls back to profile cadence. `missingFreshnessPolicies` finds missing declarations, `fitnessFloorsNotShared` restated numbers.    |
+| [Recent labs](../../lib/recent-labs.ts)                             | A 365-day presentation floor plus the attention-recency window above. An undatable reading is not fresh.                                                                                                                                                                                  |
+| [Latest vitals](../../lib/vitals-latest.ts)                         | Presentation floors of 14 days for resting HR, 180 for blood pressure, resolved per quantity.                                                                                                                                                                                             |
+| [Trend metrics](../../lib/trend-metric-freshness.ts)                | `TREND_METRIC_PRESENTATION_FLOORS`, total over `TrendMetricSlug`. Systolic, diastolic and resting HR reuse the vital policies by reference.                                                                                                                                               |
+| [BMI paired height](../../lib/growth-series.ts)                     | `PAIRED_HEIGHT_INTERVAL_DAYS`: 92 days for infants; 183 for early childhood, children and adolescents; no clock for adults, older adults or an unknown birthdate.                                                                                                                         |
 
 BMI validates an input rather than framing one: each weigh-in pairs with the
 height in effect on or before it; a `due` height drops the point,
