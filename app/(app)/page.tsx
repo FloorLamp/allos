@@ -147,6 +147,8 @@ import { householdFanoutWithActing } from "@/lib/household-fanout";
 import { careCandidates } from "@/lib/dashboard-candidates";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
+import AppBadge from "@/components/AppBadge";
+import { attentionBadgeItems } from "@/lib/attention";
 import {
   dismissAttention,
   dismissDataQualityGap,
@@ -752,6 +754,19 @@ async function renderHome(
           its domain page mounts, posting the SAME Server Action. Without this the
           server reads all of them as that page's own form. */}
       <LoggedViaSurface value="dashboard-widget">
+        {/* THE PAGE'S NAME, FOR A READER WHO CANNOT SEE ITS CHROME. Home spends no
+            header: the nav already names it (#1616/#1661), the day bar below names
+            the day, and #5435 §3 gives the page no title row at all. That leaves the
+            document with no h1 and the day bar's h2 as its first heading, which is
+            the gap `sr-only` exists for — the same shape `components/TabFirstPage.tsx`
+            uses for a hub whose title the tab strip already carries. */}
+        <h1 className="sr-only">Home</h1>
+        {/* THE PWA BADGE, WHICH IS NOT PRESENTATION (#1424). It rode inside the
+            placement canvas because that was the one component the page rendered;
+            it belongs to the ACT-NOW SUBSET of the attention model, not to any
+            layout, so it mounts here and survives the canvas. Count unchanged —
+            `attentionBadgeItems` is the same pure selection over the same gather. */}
+        <AppBadge count={attentionBadgeItems(attention, on).length} />
         {/* ── CURRENT CARE (§3.1) ────────────────────────────────────────────────
             Existing actionable safety items first, then every authorized open illness
             episode in the existing subject/episode order, each keeping the whole
