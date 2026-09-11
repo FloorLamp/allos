@@ -285,7 +285,7 @@
   "e2e/overlay-gestures.mobile.spec.ts": 24.414,
   "e2e/own-profile.spec.ts": 2.968,
   "e2e/pace-tone.spec.ts": 0.659,
-  "e2e/page-container-alignment.spec.ts": 5.01,
+  "e2e/page-container-alignment.spec.ts": 5.308,
   "e2e/palette-actions.spec.ts": 12.809,
   "e2e/palette-deeplinks.spec.ts": 8.782,
   "e2e/passport-save-error.spec.ts": 1.249,
