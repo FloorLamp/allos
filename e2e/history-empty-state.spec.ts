@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs, followLink } from "./nav";
+import { appContent } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TL_EMPTY } from "./fixture-logins";
 
 // A deep-past day (the #1511 relative-or-deep-past rule) used only to prove that a
@@ -121,11 +122,23 @@ test.describe("the record's base empty state (#1410)", () => {
     });
     try {
       await page.goto(`/history?day=${A_QUIET_DAY}`);
+      // THE FRAME NAMES IT AT BOTH WIDTHS (#5764). From `sm` up that frame is the
+      // header: one h1, and it is the DAY rather than the section. "0 records", not
+      // "no records" — the same grammar a day WITH rows prints, so the count is the
+      // day's own line and the empty case is not a second sentence.
+      const heading = page.getByRole("heading", { level: 1 });
+      await expect(heading).toHaveCount(1);
+      await expect(heading).not.toHaveText("History");
+      await expect(
+        appContent(page).getByText("0 records", { exact: true })
+      ).toBeVisible();
+      // Below `sm` the h1 is `sr-only` and the visible name is the sticky bar's,
+      // count included — the half the phone screenshot in #4918 was taken of.
+      await page.setViewportSize({ width: 390, height: 844 });
       const name = page.getByTestId("timeline-day-name");
       await expect(name).toBeVisible();
-      // "0 records", not "no records": the same grammar a day WITH rows prints, so
-      // the count is the day's own and the empty case is not a second sentence.
       await expect(name).toHaveText(/^.+ — 0 records$/);
+      await page.setViewportSize({ width: 1280, height: 900 });
       // The retired header and its self-linking chevron are gone from this view.
       await expect(page.getByTestId("history-day-link")).toHaveCount(0);
       await expect(page.getByTestId("history-empty-filtered")).toHaveText(
@@ -139,9 +152,14 @@ test.describe("the record's base empty state (#1410)", () => {
       );
 
       await page.goto("/history?day=2099-01-01");
+      await expect(
+        appContent(page).getByText("0 records", { exact: true })
+      ).toBeVisible();
+      await page.setViewportSize({ width: 390, height: 844 });
       await expect(page.getByTestId("timeline-day-name")).toHaveText(
         /^.+ — 0 records$/
       );
+      await page.setViewportSize({ width: 1280, height: 900 });
       await expect(page.getByTestId("history-empty-filtered")).toHaveText(
         "No entries yet today."
       );
