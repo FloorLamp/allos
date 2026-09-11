@@ -13,9 +13,18 @@ import {
   episodeForProfileDate,
 } from "@/lib/illness-episode";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
-import { schoolReturnCompactClause } from "@/lib/school-return";
+import {
+  schoolReturnCompactClause,
+  schoolReturnCompactLabel,
+} from "@/lib/school-return";
 import { staleEpisodeNudgeFor, ackStaleNudge } from "@/lib/stale-episode-data";
+import {
+  cockpitSummaryLine,
+  episodeCollapsedStatus,
+} from "@/lib/illness-episode-format";
+import { fmtTemp } from "@/lib/units";
 import { updateHistoricalDose, setDoseStatusCore } from "@/lib/queries";
+import { restampDoseLogsCore } from "@/lib/queries/intake/adherence";
 
 // The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
 // wall time this file states has already happened and `logTemperatureCore` judges it
@@ -453,11 +462,12 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     );
   });
 
-  // THE HOLD IS SCOPED TO THE LATEST DOSE DAY. An unstated dose two days back cannot be
-  // the last one — every instant on an earlier day precedes every instant on a later
-  // one — so it neither holds the clock nor loosens it: the clock takes the MAX stated
-  // instant, which is the later day's.
-  it("an unstated dose on an EARLIER day does not hold a later stated one", () => {
+  // THE HOLD ENDS WHEN THE DOSE PROVABLY CANNOT MATTER. An unstated dose two days back
+  // could have been given no later than the end of its day, which is past the
+  // threshold, so it cannot be inside the fever-free window however it is placed and
+  // the clock computes from the stated dose instead. This is what keeps the door
+  // meaningful on a long episode.
+  it("an unstated dose past the threshold no longer holds a later stated one", () => {
     const p = newProfile("sr-older-unstated");
     setProfileSetting(p, "timezone", "UTC");
     makeSick(p, 4);
@@ -479,6 +489,126 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(s.hoursSinceAntipyretic).toBe(12); // 08:00 − yesterday 20:00
     expect(s.clearedForHours).toBe(12); // the stated dose governs, not the stamp
     expect(s.met).toBe(false);
+  });
+
+  // THE SEAM OF THE HOLD RULE ITSELF. An unstated dose is bounded by the latest moment
+  // it could have been given — the end of its schedule-owned day, or its capture stamp
+  // if it was filed later. Inside the threshold of that bound it could still be
+  // masking, so it holds; past it, it provably cannot be, so the clock computes. Both
+  // sides of the same fixture, because a rule tested only where it fires is half tested.
+  it("holds until the dose provably cannot be inside the fever-free window", () => {
+    const p = newProfile("sr-bound");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 4);
+    const td = today(p);
+    const d0 = shiftDateStr(td, -2);
+    const d1 = shiftDateStr(td, -1);
+    logTemperatureCore(p, 103.4, "F", d0, "page", "00:00");
+    logTemperatureCore(p, 98.6, "F", d0, "page", "00:30");
+    addAntipyretic(p, "Ibuprofen", d0, `${d0} 01:00:00`);
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    // The dose could have been given as late as the end of d0 (= d1 00:00). At d1
+    // 23:00 that is 23h ago — inside a 24h threshold, so it still holds.
+    const inside = schoolReturnStatusFor(p, ep, Date.parse(`${d1}T23:00:00Z`))!;
+    expect(inside.evidence).toBe("held");
+    expect(inside.met).toBe(false);
+
+    // An hour and a half later it is 24.5h ago: no placement of that dose puts it in
+    // the window, so the countdown runs again — from the measured normal reading.
+    const outside = schoolReturnStatusFor(
+      p,
+      ep,
+      Date.parse(`${td}T00:30:00Z`)
+    )!;
+    expect(outside.evidence).toBe("measured");
+    expect(outside.hoursSinceAntipyretic).toBeNull(); // still no stated time to count
+    expect(outside.met).toBe(true);
+  });
+
+  // THE MIDNIGHT-CROSSING REPRODUCTION (#5688 falsifying pass). A dose's day is
+  // SCHEDULE-OWNED (#614): `restampDoseLogsCore` moves `occurred_at` across midnight and
+  // leaves `date` where the schedule put it, reporting `crossedMidnight` for exactly
+  // this. So a dose dated TODAY can have been given YESTERDAY, and an earlier pass of
+  // this fix — which scoped the hold to MAX(date) — dropped yesterday's unstated dose
+  // as "not the last one" and cleared the child on a reducer nobody placed. That is the
+  // same unearned clearance #5688 exists to close, so the bound is an INSTANT now.
+  it("a dose dated today but GIVEN yesterday does not unscope the hold", () => {
+    const p = newProfile("sr-crossing");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 3);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 103.4, "F", yd, "page", "00:00");
+    logTemperatureCore(p, 98.6, "F", yd, "page", "00:30"); // the clock's evidence
+
+    // A: yesterday's ibuprofen, never placed.
+    addAntipyretic(p, "Ibuprofen", yd, `${yd} 01:00:00`);
+    // B: confirmed TODAY with a stated time, then corrected back across midnight to
+    // 00:05 YESTERDAY through the real correction path.
+    const b = addAntipyretic(p, "Acetaminophen", td, `${td} 02:00:00`);
+    db.prepare(`UPDATE intake_item_logs SET occurred_at = ? WHERE id = ?`).run(
+      `${td}T02:00:00Z`,
+      b.logId
+    );
+    const out = restampDoseLogsCore(
+      p,
+      b.logId,
+      () => new Date(`${yd}T00:05:00Z`)
+    );
+    expect(out).toMatchObject({ kind: "restamped", crossedMidnight: true });
+    expect(
+      db
+        .prepare(`SELECT date, occurred_at FROM intake_item_logs WHERE id = ?`)
+        .get(b.logId)
+    ).toEqual({ date: td, occurred_at: `${yd}T00:05:00Z` });
+
+    // 24h after the normal reading. A MAX(date) hold scope put the "last" dose on
+    // today (B, stated), dropped the unstated A as an earlier day's, and rendered
+    // "fever-free 24h of 24" — while A could have been given as late as 23:59
+    // yesterday, about an hour before the note claimed 24 fever-free hours.
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T00:30:00Z`))!;
+    expect(s.evidence).toBe("held");
+    expect(s.met).toBe(false);
+    expect(s.lastAntipyreticName).toBe("Ibuprofen");
+  });
+
+  // THE HELD CLAUSE AND THE DOSE CLAUSE MUST NOT CONTRADICT EACH OTHER. The cockpit
+  // line prints the school-return clause beside the episode's last dose, and that dose
+  // clause quoted the record-chain clock BARE — so the held arm rendered "add the
+  // ibuprofen time in Dose history · last med Ibuprofen Yesterday, 07:00", asking for a
+  // time while appearing to state one. `timeRecorded` is the flag the assembly already
+  // sets; the collapsed line now marks the clock with it, like the timeline always has.
+  it("the cockpit line does not quote a filing stamp beside the held clause", () => {
+    const p = newProfile("sr-cockpit-held");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 3);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 103.4, "F", yd, "page", "06:00");
+    logTemperatureCore(p, 98.6, "F", yd, "page", "08:00");
+    addAntipyretic(p, "Ibuprofen", yd, `${yd} 07:00:00`);
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T09:00:00Z`))!;
+    expect(s.evidence).toBe("held");
+
+    const line = cockpitSummaryLine(episodeCollapsedStatus(ep, "F"), {
+      clearedForHours: s.clearedForHours,
+      thresholdHours: s.thresholdHours,
+      met: s.met,
+      label: schoolReturnCompactLabel(s, "F"),
+      lastFeverLabel: fmtTemp(s.lastFeverDegF, "F"),
+      noReadingSinceFever: s.evidence === "none",
+    });
+    expect(line).toContain("add the ibuprofen time in Dose history");
+    // The dose's clock is still there, with its provenance — never a bare clock that
+    // reads as the time it was given.
+    expect(line).toContain("last med Ibuprofen recorded Yesterday, 07:00");
+    expect(line).not.toContain("last med Ibuprofen Yesterday, 07:00");
+    // And the held arm never borrows the silent arm's sentence.
+    expect(line).not.toContain("No reading since");
   });
 
   it("a NON-antipyretic PRN doesn't count as a fever reducer", () => {
