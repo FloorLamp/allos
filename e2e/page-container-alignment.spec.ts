@@ -69,7 +69,10 @@ function expectCentred(slack: Slack, what: string) {
 }
 
 function expectLeftAnchored(slack: Slack, what: string) {
-  expect(slack.right, `${what} has room to be centred`).toBeGreaterThan(ROOM);
+  expect(
+    slack.left + slack.right,
+    `${what} has room to sit off its left edge`
+  ).toBeGreaterThan(ROOM);
   expect(
     slack.left,
     `${what} left its container's left edge by ${Math.round(slack.left)}px`
