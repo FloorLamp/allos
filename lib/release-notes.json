@@ -1,6 +1,110 @@
 {
   "days": [
     {
+      "date": "2026-09-11",
+      "entries": [
+        {
+          "pr": 5841,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Log LH, cervical mucus and waking temperature from the quick logger’s cycle view",
+          "issues": [5810]
+        },
+        {
+          "pr": 5830,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Log dose folds everything else you take, so an unscheduled item is one tap",
+          "issues": [5808]
+        },
+        {
+          "pr": 5834,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The sidebar and dock dose sheets keep their own day, not the page’s",
+          "issues": [5769]
+        },
+        {
+          "pr": 5822,
+          "kind": "feature",
+          "category": "History",
+          "title": "A usual tap or bulk take is one named row on the day view; expand for each part",
+          "issues": [5618]
+        },
+        {
+          "pr": 5805,
+          "kind": "fix",
+          "category": "History",
+          "title": "Medication doses can be selected on the day view along with other rows",
+          "issues": [5618]
+        },
+        {
+          "pr": 5836,
+          "kind": "perf",
+          "category": "History",
+          "title": "The day view loads faster: settings are read once per page, not once per key",
+          "issues": [5774]
+        },
+        {
+          "pr": 5820,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Condition and allergy forms state each fact once, as chips",
+          "issues": [5302]
+        },
+        {
+          "pr": 5827,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Care plan, goal and family history forms state each fact once, as chips",
+          "issues": [5302]
+        },
+        {
+          "pr": 5832,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Skin, dental and procedure forms state each fact once, as chips",
+          "issues": [5302]
+        },
+        {
+          "pr": 5815,
+          "kind": "fix",
+          "category": "General",
+          "title": "The log sheet opens on what you log on the web, not what you logged from chat",
+          "issues": [4249]
+        },
+        {
+          "pr": 5819,
+          "kind": "perf",
+          "category": "Interface",
+          "title": "Pages become interactive sooner; the activity editor loads when you open it",
+          "issues": [5206]
+        },
+        {
+          "pr": 5796,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Attention markers in amber are readable on light screens",
+          "issues": [5760]
+        },
+        {
+          "pr": 5835,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Search citations name the kind of logged entry instead of “Logged entry”",
+          "issues": [5096]
+        },
+        {
+          "pr": 5811,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Stool type is never averaged or summed into a type nobody logged",
+          "issues": [3167]
+        }
+      ],
+      "operatorNotes": []
+    },
+    {
       "date": "2026-09-10",
       "entries": [
         {
