@@ -4,6 +4,8 @@ import {
   sunExposureSignalKey,
   SUN_EXPOSURE_PREFIX,
   LOW_WEEKLY_DAYLIGHT_MIN,
+  SUN_EXPOSURE_WINDOW_DAYS,
+  SUN_EXPOSURE_WINDOW_WEEKS,
   type SunExposureInput,
 } from "../sun-exposure";
 import { dedupeKeyHasKnownPrefix } from "../rule-finding-prefixes";
@@ -71,5 +73,19 @@ describe("dedupeKey namespace", () => {
     expect(dedupeKeyHasKnownPrefix(sunExposureSignalKey("2024-06-01"))).toBe(
       true
     );
+  });
+});
+
+// #4242 — the gathers reach back exactly as far as the sentence claims to speak for.
+// Before this, the digest's "is the sun card live?" relevance test kept its own 30-day
+// lookback against this six-week window.
+describe("one sun window (#4242)", () => {
+  it("the gather window is the sentence's window, in days", () => {
+    expect(SUN_EXPOSURE_WINDOW_DAYS).toBe(SUN_EXPOSURE_WINDOW_WEEKS * 7);
+  });
+
+  it("the sentence says the window it was averaged over", () => {
+    const obs = decideSunExposure(base)!;
+    expect(obs.detail).toContain(`last ${SUN_EXPOSURE_WINDOW_WEEKS} weeks`);
   });
 });

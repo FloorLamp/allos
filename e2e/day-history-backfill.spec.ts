@@ -56,6 +56,14 @@ test("dated entry destinations preserve their own bounds and prefill the day (#2
   await page.goto(`/nutrition?tab=supplements&backfill=${yesterday}`);
   const doseLauncher = page.getByTestId("historical-dose-launcher");
   await expect(doseLauncher).toBeVisible();
+  // THE HEADING IS THE DOMAIN'S DECLARED PHRASE (#5617 step 2), not this page's own.
+  // It read "Log a past dose" here while the record's door and the quick sheet read
+  // `LOG_MANIFEST.dose.noun`; asserting the rendered phrase — scoped to the launcher
+  // — pins that the declaration actually reaches this surface, which reading the
+  // manifest back in a unit test cannot.
+  await expect(
+    doseLauncher.getByRole("heading", { name: "Log dose" })
+  ).toBeVisible();
   await expect(
     doseLauncher.getByTestId("historical-dose-item-picker")
   ).toBeVisible();
@@ -67,6 +75,9 @@ test("dated entry destinations preserve their own bounds and prefill the day (#2
 
   await page.goto(`/wellness?log=${yesterday}`);
   const practiceLauncher = page.getByTestId("practice-backfill-launcher");
+  await expect(
+    practiceLauncher.getByRole("heading", { name: "Log practice" })
+  ).toBeVisible();
   await expect(
     practiceLauncher.getByTestId("practice-backfill-picker")
   ).toBeVisible();

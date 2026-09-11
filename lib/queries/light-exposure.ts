@@ -20,6 +20,7 @@ import { getFrequencyTargetProgress } from "./frequency-targets";
 import { getDaylightOutdoorMinutesTotal } from "./sun";
 import { lastNDates } from "../date";
 import { practiceIdentity } from "../practice";
+import { SUN_EXPOSURE_WINDOW_DAYS } from "../sun-exposure";
 
 // The practices this line is relevant to. Matched on the practice's own identity
 // (case/whitespace-folded, the ONE practice identity — never a synonym fold), plus a
@@ -34,13 +35,16 @@ function isLightPractice(scopeValue: string): boolean {
   return /\b(light|sun|sunlight|daylight|outdoor)\b/i.test(scopeValue);
 }
 
-// How far back the "sun card is active" test looks for logged daylight-outdoor time.
-const SUN_CARD_LOOKBACK_DAYS = 30;
-
 // RELEVANCE, not blanket (#1723). The line appears only for a profile this is
 // actually about: one that TRACKS a light/outdoor practice, or one whose sun surface
 // is live (a home location plus real logged daylight-outdoor time — the concrete form
 // of "has the sun card active"). Everyone else gets nothing, on every kind of day.
+//
+// "Real logged time" is measured over THE SUN SURFACE'S OWN WINDOW (#4242), not a second
+// one written here. A local thirty-day lookback used to decide whether a six-week surface
+// was live, so a profile the sun card still had something to say about could be judged to
+// have no sun card at all. There is now one window, and this gate cannot drift from the
+// sentence it gates.
 export function lightExposureRelevant(
   profileId: number,
   date: string
@@ -55,7 +59,7 @@ export function lightExposureRelevant(
   return (
     getDaylightOutdoorMinutesTotal(
       profileId,
-      lastNDates(date, SUN_CARD_LOOKBACK_DAYS)
+      lastNDates(date, SUN_EXPOSURE_WINDOW_DAYS)
     ) > 0
   );
 }

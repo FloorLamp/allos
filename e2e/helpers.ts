@@ -631,6 +631,34 @@ export async function dismissToast(
   await expect(toast).toHaveCount(0);
 }
 
+/**
+ * Click a form's submit and observe the success toast it triggers, then dismiss it.
+ *
+ * A COLD SERVER ACTION RESPONSE CAN OUTLIVE THE TOAST IT TRIGGERS, which is why the
+ * observation runs CONCURRENTLY with the click rather than after it: `settledClick`
+ * owns durability and does not return until the action's response has landed, and on a
+ * cold route that can take longer than the toast's own six-second auto-dismiss — so a
+ * sequential `expect(toast).toBeVisible()` can open its window after the receipt has
+ * already gone, with the write itself perfectly fine. Dismissing the observed receipt
+ * through its real control is the other half: leaving it to auto-expire adds no product
+ * evidence and can cover the next save on a phone viewport.
+ *
+ * Written by e2e/imaging.spec.ts first and lifted here when #5302 slice 4 met the same
+ * race in the genomics spec — the sibling that never adopted it.
+ */
+export async function submitWithToast(
+  page: Page,
+  button: Locator,
+  message: string
+): Promise<void> {
+  const toast = page.getByTestId("toast").filter({ hasText: message }); // testid-scope-ok: the toast region portals to <body>, outside every streamed boundary
+  await Promise.all([
+    expect(toast).toHaveCount(1, { timeout: 15_000 }),
+    settledClick(page, button),
+  ]);
+  await dismissToast(page, message);
+}
+
 // Open the Upcoming page's display aggregates (issue #1504).
 //
 // The planning page folds a band's scheduled doses into one disclosure, its

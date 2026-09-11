@@ -101,6 +101,30 @@
 // this core hands them the SAME one, so a bundle cannot file its members in two
 // sections however it was placed.
 //
+// ── A DATED BUNDLE NEVER INVENTS A TIME (#5618 ruling 7, owner 2026-09-08) ───
+//
+// "The chart is the prompt." The record's offers line sits in the add layer and reads
+// the same "Add at HH:MM" window the kind chips read, and posts it as the act's stated
+// time. So the statement above is not only about eating:
+//
+//   • WITH A WINDOW, EVERY MEMBER IS WRITTEN AT IT — the servings and the scoop through
+//     the stated-time path above, and THE DOSES WITH THEM. One tap is one act, which is
+//     what this file already says about the bundle id, the surface stamp and the
+//     placement; the minute somebody framed on the trace is a fact about the act, so a
+//     dose's own declared time-of-day is what stands when nobody framed one rather than
+//     something that outranks one somebody did.
+//   • WITHOUT ONE, NO MEMBER CARRIES AN INSTANT. Already true of the food half and of
+//     the ±2 dose writer (`takenAt: null`, #4428). The DATED writer was the one
+//     exception: for a dose whose own declared time is a bucket word ("Morning") or
+//     absent, it filed the WALL CLOCK OF THE TAP onto a day three to six back — the
+//     only days it runs. #4305 accepted that; the owner reverses it here.
+//     `logHistoricalDose` now takes the day alone, the way its amend sibling has since
+//     #2228, so "no time was stated" is expressible instead of approximated.
+//
+// The record's offers line is the only host that can state a window: the dashboard row
+// and the quick-log sheet stand on no chart and post no clock, so their bundles are
+// byte-identical, and the Telegram composed tap still states nothing at all.
+//
 // ── AND IT CHANGES NOTHING ELSE ──────────────────────────────────────────────
 //
 // No obligation is written (obligation is declared only, forever — #2419). No
@@ -108,7 +132,6 @@
 // minted, no cadence row is touched. Adherence moves exactly where dueness already
 // existed, as if each row had been tapped by hand.
 
-import { now as clockNow } from "./clock";
 import { today } from "./db";
 import { recordAudit } from "./audit";
 import { AUDIT_ACTIONS } from "./audit-actions";
@@ -181,14 +204,23 @@ export function usualRoutineDoseLogged(
 // ── THE DATED DOSE WRITE (#4305) ─────────────────────────────────────────────
 
 // WHAT TIME A BUNDLE SAYS A DOSE WAS TAKEN, on a day the ±2 window no longer reaches.
-// `logHistoricalDose` derives the row's DATE from the instant it is handed, so an
-// instant is not optional here — it has to land on `date` or the row lands on the wrong
-// day. The rule is the one the dose-history panel's missed-day offer already uses, and
-// for the same reason: it is a one-tap backfill with no visible time field, so the
-// dose's OWN declared clock is the only statement standing for it. Free text that is a
-// bucket word rather than a clock ("Morning", "with dinner") states no hour, and neither
-// does an anytime dose, so those fall back to the wall clock the tap happened at — the
-// same default the deep door's form prefills. Null only on a DST gap, which refuses the
+// THREE ANSWERS, IN THIS ORDER, AND NONE OF THEM IS THE CLOCK ON THE WALL (#5618
+// ruling 7):
+//
+//   1. THE ACT'S OWN STATED MINUTE, when the tap carried one. The person framed it on
+//      the chart this offer sits under, about this act, on this day — nothing a dose
+//      declared in the abstract outranks that.
+//   2. THE DOSE'S OWN DECLARED CLOCK, which is what the dose-history panel's missed-day
+//      offer uses and for the same reason: a one-tap backfill has no time field, so a
+//      declared "08:00" is the only statement standing for it.
+//   3. NOTHING — and nothing is then written. Free text that is a bucket word rather
+//      than a clock ("Morning", "with dinner") states no hour and neither does an
+//      anytime dose, so the row is filed on `date` with a NULL instant, exactly as the
+//      food beside it and the ±2 writer's own past-day confirm already are. This used
+//      to be the wall clock of the tap, which put a minute of TODAY on a day up to six
+//      days back (#4305); the owner reversed it.
+//
+// `stale-dose` only on a DST gap: a clock that does not exist on this day refuses the
 // write rather than silently moving the hour.
 function datedDoseWrite(
   profileId: number,
@@ -196,12 +228,15 @@ function datedDoseWrite(
   date: string,
   dose: PendingDayDose,
   loggedVia: LoggedVia,
-  bundleId: BundleId
+  bundleId: BundleId,
+  // The minute the whole act was stated at, or null when it stated none.
+  actAt: Date | null
 ): UsualRoutineDoseOutcome {
-  const hhmm =
-    parseClockHhmm(dose.timeOfDay) ?? zonedDateParts(tz, clockNow()).hhmm;
-  const at = statedInstantOnDate(date, hhmm, tz);
-  if (!at) return "stale-dose";
+  const hhmm = actAt
+    ? zonedDateParts(tz, actAt).hhmm
+    : parseClockHhmm(dose.timeOfDay);
+  const when = hhmm === null ? { date } : statedInstantOnDate(date, hhmm, tz);
+  if (!when) return "stale-dose";
   return datedDoseOutcome(
     // amountOverride null lets the writer resolve the amount for this target day, and
     // supply moves exactly as the ±2 writer moves it — one tap is one tap whichever
@@ -210,7 +245,7 @@ function datedDoseWrite(
       profileId,
       dose.itemId,
       dose.doseId,
-      at,
+      when,
       null,
       true,
       loggedVia,
@@ -265,10 +300,14 @@ export function logUsualRoutineCore(
   // are written only while it still names protein. Absent means the tap did not offer
   // protein, so nothing about it is written.
   promisedProteinGrams?: number,
-  // WHEN THEY SAID THEY ATE IT — see the header for which surfaces may pass it. Absent
-  // means the bundle states no hour and every member takes the declared `window`.
-  // Passed to BOTH food writers below, never to the dose half: a dose's own intake
-  // instant is `markDoseTaken`'s question and is not what a meal window states.
+  // WHEN THEY SAID THE ACT HAPPENED — see the header for which surfaces may pass it.
+  // Absent means the bundle states no time and every member takes the declared `window`
+  // with no instant under it. Passed to BOTH food writers below AND to the dose half
+  // (#5618 ruling 7): one tap is one act, and the minute it is stated at is the minute
+  // every member of it was performed at. It reached only the food writers until then,
+  // on the reading that a stated hour is a fact about a SERVING — true of the field's
+  // first surface (the nutrition bar's eating hour), and not of the record's act window,
+  // which is what the owner's ruling is about.
   statedAt?: FoodEatingTime
 ): UsualRoutineOutcome {
   const t = today(profileId);
@@ -329,6 +368,15 @@ export function logUsualRoutineCore(
   // through the dated writer, because which writer the day routes to is not a fact
   // about how many taps happened.
   const tz = getTimezone(profileId);
+  // THE ACT'S OWN MINUTE (#5618 ruling 7), as an instant both dose writers can take.
+  // The food writers were handed `statedAt` whole above; the dose half needs the same
+  // statement as a Date. An unparseable one is no statement at all rather than an
+  // Invalid Date travelling into a write — the caller's gate
+  // (`judgePostedEatingTime`) has already refused every shape but this one, so this is
+  // the belt on a field that arrives from a form.
+  const parsedActAt = statedAt ? new Date(statedAt.eatenAt) : null;
+  const actAt =
+    parsedActAt && !Number.isNaN(parsedActAt.getTime()) ? parsedActAt : null;
   const doses: UsualRoutineDoseResult[] = [];
   for (const doseId of namedDoseIds) {
     const offered = pending.get(doseId);
@@ -340,7 +388,7 @@ export function logUsualRoutineCore(
       doseId,
       name: offered.name,
       outcome: dated
-        ? datedDoseWrite(profileId, tz, date, offered, via, bundleId)
+        ? datedDoseWrite(profileId, tz, date, offered, via, bundleId, actAt)
         : // markDoseTaken is idempotent per (dose, date) and refuses a retired dose or
           // a paused item on its own terms. Its answer is carried, never assumed.
           //
@@ -350,8 +398,12 @@ export function logUsualRoutineCore(
           // a dated bundle wrote an administration instant sitting on a different day
           // from the row it was filed under; the pair rule the rest of the model turns
           // on says an instant outside its own row's day is corruption, not precision.
+          //
+          // UNLESS THE ACT STATED ONE (#5618 ruling 7), which outranks both defaults on
+          // either day: it is a minute somebody framed about this act, and it is on this
+          // row's day by construction — the action anchored it there before judging it.
           markDoseTaken(profileId, doseId, offered.itemId, date, via, {
-            takenAt: date === t ? undefined : null,
+            takenAt: actAt ?? (date === t ? undefined : null),
             notifyMessageId,
             bundleId,
           }),

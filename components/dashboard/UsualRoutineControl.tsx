@@ -78,6 +78,18 @@ interface UsualRoutineMountProps {
    * revalidation is what re-renders them.
    */
   onLogged?: () => void;
+  /**
+   * THE ACT'S TIME, AS THE ADD LAYER'S WINDOW STATES IT (#5618 ruling 7) — a
+   * profile-local `HH:MM` on `date`, and the SAME clock the kind chips beside this
+   * offer read. "The chart is the prompt", so there is no control of its own: the
+   * window a person framed is the minute the whole bundle is written at, on every
+   * member. Absent wherever no window stands, and absent for good on the dashboard row
+   * and the quick-log sheet, which have no chart to frame one on.
+   *
+   * The ACTION judges it (`judgePostedEatingTime`), so an unusable statement costs the
+   * minute and never the tap.
+   */
+  statedTime?: string | null;
 }
 
 const DASHBOARD_TEST_IDS = {
@@ -101,7 +113,9 @@ function useUsualRoutineTap({
   subjectName,
   date,
   onLogged,
-}: UsualRoutineControlProps & Pick<UsualRoutineMountProps, "onLogged">) {
+  statedTime,
+}: UsualRoutineControlProps &
+  Pick<UsualRoutineMountProps, "onLogged" | "statedTime">) {
   const toast = useToast();
   // WHICH SURFACE THIS MOUNTING IS (#3087). This control is rendered on the dashboard's
   // rows, in the phone dock's quick-log sheet and on the record door — one action
@@ -136,6 +150,10 @@ function useUsualRoutineTap({
         fd.set("groups", groups.join(","));
         fd.set("dose_ids", doseIds.join(","));
         if (proteinGrams != null) fd.set("protein_grams", String(proteinGrams));
+        // THE MINUTE THE CHART WAS SHOWING (#5618 ruling 7), on the one field this
+        // action already reads for a stated time. A mount with no window sets nothing,
+        // so its post is byte-identical to what it has always been.
+        if (statedTime) fd.set("occurred_at", statedTime);
         return logUsualRoutine(fd);
       },
       settle: (result) => {
@@ -171,9 +189,11 @@ function useUsualRoutineTap({
     // The day is named to a screen reader wherever there is one to name: the record
     // door reaches days the reader is not living, and "your usual Morning" without
     // one would be the same sentence for every day it can fill.
-    ariaLabel: date
-      ? `${heading} on ${date}: ${phrase}`
-      : `${heading}: ${phrase}`,
+    // The minute rides it too when the act states one (#5618 ruling 7): the tap writes
+    // at that clock with no field to read it off, so the promise has to carry it.
+    ariaLabel: `${heading}${statedTime ? ` at ${statedTime}` : ""}${
+      date ? ` on ${date}` : ""
+    }: ${phrase}`,
     data: {
       "data-groups": groups.join(","),
       "data-doses": doseIds.join(","),
