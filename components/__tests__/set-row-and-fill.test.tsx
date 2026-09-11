@@ -610,7 +610,8 @@ describe("the shared weight stepper (#5371)", () => {
 // ACROSS a transition. Reading only the after-state cannot tell a fixed grid from one
 // that was always per-set.
 describe("one layout per exercise (#5762)", () => {
-  const bench = (...loads: [string, string][]) => part({ sets: sets(...loads) });
+  const bench = (...loads: [string, string][]) =>
+    part({ sets: sets(...loads) });
   // What the grid IS, by the testids the person's controls are addressed by — the
   // band's own label, the schema headings, and each row's value controls in order.
   const testidsIn = (el: HTMLElement) =>

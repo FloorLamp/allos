@@ -522,9 +522,7 @@ function SetRow({
       ) : (
         effortInput
       )}
-      {load === "shared" && (
-        <span className="w-12 shrink-0">{varyButton}</span>
-      )}
+      {load === "shared" && <span className="w-12 shrink-0">{varyButton}</span>}
     </div>
   );
 }
