@@ -108,17 +108,18 @@ than treating every invalid filter as a 404 or promising an identical fallback.
 
 ## Day view
 
-The narrow layout is day bar → chart → add layer → rows. The bar names the day
-and record count, including zero. The feed subtitle and per-group day headings
-are omitted. The calendar remains a door at every width. The header's History
-link returns to the feed, preserving filters, household view, and the read bound.
+The narrow layout is day bar → chart → add layer → rows. Below `sm` the bar
+names the day and record count, including zero; above, the header's title and
+subtitle do. Per-group day headings and the feed's subtitle are omitted. The
+calendar remains a door at every width. The header's History link returns to the
+feed, preserving filters, household view, and the read bound.
 
-At 1440px, use the shared rail page width with a fixed `48rem` reading column
-and a `minmax(0,760px)` right rail. Keep the rail first in source order for the
-stacked layout, positioning it in column two at the breakpoint. The rail is
-sticky and capped at `100dvh - 3rem`. The chart sits outside the rail's scroller;
-only the layers below it scroll, with scroll chaining at the ends. A full-day
-wheel gesture over the chart therefore reaches the page.
+At 1440px, use the shared rail page width: a fixed `48rem` reading column and a
+`minmax(0,760px)` right rail, sticky and capped at `100dvh - 3rem`. Keep it
+first in source order for the stacked layout, column two at the breakpoint. The
+chart sits outside that scroller; only the layers below it scroll, with scroll
+chaining at the ends, so a full-day wheel gesture over the chart reaches the
+page.
 
 The chart chooses compact/wide geometry from its container, not the viewport.
 Keep the 9px label floor at the rail threshold and geometry transition; label

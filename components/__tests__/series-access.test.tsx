@@ -6,7 +6,6 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
-import StandingSparkline from "@/components/dashboard/StandingSparkline";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import FiberSymptomPanel from "@/components/FiberSymptomPanel";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
@@ -52,22 +51,6 @@ type Family = {
   items: Text[];
   points: { label: Text; role?: string }[];
 };
-
-const standing = (a: number, b: number) => (
-  <StandingSparkline
-    series={{
-      points: [
-        { date: "2026-08-25", value: a },
-        { date: "2026-08-26", value: b },
-      ],
-      seriesKey: "metric:weight",
-      stale: false,
-      name: "Weight",
-      pointLabel: (point) => `${point.value} kg · ${point.date}`,
-      loneCaption: "One weight reading",
-    }}
-  />
-);
 
 const swimlane: Swimlane = {
   window: { start: "2026-08-01", end: "2026-08-31", spanDays: 31 },
@@ -165,13 +148,9 @@ const spineDay = weekSpineDaySummary(weekSpine.days[1]);
 const spineEmptyDay = weekSpineDaySummary(weekSpine.days[0]);
 
 const FAMILIES: Family[] = [
-  {
-    name: "standing sparkline",
-    element: standing(72, 73),
-    summary: "Weight history",
-    items: ["72 kg · 2026-08-25", "73 kg · 2026-08-26"],
-    points: [{ label: "72 kg · 2026-08-25" }, { label: "73 kg · 2026-08-26" }],
-  },
+  // `StandingSparkline` was the first adopter registered here and #5435 §4 deleted it
+  // with the Standing cluster that hosted it. The families below are the remaining
+  // adopters; the #4760 pattern is unchanged, one surface poorer.
   {
     name: "active-days strip",
     element: (
@@ -394,51 +373,12 @@ describe("the chart carries its own data access (#4760)", () => {
     }
   );
 
-  // THE BAND IS INSIDE THE PLOT AND STILL COVERS ITS READING (#4534).
-  //
-  // A reading's band is centred on it, and the first and last readings sit ON the
-  // plot's edges — so each end band half-hangs unless it is clamped. Only the lower
-  // clamp existed, and the missing upper one put 38px of the NEWEST reading's band
-  // outside the 176px plot, where the standing card's `overflow: hidden` took its
-  // paint, its focus ring and its readout.
-  //
-  // TWO DIRECTIONS, because a clamp has an obvious wrong answer. "Inside the plot"
-  // alone is satisfied by a band pinned anywhere, including off its own reading —
-  // so the endpoint the sparkline already draws is the second assertion's subject:
-  // the last band must still contain the mark a reader is aiming at. The e2e guard
-  // can only ever see the first half; a band that stopped covering its reading
-  // would be silently green there.
-  it("every reading's band lies inside the plot and still covers its mark", () => {
-    const { container } = render(standing(72, 73));
-    const plot = container.querySelector<HTMLElement>(
-      '[data-testid="standing-sparkline"]'
-    )!;
-    const width = Number(plot.getAttribute("width"));
-    const bands = Array.from(
-      container.querySelectorAll<HTMLElement>(
-        '[data-testid="standing-sparkline-point"]'
-      )
-    ).map((el) => ({
-      left: parseFloat(el.style.left),
-      right: parseFloat(el.style.left) + parseFloat(el.style.width),
-    }));
-
-    expect(bands.length).toBe(2);
-    expect(
-      bands.filter((b) => b.left < 0 || b.right > width),
-      `bands outside the ${width}px plot`
-    ).toEqual([]);
-
-    const endpoint = container.querySelector<SVGCircleElement>(
-      '[data-testid="standing-sparkline-endpoint"]'
-    )!;
-    const cx = Number(endpoint.getAttribute("cx"));
-    const last = bands.at(-1)!;
-    expect(
-      { covers: last.left <= cx && cx <= last.right, cx, last },
-      "the newest reading's band no longer covers the mark it names"
-    ).toMatchObject({ covers: true });
-  });
+  // THE BAND-INSIDE-THE-PLOT CASE WENT WITH ITS COMPONENT (#4534, retired by #5435
+  // §4). It rendered `StandingSparkline` and asserted two things about its reading
+  // bands — that each lies inside the 176px plot rather than half-hanging off an end,
+  // and that the last band still covers the endpoint mark a reader aims at. Both were
+  // claims about that component's geometry, and the component is deleted; no other
+  // adopter draws a per-reading band, so there is nothing here to retarget it onto.
 
   // #4384's two practice mounts, absorbed: a pure deletion. The heatmap is a glance
   // surface (its `role="img"` sentence is its whole statement, per-day reading is the

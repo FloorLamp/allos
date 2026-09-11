@@ -266,12 +266,10 @@ const SITES: ReadonlyArray<readonly [string, string, string]> = [
   // line is load-bearing for a margin declared two files away.
   ["app/(app)/longevity/page.tsx", "section-stack-sm", "space-y-6"],
   ["app/(app)/results/BioAgeInputsCard.tsx", "section-seam", "mb-6"],
-  ["components/dashboard/DashboardAhead.tsx", "section-seam-lg", "mb-8"],
-  [
-    "components/dashboard/DashboardStandingCluster.tsx",
-    "section-seam-lg",
-    "mb-8",
-  ],
+  // `components/dashboard/DashboardAhead.tsx` and
+  // `components/dashboard/DashboardStandingCluster.tsx` were censused here at
+  // `section-seam-lg` / `mb-8` until #5435 §4 deleted them. The census names files,
+  // so a deleted file leaves the list rather than being carried as a ghost row.
   ["app/(app)/wellness/page.tsx", "section-seam-lg", "mb-8"],
 ];
 

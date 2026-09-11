@@ -6,6 +6,7 @@ import {
   comboboxRows,
   deleteActivityFromForm,
   expectPhoneTapTargets,
+  hydratedClick,
   settledClick,
 } from "./helpers";
 import {
@@ -121,6 +122,24 @@ test("deload week shaves the routine lift's next-set suggestion (#923)", async (
     // The set-1 ghost placeholder shows the SAME shaved load (auto-seed, #335).
     const weight = page.getByTestId("set1-weight");
     await expect(weight).toHaveAttribute("placeholder", /^90/);
+
+    // And the plate door BESIDE that ghost opens the builder loaded for the load the
+    // row states, not for the empty field behind it (#5875). Nothing has been typed
+    // or confirmed yet, so every set here is still a plan and the door's only honest
+    // seed is the ghost. The dialog's own total is the claim: 90, not the bare bar.
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "Open plate builder" })
+    );
+    const builder = page.getByTestId("plate-builder"); // testid-scope-ok: the plate builder is a modal this click just opened, portalled out of the page tree — one copy, and no streamed boundary to stage a second
+    await expect(builder).toBeVisible();
+    await expect(
+      builder
+        .getByText("Total", { exact: true })
+        .locator("xpath=following-sibling::div[1]")
+    ).toHaveText(/^90\b/);
+    await page.keyboard.press("Escape");
+    await expect(builder).toBeHidden();
 
     // Use fills the shaved load into the set (create-and-clean, mirroring #335).
     await card.getByRole("button", { name: "Use" }).click();

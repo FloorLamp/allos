@@ -399,13 +399,33 @@ describe("Home's one list, rendered", () => {
   // how far the baseline may be refreshed upward before the refresh needs a
   // conversation rather than a paste.
   //
-  // IT IS THE v2 NUMBER, DELIBERATELY UNCHANGED BY THIS PR. #5435 §7's acceptance is
-  // that the ceiling comes DOWN to the measured post-cutover baseline — and that is
-  // PR 3's, at cutover, on the live number, because PR 3 is what removes the retired
-  // families' gathers. Lowering it here would spend that acceptance early against a
-  // page that still pays for gathers the next PR deletes. What this PR owes the
-  // ceiling is only that it does not need raising, which the table above shows.
-  const QUERY_CEILING = 279;
+  // 279 → 269, WHICH IS #5435 §7's ACCEPTANCE BEING SPENT. The previous PR left the
+  // v2 number deliberately (the gathers it bounded were still being deleted); this
+  // one takes the measurement the table above now records and lowers the backstop
+  // onto it. 279 was biohacker 262 + the 17 of headroom frozen since #5221 — and
+  // v2's heaviest persona and v3's happen to cost the same 262, so keeping 17 would
+  // have left the number where it stood and quietly failed the acceptance.
+  //
+  //   household 262 (the measured heaviest) + 7 headroom = 269
+  //
+  // THE HEADROOM IS SMALLER BECAUSE WHAT IT IS FOR IS SMALLER. The 23 → 20 → 17 line
+  // was sized as "one household-shaped addition — about five new per-profile reads,
+  // or one new gathering surface". §2's admission test 5 forbids exactly that on v3:
+  // a row that would raise this ceiling is not admitted until the cost is removed
+  // elsewhere. And the growth §7 DOES admit — "the named bounded reads of a row kind
+  // a persona did not have before (the forecast, the fast, the day read on a no-HR
+  // day)" — is not something headroom should pre-fund either: each of those is
+  // precisely the conversation this backstop exists to force, and §7 says raising the
+  // number is a legitimate outcome of having it.
+  //
+  // WHAT IS LEFT FOR A PASTE TO DECIDE ALONE is incidental drift in shared readers
+  // Home does not own, and this table's own history prices it: #4299 landed +1 on
+  // every persona and +4 on biohacker, #4956 landed +1 on four and +3 on two, and
+  // the comments record that they COMPOSE rather than interact. 4 + 3 = 7 is the
+  // largest such composition this file has actually measured, so it is the headroom
+  // rather than a round number chosen for looking like one. A refresh bigger than
+  // that has stopped being drift.
+  const QUERY_CEILING = 269;
 
   it("home query budget: each persona matches its recorded main baseline", () => {
     // THE BACKSTOP ASKS ABOUT THE TABLE, NOT THE MEASUREMENT — which is the only
