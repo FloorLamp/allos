@@ -21,7 +21,7 @@ import {
 } from "@/lib/queries";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { getActiveFastCached } from "@/lib/queries/fasting";
-import { fastElapsedMs, formatFastDuration, type Fast } from "@/lib/fasting";
+import { fastElapsedMs, formatFastDuration } from "@/lib/fasting";
 import type { WorkoutPresence } from "@/lib/workout-presence";
 import {
   cycleControlState,
@@ -623,6 +623,20 @@ async function renderHome(
     openFast && fastStart
       ? { kind: "fast", lastSignalAt: fastStart.getTime(), expectedEnd: null }
       : null;
+  // "Fast · elapsed · since clock" (§3.2), resolved HERE because the clock is the
+  // PROFILE's. A fast's start is an instant; reading an hour off it with `getHours()`
+  // would print the server's wall time, which is the instant-versus-local-day
+  // distinction this repo keeps on purpose (docs/internals/time-model.md).
+  const fastFacts =
+    openFast && fastStart
+      ? {
+          elapsed: formatFastDuration(fastElapsedMs(openFast, nowInstant) ?? 0),
+          since: formatClockMinutes(
+            formatPrefs.timeFormat,
+            hhmmToMinutes(zonedDateParts(timezone, fastStart).hhmm)
+          ),
+        }
+      : null;
 
   // The cycle domain's own answer, read rather than re-derived: two formulas over one
   // plausibility window is how the hero and the forecast card came to contradict each
@@ -888,8 +902,7 @@ async function renderHome(
                 writable={writable}
                 routineControl={routineControl}
                 cycleControl={cycleControl}
-                openFast={openFast}
-                nowInstant={nowInstant}
+                fastFacts={fastFacts}
                 workoutPresence={workoutPresence}
                 todaySession={todaySession}
                 distanceUnit={units.distanceUnit}
@@ -1102,8 +1115,7 @@ function HomeNowBand({
   writable,
   routineControl,
   cycleControl,
-  openFast,
-  nowInstant,
+  fastFacts,
   workoutPresence,
   todaySession,
   distanceUnit,
@@ -1115,8 +1127,7 @@ function HomeNowBand({
   writable: boolean;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
-  openFast: Fast | null;
-  nowInstant: Date;
+  fastFacts: { elapsed: string; since: string } | null;
   workoutPresence: WorkoutPresence;
   todaySession: Activity | null;
   distanceUnit: DistanceUnit;
@@ -1142,8 +1153,7 @@ function HomeNowBand({
               writable={writable}
               routineControl={routineControl}
               cycleControl={cycleControl}
-              openFast={openFast}
-              nowInstant={nowInstant}
+              fastFacts={fastFacts}
               workoutPresence={workoutPresence}
               todaySession={todaySession}
               distanceUnit={distanceUnit}
@@ -1163,8 +1173,7 @@ function HomeNowRowView({
   writable,
   routineControl,
   cycleControl,
-  openFast,
-  nowInstant,
+  fastFacts,
   workoutPresence,
   todaySession,
   distanceUnit,
@@ -1176,8 +1185,7 @@ function HomeNowRowView({
   writable: boolean;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
-  openFast: Fast | null;
-  nowInstant: Date;
+  fastFacts: { elapsed: string; since: string } | null;
   workoutPresence: WorkoutPresence;
   todaySession: Activity | null;
   distanceUnit: DistanceUnit;
@@ -1374,22 +1382,13 @@ function HomeNowRowView({
   // "Fast · elapsed · since clock", with End fast. Its START door is #3208's sheet row,
   // not this band: Home states what is running, and the Quicklogger begins things.
   if (content.kind === "fast") {
-    const elapsed = openFast ? fastElapsedMs(openFast, nowInstant) : null;
-    const start = openFast ? parseUtcSql(openFast.started_at) : null;
     return (
       <HomeRow
         id={row.id}
         testId="home-fast"
-        title={`Fast · ${elapsed == null ? "" : formatFastDuration(elapsed)}`}
-        detail={
-          start
-            ? `since ${formatClockMinutes(
-                formatPrefs.timeFormat,
-                start.getHours() * 60 + start.getMinutes()
-              )}`
-            : undefined
-        }
-        control={writable && openFast ? <HomeEndFastButton /> : undefined}
+        title={`Fast${fastFacts ? ` · ${fastFacts.elapsed}` : ""}`}
+        detail={fastFacts ? `since ${fastFacts.since}` : undefined}
+        control={writable && fastFacts ? <HomeEndFastButton /> : undefined}
       />
     );
   }
