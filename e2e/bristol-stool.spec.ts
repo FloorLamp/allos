@@ -389,11 +389,11 @@ test("the sheet lists the day's movements and the newest tap is undoable (#5663)
   page,
 }) => {
   await page.goto("/?quick=log-stool");
-  const picker = page.getByTestId("quick-entry-stool");
+  const picker = page.getByTestId("quick-entry-stool"); // testid-scope-ok: the quick-log sheet body is portalled to <body> (BottomSheet), one copy
   await expect(picker).toBeVisible();
   const rows = picker.getByTestId("quick-entry-stool-receipt");
   await expect(rows).toHaveCount(0);
-  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
     "Nothing logged today."
   );
 
@@ -421,7 +421,7 @@ test("the sheet lists the day's movements and the newest tap is undoable (#5663)
     "data-reading-id",
     String(logged[0].id)
   );
-  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
     "1 today"
   );
 
@@ -432,7 +432,7 @@ test("the sheet lists the day's movements and the newest tap is undoable (#5663)
   await expect(undo).toHaveCount(1);
   await settledClick(page, undo);
   await expect(rows).toHaveCount(0);
-  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
     "Nothing logged today."
   );
   expect(bristolRows()).toEqual([]);
@@ -446,7 +446,7 @@ test("movements logged before the sheet opened are listed, without an Undo (#566
   seedBristol(day, "07:30:00", 5);
 
   await page.goto("/?quick=log-stool");
-  const picker = page.getByTestId("quick-entry-stool");
+  const picker = page.getByTestId("quick-entry-stool"); // testid-scope-ok: the quick-log sheet body is portalled to <body> (BottomSheet), one copy
   const rows = picker.getByTestId("quick-entry-stool-receipt");
 
   // NEWEST FIRST, stated against the store's own order rather than against two times
@@ -463,7 +463,7 @@ test("movements logged before the sheet opened are listed, without an Undo (#566
       "quick-entry-stool-receipt-heading"
     )
   ).toHaveText("Type 5 · Soft blobs");
-  await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
     "2 today"
   );
 
