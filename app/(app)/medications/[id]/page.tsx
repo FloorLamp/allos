@@ -333,6 +333,10 @@ export default async function MedicationDetailPage(props: {
               initialAction={initialAction}
               initialSupplyEditor={searchParams.fact === "supply"}
               initialRefill={searchParams.refill === "1"}
+              /* This page IS the medication's canonical detail route, so the card's
+                 delete has to leave it — the record the route resolves is the one it
+                 removes (#5340/#5337). */
+              deleteReturnHref={MEDICATIONS_HREF}
               trackSupplyOffer={m.trackSupplyOffer}
               ingredients={m.ingredients}
             />

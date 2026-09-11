@@ -16,6 +16,8 @@ import { medicationCourseEvents } from "./medication-history";
 import {
   biomarkerPanelKey,
   ENCOUNTER_REPRESENTATIVE_IDS,
+  IMMUNIZATION_CONTRIBUTED_NOTES,
+  IMMUNIZATION_CONTRIBUTED_NOTES_CTE,
   IMMUNIZATION_REPRESENTATIVE_IDS,
   getImmunizations,
 } from "./queries/medical";
@@ -792,16 +794,29 @@ function collectEvents(
   // portal CCDAs each store their own physical row for one administration, and this
   // read was the last one showing all three. Its profile_id bind comes right after
   // the main WHERE's, before the date-bounds params.
+  //
+  // `detail` is the collapse group's CONTRIBUTED notes, not just the representative
+  // row's own (#4731): the election ranks on identity and provenance, so the winning
+  // row is routinely the one WITHOUT the note the other document carried. Its CTE
+  // binds profile_id FIRST, before the main WHERE's.
   const immunizations = db
     .prepare(
-      `SELECT id, date, vaccine, dose_label, notes
+      `WITH ${IMMUNIZATION_CONTRIBUTED_NOTES_CTE}
+       SELECT id, date, vaccine, dose_label,
+              ${IMMUNIZATION_CONTRIBUTED_NOTES} AS notes
          FROM immunizations
         WHERE profile_id = ?
           AND id IN (${IMMUNIZATION_REPRESENTATIVE_IDS})${immunizationBounds.clause}
         ORDER BY date DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, profileId, ...immunizationBounds.params, perTableLimit) as {
+    .all(
+      profileId,
+      profileId,
+      profileId,
+      ...immunizationBounds.params,
+      perTableLimit
+    ) as {
     id: number;
     date: string;
     vaccine: string;
