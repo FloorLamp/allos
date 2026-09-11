@@ -94,7 +94,6 @@ function partsOfReading(r: ClockReading): {
   };
 }
 
-
 // ---- sport classification ----
 
 // Substring hints → cardio. Everything else that isn't a strength activity falls

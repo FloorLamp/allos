@@ -494,7 +494,6 @@ function zonedParts(
   return { date, minute: utcMinute(d), hhmm };
 }
 
-
 // The ONE accessor for a sample-series record's value, covering the exporter's two
 // shapes (see the header). `bucketKey` is the name the BUCKETED shape uses; the raw
 // names follow, most specific first, and the historical aliases stay so an older

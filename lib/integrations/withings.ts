@@ -65,7 +65,6 @@ export const WITHINGS_SLEEP_FIELDS = [
   "wakeupduration",
 ] as const;
 
-
 // A Withings measure-group id, as the digit string that goes into an external id.
 //
 // IT MUST ACCEPT A STRING (#3593), and that is the whole reason this exists instead

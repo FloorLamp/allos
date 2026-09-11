@@ -21,7 +21,6 @@ import type {
 
 export const OURA_ID = "oura";
 
-
 // ---- wall-clock helpers ----
 //
 // Oura datetimes are ISO 8601 WITH an explicit offset, e.g.
