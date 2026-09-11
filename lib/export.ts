@@ -1867,6 +1867,12 @@ export const DELETE_POLICY = {
   symptom_logs: { revalidate: ["/", "/history"] },
   cycles: { revalidate: ["/medical/cycles", "/history", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },
+  // The stool ledger (#5872). The PLAINEST deletable shape in this map, and it is
+  // plain for a reason worth stating beside the substance pair above: there is no
+  // counter under it. A stool ledger's count IS its rows, so a plain id + profile_id
+  // delete moves the whole fact — there is no second half to leave contradicting the
+  // first, which is the exact argument that makes `substance_log_events` browse-only.
+  stool_events: { revalidate: ["/history", "/trends", "/"] },
   practice_logs: { revalidate: ["/history", "/longevity", "/"] },
 } satisfies Record<string, DatasetDeletePolicy>;
 

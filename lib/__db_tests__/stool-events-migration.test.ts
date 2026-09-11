@@ -90,7 +90,14 @@ function beforeMove(): Database.Database {
     insert.run(s.id, 1, s.date, s.started_at, s.started_at, s.value);
   // The OTHER profile's row, and one sample of a DIFFERENT metric, both of which the
   // move must leave exactly where they are relative to their own owner.
-  insert.run(90, 2, "2026-09-01", "2026-09-01T08:15:00", "2026-09-01T08:15:00", 5);
+  insert.run(
+    90,
+    2,
+    "2026-09-01",
+    "2026-09-01T08:15:00",
+    "2026-09-01T08:15:00",
+    5
+  );
   db.prepare(
     `INSERT INTO metric_samples
        (id, profile_id, source, metric, date, started_at, ended_at, value)
@@ -138,9 +145,9 @@ describe("#5872 the Bristol samples move to stool_events", () => {
     expect(rows.filter((r) => r.profile_id === 2)).toHaveLength(1);
     // Every moved row keeps its own day. A zone conversion that re-attributed the
     // midnight row would show up here and nowhere else.
-    expect(
-      rows.filter((r) => r.profile_id === 1).map((r) => r.date)
-    ).toEqual(SAMPLES.map((s) => s.date));
+    expect(rows.filter((r) => r.profile_id === 1).map((r) => r.date)).toEqual(
+      SAMPLES.map((s) => s.date)
+    );
     db.close();
   });
 
@@ -197,7 +204,9 @@ describe("#5872 the Bristol samples move to stool_events", () => {
     ).toEqual({ n: 0 });
     expect(
       db
-        .prepare("SELECT COUNT(*) AS n FROM metric_samples WHERE metric = 'hrv_ms'")
+        .prepare(
+          "SELECT COUNT(*) AS n FROM metric_samples WHERE metric = 'hrv_ms'"
+        )
         .get()
     ).toEqual({ n: 1 });
     db.close();

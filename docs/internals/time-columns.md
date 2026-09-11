@@ -283,6 +283,10 @@ clock fields need both a date and timezone; absent clocks stay absent.
 | `situations` | `created_at` | bookkeeping | instant | bare |  |
 | `skin_lesions` | `observed_date` | event | day | n/a |  |
 | `skin_lesions` | `created_at` | record | instant | bare |  |
+| `stool_events` | `date` | day | day | n/a |  |
+| `stool_events` | `recorded_at` | record | instant | canonical |  |
+| `stool_events` | `created_at` | bookkeeping | instant | bare |  |
+| `stool_events` | `occurred_at` | event | instant | canonical | Stated movement instant; NULL when nobody stated one, never inferred from capture time. |
 | `stream_frontiers` | `frontier_at` | event | instant | canonical | Newest event instant observed in the stream, copied from its event column. NULL until the stream delivers a row. |
 | `stream_frontiers` | `advanced_at` | lifecycle | instant | canonical | When ingest observed the frontier move, not the event time carried by the data. |
 | `stream_frontiers` | `observed_at` | record | instant | canonical | When ingest last checked, advancing or not; makes syncs_since_advance auditable. |

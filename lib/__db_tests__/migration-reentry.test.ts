@@ -71,6 +71,19 @@ const WALL_CLOCK_SETTING_KEYS = [
  *
  * `schema_migrations.applied_at` is reduced to the name: it is the RUNNER's own
  * `instantNow()` at `record.run`, not anything a migration body writes.
+ *
+ * `data_write_revision.transaction_id` is reduced for the same reason and is the
+ * THIRD value of that class (#5872 was the first branch to reach it). The runner mints
+ * `migration:<randomUUID()>` per applied migration once `data_write_revision` exists —
+ * `advanceDataWriteRevisionForMigration`, called from the runner and never from a body
+ * — so two independent runs disagree on it by construction, and comparing it would
+ * fail this assertion for every migration added after 20260909-data-write-revision
+ * rather than for any defect. Until such a migration existed the bump never fired at
+ * all, which is why the trap sat here green.
+ *
+ * THE `revision` COUNT IS KEPT, and it is the half that carries the meaning: a body
+ * applied twice bumps it twice, so the number this elision leaves standing is exactly
+ * the one a double-application would move.
  */
 function dumpState(db: Database.Database): string {
   const out: string[] = [];
@@ -87,6 +100,12 @@ function dumpState(db: Database.Database): string {
     >[];
     if (o.name === "schema_migrations") {
       rows = rows.map((r) => ({ name: r.name }));
+    }
+    if (o.name === "data_write_revision") {
+      rows = rows.map((r) => ({
+        ...r,
+        transaction_id: "<runner-minted uuid, see dumpState>",
+      }));
     }
     if (o.name === "settings") {
       rows = rows.map((r) =>

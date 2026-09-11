@@ -1205,8 +1205,7 @@ describe("stool rows on the record", () => {
     // only instant it has is the tap that filed it TODAY, so #5618 ruling 6's filing-day
     // spelling fires. That is the sentence the old store could never produce, because it
     // stamped a clock into the reading's own instant and every row rendered bare.
-    expect(row.clock.startsWith("logged")).toBe(true);
-    expect(row.clock).not.toMatch(/^\d/);
+    expect(row.clock).toMatch(/^logged/);
   });
 
   it("earns no chip for a profile whose only samples are another metric's", () => {

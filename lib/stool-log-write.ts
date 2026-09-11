@@ -176,7 +176,11 @@ export function correctStoolEventCore(
   eventId: number,
   patch: { date?: string; statedAt?: Date | null; type?: BristolType | null }
 ): StoolEventEditOutcome {
-  if (patch.type !== undefined && patch.type !== null && !isBristolType(patch.type))
+  if (
+    patch.type !== undefined &&
+    patch.type !== null &&
+    !isBristolType(patch.type)
+  )
     return { kind: "invalid-type" };
   return writeTx(() => {
     const row = db

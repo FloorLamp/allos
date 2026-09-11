@@ -118,8 +118,7 @@ export function move(db: Database.Database): void {
   const zones = new Map<number, string>();
   const instanceTz = (
     db.prepare("SELECT value FROM settings WHERE key = 'timezone'").get() as
-      | { value?: string }
-      | undefined
+      { value?: string } | undefined
   )?.value;
   const zoneOf = (profileId: number): string => {
     const known = zones.get(profileId);
@@ -129,7 +128,10 @@ export function move(db: Database.Database): void {
         "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'timezone'"
       )
       .get(profileId) as { value?: string } | undefined;
-    const tz = resolveTimezone(row?.value, row?.value == null ? instanceTz : undefined);
+    const tz = resolveTimezone(
+      row?.value,
+      row?.value == null ? instanceTz : undefined
+    );
     zones.set(profileId, tz);
     return tz;
   };
@@ -161,7 +163,9 @@ export function move(db: Database.Database): void {
     insert.run(sample.profile_id, sample.date, canonical, canonical, type);
   }
 
-  db.prepare("DELETE FROM metric_samples WHERE metric = 'bristol_stool_type'").run();
+  db.prepare(
+    "DELETE FROM metric_samples WHERE metric = 'bristol_stool_type'"
+  ).run();
 }
 
 export const migration: Migration = {

@@ -1,6 +1,7 @@
 "use server";
 
 import { today } from "@/lib/db";
+import { bestKnownInstant } from "@/lib/row-instants";
 import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { revalidateRoute } from "@/lib/revalidate";
@@ -153,7 +154,10 @@ function landedReading(
  * The wall clock is the row's BEST-KNOWN instant read in the profile's zone — the
  * stated movement instant when somebody named one, the tap stamp otherwise — which is
  * the same minute the old `substr(started_at, 12, 5)` produced for every row this
- * ledger inherited.
+ * ledger inherited. ASKED rather than hand-rolled (#2205 phase 3): the fall from the
+ * movement instant to the filing one crosses questions, and `bestKnownInstant` is where
+ * that fall is visible. A row with neither is impossible here — `recorded_at` is NOT
+ * NULL — so the absent arm cannot fire, and it is spelled rather than asserted away.
  */
 function dayReadings(
   tz: string,
@@ -162,8 +166,13 @@ function dayReadings(
   const out: StoolDayReading[] = [];
   for (const row of rows) {
     if (row.type === null) continue;
-    const parts = zonedDateParts(tz, new Date(row.occurred_at ?? row.recorded_at));
-    out.push({ id: row.id, type: row.type, hhmm: parts.hhmm });
+    const when = bestKnownInstant("stool_events", { ...row });
+    if (!when.known) continue;
+    out.push({
+      id: row.id,
+      type: row.type,
+      hhmm: zonedDateParts(tz, new Date(when.at)).hhmm,
+    });
   }
   return out;
 }
@@ -289,7 +298,8 @@ export async function correctStoolReading(
   // falling back to the acting-profile gate when no subject is posted.
   const profileId = await gateItemProfile(formData);
   const eventId = stoolEventId(formData);
-  if (eventId === null) return { ok: false, error: "Couldn't find that reading." };
+  if (eventId === null)
+    return { ok: false, error: "Couldn't find that reading." };
   const raw = String(formData.get("type") ?? "").trim();
   const type = raw === UNTYPED_FIELD_VALUE ? null : parseBristolType(raw);
   if (type === null && raw !== UNTYPED_FIELD_VALUE)
