@@ -767,12 +767,14 @@ export const LOG_MANIFEST = {
       // reads it as an inheritance in its own cell instead of finding a body-named
       // control on its rows and drawing a fourth.
       //
-      // THE DASHBOARD IS NOT A GAP. Its body rows are readouts with an `href`; the one
-      // body write control there is the setup-tier Vitals row's
-      // `DashboardQuickEntryAction`, which OPENS the form in the sheet and is ruling 2's
-      // mount rather than a second row control. So read `shared` as the symptom leg
-      // established it: the domain has exactly one control and every body row hosting a
-      // write control mounts it. Mount count is not the test.
+      // THE DASHBOARD IS NOT A GAP, AND NOW IT IS NOT A MOUNT EITHER. Its body rows
+      // were readouts with an `href`, and its one body write control was the setup-tier
+      // Vitals row's `DashboardQuickEntryAction` — ruling 2's sheet-opening mount rather
+      // than a second row control. #5435 §4 retires that row and deletes the component,
+      // so Home hosts no body write control at all and the Quicklogger's own door is the
+      // whole of it. The reading is unchanged either way: read `shared` as the symptom
+      // leg established it — the domain has exactly one control and every body row
+      // hosting a write control mounts it. Mount count is not the test.
       form: { kind: "shared", component: "MeasurementsQuickAdd" },
       rowControl: { kind: "shared", component: "ReadingValueControl" },
     },
