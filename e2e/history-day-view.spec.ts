@@ -803,7 +803,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // THE SCROLL, which is the whole point of the rail: reading the rows must not
       // take the map off screen. Asserted as the two boxes moving DIFFERENTLY —
       // the rows travel with the page, the panel does not.
-      const rowBefore = (await firstRow.boundingBox())!;
+      const [rowBefore] = await settledBoxes([firstRow]);
       const maxScroll = await page.evaluate(
         () => document.documentElement.scrollHeight - window.innerHeight
       );
@@ -816,12 +816,13 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
         `the page scrolls ${scrolled}px and the chart starts ${panelBox.y}px down — ` +
           "the scroll must pass it, or an unpinned rail would still be in view"
       ).toBeGreaterThan(panelBox.y);
-      const rowAfter = (await firstRow.boundingBox())!;
+      // ONE settled group for both post-scroll boxes: they describe the same
+      // after-scroll layout, and grouping them costs one settle loop instead of two.
+      const [rowAfter, panelAfter] = await settledBoxes([firstRow, panel]);
       expect(
         rowBefore.y - rowAfter.y,
         "the rows travelled with the scroll"
       ).toBeGreaterThan(scrolled - 2);
-      const panelAfter = (await panel.boundingBox())!;
       // FULLY in view, top and bottom: an unpinned rail would be carried ~600px up
       // and its top edge would be negative.
       expect(
@@ -922,12 +923,17 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // the rail travelled less and came to rest ON its inset. A static rail would
       // sit at `railBefore.y - scrolled`, which the guard above puts strictly above
       // the inset — so both of these red the moment the pin comes off.
-      const rowAfter = (await firstRow.boundingBox())!;
+      // ONE settled group: the three claims below are about the SAME after-jump
+      // layout, so the boxes have to come from it rather than from three round-trips.
+      const [rowAfter, railAfter, panelAfter] = await settledBoxes([
+        firstRow,
+        rail,
+        panel,
+      ]);
       expect(
         rowBefore.y - rowAfter.y,
         "the rows travelled with the jump"
       ).toBeGreaterThan(scrolled - 2);
-      const railAfter = (await rail.boundingBox())!;
       expect(
         railAfter.y,
         `the rail sits at ${railAfter.y}; unpinned it would be at ${
@@ -936,7 +942,6 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       ).toBeGreaterThan(railBefore.y - scrolled);
       expect(Math.round(railAfter.y)).toBe(Math.round(stickyTop));
       // …and the chart is still whole on screen, which is what the reader gets.
-      const panelAfter = (await panel.boundingBox())!;
       expect(panelAfter.y).toBeGreaterThanOrEqual(0);
       expect(panelAfter.y + panelAfter.height).toBeLessThanOrEqual(RAIL.height);
     } finally {
@@ -990,7 +995,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
           "cannot tell a correct rail from one that swallowed the wheel"
       ).toBeGreaterThan(0);
 
-      const box = (await svg.boundingBox())!;
+      const [box] = await settledBoxes([svg]);
       await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
       const before = {
         page: await page.evaluate(() => window.scrollY),
@@ -1005,7 +1010,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       expect(await scroller.evaluate((el) => el.scrollTop)).toBe(before.rail);
       // AND THE BOX BELOW THE CHART STILL SCROLLS ON ITS OWN — the converse, so this
       // is not green because the rail simply lost its overflow everywhere.
-      const railBox = (await scroller.boundingBox())!;
+      const [railBox] = await settledBoxes([scroller]);
       await page.mouse.move(
         railBox.x + railBox.width / 2,
         railBox.y + railBox.height / 2
@@ -1035,7 +1040,12 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       const rail = app.getByTestId("history-day-rail");
       await expect(rail.getByTestId("intraday-panel")).toBeVisible();
 
-      const box = (await rail.boundingBox())!;
+      // ONE settled group for the rail and the chart inside it: the cap claim and
+      // the fixture guard below are read off the same layout, in one settle loop.
+      const [box, panelBox] = await settledBoxes([
+        rail,
+        rail.getByTestId("intraday-panel"),
+      ]);
       // THE SCROLLING BOX IS NOT THE RAIL. The rail caps the height; the box BELOW
       // the chart is what scrolls, so the chart's own area has no scrollable
       // ancestor short of the page (the wheel test above is the behaviour that
@@ -1048,9 +1058,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // THE FIXTURE REACHES THE FORBIDDEN STATE. Without this the height assertion
       // below is green on a rail that simply had little in it, which is the shape
       // that passes forever and tests nothing.
-      const panelHeight = (await rail
-        .getByTestId("intraday-panel")
-        .boundingBox())!.height;
+      const panelHeight = panelBox.height;
       // AGAINST THE CAP, NOT THE RAW VIEWPORT, because the cap is what this test is
       // about: `100dvh` minus the rail's two 1.5rem insets. The two quantities differ
       // by 48px, which did not matter while the rail held ~450px of content and is
