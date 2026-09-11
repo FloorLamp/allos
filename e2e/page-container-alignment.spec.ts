@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
+import { appContent } from "./helpers";
 import { followLink } from "./nav";
 
 // PageContainer owns alignment (#3961). The defect was visible, not textual: on a
@@ -99,14 +100,14 @@ test("the surfaces that hugged the left now centre in the shell (#3961)", async 
   await page.goto("/equipment");
   await followLink(
     page,
-    page
+    appContent(page)
       .getByTestId("equipment-row")
       .filter({ hasText: "E2E Registry Bike" })
       .getByRole("link", { name: /E2E Registry Bike/ }),
     /\/equipment\/\d+$/
   );
   expectCentred(
-    await columnSlack(page.getByTestId("equipment-detail")),
+    await columnSlack(appContent(page).getByTestId("equipment-detail")),
     "the equipment detail page"
   );
 
@@ -139,14 +140,14 @@ test("the left-anchored families stay against their own left edge (#3961)", asyn
   // cap at different measures inside the same wide shell.
   await page.goto("/records/problems/conditions");
   expectLeftAnchored(
-    await columnSlack(page.getByTestId("records-conditions")),
+    await columnSlack(appContent(page).getByTestId("records-conditions")),
     "the Conditions tab pane"
   );
 
   // Results flipped from centred to left-anchored to match its sibling shell.
   await page.goto("/results/reports");
   expectLeftAnchored(
-    await columnSlack(page.getByTestId("results-reports")),
+    await columnSlack(appContent(page).getByTestId("results-reports")),
     "the Reports tab pane"
   );
 
@@ -154,7 +155,7 @@ test("the left-anchored families stay against their own left edge (#3961)", asyn
   await page.goto("/settings/display");
   expectLeftAnchored(
     await columnSlack(
-      page.getByTestId("distance-unit-select"),
+      appContent(page).getByTestId("distance-unit-select"),
       '[data-testid="settings-group-content"]'
     ),
     "the Display & units form"
@@ -163,7 +164,7 @@ test("the left-anchored families stay against their own left edge (#3961)", asyn
   // And the settings index, which is not inside the two-column shell.
   await page.goto("/settings");
   expectLeftAnchored(
-    await columnSlack(page.getByTestId("settings-index"), SHELL),
+    await columnSlack(appContent(page).getByTestId("settings-index"), SHELL),
     "the settings index"
   );
 });
