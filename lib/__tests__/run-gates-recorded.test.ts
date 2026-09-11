@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,11 +29,15 @@ function harness(gateExit: number) {
     path.join(REPO, "scripts/orchestration/run-gates-recorded.sh"),
     path.join(helpers, "run-gates-recorded.sh")
   );
-  fs.writeFileSync(
-    path.join(helpers, "agent-gates.sh"),
-    `#!/bin/sh\necho "=== GATE lint: PASS ==="\necho "stub gates exiting ${gateExit}"\nexit ${gateExit}\n`,
-    { mode: 0o755 }
-  );
+  const setGate = (exit: number, sleepSeconds = 0) =>
+    fs.writeFileSync(
+      path.join(helpers, "agent-gates.sh"),
+      `#!/bin/sh\necho "=== GATE lint: PASS ==="\n` +
+        (sleepSeconds ? `sleep ${sleepSeconds}\n` : "") +
+        `echo "stub gates exiting ${exit}"\nexit ${exit}\n`,
+      { mode: 0o755 }
+    );
+  setGate(gateExit);
   // The resolver answers from the environment, or refuses like the real one.
   fs.writeFileSync(
     path.join(helpers, "host.mjs"),
@@ -46,7 +50,47 @@ function harness(gateExit: number) {
       env: { ...process.env, TEST_STATE_DIR: state, ...env },
       timeout: 30_000,
     });
-  return { helpers, state, cwd, run };
+  const script = path.join(helpers, "run-gates-recorded.sh");
+  return { helpers, state, cwd, run, script, setGate };
+}
+
+/** Start a run through the script and read back what it says it recorded. */
+function startRun(h: ReturnType<typeof harness>, branch: string) {
+  const run = h.run([branch]);
+  return {
+    run,
+    log: /\blog:? (\S+)/.exec(run.stdout)?.[1],
+    runId: /\(run ([^)]+)\)/.exec(run.stdout)?.[1],
+  };
+}
+
+/**
+ * The record `start` writes — a run's own three files plus the branch pointer
+ * at them — without running a gate. Answers the run's own log path.
+ */
+function fabricateRun(
+  state: string,
+  branch: string,
+  runId: string,
+  files: { log?: string; pid?: string; exit?: string }
+) {
+  const base = `gates-${branch}-${runId}.log`;
+  const run = path.join(state, base);
+  if (files.log !== undefined) fs.writeFileSync(run, files.log);
+  if (files.pid !== undefined) fs.writeFileSync(`${run}.pid`, files.pid);
+  if (files.exit !== undefined) fs.writeFileSync(`${run}.exit`, files.exit);
+  const stable = path.join(state, `gates-${branch}.log`);
+  fs.symlinkSync(base, stable);
+  fs.symlinkSync(`${base}.pid`, `${stable}.pid`);
+  fs.symlinkSync(`${base}.exit`, `${stable}.exit`);
+  return run;
+}
+
+/** Age a recorded run's three files, so a sweep sees them as a day old. */
+function backdate(log: string, hoursAgo = 25) {
+  const when = (Date.now() - hoursAgo * 3_600_000) / 1000;
+  for (const p of [log, `${log}.pid`, `${log}.exit`])
+    if (fs.existsSync(p)) fs.utimesSync(p, when, when);
 }
 
 describe("run-gates-recorded.sh", () => {
@@ -74,7 +118,7 @@ describe("run-gates-recorded.sh", () => {
 
   it("--wait blocks on the recorded PID and reports the exit that run wrote", () => {
     const h = harness(0);
-    const log = path.join(h.state, "gates-br.log");
+    const log = fabricateRun(h.state, "br", "20260911T000000Z-1", {});
     // A run in flight whose starting shell is gone — the detached shape: bash
     // backgrounds the run, records `$!`, and exits, so the run is reparented
     // to init and reaped there. (A child of THIS process would stay a zombie
@@ -99,11 +143,12 @@ describe("run-gates-recorded.sh", () => {
 
   it("--wait with a dead run and no exit file says KILLED, never a code", () => {
     const h = harness(0);
-    const log = path.join(h.state, "gates-br.log");
-    fs.writeFileSync(log, "partial output\n");
     // A pid that is certainly not alive: our own child that has already exited.
     const gone = spawnSync("bash", ["-c", "echo $$"], { encoding: "utf8" });
-    fs.writeFileSync(`${log}.pid`, gone.stdout);
+    fabricateRun(h.state, "br", "20260911T000000Z-1", {
+      log: "partial output\n",
+      pid: gone.stdout,
+    });
     const run = h.run(["br", "--wait"]);
     expect(run.status).toBe(1);
     expect(run.stdout).toContain("GATES EXIT=KILLED — no exit recorded");
@@ -162,9 +207,10 @@ describe("run-gates-recorded.sh", () => {
     // agent-gates.sh was never invoked. "Killed" names a cause that did not
     // happen — a session limit, an OOM — and sends the reader to re-run.
     const h = harness(0);
-    const log = path.join(h.state, "gates-br.log");
     const gone = spawnSync("bash", ["-c", "echo $$"], { encoding: "utf8" });
-    fs.writeFileSync(`${log}.pid`, gone.stdout);
+    const log = fabricateRun(h.state, "br", "20260911T000000Z-1", {
+      pid: gone.stdout,
+    });
     const run = h.run(["br", "--wait"]);
     expect(run.stdout).not.toContain("KILLED");
     expect(run.stderr).toContain("NOTHING RAN");
@@ -172,10 +218,134 @@ describe("run-gates-recorded.sh", () => {
     expect(run.status).toBe(2);
   });
 
-  it("--wait with no recorded pid refuses rather than waiting on a name", () => {
+  // THE REPLAY FACE (#5712). `--wait` collects a run that has ALREADY finished
+  // far more often than it waits on a live one — that is the detached-start
+  // path the header documents. What it used to print for a finished run was
+  // that run's exit and log VERBATIM, with nothing saying no gate had run: a
+  // lane that fixed its code and re-collected read its own pre-fix verdict.
+  // The defect was found by a lane noticing two readings were byte-identical,
+  // down to a `1498ms` duration a real re-run cannot reproduce, so what is
+  // asserted here is the distinguishing TEXT, not that something was printed.
+  it.each([[0], [3]])(
+    "--wait on a finished run names it as a replay rather than serving exit %i as fresh",
+    (gateExit) => {
+      const h = harness(gateExit);
+      const first = startRun(h, "br");
+      expect(first.run.status).toBe(gateExit);
+      // The run has an identity in the output that starts it...
+      expect(first.runId).toBeTruthy();
+      const replay = h.run(["br", "--wait"]);
+      // ...and the collection that re-reads it says so, names the same run,
+      // and says how long ago it ended. The PASS row is the dangerous
+      // direction: a stale green is what reaches main.
+      expect(replay.stdout).toMatch(/REPLAY[^\n]*finished[^\n]*ago/);
+      expect(replay.stdout).toContain(first.runId!);
+      // The verdict itself stays readable — a replay is legitimate to read.
+      expect(replay.status).toBe(gateExit);
+      expect(replay.stdout).toContain(`GATES EXIT=${gateExit}`);
+    }
+  );
+
+  it("--wait on a run still in flight reports that run, and calls it no replay", async () => {
+    // THE POSITIVE CONTROL for the case above: a script that labelled every
+    // collection a replay would pass it. This one is genuinely waited on, so
+    // it must name the run it watched and must NOT be called a replay.
+    const h = harness(0);
+    h.setGate(5, 3);
+    const child = spawn("bash", [h.script, "br"], {
+      cwd: h.cwd,
+      env: { ...process.env, TEST_STATE_DIR: h.state },
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    const deadline = Date.now() + 10_000;
+    while (
+      Date.now() < deadline &&
+      !fs.readdirSync(h.state).some((n) => n.endsWith(".pid"))
+    )
+      await new Promise((r) => setTimeout(r, 50));
+    const started = Date.now();
+    const wait = h.run(["br", "--wait"]);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+    expect(wait.stdout).toContain("GATES EXIT=5");
+    expect(wait.stdout).not.toContain("REPLAY");
+    expect(wait.stdout).toMatch(/run \S+/);
+    expect(wait.status).toBe(5);
+  }, 30_000);
+
+  // THE RECORD THE NEXT RUN USED TO DESTROY (#5712). The log was keyed on the
+  // branch ALONE, so a second `start` on it truncated the first run's log and
+  // removed its `.exit`. Observed on `stream-reveal-arrival-5040`: a lane ran
+  // its gates, the orchestrator re-ran them on the same branch 82 minutes
+  // later, and the lane's own record was gone — the record that would settle
+  // the disagreement, deleted exactly when the lane's claim starts to matter.
+  it("a second start on the same branch keeps the first run's record", () => {
+    const h = harness(3);
+    const first = startRun(h, "br");
+    h.setGate(0);
+    const second = startRun(h, "br");
+    expect(first.log).toBeTruthy();
+    expect(second.log).not.toBe(first.log);
+    expect(fs.readFileSync(first.log!, "utf8")).toContain(
+      "stub gates exiting 3"
+    );
+    expect(fs.readFileSync(`${first.log}.exit`, "utf8").trim()).toBe("3");
+    expect(fs.readFileSync(second.log!, "utf8")).toContain(
+      "stub gates exiting 0"
+    );
+    expect(fs.readFileSync(`${second.log}.exit`, "utf8").trim()).toBe("0");
+  });
+
+  it("the branch's own name still finds the newest run's three files", () => {
+    // Per-run records only help a reader who can reach them: the stable name
+    // every doc and habit uses points at the newest run.
+    const h = harness(0);
+    startRun(h, "br");
+    h.setGate(3);
+    const second = startRun(h, "br");
+    const stable = path.join(h.state, "gates-br.log");
+    expect(second.log).not.toBe(stable);
+    expect(fs.realpathSync(stable)).toBe(fs.realpathSync(second.log!));
+    expect(fs.readFileSync(stable, "utf8")).toContain("stub gates exiting 3");
+    expect(fs.readFileSync(`${stable}.exit`, "utf8").trim()).toBe("3");
+    expect(fs.readFileSync(`${stable}.pid`, "utf8").trim()).toMatch(/^\d+$/);
+  });
+
+  it("start reclaims superseded runs older than a day, and only those", () => {
+    // Per-run records accumulate, so they get the by-construction reclaim this
+    // tree already uses for walk trees and temp dirs: swept at CREATION, since
+    // a process that was killed runs no teardown. Three things it must not
+    // take: a run another lane is still writing, the newest run of any branch,
+    // and anything this script did not name.
+    const h = harness(0);
+    const superseded = startRun(h, "br");
+    const newestOfOther = startRun(h, "other");
+    const live = path.join(
+      h.state,
+      `gates-br-19700101T000000Z-${process.pid}.log`
+    );
+    fs.writeFileSync(live, "another lane is writing this\n");
+    fs.writeFileSync(`${live}.pid`, `${process.pid}\n`);
+    const legacy = path.join(h.state, "gates-before-run-ids.log");
+    fs.writeFileSync(legacy, "not this script's to remove\n");
+    for (const p of [superseded.log!, newestOfOther.log!, live, legacy])
+      backdate(p);
+
+    const fresh = startRun(h, "br");
+
+    expect(fs.existsSync(superseded.log!)).toBe(false);
+    expect(fs.existsSync(`${superseded.log}.exit`)).toBe(false);
+    expect(fs.existsSync(newestOfOther.log!)).toBe(true);
+    expect(fs.existsSync(live)).toBe(true);
+    expect(fs.existsSync(legacy)).toBe(true);
+    expect(fs.existsSync(fresh.log!)).toBe(true);
+  });
+
+  it("--wait with no recorded run refuses rather than waiting on a name", () => {
     const h = harness(0);
     const run = h.run(["br", "--wait"]);
     expect(run.status).toBe(2);
-    expect(run.stderr).toContain("no PID recorded");
+    expect(run.stderr).toContain("no run recorded for br");
   });
 });
