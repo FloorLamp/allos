@@ -22,6 +22,8 @@ export {
   visitContextForEncounter,
 } from "./medical/encounters";
 export {
+  IMMUNIZATION_CONTRIBUTED_NOTES,
+  IMMUNIZATION_CONTRIBUTED_NOTES_CTE,
   IMMUNIZATION_REPRESENTATIVE_IDS,
   getImmunityTiters,
   getImmunizationOverride,

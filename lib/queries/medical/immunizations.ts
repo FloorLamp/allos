@@ -3,6 +3,7 @@ import {
   REPRESENTATIVE_SPECS,
   representativeCte,
   representativeIds,
+  representativeOrderBy,
 } from "../../representative-ids";
 import {
   immuneThresholdFor,
@@ -40,6 +41,84 @@ const IMMUNIZATION_DEDUPED = representativeCte(
 export const IMMUNIZATION_REPRESENTATIVE_IDS = representativeIds(
   REPRESENTATIVE_SPECS.immunizations
 );
+
+// Separator between two contributing rows' notes on one representative. The tree's
+// existing "two facts on one line" separator (lib/activity-import-details.ts and the
+// medication subtitles), not a new one.
+const NOTE_SEPARATOR = " · ";
+
+// THE CONTRIBUTED NOTES OF A COLLAPSE GROUP, merged onto its representative (#4731).
+//
+// The election ranks on (vaccine, date, dose label) and breaks ties on provenance
+// then `id DESC`. Notes are not in it, so when two overlapping portal documents
+// produce one administration and only the LOWER-id row carries the note, the
+// note-less row wins and the text is unreachable from every surface a person reads.
+// Measured on the issue's probe before this existed: `getImmunizations` returned the
+// note-less row, the Timeline event's detail was null, and Search for the lot number
+// returned nothing while the text sat in the table.
+//
+// WHY NOT THE SMALLER FIX — a `precede` clause electing a note-carrying row. Two
+// measurements ruled it out, not a preference:
+//   • It does not meet the issue's own standard. When BOTH rows carry notes and the
+//     notes DIFFER, the precedence term ties and `id DESC` decides, so one note is
+//     still lost — a different one. The both-rows case is in the db tier
+//     (lib/__db_tests__/immunization-notes-collapse.test.ts) precisely because that
+//     is the case a note-preference cannot answer.
+//   • `precede` outranks the preference AXIS by construction (see
+//     representativeOrderBy), so a note-carrying IMPORTED row would beat a note-less
+//     MANUAL one. That silently inverts the manual-beats-imported rule the registry
+//     exists to state once, for every immunization pair in the tree — a much larger
+//     change than the one the issue asks for.
+//
+// So the ELECTION IS UNTOUCHED — this file changes no spec and no builder, and no
+// site re-elects anything — and the notes are gathered instead. `imm_notes` maps each
+// representative id to the DISTINCT notes of every row sharing its collapse identity,
+// oldest contributing row first. Identity and ranking are the registry's own
+// expressions, reused verbatim, so this can never drift from the election it follows.
+//
+// WHAT "DISTINCT" MEANS HERE: exact text after TRIM. Two near-duplicate spellings of
+// one fact ("Lot 9" and "Lot 9." from two portals) BOTH survive and read twice. That
+// is the deliberate direction to err: text shown twice is something a reader can
+// resolve, text dropped is not.
+//
+// Binds ONE profile_id, before whatever the reading statement binds.
+const immunizationSpec = REPRESENTATIVE_SPECS.immunizations;
+export const IMMUNIZATION_CONTRIBUTED_NOTES_CTE = `imm_notes AS (
+    SELECT rep_id AS id,
+           group_concat(note, '${NOTE_SEPARATOR}' ORDER BY first_id) AS notes
+      FROM (
+        SELECT rep_id, TRIM(notes) AS note, MIN(id) AS first_id
+          FROM (
+            SELECT id, notes,
+                   FIRST_VALUE(id) OVER (
+                     PARTITION BY profile_id,
+                       ${immunizationSpec.partition.join(",\n                       ")}
+                     ORDER BY ${representativeOrderBy(immunizationSpec)}
+                   ) AS rep_id
+              FROM immunizations WHERE profile_id = ?
+          )
+         WHERE TRIM(COALESCE(notes, '')) <> ''
+         GROUP BY rep_id, TRIM(notes)
+      )
+     GROUP BY rep_id
+  )`;
+
+// The notes column the two DISPLAY-ONLY readers select in place of `immunizations.
+// notes`: this representative's own note plus every contributor's, or NULL when the
+// group holds none. Reads the CTE above, so a statement using it must carry that CTE,
+// and names the outer table explicitly — both readers select `FROM immunizations`
+// unaliased.
+//
+// WHAT THIS DOES NOT REACH, deliberately: `getImmunizations` below is UNCHANGED, so
+// the immunizations record page, its print/share view, and `assessSchedule`'s input
+// still see only the representative's OWN note. Those rows are not display-only —
+// they populate ImmunizationForm's notes field, and updateImmunization writes that
+// field straight back, so a merged string would be STORED on the survivor the next
+// time anyone edited the dose, turning a display merge into a data merge. The note
+// is therefore reachable — the Timeline and Search both show it — but it is not
+// reachable from every surface; the record page still shows one of the two.
+export const IMMUNIZATION_CONTRIBUTED_NOTES = `(SELECT notes FROM imm_notes
+             WHERE imm_notes.id = immunizations.id)`;
 
 // Hoisted (#2110): the immunization schedule generator asks for all three of these
 // per member, and the Household page runs that generator once per member. Statement

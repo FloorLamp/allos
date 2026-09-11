@@ -21,6 +21,8 @@ import {
 import type { IntakeItemKind } from "../types";
 import {
   ENCOUNTER_REPRESENTATIVE_IDS,
+  IMMUNIZATION_CONTRIBUTED_NOTES,
+  IMMUNIZATION_CONTRIBUTED_NOTES_CTE,
   IMMUNIZATION_REPRESENTATIVE_IDS,
 } from "./medical";
 import {
@@ -291,16 +293,21 @@ function immunizationHits(
   // in JS on the human display name (+ notes). Immunization rows are few, so a
   // bounded recent fetch is fine. Representative-collapsed like every other domain
   // here (#4366), so overlapping portal exports return one hit per administration.
+  // The notes it filters on are the group's CONTRIBUTED notes (#4731) — a lot number
+  // typed on the LOSING row of a collapsed pair is still findable. The CTE binds
+  // profile_id first.
   const rows = db
     .prepare(
-      `SELECT id, vaccine, date, dose_label, notes
+      `WITH ${IMMUNIZATION_CONTRIBUTED_NOTES_CTE}
+       SELECT id, vaccine, date, dose_label,
+              ${IMMUNIZATION_CONTRIBUTED_NOTES} AS notes
          FROM immunizations
         WHERE profile_id = ?
           AND id IN (${IMMUNIZATION_REPRESENTATIVE_IDS})
         ORDER BY date DESC
         LIMIT 200`
     )
-    .all(profileId, profileId) as {
+    .all(profileId, profileId, profileId) as {
     id: number;
     vaccine: string;
     date: string;
