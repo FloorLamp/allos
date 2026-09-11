@@ -205,8 +205,9 @@ describe("pinned zone × the 28-night SRI fixture (#3644)", () => {
 // The #3260 band: a dashboard candidate may carry MEAL-WINDOW timing
 // (`mealTimeWindows` — each intake reminder anchor ±60 min), and
 // `resolveDashboardTiming` calls it `expired` once the last window of the local day
-// has closed. An expired candidate is dropped before every lane is built, so
-// `openDashboardAll` cannot reach it either — it is not demoted, it is absent.
+// has closed. An expired candidate is dropped before every lane is built, so it is
+// not demoted into a fold, it is absent — and since #5435 §4 there is no fold and no
+// opener left to reach one with.
 //
 // That makes the profile's LOCAL minute-of-day, not merely its calendar date, part of
 // what the timezone pin has to make deterministic. The pin's 13:mm is exactly

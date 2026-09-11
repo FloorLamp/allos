@@ -29,10 +29,8 @@ export function dashboardCandidateWithText(
   return dashboardCandidatePrefix(page, prefix).filter({ hasText: text });
 }
 
-// THERE IS NO SECOND OPENER (#4232). `openStandingTail` lived here while the page had
-// two folds; Standing has none now, so every spec that wants a quiet row opens the ONE
-// fold through `openDashboardAll` in ./helpers.
-//
-// AND SINCE #5435 THERE IS NO FOLD EITHER: §4 retires the "Show everything" tail with
-// the ranker that filled it, so a row is either on the page or it is not on it. Nothing
-// here opens anything any more.
+// THERE IS NO OPENER AT ALL, HERE OR IN ./helpers (#4232, #5435 §4). This file once
+// carried `openStandingTail` for the page's second fold, then deferred to the one
+// remaining fold's opener in ./helpers. §4 retires the "Show everything" tail with the
+// ranker that filled it, and those helpers are deleted too: a row is either on the page
+// or it is not on it, so nothing opens anything to reach one.

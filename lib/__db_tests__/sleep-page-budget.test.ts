@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — the /sleep route's statement budget (#3993).
 //
 // WHY THIS FILE EXISTS. Two budget gates walk a route today: the dashboard
-// (dashboard-placement-manifest.test.ts, `QUERY_CEILING = 274`) and the Trends Overview
+// (dashboard-placement-manifest.test.ts, `QUERY_CEILING = 269`) and the Trends Overview
 // (trends-overview-budget.test.ts). Neither walks /sleep — and #3993 put an
 // `effectiveSituationResolver` inside `bedtimeSupplementsByWakeDay`, which /sleep renders
 // for every night of its history. That made the sleep page's cost a number taken on
@@ -14,12 +14,15 @@
 // identity — that is tick-gather-budget.test.ts — and nothing about wall time, which is
 // docs/internals/profiling.md's reading.
 //
-// THE CEILING IS THE DASHBOARD'S, borrowed rather than re-derived. /sleep is a single
-// domain page against the dashboard's whole placement census, so it has no business
-// costing what the dashboard costs; 274 is a backstop it should not come near, and the
-// recorded per-persona counts below are the real gate. Both are asserted, for the reason
-// the dashboard's own comment gives: a recorded number catches drift, a backstop catches
-// the thing nobody thought to record.
+// THE CEILING IS THE DASHBOARD'S, borrowed rather than re-derived — so it FOLLOWS the
+// dashboard's, which is the half this file had stopped doing. It was written at 274,
+// the dashboard moved to 279 and then to 269 (#5435 §7's cutover acceptance), and a
+// borrowed number that stops tracking its source is a second opinion wearing a
+// citation. /sleep is a single domain page against the dashboard's whole placement
+// census, so it has no business costing what the dashboard costs; 269 is a backstop it
+// should not come near, and the recorded per-persona counts below are the real gate.
+// Both are asserted, for the reason the dashboard's own comment gives: a recorded
+// number catches drift, a backstop catches the thing nobody thought to record.
 
 import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db } from "@/lib/db";
@@ -106,11 +109,12 @@ describe("/sleep route query budget (#3993)", () => {
     biohacker: 105,
   };
 
-  // The dashboard's backstop, borrowed. /sleep is one domain page; reaching this would
-  // mean it costs what the entire dashboard census costs. The heaviest persona is 105
-  // against it — the answer to the question nobody had asked, which was whether this
-  // route could exceed a ceiling no gate applies to it.
-  const QUERY_CEILING = 274;
+  // The dashboard's backstop, borrowed and kept in step with it (#5435 §7 lowered it
+  // to 269). /sleep is one domain page; reaching this would mean it costs what the
+  // entire dashboard census costs. The heaviest persona is 105 against it — the answer
+  // to the question nobody had asked, which was whether this route could exceed a
+  // ceiling no gate applies to it.
+  const QUERY_CEILING = 269;
 
   it("stays at its recorded per-persona counts", () => {
     expect(Object.fromEntries(counts)).toEqual(BASELINES);
