@@ -302,9 +302,24 @@ describe("session lifecycle", () => {
 // Only this tier can see the desync, because it is a disagreement BETWEEN the DB
 // write and the Edge response — so both are driven here, against one token.
 describe("browser cookie lifetime vs DB expires_at (#2058)", () => {
+  // A stored SQLite timestamp as an instant. Both session columns are declared
+  // `convention: "bare"` (lib/time-columns.ts) — written by `datetime('now', …)`,
+  // so UTC, truncated to the second. The "Z" pins that, it does not convert.
+  function sqlInstantMs(stored: string): number {
+    return Date.parse(stored.replace(" ", "T") + "Z");
+  }
+
   // The instant the DB says the session dies, from the stored UTC timestamp.
   function dbExpiryMs(tokenHash: string): number {
-    return Date.parse(sessionRow(tokenHash)!.expiresAt.replace(" ", "T") + "Z");
+    return sqlInstantMs(sessionRow(tokenHash)!.expiresAt);
+  }
+
+  // The instant the sliding write happened, ON THE CLOCK THAT WROTE IT. SESSION_TOUCH
+  // sets `last_used_at = datetime('now')` and `expires_at = datetime('now','+30 days')`
+  // in ONE statement, so SQLite reads its clock once and the two stored strings differ
+  // by exactly the slide — which makes this the DB half's own zero point.
+  function dbTouchedAtMs(tokenHash: string): number {
+    return sqlInstantMs(sessionRow(tokenHash)!.lastUsedAt);
   }
 
   function postRequest(token: string, marked: boolean): NextRequest {
@@ -335,7 +350,24 @@ describe("browser cookie lifetime vs DB expires_at (#2058)", () => {
     // and Edge response are separate runtime stages, so exact wall-clock equality is
     // neither possible nor required. The cookie carries a relative Max-Age starting
     // when the response is applied; the DB timestamp was already written.
-    const responseNow = Date.now() + 5000;
+    //
+    // THE FORGED RESPONSE INSTANT IS READ OFF THE DB WRITE, NOT OFF `Date.now()` (#4703).
+    // It used to be `Date.now() + 5000`, which subtracts a SQLite timestamp from a
+    // JavaScript one and calls the remainder a scheduling gap. Those are two clocks, and
+    // this tier moves one of them: ./frozen-clock.ts freezes Date at FROZEN_WALL_TIME_UTC
+    // on the current UTC day while `datetime('now')` keeps real time, so once real time
+    // passes that wall time the frozen Date reads BEHIND SQLite and the 5000 ms budget
+    // goes negative by however far into that window the run got. Measured here at
+    // -385576 ms by moving the tier's wall time 6 minutes into the past; #4703 reported
+    // -17s, -125s and -461s, i.e. runs at 23:50:22, 23:52:10 and 23:57:46 UTC. That is
+    // why it reproduced ALONE, on any branch and at the base SHA, and then "cleared
+    // itself" ~25 minutes later without the machine getting quieter: the frozen day had
+    // rolled over. Load explains none of it and a green rerun disproves none of it.
+    // The file's usesRealElapsedTime() opt-out (#5548) hides the skew; anchoring on
+    // `last_used_at` removes it — and removes the real elapsed time between the two
+    // reads with it, which is the other thing a fixed budget was silently spending.
+    const RESPONSE_LAG_MS = 5000;
+    const responseNow = dbTouchedAtMs(tokenHash) + RESPONSE_LAG_MS;
     const now = vi.spyOn(Date, "now").mockReturnValue(responseNow);
     try {
       const res = middleware(postRequest(token, false));
@@ -347,7 +379,11 @@ describe("browser cookie lifetime vs DB expires_at (#2058)", () => {
       // while the DB would still honor it. A cookie expiring later is harmless because
       // resolveSessionToken's DB gate remains authoritative on every request.
       const cookieExpiry = Date.now() + SESSION_TTL_SEC * 1000;
-      // This deterministically crosses the old symmetric one-second tolerance.
+      // Both sides now count from the same instant, so this difference is exactly
+      // RESPONSE_LAG_MS + (SESSION_TTL_SEC * 1000 - the DB slide): no clock skew and no
+      // elapsed time in it, only the two halves' disagreement about how long 30 days is.
+      // It crosses the old symmetric one-second tolerance by construction, and reds if
+      // the cookie's TTL ever falls short of the DB's slide by more than the lag.
       expect(cookieExpiry - dbExpiry).toBeGreaterThan(1000);
       expect(cookieExpiry).toBeGreaterThanOrEqual(dbExpiry);
     } finally {

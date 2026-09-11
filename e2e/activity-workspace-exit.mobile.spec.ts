@@ -201,6 +201,9 @@ test("a live workout finishes from the sticky footer, and Save closes the worksp
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+  // Use confirms set 1 with the later rows still planned, so its load is behind
+  // the row's door in the shared layout (#5762); one tap reads the set back.
+  await panel.getByTestId("set-vary-1").click();
   await expect(panel.getByTestId("set1-weight")).toHaveValue(/^\d/);
 
   await finish.click();
