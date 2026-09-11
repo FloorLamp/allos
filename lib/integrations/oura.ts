@@ -1,4 +1,5 @@
 import type { ActivityType } from "@/lib/types";
+import { dayStr, num, str } from "./payload-fields";
 import {
   boundedOrNull,
   canonicalDistanceKm,
@@ -19,19 +20,6 @@ import type {
 // (lib/__tests__/oura.test.ts).
 
 export const OURA_ID = "oura";
-
-// ---- tolerant field reads ----
-
-function num(...vals: unknown[]): number | null {
-  for (const v of vals) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-  }
-  return null;
-}
-
-function str(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v.trim() : null;
-}
 
 // ---- wall-clock helpers ----
 //
@@ -59,13 +47,6 @@ function instantMs(dt: unknown): number | null {
   if (!s) return null;
   const t = new Date(s).getTime();
   return Number.isFinite(t) ? t : null;
-}
-
-// A YYYY-MM-DD `day` field, validated so a malformed value can't become a row date.
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-function dayStr(v: unknown): string | null {
-  const s = str(v);
-  return s && DAY_RE.test(s) ? s : null;
 }
 
 // ---- vendor daily scores (issue #1069) ----

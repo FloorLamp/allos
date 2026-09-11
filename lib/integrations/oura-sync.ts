@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/log";
+import { dateStrInTz } from "@/lib/date";
 import { userErrorCopy } from "@/lib/user-error-copy";
 import { syncFailureCopy, syncFailureKind } from "./auth-failure";
 import {
@@ -173,10 +174,6 @@ async function fetchPages(
   return { items, truncated: true };
 }
 
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 // Oura's own 0–100 scores (issue #1069), ingested as DISPLAY-ONLY, engine-inert
 // vendor numbers (never a synthesis input — see oura.ts / the reverse-allowlist
 // guard). Same rolling window and same failure handling as the pulls above; each
@@ -207,7 +204,7 @@ const ouraSpec: PullSpec<string, string, Omit<OuraSyncResult, "truncated">> = {
     // aren't skipped; end a day past today to cover ring-vs-server timezone slack.
     const { startDate, endDate } = pullDayWindow(
       cursor || null,
-      todayUtc(),
+      dateStrInTz("UTC"),
       rescanDays,
       backfillDays
     );
