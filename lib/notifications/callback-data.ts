@@ -78,8 +78,36 @@ export interface CallbackEntry<
   // Which guard the handler consults on the token's date, or absent when the payload
   // carries no date. Carried onto the built entry so the pairing test can read it.
   readonly dateGuard?: ReconcileDateGuard;
-  // The handler's promise, or null when this entry does not recognise the token.
-  readonly run: (cq: TelegramCallbackQuery) => Promise<TapWrote> | null;
+  // The started handler, or null when this entry does not recognise the token.
+  readonly run: (cq: TelegramCallbackQuery) => TapAttempt | null;
+}
+
+// A TAP THAT HAS BEEN RECOGNISED AND STARTED, with the one thing its `TapWrote` answer
+// cannot survive to say (#4012).
+//
+// `TapWrote` is a RETURN VALUE, so a handler that writes and then throws in its message
+// rebuild reports nothing at all — and the throw path falls back to
+// `getProfilesByTelegramChatId(chat)`, the profiles this chat may act as. For a
+// single-subject write that fallback is a harmless superset. For a write that lands
+// under a profile the tapping chat is NOT bound to — the household round writes under
+// the MEMBER, an escalation writes under the PATIENT whose caregiver chat this is — the
+// member's own stale keyboards are not in that set and stand until the next tick.
+//
+// So the entry states the subject its TOKEN names, the dispatcher reads it BEFORE the
+// handler runs, and the throw path sweeps it alongside the chat's own profiles. It is a
+// declaration and not a second resolution: `subject` never authorizes anything, it only
+// widens which pointers get reconciled. Reconciling is idempotent, chat-local and shares
+// one `TAP_SWEEP_BUDGET_MS`, so the worst a forged token can buy on this path is work
+// the hourly tick already does for that profile — no read is added and nothing is
+// disclosed to the tapper.
+export interface TapAttempt {
+  // The profiles this token names as a write subject that the tapping chat may not
+  // reach. Empty for every family whose handler resolves its profile through
+  // `resolveTapProfile` over the chat's own bindings — there the fallback is complete.
+  readonly subjects: readonly number[];
+  // The handler, already running: `TapWrote` on success, and on a throw the subjects
+  // above are what the caller sweeps.
+  readonly done: Promise<TapWrote>;
 }
 
 type DateAnswer<T> = [T] extends [{ date: string }]
@@ -91,6 +119,9 @@ export function callbackEntry<T, const P extends readonly ReconcilePrefix[]>(
     prefixes: P;
     parse: (data: unknown) => T | null;
     handle: (cq: TelegramCallbackQuery, token: T) => Promise<TapWrote>;
+    // Whose ledger this token can move, when the tapping chat's own bindings cannot
+    // name them (#4012). Omitted by every chat-resolved family; see `TapAttempt`.
+    subject?: (token: T) => number;
   } & DateAnswer<T>
 ): CallbackEntry<P> {
   return {
@@ -98,7 +129,12 @@ export function callbackEntry<T, const P extends readonly ReconcilePrefix[]>(
     dateGuard: spec.dateGuard,
     run: (cq) => {
       const token = spec.parse(cq.data);
-      return token == null ? null : spec.handle(cq, token);
+      if (token == null) return null;
+      const subject = spec.subject?.(token);
+      return {
+        subjects: subject == null ? [] : [subject],
+        done: spec.handle(cq, token),
+      };
     },
   };
 }
