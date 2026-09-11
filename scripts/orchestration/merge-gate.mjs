@@ -11,7 +11,13 @@
 //      72 characters, one clause, no colon or dash tail;
 //   2. the RECEIPT: a review from a NON-AUTHOR whose body states this exact
 //      head SHA (8+ hex chars of its prefix). A receipt naming any other SHA
-//      is a review of a head that no longer exists — void, not evidence.
+//      is a review of a head that no longer exists — void, not evidence, with
+//      ONE exception (#4994): a receipt on an ANCESTOR of this head survives a
+//      `main` merge-in that changed no content, proved by the PR's three-dot
+//      diff being identical at both commits, each side read at its OWN merge
+//      base. It is the only acceptance here that is looser than exact-head, so
+//      every way it could not tell — a read that did not answer, a commit off
+//      this PR's own commit list, an empty diff — leaves the receipt stale.
 //      Where the orchestrator and its lanes share ONE account (#4258), a
 //      same-account review passes instead by stating the SHA AND asserting
 //      the reviewer did not author the change — with one identity,
@@ -104,6 +110,7 @@ import {
   falsifyingPassVerdict,
   holdVerdict,
   markerLines,
+  mergeInReceipt,
   modelTrailerVerdict,
   normaliseSession,
   ownershipVerdict,
@@ -230,6 +237,35 @@ function gh(pathname, soft = false) {
   }
 }
 
+// The same GET as `gh`, asking for the DIFF rather than the JSON (#4994).
+// Always soft: the merge-in acceptance is the ONE place this gate opens on
+// something other than an exact-head receipt, so a read it cannot complete
+// must leave the receipt stale — which is the refusal the gate already makes.
+function ghDiff(pathname) {
+  const response = curl([
+    "-H",
+    `Authorization: Bearer ${token}`,
+    "-H",
+    "Accept: application/vnd.github.diff",
+    `https://api.github.com/${pathname}`,
+  ]);
+  if (response.error) {
+    console.error(`Soft read unavailable: GET ${pathname}: ${response.error}.`);
+    return null;
+  }
+  if (response.status === 401) {
+    console.error("BLOCKED: 401 — the token exists but is bad/expired.");
+    process.exit(3);
+  }
+  if (response.status < 200 || response.status >= 300) {
+    console.error(
+      `Soft read unavailable: GET ${pathname} returned HTTP ${response.status}.`
+    );
+    return null;
+  }
+  return response.body;
+}
+
 // The one POST in this script, and it is a READ: a GraphQL query (never a
 // mutation) for review-thread resolution, which REST does not expose. Keep it
 // that way by reading it — the test that pinned it is deleted.
@@ -301,6 +337,7 @@ function paged(pathname) {
 
 const pr = gh(`repos/${repo}/pulls/${prNumber}`);
 const head = pr.head.sha;
+const baseRef = pr.base?.ref ?? "main";
 const failures = [];
 const pass = (label) => console.log(`PASS: ${label}`);
 const fail = (label) => {
@@ -362,8 +399,73 @@ else pass(ownership.message);
 // identity check still stands — it is the stronger evidence when it exists.
 const reviews = paged(`repos/${repo}/pulls/${prNumber}/reviews`);
 const receipt = receiptVerdict(pr, reviews, head);
+
+// A RECEIPT THE MERGE-IN DID NOT VOID (#4994). Only reached when the
+// exact-head rule has already refused, and it can only ever turn that refusal
+// into a pass — never the other way round.
+//
+// EACH SIDE'S DIFF IS TAKEN AGAINST ITS OWN MERGE BASE, and that is what the
+// two URLs below say: `compare/{baseRef}...{sha}` is three-dot, so GitHub
+// resolves the merge base of THAT commit with the base branch. Diffing both
+// sides against one shared base would show the branch a content commit it did
+// not have, or hide one it did.
+//
+// Three reads per candidate commit, and at most three candidates, because a
+// PR carrying a hundred review comments must not be able to turn this gate
+// into a hundred round trips. The head's own diff is read once for all of them.
+const MERGE_IN_CANDIDATES = 3;
+const prCommitShas = prCommits.map((commit) => commit.sha);
+let headDiff;
+/**
+ * The three reads `contentFreeSince` decides on, for one earlier commit. Named
+ * and separate because the question — did the head move without the change
+ * moving? — is not specific to receipts; the core says which second caller
+ * exists and why it deliberately does not use this yet.
+ */
+const headEvidenceSince = (reviewed) => {
+  if (headDiff === undefined)
+    headDiff = ghDiff(`repos/${repo}/compare/${baseRef}...${head}`);
+  return {
+    reviewed,
+    head,
+    baseRef,
+    ancestry: gh(`repos/${repo}/compare/${reviewed}...${head}`, true),
+    reviewedDiff: ghDiff(`repos/${repo}/compare/${baseRef}...${reviewed}`),
+    headDiff,
+  };
+};
+const mergeInSurvival = () => {
+  const tried = new Set();
+  let last = null;
+  for (const candidate of receipt.ancestorCandidates ?? []) {
+    for (const prefix of candidate.shas) {
+      // The reviewed commit must be one of THIS PR's commits. A prefix that
+      // names two of them names neither.
+      const hits = prCommitShas.filter((sha) => sha.startsWith(prefix));
+      const reviewed = hits.length === 1 ? hits[0] : null;
+      if (!reviewed || reviewed === head || tried.has(reviewed)) continue;
+      if (tried.size >= MERGE_IN_CANDIDATES) return last;
+      tried.add(reviewed);
+      last = mergeInReceipt({
+        who: candidate.who,
+        shared: candidate.shared,
+        ...headEvidenceSince(reviewed),
+      });
+      if (last.ok) return last;
+    }
+  }
+  return last;
+};
+
 if (receipt.ok) pass(receipt.message);
-else fail(receipt.message);
+else {
+  const survived = mergeInSurvival();
+  if (survived?.ok) pass(survived.message);
+  else
+    fail(
+      survived ? `${receipt.message}. ${survived.message}` : receipt.message
+    );
+}
 
 const standing = reviews.filter(
   (r) => r.state === "CHANGES_REQUESTED" && r.user?.login !== pr.user?.login
@@ -462,7 +564,6 @@ for (let page = 1; ; page++) {
 }
 // The base branch's own detector, said out loud where the merge is decided
 // (#4722). Advisory: a soft read, and never a `fail()` — see the core.
-const baseRef = pr.base?.ref ?? "main";
 const baseRuns = gh(
   `repos/${repo}/commits/${baseRef}/check-runs?per_page=100`,
   true

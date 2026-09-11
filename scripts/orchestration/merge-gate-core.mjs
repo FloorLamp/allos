@@ -287,11 +287,13 @@ export function readinessVerdict(pr) {
   return { failures, ready: !pr.draft };
 }
 
+/** Every SHA-shaped token a review body states, longest-prefix rules aside. */
+const shasStated = (body) =>
+  [...String(body ?? "").matchAll(/[0-9a-f]{8,40}/g)].map((match) => match[0]);
+
 export function receiptVerdict(pr, reviews, head = pr.head.sha) {
   const statesHead = (body) =>
-    [...(body ?? "").matchAll(/[0-9a-f]{8,40}/g)].some((match) =>
-      head.startsWith(match[0])
-    );
+    shasStated(body).some((sha) => head.startsWith(sha));
   const receiptShaped = (review) =>
     ["COMMENTED", "APPROVED"].includes(review.state) && statesHead(review.body);
   const receipt = reviews.find(
@@ -329,8 +331,29 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
       review.user?.login !== pr.user?.login &&
       /[0-9a-f]{8,40}/.test(review.body ?? "")
   );
+  // A review that is a receipt in EVERY respect except which commit it states
+  // (#4994). Whether one of those commits is an ancestor of this head with an
+  // identical three-dot diff is a question about git, not about review bodies,
+  // so this pure function only names the candidates; merge-gate.mjs has the
+  // reads and calls `mergeInReceipt` with them. The independence rules are
+  // applied HERE and not again there: a candidate is a non-author review, or
+  // the PR's own account asserting it did not author the change (#4258).
+  const ancestorCandidates = reviews
+    .filter(
+      (review) =>
+        ["COMMENTED", "APPROVED"].includes(review.state) &&
+        (review.user?.login !== pr.user?.login ||
+          independenceClaim(review.body).asserts)
+    )
+    .map((review) => ({
+      who: review.user?.login ?? "an unnamed reviewer",
+      shared: review.user?.login === pr.user?.login,
+      shas: shasStated(review.body).filter((sha) => !head.startsWith(sha)),
+    }))
+    .filter((candidate) => candidate.shas.length);
   return {
     ok: false,
+    ancestorCandidates,
     message: unasserted
       ? `a review by the PR's own account states ${head.slice(0, 8)} but does ` +
         "not assert independence — on a shared identity the receipt must SAY " +
@@ -348,6 +371,195 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
         ? `no receipt for ${head.slice(0, 8)} — the head changed since ` +
           `${staleReceipt.user.login}'s review, which VOIDS it; re-review this head`
         : "no exact-head receipt: no review states this head SHA",
+  };
+}
+
+// ── A RECEIPT THAT SURVIVES A MAIN MERGE-IN (#4994) ─────────────────────────
+//
+// Merging `origin/main` into a branch moves the head without changing the
+// change, and the exact-head rule above voids the receipt anyway. On
+// 2026-09-03 that cost four reviews, every one of them re-given on a diff that
+// had not moved a byte. So a receipt at an ANCESTOR of the head still counts
+// when the PR's three-dot diff is the same at the reviewed commit and at the
+// head. This is the only place the gate is LESS strict than exact-head, and
+// the failure it can cause is a change merging on a review nobody gave — so
+// every branch here refuses unless it can positively see sameness.
+//
+// THE HUNK-OFFSET AND INDEX-LINE DECISION, WHICH IS TO NORMALISE BOTH.
+// A unified diff carries two fields that address text rather than state it:
+// the `@@` START LINE NUMBERS, and the abbreviated blob ids on `index` lines.
+// Both move when main grows above a hunk or touches the same file elsewhere,
+// with nothing about the PR changing. Measured on this repository's own PRs:
+//   · #5702 — `@@ -410,9 +408,7 @@` became `@@ -418,9 +416,7 @@` and
+//     `@@ -325,9 +325,7 @@` became `@@ -333,9 +333,7 @@`, same counts, same
+//     section heading, same body: main had grown eight lines above.
+//   · #5803 — the two compares printed the SAME blobs at different
+//     abbreviation lengths, `89cc43fff5..7baabf2b0c` against
+//     `89cc43fff..7baabf2b0`. Nothing differed but how many characters git
+//     chose to show, and it chose differently for two ranges of one repository.
+// That second one is why verbatim is not merely the stricter option: it makes
+// the verdict turn on a rendering width no one controls, which is arbitrary
+// rather than conservative. Over 90 real merge-in PRs read on 2026-09-11,
+// verbatim found 58 unchanged, normalising found 63, and the 27 that carried
+// real edits stayed different under both.
+//
+// WHAT IS NOT NORMALISED, and is the reason this is safe: the hunk LINE COUNTS,
+// the text after the second `@@`, the `--- `/`+++ ` paths, the mode and
+// new-file/deleted-file lines, and every `+`, `-` and context line, all
+// verbatim. Each of those is a function of what the PR does, so one line of
+// content different changes at least one of them and the gate refuses.
+//
+// THE LIMIT THIS LEAVES. Dropping start offsets cannot distinguish a hunk that
+// has MOVED from one that has not, so a change that relocated an otherwise
+// byte-identical hunk — identical context on both sides, which needs the file
+// to repeat those lines verbatim elsewhere — would read as unchanged. No
+// positional normalisation can see that; verbatim comparison would only catch
+// it by also refusing the five cases above.
+const HUNK_HEADER = /^@@ -\d+(,\d+)? \+\d+(,\d+)? @@/;
+const INDEX_LINE = /^index [0-9a-f]{4,40}\.\.[0-9a-f]{4,40}/;
+
+export const DIFF_NORMALISED = "hunk start offsets and index blob ids";
+
+/**
+ * A unified diff with its ADDRESSING blanked and its content untouched.
+ * Only a header line can match: content lines all carry a `+`, `-` or space.
+ */
+export function normaliseDiff(diff) {
+  return String(diff ?? "")
+    .split("\n")
+    .map((line) =>
+      HUNK_HEADER.test(line)
+        ? line.replace(
+            HUNK_HEADER,
+            (_match, oldCount = "", newCount = "") =>
+              `@@ -_${oldCount} +_${newCount} @@`
+          )
+        : INDEX_LINE.test(line)
+          ? line.replace(INDEX_LINE, "index _.._")
+          : line
+    )
+    .join("\n");
+}
+
+/**
+ * DID THE HEAD MOVE WITHOUT THE CHANGE MOVING? The question on its own,
+ * separated from what any one caller does with the answer.
+ *
+ * ONE CALLER TODAY: `mergeInReceipt`, below. The gate holds a SECOND head-bound
+ * mark that goes stale on the same merge-in for the same reason — the
+ * falsifying pass, whose own refusal says the head change "VOIDS it exactly as
+ * it voids a receipt" — and it deliberately does NOT call this. #4994 ruled on
+ * the receipt only. The falsifying pass is a SAFETY gate, MANDATORY on the
+ * paths where the stakes are highest, and relaxing it is a ruling to be taken
+ * rather than a symmetry to be noticed: if it is taken, this is the call site
+ * to add, not a second derivation of the same judgement.
+ *
+ * @param {object} input
+ * @param {string} input.head the PR head SHA
+ * @param {string} input.reviewed the earlier SHA the mark states, resolved
+ * @param {string} input.baseRef the branch this PR merges into
+ * @param {object|null} input.ancestry `compare/{reviewed}...{head}`, or null if
+ *   the read failed — its `merge_base_commit` IS the ancestry answer
+ * @param {string|null} input.reviewedDiff three-dot diff at the earlier commit,
+ *   taken against THAT commit's own merge base with `baseRef`
+ * @param {string|null} input.headDiff the same, at the head
+ * @returns {{same: boolean, kind: string, why: string}} `why` is one clause,
+ *   written to follow "the head moved, but ..." — the caller supplies the
+ *   framing, because what the answer MEANS depends on what it is answering for.
+ */
+export function contentFreeSince({
+  reviewed,
+  head,
+  baseRef = "main",
+  ancestry,
+  reviewedDiff,
+  headDiff,
+}) {
+  const between = `${shortSha(reviewed)} and ${shortSha(head)}`;
+  // ANCESTRY FIRST, and from the comparison's own merge base rather than from
+  // the commit appearing in some listing: a mark on an abandoned or
+  // force-pushed line of history names a commit that is no longer on the way
+  // to this head, and what it records is a tree nobody will merge.
+  if (!ancestry)
+    return {
+      same: false,
+      kind: "unreadable-ancestry",
+      why: `whether ${shortSha(reviewed)} is an ancestor of ${shortSha(head)} could not be read`,
+    };
+  if (ancestry.merge_base_commit?.sha !== reviewed)
+    return {
+      same: false,
+      kind: "not-ancestor",
+      why:
+        `${shortSha(reviewed)} is NOT an ancestor of ${shortSha(head)} — that ` +
+        "is a line of history this head left behind (force-pushed or " +
+        "abandoned), not the change that would merge",
+    };
+  if (typeof reviewedDiff !== "string" || typeof headDiff !== "string")
+    return {
+      same: false,
+      kind: "unreadable-diff",
+      why: `the three-dot diff at ${shortSha(reviewed)} or at ${shortSha(head)} could not be read`,
+    };
+  // An empty diff matches an empty diff, which would make any ancestor with
+  // nothing in it stand for everything. There is nothing there to have seen.
+  if (!/^diff --git /m.test(reviewedDiff))
+    return {
+      same: false,
+      kind: "empty-diff",
+      why:
+        `${shortSha(reviewed)}'s three-dot diff against ${baseRef} is EMPTY — ` +
+        "an empty diff is not evidence of anything",
+    };
+  if (normaliseDiff(reviewedDiff) !== normaliseDiff(headDiff))
+    return {
+      same: false,
+      kind: "changed",
+      why:
+        `the PR's three-dot diff against ${baseRef} CHANGED between ${between} ` +
+        "— the head carries content the earlier commit did not",
+    };
+  return {
+    same: true,
+    kind: "content-free",
+    why:
+      `the three-dot diff against ${baseRef} — each side taken at its OWN ` +
+      `merge base — is identical at ${between} (${DIFF_NORMALISED} normalised)`,
+  };
+}
+
+/**
+ * The #4994 acceptance itself: `contentFreeSince` worded as a receipt verdict.
+ *
+ * @param {object} input
+ * @param {string} input.who who wrote the receipt
+ * @param {boolean} [input.shared] it is the PR's own account, asserting independence
+ * @param {string} input.head the PR head SHA
+ * @param {string} input.reviewed the SHA the receipt states, resolved
+ * @param {string} [input.baseRef] the branch this PR merges into
+ * @param {object|null} input.ancestry as `contentFreeSince` takes it
+ * @param {string|null} input.reviewedDiff as `contentFreeSince` takes it
+ * @param {string|null} input.headDiff as `contentFreeSince` takes it
+ * @returns {{ok: boolean, kind: string, message: string}}
+ */
+export function mergeInReceipt({ who, shared = false, ...evidence }) {
+  const answer = contentFreeSince(evidence);
+  const { reviewed, head, baseRef = "main" } = evidence;
+  if (!answer.same)
+    return {
+      ok: false,
+      kind: answer.kind,
+      message:
+        `${who}'s receipt states ${shortSha(reviewed)} and the head is now ` +
+        `${shortSha(head)}; it stays stale because ${answer.why}`,
+    };
+  return {
+    ok: true,
+    kind: "survived",
+    message:
+      `receipt survives a ${baseRef} merge-in: ${who} states ` +
+      `${shortSha(reviewed)}${shared ? " and asserts they did not author the change" : ""}, ` +
+      `an ancestor of ${shortSha(head)}, and ${answer.why} — the #4994 acceptance`,
   };
 }
 

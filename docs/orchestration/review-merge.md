@@ -90,7 +90,13 @@
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the
-  reviewer did not author the change (#4258). A head change voids it.
+  reviewer did not author the change (#4258). A head change voids it — EXCEPT a
+  `main` merge-in that changed no content (owner 2026-09-03, #4994): a receipt on
+  an ANCESTOR of the head still counts when the PR's three-dot diff against the
+  base is identical at both commits, comparing each side at its own merge base and
+  reading hunk offsets and index blob ids as addressing rather than content. One
+  line different and the gate refuses as before. The falsifying pass is NOT
+  covered by this; it stays head-bound.
 - **Run `merge-gate.mjs <pr>` before every merge call** — receipt, green checks,
   no threads, no hold, the mandated pass, this session's own PR (claims.md);
   exit 0 is the precondition. It refuses on any failing COMMIT STATUS, naming it
