@@ -15,6 +15,7 @@ import {
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
+  E2E_LOGIN_DAILY,
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TL_CHROME,
   TL_CHROME_SICK_PROFILE,
@@ -24,7 +25,12 @@ import {
 } from "./fixture-logins";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
-import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
+import {
+  dateStrInTz,
+  shiftDateStr,
+  utcSqlString,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 
 // The record day view's phone chrome (issue #1517), inherited from `/timeline` when
 // #3958 phase 2 retired that route and `/history?day=` became the app's one "that
@@ -1685,5 +1691,109 @@ test.describe("selection mode on the record (#5618 ruling 4)", () => {
     } finally {
       await page.context().close();
     }
+  });
+});
+
+// ── AND AT TODAY THE DAY VIEW IS HOME (#5435 §3) ─────────────────────────────
+//
+// `/` renders what `/history?day=<today>` renders, with three additions that exist
+// only on today: a folded Later row, a Now rule, and the due rows under it. These
+// are the parts of §10's "prove" list that are structural rather than fixture-shaped
+// — the day bar and its two directions, the record band's presence, the additions
+// being on one of the two pages and not the other, and the nav change.
+//
+// THEY LIVE IN THIS FILE because the surface is this file's: one day view, two URLs.
+// Splitting them into a file of their own would also plan a spec nobody has measured
+// on a runner (e2e/spec-durations.json), which is a balance question this coverage
+// does not need to raise.
+//
+// WHY NOT THE BAND CONTENTS. What the Later fold summarizes and which rows sit under
+// the Now rule are `lib/home-list.ts`'s decisions, covered by its own tests over the
+// owner's schedule at four hours of one day; a browser is the wrong tier to re-ask
+// that, and the answer moves with whatever the seeded profile happens to owe.
+//
+// SCOPED TO `appContent`, NOT `main`. Home renders through two Suspense boundaries
+// and mounts overlay portals, so a bare role-scoped locator can match a staged copy.
+test.describe("Home is the record's day view at today", () => {
+  const today = () =>
+    dateStrInTz(pinnedTimezone(frozenNow().toISOString()).zone, frozenNow());
+
+  test("Home is today's record: the day bar, the record band, and no forward arrow", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_DAILY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.goto("/");
+    const content = appContent(page);
+
+    // The record's own day bar, naming today and counting it (§3.2).
+    const bar = content.getByTestId("timeline-day-nav");
+    await expect(bar).toContainText(/\d+ records?/);
+    // NO FORWARD ARROW ON TODAY: there is no day after it to walk to. The previous
+    // arrow is the ‹ that reaches every earlier day.
+    await expect(bar.getByTestId("timeline-day-prev")).toBeVisible();
+    await expect(bar.getByTestId("timeline-day-next")).toHaveCount(0);
+
+    // The record band is the page's floor — present whatever the day holds.
+    await expect(content.getByTestId("home-record")).toBeVisible();
+
+    // The Now rule states the profile-local clock, once, between what is owed and what
+    // is recorded.
+    await expect(content.getByTestId("home-now-rule")).toHaveCount(1);
+    await expect(content.getByTestId("home-now-rule")).toContainText(/^Now · /);
+  });
+
+  test("the ‹ arrow lands on yesterday's plain record: no rule, no Later row, chips back", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_DAILY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.goto("/");
+    const content = appContent(page);
+    const yesterday = shiftDateStr(today(), -1);
+    await followLink(
+      page,
+      content.getByTestId("timeline-day-prev"),
+      new RegExp(`/history\\?day=${yesterday}`)
+    );
+    const past = appContent(page);
+    // THE THREE ADDITIONS EXIST ONLY ON TODAY (§3.2, §6.6). A past day owes nothing and
+    // forecasts nothing, so it carries neither the rule nor the fold.
+    await expect(past.getByTestId("home-now-rule")).toHaveCount(0);
+    await expect(past.getByTestId("home-later")).toHaveCount(0);
+    // AND IT DOES CARRY THE KIND CHIPS, which are what replaced the add row there
+    // (#5618 ruling 1) and which today does not have, because the Quicklogger is
+    // today's door.
+    await expect(past.getByTestId("history-add")).toBeVisible();
+  });
+
+  test("the nav lists Home and not History, and both record doors still serve", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_DAILY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.goto("/");
+    // The desktop sidebar, addressed the way every other nav spec addresses it.
+    const nav = page.locator("aside nav");
+    await expect(
+      nav.getByRole("link", { name: "Home", exact: true })
+    ).toHaveCount(1);
+    await expect(
+      nav.getByRole("link", { name: "History", exact: true })
+    ).toHaveCount(0);
+
+    // THE ROUTE STAYS. Removing the nav row is not removing the record: every other
+    // door still points here, and both shapes of the page still render.
+    await page.goto(`/history?day=${shiftDateStr(today(), -1)}`);
+    await expect(appContent(page).getByTestId("history-page")).toBeVisible();
+    await page.goto("/history");
+    await expect(appContent(page).getByTestId("history-page")).toBeVisible();
+    await expect(appContent(page).getByTestId("history-feed")).toBeVisible();
   });
 });
