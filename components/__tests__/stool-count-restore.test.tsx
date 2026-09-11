@@ -6,18 +6,21 @@ import StoolTypeControl from "@/components/stool/StoolTypeControl";
 // count, which is the shape that makes "restore the pre-tap value" the wrong rule: the
 // value a refused tap fired from can already have been superseded by a sibling type's
 // reading. The generic matrix lives in `write-pipeline.test.tsx`; what is asserted here
-// is that this control's own count — its whole receipt, since a landed reading gets no
-// toast — comes back to the right number through the REAL ledger and pipeline.
-const { toast, logStoolForm } = vi.hoisted(() => ({
+// is that this control's own count comes back to the right number through the REAL
+// ledger and pipeline. Since #5663 the count reads `N today`, beneath the day's rows.
+const { toast, logStoolForm, loadStoolDay } = vi.hoisted(() => ({
   toast: vi.fn(),
   logStoolForm: vi.fn(),
+  // The sheet's own gather answers with a count, so the control asks for the day's
+  // ROWS itself (#5663). Empty here: what this file is about is the count.
+  loadStoolDay: vi.fn(async () => ({ readings: [], dayCount: 0 })),
 }));
 vi.mock("@/components/Toast", () => ({ useToast: () => toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
   useQueuedDayContextCapture: () => () => null,
 }));
-vi.mock("@/app/(app)/stool-actions", () => ({ logStoolForm }));
+vi.mock("@/app/(app)/stool-actions", () => ({ logStoolForm, loadStoolDay }));
 // The pipeline's provider-bound collaborators, which this tier does not mount. The
 // LEDGER is deliberately real: it is the thing carrying the value now.
 vi.mock("@/components/LoggedViaSurface", () => ({
@@ -42,17 +45,17 @@ describe("a refused reading leaves the day count telling the truth (#3728)", () 
     const answer = held<{ ok: false; error: string }>();
     logStoolForm.mockReturnValue(answer.promise);
     render(<StoolTypeControl todayCount={2} today="2026-07-08" />);
-    expect(count()).toBe("2 logged today.");
+    expect(count()).toBe("2 today");
 
     await act(async () => {
       screen.getByTestId("stool-type-4").click();
     });
-    expect(count()).toBe("3 logged today.");
+    expect(count()).toBe("3 today");
 
     await act(async () => {
       answer.settle({ ok: false, error: "That reading was refused." });
     });
-    await waitFor(() => expect(count()).toBe("2 logged today."));
+    await waitFor(() => expect(count()).toBe("2 today"));
     expect(toast).toHaveBeenCalledWith("That reading was refused.", {
       tone: "error",
     });
@@ -65,7 +68,12 @@ describe("a refused reading leaves the day count telling the truth (#3728)", () 
   it("keeps a sibling type's landed reading when another type is refused", async () => {
     vi.clearAllMocks();
     const refused = held<{ ok: false; error: string }>();
-    const landed = held<{ ok: true; type: number; dayCount: number }>();
+    const landed = held<{
+      ok: true;
+      type: number;
+      dayCount: number;
+      readings: { id: number; type: number; hhmm: string }[];
+    }>();
     logStoolForm
       .mockReturnValueOnce(refused.promise)
       .mockReturnValueOnce(landed.promise);
@@ -74,16 +82,21 @@ describe("a refused reading leaves the day count telling the truth (#3728)", () 
     await act(async () => {
       screen.getByTestId("stool-type-4").click();
     });
-    expect(count()).toBe("3 logged today.");
+    expect(count()).toBe("3 today");
     await act(async () => {
       screen.getByTestId("stool-type-5").click();
     });
-    expect(count()).toBe("4 logged today.");
+    expect(count()).toBe("4 today");
 
     await act(async () => {
-      landed.settle({ ok: true, type: 5, dayCount: 3 });
+      landed.settle({
+        ok: true,
+        type: 5,
+        dayCount: 3,
+        readings: [{ id: 3, type: 5, hhmm: "08:12" }],
+      });
     });
-    await waitFor(() => expect(count()).toBe("3 logged today."));
+    await waitFor(() => expect(count()).toBe("3 today"));
 
     await act(async () => {
       refused.settle({ ok: false, error: "That reading was refused." });
@@ -93,6 +106,6 @@ describe("a refused reading leaves the day count telling the truth (#3728)", () 
         tone: "error",
       })
     );
-    expect(count()).toBe("3 logged today.");
+    expect(count()).toBe("3 today");
   });
 });
