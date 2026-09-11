@@ -193,7 +193,6 @@ export default function SubstanceForm({
         <div className="mt-1">
           <WhenControl
             mode={row ? "correct" : "state"}
-            grain="minute"
             value={when}
             onChange={setWhen}
             maxDate={maxDate}

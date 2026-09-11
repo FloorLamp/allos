@@ -359,6 +359,10 @@ describe("FoodLogBar projection publication", () => {
         subjectProfileId: 8,
         timeZone: "Pacific/Honolulu",
       });
+      // The statement lives behind the shared clock door (#4426), so the reveal — and
+      // the Now fill inside it — exists only once the door is opened. Nothing was
+      // posted before that either: closed and empty is the fast path.
+      fireEvent.click(screen.getByTestId("food-when-toggle"));
       fireEvent.click(screen.getByTestId("food-when-now"));
       await act(async () => {
         fireEvent.click(screen.getByTestId("log-cruciferous"));
@@ -2505,13 +2509,19 @@ describe("FoodLogBar composed usual bundle", () => {
   // the action tier (`food-usual.actions.test.ts`).
   it("carries the bar's stated time onto the bundle and onto a single add", async () => {
     mount([offer("Midday")]);
+    fireEvent.click(screen.getByTestId("food-when-toggle"));
     await act(async () => {
       fireEvent.change(screen.getByTestId("food-when-time"), {
-        target: { value: new Date(`${DATE}T20:00:00.000Z`).toISOString() },
+        target: { value: "20:00" },
       });
     });
-    // THE FIXTURE REACHES THE STATE THE ASSERTION NEEDS: the statement really is set.
-    expect(screen.getByTestId("food-when-set").textContent).toBe("20:00");
+    // THE FIXTURE REACHES THE STATE THE ASSERTION NEEDS: the statement really is set,
+    // read off the sentence that names its consequence. That sentence is what the
+    // retired stated-time badge used to be — and it, not the badge, is what stays on
+    // screen once the reveal is closed again, because this statement is never spent.
+    expect(screen.getByTestId("food-eating-time-note").textContent).toContain(
+      "recorded as eaten at 20:00"
+    );
     await act(async () =>
       fireEvent.click(screen.getByTestId("food-usual-offer"))
     );

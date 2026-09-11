@@ -120,7 +120,6 @@ export default function StoolForm({
         <div className="sm:col-span-2">
           <WhenControl
             mode="state"
-            grain="minute"
             value={when}
             onChange={setWhen}
             maxDate={maxDate}

@@ -304,7 +304,6 @@ export default function FoodServingForm({
             never editable. */}
         <WhenControl
           mode={row ? "correct" : "state"}
-          grain="minute"
           value={when}
           onChange={moveWhen}
           tz={tzProp}
