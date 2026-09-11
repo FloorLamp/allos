@@ -1020,7 +1020,9 @@ test("the dose sheet logs an item that is not due, from its folded row", async (
 
     // THE COUNT IS THE CONTENTS. A fold whose number disagrees with what expanding
     // holds is the quiet half of this feature, so the two are read off one screen.
-    await settledClick(page, summary);
+    // A plain click: the fold is the shared `<details>` (#3677), so opening it is the
+    // platform's own toggle and there is no handler to wait for.
+    await summary.click();
     const rows = overlay
       .getByTestId("quick-entry-others-list")
       .getByRole("listitem");
