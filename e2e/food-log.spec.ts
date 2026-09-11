@@ -7,7 +7,7 @@ import {
   openFoodAdd,
   settledBoxes,
   settledClick,
-  settledSelect,
+  settledFill,
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -676,14 +676,14 @@ function loggedListRows(page: Page) {
   return page.getByTestId("day-ledger").locator("li[data-group]");
 }
 
-// THE STATEMENT IS BEHIND A FOLD NOW (#3273's ruled shape). Idempotent: the tests
-// below open it once and it stays open for the rest of their run.
+// THE STATEMENT IS BEHIND THE SHARED CLOCK DOOR NOW (#4426). Idempotent: the tests
+// below open it once and it stays open for the rest of their run, so the door is
+// pressed only when the reveal is not already mounted.
 async function openWhenFold(page: Page): Promise<void> {
-  const fold = page.getByTestId("food-eating-time");
-  const open = await fold.evaluate(
-    (el) => (el as HTMLDetailsElement).open === true
-  );
-  if (!open) await hydratedClick(page, page.getByTestId("food-when-summary"));
+  const door = page.getByTestId("food-when-toggle");
+  if ((await door.getAttribute("aria-expanded")) !== "true")
+    await hydratedClick(page, door);
+  await expect(page.getByTestId("food-when-time")).toBeVisible();
 }
 
 async function loggedListIds(page: Page): Promise<string[]> {
@@ -724,30 +724,22 @@ function eatingTimeOf(eventId: string): {
   }
 }
 
-// AN HOUR THAT IS OFFERED AND FILES DETERMINISTICALLY, at every UTC start hour.
-// e2e/pinned-timezone.ts puts the frozen clock at 13:mm LOCAL, so the control offers
-// today's hours 00:00…13:00 and the active tab is Midday under the default
-// 11:00/15:00 boundaries. 08:00 is therefore always on offer and always Morning —
-// the two facts every eating-time test below leans on.
+// A MINUTE THAT IS IN THE PAST AND FILES DETERMINISTICALLY, at every UTC start hour.
+// e2e/pinned-timezone.ts puts the frozen clock at 13:mm LOCAL, and the active tab is
+// Midday under the default 11:00/15:00 boundaries. 08:00 is therefore always behind
+// the frozen clock and always Morning — the two facts every eating-time test below
+// leans on. It was an enumerated HOUR until #4426 retired that grain; the minute the
+// field now takes is the same wall time, stated rather than picked off a list.
 const EARLIER_HOUR = "08:00";
 const EARLIER_HOUR_SLOT = "Morning";
 
-// State an eating time by the wall clock it READS, through the settled path.
-//
-// Two reasons it is a helper and not a `selectOption`. The control's option VALUES
-// are ISO instants — the day's hours resolved in the profile's rotating zone — which
-// a spec has no business spelling; the LABEL is the absolute local time, which is the
-// thing the user picks and the thing #2236's invariant 4 is about. And a bare
-// `selectOption` on a CONTROLLED select can land before hydration, set the DOM value,
-// fire no `onChange`, and be reverted — the swallow `settledSelect` exists for. It is
-// not hypothetical here: measured 2 runs in 3 on this file the first time the box was
+// State an eating time by the wall clock it READS, through the settled path: a bare
+// `fill` on a CONTROLLED field can land before hydration, set the DOM value, fire no
+// `onChange`, and be reverted — the swallow `settledFill` exists for. It is not
+// hypothetical here: measured 2 runs in 3 on this file the first time the box was
 // loaded enough to widen the window.
 async function stateEatingTime(page: Page, hhmm: string): Promise<void> {
-  const field = page.getByTestId("food-when-time");
-  const value = await field
-    .getByRole("option", { name: hhmm, exact: true })
-    .getAttribute("value");
-  await settledSelect(page, field, value ?? "");
+  await settledFill(page, page.getByTestId("food-when-time"), hhmm);
 }
 
 async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
@@ -770,13 +762,19 @@ test("unstated and Now captures store distinct eating-time truth (#2053/#3273)",
   await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // The affordance is offered — as a fold, closed, because it is a question most taps
-  // never answer (#3987) — and untouched it asserts nothing. The shared control NEVER
-  // defaults to now (#2236 invariant 3): the field is empty on arrival.
-  await expect(page.getByTestId("food-when-summary")).toHaveText(
-    "Happened earlier?"
-  );
+  // The affordance is offered — as the shared statement's clock door, closed, because
+  // it is a question most taps never answer (#3987/#4426) — and untouched it asserts
+  // nothing: no reveal, and no sentence claiming a time. The door carries the question
+  // as its ACCESSIBLE NAME, which is the ruling's whole point (2026-09-02): one glyph,
+  // one wording, nothing on the row spelling it a second way.
+  const door = page.getByTestId("food-when-toggle");
+  await expect(door).toHaveAccessibleName("Happened earlier?");
+  await expect(door).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("food-eating-time")).toHaveCount(0);
   await openWhenFold(page);
+  // The shared control NEVER defaults to now (#2236 invariant 3): the field is empty
+  // on arrival.
+
   await expect(page.getByTestId("food-when-time")).toHaveValue("");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "recorded with no eating time"
@@ -825,7 +823,7 @@ test("unstated and Now captures store distinct eating-time truth (#2053/#3273)",
 
   // The statement is withdrawable — the empty option is a real answer, so there is no
   // way to be stuck having said something.
-  await settledSelect(page, page.getByTestId("food-when-time"), "");
+  await settledFill(page, page.getByTestId("food-when-time"), "");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "recorded with no eating time"
   );
@@ -898,25 +896,29 @@ test("an earlier stated time lands exactly and wins over the selected meal (#205
   await removeLoggedServing(page, eventId);
 });
 
-test("the time question relabels on a past day and its answer is per-day (#4118)", async ({
+test("the past day relabels the consequence, not the door, and its answer is per-day (#4118/#4426)", async ({
   page,
 }) => {
   // THE OWNER AMENDMENT. The statement used to be withheld entirely on a backfill,
   // because "now" is meaningless there. It is not withheld any more — "8pm on Tuesday"
   // is a perfectly honest thing to say about a meal being reconstructed — but the
-  // QUESTION changes, because a bare tap on a past day means the meal slot and no
+  // CONSEQUENCE differs, because a bare tap on a past day means the meal slot and no
   // instant rather than "now".
+  //
+  // WHAT #4426 CHANGED HERE, and it is the assertion this test now carries: the DOOR no
+  // longer relabels. It used to read "Happened earlier?" on today and "Set time?" on a
+  // past day — this bar's own two spellings of the one question. The clock glyph is the
+  // only spelling on every offered day (owner ruling, 2026-09-02); what still moves with
+  // the day is the sentence naming what a bare tap will write.
   await page.goto("/nutrition");
   await openFoodAdd(page);
   const bar = page.getByTestId("food-log-bar");
   await expect(bar).toBeVisible();
-  await expect(page.getByTestId("food-when-summary")).toHaveText(
-    "Happened earlier?"
-  );
+  const door = page.getByTestId("food-when-toggle");
+  await expect(door).toHaveAccessibleName("Happened earlier?");
 
   await hydratedClick(page, page.getByTestId("food-day-yesterday"));
-  await expect(page.getByTestId("food-eating-time")).toBeVisible();
-  await expect(page.getByTestId("food-when-summary")).toHaveText("Set time?");
+  await expect(door).toHaveAccessibleName("Happened earlier?");
   await openWhenFold(page);
   // The shared control renders a FIXED day as text, and names it relatively only for
   // today — a past day reads as its own WRITTEN date (#5489 fix 3: the storage
@@ -928,15 +930,16 @@ test("the time question relabels on a past day and its answer is per-day (#4118)
     "with no time until you set one"
   );
 
-  // STICKY FOR THE BATCH, AND THE BATCH IS A DAY. A time set for yesterday is shown
-  // in the summary so nothing is silently in force, and it is NOT in force on today.
+  // STICKY FOR THE BATCH, AND THE BATCH IS A DAY. A time set for yesterday names its
+  // own consequence, so nothing is silently in force, and it is NOT in force on today:
+  // a claim about Tuesday is not a claim about Wednesday, so the day switch drops it.
   await stateEatingTime(page, EARLIER_HOUR);
-  await expect(page.getByTestId("food-when-set")).toHaveText(EARLIER_HOUR);
-  await hydratedClick(page, page.getByTestId("food-day-today"));
-  await expect(page.getByTestId("food-when-summary")).toHaveText(
-    "Happened earlier?"
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    `recorded as eaten at ${EARLIER_HOUR}`
   );
-  await expect(page.getByTestId("food-when-set")).toHaveCount(0);
+  await hydratedClick(page, page.getByTestId("food-day-today"));
+  await expect(door).toHaveAccessibleName("Happened earlier?");
+  await expect(page.getByTestId("food-when-time")).toHaveValue("");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "recorded with no eating time"
   );

@@ -377,6 +377,47 @@ describe("FoodLogBar projection publication", () => {
     }
   });
 
+  // THE STATEMENT SURVIVES ITS OWN FOLD (#4426). This bar's statement is STICKY FOR THE
+  // BATCH — never spent by the tap it answers — so closing the reveal withdraws nothing,
+  // and the sentence naming the consequence has to stay on screen because nothing else
+  // says it any more. Both halves are the change: the retired hand-rolled fold was a
+  // native `<details>`, which kept the field mounted and printed the stated minute in
+  // its summary; the shared statement UNMOUNTS its reveal, so a surface that read the
+  // field rather than the value would quietly start posting nothing here.
+  it("keeps a stated time in force, and on screen, once the reveal is closed", async () => {
+    mountBar();
+    fireEvent.click(screen.getByTestId("food-when-toggle"));
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("food-when-time"), {
+        target: { value: "08:15" },
+      });
+    });
+    fireEvent.click(screen.getByTestId("food-when-toggle"));
+    expect(screen.queryByTestId("food-when-time")).toBeNull();
+    expect(screen.getByTestId("food-eating-time-note").textContent).toContain(
+      "recorded as eaten at 08:15"
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    const sent = actions.logFoodServing.mock.calls[0][0] as FormData;
+    expect(sent.get("occurred_at")).toBe("08:15");
+  });
+
+  // THE CONVERSE, so the assertion above cannot have become "always posts a time":
+  // untouched, the statement says nothing and the fast path posts the body it always
+  // posted — no `occurred_at` field at all, and no sentence claiming one.
+  it("posts no eating time and no note while nobody has answered", async () => {
+    mountBar();
+    expect(screen.queryByTestId("food-eating-time")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    const sent = actions.logFoodServing.mock.calls[0][0] as FormData;
+    expect(sent.has("occurred_at")).toBe(false);
+  });
+
   it("retires the private header and leaves one quiet day total under sheet rows", () => {
     mountBar({
       showDayContext: false,
