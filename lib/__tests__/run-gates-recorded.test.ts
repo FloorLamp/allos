@@ -127,6 +127,51 @@ describe("run-gates-recorded.sh", () => {
     }
   );
 
+  // A BRANCH NAME WITH A `/` IN IT (#5761). `$L` is built by interpolating the
+  // branch, so `codex/foo` names a DIRECTORY that nothing creates. The `start`
+  // redirection then fails before agent-gates.sh is invoked, no gate runs at
+  // all, and the report said `KILLED`. A flat branch name reproduces none of
+  // that, which is why every case above passed while this was broken.
+  it("runs the gates for a branch whose name contains a slash", () => {
+    const h = harness(0);
+    const branch = "codex/slash-named-5761";
+    const run = h.run([branch]);
+    // The gates RAN: the stub's own line is in the log and in the report.
+    expect(run.stdout).toContain("stub gates exiting 0");
+    expect(run.stdout).not.toContain("KILLED");
+    expect(run.status).toBe(0);
+    const log = path.join(h.state, `gates-${branch}.log`);
+    expect(fs.readFileSync(log, "utf8")).toContain("=== GATE lint: PASS ===");
+    expect(fs.readFileSync(`${log}.exit`, "utf8").trim()).toBe("0");
+    // `--wait` needs the same directory to have existed when `$!` was recorded.
+    expect(fs.readFileSync(`${log}.pid`, "utf8").trim()).toMatch(/^\d+$/);
+    expect(fs.readdirSync(h.cwd)).toEqual([]);
+  });
+
+  it("a slash-named run that fails still reports the gates' own code", () => {
+    // The positive control for the case above: creating the directory must not
+    // turn a real gate failure into a pass.
+    const h = harness(3);
+    const run = h.run(["codex/slash-named-5761"]);
+    expect(run.status).toBe(3);
+    expect(run.stdout).toContain("GATES EXIT=3");
+  });
+
+  it("a run that never started says so, and is not reported as KILLED", () => {
+    // The redirection creates the log as its first act, so no log means
+    // agent-gates.sh was never invoked. "Killed" names a cause that did not
+    // happen — a session limit, an OOM — and sends the reader to re-run.
+    const h = harness(0);
+    const log = path.join(h.state, "gates-br.log");
+    const gone = spawnSync("bash", ["-c", "echo $$"], { encoding: "utf8" });
+    fs.writeFileSync(`${log}.pid`, gone.stdout);
+    const run = h.run(["br", "--wait"]);
+    expect(run.stdout).not.toContain("KILLED");
+    expect(run.stderr).toContain("NOTHING RAN");
+    expect(run.stderr).toContain(log);
+    expect(run.status).toBe(2);
+  });
+
   it("--wait with no recorded pid refuses rather than waiting on a name", () => {
     const h = harness(0);
     const run = h.run(["br", "--wait"]);

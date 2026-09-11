@@ -38,7 +38,7 @@ const method = at("-X") ?? "GET";
 const state = JSON.parse(fs.readFileSync(process.env.STUB_STATE, "utf8"));
 fs.appendFileSync(
   process.env.STUB_LOG,
-  JSON.stringify({ method, url, body: at("--data-binary") }) + "\\n"
+  JSON.stringify({ args, method, url, body: at("--data-binary") }) + "\\n"
 );
 const emit = (value) => {
   process.stdout.write(JSON.stringify(value));
@@ -65,10 +65,30 @@ process.exit(9);
 `;
 
 interface Call {
+  /** The WHOLE curl argv, so what a request DECLARES is observable (#5792). */
+  args: string[];
   method: string;
   url: string;
   body: string | null;
 }
+
+/** The header values one call sent, in order. */
+const headersOf = (c: Call): string[] =>
+  c.args.filter((_, i) => c.args[i - 1] === "-H");
+
+// What a JSON write must declare. Written out here rather than imported, so the
+// test disagrees with a change instead of following it. This pins CONSTRUCTION,
+// not delivery: writes from this container are credentialed by the agent proxy,
+// so a live round trip returns 2xx with no `Authorization` header at all.
+// `./issue-body-write.test.ts` records that measurement and the out-of-band
+// probe that pins delivery — against an issue number that cannot exist, the
+// request without `Content-Type` is refused by the proxy with 415 and the same
+// request with it reaches GitHub, which answers 404 (#5758, #5792).
+const JSON_WRITE_HEADERS = [
+  "Authorization: Bearer stub token 1",
+  "Accept: application/vnd.github+json",
+  "Content-Type: application/json",
+];
 
 interface StubIssue {
   body: string;
@@ -355,6 +375,14 @@ describe("the stale-P3 close (#5671)", () => {
       state: "closed",
       state_reason: "not_planned",
     });
+    // Both of this script's writes send a JSON body, so both must say so
+    // (#5792). Without the declaration the proxy answers 415 and neither the
+    // comment nor the close ever reaches the API — a reconcile pass that
+    // prints "closed 1" over a request GitHub never saw.
+    expect(writes.map(headersOf)).toEqual([
+      JSON_WRITE_HEADERS,
+      JSON_WRITE_HEADERS,
+    ]);
     expect(run.stdout).toContain("#31 stale-p3: closed not_planned");
     expect(run.stdout).toContain("stale P3 closed 1, kept 4");
   });
