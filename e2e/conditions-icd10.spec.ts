@@ -1,6 +1,12 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, openCareOverviewSection, settledFill } from "./helpers";
+import {
+  appContent,
+  hydratedClick,
+  openCareOverviewSection,
+  settledFill,
+} from "./helpers";
 import { closeRecordFact, openRecordFact } from "./record-facts-helpers";
+import { expectFactEscapeGrammar } from "./fact-escape-helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_REPORTS_EMPTY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // #155: entering a condition by its lay name surfaces an ICD-10-CM code suggestion
@@ -199,4 +205,34 @@ test("a profile with no conditions is told none are recorded, not that a filter 
   } finally {
     await member.context().close();
   }
+});
+
+// THE ESCAPE GRAMMAR OF THE FIRST CLINICAL RECORD FORM (#5302, over #3218/#3409).
+//
+// It lives beside the other specs that drive this dialog rather than in a family spec
+// of its own, and it is here rather than in a cheaper tier because the failure it
+// catches only exists in a browser: the shared focus trap answers Escape on the WINDOW
+// capture phase, so an editor host that claims the escape layer while nothing is open
+// swallows every press and the dialog cannot be dismissed at all. "Nothing happened" is
+// what that looks like, which is why it shipped four times before anyone asserted the
+// second press (see e2e/fact-escape-helpers.ts).
+test("Escape backs out of one condition fact, then out of the dialog (#5302)", async ({
+  page,
+}) => {
+  test.slow(); // next dev compiles the records route on first hit
+
+  await page.goto("/records/problems/conditions");
+  await hydratedClick(
+    page,
+    appContent(page).getByTestId("add-condition-panel-toggle")
+  );
+  // The dialog is a portal outside the content container, so it is its own scope.
+  const form = page.getByRole("dialog").getByTestId("condition-form");
+  await expect(form).toBeVisible();
+
+  await expectFactEscapeGrammar(page, {
+    form,
+    row: form.getByTestId("condition-fact-row"),
+    openFact: () => openRecordFact(form, "condition", "status"),
+  });
 });

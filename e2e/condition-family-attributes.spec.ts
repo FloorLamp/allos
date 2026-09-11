@@ -87,7 +87,7 @@ test.describe("Condition laterality / severity / stage (#1403)", () => {
     await row.getByLabel("Record actions").click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
     // The add dialog is gone by now, so this is the one condition form on the page.
-    const editForm = page.getByTestId("condition-form");
+    const editForm = section.getByTestId("condition-form");
     // The stored values read back on the ROW, which is what the chips are for: the
     // edit form's summary doubles as the record's review (#3218).
     await expect(editForm.getByTestId("condition-fact-laterality")).toHaveText(

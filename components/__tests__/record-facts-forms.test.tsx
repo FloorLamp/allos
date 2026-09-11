@@ -139,6 +139,32 @@ describe("a seeded record row prompts for the essentials it is missing (#5302)",
   });
 });
 
+describe("no standing prose on a record form (#5300 rule 4)", () => {
+  // The allergy form carried one sentence about what a refuted allergy stops doing.
+  // It is the VALUE's meaning, so it belongs inside the editor that chooses the
+  // value — the one sentence an open editor may carry — and nowhere else.
+  //
+  // Asked as reachability rather than as text-in-the-document: this form is
+  // DOM-collected, so a closed editor is HIDDEN and not unmounted. "Is it on screen"
+  // is therefore "is it inside a hidden panel", which is exactly what a person sees.
+  const MEANING = /A refuted allergy stays on record/;
+
+  it("the refuted-allergy sentence is behind the verification editor, not on the form", () => {
+    wrap(<AllergyForm action={noop} />);
+    // The state where the unwanted effect could occur: the form is up and its chip
+    // row is on screen, so an inert harness cannot pass this by rendering nothing.
+    expect(screen.getByTestId("allergy-fact-row")).toBeTruthy();
+    expect(screen.getByText(MEANING).closest("[hidden]")).not.toBeNull();
+
+    // And the positive half: it is there for the person choosing the value. An unset
+    // verification is an absent OPTIONAL, so the way in is the trailing affordance
+    // that names it — which is also the routing every one of the thirteen forms uses.
+    fireEvent.click(screen.getByTestId("allergy-fact-more"));
+    fireEvent.click(screen.getByTestId("allergy-more-verification"));
+    expect(screen.getByText(MEANING).closest("[hidden]")).toBeNull();
+  });
+});
+
 describe("the condition code chip follows the coded pick (#5302 / #1676)", () => {
   // BOTH DIRECTIONS, because only one of them was ever in doubt. A pick that seeds the
   // chip is the feature; a typed name that leaves it a prompt is the promise that the
