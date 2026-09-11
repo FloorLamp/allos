@@ -15,6 +15,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setActiveSituations, setTimezone } from "@/lib/settings";
+import {
+  getDisplayFormatPrefs,
+  setDisplayFormatPrefs,
+} from "@/lib/settings/display";
 import { doseLogDays, isDoseDateAccepted } from "@/lib/dose-log-window";
 import { markDoseTaken } from "@/lib/queries";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
@@ -1081,5 +1085,156 @@ describe("a logged dose proves it existed, and the clamp gives way to it", () =>
       data.pastDays.find((d) => d.date === day)?.slots ?? []
     ).flatMap((slot) => slot.doses.map((d) => d.doseId));
     expect(offered).toContain(doseId);
+  });
+});
+
+// ── THE "EVERYTHING ELSE" FOLD (#5808, owner ruling 2026-09-10) ──────────────
+//
+// The fold's whole job is REACH: the body's three sources are all about what is owed
+// or offered right now, so an active item that is simply not due had no row at all.
+// What can go wrong here is quiet in both directions — a fold that double-lists a due
+// item, and a fold that renders with a count nobody can expand into — so the claim is
+// asserted as a SET DIFFERENCE against the very lists the same payload carries.
+describe("the dose body's fold reaches every item the body does not show", () => {
+  // An item whose dose states NO time is never due (#5285) and therefore never
+  // appears in `doses`. It is exactly the owner's Magnesium Glycinate / NAC case, and
+  // the reason the fold exists rather than something being made due to hold it.
+  function seedUnscheduled(profileId: number, name: string): number {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+           VALUES (?, ?, 'supplement', 1, 'should', 'daily')`
+        )
+        .run(profileId, name).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '400 mg', NULL, 'any', 0)`
+    ).run(itemId);
+    return itemId;
+  }
+
+  function seedPrnMed(profileId: number, name: string): number {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+           VALUES (?, ?, 'medication', 1, 'may', 'daily')`
+        )
+        .run(profileId, name).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '200 mg', NULL, 'any', 0)`
+    ).run(itemId);
+    return itemId;
+  }
+
+  async function doseBody(label: string, tz: string) {
+    vi.setSystemTime(new Date(NOW_ISO));
+    const login = createLogin();
+    const profile = createProfile(label, login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, tz);
+    return { login, profile };
+  }
+
+  it("lists an unscheduled item the due list can never hold, with the day's amount", async () => {
+    const { profile } = await doseBody("fold-unscheduled", "UTC");
+    // Due today, so it belongs to the body ABOVE the fold.
+    seedDose(profile.id, "Creatine fold", { timeOfDay: "morning" });
+    const magnesium = seedUnscheduled(profile.id, "Magnesium Glycinate");
+
+    const data = await readyQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    const day = today(profile.id);
+    const fold = data.others!.byDate[day]!;
+
+    expect(fold.map((row) => row.name)).toEqual(["Magnesium Glycinate"]);
+    expect(fold[0]).toMatchObject({
+      itemId: magnesium,
+      detail: "400 mg",
+      takenAt: null,
+    });
+    // The row can be written: `logHistoricalDose` takes a dose id, and an item with
+    // none would be an offer with no write behind it.
+    expect(fold[0]!.doseId).toBeGreaterThan(0);
+  });
+
+  it("never double-lists an item the body already shows, on any offered day", async () => {
+    const { profile } = await doseBody("fold-exclusions", "UTC");
+    const dueDoseId = seedDose(profile.id, "Creatine due", {
+      timeOfDay: "morning",
+    });
+    const prn = seedPrnMed(profile.id, "Ibuprofen prn");
+    seedUnscheduled(profile.id, "NAC");
+
+    const data = await readyQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    const dueItemId = (
+      db
+        .prepare("SELECT item_id AS id FROM intake_item_doses WHERE id = ?")
+        .get(dueDoseId) as { id: number }
+    ).id;
+
+    // TODAY: the due item is in `doses`, the PRN med is in `prn` — neither may also
+    // be in the fold, and the one item in neither list is.
+    const todayFold = data.others!.byDate[today(profile.id)]!;
+    expect(todayFold.map((row) => row.itemId)).not.toContain(dueItemId);
+    expect(todayFold.map((row) => row.itemId)).not.toContain(prn);
+    expect(todayFold.map((row) => row.name)).toEqual(["NAC"]);
+
+    // EVERY OFFERED DAY GETS A FOLD, and the as-needed list is drawn on all of them,
+    // so its ids are subtracted everywhere. A past day's own unresolved doses are
+    // subtracted from that day's fold and no other.
+    for (const past of data.pastDays) {
+      const fold = data.others!.byDate[past.date]!;
+      expect(fold.map((row) => row.itemId)).not.toContain(prn);
+      const shown = past.slots.flatMap((slot) =>
+        slot.doses.map((dose) => dose.doseId)
+      );
+      if (shown.includes(dueDoseId)) {
+        expect(fold.map((row) => row.itemId)).not.toContain(dueItemId);
+      }
+    }
+  });
+
+  it("keeps an item taken today in the fold, with the clock it was taken at", async () => {
+    const { login, profile } = await doseBody("fold-taken", "UTC");
+    // The fact reads in the LOGIN's own clock convention, like every other time this
+    // sheet prints — the ruling's "taken 8:15am" is the 12h spelling of it.
+    setDisplayFormatPrefs(login.id, { ...getDisplayFormatPrefs(login.id), timeFormat: "12h" });
+    const itemId = seedUnscheduled(profile.id, "NAC taken");
+    const doseId = (
+      db
+        .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+        .get(itemId) as { id: number }
+    ).id;
+    const day = today(profile.id);
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, occurred_at, recorded_at, logged_via)
+       VALUES (?, ?, ?, 'taken', ?, ?, 'page')`
+    ).run(doseId, itemId, day, `${day}T08:15:00.000Z`, `${day} 08:15:00`);
+
+    const data = await readyQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    // STILL LISTED — a dose already taken is exactly the case a second dose is one
+    // tap away from, so dropping it would cost the reach this row exists for.
+    expect(data.others!.byDate[day]).toMatchObject([
+      { itemId, takenAt: "8:15am" },
+    ]);
+  });
+
+  it("offers no fold at all when every item is already due or as-needed", async () => {
+    const { profile } = await doseBody("fold-empty", "UTC");
+    seedDose(profile.id, "Creatine only", { timeOfDay: "morning" });
+    seedPrnMed(profile.id, "Ibuprofen only");
+
+    const data = await readyQuickEntry("dose");
+    if (data.form !== "dose") throw new Error("expected the dose form");
+    // ZERO IS THE CASE THAT FAILS QUIETLY: an empty list renders no fold, and the
+    // count the summary prints is this same array's length, so the two cannot drift.
+    expect(data.others!.byDate[today(profile.id)]).toEqual([]);
   });
 });

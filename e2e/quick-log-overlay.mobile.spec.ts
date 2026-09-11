@@ -963,6 +963,104 @@ test("a PRN-only profile logs an as-needed dose from the dose sheet", async ({
   }
 });
 
+// An ACTIVE supplement whose one dose states no time — never due (#5285), so the due
+// list can never hold it and the fold is the only door it has. Seeded straight into the
+// fixture DB like the as-needed flip above, and removed in the same `finally`, so this
+// spec's other tests still see the profile they were written for.
+function seedShellUnscheduled(name: string, amount: string): number {
+  const db = openDb();
+  try {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+           VALUES (?, ?, 'supplement', 1, 'should', 'daily')`
+        )
+        .run(shellProfileId(), name).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, ?, NULL, 'any', 0)`
+    ).run(itemId, amount);
+    return itemId;
+  } finally {
+    db.close();
+  }
+}
+
+function dropShellItem(itemId: number): void {
+  const db = openDb();
+  try {
+    db.transaction(() => {
+      db.prepare("DELETE FROM intake_item_logs WHERE item_id = ?").run(itemId);
+      db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(itemId);
+      db.prepare("DELETE FROM intake_items WHERE id = ?").run(itemId);
+    })();
+  } finally {
+    db.close();
+  }
+}
+
+// #5808. THE DOOR THIS SHEET DID NOT HAVE. Every source in the dose body answers what
+// is OWED right now, so an active item that is simply not due had no row at all — and
+// once #5435 moves the record's kind chips off today, the sheet is today's only door.
+// The claim is end to end and asserted from the LEDGER, not from the toast: the fold
+// names a count it can be expanded into, and one tap on a row inside it writes one
+// administration for the sheet's own day.
+test("the dose sheet logs an item that is not due, from its folded row", async ({
+  browser,
+}) => {
+  const page = await signIn(browser);
+  const itemId = seedShellUnscheduled("Magnesium Glycinate", "400 mg");
+  try {
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-dose");
+    const summary = overlay.getByTestId("quick-entry-others-summary");
+    await expect(summary).toBeVisible();
+
+    // THE COUNT IS THE CONTENTS. A fold whose number disagrees with what expanding
+    // holds is the quiet half of this feature, so the two are read off one screen.
+    await settledClick(page, summary);
+    const rows = overlay
+      .getByTestId("quick-entry-others-list")
+      .getByRole("listitem");
+    await expect(summary).toHaveText(`Everything else (${await rows.count()})`);
+
+    const row = overlay.getByTestId(`quick-entry-other-${itemId}`);
+    await expect(row).toContainText("Magnesium Glycinate");
+    // The chip's label is the payload the tap writes.
+    const take = overlay.getByTestId(`quick-entry-other-take-${itemId}`);
+    await expect(take).toContainText("400 mg");
+    await expect(take).toContainText("Take");
+
+    await settledClick(page, take);
+    // ONE ROW, ON THE SHEET'S DAY, through the dated core — an unscheduled item has no
+    // occurrence for `markDoseTaken` to resolve, which is the whole reason for the row.
+    const day = dateStrInTz(PINNED_TZ, frozenNow());
+    const db = openDb();
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT date, status FROM intake_item_logs WHERE item_id = ?"
+          )
+          .all(itemId)
+      ).toEqual([{ date: day, status: "taken" }]);
+    } finally {
+      db.close();
+    }
+
+    // STILL LISTED after the write, now stating when it was taken — that is what makes
+    // a second dose one more tap rather than a trip to the record.
+    await expect(
+      overlay.getByTestId(`quick-entry-other-taken-${itemId}`)
+    ).toContainText("taken ");
+  } finally {
+    dropShellItem(itemId);
+    await page.context().close();
+  }
+});
+
 // #3936. THE STACK ASYMMETRY IS THE COST THIS TEST IS ABOUT. For today the morning is
 // one tap; for yesterday the same physical event used to decompose into N item
 // traversals with N date/time forms, so a forgotten day simply stayed unlogged and the
