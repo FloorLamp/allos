@@ -568,7 +568,28 @@ function originChoices(
 ): HealthConnectOriginChoice[] {
   const groups = new Map<string, Map<string, number>>();
   for (const sample of samples) {
-    if (metricAggregation(sample.metric) !== "SUM" || !sample.origin) continue;
+    if (!sample.origin) continue;
+    // Only an ADDITIVE metric can double-count across origins, so only it needs an
+    // origin elected. Each member of the union decides for itself here (#3167) —
+    // "not SUM" used to stand in for AVG and would have swept a categorical metric
+    // along with it.
+    const aggregation = metricAggregation(sample.metric);
+    switch (aggregation) {
+      case "SUM":
+        break;
+      case "AVG":
+        // A point metric's two origins are repeat measurements of one quantity:
+        // they average and cannot double-count, so there is no choice to record.
+        continue;
+      case "NONE":
+        // A categorical metric never aggregates at all, so no origin's readings are
+        // ever added together and there is nothing to choose between.
+        continue;
+      default: {
+        const exhaustive: never = aggregation;
+        return exhaustive;
+      }
+    }
     const key = `${sample.date}\0${sample.metric}`;
     let byOrigin = groups.get(key);
     if (!byOrigin) {
