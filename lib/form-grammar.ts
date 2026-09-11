@@ -107,6 +107,9 @@ import type { AllergyFactKey } from "./allergy-facts";
 import type { CarePlanFactKey } from "./care-plan-facts";
 import type { CareGoalFactKey } from "./care-goal-facts";
 import type { FamilyHistoryFactKey } from "./family-history-facts";
+import type { SkinLesionFactKey } from "./skin-lesion-facts";
+import type { DentalProcedureFactKey } from "./dental-procedure-facts";
+import type { ProcedureFactKey } from "./procedure-facts";
 
 // Every form the app hosts. A new form joins this union and then must answer the
 // grammar below before it compiles; a host mount naming an id that is not here does
@@ -390,9 +393,12 @@ export const FORM_GRAMMAR = {
   // a coded vocabulary pre-answers the fields, most saves are confirmations, the
   // fields are discrete facts. #5302 rewrites the family onto the chip row a slice at
   // a time, and each adoption replaces its `fields` entry here with the fact keys it
-  // then has. TWO ARE ADOPTED (slice 1: allergy, condition); the rest still declare
-  // what they render today, and a reason that says so rather than dressing a deferral
-  // as a ruling.
+  // then has. EIGHT ARE ADOPTED (slice 1: allergy, condition; slice 2: family-history,
+  // care-plan, care-goal; slice 3: procedure, dental-procedure, skin-lesion); the rest
+  // still declare what they render today, and a reason that says so rather than
+  // dressing a deferral as a ruling. `audiogram` and `optical-prescription` are the two
+  // this family argues OUT rather than defers, both on #3218's numeric-grid
+  // precondition failure — which is why slice 3 is three forms and not four.
   //
   // EACH ADOPTED FORM GETS ITS OWN FACTS MODULE rather than the thirteen sharing one
   // keyed union, and slice 1 argued it once so the other slices do not re-argue it.
@@ -522,14 +528,76 @@ export const FORM_GRAMMAR = {
     code: "optional",
     notes: "optional",
   }),
-  procedure: fields(
-    "Renders labelled fields over a coded procedure vocabulary; adopts the chip row with the family.",
-    "#5302"
-  ),
-  "dental-procedure": fields(
-    "Renders labelled fields over the dental procedure vocabulary; adopts the chip row with the family.",
-    "#5302"
-  ),
+  // app/(app)/records/history/procedures/ProcedureForm.tsx, ADOPTED (#5302 slice 3)
+  // and the smallest of the twelve after the care goal. The procedure name is rule 1's
+  // identifying field — also the form's required value, and the field #1083's
+  // preventive deep link arrives with prefilled.
+  //
+  // `code` is essential on the condition form's reason at the address where the reader
+  // is the PREVENTIVE CLOCK: every procedure reaches
+  // `getInferredPreventiveSatisfactions` as `{code, name, date, allow: ["screening"]}`
+  // and `matchRuleKeys` reads the code against the concept map FIRST with a whole-word
+  // name-synonym fallback, so a free-typed "lower endoscopy" satisfies colorectal
+  // screening only if its spelling happens to hit a curated needle — and the person is
+  // told they are overdue for the screening they just had.
+  //
+  // `date` is essential because `inferPreventiveSatisfactions` DROPS any record whose
+  // date is not a real ISO day before the matcher ever sees it: an undated procedure
+  // satisfies nothing however well it is coded.
+  //
+  // There is NO STATUS FACT, and the asymmetry with both specialty forms below is
+  // deliberate: `procedures` has no status column and the action parses none, so a
+  // status chip would make the form post a field it has never posted (the allergy
+  // form's `substance_code` refusal at this address).
+  procedure: facts<ProcedureFactKey>({
+    code: "essential",
+    date: "essential",
+    provider: "optional",
+    notes: "optional",
+  }),
+
+  // app/(app)/records/specialty/dental/DentalProcedureForm.tsx, ADOPTED (#5302 slice
+  // 3). The procedure/finding name is rule 1's identifying field and the form's
+  // required value.
+  //
+  // `cdt` is essential because the consumer is a SAFETY screen:
+  // `isInvasiveDentalProcedure(name, cdt_code)` is the ONE gate
+  // `getDentalSafetyWarnings` fires on, and #704's MRONJ / antibiotic-prophylaxis /
+  // anticoagulant notes exist only behind it. It reads the code FIRST and falls back to
+  // fourteen name patterns that are "deliberately conservative on the NON-invasive
+  // side" so an unrecognized procedure returns false — a planned extraction typed "#17
+  // exo" carries no note at all, while its D7xxx code would have caught it. The same
+  // column is the preventive clock's code-first signal.
+  //
+  // `date` is essential because an undated record is dropped by BOTH readers:
+  // `findResolvingDentalRecord` returns null on an undated source, so a "watch #14"
+  // finding can never be closed by the re-exam that closes it, and
+  // `inferPreventiveSatisfactions` skips it, so a logged cleaning never satisfies
+  // `dental_cleaning`. `status` is essential on the same argument as the allergy's
+  // above — born "completed", normalized on the server, so never absent — and it is
+  // also the discriminator both engines gate on ('planned' triggers the safety check,
+  // 'completed' is the preventive evidence).
+  //
+  // `tooth` is OPTIONAL, and the asymmetry with the skin form's `location` below is the
+  // finding rather than an inconsistency. Both are "where on the body" and their
+  // resolution matchers read absence in OPPOSITE directions: skin's `sameLesion` is
+  // strict, so an omitted region splits one mole's track, while dental's `sameTooth`
+  // returns true whenever either side is unspecified ("a general re-exam can resolve a
+  // general finding"). An absent tooth is DEFINED, and a prophylaxis has none to name.
+  // The tooth, its numbering system and the surface are ONE fact over one editor, read
+  // back through `toothLabel`. `recheck` is optional because nothing reads the stored
+  // `follow_up_interval_days` to schedule anything — `trackDentalFollowUp` takes its
+  // interval from the list's own scheduler.
+  "dental-procedure": facts<DentalProcedureFactKey>({
+    date: "essential",
+    status: "essential",
+    cdt: "essential",
+    tooth: "optional",
+    recheck: "optional",
+    finding: "optional",
+    provider: "optional",
+    notes: "optional",
+  }),
   audiogram: fields(
     "A grid of thresholds per ear and frequency. Free numeric entry, so it fails the primitive's third precondition the way measurements does, and the family's rewrite is expected to argue it out rather than in.",
     "#3218"
@@ -538,10 +606,45 @@ export const FORM_GRAMMAR = {
     "Sphere, cylinder, axis and add per eye — a numeric grid with the same precondition failure as the audiogram.",
     "#3218"
   ),
-  "skin-lesion": fields(
-    "Renders labelled fields; adopts the chip row with the family.",
-    "#5302"
-  ),
+  // app/(app)/records/specialty/skin/SkinLesionForm.tsx, ADOPTED (#5302 slice 3). The
+  // lesion's label is rule 1's identifying field.
+  //
+  // `location` is essential and it is the sharpest of the slice: the region and the
+  // side are two of the three components of `skinLesionIdentityKey` (#482), the one
+  // function every skin surface keys on, and `sameLesion` is STRICT on that tuple — so
+  // a recheck recorded without the region never resolves the watch record that has one
+  // and the mole's serial track silently splits in two. The form's own action already
+  // treats it as load-bearing (`addSkinLesion` refuses a lesion with neither a label
+  // nor a region), and when the label is the blank half `skinLesionDisplayLabel` falls
+  // all the way to a bare "Skin lesion". The region and the side are ONE fact over one
+  // editor, read back through `bodyMapLabel`.
+  //
+  // `observed` is essential because `findResolvingSkinRecord` returns null on its first
+  // line for an undated source ("undated source can't order candidates") and skips
+  // undated candidates, so an undated watch lesion can never be closed by the later
+  // look that closes it. `status` is essential on the allergy form's argument — born
+  // "active", normalized on the server, so never absent.
+  //
+  // `abcde` is OPTIONAL and that is the classification most likely to be got wrong
+  // here: #715's scope law makes the five fields user-recorded OBSERVATIONS that are
+  // never scored, so an empty set means "nothing noticed" — a complete answer, not an
+  // omission — and a dashed prompt on every lesion would press for observations the app
+  // has promised never to grade. Five checkboxes are ONE fact over one editor, read
+  // back through `abcdeLetters`. `recheck` is optional for the dental form's reason:
+  // nothing reads the stored `follow_up_interval_days`; `trackSkinFollowUp` takes its
+  // interval from the list's own scheduler.
+  "skin-lesion": facts<SkinLesionFactKey>({
+    location: "essential",
+    observed: "essential",
+    status: "essential",
+    size: "optional",
+    abcde: "optional",
+    recheck: "optional",
+    finding: "optional",
+    provider: "optional",
+    visit: "optional",
+    notes: "optional",
+  }),
   immunization: fields(
     "Renders labelled fields over the vaccine vocabulary; adopts the chip row with the family.",
     "#5302"

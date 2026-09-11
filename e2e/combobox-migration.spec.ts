@@ -8,6 +8,7 @@ import {
   settledFill,
 } from "./helpers";
 import { loginAs } from "./nav";
+import { openRecordFact, withRecordFact } from "./record-facts-helpers";
 import {
   E2E_LOGIN_NUTRITION,
   E2E_MEMBER_PASSWORD,
@@ -95,7 +96,15 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     const form = page.getByTestId("dental-procedure-form");
     await expect(form).toBeVisible();
     await form.getByLabel("Procedure / finding").fill(FINDING);
-    await form.getByLabel("Tooth").fill(TOOTH);
+    // The tooth and the provider are FACTS since #5302, each behind its own chip. The
+    // provider's editor is left OPEN for the rest of the case: the picker's listbox
+    // overlays the editor's own Done button (the overlay slices 1 and 2 both hit, at
+    // the one address where a combobox sits inside a disclosure), and this form is
+    // DOM-collected, so the open panel still posts when Add is pressed below.
+    await withRecordFact(form, "dental-procedure", "tooth", async () => {
+      await form.getByLabel("Tooth").fill(TOOTH);
+    });
+    await openRecordFact(form, "dental-procedure", "provider");
 
     const provider = form.getByRole("combobox", { name: "Provider" });
 
@@ -146,8 +155,9 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       page,
       page.getByTestId("add-dental-record-panel-toggle")
     );
-    await page
-      .getByTestId("dental-procedure-form")
+    const reopened = page.getByTestId("dental-procedure-form");
+    await openRecordFact(reopened, "dental-procedure", "provider");
+    await reopened
       .getByRole("combobox", { name: "Provider" })
       .fill("Combobox Clinic");
     await expect(

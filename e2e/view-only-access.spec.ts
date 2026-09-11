@@ -193,6 +193,26 @@ test.describe("View-only access (issue #33)", () => {
           "add-health-goal-panel-toggle",
           "records-health-goals",
         ],
+        // #5302 slice 3. The skin pane is the one that resolves NO scope — it is
+        // acting-profile-only by design — so its page asks `accessForProfile`
+        // directly and hands the section the value; a third supply route is a third
+        // chance to miss it, which is why it gets its own entry here.
+        [
+          "/records/specialty/skin",
+          "add-skin-lesion-panel-toggle",
+          "records-skin",
+        ],
+        [
+          "/records/history/procedures",
+          "add-procedure-panel-toggle",
+          "records-procedures",
+        ],
+        // The DENTAL door is gated the same way and asserted at the component tier
+        // instead (components/__tests__/record-facts-forms.test.tsx). Its route is
+        // DATA-GATED — `/records/specialty/dental` redirects when the view set has no
+        // dental rows — so the positive control this loop depends on would be
+        // asserting the seed rather than the gate, and seeding a dental row for the
+        // view-only member is a fixture change in a spec every worker shares.
       ] as const) {
         await memberPage.goto(route);
         // THE POSITIVE CONTROL, and the test is worth little without it: the pane
