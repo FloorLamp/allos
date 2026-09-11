@@ -152,5 +152,23 @@ test.describe("preventive deep-links per class (#1083)", () => {
       /\/records\/history\/procedures\?new=1&name=Colonoscopy/
     );
     await expect(page.locator("#proc-name-new")).toHaveValue("Colonoscopy");
+
+    // AND THE ROW SAYS WHAT IS STILL OWED (#5302). The deep link supplies the NAME;
+    // the CODE is what the preventive clock actually matches this record by
+    // (`matchRuleKeys` reads it first and falls back to name synonyms), so the code is
+    // an ESSENTIAL and its chip is DASHED rather than silent behind the trailing
+    // affordance — asserted here because this is the flow the argument is about. No
+    // `data-suggested`: nothing proposed a code, and a missing fact cannot have
+    // borrowed one.
+    // Scoped to the DIALOG, not to `main`: the procedures add door is
+    // `presentation="modal"`, so the form renders in the overlay portal and is not a
+    // descendant of `<main>` at all. The dialog is the enclosing surface the hygiene
+    // guard asks for here.
+    const code = page
+      .getByRole("dialog")
+      .getByTestId("procedure-form")
+      .getByTestId("procedure-fact-code");
+    await expect(code).toHaveAttribute("data-fact-state", "missing");
+    await expect(code).not.toHaveAttribute("data-suggested", /.*/);
   });
 });

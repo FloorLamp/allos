@@ -12,6 +12,7 @@ import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
 import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
 import SkinLesionList from "@/app/(app)/records/specialty/skin/SkinLesionList";
 import { addSkinLesion } from "@/app/(app)/records/specialty/skin/actions";
+import type { Access } from "@/lib/auth";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { getSpecialtyLensEntries } from "@/lib/queries/specialty-lens";
 import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
@@ -31,9 +32,21 @@ import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
 // single-profile lesion list would answer a question the pane is not asking.
 export default function SkinSection({
   profileId,
+  access,
   formatPrefs,
 }: {
   profileId: number;
+  // Whether the acting profile may write here (#4694), resolved by the page. What it
+  // gates is the ADD DOOR, and only that.
+  //
+  // THIS ADDRESS IS NOT FINISHED, and saying so is the point of this note. The lesion
+  // list's own Edit and Delete (SkinLesionList.tsx) carry no access gate, so a
+  // read-only viewer is still offered both and still bounces on submit — the same
+  // false affordance the add door just stopped making. Gating them is #4694's work
+  // rather than #5302's, which wires the doors its own slices open; a future lane
+  // there should read this pane as two of twenty-odd remaining row-tier affordances,
+  // not as one already done.
+  access?: Access;
   formatPrefs?: DisplayFormatPrefs;
 }) {
   const records = getSkinLesions(profileId);
@@ -55,6 +68,9 @@ export default function SkinSection({
         <div className="space-y-6">
           <AddEntryPanel
             formId="skin-lesion"
+            // #4694, riding #5302's adoption: a read-only viewer is never offered a
+            // form whose submit would redirect them and lose the typing.
+            access={access}
             testId="add-skin-lesion-panel"
             panelId="add-skin-lesion-panel-body"
             label="Add skin lesion"
