@@ -535,7 +535,11 @@ function OtherItemRow({
     disabled: busy,
   });
 
-  async function log(time: string): Promise<void> {
+  // `consumed` is what the tap SPENT from the statement — null for the live day's
+  // one-tap, which pays for nothing. Passing the posted minute instead would drop a
+  // statement made beside a tap that never used it, and would do so exactly when the
+  // reader had typed the current minute (`TimeStatement` rule 5).
+  async function log(time: string, consumed: string | null): Promise<void> {
     setBusy(true);
     try {
       const fd = stampLoggedVia(new FormData());
@@ -558,9 +562,11 @@ function OtherItemRow({
       }
       setNote(null);
       toast(`Logged ${item.name}${item.detail ? ` · ${item.detail}` : ""}.`);
-      // Rule 5: a statement is spent by the tap it answers, and only that one.
-      statement.setOpen(false);
-      statement.spend(time);
+      // Rule 5: a statement is spent by the tap it answers, and only that one. The
+      // reveal closes on the SAME event, because a spent statement is the only reason
+      // there was to close it.
+      if (consumed) statement.setOpen(false);
+      statement.spend(consumed);
       onLogged?.();
     } catch {
       toast("Couldn't log that dose. Try again.", { tone: "error" });
@@ -574,11 +580,11 @@ function OtherItemRow({
     // dismissed is not a statement this tap may spend.
     const stated = statement.open ? statement.at : null;
     if (stated) {
-      void log(stated);
+      void log(stated, stated);
       return;
     }
     if (liveDay && nowHhmm) {
-      void log(nowHhmm);
+      void log(nowHhmm, null);
       return;
     }
     statement.setOpen(true);
