@@ -610,7 +610,13 @@ describe("the dose body folds everything else under its due rows (#5808)", () =>
           detail: "400 mg",
           takenAt: null,
         },
-        { itemId: 72, doseId: 172, name: "NAC", detail: "600 mg", takenAt: null },
+        {
+          itemId: 72,
+          doseId: 172,
+          name: "NAC",
+          detail: "600 mg",
+          takenAt: null,
+        },
       ],
       "2026-08-27": [
         {

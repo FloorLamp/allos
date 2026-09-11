@@ -784,7 +784,10 @@ function quickEntryOthersByDate(
 ): Record<string, QuickEntryOtherItem[]> {
   // FIRST live dose per item — `getIntakeDoses` excludes retired rows and orders
   // (item_id, sort, id), so first-seen IS that row.
-  const firstDose = new Map<number, ReturnType<typeof getIntakeDoses>[number]>();
+  const firstDose = new Map<
+    number,
+    ReturnType<typeof getIntakeDoses>[number]
+  >();
   for (const dose of getIntakeDoses(profileId)) {
     if (!firstDose.has(dose.item_id)) firstDose.set(dose.item_id, dose);
   }

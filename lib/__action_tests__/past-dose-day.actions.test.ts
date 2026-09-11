@@ -1204,7 +1204,10 @@ describe("the dose body's fold reaches every item the body does not show", () =>
     const { login, profile } = await doseBody("fold-taken", "UTC");
     // The fact reads in the LOGIN's own clock convention, like every other time this
     // sheet prints — the ruling's "taken 8:15am" is the 12h spelling of it.
-    setDisplayFormatPrefs(login.id, { ...getDisplayFormatPrefs(login.id), timeFormat: "12h" });
+    setDisplayFormatPrefs(login.id, {
+      ...getDisplayFormatPrefs(login.id),
+      timeFormat: "12h",
+    });
     const itemId = seedUnscheduled(profile.id, "NAC taken");
     const doseId = (
       db
