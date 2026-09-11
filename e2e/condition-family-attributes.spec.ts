@@ -6,7 +6,7 @@ import {
   settledFill,
   settledSelect,
 } from "./helpers";
-import { withRecordFact } from "./record-facts-helpers";
+import { openRecordFact, withRecordFact } from "./record-facts-helpers";
 
 // The Care › Overview sections are <details> disclosures (#1804). A save
 // revalidates the server tree, and the re-rendered <details> comes back CLOSED —
@@ -137,17 +137,28 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     );
 
     const dialog = page.getByRole("dialog", { name: "Add family history" });
+    // The CONDITION is rule 1's one identifying field and stays above the chips
+    // (#5302); everything else is a fact behind the row.
     const conditionField = dialog.getByLabel("Condition", { exact: true });
     await expect(conditionField).toBeVisible();
-    await settledFill(page, dialog.getByLabel("Relative"), "E2E father");
     await settledFill(page, conditionField, "E2E coronary artery disease");
     await conditionField.press("Escape");
-    await settledFill(page, dialog.locator("#fh-age-death-new"), "52");
-    await settledFill(
-      page,
-      dialog.locator("#fh-cause-death-new"),
-      "Myocardial infarction"
+    const addForm = dialog.getByTestId("family-history-form");
+    // The relative is an ESSENTIAL, so its dashed chip is already on the row.
+    await withRecordFact(addForm, "family-history", "relation", () =>
+      settledFill(page, dialog.getByLabel("Relative"), "E2E father")
     );
+    // The three death columns are ONE fact over ONE editor: they describe a single
+    // event and read back as one line, so the age and the cause are filled together
+    // behind the `death` chip rather than at two addresses.
+    await withRecordFact(addForm, "family-history", "death", async () => {
+      await settledFill(page, dialog.locator("#fh-age-death-new"), "52");
+      await settledFill(
+        page,
+        dialog.locator("#fh-cause-death-new"),
+        "Myocardial infarction"
+      );
+    });
 
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Family history saved")).toBeVisible();
@@ -170,12 +181,19 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
       page.getByTestId("add-family-history-panel-toggle")
     );
     const second = page.getByRole("dialog", { name: "Add family history" });
-    await settledFill(page, second.getByLabel("Relative"), "E2E guardian");
     const secondCondition = second.getByLabel("Condition", { exact: true });
     await settledFill(page, secondCondition, "E2E type 2 diabetes");
     await secondCondition.press("Escape");
-    await settledSelect(page, second.locator("#fh-relation-type-new"), "step");
-    await settledSelect(page, second.locator("#fh-lineage-new"), "maternal");
+    const secondForm = second.getByTestId("family-history-form");
+    await withRecordFact(secondForm, "family-history", "relation", () =>
+      settledFill(page, second.getByLabel("Relative"), "E2E guardian")
+    );
+    await withRecordFact(secondForm, "family-history", "relationship", () =>
+      settledSelect(page, second.locator("#fh-relation-type-new"), "step")
+    );
+    await withRecordFact(secondForm, "family-history", "lineage", () =>
+      settledSelect(page, second.locator("#fh-lineage-new"), "maternal")
+    );
     await second.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Family history saved")).toBeVisible();
 
@@ -188,9 +206,15 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     // can be corrected to adopted, and the label follows.
     await stepRow.getByLabel("Record actions").click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    const editForm = page.locator(
-      'form:has(select[id^="fh-relation-type-"]:not([id="fh-relation-type-new"]))'
-    );
+    // The add dialog is gone by now, so this is the one family-history form on the
+    // page.
+    const editForm = section.getByTestId("family-history-form");
+    // The stored discriminator reads back on the ROW, which is what the chips are
+    // for: the edit form's summary doubles as the record's review (#3218).
+    await expect(
+      editForm.getByTestId("family-history-fact-relationship")
+    ).toHaveText("Step");
+    await openRecordFact(editForm, "family-history", "relationship");
     await expect(
       editForm.locator('select[id^="fh-relation-type-"]')
     ).toHaveValue("step");
@@ -199,6 +223,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
       editForm.locator('select[id^="fh-relation-type-"]'),
       "adopted"
     );
+    await editForm.getByTestId("family-history-editor-done").click();
     await editForm.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Family history updated")).toBeVisible();
 

@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 import { settledSelect } from "./helpers";
+import { withRecordFact } from "./record-facts-helpers";
 import { withVisitFact } from "./visit-form-helpers";
 
 // Close the care-plan loop on appointment completion (issue #658): completing a
@@ -42,11 +43,15 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
       name: "Add care-plan item",
     });
     await carePlanDialog.locator("#cp-desc-new").fill(ITEM);
-    // Status is an enum picker since #1676.
-    await settledSelect(
-      page,
-      carePlanDialog.locator("#cp-status-new"),
-      "planned"
+    // Status is an enum picker since #1676, and a FACT behind the row since #5302 —
+    // unstated on a new item, so the trailing affordance is the way in. The item
+    // stays UNDATED on purpose (see above): the matcher takes undated intentions.
+    await withRecordFact(
+      carePlanDialog.getByTestId("care-plan-form"),
+      "care-plan",
+      "status",
+      () =>
+        settledSelect(page, carePlanDialog.locator("#cp-status-new"), "planned")
     );
     // Scope the "Add" to the Care plan section — the merged Health record page
     // (#1042 phase 6) has one "Add" per section.
