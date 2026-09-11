@@ -651,7 +651,7 @@ export async function submitWithToast(
   button: Locator,
   message: string
 ): Promise<void> {
-  const toast = page.getByTestId("toast").filter({ hasText: message });
+  const toast = page.getByTestId("toast").filter({ hasText: message }); // testid-scope-ok: the toast region portals to <body>, outside every streamed boundary
   await Promise.all([
     expect(toast).toHaveCount(1, { timeout: 15_000 }),
     settledClick(page, button),
