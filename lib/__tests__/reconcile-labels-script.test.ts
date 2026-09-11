@@ -39,7 +39,7 @@ const method = at("-X") ?? "GET";
 const state = JSON.parse(fs.readFileSync(process.env.STUB_STATE, "utf8"));
 fs.appendFileSync(
   process.env.STUB_LOG,
-  JSON.stringify({ method, url, body: at("--data-binary") }) + "\\n"
+  JSON.stringify({ args, method, url, body: at("--data-binary") }) + "\\n"
 );
 const emit = (value) => {
   process.stdout.write(JSON.stringify(value));
@@ -76,13 +76,41 @@ process.stderr.write("stub curl: unhandled " + method + " " + url + "\\n");
 process.exit(9);
 `;
 
+interface Call {
+  /** The WHOLE curl argv, so what a request DECLARES is observable (#5792). */
+  args: string[];
+  method: string;
+  url: string;
+  body: string;
+}
+
 interface Run {
   stdout: string;
   stderr: string;
   status: number | null;
   /** Every label POST the script made, as "<issue>:<label>". */
   writes: string[];
+  /** Every curl call, whole, for the header assertion below. */
+  calls: Call[];
 }
+
+/** The header values one call sent, in order. */
+const headersOf = (c: Call): string[] =>
+  c.args.filter((_, i) => c.args[i - 1] === "-H");
+
+// What a JSON write must declare. Written out here rather than imported, so the
+// test disagrees with a change instead of following it. This pins CONSTRUCTION,
+// not delivery: writes from this container are credentialed by the agent proxy,
+// so a live round trip returns 2xx with no `Authorization` header at all.
+// `./issue-body-write.test.ts` records that measurement and the out-of-band
+// probe that pins delivery — against an issue number that cannot exist, the
+// request without `Content-Type` is refused by the proxy with 415 and the same
+// request with it reaches GitHub, which answers 404 (#5758, #5792).
+const JSON_WRITE_HEADERS = [
+  "Authorization: Bearer stub token 1",
+  "Accept: application/vnd.github+json",
+  "Content-Type: application/json",
+];
 
 function runScript(
   issues: Record<string, { labels: string[]; body?: string }>,
@@ -129,17 +157,24 @@ function runScript(
       STUB_FULL_PAGES: String(fullPages),
     },
   });
-  const writes = fs
+  const calls = fs
     .readFileSync(log, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as { method: string; url: string; body: string })
+    .map((l) => JSON.parse(l) as Call);
+  const writes = calls
     .filter((c) => c.method === "POST")
     .map((c) => {
       const issue = c.url.match(/\/issues\/(\d+)\/labels$/)?.[1] ?? "?";
       return `${issue}:${(JSON.parse(c.body) as { labels: string[] }).labels.join(",")}`;
     });
-  return { stdout: run.stdout, stderr: run.stderr, status: run.status, writes };
+  return {
+    stdout: run.stdout,
+    stderr: run.stderr,
+    status: run.status,
+    writes,
+    calls,
+  };
 }
 
 describe("reconcile-labels.ts --plan, applying", () => {
@@ -166,6 +201,12 @@ describe("reconcile-labels.ts --plan, applying", () => {
     expect(run.status).toBe(0);
     expect(run.stderr).not.toContain("stub curl: unhandled");
     expect(run.writes).toEqual(["3051:wellness", "3052:wellness"]);
+    // The label POST sends a JSON body, so it must say so (#5792). Without the
+    // declaration the proxy answers 415 and no label is ever added, while the
+    // run still prints `ok` for each write it believes it made.
+    expect(run.calls.filter((c) => c.method === "POST").map(headersOf)).toEqual(
+      [JSON_WRITE_HEADERS, JSON_WRITE_HEADERS]
+    );
     expect(run.stdout).toContain("#3051 +wellness: ok");
     expect(run.stdout).toContain(
       "#3052 +training: REFUSED (already-classified) — carries wellness"
