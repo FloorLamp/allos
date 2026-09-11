@@ -9,8 +9,8 @@
 //
 // ONE GROUP, CAPPED AT FIVE ACROSS ALL SEVEN KINDS (owner ruling, 2026-09-04). Every
 // hit carries the single `logged` domain, so the palette shows the five newest rows you
-// logged whatever mix of kinds they are — not five of each. Each source still reads its own five
-// newest, which is enough: no row outside a source's newest five can be inside the
+// logged whatever mix of kinds they are — not five of each. Each source still reads its
+// own five newest, which is enough: no row outside a source's newest five can be in the
 // union's newest five. The ranker does the rest (`rankAndGroup`, lib/search-rank.ts),
 // sorting the union date-first and slicing to five.
 //

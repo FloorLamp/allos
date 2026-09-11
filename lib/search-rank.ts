@@ -12,8 +12,8 @@ export type SearchDomain =
   // THE RECORD'S OWN ROWS (#5006). The record's row-only Logs kinds — doses, food
   // servings, practice sessions, symptoms, check-ins, body readings, sleep nights —
   // have no page, so a hit lands on the day view scrolled to the row it names
-  // (lib/queries/search-logged.ts builds them). ONE domain for all of them: the kind
-  // lives in the subtitle (`<kind> · <date>`), so `practice` stays the wellness
+  // (lib/queries/search-logged.ts builds them). ONE domain for all of them, with the
+  // kind carried as the hit's own `loggedKind` field, so `practice` stays the wellness
   // practice you track and a session of it is a `logged` hit.
   | "logged"
   | "clinical-result"
