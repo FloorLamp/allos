@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   summarizeEquipmentAvailability,
+  liftImplementCategory,
   liftRequiredCategory,
   isLiftAvailable,
   deRankUnavailableLifts,
@@ -66,6 +67,36 @@ describe("liftRequiredCategory", () => {
     expect(liftRequiredCategory("Plank")).toBeNull(); // timed bodyweight
     expect(liftRequiredCategory("Running")).toBeNull(); // not a lift
     expect(liftRequiredCategory("Underwater Basketweaving")).toBeNull();
+  });
+
+  // The two places this gate deliberately parts company with the implement
+  // resolver it now narrows. Neither is a missing case, and both are invisible to
+  // the cases above: a resolver used raw would gate the swing on owning a
+  // kettlebell, and a gate that dropped its own plate-loaded check would stop
+  // gating the trap-bar deadlift on a barbell.
+  it("keeps its own answer where the resolved implement is not it", () => {
+    expect(liftImplementCategory("Kettlebell Swing")).toBe("Kettlebell");
+    expect(liftRequiredCategory("Kettlebell Swing")).toBeNull();
+
+    expect(liftImplementCategory("Trap Bar Deadlift")).toBeNull();
+    expect(liftRequiredCategory("Trap Bar Deadlift")).toBe("Barbell");
+  });
+});
+
+describe("liftImplementCategory", () => {
+  it("resolves the composed variant's implement, then the lift's normal one", () => {
+    expect(liftImplementCategory("Dumbbell Curl")).toBe("Dumbbell");
+    expect(liftImplementCategory("Machine Row")).toBe("Machine");
+    expect(liftImplementCategory("Back Squat")).toBe("Barbell");
+    expect(liftImplementCategory("Leg Press")).toBe("Machine");
+  });
+
+  it("is null when the implement is no registry category, unchosen, or unknown", () => {
+    expect(liftImplementCategory("Cable Curl")).toBeNull(); // Cable is not one
+    expect(liftImplementCategory("Smith Squat")).toBeNull(); // nor is Smith
+    expect(liftImplementCategory("Pull Up")).toBeNull(); // nor Bodyweight
+    expect(liftImplementCategory("Curl")).toBeNull(); // a choice, none made
+    expect(liftImplementCategory("Underwater Basketweaving")).toBeNull();
   });
 });
 

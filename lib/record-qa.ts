@@ -15,14 +15,19 @@
 // This module is PURE and CLIENT-SAFE (no SDK, no node:fs): the term extractor, the
 // citation assembly, the prompt builder, and the offline composition take data in and
 // return data out — no DB, no auth — so the command palette (a client component) can
-// import the `RecordCitation` type + `DOMAIN_LABEL` without pulling the AI SDK into the
+// import the `RecordCitation` type + the badge labels without pulling the AI SDK into the
 // browser bundle. The server-only AI narration (`answerRecordQuestion`, which resolves
 // an AI client and writes the ai-log) lives in the sibling `lib/record-qa-answer.ts`.
 // The DB gather (retrieveRecordCitations) lives in the query layer, profile-scoped like
 // every other read; the auth gate stays in the Server Action.
 
 import type { AppRoute } from "./hrefs";
-import type { SearchDomain, SearchHit } from "./search-rank";
+import {
+  SEARCH_LOGGED_KIND_LABELS,
+  type SearchDomain,
+  type SearchHit,
+  type SearchLoggedKind,
+} from "./search-rank";
 
 // One retrieved record, ready to cite. Everything a surface needs to render a linked
 // answer: a stable 1-based index the narration cites ([1], [2]…), the display fields,
@@ -31,6 +36,9 @@ import type { SearchDomain, SearchHit } from "./search-rank";
 export interface RecordCitation {
   index: number;
   domain: SearchDomain;
+  // Which logged kind a `logged` row is (#5096) — the hit's own field, carried through
+  // rather than re-derived from its rendered subtitle. Absent on every other domain.
+  loggedKind?: SearchLoggedKind;
   title: string;
   subtitle: string | null;
   date: string | null;
@@ -58,8 +66,9 @@ export const DOMAIN_LABEL: Record<SearchDomain, string> = {
   activity: "Activity",
   // The record's logged rows (#5006). They reach Q&A through the same fan-out every
   // other domain does, so "when did I last take ibuprofen" can now cite the dose
-  // itself rather than only the medication it came out of. One badge for all seven
-  // kinds, as in the palette; the hit's subtitle names which kind the row is.
+  // itself rather than only the medication it came out of. The DOMAIN's own word, and
+  // still total — a logged citation's badge is its KIND's word (`citationLabel` below),
+  // and this is what answers for a logged row that states no kind.
   logged: "Logged entry",
   supplement: "Supplement or medication",
   protocol: "Protocol",
@@ -248,6 +257,7 @@ export function buildRetrievalSet(
   return hits.slice(0, MAX_CITATIONS).map((h, i) => ({
     index: i + 1,
     domain: h.domain,
+    loggedKind: h.loggedKind,
     title: h.title,
     subtitle: h.subtitle,
     date: h.date,
@@ -255,12 +265,35 @@ export function buildRetrievalSet(
   }));
 }
 
+// The badge one citation shows. A `logged` row names its KIND — "Dose", "Serving",
+// "Practice" — through the SAME `SEARCH_LOGGED_KIND_LABELS` table its subtitle's
+// leading noun is rendered from (lib/queries/search-logged.ts), so the badge and the
+// line under it can never name one row two ways (#5096).
+//
+// A CONVERGENCE, NOT A REPAIR. `DOMAIN_LABEL` is `Record<SearchDomain, string>` and a
+// citation's `domain` IS a `SearchDomain`, so the lookup it replaces was total: every
+// logged row always rendered a real word. The word was just the whole family's — one
+// "Logged entry" for all seven kinds, since the seven `log-<kind>` domains became one
+// `logged` domain (#5006). That collapse was the owner's ruling and stands; the kind
+// came back as a field, not as seven domains, and the badge is finer for it.
+//
+// The un-kinded branch is the same totality, not a guard: `loggedKind` is optional on
+// the hit, so a `logged` citation that states no kind answers with the DOMAIN's own
+// word. Every other domain reads its DOMAIN_LABEL exactly as before.
+export function citationLabel(
+  citation: Pick<RecordCitation, "domain" | "loggedKind">
+): string {
+  return citation.loggedKind
+    ? SEARCH_LOGGED_KIND_LABELS[citation.loggedKind]
+    : DOMAIN_LABEL[citation.domain];
+}
+
 // One citation rendered as a prompt line: "[1] Amoxicillin — Active (2026-03-04)
 // [IntakeItem or medication]". Only the row's OWN fields; nothing computed.
 function citationLine(c: RecordCitation): string {
   const bits = [c.subtitle, c.date].filter((b) => b && String(b).trim());
   const tail = bits.length ? ` — ${bits.join(" · ")}` : "";
-  return `[${c.index}] ${c.title}${tail} (${DOMAIN_LABEL[c.domain]})`;
+  return `[${c.index}] ${c.title}${tail} (${citationLabel(c)})`;
 }
 
 export const ASK_SYSTEM = `You answer questions about a person's OWN health records, and you may ONLY use the records handed to you. You are a retrieval front-end, not a clinician.

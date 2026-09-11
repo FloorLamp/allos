@@ -58,7 +58,7 @@ import FactEditorHost, {
   useFactEditor,
 } from "@/components/facts/FactEditorHost";
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
-import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
+import EquipmentQuickAdd, { defaultCategoryForLift } from "./EquipmentQuickAdd";
 import type { PlateTarget, SetFill } from "./useActivityParts";
 
 // The brand-filled checkbox the options facts are edited with. It moved here from
@@ -618,12 +618,8 @@ export default function ActivityPartsList({
         </div>
         {addingEquipment && (
           <EquipmentQuickAdd
-            // Default the category from the lift's built-in variant when it's
-            // unambiguous ("Machine Chest Press" → Machine); otherwise the field is
-            // empty and required rather than guessed.
-            defaultCategory={categoryForVariant(
-              variant?.equipment ?? defaultEq
-            )}
+            // The lift's own implement, resolved once in the availability module.
+            defaultCategory={defaultCategoryForLift(p.name)}
             unit={units.weightUnit}
             onCreated={(eq) => {
               // Editor-local state gains the row (so every OTHER part of this same open

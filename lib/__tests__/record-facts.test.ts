@@ -29,6 +29,24 @@ import {
   type FamilyHistoryFactInput,
   type FamilyHistoryFactKey,
 } from "@/lib/family-history-facts";
+import {
+  skinLesionFactSummary,
+  SKIN_LESION_FACT_NOUNS,
+  type SkinLesionFactInput,
+  type SkinLesionFactKey,
+} from "@/lib/skin-lesion-facts";
+import {
+  dentalFactSummary,
+  DENTAL_PROCEDURE_FACT_NOUNS,
+  type DentalProcedureFactInput,
+  type DentalProcedureFactKey,
+} from "@/lib/dental-procedure-facts";
+import {
+  procedureFactSummary,
+  PROCEDURE_FACT_NOUNS,
+  type ProcedureFactInput,
+  type ProcedureFactKey,
+} from "@/lib/procedure-facts";
 import { moreRecordFactsLabel } from "@/lib/record-facts";
 
 // The clinical record family's fact summaries (#5302), in ONE file for the family
@@ -430,6 +448,297 @@ describe("the family-history row (#5302)", () => {
     expect(more).toEqual(expected);
     expect(moreRecordFactsLabel(more, FAMILY_HISTORY_FACT_NOUNS)).toBe(
       "relationship, age at onset, notes…"
+    );
+  });
+});
+
+const FULL_SKIN_LESION: SkinLesionFactInput = {
+  bodyRegion: "forearm",
+  bodySide: "left",
+  observedDate: "2026-03-04",
+  status: "watch",
+  sizeMm: "5",
+  abcde: {
+    asymmetry: true,
+    border: true,
+    color: false,
+    diameter: false,
+    evolving: true,
+  },
+  recheckDays: "90",
+  finding: "slightly raised",
+  provider: "Dr. Okafor",
+  visit: "Dermatology · Mar 4",
+  linkableVisits: true,
+  notes: "photographed",
+};
+
+describe("the skin-lesion row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = skinLesionFactSummary(FULL_SKIN_LESION);
+    expect(keysOf(chips)).toEqual([
+      "location",
+      "observed",
+      "status",
+      "size",
+      "abcde",
+      "recheck",
+      "finding",
+      "provider",
+      "visit",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("states the region and the side as ONE fact, through the shared body-map label", () => {
+    // They are two of the three components of the #482 identity and the list, the
+    // follow-up reason and the search projection all read them back as one line, so
+    // the row states the place once rather than twice.
+    const { chips } = skinLesionFactSummary(FULL_SKIN_LESION);
+    expect(chips.find((c) => c.key === "location")?.label).toBe("Left forearm");
+    expect(keysOf(chips)).not.toContain("side");
+  });
+
+  it("prompts for the location when no region is chosen, even with a side", () => {
+    // A side with no region is not a location — `bodyMapLabel`'s own rule — so the
+    // half-answer is still the dashed prompt and never a chip stating "Left".
+    const { chips, more } = skinLesionFactSummary({
+      ...FULL_SKIN_LESION,
+      bodyRegion: "",
+    });
+    expect(stateOf(chips, "location")).toBe("missing");
+    expect(more).not.toContain("location");
+  });
+
+  it("prompts for the observation date rather than going quiet about it", () => {
+    // An undated lesion is the one `findResolvingSkinRecord` refuses to order
+    // candidates against, so its recheck can never be resolved.
+    const { chips, more } = skinLesionFactSummary({
+      ...FULL_SKIN_LESION,
+      observedDate: "",
+    });
+    expect(stateOf(chips, "observed")).toBe("missing");
+    expect(more).not.toContain("observed");
+  });
+
+  it("states the status even when nobody chose it", () => {
+    // The select is born "active" and the action normalizes whatever it holds onto the
+    // CHECK set, so the fact can never be absent — the allergy row's reading.
+    expect(
+      stateOf(
+        skinLesionFactSummary({ ...FULL_SKIN_LESION, status: "" }).chips,
+        "status"
+      )
+    ).toBe("stated");
+  });
+
+  it("states the five ABCDE observations as ONE neutral letter list", () => {
+    // Never a count, never a threshold, never a verdict (#715's scope law) — the same
+    // string `abcdeLetters` prints on every other surface.
+    expect(
+      skinLesionFactSummary(FULL_SKIN_LESION).chips.find(
+        (c) => c.key === "abcde"
+      )?.label
+    ).toBe("ABCDE A·B·E");
+  });
+
+  it("lets an empty ABCDE set go quiet instead of prompting", () => {
+    // "Nothing noticed" is a complete answer, so it reaches the trailing affordance
+    // rather than a dashed chip pressing for observations the app never grades.
+    const { chips, more } = skinLesionFactSummary({
+      ...FULL_SKIN_LESION,
+      abcde: {
+        asymmetry: false,
+        border: false,
+        color: false,
+        diameter: false,
+        evolving: false,
+      },
+    });
+    expect(keysOf(chips)).not.toContain("abcde");
+    expect(more).toContain("abcde");
+  });
+
+  it("offers the visit fact only when the profile has a visit to link", () => {
+    // The picker renders nothing without options, so the row must not name a fact the
+    // editor behind it cannot show (the allergy row's rule).
+    const none = skinLesionFactSummary({
+      ...FULL_SKIN_LESION,
+      visit: "",
+      linkableVisits: false,
+    });
+    expect(keysOf(none.chips)).not.toContain("visit");
+    expect(none.more).not.toContain("visit");
+
+    const some = skinLesionFactSummary({
+      ...FULL_SKIN_LESION,
+      visit: "",
+      linkableVisits: true,
+    });
+    expect(some.more).toContain("visit");
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = skinLesionFactSummary({
+      ...FULL_SKIN_LESION,
+      sizeMm: "",
+      recheckDays: "",
+      notes: "",
+    });
+    const expected: SkinLesionFactKey[] = ["size", "recheck", "notes"];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, SKIN_LESION_FACT_NOUNS)).toBe(
+      "size, recheck interval, notes…"
+    );
+  });
+});
+
+const FULL_DENTAL: DentalProcedureFactInput = {
+  procedureDate: "2026-03-04",
+  status: "watch",
+  cdtCode: "D2392",
+  tooth: "14",
+  surface: "MOD",
+  recheckDays: "180",
+  finding: "watch mesial for recurrent decay",
+  provider: "Dr. Rivera",
+  notes: "patient reports sensitivity",
+};
+
+describe("the dental-procedure row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = dentalFactSummary(FULL_DENTAL);
+    expect(keysOf(chips)).toEqual([
+      "date",
+      "status",
+      "cdt",
+      "tooth",
+      "recheck",
+      "finding",
+      "provider",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("prompts for a missing CDT code rather than going quiet about it", () => {
+    // The #704 invasiveness gate reads the code first; without it the MRONJ /
+    // prophylaxis / anticoagulant notes depend on the name hitting one of fourteen
+    // conservative patterns.
+    const { chips, more } = dentalFactSummary({ ...FULL_DENTAL, cdtCode: "" });
+    expect(stateOf(chips, "cdt")).toBe("missing");
+    expect(more).not.toContain("cdt");
+  });
+
+  it("prompts for a missing date, which both readers drop the record for", () => {
+    const { chips, more } = dentalFactSummary({
+      ...FULL_DENTAL,
+      procedureDate: "",
+    });
+    expect(stateOf(chips, "date")).toBe("missing");
+    expect(more).not.toContain("date");
+  });
+
+  it("states the status the server will store, not the one the select holds", () => {
+    // `normalizeDentalStatus` degrades anything off-vocabulary to 'completed', so a
+    // tampered or imported value reads on the chip as what the action will write.
+    expect(
+      dentalFactSummary({ ...FULL_DENTAL, status: "" }).chips.find(
+        (c) => c.key === "status"
+      )?.label
+    ).toBe("Completed");
+  });
+
+  it("states the tooth and its surface as ONE fact, through the shared label", () => {
+    expect(
+      dentalFactSummary(FULL_DENTAL).chips.find((c) => c.key === "tooth")?.label
+    ).toBe("#14 MOD");
+  });
+
+  it("lets an untoothed record go quiet instead of prompting", () => {
+    // The asymmetry with the skin row's `location`, asserted rather than only argued:
+    // `sameTooth` matches on recency whenever either side is unspecified, so an absent
+    // tooth is defined rather than missing — and a prophylaxis has none to name.
+    const { chips, more } = dentalFactSummary({
+      ...FULL_DENTAL,
+      tooth: "",
+      surface: "",
+    });
+    expect(keysOf(chips)).not.toContain("tooth");
+    expect(more).toContain("tooth");
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = dentalFactSummary({
+      ...FULL_DENTAL,
+      tooth: "",
+      surface: "",
+      recheckDays: "",
+      provider: "",
+      notes: "",
+    });
+    const expected: DentalProcedureFactKey[] = [
+      "tooth",
+      "recheck",
+      "provider",
+      "notes",
+    ];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, DENTAL_PROCEDURE_FACT_NOUNS)).toBe(
+      "tooth, recheck interval, provider, notes…"
+    );
+  });
+});
+
+const FULL_PROCEDURE: ProcedureFactInput = {
+  code: "45378",
+  codeSystem: "CPT",
+  date: "2026-03-04",
+  provider: "Dr. Smith",
+  notes: "no polyps",
+};
+
+describe("the procedure row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = procedureFactSummary(FULL_PROCEDURE);
+    expect(keysOf(chips)).toEqual(["code", "date", "provider", "notes"]);
+    expect(more).toEqual([]);
+  });
+
+  it("reads the code system with the code rather than as its own chip", () => {
+    // A bare "45378" is a different concept in CPT and SNOMED CT, so the two read
+    // together or the chip states less than it appears to.
+    expect(
+      procedureFactSummary(FULL_PROCEDURE).chips.find((c) => c.key === "code")
+        ?.label
+    ).toBe("45378 · CPT");
+  });
+
+  it("prompts for both essentials when neither is stated", () => {
+    // The preventive clock reads a procedure code-first and drops any record whose
+    // date is not a real ISO day, so an uncoded undated row satisfies nothing.
+    const { chips, more } = procedureFactSummary({
+      ...FULL_PROCEDURE,
+      code: "",
+      codeSystem: "",
+      date: "",
+    });
+    expect(stateOf(chips, "code")).toBe("missing");
+    expect(stateOf(chips, "date")).toBe("missing");
+    expect(more).toEqual([]);
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = procedureFactSummary({
+      ...FULL_PROCEDURE,
+      provider: "",
+      notes: "",
+    });
+    const expected: ProcedureFactKey[] = ["provider", "notes"];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, PROCEDURE_FACT_NOUNS)).toBe(
+      "provider, notes…"
     );
   });
 });
