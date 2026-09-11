@@ -20,8 +20,8 @@ import {
 } from "@/lib/record-qa";
 import {
   SEARCH_LOGGED_KINDS,
-  SEARCH_LOGGED_KIND_LABELS,
   type SearchHit,
+  type SearchLoggedKind,
 } from "@/lib/search-rank";
 import type { AppRoute } from "@/lib/hrefs";
 
@@ -129,19 +129,32 @@ describe("buildRetrievalSet — numbered, capped citations", () => {
 // THE CITATION BADGE NAMES THE KIND (#5096). One `logged` domain carried seven kinds,
 // and the badge read the DOMAIN, so "Logged dose", "Practice", "Sleep" all printed
 // "Logged entry". The kind is a field on the hit now; the badge resolves from it.
+// The seven words a reader sees, WRITTEN OUT rather than read back off the table
+// under test — a control that re-reads the implementation cannot see a label change.
+// `Record<SearchLoggedKind, …>` keeps it total: an eighth kind is a type error here.
+const KIND_BADGE: Record<SearchLoggedKind, string> = {
+  dose: "Dose",
+  food: "Serving",
+  practice: "Practice",
+  symptom: "Symptom",
+  mood: "Check-in",
+  body: "Reading",
+  sleep: "Sleep",
+};
+
 describe("citationLabel — the badge a logged row shows", () => {
   it.each(SEARCH_LOGGED_KINDS)("names the %s kind, not the domain", (kind) => {
     const label = citationLabel({ domain: "logged", loggedKind: kind });
-    expect(label).toBe(SEARCH_LOGGED_KIND_LABELS[kind]);
+    expect(label).toBe(KIND_BADGE[kind]);
     expect(label).not.toBe(DOMAIN_LABEL.logged);
-    expect(label.trim()).not.toBe("");
   });
 
   it("gives the seven kinds seven different words", () => {
     // The defect was a whole family collapsing onto one word. Seven labels that are
     // not seven distinct words would be the same flattening under another spelling.
-    const labels = SEARCH_LOGGED_KINDS.map((k) => SEARCH_LOGGED_KIND_LABELS[k]);
-    expect(new Set(labels).size).toBe(SEARCH_LOGGED_KINDS.length);
+    expect(new Set(Object.values(KIND_BADGE)).size).toBe(
+      SEARCH_LOGGED_KINDS.length
+    );
   });
 
   it("leaves every other domain on its own DOMAIN_LABEL", () => {

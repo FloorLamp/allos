@@ -30,11 +30,7 @@ import { gatherHistoryLog } from "@/lib/history";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import { setLoginSetting, setProfileSetting } from "@/lib/settings";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
-import {
-  SEARCH_LOGGED_KIND_LABELS,
-  type SearchHit,
-  type SearchLoggedKind,
-} from "@/lib/search-rank";
+import type { SearchHit, SearchLoggedKind } from "@/lib/search-rank";
 import {
   buildRetrievalSet,
   citationLabel,
@@ -140,12 +136,19 @@ interface LoggedFixture {
   query: string;
   /** The row's title on the record, which is the hit's title. */
   title: string;
+  /**
+   * The word a reader sees for this kind — the subtitle's leading noun AND the Q&A
+   * citation badge (#5096). Written out here rather than read off the table under
+   * test: a control that re-reads the implementation cannot see a label change.
+   */
+  badge: string;
   seed: (profileId: number, day: string) => void;
 }
 
 const FIXTURES: LoggedFixture[] = [
   {
     kind: "dose",
+    badge: "Dose",
     query: "ibuprofen",
     title: "Ibuprofen",
     seed: (profileId, day) => {
@@ -158,6 +161,7 @@ const FIXTURES: LoggedFixture[] = [
   },
   {
     kind: "food",
+    badge: "Serving",
     query: "leafy greens",
     title: "Leafy greens",
     seed: (profileId, day) => {
@@ -169,6 +173,7 @@ const FIXTURES: LoggedFixture[] = [
   },
   {
     kind: "practice",
+    badge: "Practice",
     query: "sauna",
     title: "Sauna",
     seed: (profileId, day) => {
@@ -180,6 +185,7 @@ const FIXTURES: LoggedFixture[] = [
   },
   {
     kind: "symptom",
+    badge: "Symptom",
     query: "sore throat",
     title: "Sore throat",
     seed: (profileId, day) => {
@@ -191,6 +197,7 @@ const FIXTURES: LoggedFixture[] = [
   },
   {
     kind: "mood",
+    badge: "Check-in",
     query: "check-in",
     title: "Mood",
     seed: (profileId, day) => {
@@ -202,6 +209,7 @@ const FIXTURES: LoggedFixture[] = [
   },
   {
     kind: "body",
+    badge: "Reading",
     query: "weight",
     title: "Weight",
     seed: (profileId, day) => {
@@ -213,6 +221,7 @@ const FIXTURES: LoggedFixture[] = [
   },
   {
     kind: "sleep",
+    badge: "Sleep",
     query: "sleep",
     title: "Sleep",
     seed: (profileId, day) => night(profileId, day),
@@ -354,9 +363,7 @@ describe("the logged kinds in global search (#5006)", () => {
       for (const citation of citations) {
         expect(citation.domain).toBe("logged");
         expect(citation.loggedKind).toBe(fixture.kind);
-        expect(citationLabel(citation)).toBe(
-          SEARCH_LOGGED_KIND_LABELS[fixture.kind]
-        );
+        expect(citationLabel(citation)).toBe(fixture.badge);
         // The flattening itself, named: no kind may answer with the domain's word.
         expect(citationLabel(citation)).not.toBe(DOMAIN_LABEL.logged);
         expect(citation.subtitle?.split(" · ")[0]).toBe(
