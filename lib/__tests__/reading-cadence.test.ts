@@ -83,6 +83,23 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   // directions — the page charts its `metric_samples` stream AND folds in a
   // clinic-measured PEF of the same identity (see vitals-reading-surface.test.ts).
   "Peak Expiratory Flow": "continuous",
+  // The sleeping breathing rate (#5409) — a STREAM-ONLY identity, and the one entry
+  // in this table whose classification describes nothing that exists.
+  //
+  // `readingCadence` answers "which renderer does a `medical_records` row of this
+  // canonical name use". This name has no such rows and is not allowed to gain any:
+  // its readings are `metric_samples` `respiratory_rate_bpm` rows, written by the two
+  // wearable parsers and by nothing else, and a clinical count of the same analyte is
+  // the SEPARATE `Respiratory Rate` identity below. So neither answer here is a claim
+  // about a page anyone can open.
+  //
+  // It reads "episodic" because the identity map registers no SURFACE for it yet, and
+  // that is a deferral rather than the ruling: #5409 rules this quantity onto its own
+  // `breathing-rate` metric surface, and the slug cannot compile without the Trends
+  // census entry that must land with it (an `app/` change). When that lands, this entry
+  // becomes "continuous" and joins the list in the next test — which is exactly the
+  // deliberate edit this table exists to force.
+  "Breathing Rate (sleep)": "episodic",
   // Spirometry is EPISODIC: FEV1 / FVC / the ratio are measured on a pulmonology
   // report a handful of times in a life and read against a band (or, for the two
   // absolute volumes, against nothing — no predicted equation ships here), which is

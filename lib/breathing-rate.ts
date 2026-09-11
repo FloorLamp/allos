@@ -58,9 +58,29 @@ export const CLINICAL_RESPIRATORY_CANONICAL = "Respiratory Rate";
  * extraction are clinical by construction.
  */
 export const WEARABLE_RESPIRATORY_SOURCES: readonly string[] = [
+  // ORDER IS LOAD-BEARING, and only for display: `breathingRateSourceRank` reads it.
+  // Health Connect states a real sleep window; Takeout states a day label, so where a
+  // night carries both, the windowed reading is the one the night shows.
   "health-connect",
   "fitbit-takeout",
 ];
+
+/**
+ * Which of two stored readings for one night a surface shows — LOWER WINS.
+ *
+ * A night can hold one reading per origin (ten such nights on the record that raised
+ * #5409, where a Takeout archive and a live Health Connect sync covered the same week).
+ * Both rows stay readable per source in Data -> Manage; what this decides is which
+ * single number the night STATES, and it decides it by the same fact the sleep session
+ * election uses — a real window beats a day label.
+ *
+ * An unknown source ranks last rather than throwing: a surface must still print
+ * something for a row a future integration wrote.
+ */
+export function breathingRateSourceRank(source: string | null): number {
+  const i = WEARABLE_RESPIRATORY_SOURCES.indexOf(source ?? "");
+  return i < 0 ? WEARABLE_RESPIRATORY_SOURCES.length : i;
+}
 
 /**
  * Is this stored row's `source` a wearable's nightly breathing rate?

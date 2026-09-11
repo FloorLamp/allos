@@ -52,6 +52,10 @@ import { profileFoodSlotBoundaries } from "./profile-food-slot";
 import { normalizePracticeName } from "./practice";
 import { practiceWindowEvent } from "./intraday";
 import { formatMinutes } from "./duration";
+import {
+  BREATHING_RATE_METRIC,
+  breathingRateSourceRank,
+} from "./breathing-rate";
 import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
 import { historyHref, medicationHref, metricDetailHref } from "./hrefs";
 import {
@@ -202,6 +206,20 @@ export interface HistoryGatherCore {
 export interface HistoryGather extends HistoryGatherCore {
   /** The kinds this profile has ANY row for: what earns a filter chip (#3958). */
   presentKinds: HistoryKind[];
+}
+
+/**
+ * The night's breathing rate, as the Sleep row states it, or null when it has none.
+ *
+ * ONE DECIMAL, AND NO TRAILING ZERO. A tracker reports 13.6; a stored 14 prints as
+ * "14 br/min", not "14.0". Nothing is invented when the reading is absent — the segment
+ * is dropped and the row reads exactly as it did before #5409.
+ */
+function breathingRateSegment(
+  reading: { value: number } | undefined
+): string | null {
+  if (!reading || !Number.isFinite(reading.value)) return null;
+  return `${Number(reading.value.toFixed(1))} br/min`;
 }
 
 function wants(opts: HistoryGatherOptions, kind: HistoryKind): boolean {
@@ -1173,6 +1191,64 @@ export function gatherHistoryLog(
     const wakeDays = [...byWakeDay.keys()]
       .filter((wakeDay) => wakeDay >= since && wakeDay <= until)
       .sort((a, b) => (a < b ? 1 : -1));
+    // THE NIGHT'S BREATHING RATE (#5409). A wearable computes one per sleep log, and
+    // since it became a sleep-window sample the night is where it is stated: it is not
+    // a lab result and it no longer appears among them.
+    //
+    // KEYED ON THE SESSION START FIRST, the same natural key the reading is stored
+    // under, so the number on this row is the number for THIS session rather than for
+    // whatever else the day holds. The wake-day fallback is for the reading that has no
+    // session to key on — a Fitbit Takeout archive states a day label, not a window —
+    // and it is a fallback rather than the rule because `metric_samples.date` is the
+    // SOURCE's wake-day stamp and can sit a day off the profile-local one this row is
+    // filed under.
+    //
+    // ONE READING PER NIGHT, AND A REAL WINDOW BEATS A DAY LABEL: where a night carries
+    // both a Health Connect and a Takeout reading, the Health Connect one is shown,
+    // which is the same preference the sleep session election makes. Both rows remain
+    // readable per source in Data -> Manage.
+    const breathingBySession = new Map<
+      string,
+      { value: number; source: string | null }
+    >();
+    const breathingByDay = new Map<
+      string,
+      { value: number; source: string | null }
+    >();
+    if (wakeDays.length > 0) {
+      const earliest = wakeDays[wakeDays.length - 1];
+      const readings = db
+        .prepare(
+          `SELECT started_at, date, value, source FROM metric_samples
+            WHERE profile_id = ? AND metric = ? AND date >= ? AND date <= ?
+            ORDER BY id`
+        )
+        .all(
+          profileId,
+          BREATHING_RATE_METRIC,
+          shiftDateStr(earliest, -1),
+          shiftDateStr(wakeDays[0], 1)
+        ) as {
+        started_at: string;
+        date: string;
+        value: number;
+        source: string | null;
+      }[];
+      const prefer = (
+        held: { value: number; source: string | null } | undefined,
+        row: { value: number; source: string | null }
+      ) =>
+        !held ||
+        breathingRateSourceRank(row.source) <
+          breathingRateSourceRank(held.source);
+      for (const row of readings) {
+        const entry = { value: row.value, source: row.source };
+        if (prefer(breathingBySession.get(row.started_at), entry))
+          breathingBySession.set(row.started_at, entry);
+        if (prefer(breathingByDay.get(row.date), entry))
+          breathingByDay.set(row.date, entry);
+      }
+    }
     if (wakeDays.length > limit) truncated = true;
     for (const wakeDay of wakeDays.slice(0, limit)) {
       const period = mainSleepPeriod(byWakeDay.get(wakeDay)!);
@@ -1200,6 +1276,12 @@ export function gatherHistoryLog(
             ? `${clock(bed.hhmm)} – ${clock(wake.hhmm)}`
             : null,
           formatMinutes(period.durationMin),
+          // AFTER THE DURATION AND BEFORE THE SOURCE TAIL (#5409, owner ruling):
+          // quantity, then context, then provenance — the order every row here keeps.
+          breathingRateSegment(
+            breathingBySession.get(period.main.start) ??
+              breathingByDay.get(wakeDay)
+          ),
           source
             ? (getIntegration(source as IntegrationId)?.name ?? source)
             : null,
