@@ -773,6 +773,11 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+  await expect(page.getByTestId("set1-reps")).toHaveValue(/^\d/);
+  // The weight it wrote is set 1's own. Confirming that row left the grid's ONE
+  // layout alone (#5762) — the load is still stated once, above reps-only rows —
+  // so reading the recorded number back is the door's single tap.
+  await page.getByTestId("set-vary-1").click();
   await expect(weight).toHaveValue(/^\d/);
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })
