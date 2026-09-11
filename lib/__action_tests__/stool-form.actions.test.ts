@@ -46,10 +46,16 @@ describe("logStoolForm — the unstated tap is unchanged (#3273)", () => {
 
     // The path the form takes when nobody opens "Happened earlier?": no `at` field on
     // the post at all.
+    // EXACT, so a field added to this answer has to be looked at rather than
+    // absorbed. Since #5663 the answer also carries the day's receipt rows and which
+    // of them the tap landed on — a wider ANSWER over a byte-identical ROW, which is
+    // what the comparison below is about.
     expect(await logStoolForm(fd({ type: 4 }))).toEqual({
       ok: true,
       type: 4,
       dayCount: 1,
+      reading: { id: expect.any(Number) },
+      readings: [{ id: expect.any(Number), type: 4, hhmm: "21:30" }],
     });
     // …and the call the action made before #3273 added the parameter, on a second
     // profile at the same frozen instant.
