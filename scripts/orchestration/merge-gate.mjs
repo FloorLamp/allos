@@ -109,13 +109,13 @@ import {
   ownershipVerdict,
   readinessVerdict,
   reachVerdict,
-  tallyLine,
   receiptVerdict,
   RECEIPT_MARKER,
   baseMovedVerdict,
   cleanupOnExit,
   containsHead,
   prepareHeadTree,
+  tallyLine,
 } from "./merge-gate-core.mjs";
 import { titleLength, titleRuleRefusal } from "./title-rule.mjs";
 helpGuard(process.argv, import.meta.url);
