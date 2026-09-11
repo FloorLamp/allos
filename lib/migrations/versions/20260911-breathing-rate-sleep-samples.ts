@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 import { createLogger } from "../../log";
 import { adoptWearableBreathingRates } from "../../breathing-rate-db";
+import { deleteRowsWithCascade } from "../cascade-delete";
 
 // Issue #5409 (owner ruling, 2026-09-05): the wearable breathing rates already stored
 // as `medical_records` vitals become the sleep-window samples they always were.
@@ -43,19 +44,49 @@ import { adoptWearableBreathingRates } from "../../breathing-rate-db";
 // DB tier replays migrations, so this is a property it is exercised for rather than
 // one that is merely claimed.
 //
-// NOTHING ELSE REFERENCES THESE ROWS. The tables that carry a
-// `REFERENCES medical_records(id)` link - follow-up labs, instrument responses, the lab
-// lifecycle, medication links, preventive decisions - are all document- and lab-driven
-// and none of them can name a device vital: a wearable row has no document, no
-// provider, and no lab lifecycle. The delete therefore strands nothing.
+// -- THE DELETE, AND WHAT POINTS AT WHAT IT DELETES ---------------------------------
 //
-// THE #133 EDIT LOCK TRAVELS. A hand-corrected observation arrives in `metric_samples`
-// with `edited = 1`, so the next push does not re-clobber the value now that it lives
-// in the other store.
+// THE ROW REMOVAL RUNS THROUGH `deleteRowsWithCascade`, which is what
+// lib/__db_tests__/migration-child-links.test.ts asks of a row-deleting migration
+// (#2680). It is not a formality here: this file applies under `foreign_keys = OFF`
+// (runner.ts, issue #95), where SQLite performs NO cascade at all, so a bare
+// `DELETE FROM medical_records` would leave every child row pointing at a row that is
+// gone - a dangling reference `PRAGMA foreign_key_check` reports and the runtime delete
+// would never have produced. The helper walks the inbound links out of
+// `PRAGMA foreign_key_list` at apply time and removes what the runtime would have
+// removed, so the migration's delete and the ingest's delete leave the same graph.
+//
+// AND IT IS HANDED ROWS THAT HAVE NO CHILDREN TO CASCADE. An earlier draft of this
+// header claimed "nothing else references these rows" and it was FALSE:
+// `medical_record_revisions.record_id` cascades on `medical_records(id)` and is written
+// by the ingest itself (`upsertVitals` -> `insertObservationRevision`) whenever a
+// re-send supersedes a stored value - which a rolling 48-hour Health Connect window
+// does routinely. `adoptWearableBreathingRates` now excludes a row carrying one from
+// its candidate set entirely (see its header): the reading and its #1404 lineage stay
+// exactly where they are rather than being orphaned here or destroyed at runtime. The
+// helper above is therefore the guard for every OTHER inbound link - follow-up labs,
+// instrument responses, the lab lifecycle, medication links, preventive decisions - all
+// of which are document- and lab-driven and none of which can name a device vital.
+//
+// THE #133 EDIT LOCK IS HONOURED ON BOTH BRANCHES. A hand-corrected observation is
+// elected ahead of the vendor's later re-stamp and arrives in `metric_samples` with
+// `edited = 1`, so the next push does not re-clobber it now that it lives in the other
+// store - and a locked row the night did NOT adopt is left in `medical_records` with
+// its value and its note, never silently dropped.
 const log = createLogger("migration:breathing-rate-sleep-samples");
 
 export function up(db: Database.Database): void {
-  const { adopted, removed } = adoptWearableBreathingRates(db);
+  const { adopted, removed } = adoptWearableBreathingRates(
+    db,
+    undefined,
+    (rows) => {
+      deleteRowsWithCascade(
+        db,
+        "medical_records",
+        rows.map((row) => row.id)
+      );
+    }
+  );
   if (adopted > 0 || removed > 0)
     log.info("wearable breathing rates moved to sleep-window samples", {
       adopted,

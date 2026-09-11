@@ -24,6 +24,12 @@
 //   4. a clinical row on the same night  — the discrimination, from the other side
 //   5. the migration over a fixture      — three stamps, one stamp, two Takeout days, a
 //                                          spot reading and two clinical rows
+//   6. the correction round              — the four reachable defects PR #5880's
+//                                          falsifying pass found, each constructed:
+//                                          the #1404 lineage under BOTH foreign-key
+//                                          postures, the #133 lock on both branches,
+//                                          the origin-aware natural key, and the chart
+//                                          that averaged two sources into a third number
 //
 // SYNTHETIC ONLY: fictional profiles, invented readings, no PHI.
 
@@ -34,6 +40,8 @@ import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-in
 import { getTimezone, setTimezone } from "@/lib/settings";
 import { up as breathingRateMigration } from "@/lib/migrations/versions/20260911-breathing-rate-sleep-samples";
 import { BREATHING_RATE_METRIC } from "@/lib/breathing-rate";
+import { getMetricDailyTotals } from "@/lib/queries/metrics";
+import { ALL_ROWS } from "@/lib/trends";
 import { gatherHistoryLog } from "@/lib/history";
 
 const ORIGIN = "com.fitbit.FitbitMobile";
@@ -287,54 +295,68 @@ describe("a clinical respiratory rate is not touched", () => {
   });
 });
 
-describe("the migration is the adoption run over history", () => {
-  /** The store as it looked before #5409: stamp-keyed vitals, no nightly samples. */
-  function legacyWearableReading(
-    profileId: number,
-    opts: { date: string; value: number; stamp: string | null; source: string }
-  ): void {
-    db.prepare(
-      `INSERT INTO medical_records
+/**
+ * The store as it looked before #5409: stamp-keyed vitals, no nightly samples.
+ * Returns the row id, which the correction-round cases below attach children to.
+ */
+function legacyWearableReading(
+  profileId: number,
+  opts: { date: string; value: number; stamp: string | null; source: string }
+): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO medical_records
          (profile_id, date, occurred_at, category, name, canonical_name,
           value, value_num, unit, source, external_id)
        VALUES (?, ?, ?, 'vitals', 'Respiratory Rate', 'Respiratory Rate',
                ?, ?, 'breaths/min', ?, ?)`
-    ).run(
-      profileId,
-      opts.date,
-      opts.stamp,
-      String(opts.value),
-      opts.value,
-      opts.source,
-      `${opts.source}:Respiratory Rate:${opts.stamp ?? opts.date}`
-    );
-  }
+      )
+      .run(
+        profileId,
+        opts.date,
+        opts.stamp,
+        String(opts.value),
+        opts.value,
+        opts.source,
+        `${opts.source}:Respiratory Rate:${opts.stamp ?? opts.date}`
+      ).lastInsertRowid
+  );
+}
 
-  function storedSession(
-    profileId: number,
-    opts: {
-      source: string;
-      origin: string | null;
-      date: string;
-      start: string;
-      end: string;
-    }
-  ): void {
-    db.prepare(
-      `INSERT INTO metric_samples
+function storedSession(
+  profileId: number,
+  opts: {
+    source: string;
+    origin: string | null;
+    date: string;
+    start: string;
+    end: string;
+  }
+): void {
+  db.prepare(
+    `INSERT INTO metric_samples
          (profile_id, source, origin, metric, date, started_at, ended_at, value)
        VALUES (?, ?, ?, 'sleep_min', ?, ?, ?, ?)`
-    ).run(
-      profileId,
-      opts.source,
-      opts.origin,
-      opts.date,
-      opts.start,
-      opts.end,
-      Math.round((Date.parse(opts.end) - Date.parse(opts.start)) / 60000)
-    );
-  }
+  ).run(
+    profileId,
+    opts.source,
+    opts.origin,
+    opts.date,
+    opts.start,
+    opts.end,
+    Math.round((Date.parse(opts.end) - Date.parse(opts.start)) / 60000)
+  );
+}
 
+/** Run the #5409 migration's `up` over the whole store, as the runner does. */
+function runBreathingRateMigration(): void {
+  breathingRateMigration(
+    db as unknown as Parameters<typeof breathingRateMigration>[0]
+  );
+}
+
+describe("the migration is the adoption run over history", () => {
   it("collapses a three-stamp night, keeps a one-stamp night, places a Takeout day, and leaves the clinic alone", () => {
     const profileId = newProfile("History");
 
@@ -601,5 +623,340 @@ describe("the migration is the adoption run over history", () => {
     run();
     expect(nightlyRows(profileId)).toEqual(after);
     expect(after).toHaveLength(1);
+  });
+});
+
+// ── THE CORRECTION ROUND (PR #5880's falsifying pass, owner ruling 2026-09-11) ──────
+//
+// Four reachable defects, each constructed here rather than argued. The move stays; the
+// DELETE is what these cases are about.
+//
+//   1. `medical_record_revisions` — the #1404 correction lineage the ingest itself
+//      writes. Proven on BOTH postures: foreign keys OFF (the migration, where a bare
+//      delete ORPHANS the child) and ON (runtime, where it DESTROYS it).
+//   2. The #133 edit lock on the UPDATE path — a hand correction the adoption dropped
+//      because only the insert branch consulted `edited`.
+//   3. The lock on the INSERT path — the vendor's later re-stamp used to win the
+//      election and then wear the lock, so a locked sample stated a value nobody typed.
+//   4. `readSample` read four of the natural key's five columns, so a sample under a
+//      DIFFERENT origin at the same start swallowed the adoption.
+//   5. The chart averaged two SOURCES into a number neither device reported.
+
+/** The correction lineage rows hanging off one reading, oldest first. */
+function revisionsOf(recordId: number) {
+  return db
+    .prepare(
+      `SELECT id, record_id, value_num FROM medical_record_revisions
+        WHERE record_id = ? ORDER BY id`
+    )
+    .all(recordId) as {
+    id: number;
+    record_id: number;
+    value_num: number | null;
+  }[];
+}
+
+/** Revision rows for `recordId` whose parent is gone — the orphan the ratchet is for. */
+function orphanedRevisions(recordId: number) {
+  return db
+    .prepare(
+      `SELECT rev.id FROM medical_record_revisions rev
+         LEFT JOIN medical_records mr ON mr.id = rev.record_id
+        WHERE rev.record_id = ? AND mr.id IS NULL`
+    )
+    .all(recordId) as { id: number }[];
+}
+
+/** What `insertObservationRevision` writes when a re-send supersedes a stored value. */
+function priorState(recordId: number, value: number): void {
+  db.prepare(
+    `INSERT INTO medical_record_revisions
+       (record_id, date, value, value_num, unit, source)
+     VALUES (?, '2026-09-05', ?, ?, 'breaths/min', 'health-connect')`
+  ).run(recordId, String(value), value);
+}
+
+/** The record editor's own write: app/(app)/results/clinical-result-actions.ts. */
+function handCorrect(recordId: number, value: number, note: string): void {
+  db.prepare(
+    `UPDATE medical_records
+        SET value = ?, value_num = ?, notes = ?, edited = 1
+      WHERE id = ?`
+  ).run(String(value), value, note, recordId);
+}
+
+describe("a reading with a correction lineage is kept, not orphaned or cascaded", () => {
+  it("survives the migration's posture — foreign keys OFF", () => {
+    // THE ORPHAN, EXACTLY AS `runner.ts` WOULD PRODUCE IT. `medical_record_revisions`
+    // cascades on `medical_records(id)`, and a disabled foreign-key subsystem fires no
+    // action at all, so before the fix the reading went and the revision stayed behind
+    // pointing at nothing — a dangling reference `PRAGMA foreign_key_check` reports.
+    const profileId = newProfile("Lineage, keys off");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const recordId = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 14.1,
+      stamp: PROVISIONAL_STAMP,
+      source: "health-connect",
+    });
+    priorState(recordId, 13.6);
+
+    const fkWasOn = db.pragma("foreign_keys", { simple: true }) === 1;
+    if (fkWasOn) db.pragma("foreign_keys = OFF");
+    try {
+      runBreathingRateMigration();
+    } finally {
+      if (fkWasOn) db.pragma("foreign_keys = ON");
+    }
+
+    expect(orphanedRevisions(recordId)).toEqual([]);
+    expect(revisionsOf(recordId).map((r) => r.value_num)).toEqual([13.6]);
+    // KEPT, not moved: the lineage cannot follow a reading into `metric_samples`, so
+    // the reading stays where its lineage can still reach it.
+    expect(
+      respiratoryObservations(profileId).map((r) => [r.id, r.value_num])
+    ).toEqual([[recordId, 14.1]]);
+    expect(nightlyRows(profileId)).toEqual([]);
+  });
+
+  it("survives the live push path — foreign keys ON", () => {
+    // THE SAME ROW, THROUGH THE SHIPPED INGEST AND NOTHING ELSE. Two pushes on ONE
+    // stamp with a corrected rate is what `upsertVitals` -> `insertObservationRevision`
+    // is for, and a rolling 48-hour Health Connect window re-sends that stamp routinely.
+    // With keys ON the old delete did not orphan the revision, it destroyed it.
+    const profileId = newProfile("Lineage, keys on");
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+    push(profileId, {
+      stamp: "2026-09-05T07:24:00Z",
+      breathing: [{ time: PROVISIONAL_STAMP, rate: 13.6 }],
+    });
+    push(profileId, {
+      stamp: "2026-09-05T07:40:00Z",
+      breathing: [{ time: PROVISIONAL_STAMP, rate: 14.1 }],
+    });
+    const observations = respiratoryObservations(profileId);
+    expect(observations.map((r) => r.value_num)).toEqual([14.1]);
+    const recordId = observations[0].id;
+    // The ingest wrote the lineage itself — nothing in this test did.
+    expect(revisionsOf(recordId).map((r) => r.value_num)).toEqual([13.6]);
+
+    // The session lands, containing that stamp, and carries the night's own reading.
+    push(profileId, {
+      stamp: "2026-09-05T08:27:00Z",
+      sessions: [{ start: BED, end: FIRST_WAKE }],
+      breathing: [{ time: FIRST_WAKE, rate: 13.9 }],
+    });
+
+    expect(nightlyRows(profileId)).toMatchObject([{ value: 13.9 }]);
+    expect(revisionsOf(recordId).map((r) => r.value_num)).toEqual([13.6]);
+    expect(respiratoryObservations(profileId).map((r) => r.id)).toEqual([
+      recordId,
+    ]);
+  });
+});
+
+describe("the #133 edit lock travels on BOTH branches", () => {
+  it("keeps a hand correction the night already has a sample for", () => {
+    // THE PATH THE FALSIFYING PASS WALKED, end to end through shipped code: a wearable
+    // spot reading, corrected in the record editor (which sets `edited = 1`), then the
+    // next push carries the session and the reading. The old update branch dropped
+    // every candidate row with no `edited` check at all.
+    const profileId = newProfile("Lock, update path");
+    push(profileId, {
+      stamp: "2026-09-05T07:24:00Z",
+      breathing: [{ time: PROVISIONAL_STAMP, rate: 13.8 }],
+    });
+    const recordId = respiratoryObservations(profileId)[0].id;
+    handCorrect(recordId, 17.2, "counted it myself");
+
+    push(profileId, {
+      stamp: "2026-09-05T08:27:00Z",
+      sessions: [{ start: BED, end: FIRST_WAKE }],
+      breathing: [{ time: FIRST_WAKE, rate: 14.1 }],
+    });
+
+    // The night states the reading the session published — this branch never overwrites.
+    expect(nightlyRows(profileId)).toMatchObject([{ value: 14.1 }]);
+    // And the correction is still a reading, with its value, its note and its lock.
+    expect(respiratoryObservations(profileId)).toMatchObject([
+      { id: recordId, value_num: 17.2, notes: "counted it myself", edited: 1 },
+    ]);
+  });
+
+  it("adopts the hand-corrected value, not the vendor's later re-stamp", () => {
+    // THE INSERT BRANCH. The lock used to be read off the NIGHT (`rows.some(...)`) while
+    // the value was elected by stamp, so the vendor's 13.6 was written and then locked:
+    // the typed number destroyed, and a value nobody edited wearing the lock that stops
+    // the next push from correcting it.
+    const profileId = newProfile("Lock, insert path");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    const correctedId = legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 13.8,
+      stamp: PROVISIONAL_STAMP,
+      source: "health-connect",
+    });
+    handCorrect(correctedId, 17.2, "counted it myself");
+    legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 13.6,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+
+    runBreathingRateMigration();
+
+    expect(nightlyRows(profileId)).toEqual([
+      {
+        date: WAKE_DAY,
+        source: "health-connect",
+        origin: ORIGIN,
+        started_at: BED,
+        ended_at: FINAL_WAKE,
+        value: 17.2,
+        edited: 1,
+      },
+    ]);
+    // The locked row left `medical_records` because the night now STATES its number —
+    // which is the only way a locked row may leave. The unlocked re-stamp went with it.
+    expect(respiratoryObservations(profileId)).toEqual([]);
+  });
+});
+
+describe("the adoption reads the whole natural key", () => {
+  it("is not swallowed by a sample at the same start under another origin", () => {
+    // `idx_metric_samples_natural` is (profile_id, metric, source, COALESCE(origin,''),
+    // start_time). Reading four of those five answered "this night is taken" for a row
+    // belonging to a DIFFERENT writing package: the adoption then inserted nothing and
+    // deleted the observation anyway — a reading removed and not replaced.
+    const profileId = newProfile("Origin-aware key");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
+       VALUES (?, 'health-connect', 'com.other.Tracker', ?, ?, ?, ?, 11.1)`
+    ).run(profileId, BREATHING_RATE_METRIC, WAKE_DAY, BED, FINAL_WAKE);
+    legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 13.6,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+
+    runBreathingRateMigration();
+
+    expect(
+      nightlyRows(profileId)
+        .map((r) => [r.origin, r.value])
+        .sort()
+    ).toEqual([
+      [ORIGIN, 13.6],
+      ["com.other.Tracker", 11.1],
+    ]);
+    expect(respiratoryObservations(profileId)).toEqual([]);
+  });
+});
+
+describe("the body census states one number per night (#5409)", () => {
+  function nightlySample(
+    profileId: number,
+    opts: {
+      source: string;
+      origin: string | null;
+      date: string;
+      start: string;
+      end: string;
+      value: number;
+    }
+  ): void {
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      profileId,
+      opts.source,
+      opts.origin,
+      BREATHING_RATE_METRIC,
+      opts.date,
+      opts.start,
+      opts.end,
+      opts.value
+    );
+  }
+
+  it("states the source rank's number, never an average of two sources", () => {
+    // TWO SPELLINGS OF ONE NIGHT: a live Health Connect sync and a Fitbit Takeout
+    // archive covering the same week. Averaged they charted 14.8 br/min while the sleep
+    // row for that very night read 13.6 · Google Health Connect — a number neither
+    // device reported. A real window beats a day label, which is the same rank
+    // lib/history.ts already used.
+    const profileId = newProfile("Two sources, one night");
+    nightlySample(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+      value: 13.6,
+    });
+    nightlySample(profileId, {
+      source: "fitbit-takeout",
+      origin: null,
+      date: WAKE_DAY,
+      start: `${WAKE_DAY}T00:00:00.000Z`,
+      end: `${WAKE_DAY}T23:59:59.999Z`,
+      value: 16,
+    });
+
+    expect(
+      getMetricDailyTotals(profileId, BREATHING_RATE_METRIC, ALL_ROWS)
+    ).toEqual([{ date: WAKE_DAY, value: 13.6 }]);
+  });
+
+  it("still averages ONE source's nap and night, which is what AVERAGED_METRICS is for", () => {
+    // THE REAL 27.2, and the one the registration is registered for. Two sessions of
+    // one source in one wake day are two rows on two session starts; the additive
+    // default would chart their SUM. Two sources never reach that default together —
+    // the SUM path elects one per day — which is what made the old comment false.
+    const profileId = newProfile("One source, two sleeps");
+    nightlySample(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FIRST_WAKE,
+      value: 13,
+    });
+    nightlySample(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: "2026-09-05T14:00:00Z",
+      end: "2026-09-05T15:30:00Z",
+      value: 14,
+    });
+
+    expect(
+      getMetricDailyTotals(profileId, BREATHING_RATE_METRIC, ALL_ROWS)
+    ).toEqual([{ date: WAKE_DAY, value: 13.5 }]);
   });
 });

@@ -87,12 +87,19 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
     stream: null,
   },
   { canonical: "Oxygen Saturation", surface: "spo2", stream: null },
-  // `Respiratory Rate` IS an observation-only identity, and #5409 is what proved it.
-  // The claim used to be wrong by accident: a wearable's nightly breathing rate was
-  // being written under this name as a `medical_records` vital, so the stream existed
-  // and was filed in the wrong place. It is its own identity now (below), and this
-  // entry means what it says — a spot count taken while awake, judged at 12-20 with
-  // LOINC 9279-1, arriving from a document or by hand and from nowhere else.
+  // `Respiratory Rate` is an observation-only identity: no stream half, a spot count
+  // taken while awake, judged at 12-20 with LOINC 9279-1. #5409 moved the wearable's
+  // NIGHTLY rate — which was being written under this name as a `medical_records` vital
+  // — out to its own identity (below), so the name no longer covers two quantities.
+  //
+  // IT IS NOT YET TRUE THAT ONLY A DOCUMENT OR A HAND CAN WRITE ONE, and saying so
+  // would be a barrier wider than the code (PR #5880's falsifying pass). A wearable
+  // SPOT reading — a stamped respiratory record with no sleep session around it, which
+  // the Health Connect parser deliberately leaves an observation and the #5409 adoption
+  // deliberately declines to move — still lands here with `source = 'health-connect'`
+  // and is judged against the awake 12-20 band. That is pre-existing behaviour this
+  // issue declined to change, not something the move introduced; what would close it is
+  // a separate decision about where an unplaceable wearable reading belongs.
   { canonical: "Respiratory Rate", surface: "respiratory-rate", stream: null },
   { canonical: "Body Temperature", surface: "temperature", stream: null },
 
