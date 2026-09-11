@@ -431,6 +431,14 @@ export function parseDay(day: LocalDay): number {
 // Whole days from calendar date `a` to `b` (both YYYY-MM-DD), i.e. b − a.
 // UTC-anchored so it's timezone-independent and never crosses a DST boundary.
 // Returns null if either date is unparseable.
+//
+// TWO BRANDED DAYS ALWAYS SUBTRACT. A `LocalDay` is only ever minted by a validator or
+// a constructor in this module, so neither side can be unparseable and the `null` is
+// unreachable — declaring that in the type is what lets a caller holding two real days
+// use the number without inventing a fallback for a case it cannot reach (#5142). The
+// plain-string signature is unchanged for the callers that hand this stored text.
+export function daysBetweenDateStr(a: LocalDay, b: LocalDay): number;
+export function daysBetweenDateStr(a: string, b: string): number | null;
 export function daysBetweenDateStr(a: string, b: string): number | null {
   const ta = parseUtcSql(a.slice(0, 10) + "T00:00:00")?.getTime() ?? NaN;
   const tb = parseUtcSql(b.slice(0, 10) + "T00:00:00")?.getTime() ?? NaN;

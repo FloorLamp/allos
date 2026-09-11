@@ -22,10 +22,44 @@ import {
 } from "../dashboard-attention-identity";
 import { localTimeWindow } from "../dashboard-relevance";
 
+// The scheduled slot a dose item sits in, read from the key the dose generator itself
+// stamps (#297). One answer to "which slot is this dose in", shared with Home's
+// composer rather than re-derived there.
+export function itemDoseBucket(item: UpcomingItem): TimeBucket | null {
+  return item.domain === "dose" ? doseBucketFromSortHint(item.sortHint) : null;
+}
+
 function doseOpensAt(item: UpcomingItem): number | null {
-  if (item.domain !== "dose") return null;
-  const bucket = doseBucketFromSortHint(item.sortHint);
+  const bucket = itemDoseBucket(item);
   return bucket == null ? null : TIME_BUCKET_OPENS_AT[bucket];
+}
+
+// WHETHER THIS ITEM HOSTS SOMETHING THE PERSON CAN DO.
+//
+// The affordance fields are the item's own declaration of what it can host, so this
+// asks the item rather than its domain — the same distinction #2578 drew when asking
+// the domain deleted three unrelated row kinds at once. `actionLabel` covers only
+// navigation-first status rows; the typed one-tap actions have their own source
+// fields and are still actions even when the current viewer cannot perform the write.
+//
+// ONE answer for the whole app. The attention model's candidates and Home's Now band
+// (#5435 §2.2) ask exactly this question, so they read exactly this predicate: a
+// second copy would drift silently the next time `UpcomingItem` gains an affordance.
+// A fact with no control is neither's — it belongs to the glance card or the record,
+// which read it from a neutral dated reader and state it once.
+export function itemIsActionable(item: UpcomingItem): boolean {
+  return (
+    item.actionLabel != null ||
+    item.altAction != null ||
+    item.doseId != null ||
+    item.practiceLog != null ||
+    item.preventiveRuleKey != null ||
+    item.bookHref != null ||
+    item.carePlanItemId != null ||
+    item.conditionSuggestion != null ||
+    item.followUpResolve != null ||
+    item.followUpSettle != null
+  );
 }
 
 export function attentionAheadDetail(
@@ -236,21 +270,9 @@ function attentionItemCandidate(
   const opensAt = doseOpensAt(item);
   const setup = item.signalGroup === "setup";
   const dueNow = attentionDueNow(item, today);
-  // Carry the owning Upcoming surface's declared affordances. `actionLabel`
-  // covers only navigation-first status rows; the typed one-tap actions have
-  // their own source fields and are still action candidates even when the
-  // current viewer cannot perform the write.
-  const actionable =
-    item.actionLabel != null ||
-    item.altAction != null ||
-    item.doseId != null ||
-    item.practiceLog != null ||
-    item.preventiveRuleKey != null ||
-    item.bookHref != null ||
-    item.carePlanItemId != null ||
-    item.conditionSuggestion != null ||
-    item.followUpResolve != null ||
-    item.followUpSettle != null;
+  // Carry the owning Upcoming surface's declared affordances, through the one
+  // predicate that answers this for every surface.
+  const actionable = itemIsActionable(item);
   const common = {
     candidateId: dashboardAttentionCandidateId(item.key),
     factKey: dashboardAttentionFactKey(item.key),
