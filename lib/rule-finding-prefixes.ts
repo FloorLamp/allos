@@ -62,21 +62,42 @@ import { HOUSEHOLD_SETUP_PREFIX } from "./household-setup";
 import { RECORDS_RECENCY_PREFIX } from "./records-recency";
 import type { ReasonCode } from "./reasons";
 
-// The two reach tiers (#449). CARE is push: Upcoming + dashboard placement + (where wired)
-// the Telegram nudge. COACHING is calm: its own tab + dashboard placement — never a
-// notification, never dashboard Now.
-export type FindingTier = "care" | "coaching";
+// WHERE a coaching class's observation can be READ (#3129, #4241). The dashboard rollup
+// applies a relevance floor, so a class with no surface of its own renders nowhere on the
+// tone-derived default. Declaring that here is what makes `dashboardRelevance` a required
+// FIELD on the producer's findings instead of a literal a source scan had to look for.
+export type FindingReach =
+  // The rollup is the whole reach: the builder returns `RollupOnlyFinding`, so tsc
+  // requires the declaration on every finding it emits.
+  | "rollup-only"
+  // A surface of its own renders the observation, so the rollup keeps the tone-derived
+  // default and stays quiet about what that tab already shows. The row names the file and
+  // the symbol it reads — the builder, or the computation the builder maps into the
+  // envelope.
+  | { surface: string; symbol: string }
+  // Not aggregated by collectCoachingFindings (an Upcoming generator or a per-surface
+  // resolver registering a namespace for the suppression bus alone), so no floor applies.
+  | "not-aggregated";
 
 // One registered finding namespace: the dedupeKey PREFIX its builder keys under, the
 // reach TIER it travels, the BUILDER that emits it (for docs + test messages), and the
 // closed set of #656 Reason CODES a finding under this prefix may carry (empty when the
-// builder attaches no structured reason today — the common case).
-export interface RuleFindingRegistryEntry {
+// builder attaches no structured reason today — the common case). A COACHING entry also
+// declares its REACH; care findings reach Upcoming and the hero by definition.
+interface RuleFindingRegistryBase {
   prefix: string;
-  tier: FindingTier;
   builder: string;
   reasons: readonly ReasonCode[];
 }
+
+export type RuleFindingRegistryEntry =
+  | (RuleFindingRegistryBase & { tier: "care" })
+  | (RuleFindingRegistryBase & { tier: "coaching"; reach: FindingReach });
+
+// The two reach tiers (#449), read off the entry union so there is one list. CARE is
+// push: Upcoming + dashboard placement + (where wired) the Telegram nudge. COACHING is
+// calm: its own tab + dashboard placement — never a notification, never dashboard Now.
+export type FindingTier = RuleFindingRegistryEntry["tier"];
 
 // The single source of truth. Every finding-producing builder in the codebase appears
 // exactly once. COACHING members are precisely the builders aggregated by
@@ -85,36 +106,56 @@ export interface RuleFindingRegistryEntry {
 // condition-review, follow-up) and are
 // deliberately NOT in collectCoachingFindings. Order is irrelevant; membership + the
 // three columns are what the guards read.
-export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
+export const RULE_FINDING_REGISTRY = [
   // ---- Coaching tier (calm; aggregated by collectCoachingFindings) -----------
   {
     prefix: TRAINING_OBS_PREFIX,
     tier: "coaching",
     builder: "buildTrainingObservationFindings",
+    reach: {
+      surface: "app/(app)/training/TrainingFindings.tsx",
+      symbol: "buildTrainingObservationFindings",
+    },
     reasons: [],
   },
   {
     prefix: MUSCLE_VOLUME_PREFIX,
     tier: "coaching",
     builder: "buildMuscleVolumeFindings",
+    reach: {
+      surface: "app/(app)/training/OverviewSection.tsx",
+      symbol: "buildMuscleVolumeFindings",
+    },
     reasons: [],
   },
   {
     prefix: BODY_HYGIENE_PREFIX,
     tier: "coaching",
     builder: "buildBodyHygieneFindings",
+    reach: {
+      surface: "app/(app)/trends/BodyHygieneFindings.tsx",
+      symbol: "buildBodyHygieneFindings",
+    },
     reasons: [],
   },
   {
     prefix: GOAL_PACE_PREFIX,
     tier: "coaching",
     builder: "buildGoalPacingFindings",
+    reach: {
+      surface: "app/(app)/training/GoalPacingFindings.tsx",
+      symbol: "buildGoalPacingFindings",
+    },
     reasons: [],
   },
   {
     prefix: ADHERENCE_PREFIX,
     tier: "coaching",
     builder: "buildAdherencePatternFindings",
+    reach: {
+      surface: "app/(app)/nutrition/ManageTab.tsx",
+      symbol: "buildAdherencePatternFindings",
+    },
     reasons: [],
   },
   {
@@ -129,6 +170,10 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: DEMOTION_PREFIX,
     tier: "coaching",
     builder: "buildDemotionSuggestionFindings",
+    reach: {
+      surface: "app/(app)/nutrition/ManageTab.tsx",
+      symbol: "buildDemotionSuggestionFindings",
+    },
     reasons: [],
   },
   {
@@ -148,24 +193,42 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: RIGHTSIZE_PREFIX,
     tier: "coaching",
     builder: "buildTargetRightSizeFindings",
+    // The domain pages render the SAME envelope through the exported per-candidate
+    // mapper, filtered by the same bus.
+    reach: {
+      surface: "components/RightSizeSuggestions.tsx",
+      symbol: "rightSizeCandidateFinding",
+    },
     reasons: [],
   },
   {
     prefix: FOOD_SUGGEST_PREFIX,
     tier: "coaching",
     builder: "buildFoodSuggestionFindings",
+    reach: {
+      surface: "app/(app)/nutrition/FoodTab.tsx",
+      symbol: "getFoodSuggestions",
+    },
     reasons: [],
   },
   {
     prefix: FOOD_REDUCE_PREFIX,
     tier: "coaching",
     builder: "buildFoodSuggestionFindings",
+    reach: {
+      surface: "app/(app)/nutrition/FoodTab.tsx",
+      symbol: "getFoodSuggestions",
+    },
     reasons: [],
   },
   {
     prefix: FOOD_HABIT_PREFIX,
     tier: "coaching",
     builder: "buildFoodHabitFindings",
+    reach: {
+      surface: "app/(app)/nutrition/WeeklyHabits.tsx",
+      symbol: "getFrequencyTargetProgress",
+    },
     reasons: [],
   },
   {
@@ -179,6 +242,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: FOOD_DRUG_VARIANCE_PREFIX,
     tier: "coaching",
     builder: "buildFoodDrugVarianceFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -191,12 +255,22 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SUBSTANCE_USE_PREFIX,
     tier: "coaching",
     builder: "buildSubstanceUseFindings",
+    // The substance page renders the finding's exact detail line (capProgressLine over
+    // the same week state) with attention styling at or over the cap.
+    reach: {
+      surface: "app/(app)/records/SubstanceUseSection.tsx",
+      symbol: "capProgressLine",
+    },
     reasons: [],
   },
   {
     prefix: PROTEIN_ADEQUACY_PREFIX,
     tier: "coaching",
     builder: "buildProteinAdequacyFindings",
+    reach: {
+      surface: "app/(app)/nutrition/FoodTab.tsx",
+      symbol: "getProteinAdequacy",
+    },
     reasons: [],
   },
   {
@@ -206,6 +280,10 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: FIBER_ADEQUACY_PREFIX,
     tier: "coaching",
     builder: "buildFiberAdequacyFindings",
+    reach: {
+      surface: "app/(app)/nutrition/FoodTab.tsx",
+      symbol: "getFiberAdequacy",
+    },
     reasons: [],
   },
   {
@@ -215,18 +293,26 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: ENDURANCE_PLAN_PREFIX,
     tier: "coaching",
     builder: "buildEndurancePlanFindings",
+    // #3285 widened the Overview's read from getEndurancePlanCards to getEnduranceEvents
+    // — the same coached cards, plus the events that have no trajectory.
+    reach: {
+      surface: "app/(app)/training/OverviewSection.tsx",
+      symbol: "getEnduranceEvents",
+    },
     reasons: [],
   },
   {
     prefix: SUN_EXPOSURE_PREFIX,
     tier: "coaching",
     builder: "buildSunExposureFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
     prefix: ORAL_HEALTH_PREFIX,
     tier: "coaching",
     builder: "buildOralHealthFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -236,6 +322,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: FITNESS_CHECK_PREFIX,
     tier: "coaching",
     builder: "buildFitnessCheckFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -245,6 +332,12 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: MOBILITY_SUGGEST_PREFIX,
     tier: "coaching",
     builder: "buildMobilitySuggestionFindings",
+    // The Training overview renders the same suggestions (title, detail, accept,
+    // shared-bus dismiss) straight from the one computation.
+    reach: {
+      surface: "app/(app)/training/MobilitySection.tsx",
+      symbol: "getMobilitySuggestions",
+    },
     reasons: [],
   },
   {
@@ -255,6 +348,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: MOOD_OBS_PREFIX,
     tier: "coaching",
     builder: "buildMoodFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -264,6 +358,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SLEEP_MOOD_PREFIX,
     tier: "coaching",
     builder: "buildSleepMoodBridgeFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -276,6 +371,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: PAIRED_OBS_PREFIX,
     tier: "coaching",
     builder: "buildPairedObservationFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -287,6 +383,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: MED_DUP_PREFIX,
     tier: "coaching",
     builder: "buildMedicationDuplicationFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -300,6 +397,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: DATA_QUALITY_PREFIX,
     tier: "coaching",
     builder: "buildDataQualityFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -313,6 +411,10 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SLEEP_SKEW_PREFIX,
     tier: "coaching",
     builder: "buildSleepClockSkewFindings",
+    // The Sleep page HEDGES a suspect night's times and offers the delete, but it
+    // renders no finding envelope — the rollup is the only place the observation itself
+    // is reachable (#4299).
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -327,6 +429,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: CYCLE_BLEEDING_PREFIX,
     tier: "coaching",
     builder: "buildCycleBleedingFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -340,6 +443,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: TTC_WORKUP_PREFIX,
     tier: "coaching",
     builder: "buildTtcWorkupFindings",
+    reach: "rollup-only",
     reasons: [],
   },
   {
@@ -361,6 +465,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SYNC_REQUEST_PREFIX,
     tier: "coaching",
     builder: "syncRequestItems (Upcoming generator, lib/queries/upcoming)",
+    reach: "not-aggregated",
     reasons: [],
   },
   {
@@ -385,6 +490,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: RECORDS_RECENCY_PREFIX,
     tier: "coaching",
     builder: "recordsRecencyItems (Upcoming generator, lib/queries/upcoming)",
+    reach: "not-aggregated",
     reasons: [],
   },
   {
@@ -407,6 +513,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: DIGEST_TIME_PREFIX,
     tier: "coaching",
     builder: "activeDigestTimeSuggestion (lib/digest-time-suggestion.ts)",
+    reach: "not-aggregated",
     reasons: [],
   },
   {
@@ -433,6 +540,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: HOUSEHOLD_SETUP_PREFIX,
     tier: "coaching",
     builder: "householdSetupForProfile (lib/queries/household-setup.ts)",
+    reach: "not-aggregated",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------
@@ -503,9 +611,10 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: POOR_SLEEP_OVERRIDE_PREFIX,
     tier: "coaching",
     builder: "dismissDerivedPoorSleep (suppression-only, no finding builder)",
+    reach: "not-aggregated",
     reasons: [],
   },
-];
+] as const satisfies readonly RuleFindingRegistryEntry[];
 
 // Every namespace the finding builders key their dedupeKeys under (derived — the
 // backward-compatible flat list the page dismiss guards + reflection guard have always

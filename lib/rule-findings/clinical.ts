@@ -27,7 +27,10 @@ import {
   EMPTY_RISK_ATTRIBUTES,
 } from "../risk-stratification";
 import { lastNDates } from "../date";
-import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "../findings";
+import {
+  FINDING_DASHBOARD_RELEVANCE,
+  type RollupOnlyFinding,
+} from "../findings";
 import { COACHING_ENTITY_FINDING_LIMITS } from "./limits";
 
 // ---- Oral health: diabetes↔periodontitis link (coaching tier only, #706) ----
@@ -41,7 +44,9 @@ import { COACHING_ENTITY_FINDING_LIMITS } from "./limits";
 // deriveRiskFactors engine the visit-cadence tightening uses, so the note and the
 // tightened dental cadence key on one answer (one question, one computation). No
 // owned SQL is added here (reads through the profile-scoped intake-safety gather).
-export function buildOralHealthFindings(profileId: number): Finding[] {
+export function buildOralHealthFindings(
+  profileId: number
+): RollupOnlyFinding[] {
   // Active conditions from the ONE shared intake-safety gather (#661).
   const conditions = getIntakeSafetyContext(profileId).conditions;
   const factors = deriveRiskFactors({
@@ -87,7 +92,7 @@ export function buildOralHealthFindings(profileId: number): Finding[] {
 export function buildCycleBleedingFindings(
   profileId: number,
   today: string
-): Finding[] {
+): RollupOnlyFinding[] {
   return prolongedBleedingObservations(listCyclePeriods(profileId), today)
     .slice(0, COACHING_ENTITY_FINDING_LIMITS.prolongedBleeding)
     .map((obs) => ({
@@ -123,7 +128,7 @@ export function buildCycleBleedingFindings(
 export function buildTtcWorkupFindings(
   profileId: number,
   today: string
-): Finding[] {
+): RollupOnlyFinding[] {
   // Adult-only content, the same `!isMinor` line the other adult-topic surfaces use.
   if (isMinor(getProfileAge(profileId))) return [];
   const prompt = decideWorkupPrompt({
@@ -169,7 +174,7 @@ const VITAMIN_D_CANONICAL = "Vitamin D, 25-Hydroxy";
 export function buildSunExposureFindings(
   profileId: number,
   today: string
-): Finding[] {
+): RollupOnlyFinding[] {
   const home = getHomeLocation(profileId);
   if (!home) return [];
 

@@ -52,7 +52,11 @@ import {
   type LedgerServing,
 } from "./food-drug-ledger";
 
-import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "./findings";
+import {
+  FINDING_DASHBOARD_RELEVANCE,
+  type Finding,
+  type RollupOnlyFinding,
+} from "./findings";
 import type { UpcomingItem } from "./upcoming";
 import { intakeHref } from "./hrefs";
 import type { AppRoute } from "./hrefs";
@@ -249,7 +253,7 @@ export function foodDrugEventItems(
 export function buildFoodDrugVarianceFindings(
   profileId: number,
   date: string
-): Finding[] {
+): RollupOnlyFinding[] {
   return foodDrugVarianceFindingsFor(profileId, date)
     .slice(0, FOOD_DRUG_VARIANCE_FINDING_LIMIT)
     .map((f) => ({
