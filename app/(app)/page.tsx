@@ -189,6 +189,8 @@ import {
 import type { OpenDayEpisode, OpenEpisode } from "@/lib/open-episode";
 import { formatMinutes } from "@/lib/duration";
 import HomeEndFastButton from "@/components/home/HomeEndFastButton";
+import HomeReceipt from "@/components/home/HomeReceipt";
+import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import type { WeightUnit } from "@/lib/settings/display";
 
 export const dynamic = "force-dynamic";
@@ -878,18 +880,27 @@ async function renderHome(
                     No entries yet today.
                   </p>
                 ) : (
-                  <HistoryRows
-                    rows={groupHistoryBundles(
-                      layout.visible,
-                      feed.gather.bundleFacts
-                    )}
-                    writableProfileIds={writable ? [profile.id] : []}
-                    selectionSubjectId={profile.id}
-                    doseItems={doseItems}
-                    maxDates={{ [profile.id]: on }}
-                    defaultTime={zonedDateParts(timezone, nowInstant).hhmm}
-                    subjectNames={{}}
-                  />
+                  <>
+                    <HomeReceipt
+                      rowId={
+                        layout.visible[0]
+                          ? timelineEntryAnchorId(layout.visible[0].id)
+                          : null
+                      }
+                    />
+                    <HistoryRows
+                      rows={groupHistoryBundles(
+                        layout.visible,
+                        feed.gather.bundleFacts
+                      )}
+                      writableProfileIds={writable ? [profile.id] : []}
+                      selectionSubjectId={profile.id}
+                      doseItems={doseItems}
+                      maxDates={{ [profile.id]: on }}
+                      defaultTime={zonedDateParts(timezone, nowInstant).hhmm}
+                      subjectNames={{}}
+                    />
+                  </>
                 )}
               </div>
 
@@ -949,7 +960,10 @@ function HomeRow({
       id={id}
       data-candidate-id={id}
       data-testid={testId}
-      className={`${LOGGED_EVENT_ROW} scroll-mt-24 ${
+      // `target:` is the Telegram handoff's whole mechanism (§6.2): the row's id IS
+      // the fragment the nudge's open-in-app link carries, so the browser scrolls to
+      // it and this marks it. No deep-link scheme, and no script.
+      className={`${LOGGED_EVENT_ROW} scroll-mt-24 transition-colors target:bg-(--accent-soft) ${
         accent ? "bg-(--accent-soft)" : ""
       }`}
     >

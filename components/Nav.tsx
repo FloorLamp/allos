@@ -6,7 +6,6 @@ import PendingNavLink from "@/components/PendingNavLink";
 import {
   IconCamera,
   IconLayoutDashboard,
-  IconTimelineEvent,
   IconTrendingUp,
   IconMoon,
   IconHourglass,
