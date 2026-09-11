@@ -167,7 +167,7 @@
   "illness-episode-followups.spec.ts": 83,
   "illness-episode.spec.ts": 5,
   "illness-round3.spec.ts": 8,
-  "imaging.spec.ts": 27,
+  "imaging.spec.ts": 26,
   "immunization-delete-confirm.spec.ts": 1,
   "immunization-record-share.spec.ts": 9,
   "immunizations.spec.ts": 3,
