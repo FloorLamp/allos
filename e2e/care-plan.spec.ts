@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { settledSelect } from "./helpers";
+import { withRecordFact } from "./record-facts-helpers";
 // /care-plan + /care-goals (issue #391, gap 5). care-plan-upcoming.spec only drives
 // the /upcoming twin. This covers the pages themselves: the care-plan list renders
 // seeded items with status + planned date, completing one from the page drops its
@@ -54,10 +55,16 @@ test.describe("Care plan (#391)", () => {
     const editForm = page.locator(
       'form:has(select[id^="cp-status-"]:not([id="cp-status-new"]))'
     );
-    await settledSelect(
-      page,
-      editForm.locator('select[id^="cp-status-"]'),
-      "completed"
+    // Since #5302 the status is a FACT: its chip opens the one editor that holds the
+    // picker. The helper routes to it whether the stored status is stated (a chip of
+    // its own) or absent (behind the trailing affordance); the completion below is
+    // the same gesture it always was.
+    await withRecordFact(editForm, "care-plan", "status", () =>
+      settledSelect(
+        page,
+        editForm.locator('select[id^="cp-status-"]'),
+        "completed"
+      )
     );
     await editForm.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Care-plan item updated")).toBeVisible();

@@ -104,6 +104,9 @@ import type { InjuryFactKey } from "./injury-facts";
 import type { SleepFactKey } from "./sleep-facts";
 import type { ConditionFactKey } from "./condition-facts";
 import type { AllergyFactKey } from "./allergy-facts";
+import type { CarePlanFactKey } from "./care-plan-facts";
+import type { CareGoalFactKey } from "./care-goal-facts";
+import type { FamilyHistoryFactKey } from "./family-history-facts";
 
 // Every form the app hosts. A new form joins this union and then must answer the
 // grammar below before it compiles; a host mount naming an id that is not here does
@@ -447,18 +450,78 @@ export const FORM_GRAMMAR = {
     resolved: "optional",
     notes: "optional",
   }),
-  "family-history": fields(
-    "Renders labelled fields — relation, condition, age — and adopts the chip row with the family.",
-    "#5302"
-  ),
-  "care-plan": fields(
-    "Renders labelled fields; adopts the chip row with the family.",
-    "#5302"
-  ),
-  "care-goal": fields(
-    "Renders labelled fields; adopts the chip row with the family.",
-    "#5302"
-  ),
+  // app/(app)/records/care/overview/FamilyHistoryForm.tsx, ADOPTED (#5302 slice 2).
+  // The condition is rule 1's identifying field — the same curated ICD-10-CM Combobox
+  // the condition form uses, and this form's required value — and the code chip is
+  // seeded from it.
+  //
+  // `relation` is essential because it is the half of the assertion the reader cannot
+  // infer: `familyRelativeLabel` falls back to a bare "Relative", which is the row
+  // saying it cannot name whose history this is. A legibility reason, not a derivation
+  // one — the risk classifier does not consult it today (#1039 Ask 5).
+  //
+  // `code` is essential on the condition form's reason at this address: the classifier
+  // reads a family row code-FIRST with a name-substring fallback (#1030), so an
+  // uncoded relative's condition reaches the screening cadence only if its spelling
+  // happens to match a keyword stem.
+  //
+  // The three death columns are ONE fact (`death`) over one editor, read back through
+  // `familyDeathLabel` — three chips would state one event three times. `relationship`
+  // and `onsetAge` are optional because their absence is DEFINED rather than missing:
+  // a NULL relation_type reads as genetic and a missing onset age activates the base
+  // site factor and never a fabricated early onset.
+  "family-history": facts<FamilyHistoryFactKey>({
+    relation: "essential",
+    code: "essential",
+    relationship: "optional",
+    lineage: "optional",
+    onsetAge: "optional",
+    death: "optional",
+    notes: "optional",
+  }),
+
+  // app/(app)/records/care/overview/CarePlanForm.tsx, ADOPTED (#5302 slice 2). The
+  // planned item is rule 1's identifying field.
+  //
+  // `planned` is the one essential, and it is the sharpest of the family's: an UNDATED
+  // care-plan item never reaches Upcoming at all, because `carePlanUpcomingItems`
+  // keeps only `planned_date != null` rows. A plan with no date is recorded and then
+  // never mentioned again, so the dashed prompt is that omission's sentence.
+  //
+  // `status` is OPTIONAL here while `care-goal` below calls the same field essential,
+  // and the asymmetry is the point: a care-plan item's absent status is READ
+  // (`isCarePlanItemOpen(null)` is true, the safe direction) and the app ITSELF writes
+  // the close — `markCarePlanItemDone` sets 'completed' from the Upcoming chip and the
+  // completed-appointment offer. Prompting would ask for a value whose absence already
+  // means the right thing.
+  "care-plan": facts<CarePlanFactKey>({
+    planned: "essential",
+    category: "optional",
+    status: "optional",
+    code: "optional",
+    provider: "optional",
+    notes: "optional",
+  }),
+
+  // app/(app)/records/care/overview/CareGoalForm.tsx, ADOPTED (#5302 slice 2) and the
+  // smallest of the thirteen. The goal statement is rule 1's identifying field.
+  //
+  // `status` is essential because NOTHING IN THE APP EVER WRITES A CARE GOAL'S STATUS
+  // — the only writer of `care_goals.status` is this form's own action, unlike the
+  // care-plan item above. `isCareGoalOpen` gives "achieved" a terminal meaning the
+  // broader CarePlan vocabulary lacks, and an unstated status reads as open, so a goal
+  // nobody states one for keeps presenting as live.
+  //
+  // `target` is essential because the goal's target date is the DATE WINDOW the
+  // scheduled-appointment reflection matches within (#1355: HealthGoalsSection passes
+  // it as `planned_date`, and `itemMatches` skips the window entirely when it is
+  // null), so an undated goal matches on words alone at any distance in time.
+  "care-goal": facts<CareGoalFactKey>({
+    target: "essential",
+    status: "essential",
+    code: "optional",
+    notes: "optional",
+  }),
   procedure: fields(
     "Renders labelled fields over a coded procedure vocabulary; adopts the chip row with the family.",
     "#5302"
