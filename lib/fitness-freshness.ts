@@ -47,7 +47,7 @@ export type FitnessFreshnessPolicy =
   // A fixed clock this registry owns alone, for a continuously measurable value that NO
   // other surface declares a floor for. `because` is the stated reason the exception
   // exists; it is documentation, not copy. A test whose quantity DOES have a floor may
-  // not use this kind — `fitnessFloorsNotShared` fails the build's census if it does.
+  // not use this kind — the `fitnessFloorsNotShared` census names it if it does.
   | { kind: "fixed-days"; days: number; because: string };
 
 // The battery tests that measure a quantity the presentation-floor registries already
