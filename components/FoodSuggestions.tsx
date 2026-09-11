@@ -7,6 +7,7 @@ import {
 } from "@tabler/icons-react";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import { NOTICE_TONE } from "@/components/Notice";
+import { attentionAmber } from "@/lib/chart-colors";
 import {
   foodSuggestionHeadline,
   type FoodSuggestion,
@@ -85,7 +86,7 @@ export default function FoodSuggestions({
                   data-testid={`food-suggestion-foods-${s.key}`}
                   className={`mt-1.5 list-disc space-y-1 pl-5 ${
                     reduce
-                      ? "marker:text-amber-500 dark:marker:text-amber-400"
+                      ? attentionAmber.markerClass
                       : "marker:text-emerald-500 dark:marker:text-emerald-400"
                   }`}
                 >

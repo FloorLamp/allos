@@ -346,8 +346,8 @@ export const VERDICT_TONE_LABEL: Record<VerdictTone, string | null> = {
   neutral: null,
 };
 
-/** A single-colour verdict swatch (text ink, or a solid fill) with its hexes. */
-export interface VerdictInk {
+/** A single-colour swatch (text ink, or a solid fill) with its hexes. */
+export interface ThemedInk {
   /** The classes the DOM carries, both themes. */
   class: string;
   /** The same colour as a hex, per theme — what the contrast checks read. */
@@ -391,7 +391,7 @@ export const verdictText = {
     light: "#2f4237",
     dark: "#d9e8de",
   },
-} as const satisfies Record<VerdictTone, VerdictInk>;
+} as const satisfies Record<VerdictTone, ThemedInk>;
 
 /**
  * Verdict BADGE — the `.badge` pill's tint and its label ink. This is the one
@@ -448,4 +448,34 @@ export const verdictFill = {
     light: "#4e6354",
     dark: "#86a190",
   },
-} as const satisfies Record<VerdictTone, VerdictInk>;
+} as const satisfies Record<VerdictTone, ThemedInk>;
+
+// ── Attention amber, which is NOT a verdict (#5760) ──────────────────────────
+//
+// The amber a surface reaches for when it wants the eye without making a
+// judgment: a watch card's lead icon, the `limit` food tier's glyph, an
+// eat-less bullet, the arrow on a set that moved down from last time. None of
+// those is good/warn/bad/neutral, and routing them through `verdictText.warn`
+// would attach `VERDICT_TONE_LABEL.warn` — the delta arrow would announce
+// "you lifted less than last time" as "Fair". #5725 kept `STATUS_TONES` out of
+// the verdict palette for the same reason and #5744 kept `NoticeTone`'s `sky`
+// out; this is the third case, so it gets a name instead of a fourth argument.
+//
+// Before this, nine sites picked their own step by hand and eight picked
+// `text-amber-500`, which is 1.99:1 on the Botanical light surface `#f4f8f0`
+// against a 3.0 floor for a graphical object; the ninth picked `text-amber-600`
+// at 2.98:1 against a 4.5 floor for text. The pair below clears the TEXT floor
+// on both surfaces — 4.68:1 light (`#bb4d00` on `#f4f8f0`) and 8.53:1 dark
+// (`#fe9a00` on `#101711`) — so one owner serves an icon, a marker and a word
+// without each site re-deciding. Light takes the same `-700` step every amber
+// ink in the app takes after #5187; dark keeps the vivid `-500` the icon sites
+// already rendered, which is also `verdictFill`'s dark mark step.
+export const attentionAmber = {
+  class: "text-amber-700 dark:text-amber-500",
+  // A `::marker` takes the list item's own colour, so the same two steps have to
+  // be written again under the `marker:` variant — Tailwind cannot compose one at
+  // runtime. Same steps, same hexes, checked against `class` in the palette test.
+  markerClass: "marker:text-amber-700 dark:marker:text-amber-500",
+  light: "#bb4d00",
+  dark: "#fe9a00",
+} as const satisfies ThemedInk & { markerClass: string };
