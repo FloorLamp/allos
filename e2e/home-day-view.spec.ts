@@ -87,7 +87,8 @@ test("the nav lists Home and not History, and both record doors still serve", as
     password: E2E_MEMBER_PASSWORD,
   });
   await page.goto("/");
-  const nav = page.getByRole("navigation", { name: "Primary" }).first();
+  // The desktop sidebar, addressed the way every other nav spec addresses it.
+  const nav = page.locator("aside nav");
   await expect(
     nav.getByRole("link", { name: "Home", exact: true })
   ).toHaveCount(1);
