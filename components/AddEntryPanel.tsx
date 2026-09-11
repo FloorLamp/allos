@@ -72,8 +72,26 @@ export default function AddEntryPanel({
   // WHETHER THE ACTING PROFILE MAY WRITE HERE (#4694). A read-only viewer used to get
   // the full add door, fill the form in, and be bounced by `requireWriteAccess()`'s
   // redirect on submit — their work lost, with nothing saying why. Server-side security
-  // was never the problem; the false affordance was. A section passes what `scope`
-  // already resolved (`scope.access.get(actingProfileId)`), never a second lookup.
+  // was never the problem; the false affordance was.
+  //
+  // WHERE THE VALUE COMES FROM. A section that already has a `ProfileScope` passes
+  // what it resolved (`scope.access.get(actingProfileId)`) and never looks the access
+  // up a second time — that is the rule for every cross-profile pane, and all but one
+  // of the mounts wired so far follow it. The exception is a SINGLE-PROFILE page,
+  // which has no scope to read from: `app/(app)/records/specialty/skin/page.tsx` calls
+  // `accessForProfile(login.id, login.role, profile.id)` directly.
+  //
+  // THAT IS ALLOWED HERE RATHER THAN AN OVERSIGHT, and the reason is not "the page
+  // happens not to resolve a scope today" — it is that lib/scope.ts's own closing note
+  // reserves `requireSession()` for single-profile pages and says the primitive "does
+  // not move the app to multi-profile-by-default". A bare `requireScope()` reads the
+  // persisted session-wide VIEW SET, which the skin pane deliberately ignores (it is
+  // acting-profile-only by design, and its own header says so), so routing it through
+  // scope to satisfy this paragraph would import semantics the pane refuses in order
+  // to delete one call. The two cannot disagree in any case: `resolveScope` fills its
+  // map with exactly `accessForProfile(login.id, login.role, id)` (lib/scope.ts), so
+  // this is the same answer by the same function, not a second opinion. The
+  // training-event page makes the same call for its own single-profile gate.
   //
   // IT IS OPTIONAL ONLY BECAUSE #4694 IS NOT LANDED YET, and the owner's ruling on that
   // issue says where this ends: a REQUIRED prop with no default, so a section cannot

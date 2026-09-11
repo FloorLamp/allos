@@ -36,9 +36,16 @@ export default function SkinSection({
   formatPrefs,
 }: {
   profileId: number;
-  // Whether the acting profile may write here (#4694), resolved by the page. The
-  // add door is the only creation path for this domain, so gating it is the whole
-  // affordance half of that issue at this address.
+  // Whether the acting profile may write here (#4694), resolved by the page. What it
+  // gates is the ADD DOOR, and only that.
+  //
+  // THIS ADDRESS IS NOT FINISHED, and saying so is the point of this note. The lesion
+  // list's own Edit and Delete (SkinLesionList.tsx) carry no access gate, so a
+  // read-only viewer is still offered both and still bounces on submit — the same
+  // false affordance the add door just stopped making. Gating them is #4694's work
+  // rather than #5302's, which wires the doors its own slices open; a future lane
+  // there should read this pane as two of twenty-odd remaining row-tier affordances,
+  // not as one already done.
   access?: Access;
   formatPrefs?: DisplayFormatPrefs;
 }) {
