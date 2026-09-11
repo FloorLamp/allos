@@ -183,6 +183,32 @@ const CONSUMERS = [
     chips: "components/training/InjuryFactRow.tsx",
     host: "app/(app)/training/InjuryBar.tsx",
   },
+  {
+    // THE FIRST CLINICAL RECORD FORM (#5302 slice 1), and the first consumer whose
+    // chips file is written for a FAMILY rather than for itself: all thirteen record
+    // forms draw the same row — the stated facts, then one trailing affordance naming
+    // what is absent — so `RecordFactRow` is a renderer over the shared summary shape
+    // and each form supplies its testid prefix and its nouns. Eleven more hosts join
+    // this same chips file as slices 2–4 land, which is the mirror of the visit pair
+    // below at a larger scale.
+    //
+    // DOM-collected, so its closed panels stay mounted and merely hidden for the reason
+    // the protocol row above records.
+    name: "the condition form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/problems/conditions/ConditionForm.tsx",
+  },
+  {
+    // The condition form's sibling on the same records pane, and the first consumer
+    // whose two ESSENTIAL chips open ONE editor: a reaction and its grade are two facts
+    // a person disagrees with separately, stated in one repeatable list (#1405). That
+    // is the primitive's many-chips-one-panel case, which only the intake form's rule
+    // sentences had exercised — and the reason the shared row takes a `panelOf` rather
+    // than assuming a chip's key names its editor.
+    name: "the allergy form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/problems/allergies/AllergyForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not

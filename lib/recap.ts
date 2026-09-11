@@ -51,6 +51,7 @@
 // either mode.
 
 import { daysBetweenDateStr, shiftDateStr, weekdayOfDateStr } from "./date";
+import { windowMovement } from "./movement";
 import {
   recapPeriod,
   recapScaleEntry,
@@ -72,7 +73,6 @@ import {
   foodHabitSentence,
   type FoodHabitObservation,
 } from "./food-habit-observation";
-import { robustEndpoints } from "./robust-stats";
 import { USUAL_KINDS, recordedUsual } from "./usual";
 import { prSetClause } from "./lifts";
 import { cardioPrPhrase, type CardioPR } from "./coaching/cardio";
@@ -759,20 +759,6 @@ function typeBreakdown(counts: Record<WorkoutType, number>): string {
   return parts.join(", ");
 }
 
-// Robust net weight change over the window: the median of the last cluster of
-// readings minus the median of the first cluster (k = min(3, floor(n/2))), so one
-// noisy weigh-in at either end doesn't define the "trend". Returns null when fewer
-// than two readings exist (no direction to report).
-export function weightTrendKg(weights: RecapWeight[]): number | null {
-  if (weights.length < 2) return null;
-  const k = Math.min(3, Math.floor(weights.length / 2));
-  const { first, last } = robustEndpoints(
-    weights.map((w) => ({ value: w.weightKg })),
-    k
-  );
-  return last - first;
-}
-
 // The smallest number of sessions a composition SHARE is allowed to speak over. Three
 // sessions rendered as "strength 67%" is a percentage of noise, and a share that swings
 // 33 points on one session is worse than no line at all.
@@ -1215,7 +1201,9 @@ export function buildRecap(input: RecapInput): Recap {
   // was missing (#1935): a weekly delta matters more here than on any other line,
   // and a week with a single weigh-in used to carry no delta at all because the
   // within-window trend needs two readings.
-  const trend = weightTrendKg(input.weights);
+  const trend =
+    windowMovement(input.weights.map((w) => ({ value: w.weightKg })))
+      ?.absChange ?? null;
   const prevWeights = input.prevWeights ?? [];
   if (input.weights.length > 0) {
     const latest = input.weights[input.weights.length - 1].weightKg;
@@ -1261,10 +1249,13 @@ export function buildRecap(input: RecapInput): Recap {
   // is not "verbatim": it is a change to when the TRENDS CHART stops plotting raw points,
   // and it would silently bucket every 90D range on that surface. The two also want
   // different answers — a chart wants a per-bucket mean SERIES to draw, this line wants
-  // one scalar direction to say — so `robustEndpoints` (the same computation the weekly
-  // `weight` line already uses) is what keeps the recap's two weight lines consistent
-  // with each other, which is the agreement that is actually reachable here.
-  const prevTrend = weightTrendKg(prevWeights);
+  // one scalar direction to say — so the shared WINDOW verdict (`windowMovement`,
+  // the same computation the weekly `weight` line and the Trends digest already use)
+  // is what keeps the recap's two weight lines consistent with each other and with the
+  // digest, which is the agreement that is actually reachable here (#3394).
+  const prevTrend =
+    windowMovement(prevWeights.map((w) => ({ value: w.weightKg })))
+      ?.absChange ?? null;
   if (trend != null) {
     const perWeek = (trend / windowDays) * 7;
     push({

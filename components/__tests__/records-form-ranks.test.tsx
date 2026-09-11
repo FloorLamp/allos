@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { ToastProvider } from "@/components/Toast";
@@ -92,6 +98,14 @@ describe("a records form spends its one loud control on its own commit", () => {
 
     // Ruling 6 again — neither helper is this form's commit.
     expectQuiet(screen.getByRole("button", { name: "Cancel" }));
+
+    // THE REPEATED-ROW HELPERS LIVE BEHIND THE REACTION CHIP NOW (#5302). The form
+    // states its facts and opens one editor at a time, so the add-reaction and
+    // per-row Remove controls have to be REACHED before their rank can be read —
+    // the budget is unchanged, the route to it is not. Asserted through the chip
+    // rather than by dropping the hidden filter, because a control nobody can get
+    // to has no rank worth checking.
+    fireEvent.click(screen.getByTestId("allergy-fact-reaction"));
     expectQuiet(screen.getByTestId("allergy-add-reaction-1"));
 
     // Ruling 10: a per-row destructive control in a repeated list stays quiet
@@ -129,6 +143,12 @@ describe("a records form spends its one loud control on its own commit", () => {
     const form = screen.getByTestId("condition-form-actions").closest("form")!;
     expect(loudIn(form)).toEqual(["Save"]);
     expectQuiet(screen.getByRole("button", { name: "Cancel" }));
+
+    // The suggestion helper this test is named for moved INSIDE the code editor
+    // (#5302 rule 4: no standing prose), so it is reached through the code chip.
+    // Filling a field is still not the form's commit, so it still takes no rank.
+    fireEvent.click(screen.getByTestId("condition-fact-code"));
+    expectQuiet(screen.getByTestId("icd10-suggestion-apply"));
   });
 
   it("keeps the per-card audiogram Delete quiet under ruling 10", () => {

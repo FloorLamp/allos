@@ -1,5 +1,12 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, openCareOverviewSection, settledFill } from "./helpers";
+import {
+  appContent,
+  hydratedClick,
+  openCareOverviewSection,
+  settledFill,
+} from "./helpers";
+import { closeRecordFact, openRecordFact } from "./record-facts-helpers";
+import { expectFactEscapeGrammar } from "./fact-escape-helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_REPORTS_EMPTY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // #155: entering a condition by its lay name surfaces an ICD-10-CM code suggestion
@@ -24,21 +31,37 @@ test("manual condition entry suggests an ICD-10-CM code the user can confirm (#1
   // value out of the pre-hydration revert window.
   await settledFill(page, nameField, "Asthma");
 
+  // Typing leaves the picker's dropdown open over the row (it hangs directly below the
+  // field), exactly as any autocomplete does. Escape dismisses it — the gesture a
+  // person makes before reaching for a chip. TYPING still applies nothing on its own:
+  // the confirm is what writes the code.
+  await nameField.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+
+  // A typed name leaves the code chip a dashed PROMPT, and the suggestion lives inside
+  // that chip's editor rather than standing under the name field (#5302 rule 4).
+  const form = dialog.getByTestId("condition-form");
+  await expect(form.getByTestId("condition-fact-code")).toHaveAttribute(
+    "data-fact-state",
+    "missing"
+  );
+  await openRecordFact(form, "condition", "code");
+
   const suggestion = dialog.getByTestId("icd10-suggestion");
   await expect(suggestion).toBeVisible();
   await expect(suggestion).toContainText("J45.909");
-
-  // Typing leaves the picker's dropdown open OVER the chip (it hangs directly below
-  // the field), exactly as any autocomplete does. Escape dismisses it — the gesture a
-  // person makes before reaching for the chip. TYPING still applies nothing on its
-  // own: the confirm is what writes the code.
-  await nameField.press("Escape");
-  await expect(page.getByRole("listbox")).toHaveCount(0);
   await dialog.getByTestId("icd10-suggestion-apply").click();
 
   // The confirm filled the code + code-system inputs.
   await expect(dialog.locator("#cond-code-new")).toHaveValue("J45.909");
   await expect(dialog.locator("#cond-codesys-new")).toHaveValue("ICD-10-CM");
+
+  // And the row reads it back as a stated fact the app supplied (#846).
+  await closeRecordFact(form, "condition");
+  const codeChip = form.getByTestId("condition-fact-code");
+  await expect(codeChip).toHaveAttribute("data-fact-state", "stated");
+  await expect(codeChip).toHaveAttribute("data-suggested", "1");
+  await expect(codeChip).toContainText("J45.909");
 
   await dialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("Condition saved")).toBeVisible();
@@ -62,9 +85,11 @@ test("picking a condition from the catalog applies its ICD-10-CM code (#1676)", 
   await hydratedClick(page, page.getByTestId("add-condition-panel-toggle"));
 
   const dialog = page.getByRole("dialog", { name: "Add condition" });
+  const form = dialog.getByTestId("condition-form");
   const nameField = dialog.getByLabel("Condition", { exact: true });
+  const codeChip = form.getByTestId("condition-fact-code");
   await expect(nameField).toBeVisible();
-  await expect(dialog.locator("#cond-code-new")).toHaveValue("");
+  await expect(codeChip).toHaveAttribute("data-fact-state", "missing");
 
   // A synonym query reaches the catalog entry whose display name is nothing like it —
   // the hidden search terms doing their job.
@@ -74,17 +99,26 @@ test("picking a condition from the catalog applies its ICD-10-CM code (#1676)", 
     .getByRole("option", { name: "Essential (primary) hypertension" })
     .click();
 
-  // The pick filled the name AND the coded identity, with no confirm step.
+  // The pick filled the name AND the coded identity, with no confirm step — and the
+  // row states it without anyone opening an editor.
   await expect(nameField).toHaveValue("Essential (primary) hypertension");
+  await expect(codeChip).toHaveAttribute("data-fact-state", "stated");
+  await expect(codeChip).toContainText("I10");
+  await openRecordFact(form, "condition", "code");
   await expect(dialog.locator("#cond-code-new")).toHaveValue("I10");
   await expect(dialog.locator("#cond-codesys-new")).toHaveValue("ICD-10-CM");
 
   // The confirm chip is for a code-LESS row, so it is gone once the pick applied one.
   await expect(dialog.getByTestId("icd10-suggestion")).toHaveCount(0);
+  await closeRecordFact(form, "condition");
 
   // Editing the name away from the picked entry retracts the code the pick applied —
-  // the row must never claim a code for a concept it no longer names.
+  // the row must never claim a code for a concept it no longer names, so the chip goes
+  // back to prompting for one.
   await settledFill(page, nameField, "Something else entirely");
+  await nameField.press("Escape");
+  await expect(codeChip).toHaveAttribute("data-fact-state", "missing");
+  await openRecordFact(form, "condition", "code");
   await expect(dialog.locator("#cond-code-new")).toHaveValue("");
   await expect(dialog.locator("#cond-codesys-new")).toHaveValue("");
 });
@@ -171,4 +205,34 @@ test("a profile with no conditions is told none are recorded, not that a filter 
   } finally {
     await member.context().close();
   }
+});
+
+// THE ESCAPE GRAMMAR OF THE FIRST CLINICAL RECORD FORM (#5302, over #3218/#3409).
+//
+// It lives beside the other specs that drive this dialog rather than in a family spec
+// of its own, and it is here rather than in a cheaper tier because the failure it
+// catches only exists in a browser: the shared focus trap answers Escape on the WINDOW
+// capture phase, so an editor host that claims the escape layer while nothing is open
+// swallows every press and the dialog cannot be dismissed at all. "Nothing happened" is
+// what that looks like, which is why it shipped four times before anyone asserted the
+// second press (see e2e/fact-escape-helpers.ts).
+test("Escape backs out of one condition fact, then out of the dialog (#5302)", async ({
+  page,
+}) => {
+  test.slow(); // next dev compiles the records route on first hit
+
+  await page.goto("/records/problems/conditions");
+  await hydratedClick(
+    page,
+    appContent(page).getByTestId("add-condition-panel-toggle")
+  );
+  // The dialog is a portal outside the content container, so it is its own scope.
+  const form = page.getByRole("dialog").getByTestId("condition-form");
+  await expect(form).toBeVisible();
+
+  await expectFactEscapeGrammar(page, {
+    form,
+    row: form.getByTestId("condition-fact-row"),
+    openFact: () => openRecordFact(form, "condition", "status"),
+  });
 });

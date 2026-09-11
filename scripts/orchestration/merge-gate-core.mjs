@@ -1,5 +1,17 @@
 // Pure verdicts for merge-gate.mjs. The CLI owns GitHub reads and process exits;
 // this module owns decisions so their full matrix does not need a fresh process.
+//
+// ONE EXCEPTION, AT THE BOTTOM: `prepareHeadTree` and its neighbours DO touch
+// git and the filesystem (#5710). They live here rather than in the CLI for the
+// reason every other verdict does — merge-gate.mjs cannot be imported, so
+// anything that lands there is testable only by running the gate against a live
+// PR, and the rule this machinery has to obey (a failed fetch stays a DECLINE,
+// never a clean row) is exactly the kind that needs its failure branches
+// exercised. Nothing here runs at import: the git runner and the fs module are
+// parameters with defaults, so the module stays side-effect-free to load.
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const ASSERTS_INDEPENDENCE =
   /\b(?:did not|didn'?t)\s+(?:author|write)\b|\bindependent(?:ly)?\s+review/i;
@@ -1289,9 +1301,23 @@ const firstLine = (error) => {
  * @param {string} [input.walkedOn] the sha of the tree `reachFn` walks; a
  *   decline names it, and says so when the PR itself adds the symbol, which
  *   is then absent from any tree but the PR head or merge tree (#5710).
+ * @param {(file: string, symbol: string) => {terminals: string[]}} [input.retryFn]
+ *   the SECOND chance, on the PR head itself — called only for a symbol
+ *   `reachFn` declined, and only when the caller knows the walked tree is not
+ *   the head (#5710). It may throw, including to report that the head could
+ *   not be fetched at all; the throw becomes the row's second clause and the
+ *   row stays a decline. Omitted, this is exactly #5743's behaviour.
+ * @param {string} [input.retryOn] the sha `retryFn` walks — the PR head
  * @returns {string[]} messages, without the `NOTE: ` prefix, in a stable order
  */
-export function reachVerdict({ files, body, reachFn, walkedOn }) {
+export function reachVerdict({
+  files,
+  body,
+  reachFn,
+  walkedOn,
+  retryFn,
+  retryOn,
+}) {
   const text = String(body ?? "");
   const candidates = changedDerivations(files);
   const walked = candidates.slice(0, REACH_CAP);
@@ -1303,25 +1329,64 @@ export function reachVerdict({ files, body, reachFn, walkedOn }) {
     );
   const table = hasConsumerTable(text);
   const tree = walkedOn ? ` (walked on ${shortSha(walkedOn)})` : "";
+  const onHead = retryOn
+    ? ` on the PR head ${shortSha(retryOn)}`
+    : " on the PR head";
   for (const { file, symbol, added } of walked) {
+    const terminalsFrom = (walk) =>
+      [...new Set(walk(file, symbol).terminals ?? [])].sort();
     let terminals;
+    // The tree in hand first, ALWAYS — it is free, it is what CI walks, and a
+    // symbol that resolves there needs nothing fetched. Only its decline pays
+    // for the head.
+    let answeredOnHead = false;
     try {
-      terminals = [...new Set(reachFn(file, symbol).terminals ?? [])].sort();
+      terminals = terminalsFrom(reachFn);
     } catch (error) {
-      rows.push(
-        `reach — could not answer for ${symbol}${tree}: ${firstLine(error)}` +
-          (added
-            ? `; ${symbol} is added by this PR and is not on the walked tree; ` +
-              "resolve on the PR head or merge tree"
-            : "")
-      );
-      continue;
+      if (!retryFn) {
+        rows.push(
+          `reach — could not answer for ${symbol}${tree}: ${firstLine(error)}` +
+            (added
+              ? `; ${symbol} is added by this PR and is not on the walked tree; ` +
+                "resolve on the PR head or merge tree"
+              : "")
+        );
+        continue;
+      }
+      try {
+        terminals = terminalsFrom(retryFn);
+        answeredOnHead = true;
+      } catch (retryError) {
+        // BOTH trees named, both reasons quoted. The second reason is where a
+        // failed fetch shows up, so this row is what stands between a broken
+        // fetch and a row that says nothing.
+        //
+        // ONE REASON WHEN IT IS ONE REASON. A walker that fails for something
+        // other than the tree — no tsx, a child that dies, `scripts/reach.ts`
+        // truncating its own JSON on a large walk (measured on #5801's
+        // `lib/date.ts#hhmmToMinutes`, 146,176 bytes on BOTH trees) — fails
+        // identically twice, and printing the same sentence twice reads as two
+        // findings. Same reason, one clause, both trees still named.
+        const why = firstLine(error);
+        const retryWhy = firstLine(retryError);
+        rows.push(
+          why === retryWhy
+            ? `reach — could not answer for ${symbol}${tree} or${onHead}: ${why}`
+            : `reach — could not answer for ${symbol}${tree}: ${why}; nor${onHead}: ${retryWhy}`
+        );
+        continue;
+      }
     }
     if (!terminals.length) continue;
     const terminalFiles = [
       ...new Set(terminals.map((t) => t.split(" ")[1] ?? t)),
     ].sort();
-    const head = `reach — ${symbol} (${file}) reaches ${terminals.length} terminal(s)`;
+    // An answer row names no tree when it walked the one in hand — that is
+    // #5709's shape and every reader knows it. It MUST name one when it walked
+    // somewhere else, or the reader cannot tell the two apart.
+    const head =
+      `reach — ${symbol} (${file}) reaches ${terminals.length} terminal(s)` +
+      (answeredOnHead ? onHead : "");
     if (!table) {
       const shown = terminalFiles.slice(0, 8);
       rows.push(
@@ -1340,4 +1405,353 @@ export function reachVerdict({ files, body, reachFn, walkedOn }) {
     );
   }
   return rows;
+}
+
+// ── WALKING THE PR HEAD WHEN THE TREE IN HAND IS NOT IT (#5710) ──────────────
+//
+// The reach row above walks whatever tree the gate runs in, because
+// `scripts/reach-graph.ts` resolves its ROOT from its own module URL: the tree
+// that HOLDS the walker is the tree that gets walked. Under the CI wrapper's
+// `pull_request` checkout that tree is the merge commit and every symbol
+// resolves. Run interactively from a `main` checkout, a declaration the PR ADDS
+// is on no tree here, and #5743's decline — honest as far as it goes — is the
+// whole answer the reader gets.
+//
+// This is the other half: fetch the head into a throwaway tree under the state
+// dir and walk THERE. Three rules govern it, and they matter more than the
+// feature does.
+//
+//   1. A FAILED WALK STAYS A DECLINE. Nothing here can turn a row green. A
+//      fetch that fails, a head that moved, a full disk — each answers
+//      `{ok: false, reason}`, that reason becomes the row's second clause, and
+//      the row still says "could not answer". The one thing this must never do
+//      is fall back to the stale tree and print ITS answer as the PR's: an
+//      answer row names no tree, so a silent fallback would read as a clean
+//      row for a walk of the wrong commit. Hence no fallback path exists.
+//   2. NEVER THE CALLER'S CHECKOUT. `git worktree add` registers metadata in
+//      it and `git fetch` writes objects into it; both are writes to a tree
+//      this script does not own — the orchestrator's checkout, or a sibling
+//      lane's. The temporary tree is a fresh `git init` under the state dir
+//      with a shallow fetch straight from origin's URL, so all that is
+//      borrowed from the checkout is a read of that URL and a SYMLINK to its
+//      node_modules, without which the walker's own tsx cannot start.
+//   3. CLEANED UP ON EVERY PATH: on success, on each failure branch here, from
+//      the caller's `finally`, and from an exit/SIGINT/SIGTERM handler for the
+//      interrupt. What none of those survives is SIGKILL — the normal way a
+//      run ends on this box (`lib/__tests__/tmp-dir.ts` carries the census) —
+//      so creation also SWEEPS trees older than an hour, which is the same
+//      by-construction reclaim that substrate settled on.
+
+/** Directories this module makes under the state dir, swept by whole prefix. */
+export const WALK_DIR_PREFIX = "reach-head-";
+/** How old an abandoned walk tree must be before a later run unlinks it. */
+export const WALK_DIR_STALE_MS = 60 * 60 * 1000;
+// A shallow fetch of this repo measured 3.1 s from GitHub and 1.2 s from a
+// local path (2026-09-10, `git fetch --depth=1 refs/pull/5795/head`). Five
+// minutes is ~100x that, and it is a ceiling on a HUNG transfer rather than a
+// budget: the alternative to a timeout here is an advisory row that never
+// returns.
+const WALK_FETCH_TIMEOUT_MS = 300_000;
+
+/**
+ * A `git` runner: `(args, {cwd, timeout}) => {status, stdout, stderr}`.
+ * `status` is null when git never ran or was killed. Injectable so a test can
+ * drive the failure branches that a real git will not produce on demand.
+ * @typedef {(args: string[], opts?: {cwd?: string, timeout?: number}) => {status: number|null, stdout: string, stderr: string}} GitRunner
+ */
+
+/** @type {GitRunner} */
+const defaultGit = (args, { cwd, timeout } = {}) => {
+  const run = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    timeout: timeout ?? 60_000,
+    maxBuffer: 8 * 1024 * 1024,
+    // A private or moved remote must FAIL, never sit on a credential prompt:
+    // this runs inside an advisory row that the reader is waiting on.
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+  return {
+    status: run.status,
+    stdout: run.stdout ?? "",
+    stderr: run.error ? String(run.error.message) : (run.stderr ?? ""),
+  };
+};
+
+// A remote URL can carry credentials (`https://x-access-token:ghp_…@github.com/…`)
+// and git ECHOES THE URL in most of its transport errors, so every string that
+// reaches a printed row goes through this first. The gate's own rule — never
+// print the thrown command or its stdio, because it can hold the Authorization
+// header — is the same rule one layer down.
+//
+// The `{2}` is not decoration: `lib/__tests__/strip-comments.test.ts` censuses
+// the tree for the retired line-comment stripper, whose literal shape is a
+// slash, two escaped slashes and a negated class — which is character for
+// character what the natural spelling of "userinfo before the host" would be
+// here. This matches the same two slashes and is not a comment stripper.
+const redactUrls = (text) =>
+  String(text ?? "").replace(/\/{2}[^/@\s]*@/g, "//<redacted>@");
+
+const firstStderrLine = (text) => {
+  const line =
+    redactUrls(text)
+      .split("\n")
+      .map((l) => l.trim())
+      .find(Boolean) ?? "no reason given";
+  return line.length > 160 ? `${line.slice(0, 157)}...` : line;
+};
+
+/** `owner/name` from a git remote URL, or null — for `https://…`, `git@…:…` and paths. */
+export const repoOfRemote = (url) => {
+  const m = /(?:[/:])([^/:]+)\/([^/]+?)(?:\.git)?\/*$/.exec(
+    String(url ?? "").trim()
+  );
+  return m ? `${m[1]}/${m[2]}` : null;
+};
+
+/**
+ * Does the tree at `repoRoot` already contain `head`, so that walking it walks
+ * the PR? Answers `{contained, walkedOn, how}`; `walkedOn` is the checkout's
+ * own HEAD, or null when git cannot say.
+ *
+ * THREE TESTS, AND THE MIDDLE ONE IS THE CI PATH. `actions/checkout@v7` fetches
+ * `refs/pull/N/merge` at depth 1, and in that repo the head commit is NOT an
+ * object: measured 2026-09-10 on a synthetic replica of that fetch,
+ * `cat-file -e <head>` says absent, `rev-parse HEAD^2` fails and
+ * `merge-base --is-ancestor` exits 128 — while `cat-file -p HEAD` still lists
+ * both parent SHAs, because shallow grafting hides parents from the revision
+ * walk and not from the raw object. So the parent-line read is what keeps CI on
+ * the in-place walk it has always done; an ancestry test alone would send every
+ * CI run to the network.
+ */
+export function containsHead({ repoRoot, head, git = defaultGit }) {
+  const at = git(["rev-parse", "HEAD"], { cwd: repoRoot });
+  const walkedOn = at.status === 0 ? at.stdout.trim() : null;
+  const no = (how) => ({ contained: false, walkedOn, how });
+  if (!walkedOn) return no("this checkout has no resolvable HEAD");
+  if (!/^[0-9a-f]{7,40}$/i.test(String(head ?? "")))
+    return no("the PR head is not a SHA");
+  if (walkedOn === head)
+    return { contained: true, walkedOn, how: "this checkout IS the PR head" };
+  const raw = git(["cat-file", "-p", "HEAD"], { cwd: repoRoot });
+  const parents =
+    raw.status === 0
+      ? raw.stdout
+          .split("\n")
+          .filter((l) => l.startsWith("parent "))
+          .map((l) => l.slice(7).trim())
+      : [];
+  if (parents.includes(head))
+    return {
+      contained: true,
+      walkedOn,
+      how: "this checkout is a merge commit whose parent is the PR head",
+    };
+  const ancestor = git(["merge-base", "--is-ancestor", head, "HEAD"], {
+    cwd: repoRoot,
+  });
+  if (ancestor.status === 0)
+    return {
+      contained: true,
+      walkedOn,
+      how: "the PR head is an ancestor of this checkout",
+    };
+  return no(`this checkout is on ${shortSha(walkedOn)}, not the PR head`);
+}
+
+/**
+ * Unlink the walk trees under `stateDir` older than `staleAfterMs` — the
+ * reclaim for a run that was killed before its own cleanup could run. Returns
+ * how many it removed. Whole-prefix and one level deep, deliberately: the
+ * state dir also holds live lane worktrees and the dispatch ledger.
+ */
+export function sweepStaleWalkTrees(
+  stateDir,
+  now = Date.now(),
+  staleAfterMs = WALK_DIR_STALE_MS,
+  io = fs
+) {
+  let names;
+  try {
+    names = io.readdirSync(stateDir);
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const name of names) {
+    if (!name.startsWith(WALK_DIR_PREFIX)) continue;
+    const full = path.join(stateDir, name);
+    try {
+      if (now - io.lstatSync(full).mtimeMs < staleAfterMs) continue;
+      io.rmSync(full, { recursive: true, force: true });
+      removed++;
+    } catch {
+      // A sibling lane's sweep got there first, or it is not ours to remove.
+      // Neither is worth failing an advisory row over.
+    }
+  }
+  return removed;
+}
+
+/**
+ * Fetch `head` into a throwaway tree under `stateDir` and answer where to walk.
+ *
+ * @param {object} input
+ * @param {string} input.repoRoot   the checkout to read origin's URL and node_modules from — never written to
+ * @param {string} input.head       the PR head SHA, which the tree must end up ON
+ * @param {string} input.stateDir   $SCRATCH / host.mjs's state dir; the tree lives directly under it
+ * @param {string[]} [input.refs]   refspecs to try in order (`refs/pull/N/head` first)
+ * @param {string} [input.expectRepo] `owner/name` the checkout's origin must match
+ * @param {GitRunner} [input.git]
+ * @param {typeof import("node:fs")} [input.io]
+ * @returns {{ok: true, dir: string, cleanup: () => void} | {ok: false, reason: string}}
+ *   `reason` is one line, credential-free, and is written to be readable as the
+ *   second clause of a "could not answer" row.
+ */
+export function prepareHeadTree({
+  repoRoot,
+  head,
+  stateDir,
+  refs,
+  expectRepo,
+  git = defaultGit,
+  io = fs,
+}) {
+  const short = shortSha(head);
+  if (!/^[0-9a-f]{7,40}$/i.test(String(head ?? "")))
+    return { ok: false, reason: `the PR head ${short} is not a SHA` };
+  if (!stateDir)
+    return {
+      ok: false,
+      reason: "there is no state dir to put a temporary worktree in",
+    };
+  const remote = git(["remote", "get-url", "origin"], { cwd: repoRoot });
+  const url = remote.status === 0 ? remote.stdout.trim() : "";
+  if (!url)
+    return {
+      ok: false,
+      reason: `this checkout has no origin remote to fetch ${short} from (${firstStderrLine(remote.stderr)})`,
+    };
+  // A `--repo other/name` run against THIS checkout's origin would fetch some
+  // other repository's PR N and walk it as if it were this one. Refuse instead.
+  if (expectRepo && repoOfRemote(url) !== expectRepo)
+    return {
+      ok: false,
+      reason:
+        `this checkout's origin is ${repoOfRemote(url) ?? "unreadable"}, not ` +
+        `${expectRepo} — refusing to fetch ${short} from the wrong repository`,
+    };
+
+  sweepStaleWalkTrees(stateDir);
+  let dir;
+  try {
+    io.mkdirSync(stateDir, { recursive: true });
+    dir = io.mkdtempSync(path.join(stateDir, WALK_DIR_PREFIX));
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `could not make a temporary worktree under ${stateDir}: ${firstStderrLine(error?.message ?? error)}`,
+    };
+  }
+  // From here every exit runs through this, so no branch below can strand it.
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    try {
+      io.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // The sweep at the next creation reclaims what a failed unlink leaves.
+    }
+  };
+  const give = (reason) => {
+    cleanup();
+    return { ok: false, reason };
+  };
+
+  const init = git(["init", "-q"], { cwd: dir });
+  if (init.status !== 0)
+    return give(
+      `could not init a temporary worktree in ${dir}: ${firstStderrLine(init.stderr)}`
+    );
+
+  const wanted = refs?.length ? refs : [head];
+  let lastError = "no refspec was tried";
+  let fetched = false;
+  for (const ref of wanted) {
+    const run = git(["fetch", "--depth=1", "--no-tags", "--quiet", url, ref], {
+      cwd: dir,
+      timeout: WALK_FETCH_TIMEOUT_MS,
+    });
+    if (run.status === 0) {
+      fetched = true;
+      break;
+    }
+    lastError = firstStderrLine(run.stderr);
+  }
+  if (!fetched)
+    return give(
+      `could not fetch the PR head ${short} from ${redactUrls(url)}: ${lastError}`
+    );
+
+  // The SHA, not FETCH_HEAD: a head that moved between the API read and this
+  // fetch must be a decline, not a walk of a commit nobody asked about.
+  const checkout = git(["checkout", "-q", "--detach", head], { cwd: dir });
+  if (checkout.status !== 0)
+    return give(
+      `fetched, but ${short} is not in what came back — the head may have ` +
+        `moved since this gate read it (${firstStderrLine(checkout.stderr)})`
+    );
+
+  // The walker runs `npx tsx` in this tree, and tsx and typescript-api resolve
+  // from the tree the script sits in. A symlink, so `rmSync` unlinks the link
+  // and never walks into the real node_modules.
+  const modules = path.join(repoRoot, "node_modules");
+  if (io.existsSync(modules)) {
+    try {
+      io.symlinkSync(modules, path.join(dir, "node_modules"), "dir");
+    } catch (error) {
+      return give(
+        `could not link node_modules into the temporary worktree: ${firstStderrLine(error?.message ?? error)}`
+      );
+    }
+  }
+  return { ok: true, dir, cleanup };
+}
+
+/**
+ * Run `cleanup` when the process ends, however it ends — a normal exit, an
+ * explicit `process.exit` (which every one of the gate's verdicts is), or an
+ * interrupt. Returns an unregister function for the ordinary path, so the
+ * listeners do not outlive the walk.
+ *
+ * SIGINT/SIGTERM are handled rather than left to default because the default
+ * IS termination: no `exit` event fires, and the tree would survive as garbage.
+ * Cleaning up and then exiting with the conventional 128+signal keeps the shell
+ * seeing an interrupted run.
+ *
+ * @param {() => void} cleanup
+ * @param {{
+ *   on: (event: string, handler: () => void) => unknown,
+ *   removeListener: (event: string, handler: () => void) => unknown,
+ *   exit: (code: number) => unknown,
+ * }} [proc] the process — structural, so a test can drive the signal paths
+ * @returns {() => void} unregister
+ */
+export function cleanupOnExit(cleanup, proc = process) {
+  const onExit = () => cleanup();
+  const onSignal = (signal) => () => {
+    cleanup();
+    proc.exit(signal === "SIGINT" ? 130 : 143);
+  };
+  const handlers = [
+    ["exit", onExit],
+    ["SIGINT", onSignal("SIGINT")],
+    ["SIGTERM", onSignal("SIGTERM")],
+  ];
+  for (const [event, handler] of handlers) proc.on(event, handler);
+  return () => {
+    for (const [event, handler] of handlers)
+      proc.removeListener(event, handler);
+  };
 }

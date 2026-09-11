@@ -22,7 +22,12 @@
 // least one entry for every profile that can see it. Empty segments are dropped
 // rather than disabled.
 
-import { arguedExclusion, type ArguedExclusion } from "./loggable-domains";
+import type { LedgerWithLoggedVia } from "./logged-via";
+import {
+  arguedExclusion,
+  isArguedExclusion,
+  type ArguedExclusion,
+} from "./loggable-domains";
 import {
   quickLogMenu,
   primaryQuickLog,
@@ -264,48 +269,78 @@ export const LOG_HABIT_MIN_DAYS = 7;
 export type SegmentLogDays = Readonly<Partial<Record<LogSegmentId, number>>>;
 
 /**
- * Which STORES a quick-log entry's taps land in — the measure's coverage, declared
+ * Which LEDGERS a quick-log entry's taps land in — the measure's coverage, declared
  * where it can be read without a database, and const-asserted over `QuickLogId` in
  * the same declare-or-argue shape as `LOG_SEGMENT_CENSUS` (#2130). A new entry is a
  * `tsc` error here until somebody says where its taps land or argues that they are
  * not evidence about logging habit.
  *
- * `lib/queries/log-sheet.ts` counts them, and
+ * THE VALUE TYPE IS `LedgerWithLoggedVia`, NOT `string` (#4249), and that narrowing
+ * is the measure's new floor rather than tidying. Since the evidence is a WEB-SURFACE
+ * act, a store that does not carry `logged_via` cannot answer the question at all —
+ * naming one here would declare coverage the count could never deliver. The compiler
+ * now refuses it, so the tranche in `LEDGERS_WITH_LOGGED_VIA` and this census cannot
+ * drift apart in the direction that silently counts nothing.
+ *
+ * `lib/queries/surface-usage.ts` counts them and
  * `lib/__tests__/log-sheet-sources.test.ts` holds the two together in both
- * directions: a declared store the statement does not count, and a counted store
+ * directions: a declared ledger the statement does not count, and a counted ledger
  * nobody declared, each fail rather than quietly skewing the measure.
  *
- * Only stores whose rows are HAND-ENTERED count; the statement carries the
- * per-store filter and the argument for it.
+ * Only WEB acts count; the read model carries the surface vocabulary and the
+ * argument for it (lib/surface-usage.ts).
  */
 export const LOG_DAY_SOURCES = {
   "log-activity": ["activities"],
   // A completed live session lands in the same canonical activity store. This
   // is a second door to the same evidence, not a second source.
   "live-workout": ["activities"],
-  "log-food": ["food_daily_totals"],
+  // The PER-TAP ledger, not the day counter (#4249). `food_daily_totals` is a
+  // counter row with no `logged_via` column and therefore no answer to "was this
+  // logged here?"; `food_log_events` is written in the same transaction by the same
+  // core (`logFoodServingCore`), one row per tap, carrying the surface. Counting the
+  // counter is what let a Telegram-only eater teach the web sheet a food habit.
+  "log-food": ["food_log_events"],
   // A vitals sitting is `medical_records` rows by placement (#2032), so Body would
-  // under-count a blood-pressure logger without that third store.
-  "log-measurements": ["body_metrics", "metric_samples", "medical_records"],
-  "log-period": ["cycles"],
-  // A Bristol tap is one hand-entered metric_samples row (#2785).
-  "log-stool": ["metric_samples"],
+  // under-count a blood-pressure logger without that second ledger.
+  //
+  // `metric_samples` IS NO LONGER NAMED, and the cost is real rather than tidied
+  // away: the sitting's waist and growth fields land there, that table is outside
+  // the #3087 tranche, and a row with no `logged_via` cannot say which surface
+  // wrote it. Extending the tranche is a WRITE-path change, which #4249 puts out
+  // of scope. Until it happens a waist-only sitting is not habit evidence — the
+  // profile keeps its route default, and Body stays exactly one tap away.
+  "log-measurements": ["body_metrics", "medical_records"],
+  "log-period": arguedExclusion(
+    "`cycles` is outside the #3087 `logged_via` tranche, so a period start cannot say which surface opened it, and the measure now counts WEB acts. Guessing 'web' for an unstamped row is the exact claim #4249 removed. Body is carried by the weigh-in and vitals ledgers instead; extending the tranche is a write-path change this issue excludes."
+  ),
+  // A Bristol tap is one hand-entered metric_samples row (#2785) — and that table
+  // is outside the tranche, so the tap is unattributable for the same reason a
+  // period start is. Argued rather than dropped: the entry still exists, still
+  // opens Body one tap away, and simply contributes no habit evidence.
+  "log-stool": arguedExclusion(
+    "`metric_samples` is outside the #3087 `logged_via` tranche, so a stool tap cannot say which surface it came from, and the measure counts WEB acts. The store has no ingest path and no chat verb, so the honest reading is 'unknown surface', not 'web' — and an unknown surface is not evidence of a web habit."
+  ),
   "log-dose": ["intake_item_logs"],
   "log-practice": ["practice_logs"],
-  // Every `symptom_logs` row is hand-entered — the store has no source column because
-  // it has no ingest path — so the arm needs no manual filter, like `food_daily_totals`
-  // and `cycles` (#4064).
+  // Every `symptom_logs` row is a person tapping a severity chip, and the row carries
+  // the surface that OPENED the day (#3566): the upsert stamps `logged_via` on
+  // creation only, so a symptom first logged on the page and later raised from a
+  // Telegram tap still reads `page`. That is the creation-not-mutation rule working,
+  // and it is the right grain here — the question is where this person logs.
   "log-symptom": ["symptom_logs"],
-  // A substance tap is one hand-entered `substance_daily_totals` row (#3327), counted
-  // on `source = 'manual'` — NOT NULL with a 'manual' default, the metric_samples
-  // spelling, so there is no null half to admit.
+  // A substance tap writes BOTH the day total (#3327) and, since #4435's event
+  // tranche, one per-tap event. Both carry `logged_via` and both are named: the day
+  // rows answer for days logged before the event ledger existed, the event rows carry
+  // the per-tap surface, and day SETS union, so naming both adds evidence without
+  // double-counting a day.
   //
-  // ALCOHOL IS DELIBERATELY NOT DECLARED HERE. Its taps land on `food_daily_totals`
+  // ALCOHOL IS DELIBERATELY NOT DECLARED HERE. Its taps land on the food ledger
   // (#860/#944 — a standard drink IS one serving of the curated alcohol group), which
   // `log-food` already declares and the statement already counts for Consume. This
-  // entry declares only the dedicated substance writer; naming the food store again
+  // entry declares only the dedicated substance writers; naming the food ledger again
   // would give one store two owners in a census whose keys are quick-log entries.
-  "log-substance": ["substance_daily_totals"],
+  "log-substance": ["substance_daily_totals", "substance_log_events"],
   // The daily check-in's store is STORE-PRIVATE by the #992 contract: nothing
   // outside its own read/write/registry modules may name the table, because a
   // subjective self-rating must never feed a flag, a retest clock, a streak or
@@ -327,7 +362,31 @@ export const LOG_DAY_SOURCES = {
   "add-document": arguedExclusion(
     "A document row is dated by the DOCUMENT rather than by the day it was filed, so its date is not evidence about when its owner logs; the filing day itself exists only as a UTC instant. Practices carry the Care segment's logging evidence."
   ),
-} as const satisfies Record<QuickLogId, readonly string[] | ArguedExclusion>;
+} as const satisfies Record<
+  QuickLogId,
+  readonly LedgerWithLoggedVia[] | ArguedExclusion
+>;
+
+/**
+ * Which SEGMENT each counted ledger's days belong to — DERIVED from the census
+ * above and `LOG_SEGMENT_CENSUS`, never declared a third time.
+ *
+ * The pairing is the fact the measure rests on (tagging the period arm 'care' once
+ * passed three separate census cases while a period start had silently become Care
+ * evidence), and deriving it is what makes the pairing unforgeable: there is no
+ * second place to write it down wrongly. A ledger claimed by two entries with
+ * different segments is caught by `lib/__tests__/log-sheet-sources.test.ts`.
+ */
+export const LOG_LEDGER_SEGMENT: Readonly<
+  Partial<Record<LedgerWithLoggedVia, LogSegmentId>>
+> = Object.fromEntries(
+  (Object.keys(LOG_DAY_SOURCES) as QuickLogId[]).flatMap((id) => {
+    const declared = LOG_DAY_SOURCES[id];
+    return isArguedExclusion(declared)
+      ? []
+      : declared.map((ledger) => [ledger, LOG_SEGMENT_CENSUS[id]] as const);
+  })
+);
 
 /**
  * The dose context chip names the first two due items, then gives a compact

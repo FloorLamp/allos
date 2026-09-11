@@ -6,6 +6,11 @@
 // logic stays unit-testable.
 
 import { doseDueOn, type IntakeDayContext } from "./intake-schedule";
+import {
+  movementDirection,
+  WEIGHT_TOLERANCE_KG,
+  type MovementDirection,
+} from "./movement";
 import type { DoseCadence, ItemCadence } from "./intake-cadence";
 import { goalBarClass, goalPct, isGoalLive } from "./outcome-goals";
 import type { OutcomeGoal, IntakeItem } from "./types";
@@ -55,7 +60,15 @@ export function intakeAdherenceToday(
 
 // ---- Weight trend ----
 
-export type TrendDir = "up" | "down" | "flat";
+// The household card's weight arrow: the POINT-TO-POINT movement question (#3394),
+// asked over the two newest DAILY weigh-ins. The verdict and the 0.1 kg flat band both
+// live in `lib/movement.ts` now — the band is a property of the quantity (a bathroom
+// scale moves 50–100 g between two honest weigh-ins of an unchanged body), not of this
+// card, and the direction rule is shared with every other movement verdict.
+//
+// This wrapper survives only as the card's VALUE-PAIR shape: the page reads two folded
+// daily points and has no series to hand over. It adds no rule of its own.
+export type TrendDir = MovementDirection;
 
 export interface WeightTrend {
   dir: TrendDir;
@@ -70,12 +83,11 @@ export interface WeightTrend {
 export function weightTrend(
   latestKg: number | null | undefined,
   previousKg: number | null | undefined,
-  tolKg = 0.1
+  tolKg = WEIGHT_TOLERANCE_KG
 ): WeightTrend | null {
   if (latestKg == null || previousKg == null) return null;
   const deltaKg = latestKg - previousKg;
-  if (Math.abs(deltaKg) < tolKg) return { dir: "flat", deltaKg };
-  return { dir: deltaKg > 0 ? "up" : "down", deltaKg };
+  return { dir: movementDirection(deltaKg, tolKg), deltaKg };
 }
 
 // ---- Outcome-goal highlights ----

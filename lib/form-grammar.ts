@@ -102,6 +102,8 @@ import type { ProtocolFactKey } from "./protocol-facts";
 import type { VisitFactKey } from "./visit-facts";
 import type { InjuryFactKey } from "./injury-facts";
 import type { SleepFactKey } from "./sleep-facts";
+import type { ConditionFactKey } from "./condition-facts";
+import type { AllergyFactKey } from "./allergy-facts";
 
 // Every form the app hosts. A new form joins this union and then must answer the
 // grammar below before it compiles; a host mount naming an id that is not here does
@@ -383,18 +385,68 @@ export const FORM_GRAMMAR = {
   // Family 3 of the census. Each renders six to fifteen labelled fields with no
   // shared scaffold, and each MEETS the primitive's preconditions better than most —
   // a coded vocabulary pre-answers the fields, most saves are confirmations, the
-  // fields are discrete facts. They are declared as fields because that is what they
-  // render today; #5302 rewrites the family onto the chip row one form per PR, and
-  // each adoption replaces its entry here with the fact keys it then has.
+  // fields are discrete facts. #5302 rewrites the family onto the chip row a slice at
+  // a time, and each adoption replaces its `fields` entry here with the fact keys it
+  // then has. TWO ARE ADOPTED (slice 1: allergy, condition); the rest still declare
+  // what they render today, and a reason that says so rather than dressing a deferral
+  // as a ruling.
+  //
+  // EACH ADOPTED FORM GETS ITS OWN FACTS MODULE rather than the thirteen sharing one
+  // keyed union, and slice 1 argued it once so the other slices do not re-argue it.
+  // `Record<K, FactRole>` demands a role for EVERY key of K: over a shared union of
+  // roughly sixty keys each of the thirteen entries would have to classify the fifty-
+  // odd facts it does not have, and a fact ADDED to one form would then already be a
+  // known key here — which is exactly the staleness this arm exists to prevent. The
+  // `appointment` entry above shows the cost at its smallest, with one borrowed key
+  // (`diagnoses`) it never renders. Sharing also merges names that are not the same
+  // question: a condition's `severity` is mild/moderate/severe for the problem, an
+  // allergy's is the grade of one manifestation. The visit pair remains the shape a
+  // shared module is FOR — two forms stating the same facts about the same thing.
 
-  allergy: fields(
-    "Renders labelled fields; the allergen vocabulary that would pre-answer them arrives with the family's rewrite.",
-    "#5302"
-  ),
-  condition: fields(
-    "Renders labelled fields over the ICD-10 vocabulary; adopts the chip row with the family.",
-    "#5302"
-  ),
+  // app/(app)/records/problems/allergies/AllergyForm.tsx, ADOPTED (#5302 slice 1).
+  // The two essentials are #5302's own for this form: a reaction and its grade. They
+  // are two chips over ONE editor, because a peanut allergy that causes both hives and
+  // anaphylaxis is two graded rows rather than one string (#1405).
+  //
+  // `status` is essential rather than optional for the reason `injury.status` is: the
+  // select is born "active" and the action writes whatever it holds, so the fact can
+  // never be absent and the more-line can never hold it. Calling it optional would say
+  // the trailing affordance might, which is false.
+  //
+  // There is NO CODE FACT here, and the asymmetry with `condition` below is deliberate:
+  // the allergy form renders no `substance_code` field and its actions parse none, so a
+  // code chip would make the form post a field it has never posted — which #5302 rules
+  // out. #5287's `allergy-code` gap stays in the data-quality model.
+  allergy: facts<AllergyFactKey>({
+    reaction: "essential",
+    severity: "essential",
+    criticality: "optional",
+    verification: "optional",
+    status: "essential",
+    onset: "optional",
+    provider: "optional",
+    encounter: "optional",
+    notes: "optional",
+  }),
+
+  // app/(app)/records/problems/conditions/ConditionForm.tsx, ADOPTED (#5302 slice 1)
+  // and the family's pattern-setter. The name is rule 1's identifying field — a
+  // Combobox over the curated ICD-10-CM names — and the code chip is seeded from it.
+  //
+  // `code` is essential because a code-less condition is the row the coded safety
+  // screens cannot read (#5287's `condition-code` gap): the dashed prompt IS that gap's
+  // sentence, said where it can be answered. `status` is essential on the same argument
+  // as the allergy's above.
+  condition: facts<ConditionFactKey>({
+    code: "essential",
+    status: "essential",
+    onset: "optional",
+    laterality: "optional",
+    severity: "optional",
+    stage: "optional",
+    resolved: "optional",
+    notes: "optional",
+  }),
   "family-history": fields(
     "Renders labelled fields — relation, condition, age — and adopts the chip row with the family.",
     "#5302"

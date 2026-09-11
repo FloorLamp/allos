@@ -27,7 +27,8 @@ export * from "./rule-findings/data-quality";
 import { commitCached } from "./commit-cache";
 import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "./format-date";
 import { type WeightUnit } from "./settings";
-import { type Finding } from "./findings";
+import { type Finding, type RollupOnlyFinding } from "./findings";
+import { RULE_FINDING_REGISTRY } from "./rule-finding-prefixes";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { buildFoodDrugVarianceFindings } from "./food-drug-ledger-findings";
@@ -94,16 +95,39 @@ export interface CoachingCollectionContext {
   prefs: DisplayFormatPrefs;
 }
 
-// ONE entry per domain builder in the collection.
-export interface CoachingCollectionEntry {
-  /**
-   * The builder's name, spelled as `RULE_FINDING_REGISTRY` (lib/rule-finding-prefixes)
-   * records it — so a caller that wants a SUBSET of the collection can select entries
-   * by joining on the prefix registry's tier column rather than keeping a second list.
-   */
-  builder: string;
-  run: (c: CoachingCollectionContext) => Finding[];
-}
+// The coaching namespaces the prefix registry declares, split by the dashboard REACH each
+// one declares there (lib/rule-finding-prefixes). A builder the registry calls
+// "rollup-only" has no surface but the dashboard rollup, and the rollup applies a
+// relevance floor — so its entry below may only run a builder that returns
+// `RollupOnlyFinding`, which cannot be constructed without the declaration. That is the
+// whole of #3129 as a type: the classification is made once, on the registry, and tsc
+// carries it through to the finding literal (#4241, #5351).
+type CoachingRegistryEntry = Extract<
+  (typeof RULE_FINDING_REGISTRY)[number],
+  { tier: "coaching" }
+>;
+type RollupOnlyBuilder = Extract<
+  CoachingRegistryEntry,
+  { reach: "rollup-only" }
+>["builder"];
+type OriginTabBuilder = Exclude<
+  CoachingRegistryEntry,
+  { reach: "rollup-only" | "not-aggregated" }
+>["builder"];
+
+// ONE entry per domain builder in the collection. `builder` is the name as
+// `RULE_FINDING_REGISTRY` records it — a typo or an unregistered builder is a compile
+// error, and a caller that wants a SUBSET of the collection selects entries by joining on
+// the registry rather than keeping a second list.
+export type CoachingCollectionEntry =
+  | {
+      builder: RollupOnlyBuilder;
+      run: (c: CoachingCollectionContext) => RollupOnlyFinding[];
+    }
+  | {
+      builder: OriginTabBuilder;
+      run: (c: CoachingCollectionContext) => Finding[];
+    };
 
 // THE COLLECTION ORDER, declared once and read by nothing else. It is data rather than
 // a hard-coded concatenation so that the order is inspectable, and so a surface that

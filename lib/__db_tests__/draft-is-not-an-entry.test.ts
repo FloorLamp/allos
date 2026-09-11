@@ -50,6 +50,11 @@ function makeProfile(name: string): number {
 // A live session's row exactly as create-at-start writes it: dated, typed, titled,
 // started, and carrying nothing else at all. `touch` is what the dock reads as the
 // last edit; every other reader here ignores it.
+//
+// IT DECLARES A WEB SURFACE (#4249), because the real create-at-start tap does: the
+// habit measure below now reads `logged_via`, and a draft that carried none would
+// pass its case for the wrong reason — "not counted because unstamped" rather than
+// "not counted because a husk is not an entry".
 function addDraft(
   profileId: number,
   date: string,
@@ -62,8 +67,9 @@ function addDraft(
     db
       .prepare(
         `INSERT INTO activities
-           (profile_id, date, type, title, start_time, created_at, updated_at)
-         VALUES (?, ?, ?, ?, '09:00', ?, ?)`
+           (profile_id, date, type, title, start_time, created_at, updated_at,
+            logged_via)
+         VALUES (?, ?, ?, ?, '09:00', ?, ?, 'dashboard-widget')`
       )
       .run(profileId, date, type, title, stamp, stamp).lastInsertRowid
   );
@@ -80,8 +86,8 @@ function addLogged(
     db
       .prepare(
         `INSERT INTO activities
-           (profile_id, date, type, title, duration_min, end_time)
-         VALUES (?, ?, ?, ?, 30, '10:00')`
+           (profile_id, date, type, title, duration_min, end_time, logged_via)
+         VALUES (?, ?, ?, ?, 30, '10:00', 'page')`
       )
       .run(profileId, date, type, title).lastInsertRowid
   );
@@ -304,12 +310,13 @@ describe("getSegmentLogDays — a husk is not a day this person logged training"
     const id = makeProfile("HABIT OTHERS");
     const day = today(id);
     db.prepare(
-      `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 70)`
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, logged_via)
+       VALUES (?, ?, 70, 'page')`
     ).run(id, day);
     addDraft(id, day, "strength", "Opened and abandoned");
-    // The Train arm left the union statement to get its own fold; the other seven
-    // arms still answer, which a split that dropped them would not show anywhere
-    // else.
+    // The Train arm has its own statement so the draft rule can read the whole row;
+    // the other arms still answer, which a split that dropped them would not show
+    // anywhere else.
     expect(getSegmentLogDays(id, day)).toEqual({ body: 1 });
   });
 });

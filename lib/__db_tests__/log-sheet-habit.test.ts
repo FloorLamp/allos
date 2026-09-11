@@ -1,25 +1,33 @@
-// DB INTEGRATION TIER (issue #2709): the "most-logged domain" gather.
+// DB INTEGRATION TIER (issue #2709, re-based by #4249): the "most-logged domain"
+// gather.
 //
 // The decision over these counts is pure and covered in
 // lib/__tests__/log-sheet.test.ts. What needs a database is everything the gather
 // itself claims: that it counts DAYS rather than rows, that it stops at the window
-// edge, that a synced row is not a log, that Body and Consume are fed by
-// every store their entries write to, and that one profile's logging never lands
+// edge, that an ingested row is not a log, that Body and Consume are fed by
+// every ledger their entries write to, and that one profile's logging never lands
 // in another's count.
 //
-// THE BODY CASE WRITES THROUGH THE REAL CORES, not through raw SQL, and that is
-// the point of it rather than a stylistic preference. It shipped hand-writing its
-// `medical_records` row with no `source`, which is a row shape the app has never
-// produced: `insertVitals` stamps `source = 'manual'` through `recordReading`, so
-// the arm's `source IS NULL` filter excluded every real vitals sitting while the
-// fixture's invented one sailed through. A predicate can only be held to its
-// writer by a fixture that IS its writer (#2720).
+// THE FIXTURES WRITE THROUGH THE REAL CORES wherever a core exists, and that is the
+// point of them rather than a stylistic preference. This file once shipped
+// hand-writing its `medical_records` row with no `source`, which is a row shape the
+// app has never produced: `insertVitals` stamps `source = 'manual'` through
+// `recordReading`, so the arm's `source IS NULL` filter excluded every real vitals
+// sitting while the fixture's invented one sailed through. A predicate can only be
+// held to its writer by a fixture that IS its writer (#2720).
+//
+// THAT LESSON IS WHY #4249's SWITCH IS VISIBLE HERE AT ALL. The measure no longer
+// asks `source` (device-versus-hand); it asks `logged_via` (which surface a person
+// used), so every fixture row must now carry the surface its writer stamps. Rows
+// written by hand below name one explicitly, and the cross-surface cases in
+// lib/__db_tests__/surface-usage.test.ts drive the real Telegram and web cores.
 
 import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { createCycleRow } from "@/lib/cycle-store";
+import { logFoodServingCore } from "@/lib/food-log-write";
 import {
   insertBodyMetric,
   insertVitals,
@@ -41,23 +49,27 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
   return { profileId, anchor: today(profileId) };
 }
 
+// The real food core: one `food_daily_totals` bump AND one stamped
+// `food_log_events` row, in one transaction, exactly as every food tap writes.
 function logFood(profileId: number, date: string, group = "fruit"): void {
-  db.prepare(
-    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
-       ON CONFLICT(profile_id, date, group_key)
-       DO UPDATE SET servings = servings + 1`
-  ).run(profileId, date, group);
+  expect(logFoodServingCore(profileId, group, date, "quick-log").kind).toBe(
+    "logged"
+  );
 }
 
 function logActivity(
   profileId: number,
   date: string,
+  // A hand-logged session declares its web surface; an integration's import
+  // stamps `import` (lib/integrations/normalize.ts) and names its provider in
+  // `source`. Both halves are written because the measure reads the first.
+  loggedVia: string = "page",
   source: string | null = null
 ): void {
   db.prepare(
-    `INSERT INTO activities (profile_id, date, type, title, source)
-     VALUES (?, ?, 'cardio', 'Walk', ?)`
-  ).run(profileId, date, source);
+    `INSERT INTO activities (profile_id, date, type, title, source, logged_via)
+     VALUES (?, ?, 'cardio', 'Walk', ?, ?)`
+  ).run(profileId, date, source, loggedVia);
 }
 
 describe("getSegmentLogDays", () => {
@@ -80,21 +92,37 @@ describe("getSegmentLogDays", () => {
     expect(getSegmentLogDays(profileId, anchor).food).toBe(1);
   });
 
-  it("does not count a synced row as a log", () => {
+  it("does not count an ingested row as a log", () => {
     const { profileId, anchor } = makeProfile("Habit Sync");
-    logActivity(profileId, anchor, "strava");
-    logActivity(profileId, shiftDateStr(anchor, -1), "health-connect");
+    logActivity(profileId, anchor, "import", "strava");
+    logActivity(
+      profileId,
+      shiftDateStr(anchor, -1),
+      "import",
+      "health-connect"
+    );
     expect(getSegmentLogDays(profileId, anchor).train ?? 0).toBe(0);
     logActivity(profileId, shiftDateStr(anchor, -2));
     expect(getSegmentLogDays(profileId, anchor).train).toBe(1);
   });
 
-  it("feeds Body from every store its entries write to, deduped per day", () => {
+  // A row the app cannot attribute to a surface is not evidence about surfaces.
+  // `logged_via` arrived nullable with no backfill (#3087), so this is the shape of
+  // every row written before 2026-08-22 — and reading it as a web act would be the
+  // same unfounded claim #4249 removed, made about older rows instead.
+  it("does not count an unstamped row as a web log", () => {
+    const { profileId, anchor } = makeProfile("Habit Unstamped");
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title) VALUES (?, ?, 'cardio', 'Walk')`
+    ).run(profileId, anchor);
+    expect(getSegmentLogDays(profileId, anchor).train ?? 0).toBe(0);
+  });
+
+  it("feeds Body from every ledger its entries write to, deduped per day", () => {
     const { profileId, anchor } = makeProfile("Habit Body");
-    // A weigh-in, a manual waist measurement, a hand-typed vitals sitting and a
-    // period start — four stores, one segment. Every one of them goes through the
-    // core the sheet's own entry mounts, so each arm is tested against the row
-    // shape that entry actually writes.
+    // A weigh-in and a hand-typed vitals sitting — two ledgers, one segment, each
+    // written by the core the sheet's own entry mounts, so each arm is tested
+    // against the row shape that entry actually writes.
     expect(
       insertBodyMetric(profileId, {
         date: anchor,
@@ -107,12 +135,6 @@ describe("getSegmentLogDays", () => {
       }).wrote
     ).toBe(true);
     expect(
-      insertWaistCirc(profileId, anchor, {
-        waistCirc: "80",
-        waistCircUnit: "cm",
-      })
-    ).toBe(true);
-    expect(
       insertVitals(
         profileId,
         shiftDateStr(anchor, -1),
@@ -123,21 +145,38 @@ describe("getSegmentLogDays", () => {
         "page"
       ).wrote
     ).toBe(true);
-    createCycleRow(profileId, shiftDateStr(anchor, -2), null, null, null);
-    // The vitals sitting really is `source = 'manual'` in the store — the fact the
-    // arm's predicate has to agree with, pinned here so a fixture can never again
-    // invent an easier row than the app writes.
+    // The vitals sitting really is a stamped `medical_records` row in the store —
+    // the fact the arm's predicate has to agree with, pinned here so a fixture can
+    // never again invent an easier row than the app writes.
     expect(
       db
         .prepare(
-          `SELECT DISTINCT source FROM medical_records
+          `SELECT DISTINCT source, logged_via FROM medical_records
             WHERE profile_id = ? AND category = 'vitals'`
         )
-        .pluck()
         .all(profileId)
-    ).toEqual(["manual"]);
-    // Three distinct days, not five rows.
-    expect(getSegmentLogDays(profileId, anchor).body).toBe(3);
+    ).toEqual([{ source: "manual", logged_via: "page" }]);
+    expect(getSegmentLogDays(profileId, anchor).body).toBe(2);
+  });
+
+  // THE COST OF THE #4249 SWITCH, PINNED RATHER THAN LEFT TO DRIFT (`LOG_DAY_SOURCES`
+  // argues both). `metric_samples` and `cycles` are outside the #3087 tranche: a waist
+  // measurement and a period start carry no `logged_via`, so neither can say which
+  // surface wrote it, and the measure counts WEB acts. `insertWaistCirc` does not even
+  // TAKE a surface, which is the fact that argument rests on — so the day is not habit
+  // evidence, and Body stays exactly one tap away on the track regardless.
+  it("leaves the unstamped Body ledgers out of the count, and says so", () => {
+    const { profileId, anchor } = makeProfile("Habit Body Gap");
+    expect(
+      insertWaistCirc(profileId, anchor, {
+        waistCirc: "80",
+        waistCircUnit: "cm",
+      })
+    ).toBe(true);
+    createCycleRow(profileId, shiftDateStr(anchor, -1), null, null, null);
+    expect(getSegmentLogDays(profileId, anchor).body ?? 0).toBe(0);
+    // Not hidden — Body is still a segment on the track with its entries intact.
+    expect(logSheetSegments(true).map((s) => s.id)).toContain("body");
   });
 
   it("leaves an imported clinical result out of the Body count", () => {
@@ -151,12 +190,12 @@ describe("getSegmentLogDays", () => {
         .run(profileId).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO medical_records (profile_id, date, category, name, value, document_id)
-       VALUES (?, ?, 'vitals', 'Blood pressure', '120/80', ?)`
+      `INSERT INTO medical_records (profile_id, date, category, name, value, document_id, logged_via)
+       VALUES (?, ?, 'vitals', 'Blood pressure', '120/80', ?, 'import')`
     ).run(profileId, anchor, documentId);
     db.prepare(
-      `INSERT INTO medical_records (profile_id, date, category, name, value)
-       VALUES (?, ?, 'lab', 'ALT', '20')`
+      `INSERT INTO medical_records (profile_id, date, category, name, value, logged_via)
+       VALUES (?, ?, 'lab', 'ALT', '20', 'page')`
     ).run(profileId, anchor);
     expect(getSegmentLogDays(profileId, anchor).body ?? 0).toBe(0);
   });
@@ -178,10 +217,10 @@ describe("getSegmentLogDays", () => {
         .run(itemId).lastInsertRowid
     );
     db.prepare(
-      "INSERT INTO intake_item_logs (dose_id, item_id, date) VALUES (?, ?, ?)"
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, logged_via) VALUES (?, ?, ?, 'quick-log')"
     ).run(doseId, itemId, anchor);
     db.prepare(
-      "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'sauna', ?)"
+      "INSERT INTO practice_logs (profile_id, practice, date, logged_via) VALUES (?, 'sauna', ?, 'page')"
     ).run(profileId, shiftDateStr(anchor, -1));
     expect(getSegmentLogDays(profileId, anchor)).toMatchObject({
       food: 1,
@@ -198,51 +237,55 @@ describe("getSegmentLogDays", () => {
     });
   });
 
-  // #4064 added the symptom arm to Care. `symptom_logs` has no `source` column
-  // because it has no ingest path, so the arm carries no manual filter — the check
-  // that matters is the PAIRING: a symptom day is Care evidence, and it dedupes with
-  // the practice arm on a day that has both, exactly as the Body stores do.
+  // #4064 added the symptom arm to Care. The check that matters is the PAIRING: a
+  // symptom day is Care evidence, and it dedupes with the practice arm on a day that
+  // has both, exactly as the Body ledgers do.
   it("counts a symptom day toward Care, deduped against the practice arm", () => {
     const { profileId, anchor } = makeProfile("Habit Symptom");
     const shared = shiftDateStr(anchor, -1);
     db.prepare(
-      "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'sauna', ?)"
+      "INSERT INTO practice_logs (profile_id, practice, date, logged_via) VALUES (?, 'sauna', ?, 'page')"
     ).run(profileId, shared);
     for (const date of [shared, anchor]) {
       db.prepare(
-        "INSERT INTO symptom_logs (profile_id, date, symptom, severity) VALUES (?, ?, 'headache', 2)"
+        `INSERT INTO symptom_logs (profile_id, date, symptom, severity, logged_via)
+         VALUES (?, ?, 'headache', 2, 'quick-log')`
       ).run(profileId, date);
     }
     expect(getSegmentLogDays(profileId, anchor)).toMatchObject({ care: 2 });
   });
 
-  // #3327 added the substance arm. The store has no ingest path, so the only
-  // question its filter answers is the one every other arm answers: are these rows
-  // hand-entered?
+  // #3327 added the substance arm; #4435's event tranche gave it a second stamped
+  // ledger. Both are declared, and day SETS union — so a day carried by both is one
+  // day's evidence, never two.
   it("counts substance and alcohol taps toward Consume where they land", () => {
     const { profileId, anchor } = makeProfile("Habit Substance");
     db.prepare(
-      `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
-       VALUES (?, ?, 'nicotine', 2)`
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units, logged_via)
+       VALUES (?, ?, 'nicotine', 2, 'quick-log')`
     ).run(profileId, anchor);
     db.prepare(
-      `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
-       VALUES (?, ?, 'Kratom', 1)`
+      `INSERT INTO substance_log_events (profile_id, date, substance, logged_via)
+       VALUES (?, ?, 'nicotine', 'quick-log')`
+    ).run(profileId, anchor);
+    db.prepare(
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units, logged_via)
+       VALUES (?, ?, 'Kratom', 1, 'page')`
     ).run(profileId, shiftDateStr(anchor, -1));
     expect(getSegmentLogDays(profileId, anchor).food).toBe(2);
 
     // TWO substances on ONE day is one logged day, like every other arm: the
     // measure counts days, never rows, which is what keeps a burst from moving it.
     db.prepare(
-      `INSERT INTO substance_daily_totals (profile_id, date, substance, units)
-       VALUES (?, ?, 'cannabis', 1)`
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units, logged_via)
+       VALUES (?, ?, 'cannabis', 1, 'page')`
     ).run(profileId, anchor);
     expect(getSegmentLogDays(profileId, anchor).food).toBe(2);
 
-    // Alcohol's taps land on food_daily_totals (#860/#944), which the Consume arm
-    // already counts. `LOG_DAY_SOURCES` deliberately does not name that store twice,
+    // Alcohol's taps land on the food ledger (#860/#944), which the Consume arm
+    // already counts. `LOG_DAY_SOURCES` deliberately does not name that ledger twice,
     // so a drink is one segment's evidence rather than two.
-    logFood(profileId, shiftDateStr(anchor, -2));
+    logFood(profileId, shiftDateStr(anchor, -2), "alcohol");
     expect(getSegmentLogDays(profileId, anchor).care ?? 0).toBe(0);
     expect(getSegmentLogDays(profileId, anchor).food).toBe(3);
   });

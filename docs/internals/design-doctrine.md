@@ -54,6 +54,7 @@ shared computations rather than repeating arithmetic in a caller:
 | Question                 | Owner                                                                       |
 | ------------------------ | --------------------------------------------------------------------------- |
 | Trailing average         | `lib/trailing-average.ts`; declare `basis`                                  |
+| Metric movement verdict  | `lib/movement.ts`; name the question                                        |
 | Trends window and anchor | `lensWindow` in `lib/trends.ts`                                             |
 | Week windows             | Shared week-window helpers using profile `week_start`                       |
 | Dated count grid         | `lib/day-grid.ts`                                                           |

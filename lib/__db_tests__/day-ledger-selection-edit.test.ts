@@ -135,8 +135,11 @@ describe("Day-ledger selection edit — the batch reaches both tables", () => {
       )
     );
     expect(outcome).toMatchObject({ applied: 2, refused: [] });
-    // The dose half is audited by ITEM, and the batch has to hand the boundary the ids.
-    expect(outcome.auditedItemIds).toEqual([day.itemId]);
+    // The dose half is audited PER ROW, and the batch has to hand the boundary the
+    // (item, day) pair each corrected row ended on — one entry, because one dose moved.
+    expect(outcome.auditedDoses).toEqual([
+      { itemId: day.itemId, date: day.date },
+    ]);
     expect(servingRow(day.servingId)).toEqual({
       date: day.date,
       occurredAt: `${day.date}T19:45:00Z`,

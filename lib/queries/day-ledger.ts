@@ -108,6 +108,14 @@ export function getDayDoseLedger(
       bucket: schedule ? doseBucketOn(schedule, date) : "Anytime",
       hhmm: zonedDateParts(tz, instant).hhmm,
       clockKind: when.semantic === "event" ? "stated" : "logged",
+      // WHERE THE FILING FELL, in the ROW's zone and beside the minute read from the
+      // same instant (#5618 rule 6). Asked only of a `record` answer, exactly as the
+      // record's gather asks it: an `event` answer is a time somebody STATED, which is
+      // the row's own and renders bare, so there is no filing day to report.
+      filedDay:
+        when.semantic === "record"
+          ? zonedDateParts(tz, instant).date || null
+          : null,
       // The composed action that wrote this row (#4328), or null when nothing composed
       // it. Carried across as stored: it is an identity two rows either share or do
       // not, never a value anybody reads.

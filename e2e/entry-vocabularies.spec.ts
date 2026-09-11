@@ -8,6 +8,7 @@ import {
   settledFill,
   settledSelect,
 } from "./helpers";
+import { withRecordFact } from "./record-facts-helpers";
 import { openCombobox } from "./helpers";
 import { openFact } from "./intake-form-helpers";
 import {
@@ -183,10 +184,18 @@ test.describe("Entry vocabularies (#1676)", () => {
       .getByRole("listbox")
       .getByRole("button", { name: new RegExp(`Use .*${DRIFTED_ALLERGEN}`) })
       .click();
-    await settledFill(
-      page,
-      allergyDialog.getByTestId("allergy-reaction-new-0"),
-      "rash"
+    // The reaction is an ESSENTIAL fact behind its own dashed prompt (#5302), so the
+    // chip is the way in. Everything after it is unchanged.
+    await withRecordFact(
+      allergyDialog.getByTestId("allergy-form"),
+      "allergy",
+      "reaction",
+      () =>
+        settledFill(
+          page,
+          allergyDialog.getByTestId("allergy-reaction-new-0"),
+          "rash"
+        )
     );
     await settledClick(
       page,
@@ -216,10 +225,16 @@ test.describe("Entry vocabularies (#1676)", () => {
       .getByRole("option", { name: PICKED_ALLERGEN, exact: true })
       .click();
     await expect(picker).toHaveValue(PICKED_ALLERGEN);
-    await settledFill(
-      page,
-      pickedDialog.getByTestId("allergy-reaction-new-0"),
-      "rash"
+    await withRecordFact(
+      pickedDialog.getByTestId("allergy-form"),
+      "allergy",
+      "reaction",
+      () =>
+        settledFill(
+          page,
+          pickedDialog.getByTestId("allergy-reaction-new-0"),
+          "rash"
+        )
     );
     await settledClick(
       page,

@@ -109,9 +109,9 @@ segment, and shortcut construction; `loadQuickEntry` also checks data presence
 and refuses known minors at the server boundary. The domain's write actions
 retain their own subject authorization and age checks.
 
-`LOG_DAY_SOURCES` declares the dedicated substance counter for Consume evidence.
-Alcohol already belongs to the food writer's evidence; declaring it again would
-give one store two owners.
+`LOG_DAY_SOURCES` declares both substance ledgers as Consume evidence, via
+`logged_via`. Alcohol belongs to the food writer's evidence; declaring it again
+would give one store two owners.
 
 ## Reach
 

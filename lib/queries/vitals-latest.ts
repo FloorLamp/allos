@@ -5,7 +5,7 @@
 // than materializing years of synced readings per render — they return exactly the
 // points the full series' tail would.
 //
-// The decisions all live in the pure layer: `latestTrend` reduces each tail to a value
+// The decisions all live in the pure layer: `pointToPointMovement` reduces each tail to a value
 // plus a direction (and withholds the direction for a same-day pair), and
 // `vitalsLatestModel` applies the per-quantity presentation floor through the shared
 // `freshnessState`. This module is the seam between them and SQL, and exists so the whole
@@ -13,7 +13,7 @@
 
 import { getLatestBiomarkerTrendPoints } from "./medical";
 import { getLatestBodyMetricDailyPoints } from "./metrics";
-import { latestTrend } from "../latest-trend";
+import { pointToPointMovement } from "../movement";
 import { vitalsLatestModel, type VitalsLatestModel } from "../vitals-latest";
 
 // `todayStr` is the PROFILE-local day, resolved at the auth boundary and passed in, so
@@ -27,9 +27,9 @@ export function getVitalsLatestModel(
       date: r.date,
       value: Math.round(r.value_num as number),
     }));
-  const systolic = latestTrend(points("Blood Pressure Systolic"));
-  const diastolic = latestTrend(points("Blood Pressure Diastolic"));
-  const restingHr = latestTrend(
+  const systolic = pointToPointMovement(points("Blood Pressure Systolic"));
+  const diastolic = pointToPointMovement(points("Blood Pressure Diastolic"));
+  const restingHr = pointToPointMovement(
     getLatestBodyMetricDailyPoints(profileId, "resting_hr").map((w) => ({
       date: w.date,
       value: Math.round(w.value),

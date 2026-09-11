@@ -6,6 +6,7 @@ import { getFindingSuppressions } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { buildBodyHygieneFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
+import { attentionAmber } from "@/lib/chart-colors";
 import { dismissBodyHygiene } from "./actions";
 
 // Body-metric data-hygiene findings (issue #45, domain 5) for the Trends → Overview → body census:
@@ -40,7 +41,7 @@ export default async function BodyHygieneFindings() {
       subtitle="Readings that look like an entry slip, worth a quick fix."
       icon={
         <IconAlertTriangle
-          className="h-4 w-4 shrink-0 text-amber-500"
+          className={`h-4 w-4 shrink-0 ${attentionAmber.class}`}
           stroke={2}
         />
       }
