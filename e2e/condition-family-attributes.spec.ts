@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import {
   hydratedClick,
@@ -34,6 +34,26 @@ async function openFamilySection(page: Page) {
 // survive the round trip and show up on the row rather than collapsing into a name
 // or a notes blob. Fixture data is owned by each test (distinctive names), so no
 // shared seed row is counted or mutated.
+
+// Filling the RELATIVE means opening a fact editor and typing into a Combobox, and the
+// picker's listbox hangs directly over that editor's Done button — the overlay that
+// made slice 1's allergy spec fail, at the one address where the picker is INSIDE the
+// disclosure rather than above it. So the field is dismissed the way the condition
+// specs dismiss the name picker's listbox, with Escape.
+//
+// Escape is ALSO the fact editor's own close gesture, so whether the editor survives
+// the dismissal is the disclosure's business and not this spec's claim: it presses
+// Done only if the editor outlived it. Routing, not an assertion.
+async function fillRelative(page: Page, dialog: Locator, name: string) {
+  const form = dialog.getByTestId("family-history-form");
+  await openRecordFact(form, "family-history", "relation");
+  const field = dialog.getByLabel("Relative");
+  await settledFill(page, field, name);
+  await field.press("Escape");
+  if (await form.getByTestId("family-history-editor").isVisible())
+    await form.getByTestId("family-history-editor-done").click();
+  await expect(form.getByTestId("family-history-fact-row")).toBeVisible();
+}
 
 test.describe("Condition laterality / severity / stage (#1403)", () => {
   test("a sided, graded condition records its side and grade, and both are editable", async ({
@@ -145,9 +165,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     await conditionField.press("Escape");
     const addForm = dialog.getByTestId("family-history-form");
     // The relative is an ESSENTIAL, so its dashed chip is already on the row.
-    await withRecordFact(addForm, "family-history", "relation", () =>
-      settledFill(page, dialog.getByLabel("Relative"), "E2E father")
-    );
+    await fillRelative(page, dialog, "E2E father");
     // The three death columns are ONE fact over ONE editor: they describe a single
     // event and read back as one line, so the age and the cause are filled together
     // behind the `death` chip rather than at two addresses.
@@ -185,9 +203,7 @@ test.describe("Family history death facts + genetic axis (#1407)", () => {
     await settledFill(page, secondCondition, "E2E type 2 diabetes");
     await secondCondition.press("Escape");
     const secondForm = second.getByTestId("family-history-form");
-    await withRecordFact(secondForm, "family-history", "relation", () =>
-      settledFill(page, second.getByLabel("Relative"), "E2E guardian")
-    );
+    await fillRelative(page, second, "E2E guardian");
     await withRecordFact(secondForm, "family-history", "relationship", () =>
       settledSelect(page, second.locator("#fh-relation-type-new"), "step")
     );
