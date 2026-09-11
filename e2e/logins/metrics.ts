@@ -141,5 +141,4 @@ export const BULKFIX_PROFILE = "Bulk Fix (e2e)";
 // silently change the dashboard every other fixture profile renders. The spec
 // resets this profile's `upcoming_dismissals` at test start, so the set→clear
 // sequence is identical on every run and under --repeat-each.
-export const E2E_LOGIN_BADGE = "e2e_badge";
 export const APP_BADGE_PROFILE = "App Badge (e2e)";

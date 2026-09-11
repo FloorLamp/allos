@@ -68,6 +68,10 @@ test("live logger tempers a recovering-injury lift's next-set outside a deload w
 
     // Use fills the tempered load into the set (create-and-clean, mirroring #335).
     await card.getByRole("button", { name: "Use" }).click();
+    // Use confirms set 1; the rows after it are still the plan, so the grid keeps
+    // one layout and set 1 states its load behind its door (#5762). The tempered
+    // number itself is the subject here, so it is read through that door.
+    await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
     await expect(weight).toHaveValue(/^60/);
 
     await cleanUpDraft(page);

@@ -92,12 +92,26 @@ const TEST_TREES = [
   "**/*.test.ts",
   "**/*.test.tsx",
 ];
-const PRODUCTION_TREES = [
+// The last two entries are Next's repo-root modules: middleware.ts runs on every
+// request and instrumentation-client.ts in every browser session, and no `**/` tree
+// reached either, so both sat outside every ban composed onto this list — the #5348
+// write-brand cast included (#5856). EXPORTED because
+// lib/__tests__/write-brand-ban-coverage.ts enumerates the production surface from
+// this list rather than restating it.
+export const PRODUCTION_TREES = [
   "lib/**/*.{ts,tsx}",
   "app/**/*.{ts,tsx}",
   "components/**/*.{ts,tsx}",
   "scripts/**/*.{ts,tsx}",
+  "middleware.ts",
+  "instrumentation-client.ts",
 ];
+// The one module allowed to expose the raw `revalidatePath`, so it is in `ignores`
+// on every block below that carries REVALIDATE_PATH_BAN — and an `ignores` entry
+// drops a file to the level above for every rule that block sets, not just the one
+// it was exempted from. The block near the end of the config hands its
+// `no-restricted-syntax` level back (#5856).
+const REVALIDATE_MODULE = "lib/revalidate.ts";
 
 // #1636/#2149 — was inline in the revalidate block below; named here so the blocks
 // added after it can re-state it (see the mechanic above).
@@ -541,6 +555,14 @@ const SYNTAX_ALL = TEMPORAL_BRAND_CAST_SELECTORS.map((selector) => ({
   message:
     "Do not cast or re-alias to a temporal brand. Obtain it from a minter that validates or constructs it (lib/temporal-types.ts, #2899).",
 }));
+// REVALIDATE_PATH_BAN's other spelling: the same prohibition as a dynamic import.
+// Named so lib/revalidate.ts's block can drop the one ban it owns and keep the rest.
+const REVALIDATE_DYNAMIC_IMPORT_BAN = {
+  selector:
+    "VariableDeclarator[id.type='ObjectPattern']:has(Property[key.name='revalidatePath']) ImportExpression[source.value='next/cache']",
+  message:
+    "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
+};
 // Shared syntax restrictions remain active in every narrower block below.
 const APP_SURFACE_SYNTAX = [
   {
@@ -549,12 +571,7 @@ const APP_SURFACE_SYNTAX = [
     message:
       "Use PageContainer's width prop for its measure; className may supply spacing and centering, not max-w-* overrides.",
   },
-  {
-    selector:
-      "VariableDeclarator[id.type='ObjectPattern']:has(Property[key.name='revalidatePath']) ImportExpression[source.value='next/cache']",
-    message:
-      "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
-  },
+  REVALIDATE_DYNAMIC_IMPORT_BAN,
   {
     selector:
       "CallExpression[callee.type='MemberExpression'][callee.object.name='page'][callee.property.name=/^(?:on|once)$/][arguments.0.value='dialog']",
@@ -1118,7 +1135,7 @@ const config = [
       "scripts/**/*.{ts,tsx}",
       "e2e/**/*.{ts,tsx}",
     ],
-    ignores: ["lib/revalidate.ts", "lib/__action_tests__/**"],
+    ignores: [REVALIDATE_MODULE, "lib/__action_tests__/**"],
     rules: {
       "no-restricted-imports": restrictImports(
         [REVALIDATE_PATH_BAN],
@@ -1152,7 +1169,7 @@ const config = [
   // temporal-brand minters use.
   {
     files: PRODUCTION_TREES,
-    ignores: [...TEST_TREES, "lib/revalidate.ts"],
+    ignores: [...TEST_TREES, REVALIDATE_MODULE],
     rules: {
       "no-restricted-imports": restrictImports(
         IMPORT_PATHS_PRODUCTION,
@@ -1166,7 +1183,7 @@ const config = [
   // column keeps its own spelling of the key and cannot carry a disable comment.
   {
     files: PRODUCTION_TREES,
-    ignores: [...TEST_TREES, "lib/revalidate.ts", "lib/migrations/**"],
+    ignores: [...TEST_TREES, REVALIDATE_MODULE, "lib/migrations/**"],
     rules: {
       "no-restricted-syntax": ["error", ...SYNTAX_PRODUCTION_KEYED],
     },
@@ -1181,7 +1198,7 @@ const config = [
     ],
     ignores: [
       ...TEST_TREES,
-      "lib/revalidate.ts",
+      REVALIDATE_MODULE,
       "lib/migrations/**",
       ...OURA_SURFACES,
       ...FITBIT_SURFACES,
@@ -1447,6 +1464,22 @@ const config = [
       "no-restricted-syntax": [
         "error",
         ...without(SYNTAX_LIB_APP, ...WRITE_BRAND_CAST),
+      ],
+    },
+  },
+  // ── lib/revalidate.ts owns an IMPORT exemption, not a syntax one (#5856) ────
+  // Its `ignores` entries above exempt it from REVALIDATE_PATH_BAN, and took every
+  // `no-restricted-syntax` ban of its level with them — so a shipped module sat
+  // outside the write-brand cast ban (#5348) and the RPE cast ban (#3335) while
+  // every sampled row of eslint-config-composition.test.ts stayed green. This block
+  // restores the level and leaves `no-restricted-imports` unset, which is the whole
+  // and only exemption the module was granted.
+  {
+    files: [REVALIDATE_MODULE],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, REVALIDATE_DYNAMIC_IMPORT_BAN),
       ],
     },
   },

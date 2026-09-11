@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { appContent } from "./helpers";
 import { type Page } from "@playwright/test";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { loginAs } from "./nav";
@@ -127,6 +128,17 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
       "attention.fact:visit:dental_cleaning"
     );
     await expect(dentalAttention).toBeVisible();
-    await expect(dentalAttention).toHaveAttribute("data-lane", "now");
+    // AND IT IS UNDER THE RULE, which is what "prominent" means on Home now (#5435
+    // §3.2). The row used to carry `data-lane="now"` — a ranker verdict about which
+    // of four lanes won it. v3 has no lanes and no ranking: a row either has its
+    // seat or it is not on the page, and the seat this claim is about is the Now
+    // band between what is owed and what is recorded. Asserting containment rather
+    // than an attribute is the same claim through the structure that replaced it,
+    // and a stronger one — it reads where the row actually is.
+    await expect(
+      appContent(lapsed)
+        .getByTestId("home-now")
+        .locator('[data-candidate-id^="attention.fact:visit:dental_cleaning"]')
+    ).toBeVisible();
   });
 });

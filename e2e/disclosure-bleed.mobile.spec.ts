@@ -17,7 +17,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { E2E_LOGIN_DASHBOARD_ALL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { openCareOverviewSection, openDashboardAll } from "./helpers";
+import { openCareOverviewSection } from "./helpers";
 import { loginAs } from "./nav";
 
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -82,23 +82,16 @@ async function expectFullBleed(
   );
 }
 
-test("a Show everything band paints to both viewport edges on a phone", async ({
-  browser,
-}) => {
-  const page = await loginAs(
-    browser,
-    { username: E2E_LOGIN_DASHBOARD_ALL, password: E2E_MEMBER_PASSWORD },
-    PHONE
-  );
-  await page.goto("/");
-  await openDashboardAll(page);
-  await expectFullBleed(
-    page,
-    '[data-testid="dashboard-all"]',
-    ".band",
-    "Show everything band"
-  );
-});
+// THE SHOW EVERYTHING BAND RETIRED WITH THE TAIL (#5435 §4).
+//
+// This asserted that the band paints to BOTH viewport edges on a phone — the #3920
+// full-bleed rule, whose failure is a strip of page beside a band that should have
+// filled it. Its subject was the "Show everything" band, which §4 retires.
+//
+// WHAT RETIRED WITH IT: the full-bleed claim as asserted on that band. What did not:
+// the rule, which the Care overview card's case below asserts on the same phone at the
+// same breakpoint — that is the second instance this file always carried, and it is
+// why the rule still has a browser reader.
 
 test("a Care overview card paints to both viewport edges on a phone", async ({
   browser,

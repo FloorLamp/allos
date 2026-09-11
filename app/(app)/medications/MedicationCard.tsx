@@ -29,7 +29,7 @@ import {
 import type { AdherenceDot } from "@/lib/intake-adherence";
 import type { AdherenceCalendarModel } from "@/lib/adherence-calendar";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
-import { medicationHref } from "@/lib/hrefs";
+import { medicationHref, type AppRoute } from "@/lib/hrefs";
 import { formatLongDate } from "@/lib/format-date";
 import {
   formatMedicationDoseLine,
@@ -136,6 +136,7 @@ export default function MedicationCard({
   initialSupplyEditor = false,
   initialRefill = false,
   ingredients = [],
+  deleteReturnHref,
 }: {
   medication: IntakeItem;
   doses: IntakeDose[];
@@ -221,6 +222,13 @@ export default function MedicationCard({
   initialRefill?: boolean;
   // The label composition (#2856), shown as this card's "What's in this" line (#3161).
   ingredients?: IntakeItemIngredient[];
+  // A canonical detail page leaves after deleting its record (#5340) — the same prop
+  // the activity menu has taken from its detail host since #3099
+  // (app/(app)/training/ActivityCardMenu.tsx). This card's ONLY production mount is
+  // `/medications/[id]`, whose record the delete removes, so without this the
+  // revalidated render is the 404 for the row just deleted (#5337). A host whose own
+  // refreshed list simply stays in place omits it.
+  deleteReturnHref?: AppRoute;
 }) {
   const { pediatric, todayStr } = intakeContext;
   const s = medication;
@@ -546,6 +554,12 @@ export default function MedicationCard({
                         await undoable(deleteIntakeItem, fd, {
                           deletedMessage: "Medication deleted.",
                         });
+                        // `replace`, never `push`: the route behind us is the one the
+                        // delete just made unresolvable, so Back must not return to it.
+                        // The Undo toast survives the navigation — ToastProvider is
+                        // mounted in the root layout — which is what the activity path
+                        // already relies on.
+                        if (deleteReturnHref) router.replace(deleteReturnHref);
                       }}
                     >
                       Delete

@@ -72,6 +72,18 @@ export interface WorkoutPresence {
   // active AND the draft has gone quiet past the episode's stale bound — drives
   // the stale-suggest.
   stale: boolean;
+  // THE DRAFT'S FRESHEST EVIDENCE, as an epoch instant — `OpenEpisode.lastSignalAt`
+  // for the workout kind (#5142). Null except while `active`, because that is the only
+  // state in which an open episode exists to have one.
+  //
+  // CARRIED RATHER THAN RE-READ. `stale` above is this instant already compared
+  // against the kind's bound, and it was the only part of the reading that escaped:
+  // a consumer that wants the EPISODE — Home's Training row, which reads Training,
+  // Fast and Period through one lifecycle (#5435 §3.2) — had to re-query `activities`
+  // and re-pick the live draft to reconstruct a value this derivation had in hand.
+  // Two pickers over one table is how the dock and the row come to disagree about
+  // whether a session is still going.
+  lastSignalAt: number | null;
 }
 
 // The subset of an activity row the presence derivation reads. `getWorkoutPresence`
@@ -131,6 +143,7 @@ const IDLE: WorkoutPresence = {
   date: null,
   sinceMin: 0,
   stale: false,
+  lastSignalAt: null,
 };
 
 // The last time the row's draft was touched — the #451 auto-save timestamp, with
@@ -244,6 +257,7 @@ export function computeWorkoutPresence(
         Math.round((nowMs - activeStart.getTime()) / 60_000)
       ),
       stale: active.stale,
+      lastSignalAt: active.touch,
     };
   }
 
@@ -272,6 +286,7 @@ export function computeWorkoutPresence(
       date: finished.row.date,
       sinceMin: Math.max(0, Math.round((nowMs - finished.endMs) / 60_000)),
       stale: false,
+      lastSignalAt: null,
     };
   }
 

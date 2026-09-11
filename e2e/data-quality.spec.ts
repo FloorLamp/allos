@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { openDashboardAll, settledClick } from "./helpers";
+import { settledClick } from "./helpers";
 import {
   E2E_LOGIN_DQ_GAPPY,
   E2E_LOGIN_DQ_COMPLETE,
@@ -12,6 +12,13 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { dashboardCandidateWithText } from "./dashboard-candidate";
+
+// WHERE THE GAP SITS NOW (#5435 §3.4). The row is the same finding through the same
+// bus with the same dismissal identity; what moved is its seat and therefore its id.
+// Home's composer keys a Setup row on `home.setup:` plus the bus's own dedupe key, and
+// every data-quality gap's dedupe key starts `data-quality:` — so this prefix names
+// exactly the rows the retired `data-quality.finding:` candidate id named.
+const SETUP_GAP_PREFIX = "home.setup:data-quality:";
 
 // Structural data-quality gaps (issue #1045). One pure gap model, many formatters: a
 // atomic dashboard statements (ranked by leverage, with no score), the
@@ -53,11 +60,10 @@ test("the dashboard surfaces the highest-leverage data-quality gap with a fix-it
     password: E2E_MEMBER_PASSWORD,
   });
   await page.goto("/");
-  await openDashboardAll(page);
 
   const atom = dashboardCandidateWithText(
     page,
-    "data-quality.finding:",
+    SETUP_GAP_PREFIX,
     "Set a birthdate"
   );
   await expect(atom).toBeVisible();
@@ -81,15 +87,17 @@ test("a structurally complete profile emits no Data quality candidate (#1045)", 
     password: E2E_MEMBER_PASSWORD,
   });
   await page.goto("/");
-  await openDashboardAll(page);
-  // The dashboard rendered successfully…
-  await expect(page.getByRole("main")).toBeVisible();
-  // …but there is no structural gap to mint a data-quality candidate.
+  // Home rendered, and it rendered ROWS — the positive control, without which the
+  // absence below would pass just as happily on a page that drew nothing at all.
+  const main = page.getByRole("main");
+  await expect(main).toBeVisible();
+  expect(await main.locator("[data-candidate-id]").count()).toBeGreaterThan(0);
+  // …and none of them is a data-quality gap, because there is no structural gap to
+  // mint one. The Setup block is absent entirely when the bus has nothing (§3.4).
   await expect(
-    page
-      .getByRole("main")
-      .locator('[data-candidate-id^="data-quality.finding:"]')
+    main.locator(`[data-candidate-id^="${SETUP_GAP_PREFIX}"]`)
   ).toHaveCount(0);
+  await expect(main.getByTestId("home-setup")).toHaveCount(0);
 
   await page.context().close();
 });
@@ -104,29 +112,22 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   });
   const main = page.getByRole("main");
   await page.goto("/");
-  await openDashboardAll(page);
 
-  // The data-quality candidate owns this gap.
+  // The data-quality row owns this gap.
   const atom = dashboardCandidateWithText(
     page,
-    "data-quality.finding:",
+    SETUP_GAP_PREFIX,
     "Set a birthdate"
   );
   await expect(atom).toBeVisible();
   await expect(atom).toContainText("Set a birthdate");
-  // …and the Coaching-observations rollup defers: the gap is NOT a second row a
-  // screen further down (which is what the mobile stack used to show).
-  await expect(
-    main
-      .getByTestId("dashboard-candidate")
-      .filter({ hasText: "Set a birthdate" })
-      .filter({
-        has: main.locator('[data-candidate-id^="coaching.observation:"]'),
-      })
-  ).toHaveCount(0);
-  // One row on the whole dashboard, not two — counted across every zone.
+  // …and nothing else on the page says it a second time. The rollup this used to
+  // name — `coaching.observation:` — left Home with the rest of the coaching
+  // findings (#5435 §4, rewritten by #5634), so the claim is now the stronger one
+  // it always meant: ONE row carrying this sentence, counted over every row the
+  // page renders rather than over one lane's.
   const gapRows = main
-    .getByTestId("dashboard-candidate")
+    .locator("[data-candidate-id]")
     .filter({ hasText: "Set a birthdate" });
   await expect(gapRows).toHaveCount(1);
 

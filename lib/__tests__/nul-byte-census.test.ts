@@ -75,6 +75,9 @@ const DELIBERATE_NULS: Record<string, string> = {
   "screenshots/5521/before/mood-390.png": PNG_EVIDENCE,
   "screenshots/5521/before/practice-1280.png": PNG_EVIDENCE,
   "screenshots/5521/before/practice-390.png": PNG_EVIDENCE,
+  "screenshots/5663/after/stool-1280.png": PNG_EVIDENCE,
+  "screenshots/5663/after/stool-390-12h.png": PNG_EVIDENCE,
+  "screenshots/5663/after/stool-390.png": PNG_EVIDENCE,
 };
 
 function trackedFiles(): string[] {

@@ -14,7 +14,7 @@
     {
       "route": "/",
       "viewport": "desktop",
-      "why": "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
+      "why": "Home — the shell's most-visited surface and the one every nav change lands on.",
       "landmarks": {
         "sidebarWidth": 240,
         "mainInsetLeft": 240,
@@ -23,7 +23,7 @@
         "contentGutterRight": 20,
         "contentTopInset": 32,
         "contentWidth": 1000,
-        "pageTitleHeight": 32
+        "pageTitleHeight": 1
       }
     },
     {
@@ -105,7 +105,7 @@
     {
       "route": "/",
       "viewport": "mobile",
-      "why": "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
+      "why": "Home — the shell's most-visited surface and the one every nav change lands on.",
       "landmarks": {
         "dockHeight": 57,
         "mainInsetLeft": 0,
@@ -113,7 +113,8 @@
         "contentGutterLeft": 16,
         "contentGutterRight": 16,
         "contentTopInset": 16,
-        "contentWidth": 358
+        "contentWidth": 358,
+        "pageTitleHeight": 1
       }
     },
     {

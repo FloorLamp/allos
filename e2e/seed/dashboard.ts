@@ -23,7 +23,6 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_SLEEP_EDIT,
   E2E_LOGIN_SLEEP_PHASE,
-  E2E_LOGIN_SLEEP_SEGMENTED,
   E2E_LOGIN_MENTAL,
   MENTAL_HEALTH_PROFILE,
   E2E_LOGIN_SUBSTANCE,
@@ -36,16 +35,12 @@ import {
   PREVENTIVE_LAPSED_DATE,
   E2E_LOGIN_CRISIS,
   CRISIS_PROFILE,
-  E2E_LOGIN_NOWSTRIP,
   NOW_STRIP_PROFILE,
   NOW_STRIP_APPOINTMENT,
-  E2E_LOGIN_NOWSAFETY,
   NOW_SAFETY_PROFILE,
-  E2E_LOGIN_NOWQUIET,
   NOW_QUIET_PROFILE,
   NOW_QUIET_MED,
   NOW_QUIET_TARGETS,
-  E2E_LOGIN_PACEBEHIND,
   PACE_BEHIND_PROFILE,
   PACE_BEHIND_TARGETS,
   PACE_BEHIND_WEEK_DAY,
@@ -71,13 +66,11 @@ import {
   NAV_FEMALE_PROFILE,
   E2E_LOGIN_NAV_MALE,
   NAV_MALE_PROFILE,
-  E2E_LOGIN_DORMANT,
   DORMANT_DOMAINS_PROFILE,
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
   E2E_LOGIN_ONBOARDING,
-  E2E_LOGIN_ONBOARDING_CAREGIVER,
   EMPTY_TRAINING_PROFILE,
   SLEEP_EDIT_PROFILE,
   SLEEP_PHASE_PROFILE,
@@ -246,7 +239,6 @@ export function seedNowStrip(): void {
       ).run(nowStripId, nowStripDay, slug, servings);
     }
   }
-  seedMemberLogin(E2E_LOGIN_NOWSTRIP, nowStripId);
 
   // The safety-locked counterpart: a SEVERE PHQ-9 reading with a positive item 9
   // (index 8, 0-based). Either alone escalates (crisisDecision = severe || selfHarm);
@@ -273,7 +265,6 @@ export function seedNowStrip(): void {
      VALUES (?, ?, 8, 2)`
     ).run(nowSafetyId, scoreId);
   }
-  seedMemberLogin(E2E_LOGIN_NOWSAFETY, nowSafetyId);
 
   // The handled day (#3224): two UNMET, ON-PACE weekly training targets and a day
   // with nothing left in it. Now must be empty — the targets' log offers belong in
@@ -343,7 +334,6 @@ export function seedNowStrip(): void {
        VALUES (?, ?, ?, 'taken', '1 tablet')`
     ).run(quietDoseId, quietItemId, quietDay);
   }
-  seedMemberLogin(E2E_LOGIN_NOWQUIET, nowQuietId);
 
   // The other side of the behind boundary (#3245 / #3543 / #3548). Same shape as
   // Now Quiet — two untouched 2x/week strength-group targets, no rhythm to ask —
@@ -381,7 +371,6 @@ export function seedNowStrip(): void {
       );
     }
   }
-  seedMemberLogin(E2E_LOGIN_PACEBEHIND, paceBehindId);
 
   console.log(
     `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment), profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact) and profile ${nowQuietId} (${NOW_QUIET_PROFILE}, handled day + unmet on-pace targets, #3224) and profile ${paceBehindId} (${PACE_BEHIND_PROFILE}, day 7 + behind targets, #3245)`
@@ -400,7 +389,6 @@ export function seedNowStrip(): void {
   const caregiverOnboardingId = fixtureProfileId(ONBOARDING_CAREGIVER_PROFILE);
   resetOnboardingProfileRows(db, caregiverOnboardingId);
   writeWizardEntryState(db, caregiverOnboardingId);
-  seedMemberLogin(E2E_LOGIN_ONBOARDING_CAREGIVER, caregiverOnboardingId);
 
   // The no-gear and dup-review fixture profiles are created by ./nutrition
   // (seedNutritionTrio), which runs earlier — fixtureProfileId resolves them by name.
@@ -601,7 +589,6 @@ export function seedNowStrip(): void {
       iso(zonedWallTimeToUtc(sleepSegmentedTz, wakeDay, "08:00")!)
     );
   }
-  seedMemberLogin(E2E_LOGIN_SLEEP_SEGMENTED, sleepSegmentedId, "read");
   console.log(
     `e2e: seeded read-only segmented-night profile ${sleepSegmentedId} (${SLEEP_SEGMENTED_PROFILE}, #1191/#1283)`
   );
@@ -1267,7 +1254,6 @@ export function seedDormantDomains(): void {
       zonedWallTimeToUtc(getTimezone(id), wakeDay, "06:30")!.toISOString()
     );
   }
-  seedMemberLogin(E2E_LOGIN_DORMANT, id, "read");
   console.log(
     `e2e: seeded dormant-domain fixture — profile ${id} (${DORMANT_DOMAINS_PROFILE}): weight/sleep quiet 150d, bp 200d, resting hr 60d, labs 400d (#2652)`
   );

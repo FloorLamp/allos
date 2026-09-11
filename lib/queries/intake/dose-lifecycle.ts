@@ -174,7 +174,11 @@ export function retireRemovedDoses(
       d.id,
       todayStr,
       closedWindow(current, todayStr),
-      !current.amountAssumed
+      // PROVENANCE, not the copy flag (#5775): the closing version inherits whether
+      // this dose's amount was ever typed by a person. `amountAssumed` now answers a
+      // different question (is this day before all history?) and reading it here would
+      // stamp every backfilled amount as captured on the way through a retire.
+      current.amountCaptured
     );
   }
   const deleted = db
@@ -314,7 +318,7 @@ export function unretireDose(
           doseId,
           from,
           closedWindow(beforeGap, from),
-          !beforeGap.amountAssumed
+          beforeGap.amountCaptured
         );
       }
     }
@@ -331,7 +335,7 @@ export function unretireDose(
         start_date: row.start_date,
         end_date: row.end_date,
       },
-      !current.amountAssumed
+      current.amountCaptured
     );
     const { retired: _r, ...dose } = row;
     return { kind: "restored", dose };

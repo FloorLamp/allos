@@ -2,7 +2,6 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { practiceIdentity } from "@/lib/practice";
-import { openDashboardAll } from "./helpers";
 
 // Per-practice weekly rhythm on the protocol/practice cards (#2188): a practice
 // with an inferred weekly rhythm shows a calm "usually a session day" note on a
@@ -123,72 +122,15 @@ test("practice cards show the rhythm note on a predicted day and nothing for a y
 // already fixed. This reuses #2188's exact rhythm fixture (four sessions on today's
 // weekday across the past four weeks, at the habitual-day gate) so
 // `practiceUsuallyToday` is true and the row actually renders.
-test("the dashboard's practice row is named by the practice, not by its verb (#4841 item 3)", async ({
-  page,
-}) => {
-  const suffix = frozenNow().getTime();
-  const practiceName = `E2E Row Noun ${suffix}`;
-  const today = frozenNow().toISOString().slice(0, 10);
-  const shift = (days: number) => {
-    const d = new Date(today + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() + days);
-    return d.toISOString().slice(0, 10);
-  };
-
-  const db = new Database(workerDbPath());
-  db.pragma("busy_timeout = 5000");
-  let protocolId = 0;
-  let targetId = 0;
-  try {
-    targetId = Number(
-      db
-        .prepare(
-          `INSERT INTO frequency_targets
-             (profile_id, scope_kind, scope_value, scope_identity, per_week)
-           VALUES (1, 'practice', ?, ?, 3)`
-        )
-        .run(practiceName, practiceIdentity(practiceName)).lastInsertRowid
-    );
-    const log = db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, start_time)
-       VALUES (1, ?, ?, '18:30')`
-    );
-    for (const back of [7, 14, 21, 28]) log.run(practiceName, shift(-back));
-    protocolId = Number(
-      db
-        .prepare(
-          `INSERT INTO protocols (profile_id, name, start_date, frequency_target_id)
-           VALUES (1, ?, ?, ?)`
-        )
-        .run(`${practiceName} protocol`, shift(-30), targetId).lastInsertRowid
-    );
-
-    await page.goto("/");
-    await openDashboardAll(page);
-    // Filtered to THIS fixture's own practice: profile 1 (the shared daily
-    // fixture) already carries another practice-target protocol row.
-    const row = page
-      .locator(
-        '[data-testid="dashboard-candidate"][data-candidate-id^="protocol.practice:"]'
-      )
-      .filter({ hasText: practiceName });
-    await expect(row).toBeVisible();
-    // THE NOUN, exact — a substring assertion would still pass on the old
-    // `Log ${practiceName}` label, since it contains the practice name too. The
-    // whole row is one link (no separate control), so the label's OWN span is
-    // what has to read the bare noun.
-    await expect(row.getByTestId("standing-label")).toHaveText(practiceName);
-    // THE VERB STAYS ON THE BUTTON, unchanged by this fix — its own span, not
-    // folded into the label.
-    await expect(row.getByText("Open", { exact: true })).toBeVisible();
-  } finally {
-    if (protocolId)
-      db.prepare("DELETE FROM protocols WHERE id = ?").run(protocolId);
-    db.prepare("DELETE FROM practice_logs WHERE practice = ?").run(
-      practiceName
-    );
-    if (targetId)
-      db.prepare("DELETE FROM frequency_targets WHERE id = ?").run(targetId);
-    db.close();
-  }
-});
+// THE PROTOCOL PRACTICE ROW RETIRED WITH THE PROTOCOL FAMILY (#5435 §4).
+//
+// This asserted that the dashboard's `protocol.practice:` row is titled by the noun
+// the practice is called rather than by the verb that logs it — "Sauna", never
+// "Log Sauna" — and that the whole row is one link with no separate control. §4 takes
+// protocol rows off Home; the practice's own surfaces keep them.
+//
+// WHAT RETIRED WITH IT: the naming rule as asserted on `/`. What did not: the rule
+// itself, which is `frequencyScopeLabel`'s and is covered in lib/__tests__; and the
+// PRACTICE TARGET's Home row, which is a different family — a due action in its own
+// right under the Now rule (§3.2) — covered in
+// lib/__db_tests__/dashboard-placement-manifest.test.ts with both its converses.

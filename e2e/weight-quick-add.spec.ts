@@ -7,11 +7,7 @@ import {
   WEIGHT_QUICKADD_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import {
-  openDashboardAll,
-  openMeasurementGroup,
-  settledClick,
-} from "./helpers";
+import { openMeasurementGroup, settledClick } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // A weigh-in logged from the app's quick-write surface joins the SAME deduped daily
@@ -65,19 +61,23 @@ test("a weigh-in logged from the quick logger persists into the trend (#1042/#33
     await page.goto("/");
     const dashboardUrl = page.url();
 
-    // THE REMOVAL AND THE OFFER, TOGETHER. The tail no longer carries a weight write
-    // of its own; the sheet does. Asserting only the first would pass on a tree where
-    // the gesture disappeared instead of moving.
-    await openDashboardAll(page);
+    // THE REMOVAL AND THE OFFER, TOGETHER. Home carries no weight write of its own;
+    // the sheet does. Asserting only the first would pass on a tree where the gesture
+    // disappeared instead of moving — so the control comes first and the absence is
+    // asked of the whole page, the tail it used to be asked of having retired with
+    // the ranker (#5435 §4).
+    expect(await page.locator("[data-candidate-id]").count()).toBeGreaterThan(
+      0
+    );
     await expect(
-      page.locator(
-        '[data-testid="dashboard-candidate"][data-candidate-id="weight.quick-add"]'
-      )
+      page.locator('[data-candidate-id="weight.quick-add"]')
     ).toHaveCount(0);
-    // Two seeded points, so the weight family reports the newest as server truth in
-    // the login's default display unit.
-    const weightFamily = page.locator('[data-standing-family="weight"]');
-    await expect(weightFamily).toContainText("70.6");
+    // THE STANDING WEIGHT FAMILY'S READOUT IS NOT ASSERTED HERE ANY MORE. It read the
+    // seeded 70.6 back as server truth in the login's display unit; §4 retires the
+    // weight latest/trend rows from Home along with the "Log a vital" door, so there
+    // is no readout on `/` to check. The same value is read back from the TREND at
+    // the end of this test, which is where the write has to land and is the claim the
+    // test is named for.
 
     const sheet = await openLogSheet(page);
     const row = await showLogRow(sheet, "log-measurements");
@@ -93,14 +93,17 @@ test("a weigh-in logged from the quick logger persists into the trend (#1042/#33
     );
 
     // Server truth, read after a reload rather than from the toast: a resolved
-    // promise is not a committed row. The dashboard's own weight family is the
-    // reader, so this is the deduped daily series and not a second computation.
+    // promise is not a committed row.
+    //
+    // READ ON TRENDS, WHICH OWNS THE SERIES NOW. Home's own weight family was the
+    // reader until #5435 §4 retired it with the rest of Standing, and the trend it
+    // doored to is where the value lives — so the reload proves the write committed
+    // (the sheet closed and the page re-rendered from the server) and the census
+    // below, on the surface that reads the deduped daily series, proves it is THE
+    // series rather than a second computation. That census was always in this test;
+    // what changed is that it is now the only reader, not a corroborating one.
     await page.reload();
     expect(page.url()).toBe(dashboardUrl);
-    await expect(weightFamily).toContainText("71.4");
-    await expect(
-      weightFamily.getByRole("link", { name: /View trend/ })
-    ).toHaveAttribute("href", "/trends#body");
 
     // And the same value on Trends → Overview → body census: the one-computation
     // check across both surfaces. Read at DESKTOP width — the #1067 tile grid and

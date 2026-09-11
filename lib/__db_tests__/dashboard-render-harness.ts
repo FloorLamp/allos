@@ -427,11 +427,29 @@ export interface ResolvedTree {
   components: number;
   awaited: number;
   skipped: string[];
+  /**
+   * Every HOST element the walk reached, by its props — what a reader wanting the
+   * manifest a render produced reads it off (#5435 §5.1: the row contract reaches the
+   * DOM as `data-candidate-id`, and a census of those ids IS the manifest now that
+   * there is no placement array to read one from).
+   *
+   * Every element the walk REACHED — host elements and components alike, a component's
+   * props captured before it is run. A client component cannot be run here (it reaches
+   * for hooks and throws), so its own markup is absent and only its props and the
+   * server-rendered tree around it are present. That is exactly the set this tier can
+   * speak for, and naming it here stops a reader inferring coverage of the rest.
+   */
+  elements: AnyProps[];
 }
 type AnyProps = { children?: ReactNode } & Record<string, unknown>;
 export async function resolveAsyncTree(
   root: ReactNode,
-  stats: ResolvedTree = { components: 0, awaited: 0, skipped: [] }
+  stats: ResolvedTree = {
+    components: 0,
+    awaited: 0,
+    skipped: [],
+    elements: [],
+  }
 ): Promise<ResolvedTree> {
   const visit = async (node: ReactNode): Promise<void> => {
     if (node == null || typeof node !== "object") return;
@@ -448,6 +466,11 @@ export async function resolveAsyncTree(
     const type = element.type;
     if (typeof type === "function") {
       const name = (type as { name?: string }).name || "(anon)";
+      // A COMPONENT'S OWN PROPS ARE COLLECTED TOO, and before it is run: a control
+      // handed down as an element (`<HomeRow control={…}>`) is a prop rather than
+      // markup, and a client component's props are the only thing a reader can see of
+      // it at all here, because the component itself throws.
+      stats.elements.push(element.props);
       try {
         stats.components += 1;
         let rendered = (type as (props: AnyProps) => unknown)(element.props);
@@ -469,6 +492,7 @@ export async function resolveAsyncTree(
       }
       return;
     }
+    stats.elements.push(element.props);
     const children = element.props?.children;
     if (children !== undefined) {
       for (const child of Children.toArray(children)) await visit(child);

@@ -208,6 +208,54 @@ export function refillOfferIsTerminal(offer: RefillOffer): boolean {
   );
 }
 
+// THE PROMPTS THIS SENDER LEFT OPEN IN THIS CHAT (#5654).
+//
+// A number typed WITHOUT the Reply gesture quotes nothing, so the only thing that can
+// name its receipt is the receipt's own record of who opened it and where. This read
+// keys on all three of profile, chat and sender, so a row it returns was opened by THIS
+// sender in THIS chat for THIS profile — it can never answer with another person's
+// prompt, and a chat that serves several profiles is asked once per profile and gets
+// each profile's own rows back, never a merged one.
+//
+// `pending` only: an offer reaches that state together with its `promptId` and leaves it
+// on any settlement, so a returned row is a question still outstanding, never a closed
+// one. Ordered by id, oldest first, and the CALLER decides — one row is an answer, more
+// than one is an ambiguity nobody may resolve by guessing.
+export function pendingRefillOffersFromSender(
+  profileId: number,
+  chatId: string,
+  senderId: number
+): { offerId: number; offer: RefillOffer; createdAt: string }[] {
+  return (
+    db
+      .prepare(
+        `SELECT id, payload, created_at FROM notify_offers
+      WHERE profile_id = ? AND family = 'refill'
+        AND json_extract(payload, '$.state') = 'pending'
+        AND json_extract(payload, '$.origin.chatId') = ?
+        AND json_extract(payload, '$.origin.senderId') = ?
+      ORDER BY id`
+      )
+      .all(profileId, chatId, senderId) as {
+      id: number;
+      payload: string;
+      created_at: string;
+    }[]
+  ).flatMap((row) => {
+    try {
+      return [
+        {
+          offerId: row.id,
+          offer: JSON.parse(row.payload) as RefillOffer,
+          createdAt: row.created_at,
+        },
+      ];
+    } catch {
+      return [];
+    }
+  });
+}
+
 // Called under the stock reader's write transaction. One successor per predecessor,
 // including during concurrent message rebuilds; rendering retains the same identity.
 export function currentRefillOffer(

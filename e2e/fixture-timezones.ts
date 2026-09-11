@@ -12,8 +12,10 @@ import type { SqlPrepare } from "../lib/write-revision";
 // UTC start hour, so any dashboard candidate carrying meal-window timing
 // (protein-today; the composed-morning offer carried it too until #3265 gave it the
 // food-slot window it is actually about) resolves `expired` for it once the last
-// meal window closes — and an expired candidate is dropped from EVERY lane, so
-// `openDashboardAll` cannot rescue it. That made one spec red for the ~3 hours of
+// meal window closes — and an expired candidate is dropped before any lane is built,
+// so it is ABSENT rather than folded away and no opener could have reached it (the
+// fold and its helpers are themselves retired, #5435 §4). That made one spec red for
+// the ~3 hours of
 // each day a run started in [21:00, 24:00) UTC and green the other 21. So: do NOT
 // opt a profile out here if its spec asserts a dashboard atom. Only fixtures whose
 // assertions are confined to their own pages belong below.
@@ -39,7 +41,7 @@ import type { SqlPrepare } from "../lib/write-revision";
 //   "run-pin"  — the run's OWN pinned zone, set explicitly. Needed for profiles a
 //     spec creates at runtime, which have no seeded default to inherit. These do
 //     not create a second calendar and their specs may assert dashboard atoms
-//     freely; `dashboard-vitals-recency` is one and is correct.
+//     freely; `trends-day-gaps` is one and is correct.
 //
 // The kind is verified against the zone each call site actually passes, so the
 // declaration cannot quietly stop describing the call — the failure mode that
@@ -124,10 +126,6 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
   "sleep-phase": {
     kind: "own-zone",
     why: "The phase fixture asserts explicit post-noon UTC wall-clock labels independently of the rotating instance timezone.",
-  },
-  "vitals-recency": {
-    kind: "run-pin",
-    why: "This spec-owned profile follows the run's pinned timezone so its seeded historical days are the exact days the card ages against.",
   },
   "trash-east": {
     kind: "own-zone",

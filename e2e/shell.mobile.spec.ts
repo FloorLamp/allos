@@ -226,8 +226,18 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     // A TOP-LEVEL row (#4965 moved Trends into the collapsed "Plan & review"
     // group). What this case claims is that the drawer opens and its navigation is
     // reachable — an assertion about the drawer, not about the nav registry.
+    //
+    // The vehicle used to be History, and #5435 §4 retired that row when Home
+    // became the daily read — so the row this case rode on stopped existing while
+    // its subject never changed. Settings is the replacement BECAUSE IT CANNOT BE
+    // GATED OUT: `isNavLeafVisible` (lib/nav.ts) drops a leaf for `adminOnly`,
+    // `requiresMultiProfile`, `requiresTraining`, `requiresFoodLogging`, a
+    // `relevanceKey` or the adult-content set, and `/settings` carries none of
+    // them — unlike Training, Nutrition and Sleep, which are each data-gated, and
+    // unlike Data, whose accessible name grows a review-count badge. A drawer case
+    // must not be able to fail because of the fixture's data.
     await expect(
-      drawer.getByRole("link", { name: "History", exact: true })
+      drawer.getByRole("link", { name: "Settings", exact: true })
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
@@ -957,8 +967,10 @@ test.describe("reduced motion (#1416 F)", () => {
     // The drawer reaches BOTH states with no animation scheduled: usePresence
     // collapses its exit duration to 0, so the unmount is immediate.
     const drawer = await openMobileDrawer(page);
+    // The same ungated top-level vehicle as the case above (see the note there):
+    // reduced motion is the subject, the nav registry is not.
     await expect(
-      drawer.getByRole("link", { name: "History", exact: true })
+      drawer.getByRole("link", { name: "Settings", exact: true })
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);

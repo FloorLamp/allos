@@ -6,11 +6,7 @@ import {
   E2E_LOGIN_STREAM_ONBOARD,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import {
-  expectNoClippedContent,
-  openDashboardAll,
-  settledClick,
-} from "./helpers";
+import { appContent, expectNoClippedContent, settledClick } from "./helpers";
 
 // The continuous-stream on/offboarding lifecycle (#2162), rendered.
 //
@@ -25,8 +21,16 @@ import {
 //   • the offboarding prompt is an ANNOUNCEMENT of a reduction that already happened.
 //     "Keep them ready" must leave the setting exactly as it was.
 //
-// None of these surfaces is a send: the offer renders on the dashboard and on the
-// integrations page, both class-2 surfaces the user opened themselves.
+// None of these surfaces is a send: the offer renders on the integrations page, a
+// class-2 surface the user opened themselves.
+//
+// #4076 ALSO SEATED THE OFFER AS A ROW ON `/`, and the decline case below read it
+// there. Home v3 (#5435 §4) seats fixed kinds only and builds no setup candidates, so
+// that row is gone and its placement claim — the question in the facts column, the two
+// answers in the trailing control slot — retired with it. The consent claims did not:
+// declining stops the offer, the dismissal survives a reload through the suppression
+// bus rather than a client flag, and nothing was turned off because nothing was on.
+// Those run here against the fuller card, which posts the same two actions.
 
 test("the integrations page offers the bedtime reminder when a stream first delivers, and Yes writes the setting (#2162)", async ({
   browser,
@@ -61,7 +65,7 @@ test("the integrations page offers the bedtime reminder when a stream first deli
   }
 });
 
-test("the dashboard row is dismissible, enables nothing, and stays dismissed (#2162)", async ({
+test("the offer is dismissible, enables nothing, and stays dismissed (#2162)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -69,12 +73,8 @@ test("the dashboard row is dismissible, enables nothing, and stays dismissed (#2
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await page.goto("/");
-    await openDashboardAll(page);
-    // The offer is a ROW on the dashboard since #4076 — its question in the facts
-    // column, its two answers in the row's trailing control slot. The integrations
-    // surface still draws the fuller card; both post the same actions.
-    const row = page.locator('[data-candidate-id^="stream.offer:"]');
+    await page.goto("/data?section=import");
+    const row = appContent(page).getByTestId("stream-lifecycle-offers");
     await expect(row).toBeVisible();
     await expect(row).toContainText("Health Connect started sending");
 
@@ -84,7 +84,7 @@ test("the dashboard row is dismissible, enables nothing, and stays dismissed (#2
     // Dismissed stays dismissed — the suppression bus, not a client flag.
     await page.reload();
     await expect(
-      page.locator('[data-candidate-id^="stream.offer:"]')
+      appContent(page).getByTestId("stream-lifecycle-offers")
     ).toHaveCount(0);
 
     // And declining turned NOTHING off: there was nothing on to turn off.

@@ -1,13 +1,13 @@
 import { test, expect } from "./fixtures";
-import { followLink, openDashboardAll } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_EMPTY_TRAINING,
 } from "./fixture-logins";
 
-// The Longevity page (#1042 phase 4): the expanded formatter over the SAME
-// healthspan-pillar model the dashboard Standing cluster compact-renders.
+// The Longevity page (#1042 phase 4): the expanded formatter over the healthspan
+// pillar model. It was "the SAME model the dashboard Standing cluster compact-renders"
+// until #5435 §4 took the pillars off Home; this page is the only renderer now.
 //   1. Every section renders for seeded profile 1 (it owns a complete PhenoAge
 //      panel, a VO2 Max reading, nightly sleep sessions, labs with curated
 //      ranges, and two guided fitness checks) — including the absorbed
@@ -111,52 +111,17 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
 // the tap has to produce the EVIDENCE for that claim rather than the pillar's own
 // explainer anchor. Landing on a generic index the reader then searches would be the
 // defect restated, so this drives the whole hop and asserts what arrives.
-test("the Standing strength fact lands on the panel for the lift it names", async ({
-  page,
-}) => {
-  await page.goto("/");
-  // A quiet pillar is not claimed by Standing at all since #4232 — it is present and
-  // reachable in the page's ONE fold, under the pillars' own moment header. Its claim
-  // and its link are unchanged inside it.
-  await openDashboardAll(page);
-  const fact = page
-    .getByTestId("dashboard-everything-read")
-    .locator('[data-moment-key="healthspan.pillars"]')
-    .locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id="healthspan.pillar:strength"]'
-    );
-  await expect(fact).toBeVisible();
-  await expect(fact).toHaveAttribute("data-lane", "everything");
-  // The claim: a level, for a named lift. Both come off one computation.
-  await expect(fact).toContainText("Intermediate");
-  await expect(fact).toContainText("Deadlift");
-  const link = fact.getByRole("link");
-  await expect(link).toHaveAttribute(
-    "href",
-    "/training?tab=analyze&kind=strength&item=Deadlift"
-  );
-
-  // followLink, not hydratedClick: this click NAVIGATES, and the two helpers guard
-  // different races. hydratedClick waits for React's markers on the node and clicks
-  // ONCE, which is exactly right for a toggle a retry would undo — a link has no such
-  // hazard and a different one instead. Playwright reports a click on a link a prior
-  // attempt already navigated away from as "detached", and a click that lands before
-  // the router is ready leaves the URL assertion to time out with no trace of why.
-  // followLink is the blessed helper for that, and it asserts the destination as it
-  // goes, so the separate toHaveURL is redundant.
-  await followLink(
-    page,
-    link,
-    /\/training\?tab=analyze&kind=strength&item=Deadlift$/
-  );
-  const main = page.getByRole("main");
-  // The Benchmarks ladder for THAT lift, at the level the pillar claimed.
-  await expect(main.getByText("Benchmarks", { exact: true })).toBeVisible();
-  await expect(
-    main.getByText("Deadlift estimated 1RM progression", { exact: false })
-  ).toBeVisible();
-  await expect(main.getByText("Intermediate").first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: the level appears on the ladder and in its header — either proves the standing arrived
-});
+// THE PILLAR'S DASHBOARD FACT RETIRED WITH ITS LANE (#5435 §4).
+//
+// This asserted that the Standing strength fact on `/` — "Intermediate", "Deadlift",
+// `data-lane="everything"` — linked to the Benchmarks ladder for the lift it names.
+// §4 takes the healthspan pillars off Home entirely; they live on `/longevity`, which
+// is what the rest of this file covers, including the same pillar and the same lift.
+//
+// WHAT RETIRED WITH IT: the claim that Home states a pillar at all, and that its
+// statement doors to the lift's ladder. What did not: the pillar's own computation and
+// its panel, asserted throughout this file against `/longevity`; and the ladder's
+// destination, which `e2e/training-*` covers from the Training side.
 
 test("absent pillars drop their sections; the interventions section always renders", async ({
   browser,

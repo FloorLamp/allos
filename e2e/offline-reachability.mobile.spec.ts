@@ -66,16 +66,112 @@ test("the quick logger's measurements row OPENS with no connection, and the weig
   }
 });
 
-test("the activity editor OPENS with no connection — the shell already holds its props", async ({
+// ── THE EDITOR'S CODE HAS TO REACH THE BROWSER BEFORE THE CONNECTION GOES ────
+//
+// This case used to cut the connection immediately after `awaitHydrated`, under a
+// name — "the shell already holds its props" — that stayed true of the DATA and
+// stopped being true of the CODE at #5819. That change (closing #5206) took the
+// activity editor out of the app shell's initial JavaScript: 235,554 bytes and
+// three chunks, fetched on demand and warmed by `ActivityEditorProvider`'s mount
+// effect. `awaitHydrated` polls React's fiber keys on ONE node, the dock puck, and
+// knows nothing about that fetch — so nothing ordered the warm before the
+// disconnect, and this case went red on main twice in one day (#4769: `e918943fb`
+// 14:16Z and `c1813ed88` 16:03Z, mobile shard 4, greens on either side).
+//
+// IT IS A RACE AND NOT A FLAKE, and it is deterministic once the warm is
+// controlled. Measured here against main `50aeb52d3`, three iterations per arm,
+// everything but the warm identical: the warm denied — 0/3 open offline; the warm
+// still in flight when the connection drops — 0/3; the warm awaited first — 3/3.
+//
+// SO THE PROMISE IS CONDITIONAL, AND THIS SPEC NOW SAYS SO RATHER THAN RACING IT.
+// #5206 ruled out an unconditional preload ("unconditional preload would erase the
+// initial-load benefit") and #5819 added no intent-prefetch, so a genuinely cold
+// offline open — first visit, connection cut before the warm lands — cannot work by
+// design: the bytes are not in the browser and there is no network left to fetch
+// them with. What the shell can promise is that a visit which has been open long
+// enough to warm keeps the editor reachable when the connection drops, and that is
+// what this waits for. Whether the product means the stronger, unconditional
+// reading is an OWNER QUESTION this change does not answer: neither #5206 nor
+// #5819 rules it, and answering it yes needs a guarantee in
+// components/ActivityEditorProvider.tsx, not a longer wait here.
+//
+// WHY THE WARM IS READ OFF THE RESPONSE BODY, not off a path or a count: chunk
+// names are build hashes and the shell fetches several on-demand chunks per load,
+// so "an on-demand .js arrived" answers the wrong question. `response.body()` also
+// settles on the COMPLETE response where `waitForResponse` settles on its headers,
+// and a body still streaming when the connection drops is the same starved editor
+// with a more confusing failure.
+//
+// AND OFF THE RESPONSE RATHER THAN OFF A ROUTE, which is what makes this work with
+// the service worker running. public/sw.js serves /_next/static cache-first and
+// fetches the misses ITSELF, and a service worker's own fetches are invisible to
+// `page.route` — a starve written that way silently misses, and the arm reports a
+// green that means nothing (it did here, 6/6, before the starve moved to
+// `context.route`). `page.on("response")` sees both paths, so this detector needs
+// no `serviceWorkers: "block"` and stays honest in an installed PWA.
+
+// Two literals that exist only inside the editor's own code: the exercise-name
+// placeholder (components/activity-form/ActivityPartsList.tsx) and the form root's
+// test id (components/ActivityForm.tsx). Copied from e2e/shell.mobile.spec.ts and
+// not imported — importing a spec file would register its tests into this one — and
+// safe to copy because #5206's guard there fails from both sides, so a rename that
+// blinded this detector reddens that spec first.
+const EDITOR_CODE = ["What did you do", "activity-form"] as const;
+
+/** The `/_next/static/**.js` paths the server-rendered HTML itself pulls in. */
+function initialScriptPaths(html: string): Set<string> {
+  const paths = new Set<string>();
+  for (const m of html.matchAll(/["'](\/_next\/static\/[^"']+?\.js)["']/g))
+    paths.add(m[1]);
+  return paths;
+}
+
+// Arm the detector BEFORE the navigation that starts the warm, and read the shell's
+// own script set from the HTML rather than from what the browser fetched: the HTML
+// is the timing-free statement of what hydration requires, so classifying a chunk as
+// "on demand" cannot itself race the warm (#5206 makes the same argument in
+// e2e/shell.mobile.spec.ts). Returns the wait, so the caller's ordering reads in the
+// order it happens.
+async function warmedEditorCode(page: Page): Promise<() => Promise<void>> {
+  const initial = initialScriptPaths(
+    await (await page.request.get("/")).text()
+  );
+  let landed = false;
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (!path.startsWith("/_next/static/") || !path.endsWith(".js")) return;
+    if (initial.has(path)) return;
+    void response
+      .body()
+      .then((body) => {
+        if (EDITOR_CODE.some((marker) => body.includes(marker))) landed = true;
+      })
+      .catch(() => {});
+  });
+  return async () => {
+    await expect
+      .poll(() => landed, {
+        message:
+          "the shell's warm of the activity editor's code never landed, so no offline open can be asked for",
+        timeout: 30_000,
+      })
+      .toBe(true);
+  };
+}
+
+test("the activity editor OPENS with no connection, once the shell has warmed its code", async ({
   page,
   context,
 }) => {
+  const warmed = await warmedEditorCode(page);
   await page.goto("/");
   const puck = page.getByTestId("dock-log-puck");
   await awaitHydrated(puck);
+  await warmed();
 
   await context.setOffline(true);
-  // offline-nav-ok: the activity editor opens from shell props without navigation.
+  // offline-nav-ok: the activity editor opens from shell props and from code the
+  // shell has already fetched; no navigation.
 
   const sheet = await openLogSheet(page);
   const row = await showLogRow(sheet, "log-activity");

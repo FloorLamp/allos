@@ -22,6 +22,10 @@ let token: string;
 // profile would let either test's rows satisfy the other's assertion.
 let v17ProfileId: number;
 let v17Token: string;
+// The clamped-start push needs a profile whose zone DISAGREES with the device's, which
+// is the only state where the anchor and the profile attribution give different days.
+let v19ProfileId: number;
+let v19Token: string;
 
 function payload(stepEnd: string, steps: number) {
   return {
@@ -219,6 +223,12 @@ beforeAll(() => {
   );
   setTimezone(v17ProfileId, "UTC");
   v17Token = generateHealthConnectToken(v17ProfileId, "never");
+  v19ProfileId = Number(
+    db.prepare("INSERT INTO profiles (name) VALUES ('HC-EXPORTER-19')").run()
+      .lastInsertRowid
+  );
+  setTimezone(v19ProfileId, "America/Los_Angeles");
+  v19Token = generateHealthConnectToken(v19ProfileId, "never");
 });
 
 describe("Health Connect exporter v1.9 shapes", () => {
@@ -387,5 +397,45 @@ describe("Health Connect exporter v1.9.17 bucketed shapes (#4956)", () => {
       (key) => !((tally[key]?.landed ?? 0) > 0)
     );
     expect(uncovered).toEqual([]);
+  });
+});
+
+// ---- exporter v1.9.19: the CLAMPED OLDEST BUCKET, through the real route (#5849) ----
+//
+// A daily-bucket reader clamps its first bucket's query to the sync window's own start,
+// so the oldest record of an incremental sync carries an arbitrary `start_time` where
+// every other record carries a device-local midnight. That is a value-semantics change:
+// no key, name or type moved, so only the DAY the row lands on can catch it — which is
+// what this fixture holds, beside the shapes above, for the next exporter release.
+describe("Health Connect exporter v1.9.19 clamped oldest bucket (#5849)", () => {
+  it("files the clamped bucket on the device day, not the profile's", async () => {
+    // A New York device against a profile still on Los Angeles time — the travel lag
+    // #3901 measured on prod. Its 08-27 runs 04:00Z to the next 04:00Z; the sync fired
+    // at 01:37 local, so the oldest bucket starts 05:37Z — off every quarter-hour
+    // offset, so it states no anchor of its own — while the current one starts at the
+    // midnight. Under the profile's zone those instants read 08-26 and 08-27, so the
+    // two derivations disagree on BOTH rows and the totals below say which answered.
+    const body = {
+      timestamp: "2026-08-28T06:30:05Z",
+      app_version: "1.9.19-test",
+      steps: [
+        {
+          count: 6200,
+          start_time: "2026-08-27T05:37:00Z",
+          end_time: "2026-08-28T04:00:00Z",
+        },
+        {
+          count: 900,
+          start_time: "2026-08-28T04:00:00Z",
+          end_time: "2026-08-28T06:30:00Z",
+        },
+      ],
+    };
+    expect((await post(body, v19Token)).status).toBe(200);
+
+    expect(getMetricDailyTotals(v19ProfileId, "steps")).toEqual([
+      { date: "2026-08-27", value: 6200 },
+      { date: "2026-08-28", value: 900 },
+    ]);
   });
 });

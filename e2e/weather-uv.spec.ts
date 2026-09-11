@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { followLink, openDashboardAll, settledClick } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { WEATHER_PROFILE } from "./logins/findings";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";
@@ -72,68 +72,6 @@ function restoreWeatherFixture(): void {
   }
 }
 
-// Put TODAY's cached day into the two legacy wet-weather shapes #1985 needs to pin.
-// The fixture already owns eight historical rides, so its cycling tolerance envelope
-// is revealed; this helper changes only the worker-private copy of today's GLOBAL
-// location cache. `weatherCode = null` is the old cache shape where rain vs snow is
-// unknowable. A real code beside NULL hourly precipitation is migration 149's
-// transitional shape: intensity is known from the daily row, timing is not.
-function setTodayWetWeather(weatherCode: number | null): void {
-  const db = new Database(workerDbPath());
-  try {
-    db.pragma("busy_timeout = 5000");
-    const profile = db
-      .prepare("SELECT id FROM profiles WHERE name = ?")
-      .get(WEATHER_PROFILE) as { id: number } | undefined;
-    if (!profile) throw new Error(`Missing E2E profile: ${WEATHER_PROFILE}`);
-
-    const settings = db
-      .prepare(
-        `SELECT key, value FROM profile_settings
-          WHERE profile_id = ? AND key IN ('home_lat', 'home_lng')`
-      )
-      .all(profile.id) as { key: string; value: string }[];
-    const value = (key: string): string => {
-      const found = settings.find((row) => row.key === key)?.value;
-      if (found == null)
-        throw new Error(`Missing ${key} for ${WEATHER_PROFILE}`);
-      return found;
-    };
-    const todayRide = db
-      .prepare(
-        `SELECT date FROM activities
-          WHERE profile_id = ? AND title = 'Cycling' AND start_time = '07:00'
-          LIMIT 1`
-      )
-      .get(profile.id) as { date: string } | undefined;
-    if (!todayRide)
-      throw new Error(`Missing today's cycling fixture for ${WEATHER_PROFILE}`);
-    const date = todayRide.date;
-    const lat = Number(value("home_lat"));
-    const lng = Number(value("home_lng"));
-
-    const changed = db
-      .prepare(
-        `UPDATE weather_days
-            SET temp_max_c = 18,
-                temp_min_c = 10,
-                precipitation_mm = 45,
-                weather_code = ?
-          WHERE lat = ? AND lng = ? AND date = ?`
-      )
-      .run(weatherCode, lat, lng, date);
-    if (changed.changes !== 1)
-      throw new Error(`Expected one weather day for ${date}`);
-
-    db.prepare(
-      `UPDATE weather_uv_hours
-          SET precipitation_mm = NULL
-        WHERE lat = ? AND lng = ? AND hour_ts LIKE ?`
-    ).run(lat, lng, `${date}%`);
-  } finally {
-    db.close();
-  }
-}
 // The record's newest day, read off the page rather than recomputed from the run's
 // frozen clock. The day CONTEXT (daylight, UV, weather) lives on the day view since
 // #3958 phase 2 — the scrolling record's day header is one line and a count — so the
@@ -348,42 +286,22 @@ test.describe("Weather & UV integration (#1172)", () => {
     }
   });
 
-  test("the coaching disclosure preserves both legacy wet-cache states (#1985)", async ({
-    browser,
-  }) => {
-    test.slow();
-
-    const member = await loginAs(browser, {
-      username: E2E_LOGIN_WEATHER,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      // No weather code means the cache cannot distinguish rain from snow. The ride is
-      // still parked by the measured precipitation, but the card deliberately renders
-      // no parenthesized figure rather than guessing a precipitation kind.
-      setTodayWetWeather(null);
-      await member.goto("/");
-      await openDashboardAll(member);
-      const noCode = member.getByText(
-        "Too wet for cycling — picking something indoors instead. Outdoor cycling resumes when it dries out."
-      );
-      await expect(noCode).toBeVisible();
-      await expect(noCode).not.toContainText("(");
-
-      // Migration 149 added hourly precipitation to an already-populated cache. Until
-      // the next sync those hourly values are NULL, so the daily WMO code can name heavy
-      // rain but cannot honestly invent morning/afternoon/evening timing.
-      setTodayWetWeather(65);
-      await member.reload();
-      const legacyHours = member.getByText(
-        "Too wet for cycling (heavy rain) — picking something indoors instead. Outdoor cycling resumes when it dries out."
-      );
-      await expect(legacyHours).toBeVisible();
-      await expect(legacyHours).not.toContainText(/morning|afternoon|evening/);
-    } finally {
-      await member.context().close();
-    }
-  });
+  // THE WET-CACHE STATES MOVED DOWN A TIER (#1985, #5435 §4).
+  //
+  // A test here asserted the two partial-cache descriptions — no weather code renders
+  // no parenthesized kind, and a migration-149 cache with NULL hourly precipitation
+  // names the intensity but invents no timing — by reading them off the dashboard's
+  // Show-everything fold. That fold rendered a coaching row's `notes` array; Home's
+  // next-workout seat carries the recommendation's TITLE only, so no rendered surface
+  // reads `contextNotes` any longer and the browser has nothing left to read.
+  //
+  // BOTH CASES NOW RUN, ASSERTION FOR ASSERTION, in lib/__db_tests__/weather-training.test.ts
+  // ("names no precipitation kind when the cache has no weather code" and "names the
+  // intensity but no timing when the hourly cache is still NULL"), against the producer
+  // itself. They are stronger there: each state is CACHED rather than reached by an
+  // UPDATE against a seeded fixture, and each pins the whole sentence rather than a
+  // substring. `setTodayWetWeather`, which existed only to mutate the fixture for this
+  // test, went with it.
 
   test("disabling the integration turns the connection off", async ({
     browser,

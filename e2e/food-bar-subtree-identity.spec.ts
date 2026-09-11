@@ -126,14 +126,12 @@ test("the food log bar updates its overflow fold instead of replacing it (#4815)
   );
   await expectStillTheSameFold(page, held, "switching the meal slot");
 
-  // 2. THE SIBLING FOLD. A controlled `<details>` two slots above this one in the same
-  //    section; its state change re-renders the whole bar.
-  await page.getByTestId("food-when-summary").click();
-  await expect(page.getByTestId("food-eating-time")).toHaveAttribute(
-    "open",
-    ""
-  );
-  await expectStillTheSameFold(page, held, "toggling the eating-time fold");
+  // 2. THE SIBLING STATEMENT. The eating-time statement's clock door, in the section
+  //    header two slots above this fold; opening it MOUNTS the reveal, which is a
+  //    bigger tree change than the controlled `<details>` this used to toggle.
+  await page.getByTestId("food-when-toggle").click();
+  await expect(page.getByTestId("food-eating-time")).toBeVisible();
+  await expectStillTheSameFold(page, held, "opening the eating-time statement");
 
   // 3. A SERVING TAP. A Server Action whose response revalidates `/nutrition`, so the
   //    server's re-ranked catalog arrives as new props for every row.

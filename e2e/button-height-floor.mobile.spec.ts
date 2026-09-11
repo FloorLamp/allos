@@ -7,6 +7,7 @@ import {
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
 import {
+  appContent,
   expectPhoneTapTargets,
   hydratedClick,
   openFoodAdd,
@@ -120,14 +121,14 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
         testId: "symptom-cough-sev-1",
         repairable: true,
       },
-      // THE FOLD AS A CONTROL (#4505 family 1). A `<summary>` that IS the control
-      // wears `fold-control` and joins the selector list; this one held a hand-rolled
-      // `min-h-11` and is the dashboard's one fold mechanism (#4232).
-      {
-        kind: "fold-control",
-        testId: "dashboard-all-summary",
-        repairable: true,
-      },
+      // THE FOLD AS A CONTROL (#4505 family 1) LEFT THIS ROUTE WITH THE RANKER.
+      // `dashboard-all-summary` was the dashboard's one fold mechanism (#4232) and
+      // the `<summary>` that IS a control. Home's one fold is the Later band, whose
+      // summary is a ROW (#3979) and correctly wears no `fold-control` — so this
+      // route has no instance of family 1 to measure, and the route declares that
+      // in the sweep below rather than going quietly green on a missing selector.
+      // The family itself is still measured on
+      // /records/history/immunizations (`immunization-schedule-disclosure`).
     ],
   },
   // THE ICON BUTTON (#4505 family 3). Hand-rolled `h-(--control-box) w-(--control-box)`
@@ -1108,6 +1109,207 @@ test.describe("the fact chip wears the box (#4035)", () => {
   });
 });
 
+// THE LOG FORM'S SUBMIT IS ITS ONE PROMINENT COMMIT (#5617 step 4, owner ruling
+// 2026-09-11 11:15 UTC). THIS IS THE AMENDMENT TO THE PAIR-AT-A-FIXED-BOX CLAIM,
+// NOT A REPLACEMENT FOR IT — the injury fact row above still measures its own
+// Save + Cancel at these same four widths, because the injury form is not one of
+// the eight log forms the ruling reaches and its pair is unchanged. What changed
+// is the eight, and the ruling says the amended assertion is the NEW SHAPE at the
+// SAME four widths, which is what this measures.
+//
+// THE DEFECT, IN THE OWNER'S WORDS, WAS A SIZE: "the Save CTA is the same size as
+// the other controls", reported on a screenshot of the record's dose edit form
+// where Cancel sat beside Save as an identical box. #5658 had shipped that pair
+// deliberately, carrying #4978's conversion — so this is a later ruling changing
+// an earlier one rather than a defect in what #5658 built, and the half of #5658
+// that SURVIVES is asserted here too: the control box does not move.
+//
+// AND THE COMMIT IS PROMINENT, NOT WIDE — the 15:15 amendment, which is why this
+// block asserts the OPPOSITE of what it first did. The 11:15 ruling made Save
+// full-width; above tablet width that ran it under the time wheel, whose popover
+// `TimeField` opens on FOCUS, so a click aimed at the middle of Save landed on a
+// minute column and PICKED A TIME instead of saving. Measured on the stool door:
+// a content-sized Save sat at [441,213,43,34], entirely clear of a wheel at
+// [593,147,224,246]; full-width it became [441,213,398,34] with its centre inside
+// the wheel. Seven specs went red on it. So Save is content-sized and the anchored
+// panel is untouched: "the owner's concern was prominence, not width."
+//
+// WHICH MOVES THE WHOLE CLAIM ONTO RANK, and that is what is asserted below. A
+// content-sized filled control and a content-sized text one can be within a few
+// pixels of each other — measured here, "Save dose" is 78.7 and "Cancel" 45.6, but
+// the SAME commit wearing this family's short label ("Add", which Stool, Symptom,
+// Substance and Food all render) is 43.4, NARROWER than the dismiss beside it. So
+// "the commit is the widest control" is not true of these forms and is not
+// asserted; it would have passed here on this fixture's long label alone and
+// misled the next reader. What IS true of all eight is the PAINT and the BOX:
+// the commit is the form's one filled control and carries the family's horizontal
+// padding, the dismiss is transparent and carries none.
+//
+// AND IT IS MEASURED, NOT READ OFF A CLASS. `layout="block"` in a call site is a
+// declaration and `w-full` in a stylesheet is a declaration; neither is evidence
+// of what rendered, and this file exists because #3514 shipped exactly that gap.
+// Every number below is a `getBoundingClientRect()` or a `getComputedStyle()`.
+//
+// WHY THE DOSE FORM. It is the surface the owner's screenshot was of, it is one of
+// the eight by name (`lib/log-manifest.ts`), and the record's Doses chip opens it
+// in one click from a plain `goto` — the cheapest honest way to a log form, in a
+// file whose whole table is a goto plus a readiness marker.
+//
+// AND WHAT THIS FIXTURE REACHES, said plainly, because a shape it cannot produce is
+// a shape this test cannot claim anything about. The Doses chip opens the form in
+// ADD mode, whose corpus is the submit row alone: the time is required there, so no
+// "Not stated" chip renders. The owner's screenshot was the CORRECT mode, where that
+// chip sits above the submit — the ruling leaves the chip's size alone, and it is a
+// fact control rather than a commit, so it joins this sweep as one more control the
+// commit must be told apart from by PAINT. The sweep therefore reads fact chips as
+// well as bound controls, so the correction shape joins it the day a dose fixture
+// reaches this file rather than needing the test rewritten; the corpus shape is
+// asserted below so that arrival reads as "extend this" instead of a silent
+// widening.
+test.describe("the log form's Save is the one prominent commit (#5617 step 4)", () => {
+  test.use({ viewport: PHONE });
+
+  test(`the dose form's Save is content-sized, filled and clear of the row at ${BOX_WIDTHS.join(
+    "/"
+  )}`, async ({ page }) => {
+    await page.goto("/history?kind=dose");
+    const door = appContent(page).getByTestId("history-add-open-dose");
+    await expect(door).toBeVisible();
+    // A client-only door and the first interaction after a navigation, so the tap
+    // can be lost pre-hydration with no error (#2942).
+    await hydratedClick(page, door);
+    const sheet = page.getByRole("dialog", { name: "Log dose" });
+    const form = sheet.getByTestId("historical-dose-form");
+    await expect(form).toBeVisible();
+    const save = form.getByRole("button", { name: "Save dose" });
+    const cancel = form.getByRole("button", { name: "Cancel" });
+    await expect(save).toBeVisible();
+    await expect(cancel).toBeVisible();
+
+    for (const width of BOX_WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      const geometry = await form.evaluate((el) => {
+        const box = (t: Element | null) => {
+          if (!t) return null;
+          const el = t as HTMLElement;
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          // INTRINSIC WIDTH, measured rather than inferred: a control whose
+          // rendered width equals its `max-content` width was never stretched.
+          // That is the exact reading of "content-sized", and unlike a threshold
+          // it cannot be satisfied by a merely narrow row.
+          const before = el.style.width;
+          el.style.width = "max-content";
+          const intrinsic = el.getBoundingClientRect().width;
+          el.style.width = before;
+          return {
+            width: r.width,
+            height: r.height,
+            top: r.top,
+            bottom: r.bottom,
+            intrinsic,
+            // The alpha channel of the painted background. A filled control has
+            // one; the text-style dismiss is `rgba(0, 0, 0, 0)`.
+            opaque: !/^rgba\(.*,\s*0\)$/.test(cs.backgroundColor),
+            padX: Number.parseFloat(cs.paddingLeft),
+          };
+        };
+        const named = (name: string) =>
+          Array.from(
+            el.querySelectorAll<HTMLElement>("[data-button-control]")
+          ).find((b) => (b.textContent ?? "").trim() === name) ?? null;
+        const siblings = Array.from(
+          el.querySelectorAll<HTMLElement>(
+            "[data-button-control],[data-fact-chip]"
+          )
+        )
+          .filter((b) => b.getBoundingClientRect().height > 0)
+          .map((b) => ({
+            what: (b.textContent ?? "").trim().slice(0, 24),
+            width: b.getBoundingClientRect().width,
+            height: b.getBoundingClientRect().height,
+            // A fact chip paints its own tone and is not a commit; the rank
+            // census below reads this to say which control the form exists for.
+            opaque: !/^rgba\(.*,\s*0\)$/.test(
+              getComputedStyle(b).backgroundColor
+            ),
+          }));
+        return {
+          save: box(named("Save dose")),
+          cancel: box(named("Cancel")),
+          // The form's own content box: what "full width" is full OF. Read from the
+          // element rather than from the viewport, because the sheet is a card above
+          // `md` and the form is narrower than the window there.
+          form: { width: el.getBoundingClientRect().width },
+          siblings,
+        };
+      });
+
+      // The corpus this fixture actually produced, recorded rather than assumed.
+      expect(
+        geometry.siblings.map((b) => b.what).sort(),
+        `@${width} the dose add form's control corpus changed shape`
+      ).toEqual(["Cancel", "Save dose"]);
+      expect(geometry.save, `@${width} no Save`).not.toBeNull();
+      expect(geometry.cancel, `@${width} no Cancel`).not.toBeNull();
+      const save = geometry.save!;
+      const cancel = geometry.cancel!;
+
+      // 1. CONTENT-SIZED, WHICH IS WHAT CLEARS THE WHEEL (the 15:15 amendment).
+      //    Asserted as "its rendered width IS its intrinsic width" rather than as
+      //    a threshold: `layout="block"` or an `items-stretch` column would both
+      //    put the full width back, and both are caught here exactly.
+      expect(
+        Math.abs(save.width - save.intrinsic),
+        `@${width} Save renders ${save.width} against an intrinsic ${save.intrinsic}; it is stretched, not content-sized`
+      ).toBeLessThanOrEqual(1);
+      //    …and it leaves most of the row, which is the clearance the ruling is
+      //    actually buying. Measured here Save is ~79 in a 358-607 row.
+      expect(
+        save.width,
+        `@${width} Save spans ${save.width} of a ${geometry.form.width} row; a commit that reaches across the form runs under the time wheel`
+      ).toBeLessThanOrEqual(geometry.form.width / 2);
+
+      // 2. THE FORM'S ONE FILLED CONTROL — the prominence the ruling kept when it
+      //    dropped the width. This is the rank census on one form: a second filled
+      //    control here would mean nothing says which one commits.
+      const filled = geometry.siblings
+        .filter((b) => b.opaque)
+        .map((b) => b.what);
+      expect(
+        filled,
+        `@${width} the form's filled controls are ${JSON.stringify(filled)}; exactly one — the commit — may be filled`
+      ).toEqual(["Save dose"]);
+
+      // 3. THE DISMISS IS NOT A SAME-SIZE BOX, and it is under rather than beside.
+      //    Expressed as PAINT and PADDING rather than as width: with a short label
+      //    this family's commit ("Add", 43.4) is narrower than its dismiss
+      //    ("Cancel", 45.6), so a width comparison would assert something untrue of
+      //    six of the eight forms while passing here.
+      expect(
+        cancel.opaque,
+        `@${width} the dismiss is painted like a commit`
+      ).toBe(false);
+      expect(
+        [save.padX > 0, cancel.padX],
+        `@${width} the commit must carry the family's horizontal padding and the dismiss none`
+      ).toEqual([true, 0]);
+      expect(
+        cancel.top + TAP_FLOOR_FLOAT_EPSILON_PX,
+        `@${width} Cancel sits beside Save rather than under it`
+      ).toBeGreaterThanOrEqual(save.bottom);
+
+      // 4. AND THE BOX DID NOT MOVE — the half of #5658 neither ruling reversed.
+      //    The commit changed PAINT, not height, and a text-style dismiss that
+      //    gave up its height would give up its tap target with it.
+      expect(
+        [Math.round(save.height), Math.round(cancel.height)],
+        `@${width} the submit row renders a height other than the control box`
+      ).toEqual([CONTROL_BOX_PX, CONTROL_BOX_PX]);
+    }
+  });
+});
+
 // ── THE FLOOR'S REACH, OUTSIDE THE FAMILY (#3486 part 3) ────────────────────
 //
 // Everything above is about the `.btn` family, which is the set #3510 declared
@@ -1184,10 +1386,12 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   // the route must be a ROW — a card header stacking a title over a description,
   // which #3979 rules is not a control — measured as a descendant holding two or
   // more block-level children, or one of the ruled row-mechanism folds cited here
-  // by testid. THE CITED THREE, by issue: `food-more-groups-summary` (#3987 — one
-  // dense line row, the same height as the rows it extends),
-  // `dashboard-everything-*-fold-summary` (#4232's band fold) and
-  // `suppressed-summary` (upcoming/FoldSummary, pinned by its own spec). The other
+  // by testid. THE CITED TWO, by issue: `food-more-groups-summary` (#3987 — one
+  // dense line row, the same height as the rows it extends) and
+  // `suppressed-summary` (upcoming/FoldSummary, pinned by its own spec).
+  // `dashboard-everything-*-fold-summary` (#4232's band fold) was a third until
+  // #5435 §4 deleted the band; a prefix that can never match is an allowlist entry
+  // holding a door open onto nothing, so it leaves with its subject. The other
   // three row-mechanism sites the issue cites — IllnessNowGroup's toggle and its
   // "More details" link (#3514) and DoseHistoryPanel's sheet rows — wear neither
   // class and are not `<summary>`, so this sweep never reaches them; they are
@@ -1203,8 +1407,27 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     route: string;
     ready: string;
     open?: (page: import("@playwright/test").Page) => Promise<void>;
+    /**
+     * Whether this route is expected to render a `.fold-control` at all. Default
+     * true — the guard exists so a green sweep cannot mean "reached no fold". A
+     * route that declares `false` has to say why, because the easy way to satisfy
+     * a reach guard is to stop reaching.
+     */
+    folds?: boolean;
   }[] = [
-    { route: "/", ready: "dashboard-canvas" },
+    {
+      route: "/",
+      ready: "dashboard-canvas",
+      // HOME HAS NO `fold-control`, BY THE RULE THIS SWEEP ENFORCES (#5435 §3.2,
+      // #3979). Its one fold is the Later band, and that band's `<summary>` is a
+      // ROW — `LOGGED_EVENT_ROW`, one dense line, the same height as the rows it
+      // expands to show — so it wears the row grammar and not the control class,
+      // exactly as `food-more-groups-summary` does. `dashboard-all-summary`, the
+      // page's previous and only `fold-control`, went with the ranker. The row
+      // half is still measured: the summary is cited below, and its height is
+      // swept with every other rendered box on this route.
+      folds: false,
+    },
     // EVERY `.tap-target` ON /nutrition IS IN THE ADD LAYER, behind one door (#4477).
     { route: "/nutrition", ready: "food-log-bar", open: openFoodAdd },
     { route: "/medications", ready: "medication-share-open" },
@@ -1218,11 +1441,19 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   const SWEEP_WIDTHS = [390, 768, 1280];
   const CITED_ROW_FOLDS = [
     "food-more-groups-summary",
-    "dashboard-everything-",
     "suppressed-summary",
+    // #5435 §3.2's Later band — the same ruling as `food-more-groups-summary`: a
+    // `<summary>` carrying `LOGGED_EVENT_ROW`, one dense line, the same height as
+    // the rows it expands to show.
+    "home-later-summary",
   ];
 
-  for (const { route, ready, open } of SWEEP_ROUTES) {
+  for (const {
+    route,
+    ready,
+    open,
+    folds: expectFolds = true,
+  } of SWEEP_ROUTES) {
     test(`every hand-rolled control on ${route} is the box at ${SWEEP_WIDTHS.join("/")}`, async ({
       page,
     }) => {
@@ -1323,10 +1554,18 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
           swept.controls,
           `${route} @${width} swept no controls`
         ).toBeGreaterThan(0);
-        expect(
-          swept.folds,
-          `${route} @${width} swept no fold-control`
-        ).toBeGreaterThan(0);
+        if (expectFolds)
+          expect(
+            swept.folds,
+            `${route} @${width} swept no fold-control`
+          ).toBeGreaterThan(0);
+        else
+          expect(
+            swept.folds,
+            `${route} @${width} declares it renders no fold-control, but one appeared. ` +
+              "Either the route grew one — drop the declaration — or the rule it was " +
+              "declared under changed."
+          ).toBe(0);
         expect(
           swept.offBox,
           `${route} @${width}: a hand-rolled control is off the ${CONTROL_BOX_PX}px box or ` +

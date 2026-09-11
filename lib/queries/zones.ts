@@ -218,15 +218,40 @@ export function getDayLoadInputs(profileId: number, days = 42): DayLoadInput[] {
   // day's subjective intensity ratings collapsed to a planned intent. duration_min is
   // stored regardless of a start time, so this also covers days with no bounded HR
   // window. GROUP_CONCAT drops NULL ratings, so an unrated day yields no intent.
+  //
+  // BOUNDED AT `td` LIKE THE HR HALF BELOW (#5079). What a row dated after the
+  // profile's today MEANS, decided here rather than left to the query: `activities`
+  // is a log of sessions that HAPPENED — there is no scheduled/planned flag on the
+  // row and nothing writes an intended session into it — so a future date is a
+  // mistake about WHEN, not a plan. Nothing on the way in bounds it: the activity
+  // form's date field carries no upper bound and `saveActivityCore` checks only that
+  // the string is a real ISO date (exercised — the core returns ok for a date three
+  // days ahead), `commitWorkouts` checks the same for an AI-extracted import date, and
+  // a device stamping ahead (#5035) reaches the integration writer with no product
+  // change at all. So it is DROPPED, not carried with a reason: the consumer is
+  // `loadingDates` → the overtraining/load-rest triggers, which answer "which days did
+  // this person accumulate fatigue on", and a day that has not happened cannot have.
+  // Carrying it is worse than dropping it — `isLoadingDay` falls through to LOADING
+  // for a row with no rating and no duration, so a bare future row counts as a hard
+  // day, and since #5069 bounded the HR half it would count with no easy/hard split
+  // and a duration anyway.
+  //
+  // WHAT WOULD MAKE THIS WRONG: a future-dated row that means something. #3285 (open:
+  // endurance_plans generalizing to events, with activities linked to them) is where
+  // `activities` could start holding rows for a session INTENDED on a future day. If
+  // that ships, the right filter is "not planned" — a column separating logged from
+  // planned — not this date bound, and dropping a planned row silently from load would
+  // be a new defect wearing this patch. The bound itself still stands: whatever the
+  // filter becomes, both halves of this function must end on the same day.
   const durRows = db
     .prepare(
       `SELECT date, COALESCE(SUM(duration_min), 0) AS dur,
               GROUP_CONCAT(intensity) AS intensities
          FROM activities
-        WHERE profile_id = ? AND date >= ?
+        WHERE profile_id = ? AND date >= ? AND date <= ?
         GROUP BY date`
     )
-    .all(profileId, since) as {
+    .all(profileId, since, td) as {
     date: string;
     dur: number;
     intensities: string | null;

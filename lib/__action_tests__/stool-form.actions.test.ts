@@ -11,9 +11,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
-import { logStoolForm } from "@/app/(app)/stool-actions";
+import { loadStoolDay, logStoolForm } from "@/app/(app)/stool-actions";
 import { logBristolStool } from "@/lib/offline/writes";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+import { shiftDateStr } from "@/lib/date";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 // Frozen so "the row an unstated tap writes" is a single comparable value: the seam
@@ -46,10 +47,16 @@ describe("logStoolForm — the unstated tap is unchanged (#3273)", () => {
 
     // The path the form takes when nobody opens "Happened earlier?": no `at` field on
     // the post at all.
+    // EXACT, so a field added to this answer has to be looked at rather than
+    // absorbed. Since #5663 the answer also carries the day's receipt rows and which
+    // of them the tap landed on — a wider ANSWER over a byte-identical ROW, which is
+    // what the comparison below is about.
     expect(await logStoolForm(fd({ type: 4 }))).toEqual({
       ok: true,
       type: 4,
       dayCount: 1,
+      reading: { id: expect.any(Number) },
+      readings: [{ id: expect.any(Number), type: 4, hhmm: "21:30" }],
     });
     // …and the call the action made before #3273 added the parameter, on a second
     // profile at the same frozen instant.
@@ -225,5 +232,167 @@ describe("logStoolForm — the posted day (#4433)", () => {
 
     await logStoolForm(fd({ type: 4 }));
     expect(rows(profile.id)).toMatchObject([{ date: today(profile.id) }]);
+  });
+});
+
+// ── THE DAY READ, UNDER THE REAL GATE (#5663) ────────────────────────────────
+//
+// `loadStoolDay` is the ONE surface in this domain that hands back a LIST of a
+// person's readings, and it is the only new one this issue adds. Everywhere else the
+// sheet shows a number.
+//
+// WHICH IS WHY IT IS ASKED HERE RATHER THAN LEFT TO THE STATIC SCAN. The write-access
+// census proves a TEXT fact — that `gateItemProfile(` appears in the body — and that
+// is all a regex can prove. It cannot see whether the rows the function answers with
+// are scoped by what the gate RETURNED, and a read that gates the subject and then
+// lists the acting profile's day would satisfy it completely. Every other reference to
+// this function in the repo is a mock; this is where it actually runs.
+//
+// The refusals are asserted by their own words (the tier's auth double mirrors prod's
+// two refusal branches) rather than as a bare throw, so a function that fails for some
+// third reason cannot pass as a gate.
+describe("loadStoolDay — the day it lists is the day it was gated for (#5663)", () => {
+  function seedReading(
+    profileId: number,
+    date: string,
+    hhmm: string,
+    value: number
+  ): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
+             VALUES (?, 'manual', ?, ?, ?, ?, ?)`
+        )
+        .run(
+          profileId,
+          BRISTOL_STOOL_METRIC,
+          date,
+          `${date}T${hhmm}:00`,
+          `${date}T${hhmm}:00`,
+          value
+        ).lastInsertRowid
+    );
+  }
+
+  it("refuses a subject this login cannot reach, and one it may only read", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("day-read-acting", login.id);
+    const ungranted = createProfile("day-read-ungranted");
+    const readOnly = createProfile("day-read-readonly");
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+    ).run(login.id, readOnly.id);
+    actAs(login, acting);
+    const date = today(acting.id);
+    seedReading(ungranted.id, date, "07:05", 4);
+    seedReading(readOnly.id, date, "07:05", 4);
+
+    await expect(
+      loadStoolDay(fd({ profile_id: ungranted.id, date }))
+    ).rejects.toThrow(/not accessible/);
+    // A READ-ONLY grant is refused too. That is the gate this domain already uses for
+    // its writes, taken deliberately rather than loosened for a read: the sheet mounts
+    // this control to LOG for the subject, and a row list is the receipt for that.
+    await expect(
+      loadStoolDay(fd({ profile_id: readOnly.id, date }))
+    ).rejects.toThrow(/read-only on target/);
+  });
+
+  it("answers with ONLY the gated subject's rows, on a day three profiles share", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("day-read-me", login.id);
+    const subject = createProfile("day-read-subject", login.id);
+    const stranger = createProfile("day-read-stranger");
+    actAs(login, acting);
+    const date = today(acting.id);
+    // THE SAME DAY AND THE SAME MINUTE for all three, so nothing but the profile
+    // scope can tell the three rows apart: a read that answered from the acting
+    // profile, or from no scope at all, returns a different set here and says so.
+    const theirs = seedReading(subject.id, date, "07:05", 4);
+    seedReading(stranger.id, date, "07:05", 2);
+    seedReading(acting.id, date, "07:05", 1);
+
+    const day = await loadStoolDay(fd({ profile_id: subject.id, date }));
+    expect(day.readings).toEqual([{ id: theirs, type: 4, hhmm: "07:05" }]);
+    expect(day.dayCount).toBe(1);
+  });
+
+  // THE OTHER HALF OF THE SAME THREE LINES. The sheet's day switcher is real here —
+  // `SHEET_REACH` is bounded at two days back and `stool-form` is a `DATED_REACH`
+  // affordance — so the control can be pointed at either of the two prior days, and
+  // `reread()` posts the day it is standing on. A read that ignored the posted day
+  // would present TODAY's readings as that day's, with the row Undo keying off a
+  // reading from the wrong day; the count line would go on saying the right number,
+  // because `dayCount` is the one field such a read still gets right.
+  it("answers for the day it was ASKED about, not for today", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("day-read-yesterday", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    const yesterday = shiftDateStr(date, -1);
+    // Both days carry readings, and the same minute on each, so only the day can tell
+    // the two sets apart.
+    const morning = seedReading(profile.id, yesterday, "07:05", 4);
+    const evening = seedReading(profile.id, yesterday, "19:40", 6);
+    seedReading(profile.id, date, "07:05", 1);
+
+    const day = await loadStoolDay(fd({ date: yesterday }));
+    // Newest first, and NOTHING from today.
+    expect(day.readings).toEqual([
+      { id: evening, type: 6, hhmm: "19:40" },
+      { id: morning, type: 4, hhmm: "07:05" },
+    ]);
+    // The count answers for the day it read, which on a backfill is not today's.
+    expect(day.dayCount).toBe(2);
+  });
+
+  it("falls back to today when the posted day is not a day", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("day-read-malformed", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    const yesterday = shiftDateStr(date, -1);
+    const mine = seedReading(profile.id, date, "07:05", 1);
+    seedReading(profile.id, yesterday, "07:05", 4);
+
+    // `isRealIsoDate`, not a shape check: "2026-02-30" has the shape of a day and is
+    // not one, and passing either straight to the query would answer with an empty
+    // day rather than with the day the sheet is actually standing on.
+    for (const notADay of ["not-a-date", "2026-02-30", ""])
+      expect(
+        (await loadStoolDay(fd({ date: notADay }))).readings,
+        `date=${JSON.stringify(notADay)}`
+      ).toEqual([{ id: mine, type: 1, hhmm: "07:05" }]);
+  });
+
+  it("falls back to the ACTING profile when no subject is posted, and when one is not a subject", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("day-read-fallback", login.id);
+    const other = createProfile("day-read-other", login.id);
+    actAs(login, acting);
+    const date = today(acting.id);
+    const mine = seedReading(acting.id, date, "08:00", 5);
+    seedReading(other.id, date, "08:00", 6);
+
+    // The sheet's own mount, which posts no subject at all.
+    expect((await loadStoolDay(fd({ date }))).readings).toEqual([
+      { id: mine, type: 5, hhmm: "08:00" },
+    ]);
+    // …and a posted field that names no profile. THE ANSWER FOLLOWS THE GATE, NOT THE
+    // FIELD, and the two only come apart here: `gateItemProfile` reads any
+    // non-positive `profile_id` as absent and returns the acting profile, so a read
+    // that consulted the posted value itself would scope to a profile that does not
+    // exist and hand back an empty day.
+    //
+    // BOTH SPELLINGS OF "not a profile", because they fail differently. A zero is
+    // falsy, so a `Number(posted) || gated` mutation still lands on the gate's answer
+    // and passes; a NEGATIVE id is truthy and is what separates the two readers. That
+    // is not hypothetical — the zero case alone left exactly that mutation alive.
+    for (const notAProfile of [0, -1])
+      expect(
+        (await loadStoolDay(fd({ profile_id: notAProfile, date }))).readings,
+        `profile_id=${notAProfile}`
+      ).toEqual([{ id: mine, type: 5, hhmm: "08:00" }]);
   });
 });

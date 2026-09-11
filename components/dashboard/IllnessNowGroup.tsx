@@ -167,25 +167,31 @@ export default function IllnessNowGroup({
             // A fill is not a frame, so it claims no exception and the sweep
             // still holds it to `border-width: 0`.
             // NOT A CARD, AND NOT A SECOND FRAME (#4076). Cards left `/` entirely,
-            // and this is the one entry in the Now band that is neither a fact nor a
+            // and this is the one entry in Current care that is neither a fact nor a
             // row: a running SITUATION with its own accordion, symptom bar and dose
-            // controls. The BAND it sits in is the frame, so this draws none of its
-            // own — a fill inside a fill is a second gutter, and the phone sweep
-            // reads that as a stepped left rag (#3673/#3920). It keeps its own
-            // gutter (the strip's row supplies none for it) and it keeps the rail
-            // and the fill that say someone is ill right now: below `sm` there are
-            // no borders, so the FILL is what carries that (#3897).
-            // A READABLE MEASURE, DECLARED BY THE BAND (#4752 item 2, reconciled by
-            // #5490 site 3). The cockpit was a phone layout stretched across whatever
-            // the viewport happened to be: a med's name sat a monitor's width from its
-            // own button and three stat headings spread across the gulfs between them.
-            // ~880px dissolves both by construction — nothing inside needs a desktop
-            // rule — but the measure is not this component's to spend: it is a ROW in
-            // the Now band's one frame (#4076), and a centred cap on the row stepped
-            // its edges 136px in from every sibling inside that frame. The band caps
-            // itself now (components/dashboard/NowCards.tsx), so this takes the row
-            // treatment like every other entry and keeps only its own gutter, rail
-            // and fill.
+            // controls. It draws no frame of its own — a fill inside a fill is a
+            // second gutter, and the phone sweep reads that as a stepped left rag
+            // (#3673/#3920). That held when the Now band was the frame around it and
+            // it holds now that #5435 §4 has deleted the band: the page's section is
+            // the outer edge, and nothing here should draw a second one. It keeps its
+            // own gutter (no ancestor supplies one for it) and it keeps the rail and
+            // the fill that say someone is ill right now: below `sm` there are no
+            // borders, so the FILL is what carries that (#3897).
+            // A READABLE MEASURE WITH NO DECLARER LEFT (#4752 item 2, reconciled by
+            // #5490 site 3, then unhosted by #5435 §4). The cockpit was a phone layout
+            // stretched across whatever the viewport happened to be: a med's name sat a
+            // monitor's width from its own button and three stat headings spread across
+            // the gulfs between them. ~880px dissolves both by construction — but the
+            // measure was never this component's to spend: it is a ROW (#4076), and a
+            // centred cap on the row stepped its edges 136px in from every sibling
+            // inside its frame, so #5490 moved the cap onto the Now band that held it.
+            // §4 deletes that band and Home mounts this group directly, so nothing
+            // declares the measure and the row runs to the page container's width. That
+            // is recorded rather than repaired here: re-capping the row would restore
+            // the stepped edges #5490 removed, so the measure needs a host, not a
+            // relapse. What this still keeps either way is its own gutter (the group's
+            // row supplies none for it) and the rail and fill that say someone is ill
+            // right now.
             className="w-full min-w-0 border-l-4 border-l-rose-500 p-4 max-sm:bg-rose-50! sm:p-5 dark:border-l-rose-400 max-sm:dark:bg-rose-950!"
           >
             <div

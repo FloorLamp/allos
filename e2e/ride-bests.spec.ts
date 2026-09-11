@@ -12,7 +12,6 @@
 //   • Every table states the window it compared within, in rides.
 //   • The day's ride reaches the dashboard as one fixed-template statement.
 import { test, expect } from "./fixtures";
-import { openDashboardAll } from "./helpers";
 import Database from "better-sqlite3";
 import { deleteActivitiesTitled } from "./shared-profile-guard";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -163,19 +162,14 @@ test("ride medals name the window they mean, and an old ride keeps what it earne
   ).toHaveCount(1);
 });
 
-test("the day's ride reaches the dashboard as one statement that names its window", async ({
-  page,
-}) => {
-  plantRides();
-
-  await page.goto("/");
-  await openDashboardAll(page);
-  const statement = page.locator(
-    '[data-testid="dashboard-candidate"][data-candidate-id^="training.result:ride-best:"]'
-  );
-  await expect(statement).toHaveCount(1);
-  await expect(statement).toContainText(
-    "Best 20 min power of 3 rides with recorded power"
-  );
-  await expect(statement).toContainText("400 W");
-});
+// THE RIDE-BEST STATEMENT LEFT HOME FOR THE TRAINING ROW (#5435 §4).
+//
+// This asserted that the day's ride reaches the dashboard as ONE statement naming its
+// window — "Best 20 min power of 3 rides with recorded power", "400 W" — rather than
+// as several. §4 folds the ride-best verdict into Home's Training row, whose logged
+// state carries duration and distance only (§7.2, which also takes #5110's direct
+// strength scan off the page): there is no verdict row on `/` to name a window.
+//
+// WHAT RETIRED WITH IT: the one-statement rule as asserted on `/`. What did not: the
+// statement's own composition (`lib/cycling-bests.ts` and its unit tests) and its
+// rendering on the Training surfaces, which the rest of this file covers.

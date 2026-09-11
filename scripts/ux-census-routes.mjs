@@ -177,30 +177,16 @@ export const DISCLOSURE_EXPANSIONS = [
       '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
     loadMore: '[data-testid="clinical-result-panel-pager-row"]',
   },
-  {
-    // THE DASHBOARD'S ONE FOLD, and the census's only picture of the tail (#3366).
-    //
-    // It began as Standing's quiet tail (#3548) — dormant lines, months-old
-    // results, quiet pillars, out-ranked connect-a-source CTAs. #4480 merged that
-    // fold into Show everything, so a single <details> now hides BOTH it and the
-    // exhaustive remainder, and the resting dashboard shot photographs neither.
-    //
-    // WHAT IS BEHIND IT CHANGED TWICE UNDER THIS ENTRY, which is what #3366's
-    // census criterion is about and why the label above it moved:
-    //   * #4083 retired the tail's four always-available write cards — weight,
-    //     vitals, well-day and cycle — to the quick-log sheet. The expanded shot
-    //     is a picture of a tail that no longer offers a write.
-    //   * #4396 then removed the "Elsewhere" door rows #4083 had drawn for the one
-    //     nav-duplicate candidate it drops (owner: "utterly useless"). So there is
-    //     no door row to photograph either; that drop's completeness is proven at
-    //     the placement-manifest tier instead.
-    //
-    // The fold is a native <details>, which publishes its state as the element's
-    // own `open` rather than as an aria attribute — hence the structural selector.
-    route: "/",
-    label: "the dashboard's Show everything fold",
-    closedToggle: 'details:not([open]) > [data-testid="dashboard-all-summary"]',
-  },
+  // THE DASHBOARD'S ONE FOLD IS GONE, AND SO IS THE ENTRY (#5435 §4). `/` carried a
+  // `DISCLOSURE_EXPANSIONS` entry for "the dashboard's Show everything fold" — a
+  // native `<details>` keyed on `dashboard-all-summary`, which began as Standing's
+  // quiet tail (#3548) and absorbed the exhaustive remainder when #4480 merged the two
+  // folds. §4 retires the tail with the ranker that filled it and the placement canvas
+  // that drew it, so the toggle is written by no markup anywhere and the expansion pass
+  // would log a BLIND SPOT for a fold that cannot exist. Home v3's one fold is the
+  // Later band, which is a ROW rather than a control (#3979) and is photographed in the
+  // resting shot; it needs no entry here. The hover entry for `/` went the same way in
+  // PR 2, for the same reason.
 ];
 
 // Hover-capture registry (#3489 deliverable 4). The census photographs the
@@ -251,15 +237,50 @@ export const DISCLOSURE_EXPANSIONS = [
 
 /** @type {HoverCapture[]} */
 export const HOVER_CAPTURES = [
-  {
-    // #3459 item 2 / #3253 decision 2: the door label slides in at the right edge
-    // of the facts cell, so the static census needs one hovered capture.
-    route: "/",
-    label: "Standing family door labels",
-    target: "a.standing-row",
-    reveals: '[data-testid="standing-door"]',
-    ruling: "#3253 decision 2, re-ruled by #3459 item 2",
-  },
+  // `/` IS NO LONGER REGISTERED, AND THAT IS A LOSS RATHER THAN A TIDY-UP (#5435 §4).
+  //
+  // This list opened with the Standing family door labels — `target: "a.standing-row"`,
+  // `reveals: '[data-testid="standing-door"]'`, ruling "#3253 decision 2, re-ruled by
+  // #3459 item 2" — the named miss the whole deliverable was built for (see the top of
+  // scripts/ux-hover-census.mjs). It cannot be re-pointed at another route, because the
+  // markup is DEAD rather than moved: `.standing-row` is rendered by
+  // components/dashboard/DashboardStandingCluster.tsx and by nothing else, that cluster
+  // is mounted only by components/dashboard/DashboardPlacementCanvas.tsx, and §4 stops
+  // mounting the canvas — at this head no file under app/ or components/ imports it, so
+  // the selector matches nothing on any route for any profile.
+  //
+  // AND HOME v3 HIDES NOTHING BEHIND HOVER, which is the claim that actually removes the
+  // entry. Every hover rule reachable from `/` — `hover:underline` on the episode link,
+  // `hover:bg-slate-50` and the `group-hover:` glyph tint in
+  // components/dashboard/IllnessNowGroup.tsx, `hover:text-slate-700` in
+  // app/(app)/history/HistoryRows.tsx — changes paint and nothing else. Under this
+  // module's own rule that is decoration: the payload is an element that flips
+  // visible/invisible across the hover, and none of these do.
+  //
+  // THE ONE CANDIDATE, AND WHY IT IS NOT HERE. components/IntradayChart.tsx sets its
+  // cursor from `onPointerMove` with no button held and renders
+  // `[data-testid="intraday-cursor"]` plus the #1515 B readout, which IS a real
+  // page-rendered reveal and would qualify on the immunization entry's own
+  // "hover preserved, tap/keyboard pin the same content" ground. It is DATA-GATED:
+  // app/(app)/page.tsx draws the chart only when the day carries more than one heart-rate
+  // point, so a profile without today's HR renders no chart at all. Registered, it would
+  // log a BLIND SPOT line on every census whose profile is quiet — the cost this module's
+  // header says a registration must not carry, and worse than no entry because a surface
+  // that quietly stops being photographed reads like one that was.
+  //
+  // TWO ROUTES BACK, AND THE CHEAPER ONE IS NOT A PRODUCT CHANGE. Either the
+  // `pointCount > 1` gate stops standing between the crosshair and the census — the
+  // chart becomes unconditional, which is a Home decision — OR the census simply runs
+  // against a profile that HAS same-day heart rate. scripts/ux-walkthrough.mjs signs in
+  // as `UX_ADMIN_USER || "admin"` against a fresh seed by default, which is why the
+  // registration would blind-spot on every default run; seed that profile a day of
+  // intraday HR and the affordance is photographable with nothing about Home changed.
+  // Re-add the entry as
+  // `target: '[data-variant="wide"] [data-testid="intraday-svg"]'`,
+  // `reveals: '[data-testid="intraday-cursor"]'` — the wide drawing specifically, since
+  // the compact one is rendered first and `@min-[520px]:hidden` — and give
+  // e2e/ux-hover-capture.spec.ts a SURFACES floor cut from a measured run, as the
+  // comment there records the old one was.
   {
     // #3375's load-bearing case: the CDC schedule grid's per-vaccine and per-dose
     // content uses the same panel for mouse hover and pinned tap/keyboard access.

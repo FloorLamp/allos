@@ -2019,8 +2019,9 @@ test("the sheet's own day carries Food, Practice and Stool into the same History
     );
     await settledFill(page, picker.getByTestId("stool-when-time"), "08:10");
     await settledClick(page, picker.getByTestId("stool-type-4"));
+    // #5663 ruled this line's wording: one count beneath the day's receipt rows.
     await expect(picker.getByTestId("quick-entry-stool-count")).toContainText(
-      "1 logged"
+      "1 today"
     );
     await page.keyboard.press("Escape");
     await expect(stool).toHaveCount(0);
