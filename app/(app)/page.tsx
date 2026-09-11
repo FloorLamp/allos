@@ -809,7 +809,20 @@ async function renderHome(
             {recentlyResolved.map((item) => (
               <HomeRow
                 key={`${item.profileId}:${item.episodeId}`}
-                id={`care.illness-reopen:${item.profileId}:${item.episodeId}`}
+                // THE ROW'S EXISTING IDENTITY, not a new one (#5435 §5.1). The
+                // ranker minted this row's id through `careCandidates.illnessReopen`
+                // and the specs that dismiss it key on that id; the row survived the
+                // cutover, so minting a second spelling for it here would be the
+                // parallel namespace the shared identity helpers exist to prevent.
+                id={
+                  careCandidates.illnessReopen(
+                    {
+                      subject: { scope: "profile", profileId: item.profileId },
+                      sourceOrder: 0,
+                    },
+                    `${item.profileId}:${item.episodeId}`
+                  ).candidateId
+                }
                 testId="home-reopen-row"
                 title={
                   item.episodeHref ? (
