@@ -30,10 +30,13 @@ test("a poisoned session heals on the next client navigation", async ({
   const sidebar = page.locator("aside nav");
   await followLink(
     page,
-    // A top-level row: #4965 put Trends behind the collapsed "Plan & review"
-    // group, and this case only needs SOME client navigation away from "/".
-    sidebar.getByRole("link", { name: "History" }),
-    /\/history$/
+    // A top-level row, and this case only needs SOME client navigation away from
+    // "/". Settings rather than History: #5435 §4 took History's nav row when Home
+    // became the record's day view at today, and rather than Trends because #4965
+    // put that behind the collapsed "Plan & review" group. Settings is ungated, so
+    // this cannot go looking for a row a relevance bit can hide.
+    sidebar.getByRole("link", { name: "Settings" }),
+    /\/settings$/
   );
   await expect(page.locator("html")).toHaveClass(/\bdark\b/);
 
@@ -44,11 +47,7 @@ test("a poisoned session heals on the next client navigation", async ({
 
   // The next client navigation re-asserts the class — the session is healed
   // instead of staying light until a manual toggle.
-  await followLink(
-    page,
-    sidebar.getByRole("link", { name: "Dashboard" }),
-    /\/$/
-  );
+  await followLink(page, sidebar.getByRole("link", { name: "Home" }), /\/$/);
   await expect(page.locator("html")).toHaveClass(/\bdark\b/);
 });
 

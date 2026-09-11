@@ -208,7 +208,6 @@ export function useTimeStatement({
       </label>
       <WhenControl
         mode="state"
-        grain="minute"
         value={when}
         onChange={setWhen}
         tz={tz}

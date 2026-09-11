@@ -17,9 +17,13 @@ import { DayContextProvider } from "@/components/DayContext";
 // to a running app, and the prop change is exactly what this tier can drive.
 
 // Hoisted, because `vi.mock`'s factory is lifted above every module-scope binding.
-const { toast, outcome } = vi.hoisted(() => ({
+const { toast, outcome, announce, loadStoolDay } = vi.hoisted(() => ({
   toast: vi.fn(),
   outcome: vi.fn(),
+  announce: vi.fn(),
+  // The day's receipt rows (#5663) are read by the control itself; empty here, because
+  // what this file is about is the statement, not the rows.
+  loadStoolDay: vi.fn(async () => ({ readings: [], dayCount: 0 })),
 }));
 vi.mock("@/components/Toast", () => ({ useToast: () => toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
@@ -27,15 +31,22 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
   useQueuedDayContextCapture: () => () => null,
 }));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
-outcome.mockResolvedValue({ ok: true, type: 4, dayCount: 1 });
-vi.mock("@/app/(app)/stool-actions", () => ({ logStoolForm: outcome }));
+outcome.mockResolvedValue({ ok: true, type: 4, dayCount: 1, readings: [] });
+vi.mock("@/app/(app)/stool-actions", () => ({
+  logStoolForm: outcome,
+  loadStoolDay,
+}));
 // The pipeline's other collaborators (#3276). Left real, the hook would need the
 // undo-offer and logged-via providers this tier does not mount.
 vi.mock("@/components/LoggedViaSurface", () => ({
   useLoggedViaStamp: () => (fd: FormData) => fd,
 }));
+// The undoable channel is a mock but a SHARED one: since #5663 a landed stool reading
+// carries an Undo, so `useWritePipeline`'s `say` routes its sentence here rather than
+// to the bare toast. The two are different channels and the assertions below name
+// which one a sentence went down.
 vi.mock("@/components/useUndoableAction", () => ({
-  useUndoableAction: () => vi.fn(),
+  useUndoableAction: () => announce,
 }));
 // The ledger stands in for the real one and RUNS the write, so a tap is not a no-op
 // that would pass any assertion about what tapping does. `useWritePipeline` itself is
@@ -113,13 +124,20 @@ describe("the refused stated time is reported, not swallowed", () => {
   it.each([
     ["future", "Logged type 4 now — 23:50 hasn't happened yet."],
     ["malformed", "Logged type 4 now — 23:50 isn't a time on this day."],
-    [undefined, "Logged type 4 at 23:50"],
+    // #5663 retires the two success forks — "at 23:50" when a time was stated, bare
+    // when it was not — for ruling 1's one toast grammar, over the minute the STORED
+    // reading carries rather than the one that was typed. The refusal sentences are
+    // untouched: they are about the statement that did NOT land, which is a different
+    // sentence and #4425's, not this ruling's.
+    [undefined, "Type 4 logged · 23:50"],
   ])("statedTimeRefused=%s → %s", async (refused, sentence) => {
-    toast.mockClear();
+    announce.mockClear();
     outcome.mockResolvedValueOnce({
       ok: true,
       type: 4,
       dayCount: 1,
+      reading: { id: 31 },
+      readings: [{ id: 31, type: 4, hhmm: "23:50" }],
       ...(refused ? { statedTimeRefused: refused } : {}),
     });
     render(<StoolTypeControl todayCount={0} today="2026-07-08" />);
@@ -130,7 +148,9 @@ describe("the refused stated time is reported, not swallowed", () => {
       fireEvent.click(screen.getByTestId("stool-type-4"));
     });
 
-    expect(toast).toHaveBeenCalledWith(sentence);
+    expect(announce).toHaveBeenCalledWith(
+      expect.objectContaining({ message: sentence })
+    );
   });
 });
 

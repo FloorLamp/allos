@@ -147,7 +147,6 @@ function EventWhenFields({
       <div className="mt-1">
         <WhenControl
           mode={event.kind === "medication" ? "correct" : "state"}
-          grain="minute"
           value={when}
           onChange={setWhen}
           tz={tz}

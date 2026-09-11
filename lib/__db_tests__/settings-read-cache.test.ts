@@ -47,6 +47,18 @@ vi.mock("@/lib/scope", async (importActual) =>
     await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth")
   )
 );
+// Home's two side effects, stubbed to nothing (#5435 §6.4 keeps the call; a meter of
+// settings reads must not spend it).
+vi.mock("@/lib/ai-log", async (importActual) =>
+  (await import("@/lib/__db_tests__/dashboard-render-harness")).aiLogModule(
+    await importActual()
+  )
+);
+vi.mock("@/lib/recommendation-engine", async (importActual) =>
+  (
+    await import("@/lib/__db_tests__/dashboard-render-harness")
+  ).recommendationEngineModule(await importActual())
+);
 
 /** One per-key read of each tier — what an unprimed render pays per setting. */
 const PER_KEY = {
@@ -241,6 +253,41 @@ describe("the record's day view primes its settings (#5774)", () => {
     expect(executions(WHOLE_TIER.profile)).toBe(1);
     expect(executions(WHOLE_TIER.login)).toBe(1);
     expect(executions(WHOLE_TIER.global)).toBe(1);
+  });
+
+  // HOME OPENS THE SAME ONE (#5774, adopted by #5435 PR 2). Home used to spell the
+  // four calls inline — `withSettingReadCache` plus three preloads — which is the
+  // second spelling that helper exists to prevent, and the reason for measuring it
+  // HERE rather than trusting the call site is #5012: an AsyncLocalStorage scope
+  // reaches the frame that opened it and not the child Server Components React
+  // schedules below it. Home streams its glance card and its Setup block behind
+  // Suspense boundaries, so those sections open their own primed scope, and a per-key
+  // read appearing below is exactly what a boundary that forgot to would produce.
+  it("reads no setting one key at a time on Home, across its streamed boundaries", async () => {
+    const profileId = newProfile("home primed");
+    session.loginId = loginId();
+    session.accessible = profilesForIds([profileId]);
+    session.profile = session.accessible[0];
+    const Page = await loadPage("app/(app)/page");
+    // Warm first: the module graph's own one-time reads are not this render's.
+    await requestCache.during(async () =>
+      resolveAsyncTree(await Page(pageProps()))
+    );
+    trace.clear();
+    await requestCache.during(async () =>
+      resolveAsyncTree(await Page(pageProps()))
+    );
+
+    expect(executions(PER_KEY.profile)).toBe(0);
+    expect(executions(PER_KEY.login)).toBe(0);
+    expect(executions(PER_KEY.global)).toBe(0);
+    // ONE PRIMED READ PER FRAME THAT GATHERS, not one for the page: the shell opens
+    // the scope and each streamed section opens its own, because neither inherits the
+    // other's. Three is the shell plus the two boundaries — which is also the number
+    // that would fall to one if the boundaries were removed, and rise if one were
+    // added without its opening.
+    expect(executions(WHOLE_TIER.profile)).toBe(3);
+    expect(executions(WHOLE_TIER.login)).toBe(3);
   });
 
   it("primes one read per viewed member under the household fan-out", async () => {

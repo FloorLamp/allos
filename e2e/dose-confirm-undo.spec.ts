@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { openDashboardAll, settledClick } from "./helpers";
+import { settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Act → toast → Undo, on the dose confirm (#2642).
@@ -112,11 +112,18 @@ function logTakenBehindTheCard(
   }
 }
 
-// This spec's own attention row, found by the item it seeded. The dashboard's rows sit
-// behind the "all" disclosure (#1804's native <details>), which every revalidate closes
-// again — so the caller re-opens before each read rather than once at the top.
+// This spec's own attention row, found by the item it seeded.
+//
+// BY THE ROW CONTRACT'S ID, NOT THE RANKER'S TESTID (#5435 §5.1). The row is the same
+// due dose it always was — Home's composer mints its id through the same
+// `dashboardAttentionCandidateId` the ranker used, so `attention.fact:` still names
+// it — and it is on the page rather than behind a disclosure: §4 retires the "all"
+// fold with the ranker that filled it, so nothing has to be re-opened after a
+// revalidate any more.
 function doseRow(page: Page): Locator {
-  return page.getByTestId("dashboard-candidate").filter({ hasText: UNDO_ITEM });
+  return page
+    .locator('[data-candidate-id^="attention.fact:"]')
+    .filter({ hasText: UNDO_ITEM });
 }
 
 test("the dose confirm offers an Undo that takes the log back, and none when it wrote nothing (#2642)", async ({
@@ -127,7 +134,6 @@ test("the dose confirm offers an Undo that takes the log back, and none when it 
   // Runs as the default admin storageState, acting as profile 1 — so this seeded dose
   // is due on the dashboard the admin lands on.
   await page.goto("/");
-  await openDashboardAll(page);
   await expect(doseRow(page)).toBeVisible();
 
   // ── 1. Act ────────────────────────────────────────────────────────────────────
@@ -167,7 +173,6 @@ test("the dose confirm offers an Undo that takes the log back, and none when it 
   // write the log only once that render is on screen — the row is BEHIND the render,
   // which is the whole stale-tab scenario.
   await page.goto("/");
-  await openDashboardAll(page);
   await expect(doseRow(page)).toBeVisible();
   logTakenBehindTheCard(itemId, doseId, loggedDate);
   await settledClick(page, doseRow(page).getByTestId("attention-mark-taken"));

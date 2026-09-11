@@ -448,11 +448,22 @@ const BARE_TESTID_ALLOW: Record<string, number> = JSON.parse(
 // harness suspends a client chart — but they are frozen with the rest so the
 // list reads as "every Suspense in app/", which is the thing to re-check.
 //
+// AND `/` SINCE #5435 PR 2, which is the newest and the most visited. Home renders
+// Current care, the day bar and the three bands in its shell and streams two sections
+// behind it (§6.1): the GLANCE CARD and the SETUP block. So the staged copy on `/`
+// holds only those two sections' markers — `home-glance`, `home-facts`,
+// `intraday-chart`, `intraday-freshness`, `home-setup`, `home-setup-row`,
+// `finding-dismiss`, and `PendingSection`'s own `streamed-section-loading` — and
+// nothing from the bands, the record or the cockpit. Every existing bare
+// `page.getByTestId` for one of those markers was already scoped to a parent locator;
+// the ledger below is what keeps the next one from not being.
+//
 // `loading.tsx` is the other way in, and app/(app)/layout.tsx already refuses it
 // in prose (#530). Frozen at zero below so the refusal has teeth.
 const SUSPENSE_BOUNDARY_FILES = [
   "app/(app)/e2e-fixtures/chart-empty/ChartEmptyHarness.tsx",
   "app/(app)/medical/episodes/[id]/page.tsx",
+  "app/(app)/page.tsx",
   "app/(app)/training/page.tsx",
   "app/(app)/trends/page.tsx",
   "app/(app)/upcoming/page.tsx",
@@ -471,6 +482,7 @@ const SUSPENSE_BOUNDARY_FILES = [
 ];
 const STREAMED_SECTION_FILES = [
   "app/(app)/medical/episodes/[id]/page.tsx",
+  "app/(app)/page.tsx",
   "app/(app)/training/page.tsx",
   "app/(app)/trends/page.tsx",
   "app/(app)/upcoming/page.tsx",

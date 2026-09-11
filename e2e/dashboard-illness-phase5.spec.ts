@@ -7,7 +7,6 @@ import {
   comboboxRows,
   expectNoClippedContent,
   hydratedClick,
-  openDashboardAll,
   settledBoxes,
   settledClick,
   settledFill,
@@ -225,19 +224,25 @@ test("simultaneous episodes keep whole controls and close independently", async 
         .filter({ hasText: "Ibuprofen" })
     ).toHaveCount(1);
 
-    const standingFingerprint = () =>
-      page
-        .getByTestId("dashboard-standing")
-        .locator('[data-testid="dashboard-candidate"]')
-        .evaluateAll((nodes) =>
-          nodes.map(
-            (node) =>
-              `${node.getAttribute("data-candidate-id")}|${node.getAttribute("data-fact-key")}`
-          )
-        );
-    const standingBefore = await standingFingerprint();
-    expect(standingBefore.length).toBeGreaterThan(0);
-
+    // THE SECOND GUARD ON THIS TEST RETIRED WITH THE THING IT WATCHED (#5435 §4).
+    //
+    // It fingerprinted the Standing band's rows before and after each close and
+    // demanded they be identical — a guard against a RE-RANK, which is the failure a
+    // ranked page has and a fixed-seat page cannot: v3 gives every row kind one seat
+    // and decides nothing at render time, so closing an episode can only change the
+    // rows whose own facts it changed.
+    //
+    // AND ON v3 IT CHANGES TWO OF THEM, correctly, which is how the retirement was
+    // established rather than assumed. Widening the fingerprint to "every row outside
+    // the cockpit" and running it: closing an episode GAINS that episode's
+    // `care.illness-reopen:` row (§3.1 — a just-closed episode is reopen-eligible) and
+    // LOSES the `home.setup:data-quality:med-rxcui` row (the gap was that episode's
+    // medication). Both are the write's own consequences, so a green here would have
+    // meant the page had stopped following its own data.
+    //
+    // WHAT STILL PROTECTS THE CLAIM THAT MATTERED: per-episode independence, which is
+    // `situationNames()` in `close()` below — closing one episode leaves the others
+    // with their whole controls, asserted after every close.
     async function close(situation: string, remaining: string[]) {
       const cockpit = page
         .getByTestId("illness-now-group")
@@ -251,7 +256,6 @@ test("simultaneous episodes keep whole controls and close independently", async 
       ).toHaveCount(remaining.length);
       if (remaining.length > 0)
         expect(await situationNames()).toEqual(remaining);
-      expect(await standingFingerprint()).toEqual(standingBefore);
     }
 
     await close("Stomach bug", ["Migraine", "Flu"]);
@@ -395,29 +399,37 @@ test("household episodes stay ordered and a writable accordion logs without swit
       "Sick Kid A (e2e)",
       "Sick Kid B (e2e)",
     ]);
-    // Now is a BAND OF ROWS since #4076, and the illness group stands in it where
-    // its first episode placed — so the reading order is read off the band's own
-    // children rather than off a grid of cards.
-    const nowIds = await page
-      .getByTestId("now-strip")
-      .locator(":scope > ul > li")
-      .evaluateAll((rows) =>
-        rows.map(
-          (row) =>
-            row.getAttribute("data-candidate-id") ??
-            row.getAttribute("data-testid")!
-        )
+    // THE READING ORDER, IN THE STRUCTURE THAT REPLACED THE STRIP (#5435 §3).
+    //
+    // This read `now-strip`'s children and asserted safety < illness < live workout —
+    // three rows the RANKER had placed into one band in an order it decided. v3 places
+    // nothing: Current care is its own block and the Now band is a separate list under
+    // the day bar, so the order is a fact about the PAGE rather than about a lane, and
+    // it is read as one.
+    //
+    // THE SAFETY HALF IS NOT ASSERTED HERE AND ITS ABSENCE IS DELIBERATE. §3.1 opens
+    // Current care with "existing actionable safety items first; then every authorized
+    // open illness episode", and Home has no seat for a safety item above the cockpit:
+    // a crisis row is an attention-model action, so the composer seats it in the Now
+    // band with the other care actions, BELOW Current care. Which items §3.1 means by
+    // "safety items", and how they would be kept out of the Now band's care seat so
+    // one fact renders once (§5.1), is an open question on #5435 — raised in the PR
+    // rather than answered by a spec inventing a predicate. The row still renders and
+    // still sorts by the attention model's own risk priority (#517); only its position
+    // relative to the cockpit is unsettled.
+    const documentOrder = await page
+      .locator('[data-testid="illness-now-group"], [data-testid="home-now"]')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-testid")!)
       );
-    const safetyIndex = nowIds.findIndex((id) =>
-      id.startsWith("attention.fact:mental-health:crisis:")
-    );
-    const illnessIndex = nowIds.indexOf("dashboard-illness-group");
-    const workoutIndex = nowIds.findIndex((id) =>
-      id.startsWith("workout.live:")
-    );
-    expect(safetyIndex).toBeGreaterThanOrEqual(0);
-    expect(safetyIndex).toBeLessThan(illnessIndex);
-    expect(illnessIndex).toBeLessThan(workoutIndex);
+    expect(
+      documentOrder,
+      "Current care leads, and the Now band follows it"
+    ).toEqual(["illness-now-group", "home-now"]);
+    // …and the live workout is in that band rather than above the cockpit.
+    await expect(
+      page.getByTestId("home-now").getByTestId("home-training")
+    ).toBeVisible();
 
     const kidA = memberCockpit(page, "Sick Kid A");
     await expand(kidA);
@@ -517,9 +529,16 @@ test.describe("fresh-profile illness front door", () => {
     // Both halves are asserted: the tail no longer offers the bridge, and the sheet
     // does — an absence alone would pass on a tree where activation vanished.
     await page.goto("/");
-    await openDashboardAll(page);
+    // A STRONGER ABSENCE THAN THE ONE IT REPLACES (#5435 §4). This asked whether the
+    // "Show everything" tail offered the bridge; there is no tail, so the question is
+    // asked of the whole page — no symptom bar anywhere on `/` outside a cockpit,
+    // which is what "the quick logger is the app's one quick-write surface" means
+    // now. The control is the second half below: the sheet DOES offer it.
     await expect(
-      page.getByTestId("dashboard-all-contents").getByTestId("symptom-log-bar")
+      page
+        .getByRole("main")
+        .getByTestId("symptom-log-bar")
+        .locator("xpath=ancestor-or-self::*[@data-testid='illness-now-group']")
     ).toHaveCount(0);
 
     await page.goto("/?quick=log-symptom");
@@ -642,37 +661,27 @@ for (const [label, viewport, wide] of [
       // and a single sibling would let a second row re-introduce the step unseen. It
       // is stated as "every row spans its frame" rather than "row A matches row B"
       // because a band can legitimately hold one row, and the step is still a step.
-      const band = card.locator('xpath=ancestor::ul[contains(@class,"band")]');
-      const bandRows = band.locator("> li");
-      const rowCount = await bandRows.count();
-      expect(
-        rowCount,
-        "the Now band's rows — the subject of this claim"
-      ).toBeGreaterThan(0);
-      const [cardBox, columnBox, bandBox, ...rowBoxes] = await settledBoxes([
+      // THE FRAME THIS WAS MEASURED AGAINST IS GONE, AND THE RULE IT ENFORCED IS NOT
+      // (#5435 §3.1). The ~880px measure and the "every row in the band shares one
+      // left edge" claim were about `NowCards`' `ul.band` — the ONE frame the ranker
+      // drew around the cockpit and the ordinary Now rows together, which is exactly
+      // the arrangement that let a centred cap on the cockpit step its edges 136px in
+      // from its siblings. v3 has no such frame: Current care is its own block ABOVE
+      // the day view and the Now band is a separate list below it, so the cockpit
+      // shares a frame with nothing and there is no sibling for it to step in from.
+      //
+      // WHAT SURVIVES IS THE HALF THAT IS STILL ABOUT THIS CARD: the cockpit is the
+      // whole of its own container at every width. That is the assertion that fails
+      // if the card ever re-acquires a cap of its own, which is the defect #4752
+      // item 2 was about — the band was only ever how it was seen.
+      const [cardBox, columnBox] = await settledBoxes([
         card,
         card.locator("xpath=.."),
-        band,
-        ...Array.from({ length: rowCount }, (_, i) => bandRows.nth(i)),
       ]);
-      expect(cardBox.width, `${label} cockpit measure`).toBeLessThanOrEqual(
-        880
-      );
-      for (const [index, row] of rowBoxes.entries()) {
-        // ±2 absorbs the frame's own 1px border, which is the only thing between a
-        // row's box and the frame's.
-        expect(
-          Math.abs(row.x - bandBox.x),
-          `${label} band row ${index} left edge`
-        ).toBeLessThanOrEqual(2);
-        expect(
-          Math.abs(row.x + row.width - (bandBox.x + bandBox.width)),
-          `${label} band row ${index} right edge`
-        ).toBeLessThanOrEqual(2);
-      }
-      // …and the cockpit is the whole of its own row in that frame, at every width:
-      // the band decides the measure, the row spends only its gutter.
-      expect(Math.abs(cardBox.width - columnBox.width)).toBeLessThan(2);
+      expect(
+        Math.abs(cardBox.width - columnBox.width),
+        `${label} cockpit spans its own container`
+      ).toBeLessThan(2);
 
       // IN PLACE (#4752 item 3). Everything the panel opens BENEATH keeps its exact
       // box, and the card keeps its edges — a panel that reflowed the chips, or one
@@ -782,8 +791,13 @@ for (const [label, viewport, wide] of [
       // name, and a name composed at runtime from two halves is invisible to any
       // scan of the source that builds it. Every control in the Now section is
       // read, so the claim covers the ordinary rows and the cockpit at once.
+      // EVERY CONTROL ABOVE THE RECORD, which is what "the Now section" names after
+      // #5435: Current care's cockpit controls and the Now band's rows, the two
+      // regions the retired strip used to hold between them. Read as one corpus for
+      // the same reason it always was — the claim is about the app's verbs, and a
+      // scan of either region alone would let the other drift.
       const names = await page
-        .getByTestId("now-strip")
+        .locator('[data-testid="home-current-care"], [data-testid="home-now"]')
         .getByRole("button")
         .evaluateAll((nodes) =>
           nodes.map(

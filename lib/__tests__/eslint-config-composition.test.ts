@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ESLint } from "eslint";
+import {
+  banCoverage,
+  RPE_BRAND_BAN,
+  WRITE_BRAND_BAN,
+} from "./write-brand-ban-coverage";
 
 // WHY THIS EXISTS, and it is not a source scanner: it asks ESLint's own API which
 // rules reach a file. A flat config REPLACES a rule's options rather than merging
@@ -116,7 +121,21 @@ const CASES: [file: string, must: string[], mustNot: string[]][] = [
     [],
   ],
   // lib/revalidate.ts is the one module allowed to expose the raw API…
-  ["lib/revalidate.ts", [TEMPORAL, TS_API], [REVALIDATE]],
+  // …and that exemption is an IMPORT exemption only: it keeps every syntax ban of
+  // its level, which it did not until #5856. STREAK is an import ban, so it stays off.
+  [
+    "lib/revalidate.ts",
+    [TEMPORAL, TS_API, RPE_CAST, RPE_KEY, OURA, FITBIT],
+    [REVALIDATE, STREAK],
+  ],
+  // The repo-root entrypoints are production and no `**/` tree reached them (#5856).
+  // They sit on the production level, not the lib/app/components one above it.
+  ["middleware.ts", [TEMPORAL, TS_API, RPE_CAST, RPE_KEY], [OURA, FITBIT]],
+  [
+    "instrumentation-client.ts",
+    [TEMPORAL, TS_API, RPE_CAST, RPE_KEY],
+    [OURA, FITBIT],
+  ],
   // …a shipped migration keeps its own spelling of the opt-in key (it cannot carry a
   // disable comment without changing its manifest sha256) and keeps everything else…
   [
@@ -164,6 +183,7 @@ describe("eslint.config.mjs composes its bans instead of replacing them", () => 
 // exists is worse than no row: it reads as a control and proves nothing. Each is checked
 // by mutating the rule it names and confirming that row — and only that row — reds.
 const LIFT_CATALOG = "must not be sourced from the lift catalog";
+const WRITE_CAST = "Do not cast or re-alias to WriteAuthorizedProfileId";
 
 // A path with no file on disk; `lintText` resolves config by path, not by reading it.
 const FIXTURE = "lib/bite-fixture.ts";
@@ -204,6 +224,36 @@ const BITES: [file: string, code: string, fragment: string, hits: number][] = [
     "lib/migrations/versions/20260820-rpe-column-opt-in.ts",
     'export const k = "strength_rpe";',
     RPE_KEY,
+    0,
+  ],
+
+  // the write-authorization seam (#5348), in the three modules the ban did not reach
+  // until #5856. The forge these rows lint is the one #5856 reproduced: a production
+  // helper that mints the brand, which an ungated action can then hand to a branded
+  // core while actions-write-access.test.ts steps aside for the compiler.
+  [
+    "lib/revalidate.ts",
+    "export const f = (n: number) => n as WriteAuthorizedProfileId;",
+    WRITE_CAST,
+    1,
+  ],
+  [
+    "middleware.ts",
+    "export const f = (n: number) => n as WriteAuthorizedProfileId;",
+    WRITE_CAST,
+    1,
+  ],
+  [
+    "instrumentation-client.ts",
+    "export const f = (n: number) => n as WriteAuthorizedProfileId;",
+    WRITE_CAST,
+    1,
+  ],
+  // lib/auth.ts mints it, so it keeps the cast — the exemption this ban is built on.
+  [
+    "lib/auth.ts",
+    "export const f = (n: number) => n as WriteAuthorizedProfileId;",
+    WRITE_CAST,
     0,
   ],
 
@@ -334,5 +384,34 @@ describe("each converted ban still bites the shape it was written for", () => {
       result.messages.filter((m) => m.message.includes(fragment)).length,
       `${file}: expected ${hits} hit(s) on "${fragment}"`
     ).toBe(hits);
+  });
+});
+
+// ── THE THIRD QUESTION: does the ban reach EVERY production module? ─────────
+// The table above samples. It cannot see a file it does not name, and the write-brand
+// cast ban was off three shipped modules for as long as it existed while every row
+// here was green (#5856). This sweeps instead: the config's own trees plus whatever
+// the repo root holds today, each resolved through ESLint's API.
+//
+// The counts are the positive control — an enumeration that silently returned nothing
+// would pass `uncovered` vacuously — and `staleOwners` is the converse half the table
+// above calls `mustNot`: an exemption that has stopped exempting is reported rather
+// than kept.
+describe("the brand cast bans reach every production module (#5856)", () => {
+  it.each([
+    ["write-authorization brand (#5348)", WRITE_BRAND_BAN],
+    ["RPE opt-in brand (#3335)", RPE_BRAND_BAN],
+  ])("%s", async (_name, ban) => {
+    const { checked, uncovered, staleOwners } = await banCoverage(ban);
+    expect(checked.length).toBeGreaterThan(2000);
+    expect(checked).toContain("middleware.ts");
+    expect(
+      uncovered,
+      `${uncovered.length} of ${checked.length} production modules are outside the ban:\n${uncovered.join("\n")}`
+    ).toEqual([]);
+    expect(
+      staleOwners,
+      `declared owners that the ban now reaches: ${staleOwners.join(", ")}`
+    ).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ import {
   E2E_LOGIN_SLEEP_INPROGRESS,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { expectNoClippedContent } from "./helpers";
+import { appContent, expectNoClippedContent } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
@@ -45,15 +45,31 @@ test("inside the arrival window, the sleep surfaces NAME the wait instead of sho
     await expect(page.getByTestId("sleep-stale")).toHaveCount(0);
     await expectNoClippedContent(page);
 
-    // The dashboard sleep row says the same thing — one decision, three surfaces.
-    // It is a row since #4076, so it is found by the candidate it always was.
+    // HOME SAYS THE SAME THING — one decision, three surfaces (#2097) — AND IT STILL
+    // DOES. This arm read a ranked row (`[data-candidate-id^="sleep.waiting"]`
+    // carrying its own `sleep-waiting-headline`) until #5435 §4 retired the ranker;
+    // the STATEMENT did not go with it. Home's composer builds `sleepLine` from the
+    // same `getSleepWaitingState` atom — `app/(app)/page.tsx` reads it beside
+    // `getLastNightSummary` and hands its `headline` to the facts line — so what
+    // changed is the seat, not the coverage. Asserted where it now lives rather than
+    // re-pinned to a row that no longer exists; #2097's other two surfaces are the
+    // `/sleep` arm above and the record's day view in the #4918 case below.
     await page.goto("/");
-    const row = page.locator('[data-candidate-id^="sleep.waiting"]');
-    await expect(row).toBeVisible();
-    await expect(row.getByTestId("sleep-waiting-headline")).toHaveText(
-      "Waiting for last night's sleep"
-    );
-    await expect(page.getByTestId("sleep-last-night-duration")).toHaveCount(0);
+    const facts = appContent(page).getByTestId("home-facts");
+    await expect(facts).toBeVisible();
+    // AND THE ABSENCE IS CARRIED BY THE ANCHOR, which is why this is `^` and not a
+    // `toContainText`. The facts line composes `[sleepLine, napsLine, stepsLine,
+    // proteinLine, ...dayFacts]`, so the sleep statement is the FIRST part whenever
+    // there is one, and `sleepLine` is a ternary: the waiting headline OR the
+    // recorded night's label-and-duration, never both. A head that lost the waiting
+    // state would therefore put "Last night · 7h 30m" (or a dated label for an older
+    // night — the very figure #2097 exists to suppress) exactly where this regex
+    // requires the headline, and a head that lost the sleep statement altogether
+    // would start the line on naps or steps. Both fail it. That is the same claim
+    // the retired `sleep-last-night-duration` absence made, made against markup that
+    // is actually rendered: that testid is emitted by NOTHING at this head (it left
+    // with the ranker), so asserting its count is 0 would now pass on an empty page.
+    await expect(facts).toHaveText(/^Waiting for last night's sleep/);
   } finally {
     await page.context().close();
   }

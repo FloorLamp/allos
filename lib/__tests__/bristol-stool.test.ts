@@ -19,6 +19,7 @@ import {
   MAX_BRISTOL_TYPE,
   MIN_BRISTOL_TYPE,
   bristolPanelDates,
+  bristolReceiptLines,
   bristolStoolType,
   buildBristolPanel,
   isBristolType,
@@ -180,5 +181,45 @@ describe("buildBristolPanel", () => {
     // An empty window still has a fixed shape and a non-zero scale divisor.
     expect(panel.days).toHaveLength(BRISTOL_PANEL_DAYS);
     expect(panel.maxCount).toBe(1);
+  });
+});
+
+// THE SHEET'S RECEIPT ROWS (#5663). The owner's report was that a stool tap says
+// nothing and shows no description; these two lines are the fix, so what they say is a
+// fact worth pinning rather than a formatting detail.
+describe("the receipt lines", () => {
+  it("put the number and the caption on one line, the scale's sentence and the clock on the next", () => {
+    // The ruling's worked example, to the character. Both halves are READ from the
+    // vocabulary rather than restated here, so a reworded scale entry moves the
+    // expectation and the sentence together — the #5756 rule that the sentence beside
+    // a picture is built, never retyped.
+    const six = BRISTOL_STOOL_TYPES.find((t) => t.type === 6)!;
+    expect(bristolReceiptLines(6, "8:31am")).toEqual({
+      heading: `Type 6 · ${six.label}`,
+      facts: `${six.description} · 8:31am`,
+    });
+    expect(six.label).toBe("Mushy");
+    expect(six.description).toBe(
+      "Fluffy pieces with ragged edges, a mushy stool"
+    );
+  });
+
+  it("drops the trailing slot rather than printing an empty one", () => {
+    // A separator with nothing after it reads as a missing value; no separator reads
+    // as a sentence, which is what it is.
+    expect(bristolReceiptLines(4, "")).toEqual({
+      heading: "Type 4 · Smooth",
+      facts: "Like a sausage or snake, smooth and soft",
+    });
+  });
+
+  it("says nothing about a number that names no type", () => {
+    // The same membership question the guard asks everywhere else, so a replayed or
+    // hand-edited value cannot put "Type 8 · undefined" on the sheet.
+    for (const notAType of [0, 8, 3.5, NaN, "4", null, undefined])
+      expect(
+        bristolReceiptLines(notAType, "8:31am"),
+        String(notAType)
+      ).toBeNull();
   });
 });

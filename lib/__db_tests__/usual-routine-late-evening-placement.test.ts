@@ -1,19 +1,24 @@
-// DB INTEGRATION TIER — issue #3265, at the SURFACE: the dashboard placed the composed
-// one-tap in a window it had already left.
+// DB INTEGRATION TIER — issue #3265, at the SURFACE: Home read the composed one-tap
+// against a window it had already left.
 //
 // lib/__db_tests__/usual-routine-window.test.ts pins the two windows against each other.
-// This file asks the only question that binds `app/(app)/page.tsx` itself: at 22:30 local,
-// does the candidate reach a lane? It renders the real dashboard and reads the placement
-// manifest off `DashboardPlacementCanvas`' own props, the same way the #3096 census does.
+// This file asks the only question that binds `app/(app)/page.tsx` itself: at 22:30
+// local, does the offer reach the page? It renders the real Home and reads the rows it
+// produced, the same way the #3096 census does.
 //
-// It exists because a composed unit test cannot see a revert. Put
-// `mealTimeWindows(nowMealAnchors)` back on the usual-routine candidate and every
-// assertion about windows still passes, because nothing about the page's own wiring was
-// ever asserted — the candidate is simply dropped, silently, before any lane is built.
-// This test reds on exactly that.
+// WHAT THE ANSWER LOOKS LIKE CHANGED WITH v3 (#5435 §3.2), and the question did not.
+// Home used to place the offer as a candidate of its own, dropped silently when the
+// placement pipeline read it as expired; v3 has no placement pipeline and no standalone
+// seat for it — the offer IS the seated dose slot's control, "Take all, or the
+// usual-routine control when the routine's window is this slot". So the fixture now
+// carries an Evening dose so that a slot exists for the control to be, and the
+// assertion is that the slot carries the ROUTINE control rather than the plain Take
+// all. The revert it still reds on is the same one: read the offer against the meal
+// REMINDER windows (`mealTimeWindows`) instead of the food slot's own, and at 22:30
+// `getUsualRoutineOffer` is never asked, so the slot falls back to Take all.
 //
-// The 22:30 pin is the whole fixture: inside a meal window the two windows agree, which is
-// why the defect stood. A midday render cannot see it.
+// The 22:30 pin is the whole fixture: inside a meal window the two windows agree, which
+// is why the defect stood. A midday render cannot see it.
 //
 // Fixtures are synthetic throwaway rows (per-file temp DB via setup.ts). No PHI.
 
@@ -24,11 +29,9 @@ import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { accessibleProfileIdsForLogin, type SessionProfile } from "@/lib/auth";
 import { authorizedProfileSubset } from "@/lib/cross-profile";
-import PageContainer from "../../components/PageContainer";
-import { LoggedViaSurface } from "@/components/LoggedViaSurface";
-import DashboardPlacementCanvas, {
-  type DashboardPlacementCanvasProps,
-} from "@/components/dashboard/DashboardPlacementCanvas";
+import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
+import DoseSlotTakeAll from "@/components/dashboard/DoseSlotTakeAll";
+import { resolveAsyncTree } from "@/lib/__db_tests__/dashboard-render-harness";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -97,6 +100,30 @@ vi.mock("@/lib/recommendation-engine", async (importActual) => {
 // with ninety minutes of the Evening FOOD window still to run.
 const LATE_EVENING = "2026-08-19T22:30:00.000Z";
 
+// TWO EVENING DOSES, so `attentionEntries` groups the bucket into a SLOT at all: a
+// bucket of one due dose stays that dose (#5063), and a lone dose carries no slot
+// control for the offer to be. Both are `should`/`daily` and neither is taken today, so
+// the slot is due at 22:30 for the same reason the routine still stands.
+function seedDose(
+  profileId: number,
+  name: string,
+  timeOfDay: "evening" | "morning"
+): void {
+  const createdAt = `${shiftDateStr(today(profileId), -14)} 00:00:00`;
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition, created_at)
+         VALUES (?, ?, 'supplement', 1, 'should', 'daily', ?)`
+      )
+      .run(profileId, name, createdAt).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
+     VALUES (?, '1 capsule', ?, 'any', 0, ?)`
+  ).run(itemId, timeOfDay, createdAt);
+}
+
 function tap(profileId: number, group: string, date: string, hhmmss: string) {
   db.prepare(
     `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
@@ -108,7 +135,8 @@ function tap(profileId: number, group: string, date: string, hhmmss: string) {
   ).run(profileId, group, date, `${date}T${hhmmss}Z`);
 }
 
-let placements: DashboardPlacementCanvasProps["placements"] = [];
+/** Every row the render produced, by the row contract's id (#5435 §5.1). */
+let rows = new Map<string, Record<string, unknown>>();
 
 describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
   beforeEach(() => vi.setSystemTime(new Date(LATE_EVENING)));
@@ -135,6 +163,12 @@ describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
       tap(profileId, "fermented", date, "19:00:00");
       tap(profileId, "berries", date, "19:05:00");
     }
+    seedDose(profileId, "Late Magnesium", "evening");
+    seedDose(profileId, "Late Glycine", "evening");
+    // AND A MORNING SLOT, still owed at 22:30 — the converse below. Two, for the same
+    // #5063 reason the Evening pair is two.
+    seedDose(profileId, "Late Creatine", "morning");
+    seedDose(profileId, "Late Vitamin D", "morning");
     session.accessible = db
       .prepare(
         `SELECT id, name, photo_path, photo_version FROM profiles WHERE id = ?`
@@ -143,31 +177,45 @@ describe("the composed one-tap at 22:30 reaches the dashboard (#3265)", () => {
     session.profile = session.accessible[0];
 
     const { default: Dashboard } = await import("../../app/(app)/page");
-    const page = (await Dashboard()) as ReactElement<{
-      children: ReactElement;
-    }>;
-    expect(page.type).toBe(PageContainer);
-    const surface = page.props.children as ReactElement<{
-      value: string;
-      children: ReactElement;
-    }>;
-    expect(surface.type).toBe(LoggedViaSurface);
-    const canvas = surface.props
-      .children as ReactElement<DashboardPlacementCanvasProps>;
-    expect(canvas.type).toBe(DashboardPlacementCanvas);
-    placements = canvas.props.placements;
+    const resolved = await resolveAsyncTree(
+      (await Dashboard()) as ReactElement
+    );
+    // Keyed on the ROW component's own `id` prop rather than on the `<li>`'s rendered
+    // attribute, because the control this file is about is a prop and not markup.
+    rows = new Map(
+      resolved.elements
+        .filter((props) => typeof props.id === "string" && "control" in props)
+        .map((props) => [String(props.id), props])
+    );
   }, 120_000);
 
-  it("places the Evening usual-routine candidate rather than dropping it", () => {
-    const routine = placements.find((placement) =>
-      placement.candidate.candidateId.startsWith("nutrition.usual-routine:")
-    );
-    // Under the meal-window timing this find returns undefined: `expired` candidates are
-    // removed before any lane is built, so the offer is absent rather than demoted.
-    expect(routine).toBeDefined();
-    expect(routine?.candidate.candidateId).toBe(
-      "nutrition.usual-routine:Evening"
-    );
-    expect(routine?.timingDisposition).toEqual({ kind: "active" });
+  it("makes the Evening usual routine the seated slot's control at 22:30", () => {
+    const slot = rows.get("attention.fact:dose-slot:Evening");
+    // The slot itself is the control: without it there is nothing for the offer to be,
+    // and a fixture that stopped producing it would make every assertion below vacuous.
+    expect(slot, [...rows.keys()].join(", ")).toBeDefined();
+    const control = slot!.control as ReactElement | null;
+    expect(control, "the Evening slot carried no control").toBeTruthy();
+    // Under the meal-window timing `getUsualRoutineOffer` is never asked at 22:30, so
+    // the slot falls back to Take all — which is the revert this file reds on.
+    expect(
+      control!.type,
+      "the Evening slot fell back to Take all, so the routine offer did not reach it"
+    ).toBe(UsualRoutineControl);
+    expect(control!.type).not.toBe(DoseSlotTakeAll);
+    expect((control!.props as { window: string }).window).toBe("Evening");
+  });
+
+  // THE CONVERSE, so the assertion above cannot pass by "every slot gets the routine
+  // control". The Morning slot is owed at 22:30 too — nothing was taken — and the
+  // routine's window is Evening, so Morning carries the plain Take all. Without this,
+  // dropping the `routineControl.window === bucket` match in the page would move the
+  // offer onto every seated slot and nothing would red.
+  it("leaves a slot outside the routine's window on plain Take all", () => {
+    const slot = rows.get("attention.fact:dose-slot:Morning");
+    expect(slot, [...rows.keys()].join(", ")).toBeDefined();
+    const control = slot!.control as ReactElement | null;
+    expect(control, "the Morning slot carried no control").toBeTruthy();
+    expect(control!.type).toBe(DoseSlotTakeAll);
   });
 });

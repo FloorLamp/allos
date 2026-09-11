@@ -81,6 +81,9 @@ test("a workout logged offline queues at close, then syncs exactly once (#1596)"
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+  // Use CONFIRMS set 1 with the later rows still planned, so its load is behind the
+  // row's door in the shared layout (#5762); one tap reads the seeded set back.
+  await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
   await expect(weight).toHaveValue(/^\d/);
   await page.getByLabel("Activity name").fill(marker);
 

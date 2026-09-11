@@ -19,7 +19,6 @@ import { EDIT_LOCK_SIGNATURE } from "../edit-lock-fixture";
 import { setFixtureTimezone } from "../fixture-timezones";
 import {
   E2E_LOGIN_COMPARE,
-  E2E_LOGIN_BADGE,
   E2E_LOGIN_BULKFIX,
   BULKFIX_PROFILE,
   E2E_LOGIN_SHELL,
@@ -953,19 +952,21 @@ export function seedVitalsToday(): void {
   // App-icon badge fixture (#1424). A bare ADULT profile: no activities, no records,
   // no doses — so its care-tier attention set is exactly the two age-derived
   // preventive findings (COVID-19, Influenza) that every adult profile carries.
-  // app-badge.mobile.spec.ts asserts navigator.setAppBadge gets that count, dismisses
-  // both through the dashboard atom's own menu, and asserts the badge is CLEARED once the atom
-  // reads "All clear" — the one path that needs a dashboard to actually reach zero.
-  // Write grant: dismissing is a write. The spec clears the dismissals itself at test
-  // start, so re-runs and --repeat-each all begin from the same non-empty hero.
+  //
+  // ITS LOGIN IS GONE, ITS PROFILE IS NOT (#1392, #5435 §4). The badge count was
+  // asserted by `dashboard-atomic-personas.spec.ts`, which read it off the ranker's
+  // atoms and retired with them; nothing signs in as this fixture any more, and a
+  // login nobody signs in as grows the family grant matrix forever. The PROFILE stays
+  // because the BEHAVIOUR does — Home renders `<AppBadge>` over the same attention
+  // set — so a spec that wants to assert the badge again has its shape waiting rather
+  // than needing it rebuilt.
   {
     const badgeId = fixtureProfileId(APP_BADGE_PROFILE);
     db.prepare("DELETE FROM upcoming_dismissals WHERE profile_id = ?").run(
       badgeId
     );
-    seedMemberLogin(E2E_LOGIN_BADGE, badgeId, "write");
     console.log(
-      `e2e: seeded app-badge fixture — ${E2E_LOGIN_BADGE} granted ${APP_BADGE_PROFILE} (${badgeId}) for the PWA badge set/clear spec (#1424)`
+      `e2e: seeded app-badge fixture — ${APP_BADGE_PROFILE} (${badgeId}), no login (#1424)`
     );
   }
 }

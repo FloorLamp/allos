@@ -34,9 +34,24 @@ export interface RecentlyResolvedItem {
 export default function RecentlyResolvedReopenControls({
   item,
   dismissAction,
+  canReopen,
 }: {
   item: RecentlyResolvedItem;
   dismissAction: (episodeId: number) => Promise<void>;
+  /**
+   * WRITE ACCESS TO **THIS ITEM'S** PROFILE (#5435 §3.1), not to the acting one.
+   *
+   * The row fans out over the whole household, so the target differs per row: a
+   * caregiver may hold write on one member and read-only on another, and the page
+   * used to test the ACTING profile once and draw Reopen on every row — offering a
+   * write the action would then refuse. Correcting that is stated as a prerequisite
+   * of this row, so the answer is passed in per item rather than inferred here.
+   *
+   * HIDE IS NOT GATED ON IT. The dismissal is a per-LOGIN reading preference (#1548),
+   * so a read-only viewer keeps it: they may not reopen the episode and they may
+   * still stop being told about it.
+   */
+  canReopen: boolean;
 }) {
   const [dismissed, setDismissed] = useState(false);
   const [pending, start] = useTransition();
@@ -56,26 +71,29 @@ export default function RecentlyResolvedReopenControls({
       data-saved-count={savedCount}
       className="inline-flex items-center gap-1"
     >
-      <Button
-        data-testid="recently-resolved-reopen-btn"
-        disabled={pending}
-        pendingLabel="Reopening…"
-        onClick={() =>
-          start(async () => {
-            const fd = new FormData();
-            fd.set("episodeId", String(item.episodeId));
-            if (item.crossProfile) fd.set("profileId", String(item.profileId));
-            const res = await reopenEpisodeAction(fd);
-            if (!res.ok) {
-              toast(res.error, { tone: "error" });
-              return;
-            }
-            toast(`${item.situation} reopened.`);
-          })
-        }
-      >
-        Reopen?
-      </Button>
+      {canReopen ? (
+        <Button
+          data-testid="recently-resolved-reopen-btn"
+          disabled={pending}
+          pendingLabel="Reopening…"
+          onClick={() =>
+            start(async () => {
+              const fd = new FormData();
+              fd.set("episodeId", String(item.episodeId));
+              if (item.crossProfile)
+                fd.set("profileId", String(item.profileId));
+              const res = await reopenEpisodeAction(fd);
+              if (!res.ok) {
+                toast(res.error, { tone: "error" });
+                return;
+              }
+              toast(`${item.situation} reopened.`);
+            })
+          }
+        >
+          Reopen?
+        </Button>
+      ) : null}
       <Button
         aria-label={`Dismiss recently resolved ${item.situation}`}
         data-testid="recently-resolved-dismiss"

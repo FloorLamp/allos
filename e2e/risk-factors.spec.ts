@@ -1,7 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, openDashboardAll, settledClick } from "./helpers";
+import { followLink, settledClick } from "./helpers";
+
+// The Setup seat a data-quality gap takes on Home (#5435 §3.4); see
+// e2e/data-quality.spec.ts, which owns the same prefix for the same reason.
+const SETUP_GAP_PREFIX = "home.setup:data-quality:";
 import {
   E2E_LOGIN_RISK_REVIEW,
   RISK_REVIEW_PROFILE,
@@ -122,11 +126,13 @@ test.describe("risk-factor review — the negative declaration (#2299)", () => {
     });
     const main = page.getByRole("main");
 
-    // The dashboard offers the gap, with its fix-it CTA.
+    // Home offers the gap, with its fix-it CTA. It is a Setup row since #5435 §3.4 —
+    // same finding, same bus, same dismissal identity, and the seat it sits in is what
+    // decides its id: `home.setup:` plus the bus's own dedupe key. No fold to open;
+    // the Setup block is on the page or the bus had nothing.
     await page.goto("/");
-    await openDashboardAll(page);
     const gapRow = main
-      .locator('[data-candidate-id^="data-quality.finding:"]')
+      .locator(`[data-candidate-id^="${SETUP_GAP_PREFIX}"]`)
       .filter({ hasText: "Review risk factors" });
     await expect(gapRow).toBeVisible();
 
@@ -164,16 +170,22 @@ test.describe("risk-factor review — the negative declaration (#2299)", () => {
     // And the gap is gone from the dashboard. It was this profile's ONLY structural
     // gap, so the widget self-hides entirely (the absent-pillar rule).
     await page.goto("/");
-    await openDashboardAll(page);
+    // THE CONTROL FIRST, because an empty page satisfies every absence below. Home
+    // still rendered rows; what it no longer renders is this gap.
+    expect(await main.locator("[data-candidate-id]").count()).toBeGreaterThan(
+      0
+    );
     await expect(
       main
-        .locator('[data-candidate-id^="data-quality.finding:"]')
+        .locator(`[data-candidate-id^="${SETUP_GAP_PREFIX}"]`)
         .filter({ hasText: "Review risk factors" })
     ).toHaveCount(0);
-    // It was this profile's ONLY structural gap, so no data-quality row is left.
+    // It was this profile's ONLY structural gap, so no data-quality row is left —
+    // and with it the whole Setup block, which is absent when the bus has nothing.
     await expect(
-      main.locator('[data-candidate-id^="data-quality.finding:"]')
+      main.locator(`[data-candidate-id^="${SETUP_GAP_PREFIX}"]`)
     ).toHaveCount(0);
+    await expect(main.getByTestId("home-setup")).toHaveCount(0);
 
     await page.context().close();
   });
