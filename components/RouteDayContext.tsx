@@ -6,6 +6,7 @@ import {
   DayContextBoundary,
   ProfileDaysBoundary,
   urlDayContextValue,
+  useLiveProfileClocks,
 } from "@/components/DayContext";
 import { dateStrInTz, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { clampHistoryDay } from "@/lib/history-format";
@@ -17,6 +18,20 @@ import {
 import type { AppRoute } from "@/lib/hrefs";
 import { isPastWriteAccepted } from "@/lib/log-manifest";
 
+/**
+ * The shell's live profile clocks — every mount's "what day is it now", the
+ * dock, sidebar, palette and shortcut handler included.
+ *
+ * THE ROUTE'S DAY IS NOT PUBLISHED HERE (#5769). This boundary used to carry the
+ * URL-backed `DayContextBoundary` too, which put a dated page's day above the
+ * GLOBAL quick-log mounts standing beside `<main>`: the sidebar's `+ Log` panel
+ * and the dock sheet, the command palette, the keyboard shortcuts. Owner ruling
+ * 2026-09-10: "the mount is global, therefore the context shouldn't change based
+ * on page" — a chip reading today's due doses must not open yesterday's list. The
+ * route day now mounts at the PAGE (`RouteDayBoundary`, around `{children}`), so
+ * those hosts see no day context and take the sheet's own state-backed one, while
+ * page-own openers under `{children}` keep inheriting the day they stand on.
+ */
 export default function RouteDayContext({
   profileId,
   timeZone,
@@ -31,8 +46,6 @@ export default function RouteDayContext({
   }[];
   children: ReactNode;
 }) {
-  const pathname = usePathname();
-  const params = useSearchParams();
   const [dayRevision, setDayRevision] = useState(0);
   const clockProfiles = useMemo(() => {
     const byProfile = new Map<number, string>([[profileId, timeZone]]);
@@ -54,7 +67,6 @@ export default function RouteDayContext({
       ),
     [clockProfiles, dayRevision]
   );
-  const today = liveClocks.get(profileId)?.today ?? dateStrInTz(timeZone);
 
   // App layouts persist across client navigation. Wake this one day owner at the
   // profile's next local midnight rather than treating the server layout's day as a
@@ -78,6 +90,34 @@ export default function RouteDayContext({
     return () => window.clearTimeout(timer);
   }, [clockProfiles, liveClocks, dayRevision]);
 
+  return (
+    <ProfileDaysBoundary clocks={liveClocks}>{children}</ProfileDaysBoundary>
+  );
+}
+
+/**
+ * The day a DATED ROUTE stands on, published to that page's own subtree only.
+ *
+ * Mounted around the page's `{children}` rather than the shell (#5769), so the
+ * openers that inherit it are the ones the route owns — the record's add row and
+ * forms, Nutrition Day's forms, the Trends measurements panel, the protocol log
+ * button. Reads the live clock from `RouteDayContext` above it, so a midnight
+ * rollover moves this day with everything else.
+ */
+export function RouteDayBoundary({
+  profileId,
+  timeZone,
+  children,
+}: {
+  profileId: number;
+  timeZone: string;
+  children: ReactNode;
+}) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const liveClocks = useLiveProfileClocks();
+  const today = liveClocks.get(profileId)?.today ?? dateStrInTz(timeZone);
+
   let day: string | undefined;
   let hrefForDay: ((date: string) => AppRoute) | null = null;
   if (pathname === "/history") {
@@ -94,22 +134,20 @@ export default function RouteDayContext({
   }
 
   return (
-    <ProfileDaysBoundary clocks={liveClocks}>
-      <DayContextBoundary
-        value={
-          day && hrefForDay
-            ? urlDayContextValue({
-                profileId,
-                today,
-                reach: { kind: "dated" },
-                day,
-                hrefForDay,
-              })
-            : null
-        }
-      >
-        {children}
-      </DayContextBoundary>
-    </ProfileDaysBoundary>
+    <DayContextBoundary
+      value={
+        day && hrefForDay
+          ? urlDayContextValue({
+              profileId,
+              today,
+              reach: { kind: "dated" },
+              day,
+              hrefForDay,
+            })
+          : null
+      }
+    >
+      {children}
+    </DayContextBoundary>
   );
 }
