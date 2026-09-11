@@ -5,7 +5,9 @@ import SidebarContent from "@/components/SidebarContent";
 import CommandPalette from "@/components/CommandPalette";
 import ActivityEditorProvider from "@/components/ActivityEditorProvider";
 import QuickEntryProvider from "@/components/QuickEntryProvider";
-import RouteDayContext from "@/components/RouteDayContext";
+import RouteDayContext, {
+  RouteDayBoundary,
+} from "@/components/RouteDayContext";
 import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import PullToRefresh from "@/components/PullToRefresh";
 import QuickShortcutHandler from "@/components/QuickShortcutHandler";
@@ -455,7 +457,21 @@ export default async function AppLayout({
                                   homeZone={travelHomeZone}
                                   dismissedZone={travelDismissedZone}
                                 />
-                                {children}
+                                {/* THE ROUTE'S DAY IS THE PAGE'S, NOT THE
+                            SHELL'S (#5769). This boundary sits here rather than
+                            around the whole shell so the quick-log mounts that
+                            stand BESIDE <main> — the sidebar panel, the dock
+                            sheet, the palette, the shortcut handler — are
+                            global in their day too: they open on the sheet's
+                            own today with its switcher whatever page is
+                            showing. Only the page's own openers, which are
+                            under here, inherit the day the page is on. */}
+                                <RouteDayBoundary
+                                  profileId={profile.id}
+                                  timeZone={timezone}
+                                >
+                                  {children}
+                                </RouteDayBoundary>
                               </div>
                             </main>
                           </div>
