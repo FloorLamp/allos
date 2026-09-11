@@ -15,6 +15,8 @@
 
 // HTTP 429. Every source we pull speaks it; a few speak a second dialect too
 // (Withings signals over-quota as envelope status 601 with HTTP 200).
+import { shiftDateStr } from "@/lib/date";
+
 export const RATE_LIMIT_STATUS = 429;
 
 // Is this failing status the source saying "slow down" rather than "you're broken"?
@@ -79,12 +81,6 @@ export function shouldAdvanceCursor<T extends string | number>(
 
 // ---- The window rule -------------------------------------------------------
 
-function shiftDay(day: string, n: number): string {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
 export interface PullDayWindow {
   startDate: string;
   endDate: string;
@@ -102,9 +98,9 @@ export function pullDayWindow(
 ): PullDayWindow {
   return {
     startDate: cursor
-      ? shiftDay(cursor, -rescanDays)
-      : shiftDay(today, -backfillDays),
-    endDate: shiftDay(today, 1),
+      ? shiftDateStr(cursor, -rescanDays)
+      : shiftDateStr(today, -backfillDays),
+    endDate: shiftDateStr(today, 1),
   };
 }
 

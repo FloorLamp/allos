@@ -14,7 +14,9 @@
 // location — nothing sharper ever reaches an outbound request.
 
 import { createLogger } from "@/lib/log";
+import { dateStrInTz, shiftDateStr } from "@/lib/date";
 import { userErrorCopy } from "@/lib/user-error-copy";
+import { num } from "./payload-fields";
 
 const log = createLogger("open-meteo");
 
@@ -152,7 +154,7 @@ export const AIR_QUALITY_FORECAST_DAYS = 7;
 // archival backfill) keeps its own end and is never widened. Pure and exported so the
 // boundary is unit-testable without a network call.
 export function airQualityEndDate(endDate: string, today: string): string {
-  const ceiling = shiftDate(today, AIR_QUALITY_FORECAST_DAYS - 1);
+  const ceiling = shiftDateStr(today, AIR_QUALITY_FORECAST_DAYS - 1);
   return endDate < ceiling ? endDate : ceiling;
 }
 
@@ -182,18 +184,8 @@ export function chooseEndpoint(
   endDate: string,
   today: string
 ): "forecast" | "archive" {
-  const cutoff = shiftDate(today, -ARCHIVE_LAG_DAYS);
+  const cutoff = shiftDateStr(today, -ARCHIVE_LAG_DAYS);
   return endDate >= cutoff ? "forecast" : "archive";
-}
-
-function shiftDate(day: string, n: number): string {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-function num(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 // PURE: parse an Open-Meteo hourly response body into HourlyUvRow[]. Tolerant of
@@ -438,12 +430,6 @@ export function mergeDailyRows(
   return [...byDate.keys()].sort().map((d) => byDate.get(d)!);
 }
 
-// Today (UTC) — the archive/forecast cutoff reference. Split out so a test can pass its
-// own `today` into chooseEndpoint without stubbing the clock.
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 // The one network touch. Builds the Open-Meteo URL (forecast vs. archive by date),
 // fetches with a short timeout, and returns the parsed rows or a graceful failure
 // (never throws) so the sync records a failed event and degrades. No key, no auth.
@@ -454,7 +440,7 @@ export async function openMeteoFetch(
   endDate: string,
   timezone: string
 ): Promise<WeatherFetchResult> {
-  const endpoint = chooseEndpoint(endDate, todayUtc());
+  const endpoint = chooseEndpoint(endDate, dateStrInTz("UTC"));
   const base = endpoint === "archive" ? ARCHIVE_BASE : FORECAST_BASE;
   const qs = new URLSearchParams({
     latitude: String(lat),
@@ -732,7 +718,7 @@ export async function openMeteoFetchDaily(
   endDate: string,
   timezone: string
 ): Promise<DailyFetchResult> {
-  const today = todayUtc();
+  const today = dateStrInTz("UTC");
   const endpoint = chooseEndpoint(endDate, today);
   const base = endpoint === "archive" ? ARCHIVE_BASE : FORECAST_BASE;
   const weatherQs = new URLSearchParams({

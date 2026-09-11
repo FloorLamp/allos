@@ -106,7 +106,9 @@ function partialSignature(ev: SyncEventFacts): string {
   return details ? details.warnings.join("\n") : "";
 }
 
-function num(v: number | null | undefined): number {
+// A missing count reads as zero. NOT ./payload-fields.ts's `num`: the input is already
+// a typed number and the question is the nullish default, not "is this a number".
+function zeroIfNull(v: number | null | undefined): number {
   return v ?? 0;
 }
 
@@ -212,10 +214,10 @@ function summarizeDay<T extends SyncEventFacts>(
   return {
     day,
     runs: events.length,
-    inserted: events.reduce((n, e) => n + num(e.inserted), 0),
-    updated: events.reduce((n, e) => n + num(e.updated), 0),
-    unchanged: events.reduce((n, e) => n + num(e.unchanged), 0),
-    skipped: events.reduce((n, e) => n + num(e.skipped), 0),
+    inserted: events.reduce((n, e) => n + zeroIfNull(e.inserted), 0),
+    updated: events.reduce((n, e) => n + zeroIfNull(e.updated), 0),
+    unchanged: events.reduce((n, e) => n + zeroIfNull(e.unchanged), 0),
+    skipped: events.reduce((n, e) => n + zeroIfNull(e.skipped), 0),
     failed: events.filter((e) => !e.ok).length,
     partial: events.filter((e) => e.ok && isTruncatedSyncEvent(e)).length,
     newestAt: events[0].at,
@@ -293,8 +295,8 @@ export function syncRangeLabel(
   noun: SyncRunNoun,
   vocabulary: SyncVocabulary = "records"
 ): string {
-  const inserted = runs.reduce((n, e) => n + num(e.inserted), 0);
-  const updated = runs.reduce((n, e) => n + num(e.updated), 0);
+  const inserted = runs.reduce((n, e) => n + zeroIfNull(e.inserted), 0);
+  const updated = runs.reduce((n, e) => n + zeroIfNull(e.updated), 0);
   const head = runCount(runs.length, noun);
   if (vocabulary === "forecast") {
     const revised = inserted + updated;
