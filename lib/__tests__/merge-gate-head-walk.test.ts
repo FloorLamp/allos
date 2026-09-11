@@ -375,6 +375,71 @@ describe("prepareHeadTree", () => {
     expect(prepared.reason).toContain("ENOSPC");
   });
 
+  // The branches a real git will not produce on demand. Each one must answer a
+  // REASON and strand no directory — the two properties the whole design turns
+  // on — so each is driven through an injected runner or fs.
+  it.each([
+    {
+      what: "the temporary repo cannot be initialised",
+      git: (args: string[]) =>
+        args[0] === "remote"
+          ? { status: 0, stdout: "https://github.com/o/r\n", stderr: "" }
+          : args[0] === "init"
+            ? { status: 1, stdout: "", stderr: "fatal: cannot mkdir .git\n" }
+            : { status: 0, stdout: "", stderr: "" },
+      says: "could not init a temporary worktree",
+    },
+    {
+      what: "the fetch hangs and is killed",
+      git: (args: string[]) =>
+        args[0] === "remote"
+          ? { status: 0, stdout: "https://github.com/o/r\n", stderr: "" }
+          : args[0] === "fetch"
+            ? {
+                status: null,
+                stdout: "",
+                stderr: "spawnSync git ETIMEDOUT\n",
+              }
+            : { status: 0, stdout: "", stderr: "" },
+      says: "spawnSync git ETIMEDOUT",
+    },
+  ])("declines when $what", ({ git: runner, says }) => {
+    const prepared = prepareHeadTree({
+      repoRoot: fx.stale,
+      head: fx.headSha,
+      stateDir: fx.stateDir,
+      refs: ["+refs/pull/7/head:refs/reach/head"],
+      git: runner,
+    });
+    expect(prepared.ok).toBe(false);
+    if (prepared.ok) return;
+    expect(prepared.reason).toContain(says);
+    expect(walkDirs(fx.stateDir)).toEqual([]);
+  });
+
+  it("declines when node_modules cannot be linked in", () => {
+    linkModules(fx.stale);
+    const noSymlinks = Object.assign(Object.create(fs), {
+      symlinkSync: () => {
+        throw Object.assign(new Error("EPERM: operation not permitted"), {
+          code: "EPERM",
+        });
+      },
+    });
+    const prepared = prepareHeadTree({
+      repoRoot: fx.stale,
+      head: fx.headSha,
+      stateDir: fx.stateDir,
+      refs: ["+refs/pull/7/head:refs/reach/head"],
+      io: noSymlinks,
+    });
+    expect(prepared.ok).toBe(false);
+    if (prepared.ok) return;
+    expect(prepared.reason).toContain("could not link node_modules");
+    expect(prepared.reason).toContain("EPERM");
+    expect(walkDirs(fx.stateDir)).toEqual([]);
+  });
+
   // NO CREDENTIAL-SHAPED LITERAL IN THIS FILE, and the planted value is built
   // at runtime so that none can be. The secret scanner matches SHAPE, not
   // meaning: a token-shaped string that spells out in its own characters that
