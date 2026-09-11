@@ -386,7 +386,13 @@ describe("Home's one list, rendered", () => {
     household: 262,
     pregnant: 197,
     "diabetic-cgm": 204,
-    biohacker: 209,
+    // +1 for #5409's nightly breathing-rate card. `biohacker` is the only persona
+    // whose seeded wearable data produces `respiratory_rate_bpm` samples, and the
+    // card is present-gated, so the read fires there and nowhere else. The PRESENCE
+    // pass costs nothing — METRIC_SAMPLE_CARDS is answered by one grouped query, so
+    // adding a card to it is free; this line is the series read for a card that has
+    // something to draw.
+    biohacker: 210,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound on
@@ -464,7 +470,8 @@ describe("Home's one list, rendered", () => {
     household: 239,
     pregnant: 178,
     "diabetic-cgm": 185,
-    biohacker: 189,
+    // +1, the warm half of the same #5409 read — see QUERY_BASELINE above.
+    biohacker: 190,
   };
 
   it("home query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
