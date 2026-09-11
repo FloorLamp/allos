@@ -1483,8 +1483,14 @@ const defaultGit = (args, { cwd, timeout } = {}) => {
 // reaches a printed row goes through this first. The gate's own rule — never
 // print the thrown command or its stdio, because it can hold the Authorization
 // header — is the same rule one layer down.
+//
+// The `{2}` is not decoration: `lib/__tests__/strip-comments.test.ts` censuses
+// the tree for the retired line-comment stripper, whose literal shape is a
+// slash, two escaped slashes and a negated class — which is character for
+// character what the natural spelling of "userinfo before the host" would be
+// here. This matches the same two slashes and is not a comment stripper.
 const redactUrls = (text) =>
-  String(text ?? "").replace(/\/\/[^/@\s]*@/g, "//<redacted>@");
+  String(text ?? "").replace(/\/{2}[^/@\s]*@/g, "//<redacted>@");
 
 const firstStderrLine = (text) => {
   const line =
