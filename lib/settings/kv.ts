@@ -78,6 +78,35 @@ export function preloadLoginSettings(loginId: number): void {
   scope.loadedLogins.add(loginId);
 }
 
+/**
+ * Open the read cache for a page render and prime the three tiers it reads.
+ *
+ * ONE SPELLING OF THE FOUR CALLS, so a page that opens the cache cannot prime two
+ * tiers and pay per-key reads for the third. Composition only — it adds no cache
+ * and changes no read.
+ *
+ * `profileIds` is every profile the render will read settings for: the acting
+ * profile alone on a single-subject page, and the viewed members beside it on a
+ * household fan-out. Each id is primed into its OWN keyspace (`profileId:key`) and
+ * marked loaded on its own, so priming one member can never answer for another —
+ * an unprimed profile still falls through to its own read.
+ *
+ * IT REACHES THIS CALL'S OWN FRAME, NOT THE COMPONENTS BELOW IT (#5012): the scope
+ * is AsyncLocalStorage, so it pays off on a page whose gathers run in the function
+ * that opens it. See `withReadSnapshot` in lib/read-snapshot.ts for the measurement.
+ */
+export function withPrimedSettings<T>(
+  primed: { loginId: number; profileIds: readonly number[] },
+  fn: () => T
+): T {
+  return withSettingReadCache(() => {
+    preloadGlobalSettings();
+    preloadLoginSettings(primed.loginId);
+    preloadProfileSettings(primed.profileIds);
+    return fn();
+  });
+}
+
 // Generic key/value access over the global settings table, for simple scalar
 // app-wide prefs. Statement hoisted for the same reason as
 // LOGIN_SETTING_GET_STMT below: an instance setting is read many times per

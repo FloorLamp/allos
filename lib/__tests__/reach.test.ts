@@ -27,7 +27,7 @@ const FIXTURES = [
     // History, the food bar's seeded offers, and the action the bar re-reads through.
     terminals: [
       "action app/(app)/actions.ts usualRoutineOffersOn",
-      "render app/(app)/history/page.tsx HistoryPage",
+      "render app/(app)/history/page.tsx renderHistory",
       "render app/(app)/nutrition/FoodTab.tsx FoodTab",
     ],
     missed: [],
@@ -41,7 +41,7 @@ const FIXTURES = [
       "action app/(app)/log-sheet-actions.ts loadLogSheetContext",
       "action app/(app)/nutrition/intake-actions.ts resolveDayDoses",
       "action app/(app)/quick-entry-actions.ts loadQuickEntry",
-      "render app/(app)/history/page.tsx HistoryPage",
+      "render app/(app)/history/page.tsx renderHistory",
       "render app/(app)/nutrition/FoodTab.tsx FoodTab",
       "render app/(app)/nutrition/ManageTab.tsx ManageTab",
       "render app/(app)/page.tsx renderDashboard",
