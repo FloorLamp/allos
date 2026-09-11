@@ -60,7 +60,11 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the bubble simply reads the new period on the next frame, with no beat — and the haptic is suppressed by the same preference (lib/haptics), so the text is the whole feedback.",
   },
-  // Only witnessed changes animate; lib/dashboard-motion.ts owns that decision.
+  // WHOSE ARRIVAL COUNTS IS THE HOST'S DECISION, and the host that made it is gone:
+  // lib/dashboard-motion.ts gated this on a WITNESSED arrival for the Now band, and
+  // #5435 §4 deleted both. The remaining tenant (ControlTooltip) arrives from an
+  // interaction, so there is nothing to witness; a surface that promotes on its own
+  // owes a quiet-resume rule of its own before taking this plan.
   promote: {
     ms: 300,
     conveys:

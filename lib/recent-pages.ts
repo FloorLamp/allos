@@ -11,16 +11,27 @@
 // machinery" now holds without exception, and the tally, the ranking, the storage
 // key and the component that read them are all deleted rather than left dormant.
 //
-// ── WHAT SURVIVED, AND WHY IT IS NOT DEAD CODE ───────────────────────────────
+// ── WHAT SURVIVED, AND WHAT NO LONGER READS IT ───────────────────────────────
 //
 // The allowlist below outlived its first consumer because it answers a different
 // question: not "where does this login go most", which is retired, but "what is
 // this route CALLED" — the only registry in the app that maps a route to its
-// human name. The dashboard reads it for its Show-everything doors and its
-// Standing door labels, and `DashboardPlacementCanvas` THROWS on a route it
-// cannot name, so this list is load-bearing for a rendered page and not a
-// leftover. Deleting it would be a dashboard change wearing a nav change's
-// clothes.
+// human name. Its second consumer is now gone too, and saying so plainly is the
+// point of this paragraph: the reason recorded here was that the dashboard read
+// it for its Show-everything doors and its Standing door labels and that
+// `DashboardPlacementCanvas` THREW on a route it could not name, which made the
+// list load-bearing for a rendered page. #5435 §4 retires all three, and the
+// canvas, the cluster and that throw are deleted with them.
+//
+// SO NOTHING IN PRODUCTION READS `TRACKED_PAGES` OR `trackedPageFor` TODAY. The
+// only half of this file with a live caller is the tombstone below
+// (`clearRetiredPageVisits`, from components/SidebarContent.tsx), and the reader
+// who arrives here looking for the load-bearing claim should find this sentence
+// instead of hunting a consumer that no longer exists. What is NOT claimed here
+// is a replacement reason: the list is kept because it is the app's only
+// route-to-name registry and the next surface that needs one should find it
+// whole rather than half-deleted, not because something is rendering from it.
+// Retiring it outright is a decision about that registry, with its own PR.
 //
 // The set is an ALLOWLIST of top-level destinations rather than "any pathname".
 // A detail route (`/medical/episodes/17`, `/import/5`) has no name to give, and
@@ -46,8 +57,9 @@ export function clearRetiredPageVisits(storage: {
 }
 
 // Mirrors the nav's top-level destinations (components/Nav.tsx) plus the Medical
-// group's leaves. Adding a nav leaf here is optional; omitting one means the
-// dashboard has no name for that route, which is a throw and not a silent gap.
+// group's leaves. Adding a nav leaf here is optional; omitting one used to mean a
+// throw from the dashboard's door labels, and since #5435 §4 deleted that reader
+// it means only that `trackedPageFor` answers null for the route.
 export const TRACKED_PAGES: TrackedPage[] = [
   { href: "/", label: "Dashboard" },
   { href: "/training", label: "Training" },
@@ -71,9 +83,9 @@ export const TRACKED_PAGES: TrackedPage[] = [
   { href: "/equipment", label: "Equipment" },
   { href: "/data", label: "Data" },
   // Not a nav leaf: `/integrations` itself redirects to Data → Import, but every
-  // per-source setup page is a child of it, and the dashboard's source asks ("Run
-  // the portal tool for…", "Import a fresh … export") land there. Without a name
-  // here those rows are the only ones in Ahead with no door.
+  // per-source setup page is a child of it, so a caller asking what one of those
+  // pages is CALLED gets an answer. The rows that used to need it — the
+  // dashboard's source asks in Ahead — went with #5435 §4.
   { href: "/integrations", label: "Integrations" },
   { href: "/settings", label: "Settings" },
 ];

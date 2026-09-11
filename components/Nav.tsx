@@ -514,10 +514,11 @@ function NavGroup({
     // the disclosure button's own `aria-controls`; the drawer has no button, so
     // without this the header would be a bare label followed by loose links.
     // Restated the way this repo already names a container from its own visible
-    // header — `aria-labelledby` at the heading's id (TrendsSectionShell,
-    // DashboardAhead's Bucket), never a second copy of the label string — over
-    // the `role="group"` this repo uses for a set of related controls. Drawer
-    // only: adding it on the sidebar would name the group twice.
+    // header — `aria-labelledby` at the heading's id (TrendsSectionShell for a
+    // fixed id, app/(app)/trends/SourceComparison.tsx for one derived per item,
+    // which is the shape a repeated group needs), never a second copy of the
+    // label string — over the `role="group"` this repo uses for a set of related
+    // controls. Drawer only: adding it on the sidebar would name the group twice.
     <div
       data-nav-group={group.group}
       role={inDrawer ? "group" : undefined}
