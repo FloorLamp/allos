@@ -60,6 +60,15 @@
 // symbol naming the terminals the body's consumer table does not. Advisory in
 // this step; the core says what it reads and what it misses.
 //
+// THE ONE THING THIS SCRIPT PUTS ON DISK is that walk's fallback (#5710): when
+// this checkout is not the PR head and a symbol declines there, the head is
+// fetched into a throwaway tree under the state dir and walked in THAT tree,
+// which is then removed on every exit path. The read-only claim above is about
+// GitHub and stands unchanged — a fetch is a read, and the only bytes written
+// go inside a directory this script made and unmakes. The caller's checkout is
+// not written to either: no worktree is registered in it and no object is
+// fetched into it.
+//
 // Usage:
 //   node scripts/orchestration/merge-gate.mjs <pr-number> [--repo owner/name]
 //     [--ignore-check <name>] [--session <id>] [--adopt-pr]
@@ -87,7 +96,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { helpGuard } from "./usage.mjs";
-import { resolveReadToken } from "./host.mjs";
+import { resolveReadToken, resolveStateDir } from "./host.mjs";
 import {
   baseDetectorNotice,
   ciVerdict,
@@ -103,6 +112,9 @@ import {
   receiptVerdict,
   RECEIPT_MARKER,
   baseMovedVerdict,
+  cleanupOnExit,
+  containsHead,
+  prepareHeadTree,
 } from "./merge-gate-core.mjs";
 import { titleLength, titleRuleRefusal } from "./title-rule.mjs";
 helpGuard(process.argv, import.meta.url);
@@ -526,11 +538,14 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../.."
 );
-const reachOverChild = (file, symbol) => {
+// The walker walks the tree it SITS IN (scripts/reach-graph.ts resolves its
+// ROOT from its own module URL), so the tree is chosen by `cwd` and the
+// relative script path together — never by an argument to reach.ts.
+const walkerIn = (cwd) => (file, symbol) => {
   const run = spawnSync(
     "npx",
     ["tsx", "scripts/reach.ts", file, symbol, "--json"],
-    { cwd: repoRoot, encoding: "utf8", timeout: 60_000, maxBuffer: MAX_BUFFER }
+    { cwd, encoding: "utf8", timeout: 60_000, maxBuffer: MAX_BUFFER }
   );
   if (run.error) throw new Error(run.error.message);
   if (run.status !== 0)
@@ -540,17 +555,64 @@ const reachOverChild = (file, symbol) => {
     );
   return JSON.parse(run.stdout);
 };
-const walkedOn = spawnSync("git", ["rev-parse", "HEAD"], {
-  cwd: repoRoot,
-  encoding: "utf8",
-}).stdout?.trim();
-for (const row of reachVerdict({
-  files: changedFiles,
-  body: pr.body,
-  reachFn: reachOverChild,
-  walkedOn,
-}))
-  console.log(`NOTE: ${row}`);
+
+// WHEN THE TREE IN HAND IS NOT THE PR (#5710). Under the CI wrapper it always
+// is — `containsHead` reads the merge commit's own parent lines, which survive
+// the shallow checkout — so CI walks in place exactly as before and fetches
+// nothing. Run interactively from a `main` checkout it is not, and a symbol
+// the PR ADDS declines there for the one reason that is not the author's
+// fault. Then, and ONLY after that decline (so nothing is fetched for a PR
+// whose symbols already resolve), the head is fetched into a throwaway tree
+// under the state dir and the symbol is walked there.
+//
+// A FETCH THAT FAILS STAYS A DECLINE, and its reason is the row's second
+// clause: `prepareHeadTree` answers a reason rather than throwing, this
+// rethrows it into the row, and there is no branch that walks the stale tree
+// and prints its answer as the PR's.
+const { contained, walkedOn, how } = containsHead({ repoRoot, head });
+let headTree = null;
+let headTreeRefusal = null;
+let releaseCleanup = null;
+const walkOnHead = (file, symbol) => {
+  if (!headTree && !headTreeRefusal) {
+    const attempt = prepareHeadTree({
+      repoRoot,
+      head,
+      stateDir: resolveStateDir(),
+      expectRepo: repo,
+      // The pull ref first: it exists on the base repo even for a fork head,
+      // and it needs no server-side allowance for an unadvertised SHA.
+      refs: [`+refs/pull/${prNumber}/head:refs/reach/head`, head],
+    });
+    if (attempt.ok) {
+      headTree = attempt;
+      // Cleanup on the interrupt and on every `process.exit` below, not only
+      // on the `finally` — the gate leaves through eight of those.
+      releaseCleanup = cleanupOnExit(attempt.cleanup);
+      console.log(
+        `NOTE: reach — ${how}, so the PR head ${head.slice(0, 8)} was fetched ` +
+          "into a temporary worktree and the declining symbols walked there"
+      );
+    } else headTreeRefusal = attempt.reason;
+  }
+  if (headTreeRefusal) throw new Error(headTreeRefusal);
+  return walkerIn(headTree.dir)(file, symbol);
+};
+
+try {
+  for (const row of reachVerdict({
+    files: changedFiles,
+    body: pr.body,
+    reachFn: walkerIn(repoRoot),
+    walkedOn,
+    retryFn: contained ? undefined : walkOnHead,
+    retryOn: head,
+  }))
+    console.log(`NOTE: ${row}`);
+} finally {
+  headTree?.cleanup();
+  releaseCleanup?.();
+}
 
 // BOTH ENDPOINTS, ONE VERDICT (#5022). Statuses live on their own endpoint and
 // are invisible to `/check-runs`, so until now a red posted by anything but
