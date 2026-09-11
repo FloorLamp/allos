@@ -1094,6 +1094,13 @@ function HomeLaterFold({
       <summary
         id={fold.row.id}
         data-candidate-id={fold.row.id}
+        // A ROW-MECHANISM FOLD, NOT A CONTROL (#3979 via #4505 family 1). This
+        // `<summary>` wears `LOGGED_EVENT_ROW` and nothing else: it IS one of the
+        // record's rows — one dense line, the same height as the rows it extends —
+        // which is the `food-more-groups-summary` precedent (#3987) rather than the
+        // `fold-control` one. The testid is how `e2e/button-height-floor.mobile.spec.ts`
+        // cites a ruled row fold, and the spelling matches the two it already cites.
+        data-testid="home-later-summary"
         className={`${LOGGED_EVENT_ROW} cursor-pointer text-slate-500 marker:content-[''] dark:text-slate-400`}
       >
         <span className="min-w-0 flex-1 truncate">
