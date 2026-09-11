@@ -329,17 +329,21 @@ export default async function FoodTab({
   ) {
     recentDates.push(initialDate);
   }
-  const mealDays: FoodLogDay[] = getFoodMealDays(profile.id, recentDates).map(
-    (day) => ({
-      ...day,
-      label:
-        day.date === date
-          ? "Today"
-          : day.date === shiftDateStr(date, -1)
-            ? "Yesterday"
-            : formatWeekdayDate(day.date, formatPrefs),
-    })
-  );
+  // THE GATHER'S OWN ROWS, kept beside the bar's view of them. `FoodLogEvent` is the
+  // CLIENT prop shape and carries only what the bar renders; the ledger's clock grammar
+  // needs the filing DAY as well (#5618 rule 6), which the gather already resolves in
+  // the profile's zone. Reading it from here rather than widening the client type keeps
+  // the field where it is used and leaves `FoodLogBar` untouched.
+  const gathered = getFoodMealDays(profile.id, recentDates);
+  const mealDays: FoodLogDay[] = gathered.map((day) => ({
+    ...day,
+    label:
+      day.date === date
+        ? "Today"
+        : day.date === shiftDateStr(date, -1)
+          ? "Yesterday"
+          : formatWeekdayDate(day.date, formatPrefs),
+  }));
   // THE DAY LEDGER (#3987 phase 1) — one statement of the day, per bounded date, built
   // by lib/day-ledger.ts from two gathers this page already had reason to make.
   //
@@ -387,7 +391,7 @@ export default async function FoodTab({
   );
   const doseSchedules = getIntakeDosesForHistory(profile.id);
   const ledgerByDate: Record<string, LedgerGroup[]> = Object.fromEntries(
-    mealDays.map((day) => [
+    gathered.map((day) => [
       day.date,
       buildDayLedger({
         servings: day.events.map((event): LedgerServing => ({
@@ -402,6 +406,10 @@ export default async function FoodTab({
           // nobody timed rather than a bare clock claiming an eating minute (#3958).
           hhmm: event.eatenAt ?? event.loggedTime,
           clockKind: event.eatenAt ? "stated" : "logged",
+          // ONLY WHEN THE CLOCK IS THE FILING'S (#5618 rule 6). A stated eating time is
+          // the row's own and renders bare, so it has no filing day to report — the
+          // same condition the record's gather asks through `semantic === "record"`.
+          filedDay: event.eatenAt ? null : event.loggedDay,
         })),
         doses: getDayDoseLedger(profile.id, day.date, doseSchedules),
         pending: pendingByDate.get(day.date) ?? [],

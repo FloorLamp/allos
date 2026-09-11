@@ -17,6 +17,7 @@
 // a fabricated `ProteinAdequacy` could pin a status the engine would never produce.
 
 import { describe, it, expect } from "vitest";
+import { TODAY_PERIOD } from "@/lib/nutrient-adequacy";
 import {
   assessFiberAdequacy,
   fiberIntake,
@@ -61,6 +62,7 @@ function protein(opts: {
 }): ProteinAdequacy | null {
   return assessProteinAdequacy(
     proteinIntake({
+      period: TODAY_PERIOD,
       dailyTracked: opts.tracked ?? null,
       dailyLogged: null,
       dailyEstimated: opts.estimated ?? 0,
@@ -79,6 +81,7 @@ function fiber(opts: {
 }): FiberAdequacy | null {
   return assessFiberAdequacy(
     fiberIntake({
+      period: TODAY_PERIOD,
       dailyTracked: opts.tracked ?? null,
       dailyEstimated: opts.estimated ?? 0,
     }),

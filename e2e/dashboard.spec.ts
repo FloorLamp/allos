@@ -647,7 +647,7 @@ test("the dashboard declares its own width instead of filling the shell", async 
   );
   // And it is genuinely narrower than the space it sits in at 1280, which is the
   // defect: "Mark taken" used to sit a monitor's width from its own card's title.
-  const box = (await canvas.boundingBox())!;
+  const [box] = await settledBoxes([canvas]);
   expect(box.width).toBeLessThanOrEqual(1152);
 });
 
@@ -699,14 +699,14 @@ test("a Standing row reveals its door on hover and on keyboard focus alike", asy
   // on its own, and a boundingBox is viewport-relative, so an unscrolled baseline
   // would report the page's scroll as a 2,000px "layout shift".
   await link.scrollIntoViewIfNeeded();
-  const before = (await link.boundingBox())!;
+  const [before] = await settledBoxes([link]);
 
   await link.hover();
   await expect.poll(() => opacity(door)).toBe("1");
 
   // NO LAYOUT SHIFT: the exchange is opacity and transform only, so the row it
   // happens inside never moves or resizes.
-  const during = (await link.boundingBox())!;
+  const [during] = await settledBoxes([link]);
   expect(Math.abs(during.width - before.width)).toBeLessThan(1);
   expect(Math.abs(during.y - before.y)).toBeLessThan(1);
 
@@ -902,19 +902,18 @@ test("the Standing link covers its phone label and desktop plot without covering
     const link = row.getByRole("link").first(); // eslint-disable-line no-restricted-properties -- first-ok: the selected candidate's link
     const door = link.getByTestId("standing-door");
     await link.scrollIntoViewIfNeeded();
-    const before = (await family.boundingBox())!;
-    const name = (await family.locator("dt").boundingBox())!;
+    const [before, name] = await settledBoxes([family, family.locator("dt")]);
     await page.mouse.move(name.x + name.width / 2, name.y + name.height / 2);
     await expect
       .poll(() => door.evaluate((node) => getComputedStyle(node).opacity))
       .toBe("1");
     const [ageBox, doorBox] = await settledBoxes([age, door]);
     expect(ageBox.x + ageBox.width).toBeLessThanOrEqual(doorBox.x + 1);
-    expect(await family.boundingBox()).toEqual(before);
-
-    const plot = (await family
-      .getByTestId("standing-sparkline")
-      .boundingBox())!;
+    const [familyAfter, plot] = await settledBoxes([
+      family,
+      family.getByTestId("standing-sparkline"),
+    ]);
+    expect(familyAfter).toEqual(before);
     expect(
       await page.evaluate(
         ({ x, y }) =>
@@ -944,7 +943,7 @@ test("the Standing link covers its phone label and desktop plot without covering
       .locator("[data-standing-family]")
       .filter({ has: page.locator("a.standing-primary") })
       .first();
-    const phoneName = (await phoneFamily.locator("dt").boundingBox())!;
+    const [phoneName] = await settledBoxes([phoneFamily.locator("dt")]);
     const phoneHref = await phoneFamily
       .locator("a.standing-primary")
       .getAttribute("href");

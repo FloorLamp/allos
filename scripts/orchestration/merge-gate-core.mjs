@@ -1407,6 +1407,75 @@ export function reachVerdict({
   return rows;
 }
 
+// ── THE TALLY LINE (#5710) ───────────────────────────────────────────────────
+//
+// #5710 promotes the reach row from NOTE to FAIL once it has run on ten PRs
+// with no false positive, counted from one-line tallies a landing session
+// posts on the issue. In the 43 merges after the count was declared to start,
+// 27 fed the walker 198 symbols and NOT ONE tally was recorded: the step asked
+// a person to notice an advisory NOTE and then post on a different issue at
+// the moment they were about to merge, and nothing failed when they didn't.
+// So the gate writes the line and the landing session pastes it; the one
+// genuinely human part — WAS THE ROW RIGHT — is the blank at the end.
+//
+// IT MUST STAY RARE, or it is the NOTE's own failure again: a line printed on
+// every merge is noise, and noise is ignored. It is emitted only for a row
+// that NAMES A SYMBOL, which is what the tally records and what a person can
+// answer right or wrong about. The cap row ("only the first 20 were walked")
+// names none and claims nothing about what anything reaches, so it is not
+// counted and never produces a line by itself.
+
+const TALLY_DETAILS = 4;
+
+/** One row's entry in the tally line, or null when the row names no symbol. */
+const tallyDetail = (row) => {
+  const declined = /^reach — could not answer for (\S+)/.exec(row);
+  if (declined)
+    return { answer: false, text: `${declined[1]} → could not answer` };
+  const answered = /^reach — (\S+) \((\S+)\) reaches (\d+) terminal\(s\)/.exec(
+    row
+  );
+  if (!answered) return null;
+  const [, symbol, file, terminals] = answered;
+  const missing = /(\d+) not named in the body's consumer table/.exec(row);
+  const named = missing
+    ? `${missing[1]} not named`
+    : row.includes("all named in the body's consumer table")
+      ? "all named"
+      : "no consumer table";
+  return {
+    answer: true,
+    text: `${file}#${symbol} → ${terminals} terminal(s), ${named}`,
+  };
+};
+
+/**
+ * The ready-to-paste tally line for #5710, or `null` when nothing to tally.
+ *
+ * @param {object} input
+ * @param {string|number} input.prNumber
+ * @param {string[]} input.rows `reachVerdict`'s rows, exactly as printed
+ * @returns {string|null} one line, no newline, or null
+ */
+export function tallyLine({ prNumber, rows }) {
+  const details = (rows ?? []).map(tallyDetail).filter(Boolean);
+  if (!details.length) return null;
+  const declines = details.filter((d) => !d.answer).length;
+  const shown = details.slice(0, TALLY_DETAILS);
+  const more = details.length - shown.length;
+  return (
+    `TALLY #5710 — PR #${prNumber}: ${details.length} reach row(s)` +
+    // The split only when it changes the reading: the bar counts CLEAN rows,
+    // and a truncated line would otherwise hide that some of these declined.
+    (declines
+      ? ` (${details.length - declines} answer(s), ${declines} decline(s))`
+      : "") +
+    `; ${shown.map((d) => d.text).join("; ")}` +
+    (more ? `; +${more} more` : "") +
+    " — right/wrong?"
+  );
+}
+
 // ── WALKING THE PR HEAD WHEN THE TREE IN HAND IS NOT IT (#5710) ──────────────
 //
 // The reach row above walks whatever tree the gate runs in, because

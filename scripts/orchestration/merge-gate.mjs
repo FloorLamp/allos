@@ -115,6 +115,7 @@ import {
   cleanupOnExit,
   containsHead,
   prepareHeadTree,
+  tallyLine,
 } from "./merge-gate-core.mjs";
 import { titleLength, titleRuleRefusal } from "./title-rule.mjs";
 helpGuard(process.argv, import.meta.url);
@@ -600,15 +601,21 @@ const walkOnHead = (file, symbol) => {
 };
 
 try {
-  for (const row of reachVerdict({
+  const reachRows = reachVerdict({
     files: changedFiles,
     body: pr.body,
     reachFn: walkerIn(repoRoot),
     walkedOn,
     retryFn: contained ? undefined : walkOnHead,
     retryOn: head,
-  }))
-    console.log(`NOTE: ${row}`);
+  });
+  for (const row of reachRows) console.log(`NOTE: ${row}`);
+  // The line #5710's tally asks for, written so the landing session pastes it
+  // instead of composing it — and absent entirely when no row named a symbol,
+  // so it cannot become the per-merge noise the NOTE already became. It is
+  // advisory like the rows: nothing here decides the verdict.
+  const tally = tallyLine({ prNumber, rows: reachRows });
+  if (tally) console.log(tally);
 } finally {
   headTree?.cleanup();
   releaseCleanup?.();

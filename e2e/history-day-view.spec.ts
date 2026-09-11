@@ -803,7 +803,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // THE SCROLL, which is the whole point of the rail: reading the rows must not
       // take the map off screen. Asserted as the two boxes moving DIFFERENTLY —
       // the rows travel with the page, the panel does not.
-      const rowBefore = (await firstRow.boundingBox())!;
+      const [rowBefore] = await settledBoxes([firstRow]);
       const maxScroll = await page.evaluate(
         () => document.documentElement.scrollHeight - window.innerHeight
       );
@@ -816,12 +816,13 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
         `the page scrolls ${scrolled}px and the chart starts ${panelBox.y}px down — ` +
           "the scroll must pass it, or an unpinned rail would still be in view"
       ).toBeGreaterThan(panelBox.y);
-      const rowAfter = (await firstRow.boundingBox())!;
+      // ONE settled group for both post-scroll boxes: they describe the same
+      // after-scroll layout, and grouping them costs one settle loop instead of two.
+      const [rowAfter, panelAfter] = await settledBoxes([firstRow, panel]);
       expect(
         rowBefore.y - rowAfter.y,
         "the rows travelled with the scroll"
       ).toBeGreaterThan(scrolled - 2);
-      const panelAfter = (await panel.boundingBox())!;
       // FULLY in view, top and bottom: an unpinned rail would be carried ~600px up
       // and its top edge would be negative.
       expect(
@@ -922,12 +923,17 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // the rail travelled less and came to rest ON its inset. A static rail would
       // sit at `railBefore.y - scrolled`, which the guard above puts strictly above
       // the inset — so both of these red the moment the pin comes off.
-      const rowAfter = (await firstRow.boundingBox())!;
+      // ONE settled group: the three claims below are about the SAME after-jump
+      // layout, so the boxes have to come from it rather than from three round-trips.
+      const [rowAfter, railAfter, panelAfter] = await settledBoxes([
+        firstRow,
+        rail,
+        panel,
+      ]);
       expect(
         rowBefore.y - rowAfter.y,
         "the rows travelled with the jump"
       ).toBeGreaterThan(scrolled - 2);
-      const railAfter = (await rail.boundingBox())!;
       expect(
         railAfter.y,
         `the rail sits at ${railAfter.y}; unpinned it would be at ${
@@ -936,7 +942,6 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       ).toBeGreaterThan(railBefore.y - scrolled);
       expect(Math.round(railAfter.y)).toBe(Math.round(stickyTop));
       // …and the chart is still whole on screen, which is what the reader gets.
-      const panelAfter = (await panel.boundingBox())!;
       expect(panelAfter.y).toBeGreaterThanOrEqual(0);
       expect(panelAfter.y + panelAfter.height).toBeLessThanOrEqual(RAIL.height);
     } finally {
@@ -990,7 +995,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
           "cannot tell a correct rail from one that swallowed the wheel"
       ).toBeGreaterThan(0);
 
-      const box = (await svg.boundingBox())!;
+      const [box] = await settledBoxes([svg]);
       await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
       const before = {
         page: await page.evaluate(() => window.scrollY),
@@ -1005,7 +1010,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       expect(await scroller.evaluate((el) => el.scrollTop)).toBe(before.rail);
       // AND THE BOX BELOW THE CHART STILL SCROLLS ON ITS OWN — the converse, so this
       // is not green because the rail simply lost its overflow everywhere.
-      const railBox = (await scroller.boundingBox())!;
+      const [railBox] = await settledBoxes([scroller]);
       await page.mouse.move(
         railBox.x + railBox.width / 2,
         railBox.y + railBox.height / 2
@@ -1035,7 +1040,12 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       const rail = app.getByTestId("history-day-rail");
       await expect(rail.getByTestId("intraday-panel")).toBeVisible();
 
-      const box = (await rail.boundingBox())!;
+      // ONE settled group for the rail and the chart inside it: the cap claim and
+      // the fixture guard below are read off the same layout, in one settle loop.
+      const [box, panelBox] = await settledBoxes([
+        rail,
+        rail.getByTestId("intraday-panel"),
+      ]);
       // THE SCROLLING BOX IS NOT THE RAIL. The rail caps the height; the box BELOW
       // the chart is what scrolls, so the chart's own area has no scrollable
       // ancestor short of the page (the wheel test above is the behaviour that
@@ -1048,9 +1058,7 @@ test.describe("the day view's rail beside its reading column (#4974)", () => {
       // THE FIXTURE REACHES THE FORBIDDEN STATE. Without this the height assertion
       // below is green on a rail that simply had little in it, which is the shape
       // that passes forever and tests nothing.
-      const panelHeight = (await rail
-        .getByTestId("intraday-panel")
-        .boundingBox())!.height;
+      const panelHeight = panelBox.height;
       // AGAINST THE CAP, NOT THE RAW VIEWPORT, because the cap is what this test is
       // about: `100dvh` minus the rail's two 1.5rem insets. The two quantities differ
       // by 48px, which did not matter while the rail held ~450px of content and is
@@ -1313,6 +1321,135 @@ function selectionServings(): { date: string; occurredAt: number | null }[] {
   }
 }
 
+// A DAY WHOSE ONLY SELECTABLE ROW IS A MEDICATION DOSE (#5618, the medication slice).
+//
+// Its own day, and deliberately EMPTY of food: the Select control is gated on the
+// server's own count of pickable rows (`selectableCount > 0` in app/(app)/history/
+// page.tsx), so a day carrying nothing but a medication administration renders no
+// Select at all until the count admits one. That is why the assertion "Select is
+// visible here" is evidence rather than decoration — before this slice this day was a
+// day with no selection mode, and a box drawn on it would have been an affordance the
+// batch refused.
+const MED_DAY = "2026-01-09";
+const MED_NAME = "E2E Selection Ibuprofen";
+const MED_FILED_AT = "08:00";
+const MED_STATED_AT = "19:05";
+
+function clearSelectionMed(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const id = profileIdNamed(TL_CHROME_WELL_PROFILE);
+    // ONLY THIS FIXTURE'S OWN ROWS, named through the item it seeded — and the audit
+    // rows FIRST, while that item still exists to name them by. A clear that took every
+    // `dose-log.%` row the profile has would delete another spec's evidence on the same
+    // worker database, and would do it invisibly: the deleting test still passes.
+    const mine = `(SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`;
+    db.prepare(
+      `DELETE FROM audit_events
+        WHERE active_profile_id = ? AND action LIKE 'dose-log.%'
+          AND CAST(target AS INTEGER) IN ${mine}`
+    ).run(id, id, MED_NAME);
+    // The logs go through the parent item, which is how this table carries ownership.
+    db.prepare(`DELETE FROM intake_item_logs WHERE item_id IN ${mine}`).run(
+      id,
+      MED_NAME
+    );
+    db.prepare(`DELETE FROM intake_item_doses WHERE item_id IN ${mine}`).run(
+      id,
+      MED_NAME
+    );
+    db.prepare(
+      "DELETE FROM intake_items WHERE profile_id = ? AND name = ?"
+    ).run(id, MED_NAME);
+  } finally {
+    db.close();
+  }
+}
+
+/** The medication, its dose and one taken administration on MED_DAY. */
+function seedSelectionMed(): { itemId: number; logId: number } {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const id = profileIdNamed(TL_CHROME_WELL_PROFILE);
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation,
+              quantity_on_hand, qty_per_dose)
+           VALUES (?, ?, 1, 'medication', 'pain', 'may', 20, 1)`
+        )
+        .run(id, MED_NAME).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '200 mg', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    // UNTIMED, like the servings the sibling case repairs: no `occurred_at`, so the
+    // record prints the filing minute and the row is exactly the thing a person opens
+    // selection mode to fix.
+    const logId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_logs
+             (dose_id, item_id, date, status, amount, recorded_at)
+           VALUES (?, ?, ?, 'taken', '200 mg', ?)`
+        )
+        .run(doseId, itemId, MED_DAY, selectionStamp(MED_DAY, MED_FILED_AT))
+        .lastInsertRowid
+    );
+    return { itemId, logId };
+  } finally {
+    db.close();
+  }
+}
+
+/** What the store says about the seeded administration, and what was audited for it. */
+function selectionMedState(itemId: number): {
+  row: { date: string; occurredAt: number | null } | undefined;
+  audit: { action: string; target: string | null; detail: string | null }[];
+} {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const raw = db
+      .prepare(
+        `SELECT date, occurred_at AS occurredAt FROM intake_item_logs
+          WHERE item_id = ?`
+      )
+      .get(itemId) as { date: string; occurredAt: string | null } | undefined;
+    return {
+      // Compared as INSTANTS: the seed writes the repo's SQL stamp shape and the
+      // correction cores write an ISO one, and those are one moment spelled two ways.
+      row: raw && {
+        date: raw.date,
+        occurredAt:
+          raw.occurredAt === null ? null : new Date(raw.occurredAt).getTime(),
+      },
+      audit: db
+        .prepare(
+          `SELECT action, target, detail FROM audit_events
+            WHERE active_profile_id = ? AND action LIKE 'dose-log.%'
+            ORDER BY id`
+        )
+        .all(profileIdNamed(TL_CHROME_WELL_PROFILE)) as {
+        action: string;
+        target: string | null;
+        detail: string | null;
+      }[],
+    };
+  } finally {
+    db.close();
+  }
+}
+
 test.describe("selection mode on the record (#5618 ruling 4)", () => {
   test.beforeEach(() => {
     clearSelectionFood();
@@ -1424,6 +1561,87 @@ test.describe("selection mode on the record (#5618 ruling 4)", () => {
       await expect(content.getByTestId("history-row")).toHaveCount(3);
     } finally {
       await page.context().close();
+    }
+  });
+
+  test("a medication dose is pickable, counted, re-timed and audited", async ({
+    browser,
+  }) => {
+    test.slow();
+    // THE HALF NO COMPONENT TEST CAN SEE. `historyRowPick` deciding "yes" is one claim;
+    // that a person can actually check the box and that the batch then writes the row
+    // AND the audit the single-row ⋯ menu writes is another, and it crosses the server
+    // action, the correction core and two tables. Driven end to end for that reason.
+    clearSelectionMed();
+    const { itemId, logId } = seedSelectionMed();
+    const page = await loginAs(
+      browser,
+      { username: E2E_LOGIN_TL_CHROME, password: E2E_MEMBER_PASSWORD },
+      { viewport: DESKTOP }
+    );
+    try {
+      await page.goto(dayUrl(MED_DAY));
+      const content = appContent(page);
+      // THE ROW, NAMED — not `.first()` off a shared surface. `history-row` is every
+      // spec's row testid, so the medication is reached through the fixture's own name
+      // and the day's row count is asserted beside it: one row, and it is this one.
+      const rows = content.getByTestId("history-row");
+      const medRow = rows.filter({ hasText: MED_NAME });
+      await expect(rows).toHaveCount(1);
+      await expect(medRow).toHaveCount(1);
+      await expect(medRow.getByTestId("history-row-clock")).toContainText(
+        "logged"
+      );
+
+      // ── THE COUNT ADMITS IT ────────────────────────────────────────────────
+      // Select is gated on the server's count of pickable rows. A day holding only a
+      // medication dose offered no Select at all before this slice, so the control
+      // being here is the count's answer, read off the page.
+      const toggle = content.getByTestId("history-select-toggle");
+      await expect(toggle).toBeVisible();
+      await hydratedClick(page, toggle);
+      await expect(content.getByTestId("history-selection-bar")).toBeVisible();
+
+      // ── THE BOX IS REAL ────────────────────────────────────────────────────
+      const box = content.getByTestId(`history-pick-dose-${logId}`);
+      await expect(box).toBeVisible();
+      await box.click();
+      await expect(content.getByTestId("history-selection-count")).toHaveText(
+        "1 selected"
+      );
+
+      // ── AND THE VERB LANDS ─────────────────────────────────────────────────
+      await hydratedClick(
+        page,
+        content.getByTestId("history-selection-set-time")
+      );
+      await content
+        .getByTestId("history-selection-when-time")
+        .fill(MED_STATED_AT);
+      await hydratedClick(
+        page,
+        content.getByTestId("history-selection-time-apply")
+      );
+      // The row stops saying "logged" and states the minute somebody named.
+      await expect(medRow.getByTestId("history-row-clock")).not.toContainText(
+        "logged"
+      );
+
+      const after = selectionMedState(itemId);
+      expect(after.row).toEqual({
+        date: MED_DAY,
+        occurredAt: selectionInstant(MED_DAY, MED_STATED_AT),
+      });
+      // THE AUDIT ROW, WRITTEN THROUGH THE BOX. Same action, target and detail the
+      // single-row amend writes — which lib/__action_tests__/
+      // ledger-selection-medication.actions.test.ts proves by comparison; what this
+      // adds is that the rendered path reaches it.
+      expect(after.audit).toEqual([
+        { action: "dose-log.amend", target: String(itemId), detail: MED_DAY },
+      ]);
+    } finally {
+      await page.context().close();
+      clearSelectionMed();
     }
   });
 

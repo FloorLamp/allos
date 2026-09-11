@@ -83,6 +83,10 @@ export default function ConditionsSection({
     <div className="space-y-6">
       <AddEntryPanel
         formId="condition"
+        // #4694, riding #5302's adoption: the door gates on what the scope already
+        // resolved for the ACTING profile, so a read-only viewer is never offered a
+        // form whose submit would redirect them and lose the typing.
+        access={scope.access.get(scope.actingProfileId)}
         testId="add-condition-panel"
         panelId="add-condition-panel-body"
         label="Add condition"

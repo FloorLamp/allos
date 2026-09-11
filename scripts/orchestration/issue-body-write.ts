@@ -39,6 +39,40 @@ export interface BodyWrite {
 /** The guard said no; the current body was saved before it did. */
 export class BodyWriteRefused extends Error {}
 
+/**
+ * WHAT A GITHUB JSON WRITE MUST DECLARE — the one header list every write in
+ * this directory sends (#5758, #5792).
+ *
+ * `Content-Type` is not optional on a request that carries a body. `-d` and
+ * `--data-binary` with no declared type make curl default to
+ * `application/x-www-form-urlencoded`, and the write is refused with HTTP 415 —
+ * "Request bodies must declare Content-Type: application/json" — before it ever
+ * reaches the API. It is inert on a GET or a DELETE, which send no body, so one
+ * list serves every call and no site has to decide.
+ *
+ * It is ONE list because it was five, and four of them were missing that header:
+ * the omission spread by copying, and the next script would have copied it too.
+ *
+ * The list is pinned as DATA in `lib/__tests__/issue-body-write.test.ts` and at
+ * each write site in the `reconcile-*-script` tests, by comparing the argv handed
+ * to curl. It CANNOT be pinned by watching a live write succeed: writes from this
+ * container are credentialed by the agent proxy, so a round trip returns 2xx even
+ * with no `Authorization` header at all. What a live request does pin is DELIVERY,
+ * and only against an issue number that cannot exist — without the header the
+ * proxy answers 415 and the API never sees it; with the header GitHub answers 404.
+ * The two outcomes differ in who answered, which a 2xx cannot tell you.
+ */
+export function githubJsonHeaders(token: string): string[] {
+  return [
+    "-H",
+    `Authorization: Bearer ${token}`,
+    "-H",
+    "Accept: application/vnd.github+json",
+    "-H",
+    "Content-Type: application/json",
+  ];
+}
+
 function curlJson(args: readonly string[]): unknown {
   return JSON.parse(
     execFileSync("curl", ["-sS", "--fail-with-body", ...args], {
@@ -55,24 +89,7 @@ function curlJson(args: readonly string[]): unknown {
 export function writeIssueBody(write: BodyWrite): string {
   const { repo, token, issue, body } = write;
   const url = `https://api.github.com/repos/${repo}/issues/${issue}`;
-  // ONE header list for both calls, and `Content-Type` is not optional on the
-  // PATCH (#5758). `--data-binary` with no declared type makes curl default to
-  // `application/x-www-form-urlencoded`, and the write is refused with HTTP 415
-  // — "Request bodies must declare Content-Type: application/json" — before it
-  // ever reaches the issue. It is inert on the GET, which sends no body.
-  //
-  // The header list is pinned as DATA in `lib/__tests__/issue-body-write.test.ts`,
-  // by comparing the argv handed to curl. It CANNOT be pinned by watching a live
-  // write succeed: writes from this container are credentialed by the agent proxy,
-  // so a round trip returns 2xx even with no `Authorization` header at all.
-  const headers = [
-    "-H",
-    `Authorization: Bearer ${token}`,
-    "-H",
-    "Accept: application/vnd.github+json",
-    "-H",
-    "Content-Type: application/json",
-  ];
+  const headers = githubJsonHeaders(token);
   const current =
     (curlJson([...headers, url]) as { body: string | null }).body ?? "";
   const dir = path.join(process.env.SCRATCH || SCRATCH_DEFAULT, "issue-bodies");

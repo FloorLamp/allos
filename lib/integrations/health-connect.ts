@@ -1,5 +1,6 @@
 import type { ActivityType } from "@/lib/types";
 import { tzOffsetMs, utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
+import { num } from "./payload-fields";
 import { anchorImpliedDay } from "@/lib/metric-window-overlap";
 import {
   boundedOrNull,
@@ -478,7 +479,7 @@ export interface HealthConnectSyncDetails {
 // metric_samples.date. `minute` is the hr_minutes.ts bucket key, which since #2205 is
 // the sample's own UTC minute and takes no timezone at all — only `date` still does.
 
-function parts(
+function zonedParts(
   iso: unknown,
   tz: string
 ): { date: string; minute: string; hhmm: string } | null {
@@ -491,13 +492,6 @@ function parts(
   if (!inTimeWindow(d.getTime())) return null;
   const { date, hhmm } = zonedDateParts(tz, d);
   return { date, minute: utcMinute(d), hhmm };
-}
-
-function num(...vals: unknown[]): number | null {
-  for (const v of vals) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-  }
-  return null;
 }
 
 // The ONE accessor for a sample-series record's value, covering the exporter's two
@@ -951,7 +945,7 @@ export function parseHealthConnectPayload(
     return t;
   };
   for (const w of asArray(payload.weight)) {
-    const p = parts(w.time, tz);
+    const p = zonedParts(w.time, tz);
     const kg = boundedOrNull("weight_kg", num(w.kilograms, w.kg, w.weight));
     if (!p || kg == null) {
       skip("weight");
@@ -968,7 +962,7 @@ export function parseHealthConnectPayload(
     a.weightMs = t;
   }
   for (const b of asArray(payload.body_fat)) {
-    const p = parts(b.time, tz);
+    const p = zonedParts(b.time, tz);
     const pct = boundedOrNull(
       "body_fat_pct",
       num(b.percentage, b.percent, b.value)
@@ -984,7 +978,7 @@ export function parseHealthConnectPayload(
     if (t !== null && (a.bfMs === null || t > a.bfMs)) a.bfMs = t;
   }
   for (const r of asArray(payload.resting_heart_rate)) {
-    const p = parts(r.time, tz);
+    const p = zonedParts(r.time, tz);
     const bpm = boundedOrNull(
       "resting_hr",
       num(r.bpm, r.beatsPerMinute, r.value)
@@ -1039,7 +1033,7 @@ export function parseHealthConnectPayload(
       const start =
         typeof rec.start_time === "string" ? rec.start_time : undefined;
       const end = typeof rec.end_time === "string" ? rec.end_time : start;
-      const p = parts(start, tz);
+      const p = zonedParts(start, tz);
       // Bound the canonical value against the metric's plausibility envelope; an
       // out-of-range reading folds into the same skip path as a missing one (#132).
       const value = boundedOrNull(metric, valueOf(rec));
@@ -1101,7 +1095,7 @@ export function parseHealthConnectPayload(
     const start =
       typeof rec.start_time === "string" ? rec.start_time : undefined;
     const end = typeof rec.end_time === "string" ? rec.end_time : start;
-    const p = parts(start, tz);
+    const p = zonedParts(start, tz);
     if (!p || !start || !end) {
       skip("nutrition");
       continue;
@@ -1128,7 +1122,7 @@ export function parseHealthConnectPayload(
   ) => {
     for (const rec of asArray(payload[key])) {
       const t = typeof rec.time === "string" ? rec.time : undefined;
-      const p = parts(t, tz);
+      const p = zonedParts(t, tz);
       const value = boundedOrNull(metric, valueOf(rec));
       if (!p || !t || value == null) {
         skip(key);
@@ -1176,7 +1170,7 @@ export function parseHealthConnectPayload(
     for (const rec of asArray(payload[key])) {
       if (owns && !owns(rec)) continue;
       const t = typeof rec.time === "string" ? rec.time : undefined;
-      const p = parts(t, tz);
+      const p = zonedParts(t, tz);
       const value = boundedOrNull(canonical, valueOf(rec));
       if (!p || !t || value == null) {
         skip(key);
@@ -1200,7 +1194,7 @@ export function parseHealthConnectPayload(
   // Blood pressure is two analytes per reading (same timestamp, distinct canonicals).
   for (const rec of asArray(payload.blood_pressure)) {
     const t = typeof rec.time === "string" ? rec.time : undefined;
-    const p = parts(t, tz);
+    const p = zonedParts(t, tz);
     const sys = boundedOrNull(
       "Blood Pressure Systolic",
       num(rec.systolic, rec.systolic_mmhg)
@@ -1260,7 +1254,7 @@ export function parseHealthConnectPayload(
     // The SAME plausibility bound the observation path applies (#132) — the routing
     // decides the store, never how hard a value is checked.
     const mgdl = boundedOrNull("Glucose", toMgdl(rec));
-    if (!t || !parts(t, tz) || mgdl == null) {
+    if (!t || !zonedParts(t, tz) || mgdl == null) {
       skip("blood_glucose");
       continue;
     }
@@ -1290,7 +1284,7 @@ export function parseHealthConnectPayload(
   // HRV: a point measurement → metric_samples (start == end == time).
   for (const h of asArray(payload.heart_rate_variability)) {
     const t = typeof h.time === "string" ? h.time : undefined;
-    const p = parts(t, tz);
+    const p = zonedParts(t, tz);
     const ms = boundedOrNull(
       "hrv_ms",
       sampleSeriesValue(h, [
@@ -1337,7 +1331,7 @@ export function parseHealthConnectPayload(
       const e = new Date(end).getTime();
       if (!Number.isNaN(e)) start = new Date(e - secs * 1000).toISOString();
     }
-    const p = parts(end, tz);
+    const p = zonedParts(end, tz);
     // Bound the total (minutes): a session can't exceed 24 h, so an absurd duration
     // is dropped and counted like a malformed one (#132).
     const sleepMin = boundedOrNull(
@@ -1439,7 +1433,7 @@ export function parseHealthConnectPayload(
   // date, which is the best available answer rather than a guess.
   for (const rec of asArray(payload.skin_temperature)) {
     const t = typeof rec.time === "string" ? rec.time : undefined;
-    const p = parts(t, tz);
+    const p = zonedParts(t, tz);
     const delta = boundedOrNull(
       SKIN_TEMP_DELTA_METRIC,
       sampleSeriesValue(
@@ -1470,7 +1464,7 @@ export function parseHealthConnectPayload(
     { sum: number; n: number; min: number; max: number }
   >();
   for (const s of asArray(payload.heart_rate)) {
-    const p = parts(s.time, tz);
+    const p = zonedParts(s.time, tz);
     const bpm = boundedOrNull(
       "heart_rate_bpm",
       sampleSeriesValue(s, ["bpm", "beatsPerMinute", "value"])
@@ -1514,7 +1508,7 @@ export function parseHealthConnectPayload(
   for (const e of asArray(payload.exercise)) {
     const start = typeof e.start_time === "string" ? e.start_time : undefined;
     const end = typeof e.end_time === "string" ? e.end_time : undefined;
-    const p = parts(start, tz);
+    const p = zonedParts(start, tz);
     if (!p || !start) {
       skip("exercise");
       continue;
@@ -1538,7 +1532,7 @@ export function parseHealthConnectPayload(
     );
     const distance_km =
       km != null && inMetricBounds("distance_km", km) ? km : null;
-    const endParts = end ? parts(end, tz) : null;
+    const endParts = end ? zonedParts(end, tz) : null;
     const externalId = `${HEALTH_CONNECT_ID}:${start}`;
     out.activities.push({
       external_id: externalId,

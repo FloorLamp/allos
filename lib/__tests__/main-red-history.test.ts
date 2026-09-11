@@ -53,6 +53,24 @@ describe("the recorded c6d2b2ed incident", () => {
     expect(report.indexOf("c6d2b2ed")).toBeLessThan(report.indexOf("a2bb777e"));
   });
 
+  // THE HEADLINE MAY NOT OUTRUN THE ROWS (#5783). It used to append "— and
+  // every head after it", which is a claim about heads it never looked at: the
+  // window turns green again after c6d2b2ed, and the rows beneath say so. Read
+  // literally it says main is red, and a red main outranks routine landing
+  // across every session (docs/orchestration/multi-orchestrator.md), so the
+  // false version stalls the queue that the true one would release. Pinned
+  // whole rather than by phrase: anything appended to this sentence is a claim
+  // about a head it did not examine, and the rows already carry those.
+  it("says only what it looked at, with green heads below it", () => {
+    // The window can tell the two versions apart only because it recovers.
+    expect(
+      history.heads.slice(history.firstRed + 1).some((h) => h.kind === "green")
+    ).toBe(true);
+    expect(renderHistory(history)[0]).toBe(
+      "First failing head in this window: c6d2b2ed."
+    );
+  });
+
   it("refuses to call the blamed merge the first failure", () => {
     const { headline, evidence } = verdictFor(history.heads, at("a2bb777e"));
     expect(headline).toContain("NOT NEW HERE");

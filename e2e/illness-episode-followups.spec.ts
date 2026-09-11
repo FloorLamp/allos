@@ -201,12 +201,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const addMedication = page.getByTestId("illness-add-medication");
     await expect(addMedication).toHaveClass(/\bbtn-ghost\b/);
     await expect(addMedication).toHaveAttribute("aria-expanded", "false");
-    const medsLinkBox = await medsLink.boundingBox();
-    const addMedicationBox = await addMedication.boundingBox();
-    expect(medsLinkBox).not.toBeNull();
-    expect(addMedicationBox).not.toBeNull();
-    expect(addMedicationBox!.y).toBeGreaterThanOrEqual(
-      medsLinkBox!.y + medsLinkBox!.height
+    const [medsLinkBox, addMedicationBox] = await settledBoxes([
+      medsLink,
+      addMedication,
+    ]);
+    expect(addMedicationBox.y).toBeGreaterThanOrEqual(
+      medsLinkBox.y + medsLinkBox.height
     );
     await addMedication.click();
     await expect(addMedication).toHaveAttribute("aria-expanded", "true");
@@ -264,17 +264,13 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(
       page.getByTestId("episode-meds").locator('[aria-hidden="true"]')
     ).toHaveClass(/text-violet-500/);
-    const updateBox = await page
-      .getByTestId("episode-update-workspace")
-      .boundingBox();
-    const historyBox = await page
-      .getByRole("heading", { name: "History", level: 3 })
-      .boundingBox();
-    const progressPhotosBox = await page
-      .getByRole("heading", { name: "Progress photos", level: 3 })
-      .boundingBox();
-    expect(updateBox?.y).toBeLessThan(historyBox?.y ?? 0);
-    expect(historyBox?.y).toBeLessThan(progressPhotosBox?.y ?? 0);
+    const [updateBox, historyBox, progressPhotosBox] = await settledBoxes([
+      page.getByTestId("episode-update-workspace"),
+      page.getByRole("heading", { name: "History", level: 3 }),
+      page.getByRole("heading", { name: "Progress photos", level: 3 }),
+    ]);
+    expect(updateBox.y).toBeLessThan(historyBox.y);
+    expect(historyBox.y).toBeLessThan(progressPhotosBox.y);
     // eslint-disable-next-line no-restricted-properties -- first-ok: a logged-symptom row — asserts its border layout, order-agnostic
     const symptomWorkingRow = page
       .getByTestId("symptom-logged-list")
@@ -322,23 +318,19 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const [takeBox, doorBox] = await settledBoxes([panelTake, panelDoor]);
     // Seated immediately RIGHT of the action it modifies, and never before it.
     expect(doorBox.x).toBeGreaterThan(takeBox.x + takeBox.width - 1);
-    const medNameBox = await doseLink.boundingBox();
-    const medStatusBox = await doseWorkingRow
-      .getByTestId("prn-day-label")
-      .boundingBox();
-    expect(
-      Math.abs((medNameBox?.x ?? 0) - (medStatusBox?.x ?? 0))
-    ).toBeLessThan(2);
+    const [medNameBox, medStatusBox] = await settledBoxes([
+      doseLink,
+      doseWorkingRow.getByTestId("prn-day-label"),
+    ]);
+    expect(Math.abs(medNameBox.x - medStatusBox.x)).toBeLessThan(2);
     await panelDoor.click();
     const earlierDose = doseWorkingRow.getByTestId("prn-log-options");
     await expect(earlierDose).toContainText("When was it taken?");
     await expect(earlierDose.getByLabel("Specific time")).toBeVisible();
-    const earlierDoseBox = await earlierDose
-      .getByText("When was it taken?")
-      .boundingBox();
-    expect(
-      Math.abs((medNameBox?.x ?? 0) - (earlierDoseBox?.x ?? 0))
-    ).toBeLessThan(2);
+    const [earlierDoseBox] = await settledBoxes([
+      earlierDose.getByText("When was it taken?"),
+    ]);
+    expect(Math.abs(medNameBox.x - earlierDoseBox.x)).toBeLessThan(2);
     await panelDoor.click();
     await medChip.click();
     await expect(page.getByTestId("cockpit-med-panel")).toHaveCount(0);
@@ -531,13 +523,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const whenDoor = dateTime.getByTestId("illness-event-when-when");
     await expect(whenDoor).toBeVisible();
     await expect(dateTime.locator('input:not([type="hidden"])')).toHaveCount(0);
-    const saveBox = await eventEditor
-      .getByRole("button", { name: "Save" })
-      .boundingBox();
-    const cancelBox = await eventEditor
-      .getByRole("button", { name: "Cancel" })
-      .boundingBox();
-    expect(Math.abs((saveBox?.y ?? 0) - (cancelBox?.y ?? 0))).toBeLessThan(2);
+    const [saveBox, cancelBox] = await settledBoxes([
+      eventEditor.getByRole("button", { name: "Save" }),
+      eventEditor.getByRole("button", { name: "Cancel" }),
+    ]);
+    expect(Math.abs(saveBox.y - cancelBox.y)).toBeLessThan(2);
     const editorActions = eventEditor.getByTestId(
       "illness-event-editor-actions"
     );
@@ -558,17 +548,18 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(
       page.getByTestId("episode-controls").getByTestId("episode-end")
     ).toHaveCount(0);
-    const lifecycleBox = await lifecycle.boundingBox();
-    const lifecycleHistoryBox = await page
-      .getByTestId("episode-illness-timeline")
-      .getByRole("heading", { name: "History" })
-      .boundingBox();
-    const lifecyclePhotosBox = await page
-      .getByTestId("episode-illness-timeline")
-      .getByRole("heading", { name: "Progress photos" })
-      .boundingBox();
-    expect(lifecycleBox?.y).toBeGreaterThan(lifecycleHistoryBox?.y ?? 0);
-    expect(lifecycleBox?.y).toBeGreaterThan(lifecyclePhotosBox?.y ?? 0);
+    const [lifecycleBox, lifecycleHistoryBox, lifecyclePhotosBox] =
+      await settledBoxes([
+        lifecycle,
+        page
+          .getByTestId("episode-illness-timeline")
+          .getByRole("heading", { name: "History" }),
+        page
+          .getByTestId("episode-illness-timeline")
+          .getByRole("heading", { name: "Progress photos" }),
+      ]);
+    expect(lifecycleBox.y).toBeGreaterThan(lifecycleHistoryBox.y);
+    expect(lifecycleBox.y).toBeGreaterThan(lifecyclePhotosBox.y);
 
     // Promoting creates a durable Conditions record, so it uses the shared confirm.
     const menu = await openEpisodeActions(page);
@@ -594,13 +585,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     }
 
     // The disclaimer belongs to the page footer, after the unified timeline tools.
-    const footerBox = await appContent(page)
-      .getByTestId("episode-summary-footer")
-      .boundingBox();
-    const toolsBox = await page
-      .getByTestId("episode-update-workspace")
-      .boundingBox();
-    expect(footerBox?.y).toBeGreaterThan(toolsBox?.y ?? 0);
+    const [footerBox, toolsBox] = await settledBoxes([
+      appContent(page).getByTestId("episode-summary-footer"),
+      page.getByTestId("episode-update-workspace"),
+    ]);
+    expect(footerBox.y).toBeGreaterThan(toolsBox.y);
 
     // Log a symptom at a severity from the episode page — the SHARED SymptomLogBar now
     // uses the #857 active-first layout, so add via the picker then raise (the same

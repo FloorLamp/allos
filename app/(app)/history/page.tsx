@@ -12,15 +12,17 @@ import JumpRailScrubber, {
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
+import { groupHistoryBundles } from "@/lib/history-bundle";
 import { HistoryUsualOffers } from "./HistoryAddDoor";
 import HistoryFoldCard from "./HistoryFoldCard";
-import { requireScope } from "@/lib/scope";
+import { requireScope, type ProfileScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
   getDisplayFormatPrefs,
   getHomeLocation,
   getProfileAge,
   getTimezone,
+  withPrimedSettings,
 } from "@/lib/settings";
 import {
   getCustomSymptomNames,
@@ -178,25 +180,67 @@ function firstQueryParam(
   return Array.isArray(value) ? value[0] : value;
 }
 
+interface HistorySearchParams {
+  family?: string | string[];
+  kind?: string | string[];
+  class?: string | string[];
+  item?: string | string[];
+  media?: string | string[];
+  day?: string | string[];
+  view?: string | string[];
+  open?: string | string[];
+  expand?: string | string[];
+  show?: string | string[];
+  /** A window selected on the day chart (#4950) — see lib/intraday-window.ts. */
+  from?: string | string[];
+  to?: string | string[];
+}
+
+// THE HOUSEHOLD VIEW IS A DEEP-LINKED MODE, NOT A SWITCHER (#1463): the sidebar is
+// the one profile switcher on every page, so this costs the chrome budget nothing.
+// It composes the SAME per-profile gather once per member — which is what makes
+// every visibility rule (age gates, substance exclusions) inherited per row rather
+// than re-derived across a widened query.
+//
+// Resolved out here because the primed profile set below depends on it, and the
+// gather below reads it back rather than asking the URL a second time.
+function viewsEveryone(
+  searchParams: HistorySearchParams,
+  viewIds: readonly number[]
+): boolean {
+  return (
+    firstQueryParam(searchParams.view) === "everyone" && viewIds.length > 1
+  );
+}
+
 export default async function HistoryPage(props: {
-  searchParams: Promise<{
-    family?: string | string[];
-    kind?: string | string[];
-    class?: string | string[];
-    item?: string | string[];
-    media?: string | string[];
-    day?: string | string[];
-    view?: string | string[];
-    open?: string | string[];
-    expand?: string | string[];
-    show?: string | string[];
-    /** A window selected on the day chart (#4950) — see lib/intraday-window.ts. */
-    from?: string | string[];
-    to?: string | string[];
-  }>;
+  searchParams: Promise<HistorySearchParams>;
 }) {
   const searchParams = await props.searchParams;
   const scope = await requireScope();
+  const everyone = viewsEveryone(searchParams, scope.viewIds);
+  // THE RECORD READS SETTINGS ONE KEY AT A TIME OTHERWISE (#5774). The acting
+  // profile is primed on every render because the day resolution, the timezone and
+  // the format prefs are its; the viewed members join it only under `?view=everyone`,
+  // where the gather runs once per member. The acting profile is named separately
+  // rather than assumed to be in `viewIds`: a stored view-set is re-derived against
+  // current grants, so it need not contain the profile the session is acting as.
+  return withPrimedSettings(
+    {
+      loginId: scope.loginId,
+      profileIds: everyone
+        ? [scope.actingProfileId, ...scope.viewIds]
+        : [scope.actingProfileId],
+    },
+    () => renderHistory(searchParams, scope, everyone)
+  );
+}
+
+async function renderHistory(
+  searchParams: HistorySearchParams,
+  scope: ProfileScope,
+  everyone: boolean
+) {
   const { loginId, actingProfileId, viewIds } = scope;
   const todayStr = today(actingProfileId);
   closeAbandonedPracticeSessions(actingProfileId);
@@ -234,15 +278,6 @@ export default async function HistoryPage(props: {
   // a (day, member) pair. Same toggle helper, so the URL stays sorted and stable.
   const expanded = parseHistoryExpand(searchParams.expand);
 
-  // THE HOUSEHOLD VIEW IS A DEEP-LINKED MODE, NOT A SWITCHER (#1463): the sidebar is
-  // the one profile switcher on every page, so this costs the chrome budget nothing.
-  // It composes the SAME per-profile gather once per member — which is what makes
-  // every visibility rule (age gates, substance exclusions) inherited per row rather
-  // than re-derived across a widened query.
-  const everyone =
-    (Array.isArray(searchParams.view)
-      ? searchParams.view[0]
-      : searchParams.view) === "everyone" && viewIds.length > 1;
   const memberIds = everyone ? viewIds : [actingProfileId];
 
   const feeds = memberIds.map((id) =>
@@ -284,6 +319,14 @@ export default async function HistoryPage(props: {
   // order is its comparator's: instant descending, date-only rows sinking below timed
   // ones, and a same-instant tie-break on id — which is what makes the order
   // byte-stable when one usual-routine tap writes six rows in the same minute.
+  // WHICH OF THE DAY'S ROWS WERE ONE ACT (#5618 ruling 5), merged across the members in
+  // view exactly as their rows are. The gather answers it per member and only on a day —
+  // the row ids the map is keyed by are the tables' own autoincrement ids, so two
+  // members' facts share one map without colliding.
+  const bundleFacts = new Map(
+    feeds.flatMap((feed) => [...feed.gather.bundleFacts])
+  );
+
   const allDays = mergeMemberTimelines(feeds);
   const days = allDays.slice(0, undefined);
 
@@ -808,9 +851,15 @@ export default async function HistoryPage(props: {
         </h2>
       ) : null}
       <HistoryRows
-        rows={
-          layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible
-        }
+        // A COMPOSED ACT IS ONE ROW (#5618 ruling 5), collapsed AFTER the day's layout
+        // rather than before it: `layoutHistoryDay` decides which rows are visible and
+        // which fall to the rollup lines, and an act is only ever collapsed among the
+        // rows a reader is actually being shown. Empty on the feed, where the gather
+        // reads no facts at all, so nothing there changes.
+        rows={groupHistoryBundles(
+          layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible,
+          bundleFacts
+        )}
         rollups={layoutHistoryDay(group.events as HistoryRow[], {
           rollup,
         }).rollups.map((line) => ({

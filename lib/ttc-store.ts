@@ -343,34 +343,50 @@ export function getTtcObservations(
   };
 }
 
-// Today's readings per kind, for the entry bar's reflected state. Built through
-// latestTtcObservations so "current" means the same thing here as everywhere else.
-export function latestTtcByKind(
-  profileId: number,
-  since: string
-): Map<string, TtcObservation> {
-  const w = getTtcObservations(profileId, since);
-  const rows: TtcObservation[] = [
-    ...w.lhTests.map((t, i) => ({
+// Today's reading per kind — the state the one-tap observation controls reflect.
+export interface TtcTodayReadings {
+  todayLh: LhResult | null;
+  todayBbtF: number | null;
+  todayMucus: MucusQuality | null;
+}
+
+// THE one derivation of "what is already recorded for today" (#5810). PURE over an
+// already-gathered window, so the Cycle page's assembled TtcState and the quick-log
+// sheet's own gather read the SAME answer from the SAME rows rather than each
+// re-deriving it — the #221 shape the fertile window and the confirmation already have.
+// Built through latestTtcObservations, so "current" means here what it means everywhere
+// else, and then narrowed to the day: a reading on any other date is not today's.
+export function ttcTodayReadings(
+  window: TtcObservationWindow,
+  todayStr: string
+): TtcTodayReadings {
+  const latest = latestTtcObservations([
+    ...window.lhTests.map((t, i) => ({
       id: i + 1,
       date: t.date,
       kind: "lh" as const,
       lhResult: t.result,
     })),
-    ...w.bbt.map((t, i) => ({
+    ...window.bbt.map((t, i) => ({
       id: i + 1,
       date: t.date,
       kind: "bbt" as const,
       degF: t.degF,
     })),
-    ...w.mucus.map((m, i) => ({
+    ...window.mucus.map((m, i) => ({
       id: i + 1,
       date: m.date,
       kind: "mucus" as const,
       mucus: m.quality,
     })),
-  ];
-  return latestTtcObservations(rows);
+  ]);
+  const onToday = (o: TtcObservation | undefined) =>
+    o && o.date === todayStr ? o : undefined;
+  return {
+    todayLh: onToday(latest.get("lh"))?.lhResult ?? null,
+    todayBbtF: onToday(latest.get("bbt"))?.degF ?? null,
+    todayMucus: onToday(latest.get("mucus"))?.mucus ?? null,
+  };
 }
 
 // ---- The assembled TTC state --------------------------------------------------
@@ -380,7 +396,7 @@ export function latestTtcByKind(
 // without dragging a year of readings into every page render.
 export const TTC_OBSERVATION_WINDOW_DAYS = 120;
 
-export interface TtcState {
+export interface TtcState extends TtcTodayReadings {
   // The DECLARED start, or null. Null means TTC is simply off for this profile: no
   // surfaces, no window, no counter — the app never infers the intent.
   ttcStart: string | null;
@@ -397,10 +413,6 @@ export interface TtcState {
   // start that followed it. Null until a full confirmed cycle exists.
   lutealDays: number | null;
   observations: TtcObservationWindow;
-  // Today's reading per kind, for the entry bar's reflected state.
-  todayLh: LhResult | null;
-  todayBbtF: number | null;
-  todayMucus: MucusQuality | null;
 }
 
 // THE TTC gather: the declared start, the profile's own age/pregnancy context, the
@@ -450,29 +462,6 @@ export function getTtcState(profileId: number, todayStr: string): TtcState {
     }
   }
 
-  const latest = latestTtcObservations([
-    ...observations.lhTests.map((t, i) => ({
-      id: i + 1,
-      date: t.date,
-      kind: "lh" as const,
-      lhResult: t.result,
-    })),
-    ...observations.bbt.map((t, i) => ({
-      id: i + 1,
-      date: t.date,
-      kind: "bbt" as const,
-      degF: t.degF,
-    })),
-    ...observations.mucus.map((m, i) => ({
-      id: i + 1,
-      date: m.date,
-      kind: "mucus" as const,
-      mucus: m.quality,
-    })),
-  ]);
-  const onToday = (o: TtcObservation | undefined) =>
-    o && o.date === todayStr ? o : undefined;
-
   return {
     ttcStart,
     active: ttcStart != null && !pregnant,
@@ -482,8 +471,6 @@ export function getTtcState(profileId: number, todayStr: string): TtcState {
     confirmation,
     lutealDays,
     observations,
-    todayLh: onToday(latest.get("lh"))?.lhResult ?? null,
-    todayBbtF: onToday(latest.get("bbt"))?.degF ?? null,
-    todayMucus: onToday(latest.get("mucus"))?.mucus ?? null,
+    ...ttcTodayReadings(observations, todayStr),
   };
 }

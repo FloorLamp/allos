@@ -8,18 +8,24 @@
 // that address with the row's own anchor as the fragment. No new route, no new page.
 //
 // ONE GROUP, CAPPED AT FIVE ACROSS ALL SEVEN KINDS (owner ruling, 2026-09-04). Every
-// hit carries the single `logged` domain and names its kind in the SUBTITLE
-// (`<kind> · <date>`), so the palette shows the five newest rows you logged whatever
-// mix of kinds they are — not five of each. Each source still reads its own five
-// newest, which is enough: no row outside a source's newest five can be inside the
+// hit carries the single `logged` domain, so the palette shows the five newest rows you
+// logged whatever mix of kinds they are — not five of each. Each source still reads its
+// own five newest, which is enough: no row outside a source's newest five can be in the
 // union's newest five. The ranker does the rest (`rankAndGroup`, lib/search-rank.ts),
 // sorting the union date-first and slicing to five.
 //
+// THE KIND IS A FIELD, NOT A STRING TO PARSE BACK APART (#5096). The hit carries
+// `loggedKind`, and its subtitle's leading noun is RENDERED FROM that kind through the
+// one `SEARCH_LOGGED_KIND_LABELS` table (lib/search-rank.ts) that the Q&A citation
+// badge also reads — so `<kind> · <date>` still reads the same, the badge names the
+// KIND instead of answering for all seven with "Logged entry", and neither can drift
+// from the other because there is only one place to change.
+//
 // ONE SHAPE, SEVEN DECLARATIONS. Every source hands back the same `LoggedEntry`
 // (the record row's own id, its title, the profile-local day it is filed under) and
-// declares only what differs: the kind, the noun its subtitle names, and the read that
-// finds it. `loggedHit` builds the hit — key, subtitle, href, date — once, for all
-// seven, so an eighth kind is a table row and not a seventh copy of one idea.
+// declares only what differs: the kind, and the read that finds it. `loggedHit` builds
+// the hit — key, subtitle, href, date, kind — once, for all seven, so an eighth kind is
+// a table row and not a seventh copy of one idea.
 //
 // THE ENTRY ID IS THE RECORD'S, NOT A NEW ONE. `dose:<id>`, `food:<id>`,
 // `practice:<id>`, `symptom:<day>:<symptom>`, `mood:<id>`, `body:<column>:<id>`,
@@ -55,29 +61,15 @@ import {
   type BodyMetricRow,
 } from "../body-metric-measures";
 import { TREND_METRIC_META } from "../trend-metrics";
-import { matchTier, type SearchHit } from "../search-rank";
-import type { HistoryKind } from "../history-format";
+import {
+  matchTier,
+  SEARCH_LOGGED_KIND_LABELS,
+  type SearchHit,
+  type SearchLoggedKind,
+} from "../search-rank";
 
-/**
- * Each source's read bound, and the group's cap: five.
- *
- * `as const satisfies readonly HistoryKind[]` is the whole guard on the kinds — a kind
- * that is not one of the record's own is a type error here rather than a hit whose
- * `?kind=` opens on nothing.
- */
+/** Each source's read bound, and the group's cap: five. */
 const LOGGED_ENTRY_LIMIT = 5;
-
-const SEARCH_LOGGED_KINDS = [
-  "dose",
-  "food",
-  "practice",
-  "symptom",
-  "mood",
-  "body",
-  "sleep",
-] as const satisfies readonly HistoryKind[];
-
-export type SearchLoggedKind = (typeof SEARCH_LOGGED_KINDS)[number];
 
 /** One record row, as every source hands it back. */
 interface LoggedEntry {
@@ -97,9 +89,8 @@ interface LoggedQuery {
 }
 
 interface LoggedSource {
+  /** Which kind this source reads. The hit's own word for itself resolves from it. */
   kind: SearchLoggedKind;
-  /** The singular noun the subtitle leads with — the record's word for one row. */
-  noun: string;
   read: (profileId: number, q: LoggedQuery) => LoggedEntry[];
 }
 
@@ -346,13 +337,13 @@ function sleepEntries(profileId: number, q: LoggedQuery): LoggedEntry[] {
 
 // The seven. Declaration order is not display order — the ranker sorts the union.
 const LOGGED_SOURCES: readonly LoggedSource[] = [
-  { kind: "dose", noun: "Dose", read: doseEntries },
-  { kind: "food", noun: "Serving", read: foodEntries },
-  { kind: "practice", noun: "Practice", read: practiceEntries },
-  { kind: "symptom", noun: "Symptom", read: symptomEntries },
-  { kind: "mood", noun: "Check-in", read: moodEntries },
-  { kind: "body", noun: "Reading", read: bodyEntries },
-  { kind: "sleep", noun: "Sleep", read: sleepEntries },
+  { kind: "dose", read: doseEntries },
+  { kind: "food", read: foodEntries },
+  { kind: "practice", read: practiceEntries },
+  { kind: "symptom", read: symptomEntries },
+  { kind: "mood", read: moodEntries },
+  { kind: "body", read: bodyEntries },
+  { kind: "sleep", read: sleepEntries },
 ];
 
 // The one mapping: a record row in, a palette hit out.
@@ -374,10 +365,14 @@ function loggedHit(
     domain: "logged",
     key: `logged:${entry.entryId}`,
     title: entry.title,
-    subtitle: subtitleOf([source.noun, searchDayText(entry.day, display)]),
+    subtitle: subtitleOf([
+      SEARCH_LOGGED_KIND_LABELS[source.kind],
+      searchDayText(entry.day, display),
+    ]),
     // The day view, scoped to the kind, scrolled to this row.
     href: `${day}#${timelineEntryAnchorId(entry.entryId)}` as AppRoute,
     date: entry.day,
+    loggedKind: source.kind,
   };
 }
 

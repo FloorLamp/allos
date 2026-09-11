@@ -429,6 +429,73 @@ describe("the stated-vs-logged split", () => {
     // a bare clock claiming an administration minute nothing in the record states.
     expect(row.clockKind).toBe("logged");
     expect(row.hhmm).toBe("09:40");
+    // The filing DAY beside the filing minute (#5618 rule 6): same day here, so the
+    // ledger keeps the minute.
+    expect(row.filedDay).toBe(date);
+  });
+
+  // A STATED ROW HAS NO FILING DAY TO REPORT, and must not acquire one: its clock is
+  // the administration instant somebody named, which renders bare wherever the typing
+  // happened. Same condition the record's gather asks through `semantic === "record"`.
+  it("reports no filing day for a stated administration time", () => {
+    const login = createLogin();
+    const profile = createProfile("ledger-stated-filing", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "America/New_York");
+    const date = today(profile.id);
+    const d = seedDose(profile.id, "Stated F", "Morning stack");
+    vi.setSystemTime(new Date("2026-08-28T13:40:00Z"));
+    markDoseTaken(profile.id, d.doseId, d.itemId, date, "page");
+    db.prepare(
+      `UPDATE intake_item_logs SET occurred_at = ? WHERE dose_id = ? AND date = ?`
+    ).run("2026-08-28T11:15:00.000Z", d.doseId, date);
+
+    expect(getDayDoseLedger(profile.id, date)[0].filedDay).toBeNull();
+  });
+});
+
+// ── THE FILING DAY, IN THE PROFILE'S OWN ZONE (#5618 rule 6) ────────────────────────
+//
+// THIS IS WHERE A TIMEZONE CAN BE GOT WRONG. The component that renders the cell is
+// handed a resolved day, so its cases cannot fail for a zone reason; these two can, in
+// OPPOSITE directions. A UTC-date comparison calls the first another day while the
+// person was still living the row's evening, and agrees with the second for the wrong
+// reason — so neither is passable by guessing a zone.
+describe("the filing day is profile-local, not the stored UTC date", () => {
+  /** One taken dose on `date`, filed at a named UTC instant and stating no time. */
+  function filedDose(profileId: number, date: string, at: string) {
+    const d = seedDose(profileId, `Zoned ${at}`, "Morning stack");
+    vi.setSystemTime(new Date(at));
+    markDoseTaken(profileId, d.doseId, d.itemId, date, "page");
+    db.prepare(
+      `UPDATE intake_item_logs SET occurred_at = NULL, recorded_at = ?
+        WHERE dose_id = ? AND date = ?`
+    ).run(at, d.doseId, date);
+    return getDayDoseLedger(profileId, date)[0];
+  }
+
+  it("keeps the row's own day west of UTC, where the stored date has already turned", () => {
+    // 22:00 on 2026-06-01 in Los Angeles — the filing landed on the row's OWN day, and
+    // the minute stands. The stored UTC date is 2026-06-02.
+    const login = createLogin();
+    const profile = createProfile("ledger-zone-west", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "America/Los_Angeles");
+    const row = filedDose(profile.id, "2026-06-01", "2026-06-02T05:00:00.000Z");
+    expect(row.hhmm).toBe("22:00");
+    expect(row.filedDay).toBe("2026-06-01");
+  });
+
+  it("crosses the day east of UTC, where the stored date has not yet turned", () => {
+    // 10:00 on 2026-06-02 in Auckland, filed against 2026-06-01: a day GENUINELY was
+    // crossed and the stored UTC date still says it was not.
+    const login = createLogin();
+    const profile = createProfile("ledger-zone-east", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "Pacific/Auckland");
+    const row = filedDose(profile.id, "2026-06-01", "2026-06-01T22:00:00.000Z");
+    expect(row.hhmm).toBe("10:00");
+    expect(row.filedDay).toBe("2026-06-02");
   });
 });
 

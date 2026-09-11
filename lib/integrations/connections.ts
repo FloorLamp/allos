@@ -417,7 +417,10 @@ export interface HealthConnectTokenInfo {
   expiresAt: string | null; // ISO 8601 or null (never)
 }
 
-function str(v: unknown): string | null {
+// Stored-config read, NOT ./payload-fields.ts's `str`: these values are ones the app
+// itself wrote (a token hash, an ISO timestamp), so they are taken verbatim. Trimming
+// them would change what counts as "no token set" on an auth path.
+function cfgStr(v: unknown): string | null {
   return typeof v === "string" && v ? v : null;
 }
 
@@ -425,15 +428,15 @@ export function getHealthConnectTokenInfo(
   profileId: number
 ): HealthConnectTokenInfo {
   const cfg = readConfig(getConnection(profileId, "health-connect"));
-  const dbHash = str(cfg.tokenHash);
+  const dbHash = cfgStr(cfg.tokenHash);
   if (dbHash) {
     return {
       hasToken: true,
       source: "db",
       envToken: null,
-      createdAt: str(cfg.tokenCreatedAt),
-      lastUsedAt: str(cfg.tokenLastUsedAt),
-      expiresAt: str(cfg.tokenExpiresAt),
+      createdAt: cfgStr(cfg.tokenCreatedAt),
+      lastUsedAt: cfgStr(cfg.tokenLastUsedAt),
+      expiresAt: cfgStr(cfg.tokenExpiresAt),
     };
   }
   const env = process.env.HEALTH_CONNECT_TOKEN;
@@ -518,8 +521,8 @@ export function setHealthConnectCgmGlucose(
 export function recordHealthConnectUse(profileId: number): void {
   const conn = getConnection(profileId, "health-connect");
   const cfg = readConfig(conn);
-  if (!str(cfg.tokenHash)) return; // env fallback / no token: nothing to stamp
-  if (!shouldRecordUse(str(cfg.tokenLastUsedAt), Date.now())) return;
+  if (!cfgStr(cfg.tokenHash)) return; // env fallback / no token: nothing to stamp
+  if (!shouldRecordUse(cfgStr(cfg.tokenLastUsedAt), Date.now())) return;
   upsertConnection(profileId, "health-connect", {
     config: { ...cfg, tokenLastUsedAt: utcInstant() },
   });
@@ -563,7 +566,7 @@ export function resolveHealthConnectProfile(
       // An expired token (issue #24) is treated as if it doesn't exist: it never
       // becomes a candidate, so a presented expired token yields the same "no
       // match" (401) as a bogus one — no oracle distinguishes the two.
-      if (isTokenExpired(str(cfg.tokenExpiresAt), nowMs)) continue;
+      if (isTokenExpired(cfgStr(cfg.tokenExpiresAt), nowMs)) continue;
       candidates.push({ profileId: r.profile_id, token: tokenHash });
     }
   }
@@ -607,8 +610,8 @@ function clearHealthConnectReauth(profileId: number): void {
 // candidacy, so its pushes 401 with nothing to attribute a sync event to).
 export function isHealthConnectTokenExpired(profileId: number): boolean {
   const cfg = readConfig(getConnection(profileId, "health-connect"));
-  if (!str(cfg.tokenHash)) return false;
-  return isTokenExpired(str(cfg.tokenExpiresAt), Date.now());
+  if (!cfgStr(cfg.tokenHash)) return false;
+  return isTokenExpired(cfgStr(cfg.tokenExpiresAt), Date.now());
 }
 
 // Record a best-effort failure sync event when a presented bearer token matched NO

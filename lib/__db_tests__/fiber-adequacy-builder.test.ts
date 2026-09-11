@@ -102,6 +102,17 @@ describe("buildFiberAdequacyFindings (#976)", () => {
     expect(day?.intake.basis).toBe("combined");
     expect(Math.round(day!.intake.grams)).toBe(13);
     expect(day?.status).toBe("below");
+
+    // …and it says WHICH day it is (#4485/#4145). A completed day and the week-to-date
+    // mean are the same arithmetic over different periods, and the gather is the only
+    // layer that knows which one it assembled — so the period is asserted where it is
+    // decided rather than trusted. The week always still holds a today in progress.
+    expect(day?.intake.period).toEqual({ kind: "past-day" });
+    expect(getFiberOnDate(p, anchor)?.intake.period).toEqual({ kind: "today" });
+    expect(getFiberAdequacy(p)?.intake.period).toMatchObject({
+      kind: "aggregate",
+      includesToday: true,
+    });
   });
 
   it("sums the food floor + confirmed dose grams, ignores skipped, flags unknown units, surfaces a calm below finding", () => {

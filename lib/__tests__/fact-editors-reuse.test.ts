@@ -183,6 +183,96 @@ const CONSUMERS = [
     chips: "components/training/InjuryFactRow.tsx",
     host: "app/(app)/training/InjuryBar.tsx",
   },
+  {
+    // THE FIRST CLINICAL RECORD FORM (#5302 slice 1), and the first consumer whose
+    // chips file is written for a FAMILY rather than for itself: all thirteen record
+    // forms draw the same row — the stated facts, then one trailing affordance naming
+    // what is absent — so `RecordFactRow` is a renderer over the shared summary shape
+    // and each form supplies its testid prefix and its nouns. Eleven more hosts join
+    // this same chips file as slices 2–4 land, which is the mirror of the visit pair
+    // below at a larger scale.
+    //
+    // DOM-collected, so its closed panels stay mounted and merely hidden for the reason
+    // the protocol row above records.
+    name: "the condition form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/problems/conditions/ConditionForm.tsx",
+  },
+  {
+    // The condition form's sibling on the same records pane, and the first consumer
+    // whose two ESSENTIAL chips open ONE editor: a reaction and its grade are two facts
+    // a person disagrees with separately, stated in one repeatable list (#1405). That
+    // is the primitive's many-chips-one-panel case, which only the intake form's rule
+    // sentences had exercised — and the reason the shared row takes a `panelOf` rather
+    // than assuming a chip's key names its editor.
+    name: "the allergy form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/problems/allergies/AllergyForm.tsx",
+  },
+  {
+    // #5302 slice 2, and the first consumer whose ONE chip stands for THREE stored
+    // columns: `deceased`, `age_at_death` and `cause_of_death` describe a single event
+    // and are already read back as one line by `familyDeathLabel`, so the row states
+    // one `death` fact over one editor holding all three controls. Every consumer
+    // above maps a chip to at most one field; this is the first that maps one to a
+    // group, which is what the summary shape allows and the panel list does not need
+    // to know about.
+    name: "the family-history form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/care/overview/FamilyHistoryForm.tsx",
+  },
+  {
+    // #5302 slice 2, and the first consumer whose chips must state what the form will
+    // POST rather than what its controls HOLD: both pickers carry a free-text escape
+    // whose `__other` sentinel is never stored, so the summary reads the paired input
+    // and a chip cannot end up stating a sentinel at the person.
+    name: "the care-plan form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/care/overview/CarePlanForm.tsx",
+  },
+  {
+    // #5302 slice 2. Nothing is new about this one — it is the smallest form in the
+    // family and the plainest use of the shared row: four facts, one chip each, one
+    // editor each, no free-text escape and no grouped fact. Recorded as such, because
+    // "another straightforward instance" is a useful thing for this census to say
+    // about a consumer, and it is the row the next slice should copy first.
+    name: "the care-goal form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/care/overview/CareGoalForm.tsx",
+  },
+  {
+    // #5302 slice 3, and the first consumer whose grouped fact is a set of CHECKBOXES:
+    // the five ABCDE observations are one chip over one editor, read back through
+    // `abcdeLetters`. The family-history row above was the first to map one chip to a
+    // group of fields; this is the first where the group's members post ONLY when
+    // checked, which is what makes the host's hidden-not-unmounted rule load-bearing
+    // here rather than merely conventional — an unmounted panel would clear five
+    // observations at once. It is also the first with TWO grouped facts on one row
+    // (the region and side are the other).
+    name: "the skin-lesion form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/specialty/skin/SkinLesionForm.tsx",
+  },
+  {
+    // #5302 slice 3, and the first consumer whose essentials are argued from a SAFETY
+    // screen rather than from a list column or a scheduling window: `cdt` is dashed
+    // because `isInvasiveDentalProcedure` is the one gate #704's MRONJ /
+    // prophylaxis / anticoagulant notes fire behind, and it reads that code first.
+    // Nothing structural is new about the row itself.
+    name: "the dental-procedure form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/specialty/dental/DentalProcedureForm.tsx",
+  },
+  {
+    // #5302 slice 3. Nothing is new about this one — four facts, one chip each, one
+    // editor each, no grouped fact and no free-text escape, which is the care-goal
+    // row's shape at a second address. Recorded as such, because "another
+    // straightforward instance" is a useful thing for this census to say about a
+    // consumer and inventing a distinction to fill the comment would not be.
+    name: "the procedure form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/history/procedures/ProcedureForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not

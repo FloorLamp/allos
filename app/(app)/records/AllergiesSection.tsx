@@ -82,6 +82,8 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
         <div className="space-y-6">
           <AddEntryPanel
             formId="allergy"
+            // #4694, riding #5302's adoption — see ConditionsSection.
+            access={scope.access.get(profileId)}
             testId="add-allergy-panel"
             panelId="add-allergy-panel-body"
             label="Add allergy"

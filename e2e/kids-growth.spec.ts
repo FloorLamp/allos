@@ -410,6 +410,10 @@ test.describe.serial("kids growth trends", () => {
       const tooltip = card.locator(".recharts-tooltip-wrapper");
       // eslint-disable-next-line no-restricted-properties -- topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event (the sleep-page precedent)
       await expect(async () => {
+        // raw-box-ok: a HOVER COORDINATE re-read on every `toPass` attempt —
+        // the loop already supplies the retry `settledBoxes` would nest inside,
+        // and a surface that is not there this attempt must fail THIS attempt by
+        // its own named error rather than settle against a 10s deadline.
         const box = await surface.boundingBox();
         if (!box) throw new Error("no growth chart surface");
         // locator.hover scrolls this second-row card into view before dispatching

@@ -48,7 +48,7 @@
 import "../load-env";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import { writeIssueBody } from "./issue-body-write";
+import { githubJsonHeaders, writeIssueBody } from "./issue-body-write";
 import { buildRepoIndex } from "./reconcile-repo-index";
 import { applyPatchPlan, type AnchoredPatch } from "./reconcile-patch";
 import {
@@ -109,6 +109,12 @@ if (!config.token) {
   console.error("reconcile-apply: no GH_TOKEN/GITHUB_TOKEN. Refusing.");
   process.exit(2);
 }
+/**
+ * Narrowed past the guard above, so no request site can build
+ * `Authorization: Bearer null` — the property alone is `string | null` and
+ * TypeScript drops that narrowing inside every function below.
+ */
+const token = config.token;
 
 function curlJson(args: readonly string[]): unknown {
   return JSON.parse(
@@ -123,15 +129,6 @@ function issueUrl(issue: string): string {
   return `https://api.github.com/repos/${config.repo}/issues/${issue}`;
 }
 
-function authHeaders(): string[] {
-  return [
-    "-H",
-    `Authorization: Bearer ${config.token}`,
-    "-H",
-    "Accept: application/vnd.github+json",
-  ];
-}
-
 /**
  * The current body, and whether the issue is still open.
  *
@@ -143,7 +140,12 @@ function authHeaders(): string[] {
  * somebody has already finished reading.
  */
 function readIssue(issue: string): { issue: SweptIssue; comments: number } {
-  const one = curlJson(["-X", "GET", ...authHeaders(), issueUrl(issue)]) as {
+  const one = curlJson([
+    "-X",
+    "GET",
+    ...githubJsonHeaders(token),
+    issueUrl(issue),
+  ]) as {
     number: number;
     title: string;
     body: string | null;
@@ -179,7 +181,7 @@ function readOpenPrs(): OpenPr[] {
     const batch = curlJson([
       "-X",
       "GET",
-      ...authHeaders(),
+      ...githubJsonHeaders(token),
       `https://api.github.com/repos/${config.repo}/pulls?state=open&per_page=100&page=${page}`,
     ]) as { number: number; title: string; body: string | null }[];
     for (const p of batch) {
@@ -206,7 +208,7 @@ function writeComment(issue: string, note: string): void {
   curlJson([
     "-X",
     "POST",
-    ...authHeaders(),
+    ...githubJsonHeaders(token),
     "--data-binary",
     JSON.stringify({ body: note }),
     `${issueUrl(issue)}/comments`,
@@ -222,7 +224,7 @@ function closeIssue(issue: string): void {
   curlJson([
     "-X",
     "PATCH",
-    ...authHeaders(),
+    ...githubJsonHeaders(token),
     "--data-binary",
     JSON.stringify({ state: "closed", state_reason: "not_planned" }),
     issueUrl(issue),
@@ -292,7 +294,7 @@ for (const [issue, patches] of Object.entries(plan)) {
   if (body === before) continue;
   const hasReaders = comments > 0 || notify.has(issue);
   if (APPLY) {
-    writeIssueBody({ repo: config.repo, token: config.token, issue, body });
+    writeIssueBody({ repo: config.repo, token, issue, body });
     if (hasReaders) {
       writeComment(issue, reconciliationNote(entries));
       console.log(

@@ -963,6 +963,106 @@ test("a PRN-only profile logs an as-needed dose from the dose sheet", async ({
   }
 });
 
+// An ACTIVE supplement whose one dose states no time — never due (#5285), so the due
+// list can never hold it and the fold is the only door it has. Seeded straight into the
+// fixture DB like the as-needed flip above, and removed in the same `finally`, so this
+// spec's other tests still see the profile they were written for.
+function seedShellUnscheduled(name: string, amount: string): number {
+  const db = openDb();
+  try {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+           VALUES (?, ?, 'supplement', 1, 'should', 'daily')`
+        )
+        .run(shellProfileId(), name).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, ?, NULL, 'any', 0)`
+    ).run(itemId, amount);
+    return itemId;
+  } finally {
+    db.close();
+  }
+}
+
+function dropShellItem(itemId: number): void {
+  const db = openDb();
+  try {
+    db.transaction(() => {
+      db.prepare("DELETE FROM intake_item_logs WHERE item_id = ?").run(itemId);
+      db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(itemId);
+      db.prepare("DELETE FROM intake_items WHERE id = ?").run(itemId);
+    })();
+  } finally {
+    db.close();
+  }
+}
+
+// #5808. THE DOOR THIS SHEET DID NOT HAVE. Every source in the dose body answers what
+// is OWED right now, so an active item that is simply not due had no row at all — and
+// once #5435 moves the record's kind chips off today, the sheet is today's only door.
+// The claim is end to end and asserted from the LEDGER, not from the toast: the fold
+// names a count it can be expanded into, and one tap on a row inside it writes one
+// administration for the sheet's own day.
+test("the dose sheet logs an item that is not due, from its folded row", async ({
+  browser,
+}) => {
+  const page = await signIn(browser);
+  const itemId = seedShellUnscheduled("Magnesium Glycinate", "400 mg");
+  try {
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-dose");
+    const summary = overlay.getByTestId("quick-entry-others-summary");
+    await expect(summary).toBeVisible();
+
+    // THE COUNT IS THE CONTENTS. A fold whose number disagrees with what expanding
+    // holds is the quiet half of this feature, so the two are read off one screen.
+    // A plain click: the fold is the shared `<details>` (#3677), so opening it is the
+    // platform's own toggle and there is no handler to wait for.
+    await summary.click();
+    const rows = overlay
+      .getByTestId("quick-entry-others-list")
+      .getByRole("listitem");
+    await expect(summary).toHaveText(`Everything else (${await rows.count()})`);
+
+    const row = overlay.getByTestId(`quick-entry-other-${itemId}`);
+    await expect(row).toContainText("Magnesium Glycinate");
+    // The chip's label is the payload the tap writes.
+    const take = overlay.getByTestId(`quick-entry-other-take-${itemId}`);
+    await expect(take).toContainText("400 mg");
+    await expect(take).toContainText("Take");
+
+    await settledClick(page, take);
+    // ONE ROW, ON THE SHEET'S DAY, through the dated core — an unscheduled item has no
+    // occurrence for `markDoseTaken` to resolve, which is the whole reason for the row.
+    const day = dateStrInTz(PINNED_TZ, frozenNow());
+    const db = openDb();
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT date, status FROM intake_item_logs WHERE item_id = ?"
+          )
+          .all(itemId)
+      ).toEqual([{ date: day, status: "taken" }]);
+    } finally {
+      db.close();
+    }
+
+    // STILL LISTED after the write, now stating when it was taken — that is what makes
+    // a second dose one more tap rather than a trip to the record.
+    await expect(
+      overlay.getByTestId(`quick-entry-other-taken-${itemId}`)
+    ).toContainText("taken ");
+  } finally {
+    dropShellItem(itemId);
+    await page.context().close();
+  }
+});
+
 // #3936. THE STACK ASYMMETRY IS THE COST THIS TEST IS ABOUT. For today the morning is
 // one tap; for yesterday the same physical event used to decompose into N item
 // traversals with N date/time forms, so a forgotten day simply stayed unlogged and the
@@ -1616,12 +1716,13 @@ test("a practice logs in one tap from the sheet and the week count moves", async
 });
 
 // Unequal totals and durable writes exercise the real gather/cache across sheet
-// selection and dated route inheritance, at both owner-reported viewport sizes.
+// selection, and across the dated routes that no longer reach it (#5769), at both
+// owner-reported viewport sizes.
 for (const viewport of [
   { width: 390, height: 844 },
   { width: 1280, height: 900 },
 ]) {
-  test(`Food protein follows the selected day at ${viewport.width}px (#5211)`, async ({
+  test(`Food protein follows the selected day at ${viewport.width}px (#5211/#5769)`, async ({
     browser,
   }) => {
     const profileId = shellProfileId();
@@ -1714,6 +1815,14 @@ for (const viewport of [
       await page.keyboard.press("Escape");
       await expect(sheet).toHaveCount(0);
 
+      // THE PALETTE IS A GLOBAL MOUNT (#5769 ruling: "the mount is global,
+      // therefore the context shouldn't change based on page"). It used to
+      // inherit a dated route's day and hide its switcher — #5211's inheritance
+      // clause, reversed here for the four shell-level hosts. Opened from a
+      // dated page it now shows the bounded switcher and opens on TODAY, and
+      // yesterday is reached by CHOOSING it in the sheet. Both routes are kept:
+      // History and Nutrition Day published different day contexts, so both have
+      // to stop reaching this overlay, not just the one.
       let yesterdayGrams = 25;
       for (const [route, grams] of [
         [`/history?day=${yesterday}`, 4],
@@ -1721,7 +1830,13 @@ for (const viewport of [
       ] as const) {
         await page.goto(route);
         const dated = await openFood();
-        await expect(dated.getByTestId("bounded-day-switcher")).toHaveCount(0);
+        await expect(dated.getByTestId("bounded-day-switcher")).toBeVisible();
+        await expect(dated.getByTestId("day-context-0")).toHaveAttribute(
+          "aria-pressed",
+          "true"
+        );
+        await expect(total).toHaveText("11g today");
+        await hydratedClick(page, dated.getByTestId("day-context-1"));
         await expect(total).toHaveText(`${yesterdayGrams}g yesterday`);
         await addGrams(dated, grams);
         yesterdayGrams += grams;
@@ -1776,13 +1891,23 @@ for (const viewport of [
   });
 }
 
-// One selected day reaches real writes, including two opens inherited from dated
-// pages. Store assertions distinguish a correctly labelled sheet from a misdated write.
-test("the shared sheet day carries Food, Practice and Stool into the same History day (#5211)", async ({
+// One selected day reaches real writes from three forms and three routes. Store
+// assertions distinguish a correctly labelled sheet from a misdated write.
+//
+// THE DAY IS THE SHEET'S, ON EVERY ROUTE (#5769). The dock sheet is a global
+// mount: it used to inherit a dated page's day and hide its switcher, so two of
+// the three opens below reached the History day by standing on it. The owner
+// reversed that — "the mount is global, therefore the context shouldn't change
+// based on page" — so each open now lands on TODAY with the switcher, and the
+// shared day is the one the SHEET is asked for. Landing on today from a dated
+// route is the assertion that matters: the reported defect was a chip naming
+// today's due doses opening the page's day instead.
+test("the sheet's own day carries Food, Practice and Stool into the same History day, from any route (#5211/#5769)", async ({
   browser,
 }) => {
   const profileId = shellProfileId();
-  const day = shiftDateStr(dateStrInTz(PINNED_TZ, frozenNow()), -1);
+  const today = dateStrInTz(PINNED_TZ, frozenNow());
+  const day = shiftDateStr(today, -1);
   const group = "cruciferous";
   function clearRows() {
     const db = openDb();
@@ -1829,7 +1954,16 @@ test("the shared sheet day carries Food, Practice and Stool into the same Histor
       .getByRole("listitem")
       .filter({ hasText: SHELL_PRACTICE });
     await expect(practiceRow).toBeVisible();
-    await expect(practice.getByTestId("bounded-day-switcher")).toHaveCount(0);
+    await expect(practice.getByTestId("bounded-day-switcher")).toBeVisible();
+    await expect(practice.getByTestId("day-context-0")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await hydratedClick(page, practice.getByTestId("day-context-1"));
+    await expect(practice.getByTestId("day-context-1")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     await settledFill(
       page,
       practiceRow.getByTestId("practice-when-time"),
@@ -1842,11 +1976,26 @@ test("the shared sheet day carries Food, Practice and Stool into the same Histor
     await page.keyboard.press("Escape");
     await expect(practice).toHaveCount(0);
 
-    // Leave a different inherited day in the persistent host. The next open must
-    // read Nutrition's current route rather than reuse that prior context.
+    // THE OWNER'S REPORTED SYMPTOM, INVERTED (#5769). Standing on a History day
+    // two days back, the dock sheet's dose list used to open ON that day — a
+    // "Due & usual now" chip naming today's midday stack opening a list of that
+    // page's evening doses. Navigation no longer reaches this mount at all: it
+    // opens on its own day — today, with the switcher — whatever page is behind
+    // it, and a day selected in an EARLIER visit does not follow it either.
     const previousDay = shiftDateStr(day, -1);
     await page.goto(`/history?day=${previousDay}`);
     const previous = await openQuickEntry(page, "log-dose");
+    // On today the body is today's own stack, so the dated body is ABSENT — the
+    // discriminator between the two designs #5753 leg 1 kept apart, and the exact
+    // thing the owner saw in its wrong state: a dated list of the page's doses.
+    await expect(previous.getByTestId("quick-entry-dose-day")).toHaveCount(0);
+    await expect(previous.getByTestId("day-context-0")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    // The page's day is still REACHABLE — by asking the sheet for it, which is the
+    // whole of what this ruling moved: a choice instead of an inheritance.
+    await hydratedClick(page, previous.getByTestId("day-context-2"));
     await expect(previous.getByTestId("quick-entry-dose-day")).toHaveAttribute(
       "data-date",
       previousDay
@@ -1858,7 +2007,16 @@ test("the shared sheet day carries Food, Practice and Stool into the same Histor
     const stool = await openQuickEntry(page, "log-stool");
     const picker = stool.getByTestId("quick-entry-stool");
     await expect(picker).toBeVisible();
-    await expect(stool.getByTestId("bounded-day-switcher")).toHaveCount(0);
+    await expect(stool.getByTestId("bounded-day-switcher")).toBeVisible();
+    await expect(stool.getByTestId("day-context-0")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await hydratedClick(page, stool.getByTestId("day-context-1"));
+    await expect(stool.getByTestId("day-context-1")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     await settledFill(page, picker.getByTestId("stool-when-time"), "08:10");
     await settledClick(page, picker.getByTestId("stool-type-4"));
     await expect(picker.getByTestId("quick-entry-stool-count")).toContainText(

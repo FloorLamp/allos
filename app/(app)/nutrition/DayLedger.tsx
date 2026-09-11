@@ -18,7 +18,7 @@ import type { DoseStatusResult } from "@/app/(app)/nutrition/intake-actions";
 import { EmptyState } from "@/components/ui";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
 import { bulkLabel, dosesPhrase } from "@/lib/usual-routine";
-import { historyClock } from "@/lib/history-format";
+import { historyClock, type HistoryClockKind } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
 import CardSectionHeader from "@/components/CardSectionHeader";
@@ -277,9 +277,25 @@ export default function DayLedger({
     );
   }
 
+  // THE CLOCK GRAMMAR, WITH THIS DAY AS THE REFERENCE (#5618 rule 6; owner ruling
+  // 2026-09-10 22:36Z, "ruling 6 belongs to the clock grammar, both surfaces"). An
+  // untimed row filed on another day reads "logged Sep 8" rather than a minute that is
+  // true of no minute of the day being read; a row filed on its own day keeps
+  // "logged 7:41am". `date` is the day this ledger states — every row on it counts for
+  // that day — so it is the row day, never re-derived from a clock.
+  const rowClock = (row: {
+    hhmm: string;
+    clockKind: HistoryClockKind;
+    filedDay: string | null;
+  }) =>
+    historyClock(row.hhmm, row.clockKind, prefs, {
+      filedDay: row.filedDay,
+      rowDay: date,
+    });
+
   function renderRow(row: LedgerRow, label: string | null) {
     if (row.kind === "serving") {
-      const clock = historyClock(row.hhmm, row.clockKind, prefs);
+      const clock = rowClock(row);
       return (
         <li
           key={row.id}
@@ -388,9 +404,7 @@ export default function DayLedger({
                 : row.detail}
             </span>
           </LoggedEventRow>
-          <span className={LOGGED_EVENT_TRAILING}>
-            {historyClock(row.hhmm, row.clockKind, prefs)}
-          </span>
+          <span className={LOGGED_EVENT_TRAILING}>{rowClock(row)}</span>
           {/* THE WAY BACK (#232's tri-state). This was TODAY ONLY on the reasoning
               that "the tri-state's CLEAR has no dated core" — the core took a day all
               along (`setDoseStatusCore` gates on `isDoseDateAccepted`); it was the
@@ -514,9 +528,7 @@ export default function DayLedger({
               </span>
             </span>
           </button>
-          <span className={LOGGED_EVENT_TRAILING}>
-            {historyClock(row.hhmm, row.clockKind, prefs)}
-          </span>
+          <span className={LOGGED_EVENT_TRAILING}>{rowClock(row)}</span>
         </div>
         {expanded && (
           <ul className="border-t border-(--divider)">

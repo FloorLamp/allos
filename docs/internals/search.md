@@ -25,16 +25,19 @@ on the entry itself. No new route, no new page.
 
 ## The logged group
 
-**One group, `Logged`, for all seven kinds** (owner ruling, 2026-09-04). The kind
-is not a group name; it is the hit's subtitle, `<kind> · <date>`. The alternative
-— a group per kind — could put 35 logged hits ahead of the catalog on a broad
-query, and the question this feature exists to answer ("my latest sauna") is
-answered in five rows.
+**One group, `Logged`, for all seven kinds** (owner ruling, 2026-09-04). A group
+per kind could put 35 logged hits ahead of the catalog on a broad query, and the
+question this feature exists to answer ("my latest sauna") is answered in five
+rows.
 
-`lib/queries/search-logged.ts` holds all seven. Each declares only what differs —
-its kind, the noun its subtitle names, and the read that finds it — and one
-mapping builds the hit, so an eighth kind is a table row rather than an eighth
-copy.
+**The kind is a field**, `loggedKind`, and `SEARCH_LOGGED_KIND_LABELS`
+(lib/search-rank.ts) is the one table both readers read: the subtitle renders
+`<kind> · <date>` from it, and the Q&A citation badge (`citationLabel`) is it. So
+the badge names the kind rather than the domain, and neither can drift.
+
+`lib/queries/search-logged.ts` holds all seven. Each declares only its kind and
+the read that finds it, and one mapping builds the hit, so an eighth kind is a
+table row rather than a copy.
 
 | Kind       | Vocabulary the query matches           | Entry id the anchor is built from |
 | ---------- | -------------------------------------- | --------------------------------- |
@@ -77,11 +80,10 @@ finds the reading — and the row itself states it in the reader's own unit.
 The consequence, stated rather than discovered: **several readings of one measure
 on one day are indistinguishable in the palette.** Three weigh-ins on the 29th are
 three hits reading "Weight · Reading · 2026-08-29", telling apart only once the day
-view is open. That is accepted, because the alternative is worse — a converted
-value inside a query-layer string is the boundary crossing the project's unit rule
-forbids, and the subtitle's shape is `<kind> · <date>` by the issue's own spec. If
-it ever bites, the fix is a RENDER-side subtitle (the palette holding the login's
-unit and formatting the hit), never a conversion moved into this layer.
+view is open. That is accepted: a converted value inside a query-layer string is
+the boundary crossing the project's unit rule forbids. If it ever bites, the fix
+is a RENDER-side subtitle (the palette formatting the hit in the login's unit),
+never a conversion moved into this layer.
 
 ## Two stated narrowings
 
