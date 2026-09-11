@@ -8,7 +8,7 @@ import {
 } from "@/lib/vitals-latest";
 import { DORMANCY_DOMAINS, VITAL_DORMANCY_DAYS } from "@/lib/domain-dormancy";
 import { shiftDateStr } from "@/lib/date";
-import type { LatestTrend } from "@/lib/latest-trend";
+import type { PointToPointMovement } from "@/lib/movement";
 
 // The Latest-vitals card's presentation floor (#2303): the glance framing #1216 put on
 // Recent labs, applied to the card that never inherited it, and resolved through the ONE
@@ -19,7 +19,11 @@ import type { LatestTrend } from "@/lib/latest-trend";
 const TODAY = "2026-08-08";
 const ago = (n: number) => shiftDateStr(TODAY, -n);
 
-function trend(date: string, value: number, prev?: number): LatestTrend {
+function trend(
+  date: string,
+  value: number,
+  prev?: number
+): PointToPointMovement {
   return {
     date,
     value,

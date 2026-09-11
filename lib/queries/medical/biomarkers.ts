@@ -231,7 +231,7 @@ export function getBiomarkerSeriesFor(
 
 // The latest two numeric readings of a biomarker family, oldest→newest — the exact
 // tail getBiomarkerSeries's caller reads to compute a trend delta (#1367). The
-// dashboard vitals card only needs the last two points latestTrend consumes, not the
+// dashboard vitals card only needs the last two points pointToPointMovement consumes, not
 // whole history, so this bounds the query with `ORDER BY date DESC LIMIT 2` instead of
 // materializing years of synced BP readings on every render. Filtering
 // `value_num IS NOT NULL` here matches the card's `.filter(r => r.value_num != null)`,

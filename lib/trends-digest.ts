@@ -26,9 +26,13 @@ import { clinicalResultBecameNotable } from "./dashboard-reading-promotions";
 import {
   median,
   medianAbsoluteDeviation,
-  robustEndpoints,
   theilSenSlopePerDay,
 } from "./robust-stats";
+import {
+  windowMovement,
+  WINDOW_MIN_PCT_CHANGE,
+  type MovementDirection,
+} from "./movement";
 import { round } from "./units";
 
 // After removing the steady slope already present inside both halves, a level
@@ -404,7 +408,7 @@ export interface RobustSummary {
   absChange: number;
   // (last − first) / |first|, or null when first is 0.
   pctChange: number | null;
-  direction: "up" | "down" | "flat";
+  direction: MovementDirection;
   // True when the move clears the shared tile/digest base: it clears minPctChange,
   // or crossed a reference range. A material move always has a non-flat direction.
   material: boolean;
@@ -413,36 +417,32 @@ export interface RobustSummary {
 // `points` must be CHRONOLOGICAL (oldest → newest) — the order every body-metric /
 // volume / biomarker series is shaped into before charting, and what makes "first k"
 // and "last k" mean the start and end of the window. Nulls and non-finite values are
-// filtered here, so a caller may pass a series with gaps (the `DigestSeries.points`
-// contract is stricter: already null-free).
+// filtered by `windowMovement`, so a caller may pass a series with gaps (the
+// `DigestSeries.points` contract is stricter: already null-free).
 export function robustSeriesSummary(
   series: Pick<DigestSeries, "range" | "minPctChange"> & {
     points: readonly { value: number | null }[];
   },
-  globalMinPct = 0.05
+  globalMinPct = WINDOW_MIN_PCT_CHANGE
 ): RobustSummary | null {
-  const pts = series.points.filter(
-    (p): p is { value: number } => p.value != null && Number.isFinite(p.value)
-  );
-  if (pts.length < 2) return null;
-  const k = Math.min(3, Math.floor(pts.length / 2));
-  const { first, last } = robustEndpoints(pts, k);
-  const absChange = last - first;
-  const pctChange = first !== 0 ? absChange / Math.abs(first) : null;
-  const direction: RobustSummary["direction"] =
-    absChange > 0 ? "up" : absChange < 0 ? "down" : "flat";
-  const { shift } = classifyShift(first, last, series.range);
-  const minPct = series.minPctChange ?? globalMinPct;
-  const relMag = pctChange == null ? 1 : Math.abs(pctChange);
-  const material = absChange !== 0 && (relMag >= minPct || shift != null);
+  const movement = windowMovement(series.points, {
+    minPctChange: series.minPctChange ?? globalMinPct,
+  });
+  if (!movement) return null;
+  // The RANGE CROSSING is this surface's own second materiality source, ORed onto the
+  // shared relative floor: a move into or out of a reference range is news whatever
+  // its percentage. It stays here because it needs the series' clinical range, which
+  // the movement verdict deliberately knows nothing about.
+  const { shift } = classifyShift(movement.first, movement.last, series.range);
+  const { count, first, last, absChange, pctChange, direction } = movement;
   return {
-    count: pts.length,
+    count,
     first,
     last,
     absChange,
     pctChange,
     direction,
-    material,
+    material: movement.clearsMinPct || (absChange !== 0 && shift != null),
   };
 }
 
@@ -456,7 +456,7 @@ export function summarizeTrends(
   opts: DigestOptions = {}
 ): TrendItem[] {
   const limit = opts.limit ?? 5;
-  const globalMinPct = opts.minPctChange ?? 0.05;
+  const globalMinPct = opts.minPctChange ?? WINDOW_MIN_PCT_CHANGE;
 
   const items: TrendItem[] = [];
   for (const s of series) {
