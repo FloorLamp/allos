@@ -160,8 +160,12 @@ test.describe("preventive deep-links per class (#1083)", () => {
     // affordance — asserted here because this is the flow the argument is about. No
     // `data-suggested`: nothing proposed a code, and a missing fact cannot have
     // borrowed one.
+    // Scoped to the DIALOG, not to `main`: the procedures add door is
+    // `presentation="modal"`, so the form renders in the overlay portal and is not a
+    // descendant of `<main>` at all. The dialog is the enclosing surface the hygiene
+    // guard asks for here.
     const code = page
-      .getByRole("main")
+      .getByRole("dialog")
       .getByTestId("procedure-form")
       .getByTestId("procedure-fact-code");
     await expect(code).toHaveAttribute("data-fact-state", "missing");
