@@ -21,7 +21,10 @@ import {
   setStoredAge,
 } from "@/lib/settings";
 import { collectRecentChanges } from "@/lib/queries/recent-changes";
-import { getLightExposureLine } from "@/lib/queries/light-exposure";
+import {
+  getLightExposureLine,
+  lightExposureRelevant,
+} from "@/lib/queries/light-exposure";
 import {
   getStepsDigestLines,
   getStepsPaceObservation,
@@ -35,6 +38,7 @@ import { buildDigest } from "@/lib/notifications/digest";
 import { collectUpcoming } from "@/lib/queries";
 import { stepsPaceKey } from "@/lib/steps-target";
 import { practiceIdentity } from "@/lib/practice";
+import { SUN_EXPOSURE_WINDOW_DAYS } from "@/lib/sun-exposure";
 import { plainBody } from "@/lib/notifications/rich-text";
 
 function newProfile(name: string): number {
@@ -635,6 +639,44 @@ describe("light-exposure line (#1723 part 1)", () => {
     const td = today(pid);
     seedDay(td, 0, 4);
     expect(getLightExposureLine(pid, td)).toBeNull();
+  });
+
+  // #4242 — "is this profile's sun surface live?" is asked over THE SUN SURFACE'S OWN
+  // window. This gate used to reach back thirty days for a surface that speaks over six
+  // weeks, so a profile the sun card still had something to say about was judged to have
+  // no sun card. The band this widens is enumerated on the issue: day 30 through day 41
+  // inclusive now count where they did not. Nothing narrows — a gate that said yes
+  // before still says yes.
+  function outdoorProfile(name: string, daysAgo: number): number {
+    const pid = newProfile(name);
+    setHomeLocation(pid, { lat: LAT, lng: LNG });
+    const td = today(pid);
+    db.prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, start_time, end_time, avg_temp_c)
+       VALUES (?, ?, 'cardio', 'Walk', '12:00', '12:20', 18)`
+    ).run(pid, shiftDateStr(td, -daysAgo));
+    return pid;
+  }
+
+  it("counts logged daylight time over the sun surface's own six-week window", () => {
+    const lastDay = SUN_EXPOSURE_WINDOW_DAYS - 1;
+    for (const daysAgo of [0, 29, 30, 35, lastDay]) {
+      const pid = outdoorProfile(`Outdoor ${daysAgo}`, daysAgo);
+      expect(lightExposureRelevant(pid, today(pid))).toBe(true);
+    }
+    // …and stops at the window's edge rather than at some other number.
+    const past = outdoorProfile("Outdoor past", SUN_EXPOSURE_WINDOW_DAYS);
+    expect(lightExposureRelevant(past, today(past))).toBe(false);
+  });
+
+  it("a day-35 walk now reaches the line it was previously gated out of", () => {
+    const pid = outdoorProfile("Lapsed Lou", 35);
+    const td = today(pid);
+    seedDay(td, 0, 4);
+    expect(getLightExposureLine(pid, td)).toContain(
+      "good window for light exposure"
+    );
   });
 
   it("no cached forecast means no line, even for a tracked profile", () => {

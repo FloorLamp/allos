@@ -15,7 +15,11 @@ import {
 import { getHomeLocation, getProfileSex, getProfileAge } from "../settings";
 import { isMinor } from "../life-stage";
 import { optimalStatus } from "../reference-range";
-import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "../sun-exposure";
+import {
+  decideSunExposure,
+  SUN_EXPOSURE_WINDOW_DAYS,
+  SUN_EXPOSURE_WINDOW_WEEKS,
+} from "../sun-exposure";
 import { prolongedBleedingObservations } from "../cycle-observation";
 import { listCyclePeriods } from "../cycle-store";
 import { decideWorkupPrompt } from "../ttc";
@@ -195,8 +199,7 @@ export function buildSunExposureFindings(
 
   // Daylight-outdoor minutes over the window — the ONE computation (lib/queries/sun),
   // averaged to a per-week figure the copy formats.
-  const windowDays = SUN_EXPOSURE_WINDOW_WEEKS * 7;
-  const dates = lastNDates(today, windowDays);
+  const dates = lastNDates(today, SUN_EXPOSURE_WINDOW_DAYS);
   const totalMin = getDaylightOutdoorMinutesTotal(profileId, dates);
   const avgWeeklyDaylightMin = totalMin / SUN_EXPOSURE_WINDOW_WEEKS;
 

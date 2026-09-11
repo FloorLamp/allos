@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  DEFAULT_DORMANT_DAYS,
   dormantPrnCandidates,
   dormantPrnDismissalKey,
   DORMANT_PRN_PREFIX,
   type DormantPrnInput,
 } from "@/lib/dormant-prn";
+import { DORMANCY_DEFAULT_DAYS } from "@/lib/domain-dormancy";
+import { shiftDateStr } from "@/lib/date";
 
 // Pure dormant-PRN sweep (issue #880 item 3). Active PRN meds with no dose in 90+ days,
 // anchored on the last administration (or creation, if never dosed). Dismissal is id-keyed
@@ -93,5 +96,33 @@ describe("dormantPrnCandidates", () => {
 describe("dormantPrnDismissalKey", () => {
   it("is id-keyed (ids never recycle)", () => {
     expect(dormantPrnDismissalKey(42)).toBe("dormant-prn:42");
+  });
+});
+
+// #4242 — the sweep is a TENANT of the dormancy registry: "has this stopped arriving?"
+// has one owner-ruled interval, and medications used to re-declare it independently, so a
+// doctrine change reached every dormancy surface except this one.
+//
+// HONEST ABOUT WHAT THIS PINS. A re-declared literal would still satisfy the equality
+// below while the two agree; what stops the drift is the by-reference declaration in the
+// module, not this assertion. What the assertion buys is the FAILURE when somebody moves
+// the registry's interval and the sweep does not follow — which is exactly the shape the
+// defect took, and which a bare `toBe(90)` would have passed through in silence.
+describe("the PRN sweep is a dormancy tenant (#4242)", () => {
+  it("takes the registry's interval rather than declaring its own", () => {
+    expect(DEFAULT_DORMANT_DAYS).toBe(DORMANCY_DEFAULT_DAYS);
+  });
+
+  it("the default threshold used by the sweep is that interval", () => {
+    const justInside = dormantPrnCandidates(
+      [m({ lastAdministration: shiftDateStr(TODAY, -(DORMANCY_DEFAULT_DAYS - 1)) })],
+      TODAY
+    );
+    const atTheInterval = dormantPrnCandidates(
+      [m({ lastAdministration: shiftDateStr(TODAY, -DORMANCY_DEFAULT_DAYS) })],
+      TODAY
+    );
+    expect(justInside).toEqual([]);
+    expect(atTheInterval).toHaveLength(1);
   });
 });

@@ -15,8 +15,18 @@ import { displayUnit } from "@/lib/display-unit";
 // dedupeKey namespace for the suppression bus + the RULE_FINDING_PREFIXES registry.
 export const SUN_EXPOSURE_PREFIX = "sun-exposure:";
 
-// The observation window (weeks of daylight-outdoor exposure to average over).
+// The observation window (weeks of daylight-outdoor exposure to average over). WEEKS is
+// the unit the sentence speaks in ("over the last 6 weeks"), so the sentence reads this
+// name and the gathers read the one below.
 export const SUN_EXPOSURE_WINDOW_WEEKS = 6;
+
+// THE SAME WINDOW, IN THE UNIT A GATHER COUNTS IN (#4242). Every query that reaches back
+// for this surface's daylight-outdoor time reaches back exactly as far as the sentence
+// claims to speak for — the coaching observation's own gather, and the "is this profile's
+// sun surface live?" relevance test behind the digest's light line, which used to reach
+// back thirty days for a surface that answers over six weeks. Derived, never restated, so
+// a change to the window moves the sentence and both gathers together.
+export const SUN_EXPOSURE_WINDOW_DAYS = SUN_EXPOSURE_WINDOW_WEEKS * 7;
 
 // "Little daylight" threshold: fewer than this many daylight-outdoor MINUTES PER WEEK
 // (averaged over the window). ~an hour a week is already generous for "barely any".
