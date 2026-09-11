@@ -318,6 +318,10 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
     await expect(chrome).toHaveAttribute("data-hidden", "true");
     await expect(bar).toHaveAttribute("data-hidden", "true");
     // Transform-based, so the DOM still calls it visible — assert the travel.
+    // raw-box-ok: the subject is a transform IN MOTION, and the read is already
+    // inside `expect.poll`, which is the retry `settledBoxes` would otherwise
+    // nest a second settle loop inside. The `?? 0` sentinel is load-bearing too:
+    // a missing box has to keep the poll going, not throw out of it.
     await expect
       .poll(async () => (await bar.boundingBox())?.y ?? 0)
       .toBeLessThan(0);
@@ -337,6 +341,9 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
     // being translated off-screen. The `toBeInViewport` below is what keeps this
     // honest either way: it is the assertion that survives the offset changing
     // again, and the y-poll is what distinguishes "on screen" from "translated away".
+    // raw-box-ok: same shape as the travel poll above — a transform in motion,
+    // read inside `expect.poll`, with `?? -1` standing for "not there yet" so the
+    // interesting failure (a NEGATIVE y) stays distinguishable from a missing box.
     await expect
       .poll(async () => (await bar.boundingBox())?.y ?? -1)
       .toBeGreaterThanOrEqual(0);
@@ -389,6 +396,8 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
     };
     // The control runs through the SAME read as the assertion: with no notch the
     // strip parks flush, so a 44 below cannot be something else at that offset.
+    // raw-box-ok: converting one side of that parity would break it, and the read
+    // is driven by `expect.poll` below, which already supplies the retry.
     const parkedY = async () => (await bar.boundingBox())?.y ?? -1;
     await pin();
     await expect.poll(parkedY).toBe(0);
@@ -417,8 +426,10 @@ test.describe("the heading band is given up below sm (F)", () => {
     // named) and occupying no visual band.
     const h1 = page.getByRole("heading", { name: "Trends", level: 1 });
     await expect(h1).toHaveCount(1);
-    const box = await h1.boundingBox();
-    expect(box!.height).toBeLessThan(4);
+    // An `sr-only` h1 is a 1px clipped box, not `display: none`, so it has a box
+    // and `settledBoxes` reads it rather than throwing on it.
+    const [box] = await settledBoxes([h1]);
+    expect(box.height).toBeLessThan(4);
 
     // The two-line subtitle is removed, not shrunk.
     await expect(page.getByText("Your analytics lens —")).toBeHidden();
@@ -433,10 +444,12 @@ test.describe("the heading band is given up below sm (F)", () => {
     await page.goto("/trends");
     const overviewLead = page.getByTestId("trending-digest");
     await expect(overviewLead).toBeVisible();
-    const leadBox = await overviewLead.boundingBox();
     const tile = firstBodyTile(page); // the census's topmost tile IS the measurement's subject
     await expect(tile).toBeVisible();
-    const tileBox = await tile.boundingBox();
+    // Both offsets are read off ONE settled layout: they are the two halves of the
+    // same chrome-band claim, so a shift between two round-trips would let one pass
+    // against a layout the other never saw.
+    const [leadBox, tileBox] = await settledBoxes([overviewLead, tile]);
     // A ceiling with headroom for ordinary content changes, well under the 646px
     // this wave started from.
     //
@@ -444,11 +457,11 @@ test.describe("the heading band is given up below sm (F)", () => {
     // OTHER assertion a band above the content moves, and 130px of banner would
     // push a 300px offset to 430 without naming what arrived.
     expect(
-      leadBox!.y,
+      leadBox.y,
       `first content offset on Trends → Overview; ` +
         (await bandStory(page.getByTestId("shell-chrome"), overviewLead))
     ).toBeLessThan(430);
-    expect(tileBox!.y).toBeLessThan(844);
+    expect(tileBox.y).toBeLessThan(844);
     await expect(tile).toBeInViewport();
   });
 });

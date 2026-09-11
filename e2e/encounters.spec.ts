@@ -371,16 +371,13 @@ test.describe("Visit detail — source document link placement (#211)", () => {
     await expect(source).toBeVisible();
     await expect(link).toBeVisible();
 
-    const sourceBox = await source.boundingBox();
-    const linkBox = await link.boundingBox();
-    expect(sourceBox).not.toBeNull();
-    expect(linkBox).not.toBeNull();
+    const [sourceBox, linkBox] = await settledBoxes([source, link]);
 
     // The link starts at or below the bottom of the source label — a real vertical
     // stack, not an inline button beside it (the pre-fix bug).
-    expect(linkBox!.y).toBeGreaterThanOrEqual(sourceBox!.y + sourceBox!.height);
+    expect(linkBox.y).toBeGreaterThanOrEqual(sourceBox.y + sourceBox.height);
     // …and shares the label's left edge (same column), confirming the stack.
-    expect(Math.abs(linkBox!.x - sourceBox!.x)).toBeLessThan(4);
+    expect(Math.abs(linkBox.x - sourceBox.x)).toBeLessThan(4);
   });
 });
 

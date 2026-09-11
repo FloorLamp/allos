@@ -382,14 +382,13 @@ test.describe("protocols create → compare (issue #161)", () => {
       desktopSaveOwnerBox.width,
       "ProtocolForm's parent keeps the 6rem desktop minimum"
     ).toBe(PROTOCOL_FORM_PRIMARY_MIN_WIDTH_PX);
-    const dialogBox = await editDialog.boundingBox();
+    const [dialogBox] = await settledBoxes([editDialog]);
     const viewport = page.viewportSize();
-    expect(dialogBox).not.toBeNull();
     expect(viewport).not.toBeNull();
     // Width is DECLARED now (#2774): the dialog takes its `size` from the shared
     // primitive instead of a per-host `max-w-*`, and this bucket is what "a work
     // surface, not the widest thing on screen" resolves to.
-    expect(dialogBox!.width).toBeLessThanOrEqual(768);
+    expect(dialogBox.width).toBeLessThanOrEqual(768);
     // Its HEIGHT is deliberately no longer pinned to the viewport, and that is a
     // ruling rather than a relaxation. The old geometry bounded the panel and gave
     // it an inner scroller — which also CLIPPED every picker the form opens; the
@@ -397,8 +396,8 @@ test.describe("protocols create → compare (issue #161)", () => {
     // (e2e/wellness-practices.spec.ts). A tall dialog now scrolls its container
     // instead, so what must still hold is that it starts on screen and every
     // control in it is reachable — which the Cancel click immediately below is.
-    expect(dialogBox!.y).toBeGreaterThanOrEqual(0);
-    expect(dialogBox!.y).toBeLessThan(viewport!.height);
+    expect(dialogBox.y).toBeGreaterThanOrEqual(0);
+    expect(dialogBox.y).toBeLessThan(viewport!.height);
     await editDialog.getByRole("button", { name: "Cancel" }).click();
     await expect(editDialog).toHaveCount(0);
 
