@@ -12,8 +12,10 @@ import type { SqlPrepare } from "../lib/write-revision";
 // UTC start hour, so any dashboard candidate carrying meal-window timing
 // (protein-today; the composed-morning offer carried it too until #3265 gave it the
 // food-slot window it is actually about) resolves `expired` for it once the last
-// meal window closes — and an expired candidate is dropped from EVERY lane, so
-// `openDashboardAll` cannot rescue it. That made one spec red for the ~3 hours of
+// meal window closes — and an expired candidate is dropped before any lane is built,
+// so it is ABSENT rather than folded away and no opener could have reached it (the
+// fold and its helpers are themselves retired, #5435 §4). That made one spec red for
+// the ~3 hours of
 // each day a run started in [21:00, 24:00) UTC and green the other 21. So: do NOT
 // opt a profile out here if its spec asserts a dashboard atom. Only fixtures whose
 // assertions are confined to their own pages belong below.

@@ -654,8 +654,9 @@ for (const [label, viewport, wide] of [
       // 3). The ~880px measure is still #4752 §2's, but it is the BAND's now: the
       // cockpit used to spend it on itself as `mx-auto max-w-[880px]`, which stepped
       // its own edges (1152 − 880) / 2 = 136px in from the ordinary Now rows it shares
-      // the band's one visible frame with. `NowCards` guards that rule against 16px
-      // eight lines above the child that produced 136. Both edges, because a centered
+      // the band's one visible frame with. `NowCards` guarded that rule against 16px
+      // eight lines above the child that produced 136, until #5435 §4 deleted it.
+      // Both edges, because a centered
       // cap is symmetric and a single-edge claim would pass on one that only moved.
       // EVERY ROW IN THE BAND, not one representative: the claim is about the frame,
       // and a single sibling would let a second row re-introduce the step unseen. It
