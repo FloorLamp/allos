@@ -11,6 +11,24 @@ import {
   type AllergyFactInput,
   type AllergyFactKey,
 } from "@/lib/allergy-facts";
+import {
+  carePlanFactSummary,
+  CARE_PLAN_FACT_NOUNS,
+  type CarePlanFactInput,
+  type CarePlanFactKey,
+} from "@/lib/care-plan-facts";
+import {
+  careGoalFactSummary,
+  CARE_GOAL_FACT_NOUNS,
+  type CareGoalFactInput,
+  type CareGoalFactKey,
+} from "@/lib/care-goal-facts";
+import {
+  familyFactSummary,
+  FAMILY_HISTORY_FACT_NOUNS,
+  type FamilyHistoryFactInput,
+  type FamilyHistoryFactKey,
+} from "@/lib/family-history-facts";
 import { moreRecordFactsLabel } from "@/lib/record-facts";
 
 // The clinical record family's fact summaries (#5302), in ONE file for the family
@@ -196,6 +214,222 @@ describe("the allergy row (#5302)", () => {
     expect(more).toEqual(expected);
     expect(moreRecordFactsLabel(more, ALLERGY_FACT_NOUNS)).toBe(
       "criticality, who documented it, visit…"
+    );
+  });
+});
+
+const FULL_CARE_PLAN: CarePlanFactInput = {
+  category: "procedure",
+  status: "planned",
+  code: "45378",
+  codeSystem: "CPT",
+  plannedDate: "2026-11-02",
+  provider: "Dr. Smith",
+  notes: "bowel prep posted",
+};
+
+describe("the care-plan row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = carePlanFactSummary(FULL_CARE_PLAN);
+    expect(keysOf(chips)).toEqual([
+      "planned",
+      "category",
+      "status",
+      "code",
+      "provider",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("prompts for a missing planned date rather than going quiet about it", () => {
+    // The sharpest of the family's essentials: carePlanUpcomingItems keeps only
+    // `planned_date != null` rows, so an undated plan is recorded and then never
+    // mentioned again. The prompt is on the ROW, not behind the trailing affordance.
+    const { chips, more } = carePlanFactSummary({
+      ...FULL_CARE_PLAN,
+      plannedDate: "",
+    });
+    expect(stateOf(chips, "planned")).toBe("missing");
+    expect(more).not.toContain("planned");
+  });
+
+  it("lets an unstated status go quiet, because the app closes the item itself", () => {
+    // The asymmetry with the care goal below, asserted rather than only argued: an
+    // absent care-plan status reads as OPEN and markCarePlanItemDone writes the close,
+    // so it reaches the more-line instead of prompting.
+    const { chips, more } = carePlanFactSummary({
+      ...FULL_CARE_PLAN,
+      status: "",
+    });
+    expect(keysOf(chips)).not.toContain("status");
+    expect(more).toContain("status");
+  });
+
+  it("states what the form will post, not the picker's own sentinel", () => {
+    // Both pickers hand the free-text escape's value to the summary, so a typed
+    // category reads as itself and never as the never-stored "__other".
+    const { chips } = carePlanFactSummary({
+      ...FULL_CARE_PLAN,
+      category: "awaiting authorization",
+    });
+    expect(chips.find((c) => c.key === "category")?.label).toBe(
+      "Awaiting authorization"
+    );
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = carePlanFactSummary({
+      ...FULL_CARE_PLAN,
+      category: "",
+      provider: "",
+      notes: "",
+    });
+    const expected: CarePlanFactKey[] = ["category", "provider", "notes"];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, CARE_PLAN_FACT_NOUNS)).toBe(
+      "category, provider, notes…"
+    );
+  });
+});
+
+const FULL_CARE_GOAL: CareGoalFactInput = {
+  targetDate: "2026-12-01",
+  status: "active",
+  code: "4548-4",
+  codeSystem: "LOINC",
+  notes: "reviewed at last visit",
+};
+
+describe("the care-goal row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = careGoalFactSummary(FULL_CARE_GOAL);
+    expect(keysOf(chips)).toEqual(["target", "status", "code", "notes"]);
+    expect(more).toEqual([]);
+  });
+
+  it("prompts for both essentials when neither is stated", () => {
+    // The mirror of the care-plan case above: NOTHING in the app writes a care goal's
+    // status, so an unstated one stays unstated and the row says so rather than
+    // folding it behind the trailing affordance.
+    const { chips, more } = careGoalFactSummary({
+      ...FULL_CARE_GOAL,
+      targetDate: "",
+      status: "",
+    });
+    expect(stateOf(chips, "target")).toBe("missing");
+    expect(stateOf(chips, "status")).toBe("missing");
+    expect(more).not.toContain("status");
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = careGoalFactSummary({
+      ...FULL_CARE_GOAL,
+      code: "",
+      codeSystem: "",
+      notes: "",
+    });
+    const expected: CareGoalFactKey[] = ["code", "notes"];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, CARE_GOAL_FACT_NOUNS)).toBe(
+      "code, notes…"
+    );
+  });
+});
+
+const FULL_FAMILY: FamilyHistoryFactInput = {
+  relation: "Father",
+  code: "I25.10",
+  codeSystem: "ICD-10-CM",
+  codeSuggested: false,
+  relationship: "genetic",
+  lineage: "paternal",
+  onsetAge: "48",
+  deceased: true,
+  ageAtDeath: "52",
+  causeOfDeath: "Myocardial infarction",
+  notes: "two stents",
+};
+
+describe("the family-history row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = familyFactSummary(FULL_FAMILY);
+    expect(keysOf(chips)).toEqual([
+      "relation",
+      "code",
+      "relationship",
+      "lineage",
+      "onsetAge",
+      "death",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("prompts for both essentials when the relative and the code are blank", () => {
+    const { chips } = familyFactSummary({
+      ...FULL_FAMILY,
+      relation: "",
+      code: "",
+      codeSystem: "",
+    });
+    expect(stateOf(chips, "relation")).toBe("missing");
+    expect(stateOf(chips, "code")).toBe("missing");
+  });
+
+  it("marks a code the pick supplied as a suggestion, and a typed one as stated", () => {
+    // #846, the condition row's rule at this address: the picker applies the curated
+    // code FOR the person, so the chip says it is an editable suggestion.
+    expect(
+      familyFactSummary({ ...FULL_FAMILY, codeSuggested: true }).chips[1]
+    ).toMatchObject({ key: "code", state: "stated", suggested: true });
+    expect(familyFactSummary(FULL_FAMILY).chips[1]).toMatchObject({
+      key: "code",
+      suggested: false,
+    });
+  });
+
+  it("states the three death columns as ONE fact, read back as one line", () => {
+    // They describe one event, so the row states it once — and an age or a cause on
+    // its own implies the death it describes, which is familyDeathLabel's own rule
+    // rather than anything this module re-decides.
+    const { chips } = familyFactSummary({
+      ...FULL_FAMILY,
+      deceased: false,
+      ageAtDeath: "52",
+      causeOfDeath: "Myocardial infarction",
+    });
+    expect(chips.find((c) => c.key === "death")?.label).toBe(
+      "Died at 52 — Myocardial infarction"
+    );
+  });
+
+  it("holds the death behind the trailing affordance when the row asserts none", () => {
+    const { chips, more } = familyFactSummary({
+      ...FULL_FAMILY,
+      deceased: false,
+      ageAtDeath: "",
+      causeOfDeath: "",
+    });
+    expect(keysOf(chips)).not.toContain("death");
+    expect(more).toContain("death");
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = familyFactSummary({
+      ...FULL_FAMILY,
+      relationship: "",
+      onsetAge: "",
+      notes: "",
+    });
+    const expected: FamilyHistoryFactKey[] = [
+      "relationship",
+      "onsetAge",
+      "notes",
+    ];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, FAMILY_HISTORY_FACT_NOUNS)).toBe(
+      "relationship, age at onset, notes…"
     );
   });
 });

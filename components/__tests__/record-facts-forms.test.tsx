@@ -11,7 +11,16 @@ import { ToastProvider } from "@/components/Toast";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import ConditionForm from "@/app/(app)/records/problems/conditions/ConditionForm";
-import type { Allergy, Condition } from "@/lib/types";
+import CarePlanForm from "@/app/(app)/records/care/overview/CarePlanForm";
+import CareGoalForm from "@/app/(app)/records/care/overview/CareGoalForm";
+import FamilyHistoryForm from "@/app/(app)/records/care/overview/FamilyHistoryForm";
+import type {
+  Allergy,
+  CareGoal,
+  CarePlanItem,
+  Condition,
+  FamilyHistory,
+} from "@/lib/types";
 import type { FormId } from "@/lib/form-grammar";
 
 // The clinical record forms as the person meets them, once they render through the
@@ -219,6 +228,12 @@ describe("a record add door is gated on write access (#4694)", () => {
   it.each<{ formId: FormId; label: string }>([
     { formId: "condition", label: "Add condition" },
     { formId: "allergy", label: "Add allergy" },
+    // #5302 slice 2's three care-overview doors. Same claim at each address, because
+    // the gate is a value each SECTION passes and the three sections are three
+    // separate call sites — a form is gated only if its own section wired it.
+    { formId: "family-history", label: "Add family history" },
+    { formId: "care-plan", label: "Add care-plan item" },
+    { formId: "care-goal", label: "Add health goal" },
   ])(
     "$label renders for a writer and not for a read-only viewer",
     ({ formId, label }) => {
@@ -248,4 +263,188 @@ describe("a record add door is gated on write access (#4694)", () => {
       expect(screen.queryByText(label)).toBeNull();
     }
   );
+});
+
+// The three care-overview records, each seeded MISSING the essential its form declares
+// (#5302 slice 2). One fixture per form rather than one shared row: the essentials are
+// each form's own judgement, so the thing being seeded away differs at every address.
+const undatedCarePlanItem: CarePlanItem = {
+  id: 11,
+  description: "Follow-up colonoscopy",
+  code: null,
+  code_system: null,
+  category: "procedure",
+  planned_date: null,
+  status: "planned",
+  provider_id: null,
+  provider_name: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+  source_kind: null,
+  source_imaging_study_id: null,
+  source_medical_record_id: null,
+  source_dental_procedure_id: null,
+  source_skin_lesion_id: null,
+  recommended_interval_days: null,
+  resolution: null,
+  resolved_by_imaging_study_id: null,
+  resolved_by_medical_record_id: null,
+  resolved_by_dental_procedure_id: null,
+  resolved_by_skin_lesion_id: null,
+  resolved_at: null,
+  settled_disposition: null,
+  settled_on: null,
+  settled_reason: null,
+};
+
+const undatedCareGoal: CareGoal = {
+  id: 12,
+  description: "A1c below 7.0%",
+  code: null,
+  code_system: null,
+  target_date: null,
+  status: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+};
+
+const uncodedRelative: FamilyHistory = {
+  id: 13,
+  relation: null,
+  condition: "Coronary artery disease",
+  code: null,
+  code_system: null,
+  onset_age: null,
+  deceased: null,
+  age_at_death: null,
+  cause_of_death: null,
+  relation_type: null,
+  lineage: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+};
+
+describe("the care-overview rows prompt for the essentials they are missing (#5302)", () => {
+  // THE SAME QUIET FAILURE the condition case above names, asked at the three slice-2
+  // addresses: an absent OPTIONAL renders nothing at all, so a form that classified an
+  // essential as optional just looks like a shorter row. Tabled because the three
+  // differ only in which form renders and which chip is owed.
+  it.each<{ name: string; render: () => void; prompts: string[] }>([
+    {
+      name: "the care-plan row prompts for a planned date it does not have",
+      render: () =>
+        wrap(<CarePlanForm action={noop} item={undatedCarePlanItem} />),
+      prompts: ["care-plan-fact-planned"],
+    },
+    {
+      name: "the care-goal row prompts for both the target date and the status",
+      render: () => wrap(<CareGoalForm action={noop} goal={undatedCareGoal} />),
+      prompts: ["care-goal-fact-target", "care-goal-fact-status"],
+    },
+    {
+      name: "the family-history row prompts for the relative and the code",
+      render: () =>
+        wrap(<FamilyHistoryForm action={noop} entry={uncodedRelative} />),
+      prompts: ["family-history-fact-relation", "family-history-fact-code"],
+    },
+  ])("$name", ({ render: renderForm, prompts }) => {
+    renderForm();
+    const rowId = prompts[0].replace(/-fact-.*$/, "-fact-row");
+    for (const testId of prompts) {
+      const chip = screen.getByTestId(testId);
+      expect(chip.getAttribute("data-fact-state")).toBe("missing");
+      // It is the row's own chip, not something behind the trailing affordance.
+      expect(within(screen.getByTestId(rowId)).getByTestId(testId)).toBe(chip);
+      // A missing chip carries NO suggestion marking: a fact with no value cannot
+      // have borrowed one (FactChipRow's `suggestedAttrs`).
+      expect(chip.hasAttribute("data-suggested")).toBe(false);
+    }
+  });
+
+  it("an unstated care-plan status goes quiet instead of prompting", () => {
+    // The positive control for the asymmetry the grammar declares: the same field is
+    // essential on the care-goal form and optional here, so this asserts the absence
+    // renders as absence rather than as a fourth dashed chip.
+    wrap(
+      <CarePlanForm
+        action={noop}
+        item={{ ...undatedCarePlanItem, status: null }}
+      />
+    );
+    expect(screen.queryByTestId("care-plan-fact-status")).toBeNull();
+    expect(screen.getByTestId("care-plan-fact-more")).toBeTruthy();
+  });
+});
+
+describe("the family-history code chip follows the coded pick (#5302 / #1676)", () => {
+  // The condition form's claim at the second address that applies a curated code from
+  // the SAME picker. Both directions, with the intermediate state asserted so the test
+  // cannot pass against a pick that never seeded anything.
+  it("picking a catalog condition seeds the chip and marks it a suggestion", () => {
+    wrap(<FamilyHistoryForm action={noop} />);
+    const field = screen.getByLabelText("Condition");
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: "high blood pressure" } });
+    // The picker commits on MOUSEDOWN, not click: focus never leaves the input.
+    fireEvent.mouseDown(
+      screen.getByRole("option", { name: /Essential \(primary\) hypertension/ })
+    );
+
+    const chip = screen.getByTestId("family-history-fact-code");
+    expect(chip.getAttribute("data-fact-state")).toBe("stated");
+    expect(chip.textContent).toContain("I10");
+    // Seeded is not stated (#846): the app proposed this code, and the chip says so.
+    expect(chip.getAttribute("data-suggested")).toBe("1");
+
+    // Typing the condition away retracts the code the pick applied.
+    fireEvent.change(field, { target: { value: "Something else entirely" } });
+    expect(
+      screen
+        .getByTestId("family-history-fact-code")
+        .getAttribute("data-fact-state")
+    ).toBe("missing");
+  });
+});
+
+describe("no standing prose on a care-overview form (#5300 rule 4)", () => {
+  // The care-plan form carried one paragraph about what an unrecognized status costs.
+  // It is the VALUE's meaning, so it belongs inside the editor that chooses the value
+  // — the one sentence an open editor may carry — and nowhere else.
+  //
+  // Asked as reachability rather than as text-in-the-document, for the reason the
+  // allergy case above records: this form is DOM-collected, so a closed editor is
+  // HIDDEN and not unmounted, and "is it on screen" is "is it inside a hidden panel".
+  const MEANING = /keeps counting as open/;
+
+  it("the unrecognized-status notice is behind the status editor, not on the form", () => {
+    wrap(<CarePlanForm action={noop} />);
+    // Reach the state where the notice exists at all: the free-text escape, holding a
+    // status the open/closed machinery does not recognize. The picker is inside the
+    // closed panel, which is where a DOM-collected form keeps it.
+    fireEvent.change(screen.getByTestId("cp-status-select-new"), {
+      target: { value: "__other" },
+    });
+    fireEvent.change(screen.getByTestId("cp-status-other-new"), {
+      target: { value: "finished" },
+    });
+
+    // The state where the unwanted effect could occur: the form is up and its chip
+    // row is on screen, so an inert harness cannot pass this by rendering nothing.
+    expect(screen.getByTestId("care-plan-fact-row")).toBeTruthy();
+    expect(screen.getByText(MEANING).closest("[hidden]")).not.toBeNull();
+
+    // And the positive half: it is there for the person choosing the value. The
+    // status now reads back as stated, so its own chip is the way in.
+    fireEvent.click(screen.getByTestId("care-plan-fact-status"));
+    expect(screen.getByText(MEANING).closest("[hidden]")).toBeNull();
+  });
 });

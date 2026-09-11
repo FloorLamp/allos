@@ -26,6 +26,10 @@ export default function FamilyHistorySection({
     <div className="space-y-6">
       <AddEntryPanel
         formId="family-history"
+        // #4694, riding #5302's adoption: the door gates on what the scope already
+        // resolved for the ACTING profile, so a read-only viewer is never offered a
+        // form whose submit would redirect them and lose the typing.
+        access={scope.access.get(scope.actingProfileId)}
         testId="add-family-history-panel"
         panelId="add-family-history-panel-body"
         label="Add family history"
