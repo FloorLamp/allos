@@ -1,15 +1,6 @@
 import type { Page } from "@playwright/test";
-import Database from "better-sqlite3";
-import { E2E_LOGIN_DASHBOARD_ALL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { test, expect } from "./fixtures";
-import {
-  awaitHydrated,
-  dashboardAllSummary,
-  hydratedClick,
-  openFoodAdd,
-} from "./helpers";
-import { loginAs } from "./nav";
-import { workerDbPath } from "./worker-env";
+import { awaitHydrated, openFoodAdd } from "./helpers";
 import {
   CONTINUITY_MOTIONS,
   MICRO_MOTIONS,
@@ -66,30 +57,6 @@ function growthFrames(samples: number[]): number[] {
   const closed = Math.min(...samples);
   const open = Math.max(...samples);
   return samples.filter((h) => h > closed + 1 && h < open - 1);
-}
-
-function resetDashboardAllOffer(): void {
-  const db = new Database(workerDbPath());
-  try {
-    db.pragma("busy_timeout = 5000");
-    const profile = db
-      .prepare(
-        `SELECT p.id
-           FROM profiles p
-           JOIN login_profiles lp ON lp.profile_id = p.id
-           JOIN logins l ON l.id = lp.login_id
-          WHERE l.username = ?`
-      )
-      .get(E2E_LOGIN_DASHBOARD_ALL) as { id: number };
-    db.prepare(
-      "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key LIKE 'stream-onboard:%'"
-    ).run(profile.id);
-    db.prepare(
-      "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'wear_reminder_enabled'"
-    ).run(profile.id);
-  } finally {
-    db.close();
-  }
 }
 
 const MORE_GROUPS = '[data-testid="food-more-groups"]';
@@ -248,94 +215,16 @@ test("reduced motion opens the panel instantly, and schedules no keyframe", asyn
   }
 });
 
-type RestoredFrame = {
-  open: boolean;
-  visible: boolean;
-  overflow: number;
-  height: number;
-};
-
-test("a remembered-open disclosure stays fully open while its content grows", async ({
-  browser,
-}) => {
-  resetDashboardAllOffer();
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DASHBOARD_ALL,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    const details = page.getByTestId("dashboard-all");
-    await expect(details).not.toHaveAttribute("open", "");
-    await hydratedClick(page, dashboardAllSummary(page));
-    await expect(details).toHaveAttribute("open", "");
-
-    // Sample from the first frame the fold exists. Grow its content after sampling
-    // to exercise streamed layout changes without mistaking them for an entrance.
-    await page.addInitScript(() => {
-      const bag = window as typeof window & {
-        __discloseFrames?: RestoredFrame[];
-      };
-      bag.__discloseFrames = [];
-      let grew = false;
-      const sample = () => {
-        const el = document.querySelector<HTMLDetailsElement>(
-          '[data-testid="dashboard-all"]'
-        );
-        if (el) {
-          const box = el.getBoundingClientRect();
-          const content = el.querySelector<HTMLElement>(
-            '[data-testid="dashboard-all-contents"]'
-          );
-          bag.__discloseFrames!.push({
-            open: el.open,
-            visible: content?.checkVisibility() ?? true,
-            overflow: content
-              ? Math.max(0, content.getBoundingClientRect().bottom - box.bottom)
-              : 0,
-            height: box.height,
-          });
-          if (content && !grew) {
-            content.style.minHeight = `${Math.max(2000, box.height * 3)}px`;
-            grew = true;
-          }
-        }
-        if (bag.__discloseFrames!.length < 20) requestAnimationFrame(sample);
-      };
-      requestAnimationFrame(sample);
-    });
-    await page.reload();
-    await expect(details).toHaveAttribute("open", "");
-    await expect(page.getByTestId("dashboard-all-contents")).toBeVisible();
-    await expect
-      .poll(
-        () =>
-          page.evaluate(
-            () =>
-              (window as typeof window & { __discloseFrames?: RestoredFrame[] })
-                .__discloseFrames?.length ?? 0
-          ),
-        { message: "the first-frames sampler never ran" }
-      )
-      .toBeGreaterThanOrEqual(10);
-    const frames = await page.evaluate(
-      () =>
-        (window as typeof window & { __discloseFrames?: RestoredFrame[] })
-          .__discloseFrames ?? []
-    );
-    // The growing fixture would fail the old first-height / final-height threshold.
-    expect(Math.max(...frames.map((frame) => frame.height))).toBeGreaterThan(
-      frames[0].height * 2
-    );
-    // An entrance clips natural content below the interpolating details box. Compare
-    // within each frame: streamed content and font/layout changes can change both.
-    expect(
-      frames.every(
-        (frame) => frame.open && frame.visible && frame.overflow <= 1
-      ),
-      JSON.stringify(frames)
-    ).toBe(true);
-  } finally {
-    await page.context().close();
-  }
-});
+// THE REMEMBERED-OPEN DISCLOSURE WAS THE TAIL'S (#5435 §4).
+//
+// This asserted that a disclosure remembered open on this device stays FULLY open as
+// its content grows — the `::details-content` case where a remembered height from a
+// previous render clips the taller content behind it. Its subject was
+// `dashboard-all`, the "Show everything" fold, which is the only disclosure in this
+// app that persists its open state per device; §4 retires it with the ranker.
+//
+// WHAT RETIRED WITH IT: the remembered-height claim, which needs a REMEMBERED
+// disclosure and has no other instance in the tree. What did not: the two cases above
+// it — a disclosure animating without delaying its content, and reduced motion opening
+// instantly and scheduling no keyframe — which run on ordinary folds and are the
+// motion contract itself.
