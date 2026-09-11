@@ -1,5 +1,7 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { perTestCeiling } from "../../vitest.timeouts";
@@ -153,17 +155,61 @@ describe("what a shared derivation reaches (#5680)", () => {
 // `Unterminated string in JSON at position 146176`, which reads like a walker
 // fault and sends the reader to the wrong file.
 //
-// A pipe is the whole mechanism, so the run below is spawned the way
-// merge-gate.mjs spawns it (stdio `pipe`), and the payload has to be bigger than
-// this platform will carry across one. The size that has to mean is not ours to
-// assert — it is the OS pipe buffer plus whatever the parent happened to drain —
-// so the control states it as behaviour instead: the same `console.log` +
-// `process.exit` shape, at the size of this walk's own answer, must still come
-// back cut.
+// WHY THE READER HOLDS THE PIPE (#5831). Whether a child that exits on its
+// write loses bytes is a race between that exit and the reader's drain, so a
+// test that needs the loss to happen is asserting the machine's luck: the
+// earlier version of this block did, and both arms of it — the control AND the
+// subject — went the wrong way on CI while passing everywhere else.
+//
+// This reader refuses to drain instead. Node pulls from a child pipe only while
+// something consumes it, so holding stdout unread fills the OS buffer and leaves
+// the rest of the write unfinishable: a child that exits in the next statement
+// MUST lose what did not fit, and one that waits for stdout to flush delivers
+// all of it the moment reading starts. That is a harsher reader than the merge
+// gate's, deliberately — the difference #5804 is about becomes the only outcome
+// rather than the likely one.
+//
+// Nothing below asserts WHERE a cut lands, or what `size` is. `size` is a walk
+// over most of the app and moves with everyone's work; all it has to be is
+// bigger than a pipe buffer, which the control establishes rather than assumes.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const MAX_BUFFER = 64 * 1024 * 1024; // merge-gate.mjs's own ceiling
-const PIPE_MS = perTestCeiling(2, "green"); // ~9.1 s observed, 2026-09-11
+const PIPE_MS = perTestCeiling(3, "green"); // ~12.3 s observed, 2026-09-11
+
+// Long enough to outlast `process.exit` in the statement after a `console.log`,
+// which is the only thing it has to cover: a child still holding an unfinished
+// write is blocked on the full pipe and will not exit until reading starts.
+const HELD_MS = 500;
+
+/**
+ * Run a command and read its stdout only after it has stopped writing, so a
+ * child that leaves before stdout drains cannot deliver what it queued.
+ */
+async function readAfterTheWriteIsStuck(
+  command: string,
+  args: readonly string[]
+): Promise<{ status: number | null; stdout: string }> {
+  const child = spawn(command, [...args], {
+    cwd: REPO,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  // stderr is a line at most and is drained throughout: only stdout is held.
+  child.stderr.resume();
+  const exited = once(child, "exit");
+  // Hold stdout unread. Whichever comes first — the child giving up and exiting,
+  // or it blocking on a pipe it cannot finish filling — reading is safe after.
+  await once(child.stdout, "readable");
+  await Promise.race([exited, delay(HELD_MS)]);
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of child.stdout) chunks.push(chunk as Buffer);
+  const [status] = (await exited) as [number | null];
+  return { status, stdout: Buffer.concat(chunks).toString("utf8") };
+}
+
+/** The #5804 shape, as a child of its own: write `bytes`, then leave or wait. */
+const writeThen = (bytes: number, exit: boolean) =>
+  `console.log("x".repeat(${bytes}));${exit ? " process.exit(0);" : ""}`;
 
 describe("the --json CLI over a pipe (#5804)", () => {
   // Reached by most of the app, so its answer is far larger than any pipe
@@ -173,7 +219,7 @@ describe("the --json CLI over a pipe (#5804)", () => {
 
   it(
     "delivers the whole document, not the part that fit",
-    () => {
+    async () => {
       const walked = reach(FILE, SYMBOL);
       const complete = JSON.stringify({
         start: walked.start,
@@ -182,22 +228,33 @@ describe("the --json CLI over a pipe (#5804)", () => {
       });
       const size = Buffer.byteLength(complete);
 
-      // THE CONTROL ON THE FIXTURE. Write that many bytes and exit on them: if
-      // this platform delivers them all, the walk above is too small to have
-      // caught the defect and the symbol has to be replaced with a bigger one.
-      const cut = spawnSync(
-        process.execPath,
-        ["-e", `console.log("x".repeat(${size})); process.exit(0);`],
-        { encoding: "utf8", maxBuffer: MAX_BUFFER }
-      );
+      // THE CONTROL, ON THE HARNESS AND THE FIXTURE. Two children differing only
+      // by the `process.exit` #5804 removed, each writing this walk's own answer.
+      // The reader has to separate them: if it does not, the fixture is smaller
+      // than a pipe buffer or the hold is not holding, and the subject below
+      // would pass over a regressed CLI. Both arms are forced, not raced.
+      const [cut, whole] = await Promise.all([
+        readAfterTheWriteIsStuck(process.execPath, [
+          "-e",
+          writeThen(size, true),
+        ]),
+        readAfterTheWriteIsStuck(process.execPath, [
+          "-e",
+          writeThen(size, false),
+        ]),
+      ]);
       expect(cut.status).toBe(0);
+      expect(whole.status).toBe(0);
       expect(Buffer.byteLength(cut.stdout)).toBeLessThan(size);
+      expect(Buffer.byteLength(whole.stdout)).toBeGreaterThan(size);
 
-      const run = spawnSync(
-        "npx",
-        ["tsx", "scripts/reach.ts", FILE, SYMBOL, "--json"],
-        { cwd: REPO, encoding: "utf8", maxBuffer: MAX_BUFFER }
-      );
+      const run = await readAfterTheWriteIsStuck("npx", [
+        "tsx",
+        "scripts/reach.ts",
+        FILE,
+        SYMBOL,
+        "--json",
+      ]);
       expect(run.status).toBe(0);
       expect(JSON.parse(run.stdout)).toEqual(JSON.parse(complete));
     },
