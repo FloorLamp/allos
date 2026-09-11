@@ -41,11 +41,39 @@
 // correction; a lean person's LBM ≈ total, so it barely moves). Band + evidence + the
 // "informational, not prescriptive" framing follow the RDA-adequacy precedent (#578, lib/dri).
 
-import { foodGroupBySlug } from "./food-groups";
 import { shiftDateStr } from "./date";
+import {
+  composeNutrientIntake,
+  dayPeriod,
+  estimatedNutrientGrams,
+  fmtGrams,
+  nutrientAdequacyStatus,
+  FLOOR_CAVEAT,
+  type NutrientAdequacyStatus,
+  type NutrientDeclaration,
+  type NutrientIntakeResult,
+  type NutrientPeriod,
+  type NutrientServing,
+} from "./nutrient-adequacy";
 import { trailingAverage } from "./trailing-average";
 
 // ---- Intake: max(tracked, estimated + logged) ------------------------------
+
+// Protein's three sources and the two sides they sit on. `estimated` and `logged` SUM —
+// a manual grams entry is a PARTIAL ADDITION, never an eraser of the food-group estimate
+// (a common shape: log a shake's 30 g AND tap the eggs/dairy you also ate) — and that
+// in-app sum meets the integration's reading under #3903's `larger-wins` precedence.
+// THE PRECEDENCE IS ENCODED HERE, NOT DECIDED HERE: changing it is an owner ruling.
+export type ProteinSource = "tracked" | "estimated" | "logged";
+
+const PROTEIN: NutrientDeclaration<ProteinSource> = {
+  nutrient: "protein",
+  precedence: "larger-wins",
+  // A bodyweight-scaled g/kg BAND (#767), so `below` is scored against its bottom.
+  goalShape: "range",
+  column: "protein_g",
+  sources: { tracked: "tracked", estimated: "in-app", logged: "in-app" },
+};
 
 // The composition of the per-day intake figure:
 //   tracked      — an integration's reading, with nothing logged in-app that day.
@@ -56,19 +84,14 @@ import { trailingAverage } from "./trailing-average";
 //   logged       — manually-logged grams only (no protein-bearing food groups logged).
 //   estimated    — the food-group floor only (no manual grams).
 //
-// EVERY SITE THAT READS `basis !== "tracked"` AS "THIS IS A FLOOR" IS ALREADY CORRECT for
-// `both-sources`, which is why adding it needed no sweep: the value means "the max of two
-// floors", and that is a floor. Audited at all seven such sites when it was added
-// (proteinAdequacyDetail, proteinIntakeSummary, lib/nutrition-day.ts, ProteinGauge,
-// NutritionSnapshot, ProteinAdequacyCard's data-basis, app/(app)/page.tsx's provenance) —
-// the last of which needed the opposite fix and got it: `both-sources` carries integration
-// data, so its provenance is `external`, not `manual`.
+// `basis` names WHICH COLUMNS FED THE SUM. It is not the floor predicate: whether the
+// figure is a floor depends on the period and the winning source too, and that question
+// is answered once, on `floor` (lib/nutrient-adequacy.ts). The seven sites that still
+// read `basis !== "tracked"` as "this is a floor" are #4145's remaining work.
 export type ProteinBasis =
   "tracked" | "both-sources" | "combined" | "logged" | "estimated";
 
-export interface ProteinIntake {
-  // Per-day grams. Always a FLOOR on today (see module header).
-  grams: number;
+export interface ProteinIntake extends NutrientIntakeResult<ProteinSource> {
   basis: ProteinBasis;
   // The app's OWN two components, so a surface can name the composition honestly ("90 g
   // estimated + 30 g logged"). They report the in-app ledger, NOT a decomposition of
@@ -79,61 +102,50 @@ export interface ProteinIntake {
   loggedGrams: number;
 }
 
-// A group's summed servings, as the #579 rollup produces (GroupServingTotal is a superset).
-export interface ProteinServing {
-  slug: string;
-  servings: number;
-}
+// A group's summed servings, as the #579 rollup produces.
+export type ProteinServing = NutrientServing;
 
-// Sum protein grams over a set of food-group servings: servings × the catalog's per-
-// serving protein_g, skipping groups the catalog marks as non-protein-bearing (fruit,
-// water, sweets, alcohol) and any retired/unknown slug. A FLOOR — untracked foods are
-// invisible. Pure over the shared rollup so the estimate and the servings card agree.
+// Sum protein grams over a set of food-group servings — the shared rollup sum against
+// the catalog's `protein_g` column.
 export function estimatedProteinGrams(servings: ProteinServing[]): number {
-  let grams = 0;
-  for (const s of servings) {
-    if (!(s.servings > 0)) continue;
-    const g = foodGroupBySlug(s.slug)?.protein_g;
-    if (g != null) grams += s.servings * g;
-  }
-  return grams;
+  return estimatedNutrientGrams(servings, PROTEIN.column);
 }
 
-// Compose the intake (issue #824, #3903): the estimated food-group floor and the
-// manually-logged grams SUM (a manual entry is a partial addition, never an eraser of the
-// estimate), and a measured `tracked` reading is taken against that sum as the LARGER
-// FLOOR rather than overriding it (module header). Each input is an already-per-day figure
-// the gather computed (an average over the days that carry it). Returns null when no basis
-// has any signal (no tracked reading and neither floor component present).
+// Compose the intake (issue #824, #3903) through the shared substrate, which owns the
+// precedence, the winner, and the period-aware floor. Each input is an already-per-period
+// figure the gather computed (an average over the days that carry it). Returns null when
+// no source has any signal.
 export function proteinIntake(args: {
   dailyTracked: number | null;
   // Direct protein grams from the Food-tab quick-add (#824); null/omitted when the
   // profile has never logged any.
   dailyLogged?: number | null;
   dailyEstimated: number;
+  // WHAT the figure describes — today, a completed past day, or a multi-day mean. No
+  // default: the floor cannot be answered without it (#4145).
+  period: NutrientPeriod;
 }): ProteinIntake | null {
-  const tracked =
-    args.dailyTracked != null && args.dailyTracked > 0 ? args.dailyTracked : 0;
-  const estimated = args.dailyEstimated > 0 ? args.dailyEstimated : 0;
-  const logged =
-    args.dailyLogged != null && args.dailyLogged > 0 ? args.dailyLogged : 0;
-  const inApp = estimated + logged;
-  if (tracked <= 0 && inApp <= 0) return null;
-  const grams = Math.max(tracked, inApp);
-  if (tracked > 0)
-    return {
-      grams,
-      basis: inApp > 0 ? "both-sources" : "tracked",
-      estimatedGrams: estimated,
-      loggedGrams: logged,
-    };
+  const result = composeNutrientIntake(PROTEIN, {
+    grams: {
+      tracked: args.dailyTracked,
+      estimated: args.dailyEstimated,
+      logged: args.dailyLogged,
+    },
+    period: args.period,
+  });
+  if (!result) return null;
+  const { estimated, logged } = result.contributions;
   const basis: ProteinBasis =
-    estimated > 0 && logged > 0
-      ? "combined"
-      : logged > 0
-        ? "logged"
-        : "estimated";
-  return { grams, basis, estimatedGrams: estimated, loggedGrams: logged };
+    result.trackedGrams > 0
+      ? result.inAppGrams > 0
+        ? "both-sources"
+        : "tracked"
+      : estimated > 0 && logged > 0
+        ? "combined"
+        : logged > 0
+          ? "logged"
+          : "estimated";
+  return { ...result, basis, estimatedGrams: estimated, loggedGrams: logged };
 }
 
 // ---- Target: goal + bodyweight (LBM-preferred) → g/kg band -----------------
@@ -271,7 +283,7 @@ export function proteinTarget(args: {
 
 // ---- Adequacy: intake vs target -------------------------------------------
 
-export type ProteinAdequacyStatus = "below" | "within" | "above";
+export type ProteinAdequacyStatus = NutrientAdequacyStatus;
 
 export interface ProteinAdequacy {
   intake: ProteinIntake;
@@ -279,22 +291,23 @@ export interface ProteinAdequacy {
   status: ProteinAdequacyStatus;
 }
 
-// Combine intake + target into an adequacy verdict, or null when either is missing.
-// `below` = under the band floor, `above` = over the ceiling, else `within`. For an
-// `estimated` basis a `below` is NOT a definite shortfall (the intake is a floor) — the
-// wording, not this status, carries that caveat (mirroring the #578 RDA-adequacy split).
+// Combine intake + target into an adequacy verdict, or null when either is missing,
+// through the shared comparison. Protein's declared goal shape is a RANGE, so `below` is
+// scored against the band's BOTTOM (`gramsLow`) — fiber's is a FLOOR goal scored against
+// its single AI figure, and that difference is now declared rather than spelled twice.
 export function assessProteinAdequacy(
   intake: ProteinIntake | null,
   target: ProteinTarget | null
 ): ProteinAdequacy | null {
   if (!intake || !target) return null;
-  const status: ProteinAdequacyStatus =
-    intake.grams < target.gramsLow
-      ? "below"
-      : intake.grams > target.gramsHigh
-        ? "above"
-        : "within";
-  return { intake, target, status };
+  return {
+    intake,
+    target,
+    status: nutrientAdequacyStatus(intake.grams, {
+      low: target.gramsLow,
+      high: target.gramsHigh,
+    }),
+  };
 }
 
 // ---- Finding identity + formatting (shared by every surface) ---------------
@@ -306,11 +319,6 @@ export const PROTEIN_ADEQUACY_PREFIX = "protein-adequacy:";
 
 export function proteinAdequacySignalKey(): string {
   return `${PROTEIN_ADEQUACY_PREFIX}shortfall`;
-}
-
-// Round a protein figure for display (whole grams).
-function g(n: number): string {
-  return String(Math.round(n));
 }
 
 // Where today's figure came from, said as something the person DID rather than as a
@@ -335,32 +343,28 @@ export function proteinBasisPhrase(basis: ProteinBasis): string {
   }
 }
 
-// The "a floor — actual likely higher" caveat that every non-tracked basis carries (the
-// sum of the estimate + manual grams is still a floor; untracked foods stay invisible).
-const FLOOR_CAVEAT = "a floor — actual likely higher";
-
 // The intake summary line. Only `tracked` reads as a measured total; every other basis
 // carries the floor caveat, and `combined` names the composition honestly. e.g.
 // "≈120 g/day — 90 g estimated from foods + 30 g logged (a floor — actual likely higher)".
 export function proteinIntakeSummary(intake: ProteinIntake): string {
   switch (intake.basis) {
     case "tracked":
-      return `~${g(intake.grams)} g/day from your tracked intake`;
+      return `~${fmtGrams(intake.grams)} g/day from your tracked intake`;
     case "both-sources":
-      return `≈${g(intake.grams)} g/day — the larger of your food log and your health app (${FLOOR_CAVEAT})`;
+      return `≈${fmtGrams(intake.grams)} g/day — the larger of your food log and your health app (${FLOOR_CAVEAT})`;
     case "combined":
-      return `≈${g(intake.grams)} g/day — ${g(intake.estimatedGrams)} g estimated from foods + ${g(intake.loggedGrams)} g logged (${FLOOR_CAVEAT})`;
+      return `≈${fmtGrams(intake.grams)} g/day — ${fmtGrams(intake.estimatedGrams)} g estimated from foods + ${fmtGrams(intake.loggedGrams)} g logged (${FLOOR_CAVEAT})`;
     case "logged":
-      return `≈${g(intake.grams)} g/day logged (${FLOOR_CAVEAT})`;
+      return `≈${fmtGrams(intake.grams)} g/day logged (${FLOOR_CAVEAT})`;
     case "estimated":
-      return `≈${g(intake.grams)} g/day from logged foods (${FLOOR_CAVEAT})`;
+      return `≈${fmtGrams(intake.grams)} g/day from logged foods (${FLOOR_CAVEAT})`;
   }
 }
 
 // The target band line. e.g. "~130–180 g/day (1.6–2.2 g/kg lean mass, muscle gain)".
 export function proteinTargetSummary(target: ProteinTarget): string {
   const massWord = target.massBasis === "lean" ? "g/kg lean mass" : "g/kg";
-  return `~${g(target.gramsLow)}–${g(target.gramsHigh)} g/day (${target.gPerKgLow}–${target.gPerKgHigh} ${massWord}, ${target.goalLabel})`;
+  return `~${fmtGrams(target.gramsLow)}–${fmtGrams(target.gramsHigh)} g/day (${target.gPerKgLow}–${target.gPerKgHigh} ${massWord}, ${target.goalLabel})`;
 }
 
 export function proteinAdequacyTitle(a: ProteinAdequacy): string {
@@ -462,7 +466,8 @@ export interface ProteinTrailing {
 // The per-day intake series a trailing window is taken over: one point per day that
 // carries any protein signal, days without one simply absent (unknown, not zero).
 export function proteinDailyGrams(
-  days: readonly ProteinDayParts[]
+  days: readonly ProteinDayParts[],
+  todayStr: string
 ): { date: string; value: number }[] {
   const out: { date: string; value: number }[] = [];
   for (const d of days) {
@@ -470,6 +475,7 @@ export function proteinDailyGrams(
       dailyTracked: d.dailyTracked,
       dailyLogged: d.dailyLogged,
       dailyEstimated: d.dailyEstimated,
+      period: dayPeriod(d.date, todayStr),
     });
     if (intake) out.push({ date: d.date, value: intake.grams });
   }
@@ -490,7 +496,7 @@ export function proteinTrailingAverage(
   todayStr: string,
   opts: { hasEarlierHistory?: boolean } = {}
 ): ProteinTrailing {
-  const window = trailingAverage(proteinDailyGrams(days), todayStr, {
+  const window = trailingAverage(proteinDailyGrams(days, todayStr), todayStr, {
     days: PROTEIN_TRAILING_DAYS,
     basis: "calendar",
     hasEarlierHistory: opts.hasEarlierHistory ?? false,
@@ -566,7 +572,7 @@ export function proteinGaugeMarker(t: ProteinToday): ProteinGaugeMarker | null {
       kind: "week-to-date",
       grams: t.weeklyAverageGrams,
       label: "This week",
-      ariaPhrase: `this week ${g(t.weeklyAverageGrams)} grams a day`,
+      ariaPhrase: `this week ${fmtGrams(t.weeklyAverageGrams)} grams a day`,
     };
   }
   if (t.trailing.grams != null && !t.trailing.dayOne) {
@@ -574,7 +580,7 @@ export function proteinGaugeMarker(t: ProteinToday): ProteinGaugeMarker | null {
       kind: "trailing",
       grams: t.trailing.grams,
       label: "7-day avg",
-      ariaPhrase: `7-day average ${g(t.trailing.grams)} grams a day`,
+      ariaPhrase: `7-day average ${fmtGrams(t.trailing.grams)} grams a day`,
     };
   }
   return null;
@@ -637,7 +643,7 @@ export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
   return {
     emoji: status === "reached" ? "🎯" : "🍗",
     amount: `${grams} g+`,
-    band: `${g(t.target.gramsLow)}–${g(t.target.gramsHigh)} g`,
+    band: `${fmtGrams(t.target.gramsLow)}–${fmtGrams(t.target.gramsHigh)} g`,
     status,
     statusWords: status === "reached" ? "goal reached" : null,
   };

@@ -16,6 +16,12 @@ import {
   type CuratedSupplementSuggestion,
 } from "../../supplement-suggest-curated";
 import { weekWindowStart } from "../profile-week";
+import {
+  aggregatePeriod,
+  dayPeriod,
+  type NutrientPeriod,
+} from "../../nutrient-adequacy";
+import { daysBetweenDateStr } from "../../date";
 import { suggestFoods, type FoodSuggestion } from "../../food-suggest";
 import {
   getMetricDailyTotals,
@@ -201,7 +207,8 @@ export function getMacroFiberDays(
         tracked.get("protein_g")!,
         getProteinDailyTotals(profileId, range.from ?? "0000-01-01").map(
           (r) => ({ date: r.date, value: r.grams })
-        )
+        ),
+        today(profileId)
       ),
       carbs: tracked.get("carbs_g")!,
       fat: tracked.get("fat_g")!,
@@ -212,6 +219,17 @@ export function getMacroFiberDays(
 }
 
 // ---- Protein adequacy (issue #767, #824) ----
+
+// The period a week-to-date mean describes (#4485): the days from the profile's week
+// start through today inclusive, the last of which is still accumulating. The adequacy
+// gathers both average each source over the days that carry it inside this window, so
+// the SPAN is the window, not the count of days with data.
+function weekToDatePeriod(weekStart: string, todayStr: string): NutrientPeriod {
+  return aggregatePeriod(
+    (daysBetweenDateStr(weekStart, todayStr) ?? 0) + 1,
+    true
+  );
+}
 
 // The ONE gather behind the /nutrition protein-adequacy card AND the coaching-tier
 // adequacy finding (buildProteinAdequacyFindings). It assembles the pure engine's typed
@@ -266,7 +284,14 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   // documented default when they have not picked one. ONE reader for every surface.
   const goal = getProteinGoalLevel(profileId);
 
-  const intake = proteinIntake({ dailyTracked, dailyLogged, dailyEstimated });
+  const intake = proteinIntake({
+    dailyTracked,
+    dailyLogged,
+    dailyEstimated,
+    // WEEK-TO-DATE: a mean over the profile's week so far, which always ends on a today
+    // that is still accumulating (#4145 — a day-complete boolean is not a weekly model).
+    period: weekToDatePeriod(weekStart, t),
+  });
   const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
   return assessProteinAdequacy(intake, target);
 }
@@ -412,6 +437,7 @@ export function getProteinOnDate(
     dailyTracked: trackedOnDate ? trackedOnDate.value : null,
     dailyLogged: loggedOnDate > 0 ? loggedOnDate : null,
     dailyEstimated,
+    period: dayPeriod(date, today(profileId)),
   });
   const dayGrams = dayIntake?.grams ?? 0;
   if (dayGrams <= 0) return null;
@@ -592,6 +618,7 @@ export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
     dailyEstimated,
     dailySupplemented,
     unknownSupplement,
+    period: weekToDatePeriod(weekStart, today(profileId)),
   });
   const target = fiberTarget({
     ageYears: getProfileAge(profileId),
@@ -630,6 +657,7 @@ export function getFiberOnDate(
     dailyEstimated,
     dailySupplemented: dailySupplemented > 0 ? dailySupplemented : null,
     unknownSupplement,
+    period: dayPeriod(date, today(profileId)),
   });
   const target = fiberTarget({
     ageYears: getProfileAge(profileId),
@@ -654,7 +682,8 @@ export function getFiberOnDate(
 // two surfaces cannot disagree about a day — and the panel deliberately skips the
 // TARGET half (fiberTarget/assessFiberAdequacy): it draws intake, not adequacy.
 export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
-  const dates = fiberSymptomPanelDates(today(profileId));
+  const todayStr = today(profileId);
+  const dates = fiberSymptomPanelDates(todayStr);
   const from = dates[0];
   const to = dates[dates.length - 1];
 
@@ -693,6 +722,7 @@ export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
       dailyEstimated: servings ? estimatedFiberGrams(servings) : 0,
       dailySupplemented: supplemented,
       unknownSupplement: unknownSupplementDates.has(date),
+      period: dayPeriod(date, todayStr),
     });
     // fiberIntake refuses a zero-signal day (null); a day that LOGGED only
     // zero-fiber groups upgrades to an honest 0.

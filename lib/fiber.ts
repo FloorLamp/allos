@@ -35,17 +35,46 @@
 // Informational, never prescriptive (the #578/#767 framing).
 
 import type { Sex } from "./types";
-import { foodGroupBySlug } from "./food-groups";
+import {
+  composeNutrientIntake,
+  estimatedNutrientGrams,
+  fmtGrams,
+  nutrientAdequacyStatus,
+  FLOOR_CAVEAT,
+  type NutrientAdequacyStatus,
+  type NutrientDeclaration,
+  type NutrientIntakeResult,
+  type NutrientPeriod,
+  type NutrientServing,
+} from "./nutrient-adequacy";
 import { parseQuantity } from "./dri";
 
 // ---- Intake: max(tracked, estimated + supplemented) ------------------------
 
+// Fiber's three sources and the two sides they sit on. `estimated` and `supplemented`
+// SUM; that in-app sum meets the integration's reading under the SAME `larger-wins`
+// precedence protein was ruled onto (#3903), generalised here by #4127. THE PRECEDENCE
+// IS ENCODED, NOT DECIDED: changing it is an owner ruling.
+export type FiberSource = "tracked" | "estimated" | "supplemented";
+
+const FIBER: NutrientDeclaration<FiberSource> = {
+  nutrient: "fiber",
+  precedence: "larger-wins",
+  // A single DRI Adequate-Intake figure, not a band — so `below` is scored against
+  // `grams` itself. Protein's shape is a `range` scored against its band bottom; the
+  // difference is the goal shape the declaration carries, not two comparison lines.
+  goalShape: "floor",
+  column: "fiber_g",
+  sources: { tracked: "tracked", estimated: "in-app", supplemented: "in-app" },
+};
+
+// The `basis` names the composition, extending the #824 `combined` precedent. It names
+// WHICH COLUMNS FED THE SUM and is not the floor predicate — that is answered once, with
+// the period and the winner, on `floor` (lib/nutrient-adequacy.ts).
 export type FiberBasis =
   "tracked" | "both-sources" | "combined" | "estimated" | "supplemented";
 
-export interface FiberIntake {
-  // Per-day grams. For every non-`tracked` basis this is a FLOOR (see module header).
-  grams: number;
+export interface FiberIntake extends NutrientIntakeResult<FiberSource> {
   basis: FiberBasis;
   // The app's own components. Under `both-sources` they remain visible even when the
   // integration's reading is the larger floor, so they need not add to `grams`.
@@ -54,29 +83,17 @@ export interface FiberIntake {
   // True when a CONFIRMED fiber supplement dose was taken but its grams couldn't be
   // quantified (a capsule/unknown-unit dose). It contributes 0 g to `grams`, but the flag
   // lets the surface note "a fiber supplement was taken (grams unknown)" honestly rather
-  // than pretend the day had none.
+  // than pretend the day had none. The substrate's `unquantified`, under fiber's name.
   unknownSupplement: boolean;
 }
 
 // A group's summed servings, as the #579 rollup produces.
-export interface FiberServing {
-  slug: string;
-  servings: number;
-}
+export type FiberServing = NutrientServing;
 
-// Sum fiber grams over a set of food-group servings: servings × the catalog's per-serving
-// fiber_g, skipping groups the catalog marks as non-fiber-bearing (animal foods, water,
-// sweets, alcohol) and any retired/unknown slug. A FLOOR — untracked foods are invisible.
-// Pure over the shared rollup so the estimate and the servings card agree. The fiber twin
-// of estimatedProteinGrams (#767).
+// Sum fiber grams over a set of food-group servings — the shared rollup sum against the
+// catalog's `fiber_g` column.
 export function estimatedFiberGrams(servings: FiberServing[]): number {
-  let grams = 0;
-  for (const s of servings) {
-    if (!(s.servings > 0)) continue;
-    const g = foodGroupBySlug(s.slug)?.fiber_g;
-    if (g != null) grams += s.servings * g;
-  }
-  return grams;
+  return estimatedNutrientGrams(servings, FIBER.column);
 }
 
 // ---- Fiber supplement recognition + dose-gram parsing ----------------------
@@ -143,52 +160,51 @@ export function fiberDoseGrams(amount: string | null): FiberDoseGrams {
   return { grams: 0, known: false };
 }
 
-// Compose the intake (issues #976, #4127): estimated food and supplemented dose grams
-// SUM, then a tracked reading is compared with that sum as the larger floor. Each input
-// is an already-per-day figure the gather computed (an average over the days carrying it).
-// Returns null when no basis has any signal AND no unknown-grams fiber supplement was
-// taken — a lone unknown-unit dose still surfaces (grams 0) so the honest note renders.
+// Compose the intake (issues #976, #4127) through the shared substrate, which owns the
+// precedence, the winner, and the period-aware floor. Each input is an already-per-period
+// figure the gather computed (an average over the days carrying it). Returns null when no
+// source has any signal AND no unknown-grams fiber supplement was taken — a lone
+// unknown-unit dose still surfaces (grams 0) so the honest note renders.
 export function fiberIntake(args: {
   dailyTracked: number | null;
   dailyEstimated: number;
   dailySupplemented?: number | null;
   unknownSupplement?: boolean;
+  // WHAT the figure describes — today, a completed past day, or a multi-day mean. No
+  // default: the floor cannot be answered without it (#4145).
+  period: NutrientPeriod;
 }): FiberIntake | null {
-  const unknownSupplement = !!args.unknownSupplement;
-  const tracked =
-    args.dailyTracked != null && args.dailyTracked > 0 ? args.dailyTracked : 0;
-  const estimated = args.dailyEstimated > 0 ? args.dailyEstimated : 0;
-  const supplemented =
-    args.dailySupplemented != null && args.dailySupplemented > 0
-      ? args.dailySupplemented
-      : 0;
-  const inApp = estimated + supplemented;
-  if (tracked > 0)
-    return {
-      grams: Math.max(tracked, inApp),
-      basis: inApp > 0 || unknownSupplement ? "both-sources" : "tracked",
-      estimatedGrams: estimated,
-      supplementedGrams: supplemented,
-      unknownSupplement,
-    };
-  const grams = inApp;
-  if (grams <= 0 && !unknownSupplement) return null;
+  const result = composeNutrientIntake(FIBER, {
+    grams: {
+      tracked: args.dailyTracked,
+      estimated: args.dailyEstimated,
+      supplemented: args.dailySupplemented,
+    },
+    unquantified: !!args.unknownSupplement,
+    period: args.period,
+  });
+  if (!result) return null;
+  const { estimated, supplemented } = result.contributions;
   const basis: FiberBasis =
-    estimated > 0 && supplemented > 0
-      ? "combined"
-      : supplemented > 0
-        ? "supplemented"
-        : estimated > 0
-          ? "estimated"
-          : // grams 0 but an unknown-unit fiber dose was taken — a supplement day whose
-            // amount we can't quantify.
-            "supplemented";
+    result.trackedGrams > 0
+      ? result.inAppGrams > 0 || result.unquantified
+        ? "both-sources"
+        : "tracked"
+      : estimated > 0 && supplemented > 0
+        ? "combined"
+        : supplemented > 0
+          ? "supplemented"
+          : estimated > 0
+            ? "estimated"
+            : // grams 0 but an unknown-unit fiber dose was taken — a supplement day whose
+              // amount we can't quantify.
+              "supplemented";
   return {
-    grams,
+    ...result,
     basis,
     estimatedGrams: estimated,
     supplementedGrams: supplemented,
-    unknownSupplement,
+    unknownSupplement: result.unquantified,
   };
 }
 
@@ -270,7 +286,7 @@ export function fiberTarget(args: {
 
 // ---- Adequacy: intake vs target -------------------------------------------
 
-export type FiberAdequacyStatus = "below" | "within" | "above";
+export type FiberAdequacyStatus = NutrientAdequacyStatus;
 
 export interface FiberAdequacy {
   intake: FiberIntake;
@@ -278,23 +294,23 @@ export interface FiberAdequacy {
   status: FiberAdequacyStatus;
 }
 
-// Combine intake + target into an adequacy verdict, or null when either is missing.
-// `below` = under the AI, `above` = over the soft ceiling (a non-event for fiber short of
-// GI copy — kept neutral), else `within`. For a non-`tracked` basis a `below` is NOT a
-// definite shortfall (the intake is a floor) — the wording, not this status, carries that
-// caveat (mirroring the protein/#578 split).
+// Combine intake + target into an adequacy verdict, or null when either is missing,
+// through the shared comparison. Fiber's declared goal shape is a FLOOR, so `below` is
+// scored against the AI figure itself and `above` against the soft GI-comfort ceiling (a
+// non-event short of GI copy — kept neutral).
 export function assessFiberAdequacy(
   intake: FiberIntake | null,
   target: FiberTarget | null
 ): FiberAdequacy | null {
   if (!intake || !target) return null;
-  const status: FiberAdequacyStatus =
-    intake.grams < target.grams
-      ? "below"
-      : intake.grams > target.gramsHigh
-        ? "above"
-        : "within";
-  return { intake, target, status };
+  return {
+    intake,
+    target,
+    status: nutrientAdequacyStatus(intake.grams, {
+      low: target.grams,
+      high: target.gramsHigh,
+    }),
+  };
 }
 
 // ---- Finding identity + formatting (shared by every surface) ---------------
@@ -315,14 +331,6 @@ export function fiberBasisIsFloor(basis: FiberBasis): boolean {
   return basis !== "tracked";
 }
 
-// Round a fiber figure for display (whole grams).
-function g(n: number): string {
-  return String(Math.round(n));
-}
-
-// The "a floor — actual likely higher" caveat that every non-tracked basis carries.
-const FLOOR_CAVEAT = "a floor — actual likely higher";
-
 // The honest note for a confirmed-but-unquantified fiber supplement dose (a capsule /
 // unknown-unit product). Appended to the intake copy so the surface never fabricates a
 // gram figure it doesn't have.
@@ -338,27 +346,27 @@ export function fiberIntakeSummary(intake: FiberIntake): string {
     : "";
   switch (intake.basis) {
     case "tracked":
-      return `~${g(intake.grams)} g/day from your tracked intake`;
+      return `~${fmtGrams(intake.grams)} g/day from your tracked intake`;
     case "both-sources":
-      return `≈${g(intake.grams)} g/day — the larger of your food and supplement logs and your health app (${FLOOR_CAVEAT})${unknown}`;
+      return `≈${fmtGrams(intake.grams)} g/day — the larger of your food and supplement logs and your health app (${FLOOR_CAVEAT})${unknown}`;
     // `combined` is the ONLY basis that decomposes into the two components, and it must
     // stay that way: `both-sources` can carry estimatedGrams 0 and supplementedGrams 0
     // (a tracked reading beside nothing but an unquantifiable dose), so decomposing it
     // would print "0 g estimated + 0 g from supplements" under a positive figure.
     case "combined":
-      return `≈${g(intake.grams)} g/day — ${g(intake.estimatedGrams)} g estimated from foods + ${g(intake.supplementedGrams)} g from supplements (${FLOOR_CAVEAT})${unknown}`;
+      return `≈${fmtGrams(intake.grams)} g/day — ${fmtGrams(intake.estimatedGrams)} g estimated from foods + ${fmtGrams(intake.supplementedGrams)} g from supplements (${FLOOR_CAVEAT})${unknown}`;
     case "supplemented":
       return intake.grams > 0
-        ? `≈${g(intake.grams)} g/day from fiber supplements (${FLOOR_CAVEAT})${unknown}`
+        ? `≈${fmtGrams(intake.grams)} g/day from fiber supplements (${FLOOR_CAVEAT})${unknown}`
         : `Fiber logged only from supplements${unknown ? ` — ${UNKNOWN_SUPPLEMENT_NOTE}` : ""}`;
     case "estimated":
-      return `≈${g(intake.grams)} g/day from logged foods (${FLOOR_CAVEAT})${unknown}`;
+      return `≈${fmtGrams(intake.grams)} g/day from logged foods (${FLOOR_CAVEAT})${unknown}`;
   }
 }
 
 // The target band line. e.g. "~38 g/day (DRI adequate intake, adult male)".
 export function fiberTargetSummary(target: FiberTarget): string {
-  return `~${g(target.grams)} g/day (DRI adequate intake, ${target.basisLabel})`;
+  return `~${fmtGrams(target.grams)} g/day (DRI adequate intake, ${target.basisLabel})`;
 }
 
 export function fiberAdequacyTitle(a: FiberAdequacy): string {
