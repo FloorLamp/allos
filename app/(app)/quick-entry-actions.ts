@@ -29,6 +29,7 @@ import {
   type PrnMedForQuickLog,
 } from "@/lib/queries";
 import { doseScheduleAsOf } from "@/lib/intake-cadence";
+import { bestKnownInstant } from "@/lib/row-instants";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
@@ -807,7 +808,14 @@ function quickEntryOthersByDate(
       const amount = doseScheduleAsOf(dose, date).amount ?? null;
       // Most-recent-intake first, which is `getAdministrationsForItemsOnDate`'s own
       // ordering — so this is the day's LATEST dose, the one a second tap follows.
+      // ASKED, NOT PAIRED BY HAND (#2205): `bestKnownInstant` answers with the stated
+      // administration instant when the row has one and the capture stamp otherwise,
+      // and SAYS which — the fall this fact makes is the same one the as-needed row's
+      // "last 4:02pm" makes, and it is named rather than spelled as a `??`.
       const latest = logs.get(item.id)?.[0];
+      const takenInstant = latest
+        ? bestKnownInstant("intake_item_logs", latest, tz)
+        : null;
       return {
         itemId: item.id,
         doseId: dose.id,
@@ -816,8 +824,8 @@ function quickEntryOthersByDate(
           item.kind === "medication"
             ? formatMedicationDoseProduct(amount, item.product)
             : amount,
-        takenAt: latest
-          ? clockOfInstant(tz, latest.occurred_at ?? latest.recorded_at, timeFormat)
+        takenAt: takenInstant?.known
+          ? clockOfInstant(tz, takenInstant.at, timeFormat)
           : null,
       };
     });
