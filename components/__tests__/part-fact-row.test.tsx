@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PartEntry } from "@/lib/activity-form-model";
 import { part, renderList } from "./activity-parts-fixture";
@@ -20,6 +20,8 @@ vi.mock("@/app/(app)/training/actions", () => ({
 vi.mock("@/components/ActivityEditorProvider", () => ({
   useActivityEditor: () => ({ leaveFor: vi.fn() }),
 }));
+// The in-row equipment registration form reports its save through the toast.
+vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 
 // The options panel carries the RPE info affordance, and the shared anchored popover
 // observes the document on mount. jsdom ships no ResizeObserver — the same stand-in
@@ -191,6 +193,25 @@ describe("the per-part fact row states what the exercise records (#3349)", () =>
 
     expect(onUpdatePart).toHaveBeenCalledWith(1, { toFailure: true });
     expect(screen.getByTestId("part-options-editor")).toBeTruthy();
+  });
+
+  // THE QUICK-ADD PREFILLS THE LIFT'S OWN IMPLEMENT (#4553 item 9), and the case that
+  // needs a DOM is the one where the lift's implement is NOT what the availability
+  // gate would answer. `liftRequiredCategory` covers three implements and returns null
+  // for a kettlebell — correct for gating, empty for a prefill. So this asserts the
+  // rendered category, reached through the real chip: routing the prefill through the
+  // gate typechecks, lints, and silently registers the swing's kettlebell as nothing.
+  it("prefills the registration form with the lift's own implement", () => {
+    renderList([part({ name: "Kettlebell Swing" })]);
+    fireEvent.click(screen.getByTestId("strength-equipment-chip"));
+    fireEvent.click(screen.getByTestId("strength-equipment-add"));
+
+    // The form opens on its name field; closing that states the facts as chips.
+    const form = screen.getByTestId("strength-equipment-quickadd");
+    fireEvent.click(within(form).getByRole("button", { name: "Done" }));
+    expect(form.querySelector('[data-focus-key="category"]')?.textContent).toBe(
+      "Kettlebell"
+    );
   });
 
   it("shares its one slot with the equipment editor, so opening options closes it", () => {
