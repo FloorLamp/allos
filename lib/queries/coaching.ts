@@ -1,5 +1,9 @@
-import { mean, populationSd } from "../robust-stats";
 import { today } from "../db";
+import {
+  versusBaselineMovement,
+  USUAL_BASELINE_DAYS,
+  USUAL_BASELINE_SPEC,
+} from "../movement";
 import { commitCached } from "../commit-cache";
 import { localDayOf } from "../local-day-window";
 import { getLiveNiggles } from "../niggle-store";
@@ -63,9 +67,12 @@ import {
 } from "./weather-training";
 import { getWeatherDay } from "./weather-situations";
 
-// How many recent nights / days to average for a recovery baseline. Long enough
-// to be a stable personal norm, short enough to reflect the current block.
-const RECOVERY_BASELINE_DAYS = 30;
+// How many recent nights / days to average for a recovery baseline is no longer
+// this module's decision: both signals below ask the SHARED versus-baseline movement
+// question (#3394), whose window — the 30 most recent DATA-BEARING days before the day
+// asked about — is declared once in `lib/movement.ts` as `USUAL_BASELINE_SPEC`. The
+// Sleep hero asks the same question through `lastNightSummary`, so a night's delta on
+// the hero and in the digest are now measured against the same norm (#5164).
 
 // Last night's MAIN overnight sleep (minutes) and the recent baseline, or null
 // when no sleep has been synced. Reads the per-night MAIN-session durations
@@ -96,7 +103,7 @@ const RECOVERY_BASELINE_DAYS = 30;
 // its own night, so junk stamped ahead of today cannot hide the night that really ended
 // it. Every other call answers exactly as before.
 //
-// The baseline is the RECOVERY_BASELINE_DAYS nights ending at `wakeDay`, drawn from the
+// The baseline is the USUAL_BASELINE_SPEC window of nights before `wakeDay`, drawn from the
 // reader's own most-recent window — so a `wakeDay` older than that window holds no night
 // here and the signal is null, the same conservative missing-data posture as an unsynced
 // night. A RETROACTIVE READ SEES DATA AS STORED NOW: a night that syncs late changes the
@@ -116,8 +123,8 @@ export function getSleepSignal(
 // expensive enough to be worth a seam (#3993). It is not — the query count is the same
 // for one day and for fifty-six.
 //
-// Per-day answers are IDENTICAL to `getSleepSignal`'s by construction: the same
-// filter-and-slice, over the same rows. The resolver holds a snapshot for its lifetime —
+// Per-day answers are IDENTICAL to `getSleepSignal`'s by construction: the same shared
+// verdict, over the same rows. The resolver holds a snapshot for its lifetime —
 // the same rule `effectiveSituationResolver` states — so a caller wanting a fresh read
 // builds a fresh resolver.
 export function sleepSignalResolver(
@@ -126,21 +133,25 @@ export function sleepSignalResolver(
   // oldest → newest, main overnight session per night
   const series = getMainSleepNightlyMinutes(profileId);
   return (wakeDay) => {
-    const nights = series
-      .filter((n) => n.date <= wakeDay)
-      .slice(-RECOVERY_BASELINE_DAYS);
-    const last = nights[nights.length - 1];
-    if (last?.date !== wakeDay) return null;
-    const lastNightMin = last.value;
-    const prior = nights.slice(0, -1);
-    const baseNights = prior.length ? prior : nights;
-    const baselineMin = mean(baseNights.map((n) => n.value));
-    const baselineSpreadMin =
-      prior.length >= 2 ? populationSd(prior.map((n) => n.value)) : undefined;
+    // The SHARED versus-baseline verdict (#3394): it refuses a `wakeDay` the series
+    // does not actually carry a night for — the freshness rule above — and answers
+    // with the declared trailing window, so this signal and the Sleep hero measure
+    // the same night against the same norm.
+    const movement = versusBaselineMovement(
+      series,
+      wakeDay,
+      USUAL_BASELINE_SPEC
+    );
+    if (!movement) return null;
     return {
-      lastNightMin,
-      baselineMin,
-      ...(baselineSpreadMin != null ? { baselineSpreadMin } : {}),
+      lastNightMin: movement.value,
+      // The day-one fallback is a night with no history behind it: the baseline is
+      // that night itself, a neutral norm this signal accepts rather than falling
+      // silent (the Sleep hero declines it instead and prints no baseline).
+      baselineMin: movement.baseline ?? movement.value,
+      ...(movement.baselineSpread != null
+        ? { baselineSpreadMin: movement.baselineSpread }
+        : {}),
     };
   };
 }
@@ -155,21 +166,26 @@ export function sleepSignalResolver(
 // `recent` is the newest daily point and the baseline is the mean of the preceding
 // ones (falling back to all when only one date has data). Mirrors getSleepSignal.
 export function getRestingHrSignal(profileId: number): RestingHrSignal | null {
+  // One more day than the baseline window: the newest point is the READING, and the
+  // USUAL_BASELINE_SPEC window behind it is the baseline.
   const points = getLatestBodyMetricDailyPoints(
     profileId,
     "resting_hr",
-    RECOVERY_BASELINE_DAYS
+    USUAL_BASELINE_DAYS + 1
   );
   if (points.length === 0) return null;
-  const recent = points[points.length - 1].value;
-  const prior = points.slice(0, -1);
-  const baseline = mean((prior.length ? prior : points).map((p) => p.value));
-  const baselineSpreadBpm =
-    prior.length >= 2 ? populationSd(prior.map((p) => p.value)) : undefined;
+  const movement = versusBaselineMovement(
+    points,
+    points[points.length - 1].date,
+    USUAL_BASELINE_SPEC
+  );
+  if (!movement) return null;
   return {
-    recent,
-    baseline,
-    ...(baselineSpreadBpm != null ? { baselineSpreadBpm } : {}),
+    recent: movement.value,
+    baseline: movement.baseline ?? movement.value,
+    ...(movement.baselineSpread != null
+      ? { baselineSpreadBpm: movement.baselineSpread }
+      : {}),
   };
 }
 

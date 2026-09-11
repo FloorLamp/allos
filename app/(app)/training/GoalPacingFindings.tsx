@@ -5,6 +5,7 @@ import { getFindingSuppressions } from "@/lib/queries";
 import { activeFindings } from "@/lib/findings";
 import { buildGoalPacingFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
+import { attentionAmber } from "@/lib/chart-colors";
 import { dismissGoalPacing } from "@/app/(app)/training/goal-actions";
 
 // Goal-pacing findings (issue #45, domain 6) for the Training → Goals tab: a weight
@@ -32,7 +33,10 @@ export default async function GoalPacingFindings() {
       heading="Goal pacing"
       subtitle="How your goals are tracking against their target dates."
       icon={
-        <IconTarget className="h-4 w-4 shrink-0 text-amber-500" stroke={2} />
+        <IconTarget
+          className={`h-4 w-4 shrink-0 ${attentionAmber.class}`}
+          stroke={2}
+        />
       }
       testid="goal-pacing-findings"
     />

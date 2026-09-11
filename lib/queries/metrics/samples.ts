@@ -21,7 +21,8 @@ import { choiceFor, markPartialToday, sourceMatchSql } from "./common";
 // ---- Integration metrics (steps, distance, calories, HR) ----
 
 // Daily values for a metric, oldest→newest: averaged per day for instantaneous
-// point metrics (see AVERAGED_METRICS), summed for additive ones.
+// point metrics (see AVERAGED_METRICS), summed for additive ones, and EMPTY for
+// categorical ones (see CATEGORICAL_METRICS), which have no honest daily figure.
 //
 // Source handling (issue #14): an ADDITIVE metric is never summed across sources
 // — every SUM metric picks one source per day (the profile's primary source
@@ -40,46 +41,61 @@ function getMetricDailyTotalsUncached(
   limitDays = 180
 ): { date: string; value: number; partial?: true }[] {
   const priority = getMetricSourcePriority(profileId);
-  if (metricAggregation(metric) === "AVG") {
-    const chosen = priority[metric];
-    if (chosen) {
-      const cond = sourceMatchSql(chosen.source);
+  const aggregation = metricAggregation(metric);
+  switch (aggregation) {
+    case "AVG": {
+      const chosen = priority[metric];
+      if (chosen) {
+        const cond = sourceMatchSql(chosen.source);
+        const rows = db
+          .prepare(
+            `SELECT date, AVG(value) AS value
+               FROM metric_samples WHERE profile_id = ? AND metric = ? AND ${cond.sql}
+              GROUP BY date ORDER BY date DESC LIMIT ?`
+          )
+          .all(profileId, metric, ...cond.params, limitDays) as {
+          date: string;
+          value: number;
+        }[];
+        // Fall through to the all-sources read when the chosen source has no data
+        // at all, so a stale pick can't blank the chart — unless the pick is
+        // STRICT, where an empty chart is the honest answer.
+        if (rows.length > 0 || chosen.strict) return rows.reverse();
+      }
       const rows = db
         .prepare(
           `SELECT date, AVG(value) AS value
-             FROM metric_samples WHERE profile_id = ? AND metric = ? AND ${cond.sql}
+             FROM metric_samples WHERE profile_id = ? AND metric = ?
             GROUP BY date ORDER BY date DESC LIMIT ?`
         )
-        .all(profileId, metric, ...cond.params, limitDays) as {
-        date: string;
-        value: number;
-      }[];
-      // Fall through to the all-sources read when the chosen source has no data
-      // at all, so a stale pick can't blank the chart — unless the pick is
-      // STRICT, where an empty chart is the honest answer.
-      if (rows.length > 0 || chosen.strict) return rows.reverse();
+        .all(profileId, metric, limitDays) as { date: string; value: number }[];
+      return rows.reverse();
     }
-    const rows = db
-      .prepare(
-        `SELECT date, AVG(value) AS value
-           FROM metric_samples WHERE profile_id = ? AND metric = ?
-          GROUP BY date ORDER BY date DESC LIMIT ?`
-      )
-      .all(profileId, metric, limitDays) as { date: string; value: number }[];
-    return rows.reverse();
+    case "SUM":
+      // An additive daily total ACCUMULATES through the local day, so today's is a
+      // running number rather than the day's (#4924). The AVG branch above returns
+      // point readings, which are complete when taken.
+      return markPartialToday(
+        profileId,
+        getAdditiveMetricDailyTotalsBatchWithPriority(
+          profileId,
+          [metric],
+          limitDays,
+          priority
+        ).get(metric)!
+      );
+    case "NONE":
+      // A CATEGORICAL metric has no honest daily figure (#3167): its value names a
+      // category, so neither the average nor the sum of a day's readings is a value
+      // the person recorded. NO ROWS is the whole answer — this reader must not
+      // invent one, and a caller that wants a categorical day reads the counts
+      // (lib/queries/bristol-stool.ts), never a total.
+      return [];
+    default: {
+      const exhaustive: never = aggregation;
+      return exhaustive;
+    }
   }
-  // An additive daily total ACCUMULATES through the local day, so today's is a
-  // running number rather than the day's (#4924). The AVG branch above returns
-  // point readings, which are complete when taken.
-  return markPartialToday(
-    profileId,
-    getAdditiveMetricDailyTotalsBatchWithPriority(
-      profileId,
-      [metric],
-      limitDays,
-      priority
-    ).get(metric)!
-  );
 }
 export const getMetricDailyTotals = snapshotCached(
   "metrics.daily-totals",
@@ -165,8 +181,24 @@ export function getAdditiveMetricDailyTotalsBatch(
   limitDays = 180
 ): Map<string, { date: string; value: number }[]> {
   for (const metric of metrics) {
-    if (metricAggregation(metric) !== "SUM") {
-      throw new Error(`${metric} is not an additive metric`);
+    const aggregation = metricAggregation(metric);
+    switch (aggregation) {
+      case "SUM":
+        break;
+      case "AVG":
+        // A point metric averages per day; summing its readings would double a
+        // same-date manual entry and imported one into a value nobody measured.
+        throw new Error(`${metric} is not an additive metric`);
+      case "NONE":
+        // A categorical metric declines to aggregate at all (#3167), so it is not
+        // merely the wrong batch — there is no batch it belongs in.
+        throw new Error(
+          `${metric} is a categorical metric and does not aggregate`
+        );
+      default: {
+        const exhaustive: never = aggregation;
+        return exhaustive;
+      }
     }
   }
   return getAdditiveMetricDailyTotalsBatchWithPriority(
