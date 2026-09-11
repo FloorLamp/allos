@@ -679,9 +679,7 @@ test("the activity form keeps workout entry primary and context visible across b
       )
   ).toBe(2);
   const [startLabelBox, startShortcutBox] = await settledBoxes([
-    page
-      .getByTestId("time-range-fields")
-      .getByText("Start", { exact: true }),
+    page.getByTestId("time-range-fields").getByText("Start", { exact: true }),
     page.getByTestId("start-time-shortcut"),
   ]);
   expect(
