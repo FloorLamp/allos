@@ -685,8 +685,23 @@ export function intradayFreshness(model: IntradayModel): string | null {
   const lagMin = Math.max(0, Math.round(nowMinute - lastPoint.minute));
   // The latest window that CLOSED after the last sample landed. `endMinute` is
   // clipped to the day by the model, so this cannot name tomorrow's session.
+  //
+  // ACTIVITY BLOCKS ONLY (#4863 owner ruling, 2026-09-04). This sentence is about a
+  // DATA STREAM, so a window that is merely a statement about the past must not move
+  // it: a sauna typed in at 19:00 on a day the watch came off at 09:30 made the
+  // dashboard read "No data since Evening sauna yet", which reads as a device that
+  // stopped reporting at the sauna. With no activity block left uncovered the day
+  // falls through to the plain lag below, which is what it should have said.
+  //
+  // This excludes the PRACTICE row, not hand entry: `source` is the ledger a window
+  // travelled on (#4852), and the model carries no provenance, so a hand-logged
+  // ACTIVITY still anchors here exactly as an imported one does. Separating device
+  // from hand would need a field `TimelineEvent` does not have.
   const uncovered = model.blocks
-    .filter((block) => block.endMinute > lastPoint.minute)
+    .filter(
+      (block) =>
+        block.source === "activity" && block.endMinute > lastPoint.minute
+    )
     .sort((a, b) => b.endMinute - a.endMinute)[0];
   if (uncovered) return `No data since ${uncovered.title} yet`;
   if (lagMin < 1) return "Synced just now";

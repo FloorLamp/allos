@@ -9,6 +9,12 @@
 // session THIRTY DAYS AHEAD of the profile-local today, the fast-clock condition #5035
 // exists for and the shape #5069 measured on a snapshot.
 //
+// #5079 reuses that same fixture for the OTHER half of `getDayLoadInputs`: its activity
+// read kept no upper bound when #5069 bounded the HR read beside it, so the ahead-dated
+// session still arrived as a day carrying minutes and an intent — a day the coach counts
+// as trained. The fixture's ahead session is therefore asserted to exist as an ACTIVITY
+// row too, not only as hr_minutes; see the control below.
+//
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts.
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -72,6 +78,17 @@ describe("dashboard zone reads stop at the window's end (#5069)", () => {
         `the window ending ${td} — nothing below could tell a bounded read from an ` +
         `unbounded one`
     ).toBe(SESSION_MIN);
+    // The ACTIVITY row on the same day is the control for the load read (#5079): it is
+    // what an unbounded activity scan would turn into a day with minutes and an intent.
+    expect(
+      db
+        .prepare(
+          "SELECT date FROM activities WHERE profile_id = ? AND date > ? ORDER BY date"
+        )
+        .all(profileId, td),
+      `the fixture stored no activities row past ${td}, so the load check below would ` +
+        `pass on a window that was never asked to stop`
+    ).toEqual([{ date: ahead }]);
   });
 
   it("getDayLoadInputs splits no day after today", () => {
@@ -89,6 +106,26 @@ describe("dashboard zone reads stop at the window's end (#5069)", () => {
     // The converse, in the same test: bounding the scan must not empty it. The in-window
     // session still splits, so an empty `beyond` above means "bounded", not "blind".
     expect(hrDays).toEqual([shiftDateStr(td, -1)]);
+  });
+
+  // #5079: the same function's ACTIVITY half. Once #5069's bound is in place the
+  // ahead-dated day has no HR split, so the check above no longer sees it — but its
+  // activity row still produced a DayLoadInput. This test is about that row arriving
+  // at all: a day with a duration and no split is a loading day to `isLoadingDay`
+  // (60 min clears the duration floor), and a day with neither falls through to
+  // LOADING as well, so there is no shape of it that the coach ignores.
+  it("getDayLoadInputs returns no day at all past the window's end", () => {
+    const days = getDayLoadInputs(profileId).map((input) => input.date);
+    const beyond = days.filter((day) => day > td);
+    expect(
+      beyond,
+      `getDayLoadInputs answered about ${beyond.join(", ") || "(none)"}; its window is ` +
+        `${since} … ${td}. A day past that end has not happened, so nothing logged on ` +
+        `it can be load — the activity read ran past ${td} while the HR read beside it ` +
+        `stopped there, and the coach counts the day as trained.`
+    ).toEqual([]);
+    // Converse: the bound must not empty the read. The in-window session is still there.
+    expect(days).toContain(shiftDateStr(td, -1));
   });
 
   it("getIntensitySignal counts only minutes inside the window", () => {
