@@ -1,18 +1,24 @@
 // Write cores for the unit-mislabel correction (issue #761). profileId-first, and the id
 // must be the one a write gate returned: the parameter is lib/auth's
 // WriteAuthorizedProfileId, which only the three gates mint, so an action that never gated
-// has no value to pass and `tsc` refuses the call (#5348). The DELIBERATE forgery is refused
-// too, now that eslint.config.mjs's WRITE_BRAND_CAST bans the cast in production — including
-// through a type alias or a renaming re-export (#5852). It has TWO limits, and the second is
-// why it is not the whole barrier: it matches the brand BY NAME rather than chasing what a name
-// resolves to, and it does not reach every production file. lib/revalidate.ts is named in the
-// `ignores` of all three blocks carrying the ban, and the repo-root modules (middleware.ts,
-// instrumentation-client.ts) sit outside PRODUCTION_TREES, so those three keep only the ten
-// temporal selectors and a cast there is unrefused — filed as #5856, open. lib/, app/,
-// components/ and scripts/ ARE covered, and `tsc` refuses the accidental ungated call
-// everywhere regardless of any of this. lib/auth.ts, which mints the brand, is exempted by
-// the config's own `without()` block rather than a disable comment, and a TEST TIER MAY
-// STILL CAST — the same allowance RPE_BRAND_CAST makes.
+// holds nothing these take — `tsc` refuses a call here that passes a plain `number` (#5348).
+// The DELIBERATE forgery, a cast, is refused in EVERY production module: eslint.config.mjs's
+// WRITE_BRAND_CAST (#5852) matches the brand by name, through a type alias or a renaming
+// re-export, and since #5864 it reaches lib/revalidate.ts and the repo-root entrypoints too
+// — which is what closed #5856. A coverage test in lib/__tests__ asserts that from ESLint's
+// own resolved config rather than from a list, so a new root file or a new `ignores` entry
+// reds the scan on the commit that adds it. lib/auth.ts, which mints the brand, is the one
+// declared owner, exempted by the config's own `without()` block rather than a disable
+// comment; and a TEST TIER MAY STILL CAST, the same allowance RPE_BRAND_CAST makes.
+//
+// THE RESIDUAL IS NOT A CAST, so no lint coverage closes it: `tsc` alone does not refuse an
+// unbranded call written in METHOD position (an interface member declared `f(id: number)`
+// accepts a branded-parameter function — method parameters stay bivariant even under
+// `strict`, while the property spelling `f: (id: number) => …` is refused at TS2322), nor
+// one whose argument is an implicit `any` from JSON.parse. So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — recorded at
+// lib/__tests__/actions-write-access.test.ts, whose step-aside formally rests on it.
+//
 // The import is type-only — erased at build, so these cores still run auth-blind and the
 // Data → Review Server Actions still own the requireWriteAccess() gate. Every statement is
 // profile-scoped, so a foreign id changes nothing.

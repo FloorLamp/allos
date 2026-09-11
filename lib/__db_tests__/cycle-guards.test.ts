@@ -33,12 +33,15 @@ import { CYCLE_BLEEDING_PREFIX } from "@/lib/cycle-observation";
 // call, so the fixture casts — once, and named here rather than repeated at every call site
 // below. A TEST TIER IS ALLOWED THAT CAST: eslint.config.mjs's WRITE_BRAND_CAST bans it in
 // PRODUCTION only (#5852), the same allowance RPE_BRAND_CAST makes, because a fixture has no
-// request to gate and exporting a minter for it would put the mint in two places. In
-// production the brand refuses BOTH the accidental ungated call, which `tsc` catches
-// everywhere, and the deliberate cast, which that rule refuses across lib/, app/, components/
-// and scripts/ — though not in every production file: lib/revalidate.ts and the repo-root
-// modules outside PRODUCTION_TREES keep only the temporal selectors, so a cast there is
-// unrefused (#5856, open). A branded number is still a number, so
+// request to gate and exporting a minter for it would put the mint in two places. That
+// production ban now reaches EVERY production module: #5864 carried it into lib/revalidate.ts
+// and the repo-root entrypoints, which is what closed #5856, and a coverage test asserts it
+// from ESLint's own resolved config. But it bans a CAST, and the residual is not one — `tsc`
+// alone does not refuse an unbranded call written in METHOD position (method parameters stay
+// bivariant even under `strict`; the property spelling is refused at TS2322), nor an argument
+// that is an implicit `any` from JSON.parse. So in production "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one; the step-aside that rests on it is documented in
+// lib/__tests__/actions-write-access.test.ts. A branded number is still a number, so
 // the reads below take it unchanged.
 function newProfile(name: string): WriteAuthorizedProfileId {
   return Number(
