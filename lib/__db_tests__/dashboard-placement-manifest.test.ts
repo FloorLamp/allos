@@ -643,9 +643,9 @@ describe("the practice-target row is a due action in its own right (#5435 §3.2)
     ).run(profileId, today0);
     const { ids } = await renderFor(profileId);
 
-    expect(
-      ids.some((id) => id.startsWith("attention.fact:practice:"))
-    ).toBe(false);
+    expect(ids.some((id) => id.startsWith("attention.fact:practice:"))).toBe(
+      false
+    );
   });
 
   // THE OTHER CONVERSE, and the one §3.2 states in words: a behind target OUTSIDE the
@@ -659,9 +659,9 @@ describe("the practice-target row is a due action in its own right (#5435 §3.2)
     const profileId = seedTarget("cardio-behind", "type", "cardio", 2);
     const { ids } = await renderFor(profileId);
 
-    expect(
-      ids.some((id) => id.startsWith("attention.fact:practice:"))
-    ).toBe(false);
+    expect(ids.some((id) => id.startsWith("attention.fact:practice:"))).toBe(
+      false
+    );
     expect(ids.some((id) => id.startsWith("target."))).toBe(false);
   });
 });

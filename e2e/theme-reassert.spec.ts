@@ -44,11 +44,7 @@ test("a poisoned session heals on the next client navigation", async ({
 
   // The next client navigation re-asserts the class — the session is healed
   // instead of staying light until a manual toggle.
-  await followLink(
-    page,
-    sidebar.getByRole("link", { name: "Home" }),
-    /\/$/
-  );
+  await followLink(page, sidebar.getByRole("link", { name: "Home" }), /\/$/);
   await expect(page.locator("html")).toHaveClass(/\bdark\b/);
 });
 
