@@ -100,6 +100,118 @@
           "category": "Trends",
           "title": "Stool type is never averaged or summed into a type nobody logged",
           "issues": [3167]
+        },
+        {
+          "pr": 5855,
+          "kind": "feature",
+          "category": "General",
+          "title": "Log forms have one prominent Save; two history editors open in the sheet",
+          "issues": [5617]
+        },
+        {
+          "pr": 5848,
+          "kind": "fix",
+          "category": "History",
+          "title": "The past dose and past practice forms read the shared log heading",
+          "issues": [5617]
+        },
+        {
+          "pr": 5845,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "A usual bundle logged on a past day never takes the tap’s clock as its time",
+          "issues": [5618]
+        },
+        {
+          "pr": 5871,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "The food bar’s time control is the shared clock door",
+          "issues": [4426]
+        },
+        {
+          "pr": 5863,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Deleting a medication from its page returns to the list instead of a 404",
+          "issues": [5340]
+        },
+        {
+          "pr": 5857,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A bare number typed after a refill reminder settles the open prompt",
+          "issues": [5654]
+        },
+        {
+          "pr": 5840,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A failed Telegram tap still reconciles the profile its button names",
+          "issues": [2961, 4012]
+        },
+        {
+          "pr": 5847,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Result, imaging, genomic and immunization forms state each fact once, as chips",
+          "issues": [5302]
+        },
+        {
+          "pr": 5867,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A collapsed immunization keeps every contributor’s note",
+          "issues": [4731]
+        },
+        {
+          "pr": 5868,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Adding a planned set keeps the exercise’s grid layout",
+          "issues": [5762]
+        },
+        {
+          "pr": 5859,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A future-dated activity no longer counts as a day you trained",
+          "issues": [5079]
+        },
+        {
+          "pr": 5873,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A niggle that changed nothing today says so instead of claiming an adjustment",
+          "issues": [4872]
+        },
+        {
+          "pr": 5858,
+          "kind": "fix",
+          "category": "General",
+          "title": "The intraday lag sentence anchors on a device stream, not a hand-logged practice",
+          "issues": [4863]
+        },
+        {
+          "pr": 5846,
+          "kind": "fix",
+          "category": "General",
+          "title": "Fitness freshness, the weekly recap and the digest read one freshness floor",
+          "issues": [4242]
+        },
+        {
+          "pr": 5862,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Health Connect’s first sync bucket files under the right day again",
+          "issues": [5849]
+        },
+        {
+          "pr": 5850,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Capped pages sit centred on wide screens",
+          "issues": [3961]
         }
       ],
       "operatorNotes": []
