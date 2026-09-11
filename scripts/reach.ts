@@ -27,9 +27,16 @@ if (args.length !== 2 || args.includes("--help") || args.includes("-h")) {
       "--json prints { start, terminals, hops } instead, for a script to read.",
     ].join("\n")
   );
+  // Safe to exit on: the usage text above is a fixed few hundred bytes, orders
+  // of magnitude under a pipe buffer, and this exit is what stops the walk.
   process.exit(args.length === 2 ? 0 : args.length === 0 ? 1 : 0);
 }
 
+// NEITHER BRANCH MAY `process.exit`. Both write far more than a pipe buffer
+// holds, and on a pipe that write is asynchronous: exiting in the next
+// statement drops whatever had not drained, and the caller reads status 0 over
+// a half-written document (#5804). Setting `exitCode` and letting the process
+// end when stdout is flushed says the same thing and delivers all of it.
 if (json) {
   // One line of stderr on failure, so the gate can quote it as its reason.
   try {
@@ -41,15 +48,14 @@ if (json) {
         hops: hops(result),
       })
     );
-    process.exit(0);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    process.exitCode = 1;
   }
+} else {
+  const result = reach(args[0], args[1]);
+  console.log(formatReach(result));
+  const set = terminalSet(result);
+  console.log(`\nTerminals (${set.length}):`);
+  for (const t of set) console.log(`  ${t}`);
 }
-
-const result = reach(args[0], args[1]);
-console.log(formatReach(result));
-const set = terminalSet(result);
-console.log(`\nTerminals (${set.length}):`);
-for (const t of set) console.log(`  ${t}`);
