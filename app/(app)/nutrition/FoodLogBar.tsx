@@ -12,13 +12,8 @@ import {
   type FoodSlot,
   type FoodSlotBoundaries,
 } from "@/lib/food-slot";
-import {
-  statedHhmm,
-  whenOnDay,
-  STATED_TIME_REFUSAL_NOTE,
-} from "@/lib/stated-time";
-import WhenControl, { type WhenValue } from "@/components/WhenControl";
-import { useTimezone } from "@/components/TimezoneProvider";
+import { STATED_TIME_REFUSAL_NOTE } from "@/lib/stated-time";
+import { useTimeStatement } from "@/components/TimeStatement";
 import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
@@ -363,31 +358,20 @@ export default function FoodLogBar({
   // eslint-disable-next-line react-hooks/refs
   projectionRef.current = { countsByDate, slotCountsByDate };
   const [activeSlot, setActiveSlot] = useState<FoodSlot>(slot);
-  // The eating-time statement in force for the next taps (#2053), through the app's ONE
-  // "when did this happen?" control (#2236/#3273) — the hand-rolled Now/Earlier… chip
-  // group that used to sit here was this file's SECOND time vocabulary, three hundred
-  // lines from the correction modal's WhenControl. `statedAt: null` is the default and
-  // honest silence: nobody said, so nothing is written. STICKY ACROSS TAPS on purpose —
-  // a meal is several servings and re-answering "when" for each one would be the kind of
-  // friction a one-tap bar exists to avoid.
-  //
-  // STICKY FOR THE BATCH, AND THE BATCH IS A DAY (#4118's amendment). The statement used
-  // to be discarded outright whenever the selected day was not today; a past day now
-  // takes one, because "8pm on Tuesday" is a perfectly honest thing to say about a meal
-  // you are reconstructing — what is dishonest is fabricating an instant nobody named,
-  // which the NULL default already refuses. Switching days CLEARS it rather than
-  // re-anchoring: a time chosen for Tuesday is a claim about Tuesday, and carrying it to
-  // Wednesday would restate it about a day the person never looked at.
-  // The acting profile's timezone — the zone the correction sheet's day/time pair is
-  // judged in, matching the server's own resolution of the submitted wall time, and the
-  // zone the eating statement's day is minted against.
-  const tz = useTimezone();
-  const [eatingWhen, setEatingWhen] = useState<WhenValue>(() =>
-    whenOnDay(today, tz)
-  );
-  // The fold's own state, so switching days can close it along with the statement it
-  // was showing.
-  const [whenOpen, setWhenOpen] = useState(false);
+  // THE EATING-TIME STATEMENT, THROUGH THE SHARED ONE (#4426). This bar used to hand-roll
+  // the whole composition — its own `<details>`, its own "Happened earlier?" / "Set time?"
+  // summary, its own stated-time badge and its own `WhenControl` at hour grain — which was
+  // the fourth dialect of one sentence and the last consumer of that grain. What stays the
+  // bar's is the only thing #4738 ruling 4 said was its own: the statement is STICKY FOR
+  // THE BATCH, so `spend` is never called and a meal's several servings answer "when" once.
+  // The shared control supplies everything else, the day rule included — a statement
+  // belongs to the day it was made about, so switching days drops it rather than restating
+  // Tuesday's claim about Wednesday.
+  const statement = useTimeStatement({
+    day: activeDate,
+    timeLabel: "Time the servings were eaten",
+    testId: "food-when",
+  });
   // WHETHER THE ADD LAYER FOLDS BEHIND A DOOR, AND WHETHER THE DOOR IS OPEN (#4477).
   // `dayLedger` is the surface's own answer to "is there a day above this to read?" —
   // the Food tab has one, the quick-log sheet does not and is itself the door — so it
@@ -1172,27 +1156,17 @@ export default function FoodLogBar({
     });
   }
 
-  // Whether the selected day is TODAY — which decides the fold's LABEL and its copy,
-  // not whether a statement may be made at all. "Now" is meaningless on a backfill, so
-  // a past day is asked "Set time?" and its bare taps stay untimed; today is asked
-  // "Happened earlier?" and its bare taps mean now.
+  // Whether the selected day is TODAY — which decides the note's COPY, not whether a
+  // statement may be made at all. "Now" is meaningless on a backfill, so a past day's
+  // bare taps stay untimed; today's bare taps mean now.
   const statingTime = activeDate === today;
-  // A statement BELONGS TO THE DAY IT WAS MADE ABOUT, and that is enforced by the value
-  // itself rather than by resetting state when the day moves: the pair the control owns
-  // carries its own `date`, so a statement made about Tuesday is simply not in force on
-  // Wednesday. Nothing is silently in force either — the fold's summary prints the time
-  // whenever one is, so switching back to Tuesday shows what Tuesday still says.
-  const whenForDay: WhenValue =
-    eatingWhen.date === activeDate ? eatingWhen : whenOnDay(activeDate, tz);
   // The statement in force, as the two things every consumer of it needs: the INSTANT an
-  // offline capture carries (resolved here because a replay has no server to ask, and
-  // validated server-side before it lands), and the profile-local wall time the online
-  // post states. One value behind both, so the queued instant and the posted wall time
-  // cannot describe different minutes.
-  // The statement is anchored on the SELECTED day by the control's own pair rule, so a
-  // stale value from a day that has since been switched away from cannot be in force.
-  const statedAt = whenForDay.statedAt;
-  const statedTime = statedAt ? statedHhmm(statedAt, tz) : "";
+  // offline capture carries (resolved by the control because a replay has no server to
+  // ask, and validated server-side before it lands), and the profile-local wall time the
+  // online post states. One value behind both, so the queued instant and the posted wall
+  // time cannot describe different minutes.
+  const statedAt = statement.instant;
+  const statedTime = statement.at ?? "";
 
   // The meal window the statement in force FILES under (#2269) — the section a "+" will
   // land the serving in, since a stated time wins over the tab at log time — derived
@@ -2326,55 +2300,44 @@ export default function FoodLogBar({
                 ariaLabel="Meal to add to"
                 testId="food-meal-slots"
               />
+              {/* #4426's seat: immediately right of the control that says where the
+                next tap lands. This domain's action is a GRID of "+" rows rather than
+                one button (components/stool/StoolTypeControl.tsx has the same problem
+                and the same answer), so the door takes the nearest seat to it that is
+                still ABOVE the rows — the consequence it changes has to be readable
+                before the tap, not after it. */}
+              {statement.door}
             </CardSectionHeader>
-            {/* TAP WRITES NOW, AND THE TIME IS A FOLD (#3273's ruled shape, #3987).
-              The control used to stand open above the rows on every visit; it is a
-              question most taps never answer, so it collapses behind one affordance
-              and the bare tap keeps its meaning.
+            {/* TAP WRITES NOW, AND THE TIME IS BEHIND THE CLOCK DOOR (#4426's
+              rendering ruling of 2026-09-02). It is a question most taps never answer,
+              so it collapses behind one affordance and the bare tap keeps its meaning —
+              and the affordance is the shared statement's 34px clock, seated in the row
+              that already says where the next tap lands rather than spelled as this
+              bar's own words. The reveal opens under that row, where a minute and a
+              sentence have width.
 
-              THE PAST-DAY AMENDMENT (owner, 2026-08-29 via #4118). The vocabulary is
-              the SAME control on every offered day; only the label moves, because the
-              question genuinely differs. On TODAY it is "Happened earlier?" — the tap
-              means now, the fold is for a meal you are logging late. On a SELECTED PAST
-              DAY a bare tap writes day + meal slot with NO instant (`occurred_at` NULL,
-              which the ledger's untimed grammar already renders) because there is no
-              honest "now" to fabricate, so the fold reads "Set time?". A time set there
-              is STICKY for the batch — set 8pm once, tap several groups, all land at
-              8pm — and clearing it returns to untimed slot taps. The day is FIXED to the
-              selected one either way, so the pair rule holds by construction and the
-              hour offer is that day's own. */}
-            <Disclosure
-              data-testid="food-eating-time"
-              open={whenOpen}
-              onToggle={(e) => setWhenOpen(e.currentTarget.open)}
-              className="mb-2.5"
-            >
-              <summary
-                data-testid="food-when-summary"
-                className="fold-control flex list-none items-center gap-1.5 text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400"
+              THE PAST-DAY AMENDMENT (owner, 2026-08-29 via #4118) IS UNCHANGED BY THAT.
+              The same control is offered on every day; only the NOTE moves, because the
+              consequence genuinely differs. On TODAY a bare tap means now. On a SELECTED
+              PAST DAY a bare tap writes day + meal slot with NO instant (`occurred_at`
+              NULL, which the ledger's untimed grammar already renders) because there is
+              no honest "now" to fabricate. A time set either way is STICKY for the batch
+              — set 8pm once, tap several groups, all land at 8pm — and clearing it
+              returns to untimed slot taps. The day is FIXED to the selected one by the
+              shared statement, so the pair rule holds by construction.
+
+              AND THE NOTE OUTLIVES THE REVEAL, which is what the retired stated-time
+              badge in the old summary was for: a statement here is not spent by the tap
+              it answers, so one made and then collapsed is still in force for every tap
+              after it. The sentence that names the consequence is therefore on screen
+              whenever there IS one, open or closed, and absent only on the silent
+              default nobody has answered. */}
+            {statement.open || statedTime ? (
+              <div
+                data-testid="food-eating-time"
+                className="mb-2.5 flex flex-wrap items-center gap-1.5"
               >
-                <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-                <span>{statingTime ? "Happened earlier?" : "Set time?"}</span>
-                {statedTime && (
-                  <span
-                    data-testid="food-when-set"
-                    className="font-semibold text-slate-700 tabular-nums dark:text-slate-200"
-                  >
-                    {statedTime}
-                  </span>
-                )}
-              </summary>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <WhenControl
-                  mode="state"
-                  grain="hour"
-                  value={whenForDay}
-                  onChange={setEatingWhen}
-                  minDate={activeDate}
-                  maxDate={activeDate}
-                  timeLabel="When the servings you add were eaten"
-                  testId="food-when"
-                />
+                {statement.reveal}
                 <span
                   data-testid="food-eating-time-note"
                   className="w-full text-xs text-slate-500 dark:text-slate-400"
@@ -2393,7 +2356,7 @@ export default function FoodLogBar({
                       : `Servings you add land in ${activeSlot} with no time until you set one.`}
                 </span>
               </div>
-            </Disclosure>
+            ) : null}
             {/* The regularity shortcut (#2380). Present only when the ledger says this
               window has a habit AND at least two of it are still unlogged today — one
               group is already one tap on the row below, so the offer would cost more to

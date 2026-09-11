@@ -16,7 +16,6 @@ import { formatClock, formatWeekdayDate } from "@/lib/format-date";
 import {
   reanchorStatedAt,
   statedHhmm,
-  statedHoursOnDate,
   statedInstantOnDate,
   type WhenValue,
 } from "@/lib/stated-time";
@@ -48,10 +47,16 @@ export type { WhenValue } from "@/lib/stated-time";
 //
 // ── what stays the DOMAIN's, via props ──────────────────────────────────────
 //
-// Bounds (a course window, a bounded recent-days list, max-today), grain,
-// whether a time is required in `state` mode, and the labels.
+// Bounds (a course window, a bounded recent-days list, max-today), whether a
+// time is required in `state` mode, and the labels.
 //
-// THERE IS NO RAW <input type="time"> LEFT (#4218). The minute grain renders
+// THE TIME IS A MINUTE, FULL STOP (#4426). A `grain` prop once forked the time
+// half into an enumerated hour `<select>` beside the minute field, so one control
+// answered "when did this happen?" at two precisions and every caller chose. The
+// hour arm's last consumer — the food bar's own fold — converged on the shared
+// statement, and a prop with one value is not a choice, so both went.
+//
+// THERE IS NO RAW <input type="time"> LEFT (#4218). The time half renders
 // components/TimeField.tsx — the styled sibling `DateField` already was for
 // dates — so this file is no longer the scan's exempt home either; the ratchet
 // in lib/__tests__/time-input-scan.test.ts kept its exemption for exactly as
@@ -74,10 +79,6 @@ export interface WhenControlProps {
   //   every state except back to the honest default is a one-way ratchet into a
   //   guess.
   mode: "state" | "correct";
-  // `hour` renders an enumerated select of the chosen day's hours (truncated at
-  // the current hour when the day is today); `minute` renders a time input.
-  // Both emit the same `{ date, statedAt }`.
-  grain: "hour" | "minute";
   value: WhenValue;
   onChange: (next: WhenValue) => void;
   // The profile timezone that decides which day an instant belongs to. Defaults
@@ -117,7 +118,6 @@ const DATE_SLOT = "h-8 w-36 text-sm";
 
 export default function WhenControl({
   mode,
-  grain,
   value,
   onChange,
   tz: tzProp,
@@ -132,9 +132,9 @@ export default function WhenControl({
 }: WhenControlProps) {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
-  // The client clock, read per render: "today" gates the Now offer and truncates
-  // the hour offer. The e2e harness freezes the browser clock alongside the
-  // server's (see e2e/fixtures.ts), so the two agree there too.
+  // The client clock, read per render: "today" gates the Now offer. The e2e
+  // harness freezes the browser clock alongside the server's (see
+  // e2e/fixtures.ts), so the two agree there too.
   const now = new Date();
   const today = dateStrInTz(tz, now);
   const fixedDay = minDate !== undefined && minDate === maxDate;
@@ -222,23 +222,11 @@ export default function WhenControl({
   };
 
   const hhmm = statedHhmm(value.statedAt, tz);
-  const hourOptions =
-    grain === "hour" ? statedHoursOnDate(value.date, tz, now) : [];
-  // A stored statement that is not one of the offered hours (a minute-precision
-  // instant being corrected at hour grain, or a "Now" fill) still renders as
-  // itself — pinned as an extra option rather than silently rounded.
-  const pinned =
-    grain === "hour" &&
-    value.statedAt !== null &&
-    !hourOptions.some((o) => o.iso === value.statedAt)
-      ? { hhmm, iso: value.statedAt }
-      : null;
 
   // ONE DOOR when the pair is one required value — see the header. A FIXED day is
   // excluded because there is no day to pick: the control renders it as text, so
   // a composed field would be a picker for half of itself.
-  const combined =
-    grain === "minute" && mode === "state" && timeRequired && !fixedDay;
+  const combined = mode === "state" && timeRequired && !fixedDay;
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid={testId}>
@@ -284,55 +272,17 @@ export default function WhenControl({
               />
             </label>
           )}
-          {grain === "minute" ? (
-            <TimeField
-              value={hhmm}
-              onChange={setHhmm}
-              tz={tz}
-              required={mode === "state" && timeRequired}
-              disabled={disabled}
-              inputClassName="w-32 text-sm"
-              id={`${testId}-time`}
-              label={timeLabel}
-              data-testid={`${testId}-time`}
-            />
-          ) : (
-            <select
-              value={value.statedAt ?? ""}
-              onChange={(e) => {
-                const iso = e.target.value;
-                onChange({
-                  date: latest.current.date,
-                  statedAt: iso === "" ? null : iso,
-                });
-              }}
-              required={mode === "state" && timeRequired}
-              disabled={disabled}
-              className="input w-32 text-sm"
-              id={`${testId}-time`}
-              aria-label={timeLabel}
-              data-testid={`${testId}-time`}
-            >
-              {mode === "correct" ? (
-                // The honest default stays reachable: choosing it emits null.
-                <option value="">Not stated</option>
-              ) : timeRequired ? (
-                <option value="" disabled>
-                  Select time
-                </option>
-              ) : (
-                <option value="">No time</option>
-              )}
-              {pinned ? (
-                <option value={pinned.iso}>{pinned.hhmm}</option>
-              ) : null}
-              {hourOptions.map((o) => (
-                <option key={o.iso} value={o.iso}>
-                  {o.hhmm}
-                </option>
-              ))}
-            </select>
-          )}
+          <TimeField
+            value={hhmm}
+            onChange={setHhmm}
+            tz={tz}
+            required={mode === "state" && timeRequired}
+            disabled={disabled}
+            inputClassName="w-32 text-sm"
+            id={`${testId}-time`}
+            label={timeLabel}
+            data-testid={`${testId}-time`}
+          />
         </>
       )}
       {value.date === today ? (
@@ -346,7 +296,7 @@ export default function WhenControl({
           Now
         </button>
       ) : null}
-      {mode === "correct" && grain === "minute" ? (
+      {mode === "correct" ? (
         <button
           type="button"
           onClick={() =>
