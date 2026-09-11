@@ -238,3 +238,55 @@ export function buildBristolPanel(
     maxCount: Math.max(1, ...distribution.map((d) => d.count)),
   };
 }
+
+// ── THE SHEET'S RECEIPT ROWS (#5663) ────────────────────────────────────────
+//
+// The owner's report was "quicklogging stool provides no feedback or description": a
+// tap moved a count, painted 300ms of motion, and toasted a NUMBER — while the sentence
+// that says what that number means was reachable only as a button's accessible name or
+// behind the title row's info glyph (#5756). The owner's ruling (2026-09-11) is that
+// the sheet lists EACH OF TODAY'S ENTRIES as its own receipt row, newest first, in two
+// lines:
+//
+//     Type 6 · Mushy
+//     Fluffy pieces with ragged edges, a mushy stool · 8:31am
+//
+// Built from the vocabulary above, never retyped — the #5756 rule, and the reason the
+// sentence beside a picture cannot come to differ from the one stored beside the type.
+
+/** One receipt row's two lines. Separate, because they are two elements on the row. */
+export interface BristolReceiptLines {
+  /** `Type 6 · Mushy` — the number the button showed, and its two-word caption. */
+  heading: string;
+  /**
+   * `Fluffy pieces with ragged edges, a mushy stool · 8:31am` — the scale's own
+   * sentence and the reading's clock, in the practice row's facts grammar (#5431:
+   * facts joined by " · ").
+   */
+  facts: string;
+}
+
+/**
+ * A reading's two receipt lines, or null when the number names no type.
+ *
+ * THE CLOCK ARRIVES FORMATTED. A model emits a time and ONE formatter produces the
+ * string (#1163): the login's 12h/24h preference belongs to the render layer, and
+ * reaching for it here would put a second clock convention in a pure module. An empty
+ * clock drops the trailing slot rather than printing an empty one — a separator with
+ * nothing after it reads as a missing value.
+ *
+ * Null rather than a best effort, because the question is the same membership one
+ * `isBristolType` asks everywhere else: a replayed or hand-edited value can never put
+ * "Type 8 · undefined" on the sheet.
+ */
+export function bristolReceiptLines(
+  type: unknown,
+  clock: string
+): BristolReceiptLines | null {
+  const entry = bristolStoolType(type);
+  if (!entry) return null;
+  return {
+    heading: `Type ${entry.type} · ${entry.label}`,
+    facts: clock ? `${entry.description} · ${clock}` : entry.description,
+  };
+}

@@ -89,10 +89,18 @@ test("a drawer nav link navigates and closes the drawer", async ({ page }) => {
   // group, and "a drawer nav link navigates and closes the drawer" is a claim
   // about the drawer. The grouped children get their own drawer coverage in
   // e2e/nav-consolidation.spec.ts.
+  //
+  // The row was History until #5435 §4 retired it — Home IS the daily read now, so
+  // the nav row was a second door to the page the reader is standing on. Settings
+  // carries the claim instead: it is top-level, it is the ONE row `isNavLeafVisible`
+  // (lib/nav.ts) can never drop — no `adminOnly`, no `requiresMultiProfile`, no
+  // `requiresTraining`, no `requiresFoodLogging`, no `relevanceKey`, not in the
+  // adult-only set — and its accessible name carries no badge count the way Data's
+  // does. The nav registry's own shape stays e2e/nav-consolidation.spec.ts's subject.
   await followLink(
     page,
-    drawer.getByRole("link", { name: "History", exact: true }),
-    /\/history/
+    drawer.getByRole("link", { name: "Settings", exact: true }),
+    /\/settings/
   );
   // Navigation closes the drawer, leaving the dock's More route available.
   await expect(drawer).toHaveCount(0);

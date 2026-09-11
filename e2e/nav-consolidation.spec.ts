@@ -38,13 +38,15 @@ import {
 // list. The list that DID change is the Medical group's children, asserted below —
 // "Medicine cabinet" moved from present to gone there.
 const TOP_LEVEL_ORDER: (string | RegExp)[] = [
-  "Dashboard",
+  // "Home", not "Dashboard" (#5435 §6.6): the row and the page it names are the
+  // same word now that `/` is the record's day view at today.
+  "Home",
   "Training",
   "Nutrition",
-  // History took Trends' slot here in #4965: #4918 made `/history?day=` a
-  // deliberate daily visit, and Trends lost its dock slot to the same
-  // 2026-08-29 review (#4102) — so the ORDER rule ranks them the other way now.
-  "History",
+  // HISTORY HAS NO ROW (#5435 §4, the 2026-09-10 revision). It earned one in #4965
+  // because `/history?day=` was the daily read; Home IS that read now, so the row
+  // would be a second door to the page the reader is already on. The route and its
+  // other doors are unchanged — the case below still walks to it.
   "Sleep",
   // Trends is a child of this group now (#4965), alongside Upcoming, Household,
   // Wellness, Longevity and Progress photos — six children where it used to be
@@ -204,15 +206,22 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
 
   // Sanity: an ordinary route still highlights itself, so the map didn't swallow
-  // the normal rule. History is a top-level row since #4965 (it used to be a
-  // grouped child reached via auto-expansion — group auto-expansion is exercised
-  // below, in the episodic-group cases, by its swap partner Trends instead).
-  await page.goto("/history");
-  await expect(nav.getByRole("link", { name: "History" })).toHaveAttribute(
+  // the normal rule.
+  await page.goto("/nutrition");
+  await expect(nav.getByRole("link", { name: "Nutrition" })).toHaveAttribute(
     "aria-current",
     "page"
   );
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+
+  // AND A ROUTE WITH NO ROW LIGHTS NOTHING, which is the other half of removing one
+  // (#5435 §4). `/history` still serves and is still reached constantly from context;
+  // what it no longer has is a nav entry to claim.
+  await page.goto("/history");
+  await expect(
+    nav.getByRole("link", { name: "History", exact: true })
+  ).toHaveCount(0);
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
 });
 
 // ── The episodic group (#3079) ───────────────────────────────────────────────

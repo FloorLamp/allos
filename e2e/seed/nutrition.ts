@@ -30,7 +30,6 @@ import {
   FITNESS_SENIOR_PROFILE,
   E2E_LOGIN_PRESENCE,
   PRESENCE_PROFILE,
-  E2E_LOGIN_RECAP,
   RECAP_PROFILE,
   E2E_LOGIN_FOODSLOT,
   FOOD_SLOT_PROFILE,
@@ -383,7 +382,6 @@ export function seedNutritionTrio(): void {
               (?, 'Bench Press', 3, 65, 5, 5, 0)`
     ).run(finishedId, finishedId, finishedId);
   }
-  seedMemberLogin(E2E_LOGIN_RECAP, recapId);
 }
 
 // ── Food-log slot-aware ranking + N-week habit trend ──

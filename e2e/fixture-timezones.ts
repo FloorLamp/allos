@@ -39,7 +39,7 @@ import type { SqlPrepare } from "../lib/write-revision";
 //   "run-pin"  — the run's OWN pinned zone, set explicitly. Needed for profiles a
 //     spec creates at runtime, which have no seeded default to inherit. These do
 //     not create a second calendar and their specs may assert dashboard atoms
-//     freely; `dashboard-vitals-recency` is one and is correct.
+//     freely; `trends-day-gaps` is one and is correct.
 //
 // The kind is verified against the zone each call site actually passes, so the
 // declaration cannot quietly stop describing the call — the failure mode that
@@ -124,10 +124,6 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
   "sleep-phase": {
     kind: "own-zone",
     why: "The phase fixture asserts explicit post-noon UTC wall-clock labels independently of the rotating instance timezone.",
-  },
-  "vitals-recency": {
-    kind: "run-pin",
-    why: "This spec-owned profile follows the run's pinned timezone so its seeded historical days are the exact days the card ages against.",
   },
   "trash-east": {
     kind: "own-zone",

@@ -830,7 +830,7 @@ test.describe("Sleep page (#1066)", () => {
       // have started failing for a reason that has nothing to do with sleep.
       // eslint-disable-next-line no-restricted-properties -- first-ok: shared responsive nav leaf rendered in both viewports; first instance confirms the shell mounted
       const shellRow = page
-        .getByRole("link", { name: "Dashboard", exact: true })
+        .getByRole("link", { name: "Home", exact: true })
         .first();
       await expect(shellRow).toBeVisible();
       // …and the Sleep leaf is absent for this sleep-less profile (both navs).

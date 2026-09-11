@@ -10,7 +10,6 @@ import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
 import { getTimezone, setProfileSetting } from "../../lib/settings";
 import { clearFixtureTimezone } from "../fixture-timezones";
 import {
-  E2E_LOGIN_REST,
   REST_CARD_PROFILE,
   E2E_LOGIN_REST_EPISODE,
   REST_EPISODE_PROFILE,
@@ -176,7 +175,6 @@ export function seedRestCard(): void {
      VALUES (?, ?, 'strength', 'Rest Card context lift', 40, 'hard', 'manual', 'e2e:rest-card-context')`
     ).run(rcId, shiftDateStr(rcToday, -10));
 
-    seedMemberLogin(E2E_LOGIN_REST, rcId, "write");
     console.log(
       `e2e: seeded coaching rest-card fixture — profile ${rcId} (${REST_CARD_PROFILE}) (#1148/#1150)`
     );

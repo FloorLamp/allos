@@ -283,34 +283,52 @@ test.describe("mobile clipping batch (#2614)", () => {
     page,
   }) => {
     // The RULE is unchanged from the census: a long clinical value may not cost the
-    // reading its NAME at 390px. The SURFACE moved (#3186). This read
-    // `recent-lab-row` — RecentLabReadout — and a Standing member never renders its
-    // full atom node (DashboardStandingCluster renders the compact presentation
-    // instead), so those rows were only ever the tail BEYOND the family cap: a
-    // profile seating three markers and spilling none rendered zero of them. The
-    // tail is no longer a dashboard fact, so the clinical rows a phone shows are
-    // the family's own — and they are the worst case for this rule rather than a
-    // milder one, because seating is flagged-first and the values carrying a
-    // severity word are exactly the seated ones.
+    // reading its NAME at 390px. The SURFACE moved twice. It first read
+    // `recent-lab-row` — RecentLabReadout — then the Standing family's compact rows
+    // (#3186). Home v3 (#5435 §4) mounts no Standing cluster, so those rows have no
+    // route; the READINGS did not move, and `/` still shows the flagged ones as
+    // attention facts, which is what this reads now.
+    //
+    // BE HONEST ABOUT WHAT CHANGED. Standing's compact row put the name and the value
+    // on ONE line, competing for a 390px width, and this was a live stress on it.
+    // Home's row stacks them — the name in a `truncate` span, the value on the line
+    // below — so the crush this catches cannot currently happen. The guard stays
+    // because the claim is about the rows a phone shows for these readings, and it is
+    // now what would catch a row that puts the value back beside the name: all three
+    // assertions below are unchanged, over the same five flagged readings, on the same
+    // page, at the same width.
     await page.goto("/");
-    // On this fixture the seated draws are inside the ruled 30-day collection window
-    // (#4232), so they are FRESH and claim Standing's attention tier — the same rows,
-    // the same anatomy, the band above the fold instead of the one behind it.
-    const family = page.locator(
-      '[data-standing-band="attention"] [data-standing-family="clinical-results"]'
-    );
+    const family = page.locator("[data-testid='home-now']");
     await expect(family).toBeVisible();
-    const rows = family.getByTestId("dashboard-candidate");
-    await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence proves the family rendered; the assertions below are over ALL of them
+    const rows = page.locator(
+      '[data-candidate-id^="attention.fact:biomarker-flag:"]'
+    );
+    await expect(rows.first()).toBeVisible(); // eslint-disable-line no-restricted-properties -- first-ok: presence proves the readings rendered; the assertions below are over ALL of them
 
     // No name is sacrificed to the value column. The census measured this as the
     // rendered box against the text's own width; a Range says the same thing for an
     // inline span, whose `scrollWidth` is zero. A wrapped name reads the same either
     // way — the union of its line boxes IS its text — so only a name actually
     // clipped short of itself can fail this.
+    // AN ABSENCE ASSERTION NEEDS A WITNESS. `crushed` is empty both when no name is
+    // crushed and when the structural query below finds no name at all, so the scan
+    // reports what it SAW and the count is checked against the rows it swept.
+    const seen = await rows.evaluateAll(
+      (nodes) =>
+        nodes.filter((node) => node.firstElementChild?.firstElementChild).length
+    );
+    expect(
+      seen,
+      "the crushed-name scan found no name inside a clinical row, so its silence means nothing"
+    ).toBe(await rows.count());
+
     const crushed = await rows.evaluateAll((nodes) =>
       nodes.flatMap((node) => {
-        const label = node.querySelector('[data-testid="standing-label"]');
+        // The row's facts column, then its first line: the reading's NAME. Structural
+        // because HomeRow marks the row and not its parts — the id on the `<li>` is
+        // the row contract (§5.1), and adding a second marker inside it for one
+        // measurement would put a test-only attribute in a production seat.
+        const label = node.firstElementChild?.firstElementChild;
         if (!label) return [];
         const range = document.createRange();
         range.selectNodeContents(label);
@@ -331,7 +349,7 @@ test.describe("mobile clipping batch (#2614)", () => {
     for (let index = 0; index < count; index += 1) {
       const row = rows.nth(index);
       expect(
-        await overhangWithin(row.getByTestId("standing-label"), row)
+        await overhangWithin(row.locator("> span > span").first(), row) // eslint-disable-line no-restricted-properties -- first-ok: the facts column's first line is the name, by HomeRow's shape
       ).toBeLessThanOrEqual(1);
     }
     expect(await scrollableBy(family)).toBeLessThanOrEqual(1);

@@ -46,7 +46,6 @@ export const PROTEIN_QUICKADD_PROFILE = "Protein Quickadd (e2e)";
 // window dashboard recap card renders with a PR. Read-only; isolated on purpose —
 // an always-"finished" session on a SHARED profile would plant a surprise recap
 // card that races neighbor specs.
-export const E2E_LOGIN_RECAP = "e2e_recap";
 export const RECAP_PROFILE = "Session Recap (e2e)";
 // Dedicated ADULT + SENIOR profiles for the guided Fitness check spec (#834). Isolated
 // on purpose: the spec RECORDS tests (writing fitness_assessments, a VO2 medical_records

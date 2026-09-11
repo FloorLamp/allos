@@ -401,7 +401,7 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     // in-flow panel shoved by up to 50vh).
     const search = sidebar.getByRole("button", { name: /Search/ });
     const dashboard = sidebar.locator("nav").getByRole("link", {
-      name: "Dashboard",
+      name: "Home",
     });
     await expect(dashboard).toBeVisible();
     const searchBefore = await boxOf(search);

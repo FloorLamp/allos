@@ -94,7 +94,11 @@ vi.mock("@/app/(app)/stool-actions", () => ({
     ok: true as const,
     type: 4,
     dayCount: 1,
+    readings: [],
   })),
+  // The stool body asks for the day's receipt rows itself (#5663); this file is about
+  // the sheet's last-good gather, so the day is empty here.
+  loadStoolDay: vi.fn(async () => ({ readings: [], dayCount: 0 })),
 }));
 const allSnapshots = vi.hoisted(() => vi.fn(async () => [] as unknown[]));
 const allIntents = vi.hoisted(() => vi.fn(async () => [] as unknown[]));

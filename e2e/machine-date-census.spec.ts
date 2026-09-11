@@ -1,12 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import {
-  hydratedClick,
-  openCombobox,
-  openDashboardAll,
-  settledFill,
-} from "./helpers";
+import { hydratedClick, openCombobox, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
   CENSUS_EXEMPT_SUBTREES,
@@ -245,22 +240,21 @@ function plantReferenceCopyProbe(): void {
 const ROUTES: CensusRoute[] = [
   {
     path: "/",
-    why: "Dashboard Standing rows — '112/72 mmHg 2026-07-22' in the filed report.",
+    // WHAT THIS ROUTE CENSUSES CHANGED WITH THE PAGE (#5435 §4). It was here for the
+    // Standing rows — a filed '112/72 mmHg 2026-07-22', and the Selenium row's micro
+    // unit behind the Show-everything fold. Home v3 seats fixed kinds and mounts no
+    // Standing cluster, so neither the vitals-age stamp nor the lab row is on `/`, and
+    // there is no fold to reveal. The MICRO-UNIT half is not lost: the same fixture
+    // result is censused on `/results/clinical-results/view?name=Selenium` through
+    // `biomarker-latest-value`, which is the surface that prints the unit at full size.
+    //
+    // The DATE half stays, against a stronger subject than it had. Home's day bar is
+    // the page's frame (#4918 ruling 1) — it names the day on every render, including
+    // an empty one, so this route can no longer go quiet because a seeded row moved.
+    why: "Home's day bar names the day it is showing, and the record below it files rows under that day.",
     minTextNodes: 120,
-    subject: '[data-testid="vitals-latest-bp-age"]',
-    unitSubject: (page) =>
-      page.locator(
-        '[data-testid="dashboard-candidate"][data-candidate-id="labs.latest:Selenium"]'
-      ),
-    // ONE fold since #4232, and it is the reason this route reveals at all. A quiet
-    // clinical result sits behind Show everything — present in the DOM, hidden — so a
-    // census that reads RENDERED copy stops seeing it. Copy one tap behind a disclosure
-    // is still copy a person reaches, so the census opens the fold and looks; it does
-    // not lower its expectation to "visible or hidden", which would make it unable to
-    // tell reachable copy from copy that is gone.
-    reveal: async (page) => {
-      await openDashboardAll(page);
-    },
+    kinds: ["date"],
+    subject: '[data-testid="timeline-day-name"]',
   },
   {
     path: "/?quick=search",
