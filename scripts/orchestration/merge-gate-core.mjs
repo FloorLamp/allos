@@ -409,12 +409,22 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
 // verbatim. Each of those is a function of what the PR does, so one line of
 // content different changes at least one of them and the gate refuses.
 //
-// THE LIMIT THIS LEAVES. Dropping start offsets cannot distinguish a hunk that
-// has MOVED from one that has not, so a change that relocated an otherwise
-// byte-identical hunk — identical context on both sides, which needs the file
-// to repeat those lines verbatim elsewhere — would read as unchanged. No
-// positional normalisation can see that; verbatim comparison would only catch
-// it by also refusing the five cases above.
+// THE LIMIT THIS LEAVES, DEMONSTRATED AND OPEN. Dropping start offsets cannot
+// distinguish a hunk that MOVED from one that did not. Git's section heading —
+// kept verbatim here — defeats the easy version, because a block relocated past
+// a declaration lands under a different heading. It does NOT defeat a block
+// relocated WITHIN one heading: built on a real repository 2026-09-11, a long
+// array literal under one `export const TABLE = [`, with the PR's added row
+// moved from one repeated seven-line group to another, produces two three-dot
+// diffs that differ only in `@@ -13` against `@@ -34` and the blob id. This
+// function reads them as identical, and the tree genuinely changed. It needs no
+// merge-in at all.
+// It is REPORTED, not closed. The discriminator that would close it is
+// available for the price of one field: `compare/{reviewed}...{head}` is
+// already read here for ancestry, and in a real merge-in every commit it lists
+// is a merge — a relocation needs an ordinary content commit, or a conflict
+// resolution, and neither is what #4994 ruled on. That is a narrowing of the
+// ruling, so it is a decision to take rather than one to slip in.
 const HUNK_HEADER = /^@@ -\d+(,\d+)? \+\d+(,\d+)? @@/;
 const INDEX_LINE = /^index [0-9a-f]{4,40}\.\.[0-9a-f]{4,40}/;
 
