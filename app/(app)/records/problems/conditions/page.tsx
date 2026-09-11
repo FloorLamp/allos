@@ -20,7 +20,7 @@ export default async function RecordsConditionsPage(props: {
   // own view-set list-first. Single view is byte-identical to requireSession().
   const scope = await requireScope();
   return (
-    <PageContainer width="flow" data-testid="records-conditions">
+    <PageContainer width="flow" align="start" data-testid="records-conditions">
       <SectionSubtitle title="Conditions">
         Review active and resolved conditions and diagnoses.
       </SectionSubtitle>

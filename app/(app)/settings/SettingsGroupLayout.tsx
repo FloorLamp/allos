@@ -50,7 +50,10 @@ export default function SettingsGroupLayout({
       <div className="lg:sticky lg:top-4 lg:self-start">
         <SettingsGroupNav groups={groups} />
       </div>
-      <div className="min-w-0">
+      {/* The content column of the two-column shell (#1451). Named so the
+          left-anchor ruling of #3961 — this form stays beside the sub-nav that
+          selects it rather than centering inside `1fr` — has a box to measure. */}
+      <div className="min-w-0" data-testid="settings-group-content">
         <PageHeader
           back={{
             href: "/settings",

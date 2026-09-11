@@ -128,11 +128,7 @@ export default async function SuppliesPage() {
   );
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="supplies-page"
-    >
+    <PageContainer width="reading" data-testid="supplies-page">
       {/* Sentence case, matching this route's own nav label and every cross-link to
       it ("Medicine cabinet") — #2615 item 4. */}
       <PageHeader

@@ -26,7 +26,7 @@ export default async function ApiTokensPage() {
 
   return (
     <SettingsGroupLayout group="account" login={login} profile={profile}>
-      <PageContainer width="reading">
+      <PageContainer width="reading" align="start">
         <ApiTokensSettings
           tokens={tokens}
           showOwner={isAdmin}

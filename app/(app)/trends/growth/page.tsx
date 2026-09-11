@@ -77,7 +77,7 @@ export default async function GrowthTrendsPage(props: {
   return (
     <PageContainer
       width="wide"
-      className="mx-auto space-y-4 md:space-y-6"
+      className="space-y-4 md:space-y-6"
       data-testid="growth-detail-page"
     >
       {/* No wrapper, and no margin of its own: the back link and the title are

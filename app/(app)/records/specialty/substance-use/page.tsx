@@ -47,7 +47,11 @@ export default async function RecordsSubstanceUsePage(props: {
     ? screenParam
     : undefined;
   return (
-    <PageContainer width="reading" data-testid="records-substance-use">
+    <PageContainer
+      width="reading"
+      align="start"
+      data-testid="records-substance-use"
+    >
       <SectionSubtitle title="Substance use">
         Track validated screening scores (AUDIT-C, AUDIT, DAST-10), alcohol,
         nicotine, and cannabis use over time, and reduction targets you set

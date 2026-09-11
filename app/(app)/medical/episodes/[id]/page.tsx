@@ -254,7 +254,7 @@ export default async function EpisodePage(props: {
   const hasUpdateWorkspace = canWrite;
 
   return (
-    <PageContainer width="reading" className="mx-auto space-y-5">
+    <PageContainer width="reading" className="space-y-5">
       {/* The way out (#3237). This page had none — its in-card identity banner
           (#531/#534) is a different question and is untouched below. `space-y-5`
           on the container owns the gap, so no bottom margin here. */}

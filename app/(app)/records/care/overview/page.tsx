@@ -20,7 +20,7 @@ export default async function RecordsCareOverviewPage() {
   // it's person-level context, not a flat record list. Single view is byte-identical.
   const scope = await requireScope();
   return (
-    <PageContainer width="flow" className="space-y-5">
+    <PageContainer width="flow" align="start" className="space-y-5">
       <SectionSubtitle title="Care overview">
         Keep the personal context, family history, plans, and clinical goals
         that shape your care.

@@ -14,11 +14,7 @@ export default async function ResultsReportsPage() {
   const { profile, login } = await requireSession();
   const fmt = getDisplayFormatPrefs(login.id);
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="results-reports"
-    >
+    <PageContainer width="reading" align="start" data-testid="results-reports">
       <PaneIntro title="Reports" testId="results-pane-intro">
         Narrative diagnostic reports — microbiology, gram stain, and
         cytopathology — as they were written.

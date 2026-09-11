@@ -29,7 +29,7 @@ export default async function FitnessCheckPage() {
     // `PageContainer` nested inside, so the tiles came out ~170px on desktop and
     // each one's title painted through its category chip. ONE container owns the
     // page width; the view below carries none.
-    <PageContainer width="wide" className="mx-auto">
+    <PageContainer width="wide">
       <PageHeader
         back={{ href: "/training", destination: "Training" }}
         title="Fitness check"

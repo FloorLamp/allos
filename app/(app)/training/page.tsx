@@ -92,7 +92,7 @@ export default async function TrainingPage(props: {
     // theirs: capping only the panel left the tab strip running to the shell's
     // 3xl (1920px with the browser-default 16px initial font size) edge, wider
     // than the content beneath it.
-    <PageContainer width="wide" className="mx-auto">
+    <PageContainer width="wide">
       <TabFirstPage
         config={TRAINING_TAB_FIRST_PAGE}
         testId="training-page"
