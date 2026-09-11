@@ -111,6 +111,10 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+  // Use CONFIRMS set 1 while rows 2-3 stay planned, so the grid keeps its one
+  // shared layout and set 1 states its load behind its door (#5762). One tap on
+  // that door brings the recorded number back.
+  await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
   await expect(weight).toHaveValue(/^\d/);
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })

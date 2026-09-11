@@ -6,7 +6,6 @@ import {
   openFoodAdd,
   settledClick,
   settledFill,
-  settledSelect,
 } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import {
@@ -178,8 +177,9 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // State the time BEFORE going offline — the control is local state, so the statement
-  // is made against a page that already rendered. Since #3987 it sits behind one fold.
-  await hydratedClick(page, page.getByTestId("food-when-summary"));
+  // is made against a page that already rendered. Since #4426 it sits behind the shared
+  // statement's clock door.
+  await hydratedClick(page, page.getByTestId("food-when-toggle"));
   await hydratedClick(page, page.getByTestId("food-when-now"));
   await expect(page.getByTestId("food-when-time")).not.toHaveValue("");
 
@@ -273,16 +273,12 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
   const baselineEventId = maxFoodEventId();
 
   // The user states a time, exactly as in the passing #2053 case above — except the
-  // device's own clock is what decided this hour was already behind them.
-  // Through the settled path: a bare selectOption on a controlled select can land
-  // before hydration and be reverted, and here that would silently withdraw the
-  // statement this test is entirely about.
-  await hydratedClick(page, page.getByTestId("food-when-summary"));
-  const field = page.getByTestId("food-when-time");
-  const value = await field
-    .getByRole("option", { name: FAST_CLOCK_HOUR, exact: true })
-    .getAttribute("value");
-  await settledSelect(page, field, value ?? "");
+  // device's own clock is what decided this minute was already behind them.
+  // Through the settled path: a bare fill on a controlled field can land before
+  // hydration and be reverted, and here that would silently withdraw the statement
+  // this test is entirely about.
+  await hydratedClick(page, page.getByTestId("food-when-toggle"));
+  await settledFill(page, page.getByTestId("food-when-time"), FAST_CLOCK_HOUR);
 
   await context.setOffline(true);
   await hydratedClick(page, page.getByTestId("log-berries"));
