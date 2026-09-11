@@ -341,7 +341,8 @@ describe("the care-overview rows prompt for the essentials they are missing (#53
   it.each<{ name: string; render: () => void; prompts: string[] }>([
     {
       name: "the care-plan row prompts for a planned date it does not have",
-      render: () => wrap(<CarePlanForm action={noop} item={undatedCarePlanItem} />),
+      render: () =>
+        wrap(<CarePlanForm action={noop} item={undatedCarePlanItem} />),
       prompts: ["care-plan-fact-planned"],
     },
     {
@@ -407,7 +408,43 @@ describe("the family-history code chip follows the coded pick (#5302 / #1676)", 
     // Typing the condition away retracts the code the pick applied.
     fireEvent.change(field, { target: { value: "Something else entirely" } });
     expect(
-      screen.getByTestId("family-history-fact-code").getAttribute("data-fact-state")
+      screen
+        .getByTestId("family-history-fact-code")
+        .getAttribute("data-fact-state")
     ).toBe("missing");
+  });
+});
+
+describe("no standing prose on a care-overview form (#5300 rule 4)", () => {
+  // The care-plan form carried one paragraph about what an unrecognized status costs.
+  // It is the VALUE's meaning, so it belongs inside the editor that chooses the value
+  // — the one sentence an open editor may carry — and nowhere else.
+  //
+  // Asked as reachability rather than as text-in-the-document, for the reason the
+  // allergy case above records: this form is DOM-collected, so a closed editor is
+  // HIDDEN and not unmounted, and "is it on screen" is "is it inside a hidden panel".
+  const MEANING = /keeps counting as open/;
+
+  it("the unrecognized-status notice is behind the status editor, not on the form", () => {
+    wrap(<CarePlanForm action={noop} />);
+    // Reach the state where the notice exists at all: the free-text escape, holding a
+    // status the open/closed machinery does not recognize. The picker is inside the
+    // closed panel, which is where a DOM-collected form keeps it.
+    fireEvent.change(screen.getByTestId("cp-status-select-new"), {
+      target: { value: "__other" },
+    });
+    fireEvent.change(screen.getByTestId("cp-status-other-new"), {
+      target: { value: "finished" },
+    });
+
+    // The state where the unwanted effect could occur: the form is up and its chip
+    // row is on screen, so an inert harness cannot pass this by rendering nothing.
+    expect(screen.getByTestId("care-plan-fact-row")).toBeTruthy();
+    expect(screen.getByText(MEANING).closest("[hidden]")).not.toBeNull();
+
+    // And the positive half: it is there for the person choosing the value. The
+    // status now reads back as stated, so its own chip is the way in.
+    fireEvent.click(screen.getByTestId("care-plan-fact-status"));
+    expect(screen.getByText(MEANING).closest("[hidden]")).toBeNull();
   });
 });

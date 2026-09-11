@@ -326,7 +326,11 @@ test.describe("Entry vocabularies (#1676)", () => {
     // them. The helper routes either way; the values and the flow below are
     // unchanged.
     await withRecordFact(addForm, "care-plan", "category", () =>
-      settledSelect(page, carePlanDialog.locator("#cp-category-new"), "procedure")
+      settledSelect(
+        page,
+        carePlanDialog.locator("#cp-category-new"),
+        "procedure"
+      )
     );
     await withRecordFact(addForm, "care-plan", "status", () =>
       settledSelect(page, carePlanDialog.locator("#cp-status-new"), "planned")

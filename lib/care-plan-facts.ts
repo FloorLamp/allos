@@ -43,12 +43,7 @@ import { titleCase } from "./record-format";
 // The facts, in the order the row draws them. `planned` leads because it is the one
 // the row prompts for, and `code` sits beside the category it qualifies.
 export type CarePlanFactKey =
-  | "planned"
-  | "category"
-  | "status"
-  | "code"
-  | "provider"
-  | "notes";
+  "planned" | "category" | "status" | "code" | "provider" | "notes";
 
 // The nouns, so the trailing affordance can name what it holds.
 export const CARE_PLAN_FACT_NOUNS: Record<CarePlanFactKey, string> = {
@@ -88,7 +83,8 @@ export function carePlanFactSummary(
   const row = recordFactRow<CarePlanFactKey>();
 
   const planned = f.plannedDate.trim();
-  if (planned) row.stated("planned", `Planned ${formatMonthDay(planned, prefs)}`);
+  if (planned)
+    row.stated("planned", `Planned ${formatMonthDay(planned, prefs)}`);
   // On the row rather than behind "more": an undated plan is the one Upcoming cannot
   // read, so this is the prompt that keeps a plan from going quiet.
   else row.missing("planned", "Add a planned date");
@@ -99,7 +95,11 @@ export function carePlanFactSummary(
   row.state("category", f.category, carePlanCategoryLabel(f.category) ?? "");
   // `titleCase` is the casing the shared StatusBadge gives this same column on the
   // list (#643), so the chip and the badge cannot read differently.
-  row.state("status", f.status, f.status.trim() ? titleCase(f.status.trim()) : "");
+  row.state(
+    "status",
+    f.status,
+    f.status.trim() ? titleCase(f.status.trim()) : ""
+  );
 
   const code = f.code.trim();
   const system = f.codeSystem.trim();
