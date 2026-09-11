@@ -12,6 +12,7 @@ import { shiftDateStr } from "@/lib/date";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import { EPISODE_DAY_BOUNDS } from "@/lib/open-episode";
 import { listCyclePeriods, getOpenPeriod } from "@/lib/cycle-store";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import {
   startPeriodCore,
   endPeriodCore,
@@ -28,11 +29,15 @@ import {
 } from "@/lib/rule-finding-prefixes";
 import { CYCLE_BLEEDING_PREFIX } from "@/lib/cycle-observation";
 
-function newProfile(name: string): number {
+// The cores take the id a write gate minted (#5348), and this tier has no gate to call:
+// the fixture casts, once, exactly as the RPE opt-in seam lets a test quote the cast it
+// bans in production (eslint.config.mjs RPE_BRAND_CAST). Production stays unable to forge
+// one. A branded number is still a number, so the reads below take it unchanged.
+function newProfile(name: string): WriteAuthorizedProfileId {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
-  );
+  ) as WriteAuthorizedProfileId;
 }
 
 // A recorded period `startAgo`..`endAgo` days before the profile's today (endAgo null =

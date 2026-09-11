@@ -67,9 +67,9 @@ function parseId(formData: FormData): number | null {
 export async function startPeriodAction(
   formData: FormData
 ): Promise<CycleActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const flow = parseFlow(formData);
-  const outcome = startPeriodCore(profile.id, today(profile.id), flow);
+  const outcome = startPeriodCore(writeProfileId, today(profile.id), flow);
   revalidateCycle();
   if (outcome.kind === "already-open") {
     return {
@@ -95,9 +95,9 @@ export async function startPeriodAction(
 export async function endPeriodAction(
   formData: FormData
 ): Promise<CycleActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   void formData;
-  const outcome = endPeriodCore(profile.id, today(profile.id));
+  const outcome = endPeriodCore(writeProfileId, today(profile.id));
   if (outcome.kind === "none-open") {
     return { ok: false, error: "Couldn't end the period. No period is open." };
   }
@@ -114,9 +114,9 @@ export async function endPeriodAction(
 export async function reopenPeriodAction(
   formData: FormData
 ): Promise<CycleActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   void formData;
-  const outcome = reopenPeriodCore(profile.id, today(profile.id));
+  const outcome = reopenPeriodCore(writeProfileId, today(profile.id));
   revalidateCycle();
   if (outcome.kind === "not-found") {
     return { ok: false, error: "No recently ended period to reopen." };
