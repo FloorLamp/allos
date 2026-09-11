@@ -1063,13 +1063,14 @@ describe("anchorImpliedDay — the day a bucket names, read off its own anchor (
   // device's midnight — the one that CLOSES the day it covers, which is why every case
   // below would be a day LATE if the end's own date were taken as the answer.
   it.each([
-    // The prod travel case of #3901 with a clamped start. Three answers are on the
-    // table and the test separates all three: 2026-08-26 is the profile attribution
-    // this fix exists to stop using, 2026-08-28 is the day the end instant itself
-    // falls on, and 2026-08-27 is the day the New York device actually lived.
+    // The prod travel case of #3901 with a clamped start, and the clamp is what makes
+    // 05:37Z state nothing: it is no quarter-hour offset from any midnight. Three
+    // answers are on the table and this separates all three — 2026-08-26 is the profile
+    // attribution the fix exists to stop using, 2026-08-28 is the day the end instant
+    // itself falls on, and 2026-08-27 is the day the New York device actually lived.
     [
       "NY bucket clamped to the sync start, profile still LA",
-      "2026-08-27T05:30:00Z",
+      "2026-08-27T05:37:00Z",
       "2026-08-28T04:00:00Z",
       -7 * HOUR,
       "2026-08-27",

@@ -1204,12 +1204,13 @@ describe("day-bucket date derivation (#3901)", () => {
   // midnight, and it is the midnight that CLOSES the day covered.
   it("files a clamped-start day bucket under the day its END closes", () => {
     // A New York device's 08-27 runs 04:00Z to the next 04:00Z, and the sync fired at
-    // 01:30 local, so the bucket starts 05:30Z. Under the still-lagging Los Angeles
-    // profile that instant reads 08-26 22:30 — the neighbour's day, and the supersede
+    // 01:37 local, so the bucket starts 05:37Z — an instant that is no quarter-hour
+    // offset from any midnight and therefore states nothing. Under the still-lagging
+    // Los Angeles profile it reads 08-26 22:37, the neighbour's day and the supersede
     // that emptied it on prod. The answer is 08-27, and it is not 08-28, the day the
     // end instant itself falls on.
     const out = parse(
-      bucket("2026-08-27T05:30:00Z", "2026-08-28T04:00:00Z"),
+      bucket("2026-08-27T05:37:00Z", "2026-08-28T04:00:00Z"),
       "America/Los_Angeles"
     );
     expect(out.samples.map((s) => s.date)).toEqual(["2026-08-27"]);
