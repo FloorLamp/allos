@@ -6,7 +6,6 @@ import { workerDbPath } from "./worker-env";
 import {
   expectPhoneTapTargets,
   followLink,
-  openDashboardAll,
   settledBoxes,
   settledClick,
 } from "./helpers";
@@ -208,57 +207,28 @@ test("a new profile completes the six-step onboarding journey", async ({
     );
 
     await expect(page).toHaveURL(/\/$/);
-    await openDashboardAll(page);
-    // THE CHECKLIST IS A MOMENT BLOCK (#4362 ruling 3). #4076 made it ONE row whose
-    // facts column joined the remaining labels with "·" — one door for the whole set,
-    // and none of the sentences saying why a step is worth doing. The owner ruled a
-    // first-run reader is exactly who deserves per-step doors, so what is asserted
-    // here is the SHAPE the ruling names: one header, a row per remaining step with
-    // its own door and its own benefit sentence, and the phone-only advice last.
-    const checklist = page.locator('[data-moment-key="onboarding.checklist"]');
-    await expect(
-      checklist.getByRole("heading", { name: "A few useful next steps" })
-    ).toHaveCount(1);
 
-    const steps = checklist.locator(
-      '[data-candidate-id^="onboarding.checklist:"]'
-    );
-    const offered = await steps.evaluateAll((nodes) =>
-      nodes.map((node) => ({
-        id: node.getAttribute("data-candidate-id"),
-        text: (node.textContent ?? "").replace(/\s+/g, " ").trim(),
-        doors: [...node.querySelectorAll("a[href]")].map((a) =>
-          a.getAttribute("href")
-        ),
-      }))
-    );
-    // A DOOR EACH, AND THEY ARE DIFFERENT DOORS. "Every row has a link" is satisfied
-    // by four rows pointing at one destination, which is the state this ruling
-    // replaced; the set of destinations has to be as big as the set of rows.
-    expect(offered.length).toBeGreaterThan(1);
-    expect(offered.map((step) => step.doors.length)).toEqual(
-      offered.map(() => 1)
-    );
-    expect(new Set(offered.flatMap((step) => step.doors)).size).toBe(
-      offered.length
-    );
-    // The benefit sentence, on the step this journey's focus asked for.
-    expect(
-      offered.find((step) => step.id === "onboarding.checklist:metrics-labs")
-        ?.text
-    ).toContain("See results, ranges, and trends alongside");
-    // MOBILE-ONLY ADVICE LAST. "Add emergency details" is the one suggestion a
-    // desktop reader cannot act on, and it led the list before the sort came back.
-    expect(offered.at(-1)?.id).toBe("onboarding.checklist:explore");
-
-    // …and the block's own reassurance and dismiss, on the row that carries them.
-    const summary = checklist.locator(
-      '[data-candidate-id="onboarding.progress"]'
-    );
-    await expect(summary).toContainText(
-      "Pick what helps now and leave the rest for later."
-    );
-    await expect(summary.getByRole("button", { name: "Hide" })).toBeVisible();
+    // ── THE FIRST-RUN CHECKLIST HAS NO SURFACE IN PR 2 (#5435 §4) ────────────────
+    //
+    // The journey ended here with the #4362 ruling-3 assertions on the onboarding
+    // moment block: one header, a row per remaining step with its OWN door and its
+    // own benefit sentence, different destinations for different rows, the
+    // mobile-only "Add emergency details" advice sorted last, and the progress row's
+    // reassurance and Hide.
+    //
+    // That block was built from `setupCandidates.onboardingStep` /
+    // `onboardingProgress` and rendered by the ranker's moment canvas. Home v3 seats
+    // fixed kinds and asks only `buildDataQualityFindings` for its Setup band
+    // (HOME_SETUP_BUILDERS), so nothing on `/` builds an onboarding candidate and the
+    // checklist is not rendered anywhere in the app. The builders and their unit
+    // coverage are untouched; what has no reader is the BLOCK.
+    //
+    // THIS IS A COVERAGE LOSS, NOT A CLEANUP, and it is reported as one: whether
+    // Home's Setup band should seat the first-run checklist is an owner question
+    // #5435 does not answer, and PR 2 is not the place to invent an answer. What the
+    // wizard itself does — all six steps, the focus it records, the destination it
+    // hands the reader — is unchanged above and still asserted.
+    await expect(page.getByRole("main")).toBeVisible();
   } finally {
     await page.context().close();
   }

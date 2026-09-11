@@ -2,9 +2,8 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { openDashboardAll, settledClick } from "./helpers";
+import { settledClick } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
-import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import {
   E2E_LOGIN_CYCLE_CTA,
   CYCLE_CTA_PROFILE,
@@ -87,14 +86,20 @@ test.describe("cycle logging from the quick logger (#1892)", () => {
   });
 
   test("the quick logger and the Cycle page always agree about the verb on offer", async () => {
-    // One state, two renderers. If either grew its own derivation, this is the
+    // One state, THREE renderers. If any grew its own derivation, this is the
     // assertion that would catch it in the browser.
+    //
+    // THE THIRD ONE IS NEW, AND IT IS WHY THE OLD SHAPE OF THIS TEST HAD TO GO. It
+    // read `cycle.control` off the ranker tail and asserted the tail carried no cycle
+    // write of its own (#3366). Home v3 (#5435 §3.2) seats Period deliberately, with
+    // a write — so the absence is no longer true, and asserting it would pin a page
+    // that no longer exists. What replaces it is stronger than what it checked: the
+    // seat renders the SAME PeriodOfferButton (`period-offer-atom`), so the offer is
+    // read from all three surfaces and all three must name the same verb.
     await page.goto("/");
-    // The tail no longer carries a cycle write of its own (#3366) — asserted here
-    // rather than only implied, and never alone: the panel below is the offer.
-    await openDashboardAll(page);
-    await expect(dashboardCandidatePrefix(page, "cycle.control")).toHaveCount(
-      0
+    const seat = page.getByTestId("period-offer-atom");
+    await expect(seat.getByTestId("period-started-button")).toHaveText(
+      "Period started today"
     );
 
     const panel = await openPeriodPanel(page);
@@ -105,6 +110,12 @@ test.describe("cycle logging from the quick logger (#1892)", () => {
     await expect(reopened.getByTestId("period-ended-button")).toHaveText(
       "Period ended today"
     );
+
+    // Home's seat, re-read from the same recorded state, offers the same verb.
+    await page.goto("/");
+    await expect(
+      page.getByTestId("period-offer-atom").getByTestId("period-ended-button")
+    ).toHaveText("Period ended today");
 
     await page.goto("/medical/cycles");
     await expect(
