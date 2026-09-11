@@ -102,6 +102,9 @@ describe("both halves derive from it, and agree in both directions", () => {
       "Blood Pressure Diastolic",
       "Blood Pressure Systolic",
       "Body Temperature",
+      // #5409: the one member with no `medical_records` rows at all — its readings are
+      // `metric_samples` stream rows, and the `breathing-rate` page charts them.
+      "Breathing Rate (sleep)",
       "Oxygen Saturation",
       // #1850: the respiratory domain's home-measured half, and the first entry to
       // carry BOTH halves into the TALL stream store.
@@ -112,8 +115,8 @@ describe("both halves derive from it, and agree in both directions", () => {
     expect(STREAM_READING_SOURCES.map((s) => s.canonical).sort()).toEqual([
       "Body Fat Percentage",
       // #5409: a wearable's nightly breathing rate is a sleep-window sample, and its
-      // own quantity — registered as a STREAM with no surface yet (the `breathing-rate`
-      // slug needs the Trends census entry that compiles with it).
+      // own quantity — a STREAM whose surface is the `breathing-rate` metric page, so
+      // it appears in BOTH derived halves.
       "Breathing Rate (sleep)",
       "Peak Expiratory Flow",
       "Resting Heart Rate",

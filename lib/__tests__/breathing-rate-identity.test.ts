@@ -95,8 +95,8 @@ describe("two quantities, and the clinical band reaches only one", () => {
   });
 
   it("routes `respiratory-rate` at the CLINICAL identity, unchanged", () => {
-    // #5409 explicitly leaves this slug where it was. The nightly quantity gets its own
-    // surface when the Trends census can compile with it; it never borrows this one.
+    // #5409 explicitly leaves this slug where it was: the nightly quantity got its OWN
+    // surface, and the thing this pins is that it never borrowed this one.
     expect(METRIC_KNOWLEDGE["respiratory-rate"]).toEqual({
       source: "canonical",
       canonical: CLINICAL_RESPIRATORY_CANONICAL,
@@ -104,9 +104,19 @@ describe("two quantities, and the clinical band reaches only one", () => {
     expect(continuousReadingSlug(CLINICAL_RESPIRATORY_CANONICAL)).toBe(
       "respiratory-rate"
     );
-    // The nightly identity routes to NO surface yet, which is the honest state of the
-    // deferred half — not a quiet re-use of the clinical one.
-    expect(continuousReadingSlug(BREATHING_RATE_CANONICAL)).toBeNull();
+    // The nightly identity routes to its own surface — a DIFFERENT slug, asserted as a
+    // difference rather than as two literals, so renaming either one cannot make the
+    // two silently converge.
+    expect(continuousReadingSlug(BREATHING_RATE_CANONICAL)).toBe(
+      "breathing-rate"
+    );
+    expect(continuousReadingSlug(BREATHING_RATE_CANONICAL)).not.toBe(
+      continuousReadingSlug(CLINICAL_RESPIRATORY_CANONICAL)
+    );
+    // And the surface brings no band with it: `none` is what makes the clinical 12–20
+    // unreachable from the nightly reading, because a `none` entry names no canonical
+    // entry for a range to be looked up through.
+    expect(METRIC_KNOWLEDGE["breathing-rate"].source).toBe("none");
     expect(
       STREAM_READING_SOURCES.find((s) => s.key === BREATHING_RATE_METRIC)
         ?.canonical

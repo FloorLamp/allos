@@ -148,7 +148,7 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
       unit: "L/min",
     },
   },
-  // ── The sleeping breathing rate (#5409) — a STREAM, and a SEPARATE quantity ──
+  // ── The sleeping breathing rate (#5409) — both halves, and a SEPARATE quantity ──
   //
   // A wrist tracker computes one breathing rate per sleep log and re-publishes it with
   // a new stamp whenever it extends the log. Filed as a stamp-keyed `medical_records`
@@ -162,17 +162,19 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
   // from Heart Rate, which this map already keeps apart. Registering the nightly stream
   // under `Respiratory Rate` would have granted a sleeping average the awake band.
   //
-  // `surface` IS NULL, AND THAT IS A DEFERRAL, NOT THE RULING. #5409 rules this quantity
-  // onto its own `breathing-rate` metric surface. Registering that slug means adding it
-  // to `TREND_METRIC_SLUGS`, whose census contract (`trendMetricCensusEntries`) is a
-  // TOTAL `Record`, so the slug cannot compile without the Trends body section supplying
-  // its series in the same change — an `app/` edit. Null until that lands, which is the
-  // honest state: this entry claims the STREAM half only. The readings are not hidden
-  // meanwhile — the night states the reading on the record's Sleep row (lib/history.ts)
-  // and Data -> Manage lists the rows.
+  // IT CARRIES BOTH HALVES. The stream is `metric_samples` `respiratory_rate_bpm`; the
+  // surface is the `breathing-rate` metric page, which charts exactly those rows. That
+  // pairing is what makes the quantity CONTINUOUS (`CONTINUOUS_READING_METRIC` is derived
+  // from this field), so a reading of it renders as a trend rather than on the reading
+  // detail page against a band it does not have.
+  //
+  // WHAT THE SURFACE DOES NOT BRING WITH IT is a judgement. `breathing-rate` declares
+  // `source: "none"` in `METRIC_KNOWLEDGE`, so the page charts the nights and states no
+  // range; the 12-20 band stays on `Respiratory Rate` above, one identity over, and is
+  // unreachable from here because this quantity names no canonical entry to reach it by.
   {
     canonical: "Breathing Rate (sleep)",
-    surface: null,
+    surface: "breathing-rate",
     stream: {
       store: "metric_samples",
       key: "respiratory_rate_bpm",

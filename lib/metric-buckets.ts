@@ -1,4 +1,5 @@
 import { BRISTOL_STOOL_METRIC } from "./bristol-stool";
+import { BREATHING_RATE_METRIC } from "./breathing-rate";
 
 // Instantaneous (point) metrics: a day can hold several readings, so they must be
 // averaged per day, not summed. Everything else (steps, distance, calories,
@@ -29,6 +30,15 @@ export const AVERAGED_METRICS = new Set([
   // Waist circumference (#2322) is a point measure like height: a tape reading and a
   // same-date imported one must AGREE (average), never SUM into a 168 cm waist.
   "waist_circumference_cm",
+  // The sleeping breathing rate (#5409) is a point measure with a harder edge than the
+  // rest: a night holds at most ONE reading per source, but it can hold two SOURCES —
+  // a live Health Connect sync and a Fitbit Takeout archive covering the same week both
+  // write the night, and they are two spellings of one number, not two breaths counted.
+  // Summed, two agreeing 13.6s become a 27.2 br/min night, which is not merely wrong
+  // but outside anything a sleeping adult does; averaged, the two agree. Registered here
+  // rather than relied on being "one row a night", because the day it is two rows is
+  // exactly the day the additive default would be at its most misleading.
+  BREATHING_RATE_METRIC,
 ]);
 
 // Categorical metrics (#3167, from #3165): the stored number NAMES A CATEGORY

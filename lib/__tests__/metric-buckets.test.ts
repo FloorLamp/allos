@@ -23,6 +23,7 @@ describe("metric bucket membership", () => {
       "height_cm",
       "head_circumference_cm",
       "skin_temp_delta_c",
+      "respiratory_rate_bpm",
     ];
     for (const m of averaged) {
       expect(AVERAGED_METRICS.has(m)).toBe(true);
@@ -51,6 +52,11 @@ describe("metric bucket membership", () => {
         // Waist circumference (#2322) — a point measure like height: a tape reading
         // and a same-date imported one must AGREE, never sum.
         "waist_circumference_cm",
+        // The sleeping breathing rate (#5409) — one reading per night per SOURCE, and a
+        // night covered by both a Health Connect sync and a Fitbit Takeout archive holds
+        // two of them. They are two spellings of one night, so they must average; summed
+        // they would chart a 27 br/min night no sleeping adult has ever had.
+        "respiratory_rate_bpm",
       ].sort()
     );
   });

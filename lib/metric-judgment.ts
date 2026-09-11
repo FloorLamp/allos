@@ -190,6 +190,31 @@ export const METRIC_KNOWLEDGE: Record<TrendMetricSlug, MetricKnowledge> = {
     reason:
       "A signed deviation from the tracker's own baseline, not an absolute temperature — there is nothing for a population range to be a range OF.",
   },
+  // ── THE SLEEPING BREATHING RATE: `none` IS THE RULING, NOT A GAP (#5409) ────
+  //
+  // This is the one `none` in the registry whose neighbour HAS the band it is being
+  // denied. `respiratory-rate` two entries up names canonical `Respiratory Rate` and
+  // is judged at 12–20; the reason this quantity has its own canonical name at all is
+  // that the 12–20 is not its. A spot count taken while awake and an overnight average
+  // from a wrist device are different quantities — the Resting Heart Rate / Heart Rate
+  // pair one entry down, made again — and an adult's ordinary nights run lower than the
+  // awake band's floor, so borrowing it would flag healthy sleep.
+  //
+  // WHAT `none` BUYS IS STRUCTURAL, not documentary. `metricIdentity()` returns null
+  // for a `none` entry, so this slug names NO canonical entry, so `metricJudgmentForSlug`
+  // can return no band for it and `metricObservationFoldIdentity` no fold — the clinical
+  // band is unreachable from the nightly reading by construction rather than by a filter
+  // someone has to remember to apply. The mirror of `QUANTITY_KNOWLEDGE["Breathing Rate
+  // (sleep)"]` below, which says the same thing keyed by identity for the surfaces that
+  // hold a reading rather than a slug.
+  //
+  // `respiratory-rate` IS UNCHANGED. It still names the clinical canonical entry and
+  // still judges a nurse's count at 12–20; nothing here touches it.
+  "breathing-rate": {
+    source: "none",
+    reason:
+      "No population band exists for a SLEEPING breathing rate. The curated 12–20 on `Respiratory Rate` is for a spot count taken while awake and belongs to that separate identity (#482); an adult's ordinary nights sit below its floor, so judging a nightly average against it would flag healthy sleep. It is read as a trend against this profile's own usual nights (#5409).",
+  },
   weight: {
     source: "none",
     reason:

@@ -111,6 +111,12 @@ export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   // rate because that is the family a reader looks for it in. Present-gated like the
   // rest: a profile with no peak-flow readings never renders the card.
   "peak-flow",
+  // The sleeping breathing rate (#5409). Placed in the respiratory run for the reason
+  // peak flow states one line up — that is the family a reader looks for it in — and
+  // beside `skin-temp`, the other card fed by one value per sleep session from the same
+  // wearable. It is present-gated like the rest: a profile whose tracker never reported
+  // a breathing rate never renders the card.
+  "breathing-rate",
   "skin-temp",
   "temperature",
   // Synced composition tail.

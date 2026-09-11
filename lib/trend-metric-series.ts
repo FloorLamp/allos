@@ -13,6 +13,7 @@ import {
 } from "./queries";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "./vitals-input";
 import { PEAK_FLOW_METRIC } from "./peak-flow";
+import { BREATHING_RATE_METRIC } from "./breathing-rate";
 import { WAIST_CIRC_METRIC } from "./waist-circ-extract";
 import { bmiSeriesDatePaired } from "./growth-series";
 import { getProfileBirthdate } from "./settings/profile-attrs";
@@ -107,6 +108,19 @@ const STREAM_SERIES: Record<TrendMetricSlug, StreamRead> = {
       (row) => ({
         date: row.date,
         value: round(row.value, TREND_METRIC_META["skin-temp"].decimals),
+      })
+    ),
+  // The sleeping breathing rate (#5409). One reading per night, so the daily bucket is
+  // a passthrough on almost every day — but NOT on all of them, which is why the metric
+  // is registered in `AVERAGED_METRICS`: a night can carry a Health Connect row and a
+  // Fitbit Takeout row for the same date (ten such nights on the record that raised the
+  // issue), and the additive default would chart those two agreeing 13.6s as a 27.2
+  // br/min night nobody breathed. Averaging makes two spellings of one night agree.
+  "breathing-rate": ({ profileId }) =>
+    getMetricDailyTotals(profileId, BREATHING_RATE_METRIC, ALL_ROWS).map(
+      (row) => ({
+        date: row.date,
+        value: round(row.value, TREND_METRIC_META["breathing-rate"].decimals),
       })
     ),
   weight: ({ profileId, weightUnit }) =>

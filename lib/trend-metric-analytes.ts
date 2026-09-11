@@ -322,6 +322,29 @@ export const METRIC_DOCUMENT_REACH: Record<
     reason:
       "An import-only tracker baseline DEVIATION with no canonical entry — nothing folds and nothing projects, so an imported row would be lost.",
   },
+  // The sleeping breathing rate (#5409). The ONLY `false` here whose quantity is
+  // nonetheless absent from the flat catalog, and the distinction is worth stating
+  // rather than leaving to be rediscovered.
+  //
+  // `false` is the honest answer to the question THIS registry asks — "can a
+  // document-imported reading reach this chart" — because the document path never
+  // produces a reading of this quantity. A respiratory rate extracted from a document,
+  // or typed by hand, is CLINICAL by construction (`isWearableRespiratorySource` matches
+  // the two wearable integration ids exactly and nothing else), so it is a
+  // `Respiratory Rate` observation on the `respiratory-rate` slug's chart. This chart's
+  // rows come from the two wearable parsers and from nowhere else.
+  //
+  // AND NOTHING IS STRANDED BY THAT, which is the guard's actual concern. The name is
+  // removed from the catalog by the STREAM clause in `listedInResultsCatalog` below —
+  // `Breathing Rate (sleep)` has a registered stream, so the placement rule sends every
+  // reading of it to `metric_samples`, where this chart already reads it. `false` here
+  // therefore withholds an ANALYTE-NAME claim (see `registryNamesFor`, which returns
+  // nothing for a `false` slug) without withholding a home.
+  "breathing-rate": {
+    reaches: false,
+    reason:
+      "The document path produces no reading of this quantity: an extracted or hand-entered respiratory rate is CLINICAL by construction and lands on the `respiratory-rate` chart as a `Respiratory Rate` observation, while this chart's rows come only from the two wearable parsers. The name leaves the catalog through the stream clause instead, so nothing is stranded (#5409).",
+  },
   "lean-mass": {
     reaches: false,
     reason:
@@ -676,8 +699,12 @@ export function listedInResultsCatalog(row: {
   //
   // IT CHANGES NO EXISTING ANALYTE. Every other `vitals` entry carrying a registered
   // stream — Resting Heart Rate, Peak Expiratory Flow — already fails the clause above,
-  // so this term is reached only by a stream identity with no metric surface yet. The
-  // pure test enumerates the vocabulary and pins that the two clauses drop the same set
-  // they did before, plus exactly this one name.
+  // so this term is reached only by a stream identity whose slug claims no analyte name.
+  // `Breathing Rate (sleep)` is that identity and, since #5409's app half, it HAS a
+  // metric surface: what keeps it here rather than in the clause above is its
+  // `METRIC_DOCUMENT_REACH` entry, which declares `false` because no document-imported
+  // reading of the quantity exists — so `registryNamesFor` claims nothing for the slug
+  // and the first clause never fires. The pure test enumerates the vocabulary and pins
+  // that the two clauses drop the same set they did before, plus exactly this one name.
   return streamSourcesForIdentity(readingIdentity(identity ?? "")).length === 0;
 }

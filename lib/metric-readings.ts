@@ -21,6 +21,7 @@ import {
   type ReadingWriteOutcome,
 } from "@/lib/reading-writes";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
+import { BREATHING_RATE_METRIC } from "@/lib/breathing-rate";
 import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import type { TrendMetricSlug } from "@/lib/trend-metrics";
@@ -126,6 +127,16 @@ export const METRIC_READING_STORE: Record<
   // It still has REAL rows, which is exactly why it needs a store: a bad import is
   // otherwise unreachable, and delete-with-tombstone is what the table is for.
   "skin-temp": { table: "metric_samples", metric: SKIN_TEMP_DELTA_METRIC },
+  // The sleeping breathing rate (#5409). Import-only like skin temperature, and it
+  // needs a store for the same reason: the rows are REAL — one `metric_samples` row per
+  // night, written by the two wearable parsers — so a night the device got wrong has to
+  // be correctable and deletable-with-tombstone, which is the whole point of this table.
+  //
+  // The store is the STREAM key, not a canonical name, even though the quantity HAS a
+  // canonical name (`Breathing Rate (sleep)`): the readings live in `metric_samples`,
+  // and the reading identity map is what says so. The clinical `Respiratory Rate` rows
+  // are the OTHER slug's, in `medical_records`, and nothing here moves them.
+  "breathing-rate": { table: "metric_samples", metric: BREATHING_RATE_METRIC },
   // Peak expiratory flow (#1850). The tall store, not the wide one, because a flare
   // day holds a morning and an evening blow and `body_metrics` has one row per day.
   "peak-flow": { table: "metric_samples", metric: PEAK_FLOW_METRIC },
