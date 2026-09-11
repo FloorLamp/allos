@@ -787,7 +787,8 @@ export function parseHistoryExpand(
 
 /**
  * Which of the ledger's two selectable id spaces this record row sits in, if any
- * (#5618 ruling 4), or `null` when a selection may not act on it.
+ * (#5618 ruling 4 and the medication slice), or `null` when a selection may not act
+ * on it.
  *
  * ONE PREDICATE FOR THE BOX AND FOR THE COUNT. The record's Select control is drawn
  * from a count on the server and the boxes are drawn on the client, and a day whose
@@ -798,13 +799,26 @@ export function parseHistoryExpand(
  * pickable exactly when that day re-derivation would find it:
  *   • a food serving (the record's food rows already exclude the `__`-prefixed ranking
  *     events and alcohol, which the record files as a substance);
- *   • a SUPPLEMENT dose — the record shows medication doses too, and the batch cores
- *     scope themselves to `kind != 'medication'`, so offering a box on one would draw
- *     an affordance whose every tap the server refuses;
+ *   • ANY dose, medication or supplement. The record's dose reader is `status =
+ *     'taken'` throughout (`getIntakeDoseLedgerPage`), which is the one status both
+ *     correction cores accept, so every dose row the record renders is a row the batch
+ *     can reach;
  * and never a row belonging to another subject, because one batch names one
  * `profile_id`. Every other kind on the record — a symptom day, a movement, a reading,
  * a practice, a period — has no core behind these three verbs, and #5618 ruling 4
  * inherits the ledger's grammar rather than inventing cores for them.
+ *
+ * THE MEDICATION EXCLUSION THIS USED TO CARRY WAS NEVER THE CORES' (#5618, owner ruling
+ * 2026-09-10). The comment here said the batch cores "scope themselves to `kind !=
+ * 'medication'`" and that a box on a medication row would be an affordance the server
+ * always refuses. That was wrong on both halves and is corrected at
+ * 5618#issuecomment-5623688230: `updateHistoricalDose` and `deleteAdministrationLog`
+ * carry no kind guard at all — they have been kind-neutral since #1933 and already
+ * serve this record's own single-row ⋯ menu for medications. The exclusion lived in one
+ * clause of `selectableOn`'s query and nowhere else. Removing it cost no new core; what
+ * the batch owes instead is the audit, one row per corrected row, which the action
+ * boundary writes and lib/__action_tests__/ledger-selection-medication.actions.test.ts
+ * compares against the single-row path verb by verb.
  */
 export function historyRowPick(
   row: HistoryRow,
@@ -814,7 +828,6 @@ export function historyRowPick(
   const edit = row.edit;
   if (!edit) return null;
   if (edit.kind === "food") return { kind: "servings", id: edit.eventId };
-  if (edit.kind === "dose" && edit.itemKind === "supplement")
-    return { kind: "doses", id: edit.logId };
+  if (edit.kind === "dose") return { kind: "doses", id: edit.logId };
   return null;
 }

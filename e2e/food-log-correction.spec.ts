@@ -8,7 +8,9 @@ import {
   settledSelect,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
-import { shiftDateStr } from "@/lib/date";
+import { pinnedTimezone } from "./pinned-timezone";
+import { shiftDateStr, zonedDateParts } from "@/lib/date";
+import { formatMonthDay } from "@/lib/format-date";
 
 // The ⋯ row actions on the food log: CORRECT a logged serving (#1934) and REMOVE one
 // (#1963).
@@ -310,6 +312,12 @@ test("the sheet corrects a serving's eating time to a MINUTE; Meal follows it un
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const eventId = await newRowId(page, idsBefore);
   const row = page.getByTestId(`ledger-serving-${eventId}`);
+  // THE MINUTE PATH, while the row still sits on the day that filed it. The tap just
+  // happened, so the filing stamp and the row's day are the same day and the clock is
+  // about the day being read — #3958's "logged HH:MM" grammar, unchanged by #5618's
+  // rule 6. Asserted HERE so this spec covers both directions of that rule: the row
+  // crosses to another day later in this same test, and reads a DATE once it does.
+  await expect(row).toContainText(/logged \d{1,2}:\d{2}/);
 
   await row.getByRole("button", { name: /serving logged at/ }).click();
   await page.getByTestId(`ledger-serving-correct-${eventId}`).click();
@@ -387,11 +395,24 @@ test("the sheet corrects a serving's eating time to a MINUTE; Meal follows it un
   await expect(timeInput).toHaveValue("");
   await settledClick(page, page.getByTestId("food-correct-save"));
   await expect(page.getByTestId("food-correct-modal")).toBeHidden();
-  // Back on the logged time: the row shows the tap clock again…
-  // Back on a FILING-TIME clock, in #3958's grammar — "logged 13:36" says which
-  // question the clock answers, where a bare time would claim an eating minute the
-  // row no longer states.
-  await expect(row).toContainText(/logged \d{1,2}:\d{2}/);
+  // Back on a FILING-TIME clock — but this row no longer sits on the day that filed
+  // it. The correction above moved it to YESTERDAY and `recorded_at` is the tap
+  // instant, which lib/food-log-write.ts deliberately never edits, so the filing stamp
+  // belongs to TODAY. #5618's rule 6 (owner, 2026-09-10 22:36Z, "the clock grammar,
+  // both surfaces"): what the row can honestly state is the DAY it was filed on, not a
+  // minute that is true of no minute of the day it sits under. This assertion used to
+  // read `/logged \d{1,2}:\d{2}/` and was pinning the defect the ruling names — the
+  // same-day minute it was really guarding is pinned at the top of this test instead.
+  const filedDay = zonedDateParts(
+    pinnedTimezone(frozenNow().toISOString()).zone,
+    frozenNow()
+  ).date;
+  await expect(row).toContainText(
+    `logged ${formatMonthDay(filedDay, undefined, { today: yesterday })}`
+  );
+  // AND NO MINUTE SURVIVES: a cell that printed the date AND kept the clock would
+  // satisfy the line above while still claiming a time the row does not have.
+  await expect(row).not.toContainText(/logged \d{1,2}:\d{2}/);
   // …and the sheet reopens on the honest opening line.
   await row.getByRole("button", { name: /serving logged at/ }).click();
   await page.getByTestId(`ledger-serving-correct-${eventId}`).click();

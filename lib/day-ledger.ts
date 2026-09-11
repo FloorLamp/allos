@@ -31,6 +31,22 @@ interface LedgerRowBase {
    */
   hhmm: string;
   clockKind: "stated" | "logged";
+  /**
+   * The profile-local day the row was FILED on, or null when nothing filed it at a
+   * knowable instant — and null on a STATED row, where the question does not arise
+   * because the clock is the row's own (#5618 rule 6, owner ruling 2026-09-10 22:36Z:
+   * "ruling 6 belongs to the clock grammar, both surfaces").
+   *
+   * IT IS RESOLVED WHERE THE ZONE IS, never here: this module is pure and holds no
+   * timezone, so both gathers answer it in the row's own zone beside the `hhmm` they
+   * read from the same instant. A UTC comparison would answer a different question
+   * every time the zone crosses midnight, which is the mistake #5789 pinned in both
+   * directions on the record.
+   *
+   * `historyClock` turns it into "logged Sep 8" when it differs from the day the row
+   * sits under; same-day filing keeps the minute.
+   */
+  filedDay: string | null;
 }
 
 export interface LedgerServing extends LedgerRowBase {
@@ -101,6 +117,8 @@ export interface LedgerStack {
   stack: string;
   hhmm: string;
   clockKind: "stated" | "logged";
+  /** The filing day its members share — see `LedgerRowBase.filedDay`. */
+  filedDay: string | null;
   /** The doses this tap actually wrote, in the ledger's own order. */
   written: LedgerDose[];
   /**
@@ -244,6 +262,13 @@ export function buildDayLedger(input: {
         stack: dose.stack,
         hhmm: dose.hhmm,
         clockKind: dose.clockKind,
+        // THE STACK READS ITS MEMBERS' FILING DAY, and one member answers for all of
+        // them: the key above already carries `clockKind` and `hhmm`, and on a `logged`
+        // row that minute IS the filing instant's — so two rows that disagreed about
+        // the filing DAY would have to agree on the filing MINUTE, and would already
+        // be split by it. Adding it to the key would buy nothing and would put a
+        // formatting field into #3987's collapse rule.
+        filedDay: dose.filedDay,
         written: [dose],
         open: [],
       });
