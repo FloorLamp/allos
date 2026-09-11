@@ -121,7 +121,7 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     const panel = await openLogPanel(page);
     await (await showLogRow(panel, "log-dose")).click();
 
-    const overlay = page.getByTestId("quick-entry-sheet");
+    const overlay = page.getByRole("dialog", { name: "Log dose", exact: true });
     await expect(overlay).toBeVisible();
     // The switcher is PRESENT and standing on Today: both halves matter, because
     // the reversed rule hid the switcher AND moved the day, and an overlay that
