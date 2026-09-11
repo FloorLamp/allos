@@ -29,22 +29,39 @@ export const AVERAGED_METRICS = new Set([
   // Waist circumference (#2322) is a point measure like height: a tape reading and a
   // same-date imported one must AGREE (average), never SUM into a 168 cm waist.
   "waist_circumference_cm",
-  // Bristol stool form (#2785) — here as a FLOOR against the additive default, not
-  // as a claim that the mean means anything. The scale is categorical-ordinal, so
-  // neither aggregation is honest: an average reports a day of type 1 and type 7 as
-  // 4, textbook-normal. But SUM is the worse of the two by a distance, because it
-  // FABRICATES A REAL TYPE — two type-3s summing to 6 reads as "mushy", a value
-  // nobody recorded — while an average can only ever produce a fraction, which names
-  // no type at all and is visibly not one. The app's own reader never calls either:
-  // lib/bristol-stool.ts COUNTS, and the panel shape carries no field an averaging
-  // renderer could reach for.
-  BRISTOL_STOOL_METRIC,
 ]);
 
+// Categorical metrics (#3167, from #3165): the stored number NAMES A CATEGORY
+// rather than measuring a quantity, so no arithmetic over a day's readings is
+// honest and the metric DECLINES to aggregate. This is a stronger statement than
+// membership in AVERAGED_METRICS above, which only says "average rather than sum".
+//
+// Bristol stool form (#2785) is the first. The scale is categorical-ordinal, so
+// both aggregations lie, and the two lie differently. SUM is the worse of them by
+// a distance because it FABRICATES A REAL TYPE — two type-3s summing to 6 reads as
+// "mushy", a value nobody recorded — while an average can only ever produce a
+// fraction, which names no type at all and is visibly not one; an average also
+// reports a day of type 1 and type 7 as 4, textbook-normal. The metric sat in
+// AVERAGED_METRICS as a FLOOR against the additive default for exactly that
+// reason, but a floor is a choice between two wrong answers. Declining is the
+// right one, and the type is where it gets recorded: a comment inside a Set is
+// not a guarantee any caller can see, and three modules branch on this function.
+//
+// The app's own Bristol reader never wanted either aggregation — lib/bristol-stool.ts
+// COUNTS, and the panel shape carries no field an averaging renderer could reach for.
+export const CATEGORICAL_METRICS = new Set([BRISTOL_STOOL_METRIC]);
+
 // The per-day aggregation a metric uses: AVG for instantaneous point metrics,
-// SUM for additive ones. (Every additive metric is collapsed to one source per
-// day upstream before summing — see pickOneSourcePerDay in lib/metric-sources
-// and the source-priority handling in lib/queries/metrics.ts, issue #14.)
-export function metricAggregation(metric: string): "AVG" | "SUM" {
+// SUM for additive ones, NONE for categorical ones, which have no honest daily
+// figure at all. (Every additive metric is collapsed to one source per day
+// upstream before summing — see pickOneSourcePerDay in lib/metric-sources and
+// the source-priority handling in lib/queries/metrics.ts, issue #14.)
+//
+// Every consumer switches exhaustively over this union with a `never` arm, so a
+// fourth member cannot silently take an existing path.
+export type MetricAggregation = "AVG" | "SUM" | "NONE";
+
+export function metricAggregation(metric: string): MetricAggregation {
+  if (CATEGORICAL_METRICS.has(metric)) return "NONE";
   return AVERAGED_METRICS.has(metric) ? "AVG" : "SUM";
 }
