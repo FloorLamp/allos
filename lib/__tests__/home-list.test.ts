@@ -314,6 +314,57 @@ describe("the Now band pins what is owed", () => {
     expect(seats(composeHomeList(input({ attention: [reading] })))).toEqual([]);
   });
 
+  // EVERY AFFORDANCE, ONE AT A TIME. The predicate above is the attention model's
+  // `itemIsActionable`, and the whole reason Home reads it rather than keeping a copy
+  // is that a clause may not go missing on one side only. So each clause is asserted
+  // where Home consumes it: a dated fact carrying that field ALONE takes the care
+  // seat, and dropping the clause reddens this case and nothing else.
+  it.each([
+    ["actionLabel", { actionLabel: "View" }],
+    ["altAction", { altAction: { href: "/results" as const, label: "Open" } }],
+    ["doseId", { doseId: 3 }],
+    [
+      "practiceLog",
+      {
+        practiceLog: {
+          practice: "Red light therapy",
+          todayCount: 0,
+          defaultDurationMin: 15,
+          liveSession: null,
+        },
+      },
+    ],
+    ["preventiveRuleKey", { preventiveRuleKey: "colonoscopy" }],
+    ["bookHref", { bookHref: "/appointments" as const }],
+    ["carePlanItemId", { carePlanItemId: 12 }],
+    [
+      "conditionSuggestion",
+      { conditionSuggestion: { name: "Anaemia", code: null } },
+    ],
+    [
+      "followUpResolve",
+      { followUpResolve: { carePlanItemId: 12, resolvingRecordId: 4 } },
+    ],
+    ["followUpSettle", { followUpSettle: { carePlanItemId: 12 } }],
+  ] as [string, Partial<UpcomingItem>][])(
+    "seats a dated fact carrying only %s under the rule",
+    (_field, affordance) => {
+      const item = {
+        key: "careplan:12",
+        domain: "careplan",
+        title: "Repeat ferritin",
+        href: "/results",
+        dueDate: TODAY,
+        ...affordance,
+      } as UpcomingItem;
+      // The care seat is what the predicate decides. A practice target also takes
+      // its own seat, which \`isPracticeTarget\` decides and this does not speak for.
+      expect(seats(composeHomeList(input({ attention: [item] })))).toContain(
+        "care"
+      );
+    }
+  );
+
   it("states the clock the rule reads", () => {
     expect(
       composeHomeList(input({ minutesOfDay: 940 })).now?.minutesOfDay
