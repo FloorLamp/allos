@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { appContent, settledClick } from "./helpers";
 import { switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -68,7 +68,7 @@ test("the well-day symptom action logs burden without activating illness", async
     // used to open). A count of 0 is what a 404, a redirect or an unrendered shell
     // also produce, so the Now band is proved on screen first and the absence is
     // only then believed.
-    await expect(page.getByTestId("home-now")).toBeVisible();
+    await expect(appContent(page).getByTestId("home-now")).toBeVisible();
     await expect(
       dashboardCandidatePrefix(page, "symptom.well-day-log")
     ).toHaveCount(0);
@@ -100,10 +100,9 @@ test("the well-day symptom action logs burden without activating illness", async
     // eslint-disable-next-line no-restricted-properties -- topass-ok: re-read until the committed symptom log changes coaching
     await expect(async () => {
       await page.goto("/training?tab=overview");
-      await expect(page.getByTestId("next-workout-card")).toContainText(
-        "severe headache",
-        { timeout: 3_000 }
-      );
+      await expect(
+        appContent(page).getByTestId("next-workout-card")
+      ).toContainText("severe headache", { timeout: 3_000 });
     }).toPass({ timeout: 20_000 });
   } finally {
     resetWellSymptomState();

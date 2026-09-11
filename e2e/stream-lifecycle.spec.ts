@@ -6,7 +6,7 @@ import {
   E2E_LOGIN_STREAM_ONBOARD,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import { appContent, expectNoClippedContent, settledClick } from "./helpers";
 
 // The continuous-stream on/offboarding lifecycle (#2162), rendered.
 //
@@ -74,7 +74,7 @@ test("the offer is dismissible, enables nothing, and stays dismissed (#2162)", a
   });
   try {
     await page.goto("/data?section=import");
-    const row = page.getByTestId("stream-lifecycle-offers");
+    const row = appContent(page).getByTestId("stream-lifecycle-offers");
     await expect(row).toBeVisible();
     await expect(row).toContainText("Health Connect started sending");
 
@@ -83,7 +83,9 @@ test("the offer is dismissible, enables nothing, and stays dismissed (#2162)", a
 
     // Dismissed stays dismissed — the suppression bus, not a client flag.
     await page.reload();
-    await expect(page.getByTestId("stream-lifecycle-offers")).toHaveCount(0);
+    await expect(
+      appContent(page).getByTestId("stream-lifecycle-offers")
+    ).toHaveCount(0);
 
     // And declining turned NOTHING off: there was nothing on to turn off.
     await page.goto("/settings/notifications");

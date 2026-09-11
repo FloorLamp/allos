@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { appContent } from "./helpers";
 import { type Page } from "@playwright/test";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { loginAs } from "./nav";
@@ -135,7 +136,7 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
     // than an attribute is the same claim through the structure that replaced it,
     // and a stronger one — it reads where the row actually is.
     await expect(
-      lapsed
+      appContent(lapsed)
         .getByTestId("home-now")
         .locator('[data-candidate-id^="attention.fact:visit:dental_cleaning"]')
     ).toBeVisible();

@@ -566,7 +566,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
     });
     try {
       await member.goto("/");
-      const glance = member.getByTestId("home-glance");
+      const glance = appContent(member).getByTestId("home-glance");
       await expect(glance).toBeVisible();
       // It is on `/` ONCE — the Glance card is the day's one drawing here.
       await expect(glance.getByTestId("intraday-chart")).toHaveCount(1);
@@ -640,7 +640,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // dead `@container` breaks in the opposite direction (the compact default would
       // survive at BOTH mounts and the day view's wide box would never appear).
       await member.goto("/");
-      const figure = member.getByTestId("home-glance");
+      const figure = appContent(member).getByTestId("home-glance");
       // ONE chart per mount, which is the count that used to be two on the panel.
       await expect(figure.getByTestId("intraday-chart")).toHaveCount(1);
       const home = figure.locator(COMPACT);

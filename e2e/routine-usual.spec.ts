@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { openFoodAdd, settledClick } from "./helpers";
+import { appContent, openFoodAdd, settledClick } from "./helpers";
 import { E2E_LOGIN_ROUTINEUSUAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // THE MORNING IS ONE PHYSICAL EVENT (#2458) — the composed one-tap on the dashboard.
@@ -27,7 +27,7 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
     // window is this slot" (§3.2) — so it is under the Now rule rather than behind
     // the retired tail. Same component, same testid, same accessible name; what
     // changed is that nothing has to be opened to reach it.
-    await expect(page.getByTestId("home-now")).toBeVisible();
+    await expect(appContent(page).getByTestId("home-now")).toBeVisible();
 
     // The control names EVERY write it will perform — both halves, with the seam
     // between servings and dose confirms visible. The label IS the promise.

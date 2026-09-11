@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { appContent, settledClick } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import {
   E2E_LOGIN_CYCLE_CTA,
@@ -97,7 +97,7 @@ test.describe("cycle logging from the quick logger (#1892)", () => {
     // seat renders the SAME PeriodOfferButton (`period-offer-atom`), so the offer is
     // read from all three surfaces and all three must name the same verb.
     await page.goto("/");
-    const seat = page.getByTestId("period-offer-atom");
+    const seat = appContent(page).getByTestId("period-offer-atom");
     await expect(seat.getByTestId("period-started-button")).toHaveText(
       "Period started today"
     );
@@ -114,7 +114,9 @@ test.describe("cycle logging from the quick logger (#1892)", () => {
     // Home's seat, re-read from the same recorded state, offers the same verb.
     await page.goto("/");
     await expect(
-      page.getByTestId("period-offer-atom").getByTestId("period-ended-button")
+      appContent(page)
+        .getByTestId("period-offer-atom")
+        .getByTestId("period-ended-button")
     ).toHaveText("Period ended today");
 
     await page.goto("/medical/cycles");

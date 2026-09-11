@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { appContent } from "./helpers";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import {
@@ -51,7 +52,7 @@ test.describe("dashboard daily loop (#1221)", () => {
 
   test("Home's facts line states today's protein against the goal band", async () => {
     await page.goto("/");
-    const facts = page.getByTestId("home-facts");
+    const facts = appContent(page).getByTestId("home-facts");
     await expect(facts).toBeVisible();
     // Today's protein figure. A floor basis marks itself with a trailing "+" (#3257,
     // the #1822 marker) — never "≥ N g", and never a hedge about the estimator.
@@ -119,7 +120,7 @@ test.describe("dashboard daily loop (#1221)", () => {
     });
     try {
       await own.goto("/");
-      const facts = own.getByTestId("home-facts");
+      const facts = appContent(own).getByTestId("home-facts");
       await expect(facts).toBeVisible();
 
       // max(20 tracked, 70 in-app) — and the "+" the tracked basis used to go without.
@@ -157,7 +158,7 @@ test.describe("dashboard daily loop (#1221)", () => {
     });
     try {
       await own.goto("/");
-      const facts = own.getByTestId("home-facts");
+      const facts = appContent(own).getByTestId("home-facts");
       await expect(facts).toBeVisible();
 
       // "20 g+", never the bare "20 g" this basis shipped with. Asserted with the marker
@@ -175,7 +176,7 @@ test.describe("dashboard daily loop (#1221)", () => {
 
   test("Home's facts line states the prior-7-day baseline, and no partial-day delta", async () => {
     await page.goto("/");
-    const facts = page.getByTestId("home-facts");
+    const facts = appContent(page).getByTestId("home-facts");
     await expect(facts).toBeVisible();
     await expect(facts).toContainText(/[\d,]+ steps/);
     // The baseline NAMES THE DAYS IT COVERS (#1909) — the claim, which the facts
@@ -227,7 +228,7 @@ test.describe("dashboard daily loop (#1221)", () => {
     await page.goto("/");
     // The Now band rendered, so the absences below are read against a real page and
     // not against a 404 or an unrendered shell.
-    await expect(page.getByTestId("home-now")).toBeVisible();
+    await expect(appContent(page).getByTestId("home-now")).toBeVisible();
     await expect(
       dashboardCandidatePrefix(page, "vitals.manual-log")
     ).toHaveCount(0);

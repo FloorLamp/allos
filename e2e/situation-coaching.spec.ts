@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { appContent } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_SITCOACH } from "./fixture-logins";
 
@@ -23,7 +24,7 @@ test("Home's next-workout seat holds nags during an open illness episode (#837)"
   // The Show-everything fold this used to read went with the ranker; the claim did
   // not, because the statement moved to the seat rather than disappearing.
   await page.goto("/");
-  await expect(page.getByTestId("home-training")).toContainText(
+  await expect(appContent(page).getByTestId("home-training")).toContainText(
     "Recovery mode — coaching paused"
   );
 
