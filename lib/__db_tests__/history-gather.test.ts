@@ -6,7 +6,7 @@ import { HISTORY_LOG_KINDS } from "@/lib/history-format";
 import { setLoginSetting, setProfileSetting } from "@/lib/settings";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { logBristolStool } from "@/lib/offline/writes";
-import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+import { logStoolCore } from "@/lib/stool-log-write";
 import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
 import { logSubstanceUnitCore } from "@/lib/substance-log-write";
 
@@ -1154,20 +1154,59 @@ describe("stool rows on the record", () => {
     expect(gather.presentKinds).toContain("stool");
   });
 
-  it("hands the row an address, and the type is the only field a correction moves", () => {
+  it("hands the row its ledger address and the type the correction moves", () => {
     const p = profile("history stool edit");
     const loginId = login();
     logBristolStool(p, YESTERDAY, 3, "08:12");
     const stored = db
-      .prepare(
-        `SELECT id FROM metric_samples WHERE profile_id = ? AND metric = ?`
-      )
-      .get(p, BRISTOL_STOOL_METRIC) as { id: number };
+      .prepare("SELECT id FROM stool_events WHERE profile_id = ?")
+      .get(p) as { id: number };
 
     const [row] = gatherHistoryLog(p, { loginId, limit: 200 }).rows.filter(
       (r) => r.kind === "stool"
     );
     expect(row.edit).toEqual({ kind: "stool", rowId: stored.id, type: 3 });
+  });
+
+  // #5872: an occurrence nobody saw the form of is a row on the record, titled `Stool`,
+  // with no scale sentence beneath it and a NULL in the edit door's type.
+  //
+  // FALSIFIED against the unfixed tree in the strongest sense available: there is no
+  // unfixed tree in which it can pass, because `metric_samples.value` is REAL NOT NULL
+  // and the composer skipped any row the vocabulary did not name.
+  it("titles an untyped movement `Stool` and carries a null type to the edit door", () => {
+    const p = profile("history stool untyped");
+    const loginId = login();
+    expect(logStoolCore(p, YESTERDAY, null, "08:12").kind).toBe("logged");
+
+    const [row] = gatherHistoryLog(p, { loginId, limit: 200 }).rows.filter(
+      (r) => r.kind === "stool"
+    );
+    expect(row.title).toBe("Stool");
+    expect(row.detail).toBe("");
+    expect(row.edit).toMatchObject({ kind: "stool", type: null });
+  });
+
+  // #5872: an untimed movement reads in the `logged` grammar rather than the stated
+  // one. The old store stamped the wall clock into the reading's own instant, so every
+  // row rendered bare and a filing minute was printed as if somebody had named it.
+  //
+  // FALSIFIED against the unfixed tree: `logBristolStool` there always wrote an instant,
+  // so `clock` came back "stated" for a tap nobody timed.
+  it("reads a movement nobody timed in the logged grammar", () => {
+    const p = profile("history stool untimed");
+    const loginId = login();
+    expect(logStoolCore(p, YESTERDAY, 4).kind).toBe("logged");
+
+    const [row] = gatherHistoryLog(p, { loginId, limit: 200 }).rows.filter(
+      (r) => r.kind === "stool"
+    );
+    // `logged Sep 11` rather than a bare `logged`: the row sits under YESTERDAY and the
+    // only instant it has is the tap that filed it TODAY, so #5618 ruling 6's filing-day
+    // spelling fires. That is the sentence the old store could never produce, because it
+    // stamped a clock into the reading's own instant and every row rendered bare.
+    expect(row.clock.startsWith("logged")).toBe(true);
+    expect(row.clock).not.toMatch(/^\d/);
   });
 
   it("earns no chip for a profile whose only samples are another metric's", () => {

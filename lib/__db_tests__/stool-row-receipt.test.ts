@@ -6,11 +6,13 @@
 // clock seam — and asking that question a second time in the action would be a second
 // copy of it. It compares the day's rows either side of the write instead.
 //
-// WHAT ONLY THE REAL SCHEMA CAN PROVE is the distinction that decides the INVERSE. The
-// natural key `(profile_id, metric, source, origin, started_at)` carries the instant,
-// so restating a minute UPDATES the row already there rather than inserting one — and
-// a delete would then take away a reading the tap never made. A mocked action tier
-// cannot pose that; the ON CONFLICT clause is the thing under test.
+// WHAT ONLY THE REAL SCHEMA CAN PROVE is which rows a tap makes. That used to be the
+// distinction deciding the INVERSE: the samples natural key carried the instant, so
+// restating a minute UPDATED the row already there and a delete would have taken away a
+// reading the tap never made. #5872 moved the store to an APPEND-ONLY ledger with no
+// natural key, so every tap inserts and the inverse is always a delete — and the case
+// that used to assert the correction now asserts the second row, which is the movement
+// the old store silently threw away.
 //
 // The gate is mocked because authorization is not what is being asked here — it is
 // asked in `require-profile-write-access.test.ts` — and the real one needs a session.
@@ -26,7 +28,8 @@ vi.mock("@/lib/revalidate", () => ({ revalidateRoute: () => {} }));
 
 import { db, today } from "@/lib/db";
 import { logStoolForm } from "@/app/(app)/stool-actions";
-import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+import { getTimezone } from "@/lib/settings";
+import { zonedDateParts } from "@/lib/date";
 
 let profileId: number;
 let day: string;
@@ -37,17 +40,31 @@ function tap(fields: Record<string, string>) {
   return logStoolForm(fd);
 }
 
-function rows(): { id: number; started_at: string; value: number }[] {
+function rows(): {
+  id: number;
+  occurred_at: string | null;
+  recorded_at: string;
+  type: number | null;
+}[] {
   return db
     .prepare(
-      `SELECT id, started_at, value FROM metric_samples
-        WHERE profile_id = ? AND metric = ? ORDER BY started_at`
+      `SELECT id, occurred_at, recorded_at, type FROM stool_events
+        WHERE profile_id = ? ORDER BY COALESCE(occurred_at, recorded_at), id`
     )
-    .all(profileId, BRISTOL_STOOL_METRIC) as {
+    .all(profileId) as {
     id: number;
-    started_at: string;
-    value: number;
+    occurred_at: string | null;
+    recorded_at: string;
+    type: number | null;
   }[];
+}
+
+/** The profile-local "HH:MM" the receipt prints for a row — its best-known instant. */
+function shownAt(row: { occurred_at: string | null; recorded_at: string }): string {
+  return zonedDateParts(
+    getTimezone(profileId),
+    new Date(row.occurred_at ?? row.recorded_at)
+  ).hhmm;
 }
 
 beforeEach(() => {
@@ -78,40 +95,50 @@ describe("the reading a tap landed on", () => {
     expect(outcome.reading?.replacedType).toBeUndefined();
   });
 
-  it("reports the PREVIOUS type when restating a minute corrected a reading", async () => {
+  // INVERTED BY #5872, and this is the case that carries the defect. It used to read
+  // "reports the PREVIOUS type when restating a minute corrected a reading" and assert
+  // ONE row — the second tap overwriting the first. Two movements stated at the same
+  // minute are two movements.
+  //
+  // FALSIFIED against the unfixed tree: with `logBristolStool` still upserting onto
+  // `metric_samples`, this fails with one row where two are expected.
+  it("keeps a second tap at the same stated minute as its own row", async () => {
     const first = await tap({ type: "3", date: day, at: "07:05" });
     const second = await tap({ type: "4", date: day, at: "07:05" });
     expect(first.ok && second.ok).toBe(true);
     if (!second.ok || !first.ok) return;
 
-    // ONE row still: the key is the instant, so the second tap moved the type of the
-    // reading the first one wrote.
-    expect(rows().map((r) => r.value)).toEqual([4]);
-    expect(second.reading?.id).toBe(first.reading?.id);
-    // …and the inverse the row may offer is the correction back to 3. Deleting here
-    // would lose a movement the person logged, which is the failure this field exists
-    // to prevent.
-    expect(second.reading?.replacedType).toBe(3);
-    expect(second.dayCount).toBe(1);
+    const stored = rows();
+    expect(stored).toHaveLength(2);
+    expect(stored.map((r) => r.type).sort()).toEqual([3, 4]);
+    // A fresh row every time, so the inverse is a delete and there is no previous type
+    // to restore — the `replacedType` arm is unreachable from this door now.
+    expect(second.reading?.id).not.toBe(first.reading?.id);
+    expect(second.reading?.replacedType).toBeUndefined();
+    expect(second.dayCount).toBe(2);
   });
 
-  it("offers no reading when the tap changed nothing", async () => {
+  // INVERTED BY #5872. It used to read "offers no reading when the tap changed nothing"
+  // — an identical re-tap upserted onto the same row and the action honestly reported
+  // that it had made nothing. There is no such tap any more: an identical re-tap is a
+  // second movement, gets its own row, and gets its own Undo.
+  //
+  // FALSIFIED against the unfixed tree: it fails there with `reading` undefined and one
+  // stored row.
+  it("makes a row even for an identical re-tap", async () => {
     await tap({ type: "3", date: day, at: "07:05" });
     const again = await tap({ type: "3", date: day, at: "07:05" });
     expect(again.ok).toBe(true);
     if (!again.ok) return;
-    // The row is still there and still says type 3, but this tap did not make it —
-    // an Undo would be reversing somebody else's earlier write.
-    //
-    // THE ABSENCE IS ASSERTED BESIDE THE PRESENCE, because an absence on its own is
-    // the one assertion an answer that never carried the field at all would also
-    // satisfy: the day is still listed, and only the "which row did I land on" half
-    // is missing.
-    expect(rows().map((r) => r.value)).toEqual([3]);
-    expect(again.readings).toEqual([
-      { id: rows()[0].id, type: 3, hhmm: "07:05" },
-    ]);
-    expect(again.reading).toBeUndefined();
+    const stored = rows();
+    expect(stored.map((r) => r.type)).toEqual([3, 3]);
+    // THE PRESENCE IS ASSERTED BESIDE THE LIST, so an answer that dropped the field
+    // entirely could not satisfy it: the tap names a row, and that row is one of the
+    // two the day now holds.
+    expect(again.reading?.id).toBeTypeOf("number");
+    expect(stored.map((r) => r.id)).toContain(again.reading?.id);
+    expect(again.readings).toHaveLength(2);
+    expect(again.dayCount).toBe(2);
   });
 
   it("names the row a REFUSED stated time fell back onto, not the minute typed", async () => {
@@ -126,7 +153,11 @@ describe("the reading a tap landed on", () => {
     expect(outcome.statedTimeRefused).toBe("future");
     const stored = rows();
     expect(stored).toHaveLength(1);
-    expect(outcome.readings[0].hhmm).toBe(stored[0].started_at.slice(11, 16));
+    // The refused statement leaves NO stated instant on the row since #5872 — the
+    // honest state — so the minute the receipt prints is the tap's own, read back off
+    // the row rather than echoed from the request.
+    expect(stored[0].occurred_at).toBeNull();
+    expect(outcome.readings[0].hhmm).toBe(shownAt(stored[0]));
     expect(outcome.readings[0].hhmm).not.toBe("23:59");
   });
 

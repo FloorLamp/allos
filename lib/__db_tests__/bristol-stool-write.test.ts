@@ -35,7 +35,6 @@ import {
   getBristolPanel,
   getBristolReadings,
 } from "@/lib/queries/bristol-stool";
-import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import {
   correctStoolEventCore,
   deleteStoolEventCore,

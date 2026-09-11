@@ -218,7 +218,11 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
     ).toEqual([{ date: day, valence: 5 }]);
   });
 
-  it("keeps a primary stool tap's T1 second after midnight", () => {
+  // #5872 CHANGED WHAT "THE T1 INSTANT" MEANS FOR A TAP NOBODY TIMED. The captured
+  // instant is a CAPTURE stamp, so it lands in `recorded_at`; `occurred_at` stays NULL
+  // because a replayed tap states no more about when the movement happened than a live
+  // one does. The DAY is what this file is about, and the day is unchanged.
+  it("keeps a primary stool tap's T1 day, and files its capture instant", () => {
     const p = newProfile("stool-primary-instant");
     setTimezone(p, "UTC");
     vi.setSystemTime(CAPTURE);
@@ -237,12 +241,16 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
     expect(
       db
         .prepare(
-          `SELECT date, started_at FROM metric_samples
-            WHERE profile_id = ? AND metric = 'bristol_stool_type'
-            ORDER BY id DESC LIMIT 1`
+          `SELECT date, recorded_at, occurred_at, time_source FROM stool_events
+            WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
         )
         .get(p)
-    ).toEqual({ date, started_at: `${date}T23:50:00` });
+    ).toEqual({
+      date,
+      recorded_at: `${date}T23:50:00Z`,
+      occurred_at: null,
+      time_source: null,
+    });
   });
 
   it("requires and preserves a stated stool minute for a nonprimary day", () => {
@@ -265,10 +273,7 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
     }
     expect(
       db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM metric_samples
-            WHERE profile_id = ? AND metric = 'bristol_stool_type'`
-        )
+        .prepare("SELECT COUNT(*) AS n FROM stool_events WHERE profile_id = ?")
         .get(p)
     ).toEqual({ n: 0 });
     expect(
@@ -280,12 +285,11 @@ describe("a capture replayed after the profile's day has moved (#4559)", () => {
     expect(
       db
         .prepare(
-          `SELECT date, started_at FROM metric_samples
-            WHERE profile_id = ? AND metric = 'bristol_stool_type'
-            ORDER BY id DESC LIMIT 1`
+          `SELECT date, occurred_at, time_source FROM stool_events
+            WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
         )
         .get(p)
-    ).toEqual({ date, started_at: `${date}T08:10:00` });
+    ).toEqual({ date, occurred_at: `${date}T08:10:00Z`, time_source: "stated" });
   });
 
   it("keeps a statement-less Food capture on its T1 day and meal slot", () => {
