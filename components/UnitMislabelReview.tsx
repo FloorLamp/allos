@@ -10,6 +10,7 @@ import {
 import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/medical";
 import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 import { displayUnit } from "@/lib/display-unit";
+import { attentionAmber } from "@/lib/chart-colors";
 
 // Data → Review, unit-mislabel cross-check (issue #761). Each card is a numeric lab
 // reading whose stored unit is a probable power-of-ten mislabel of the canonical
@@ -72,7 +73,10 @@ export default function UnitMislabelReview({
   return (
     <div className="card" data-testid="unit-mislabel-review">
       <div className="mb-1 flex items-center gap-2">
-        <IconAlertTriangle className="h-5 w-5 text-amber-500" stroke={1.75} />
+        <IconAlertTriangle
+          className={`h-5 w-5 ${attentionAmber.class}`}
+          stroke={1.75}
+        />
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Possible unit mislabels ({items.length})
         </h2>

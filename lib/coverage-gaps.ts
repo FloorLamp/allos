@@ -18,11 +18,11 @@
 // engines and stay CURATED. The AI system prompt below enforces the line, and the
 // stored text is always labeled "AI-generated, unverified — not curated."
 
+import { biomarkerFamily } from "./canonical-name";
 import {
-  biomarkerFamily,
   uncuratedAnalyte,
   type UncuratedAnalyte,
-} from "./canonical-name";
+} from "./datasets/uncurated-analytes";
 import { stripDisclaimerSentences } from "./disclaimers";
 import { getMedicationInfo } from "./medication-info";
 import { bestIcd10Suggestion, hasIcd10Code } from "./icd10";

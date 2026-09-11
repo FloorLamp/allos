@@ -1,0 +1,187 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "uncurated-analytes",
+  "title": "Deliberately uncurated analytes — the decisions NOT to curate, and why",
+  "description": "The registry of analyte names this repo has DECIDED not to curate (issue #2313), moved out of lib/canonical-name.ts by #5175. Each entry is one DECISION: a `kind` (`covered-elsewhere`, which names the curated entry that carries the quantity, or `out-of-scope`), a MANDATORY user-facing `reason`, and the declared print spellings it covers. The DEXA per-region grid is not listed name by name — `meta.dexa` declares the regions, compartments and scan-level rows, and lib/datasets/uncurated-analytes.ts expands the cross product over them. Curation rationale for every entry lives in that loader header. HUMAN-REVIEWABLE; not medical advice.",
+  "citation": [
+    {
+      "source": "Allos curation decisions (human-reviewed), issues #2313 / #2319 / #2322 / #2643 / #2675 / #2679 / #2765 / #2766",
+      "url": "https://github.com/FloorLamp/allos/issues/2313",
+      "note": "A decision NOT to curate an analyte, with the reason shown to the reader. Curated by hand and reviewed on the issues cited; each reason is the sentence a user sees in place of \"unresolved\"."
+    },
+    {
+      "source": "ISCD Official Positions / WHO bone-density thresholds (T- and Z-score reference populations)",
+      "url": "https://iscd.org/learn/official-positions/",
+      "note": "Why whole-body and per-site DEXA bone density are read as a standardized score rather than curated as raw g/cm2 — see dexa-total-bmd, dexa-bmd-z-score and dexa-site-bmd."
+    },
+    {
+      "source": "KDIGO / NKF-ASN Task Force on Reassessing the Inclusion of Race in Diagnosing Kidney Disease (CKD-EPI 2021)",
+      "url": "https://kdigo.org/guidelines/ckd-evaluation-and-management/",
+      "note": "Why the race- and ethnicity-branched eGFR equations are not curated as their own series — see egfr-race-branched."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "id"
+    ]
+  },
+  "meta": {
+    "dexa": {
+      "fatRegions": [
+        "Left Arm",
+        "Right Arm",
+        "Arms",
+        "Left Leg",
+        "Right Leg",
+        "Legs",
+        "Trunk",
+        "Head",
+        "Android",
+        "Gynoid",
+        "Subtotal"
+      ],
+      "boneRegions": [
+        "Left Arm",
+        "Right Arm",
+        "Arms",
+        "Left Ribs",
+        "Right Ribs",
+        "Ribs",
+        "Thoracic Spine",
+        "Lumbar Spine",
+        "Spine",
+        "Left Pelvis",
+        "Right Pelvis",
+        "Pelvis",
+        "Left Leg",
+        "Right Leg",
+        "Legs",
+        "Trunk",
+        "Head",
+        "Subtotal"
+      ],
+      "massRegions": [
+        "Left Arm",
+        "Right Arm",
+        "Arms",
+        "Left Leg",
+        "Right Leg",
+        "Legs",
+        "Trunk",
+        "Head",
+        "Android",
+        "Gynoid",
+        "Subtotal"
+      ],
+      "massCompartments": [
+        "Fat",
+        "Lean",
+        "Total"
+      ],
+      "scanLevel": [
+        "Total Mass",
+        "Total Fat Mass",
+        "Total Lean Mass",
+        "Bone Mineral Content, Total",
+        "Trunk to Legs Fat Ratio",
+        "Trunk to Limb Fat Mass Ratio"
+      ]
+    }
+  },
+  "entries": [
+    {
+      "id": "egfr-race-branched",
+      "kind": "covered-elsewhere",
+      "instead": "Estimated Glomerular Filtration Rate (eGFR)",
+      "reason": "Race- and ethnicity-adjusted eGFR equations return different values for the same draw, so they cannot share one series. Allos derives the race-free CKD-EPI 2021 value from your creatinine instead — that is the eGFR you see.",
+      "names": [
+        "eGFR, African American",
+        "eGFR, Non-African-American",
+        "eGFR, Thai"
+      ]
+    },
+    {
+      "id": "toxicology-screen",
+      "kind": "out-of-scope",
+      "reason": "Toxicology screens aren't biomarkers with reference bands. The result is imported and visible on the document, but it isn't curated as a trendable analyte.",
+      "names": [
+        "Beta Adrenergic Blocker Screen",
+        "Diuretic Screen, Urine"
+      ]
+    },
+    {
+      "id": "stress-test-resting-systolic",
+      "kind": "covered-elsewhere",
+      "instead": "Blood Pressure Systolic",
+      "reason": "A blood pressure taken at rest before a stress test is an ordinary resting blood pressure — the “stress test” label names the appointment, not a different measurement. Allos files it with the rest of your blood pressure readings, so it trends there rather than starting a second series.",
+      "names": [
+        "Stress Test Resting Blood Pressure Systolic"
+      ]
+    },
+    {
+      "id": "stress-test-resting-diastolic",
+      "kind": "covered-elsewhere",
+      "instead": "Blood Pressure Diastolic",
+      "reason": "A blood pressure taken at rest before a stress test is an ordinary resting blood pressure — the “stress test” label names the appointment, not a different measurement. Allos files it with the rest of your blood pressure readings, so it trends there rather than starting a second series.",
+      "names": [
+        "Stress Test Resting Blood Pressure Diastolic"
+      ]
+    },
+    {
+      "id": "stress-test-peak-vitals",
+      "kind": "out-of-scope",
+      "reason": "A peak-exercise reading — the highest value reached during the test — is a different measurement from the resting blood pressure and heart rate Allos trends, so it is deliberately not filed with them. Exercise-peak vitals aren't tracked as their own series today; the value is imported and stays visible on the stress-test report.",
+      "names": [
+        "Stress Test Maximum Blood Pressure Systolic",
+        "Stress Test Maximum Blood Pressure Diastolic",
+        "Stress Test Maximum Heart Rate"
+      ]
+    },
+    {
+      "id": "dexa-total-bmd",
+      "kind": "covered-elsewhere",
+      "instead": "Bone Mineral Density T-Score",
+      "reason": "Whole-body bone mineral density in g/cm² isn’t comparable between scanners, which is why bone density is read as a T-score — the same measurement expressed against the reference population. Allos trends the T-score, so that is where your bone density is tracked.",
+      "names": [
+        "Bone Mineral Density, Total"
+      ]
+    },
+    {
+      "id": "dexa-bmd-z-score",
+      "kind": "covered-elsewhere",
+      "instead": "Bone Mineral Density T-Score",
+      "reason": "A bone density Z-score compares you with others of your age and sex, so it holds steady for as long as your bones track the average for your age — including while that average falls. Allos trends the T-score from the same scan instead: the same bone density measured against peak young-adult bone, which is the comparison osteoporosis thresholds are defined on and the one that moves when your bone density does. The two scores are different numbers from one measurement, because the reference populations differ.",
+      "names": [
+        "Bone Mineral Density Z-Score"
+      ]
+    },
+    {
+      "id": "dexa-vat-alternate-unit",
+      "kind": "covered-elsewhere",
+      "instead": "Visceral Adipose Tissue",
+      "reason": "A DEXA reports visceral fat as an area, a volume and a mass — one estimate printed in three units. Allos tracks the mass form, so the trend is there; the numbers differ in scale because the units do.",
+      "names": [
+        "Visceral Adipose Tissue Area",
+        "Visceral Adipose Tissue Volume"
+      ]
+    },
+    {
+      "id": "dexa-android-gynoid-ratio",
+      "kind": "out-of-scope",
+      "reason": "Android/Gynoid Ratio is arithmetic over two regions of one DEXA scan, not an independently measured analyte. It stays visible on the scan rather than becoming its own trend.",
+      "names": [
+        "Android/Gynoid Ratio"
+      ]
+    },
+    {
+      "id": "dexa-decomposition",
+      "kind": "out-of-scope",
+      "reason": "A DEXA scan's per-region decomposition. These are outputs of one scan rather than independent analytes, and no population reference range exists for them."
+    },
+    {
+      "id": "dexa-site-bmd",
+      "kind": "out-of-scope",
+      "reason": "A DEXA prints a bone mineral density for each region it scans. The raw g/cm² for one region isn’t comparable between scanners, which is why bone density is read as a T-score instead — and the T-score Allos trends is for your whole skeleton, not for one site. So a single region’s density stays on the scan rather than becoming its own trend."
+    }
+  ]
+}
