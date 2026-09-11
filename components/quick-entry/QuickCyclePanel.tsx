@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import PeriodOfferButton from "@/components/cycle/PeriodOfferButton";
+import TtcLogControls from "@/components/cycle/TtcLogControls";
+import type { QuickEntryTtc } from "@/app/(app)/quick-entry-actions";
 import type { CycleControlState } from "@/lib/cycle-plausibility";
 import { CYCLE_SUSPENSION_NOTES } from "@/lib/cycle";
 
@@ -19,11 +21,22 @@ import { CYCLE_SUSPENSION_NOTES } from "@/lib/cycle";
 // shows (already-happened, never a projection) and one button. When no write is
 // plausible — the days between the reopen window closing and a new period becoming
 // plausible — there is no button, and the panel says where the exceptions live.
+//
+// SINCE #5810 it has a second, GATED half. `ttc` is present only when the loader found
+// a declared TTC start (`getTtcStart`), so for every other profile this component
+// renders exactly what it rendered before — the absence of the prop IS the gate, and
+// there is no branch here that could leak it. When it is present, the SAME
+// <TtcLogControls> the Cycle page mounts renders the three daily observations under the
+// period offer: one component, one set of three actions, no second write path. The
+// order is deliberate — the period verb stays first, because it is the row's own label
+// (#1892) and the three below are what a TTC morning adds to it, not what replaces it.
 export default function QuickCyclePanel({
   state,
+  ttc,
   onDone,
 }: {
   state: CycleControlState;
+  ttc?: QuickEntryTtc;
   onDone: () => void;
 }) {
   const open = state.openPeriodId != null;
@@ -53,6 +66,9 @@ export default function QuickCyclePanel({
         variant="compact"
         onDone={onDone}
       />
+      {/* Spread whole: the gathered payload IS the control's props, so a fourth
+          reading added to the bar cannot be silently missing here. */}
+      {ttc && <TtcLogControls {...ttc} />}
       {!open && !state.canStart && !state.canReopen && !state.suspension && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Starting a period is a few weeks away. Add one with dates on the{" "}

@@ -12,9 +12,10 @@ import {
   logMucusAction,
   setTtcStartAction,
 } from "@/app/(app)/medical/cycles/ttc-actions";
-import { today } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTtcStart } from "@/lib/settings";
+import { stampWebOrigin, type WebLoggedVia } from "@/lib/logged-via";
 import { mucusOrdinal } from "@/lib/ttc";
 import {
   listBbtReadings,
@@ -24,6 +25,20 @@ import {
 import { actAs, createLogin, createProfile, fd } from "./harness";
 
 const ALL = "1900-01-01";
+
+// The surface a control's region would have stamped onto the post (#3087/#5349). The
+// page mount declares none, so `fd()` alone is the Cycle page.
+const from = (surface: WebLoggedVia, fields: Parameters<typeof fd>[0]) =>
+  stampWebOrigin(fd(fields), surface);
+
+// What a ledger row says about where it was tapped. One row per assertion — these
+// stores are day-rows, and a day-row keeps the provenance of the tap that CREATED it.
+const viaOf = (table: "medical_records" | "symptom_logs"): string | null =>
+  (
+    db
+      .prepare(`SELECT logged_via FROM ${table} ORDER BY id DESC LIMIT 1`)
+      .get() as { logged_via: string | null }
+  ).logged_via;
 
 describe("ttc actions", () => {
   let profileId: number;
@@ -95,6 +110,41 @@ describe("ttc actions", () => {
     const bad = await logMucusAction(fd({ quality: "slippery" }));
     expect(bad.ok).toBe(false);
     expect(listMucusObservations(profileId, ALL)).toHaveLength(1);
+  });
+
+  it("files each observation under the SURFACE it was tapped on (#5810)", async () => {
+    // The three taps are mounted TWICE since #5810 — the Cycle page's TtcSection and
+    // the quick-log sheet's cycle overlay render one component — so the surface has to
+    // ride the post. Before it did, a sheet tap was recorded as a page tap, which is
+    // the exact claim the `logged_via` column exists to stop the app making.
+    expect(
+      await logLhTestAction(from("quick-log", { result: "positive" }))
+    ).toEqual({
+      ok: true,
+    });
+    expect(viaOf("medical_records")).toBe("quick-log");
+
+    expect(
+      await logMucusAction(from("quick-log", { quality: "egg_white" }))
+    ).toEqual({ ok: true });
+    expect(viaOf("symptom_logs")).toBe("quick-log");
+  });
+
+  it("an unstamped post is the page's own form, and a forged surface is refused", async () => {
+    // The page mount posts no surface and the action's own fallback answers for it;
+    // `parseWebOrigin` refuses anything outside the four web values, so a hand-written
+    // post cannot dress a web tap up as a Telegram tap or an import.
+    expect(await logLhTestAction(fd({ result: "negative" }))).toEqual({
+      ok: true,
+    });
+    expect(viaOf("medical_records")).toBe("page");
+
+    expect(
+      await logMucusAction(
+        from("import" as WebLoggedVia, { quality: "creamy" })
+      )
+    ).toEqual({ ok: true });
+    expect(viaOf("symptom_logs")).toBe("page");
   });
 
   it("logging an observation never declares TTC on the user's behalf", async () => {

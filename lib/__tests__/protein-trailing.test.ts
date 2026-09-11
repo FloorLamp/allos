@@ -84,7 +84,7 @@ describe("the trailing protein average keeps its label's promise (#1917)", () =>
       },
       logged("2026-07-22", 90),
     ];
-    expect(proteinDailyGrams(days)).toEqual([
+    expect(proteinDailyGrams(days, TODAY)).toEqual([
       { date: "2026-07-22", value: 90 },
     ]);
     expect(proteinTrailingAverage(days, TODAY).grams).toBe(90);
@@ -107,7 +107,7 @@ describe("the trailing protein average keeps its label's promise (#1917)", () =>
 
 describe("protein is a trailingAverage CONSUMER, not a fourth mean (#221/#1909)", () => {
   it("the figure IS the shared helper's calendar window, today excluded", () => {
-    const helper = trailingAverage(proteinDailyGrams(WEEK), TODAY, {
+    const helper = trailingAverage(proteinDailyGrams(WEEK, TODAY), TODAY, {
       days: PROTEIN_TRAILING_DAYS,
       basis: "calendar",
     });
@@ -167,10 +167,14 @@ describe("the declared basis is CALENDAR, and it matters for food logs (#1917)",
     // Stated as a contrast so the choice is visible rather than implied: the same
     // series on the other basis reports 150 g/day, a month out of date, under a
     // label that says seven days.
-    const dataBearing = trailingAverage(proteinDailyGrams(ABANDONED), TODAY, {
-      days: PROTEIN_TRAILING_DAYS,
-      basis: "data-bearing",
-    });
+    const dataBearing = trailingAverage(
+      proteinDailyGrams(ABANDONED, TODAY),
+      TODAY,
+      {
+        days: PROTEIN_TRAILING_DAYS,
+        basis: "data-bearing",
+      }
+    );
     expect(dataBearing.average).toBe(150);
   });
 });

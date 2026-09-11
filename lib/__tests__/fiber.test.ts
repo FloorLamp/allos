@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { TODAY_PERIOD } from "@/lib/nutrient-adequacy";
 import {
-  estimatedFiberGrams,
   isFiberSupplement,
   fiberDoseGrams,
   fiberIntake,
@@ -15,32 +15,9 @@ import {
 } from "@/lib/fiber";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 
-// Pure-tier tests for the fiber-adequacy engine (issue #976): the #767 protein pipeline
-// re-instantiated with a fourth (supplemented) basis. No DB/clock/network.
-
-describe("estimatedFiberGrams", () => {
-  it("sums servings × catalog fiber_g, skipping non-fiber and unknown slugs", () => {
-    // legumes 8 g/serving × 2 = 16; whole_grains 3 × 1 = 3; poultry has no fiber_g (0);
-    // an unknown slug contributes 0.
-    expect(
-      estimatedFiberGrams([
-        { slug: "legumes", servings: 2 },
-        { slug: "whole_grains", servings: 1 },
-        { slug: "poultry", servings: 3 },
-        { slug: "not_a_group", servings: 5 },
-      ])
-    ).toBe(19);
-  });
-
-  it("ignores zero/negative servings", () => {
-    expect(
-      estimatedFiberGrams([
-        { slug: "legumes", servings: 0 },
-        { slug: "berries", servings: -1 },
-      ])
-    ).toBe(0);
-  });
-});
+// Pure-tier tests for the fiber-adequacy engine (issue #976): its own supplemented
+// source, DRI target and wording. The intake precedence, the period and the floor are the
+// shared substrate's and are covered in nutrient-adequacy.test.ts. No DB/clock/network.
 
 describe("isFiberSupplement", () => {
   it("matches the common fiber products and brands", () => {
@@ -132,6 +109,7 @@ describe("fiberDoseGrams", () => {
 describe("fiberIntake composition", () => {
   it("takes the larger floor and keeps both sources", () => {
     const i = fiberIntake({
+      period: TODAY_PERIOD,
       dailyTracked: 30,
       dailyEstimated: 12,
       dailySupplemented: 5,
@@ -148,6 +126,7 @@ describe("fiberIntake composition", () => {
 
   it("keeps an unquantified supplement visible when tracked fiber wins", () => {
     const i = fiberIntake({
+      period: TODAY_PERIOD,
       dailyTracked: 30,
       dailyEstimated: 0,
       unknownSupplement: true,
@@ -163,16 +142,21 @@ describe("fiberIntake composition", () => {
   // in-app sum, so nothing yet pins the other side of the max.
   it("connecting an integration never lowers the figure", () => {
     const inApp = { dailyEstimated: 22, dailySupplemented: 5 };
-    const without = fiberIntake({ ...inApp, dailyTracked: null })!;
+    const without = fiberIntake({
+      period: TODAY_PERIOD,
+      ...inApp,
+      dailyTracked: null,
+    })!;
     expect(without.grams).toBe(27);
     for (const dailyTracked of [1, 20, 27, 40])
       expect(
-        fiberIntake({ ...inApp, dailyTracked })!.grams
+        fiberIntake({ period: TODAY_PERIOD, ...inApp, dailyTracked })!.grams
       ).toBeGreaterThanOrEqual(without.grams);
   });
 
   it("estimated + supplemented SUM to a combined basis", () => {
     const i = fiberIntake({
+      period: TODAY_PERIOD,
       dailyTracked: null,
       dailyEstimated: 12,
       dailySupplemented: 5,
@@ -187,6 +171,7 @@ describe("fiberIntake composition", () => {
 
   it("supplement-only → supplemented basis", () => {
     const i = fiberIntake({
+      period: TODAY_PERIOD,
       dailyTracked: null,
       dailyEstimated: 0,
       dailySupplemented: 5,
@@ -196,17 +181,28 @@ describe("fiberIntake composition", () => {
   });
 
   it("food-only → estimated basis", () => {
-    const i = fiberIntake({ dailyTracked: null, dailyEstimated: 12 });
+    const i = fiberIntake({
+      period: TODAY_PERIOD,
+      dailyTracked: null,
+      dailyEstimated: 12,
+    });
     expect(i?.basis).toBe("estimated");
     expect(i?.grams).toBe(12);
   });
 
   it("null when no basis has any signal", () => {
-    expect(fiberIntake({ dailyTracked: null, dailyEstimated: 0 })).toBeNull();
+    expect(
+      fiberIntake({
+        period: TODAY_PERIOD,
+        dailyTracked: null,
+        dailyEstimated: 0,
+      })
+    ).toBeNull();
   });
 
   it("an unknown-unit fiber dose (0 g) still surfaces, flagged, at supplemented basis", () => {
     const i = fiberIntake({
+      period: TODAY_PERIOD,
       dailyTracked: null,
       dailyEstimated: 0,
       dailySupplemented: 0,
@@ -256,23 +252,39 @@ describe("assessFiberAdequacy", () => {
   const target = fiberTarget({ ageYears: 30, sex: "male" })!; // 38, high ~61
 
   it("below the AI → below", () => {
-    const i = fiberIntake({ dailyTracked: null, dailyEstimated: 20 })!;
+    const i = fiberIntake({
+      period: TODAY_PERIOD,
+      dailyTracked: null,
+      dailyEstimated: 20,
+    })!;
     expect(assessFiberAdequacy(i, target)?.status).toBe("below");
   });
 
   it("at/above the AI within the ceiling → within", () => {
-    const i = fiberIntake({ dailyTracked: 40, dailyEstimated: 0 })!;
+    const i = fiberIntake({
+      period: TODAY_PERIOD,
+      dailyTracked: 40,
+      dailyEstimated: 0,
+    })!;
     expect(assessFiberAdequacy(i, target)?.status).toBe("within");
   });
 
   it("above the soft ceiling → above", () => {
-    const i = fiberIntake({ dailyTracked: 80, dailyEstimated: 0 })!;
+    const i = fiberIntake({
+      period: TODAY_PERIOD,
+      dailyTracked: 80,
+      dailyEstimated: 0,
+    })!;
     expect(assessFiberAdequacy(i, target)?.status).toBe("above");
   });
 
   it("null when intake or target missing", () => {
     expect(assessFiberAdequacy(null, target)).toBeNull();
-    const i = fiberIntake({ dailyTracked: 20, dailyEstimated: 0 })!;
+    const i = fiberIntake({
+      period: TODAY_PERIOD,
+      dailyTracked: 20,
+      dailyEstimated: 0,
+    })!;
     expect(assessFiberAdequacy(i, null)).toBeNull();
   });
 });
@@ -290,7 +302,11 @@ describe("fiberBasisIsFloor (#980 gauge/copy predicate)", () => {
 describe("fiber copy discipline", () => {
   it("a non-tracked below hedges the shortfall as a floor, never asserts a deficiency", () => {
     const target = fiberTarget({ ageYears: 30, sex: "male" })!;
-    const i = fiberIntake({ dailyTracked: null, dailyEstimated: 15 })!;
+    const i = fiberIntake({
+      period: TODAY_PERIOD,
+      dailyTracked: null,
+      dailyEstimated: 15,
+    })!;
     const detail = fiberAdequacyDetail(assessFiberAdequacy(i, target)!);
     expect(detail).toMatch(/floor/i);
     expect(detail).not.toMatch(/deficien/i);
@@ -303,6 +319,7 @@ describe("fiber copy discipline", () => {
   it("both-sources names both records and keeps the floor caveat", () => {
     const summary = fiberIntakeSummary(
       fiberIntake({
+        period: TODAY_PERIOD,
         dailyTracked: 20,
         dailyEstimated: 22,
         dailySupplemented: 5,
