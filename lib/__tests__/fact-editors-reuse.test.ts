@@ -183,6 +183,29 @@ const CONSUMERS = [
     chips: "components/training/InjuryFactRow.tsx",
     host: "app/(app)/training/InjuryBar.tsx",
   },
+  {
+    // THE FIRST CLINICAL RECORD FORM (#5302 slice 1), and the first consumer whose
+    // chips and host are the SAME FILE by choice rather than because the editor is the
+    // whole surface: the row has exactly one mount — this form, in the add dialog and
+    // in the list row's edit — so splitting it would buy a file and no reuse. Twelve
+    // more record forms copy this shape, which is why it is stated here once.
+    //
+    // DOM-collected, so its closed panels stay mounted and merely hidden for the reason
+    // the protocol row above records.
+    name: "the condition form (#5302)",
+    chips: "app/(app)/records/problems/conditions/ConditionForm.tsx",
+    host: "app/(app)/records/problems/conditions/ConditionForm.tsx",
+  },
+  {
+    // The condition form's sibling on the same records pane, and the first consumer
+    // whose two ESSENTIAL chips open ONE editor: a reaction and its grade are two facts
+    // a person disagrees with separately, stated in one repeatable list (#1405). That
+    // is the primitive's many-chips-one-panel case, which only the intake form's rule
+    // sentences had exercised.
+    name: "the allergy form (#5302)",
+    chips: "app/(app)/records/problems/allergies/AllergyForm.tsx",
+    host: "app/(app)/records/problems/allergies/AllergyForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not
