@@ -19,68 +19,100 @@ import { dateStrInTz, zonedWallIsoToUtc, zonedWallTimeToUtc } from "@/lib/date";
 // averaged surface would show one mark at 4, the middle of the scale.
 
 const DB_PATH = workerDbPath();
-// metric_samples.started_at is a profile-LOCAL wall clock, so decoding one back to an
-// instant needs the run's rotating instance timezone (e2e/pinned-timezone.ts).
+// `stool_events` holds CANONICAL UTC instants, so rendering one back as the wall clock
+// a surface prints needs the run's rotating instance timezone (e2e/pinned-timezone.ts).
 const TZ = pinnedTimezone(frozenNow().toISOString()).zone;
 
 function clearBristol(): void {
   const db = new Database(DB_PATH);
   try {
     db.pragma("busy_timeout = 5000");
-    db.prepare(
-      "DELETE FROM metric_samples WHERE profile_id = 1 AND metric = 'bristol_stool_type'"
-    ).run();
+    db.prepare("DELETE FROM stool_events WHERE profile_id = 1").run();
   } finally {
     db.close();
   }
 }
 
-function bristolRows(): {
+interface BristolRow {
   id: number;
   date: string;
+  /**
+   * The row's BEST-KNOWN instant as a profile-local `YYYY-MM-DDTHH:MM:SS` — the stated
+   * movement instant when there is one, the tap stamp otherwise.
+   *
+   * PROJECTED, not stored. The ledger keeps canonical UTC (#5872); this is the shape
+   * the surfaces under test actually render, and it is also the shape the samples table
+   * stored, so the assertions below go on saying what they always said. Where the
+   * DISTINCTION matters — whether anybody stated a time at all — the raw columns beside
+   * it are what the case reads.
+   */
   started_at: string;
-  value: number;
-}[] {
+  /** The stored type, or null for an occurrence nobody saw the form of. */
+  value: number | null;
+  /** The stated movement instant, canonical UTC. NULL means nobody stated one. */
+  occurred_at: string | null;
+  time_source: string | null;
+}
+
+function bristolRows(): BristolRow[] {
   const db = new Database(DB_PATH);
   try {
-    return db
+    const rows = db
       .prepare(
-        `SELECT id, date, started_at, value FROM metric_samples
-          WHERE profile_id = 1 AND metric = 'bristol_stool_type'
-          ORDER BY started_at`
+        `SELECT id, date, type AS value, occurred_at, recorded_at, time_source
+           FROM stool_events
+          WHERE profile_id = 1
+          ORDER BY COALESCE(occurred_at, recorded_at), id`
       )
-      .all() as {
-      id: number;
-      date: string;
-      started_at: string;
-      value: number;
-    }[];
+      .all() as (Omit<BristolRow, "started_at"> & { recorded_at: string })[];
+    return rows.map(({ recorded_at, ...row }) => ({
+      ...row,
+      started_at: localWall(row.occurred_at ?? recorded_at),
+    }));
   } finally {
     db.close();
   }
+}
+
+/** A canonical UTC instant as the profile-local `YYYY-MM-DDTHH:MM:SS` a surface shows. */
+function localWall(at: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(at));
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 function seedBristol(date: string, hhmmss: string, type: number): void {
   const db = new Database(DB_PATH);
   try {
     db.pragma("busy_timeout = 5000");
-    // metric_samples.started_at holds a profile-LOCAL wall clock for a hand-entered
-    // reading — the `${date}THH:MM:SS` shape the write core builds through
-    // zonedDateParts, not a UTC instant (lib/time-columns.ts calls the column's
-    // convention `mixed` and says so). So the fixture writes that same shape rather
-    // than routing through zonedWallTimeToUtc, which would store the wrong string
-    // under the rotating instance timezone.
-    const wall = `${date}T${hhmmss}`;
+    // A SEEDED ROW IS A STATED ONE. The fixture is standing in for a movement somebody
+    // timed, so it writes `occurred_at` + `time_source = 'stated'` — built through
+    // zonedWallTimeToUtc against the run's rotating zone, because the column is a
+    // canonical UTC instant now rather than the local string the samples table held.
+    const at = zonedWallTimeToUtc(TZ, date, hhmmss.slice(0, 5))!;
+    const seconds = Number(hhmmss.slice(6, 8));
+    const instant =
+      new Date(at.getTime() + seconds * 1000).toISOString().slice(0, 19) + "Z";
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
-         VALUES (1, 'manual', 'bristol_stool_type', ?, ?, ?, ?)`
-    ).run(date, wall, wall, type);
+      `INSERT INTO stool_events
+         (profile_id, date, recorded_at, occurred_at, time_source, type)
+       VALUES (1, ?, ?, ?, 'stated', ?)`
+    ).run(date, instant, instant, type);
   } finally {
     db.close();
   }
 }
 
-/** One receipt row, addressed by the `metric_samples` id the store gave it. */
+/** One receipt row, addressed by the `stool_events` id the store gave it. */
 function receiptFor(picker: Locator, id: number): Locator {
   return picker.locator(
     `[data-testid="quick-entry-stool-receipt"][data-reading-id="${id}"]`
@@ -160,8 +192,14 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   const rows = bristolRows();
   expect(rows).toHaveLength(1);
   expect(rows[0].value).toBe(6);
-  // Instant grain: the row records WHEN, which is what makes a deliberate second tap
-  // a second observation instead of an overwrite of the first.
+  // NOBODY STATED A TIME, AND THE ROW SAYS SO (#5872). The old store stamped the wall
+  // clock into the reading's own instant, so the record could not tell "happened at
+  // 7:41" from "filed at 7:41" and printed the filing minute in the stated grammar.
+  // The tap instant is still recorded — below — but it is recorded as what it is.
+  expect(rows[0].occurred_at).toBeNull();
+  expect(rows[0].time_source).toBeNull();
+  // The TAP stamp records WHEN THIS WAS FILED, which is what makes a deliberate second
+  // tap a second row rather than an overwrite of the first.
   //
   // BRACKETED, not "not midnight" (#3214). The tap is bracketed between two readings
   // of the app's clock seam and the stamp has to land between them — that states the
@@ -224,7 +262,10 @@ test("a Bristol tap queues offline and syncs exactly once (#3166)", async ({
 
   const rows = bristolRows();
   expect(rows).toHaveLength(1);
-  expect(rows[0]).toMatchObject({ date, value: 6 });
+  // A REPLAYED TAP STATES NO MORE THAN A LIVE ONE. The captured instant is a CAPTURE
+  // stamp and lands in `recorded_at`; `occurred_at` stays null because nobody named a
+  // time offline either.
+  expect(rows[0]).toMatchObject({ date, value: 6, occurred_at: null });
   expect(zonedWallIsoToUtc(TZ, rows[0].started_at)?.getTime()).toBe(
     Math.floor(frozenNow().getTime() / 1000) * 1000
   );
@@ -339,8 +380,7 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   // overwriting this one.
   await expect(picker.getByTestId("stool-when-time")).toHaveValue("07:05");
 
-  // Leg 2 — the statement lands. The stated time carries :00 seconds, which is what
-  // makes restating the same minute a correction rather than a phantom second movement.
+  // Leg 2 — the statement lands, as its own row beside the tap's.
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await settledClick(page, picker.getByTestId("stool-type-3"));
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
@@ -352,16 +392,21 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
     [date, 3],
     [date, 4],
   ]);
-  // The stated wall minute, on the second: a stated time carries no seconds, which is
-  // what makes restating the same minute a correction rather than a second movement.
+  // The stated wall minute, on the second: a stated time carries no seconds.
   expect(both.map((r) => storedInstant(r.started_at))).toEqual([
     at("07:05"),
     tapInstant,
   ]);
   expect(both[0].started_at.endsWith(":00")).toBe(true);
+  // AND THE PROVENANCE IS RECORDED, which is the half the old store had nowhere to put:
+  // the stated row says a person named that minute, the tap row says nobody did.
+  expect(both.map((r) => r.time_source)).toEqual(["stated", null]);
 
-  // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS: the key is the instant, so a second
-  // tap under a surviving 07:05 would silently overwrite the row the first one wrote.
+  // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS. This used to matter because the key
+  // WAS the instant, so a second tap under a surviving 07:05 silently overwrote the row
+  // the first one wrote; the ledger is append-only now and would keep both. It still
+  // matters for what the row SAYS: a stale 07:05 would file a movement at a minute
+  // nobody meant to restate.
   await expect(picker.getByTestId("stool-when-time")).toHaveValue("");
   clearBristol();
 });

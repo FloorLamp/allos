@@ -32,7 +32,12 @@ import {
 } from "./fixture-logins";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
-import { dateStrInTz, shiftDateStr, zonedDateParts } from "@/lib/date";
+import {
+  dateStrInTz,
+  shiftDateStr,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 import { VITAL_CANONICAL } from "@/lib/vitals-input";
 
 // The run's rotating instance timezone: `practice_logs.start_time` is a profile-LOCAL wall
@@ -1923,7 +1928,7 @@ test("the sheet's own day carries Food, Practice and Stool into the same History
           "DELETE FROM practice_logs WHERE profile_id = ? AND date = ?"
         ).run(profileId, day);
         db.prepare(
-          "DELETE FROM metric_samples WHERE profile_id = ? AND date = ? AND metric = 'bristol_stool_type'"
+          "DELETE FROM stool_events WHERE profile_id = ? AND date = ?"
         ).run(profileId, day);
       })();
     } finally {
@@ -2042,14 +2047,26 @@ test("the sheet's own day carries Food, Practice and Stool into the same History
           )
           .all(profileId, day)
       ).toEqual([{ date: day, end_time: "07:05", live: 0 }]);
+      // The stool ledger since #5872. `occurred_at` is a canonical UTC instant, so the
+      // stated 08:10 is read back through the run's pinned zone rather than sliced out
+      // of a local string — and `time_source` is asserted beside it, because "somebody
+      // named this minute" is the fact the old store could not hold.
       expect(
         db
           .prepare(
-            "SELECT date, substr(started_at, 1, 10) AS sample_day, substr(started_at, 11) AS sample_time, value FROM metric_samples WHERE profile_id = ? AND date = ? AND metric = 'bristol_stool_type'"
+            "SELECT date, occurred_at, time_source, type FROM stool_events WHERE profile_id = ? AND date = ?"
           )
           .all(profileId, day)
       ).toEqual([
-        { date: day, sample_day: day, sample_time: "T08:10:00", value: 4 },
+        {
+          date: day,
+          occurred_at:
+            zonedWallTimeToUtc(PINNED_TZ, day, "08:10")!
+              .toISOString()
+              .slice(0, 19) + "Z",
+          time_source: "stated",
+          type: 4,
+        },
       ]);
     } finally {
       db.close();
