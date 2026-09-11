@@ -1273,7 +1273,9 @@ test.describe("the log form's Save is the one prominent commit (#5617 step 4)", 
       // 2. THE FORM'S ONE FILLED CONTROL — the prominence the ruling kept when it
       //    dropped the width. This is the rank census on one form: a second filled
       //    control here would mean nothing says which one commits.
-      const filled = geometry.siblings.filter((b) => b.opaque).map((b) => b.what);
+      const filled = geometry.siblings
+        .filter((b) => b.opaque)
+        .map((b) => b.what);
       expect(
         filled,
         `@${width} the form's filled controls are ${JSON.stringify(filled)}; exactly one — the commit — may be filled`
