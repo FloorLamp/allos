@@ -279,8 +279,28 @@ describe("the re-log confirm copy", () => {
     expect(elapsedPhrase(60_000)).toBe("1 minute ago");
     expect(elapsedPhrase(12 * 60_000)).toBe("12 minutes ago");
     expect(elapsedPhrase(60 * 60_000)).toBe("1 hour ago");
-    expect(elapsedPhrase(26 * 60 * 60_000)).toBe("1 day ago");
     expect(elapsedPhrase(3 * 24 * 60 * 60_000)).toBe("3 days ago");
+  });
+
+  // #4550 CHANGED THESE DELIBERATELY. This function used to keep its own ladder,
+  // and the divergence pinned here was the evidence: 26 hours read "1 day ago"
+  // where every other surface in the app says "Yesterday", and the ladder had no
+  // rung above days, so a year-old tap read "400 days ago". It is the shared
+  // `formatRelativeSeconds` now, which also rounds where this floored and draws
+  // "just now" at the app's ±45s clock-skew tolerance instead of a flat 60s.
+  it("reads the SAME ladder as every other relative label (#4550)", () => {
+    expect(elapsedPhrase(26 * 60 * 60_000)).toBe("Yesterday");
+    expect(elapsedPhrase(400 * 24 * 60 * 60_000)).toBe("1 year ago");
+    expect(elapsedPhrase(10 * 24 * 60 * 60_000)).toBe("1 week ago");
+    expect(elapsedPhrase(45 * 24 * 60 * 60_000)).toBe("2 months ago");
+    // Rounds, where it used to floor.
+    expect(elapsedPhrase(119_000)).toBe("2 minutes ago");
+    // The ±45s tolerance, not a flat minute.
+    expect(elapsedPhrase(44_000)).toBe("just now");
+    expect(elapsedPhrase(45_000)).toBe("1 minute ago");
+    // Kept: a clock that moved backwards never names a FUTURE refill.
+    expect(elapsedPhrase(-60 * 60_000)).toBe("just now");
+    expect(elapsedPhrase(Number.NaN)).toBe("just now");
   });
 });
 

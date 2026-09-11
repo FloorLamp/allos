@@ -62,7 +62,8 @@ function foldSourceSeries(
 }
 
 // Per-source daily series for a metric_samples metric (SUM or AVG per the
-// metric's aggregation), windowed to the limitDays most recent dates-with-data.
+// metric's aggregation; empty for a categorical metric, which does not
+// aggregate), windowed to the limitDays most recent dates-with-data.
 export function getMetricSeriesBySource(
   profileId: number,
   metric: string,
@@ -89,47 +90,61 @@ export function getMetricSeriesBySourceInRange(
   to: string | null
 ): MetricSourceSeries[] {
   const agg = metricAggregation(metric);
-  if (agg === "SUM") {
-    const rows = db
-      .prepare(
-        `SELECT date, source, origin, SUM(value) AS value
-           FROM metric_samples
-          WHERE profile_id = ? AND metric = ?
-            AND date >= COALESCE(?, '0000-00-00')
-            AND date <= COALESCE(?, '9999-12-31')
-          GROUP BY date, source, origin`
-      )
-      .all(profileId, metric, from, to) as {
-      date: string;
-      source: string | null;
-      origin: string | null;
-      value: number;
-    }[];
-    return foldSourceSeries(
-      pickRowsOneOriginPerSourceDay(
-        rows,
-        (r) => r.date,
-        (r) => r.source,
-        (r) => r.origin,
-        (r) => r.value
-      )
-    );
+  switch (agg) {
+    case "SUM": {
+      const rows = db
+        .prepare(
+          `SELECT date, source, origin, SUM(value) AS value
+             FROM metric_samples
+            WHERE profile_id = ? AND metric = ?
+              AND date >= COALESCE(?, '0000-00-00')
+              AND date <= COALESCE(?, '9999-12-31')
+            GROUP BY date, source, origin`
+        )
+        .all(profileId, metric, from, to) as {
+        date: string;
+        source: string | null;
+        origin: string | null;
+        value: number;
+      }[];
+      return foldSourceSeries(
+        pickRowsOneOriginPerSourceDay(
+          rows,
+          (r) => r.date,
+          (r) => r.source,
+          (r) => r.origin,
+          (r) => r.value
+        )
+      );
+    }
+    case "AVG": {
+      const rows = db
+        .prepare(
+          `SELECT date, source, AVG(value) AS value
+             FROM metric_samples
+            WHERE profile_id = ? AND metric = ?
+              AND date >= COALESCE(?, '0000-00-00')
+              AND date <= COALESCE(?, '9999-12-31')
+            GROUP BY date, source`
+        )
+        .all(profileId, metric, from, to) as {
+        date: string;
+        source: string | null;
+        value: number;
+      }[];
+      return foldSourceSeries(rows);
+    }
+    case "NONE":
+      // A CATEGORICAL metric declines to aggregate (#3167), and a per-source daily
+      // series is an aggregation like any other — a day's readings would have to be
+      // averaged or summed per source to become one point. NO SERIES is the honest
+      // answer; the overlay renders nothing rather than a fabricated daily category.
+      return [];
+    default: {
+      const exhaustive: never = agg;
+      return exhaustive;
+    }
   }
-  const rows = db
-    .prepare(
-      `SELECT date, source, AVG(value) AS value
-         FROM metric_samples
-        WHERE profile_id = ? AND metric = ?
-          AND date >= COALESCE(?, '0000-00-00')
-          AND date <= COALESCE(?, '9999-12-31')
-        GROUP BY date, source`
-    )
-    .all(profileId, metric, from, to) as {
-    date: string;
-    source: string | null;
-    value: number;
-  }[];
-  return foldSourceSeries(rows);
 }
 
 // Per-source daily series for a body_metrics column (weight/body fat/resting HR),

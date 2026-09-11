@@ -138,8 +138,10 @@ test("a food row is one dense line: icon, name, stepper (#3987)", async ({
   const limitRow = page.getByTestId("food-group-processed_meat");
   await expect(limitRow.getByTestId("food-tier-processed_meat")).toHaveCount(0);
   await expect(limitRow).not.toContainText("Eat less");
+  // The LIGHT step (#5760): the tier tint is a two-arm class now, and matching
+  // `text-amber-500` would match the `dark:` arm on a page rendering in light.
   await expect(limitRow.getByTestId("food-group-icon")).toHaveClass(
-    /text-amber-500/
+    /text-amber-700/
   );
 
   // ONE LINE. The row's rendered height is within a line-box of the stepper's own

@@ -12,6 +12,7 @@
 // timezone database; solarDay() resolves the offset from an IANA timezone via Intl
 // (deterministic given the date, no clock/network — safe for the pure test tier).
 
+import { hhmmFromMinutes } from "./date";
 import { timezoneOffsetMinutes } from "./timezone";
 
 const DEG = Math.PI / 180;
@@ -182,11 +183,7 @@ export function solarElevation(
 // sunrise pushed just past midnight by an extreme longitude still reads sanely.
 export function formatMinutes(min: number | null): string | null {
   if (min == null || !Number.isFinite(min)) return null;
-  let mm = Math.round(min) % 1440;
-  if (mm < 0) mm += 1440;
-  const h = Math.floor(mm / 60);
-  const m = mm % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  return hhmmFromMinutes(min);
 }
 
 // The UTC offset (hours, east-positive; e.g. -7 for America/Los_Angeles in summer)
