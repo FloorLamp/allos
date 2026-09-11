@@ -1,6 +1,15 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
-import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
+import Database from "better-sqlite3";
+import {
+  appContent,
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  openConfirm,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { closeEditor, openFact, setObligation } from "./intake-form-helpers";
 import {
   medicationList,
@@ -14,8 +23,11 @@ import {
   medicationsToday,
   scheduledTodayItem,
   prnTodayItem,
+  medicationDetail,
   openMedDetailViaLink,
+  openMedDetailViaHref,
 } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Open a medication row's portaled "⋯" actions menu and navigate via one of its
 // item links. Two hydration races stack here (the #1139 portaled-"Stop medication"
@@ -430,4 +442,108 @@ test("a medication row links to its clinical-record detail page", async ({
   await expect(page.getByTestId("provider-detail")).toContainText(
     "E2E Browser Clinic"
   );
+});
+
+// ── Deleting the medication the page is ABOUT (#5340, absorbing #5337) ──────────
+//
+// The detail page is the only production mount of MedicationCard, so its "⋯ → Delete"
+// destroys the very record `/medications/[id]` resolves. `deleteIntakeItem` revalidates
+// intake, the page re-resolves, `resolveIntakeAcrossProfiles` finds nothing and the
+// route renders the 404 — a person who deleted a medication on purpose was shown an
+// error page for their trouble. The card now takes the same `deleteReturnHref` the
+// activity menu has taken since #3099 and `router.replace`s to it (replace, so Back
+// does not return to the route that no longer resolves).
+//
+// This spec OWNS its fixture (#868): a uniquely-named med it adds, deletes, restores
+// through the Undo toast, and DB-cleans in afterAll — the restore is half of the
+// acceptance, and it puts the row back, so the cleanup is not optional.
+const DELETE_RETURN_MED_PREFIX = "Delete Return Med e2e";
+
+function countOwnedMeds(name: string): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = 1 AND kind = 'medication' AND name = ?"
+        )
+        .get(name) as { n: number }
+    ).n;
+  } finally {
+    db.close();
+  }
+}
+
+test.afterAll(() => {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.pragma("foreign_keys = ON"); // cascade the med's dose/course children
+    db.prepare(
+      `DELETE FROM intake_items
+        WHERE profile_id = 1 AND kind = 'medication' AND name LIKE ?`
+    ).run(`${DELETE_RETURN_MED_PREFIX}%`);
+  } finally {
+    db.close();
+  }
+});
+
+test("deleting a medication from its detail page lands on the list, not the 404 for the row it just deleted (#5340)", async ({
+  page,
+}, testInfo) => {
+  test.slow();
+  const name = `${DELETE_RETURN_MED_PREFIX} ${testInfo.repeatEachIndex}-${testInfo.retry}`;
+
+  // A synthetic name matches no OTC catalog entry, so nothing prefills and the add
+  // stays a fill-and-Add.
+  await page.goto("/medications");
+  const workspace = appContent(page);
+  await workspace.getByTestId("medication-add-toggle").click();
+  const panel = workspace.getByTestId("medication-add-panel");
+  const addCard = panel.getByTestId("intake-item-form");
+  await expect(addCard).toBeVisible();
+  const nameField = addCard.getByLabel("Name");
+  await nameField.fill(name);
+  await nameField.press("Escape");
+  await settledClick(
+    page,
+    addCard.getByRole("button", { name: "Add", exact: true })
+  );
+  await expect(medicationRow(page, name)).toBeVisible();
+  expect(countOwnedMeds(name)).toBe(1);
+
+  const detail = await openMedDetailViaHref(page, name);
+  await expect(detail).toBeVisible();
+  const detailRoute = new URL(page.url()).pathname;
+  expect(detailRoute).toMatch(/^\/medications\/\d+$/);
+
+  await hydratedClick(
+    page,
+    detail.getByRole("button", { name: "Medication actions" })
+  );
+  const confirm = await openConfirm(
+    page,
+    page.getByRole("menuitem", { name: "Delete", exact: true })
+  );
+  await confirm.getByRole("button", { name: "Delete", exact: true }).click();
+
+  // THE DEFECT: the delete used to leave the person standing on `detailRoute`, which
+  // the same delete had just made unresolvable, so the revalidated render was the 404.
+  await page.waitForURL(/\/medications$/, { timeout: 30_000 });
+  await expect(medicationList(page)).toBeVisible();
+  await expect(medicationDetail(page)).toHaveCount(0);
+
+  // The ROW really went — the navigation is not covering for a delete that did not
+  // happen — and the list it landed on no longer shows it.
+  expect(countOwnedMeds(name)).toBe(0);
+  await expect(medicationRow(page, name)).toHaveCount(0);
+
+  // The undo offer survived the navigation (ToastProvider is mounted in the root
+  // layout), and taking it puts the medication back on the board it landed on.
+  await expect(page.getByText("Medication deleted.")).toBeVisible();
+  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  await expect(page.getByText("Restored.")).toBeVisible();
+  expect(countOwnedMeds(name)).toBe(1);
+  await expect(medicationRow(page, name)).toBeVisible();
 });
