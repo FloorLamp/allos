@@ -75,7 +75,7 @@ import {
 } from "@/lib/findings";
 import { routineOrder } from "@/lib/dismissal-fatigue";
 import { requireSession } from "@/lib/auth";
-import { requireScope, type ProfileScope } from "@/lib/scope";
+import { canWrite, requireScope, type ProfileScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
@@ -296,12 +296,7 @@ import {
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
-import {
-  preloadGlobalSettings,
-  preloadLoginSettings,
-  preloadProfileSettings,
-  withSettingReadCache,
-} from "@/lib/settings/kv";
+import { withPrimedSettings } from "@/lib/settings";
 import { withReadSnapshot } from "@/lib/read-snapshot";
 import { proteinTodayExplanation, proteinTodayLineParts } from "@/lib/protein";
 import { MedicalValue } from "@/components/ui";
@@ -417,25 +412,37 @@ function findingRow(
 }
 
 export default async function Dashboard() {
-  return withSettingReadCache(async () => {
-    const session = await requireSession();
-    const scope = await requireScope();
-    preloadGlobalSettings();
-    preloadLoginSettings(session.login.id);
-    preloadProfileSettings([session.profile.id]);
-    const profileAge = getProfileAge(session.profile.id);
-    if (isTrainingRelevant(profileAge)) {
-      void withAiLogContext(
-        { loginId: session.login.id, profileId: session.profile.id },
-        () =>
-          runRecommendation(session.profile.id, {
-            trigger: "scheduled",
-            loginId: session.login.id,
-          })
-      );
+  const session = await requireSession();
+  const scope = await requireScope();
+  // ONE SPELLING OF THE OPENING (#5774). Home wrote the cache scope and its three
+  // preloads out by hand, and the record's day view then wrote them again — the
+  // second copy #5774 exists to prevent. The helper IS those four calls, so nothing
+  // about the reads changes; what changes is that a third page cannot spell them a
+  // third way.
+  //
+  // THE WHOLE ACCESSIBLE SET, not the acting profile alone. Home's second inline
+  // `preloadProfileSettings` primed the household because Current care fans out over
+  // every authorized profile (timezone, format and illness-UI reads per member), and
+  // that set is exactly `scope.ids`. Priming it here instead of mid-render keeps the
+  // preload in the frame that opens the cache, which is the only frame it reaches
+  // (#5012) — see `withPrimedSettings`.
+  return withPrimedSettings(
+    { loginId: scope.loginId, profileIds: scope.ids },
+    () => {
+      const profileAge = getProfileAge(session.profile.id);
+      if (isTrainingRelevant(profileAge)) {
+        void withAiLogContext(
+          { loginId: session.login.id, profileId: session.profile.id },
+          () =>
+            runRecommendation(session.profile.id, {
+              trigger: "scheduled",
+              loginId: session.login.id,
+            })
+        );
+      }
+      return withReadSnapshot(() => renderDashboard(session, scope, profileAge));
     }
-    return withReadSnapshot(() => renderDashboard(session, scope, profileAge));
-  });
+  );
 }
 
 async function renderDashboard(
@@ -444,7 +451,7 @@ async function renderDashboard(
   profileAge: ReturnType<typeof getProfileAge>
 ) {
   const { login, profile, access } = session;
-  const canWrite = access === "write";
+  const actingCanWrite = access === "write";
   const storedOnboarding = getOnboardingState(profile.id);
   if (access === "write" && storedOnboarding?.status === "not_started") {
     redirect("/onboarding");
@@ -478,9 +485,6 @@ async function renderDashboard(
   // act-now subset supplies only the app-badge count. Viewer units ride along so
   // measurement-carrying item copy stays consistent with Upcoming.
   const accessible = scope.profiles;
-  preloadProfileSettings(
-    accessible.map((accessibleProfile) => accessibleProfile.id)
-  );
   // Own-profile link (#1013): the acting-profile write forms (the weight quick-add)
   // name the subject when the login is acting as someone OTHER than its own profile,
   // so a weigh-in never silently lands on the wrong person's record. Null (no naming)
@@ -644,7 +648,7 @@ async function renderDashboard(
           presentationCockpitByEpisode.get(cockpit.episode.id)!.episode
       );
     const gathered = gatherDashboardIllnessCockpits(profileId, episodes, {
-      canWrite: scope.access.get(profileId) === "write",
+      canWrite: canWrite(scope, profileId),
       temperatureUnit: units.temperatureUnit,
       weightUnit: units.weightUnit,
       now: dashboardNow,
@@ -700,7 +704,7 @@ async function renderDashboard(
       displayName: nameFor(c.avatar),
       situation: c.episode.situation,
       isActive: c.isActive,
-      canWrite: scope.access.get(c.profileId) === "write",
+      canWrite: canWrite(scope, c.profileId),
       stateIdentity: careCandidates.illnessStateIdentity(key),
       temperatureIdentity:
         temperatureId == null
@@ -727,7 +731,7 @@ async function renderDashboard(
           episode={displayEpisode}
           status={collapsedStatus}
           crossProfile={!c.isActive}
-          canWrite={scope.access.get(c.profileId) === "write"}
+          canWrite={canWrite(scope, c.profileId)}
           ownsSharedProfileControls={c.episodeOrder === 0}
           hasPluralOpenEpisodes={
             (cockpitCountByProfile.get(c.profileId) ?? 0) > 1
@@ -1390,7 +1394,7 @@ async function renderDashboard(
         : null;
     add(candidate, {
       label,
-      detail: canWrite ? (
+      detail: actingCanWrite ? (
         // `gap-3` BETWEEN TWO CHIPS, not a tighter list gap: `chip-base`'s
         // coarse-pointer `::after` reaches 6px past the pill, so anything narrower
         // overlaps two effective targets on a phone (#3938).
@@ -1421,7 +1425,7 @@ async function renderDashboard(
       ) : (
         namesPhrase(members.map((member) => member.name))
       ),
-      control: canWrite ? (
+      control: actingCanWrite ? (
         routine ? (
           <UsualRoutineControl {...routine} />
         ) : (
@@ -1475,7 +1479,7 @@ async function renderDashboard(
       label: item.title,
       detail: attentionRowDetail(item, on, formatPrefs),
       href: item.href,
-      control: canWrite ? (
+      control: actingCanWrite ? (
         <>
           {item.doseId != null && (
             /* ONE ACTION GRAMMAR SECTION-WIDE (#4752 item 7). "Mark taken" was a
@@ -1532,7 +1536,7 @@ async function renderDashboard(
             <span className="font-medium">{offer.recordName}</span>
           </>
         ),
-        control: canWrite ? (
+        control: actingCanWrite ? (
           <PreventiveReviewControls
             confirmAction={async (fd) => {
               "use server";
@@ -1651,7 +1655,7 @@ async function renderDashboard(
       careCandidates.illnessReopen(
         {
           subject: { scope: "profile", profileId: item.profileId },
-          applicable: canWrite,
+          applicable: actingCanWrite,
           sourceOrder: sourceOrder++,
         },
         key
@@ -1951,7 +1955,7 @@ async function renderDashboard(
   const moodCheckinCandidate = dailyCandidates.moodCheckin(
     {
       subject: profileSubject,
-      applicable: canWrite,
+      applicable: actingCanWrite,
       sourceOrder: sourceOrder++,
     },
     on,
@@ -2142,7 +2146,7 @@ async function renderDashboard(
     // costs one. Scoped to `scope_kind === "practice"`: the dose precedent
     // (#4083) and every other habit domain (training, food) keep the door.
     const logsInPlace =
-      canWrite && behind && progress.target.scope_kind === "practice";
+      actingCanWrite && behind && progress.target.scope_kind === "practice";
     add(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
@@ -2200,7 +2204,7 @@ async function renderDashboard(
         progressCandidates.targetLog(
           {
             subject: profileSubject,
-            applicable: canWrite && !progress.met,
+            applicable: actingCanWrite && !progress.met,
             sourceOrder: sourceOrder + index * 2 + 1,
           },
           id,
@@ -2282,7 +2286,7 @@ async function renderDashboard(
           moment: { title: protocol.name, href: protocol.href },
         }
       );
-    if (protocol.practiceName && protocol.practiceUsuallyToday && canWrite)
+    if (protocol.practiceName && protocol.practiceUsuallyToday && actingCanWrite)
       add(
         progressCandidates.protocol(
           {
@@ -2370,7 +2374,7 @@ async function renderDashboard(
     add(
       dailyCandidates.nutritionBootstrap({
         subject: profileSubject,
-        applicable: canWrite,
+        applicable: actingCanWrite,
         sourceOrder: sourceOrder++,
       }),
       {
@@ -2512,7 +2516,7 @@ async function renderDashboard(
     add(
       dailyCandidates.stepsBootstrap({
         subject: profileSubject,
-        applicable: canWrite,
+        applicable: actingCanWrite,
         sourceOrder: sourceOrder++,
       }),
       {
@@ -2729,7 +2733,7 @@ async function renderDashboard(
       // the same form, so a profile with even a dormant reading gets ONE of them,
       // never both. A profile with no vitals reading at all keeps this door — the
       // #4160 first-run case, untouched.
-      applicable: canWrite && !vitalsFamilyExists,
+      applicable: actingCanWrite && !vitalsFamilyExists,
       sourceOrder: sourceOrder++,
     }),
     {
@@ -2810,7 +2814,7 @@ async function renderDashboard(
         moment: { title: "Recent clinical results", href: "/results" },
         presence: "current",
         control:
-          canWrite && acknowledgeKey ? (
+          actingCanWrite && acknowledgeKey ? (
             <SnoozeDismissMenu
               itemName={row.name}
               signalKey={acknowledgeKey}
@@ -2826,7 +2830,7 @@ async function renderDashboard(
     add(
       careCandidates.labBootstrap({
         subject: profileSubject,
-        applicable: canWrite,
+        applicable: actingCanWrite,
         sourceOrder: sourceOrder++,
       }),
       {
@@ -2848,7 +2852,7 @@ async function renderDashboard(
     add(
       progressCandidates.weightBootstrap({
         subject: profileSubject,
-        applicable: canWrite,
+        applicable: actingCanWrite,
         sourceOrder: sourceOrder++,
       }),
       {
@@ -3039,7 +3043,7 @@ async function renderDashboard(
       sleepCandidates.refresh(
         {
           subject: profileSubject,
-          applicable: canWrite,
+          applicable: actingCanWrite,
           sourceOrder: sourceOrder++,
         },
         on

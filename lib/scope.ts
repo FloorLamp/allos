@@ -79,6 +79,23 @@ export interface ProfileScope {
   access: ReadonlyMap<number, Access>;
 }
 
+/**
+ * May this login write to that profile, as the resolved scope already answered it.
+ *
+ * ONE SPELLING OF `access.get(id) === "write"` (#4553 item 8). Twelve surfaces asked
+ * the map the same question by hand, and a hand-written comparison is one typo
+ * (`"writes"`, `=== "read"`) away from drawing a control the action would then
+ * refuse. A missing entry — a profile outside the scope — is NOT writable, which the
+ * `?? "read"` fallback in `stampSubjects` already states for rows.
+ *
+ * IT IS NOT THE GATE. Like `scope.access` itself this powers what is DRAWN; the gate
+ * stays `requireProfileWriteAccess` at the action boundary, which re-checks at apply
+ * time, so a forged submit is refused whatever this returned.
+ */
+export function canWrite(scope: ProfileScope, profileId: number): boolean {
+  return scope.access.get(profileId) === "write";
+}
+
 // DB-callable core: build a ProfileScope from an already-resolved session (the auth
 // decision) plus an optional raw view-set (the ids stored in
 // sessions.view_profile_ids by #1096). Split from requireScope so the
