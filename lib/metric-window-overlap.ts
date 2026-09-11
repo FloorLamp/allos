@@ -392,6 +392,12 @@ export function isSupersedingWindow(
 // makes `date` a pure function of `started_at`, which is in the natural key — a re-send
 // cannot move it, and the "a date always keeps a reading" invariant becomes true ACROSS
 // pushes rather than only within one.
+//
+// AND `started_at` IS THAT MIDNIGHT FOR EVERY BUCKET BUT THE ONE THE SYNC WINDOW CUT
+// (#5849): the oldest day of an incremental sync starts where the sync does, so that
+// bucket reads its anchor off its other end instead — see `anchorImpliedDay`. For that
+// one row `date` is a function of the WINDOW rather than of the natural key alone, and
+// what still keeps a re-send from moving a stored day is `resendDay`'s freeze.
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A real zone offset runs [-12:00, +14:00] and lands on a quarter hour (+05:30, +05:45,
 // +12:45). Nothing here needs to know WHICH zone — only whether the offset an anchor
@@ -422,32 +428,16 @@ function dayAt(ms: number, offsetMs: number): string {
 }
 
 /**
- * The day a Health Connect day bucket names, or `null` when this window is not one.
- *
- * GATED ON `isSupersedingWindow`, AND THE GATE IS THE SAFETY. The same four metrics
- * arrive as MINUTE buckets at a `1m`/`15m` exporter setting, and a 15-minute window
- * starting 14:00Z would "imply" UTC+10 and file a New York afternoon on tomorrow. Only
- * a window the rule already reads as a device-cut day bucket states an anchor.
- *
- * `profileOffsetMs` BREAKS THE ONE AMBIGUITY and nothing else. In the 10:00Z-12:00Z
- * band the anchor is equally a UTC-10…-12 midnight and a UTC+12…+14 one, so the window
- * states nothing and the profile decides — by its own DAY, not by offset distance; see
- * the body. Outside that band the argument is unused, so a wrong or stale zone cannot
- * move a day.
+ * The day a bucket that OPENED at `midnightMs` names, or `null` when that instant is no
+ * midnight a real zone keeps. The profile's zone is read only inside the ambiguous band.
  */
-export function anchorImpliedDay(
-  metric: string,
-  startedAt: string,
-  endedAt: string,
+function dayFromMidnight(
+  midnightMs: number,
   profileOffsetMs: number
 ): string | null {
-  const ms = instantMs(startedAt);
-  if (ms === null || !isSupersedingWindow(metric, startedAt, endedAt)) {
-    return null;
-  }
-  const offsets = anchorOffsets(ms);
+  const offsets = anchorOffsets(midnightMs);
   if (offsets.length === 0) return null;
-  if (offsets.length === 1) return dayAt(ms, offsets[0]);
+  if (offsets.length === 1) return dayAt(midnightMs, offsets[0]);
   // THE AMBIGUOUS BAND, WHERE THE ANCHOR IS SILENT AND THE PROFILE IS THE ONLY EVIDENCE.
   // Both candidate days are equally consistent with a 10:00Z-12:00Z anchor, so the window
   // carries nothing the profile does not — and deferring to the profile's own DAY is
@@ -461,8 +451,8 @@ export function anchorImpliedDay(
   // JST bucket superseded it and 08-25 kept nothing. That is this issue's own loss,
   // reintroduced by its own fix, and `anchorRefusesDay` is structurally blind to it
   // because 08-26 IS one of the two admissible days.
-  const profileDay = dayAt(ms, profileOffsetMs);
-  const days = offsets.map((o) => dayAt(ms, o));
+  const profileDay = dayAt(midnightMs, profileOffsetMs);
+  const days = offsets.map((o) => dayAt(midnightMs, o));
   if (days.includes(profileDay)) return profileDay;
   // Neither candidate is the profile's day: the profile lies further west than the
   // anchor's own west representative (only reachable at a 10:00Z or 11:00Z anchor).
@@ -471,7 +461,60 @@ export function anchorImpliedDay(
   const offset = offsets.reduce((best, o) =>
     Math.abs(o - profileOffsetMs) < Math.abs(best - profileOffsetMs) ? o : best
   );
-  return dayAt(ms, offset);
+  return dayAt(midnightMs, offset);
+}
+
+/**
+ * The day a Health Connect day bucket names, or `null` when this window is not one.
+ *
+ * GATED ON `isSupersedingWindow`, AND THE GATE IS THE SAFETY. The same four metrics
+ * arrive as MINUTE buckets at a `1m`/`15m` exporter setting, and a 15-minute window
+ * starting 14:00Z would "imply" UTC+10 and file a New York afternoon on tomorrow. Only
+ * a window the rule already reads as a device-cut day bucket states an anchor — from
+ * EITHER of its ends, so the gate keeps a minute bucket out of both derivations.
+ *
+ * `profileOffsetMs` BREAKS THE ONE AMBIGUITY and nothing else. In the 10:00Z-12:00Z
+ * band the anchor is equally a UTC-10…-12 midnight and a UTC+12…+14 one, so the window
+ * states nothing and the profile decides — by its own DAY, not by offset distance; see
+ * `dayFromMidnight`. It decides against the bucket's own midnight in both derivations,
+ * so a clamped bucket gets the answer its unclamped twin would have got. Outside that
+ * band the argument is unused, so a wrong or stale zone cannot move a day.
+ */
+export function anchorImpliedDay(
+  metric: string,
+  startedAt: string,
+  endedAt: string,
+  profileOffsetMs: number
+): string | null {
+  const ms = instantMs(startedAt);
+  if (ms === null || !isSupersedingWindow(metric, startedAt, endedAt)) {
+    return null;
+  }
+  const fromStart = dayFromMidnight(ms, profileOffsetMs);
+  if (fromStart !== null) return fromStart;
+  // THE START IS NOT ALWAYS THE MIDNIGHT, AND THE OTHER END CARRIES THE SAME ANCHOR
+  // (#5849). A bucket CLAMPED to the sync window's own start — the oldest day of an
+  // incremental sync begins at the last sync rather than at midnight — holds an
+  // arbitrary instant in `started_at`, implies no real offset, and fell all the way
+  // back to profile attribution: the pre-#3901 behaviour this derivation exists to
+  // replace, on the first bucket of every sync that follows a re-anchoring.
+  //
+  // Its END is still the device's midnight, so the derivation runs against that
+  // instead — ONE DAY EARLIER, because the midnight that ENDS a bucket is the midnight
+  // that STARTS the next day, and naming that day would file every clamped bucket a
+  // day late. `end - 24h` is the midnight the day opened at whatever fixed offset the
+  // device keeps, so a DST day cannot move it either: both instants shift together.
+  //
+  // The evidence standard does not move. An end off the quarter-hour grid implies
+  // nothing, which is what leaves the still-open final bucket of a sync — whose end is
+  // the push moment, not a midnight — on the attribution it already had. And a window
+  // reaching back PAST that midnight is not one device day at all, so it states
+  // nothing rather than naming the last of the days it spans.
+  const endMs = instantMs(endedAt);
+  if (endMs === null) return null;
+  const impliedStart = endMs - DAY_MS;
+  if (impliedStart > ms) return null;
+  return dayFromMidnight(impliedStart, profileOffsetMs);
 }
 
 /**
