@@ -15,6 +15,7 @@
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
 
 import { describe, it, expect, beforeAll } from "vitest";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { db, today } from "@/lib/db";
 import { reconcileFlags, getUnitMislabelReviews } from "@/lib/queries";
 import {
@@ -23,7 +24,15 @@ import {
   dismissUnitMislabel,
 } from "@/lib/unit-mislabel-correction";
 
-let profileId: number;
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the fixture casts — once, and named here rather than repeated at six call sites.
+// Nothing refuses that cast in production either: the WRITE_BRAND_CAST rule that would
+// (shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed on that file, which is
+// outside this lane's fence. What the brand buys today is that an action which never gated
+// cannot reach these cores by ACCIDENT — `tsc` refuses a plain number, and #5348's
+// perturbation is exactly that. A branded number is still a number, so insertMchc() and the reads
+// below take it unchanged.
+let profileId: WriteAuthorizedProfileId;
 let mislabeledId: number; // MCHC 33 g/L, stated range 31-37 (really g/dL)
 let genuineLowId: number; // MCHC 20 g/dL, genuinely low
 let noRangeId: number; // MCHC 33 g/L, no stated range → no signal
@@ -73,7 +82,7 @@ beforeAll(() => {
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('Mislabel Test')").run()
       .lastInsertRowid
-  );
+  ) as WriteAuthorizedProfileId;
   // The mislabeled row: value 33 g/L, stated range 31-37 (matches g/dL). The
   // extractor saw 33 within 31–37 → no flag.
   mislabeledId = insertMchc(33, "g/L", "31-37", null);

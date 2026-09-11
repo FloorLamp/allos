@@ -1,8 +1,15 @@
-// Write cores for the unit-mislabel correction (issue #761). Auth-BLIND — the Data
-// → Review Server Actions own the requireWriteAccess() gate; these take profileId
-// first (the profileId-first convention) and never import lib/auth. Every statement
-// is profile-scoped, so a foreign id changes nothing.
+// Write cores for the unit-mislabel correction (issue #761). profileId-first, and the id
+// must be the one a write gate returned: the parameter is lib/auth's
+// WriteAuthorizedProfileId, which only the gates mint, so an action that never gated has no
+// value to pass and `tsc` refuses the call (#5348). That stops the ACCIDENTAL ungated call
+// and not a deliberate one — nothing refuses `as WriteAuthorizedProfileId` yet, in this tier
+// or in production, and the lint rule that would (WRITE_BRAND_CAST, shaped like
+// eslint.config.mjs's RPE_BRAND_CAST) is still owed on that file, which is outside this
+// lane's fence. The import is type-only — erased at build, so these cores still run
+// auth-blind and the Data → Review Server Actions still own the requireWriteAccess() gate.
+// Every statement is profile-scoped, so a foreign id changes nothing.
 
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import {
   detectRecordUnitMislabel,
@@ -30,7 +37,7 @@ export type ApplyUnitMislabelResult =
 // is right, the #761 suppression lifts and the true — typically Normal — flag is
 // computed). Returns the captured prior state for undo.
 export function applyUnitMislabelCorrection(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   recordId: number
 ): ApplyUnitMislabelResult {
   const hit = detectRecordUnitMislabel(profileId, recordId);
@@ -72,7 +79,7 @@ export function applyUnitMislabelCorrection(
 // the prior derived flag, AND the prior edit-lock in one write. Profile-scoped, so a
 // replayed token from another profile is a no-op. Returns whether a row changed.
 export function undoUnitMislabelCorrection(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   undo: UnitMislabelUndo
 ): boolean {
   const info = db
@@ -86,7 +93,10 @@ export function undoUnitMislabelCorrection(
 // Record a mislabel detection as a false positive so it never re-surfaces. Uses the
 // shared findings-suppression bus (upcoming_dismissals) — the same store the
 // Upcoming/coaching dismissals use — keyed by the record id. Profile-scoped.
-export function dismissUnitMislabel(profileId: number, recordId: number): void {
+export function dismissUnitMislabel(
+  profileId: WriteAuthorizedProfileId,
+  recordId: number
+): void {
   db.prepare(
     `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
      VALUES (?, ?, datetime('now'))

@@ -36,6 +36,7 @@
 // is a product label, not anybody's data.
 
 import { describe, it, expect } from "vitest";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { extractFromCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
@@ -82,11 +83,19 @@ function medsCcd(name: string): string {
 </ClinicalDocument>`;
 }
 
-function newProfile(name: string): number {
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the fixture casts — once, and named here rather than repeated at eighteen call sites.
+// Nothing refuses that cast in production either: the WRITE_BRAND_CAST rule that would
+// (shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed on that file, which is
+// outside this lane's fence. What the brand buys today is that an action which never gated
+// cannot reach these cores by ACCIDENT — `tsc` refuses a plain number, and #5348's
+// perturbation is exactly that. A branded number is still a number, so the import pipeline and the
+// offer reads below take it unchanged.
+function newProfile(name: string): WriteAuthorizedProfileId {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
-  );
+  ) as WriteAuthorizedProfileId;
 }
 
 function newDocument(profileId: number): number {
@@ -510,7 +519,11 @@ function importedDosedMedication(
   label: string,
   documentName: string,
   amount: string
-): { profileId: number; documentId: number; itemId: number } {
+): {
+  profileId: WriteAuthorizedProfileId;
+  documentId: number;
+  itemId: number;
+} {
   const profileId = newProfile(label);
   db.prepare(
     `INSERT INTO profile_settings (profile_id, key, value)

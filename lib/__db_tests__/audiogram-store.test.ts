@@ -13,6 +13,7 @@
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect } from "vitest";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   deleteAudiogram,
@@ -32,11 +33,19 @@ import {
 import { getOtotoxicWarnings } from "@/lib/queries";
 import { ototoxicDetail, ototoxicHasShift } from "@/lib/ototoxic";
 
-function makeProfile(name: string): number {
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the fixture casts — once, and named here rather than repeated at twenty call sites.
+// Nothing refuses that cast in production either: the WRITE_BRAND_CAST rule that would
+// (shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed on that file, which is
+// outside this lane's fence. What the brand buys today is that an action which never gated
+// cannot reach these cores by ACCIDENT — `tsc` refuses a plain number, and #5348's
+// perturbation is exactly that. A branded number is still a number, so the reads and the
+// ototoxic helpers below take it unchanged.
+function makeProfile(name: string): WriteAuthorizedProfileId {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
-  );
+  ) as WriteAuthorizedProfileId;
 }
 
 describe("audiogram store — canonical medical_records rows (#1600)", () => {

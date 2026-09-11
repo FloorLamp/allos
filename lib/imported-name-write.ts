@@ -1,9 +1,20 @@
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import { isCleanerName, isImportedDocumentName } from "./imported-name";
 import { serializeRxcuiIngredients } from "./rxnorm";
 
 // The WRITE half of the imported-name boundary (issue #3480) — the only path in the
 // tree that changes a stored medication name because of an import.
+//
+// THE WRITE CORE TAKES THE ID A WRITE GATE RETURNED: adoptImportedName's profileId is
+// lib/auth's WriteAuthorizedProfileId, which only the gates mint, so an action that never
+// gated has no value to pass and `tsc` refuses the call (#5348). That stops the ACCIDENTAL
+// ungated call and not a deliberate one — nothing refuses `as WriteAuthorizedProfileId` yet,
+// in this tier or in production, and the lint rule that would (WRITE_BRAND_CAST, shaped like
+// eslint.config.mjs's RPE_BRAND_CAST) is still owed on that file, which is outside this
+// lane's fence. The import is type-only — erased at build — so this module still pulls in no
+// lib/auth runtime, and the read below (importedMedicationName) is unchanged: a branded
+// number is still a number.
 //
 // It lives in lib/ rather than inside the Server Action for the reason the medical
 // pipeline does (lib/medical-pipeline.ts): the action is auth, a network lookup and
@@ -101,7 +112,7 @@ export type AdoptResult =
 // later — must not overwrite the portal string with the first standardized name. The
 // document's own label is written once and then never again.
 export function adoptImportedName(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   documentId: number,
   itemId: number,
   chosen: string,

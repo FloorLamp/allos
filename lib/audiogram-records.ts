@@ -1,6 +1,14 @@
-// Audiogram WRITE CORE + reads (issue #1600). AUTH-BLIND and profileId-first — no
-// lib/auth import; the calling Server Action is the only auth boundary. The sibling of
-// lib/instrument-records.ts, which does the same job for screening-instrument scores.
+// Audiogram WRITE CORE + reads (issue #1600). profileId-first, and the WRITE cores take the
+// id a write gate returned: the parameter is lib/auth's WriteAuthorizedProfileId, which only
+// the gates mint, so an action that never gated has no value to pass and `tsc` refuses the
+// call (#5348). That stops the ACCIDENTAL ungated call and not a deliberate one — nothing
+// refuses `as WriteAuthorizedProfileId` yet, in this tier or in production, and the lint rule
+// that would (WRITE_BRAND_CAST, shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed
+// on that file, which is outside this lane's fence. The import is type-only — erased at
+// build, so this module still pulls in no lib/auth runtime and the calling Server Action is
+// still the only auth boundary. The reads below are unchanged: a branded number is still a
+// number. The sibling of lib/instrument-records.ts, which does the same job for
+// screening-instrument scores.
 //
 // STORE: `medical_records`, category `vitals`, one row per (ear, frequency) under the
 // canonical analyte names lib/canonical-result-definitions.json already curates for the
@@ -24,6 +32,7 @@
 //   • latestByGroup  — reached through currentThresholds() in the pure module, keyed on
 //                      the domain identity audiogramSeriesKey.
 
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { reconcileFlags } from "./queries/medical";
@@ -218,7 +227,7 @@ export type AudiogramOrigin = "manual" | "sync";
 // that audiogram in place rather than stacking a duplicate — which is what makes the
 // insert/update/unchanged accounting meaningful.
 export function recordAudiogram(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   input: RecordAudiogramInput,
   // Which surface recorded this audiogram (#3087). Required, no default — and
   // deliberately NOT folded into the `origin` argument beside it, which answers a
@@ -340,7 +349,7 @@ export type DeleteAudiogramOutcome =
 // last reading of a starred/snoozed analyte must not leave the star pointing at
 // nothing (#203/#327).
 export function deleteAudiogram(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string
 ): DeleteAudiogramOutcome {
   const removed = writeTx((): number => {
