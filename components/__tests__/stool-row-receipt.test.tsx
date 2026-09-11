@@ -178,6 +178,64 @@ describe("the sheet lists the day", () => {
     expect(
       within(rows()[0]).getByTestId("quick-entry-stool-receipt-undo")
     ).toBe(undos[0]);
+
+    // …AND IT RUNS THAT ROW'S INVERSE. Two older readings sit beneath it, so a
+    // control wired to the list rather than to the reading it belongs to would post
+    // one of their ids and quietly remove a movement the person did not just log.
+    deleteStoolReading.mockResolvedValue({ undoId: 1 });
+    await act(async () => {
+      undos[0].click();
+    });
+    expect(
+      (deleteStoolReading.mock.calls.at(-1)?.[0] as FormData).get("id")
+    ).toBe("44");
+  });
+
+  // THE OTHER HALF OF THE SAME PREDICATE, which the case above cannot reach: there,
+  // the reading this mount landed IS the newest row, so "landed" and "newest" are the
+  // same row and dropping either conjunct changes nothing. A stated time puts them
+  // apart — the tap corrects a reading in the middle of the day while a later one
+  // already stands above it.
+  it("shows no Undo at all when the reading this tap landed on is not the newest", async () => {
+    loadStoolDay.mockResolvedValue({
+      readings: [
+        { id: 99, type: 2, hhmm: "21:15" },
+        { id: 44, type: 3, hhmm: "12:00" },
+      ],
+      dayCount: 2,
+    });
+    logStoolForm.mockResolvedValue({
+      ok: true,
+      type: 5,
+      dayCount: 2,
+      // The midday reading, corrected from type 3 by restating its minute.
+      reading: { id: 44, replacedType: 3 },
+      readings: [
+        { id: 99, type: 2, hhmm: "21:15" },
+        { id: 44, type: 5, hhmm: "12:00" },
+      ],
+    });
+    renderRow({ todayCount: 2, today: "2026-07-08" });
+    await waitFor(() => expect(rows()).toHaveLength(2));
+
+    await tap(5);
+    await waitFor(() => expect(lines()[1][0]).toBe("Type 5 · Soft blobs"));
+
+    // NOT ON THE NEWEST ROW, because this tap did not write it — an Undo there would
+    // be a delete of the 21:15 reading wearing the word, or worse, a control beside
+    // the 21:15 row running the 12:00 row's inverse.
+    // NOT ON THE LANDED ROW EITHER: the ruling puts the control on the newest row,
+    // and #2642's offer rides the write, so when the two are not the same row there
+    // is no seat for it. The record's ⋯ is where an older reading is corrected.
+    expect(
+      screen.queryAllByTestId("quick-entry-stool-receipt-undo")
+    ).toHaveLength(0);
+    // The toast still carries it — that offer is about the write, not about a row.
+    expect(announce).toHaveBeenCalledWith(
+      expect.objectContaining({
+        undo: expect.objectContaining({ undoneMessage: "Type 3 restored." }),
+      })
+    );
   });
 
   it("offers nothing to undo when the write added no reading", async () => {

@@ -102,7 +102,15 @@ describe("the reading a tap landed on", () => {
     if (!again.ok) return;
     // The row is still there and still says type 3, but this tap did not make it —
     // an Undo would be reversing somebody else's earlier write.
+    //
+    // THE ABSENCE IS ASSERTED BESIDE THE PRESENCE, because an absence on its own is
+    // the one assertion an answer that never carried the field at all would also
+    // satisfy: the day is still listed, and only the "which row did I land on" half
+    // is missing.
     expect(rows().map((r) => r.value)).toEqual([3]);
+    expect(again.readings).toEqual([
+      { id: rows()[0].id, type: 3, hhmm: "07:05" },
+    ]);
     expect(again.reading).toBeUndefined();
   });
 
