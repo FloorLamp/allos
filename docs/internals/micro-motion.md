@@ -84,10 +84,9 @@ boundary, not on arrival. The bubble text and `aria-valuetext` always name the
 period. Haptics are an enhancement; reduced motion suppresses both pulse and
 haptic while preserving the text.
 
-**Witnessed promotion.** [witnessedNowMotion](../../lib/dashboard-motion.ts)
-permits `promote` only for newly arrived Now cards while the page remained
-visible. First paint, a hidden interval, and reduced motion stay quiet. The
-rendered card and its stable candidate identity carry the result.
+**Witnessed promotion.** `promote` had one tenant and one gate: `witnessedNowMotion`
+allowed it only for a Now card arriving while the page stayed visible. #5435 §4
+deleted both. `ControlTooltip` keeps the plan; its arrival is an interaction.
 
 **Gathered offers.** `QuickLogMenu` owns the `arrive` plan for the quick-log
 sheet's due-and-usual offers. The menu reserves panel height before gathering;

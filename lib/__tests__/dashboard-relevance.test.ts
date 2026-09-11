@@ -16,7 +16,6 @@ import {
   engagementFromSource,
   profileDataRelevance,
   readingCandidate,
-  setupCandidates,
   sleepCandidates,
   stateCandidate,
   statementCandidate,
@@ -872,8 +871,27 @@ describe("atomic dashboard placement", () => {
   });
 
   it("removes an expired finished-session recap and post-nap reading", () => {
-    const ctx = { subject, sourceOrder: order++ };
-    const recap = setupCandidates.sessionRecap(ctx, 12, "sets", 61);
+    // THE RECAP IS BUILT INLINE NOW. `setupCandidates.sessionRecap` was deleted with
+    // the retired families (#5435 §4), and what this case is about is
+    // `resolveDashboardTiming`'s `since-event` arm, not the builder — so the shape
+    // the builder used to emit (61 minutes into a 60-minute window) is stated here
+    // rather than the case being retired with the family.
+    const recap = statementCandidate({
+      candidateId: "session.recap:12:sets",
+      factKey: "session.finished:12:sets",
+      groupKey: "session.finished:12",
+      subject,
+      applicable: true,
+      relevance: { kind: "event" },
+      sourceOrder: order++,
+      timing: { kind: "since-event", ageMinutes: 61, maxMinutes: 60 },
+      rankReasons: {
+        safety: false,
+        owed: false,
+        windowOpen: false,
+        changed: true,
+      },
+    });
     const nap = sleepCandidates.nap(
       { subject, sourceOrder: order++ },
       "2026-06-17",

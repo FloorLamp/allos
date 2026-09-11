@@ -1386,10 +1386,12 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   // the route must be a ROW — a card header stacking a title over a description,
   // which #3979 rules is not a control — measured as a descendant holding two or
   // more block-level children, or one of the ruled row-mechanism folds cited here
-  // by testid. THE CITED THREE, by issue: `food-more-groups-summary` (#3987 — one
-  // dense line row, the same height as the rows it extends),
-  // `dashboard-everything-*-fold-summary` (#4232's band fold) and
-  // `suppressed-summary` (upcoming/FoldSummary, pinned by its own spec). The other
+  // by testid. THE CITED TWO, by issue: `food-more-groups-summary` (#3987 — one
+  // dense line row, the same height as the rows it extends) and
+  // `suppressed-summary` (upcoming/FoldSummary, pinned by its own spec).
+  // `dashboard-everything-*-fold-summary` (#4232's band fold) was a third until
+  // #5435 §4 deleted the band; a prefix that can never match is an allowlist entry
+  // holding a door open onto nothing, so it leaves with its subject. The other
   // three row-mechanism sites the issue cites — IllnessNowGroup's toggle and its
   // "More details" link (#3514) and DoseHistoryPanel's sheet rows — wear neither
   // class and are not `<summary>`, so this sweep never reaches them; they are
@@ -1439,7 +1441,6 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   const SWEEP_WIDTHS = [390, 768, 1280];
   const CITED_ROW_FOLDS = [
     "food-more-groups-summary",
-    "dashboard-everything-",
     "suppressed-summary",
     // #5435 §3.2's Later band — the same ruling as `food-more-groups-summary`: a
     // `<summary>` carrying `LOGGED_EVENT_ROW`, one dense line, the same height as

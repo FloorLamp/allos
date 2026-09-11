@@ -10,8 +10,14 @@ import {
 //
 // This file used to test three more exports — the visit tally, the frequency
 // ranking and the stored-JSON parser. #4102 retired Frequent and deleted them, so
-// what is left is the half that outlived it: the dashboard's only way to ask what
-// a route is CALLED (`DashboardPlacementCanvas` throws on a route it cannot name).
+// what is left is the half that outlived it: the app's only way to ask what a
+// route is CALLED.
+//
+// ITS SECOND CONSUMER IS GONE TOO (#5435 §4). The dashboard's door labels asked
+// this question and `DashboardPlacementCanvas` threw on a route it could not
+// name; both are deleted, so `trackedPageFor` now has no production caller and
+// this file is the only thing holding the registry's behaviour. Kept rather than
+// deleted with them for the reason lib/recent-pages.ts states at the list.
 
 describe("trackedPageFor", () => {
   // A section anchor is a position on a page, not a different page (#1644), and
