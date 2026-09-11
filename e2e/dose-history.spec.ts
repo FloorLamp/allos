@@ -190,8 +190,25 @@ test("a supplement's dose history offers the medication row actions, and an edit
   await page.getByRole("menuitem", { name: "Edit" }).click();
 
   // ── The amendment round-trips: the snapshotted amount is corrected in place ─
-  const form = panel.getByTestId("historical-dose-form");
-  await expect(form).toContainText("won’t change the schedule either");
+  // SCOPED TO THE DIALOG, NOT THE PANEL (#5617 AC1). The correction opens in the
+  // converged host now, and `ModalShell` portals to `<body>` — so the panel is no
+  // longer the form's ancestor and a panel-scoped locator would find nothing. The
+  // dialog is the form's host, so this is the same "the form this row opened",
+  // addressed through the element that now contains it.
+  const editSheet = page.getByRole("dialog");
+  const form = editSheet.getByTestId("historical-dose-form");
+  // THE MECHANICS SENTENCE MOVED TO THE GLYPH, AND SO DID THIS (#5617 step 4's
+  // prose half, owner ruling 2026-09-11 11:40 UTC). It used to read off the closed
+  // form, where the paragraph stood; rule 4 sends mechanics copy to
+  // `InfoTooltipIcon`, so the same copy is asserted where it now lives — opened by
+  // a tap, read off the tooltip. Deleting it instead would have stopped defending
+  // the copy altogether, which the ruling explicitly declined.
+  await form.getByTestId("historical-dose-mechanics").click();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "won’t change the schedule either"
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   // The editor seeds from occurred_at only. This proves the stated administration
   // is editable without treating recorded_at as an administration time.
   await expect(form.getByTestId("historical-dose-time")).toHaveValue(
@@ -214,7 +231,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
     .getByRole("button", { name: "Dose actions" })
     .click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
-  const timedForm = panel.getByTestId("historical-dose-form");
+  const timedForm = editSheet.getByTestId("historical-dose-form");
   await timedForm.getByTestId("historical-dose-time").fill("07:42");
   await timedForm.getByRole("button", { name: "Save changes" }).click();
   await expect(timedForm).toHaveCount(0);
@@ -232,11 +249,11 @@ test("a supplement's dose history offers the medication row actions, and an edit
     .click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   await expect(
-    panel
+    editSheet
       .getByTestId("historical-dose-form")
       .getByTestId("historical-dose-time")
   ).toHaveValue("07:42");
-  await panel
+  await editSheet
     .getByTestId("historical-dose-form")
     .getByRole("button", { name: "Cancel" })
     .click();
@@ -431,7 +448,12 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   const offers = panel.getByTestId("dose-backfill-offer");
   // Today is still in progress, so it is not among them: four elapsed lapses.
   await expect(offers).toHaveCount(MISSED_DAYS);
-  await expect(panel.getByTestId("historical-dose-form")).toHaveCount(0);
+  // The form can now only exist inside a dialog, so "the offers are showing, not
+  // the form" is asserted there. Panel-scoped it would pass on a page with the
+  // backfill sheet wide open, which is the failure this line exists to catch.
+  await expect(
+    page.getByRole("dialog").getByTestId("historical-dose-form")
+  ).toHaveCount(0);
   // Newest first, and each row names EXACTLY what the tap will write. This dose's
   // slot is the bucket word "Morning", which is not a clock and so cannot be
   // written: the row therefore names the day and the amount and says nothing about
@@ -501,7 +523,11 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
 
   // ── "Another date…" holds the unchanged form ───────────────────────────────
   await panel.getByTestId("dose-backfill-other").click();
-  await expect(panel.getByTestId("historical-dose-form")).toBeVisible();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Log past dose" })
+      .getByTestId("historical-dose-form")
+  ).toBeVisible();
   await expect(control).toHaveText("Log past dose");
 
   // ── ...and when the slot IS a clock, the row names it and writes it ────────

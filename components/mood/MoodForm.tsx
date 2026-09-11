@@ -26,7 +26,7 @@ import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
-import Button from "@/components/Button";
+import FormDismissAction from "@/components/FormDismissAction";
 import SubmitButton from "@/components/SubmitButton";
 import { TAP_REACH } from "@/lib/log-manifest";
 
@@ -587,17 +587,18 @@ export default function MoodForm({
                 }
               />
             </label>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-stretch gap-1">
               <SubmitButton
                 variant="primary"
+                layout="block"
                 disabled={busy || valence == null}
               >
                 {busy ? "Saving…" : "Save"}
               </SubmitButton>
               {onCancel ? (
-                <Button disabled={busy} onClick={onCancel}>
+                <FormDismissAction disabled={busy} onClick={onCancel}>
                   Cancel
-                </Button>
+                </FormDismissAction>
               ) : null}
             </div>
           </div>

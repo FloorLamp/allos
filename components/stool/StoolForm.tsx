@@ -8,7 +8,7 @@ import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
 import { statedHhmm, whenOnDay } from "@/lib/stated-time";
 import { correctStoolReading, logStoolForm } from "@/app/(app)/stool-actions";
-import Button from "@/components/Button";
+import FormDismissAction from "@/components/FormDismissAction";
 import SubmitButton from "@/components/SubmitButton";
 
 // THE STOOL DOMAIN'S ONE FORM (#4424 ruling 1), named by
@@ -146,15 +146,16 @@ export default function StoolForm({
         </select>
       </label>
       <InlineError>{error}</InlineError>
-      <div className="flex items-end gap-2 sm:col-span-2">
+      <div className="flex flex-col items-stretch gap-1 sm:col-span-2">
         <SubmitButton
           variant="primary"
+          layout="block"
           data-testid="stool-form-save"
           disabled={pending}
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
-        <Button onClick={onCancel}>Cancel</Button>
+        <FormDismissAction onClick={onCancel}>Cancel</FormDismissAction>
       </div>
     </form>
   );

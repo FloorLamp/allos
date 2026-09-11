@@ -7,6 +7,7 @@ import {
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
 import {
+  appContent,
   expectPhoneTapTargets,
   hydratedClick,
   openFoodAdd,
@@ -1104,6 +1105,130 @@ test.describe("the fact chip wears the box (#4035)", () => {
         geometry.overlaps,
         `@${width} two extended fact chips own the same point; the row's gap must be at least twice the reach`
       ).toEqual([]);
+    }
+  });
+});
+
+// THE LOG FORM'S SUBMIT IS ITS ONE PROMINENT COMMIT (#5617 step 4, owner ruling
+// 2026-09-11 11:15 UTC). THIS IS THE AMENDMENT TO THE PAIR-AT-A-FIXED-BOX CLAIM,
+// NOT A REPLACEMENT FOR IT — the injury fact row above still measures its own
+// Save + Cancel at these same four widths, because the injury form is not one of
+// the eight log forms the ruling reaches and its pair is unchanged. What changed
+// is the eight, and the ruling says the amended assertion is the NEW SHAPE at the
+// SAME four widths, which is what this measures.
+//
+// THE DEFECT, IN THE OWNER'S WORDS, WAS A SIZE: "the Save CTA is the same size as
+// the other controls", reported on a screenshot of the record's dose edit form
+// where Cancel sat beside Save as an identical box. #5658 had shipped that pair
+// deliberately, carrying #4978's conversion — so this is a later ruling changing
+// an earlier one rather than a defect in what #5658 built, and the half of #5658
+// that SURVIVES is asserted here too: the control box does not move. Save is
+// wider, not taller.
+//
+// AND IT IS MEASURED, NOT READ OFF A CLASS. `layout="block"` in a call site is a
+// declaration; `w-full` in a stylesheet is a declaration; neither is evidence the
+// control rendered wide, and this file exists because #3514 shipped exactly that
+// gap. Every number below is a `getBoundingClientRect()`.
+//
+// WHY THE DOSE FORM. It is the surface the owner's screenshot was of, it is one of
+// the eight by name (`lib/log-manifest.ts`), and the record's Doses chip opens it
+// in one click from a plain `goto` — the cheapest honest way to a log form, in a
+// file whose whole table is a goto plus a readiness marker.
+test.describe("the log form's Save is the one prominent commit (#5617 step 4)", () => {
+  test.use({ viewport: PHONE });
+
+  test(`the dose form's Save is full-width and Cancel subordinate at ${BOX_WIDTHS.join(
+    "/"
+  )}`, async ({ page }) => {
+    await page.goto("/history?kind=dose");
+    const door = appContent(page).getByTestId("history-add-open-dose");
+    await expect(door).toBeVisible();
+    // A client-only door and the first interaction after a navigation, so the tap
+    // can be lost pre-hydration with no error (#2942).
+    await hydratedClick(page, door);
+    const sheet = page.getByRole("dialog", { name: "Log dose" });
+    const form = sheet.getByTestId("historical-dose-form");
+    await expect(form).toBeVisible();
+    const save = form.getByRole("button", { name: "Save dose" });
+    const cancel = form.getByRole("button", { name: "Cancel" });
+    await expect(save).toBeVisible();
+    await expect(cancel).toBeVisible();
+
+    for (const width of BOX_WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      const geometry = await form.evaluate((el) => {
+        const box = (t: Element | null) => {
+          if (!t) return null;
+          const r = t.getBoundingClientRect();
+          return { width: r.width, height: r.height, top: r.top, bottom: r.bottom };
+        };
+        const named = (name: string) =>
+          Array.from(el.querySelectorAll<HTMLElement>("[data-button-control]")).find(
+            (b) => (b.textContent ?? "").trim() === name
+          ) ?? null;
+        const siblings = Array.from(
+          el.querySelectorAll<HTMLElement>("[data-button-control]")
+        )
+          .filter((b) => b.getBoundingClientRect().height > 0)
+          .map((b) => ({
+            what: (b.textContent ?? "").trim().slice(0, 24),
+            width: b.getBoundingClientRect().width,
+            height: b.getBoundingClientRect().height,
+          }));
+        return {
+          save: box(named("Save dose")),
+          cancel: box(named("Cancel")),
+          // The form's own content box: what "full width" is full OF. Read from the
+          // element rather than from the viewport, because the sheet is a card above
+          // `md` and the form is narrower than the window there.
+          form: { width: el.getBoundingClientRect().width },
+          siblings,
+        };
+      });
+
+      expect(geometry.save, `@${width} no Save`).not.toBeNull();
+      expect(geometry.cancel, `@${width} no Cancel`).not.toBeNull();
+      const save = geometry.save!;
+      const cancel = geometry.cancel!;
+
+      // 1. FULL-WIDTH AT THE CONTROL BOX — rule 3's shape. The tolerance is a
+      //    rounding allowance, not a band: a Save that lost its `w-full` renders
+      //    its own intrinsic width, which is a fraction of the form's.
+      expect(
+        Math.abs(save.width - geometry.form.width),
+        `@${width} Save is ${save.width} in a ${geometry.form.width} form; it must be full-width`
+      ).toBeLessThanOrEqual(1);
+
+      // 2. VISIBLY LARGER THAN EVERY SIBLING CONTROL, which is the owner's own
+      //    wording and the thing a width-only check on Save cannot establish: a
+      //    form where everything went full-width would pass assertion 1.
+      for (const sibling of geometry.siblings) {
+        if (sibling.what === "Save dose") continue;
+        expect(
+          sibling.width,
+          `@${width} "${sibling.what}" is ${sibling.width} beside a ${save.width} Save; the commit must be the widest control in the form`
+        ).toBeLessThan(save.width);
+      }
+
+      // 3. CANCEL IS SUBORDINATE AND UNDER, not a same-size box beside. Both halves
+      //    are asserted: a Cancel that kept its width would fail the first, and one
+      //    that shrank but stayed on Save's line would fail the second.
+      expect(
+        cancel.width,
+        `@${width} Cancel is ${cancel.width} against a ${save.width} Save`
+      ).toBeLessThan(save.width / 2);
+      expect(
+        cancel.top + TAP_FLOOR_FLOAT_EPSILON_PX,
+        `@${width} Cancel sits beside Save rather than under it`
+      ).toBeGreaterThanOrEqual(save.bottom);
+
+      // 4. AND THE BOX DID NOT MOVE — the half of #5658 this ruling did NOT
+      //    reverse. Save got wider; neither control got shorter, and a text-style
+      //    dismiss that gave up its height would give up its tap target with it.
+      expect(
+        [Math.round(save.height), Math.round(cancel.height)],
+        `@${width} the submit row renders a height other than the control box`
+      ).toEqual([CONTROL_BOX_PX, CONTROL_BOX_PX]);
     }
   });
 });

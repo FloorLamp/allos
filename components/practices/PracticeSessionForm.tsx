@@ -10,7 +10,7 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { editPracticeSession, logPractice } from "@/app/(app)/wellness/actions";
 import { minutesBetween } from "@/lib/activity-meta";
 import { practiceLogOutcomeText } from "@/lib/practice";
-import Button from "@/components/Button";
+import FormDismissAction from "@/components/FormDismissAction";
 import SubmitButton from "@/components/SubmitButton";
 
 // THE PRACTICE DOMAIN'S ONE FORM (#4424 ruling 1), named by
@@ -269,15 +269,18 @@ export default function PracticeSessionForm({
         />
       </label>
       <InlineError>{error}</InlineError>
-      <div className="flex items-end gap-2 sm:col-span-2">
+      <div className="flex flex-col items-stretch gap-1 sm:col-span-2">
         <SubmitButton
           variant="primary"
+          layout="block"
           disabled={pending || timeError}
           data-testid="practice-log-detailed-submit"
         >
           {pending ? "Saving…" : row ? "Save" : "Log session"}
         </SubmitButton>
-        {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
+        {onCancel ? (
+          <FormDismissAction onClick={onCancel}>Cancel</FormDismissAction>
+        ) : null}
       </div>
     </form>
   );

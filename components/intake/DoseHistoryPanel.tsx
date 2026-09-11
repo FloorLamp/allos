@@ -4,6 +4,7 @@ import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import OfferRow, { LabeledVerbChip } from "@/components/OfferRow";
 import CardSectionHeader from "@/components/CardSectionHeader";
+import ModalShell from "@/components/ModalShell";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
@@ -390,17 +391,35 @@ export default function DoseHistoryPanel({
           </div>
         </div>
       ) : null}
+      {/* THE BACKFILL FORM OPENS IN THE CONVERGED HOST (#5300 rule 5, #5617 AC1).
+          It was the panel's own inline draft — a form that unfolded under the
+          card's header and pushed the history down the page — which is the shape
+          rule 5 names. `ModalShell` is that host: a sheet below `md`, a centred
+          card above, with the dirty-form guard the other seven log forms already
+          get from it. Titled "Log past dose", the same phrase the door that opens
+          it says, so the trigger and the sheet cannot name two things.
+
+          IT PORTALS TO `<body>`, so the form is no longer inside
+          `supplement-dose-history-panel`. A spec that scoped it to the panel now
+          scopes it to the dialog. */}
       {canWrite && backfill?.kind === "form" ? (
-        <HistoricalDoseForm
-          items={formItems}
-          minDate={minDate}
-          maxDate={maxDate}
-          initialDate={backfill.date}
-          defaultTime={defaultTime}
-          subjectProfileId={subjectProfileId}
-          tz={tz}
-          onDone={() => setBackfill(null)}
-        />
+        <ModalShell
+          title="Log past dose"
+          onClose={() => setBackfill(null)}
+          size="sm"
+          testId="dose-backfill-sheet"
+        >
+          <HistoricalDoseForm
+            items={formItems}
+            minDate={minDate}
+            maxDate={maxDate}
+            initialDate={backfill.date}
+            defaultTime={defaultTime}
+            subjectProfileId={subjectProfileId}
+            tz={tz}
+            onDone={() => setBackfill(null)}
+          />
+        </ModalShell>
       ) : null}
       {history.length > 0 ? (
         <div className="mt-2">
@@ -411,6 +430,9 @@ export default function DoseHistoryPanel({
             menuKind="Dose"
             menuItemName={(entry) => formatLongDate(entry.date, formatPrefs)}
             rowTestId={() => "dose-history-row"}
+            // The correction opens in the converged host too, so both of this
+            // panel's mounts of `HistoricalDoseForm` are the same surface.
+            editHost="sheet"
             renderEditForm={(entry, done) => (
               <HistoricalDoseForm
                 items={formItems}

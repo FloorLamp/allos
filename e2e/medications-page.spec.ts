@@ -415,10 +415,20 @@ test("a medication row links to its clinical-record detail page", async ({
   const newestDoseRow = doseHistory.getByTestId("dose-history-row").first(); // eslint-disable-line no-restricted-properties -- first-ok: newest row on the uniquely-named "Adherence Refill Med (e2e)" detail page; deterministically yesterday's seeded dose — the only sibling that logs a dose (medications-followups) targets a different med (PRN Quicklog Med), so no concurrent write can push a newer row here
   await expect(newestDoseRow).not.toContainText("(just now)");
   await doseHistory.getByRole("button", { name: "Log past dose" }).click();
-  const historyForm = doseHistory.getByTestId("historical-dose-form");
-  await expect(historyForm).toContainText(
+  // THE BACKFILL FORM OPENS IN THE CONVERGED HOST (#5617 AC1), which portals to
+  // `<body>`: the panel is no longer its ancestor, so the form is addressed off
+  // the dialog that now holds it. Same form, same door, one element further out.
+  const historyForm = page
+    .getByRole("dialog", { name: "Log past dose" })
+    .getByTestId("historical-dose-form");
+  // AND THE MECHANICS SENTENCE IS ON THE GLYPH (#5617 step 4's prose half). This
+  // asserted the add-mode copy off the standing paragraph; rule 4 moved that copy
+  // to `InfoTooltipIcon`, so the SAME sentence is read off the tooltip it opens.
+  await historyForm.getByTestId("historical-dose-mechanics").click();
+  await expect(page.getByRole("tooltip")).toContainText(
     "updates adherence history for that date"
   );
+  await page.keyboard.press("Escape");
   await historyForm.getByRole("button", { name: "Cancel" }).click();
 
   // A structured prescriber is a real navigation target, not inert metadata.

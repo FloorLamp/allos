@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Button from "@/components/Button";
+import FormDismissAction from "@/components/FormDismissAction";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
@@ -30,6 +31,37 @@ export interface HistoricalDoseOption {
 
 const ASSUMED_AMOUNT_COPY =
   "No amount was saved for this date. Using the oldest known amount.";
+
+// THE DATE MECHANICS, IN ONE PLACE (#5617 step 4's prose half). Six strings across
+// two modes and three course shapes: what a correction does NOT touch, and which
+// dates an add may name. Lifted out of the JSX unchanged when the paragraph became
+// a tooltip — moving copy and rewording it in one change would leave nothing able
+// to say which of the two a later reader was looking at.
+function dateMechanics({
+  editing,
+  courseBound,
+  asNeeded,
+}: {
+  editing: boolean;
+  courseBound: boolean;
+  asNeeded: boolean;
+}): string {
+  if (editing) {
+    return `Changing this record won’t change current supply. ${
+      !courseBound
+        ? "It won’t change the schedule either."
+        : asNeeded
+          ? "An earlier date will move the medication start date back to match."
+          : "The date must remain within a medication course."
+    }`;
+  }
+  if (!courseBound) {
+    return "Choose any past date that isn’t in the future. This updates adherence history for that date and won’t change the schedule.";
+  }
+  return asNeeded
+    ? "Choose any past date. If it is before the current start date, the start date will move back to match. This records a separate administration in dose history."
+    : "The date must fall within a medication course and cannot be in the future. This updates adherence history for that date.";
+}
 
 function amountOn(
   dose: HistoricalDoseOption | undefined,
@@ -314,7 +346,26 @@ export default function HistoricalDoseForm({
           />
         </div>
         <div className="sm:col-span-2">
-          <span className="label">Taken</span>
+          {/* THE MECHANICS LEFT THE FORM AND ARE ON THE GLYPH (#5300 rule 4, owner
+              ruling 2026-09-11 11:40 UTC on #5617). This paragraph used to stand
+              under the fields in BOTH modes — up to two sentences of date rules no
+              one reading them was asking a question about — which is exactly the
+              "no standing prose in the closed form" defect rule 4 names. It is the
+              same six strings, unchanged, and rule 4 says where they live: mechanics
+              go to `InfoTooltipIcon`, which opens on a tap and states them when
+              asked. The copy is still the accessible NAME of the glyph, so a screen
+              reader reaches every word without opening anything. */}
+          <span className="flex items-center gap-1">
+            <span className="label mb-0">Taken</span>
+            <InfoTooltipIcon
+              label={dateMechanics({
+                editing: editing != null,
+                courseBound,
+                asNeeded,
+              })}
+              data-testid="historical-dose-mechanics"
+            />
+          </span>
           <WhenControl
             mode={editing ? "correct" : "state"}
             grain="minute"
@@ -362,27 +413,12 @@ export default function HistoricalDoseForm({
         </label>
       ) : null}
 
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        {editing
-          ? `Changing this record won’t change current supply. ${
-              !courseBound
-                ? "It won’t change the schedule either."
-                : asNeeded
-                  ? "An earlier date will move the medication start date back to match."
-                  : "The date must remain within a medication course."
-            }`
-          : !courseBound
-            ? "Choose any past date that isn’t in the future. This updates adherence history for that date and won’t change the schedule."
-            : asNeeded
-              ? "Choose any past date. If it is before the current start date, the start date will move back to match. This records a separate administration in dose history."
-              : "The date must fall within a medication course and cannot be in the future. This updates adherence history for that date."}
-      </p>
       <InlineError>{error}</InlineError>
-      <div className="flex items-center gap-2">
-        <SubmitButton pendingLabel="Saving…" variant="primary">
+      <div className="flex flex-col items-stretch gap-1">
+        <SubmitButton pendingLabel="Saving…" variant="primary" layout="block">
           {editing ? "Save changes" : "Save dose"}
         </SubmitButton>
-        <Button onClick={onDone}>Cancel</Button>
+        <FormDismissAction onClick={onDone}>Cancel</FormDismissAction>
       </div>
     </form>
   );

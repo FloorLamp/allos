@@ -427,11 +427,22 @@ test("logs, edits, and deletes a historical medication dose", async ({
 
     const history = page.getByTestId("dose-history");
     await history.getByRole("button", { name: "Log past dose" }).click();
-    const form = history.getByTestId("historical-dose-form");
-    await expect(form).toContainText(
+    // Off the dialog rather than the panel: the backfill form opens in the
+    // converged host now (#5617 AC1) and `ModalShell` portals to `<body>`.
+    const form = page
+      .getByRole("dialog", { name: "Log past dose" })
+      .getByTestId("historical-dose-form");
+    // Both mechanics sentences are on the glyph now (#5617 step 4's prose half,
+    // rule 4). They are the PRN-with-a-course arm of the same copy, asserted in
+    // the tooltip that replaced the paragraph rather than dropped.
+    await form.getByTestId("historical-dose-mechanics").click();
+    await expect(page.getByRole("tooltip")).toContainText(
       "records a separate administration in dose history"
     );
-    await expect(form).toContainText("start date will move back to match");
+    await expect(page.getByRole("tooltip")).toContainText(
+      "start date will move back to match"
+    );
+    await page.keyboard.press("Escape");
     const maxDate = await form
       .locator('input[type="hidden"][name="date"]')
       .inputValue();
@@ -486,10 +497,14 @@ test("logs, edits, and deletes a historical medication dose", async ({
       .filter({ hasText: loggedAmount });
     await loggedRow.getByRole("button", { name: "Dose actions" }).click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    // The row swaps its cells for the edit form in place (the shared
-    // EntryHistoryTable, #2417), so the amount text the row was FILTERED on is gone
-    // while the editor is open — the form is scoped to the panel instead.
-    const editForm = history.getByTestId("historical-dose-form");
+    // The correction opens in the converged sheet (#5617 AC1) rather than swapping
+    // the row's cells in place, so the amount text the row was FILTERED on is still
+    // on the page — but the form is portalled to `<body>` and out of the panel, so
+    // it is addressed off its dialog. Either way the point is unchanged: the editor
+    // is not reachable through the row locator that opened it.
+    const editForm = page
+      .getByRole("dialog")
+      .getByTestId("historical-dose-form");
     await editForm.getByLabel("Amount").fill(updatedAmount);
     await editForm.getByTestId("historical-dose-time").fill("04:18");
     await settledClick(
