@@ -81,8 +81,15 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
 // defaults to "cancelled" (what every suite here but the delete door wants) and the
 // delete door turns it on. A confirm hard-wired to false makes a delete assertion
 // pass vacuously; one hard-wired to true silently arms every other row menu.
+// `useOptionalConfirm` joins the two above because BOTH of this panel's mounts of
+// `HistoricalDoseForm` now open in `ModalShell` (#5617 AC1), and the host reads it
+// for its dirty-form discard guard. It answers `null` — the "no provider" arm the
+// real hook returns outside a `ConfirmProvider` — so the guard degrades to closing
+// without a prompt here, which is what these tests want: they assert what a save
+// POSTS, and a confirm in the middle would be a second thing to drive.
 vi.mock("@/components/ConfirmDialog", () => ({
   useConfirm: () => mocks.confirm,
+  useOptionalConfirm: () => null,
   useConfirmOpen: () => false,
 }));
 // The panel's rows are the shared EntryHistoryTable, whose ⋯ delete runs through

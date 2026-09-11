@@ -1234,7 +1234,6 @@ export default function MeasurementsQuickAdd({
         <span className="label">Date &amp; time</span>
         <WhenControl
           mode="state"
-          grain="minute"
           value={when}
           onChange={updateWhen}
           timeRequired={false}

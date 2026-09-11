@@ -1129,7 +1129,6 @@ export default function SymptomLogBar({
               />
               <WhenControl
                 mode="state"
-                grain="minute"
                 value={tempWhen}
                 onChange={setTempWhen}
                 tz={timeZone}
@@ -1141,7 +1140,11 @@ export default function SymptomLogBar({
                 // A past day has no "now" to fall back to (#4685), so the minute is
                 // required there and optional on today.
                 timeRequired={!isPrimaryDay}
-                timeLabel="Reading time"
+                // "Time" (#4426): an always-on-screen field inside a form says what the
+                // box is, and every sibling mount of this control already says exactly
+                // that. "Reading time" read as a duration of reading and was the last
+                // one-tap bar label spelling the plain field its own way.
+                timeLabel="Time"
                 testId="temp-quick"
               />
               <SubmitButton

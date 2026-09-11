@@ -312,7 +312,6 @@ export function LedgerBatchWhen({
     <>
       <WhenControl
         mode="state"
-        grain="minute"
         timeRequired
         value={when}
         onChange={setWhen}

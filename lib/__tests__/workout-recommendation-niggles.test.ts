@@ -30,8 +30,10 @@ import {
 import {
   NIGGLE_LOAD_FACTOR,
   niggleHeadsUpLine,
+  nigglePresenceLine,
   niggleTemperLine,
   niggleTempers,
+  nigglesCoveringSession,
   nigglesTouchingSession,
   resolveTrainingTemper,
   type NiggleCoachingContext,
@@ -262,6 +264,10 @@ describe("invariant 3 — never silent (#3211)", () => {
         // whose second trigger half and copy both read it.
         sourceExercise: null,
         note: "Easing off Legs — right knee niggle from Tuesday",
+        // Both sentences are rendered here, where `today` is known, and the surface
+        // picks between them (#4872). See "invariant 3b" below.
+        presenceNote:
+          "Right knee niggle from Tuesday — nothing in today's session loads it",
       },
     ]);
   });
@@ -294,22 +300,126 @@ describe("invariant 3 — never silent (#3211)", () => {
   });
 });
 
-// ── PART 4, FIRST MOMENT — the pre-workout heads-up (#3211 part 4) ───────────
-//
-// Part 3 above proves the target moves and every IN-APP surface says why. This block
-// proves the two things part 4 adds: WHICH niggles today's session actually touches
-// (narrower than the temper set on purpose), and that the Telegram nudge — the one
-// channel that carried no niggle field at all — renders them.
-
-// A left-shoulder niggle blamed on the bench. The load-bearing fixture: its region is
-// `Shoulders` while Bench Press ranks `Chest`, so on a chest day the SOURCE EXERCISE is
-// the only thing that can tie the two together. Region matching alone would miss it.
+// A left-shoulder niggle blamed on the bench. The load-bearing fixture for BOTH blocks
+// below: its region is `Shoulders` while Bench Press ranks `Chest`, so a chest day
+// touches it only through the SOURCE EXERCISE (part 4's broader trigger) while loading
+// nothing in its region (invariant 3b's narrower one). Region matching alone would miss
+// the first; the source exercise alone would wrongly claim the second.
 const leftShoulder: NiggleCoachingContext = {
   region: "Shoulders",
   label: "left shoulder",
   lastReportedDay: TUESDAY,
   sourceExercise: "bench press",
 };
+
+describe("invariant 3b — never FALSE either (#4872)", () => {
+  // Invariant 3 above says a niggle is never silent. This says the line it is never
+  // silent WITH has to be true. `t.note` claims an adjustment ("Easing off Legs"), and
+  // `resolveTrainingTemper` only moves a target for a lift the niggle COVERS — so on a
+  // day whose session programs nothing in the niggle's region, the temper note describes
+  // an adjustment that did not happen. The card says the niggle is live instead.
+  //
+  // Both rules hold at once because there are two sentences, and the acceptance bar is
+  // that each case gets its OWN one. Asserted on the sentences, not on a note count: a
+  // count is green for a card printing the wrong line.
+  const backDay = () =>
+    recommendNextWorkout(
+      input({
+        strength: [sRec({ exercise: "Deadlift" })],
+        niggles: [rightKnee],
+      })
+    );
+
+  it("a back day with a live knee niggle prints the PRESENCE line, not the temper one", () => {
+    const nw = backDay();
+    // The fixture is the issue's own: Deadlift is Back, the niggle is Legs, so nothing
+    // in the session loads the knee.
+    expect(nw.exercises).toEqual(["Deadlift"]);
+    expect(nw.niggleTempers.map((t) => t.region)).toEqual(["Legs"]);
+    expect(contextNotes(nw)).toEqual([
+      "Right knee niggle from Tuesday — nothing in today's session loads it",
+    ]);
+    expect(contextNotes(nw).join(" ")).not.toContain("Easing off");
+  });
+
+  it("the coaching card itself carries that line, not the false one", () => {
+    const [top] = recommendCoaching(
+      ci({ strength: [sRec({ exercise: "Deadlift" })], niggles: [rightKnee] })
+    );
+    expect(top.notes ?? []).toEqual([
+      "Right knee niggle from Tuesday — nothing in today's session loads it",
+    ]);
+  });
+
+  it("a leg day with the same niggle still prints the TEMPER note (#2948 unchanged)", () => {
+    const nw = recommendNextWorkout(
+      input({ strength: [sRec({ exercise: "Squat" })], niggles: [rightKnee] })
+    );
+    expect(nw.exercises).toEqual(["Squat"]);
+    expect(contextNotes(nw)).toEqual([
+      "Easing off Legs — right knee niggle from Tuesday",
+    ]);
+  });
+
+  it("two niggles, one covered and one not, produce ONE OF EACH line", () => {
+    // The case a single-branch implementation gets wrong: the session programs Squat
+    // (Legs — the knee bites) and Bench Press (Chest). The shoulder niggle was blamed ON
+    // the bench, so `nigglesTouchingSession` — part 4's broader push trigger — would call
+    // it touched; but no programmed lift is in Shoulders, so no target of its moved and
+    // the presence line is the true sentence.
+    const nw = recommendNextWorkout(
+      input({ niggles: [rightKnee, leftShoulder] })
+    );
+    expect(nw.exercises).toEqual(["Bench Press", "Squat"]);
+    expect(contextNotes(nw)).toEqual([
+      "Left shoulder niggle from Tuesday — nothing in today's session loads it",
+      "Easing off Legs — right knee niggle from Tuesday",
+    ]);
+    // And the broader trigger really does disagree here — this is why the card asks the
+    // resolver's question and not the push's.
+    expect(
+      nigglesTouchingSession(nw.niggleTempers, nw.focus, nw.exercises).map(
+        (t) => t.label
+      )
+    ).toContain("left shoulder");
+  });
+
+  it("covers the session iff the resolver moves a target for one of its lifts", () => {
+    const tempers = niggleTempers([rightKnee, leftShoulder], new Set(), TODAY);
+    const moved = (exercises: string[]) =>
+      tempers
+        .filter(
+          (t) =>
+            resolveTrainingTemper(
+              { kind: "clear", factor: 1 },
+              [t],
+              exercises[0]
+            ).tier === "niggle"
+        )
+        .map((t) => t.label);
+    for (const exercises of [["Squat"], ["Deadlift"], ["Bench Press"]])
+      expect(
+        nigglesCoveringSession(tempers, exercises).map((t) => t.label)
+      ).toEqual(moved(exercises));
+  });
+
+  it("phrases the presence line's report day the same way the temper line does", () => {
+    const at = (day: string) =>
+      nigglePresenceLine({ ...rightKnee, lastReportedDay: day }, TODAY);
+    expect(at(TODAY)).toBe(
+      "Right knee niggle from today — nothing in today's session loads it"
+    );
+    expect(at("2026-07-07")).toContain("from Tuesday");
+    expect(at("2026-06-28")).toContain("from 2 weeks ago");
+  });
+});
+
+// ── PART 4, FIRST MOMENT — the pre-workout heads-up (#3211 part 4) ───────────
+//
+// Part 3 above proves the target moves and every IN-APP surface says why. This block
+// proves the two things part 4 adds: WHICH niggles today's session actually touches
+// (narrower than the temper set on purpose), and that the Telegram nudge — the one
+// channel that carried no niggle field at all — renders them.
 
 // Both, through the real builder — so the REGION_SCOPES ordering it applies
 // (Shoulders before Legs) is the order the heads-up inherits.

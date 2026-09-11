@@ -359,6 +359,10 @@ describe("FoodLogBar projection publication", () => {
         subjectProfileId: 8,
         timeZone: "Pacific/Honolulu",
       });
+      // The statement lives behind the shared clock door (#4426), so the reveal — and
+      // the Now fill inside it — exists only once the door is opened. Nothing was
+      // posted before that either: closed and empty is the fast path.
+      fireEvent.click(screen.getByTestId("food-when-toggle"));
       fireEvent.click(screen.getByTestId("food-when-now"));
       await act(async () => {
         fireEvent.click(screen.getByTestId("log-cruciferous"));
@@ -371,6 +375,47 @@ describe("FoodLogBar projection publication", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // THE STATEMENT SURVIVES ITS OWN FOLD (#4426). This bar's statement is STICKY FOR THE
+  // BATCH — never spent by the tap it answers — so closing the reveal withdraws nothing,
+  // and the sentence naming the consequence has to stay on screen because nothing else
+  // says it any more. Both halves are the change: the retired hand-rolled fold was a
+  // native `<details>`, which kept the field mounted and printed the stated minute in
+  // its summary; the shared statement UNMOUNTS its reveal, so a surface that read the
+  // field rather than the value would quietly start posting nothing here.
+  it("keeps a stated time in force, and on screen, once the reveal is closed", async () => {
+    mountBar();
+    fireEvent.click(screen.getByTestId("food-when-toggle"));
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("food-when-time"), {
+        target: { value: "08:15" },
+      });
+    });
+    fireEvent.click(screen.getByTestId("food-when-toggle"));
+    expect(screen.queryByTestId("food-when-time")).toBeNull();
+    expect(screen.getByTestId("food-eating-time-note").textContent).toContain(
+      "recorded as eaten at 08:15"
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    const sent = actions.logFoodServing.mock.calls[0][0] as FormData;
+    expect(sent.get("occurred_at")).toBe("08:15");
+  });
+
+  // THE CONVERSE, so the assertion above cannot have become "always posts a time":
+  // untouched, the statement says nothing and the fast path posts the body it always
+  // posted — no `occurred_at` field at all, and no sentence claiming one.
+  it("posts no eating time and no note while nobody has answered", async () => {
+    mountBar();
+    expect(screen.queryByTestId("food-eating-time")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    const sent = actions.logFoodServing.mock.calls[0][0] as FormData;
+    expect(sent.has("occurred_at")).toBe(false);
   });
 
   it("retires the private header and leaves one quiet day total under sheet rows", () => {
@@ -2505,13 +2550,19 @@ describe("FoodLogBar composed usual bundle", () => {
   // the action tier (`food-usual.actions.test.ts`).
   it("carries the bar's stated time onto the bundle and onto a single add", async () => {
     mount([offer("Midday")]);
+    fireEvent.click(screen.getByTestId("food-when-toggle"));
     await act(async () => {
       fireEvent.change(screen.getByTestId("food-when-time"), {
-        target: { value: new Date(`${DATE}T20:00:00.000Z`).toISOString() },
+        target: { value: "20:00" },
       });
     });
-    // THE FIXTURE REACHES THE STATE THE ASSERTION NEEDS: the statement really is set.
-    expect(screen.getByTestId("food-when-set").textContent).toBe("20:00");
+    // THE FIXTURE REACHES THE STATE THE ASSERTION NEEDS: the statement really is set,
+    // read off the sentence that names its consequence. That sentence is what the
+    // retired stated-time badge used to be — and it, not the badge, is what stays on
+    // screen once the reveal is closed again, because this statement is never spent.
+    expect(screen.getByTestId("food-eating-time-note").textContent).toContain(
+      "recorded as eaten at 20:00"
+    );
     await act(async () =>
       fireEvent.click(screen.getByTestId("food-usual-offer"))
     );

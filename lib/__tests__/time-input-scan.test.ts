@@ -85,7 +85,7 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
     "app/(app)/nutrition/FoodLogBar.tsx",
     {
       mounts: true,
-      why: "eating-time statement + the correction sheet (#2227)",
+      why: "the shared eating-time statement (#4426) + the correction sheet (#2227)",
     },
   ],
   [
@@ -198,13 +198,16 @@ describe("the time-input reader itself", () => {
 // THE CRITERION, as #4738's ruling states it: no hand-rolled composition outside the
 // shared control or the argued-exclusion register.
 //
-// #4426 converged THREE of the four hand-rolled "reveal a WhenControl" compositions
-// onto `useTimeStatement` — practice, stool and PRN. (PRN was the fourth only until the
-// ruling: its day range existed because the illness cockpit had no day of its own, and
-// once the Today/Yesterday lift gave the card one, the day came from the surface and the
-// statement went back to being the time half.) The food bar is the ONE that did not, and
-// BEFORE this register nothing in the tree recorded that — a second could have joined it
-// and no check would have noticed, which is the state the criterion existed to end.
+// #4426 converged ALL FOUR hand-rolled "reveal a WhenControl" compositions onto
+// `useTimeStatement` — practice, stool, PRN and, last, the food bar. (PRN was a
+// hand-roll only until the ruling: its day range existed because the illness cockpit had
+// no day of its own, and once the Today/Yesterday lift gave the card one, the day came
+// from the surface and the statement went back to being the time half.) The food bar
+// held the register's one ARGUED entry while its statement was still drawn as its own
+// `<details>`; what #4738 ruling 4 kept for it was the STICKINESS — never spending the
+// statement on the tap it answers — and stickiness is a host not calling `spend`, not a
+// flag on the control. So the rendering converged, the entry went, and the `argued` kind
+// stays in the union because the NEXT surface to want an exclusion must argue for it.
 //
 // So the claim is made over the WHOLE population rather than over a list of suspects:
 // every file that mounts the control DIRECTLY is exactly one of the three kinds below,
@@ -229,22 +232,6 @@ type WhenMount =
 
 const WHEN_MOUNTS = new Map<string, WhenMount>([
   ["components/TimeStatement.tsx", { kind: "shared" }],
-  [
-    "app/(app)/nutrition/FoodLogBar.tsx",
-    {
-      kind: "argued",
-      why:
-        "THE ONE ARGUED EXCLUSION (#4738 ruling 4). The eating-time statement is a " +
-        "STANDING CLAIM ABOUT A SESSION OF TAPS, not one tap's time: sticky for the " +
-        "batch by design (#4118's amendment), never spent by the tap it answers — the " +
-        "shared statement's rule 4 inverted — and drawn as a Disclosure with a " +
-        "stated-time badge at `hour` grain. Converging it needs a stickiness flag plus " +
-        "a details/summary shape flag, which is the four-behaviours-one-control shape " +
-        "the ruling refuses. A shared sticky statement gets extracted when a SECOND " +
-        "surface wants one, with two real instances to shape it",
-      issue: "#4738",
-    },
-  ],
   [
     "app/(app)/trends/MeasurementsQuickAdd.tsx",
     {
@@ -392,7 +379,7 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
     ["a plain mount", "<WhenControl mode='state' />", 1],
     [
       "a mount inside a reveal",
-      "{open ? <WhenControl grain='hour' /> : null}",
+      "{open ? <WhenControl mode='state' /> : null}",
       1,
     ],
     ["two mounts in one file", "<WhenControl /><WhenControl />", 2],
@@ -410,12 +397,14 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
   // DELIBERATELY TREE-INDEPENDENT — this table is green before and after any
   // convergence, and that is the point. It is the positive control for the assertion
   // beside it, which reads the real file and can only ever come back `true` while the
-  // register is honest; without this, "the food bar still hand-rolls" would be a green
-  // nobody had ever seen go red.
+  // register is honest. With the register's last argued entry retired (#4426) that
+  // assertion now ranges over nothing, so this table is the ONLY thing keeping the
+  // predicate honest until the next exclusion is argued — which is exactly the state it
+  // was written to survive.
   it.each([
     [
       "a hand-rolled reveal",
-      "{open ? <WhenControl grain='hour' /> : null}",
+      "{open ? <WhenControl mode='state' /> : null}",
       true,
     ],
     [
@@ -464,8 +453,9 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
 //     PRN door against its pill, and e2e/button-height-floor.mobile.spec.ts measures
 //     the practice and stool doors against the control box.
 //   • COPY THAT ARRIVES AS A PROP, or is composed at runtime. There is no literal.
-//   • UNADOPTED SURFACES. The food bar keeps its own statement and is argued for above,
-//     in `WHEN_MOUNTS`; it is out of range here for the same reason.
+//   • UNADOPTED SURFACES. A surface that argues its exclusion in `WHEN_MOUNTS` above
+//     mounts no shared statement, so it is out of range here for the same reason.
+//     There are none today — the food bar, the last one, adopted in #4426.
 const STATEMENT_CONTROL = "components/TimeStatement.tsx";
 
 // The spellings the ruling retires, as this repo actually wrote them: "Happened
@@ -596,6 +586,7 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
         "no source scan can see. A surface DISAPPEARING is the direction that matters: " +
         "the rule below would then range over fewer files and go on passing.\n"
     ).toEqual([
+      "app/(app)/nutrition/FoodLogBar.tsx",
       "components/medications/DatedDoseControl.tsx",
       "components/medications/QuickLogPrnControl.tsx",
       "components/medications/ScheduledDoseAction.tsx",
