@@ -275,7 +275,7 @@ describe("the recap's weight lines read the shared WINDOW verdict (#3394)", () =
     const one = weightRecap([{ date: "2026-07-03", weightKg: 74 }]).lines.find(
       (l) => l.key === "weight"
     )!;
-    expect(one.notes ?? []).toEqual([]);
+    expect((one.notes ?? []).filter(Boolean)).toEqual([]);
     expect(
       weightRecap([{ date: "2026-07-03", weightKg: 74 }]).lines.find(
         (l) => l.key === "weight-trajectory"

@@ -123,8 +123,8 @@ export function getSleepSignal(
 // expensive enough to be worth a seam (#3993). It is not — the query count is the same
 // for one day and for fifty-six.
 //
-// Per-day answers are IDENTICAL to `getSleepSignal`'s by construction: the same
-// filter-and-slice, over the same rows. The resolver holds a snapshot for its lifetime —
+// Per-day answers are IDENTICAL to `getSleepSignal`'s by construction: the same shared
+// verdict, over the same rows. The resolver holds a snapshot for its lifetime —
 // the same rule `effectiveSituationResolver` states — so a caller wanting a fresh read
 // builds a fresh resolver.
 export function sleepSignalResolver(

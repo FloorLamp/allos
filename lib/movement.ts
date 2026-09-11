@@ -43,11 +43,8 @@
 // Pure and clock-free: this module reads series, never the DB.
 
 import { populationSd, robustEndpoints } from "./robust-stats";
-import {
-  trailingAverage,
-  type TrailingPoint,
-  type TrailingWindowSpec,
-} from "./trailing-average";
+import { trailingAverage } from "./trailing-average";
+import type { TrailingPoint, TrailingWindowSpec } from "./trailing-average";
 
 export type MovementDirection = "up" | "down" | "flat";
 
