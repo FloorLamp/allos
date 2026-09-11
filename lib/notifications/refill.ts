@@ -17,6 +17,7 @@ import {
   readRefillOffer,
   replaceRefillOffer,
   refillOfferIsTerminal,
+  pendingRefillOffersFromSender,
   OFFER_RETENTION_DAYS,
   type RefillOffer,
 } from "./offer-store";
@@ -55,6 +56,7 @@ import {
   sendTelegramMessage,
   answerCallbackQuery,
   rebuildMessage,
+  CHAT_WIDE,
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
@@ -680,36 +682,90 @@ async function refreshReceipt(
   }
 }
 
+// A number typed with NO Reply swipe, the obvious thing to send after the prompt asks
+// for one (#5654). Telegram quotes nothing, so the receipt is named by its own record of
+// who opened it and where: the sender's still-open prompts in THIS chat.
+//
+// THE LOOKUP IS THE SAFETY PROPERTY, not a convenience. `pendingRefillOffersFromSender`
+// is keyed on profile, chat and sender at once, and it is asked once per profile this
+// chat may act for — so a candidate was opened by this sender, in this chat, for a
+// profile this chat is already authorized to write. It can no more settle a housemate's
+// prompt than a stranger's: a different `message.from.id` matches no row at all.
+//
+// Ambiguity is REFUSED, never guessed. Two open prompts — the same person's two bottles,
+// or two profiles served by one chat — mean the number names neither, and `settleReceived`
+// would happily write to whichever we picked. The caller answers and writes nothing.
+function bareNumberReceipts(
+  message: TelegramMessage,
+  chatId: string,
+  senderId: number
+): { profileId: number; offerId: number; promptId: number }[] {
+  // Only an unquoted message. A reply that quoted something ELSE is that thing's
+  // business, and a reply carrying the marker never reaches here.
+  if (message.reply_to_message) return [];
+  if (parseReceivedAmount(message.text) == null) return [];
+  return getProfilesByTelegramChatId(chatId).flatMap((profileId) =>
+    pendingRefillOffersFromSender(profileId, chatId, senderId).flatMap((row) =>
+      row.offer.promptId == null || refillExpired(row.createdAt)
+        ? []
+        : [{ profileId, offerId: row.offerId, promptId: row.offer.promptId }]
+    )
+  );
+}
+
 export async function handleReceivedReply(
   message: TelegramMessage
 ): Promise<boolean> {
-  const token = parseRefillReplyMarker(message.reply_to_message?.text);
-  if (!token) return false;
+  const marker = parseRefillReplyMarker(message.reply_to_message?.text);
   const chatId = message.chat?.id;
-  const promptId = message.reply_to_message?.message_id;
-  if (
-    chatId == null ||
-    promptId == null ||
-    message.from?.id == null ||
-    message.message_id == null
-  )
-    return true;
-  if (!receiptAuthorized(token.profileId, String(chatId))) return true;
+  const senderId = message.from?.id;
+  const messageId = message.message_id;
+  let target: { profileId: number; offerId: number; promptId: number };
+  if (marker) {
+    const promptId = message.reply_to_message?.message_id;
+    if (
+      chatId == null ||
+      promptId == null ||
+      senderId == null ||
+      messageId == null
+    )
+      return true;
+    target = { profileId: marker.profileId, offerId: marker.offerId, promptId };
+  } else {
+    // Nothing claimed yet, so an undeliverable answer must LEAVE the message to the
+    // rest of the chain rather than swallow it — `false`, not `true`.
+    if (chatId == null || senderId == null || messageId == null) return false;
+    const open = bareNumberReceipts(message, String(chatId), senderId);
+    const only = open[0];
+    if (!only) return false;
+    if (open.length > 1) {
+      // Named by no profile: the ambiguity may span two, and saying which would be the
+      // guess this branch exists to refuse.
+      await sendTelegramMessage(
+        chatId,
+        { title: "Supply receipt", body: "Reply to the prompt you mean." },
+        CHAT_WIDE
+      );
+      return true;
+    }
+    target = only;
+  }
+  if (!receiptAuthorized(target.profileId, String(chatId))) return true;
   const outcome = settleReceived(
-    token.profileId,
-    token.offerId,
+    target.profileId,
+    target.offerId,
     String(chatId),
-    promptId,
-    message.from.id,
-    String(message.message_id),
+    target.promptId,
+    senderId,
+    String(messageId),
     { amount: message.text }
   );
   await sendTelegramMessage(
     chatId,
     { title: "Supply receipt", body: outcome.text },
-    token.profileId
+    target.profileId
   );
-  if (outcome.refresh) await refreshReceipt(token.profileId, token.offerId);
+  if (outcome.refresh) await refreshReceipt(target.profileId, target.offerId);
   return true;
 }
 
