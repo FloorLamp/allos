@@ -25,9 +25,10 @@ function harness(gateExit: number) {
   fs.mkdirSync(helpers);
   fs.mkdirSync(state);
   fs.mkdirSync(cwd);
+  const script = path.join(helpers, "run-gates-recorded.sh");
   fs.copyFileSync(
     path.join(REPO, "scripts/orchestration/run-gates-recorded.sh"),
-    path.join(helpers, "run-gates-recorded.sh")
+    script
   );
   const setGate = (exit: number, sleepSeconds = 0) =>
     fs.writeFileSync(
@@ -44,13 +45,12 @@ function harness(gateExit: number) {
     'if (!process.env.TEST_STATE_DIR) { console.error("host.mjs: boom"); process.exit(1); }\nconsole.log(process.env.TEST_STATE_DIR);\n'
   );
   const run = (args: string[], env: Record<string, string> = {}) =>
-    spawnSync("bash", [path.join(helpers, "run-gates-recorded.sh"), ...args], {
+    spawnSync("bash", [script, ...args], {
       cwd,
       encoding: "utf8",
       env: { ...process.env, TEST_STATE_DIR: state, ...env },
       timeout: 30_000,
     });
-  const script = path.join(helpers, "run-gates-recorded.sh");
   return { helpers, state, cwd, run, script, setGate };
 }
 
@@ -87,8 +87,8 @@ function fabricateRun(
 }
 
 /** Age a recorded run's three files, so a sweep sees them as a day old. */
-function backdate(log: string, hoursAgo = 25) {
-  const when = (Date.now() - hoursAgo * 3_600_000) / 1000;
+function backdate(log: string) {
+  const when = (Date.now() - 25 * 3_600_000) / 1000;
   for (const p of [log, `${log}.pid`, `${log}.exit`])
     if (fs.existsSync(p)) fs.utimesSync(p, when, when);
 }

@@ -209,7 +209,7 @@ case "$MODE" in
     ;;
   --wait)
     if ! RL=$(link_target "$L"); then
-      echo "GATES: no run recorded for $BRANCH — nothing at $L to wait on (was the run started with this script, for this branch?)" >&2
+      echo "GATES: no run recorded for $BRANCH — $L does not point at a run of this script (was the run started with it, for this branch?)" >&2
       exit 2
     fi
     if ! pid=$(cat "$RL.pid" 2>/dev/null); then
