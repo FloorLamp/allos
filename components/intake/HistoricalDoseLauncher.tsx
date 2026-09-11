@@ -3,6 +3,7 @@
 import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import type { DoseScheduleVersion } from "@/lib/intake-cadence";
+import { logHeading } from "@/lib/log-manifest";
 
 export interface HistoricalDoseLauncherItem {
   id: number;
@@ -41,11 +42,18 @@ export default function HistoricalDoseLauncher({
       data-testid="historical-dose-launcher"
       aria-labelledby="historical-dose-launcher-title"
     >
+      {/* THE DOMAIN'S ONE PHRASE, READ FROM THE DECLARATION (#5300 rule 6, #5617
+          step 2). This page said "Log a past dose" — an article plus a noun that
+          carries its own verb-sense — while the record's door and the quick sheet
+          had already converged on the manifest's `Log <noun>`. Rule 6 asks for the
+          same noun on the trigger, the sheet, the history door and the dialog; a
+          top-level backfill destination is one more of those surfaces, and the day
+          it stands on is the page's (the `?backfill=` date), not the heading's. */}
       <h2
         id="historical-dose-launcher-title"
         className="font-semibold text-slate-800 dark:text-slate-100"
       >
-        Log a past dose
+        {logHeading("dose")}
       </h2>
       {invalidRequestedDate ? (
         <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
