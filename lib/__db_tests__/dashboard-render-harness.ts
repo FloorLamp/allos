@@ -69,7 +69,14 @@ export const session: {
   loginId: number;
   profile: HarnessProfile | null;
   accessible: HarnessProfile[];
-} = { loginId: 0, profile: null, accessible: [] };
+  /**
+   * The VIEWED member set (#1096), for a spec that measures a household fan-out.
+   * Null — the default — is the single-subject session every other reader wants:
+   * the acting profile alone. Validated against the accessible set either way, so
+   * a spec cannot widen a view past what the scope would authorize.
+   */
+  viewIds: number[] | null;
+} = { loginId: 0, profile: null, accessible: [], viewIds: null };
 
 interface MemoNode {
   children: Map<unknown, MemoNode>;
@@ -170,7 +177,10 @@ export function scopeModule(
         ownProfileId: session.profile.id,
         profiles: session.accessible,
         ids,
-        viewIds: authorizedProfileSubset(ids, [session.profile.id]),
+        viewIds: authorizedProfileSubset(
+          ids,
+          session.viewIds ?? [session.profile.id]
+        ),
         access: new Map(ids.map((id) => [id, "write" as const])),
       } as Awaited<ReturnType<ScopeModule["requireScope"]>>;
     },

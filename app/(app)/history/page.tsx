@@ -15,13 +15,14 @@ import HistoryRows from "./HistoryRows";
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import { HistoryUsualOffers } from "./HistoryAddDoor";
 import HistoryFoldCard from "./HistoryFoldCard";
-import { requireScope } from "@/lib/scope";
+import { requireScope, type ProfileScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
   getDisplayFormatPrefs,
   getHomeLocation,
   getProfileAge,
   getTimezone,
+  withPrimedSettings,
 } from "@/lib/settings";
 import {
   getCustomSymptomNames,
@@ -179,25 +180,67 @@ function firstQueryParam(
   return Array.isArray(value) ? value[0] : value;
 }
 
+interface HistorySearchParams {
+  family?: string | string[];
+  kind?: string | string[];
+  class?: string | string[];
+  item?: string | string[];
+  media?: string | string[];
+  day?: string | string[];
+  view?: string | string[];
+  open?: string | string[];
+  expand?: string | string[];
+  show?: string | string[];
+  /** A window selected on the day chart (#4950) — see lib/intraday-window.ts. */
+  from?: string | string[];
+  to?: string | string[];
+}
+
+// THE HOUSEHOLD VIEW IS A DEEP-LINKED MODE, NOT A SWITCHER (#1463): the sidebar is
+// the one profile switcher on every page, so this costs the chrome budget nothing.
+// It composes the SAME per-profile gather once per member — which is what makes
+// every visibility rule (age gates, substance exclusions) inherited per row rather
+// than re-derived across a widened query.
+//
+// Resolved out here because the primed profile set below depends on it, and the
+// gather below reads it back rather than asking the URL a second time.
+function viewsEveryone(
+  searchParams: HistorySearchParams,
+  viewIds: readonly number[]
+): boolean {
+  return (
+    firstQueryParam(searchParams.view) === "everyone" && viewIds.length > 1
+  );
+}
+
 export default async function HistoryPage(props: {
-  searchParams: Promise<{
-    family?: string | string[];
-    kind?: string | string[];
-    class?: string | string[];
-    item?: string | string[];
-    media?: string | string[];
-    day?: string | string[];
-    view?: string | string[];
-    open?: string | string[];
-    expand?: string | string[];
-    show?: string | string[];
-    /** A window selected on the day chart (#4950) — see lib/intraday-window.ts. */
-    from?: string | string[];
-    to?: string | string[];
-  }>;
+  searchParams: Promise<HistorySearchParams>;
 }) {
   const searchParams = await props.searchParams;
   const scope = await requireScope();
+  const everyone = viewsEveryone(searchParams, scope.viewIds);
+  // THE RECORD READS SETTINGS ONE KEY AT A TIME OTHERWISE (#5774). The acting
+  // profile is primed on every render because the day resolution, the timezone and
+  // the format prefs are its; the viewed members join it only under `?view=everyone`,
+  // where the gather runs once per member. The acting profile is named separately
+  // rather than assumed to be in `viewIds`: a stored view-set is re-derived against
+  // current grants, so it need not contain the profile the session is acting as.
+  return withPrimedSettings(
+    {
+      loginId: scope.loginId,
+      profileIds: everyone
+        ? [scope.actingProfileId, ...scope.viewIds]
+        : [scope.actingProfileId],
+    },
+    () => renderHistory(searchParams, scope, everyone)
+  );
+}
+
+async function renderHistory(
+  searchParams: HistorySearchParams,
+  scope: ProfileScope,
+  everyone: boolean
+) {
   const { loginId, actingProfileId, viewIds } = scope;
   const todayStr = today(actingProfileId);
   closeAbandonedPracticeSessions(actingProfileId);
@@ -235,15 +278,6 @@ export default async function HistoryPage(props: {
   // a (day, member) pair. Same toggle helper, so the URL stays sorted and stable.
   const expanded = parseHistoryExpand(searchParams.expand);
 
-  // THE HOUSEHOLD VIEW IS A DEEP-LINKED MODE, NOT A SWITCHER (#1463): the sidebar is
-  // the one profile switcher on every page, so this costs the chrome budget nothing.
-  // It composes the SAME per-profile gather once per member — which is what makes
-  // every visibility rule (age gates, substance exclusions) inherited per row rather
-  // than re-derived across a widened query.
-  const everyone =
-    (Array.isArray(searchParams.view)
-      ? searchParams.view[0]
-      : searchParams.view) === "everyone" && viewIds.length > 1;
   const memberIds = everyone ? viewIds : [actingProfileId];
 
   const feeds = memberIds.map((id) =>

@@ -1,19 +1,18 @@
 "use client";
 
 import type { Equipment } from "@/lib/types";
-import { EQUIPMENT_CATEGORIES, kindOf } from "@/lib/types";
+import { kindOf } from "@/lib/types";
+import { liftImplementCategory } from "@/lib/equipment-availability";
 import type { WeightUnit } from "@/lib/settings";
 import EquipmentForm from "../EquipmentForm";
 
-const STRENGTH_CATEGORIES = EQUIPMENT_CATEGORIES.filter(
-  (c) => kindOf(c) === "strength"
-);
-
-export function categoryForVariant(
-  variantEquipment: string | null | undefined
-): string {
-  const want = (variantEquipment ?? "").trim().toLowerCase();
-  return STRENGTH_CATEGORIES.find((c) => c.toLowerCase() === want) ?? "";
+// The category to PREFILL when gear is registered from inside a lift's row: the
+// lift's own implement, when it is one this strength-only form offers. Anything else
+// prefills "" — empty and required rather than guessed. Narrowed by KIND, not by
+// `liftRequiredCategory`: that gate drops the kettlebell this form can register.
+export function defaultCategoryForLift(name: string): string {
+  const category = liftImplementCategory(name);
+  return category && kindOf(category) === "strength" ? category : "";
 }
 
 export default function EquipmentQuickAdd({
