@@ -13,6 +13,7 @@ import {
   settledSelectSave,
   touchSwipeFrom,
 } from "./helpers";
+import { openRecordFact } from "./record-facts-helpers";
 import { parseTypedClock } from "@/lib/format-date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import { ANCHOR_GAP, ANCHOR_MARGIN } from "@/lib/anchored-position";
@@ -162,6 +163,15 @@ test.describe("below md the date picker is a bottom sheet", () => {
     // its role and name — the `add-health-goal-panel` testid stays on the
     // toggle's wrapper, which does not contain it.
     const form = page.getByRole("dialog", { name: "Add health goal" });
+    // The target date is a FACT since #5302, and an ESSENTIAL one, so a new goal
+    // already wears its dashed chip and the chip is the way to the field. What this
+    // test is about — the date picker's sheet fork — is unchanged beneath it, and the
+    // editor stays open for the whole case so the sheet has a field to open over.
+    await openRecordFact(
+      form.getByTestId("care-goal-form"),
+      "care-goal",
+      "target"
+    );
     await expect(form.getByLabel("Target date")).toBeVisible();
 
     // The field is typed into, not tapped open: below `md` the calendar is a

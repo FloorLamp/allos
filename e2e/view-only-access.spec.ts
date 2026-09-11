@@ -175,6 +175,24 @@ test.describe("View-only access (issue #33)", () => {
           "add-allergy-panel-toggle",
           "records-allergies",
         ],
+        // #5302 slice 2's three, all on the one care-overview route. Each is its own
+        // entry rather than one route check, because the gate is a value each SECTION
+        // passes to the shared shell — three call sites, three chances to miss it.
+        [
+          "/records/care/overview",
+          "add-family-history-panel-toggle",
+          "records-family-history",
+        ],
+        [
+          "/records/care/overview",
+          "add-care-plan-panel-toggle",
+          "records-care-plan",
+        ],
+        [
+          "/records/care/overview",
+          "add-health-goal-panel-toggle",
+          "records-health-goals",
+        ],
       ] as const) {
         await memberPage.goto(route);
         // THE POSITIVE CONTROL, and the test is worth little without it: the pane

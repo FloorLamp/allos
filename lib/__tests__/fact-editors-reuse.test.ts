@@ -209,6 +209,37 @@ const CONSUMERS = [
     chips: "components/records/RecordFactRow.tsx",
     host: "app/(app)/records/problems/allergies/AllergyForm.tsx",
   },
+  {
+    // #5302 slice 2, and the first consumer whose ONE chip stands for THREE stored
+    // columns: `deceased`, `age_at_death` and `cause_of_death` describe a single event
+    // and are already read back as one line by `familyDeathLabel`, so the row states
+    // one `death` fact over one editor holding all three controls. Every consumer
+    // above maps a chip to at most one field; this is the first that maps one to a
+    // group, which is what the summary shape allows and the panel list does not need
+    // to know about.
+    name: "the family-history form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/care/overview/FamilyHistoryForm.tsx",
+  },
+  {
+    // #5302 slice 2, and the first consumer whose chips must state what the form will
+    // POST rather than what its controls HOLD: both pickers carry a free-text escape
+    // whose `__other` sentinel is never stored, so the summary reads the paired input
+    // and a chip cannot end up stating a sentinel at the person.
+    name: "the care-plan form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/care/overview/CarePlanForm.tsx",
+  },
+  {
+    // #5302 slice 2. Nothing is new about this one — it is the smallest form in the
+    // family and the plainest use of the shared row: four facts, one chip each, one
+    // editor each, no free-text escape and no grouped fact. Recorded as such, because
+    // "another straightforward instance" is a useful thing for this census to say
+    // about a consumer, and it is the row the next slice should copy first.
+    name: "the care-goal form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/care/overview/CareGoalForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not
