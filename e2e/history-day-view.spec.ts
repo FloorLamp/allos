@@ -1545,9 +1545,31 @@ test.describe("selection mode on the record (#5618 ruling 4)", () => {
         page,
         content.getByTestId("history-selection-move-day")
       );
-      await content
-        .getByTestId("history-selection-day-field")
-        .fill(SELECT_MOVED_DAY);
+      // ── NAME THE DAY THE WAY A PERSON DOES, AND THE DISTINCTION IS THE TEST ──
+      //
+      // `DateField` opens its calendar on FOCUS (components/DateField.tsx), and the
+      // panel picks above-or-below from the height of the month it first renders.
+      // A `fill()` straight onto the field focuses AND sets the value in one step,
+      // so that first render is already the target month — November 2025, six rows,
+      // 339px — which does not fit under the field and flips ABOVE, landing on the
+      // Apply button 8px to the field's right. Measured at 1280x900: field
+      // 719–879, panel 719–1007, Apply 887–939, panel bottom 579 over a button
+      // whose centre is 566.
+      //
+      // NOBODY CAN DRIVE IT THAT WAY. A person cannot put a value in a field that
+      // has not got focus yet, so the calendar always opens on the CURRENT month
+      // (303px), which fits below, and it stays below when the month changes. Both
+      // human paths were measured — pointer and keyboard focus — and both leave
+      // Apply clear. Focusing first is what makes this step the one a person takes.
+      //
+      // IT IS NOT A DISMISSAL: the calendar is still open over the bar when Apply is
+      // clicked, and `hydratedClick` still does a real actionability-checked click,
+      // so a panel that did cover the commit would still intercept and still go red.
+      const dayField = content.getByTestId("history-selection-day-field");
+      await dayField.click();
+      const calendar = page.getByTestId("date-field-calendar"); // testid-scope-ok: the anchored calendar is portalled to <body>, outside every streamed boundary
+      await expect(calendar).toBeVisible();
+      await dayField.fill(SELECT_MOVED_DAY);
       await hydratedClick(
         page,
         content.getByTestId("history-selection-day-apply")
