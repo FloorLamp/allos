@@ -9,8 +9,6 @@ import {
   DAY_ONE_WEIGHT_KG,
   DAY_ONE_STALE_DAYS_AGO,
   DAY_ONE_STALE_WEIGHT_KG,
-  DAY_ONE_PROTEIN_COMPLETE_DAY,
-  DAY_ONE_PROTEIN_TODAY,
 } from "./fixture-logins";
 import { workerDbPath, frozenNow } from "./worker-env";
 
@@ -68,14 +66,6 @@ function resetToDayOne(): void {
     db.prepare(
       "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)"
     ).run(profileId, dayStr(0), DAY_ONE_WEIGHT_KG);
-  });
-}
-
-function logProtein(daysAgo: number, grams: number): void {
-  withDb((db, profileId) => {
-    db.prepare(
-      "INSERT INTO protein_daily_totals (profile_id, date, grams) VALUES (?, ?, ?)"
-    ).run(profileId, dayStr(daysAgo), grams);
   });
 }
 
@@ -153,35 +143,16 @@ test.describe("what a trailing average covers, and what it says (#1909/#1917)", 
     );
   });
 
-  test("the Standing protein fact's '7-day average' covers seven complete days", async () => {
-    // Day one for protein too: today's intake only. The fact declines the day-one
-    // fallback — today's protein is already its value — so no average detail.
-    logProtein(0, DAY_ONE_PROTEIN_TODAY);
-    await page.goto("/");
-    const protein = page
-      .getByRole("main")
-      .locator('[data-standing-family="protein-today"]')
-      .locator(
-        '[data-testid="dashboard-candidate"][data-candidate-id^="nutrition.protein:"]'
-      );
-    await expect(protein).toBeVisible();
-    await expect(protein).toHaveAttribute("data-lane", "standing");
-    await expect(protein).toContainText(`${DAY_ONE_PROTEIN_TODAY} g`);
-    await expect(protein).not.toContainText("7-day average");
-
-    // Now a full week of complete days, every one of them the same figure. The
-    // average is that figure — and NOT the week-to-date number, which would be
-    // dragged up by today's 300 g and would depend on the weekday.
-    for (let ago = 1; ago <= 7; ago++) {
-      logProtein(ago, DAY_ONE_PROTEIN_COMPLETE_DAY);
-    }
-    await page.goto("/");
-    await expect(protein).toContainText(
-      // "g", not "g/day": the row's own label already names the window (#3257).
-      `7-day average ${DAY_ONE_PROTEIN_COMPLETE_DAY} g`
-    );
-    // …and the line above CANNOT see a revert on its own — Playwright's string match is
-    // a substring, and "117 g/day" contains "117 g". This is the assertion that fails.
-    await expect(protein).not.toContainText("g/day");
-  });
+  // THE PROTEIN FACT'S AVERAGE LEFT HOME WITH STANDING (#5435 §4).
+  //
+  // This asserted that the Standing protein fact's "7-day average" covers seven COMPLETE
+  // days — declining the day-one fallback, and never the week-to-date figure that today's
+  // intake would drag up. v3 states protein in the glance card's facts line, which prints
+  // the amount and its resolved goal band and nothing else (§3.2): there is no average on
+  // `/` for the label to be wrong about.
+  //
+  // WHAT RETIRED WITH IT: the complete-days rule as asserted on Home. What did not: the
+  // rule itself, which is `getProteinToday`'s and is covered in lib/__db_tests__, and the
+  // same "through yesterday" claim on the metric coverage card, which is the test
+  // immediately above this note and runs on its own surface.
 });

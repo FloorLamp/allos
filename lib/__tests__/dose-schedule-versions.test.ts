@@ -96,7 +96,11 @@ describe("doseScheduleAsOf: the version in force on a day", () => {
     });
   });
 
-  it("marks migrated or inferred amounts as assumed", () => {
+  // #5775. A BACKFILLED version — the #5547 migration copied the amount off the live row
+  // and stamped `amount_captured = 0`, which is what every version that predates it
+  // carries. The two cases below are the whole ruling: the provenance is still on the
+  // row, and it no longer decides whether the day calls its amount a stand-in.
+  describe("a backfilled version (#5775)", () => {
     const migrated = {
       amount: "500 mg",
       versions: [
@@ -107,9 +111,42 @@ describe("doseScheduleAsOf: the version in force on a day", () => {
         },
       ],
     };
-    expect(doseScheduleAsOf(migrated, "2026-07-01")).toMatchObject({
-      amount: "500 mg",
-      amountAssumed: true,
+
+    it("is not assumed on or after its effective day, though uncaptured", () => {
+      // The defect: this read `true` for every day of every dose that existed when the
+      // backfill ran, so the "using the oldest known amount" line printed on rows whose
+      // amount is exactly the one their own version records.
+      for (const day of [
+        "2026-06-01",
+        "2026-06-02",
+        "2026-07-01",
+        "2027-01-01",
+      ]) {
+        expect(doseScheduleAsOf(migrated, day)).toMatchObject({
+          amount: "500 mg",
+          amountAssumed: false,
+        });
+      }
+    });
+
+    it("is still assumed on a day before the earliest version", () => {
+      // The one row where the sentence says something, and the one the noise buried.
+      expect(doseScheduleAsOf(migrated, "2026-05-31")).toMatchObject({
+        amount: "500 mg",
+        amountAssumed: true,
+      });
+    });
+
+    it("keeps the uncaptured provenance separate from the copy flag", () => {
+      // `amountCaptured` is what the write path stamps onto the next version it appends
+      // (lib/queries/intake/dose-lifecycle.ts). If the copy flag's negation were reused
+      // there, a retire or restore would launder a backfilled amount into a typed one.
+      expect(doseScheduleAsOf(migrated, "2026-07-01").amountCaptured).toBe(
+        false
+      );
+      expect(doseScheduleAsOf(dose, "2026-07-01").amountCaptured).toBe(true);
+      // Before all history nothing is captured, whatever the earliest version says.
+      expect(doseScheduleAsOf(dose, "2026-01-01").amountCaptured).toBe(false);
     });
   });
 

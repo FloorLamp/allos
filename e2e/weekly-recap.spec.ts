@@ -1,55 +1,36 @@
 import { test, expect } from "./fixtures";
-import { openDashboardAll } from "./helpers";
-// Issue #32: dashboard recap-line atoms and a milestone Timeline entry. The e2e
-// seed plants recap input plus a "50 workouts logged" milestone so both surfaces
-// have deterministic content.
+// Issue #32: the milestone entry on the record. The e2e seed plants recap input plus
+// a "50 workouts logged" milestone; the recap half of this file's subject left Home
+// with #5435 §4, so what is exercised here is the milestone's own surface.
 test.describe("Weekly recap + milestones (#32)", () => {
-  // #2389 item 1, in the browser: the card renders the line's `value` and the ONE
-  // shared annotation beside it, so a value carrying its own parenthetical put two
-  // unrelated asides side by side on the row — "7 (strength 4, cardio 3) 5 last week".
-  // The breakdown is now a declared note, which is what the reader sees here.
-  test("the workouts row's value is the count alone, with the breakdown in its annotation", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await openDashboardAll(page);
-    const block = page.locator('[data-moment-key^="recap:"]');
-    // ONE block for the whole recap, and one header on it (#3365) — the six atoms
-    // used to be six cards with six identical headers.
-    await expect(block).toHaveCount(1);
-    await expect(block.locator("h4")).toHaveCount(1);
-    const row = block
-      .getByTestId("dashboard-candidate")
-      .filter({ hasText: "Workouts" });
-    await expect(row).toHaveCount(1);
-
-    // The value is the headline quantity and nothing else.
-    await expect(row.getByTestId("standing-value")).toHaveText(/^\d+$/);
-    // The breakdown rides in the annotation, punctuated by the shared grammar.
-    await expect(row).toContainText(/strength \d/);
-    await expect(row).toContainText("last week");
-    // And nothing on the row is parenthesised any more.
-    await expect(row).not.toContainText("(");
-  });
+  // THE RECAP BLOCK LEFT HOME FOR HISTORY (#5435 §4).
+  //
+  // Two cases stood here. The first asserted that the workouts row's VALUE is the count
+  // alone — "4", never "4 (3 strength, 1 ride)" — with the breakdown in the row's
+  // annotation beside it. The second swept every recap row for a parenthetical nested
+  // inside another, the punctuation defect #3365 left behind when six cards became one
+  // block. Both were read off `/`, and §4 retires the weekly recap lines from Home.
+  //
+  // WHAT RETIRED WITH THEM: the value/annotation split and the punctuation sweep as
+  // browser claims about `/`. What did not: the composition itself —
+  // `lib/recap.ts`/`lib/recap-scale.ts` and `getRecapCard`, with their own tests — and
+  // the milestone entry's own surface, which is the case that remains in this file.
 
   // A label may legitimately contain parentheses (an exercise variant names its
   // implement), so the guarantee is about the COMPOSITION: it never wraps an
   // annotation in a bracket of its own, at any line, whatever the content.
-  test("no recap row nests one parenthetical inside another", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await openDashboardAll(page);
-    const rows = page
-      .locator('[data-moment-key^="recap:"]')
-      .getByTestId("dashboard-candidate");
-    // The positive control: the block was found and it has rows, so the loop below
-    // is not an empty sweep reporting clean.
-    expect(await rows.count()).toBeGreaterThan(0);
-    for (const text of await rows.allInnerTexts()) {
-      expect(text, text).not.toMatch(/\(\(|\)\)|\)\s*\(/);
-    }
-  });
+  // THE RECAP BLOCK LEFT HOME FOR HISTORY (#5435 §4).
+  //
+  // Two cases stood here. The first asserted that the workouts row's VALUE is the count
+  // alone — "4", never "4 (3 strength, 1 ride)" — with the breakdown in the row's
+  // annotation beside it. The second swept every recap row for a parenthetical nested
+  // inside another, the punctuation defect #3365 left behind when six cards became one
+  // block. Both were read off `/`, and §4 retires the weekly recap lines from Home.
+  //
+  // WHAT RETIRED WITH THEM: the value/annotation split and the punctuation sweep as
+  // browser claims about `/`. What did not: the composition itself —
+  // `lib/recap.ts`/`lib/recap-scale.ts` and `getRecapCard`, with their own tests — and
+  // the milestone entry's own surface, which is the case that remains in this file.
 
   test("timeline surfaces the milestone entry under the Milestone filter", async ({
     page,

@@ -65,7 +65,6 @@ export const SLEEP_PHASE_PROFILE = "Sleep Phase (e2e)";
 // (bed 23:00 → wake 08:00, no nap) rather than a 4h night + a separate nap. Seeded
 // once before the suite in UTC; the browser spec never mutates or cleans it, so
 // parallel / --repeat-each runs cannot race another test's state.
-export const E2E_LOGIN_SLEEP_SEGMENTED = "e2e_sleep_segmented";
 export const SLEEP_SEGMENTED_PROFILE = "Sleep Segmented (e2e)";
 
 // Two dedicated READ-ONLY fixtures for the morning waiting window (#2097), one per
@@ -147,7 +146,6 @@ export const ONBOARDING_PROFILE = "Onboarding Person (e2e)";
 // A second empty onboarding profile dedicated to the caregiver path. Keeping it
 // separate lets the self/metrics and caregiver browser tests run in parallel
 // without racing over onboarding state.
-export const E2E_LOGIN_ONBOARDING_CAREGIVER = "e2e_onboarding_caregiver";
 export const ONBOARDING_CAREGIVER_PROFILE = "Caregiver Onboarding Person (e2e)";
 
 // ── Nav relevance gating fixtures (#1042 phase 1) ─────────────────────────────
@@ -208,7 +206,6 @@ export const WHATS_NEW_PROFILE = "Whats New (e2e)";
 // and the e2e clock pins local time to 13:mm) plus one appointment scheduled
 // TODAY, which gives Now a deterministic second atomic candidate. It has a dedicated
 // login so the fixture remains isolated from other dashboard specs.
-export const E2E_LOGIN_NOWSTRIP = "e2e_nowstrip";
 export const NOW_STRIP_PROFILE = "Now Strip (e2e)";
 export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 
@@ -216,7 +213,6 @@ export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 // positive item 9) makes the crisis finding fire, and that item declares
 // `suppressionPolicy: "safety-ungated"` — so its read-only fact remains uncapped in
 // Now with an honest navigation action and no write control.
-export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
 export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 
 // ── The handled day (#3224) ──────────────────────────────────────────────────
@@ -240,7 +236,6 @@ export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 //
 // Dedicated and read-only in its spec: the assertion is an ABSENCE, so any
 // neighbouring spec logging a dose, a workout or a reading here would erase it.
-export const E2E_LOGIN_NOWQUIET = "e2e_nowquiet";
 export const NOW_QUIET_PROFILE = "Now Quiet (e2e)";
 export const NOW_QUIET_MED = "Quiet Morning Med (e2e)";
 // The two open weekly targets — strength groups, the shape of the owner's own
@@ -265,7 +260,6 @@ export const NOW_QUIET_TARGETS = ["Lower", "Upper"] as const;
 //
 // Dedicated and read-only in its spec: one logged session here would move a count
 // and take the fixture off the boundary it exists to sit on.
-export const E2E_LOGIN_PACEBEHIND = "e2e_pacebehind";
 export const PACE_BEHIND_PROFILE = "Pace Behind (e2e)";
 export const PACE_BEHIND_TARGETS = ["Lower", "Upper"] as const;
 /** Today's position in the pinned calendar week. Day 7 is the first behind day. */
@@ -323,5 +317,4 @@ export const FOLD_WELL_KID_PROFILE = "Fold Well Kid (e2e)";
 //
 // Dedicated because the assertion is an ABSENCE with a shape: no neighbouring spec may
 // log a weight, a night or a reading here, or the collapse under test evaporates.
-export const E2E_LOGIN_DORMANT = "e2e_dormant";
 export const DORMANT_DOMAINS_PROFILE = "Dormant Domains (e2e)";

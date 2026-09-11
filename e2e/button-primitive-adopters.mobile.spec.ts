@@ -5,7 +5,7 @@ import {
   E2E_LOGIN_TL_EMPTY,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import { openDashboardAll, settledBoxes } from "./helpers";
+import { settledBoxes } from "./helpers";
 import { loginAs } from "./nav";
 import {
   CONTROL_BOX_PX,
@@ -107,35 +107,32 @@ async function expectEffectiveTargetsDisjoint(name: string, group: Locator) {
 
 test.use({ viewport: PHONE, hasTouch: true });
 
-// THE DASHBOARD'S ORDINARY NOW ACTION IS A CHIP NOW (#4752 item 7). "Mark taken"
-// was a bare verb beside a row that already said everything except WHEN, so the
-// payload moved onto the control and the verb became one word: `Due today · from
-// 11:00 · [Take]`. It is no longer a `Button` adopter — but `chip-base` and
-// `button-control` compile to the SAME 34px box and the same coarse-pointer reach,
-// which is why the floor claims below are unchanged by the swap.
-test("Dashboard ordinary actions render at the phone floor", async ({
-  page,
-}) => {
+// HOME'S ORDINARY NOW ACTION IS A CHIP (#4752 item 7). "Mark taken" was a bare verb
+// beside a row that already said everything except WHEN, so the payload moved onto
+// the control and the verb became one word: `Due today · from 11:00 · [Take]`. It is
+// no longer a `Button` adopter — but `chip-base` and `button-control` compile to the
+// SAME 34px box and the same coarse-pointer reach, which is why the floor claims
+// below are unchanged by the swap.
+//
+// THE CONTROL IS UNCHANGED, THE PAGE AROUND IT IS NOT (#5435 §3.2). The chips sat in
+// the ranker's tail and were reached by opening Show everything; they are seated in
+// Home's Now band now, on the same rows, with the same testid. What went with the
+// tail is the "#4232 retired Ahead's `+N more`" absence check that opened this test:
+// there is no Ahead zone on Home for a `+N more` to be absent from, so that line was
+// a count of 0 against a selector that could never match — green whatever the tree.
+test("Home's ordinary actions render at the phone floor", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("dashboard-canvas")).toBeVisible();
 
-  // AHEAD'S "+N more" WAS AN ADOPTER AND IS NOT ONE ANY MORE (#4232): the zone opens,
-  // so the control is retired rather than restyled. Nothing replaces it here — the
-  // dashboard's Button corpus on a phone is the row controls below.
-  await expect(
-    page.getByTestId("dashboard-ahead").getByRole("button")
-  ).toHaveCount(0);
-
-  await openDashboardAll(page);
   const takeActions = page.getByTestId("attention-mark-taken");
   const takeCount = await takeActions.count();
-  expect(takeCount, "Dashboard dose-action corpus").toBeGreaterThan(0);
+  expect(takeCount, "Home dose-action corpus").toBeGreaterThan(0);
   for (let index = 0; index < takeCount; index += 1) {
     const take = takeActions.nth(index);
     await expect(take).toHaveAttribute("data-chip-verb", "Take");
     // The whole sentence for a reader, where the visible pill abbreviates it.
     await expect(take).toHaveAccessibleName(/^Take /);
-    await expectEffectiveFloor(`Dashboard Take ${index}`, take);
+    await expectEffectiveFloor(`Home Take ${index}`, take);
   }
 });
 
@@ -237,7 +234,6 @@ test("Button and destination actions wear the same box above sm", async ({
   await page.setViewportSize(DESKTOP);
 
   await page.goto("/");
-  await openDashboardAll(page);
   const buttons = page.getByTestId("attention-mark-taken");
   const buttonCount = await buttons.count();
   expect(buttonCount, "desktop Button adopter corpus").toBeGreaterThan(0);

@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Request } from "@playwright/test";
+import { type Locator, type Request } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -35,16 +35,26 @@ function clearBristol(): void {
   }
 }
 
-function bristolRows(): { date: string; started_at: string; value: number }[] {
+function bristolRows(): {
+  id: number;
+  date: string;
+  started_at: string;
+  value: number;
+}[] {
   const db = new Database(DB_PATH);
   try {
     return db
       .prepare(
-        `SELECT date, started_at, value FROM metric_samples
+        `SELECT id, date, started_at, value FROM metric_samples
           WHERE profile_id = 1 AND metric = 'bristol_stool_type'
           ORDER BY started_at`
       )
-      .all() as { date: string; started_at: string; value: number }[];
+      .all() as {
+      id: number;
+      date: string;
+      started_at: string;
+      value: number;
+    }[];
   } finally {
     db.close();
   }
@@ -68,6 +78,13 @@ function seedBristol(date: string, hhmmss: string, type: number): void {
   } finally {
     db.close();
   }
+}
+
+/** One receipt row, addressed by the `metric_samples` id the store gave it. */
+function receiptFor(picker: Locator, id: number): Locator {
+  return picker.locator(
+    `[data-testid="quick-entry-stool-receipt"][data-reading-id="${id}"]`
+  );
 }
 
 test.beforeEach(() => clearBristol());
@@ -135,7 +152,7 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   // The sheet STAYS OPEN — several a day is ordinary, and a mis-tap is corrected by
   // tapping again rather than by reopening.
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
-    "1 logged today."
+    "1 today"
   );
   await expect(sheet).toBeVisible();
   const after = frozenNow().getTime();
@@ -172,7 +189,7 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   const reducedSettle = picker.getByTestId("stool-settle-5");
   await settledClick(page, picker.getByTestId("stool-type-5"));
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
-    "1 logged today."
+    "1 today"
   );
   await expect(reducedSettle).toHaveAttribute("data-reduced-motion", "true");
   await expect(reducedSettle).not.toHaveClass(/motion-settle/);
@@ -265,13 +282,25 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
     release = resolve;
   });
   const onThisPage = (url: URL): boolean => url.pathname === "/";
+  // THE WRITE, NOT MERELY A POST TO THIS PAGE. Every Server Action on "/" is a POST
+  // there, and since #5663 the picker asks for the day's receipt rows through one of
+  // them at mount. "Hold the first POST" would hold that READ and let the tap's write
+  // straight through — the opposite of the ordering this leg is built on, and it fails
+  // by leaving the write's row to land after the assertion rather than by saying so.
+  //
+  // A WRITE IS THE STAMPED ONE. `useWritePipeline` stamps every post it makes with the
+  // surface it happened on (#3087), so `logged_via` in the body is the property that
+  // separates a write from a read — not the field names of one action, and not an
+  // ordinal that assumes which request comes first.
+  const isWrite = (request: Request): boolean =>
+    request.method() === "POST" &&
+    new URL(request.url()).pathname === "/" &&
+    /name="[^"]*logged_via"/.test(request.postData() ?? "");
   await page.route(onThisPage, async (route) => {
-    if (route.request().method() !== "POST") return route.continue();
+    if (!isWrite(route.request())) return route.continue();
     await held;
     await route.continue();
   });
-  const isWrite = (request: Request): boolean =>
-    request.method() === "POST" && new URL(request.url()).pathname === "/";
   // Armed BEFORE the click so it cannot miss its event.
   const answered = page.waitForResponse((r) => isWrite(r.request()), {
     timeout: 30_000,
@@ -285,7 +314,7 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   // the write being broken: a network-timing bound on a loaded shard is a worse
   // question than the state it was standing in for.
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
-    "1 logged today."
+    "1 today"
   );
 
   // The statement, made while that first write is still out. The day half is FIXED,
@@ -315,7 +344,7 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await settledClick(page, picker.getByTestId("stool-type-3"));
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
-    "2 logged today."
+    "2 today"
   );
   // Both rows survive — the statement moved the minute, it did not overwrite the tap.
   const both = bristolRows();
@@ -335,6 +364,115 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
   // tap under a surviving 07:05 would silently overwrite the row the first one wrote.
   await expect(picker.getByTestId("stool-when-time")).toHaveValue("");
   clearBristol();
+});
+
+// ── THE SHEET STATES THE DAY (#5663) ──────────────────────────────────────────
+//
+// The owner's report was "quicklogging stool provides no feedback or description": the
+// tap moved a count and toasted a number, and the sentence that says what the number
+// means was reachable only as a tile's accessible name or behind the title row's info
+// glyph. The ruling is the whole day on the sheet, each entry its own two-line receipt
+// row, newest first, with Undo on the newest and one count line beneath.
+//
+// WHAT ONLY A BROWSER CAN PROVE HERE is that the rows are the STORE's. Two halves: rows
+// that predate the sheet appear at all — the sheet's own gather answers with a count,
+// so the control asks for them itself — and the Undo makes a round trip that really
+// removes the row rather than hiding it. The unit tier drives both against a mocked
+// action; nothing below this asks the running app.
+//
+// EVERY TIME IS READ BACK OUT OF THE STORE rather than built here. The run freezes the
+// clock and the boundary-stress hook can put that instant at local midnight
+// (playwright.config.ts), so a tapped reading's wall clock is not a literal this file
+// may assume — and an assertion that assumed one would go red for the wrong reason on
+// the midnight shard.
+test("the sheet lists the day's movements and the newest tap is undoable (#5663)", async ({
+  page,
+}) => {
+  await page.goto("/?quick=log-stool");
+  const picker = page.getByTestId("quick-entry-stool"); // testid-scope-ok: the quick-log sheet body is portalled to <body> (BottomSheet), one copy
+  await expect(picker).toBeVisible();
+  const rows = picker.getByTestId("quick-entry-stool-receipt");
+  await expect(rows).toHaveCount(0);
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
+    "Nothing logged today."
+  );
+
+  await settledClick(page, picker.getByTestId("stool-type-6"));
+
+  // The ruled two lines: the number with the tile's own caption above, the scale's own
+  // sentence with the reading's clock below. Neither the caption nor the sentence was
+  // printed anywhere on this surface before.
+  await expect(rows).toHaveCount(1);
+  const logged = bristolRows();
+  expect(logged.map((r) => r.value)).toEqual([6]);
+  // ADDRESSED BY THE ROW THE STORE SAYS WAS WRITTEN, not by position: the sentence
+  // under test belongs to a particular reading, and reading it off "whichever row is
+  // on top" would pass for a row about some other movement.
+  const tapped = receiptFor(picker, logged[0].id);
+  await expect(
+    tapped.getByTestId("quick-entry-stool-receipt-heading")
+  ).toHaveText("Type 6 · Mushy");
+  await expect(
+    tapped.getByTestId("quick-entry-stool-receipt-facts")
+  ).toHaveText(
+    `Fluffy pieces with ragged edges, a mushy stool · ${logged[0].started_at.slice(11, 16)}`
+  );
+  await expect(rows.nth(0)).toHaveAttribute(
+    "data-reading-id",
+    String(logged[0].id)
+  );
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
+    "1 today"
+  );
+
+  // THE UNDO IS A ROUND TRIP, not a hidden row. `StoolTypeControl` declared `undo:
+  // null` until this issue, on the argument that the record's ⋯ is where a movement is
+  // removed; the ruling puts it here, and this is the assertion that it actually works.
+  const undo = picker.getByTestId("quick-entry-stool-receipt-undo");
+  await expect(undo).toHaveCount(1);
+  await settledClick(page, undo);
+  await expect(rows).toHaveCount(0);
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
+    "Nothing logged today."
+  );
+  expect(bristolRows()).toEqual([]);
+});
+
+test("movements logged before the sheet opened are listed, without an Undo (#5663)", async ({
+  page,
+}) => {
+  const day = dateStrInTz(TZ, frozenNow());
+  seedBristol(day, "06:02:00", 3);
+  seedBristol(day, "07:30:00", 5);
+
+  await page.goto("/?quick=log-stool");
+  const picker = page.getByTestId("quick-entry-stool"); // testid-scope-ok: the quick-log sheet body is portalled to <body> (BottomSheet), one copy
+  const rows = picker.getByTestId("quick-entry-stool-receipt");
+
+  // NEWEST FIRST, stated against the store's own order rather than against two times
+  // written out here — the property is the ordering, not the pair of clocks.
+  await expect(rows).toHaveCount(2);
+  const newestFirst = [...bristolRows()].reverse();
+  for (const [index, row] of newestFirst.entries())
+    await expect(rows.nth(index)).toHaveAttribute(
+      "data-reading-id",
+      String(row.id)
+    );
+  await expect(
+    receiptFor(picker, newestFirst[0].id).getByTestId(
+      "quick-entry-stool-receipt-heading"
+    )
+  ).toHaveText("Type 5 · Soft blobs");
+  await expect(picker.getByTestId("quick-entry-stool-count")).toHaveText(
+    "2 today"
+  );
+
+  // NO UNDO ON A ROW THIS SHEET DID NOT WRITE. #2642's offer rides the write; beside a
+  // reading gathered from the store it would be a delete wearing the word, and the
+  // record's ⋯ is where a delete belongs.
+  await expect(
+    picker.getByTestId("quick-entry-stool-receipt-undo")
+  ).toHaveCount(0);
 });
 
 test("the Body panel shows a day's types as marks, never as one average", async ({
@@ -522,8 +660,18 @@ test.describe("the record's stool rows (#4433)", () => {
     // Filed on the day it names, at the minute it states — not on today, which is
     // what `logStoolForm` re-derived before this leg. The whole set is compared, so a
     // door that wrote onto the seeded day instead would fail by naming it.
-    expect(bristolRows()).toEqual([
-      ...seeded,
+    expect(
+      bristolRows().map(({ date, started_at, value }) => ({
+        date,
+        started_at,
+        value,
+      }))
+    ).toEqual([
+      ...seeded.map(({ date, started_at, value }) => ({
+        date,
+        started_at,
+        value,
+      })),
       { date: day, started_at: `${day}T07:05:00`, value: 5 },
     ]);
   });

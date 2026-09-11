@@ -12,7 +12,6 @@
 // transform. Isolated on purpose: the ack/snooze writes here would race the coaching
 // specs' reads on profile 1; its own profile means --repeat-each stays clean (the spec
 // resets its ack/snooze rows itself).
-export const E2E_LOGIN_REST = "e2e_rest";
 export const REST_CARD_PROFILE = "Rest Card (e2e)";
 
 // #44 3b / #3006 — the rest-EPISODE continuity fixture. A dedicated adult profile with

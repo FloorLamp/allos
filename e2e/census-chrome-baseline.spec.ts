@@ -79,8 +79,13 @@ interface Surface {
 const SURFACES: Surface[] = [
   {
     route: "/",
-    why: "The dashboard — the shell's most-visited surface and the one every nav change lands on.",
-    subject: '[data-testid="now-strip"]',
+    why: "Home — the shell's most-visited surface and the one every nav change lands on.",
+    // THE DAY BAR, NOT A BAND (#5435 §4). This read `now-strip`, which went with the
+    // ranker. The bar is the better control anyway: it is the page's frame (#4918
+    // ruling 1), so it renders on a day with nothing on it, where every band can be
+    // absent and a band-keyed control would make this probe's reach depend on the
+    // fixture's data.
+    subject: '[data-testid="timeline-day-nav"]',
   },
   {
     route: "/wellness",

@@ -121,14 +121,14 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
         testId: "symptom-cough-sev-1",
         repairable: true,
       },
-      // THE FOLD AS A CONTROL (#4505 family 1). A `<summary>` that IS the control
-      // wears `fold-control` and joins the selector list; this one held a hand-rolled
-      // `min-h-11` and is the dashboard's one fold mechanism (#4232).
-      {
-        kind: "fold-control",
-        testId: "dashboard-all-summary",
-        repairable: true,
-      },
+      // THE FOLD AS A CONTROL (#4505 family 1) LEFT THIS ROUTE WITH THE RANKER.
+      // `dashboard-all-summary` was the dashboard's one fold mechanism (#4232) and
+      // the `<summary>` that IS a control. Home's one fold is the Later band, whose
+      // summary is a ROW (#3979) and correctly wears no `fold-control` — so this
+      // route has no instance of family 1 to measure, and the route declares that
+      // in the sweep below rather than going quietly green on a missing selector.
+      // The family itself is still measured on
+      // /records/history/immunizations (`immunization-schedule-disclosure`).
     ],
   },
   // THE ICON BUTTON (#4505 family 3). Hand-rolled `h-(--control-box) w-(--control-box)`
@@ -1405,8 +1405,27 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     route: string;
     ready: string;
     open?: (page: import("@playwright/test").Page) => Promise<void>;
+    /**
+     * Whether this route is expected to render a `.fold-control` at all. Default
+     * true — the guard exists so a green sweep cannot mean "reached no fold". A
+     * route that declares `false` has to say why, because the easy way to satisfy
+     * a reach guard is to stop reaching.
+     */
+    folds?: boolean;
   }[] = [
-    { route: "/", ready: "dashboard-canvas" },
+    {
+      route: "/",
+      ready: "dashboard-canvas",
+      // HOME HAS NO `fold-control`, BY THE RULE THIS SWEEP ENFORCES (#5435 §3.2,
+      // #3979). Its one fold is the Later band, and that band's `<summary>` is a
+      // ROW — `LOGGED_EVENT_ROW`, one dense line, the same height as the rows it
+      // expands to show — so it wears the row grammar and not the control class,
+      // exactly as `food-more-groups-summary` does. `dashboard-all-summary`, the
+      // page's previous and only `fold-control`, went with the ranker. The row
+      // half is still measured: the summary is cited below, and its height is
+      // swept with every other rendered box on this route.
+      folds: false,
+    },
     // EVERY `.tap-target` ON /nutrition IS IN THE ADD LAYER, behind one door (#4477).
     { route: "/nutrition", ready: "food-log-bar", open: openFoodAdd },
     { route: "/medications", ready: "medication-share-open" },
@@ -1422,9 +1441,18 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     "food-more-groups-summary",
     "dashboard-everything-",
     "suppressed-summary",
+    // #5435 §3.2's Later band — the same ruling as `food-more-groups-summary`: a
+    // `<summary>` carrying `LOGGED_EVENT_ROW`, one dense line, the same height as
+    // the rows it expands to show.
+    "home-later-summary",
   ];
 
-  for (const { route, ready, open } of SWEEP_ROUTES) {
+  for (const {
+    route,
+    ready,
+    open,
+    folds: expectFolds = true,
+  } of SWEEP_ROUTES) {
     test(`every hand-rolled control on ${route} is the box at ${SWEEP_WIDTHS.join("/")}`, async ({
       page,
     }) => {
@@ -1525,10 +1553,18 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
           swept.controls,
           `${route} @${width} swept no controls`
         ).toBeGreaterThan(0);
-        expect(
-          swept.folds,
-          `${route} @${width} swept no fold-control`
-        ).toBeGreaterThan(0);
+        if (expectFolds)
+          expect(
+            swept.folds,
+            `${route} @${width} swept no fold-control`
+          ).toBeGreaterThan(0);
+        else
+          expect(
+            swept.folds,
+            `${route} @${width} declares it renders no fold-control, but one appeared. ` +
+              "Either the route grew one — drop the declaration — or the rule it was " +
+              "declared under changed."
+          ).toBe(0);
         expect(
           swept.offBox,
           `${route} @${width}: a hand-rolled control is off the ${CONTROL_BOX_PX}px box or ` +

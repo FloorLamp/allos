@@ -231,14 +231,11 @@ export interface HomeListInput {
   training: HomeTrainingInput;
   fast: OpenEpisode | null;
   period: HomePeriodInput;
-  // Setup-tier findings the coaching bus has already admitted and de-dismissed.
-  setup: readonly Finding[];
 }
 
 export interface HomeList {
   later: HomeLaterFold | null;
   now: HomeNowBand | null;
-  setup: readonly HomeSetupRow[];
 }
 
 // ── Classification ──────────────────────────────────────────────────────────────
@@ -274,7 +271,7 @@ function itemName(item: UpcomingItem): string {
  * record of that day, which owes nothing and forecasts nothing (§3.2, §6.6).
  */
 export function composeHomeList(input: HomeListInput): HomeList {
-  if (input.day !== input.today) return { later: null, now: null, setup: [] };
+  if (input.day !== input.today) return { later: null, now: null };
   const actions = partitionActions(input);
   return {
     later: composeLater(input, actions),
@@ -282,7 +279,6 @@ export function composeHomeList(input: HomeListInput): HomeList {
       minutesOfDay: input.minutesOfDay,
       rows: composeNowRows(input, actions),
     },
-    setup: composeSetup(input),
   };
 }
 
@@ -585,13 +581,24 @@ function composeNowRows(
 // setup, so they never enter the Later or Now bands and they arrive only through the
 // coaching bus's setup tier, already de-dismissed by the caller. The block is absent
 // when the bus has nothing — there is no "you're all set" row.
-function composeSetup(input: HomeListInput): HomeSetupRow[] {
-  return input.setup.map((finding) => ({
+//
+// COMPOSED ON ITS OWN, not inside `composeHomeList`, and the reason is the page's
+// shape rather than tidiness: Setup is the LAST Suspense boundary (#5435 §6.1), so its
+// findings are gathered in a different frame from the Later and Now bands. A composer
+// that took them as an input would force the gather back into the shell and leave the
+// boundary streaming markup with nothing behind it. The row shape is identical either
+// way — the seat rules below are the whole difference, and they do not depend on the
+// day.
+export function composeHomeSetup(
+  subject: HomeSubject,
+  findings: readonly Finding[]
+): HomeSetupRow[] {
+  return findings.map((finding) => ({
     // Dismissal persistence keys on the bus's own dedupe key, so a row dismissed on
     // Home stays dismissed wherever else the bus states it.
     id: `home.setup:${finding.dedupeKey}`,
     factKey: finding.dedupeKey,
-    subject: input.subject,
+    subject,
     applicable: true,
     finding,
   }));

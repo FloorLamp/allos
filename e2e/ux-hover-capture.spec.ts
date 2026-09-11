@@ -70,12 +70,20 @@ interface Surface {
 }
 
 const SURFACES: Surface[] = [
-  {
-    route: "/",
-    why: "The dashboard's Standing cluster: #3459 item 2's door labels, the named miss this deliverable exists for.",
-    // measured 2647, 2647, 2647 across --repeat-each=3 on 2026-08-22
-    minExamined: 900,
-  },
+  // `/` LOST ITS FLOOR BECAUSE IT LOST ITS ENTRY (#5435 §4), not because this guard
+  // got easier. It read `why: "The dashboard's Standing cluster: #3459 item 2's door
+  // labels, the named miss this deliverable exists for."` with `minExamined: 900`, cut
+  // from 2647/2647/2647 across `--repeat-each=3` on 2026-08-22. §4 stops mounting the
+  // placement canvas, so `.standing-row` renders on no route at all, and Home v3 puts
+  // nothing else behind hover — the reasoning and the one rejected candidate (the
+  // intraday crosshair, data-gated) are written at the deleted HOVER_CAPTURES entry in
+  // scripts/ux-census-routes.mjs, which is where the next reader will look.
+  //
+  // THE GUARD IS NOT WEAKER FOR IT, and that is worth saying out loud because a file
+  // that loses half its surfaces usually is. The two forgeries run per surface, so the
+  // proof that the probe can SEE — the offender caught, the benign twin reported as a
+  // no-op, the hover surviving the capture — still runs on every registered entry. What
+  // is gone is coverage of one route, and the census is one surface poorer.
   {
     route: "/records/history/immunizations",
     why: "The CDC schedule grid: #3375's load-bearing case, where the mouse panel is the ONLY path to the content.",

@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript-api";
 import { stripComments } from "./strip-comments";
+import { banCoverage, WRITE_BRAND_BAN } from "./write-brand-ban-coverage";
 
 // Write-access enforcement scanner (issue #33). The mirror of the profile-scoping
 // leak test: it reads the repo's own Server Actions as TEXT (no DB, no network,
@@ -566,6 +567,12 @@ const ALLOW: AllowEntry[] = [
     file: "app/(app)/stool-actions.ts",
     fn: "deleteStoolReading",
     why: "record correction (#4433): removes the ROW's logged movement via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/stool-actions.ts",
+    fn: "loadStoolDay",
+    why: "#5663: a READ, not a write — the quick-log sheet lists the day's movements as receipt rows and asks for them here; it follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) so the rows it answers with are the gated subject's and no other profile's reading can reach the sheet",
     gate: "gateItemProfile",
   },
   {
@@ -1246,6 +1253,22 @@ const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
 // needs no allowlist entry to record it, which is how `ALLOW` shrinks as cores are
 // converted instead of being edited by hand.
 //
+// THAT LAST CLAUSE IS A DEPENDENCY ON THE LINT CONFIG'S FILE COVERAGE, and it is not
+// a claim this file may make on its own. It held for every production module but
+// three: lib/revalidate.ts, middleware.ts and instrumentation-client.ts were outside
+// WRITE_BRAND_CAST, so an ordinary helper in any of them could mint the brand and an
+// ungated action calling a branded core dropped out of the allowlist with nothing
+// reported anywhere (#5856). Branding a core therefore REMOVED a defence that was
+// there before it, and the exposure grew with every #5348 conversion.
+//
+// So the step-aside now READS the coverage rather than assuming it: banCoverage()
+// sweeps the config's own production trees plus the repo root through ESLint's API,
+// and a single uncovered module empties the registry below. Every action that had
+// dropped its `ALLOW` entry on the brand's word is then reported as ungated — the
+// scan reddens instead of silently widening the hole. This is a mechanism, not a
+// note: delete the coverage expectation in the test below and the emptied registry
+// still reds the scan.
+//
 // The registry is DERIVED from the tree, not declared here: nothing to keep in step.
 // It also cannot fall open — an empty registry sends every action it used to skip
 // back to needing an entry, so the removed entries are reported as missing rather
@@ -1322,7 +1345,9 @@ function brandedWriteCores(): RegisteredImports {
   return out;
 }
 
-const BRANDED_CORES = brandedWriteCores();
+const BAN_COVERAGE = await banCoverage(WRITE_BRAND_BAN);
+// A forgeable brand proves nothing, so the registry is empty until the ban is whole.
+const BRANDED_CORES = BAN_COVERAGE.uncovered.length ? {} : brandedWriteCores();
 
 // The exported actions in `src` the type system gates.
 function typeGatedActions(src: string, cores: RegisteredImports): Set<string> {
@@ -1763,8 +1788,13 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
     );
 
     // The scan must actually see the whole action surface, and the branded cores it
-    // now reads exemptions from must actually have been discovered.
+    // now reads exemptions from must actually have been discovered — which they are
+    // not while any production module can forge the brand (#5856).
     expect(scanned).toBeGreaterThan(70);
+    expect(
+      BAN_COVERAGE.uncovered,
+      `WRITE_BRAND_CAST does not reach ${BAN_COVERAGE.uncovered.length} of ${BAN_COVERAGE.checked.length} production modules, so calling a branded core is no longer proof of a gate: ${BAN_COVERAGE.uncovered.join(", ")}`
+    ).toEqual([]);
     expect(
       Object.keys(BRANDED_CORES),
       "no branded write core found — the #5348 registry stopped discovering"
