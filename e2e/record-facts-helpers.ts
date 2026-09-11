@@ -1,4 +1,4 @@
-import { expect, type Locator } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // Driving a CLINICAL RECORD FORM since the family became summary-first (#5302).
 //
@@ -76,4 +76,34 @@ export async function withRecordFact(
   await openRecordFact(form, prefix, key, panel);
   await edit();
   await closeRecordFact(form, prefix);
+}
+
+/**
+ * Open a fact whose editor holds a `DateField`, fill it, and return to the chips.
+ *
+ * A DATE IS THE ONE FIELD THIS FAMILY CANNOT DRIVE WITH `withRecordFact`, and the
+ * reason is a collision between two real layers rather than a test convenience.
+ * Filling the display field opens `DateField`'s anchored calendar, which must be
+ * dismissed before anything below it can be clicked or measured — and the dismissal
+ * gesture is Escape, which is ALSO the fact editor's own close. So the editor may or
+ * may not still be open afterwards, and pressing Done unconditionally would click a
+ * control that is no longer there. The `isVisible` branch is routing (which control to
+ * press), not an assertion that something is absent.
+ *
+ * Written once here after #5302 slice 4 took the family to four forms with a date
+ * behind a chip; the care-plan spec had this inline first.
+ */
+export async function withRecordDateFact(
+  page: Page,
+  form: Locator,
+  prefix: string,
+  key: string,
+  fill: () => Promise<void>
+): Promise<void> {
+  await openRecordFact(form, prefix, key);
+  await fill();
+  await page.keyboard.press("Escape");
+  if (await form.getByTestId(`${prefix}-editor`).isVisible())
+    await form.getByTestId(`${prefix}-editor-done`).click();
+  await expect(form.getByTestId(`${prefix}-fact-row`)).toBeVisible();
 }

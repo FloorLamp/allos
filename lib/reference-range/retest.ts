@@ -1,5 +1,20 @@
+// The flat fall-back retest cadence for an analyte the curated dataset gives no
+// `retest_days` for. A RETEST CLOCK in the freshness doctrine's terms: the question is
+// "is a redraw due?" and the consequence is a nudge.
+//
+// NOT A PRESENTATION FLOOR, AND ANY AGREEMENT WITH ONE IS A COINCIDENCE (#4242). The
+// repo's other lab-wide staleness interval is `RECENT_LAB_STALE_DAYS`
+// (lib/recent-labs.ts), which decides whether a glance card may FRAME a reading as
+// current — a different question, whose consequence is an age label rather than a
+// redraw. The two are deliberately kept as separate values and are never shared by
+// reference: moving a retest cadence must not restyle a dashboard, and restyling a
+// dashboard must not send somebody for blood work. Whenever the two intervals happen to
+// coincide — as they do at the time of writing — that is coincidence; neither may be
+// edited by reading the other.
 export const STALE_AFTER_DAYS = 365;
-// Back-compat alias; the same value read as a default rather than the sole rule.
+// Back-compat alias; the same value read as a default rather than the sole rule. It is an
+// alias, so the cross-reference above is stated about the QUESTIONS rather than about a
+// number: this name may move off `STALE_AFTER_DAYS` without the note going stale.
 export const DEFAULT_RETEST_DAYS = STALE_AFTER_DAYS;
 
 // The recommended retest interval (days) for a biomarker: its curated

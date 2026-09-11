@@ -6,6 +6,7 @@ import {
   settledBoxes,
   settledClick,
 } from "./helpers";
+import { withRecordDateFact, withRecordFact } from "./record-facts-helpers";
 import { workerDbPath } from "./worker-env";
 import { TAP_FLOOR_FLOAT_EPSILON_PX } from "@/lib/tap-floor-tokens";
 
@@ -53,10 +54,18 @@ async function addStudy(
   await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
   const form = page.getByTestId("imaging-study-form");
   await expect(form).toBeVisible();
+  // The modality is rule 1's identifying field and stays above the chips (#5302); the
+  // rest are reached through the row.
   await form.getByLabel("Modality").selectOption("ct");
-  await form.getByLabel("Body region").fill(REGION);
-  await form.getByLabel("Study date").fill(opts.date);
-  await form.getByLabel("Impression").fill(opts.impression);
+  await withRecordFact(form, "imaging-study", "region", () =>
+    form.getByLabel("Body region").fill(REGION)
+  );
+  await withRecordDateFact(page, form, "imaging-study", "study_date", () =>
+    form.getByLabel("Study date").fill(opts.date)
+  );
+  await withRecordFact(form, "imaging-study", "impression", () =>
+    form.getByLabel("Impression").fill(opts.impression)
+  );
   await settledClick(
     page,
     form.getByRole("button", { name: "Add", exact: true })
