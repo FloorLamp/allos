@@ -28,6 +28,7 @@ import {
   type InjuryConstraint,
 } from "../injury-model";
 import {
+  nigglesCoveringSession,
   resolveTrainingTemper,
   type NiggleCoachingContext,
 } from "../niggle-model";
@@ -1170,9 +1171,26 @@ export function contextNotes(
     for (const limitation of d.limitations) notes.push(limitation);
   }
   // The niggle tier (#3211 part 3) — the third and weakest constraint. Sits AFTER the
-  // injury lines because it is outranked by them, and it is NEVER omitted: a target that
-  // moved without a line saying so is exactly the silent change #2948 forbids.
-  for (const t of nw.niggleTempers) notes.push(t.note);
+  // injury lines because it is outranked by them, and NO LIVE NIGGLE IS EVER OMITTED: a
+  // target that moved without a line saying so is exactly the silent change #2948
+  // forbids, and a live niggle dropped from the one surface that reports today's context
+  // is the same silence by another route. Every temper below gets exactly one line.
+  //
+  // WHICH line depends on whether the niggle moved anything TODAY (#4872). `t.note` is
+  // the TEMPER note — "Easing off Legs" claims an adjustment — and `resolveTrainingTemper`
+  // moves a target only for a lift `nigglesCoveringExercise` covers. So on a back day a
+  // live knee niggle tempers nothing, and the temper note would describe an adjustment
+  // that did not happen. Those niggles get `presenceNote` instead, which says the niggle
+  // is live AND says the session does not load it. Never silent (#2948) and never false
+  // (#4872): two sentences, because neither rule was ever satisfiable by one.
+  //
+  // The covering test is the RESOLVER'S OWN, asked once per programmed lift, so this card
+  // and the targets it describes cannot disagree about which niggles bit.
+  const loaded = new Set(
+    nigglesCoveringSession(nw.niggleTempers, nw.exercises)
+  );
+  for (const t of nw.niggleTempers)
+    notes.push(loaded.has(t) ? t.note : t.presenceNote);
   for (const c of nw.considerations) notes.push(c.note);
   // Weather parking (#1724) — ALWAYS disclosed, never a silent disappearance (#838).
   // The note explains why the outdoor activity isn't in today's pick and names the
