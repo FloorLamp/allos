@@ -61,7 +61,7 @@ export default async function RetrospectivePage({
   const coverageSentence = retrospectiveCoverageSentence(coverage, formatPrefs);
 
   return (
-    <PageContainer width="reading" className="mx-auto">
+    <PageContainer width="reading">
       <PageHeader
         title={`${year} in review`}
         subtitle={recapScaleEntry("year").blurb}

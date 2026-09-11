@@ -48,7 +48,7 @@ export default async function AccountSettingsPage() {
       {/* Form cards keep the compact `form` measure; the sessions LIST gets a
           reading measure of its own so device labels and timestamps stop
           truncating in a 520px column (#1451.B). */}
-      <PageContainer width="form" className="space-y-6">
+      <PageContainer width="form" align="start" className="space-y-6">
         {ownProfileChoices.length > 0 && (
           <OwnProfileForm
             profiles={ownProfileChoices}
@@ -65,7 +65,7 @@ export default async function AccountSettingsPage() {
           />
         )}
       </PageContainer>
-      <PageContainer width="reading" className="mt-6">
+      <PageContainer width="reading" align="start" className="mt-6">
         <ActiveSessions sessions={sessions} canRevoke={!demoRestricted} />
       </PageContainer>
     </SettingsGroupLayout>

@@ -127,11 +127,7 @@ export default async function SleepPage() {
     ouraScores.readiness != null;
 
   return (
-    <PageContainer
-      width="wide"
-      className="mx-auto w-full"
-      data-testid="sleep-page"
-    >
+    <PageContainer width="wide" className="w-full" data-testid="sleep-page">
       <PageHeader
         title="Sleep"
         subtitle="Duration, timing, stages, and how sleep relates to mood."

@@ -3312,11 +3312,7 @@ async function renderDashboard(
   // — and `mx-auto` centres it inside the shell exactly the way
   // app/(app)/records/layout.tsx already does.
   return (
-    <PageContainer
-      width="wide"
-      className="mx-auto"
-      data-testid="dashboard-canvas"
-    >
+    <PageContainer width="wide" data-testid="dashboard-canvas">
       {/* THE DASHBOARD DECLARES ITSELF (#3087). Every logging control placed on this
           canvas — the weigh-in widget, the symptom bar, the food bar, the "Log a
           dose" card, the reading button — is the SAME component its domain page

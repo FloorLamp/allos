@@ -14,11 +14,7 @@ export default function ResultsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <PageContainer
-      width="wide"
-      className="mx-auto"
-      data-testid="results-container"
-    >
+    <PageContainer width="wide" data-testid="results-container">
       <TabFirstPage config={RESULTS_TAB_FIRST_PAGE} testId="results-page">
         {children}
       </TabFirstPage>

@@ -68,7 +68,7 @@ export default async function ServerSettingsPage() {
 
   return (
     <SettingsGroupLayout group="server" login={login} profile={profile}>
-      <PageContainer width="form" className="space-y-6">
+      <PageContainer width="form" align="start" className="space-y-6">
         <PublicUrlSettings publicUrl={publicUrl} />
         <SmtpSettings config={getSmtpConfigView()} publicUrl={publicUrl} />
         {/* The instance-wide Telegram bot moved here from the Notifications tab

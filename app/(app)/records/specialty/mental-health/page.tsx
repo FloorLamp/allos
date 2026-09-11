@@ -47,7 +47,11 @@ export default async function RecordsMentalHealthPage(props: {
     ? screenParam
     : undefined;
   return (
-    <PageContainer width="reading" data-testid="records-mental-health">
+    <PageContainer
+      width="reading"
+      align="start"
+      data-testid="records-mental-health"
+    >
       <SectionSubtitle title="Mental health">
         Track validated screening instruments — PHQ-9 and GAD-7 — as
         severity-banded scores over time.

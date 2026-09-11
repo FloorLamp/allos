@@ -14,7 +14,7 @@ export default async function CoachingSettingsPage() {
   const { login, profile } = await requireSession();
   return (
     <SettingsGroupLayout group="coaching" login={login} profile={profile}>
-      <PageContainer width="form" className="space-y-6">
+      <PageContainer width="form" align="start" className="space-y-6">
         <RecommendationCadenceForm
           cadence={getRecommendationCadence(profile.id)}
           isAdmin={login.role === "admin"}

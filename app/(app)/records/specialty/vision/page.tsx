@@ -27,7 +27,7 @@ export default async function RecordsVisionPage() {
   // which silently rots the moment a pane is added ahead of it (#1600 added Hearing).
   if (!relevance.vision) redirect(visibleSpecialtyPanes(relevance)[0].href);
   return (
-    <PageContainer width="flow" data-testid="records-vision">
+    <PageContainer width="flow" align="start" data-testid="records-vision">
       <SectionSubtitle title="Vision">
         Review eyeglass and contact-lens prescriptions over time.
       </SectionSubtitle>

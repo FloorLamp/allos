@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function RecordsHearingPage() {
   const { login, profile } = await requireSession();
   return (
-    <PageContainer width="flow" data-testid="records-hearing">
+    <PageContainer width="flow" align="start" data-testid="records-hearing">
       <SectionSubtitle title="Hearing">
         Record audiogram thresholds and compare them over time.
       </SectionSubtitle>

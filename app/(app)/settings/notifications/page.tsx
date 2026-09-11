@@ -278,7 +278,7 @@ export default async function NotificationsSettingsPage() {
         title="Channels"
         scope={`Telegram, Web Push, and Email follow your login (${login.username}) across every profile; the Home Assistant webhook follows ${profile.name}.`}
       >
-        <PageContainer width="form" className="space-y-3">
+        <PageContainer width="form" align="start" className="space-y-3">
           {unroutableReason && (
             <Notice
               tone="amber"
@@ -364,7 +364,7 @@ export default async function NotificationsSettingsPage() {
           >
             {/* The kind list is a matrix — it gets a reading measure rather than the
                 ~520px form column the old page crammed it into (#1451.B). */}
-            <PageContainer width="reading">
+            <PageContainer width="reading" align="start">
               <NotificationPrefs
                 schedule={schedule}
                 workoutSummary={
@@ -433,7 +433,7 @@ export default async function NotificationsSettingsPage() {
             title="Morning digest"
             scope={`Which lines your morning digest routinely carries — your login only, across every profile. This is the mirror of the digest message's own ⚙️ Tune control, not a second setting, so it stays collapsed to its current state.`}
           >
-            <PageContainer width="form">
+            <PageContainer width="form" align="start">
               <DigestTuneSettings demoted={getLoginDigestDemotions(login.id)} />
             </PageContainer>
           </Section>
@@ -444,7 +444,7 @@ export default async function NotificationsSettingsPage() {
               title="Profiles"
               scope={notifyScopeCaption(true, login.username)}
             >
-              <PageContainer width="form">
+              <PageContainer width="form" align="start">
                 <NotifyScopeEditor
                   login={{
                     id: login.id,
@@ -467,7 +467,7 @@ export default async function NotificationsSettingsPage() {
             title="Mute"
             scope={`Silences ${profile.name}'s messages for your login only — other logins managing them are unaffected.`}
           >
-            <PageContainer width="form">
+            <PageContainer width="form" align="start">
               <ProfileMuteToggle
                 profileId={profile.id}
                 profileName={profile.name}

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function RecordsProvidersPage() {
   const { profile } = await requireSession();
   return (
-    <PageContainer width="flow" data-testid="records-providers">
+    <PageContainer width="flow" align="start" data-testid="records-providers">
       <SectionSubtitle title="Providers">
         Review clinicians and care organizations.
       </SectionSubtitle>

@@ -87,7 +87,7 @@ export default async function WhatsNewPage(props: {
   );
 
   return (
-    <PageContainer width="reading" className="mx-auto space-y-6">
+    <PageContainer width="reading" className="space-y-6">
       {unseen && <MarkWhatsNewSeen />}
       <PageHeader
         title="What's new"
