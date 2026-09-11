@@ -381,10 +381,11 @@ ${MIGRATION_LINES}
 - Follow docs/development.md for focused checks while developing. The assigned
   final local gates run from the worktree root:
   bash scripts/orchestration/run-gates-recorded.sh ${opts.branch}
-- If the harness detaches that call, collect its result with:
+- If the harness detaches it, collect with:
   bash scripts/orchestration/run-gates-recorded.sh ${opts.branch} --wait
   Read the exit code and output. Never wait on a process-name match or a PASS
-  string: either can outlive a failed run. Keep logs unique to this worktree.
+  string: either can outlive a failed run. REPLAY means no gate ran: anything
+  since is ungated.
 - Use npm run typecheck, which generates Next types first.
 - For UI changes, identify affected consumers and specs by markers, roles,
   routes, helper calls, and layout relationships. Do not rewrite assertions
