@@ -318,11 +318,17 @@ export async function logUsualRoutine(
   const day = today(profile.id);
   const rawDate = String(formData.get("date") ?? "").trim();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : day;
-  // THE EATING HOUR THE BAR STATED (#4438), judged by the SAME gate the single-serving
-  // add on that bar passes — one field, one wire shape ("HH:MM", profile-local), one
-  // day rule, so a sticky statement cannot mean one thing for a "+" and another for the
-  // bundle beside it. Every other host of this action posts no such field and gets
-  // `unstated`, which writes the declared window on every member exactly as before.
+  // WHEN THEY SAID THE ACT HAPPENED, judged by the SAME gate the single-serving add on
+  // the nutrition bar passes — one field, one wire shape ("HH:MM", profile-local), one
+  // day rule, so a statement cannot mean one thing for a "+" and another for the bundle
+  // beside it.
+  //
+  // TWO SURFACES POST IT, for two different reasons and through this one field: the
+  // nutrition bar's sticky eating hour (#4438) and the record's offers line, which posts
+  // the window the day chart is showing (#5618 ruling 7). The dashboard row, the
+  // quick-log sheet and the Telegram handler post no such field and get `unstated`,
+  // which writes the declared window on every member with no instant under it, exactly
+  // as before.
   const at = clockNow();
   const statedTime = judgePostedEatingTime(
     formData.get("occurred_at"),
