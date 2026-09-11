@@ -1182,6 +1182,17 @@ const KIND_SPECS = {
     ],
   },
 
+  // ONE RECORDED MOVEMENT (#5872), rooted on the event. The plainest shape in this
+  // registry: a single profile-owned row that nothing FKs into and that no day counter
+  // shadows — this ledger's count IS its rows, so there is nothing for the Undo to give
+  // back besides the row itself. No `uniqueKey`, because the ledger is append-only and
+  // has no natural key a re-log could have retaken.
+  "stool-event": {
+    kind: "stool-event",
+    ownedTable: "stool_events",
+    entities: [{ entity: "event", table: "stool_events", fks: [] }],
+  },
+
   // ── The readings table's OTHER two stores (#2123) ────────────────────────────
   // `deleteReadingAt` is the ONE editability contract (#1997 phase 2) and it deletes by
   // STORE. Two of its four stores captured and two deleted outright, so the identical

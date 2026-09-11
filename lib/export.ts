@@ -1559,6 +1559,20 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM substance_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
+    // The stool ledger (#5872): one row per movement, with the Bristol type NULLABLE
+    // because a movement nobody saw the form of is still a movement. User-entered
+    // health data, id-keyed + owned, deletable like the other logged datasets. The
+    // type travels as the stored number — the scale's labels are the app's rendering
+    // of it, not a second fact.
+    key: "stool_events",
+    label: "Stool log",
+    table: "stool_events",
+    columns: ["date", "type", "recorded_at", "occurred_at", "time_source"],
+    select: `SELECT id, date, type, recorded_at, occurred_at, time_source
+       FROM stool_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM stool_events WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
     // (protein powder / shakes have no food-group home). User-entered health data, so
     // it's in the portable export; id-keyed + owned, deletable like the other logged

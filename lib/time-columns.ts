@@ -1648,6 +1648,29 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  stool_events: [
+    { column: "date", semantic: "day", grain: "day", convention: "n/a" },
+    {
+      column: "recorded_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "canonical",
+      note: "Tap/capture instant. Rows moved from metric_samples by 20260911-stool-events carry the migrated reading's own instant, which is the only capture stamp that store retained.",
+    },
+    {
+      column: "created_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+    },
+    {
+      column: "occurred_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "Stated movement instant; NULL when nobody stated one. Never inferred from capture time — the write core does not read the clock to fill it. time_source distinguishes tap contracts from stated times.",
+    },
+  ],
   substance_log_events: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {

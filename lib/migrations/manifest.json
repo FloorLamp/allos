@@ -241,5 +241,6 @@
   "20260907-substance-trash-recorded-at.ts": "e73e24910ab36992df90ded5faff704583233c67a5697acf8974815657453f83",
   "20260908-notify-message-chat-subject.ts": "0a7d1c34359c3e5291adb60e291fa2c93c5d08c60acbef4d9e6f1ba77a2b24c6",
   "20260908-retire-blank-intake-doses.ts": "808a59350b5afff0899f1e4d30162810559559df018947d402a48a5a95bff0ea",
-  "20260909-data-write-revision.ts": "ecfd183cee95d16bb89cf750a9f57a9aa086407c72e35d3bdf19a37016d1e16d"
+  "20260909-data-write-revision.ts": "ecfd183cee95d16bb89cf750a9f57a9aa086407c72e35d3bdf19a37016d1e16d",
+  "20260911-stool-events.ts": "2ff7677fefcb885c00aa1d7989c5fa90ff0fbed2297687d77bd5d53bb5e2eec9"
 }

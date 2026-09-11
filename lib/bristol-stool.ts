@@ -1,14 +1,33 @@
 // Bristol stool form (issue #2785) — the pure vocabulary, its guard, and the two
 // shapes its surfaces read. No DB, no React, no clock.
 //
-// ── WHERE IT LIVES, AND WHY THERE IS NO TABLE ────────────────────────────────
+// ── WHERE IT LIVES (issue #5872 overturned the answer this header used to give) ──
 //
-// A Bristol reading is a dated observation carrying one small ordinal number, which
-// is precisely what `metric_samples` is (docs/internals/reading-model.md: a new dated
-// reading reuses an existing store). It lands there under `BRISTOL_STOOL_METRIC`, at
-// INSTANT grain rather than day grain, because several movements a day is ordinary and
-// each is its own observation — the same reason peak expiratory flow could not use
-// `body_metrics`' one-row-per-day shape.
+// THIS SECTION USED TO ARGUE THAT THERE IS NO TABLE, and the argument was sound for the
+// thing it was about. A Bristol READING is a dated observation carrying one small
+// ordinal number, which is precisely what `metric_samples` is — so it lived there under
+// a metric key, at INSTANT grain rather than day grain, because several movements a day
+// is ordinary and each is its own observation.
+//
+// The premise that failed is in the first clause. A stool is not a reading that always
+// carries a type; it is an OCCURRENCE that may carry one. "I had a poop this morning
+// but didn't see what form" is a thing that happened, and `metric_samples.value` is
+// REAL NOT NULL, so the old store could not record it at all — there was no value to
+// put in the column the row is built around. Two more defects rode on the same shape:
+// the samples natural key (profile, metric, source, origin, started_at) UPSERTS, so a
+// second movement stated at a minute already recorded overwrote the first, and an
+// unstated tap was stamped at the wall clock, so the row could not tell "happened at
+// 7:41" from "filed at 7:41".
+//
+// So a stool is an event in `stool_events` (lib/stool-log-write.ts, lib/queries/
+// bristol-stool.ts), the shape `food_log_events` and `substance_log_events` already
+// have: the occurrence is the row, the type is a nullable fact about it, the ledger is
+// append-only, and an instant nobody stated is NULL rather than the clock.
+//
+// WHAT DID NOT CHANGE IS EVERYTHING BELOW. The scale is still the whole vocabulary, it
+// still has no canonical twin, and it still must never be averaged — a table of its own
+// is not a claim that it measures the same quantity a curated entry judges. The two
+// sections that follow are the arguments three other modules cite, and they stand.
 //
 // ── WHY IT IS **NOT** IN `READING_IDENTITY_MAP` ──────────────────────────────
 //
@@ -46,7 +65,19 @@
 
 import { lastNDates } from "./date";
 
-/** The `metric_samples` metric key Bristol readings live under. */
+/**
+ * THE RETIRED `metric_samples` METRIC KEY (#5872). No writer produces it and the
+ * 20260911-stool-events migration removed every row that carried it, so nothing the app
+ * does can put one back.
+ *
+ * It is still NAMED, in one place: `CATEGORICAL_METRICS` (lib/metric-buckets.ts), whose
+ * job is to make the aggregation layer DECLINE rather than sum or average. That guard
+ * is about rows in the table, not about the app's writers — a restored backup or an
+ * import can carry the old key into `metric_samples` — and "type 3 + type 3 = mushy"
+ * is exactly as wrong for such a row as it ever was. Removing the entry would leave the
+ * additive default as the answer for a key this app once used, which is the one outcome
+ * the entry exists to prevent.
+ */
 export const BRISTOL_STOOL_METRIC = "bristol_stool_type";
 
 /** The scale's bounds. Types are 1-7 — there is no 0 and no 8. */

@@ -1,6 +1,8 @@
 "use server";
 
 import { today } from "@/lib/db";
+import { zonedDateParts } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
 import { revalidateRoute } from "@/lib/revalidate";
 import { logBristolStool } from "@/lib/offline/writes";
 import {
@@ -8,8 +10,11 @@ import {
   getBristolRows,
   type BristolRow,
 } from "@/lib/queries/bristol-stool";
-import { BRISTOL_STOOL_METRIC, parseBristolType } from "@/lib/bristol-stool";
-import { deleteMetricRow, updateMetricRow } from "@/lib/metric-readings";
+import { parseBristolType } from "@/lib/bristol-stool";
+import {
+  correctStoolEventCore,
+  deleteStoolEventCore,
+} from "@/lib/stool-log-write";
 import { isRealIsoDate } from "@/lib/date";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { gateItemProfile } from "./gate-item";
@@ -63,7 +68,7 @@ export type LogStoolFormOutcome =
 
 /** One of the day's readings, as a receipt row addresses it. */
 export interface StoolDayReading {
-  /** The `metric_samples` row id. */
+  /** The `stool_events` row id. */
   id: number;
   /** 1-7 — the type the row states, and the label and sentence it is built from. */
   type: number;
@@ -78,7 +83,7 @@ export interface StoolDayReading {
 
 /** The reading a tap landed on — what the newest row's Undo addresses. */
 export interface StoolReadingReceipt {
-  /** The `metric_samples` row id. */
+  /** The `stool_events` row id. */
   id: number;
   /**
    * The type this write REPLACED, when it corrected the reading already at that
@@ -114,22 +119,53 @@ const RECEIPT_WINDOW = 64;
  * better-sqlite3 calls with no await between them.
  */
 function landedReading(
-  before: Map<number, number>,
+  before: Map<number, number | null>,
   after: readonly BristolRow[]
 ): StoolReadingReceipt | null {
   const added = after.find((row) => !before.has(row.id));
   if (added) return { id: added.id };
   for (const row of after) {
     const was = before.get(row.id);
-    if (was !== undefined && was !== row.type)
+    // UNREACHABLE FROM THE LOG PATH SINCE #5872, and kept because it is the Undo
+    // contract's discriminator rather than a guess about the store. The old row's
+    // natural key WAS its instant, so restating a minute corrected the reading already
+    // there and a delete would have been the wrong inverse. This ledger is append-only
+    // — two movements in one minute are two rows — so a log always adds and the arm
+    // above always answers. A correction through the record's own door still moves a
+    // type on a standing row, which is what this arm describes.
+    if (was != null && row.type !== null && was !== row.type)
       return { id: row.id, replacedType: was };
   }
   return null;
 }
 
-/** The day's readings as the sheet's rows address them, newest first. */
-function dayReadings(rows: readonly BristolRow[]): StoolDayReading[] {
-  return rows.map((row) => ({ id: row.id, type: row.type, hhmm: row.hhmm }));
+/**
+ * The day's readings as the sheet's rows address them, newest first.
+ *
+ * UNTYPED ROWS ARE NOT HERE, and that is slice 1's line rather than a gap. The sheet's
+ * receipt row is #5663's contract and it renders a TYPE — its label, its icon, its
+ * sentence — so there is nothing for it to draw for an occurrence nobody saw the form
+ * of. Slice 2 adds the `Didn't see` tile and the neutral receipt that goes with it, and
+ * this filter is what it removes. Until then no app surface writes an untyped row, so
+ * the filter changes nothing anybody can see: it matches what the record itself did
+ * with an out-of-scale value before this ledger existed.
+ *
+ * The wall clock is the row's BEST-KNOWN instant read in the profile's zone — the
+ * stated movement instant when somebody named one, the tap stamp otherwise — which is
+ * the same minute the old `substr(started_at, 12, 5)` produced for every row this
+ * ledger inherited.
+ */
+function dayReadings(
+  tz: string,
+  rows: readonly BristolRow[]
+): StoolDayReading[] {
+  const out: StoolDayReading[] = [];
+  for (const row of rows) {
+    if (row.type === null) continue;
+    const parts = zonedDateParts(tz, new Date(row.occurred_at ?? row.recorded_at));
+    out.push({ id: row.id, type: row.type, hhmm: parts.hhmm });
+  }
+  return out;
 }
 
 export async function logStoolForm(
@@ -177,7 +213,7 @@ export async function logStoolForm(
     ok: true,
     type,
     dayCount: getBristolReadings(profileId, date, date).length,
-    readings: dayReadings(after),
+    readings: dayReadings(getTimezone(profileId), after),
     ...(reading ? { reading } : {}),
     ...(written.statedTimeRefused
       ? { statedTimeRefused: written.statedTimeRefused }
@@ -208,36 +244,39 @@ export async function loadStoolDay(
   const date = posted && isRealIsoDate(posted) ? posted : today(profileId);
   return {
     readings: dayReadings(
+      getTimezone(profileId),
       getBristolRows(profileId, date, date, RECEIPT_WINDOW)
     ),
     dayCount: getBristolReadings(profileId, date, date).length,
   };
 }
 
-// THE RECORD'S TWO ROW WRITES (#4433). A logged movement is a `metric_samples` row, so
-// its correction and its delete are the SHARED reading contract's — `updateMetricRow`
-// and `deleteMetricRow` over a `{ store, id, metric }` target, which is where the #133
-// edit lock and the #507/#508 tombstone already live, and where `captureDelete` makes
-// the delete undoable under the #2642 contract. No stool-shaped write core is added.
+// THE RECORD'S TWO ROW WRITES (#4433), on the stool ledger's own cores since #5872.
 //
-// THE TARGET NAMES THE METRIC, so a crafted token carrying another row's id cannot
-// reach it: `deleteReadingAt` probes (id, profile_id, metric) before it captures, and
-// `updateReadingAt` carries the metric in its WHERE clause.
+// A logged movement WAS a `metric_samples` row, so its correction and its delete went
+// through the shared reading contract — `updateMetricRow` / `deleteMetricRow` over a
+// `{ store, id, metric }` target. A movement is its own event now, so they go through
+// `correctStoolEventCore` / `deleteStoolEventCore`: the profile boundary is in the
+// core's own WHERE clause, and the delete still runs through `captureDelete`, so the
+// #2642 Undo contract this door answers with is unchanged.
 //
 // NOT `deleteMetricReading` in trends/reading-actions.ts, whose `kind` field is a
-// `TrendMetricSlug`: Bristol deliberately is not one (lib/bristol-stool.ts argues why —
+// `TrendMetricSlug`: stool deliberately is not one (lib/bristol-stool.ts argues why —
 // no canonical identity, no knowledge entry, and never a mean), and inventing a slug so
 // a shared action would accept it would put stool on the metric registry to buy a
 // revalidate list.
-function stoolTarget(formData: FormData) {
+function stoolEventId(formData: FormData): number | null {
   const id = Number(String(formData.get("id") ?? "").trim());
-  return Number.isInteger(id) && id > 0
-    ? ({ store: "metric_samples", id, metric: BRISTOL_STOOL_METRIC } as const)
-    : null;
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 /**
- * Correct one logged movement's TYPE — the mis-tap #4433 names ("type 3, meant 4").
+ * Correct one logged movement's TYPE — the mis-tap #4433 names ("type 3, meant 4"),
+ * and since #5872 both new halves of that question: SETTING a type on a row logged
+ * without one ("I saw it after all"), and CLEARING one back to an occurrence nobody saw
+ * the form of. An absent `type` field is the first; the literal string `none` is the
+ * second. The old door could do neither, because the store had no way to hold an
+ * untyped movement.
  *
  * And the INVERSE the quick-log row offers when a tap corrected a reading rather than
  * adding one (#5663): the same write, run back to the type the row carried before.
@@ -249,34 +288,44 @@ export async function correctStoolReading(
   // `?view=everyone` posts the row's own `profile_id` and `gateItemProfile` gates it,
   // falling back to the acting-profile gate when no subject is posted.
   const profileId = await gateItemProfile(formData);
-  const target = stoolTarget(formData);
-  const type = parseBristolType(formData.get("type"));
-  if (!target) return { ok: false, error: "Couldn't find that reading." };
-  if (type === null) return { ok: false, error: "Pick a type from 1 to 7." };
-  const outcome = updateMetricRow(profileId, target, type);
-  if (!outcome.ok) return { ok: false, error: "Couldn't find that reading." };
+  const eventId = stoolEventId(formData);
+  if (eventId === null) return { ok: false, error: "Couldn't find that reading." };
+  const raw = String(formData.get("type") ?? "").trim();
+  const type = raw === UNTYPED_FIELD_VALUE ? null : parseBristolType(raw);
+  if (type === null && raw !== UNTYPED_FIELD_VALUE)
+    return { ok: false, error: "Pick a type from 1 to 7." };
+  const outcome = correctStoolEventCore(profileId, eventId, { type });
+  if (outcome.kind !== "updated")
+    return { ok: false, error: "Couldn't find that reading." };
   revalidateStool();
   return { ok: true };
 }
 
 /**
+ * The posted value that CLEARS a row's type. A sentinel rather than an empty string,
+ * because an empty field is what a browser sends for a control that was never touched
+ * and "untouched" must not mean "erase the type somebody recorded".
+ */
+export const UNTYPED_FIELD_VALUE = "none";
+
+/**
  * Remove one logged movement, in the shape `useUndoableDelete` reads (#2642).
  *
  * Also the quick-log row's Undo since #5663, addressed by the id `logStoolForm`
- * answered with. Nothing was added for that caller: the target is re-derived here
- * against (id, profile_id, metric), so a stale offer refuses rather than reaching a
- * row it was never about.
+ * answered with. Nothing was added for that caller: the core re-derives the target
+ * against (id, profile_id) in its own transaction, so a stale offer refuses rather than
+ * reaching a row it was never about.
  */
 export async function deleteStoolReading(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
   const profileId = await gateItemProfile(formData);
-  const target = stoolTarget(formData);
-  if (!target) return { undoId: null };
-  const outcome = deleteMetricRow(profileId, target);
-  if (!outcome.ok) return { undoId: null };
+  const eventId = stoolEventId(formData);
+  if (eventId === null) return { undoId: null };
+  const outcome = deleteStoolEventCore(profileId, eventId);
+  if (outcome.undoId === null) return { undoId: null };
   revalidateStool();
-  return { undoId: outcome.undoId };
+  return outcome;
 }
 
 // Every surface a movement shows on: the record, the Trends panel that charts it, and
