@@ -14,6 +14,7 @@ import { now as clockNow } from "@/lib/clock";
 import { loadStoolDay, logStoolForm } from "@/app/(app)/stool-actions";
 import { logBristolStool } from "@/lib/offline/writes";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+import { shiftDateStr } from "@/lib/date";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 // Frozen so "the row an unstated tap writes" is a single comparable value: the seam
@@ -315,6 +316,54 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
     const day = await loadStoolDay(fd({ profile_id: subject.id, date }));
     expect(day.readings).toEqual([{ id: theirs, type: 4, hhmm: "07:05" }]);
     expect(day.dayCount).toBe(1);
+  });
+
+  // THE OTHER HALF OF THE SAME THREE LINES. The sheet's day switcher is real here —
+  // `SHEET_REACH` is bounded at two days back and `stool-form` is a `DATED_REACH`
+  // affordance — so the control can be pointed at either of the two prior days, and
+  // `reread()` posts the day it is standing on. A read that ignored the posted day
+  // would present TODAY's readings as that day's, with the row Undo keying off a
+  // reading from the wrong day; the count line would go on saying the right number,
+  // because `dayCount` is the one field such a read still gets right.
+  it("answers for the day it was ASKED about, not for today", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("day-read-yesterday", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    const yesterday = shiftDateStr(date, -1);
+    // Both days carry readings, and the same minute on each, so only the day can tell
+    // the two sets apart.
+    const morning = seedReading(profile.id, yesterday, "07:05", 4);
+    const evening = seedReading(profile.id, yesterday, "19:40", 6);
+    seedReading(profile.id, date, "07:05", 1);
+
+    const day = await loadStoolDay(fd({ date: yesterday }));
+    // Newest first, and NOTHING from today.
+    expect(day.readings).toEqual([
+      { id: evening, type: 6, hhmm: "19:40" },
+      { id: morning, type: 4, hhmm: "07:05" },
+    ]);
+    // The count answers for the day it read, which on a backfill is not today's.
+    expect(day.dayCount).toBe(2);
+  });
+
+  it("falls back to today when the posted day is not a day", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("day-read-malformed", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+    const yesterday = shiftDateStr(date, -1);
+    const mine = seedReading(profile.id, date, "07:05", 1);
+    seedReading(profile.id, yesterday, "07:05", 4);
+
+    // `isRealIsoDate`, not a shape check: "2026-02-30" has the shape of a day and is
+    // not one, and passing either straight to the query would answer with an empty
+    // day rather than with the day the sheet is actually standing on.
+    for (const notADay of ["not-a-date", "2026-02-30", ""])
+      expect(
+        (await loadStoolDay(fd({ date: notADay }))).readings,
+        `date=${JSON.stringify(notADay)}`
+      ).toEqual([{ id: mine, type: 1, hhmm: "07:05" }]);
   });
 
   it("falls back to the ACTING profile when no subject is posted, and when one is not a subject", async () => {
