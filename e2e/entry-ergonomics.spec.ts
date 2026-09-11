@@ -773,6 +773,11 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+  await expect(page.getByTestId("set1-reps")).toHaveValue(/^\d/); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+  // The weight it wrote is set 1's own. Confirming that row left the grid's ONE
+  // layout alone (#5762) — the load is still stated once, above reps-only rows —
+  // so reading the recorded number back is the door's single tap.
+  await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
   await expect(weight).toHaveValue(/^\d/);
   await expect(
     page.getByRole("button", { name: "Delete", exact: true })
@@ -1162,41 +1167,46 @@ test("remaining sets share a weight until Vary opens per-set editing", async ({
     await page.keyboard.type("8");
     await expect(form.getByTestId("set2-reps")).toHaveValue("");
 
-    // A recorded load and the remaining plans still share one readable schema.
+    // ONE LAYOUT, WHATEVER THE MIX (#5762). A record among the remaining plans is
+    // still a reps row under the one band: no weight column opens for the part, and
+    // the band keeps its name, so nothing moved sideways when set 1 was confirmed.
+    await expect(form.getByTestId("exercise-weight")).toContainText(
+      /^Weight \((kg|lb)\)/
+    );
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
-      const weightHeading = form.getByTestId("weight-column-heading");
-      await expect(weightHeading).toBeVisible();
-      const [weightLabel, weightField, repsLabel, ...rows] = await settledBoxes(
-        [
-          weightHeading,
-          form.getByTestId("set1-weight-stepper"),
-          form.getByTestId("reps-column-heading"),
-          ...[1, 2, 3].map((n) =>
-            form
-              .getByTestId(`set-row-${n}`)
-              .getByTestId(n === 1 ? "set1-reps-stepper" : "reps-stepper")
-          ),
-          form.getByTestId("set-vary-2"),
-          form.getByTestId("set-confirm-2"),
-          form.getByTestId("set-options-2").getByRole("button", {
-            // The W names what it does AND what it costs since #5726.
-            name: `Mark warmup set — ${WARMUP_MECHANIC}`,
-            exact: true,
-          }),
-          form.getByTestId("set-remove-2"),
-        ]
-      );
+      await expect(form.getByTestId("weight-column-heading")).toHaveCount(0);
+      const [repsLabel, ...rows] = await settledBoxes([
+        form.getByTestId("reps-column-heading"),
+        ...[1, 2, 3].map((n) =>
+          form
+            .getByTestId(`set-row-${n}`)
+            .getByTestId(n === 1 ? "set1-reps-stepper" : "reps-stepper")
+        ),
+        form.getByTestId("set-vary-2"),
+        form.getByTestId("set-confirm-2"),
+        form.getByTestId("set-options-2").getByRole("button", {
+          // The W names what it does AND what it costs since #5726.
+          name: `Mark warmup set — ${WARMUP_MECHANIC}`,
+          exact: true,
+        }),
+        form.getByTestId("set-remove-2"),
+      ]);
       const [reps1, reps2, reps3, vary, confirm, warmup, remove] = rows;
-      for (const [heading, field] of [
-        [weightLabel, weightField],
-        [repsLabel, reps1],
-        [repsLabel, reps2],
-        [repsLabel, reps3],
-      ]) {
+      for (const field of [reps1, reps2, reps3]) {
         expect(
-          Math.abs(heading.x + heading.width / 2 - (field.x + field.width / 2)),
+          Math.abs(
+            repsLabel.x + repsLabel.width / 2 - (field.x + field.width / 2)
+          ),
           `mixed set column at ${width}px`
+        ).toBeLessThanOrEqual(1);
+      }
+      // The recorded row's reps stepper sits exactly where the plans' do: the
+      // transition that confirmed it moved no column.
+      for (const field of [reps2, reps3]) {
+        expect(
+          Math.abs(reps1.x - field.x),
+          `reps steppers drifted at ${width}px`
         ).toBeLessThanOrEqual(1);
       }
       // Confirm, warmup and remove belong to one action band, clear of Vary.
@@ -1221,7 +1231,10 @@ test("remaining sets share a weight until Vary opens per-set editing", async ({
     await weight.pressSequentially("62.5");
     await expect(weight).toHaveValue("62.5");
     await expect(weight).toBeFocused();
-    await expect(form.getByTestId("set1-weight")).toHaveValue("60");
+    // The band edits the REMAINING PLANS (#5484), and the record says so itself: its
+    // door states the load it was lifted at, in the slot "Vary" occupies (#5762).
+    await expect(form.getByTestId("set-vary-1")).toHaveText(/^60 (kg|lb)$/);
+    await expect(form.getByTestId("set-vary-2")).toHaveText("Vary");
     await weight.press("Enter");
     await expect(form.getByTestId("set2-reps")).toBeFocused();
 

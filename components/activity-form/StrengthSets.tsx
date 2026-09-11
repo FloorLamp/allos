@@ -71,6 +71,7 @@ import {
   partSetsSummary,
   sharesLoad,
   sharedLoadSets,
+  shownLoad,
   type PartEntry,
   type SetEntry,
   type SetPlan,
@@ -347,8 +348,10 @@ function LoadField({
 // two-line wrap (#1612) is a property of the column, and a stacked side is a line
 // inside it.
 //
-// Shared rows carry the "Vary" door back to per-set weights. When confirmed rows
-// own their weight, Vary occupies that same column so every row's reps align.
+// While the band holds the load EVERY row is a reps row — records included (#5762) —
+// and the door in the slot after the reps stepper is how a row gets its weight back.
+// `varyLabel` is what that door says: the row's own load when it differs from the
+// band's, so a record states what it was lifted at without a column of its own.
 function SetRow({
   side,
   set,
@@ -361,7 +364,7 @@ function SetRow({
   testId,
   flagsFor,
   load,
-  weightColumn,
+  varyLabel,
   loadRef,
   repsRef,
   onChange,
@@ -386,7 +389,8 @@ function SetRow({
   ) => { weight: boolean; effort: boolean };
   // Whether this row states its own load, or the exercise-level band above does.
   load: "own" | "shared";
-  weightColumn: boolean;
+  // The load this row states in its door, or null to read "Vary" (#5762).
+  varyLabel?: string | null;
   loadRef?: (el: HTMLInputElement | null) => void;
   // Hands this row's reps input up, so the exercise-level weight's Enter can land in
   // set 1's reps (#5371).
@@ -412,9 +416,12 @@ function SetRow({
       type="button"
       onClick={onVary}
       data-testid={ids?.vary}
+      // The number alone would not say what tapping it does; the door's own name
+      // stays in the accessible one.
+      aria-label={varyLabel ? `Vary — this set is ${varyLabel}` : undefined}
       className="w-12 shrink-0 py-2 text-xs text-link-muted"
     >
-      Vary
+      {varyLabel ?? "Vary"}
     </button>
   );
   const reps = useRef<HTMLInputElement | null>(null);
@@ -501,15 +508,6 @@ function SetRow({
           </span>
         </>
       )}
-      {load === "shared" && weightColumn && (
-        <>
-          <div className="min-w-28 flex-1 basis-0 text-center">
-            {varyButton}
-          </div>
-          {showPlate && <span className="w-7 shrink-0" aria-hidden />}
-          <span className="w-2 shrink-0" aria-hidden />
-        </>
-      )}
       {!timed ? (
         <Stepper
           testId={ids?.repsStepper ?? "reps-stepper"}
@@ -524,9 +522,7 @@ function SetRow({
       ) : (
         effortInput
       )}
-      {load === "shared" && !weightColumn && (
-        <span className="w-12 shrink-0">{varyButton}</span>
-      )}
+      {load === "shared" && <span className="w-12 shrink-0">{varyButton}</span>}
     </div>
   );
 }
@@ -951,15 +947,29 @@ export default function StrengthSets({
     units.weightUnit === "lb"
       ? weightIncrementLb(p.name)
       : weightIncrementKg(p.name);
-  // Keep the shared editor on remaining plans; confirmed rows show their own
-  // weights. Explicit Vary and differing planned loads keep per-set editing open.
+  // Keep the shared editor on remaining plans; confirmed rows keep their own weights
+  // (#5484). Explicit Vary and differing planned loads keep per-set editing open.
   const sharedSets = sharedLoadSets(p.sets);
   const sharedIndex = p.sets.indexOf(sharedSets[0]);
   const stepsLoad = !timed && !isBodyweight(p.name);
   const sharedLoad =
     stepsLoad && !p.varied && sharesLoad(p) && sharedSets.length > 0;
-  const sharesBand = (s: SetEntry) => sharedLoad && sharedSets.includes(s);
-  const weightColumn = !sharedLoad || sharedSets.length < p.sets.length;
+  // ONE LAYOUT PER EXERCISE, WHATEVER THE MIX OF PLANS AND RECORDS (#5762). The
+  // weight column follows `varied` ALONE: it opens when the person taps Vary or the
+  // loads genuinely differ (`latchVaried`), never because a set is still a plan. A
+  // plan joining two records used to turn it on for the whole part and rename the
+  // band, so one exercise showed three grids in one session.
+  const weightColumn = !sharedLoad;
+  // What a row's door says. The band edits the remaining plans, so a record can sit
+  // at a load the band no longer shows — it states that load here, in the slot and
+  // with the tap the door already had, instead of being given a column of its own.
+  const varyLabel = (s: SetEntry, side: RowSide) => {
+    if (!sharedLoad) return null;
+    const own = shownLoad(s, SIDE[side].weight);
+    return own && own !== shownLoad(sharedSets[0], SIDE[side].weight)
+      ? `${own} ${units.weightUnit}`
+      : null;
+  };
   // Which set's "Vary" tap just revealed the per-set weights, so that set's weight
   // takes the caret; consumed by the input on mount.
   const varyFocus = useRef<number | null>(null);
@@ -1229,10 +1239,7 @@ export default function StrengthSets({
               className="mt-2 flex items-center gap-2"
             >
               <span className="shrink-0 text-xs font-medium whitespace-nowrap text-slate-500 dark:text-slate-400">
-                {sharedSets.length < p.sets.length
-                  ? "Remaining weight"
-                  : "Weight"}{" "}
-                ({units.weightUnit})
+                Weight ({units.weightUnit})
               </span>
               <div className="min-w-0 flex-1 space-y-1.5">
                 {(p.perSide ? PER_SIDE : BILATERAL).map((side) => (
@@ -1368,8 +1375,8 @@ export default function StrengthSets({
                         weightStep={weightStep}
                         showPlate={showPlate}
                         flagsFor={sideFlags}
-                        load={sharesBand(s) ? "shared" : "own"}
-                        weightColumn={weightColumn}
+                        load={sharedLoad ? "shared" : "own"}
+                        varyLabel={varyLabel(s, rowSide)}
                         loadRef={rowSide === "left" ? loadRef(si) : undefined}
                         repsRef={
                           si === sharedIndex
@@ -1379,8 +1386,11 @@ export default function StrengthSets({
                         onChange={(patch) => onUpdateSet(si, patch)}
                         onPlateTarget={(field) => onPlateTarget(si, field)}
                         onEnter={canAddSet ? onAddSet : undefined}
+                        // The door sits on the R line, as it always has; the L line
+                        // gets one only when it has a load of its own to state.
                         onVary={
-                          sharesBand(s) && rowSide === "right"
+                          sharedLoad &&
+                          (rowSide === "right" || !!varyLabel(s, rowSide))
                             ? () => vary(si)
                             : undefined
                         }
@@ -1399,8 +1409,8 @@ export default function StrengthSets({
                     weightStep={weightStep}
                     showPlate={showPlate}
                     flagsFor={sideFlags}
-                    load={sharesBand(s) ? "shared" : "own"}
-                    weightColumn={weightColumn}
+                    load={sharedLoad ? "shared" : "own"}
+                    varyLabel={varyLabel(s, "both")}
                     loadRef={loadRef(si)}
                     repsRef={
                       si === sharedIndex
@@ -1410,7 +1420,7 @@ export default function StrengthSets({
                     onChange={(patch) => onUpdateSet(si, patch)}
                     onPlateTarget={(field) => onPlateTarget(si, field)}
                     onEnter={canAddSet ? onAddSet : undefined}
-                    onVary={sharesBand(s) ? () => vary(si) : undefined}
+                    onVary={sharedLoad ? () => vary(si) : undefined}
                   />
                 )}
                 <div

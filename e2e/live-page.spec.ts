@@ -79,6 +79,10 @@ test("live start → set → finish: the record settles at the session's own URL
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+  // "Use" CONFIRMS set 1, and the remaining rows are still the plan — so the grid
+  // keeps its one shared layout and set 1 states its load behind its door (#5762).
+  // One tap on that door is how the recorded number is read back.
+  await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
   await expect(page.getByTestId("set1-weight")).toHaveValue(/^\d/);
   // The auto-save UPDATEs the created-at-start row — the Delete affordance
   // appearing proves a persisted row backs the form.
