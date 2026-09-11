@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import { writeTx } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
+import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
 import { getTimezone } from "@/lib/settings";
@@ -48,6 +49,7 @@ import {
   parseBodyFatCsv,
   parseDailyRestingHrCsv,
   parseDailyVitalCsv,
+  resolveTakeoutBreathingRateWindows,
   parseExerciseJson,
   parseComputedTemperatureCsv,
   parseSleepJson,
@@ -236,6 +238,10 @@ export function parseTakeoutArchive(
     acc.hrMinutes.push(...finalizeHrBuckets(hrAcc));
     for (const [family, perDay] of sumAcc)
       acc.samples.push(...finalizeDailySums(perDay, intradaySumMetric(family)));
+    // AFTER every family, because it is the one question a single file cannot answer:
+    // the nightly breathing rate arrives day-labelled in one file and the sleep logs it
+    // summarizes are in another (#5409).
+    resolveTakeoutBreathingRateWindows(acc);
     return { parsed: acc, entriesRead: read, entriesSkipped: skipped };
   } finally {
     fs.closeSync(fd);
@@ -293,6 +299,11 @@ export function importTakeoutArchive(
       (slice, sink) =>
         upsertVitals(profileId, slice, FITBIT_TAKEOUT_ID, sink).counts
     );
+    // ADOPTION (#5409), after the samples AND the vitals, for the same reason the
+    // Health Connect ingest runs it last: a nightly breathing rate that an EARLIER
+    // import left in `medical_records` joins the night this archive's sleep logs just
+    // established. An archive that carries no such leftover does nothing here.
+    writeTx(() => adoptWearableBreathingRates(db, profileId));
   } catch (err) {
     // Earlier chunks are durable by design, so represent exactly what completed.
     // `received` is the accounted portion of this failed run (the split invariant),

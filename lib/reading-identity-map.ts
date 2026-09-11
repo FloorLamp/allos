@@ -87,6 +87,12 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
     stream: null,
   },
   { canonical: "Oxygen Saturation", surface: "spo2", stream: null },
+  // `Respiratory Rate` IS an observation-only identity, and #5409 is what proved it.
+  // The claim used to be wrong by accident: a wearable's nightly breathing rate was
+  // being written under this name as a `medical_records` vital, so the stream existed
+  // and was filed in the wrong place. It is its own identity now (below), and this
+  // entry means what it says — a spot count taken while awake, judged at 12-20 with
+  // LOINC 9279-1, arriving from a document or by hand and from nowhere else.
   { canonical: "Respiratory Rate", surface: "respiratory-rate", stream: null },
   { canonical: "Body Temperature", surface: "temperature", stream: null },
 
@@ -140,6 +146,37 @@ export const READING_IDENTITY_MAP: readonly ReadingIdentityEntry[] = [
       store: "metric_samples",
       key: "peak_flow_lmin",
       unit: "L/min",
+    },
+  },
+  // ── The sleeping breathing rate (#5409) — a STREAM, and a SEPARATE quantity ──
+  //
+  // A wrist tracker computes one breathing rate per sleep log and re-publishes it with
+  // a new stamp whenever it extends the log. Filed as a stamp-keyed `medical_records`
+  // vital it was three lab results for one night; it is a sleep-window sample now,
+  // keyed on the session start as sleep's own rows are.
+  //
+  // ITS OWN CANONICAL NAME IS THE LOAD-BEARING PART (owner ruling, 2026-09-05). This
+  // map's discipline is that a stream may join a canonical name only when it measures
+  // the SAME quantity, and a sleeping average is not the clinical spot count `Respiratory
+  // Rate` curates at 12-20 — the way Resting Heart Rate is a daily aggregate distinct
+  // from Heart Rate, which this map already keeps apart. Registering the nightly stream
+  // under `Respiratory Rate` would have granted a sleeping average the awake band.
+  //
+  // `surface` IS NULL, AND THAT IS A DEFERRAL, NOT THE RULING. #5409 rules this quantity
+  // onto its own `breathing-rate` metric surface. Registering that slug means adding it
+  // to `TREND_METRIC_SLUGS`, whose census contract (`trendMetricCensusEntries`) is a
+  // TOTAL `Record`, so the slug cannot compile without the Trends body section supplying
+  // its series in the same change — an `app/` edit. Null until that lands, which is the
+  // honest state: this entry claims the STREAM half only. The readings are not hidden
+  // meanwhile — the night states the reading on the record's Sleep row (lib/history.ts)
+  // and Data -> Manage lists the rows.
+  {
+    canonical: "Breathing Rate (sleep)",
+    surface: null,
+    stream: {
+      store: "metric_samples",
+      key: "respiratory_rate_bpm",
+      unit: "breaths/min",
     },
   },
 ];

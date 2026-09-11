@@ -1,4 +1,5 @@
-import { writeTx } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
+import { adoptWearableBreathingRates } from "@/lib/breathing-rate-db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
 import { compareWindowStarts, pushStampFor } from "@/lib/metric-window-overlap";
@@ -340,6 +341,27 @@ export function ingestHealthConnectPayload(
     }
   } catch (err) {
     throw new HealthConnectWriteError(err, snapshot());
+  }
+
+  // ADOPTION: THE PROVISIONAL BREATHING RATE JOINS ITS NIGHT (#5409).
+  //
+  // AFTER THE VITALS, because it reads them: a reading this very push landed as an
+  // observation (its session had not arrived when it was published) is adopted in the
+  // same run that stored it, so a night never shows a spot reading beside its own
+  // nightly row. The samples are already durable above, so the sessions it matches
+  // against are this push's.
+  //
+  // ISOLATED (#1285), like the sleep collapse and the post-commit arming: every write
+  // above has committed, so a failure here must not report an otherwise-successful push
+  // as a full sync failure. It is re-derived from the store on every push, so the cost
+  // of a miss is one push of convergence and the reading is visible meanwhile.
+  try {
+    writeTx(() => adoptWearableBreathingRates(db, profileId));
+  } catch (err) {
+    log.error("breathing-rate adoption failed after Health Connect ingest", {
+      profileId,
+      err,
+    });
   }
 
   // ── THE CONTINUOUS-GLUCOSE TRACE (#3182) ──

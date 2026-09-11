@@ -15,6 +15,12 @@ import {
 } from "@/lib/ingest-bounds";
 import { toKg } from "@/lib/units";
 import { resolveActivityType } from "@/lib/activity-meta";
+import {
+  BREATHING_RATE_CANONICAL,
+  BREATHING_RATE_METRIC,
+  mainSessionForDay,
+  type BreathingRateSession,
+} from "@/lib/breathing-rate";
 import type { ActivityType } from "@/lib/types";
 import type {
   NormActivity,
@@ -476,9 +482,19 @@ export function parseDailyRestingHrCsv(
   return out;
 }
 
-// Daily respiratory rate and daily SpO2 → medical_records vitals, matching the
-// canonical names/units the Health Connect parser writes so a Takeout reading and a
-// synced one share one series and one reference-range flag.
+// Daily SpO2 → a medical_records vital, matching the canonical name/unit the Health
+// Connect parser writes so a Takeout reading and a synced one share one series and one
+// reference-range flag.
+//
+// DAILY RESPIRATORY RATE IS NOT ONE OF THOSE ANY MORE (#5409). Fitbit's
+// `daily_respiratory_rate` is the same NIGHTLY number Health Connect carries stamped at
+// the sleep session's end — one reading per sleep log, labelled by the wake day rather
+// than by an instant. It is a `respiratory_rate_bpm` sample now, under its own canonical
+// identity `Breathing Rate (sleep)`, and it never becomes a clinical `Respiratory Rate`
+// observation. Its window is this file's own day-bucket span, which
+// `resolveTakeoutBreathingRateWindows` narrows to the wake day's main session when the
+// archive carried one — the ruling's order: a session when there is one, the day
+// otherwise, never a clock and never an observation.
 //
 // SpO2 uses the DAILY file, never `Minute SpO2`: the minute stream from a wrist
 // sensor carries physiologically impossible excursions (a real archive holds a 50.0
@@ -499,11 +515,13 @@ export function parseDailyVitalCsv(
     kind === "respiratory_rate"
       ? {
           column: "breaths per minute",
-          canonical: "Respiratory Rate",
+          bounds: BREATHING_RATE_METRIC,
+          canonical: BREATHING_RATE_CANONICAL,
           unit: "breaths/min",
         }
       : {
           column: "average percentage",
+          bounds: "Oxygen Saturation",
           canonical: "Oxygen Saturation",
           unit: "%",
         };
@@ -514,9 +532,23 @@ export function parseDailyVitalCsv(
     }
     const iso = row.timestamp;
     const date = dayLabelDate(iso);
-    const value = boundedOrNull(spec.canonical, csvNum(row[spec.column]));
+    const value = boundedOrNull(spec.bounds, csvNum(row[spec.column]));
     if (!date || !iso || value == null) {
       out.skipped++;
+      continue;
+    }
+    if (kind === "respiratory_rate") {
+      // One row per wake day, spanning that day — the same day-bucket window every
+      // other Takeout daily aggregate keys on (`finalizeDailySums`), so a re-import of
+      // the archive updates in place. It is a PROVISIONAL window: the archive's own
+      // sleep logs narrow it to the night below, when the archive carried them.
+      out.samples.push({
+        metric: BREATHING_RATE_METRIC,
+        date,
+        started_at: `${date}T00:00:00.000Z`,
+        ended_at: `${date}T23:59:59.999Z`,
+        value,
+      });
       continue;
     }
     out.vitals.push({
@@ -534,6 +566,49 @@ export function parseDailyVitalCsv(
     });
   }
   return out;
+}
+
+/**
+ * Narrow each nightly breathing rate onto the sleep session it summarizes.
+ *
+ * THE ARCHIVE IS THE ONLY PLACE THIS CAN BE ASKED. `daily_respiratory_rate` carries a
+ * day label and no instant, and its own file has no idea when the person slept — the
+ * sleep logs are a different family in a different file. So the resolution happens once,
+ * over the WHOLE parsed archive, after every family has been read: a reading whose wake
+ * day holds a session takes that session's window (the main one, longest, the same
+ * election the sleep surfaces make), and a reading whose day holds none keeps the day
+ * window it arrived with. Never an observation, and never a clock (#5409).
+ *
+ * Mutates in place: the accumulator is a parse buffer, and copying an archive-sized
+ * sample array to change two fields on a few hundred rows would be the expensive way to
+ * say the same thing.
+ */
+export function resolveTakeoutBreathingRateWindows(
+  parsed: TakeoutParsed
+): void {
+  const sessions: BreathingRateSession[] = [];
+  for (const s of parsed.samples) {
+    if (s.metric !== "sleep_min") continue;
+    const startMs = Date.parse(s.started_at);
+    const endMs = Date.parse(s.ended_at);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+    sessions.push({
+      startedAt: s.started_at,
+      endedAt: s.ended_at,
+      startMs,
+      endMs,
+      wakeDay: s.date,
+      origin: null,
+    });
+  }
+  if (sessions.length === 0) return;
+  for (const s of parsed.samples) {
+    if (s.metric !== BREATHING_RATE_METRIC) continue;
+    const night = mainSessionForDay(s.date, sessions);
+    if (!night) continue;
+    s.started_at = night.startedAt;
+    s.ended_at = night.endedAt;
+  }
 }
 
 // ---- intraday: heart rate ----

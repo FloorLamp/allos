@@ -111,6 +111,10 @@ describe("both halves derive from it, and agree in both directions", () => {
     ]);
     expect(STREAM_READING_SOURCES.map((s) => s.canonical).sort()).toEqual([
       "Body Fat Percentage",
+      // #5409: a wearable's nightly breathing rate is a sleep-window sample, and its
+      // own quantity — registered as a STREAM with no surface yet (the `breathing-rate`
+      // slug needs the Trends census entry that compiles with it).
+      "Breathing Rate (sleep)",
       "Peak Expiratory Flow",
       "Resting Heart Rate",
     ]);

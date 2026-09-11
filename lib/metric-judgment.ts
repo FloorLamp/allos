@@ -357,6 +357,28 @@ export const QUANTITY_KNOWLEDGE: Record<string, MetricKnowledge> = {
     marker: "Timed Up-and-Go",
     renderedBy: "the Fitness check's outcome card (/training/fitness-check)",
   },
+  // THE SLEEPING BREATHING RATE (#5409, owner ruling 2026-09-05) — declared `none`, and
+  // the declaration is the point rather than a formality.
+  //
+  // Its neighbour `Respiratory Rate` carries a curated 12-20 band, and the whole reason
+  // this quantity has its own canonical name is that the band is NOT its. A spot count
+  // while awake and an overnight average from a wrist device are different quantities;
+  // an adult's nightly 13.6 is ordinary and 12-20 would flag half of a healthy
+  // sleeper's nights. There is no curated population range for a sleeping breathing
+  // rate, so the honest answer is that nothing judges the value on its own — it is read
+  // as a trend against this profile's own usual nights.
+  //
+  // `none` IS WHAT KEEPS THE BAND AWAY. `quantityKnowledge` is keyed by #482 identity,
+  // and `Breathing Rate (sleep)` and `Respiratory Rate` are separate identities
+  // (`biomarkerFamily` collapses neither into the other), so the clinical band is
+  // unreachable from the nightly reading by construction rather than by a filter
+  // somebody has to remember. `metric-judgment`'s `respiratory-rate` slug still names
+  // the CLINICAL canonical entry, unchanged, and still judges a nurse's count at 12-20.
+  "Breathing Rate (sleep)": {
+    source: "none",
+    reason:
+      "no population band exists for a sleeping breathing rate; the 12-20 range on `Respiratory Rate` is for a spot count taken while awake and judging a nightly average against it would flag ordinary nights (#5409)",
+  },
 };
 
 // Every judged quantity's knowledge, keyed by #482 IDENTITY — the two halves folded
