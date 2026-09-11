@@ -837,6 +837,27 @@ describe("illnessTimelineEvents", () => {
       "4 days ago"
     );
   });
+
+  // #4550: this ladder used to terminate at days and capitalize its forward half.
+  // It is the app-wide one now, in both directions.
+  it("climbs past days and speaks the shared forward vocabulary", () => {
+    expect(relativeEpisodeDateLabel("2026-05-25", "2026-06-04")).toBe(
+      "1 week ago"
+    );
+    expect(relativeEpisodeDateLabel("2025-06-04", "2026-06-04")).toBe(
+      "1 year ago"
+    );
+    expect(relativeEpisodeDateLabel("2026-06-05", "2026-06-04")).toBe(
+      "Tomorrow"
+    );
+    expect(relativeEpisodeDateLabel("2026-06-07", "2026-06-04")).toBe(
+      "in 3 days"
+    );
+    expect(relativeEpisodeDateLabel("2026-07-04", "2026-06-04")).toBe(
+      "in 1 month"
+    );
+    expect(relativeEpisodeDateLabel("nope", "2026-06-04")).toBeNull();
+  });
 });
 
 // #2612: the fever chart's dose lane gets a LEGEND, not the per-day table again.
