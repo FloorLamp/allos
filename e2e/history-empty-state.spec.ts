@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs, followLink } from "./nav";
+import { appContent } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TL_EMPTY } from "./fixture-logins";
 
 // A deep-past day (the #1511 relative-or-deep-past rule) used only to prove that a
@@ -129,7 +130,7 @@ test.describe("the record's base empty state (#1410)", () => {
       await expect(heading).toHaveCount(1);
       await expect(heading).not.toHaveText("History");
       await expect(
-        page.getByTestId("history-page").getByText("0 records", { exact: true })
+        appContent(page).getByText("0 records", { exact: true })
       ).toBeVisible();
       // Below `sm` the h1 is `sr-only` and the visible name is the sticky bar's,
       // count included — the half the phone screenshot in #4918 was taken of.
@@ -152,7 +153,7 @@ test.describe("the record's base empty state (#1410)", () => {
 
       await page.goto("/history?day=2099-01-01");
       await expect(
-        page.getByTestId("history-page").getByText("0 records", { exact: true })
+        appContent(page).getByText("0 records", { exact: true })
       ).toBeVisible();
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(page.getByTestId("timeline-day-name")).toHaveText(

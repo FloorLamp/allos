@@ -2,7 +2,12 @@ import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
+import {
+  appContent,
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+} from "./helpers";
 import { MONTHS_SHORT, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { formatLongDate } from "@/lib/format-date";
 
@@ -189,7 +194,7 @@ test.describe("the record (#3958)", () => {
     // date, the count on the line under it, and `History` printed exactly once — as
     // the way back. Scoped to the page, because the app shell's nav carries its own
     // History link and the claim is about what this page says twice.
-    const content = page.getByTestId("history-page");
+    const content = appContent(page);
     const h1 = page.getByRole("heading", { level: 1 });
     await expect(h1).toHaveCount(1);
     await expect(h1).toHaveText(formatLongDate(DAY));
@@ -205,11 +210,11 @@ test.describe("the record (#3958)", () => {
     // …and the arrows it leaves behind are still its two ends, not three items
     // spread evenly across the column by `justify-between` with the name removed.
     const nav = page.getByTestId("timeline-day-nav"); // testid-scope-ok: the day bar is the page frame, outside any streamed boundary
-    const next = page.getByTestId("timeline-day-next");
+    const next = nav.getByTestId("timeline-day-next");
     const [navBox, prevBox, nextBox, endBox] = await Promise.all(
       [
         nav,
-        page.getByTestId("timeline-day-prev"),
+        nav.getByTestId("timeline-day-prev"),
         next,
         next.locator("xpath=.."),
       ].map(async (locator) => (await locator.boundingBox())!)
@@ -247,7 +252,7 @@ test.describe("the record (#3958)", () => {
     await expect(h1).toHaveCount(1);
     const phoneNameBox = (await header.boundingBox())!;
     expect(phoneNameBox.y).toBeLessThan(
-      (await page.getByTestId("intraday-panel").boundingBox())!.y
+      (await content.getByTestId("intraday-panel").boundingBox())!.y
     );
 
     // ── AND ON TODAY IT IS READ IN FULL, WITH ROOM TO SPARE (#5764) ──────────────
@@ -273,7 +278,7 @@ test.describe("the record (#3958)", () => {
     // constant that stops being true when the type changes.
     await page.goto(`/history?day=${TODAY}`);
     await expect(header).toBeVisible();
-    await expect(page.getByTestId("timeline-day-next")).toHaveCount(0);
+    await expect(next).toHaveCount(0);
     const fit = await header.evaluate((el) => {
       // The BOX is flex-sized, so `scrollWidth` equals `clientWidth` the moment the
       // text fits and can measure no headroom. The text's own Range can.
@@ -624,7 +629,7 @@ test.describe("the record (#3958)", () => {
     await expect(named).toBeVisible();
     expect(await named.textContent()).not.toContain("2099");
     await phone(page);
-    const barName = page.getByTestId("timeline-day-name");
+    const barName = appContent(page).getByTestId("timeline-day-name");
     await expect(barName).toBeVisible();
     expect(await barName.textContent()).not.toContain("2099");
   });
