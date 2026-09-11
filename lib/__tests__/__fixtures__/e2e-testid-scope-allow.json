@@ -137,7 +137,7 @@
   "goal-facts.spec.ts": 7,
   "goal-metric-switch.spec.ts": 1,
   "hearing.spec.ts": 8,
-  "helpers.ts": 28,
+  "helpers.ts": 24,
   "history-day-swipe.mobile.spec.ts": 13,
   "history-day-view.spec.ts": 25,
   "history-empty-state.spec.ts": 12,

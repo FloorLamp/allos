@@ -1,7 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import DashboardPlacementCanvas from "../../components/dashboard/DashboardPlacementCanvas";
 import {
   orderedIllnessGroupKeys,
   rankDashboardCandidates,
@@ -14,7 +11,6 @@ import {
   profileDataRelevance,
   stateCandidate,
   readingCandidate,
-  setupCandidates,
 } from "../dashboard-candidates";
 
 const activeProfileId = 7;
@@ -108,6 +104,31 @@ function ordinary(
   });
 }
 
+// The live-workout state row, built inline. `setupCandidates.liveWorkout` emitted
+// exactly this and was deleted with the retired families (#5435 §4); the case below
+// is about the RANKER's now-lane seating, not the builder, so its input is stated
+// here rather than the case going with the family.
+function liveWorkout(
+  activityId: number,
+  sourceOrder: number
+): DashboardCandidate {
+  return stateCandidate({
+    candidateId: `workout.live:${activityId}`,
+    factKey: `workout.live:${activityId}`,
+    groupKey: null,
+    subject: { scope: "profile", profileId: activeProfileId },
+    applicable: true,
+    relevance: { kind: "state" },
+    sourceOrder,
+    rankReasons: {
+      safety: false,
+      owed: false,
+      windowOpen: false,
+      changed: true,
+    },
+  });
+}
+
 const rank = (candidates: DashboardCandidate[]) =>
   rankDashboardCandidates(candidates, {
     activeProfileId,
@@ -172,13 +193,7 @@ describe("dashboard illness ordering", () => {
     const now = rank([
       episodeMember(7, "active", 0, "state"),
       episodeMember(8, "member", 0, "state"),
-      setupCandidates.liveWorkout(
-        {
-          subject: { scope: "profile", profileId: activeProfileId },
-          sourceOrder: 1,
-        },
-        42
-      ),
+      liveWorkout(42, 1),
       ordinary("dose.owed", 2),
     ])
       .filter((placement) => placement.lane === "now")
@@ -191,17 +206,12 @@ describe("dashboard illness ordering", () => {
     ]);
   });
 
-  it("keeps the vitals bootstrap door in Setup without a reading-state input", () => {
-    const candidate = setupCandidates.vitalsBootstrap({
-      subject: { scope: "profile", profileId: activeProfileId },
-      sourceOrder: 1,
-    });
-
-    expect(rank([candidate])[0]).toMatchObject({
-      lane: "everything",
-      everythingGroup: "setup",
-    });
-  });
+  // THE VITALS BOOTSTRAP DOOR'S CASE IS RETIRED WITH ITS SUBJECT (#5435 §4). It
+  // asserted that `setupCandidates.vitalsBootstrap` landed in the everything lane's
+  // Setup group; the builder, the lane and the group are all deleted, so there is
+  // nothing left for it to assert. Recorded rather than silently dropped: whether
+  // the first-run vitals OFFER should have a successor seat on Home v3 is an open
+  // question for the owner, not a coverage gap this file can close.
 
   it("assigns a repeated fact exactly once to the earlier ordered episode", () => {
     const shared = "illness.temperature:42";
@@ -232,60 +242,13 @@ describe("dashboard illness ordering", () => {
     ).toEqual(["temperature-safety"]);
   });
 
-  it("renders episode safety in global safety order and scrubs it from the illness group", () => {
-    const shared = "illness.temperature:42";
-    const baseState = episodeMember(7, "active", 0, "state");
-    const state = {
-      ...baseState,
-      sourceOrder: 2,
-      factKey: shared,
-      rankReasons: { ...baseState.rankReasons, safety: true },
-    };
-    const temperature = episodeMember(7, "active", 0, "reading", 0, shared);
-    const illnessReading = episodeMember(
-      7,
-      "active",
-      0,
-      "reading",
-      1,
-      "illness.unique-reading"
-    );
-    const unrelatedSafety = ordinary("unrelated-safety", 1, { safety: true });
-    const placements = rank([
-      temperature,
-      illnessReading,
-      state,
-      unrelatedSafety,
-    ]);
-    const rows = new Map([
-      [unrelatedSafety.candidateId, { label: "unrelated-safety" }],
-      [state.candidateId, { label: "episode-safety" }],
-    ]);
-    const html = renderToStaticMarkup(
-      createElement(DashboardPlacementCanvas, {
-        dateLabel: "August 19, 2026",
-        placements,
-        presentations: rows,
-        aheadPresentations: new Map(),
-        attentionBadgeCount: 0,
-        illnessGroupNode: createElement(
-          "div",
-          { "data-testid": "whole-illness" },
-          "Whole illness"
-        ),
-      })
-    );
-    expect(html.indexOf("unrelated-safety")).toBeLessThan(
-      html.indexOf("episode-safety")
-    );
-    expect(html.indexOf("episode-safety")).toBeLessThan(
-      html.indexOf("whole-illness")
-    );
-    expect(
-      html.match(new RegExp(`data-fact-key="${shared}"`, "g"))
-    ).toHaveLength(1);
-    expect(html).not.toContain(temperature.candidateId);
-  });
+  // THE CANVAS HALF OF THIS FILE IS RETIRED WITH THE CANVAS (#5435 §4). A case here
+  // rendered `DashboardPlacementCanvas` to static markup and read three orderings off
+  // it — unrelated safety before episode safety before the whole-illness node, the
+  // shared fact printed once, the scrubbed member absent. The component is deleted, so
+  // the markup claim has no subject. Its RANKER half survives above, untouched: "assigns
+  // a fact shared by safety and an episode only to safety" makes the same claim about
+  // the placements themselves, which is where it was always decided.
 
   it("derives illness membership and order only from illness-layer placements", () => {
     const safetyState = episodeMember(7, "safety-only", 0, "state");
@@ -338,13 +301,25 @@ describe("dashboard illness ordering", () => {
       },
       sourceOrder: 1,
     });
-    const setup = setupCandidates.onboardingStep(
-      {
-        subject: { scope: "profile", profileId: activeProfileId },
-        sourceOrder: 2,
+    // `setupCandidates.onboardingStep` built this and went with the retired families
+    // (#5435 §4); what the case needs is a SETUP-relevance candidate, which is stated
+    // here rather than borrowed from a builder that no longer exists.
+    const setup = actionCandidate({
+      candidateId: "onboarding.step:1",
+      factKey: "onboarding.setup-step:1",
+      groupKey: "onboarding.setup",
+      subject: { scope: "profile", profileId: activeProfileId },
+      applicable: true,
+      relevance: { kind: "setup" },
+      obligation: "should",
+      rankReasons: {
+        safety: false,
+        owed: false,
+        windowOpen: false,
+        changed: false,
       },
-      1
-    );
+      sourceOrder: 2,
+    });
     const resolved = {
       ...ordinary("resolved", 3),
       timing: { kind: "until-signal" as const, active: false },

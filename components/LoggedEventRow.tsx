@@ -15,9 +15,12 @@ import type { ReactNode } from "react";
 // drifting into two shapes again.
 //
 // DIVIDERS, NOT PER-ROW CARDS (owner decision 2026-08-24, over #3077's "one dense
-// cluster of rows, not N cards"); `DashboardStandingCluster` is the reference markup.
-// FoodLogBar's list carried a border and a fill PER ROW — the second shape this
-// exists to retire, so it goes too.
+// cluster of rows, not N cards"). `DashboardStandingCluster` was the reference
+// markup and #5435 §4 deleted it; the reference is now the record's own day list —
+// `LOGGED_EVENT_LIST` on the `<ul>` at app/(app)/history/HistoryRows.tsx, which
+// Home renders too — so the frame this file exports IS the reference rather than
+// pointing at a second copy of it. FoodLogBar's list carried a border and a fill
+// PER ROW — the second shape this exists to retire, so it goes too.
 
 /** The frame a run of logged-event rows sits in: one border, hairlines inside. */
 export const LOGGED_EVENT_LIST =
