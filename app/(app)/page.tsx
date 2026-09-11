@@ -1,226 +1,128 @@
-import { formatCount } from "@/lib/format-number";
-import { cloneElement, type ReactElement } from "react";
+import { Suspense, type ReactNode } from "react";
+import { IconChevronDown } from "@tabler/icons-react";
+import Disclosure from "@/components/Disclosure";
 import { redirect } from "next/navigation";
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
-  getOutcomeGoals,
-  getOutcomeGoalProgressMap,
-  getFrequencyTargetProgress,
-  frequencyTargetLogWindowOpen,
-  getStrengthByExercise,
-  getCardioByActivity,
-  getRideBestRecaps,
-  getBodyMetricDailySeries,
-  getBodyMetricSeriesBySource,
-  getDashboardClinicalObservations,
-  getScheduledAppointments,
-  gatherCoachingInput,
-  getFindingSuppressions,
   collectAttentionDashboardData,
-  getHealthspanPillars,
-  getLastNightSummary,
-  getSleepWaitingState,
-  getNapHistory,
-  typicalWakeTime,
-  typicalBedTime,
-  getActiveProtocolSummaries,
-  getWorkoutPresence,
-  getSessionRecap,
-  getMoodOnDate,
-  getProteinToday,
-  getMetricDailyTotals,
-  getVitalsLatestModel,
   getCycleTrackingRelevance,
-  getPracticeDayCount,
+  getDaylightOutdoorMinutesByDay,
+  getFindingSuppressions,
+  getLastNightSummary,
+  getMetricDailyTotals,
+  getNapHistory,
+  getProteinToday,
+  getSleepWaitingState,
+  getWorkoutPresence,
+  gatherCoachingInput,
+  typicalBedTime,
+  typicalWakeTime,
 } from "@/lib/queries";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
-import { cycleControlState } from "@/lib/cycle-plausibility";
-import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
+import { getActiveFastCached } from "@/lib/queries/fasting";
+import { fastElapsedMs, formatFastDuration, type Fast } from "@/lib/fasting";
+import type { WorkoutPresence } from "@/lib/workout-presence";
+import {
+  cycleControlState,
+  type CycleControlState,
+} from "@/lib/cycle-plausibility";
+import PeriodOfferButton from "@/components/cycle/PeriodOfferButton";
+import { summarizeStepsToday } from "@/lib/steps-today";
+import { STEPS_AFTERNOON_HOUR } from "@/lib/steps-target";
 import IntradayChart from "@/components/IntradayChart";
-import { getIntradayDay, getIntradayDayWindows } from "@/lib/queries/intraday";
-import { getLatestHrDay } from "@/lib/queries/metrics";
+import { IntradayInteractionProvider } from "@/components/IntradayInteraction";
+import { getIntradayDay } from "@/lib/queries/intraday";
 import { intradayFreshness } from "@/lib/intraday";
 import {
   isFoodLoggingRelevant,
-  isLongevityRelevant,
   isStrengthTrainingRelevant,
   isTrainingRelevant,
 } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import {
-  canAcknowledgeRest,
   recommendCoaching,
-  recentCardioPRs,
-  recentPRs,
   strengthAppropriateCoachingInput,
-  type Recommendation,
 } from "@/lib/coaching";
-import { collectCoachingFindings } from "@/lib/rule-findings";
-import { pickNextAppointment } from "@/lib/household";
-import { isGoalLive } from "@/lib/outcome-goals";
-import { goalProgressStatement } from "@/lib/goal-facts";
-import {
-  frequencyPaceLabel,
-  frequencyScopeLabel,
-  isStrengthProgrammingScope,
-} from "@/lib/frequency-targets";
-import { cadenceScopeNoun } from "@/lib/cadence";
-import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
-import {
-  activeByKey,
-  activeFindings,
-  coachingDedupeKey,
-  type Finding,
-} from "@/lib/findings";
-import { routineOrder } from "@/lib/dismissal-fatigue";
+import { COACHING_COLLECTION } from "@/lib/rule-findings";
+import { activeFindings } from "@/lib/findings";
 import { requireSession } from "@/lib/auth";
 import { canWrite, requireScope, type ProfileScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupName } from "@/lib/food-groups";
-import {
-  namesPhrase,
-  usualRoutineFoodMembers,
-  usualRoutinePhrase,
-} from "@/lib/usual-routine";
-import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
+import { namesPhrase, usualRoutineFoodMembers } from "@/lib/usual-routine";
+import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import {
-  getOnboardingState,
-  getUnitPrefs,
   getDisplayFormatPrefs,
-  getTimezone,
-  getEmergencyCardEnabled,
-  getProfileHomeAssistant,
-  getLoginTelegram,
-  getRecentlyResolvedDismissed,
+  getHomeLocation,
+  getStepsDailyTarget,
   getIllnessNowUi,
+  getOnboardingState,
+  getRecentlyResolvedDismissed,
+  getTimezone,
+  getUnitPrefs,
+  withPrimedSettings,
 } from "@/lib/settings";
-import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
-import { hasConnectedDataSource } from "@/lib/integrations/connections";
-import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import {
-  shiftDateStr,
   hhmmToMinutes,
   hourInTz,
+  isRealIsoDate,
+  parseUtcSql,
+  shiftDateStr,
   zonedDateParts,
 } from "@/lib/date";
-import { ALL_ROWS } from "@/lib/trends";
 import {
   formatClockMinutes,
   formatLongDate,
+  formatMonthDay,
   formatRelativeTime,
-  daysRemainingLabel,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
+import { getUvDoseForDays } from "@/lib/queries/weather";
+import { solarDay } from "@/lib/sun";
+import { historyMemberFeed } from "@/lib/history";
 import {
-  clinicalResultClaimsFreshness,
-  clinicalResultHostsAcknowledge,
-  RECENT_LAB_STALE_LABEL,
-  recentLabHighlights,
-} from "@/lib/recent-labs";
+  HISTORY_DEFAULT_SHOW,
+  historyRowPick,
+  layoutHistoryDay,
+  type HistoryRow,
+} from "@/lib/history-format";
+import { groupHistoryBundles } from "@/lib/history-bundle";
+import HistoryRows from "./history/HistoryRows";
+import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
+import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
+import { isOnDemand } from "@/lib/intake-schedule";
 import {
-  DORMANCY_DOMAINS,
-  WEIGHT_TREND_WINDOW_DAYS,
-  dormancyState,
-  dormantRecordLine,
-  dormantRecordSince,
-} from "@/lib/domain-dormancy";
-import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
-import { freshnessAgeDays } from "@/lib/freshness";
-import { glanceAgeToken } from "@/lib/glance-age";
-import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
-import {
-  TREND_METRIC_PRESENTATION_FLOORS,
-  trendMetricPresentationFreshness,
-} from "@/lib/trend-metric-freshness";
-import { getRecapCard } from "@/lib/notifications/recap-data";
-import { upcomingRowQualifiers } from "@/lib/notifications/upcoming-digest";
-import { recapLineAnnotation, recapLineId, recapRangeLabel } from "@/lib/recap";
-import { recapScaleEntry } from "@/lib/recap-scale";
-import {
-  coachingObservationFindings,
-  dashboardHabitDomain,
-  dashboardHabitHref,
-  isDataQualityDashboardFinding,
-  orderDashboardHabits,
-} from "@/lib/dashboard-presentation";
-import {
-  localTimeWindow,
-  mealTimeWindows,
-  orderedIllnessGroupKeys,
-  rankDashboardCandidates,
-  type DashboardCandidate,
-} from "@/lib/dashboard-relevance";
-import {
-  cappedFamilyGather,
-  CLINICAL_RESULTS_CAP,
-  type StandingFamilyKey,
-} from "@/lib/dashboard-standing";
-import {
-  attentionEntries,
-  attentionEntryCandidate,
-  type AttentionEntry,
-  attentionAheadDetail,
-  attentionDoseChipLabel,
-  careCandidates,
-  dailyCandidates,
-  engagementFromSource,
-  preventiveReviewCandidate,
-  progressCandidates,
-  setupCandidates,
-  sleepCandidates,
-} from "@/lib/dashboard-candidates";
-import { attentionBadgeItems } from "@/lib/attention";
-import { getNotifySchedule } from "@/lib/settings/notifications";
-import { getStreamLifecycleOffers } from "@/lib/queries/stream-lifecycle";
-import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
-import { isMoodCheckinPaused } from "@/lib/mood";
-import {
-  hasOnboardingFirstValue,
-  nextOnboardingStep,
-  ONBOARDING_STEP_COUNT,
-  onboardingNeedsSetup,
-} from "@/lib/onboarding";
-import { getOnboardingDataPresence } from "@/lib/onboarding-data";
+  DaySelectToggle,
+  DaySelectionBar,
+  DaySelectionProvider,
+} from "@/components/DaySelection";
+import TimelineDayNav from "@/components/TimelineDayNav";
 import PageContainer from "@/components/PageContainer";
-import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
+import StreamedSection, { PendingSection } from "@/components/StreamedSection";
 import IllnessNowGroup, {
   type IllnessContextCockpit,
 } from "@/components/dashboard/IllnessNowGroup";
-import type {
-  DashboardStandingPresentation,
-  StandingFamilyDrawing,
-} from "@/components/dashboard/DashboardStandingCluster";
 import RecentlyResolvedReopenControls, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopenControls";
-import StreamLifecycleOfferControls from "@/components/integrations/StreamLifecycleOfferControls";
-import Button from "@/components/Button";
 import DoseConfirmButton from "@/components/DoseConfirmButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import DoseSlotTakeAll from "@/components/dashboard/DoseSlotTakeAll";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import FindingDismissButton from "@/components/FindingDismissButton";
-import PreventiveReviewControls from "@/components/PreventiveReviewControls";
-import { preventiveReviewQuestion } from "@/lib/preventive-review";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
+import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
 import {
-  confirmPreventiveRecord,
-  dismissPreventiveRecord,
-  resolveFollowUp,
-} from "./upcoming/actions";
-import {
-  acceptStreamReminder,
-  declineStreamReminder,
-  dismissStreamReminderOffer,
-  keepStreamReminder,
-} from "./stream-lifecycle-actions";
-import { dismissOnboardingChecklist } from "./onboarding/actions";
-import { orderedOnboardingChecklistTasks } from "@/lib/onboarding-checklist";
+  LOGGED_EVENT_LIST,
+  LOGGED_EVENT_ROW,
+  LOGGED_EVENT_TRAILING,
+} from "@/components/LoggedEventRow";
+import { resolveFollowUp } from "./upcoming/actions";
 import {
   episodeStatesForProfiles,
   openEpisodeRowsForProfiles,
@@ -229,9 +131,9 @@ import {
 } from "@/lib/illness-episode-store";
 import { openEpisodesFromState } from "@/lib/illness-episode";
 import {
+  assignOrderedEpisodeFacts,
   episodeCollapsedStatus,
   episodeLatestDose,
-  assignOrderedEpisodeFacts,
   orderIllnessCockpits,
 } from "@/lib/illness-episode-format";
 import {
@@ -240,11 +142,26 @@ import {
 } from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { householdFanoutWithActing } from "@/lib/household-fanout";
-import type { RecentLabRow } from "@/lib/recent-labs";
+import { careCandidates } from "@/lib/dashboard-candidates";
+import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
+import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import {
-  PillarToneBadge,
-  TrendArrow,
-} from "@/components/dashboard/HealthspanPillarPresentation";
+  dismissAttention,
+  dismissDataQualityGap,
+  dismissRecentlyResolved,
+  markAttentionDose,
+  saveIllnessNowState,
+  snoozeAttention,
+  undoAttentionDose,
+} from "./actions";
+import {
+  episodeHref,
+  historyHref,
+  trainingActivityPageHref,
+} from "@/lib/hrefs";
+import { visibleRecentlyResolved } from "@/lib/recently-resolved";
+import { withReadSnapshot } from "@/lib/read-snapshot";
+import { proteinTodayLineParts } from "@/lib/protein";
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { SLEEP_SKEW_HEDGE } from "@/lib/sleep-clock-skew";
 import { isSuspectSleepWakeDay } from "@/lib/queries/sleep-clock-skew";
@@ -254,162 +171,42 @@ import {
   formatUsualSleepBand,
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
-import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
-import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
-import {
-  StandingAge,
-  staleMeasurementDoor,
-  vitalsFamilySeat,
-} from "@/components/dashboard/StandingAge";
-import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
-import { LoggedViaSurface } from "@/components/LoggedViaSurface";
-import {
-  acknowledgeRest,
-  dismissAttention,
-  dismissCoachingObservation,
-  dismissDataQualityGap,
-  dismissRecentlyResolved,
-  markAttentionDose,
-  saveIllnessNowState,
-  snoozeAttention,
-  snoozeCoaching,
-  undoAttentionDose,
-} from "./actions";
-import {
-  trainingTabHref,
-  onboardingStepHref,
-  episodeHref,
-  encounterHref,
-  historyDayIntradayHref,
-  trainingActivityPageHref,
-  type AppRoute,
-} from "@/lib/hrefs";
-import {
-  formatSessionElapsed,
-  powerCurveLabel,
-  SPLIT_INTERVALS_M,
-} from "@/lib/cycling-analytics";
-import {
-  rideBestStatementDetail,
-  segmentPrStatement,
-} from "@/lib/cycling-bests";
-import { formatRecordDateTime } from "@/lib/record-format";
-import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
-import { visibleRecentlyResolved } from "@/lib/recently-resolved";
-import { withPrimedSettings } from "@/lib/settings";
-import { withReadSnapshot } from "@/lib/read-snapshot";
-import { proteinTodayExplanation, proteinTodayLineParts } from "@/lib/protein";
-import { MedicalValue } from "@/components/ui";
-import {
-  clinicalResultBecameNotable,
-  outcomeGoalProgressChanged,
-  sleepArrivedInWakeWindow,
-} from "@/lib/dashboard-reading-promotions";
-import {
-  biomarkerFlagDismissalKey,
-  prCardioDismissalKey,
-  prStrengthDismissalKey,
-} from "@/lib/dismissal-keys";
+import { formatCount } from "@/lib/format-number";
 import {
   isItemSuppressibleFlag,
   upcomingDueText,
   type UpcomingItem,
 } from "@/lib/upcoming";
-import { isSuppressed } from "@/lib/upcoming-suppress";
 import { itemDetailText } from "@/lib/upcoming-aggregate";
-import { loadContextLabel } from "@/lib/lifts";
+import {
+  composeHomeList,
+  composeHomeSetup,
+  type HomeLaterEntry,
+  type HomeList,
+  type HomeNowRow,
+  type HomeSetupRow,
+} from "@/lib/home-list";
+import type { OpenDayEpisode, OpenEpisode } from "@/lib/open-episode";
 import { formatMinutes } from "@/lib/duration";
+import HomeEndFastButton from "@/components/home/HomeEndFastButton";
+import type { WeightUnit } from "@/lib/settings/display";
 
 export const dynamic = "force-dynamic";
 
-// The soonest scheduled visit, flattened by the page (#171/#1215). `whenLabel`
-// carries date AND clock time through the login's display prefs — a 9am and a 4pm
-// visit must be distinguishable, so the time is half the answer.
-interface NextAppointment {
-  title: string;
-  whenLabel: string;
-  dueText: string;
-  detail: string | null;
-  href: AppRoute;
-}
-
-// AN ATTENTION ROW SAYS WHAT, THEN WHEN (#4076). Outside Ahead the item's own detail
-// is the content a person came to read — the biomarker retest sentence, "Vitamin D3 ·
-// 2000 IU" — and the due text seconds it. The detail keeps its own testid because the
-// machine-date census ledger (e2e/machine-date-census.spec.ts) tracks
-// `attention-item-detail` on `/` as a known offender, and a shrink-only ledger reads a
-// silent deletion as a failure — correctly.
-function attentionRowDetail(
-  item: UpcomingItem,
-  today: string,
-  formatPrefs: DisplayFormatPrefs
-) {
-  const due = upcomingDueText(item, today, formatPrefs);
-  // THE DETAIL IS RENDERED, NOT READ (#3526). The biomarker retest row's sentence is
-  // composed by a login-less generator and carries the raw ISO day; this is a surface
-  // WITH a login, so it re-composes the row's carried facts through the same
-  // `formatPrefs` the due text already uses. Every other item's detail is unchanged.
-  const detail = itemDetailText(item, today, formatPrefs);
-  if (!detail) return due;
-  return (
-    <>
-      <span data-testid="attention-item-detail">{detail}</span>
-      {due ? ` · ${due}` : null}
-    </>
-  );
-}
-
-// Every sentence the coaching card printed, in the row's facts column. `also` is the
-// #1148 rule: concurrent under-recovery signals are shown BEFORE a snooze can suppress
-// them, so a dismissal is informed and cannot silently bury a signal never seen.
-function coachingRowDetail(rec: Recommendation) {
-  const rest = [
-    rec.target ? `Suggested set: ${rec.target}` : null,
-    ...(rec.notes ?? []),
-  ].filter(Boolean);
-  return (
-    <>
-      {rec.detail}
-      {rec.also?.length ? (
-        <>
-          {" · "}
-          <span data-testid="coaching-also">
-            <span className="font-medium">Also:</span> {rec.also.join("; ")}.
-          </span>
-        </>
-      ) : null}
-      {rest.length > 0 ? ` · ${rest.join(" · ")}` : null}
-    </>
-  );
-}
-
-// A FINDING AS A ROW, WITHOUT LOSING WHAT IT SAYS (#4076). The card carried title,
-// detail, EVIDENCE and a CTA beside its dismiss; the row keeps all four — sentence and
-// evidence in the facts column, the CTA as the row's door — and hosts the same
-// dedupeKey-posting dismiss in the trailing slot. Reusing Ahead's presentation here
-// would have deleted the sentence, which is the trap this issue recorded twice.
-function findingRow(
-  finding: Finding,
-  dismissAction: (formData: FormData) => void | Promise<void>,
-  momentTitle: string
-): DashboardStandingPresentation {
-  return {
-    label: finding.title,
-    detail: [finding.detail, finding.evidence].filter(Boolean).join(" · "),
-    href: finding.actionHref,
-    actionLabel: finding.actionHref
-      ? (finding.actionLabel ?? "View")
-      : undefined,
-    moment: { title: momentTitle },
-    control: (
-      <FindingDismissButton
-        finding={finding}
-        dismissAction={dismissAction}
-        dismissTestid="finding-dismiss"
-      />
-    ),
-  };
-}
+// HOME IS THE RECORD'S DAY VIEW AT TODAY (#5435 §3).
+//
+// v2 ranked candidates into four lanes and cut them to a cap, so what a person saw at
+// 07:40 was not what they saw at 16:00 and neither was the whole of what was owed. v3
+// renders what `/history?day=<today>` renders — the day bar, the glance card and the
+// day's own rows — with three additions that exist only on today: a folded Later row, a
+// Now rule, and the due rows under it. WHAT GOES WHERE is `lib/home-list.ts`, which owns
+// every seat decision and takes no clock and no DB of its own; this file is the
+// URL → gather → render seam and nothing else.
+//
+// THE ROW CONTRACT (§5.1) reaches the DOM as `data-candidate-id`, deliberately keeping
+// the attribute name the ranker used: it is the e2e locator, the dismissal key and the
+// Telegram handoff's scroll target (§6.2), and 84 specs visit `/`. A rename is its own
+// PR, if ever.
 
 export default async function Dashboard() {
   const session = await requireSession();
@@ -425,11 +222,17 @@ export default async function Dashboard() {
   // every authorized profile (timezone, format and illness-UI reads per member), and
   // that set is exactly `scope.ids`. Priming it here instead of mid-render keeps the
   // preload in the frame that opens the cache, which is the only frame it reaches
-  // (#5012) — see `withPrimedSettings`.
+  // (#5012) — see `withPrimedSettings`. The streamed sections below open their own,
+  // for the same reason: an AsyncLocalStorage scope does not cross into a child
+  // Server Component React schedules itself (§6.1's "the cache spans every boundary"
+  // is that call, not an inherited scope).
   return withPrimedSettings(
     { loginId: scope.loginId, profileIds: scope.ids },
     () => {
       const profileAge = getProfileAge(session.profile.id);
+      // #5435 §6.4: the navigation-triggered recommendation keeps its position —
+      // before the onboarding redirect, inside the request's own frame, quota and
+      // consent unchanged. Deleting presentation must not move this side effect.
       if (isTrainingRelevant(profileAge)) {
         void withAiLogContext(
           { loginId: session.login.id, profileId: session.profile.id },
@@ -440,18 +243,18 @@ export default async function Dashboard() {
             })
         );
       }
-      return withReadSnapshot(() => renderDashboard(session, scope, profileAge));
+      return withReadSnapshot(() => renderHome(session, scope, profileAge));
     }
   );
 }
 
-async function renderDashboard(
+async function renderHome(
   session: Awaited<ReturnType<typeof requireSession>>,
   scope: ProfileScope,
   profileAge: ReturnType<typeof getProfileAge>
 ) {
   const { login, profile, access } = session;
-  const actingCanWrite = access === "write";
+  const writable = canWrite(scope, profile.id);
   const storedOnboarding = getOnboardingState(profile.id);
   if (access === "write" && storedOnboarding?.status === "not_started") {
     redirect("/onboarding");
@@ -462,79 +265,24 @@ async function renderDashboard(
   const timezone = getTimezone(profile.id);
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
+  const nowInstant = clockNow();
+  const nowMinutes = hhmmToMinutes(zonedDateParts(timezone, nowInstant).hhmm);
 
-  // Finished-window session recap card (#924): while derived workout presence reads
-  // `finished`, surface the just-ended session's recap (self-view only). NEVER gated
-  // on live mode — a manual fresh-end-time log or a freshness-capped import also
-  // enters `finished`. The card feeds off the ONE server-side sessionRecap gather;
-  // it disappears when the 60-min window closes on the next render. Skipped for a
-  // Shown only when there's strength work to recap (a pure-cardio finish has no
-  // working sets).
-  const workoutPresence = getWorkoutPresence(profile.id);
-  const finishedRecap =
-    workoutPresence?.state === "finished" && workoutPresence.activityId != null
-      ? getSessionRecap(profile.id, workoutPresence.activityId)
-      : null;
-  const showRecapCard =
-    strengthTrainingAvailable &&
-    finishedRecap != null &&
-    finishedRecap.totalWorkingSets > 0;
-
-  // Gather the unified attention model and its unchanged Upcoming input once. Atomic
-  // candidates from that model are distributed by the four-zone resolver; the
-  // act-now subset supplies only the app-badge count. Viewer units ride along so
-  // measurement-carrying item copy stays consistent with Upcoming.
   const accessible = scope.profiles;
-  // Own-profile link (#1013): the acting-profile write forms (the weight quick-add)
-  // name the subject when the login is acting as someone OTHER than its own profile,
-  // so a weigh-in never silently lands on the wrong person's record. Null (no naming)
-  // when acting as self or no own-profile is set. Disambiguated (#534).
-  const ownProfileId = scope.ownProfileId;
+  // Own-profile link (#1013): the acting-profile write forms name the subject when the
+  // login is acting as someone OTHER than its own profile. Null (no naming) when acting
+  // as self or no own-profile is set. Disambiguated (#534).
   const actingSubjectName = writeSubjectName(
-    ownProfileId,
+    scope.ownProfileId,
     profile.id,
     disambiguateProfileNames(accessible).get(profile.id) ?? profile.name
   );
-  const onboardingState =
-    access === "write" && onboardingNeedsSetup(storedOnboarding)
-      ? storedOnboarding
-      : null;
-  const onboardingChecklist =
-    storedOnboarding?.status === "complete" &&
-    !storedOnboarding.checklistDismissed
-      ? storedOnboarding
-      : null;
-  const onboardingPresence = onboardingState
-    ? {
-        ...getOnboardingDataPresence(profile.id),
-        caregiving: accessible.length > 1,
-      }
-    : null;
-  const onboardingChecklistCompletion = onboardingChecklist
-    ? {
-        ...getOnboardingDataPresence(profile.id),
-        caregiving: accessible.length > 1,
-        emergency: getEmergencyCardEnabled(profile.id),
-        connectedDataSource: hasConnectedDataSource(profile.id),
-        notifications:
-          onboardingChecklist.notificationIntent === "none" ||
-          getLoginTelegram(login.id).telegramEnabled ||
-          getProfileHomeAssistant(profile.id).enabled ||
-          countPushSubscriptionsForLogin(login.id) > 0,
-      }
-    : null;
-  const { attention, upcoming } = collectAttentionDashboardData(
-    profile.id,
-    on,
-    units
-  );
+  const { attention } = collectAttentionDashboardData(profile.id, on, units);
 
-  // Applicability belongs to each candidate and is never inferred from missing data.
-  // These bits reuse the same life-stage/navigation decisions as the owning routes.
+  // Applicability belongs to each row and is never inferred from missing data. These
+  // bits reuse the same life-stage/navigation decisions as the owning routes.
   const foodLoggingApplicable = isFoodLoggingRelevant(profileAge);
   const cycleApplicable = getCycleTrackingRelevance(profile.id, profileAge);
-  const adultContentApplicable = isLongevityRelevant(profileAge);
-
   // Every authorized OPEN illness episode becomes a whole cockpit, including a newly
   // opened episode with no facts yet. Discovery is one grants-scoped query across the
   // full profile scope; only profiles with open rows pay the downstream batched gather.
@@ -627,7 +375,6 @@ async function renderDashboard(
     ])
   );
 
-  const dashboardNow = clockNow();
   const cockpitModelByEpisode = new Map<number, DashboardIllnessCockpitModel>();
   const cockpitCountByProfile = new Map<number, number>();
   for (const cockpit of orderedCockpits)
@@ -651,7 +398,7 @@ async function renderDashboard(
       canWrite: canWrite(scope, profileId),
       temperatureUnit: units.temperatureUnit,
       weightUnit: units.weightUnit,
-      now: dashboardNow,
+      now: nowInstant,
       presentationEpisodes,
     });
     for (const [episodeId, model] of gathered)
@@ -675,7 +422,7 @@ async function renderDashboard(
       {
         timeZone: getTimezone(c.profileId),
         timeFormat: formatPrefs.timeFormat,
-        now: clockNow(),
+        now: nowInstant,
       }
     );
     const displayStatus = episodeCollapsedStatus(
@@ -684,7 +431,7 @@ async function renderDashboard(
       {
         timeZone: getTimezone(c.profileId),
         timeFormat: formatPrefs.timeFormat,
-        now: clockNow(),
+        now: nowInstant,
       }
     );
     // ONE COLLAPSED READING, drawn twice (#4752 item 1): the accordion line above the
@@ -762,24 +509,6 @@ async function renderDashboard(
   });
   const illnessUi = getIllnessNowUi(profile.id);
 
-  // WHO EACH NOW CLUSTER IS ABOUT (#4752 item 6). The ranker keys a group by profile
-  // id and only groups at all when a cross-profile row is present, so this map is
-  // consulted exactly when there is more than one subject on screen. The viewer's own
-  // cluster says "You", not their name — that is what a person reading their own
-  // dashboard recognizes above their own rows.
-  const nowSubjectNames = disambiguateProfileNames(accessible);
-  const nowSubjects = new Map(
-    accessible.map((p) => [
-      String(p.id),
-      {
-        key: String(p.id),
-        profile: p,
-        name:
-          p.id === profile.id ? "You" : (nowSubjectNames.get(p.id) ?? p.name),
-      },
-    ])
-  );
-
   // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
   // bounded household member, the most-recent episode still inside its 7-day reopen
   // window (the SAME episodeReopenEligibility rule the detail page uses). Cross-profile
@@ -820,414 +549,83 @@ async function renderDashboard(
     getRecentlyResolvedDismissed(login.id)
   );
 
-  // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
-  // link that surfaces near the illness Now group when any accessible member is currently or
-  // recently sick, and recedes once the house is well. Only for a multi-profile login
-  // (a single-profile login has no household to merge). Reads the LITERAL SAME rows the
-  // illness context and reopen facts read — one gather, three derivations (#2115); the comment
-  // here used to claim that reuse while isHouseholdRecentlySick re-issued both SELECTs
-  // per profile. Bounded by the same illness fan-out, viewer included (#2446).
-  // It is a link, NOT a notification and NOT a finding (no dedupeKey, no bus): it appears
-  // because it's useful and disappears on its own.
+  // ── THE THREE STATE ROWS, ON ONE LIFECYCLE (#5142 / §3.2 band 2) ──────────────
   //
-  // The typed login-scoped candidate survives the active-profile scope boundary and
-  // lands once in Show everything. It remains a calm link, not a finding or send.
-  const promoteHouseholdHistory =
-    accessible.length > 1 && isHouseholdRecentlySickFromStates(episodeStates);
+  // Training, Fast and Period are three renderings of ONE question — "is this still
+  // going?" — asked through `lib/open-episode.ts` and answered by the composer. This
+  // page's job is to hand it each domain's own evidence, never a second reading of it.
 
-  // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
-  // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
-  // day and disagree with the body census this dashboard presentation links to. Windowed by DATE
-  // (a deliberate trailing-90-day glance) rather than the old undisclosed 60-row cap.
-  const weightTrendSince = shiftDateStr(on, -(WEIGHT_TREND_WINDOW_DAYS - 1));
-  // The UNWINDOWED series is kept: its newest day is the weight domain's last record,
-  // which is what separates "never weighed" from "stopped weighing" below (#2652). The
-  // card and the dormancy verdict therefore read one computation, not two (#221).
-  const weightSeries = getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS);
-  const latestWeightPoint = weightSeries.at(-1) ?? null;
-  const weightSource = latestWeightPoint
-    ? getBodyMetricSeriesBySource(profile.id, "weight", 1).find((series) =>
-        series.data.some(
-          (point) =>
-            point.date === latestWeightPoint.date &&
-            point.value === latestWeightPoint.value
-        )
-      )?.source
-    : null;
-  const weightEngagement = engagementFromSource(weightSource);
-  const bodyMetrics = weightSeries
-    .filter((p) => p.date >= weightTrendSince)
-    .map((p) => ({
-      date: p.date,
-      value: dispWeight(p.value, units.weightUnit),
-    }));
-
-  // healthspan-pillars (issue #161): the visible longevity pillars, each consuming
-  // its already-merged source computation. buildPillars omits an absent pillar, so
-  // an empty array means no pillar has data yet (the data-aware CTA below).
-  const pillars = adultContentApplicable
-    ? getHealthspanPillars(profile.id)
-    : [];
-
-  // Sleep candidates and the Sleep page share the same last-night summary.
-  const sleepSummary = getLastNightSummary(profile.id);
-  const sleepPresentation = sleepSummary
-    ? sleepRecordPresentation(sleepSummary.wakeDay, on, formatPrefs)
-    : null;
-  // The morning waiting window (#2097). When it is open, the atom names the state
-  // INSTEAD of showing a headline duration for a night nobody asked about — the
-  // recorded night drops to a quiet secondary line and stays one tap away on /sleep.
-  // Null (the common case) leaves every existing branch exactly as it was.
-  const sleepWaiting = getSleepWaitingState(
-    profile.id,
-    sleepSummary?.wakeDay ?? null
-  );
-  const typicalWakeMinutes = sleepWaiting ? typicalWakeTime(profile.id) : null;
-  // The USUAL BAND behind last night's actuals (#3253's rider): the profile's own
-  // typical bed and wake times, read VERBATIM from the pair the notification schedule
-  // already keys on. Zero new derivation — the classifier answers null below its
-  // minimum-nights gate and the row then says nothing at all, which is the whole
-  // contract. Only asked when there is a recorded night for it to sit behind.
-  const usualSleepBand = (() => {
-    if (!sleepSummary) return undefined;
-    const bed = typicalBedTime(profile.id);
-    const wake = typicalWakeTime(profile.id);
-    const band = formatUsualSleepBand(formatPrefs.timeFormat, bed, wake);
-    return band == null ? undefined : `Usual ${band}`;
-  })();
-  // Does last night's SYNCED session disagree with the heart rate recorded across it
-  // (#4299)? Two consequences below, both about not stating a fabricated time as fact:
-  // the bed/wake rows carry the hedge instead of the usual band, and the family holds no
-  // attention claim — an alarm built on contradicted data is noise wearing a safety
-  // costume. Asked only where there is a recorded night to ask about.
-  const sleepClockSkewSuspect =
-    sleepSummary != null &&
-    isSuspectSleepWakeDay(profile.id, sleepSummary.wakeDay);
-  const sleepPreviousNightLabel =
-    sleepSummary && sleepPresentation?.freshness === "recent"
-      ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
+  // The workout draft as an open episode. `lastSignalAt` is the draft's last save, which
+  // is the presence derivation's own liveness signal (#451/#5142) — read back off the
+  // result rather than recomputed here, so the dock and this row cannot disagree about
+  // whether a session is still going.
+  const workoutPresence = getWorkoutPresence(profile.id, nowInstant);
+  const liveWorkout: OpenEpisode | null =
+    workoutPresence.state === "active" && workoutPresence.lastSignalAt != null
+      ? {
+          kind: "workout",
+          lastSignalAt: workoutPresence.lastSignalAt,
+          expectedEnd: null,
+        }
       : null;
-  // Today's nap candidates reuse the detailed model the Sleep page renders.
-  const todayNaps = getNapHistory(profile.id, 1).today;
-
-  // Recent clinical results: rank every canonical member in the shared
-  // recentLabHighlights order (that order is unchanged), then mint candidates for
-  // the rows the dashboard can actually seat — the Standing registry's capped
-  // membership, plus any marker whose promotion is live. The tail beyond the cap
-  // is not a dashboard fact in any lane (#3186); /results owns the full census.
-  //
-  // The promotion union is what makes the cap safe: with the cap already full of
-  // notable markers, a marker that has JUST become notable sits outside the top
-  // rows, and a plain slice would silently drop its Now card.
-  let labRows: RecentLabRow[] = [];
-  const labPromotions = new Map<
-    string,
-    {
-      changed: boolean;
-      fresh: boolean;
-      // The signal key this row's OWN acknowledge control posts, or absent when it
-      // needs none (#4232). See the mount below for why it is decided here.
-      acknowledgeKey?: string;
-      sharedFactKey?: string;
-    }
-  >();
-  {
-    const observations = getDashboardClinicalObservations(profile.id);
-    const activeAttentionKeys = new Set(attention.map((item) => item.key));
-    // An acknowledged marker spends its notable-first precedence (#3225). The
-    // acknowledgment IS the flag dismissal — one state, not two (owner ruling
-    // 2026-08-20) — read through the same suppression bus every other consumer of
-    // the key reads, which is also where a new draw has already re-armed it.
-    const labSuppressions = getFindingSuppressions(profile.id);
-    const labAcknowledged = (name: string): boolean => {
-      const rec = labSuppressions.get(biomarkerFlagDismissalKey(name));
-      return rec != null && isSuppressed(rec, on);
-    };
-    for (const observation of observations) {
-      const name = observation.canonical_name?.trim() || observation.name;
-      const findingKey = biomarkerFlagDismissalKey(name);
-      const changed =
-        activeAttentionKeys.has(findingKey) &&
-        clinicalResultBecameNotable(
-          observation.flag,
-          observation.previous_id == null
-            ? undefined
-            : observation.previous_flag
-        );
-      // FRESH RESULTS ARE RELEVANT (#4232). A result collected inside the window
-      // claims Standing's attention tier whether or not it is notable, and the claim
-      // ends on acknowledgment or when the window lapses, whichever is first — the
-      // acknowledge lifecycle #3225 already runs, read through the same suppression
-      // bus above. The date is the COLLECTION date the record carries, so a
-      // backfilled import of old results claims nothing.
-      const acknowledged = labAcknowledged(name);
-      const fresh = clinicalResultClaimsFreshness(
-        observation.date,
-        on,
-        acknowledged
-      );
-      labPromotions.set(name, {
-        changed,
-        fresh,
-        // Which rows host their own acknowledge control, and why — see
-        // `clinicalResultHostsAcknowledge`, which owns the rule so this surface and
-        // the result detail page's "Seen it" cannot drift apart.
-        ...(clinicalResultHostsAcknowledge({
-          collectedOn: observation.date,
-          today: on,
-          flag: observation.flag,
-          acknowledged,
-          hasAttentionItem: activeAttentionKeys.has(findingKey),
-        })
-          ? { acknowledgeKey: findingKey }
-          : {}),
-        ...(changed
-          ? {
-              sharedFactKey: `upcoming.${findingKey}`,
-            }
-          : {}),
-      });
-    }
-    labRows = cappedFamilyGather(
-      recentLabHighlights(
-        observations,
-        Number.MAX_SAFE_INTEGER,
-        on,
-        labAcknowledged
-      ),
-      CLINICAL_RESULTS_CAP,
-      (row) => labPromotions.get(row.name)?.changed === true
-    );
-  }
-
-  // next-appointment (medical): the single most attention-worthy scheduled visit,
-  // via the SHARED pickNextAppointment (issue #303 — dashboard placement and the
-  // household card must answer "the profile's next appointment" identically). Its
-  // policy is overdue-first: a still-scheduled past visit outranks a future one.
-  let nextAppt: NextAppointment | null = null;
-  let hasScheduledAppt = false;
-  {
-    // getScheduledAppointments already orders by date ASC, time_of_day ASC, id ASC,
-    // so the picker's same-day tie-break lands on the earliest slot — matching the
-    // household card, which feeds the same source ordering.
-    const scheduled = getScheduledAppointments(profile.id).map((a) => ({
-      appt: a,
-      dueDate: a.date,
-    }));
-    hasScheduledAppt = scheduled.length > 0;
-    const soonest = pickNextAppointment(scheduled)?.appt;
-    if (soonest) {
-      const d = soonest.date;
-      const detailParts = [soonest.provider_name, soonest.location].filter(
-        Boolean
-      );
-      // Render date AND clock time through the login's prefs (#1215) — a timed
-      // row shows the wall-clock; a day-only one degrades to the long date. The
-      // card links to the resulting encounter once one exists, else the visits
-      // list (the same target the header uses).
-      const visitsHref: AppRoute = "/records/history/visits";
-      nextAppt = {
-        title: soonest.title?.trim() || soonest.provider_name || "Appointment",
-        whenLabel: formatRecordDateTime(
-          soonest.date,
-          soonest.time_of_day,
-          formatLongDate(d, formatPrefs),
-          formatPrefs
-        ),
-        // COUNTDOWN GRAMMAR, UNBOUNDED, and deliberately not the household card's
-        // `upcomingDueText` (#2806 bounds the overdue side there at 30 days). #303
-        // binds the two surfaces to the same PICK — `pickNextAppointment` above — not
-        // to the same phrasing, and their phrasings already differ on the future side
-        // (#2579-B prints "Sep 26" on the card and "in 45 days" here). Routing this
-        // through the shared formatter would change both ends of that at once, which
-        // is a decision about the dashboard's copy and not about #2806.
-        dueText: daysRemainingLabel(d, on) ?? d,
-        detail: detailParts.length ? detailParts.join(" · ") : null,
-        href: soonest.encounter_id
-          ? encounterHref(soonest.encounter_id)
-          : visitsHref,
-      };
-    }
-  }
-
-  // Outcome goals and weekly targets remain individual facts. Their shared source
-  // models own member order; the Standing registry owns the visible family caps.
-  const goals = trainingRelevant
-    ? getOutcomeGoals(profile.id).filter((g) => isGoalLive(g))
-    : [];
-  const goalProgress = getOutcomeGoalProgressMap(profile.id, goals);
-
-  const freqTargets = getFrequencyTargetProgress(profile.id).filter(
-    ({ target }) =>
-      (trainingRelevant ||
-        dashboardHabitDomain(target.scope_kind) !== "training") &&
-      (strengthTrainingAvailable || !isStrengthProgrammingScope(target))
-  );
-  const orderedFreqTargets = orderDashboardHabits(freqTargets);
-
-  // coaching: ranked, rule-based recommendations from the profile's own history
-  // (deterministic, no AI), filtered to age-appropriate guidance at every life stage.
-  // Snoozed recommendations (findings bus, #39) drop out here, so a "Not today"
-  // on the top rec surfaces the next-ranked one until the snooze expires.
-  const coachingSuppressions = getFindingSuppressions(profile.id);
+  // A session RECORDED on the profile's today. Presence already resolves the day a
+  // just-finished session belongs to (§3.2: one that ended before midnight belongs to
+  // yesterday's record), so this reads its answer rather than re-deriving the boundary.
+  const loggedToday =
+    workoutPresence.state === "finished" && workoutPresence.date === on;
+  // The shared next-workout recommendation, through the reader Home already pays for.
+  // #5110's direct strength scan left Home with §7.2, so the logged state below carries
+  // duration and distance only and this is asked purely for "is there one".
   const coachingInput = trainingRelevant
     ? strengthAppropriateCoachingInput(
         gatherCoachingInput(
           profile.id,
           units.weightUnit,
           units.distanceUnit,
-          // The login's temperature scale (#1967): a °F reader sees the weather-parking
-          // figure in °F here. The notification path keeps canonical °C.
           units.temperatureUnit
         ),
         strengthTrainingAvailable
       )
     : null;
-  const coachingRecs = coachingInput
-    ? activeByKey(
-        recommendCoaching(coachingInput).filter(
-          (recommendation) =>
-            strengthTrainingAvailable || recommendation.kind !== "strength"
-        ),
-        (r) => coachingDedupeKey(r.id),
-        coachingSuppressions,
-        on
-      )
-    : [];
-  // Today's all-day training-result transitions reuse the same cached history
-  // gathers coaching already paid for. Strength asks for the load-context
-  // projection (the underlying all-history scan is request-cached); cardio uses
-  // the same unit-scoped cardio aggregate gatherCoachingInput reads. No
-  // per-record query or second classifier.
-  const todayStrengthRecords = strengthTrainingAvailable
-    ? activeByKey(
-        recentPRs(getStrengthByExercise(profile.id, true), on, 0),
-        (record) =>
-          prStrengthDismissalKey(
-            record.exercise,
-            record.equipmentId,
-            record.kind
-          ),
-        coachingSuppressions,
-        on
-      )
-    : [];
-  const todayCardioRecords = coachingInput
-    ? activeByKey(
-        recentCardioPRs(
-          getCardioByActivity(profile.id, units.distanceUnit),
-          on,
-          0
-        ),
-        (record) => prCardioDismissalKey(record.activity, record.kind),
-        coachingSuppressions,
-        on
-      )
-    : [];
-
-  // THE POST-RIDE CELEBRATION (#3195). What today's rides placed against the rides
-  // before them, read from the cached stream summaries — the day's rides cost one
-  // statement, and a profile with no cycling telemetry today pays only that.
-  const todayRideBests = trainingRelevant
-    ? getRideBestRecaps(profile.id, on, SPLIT_INTERVALS_M[units.distanceUnit])
-    : [];
-
-  // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
-  // collectCoachingFindings computation (data-quality joins it, #1045), filtered
-  // through the SAME findings-bus store — so a dismiss on either atom (or a tab)
-  // drops the finding out for free.
-  //
-  // Data-quality and coaching observations become separate atomic statements. Both
-  // retain the same shared finding identity, dismissal, and routine-fatigue policy.
-  //
-  // DISMISSAL FATIGUE (#2386). The dashboard is the ROUTINE surface for these — the
-  // place a finding leads without being asked for — so it is where repeat dismissal is
-  // read as an answer. `routineOrder` reranks the already-filtered set over the SAME
-  // suppression map: a topic the user has declined across two separate raisings drops
-  // behind everything unfatigued, and a topic declined across four leaves this surface
-  // entirely. Nothing is silenced — every one of them still renders on its own tab,
-  // which is where the user goes looking, and the shared bus is untouched.
-  const activeCoaching = routineOrder(
-    activeFindings(
-      collectCoachingFindings(profile.id, on, units.weightUnit, formatPrefs),
-      coachingSuppressions,
-      on
-    ).filter((finding) => {
-      const strengthTrainingFinding =
-        finding.domain === "training-strength" ||
-        finding.domain === "training-obs" ||
-        finding.domain === "muscle-volume" ||
-        finding.domain === "fitness-check";
-      return (
-        !strengthTrainingFinding ||
-        (trainingRelevant && strengthTrainingAvailable)
-      );
-    }),
-    coachingSuppressions
-  );
-  const coachingObservations = coachingObservationFindings(activeCoaching);
-  const dataQualityFindings = activeCoaching.filter(
-    isDataQualityDashboardFinding
-  );
-
-  // The recap gather is shared with the notification; each line becomes an atomic
-  // dashboard statement with the stable `weekly-recap` presentation selector.
-  const weeklyRecap = trainingRelevant
-    ? getRecapCard(profile.id, units.weightUnit, units.distanceUnit)
+  const nextWorkout = coachingInput
+    ? recommendCoaching(coachingInput)[0]
     : null;
 
-  // nutrition-today (#1221): today's protein against the goal band + the weekly average
-  // — the SAME getProteinToday model the Food-tab gauge and the food-nudge read (#221).
-  // Null when there's no target (no bodyweight) or no protein data → the data-aware CTA.
-  const proteinToday = foodLoggingApplicable
-    ? getProteinToday(profile.id)
+  // The fast as an open episode: a fast produces no evidence after its first tap, so its
+  // start IS its last signal (`OpenEpisode.lastSignalAt`).
+  const openFast = getActiveFastCached(profile.id);
+  const fastStart = openFast ? parseUtcSql(openFast.started_at) : null;
+  const fastEpisode: OpenEpisode | null =
+    openFast && fastStart
+      ? { kind: "fast", lastSignalAt: fastStart.getTime(), expectedEnd: null }
+      : null;
+
+  // The cycle domain's own answer, read rather than re-derived: two formulas over one
+  // plausibility window is how the hero and the forecast card came to contradict each
+  // other. §3.2 as the owner amended it (2026-09-11): a pregnancy silences the two
+  // claim-making offers — which `canStart` already encodes — a postmenopausal
+  // suspension silences nothing, and End is never silenced, so an open period's row
+  // keeps its seat under every suspension.
+  const cyclePeriods = cycleApplicable ? listCyclePeriods(profile.id) : [];
+  const cycleControl = cycleApplicable
+    ? cycleControlState(cyclePeriods, on, getForecastSuspension(profile.id))
+    : null;
+  const openPeriodStart = cycleControl?.openPeriodStart ?? null;
+  const periodEpisode: OpenDayEpisode | null = isRealIsoDate(openPeriodStart)
+    ? { kind: "period", lastSignalOn: openPeriodStart }
     : null;
 
-  // THE COMPOSED MORNING ONE-TAP (#2458) — the food half of the "your usual <window>"
-  // offer plus the doses this profile DECLARED for that window and still owes today.
-  //
-  // Relevance is transient and computed here: it is a
-  // pure function of today's state, so it collapses the moment everything it names is
-  // logged and comes back if the servings are undone. Nothing about it is persisted and
-  // it never creates persisted presentation state.
-  //
-  // The window is `currentFoodSlot` — the FOOD-slot clock, deliberately not
-  // `currentTimeBucket` (the divergence is documented at lib/food-slot.ts:11): this
-  // offer is food-anchored, so it takes the food side. `getUsualRoutineOffer` evaluates
-  // that half first and returns before touching intake at all when it does not stand,
-  // so the dashboard pays the dose reads only on the mornings the control renders.
-  //
-  // Read-only access renders no control at all. The action gates on
-  // `requireWriteAccess` regardless, so this is presentation rather than security —
-  // but offering a caregiver-view a button that can only refuse is worse than offering
-  // nothing.
+  // THE COMPOSED ONE-TAP (#2458), kept as the seated slot's control rather than as a row
+  // of its own: the window is `currentFoodSlot`'s, so the offer is evaluated for the
+  // window it is ABOUT (#3265). Read-only access renders no control at all.
   const routineSlot =
-    foodLoggingApplicable && access === "write"
+    foodLoggingApplicable && writable
       ? currentFoodSlotWindow(profile.id)
       : null;
   const routineOffer =
     routineSlot != null
       ? getUsualRoutineOffer(profile.id, routineSlot.slot, on)
       : null;
-  // THE OFFER'S PLACEMENT WINDOW IS THE WINDOW IT IS ABOUT (#3265). This used to be
-  // `mealTimeWindows(nowMealAnchors)` — the intake REMINDER anchors ±60 min, which is
-  // when a dose is DUE, a different question from whether a food routine still stands.
-  // Those windows close at 21:00 while the offer is `currentFoodSlot`-anchored and
-  // Evening runs to midnight, so between 21:00 and local midnight the dashboard computed
-  // the offer, paid its DB reads, and then dropped it as expired before any lane was
-  // built — for exactly the population an Evening routine describes. The span comes back
-  // from the same call that chose the slot, so the two can no longer disagree.
-  //
-  // `endsBefore - 1` because `FoodSlotWindow` is half-open and `localTimeWindow` takes an
-  // INCLUSIVE closing minute. The span always contains the current minute (the slot was
-  // derived from it), so it is never the empty Morning window.
-  const routineTiming =
-    routineSlot != null
-      ? localTimeWindow(routineSlot.opensAt, routineSlot.endsBefore - 1)
-      : null;
-  // The label names every write, in display names: a slug is not a promise anybody can
-  // read. The subject line follows writeSubjectName so a caregiver acting on another
-  // profile is never ambiguous about whose morning this logs (#1013).
   const routineControl = routineOffer
     ? {
         window: routineOffer.window,
@@ -1242,2109 +640,1057 @@ async function renderDashboard(
       }
     : null;
 
-  // steps-today (#1221): today's steps vs the prior 7 days, a formatter over
-  // summarizeStepsToday fed by the deduped one-source-per-day steps series (#14/#221).
-  // Empty series → the data-aware CTA (connect a source).
+  // ── THE ONE LIST (§3.2) ───────────────────────────────────────────────────────
   //
-  // The PROFILE-LOCAL hour decides whether today is complete enough to compare against
-  // whole days (#3258). Local, not UTC — a delta appearing on the server's clock would
-  // be the same artifact in a different disguise.
-  // THE DAY SO FAR (#4767 item 2) — the SAME IntradayChart the /history day view
-  // draws, in whatever geometry this row's own width earns (#4973: the chart reads
-  // its container, so nothing here names one). No second implementation and no
-  // model of its own: the blocks are composed by the same two functions the day view's
-  // own events are composed by, so a window drawn here can never name something that
-  // page would not show.
+  // Every seat decision below this line is `composeHomeList`'s. It renders nothing,
+  // reads no DB and takes no clock of its own, which is what makes "the order never
+  // changes through the day" a property of one pure function rather than of this file.
+  const homeList = composeHomeList({
+    day: on,
+    today: on,
+    now: nowInstant.getTime(),
+    minutesOfDay: nowMinutes,
+    subject: { scope: "profile", profileId: profile.id },
+    attention,
+    training: {
+      live: liveWorkout,
+      loggedToday,
+      recommended: nextWorkout != null,
+      applicable: trainingRelevant,
+    },
+    fast: fastEpisode,
+    period: {
+      episode: periodEpisode,
+      canStartToday: cycleControl?.canStart === true,
+      writable,
+    },
+  });
+
+  // ── THE RECORD'S OWN DAY READ (§3.2 band 3, §7.3) ─────────────────────────────
   //
-  // GATED LIKE THE CARD IT REPLACES, and gated CHEAPLY FIRST. `getLatestHrDay` is one
-  // indexed read; a profile with no wearable, or a morning nothing has synced into
-  // yet, pays that and stops — the day gather below never runs for them, and they see
-  // no frame at all rather than an empty axis. The second half of the gate is n > 1:
-  // one sample is a dot, not a day (the same rule the sparkline column applies at
-  // `loneReading`).
-  //
-  // SHAPED TO WHAT THIS ROW DRAWS (#5262, owner ruling 2026-09-09): the chart's own
-  // layers plus the day's session blocks. It used to open the record's whole day
-  // gather for its `dayEvents` and throw the row list away — twenty domains asked, most
-  // of them answering "nothing happened today" one statement at a time, to place ticks
-  // this row has no list to point them at. `getIntradayDayWindows` asks the block
-  // layer's own two questions instead, through the same composers the record's day view
-  // uses, so a block here still names what that page would show.
-  const intradayCandidate =
-    getLatestHrDay(profile.id) === on
-      ? getIntradayDay(profile.id, on, getIntradayDayWindows(profile.id, on))
-      : null;
-  const intradayToday =
-    intradayCandidate && (intradayCandidate.hr?.pointCount ?? 0) > 1
-      ? intradayCandidate
-      : null;
+  // ONE day read serves the day bar's count, the record band and the chart: the events
+  // the chart draws ticks for are the rows the list below shows, which is what makes "a
+  // tick can never name something the list does not show" true by construction rather
+  // than by two gathers agreeing. It is on the critical path because the day bar states
+  // the count (§3.2); what streams behind the boundary is the glance card's own layers.
+  const feed = historyMemberFeed(profile.id, {
+    loginId: login.id,
+    day: on,
+    limit: HISTORY_DEFAULT_SHOW,
+  });
+  const dayRows = feed.gather.rows as HistoryRow[];
+  const rowCount = dayRows.length;
+  const layout = layoutHistoryDay(dayRows, { rollup: false });
 
-  const stepsRows = getMetricDailyTotals(profile.id, "steps");
-  const stepsSummary =
-    stepsRows.length > 0
-      ? summarizeStepsToday(stepsRows, on, hourInTz(timezone, dashboardNow))
-      : null;
+  // The dose form's vocabulary, read once: which items exist (a retired item still took
+  // the dose history keeps listing) and which still have a live dose to log against.
+  const dosesByItem = new Map<number, DoseLedgerItem["doses"]>();
+  for (const dose of getIntakeDoses(profile.id)) {
+    const list = dosesByItem.get(dose.item_id) ?? [];
+    list.push({
+      id: dose.id,
+      amount: dose.amount,
+      time_of_day: dose.time_of_day,
+      versions: dose.versions,
+    });
+    dosesByItem.set(dose.item_id, list);
+  }
+  const doseItems: DoseLedgerItem[] = getIntakeItems(profile.id).map(
+    (item) => ({
+      id: item.id,
+      name: item.name,
+      kind: item.kind,
+      product: item.product,
+      asNeeded: isOnDemand(item),
+      doses: dosesByItem.get(item.id) ?? [],
+    })
+  );
 
-  // vitals-latest (#1221): the latest BP + resting HR readings with a trend arrow, over
-  // the SAME series queries behind Trends → Vitals, each reduced via the shared
-  // latestTrend helper and framed by the per-quantity presentation floor (#2303) — the
-  // whole model is `getVitalsLatestModel` (#221), which the DB tier pins end to end.
-  // Null components self-omit; an all-null model is the data-aware CTA.
-  const vitalsModel = getVitalsLatestModel(profile.id, on);
+  // SELECTION MODE, THE LEDGER'S (#5618 ruling 4), inherited whole: the record's Select
+  // in the day bar, its boxes on the rows below, over the same per-row correction cores.
+  const selectableCount = writable
+    ? layout.visible.filter((row) => historyRowPick(row, profile.id) !== null)
+        .length
+    : 0;
 
-  // Cycle phase is a Standing reading. The separate write candidate reuses the one
-  // cycle control state shared with the Cycle page and quick-log sheet (#1892/#2801).
-  const cyclePeriods = cycleApplicable ? listCyclePeriods(profile.id) : [];
-  const cycleControl = cycleApplicable
-    ? cycleControlState(cyclePeriods, on, getForecastSuspension(profile.id))
-    : null;
-  const cycleModel =
-    cycleControl?.day != null && cycleControl.phase != null
-      ? { day: cycleControl.day, phase: cycleControl.phase }
-      : null;
+  // THE TWO COLUMNS (§5.3): the list, and the glance card beside it, from `md` up. One
+  // column on the phone, where the glance card leads — it is the day's own content, and
+  // it is what the record puts directly under the day bar (#4918 ruling 2). The rail is
+  // first in the document for that reason and placed into column 2 explicitly, so source
+  // order reads correctly at the width that has no columns.
+  const dayGrid = "md:grid md:grid-cols-[minmax(0,1fr)_20rem] md:gap-6";
+  const dayRail =
+    "md:col-start-2 md:row-start-1 md:sticky md:top-6 md:self-start";
+  const dayColumn = "md:col-start-1 md:row-start-1 md:min-w-0";
 
-  // Ongoing N-of-1 protocols reuse the same detail-page computations (comparison,
-  // adherence, outcome, and practice) before each fact becomes its own candidate.
-  const activeProtocols = adultContentApplicable
-    ? getActiveProtocolSummaries(profile.id, on, units.weightUnit, freqTargets)
-    : [];
+  return (
+    <PageContainer width="wide" data-testid="dashboard-canvas">
+      {/* THE PAGE DECLARES ITSELF (#3087). Every logging control placed here — the dose
+          chips, the slot's Take all, the cockpit's symptom bar — is the SAME component
+          its domain page mounts, posting the SAME Server Action. Without this the
+          server reads all of them as that page's own form. */}
+      <LoggedViaSurface value="dashboard-widget">
+        {/* ── CURRENT CARE (§3.1) ────────────────────────────────────────────────
+            Existing actionable safety items first, then every authorized open illness
+            episode in the existing subject/episode order, each keeping the whole
+            cockpit. Uncapped, collapsible, non-dismissible. Omitted when empty, with no
+            all-clear claim. */}
+        {illnessCockpits.length > 0 ? (
+          <section data-testid="home-current-care" className="mb-4">
+            <IllnessNowGroup
+              cockpits={illnessCockpits}
+              initialCollapsedActive={illnessUi.collapsedActive}
+              initialOpenOtherKey={illnessUi.openOtherKey}
+              saveState={saveIllnessNowState}
+            />
+          </section>
+        ) : null}
+        {/* REOPEN (§3.1), after the open episodes: for each profile in the existing
+            bounded fanout, at most one eligible, undismissed row — "[Person] ·
+            [episode] · resolved [date]" with the existing Reopen? and Hide controls.
+            It renders only with write access TO THAT TARGET, which is the per-target
+            correction §3.1 makes a prerequisite of the row: the shipped page tested
+            the ACTING profile's access for every target, so a caregiver with write on
+            one member and read-only on another was offered Reopen on both. Hide stays
+            a per-login preference, for read-only viewers too. */}
+        {recentlyResolved.length > 0 ? (
+          <ul className={`${LOGGED_EVENT_LIST} mb-4`} data-testid="home-reopen">
+            {recentlyResolved.map((item) => (
+              <HomeRow
+                key={`${item.profileId}:${item.episodeId}`}
+                id={`care.illness-reopen:${item.profileId}:${item.episodeId}`}
+                testId="home-reopen-row"
+                title={
+                  item.episodeHref ? (
+                    <a className="hover:underline" href={item.episodeHref}>
+                      {item.situation}
+                    </a>
+                  ) : (
+                    item.situation
+                  )
+                }
+                detail={
+                  item.crossProfile ? item.displayName : "Recently resolved"
+                }
+                control={
+                  <RecentlyResolvedReopenControls
+                    item={item}
+                    dismissAction={dismissRecentlyResolved}
+                    canReopen={canWrite(scope, item.profileId)}
+                  />
+                }
+              />
+            ))}
+          </ul>
+        ) : null}
 
-  // Mood entry is the quick-entry sheet; illness owns its separate care lifecycle.
-  // Keep observations as individual facts so placement never hides siblings.
-  const todayMood = getMoodOnDate(profile.id, on);
+        <DaySelectionProvider
+          config={{
+            date: on,
+            profileId: profile.id,
+            testIdPrefix: "history",
+            selectable: selectableCount > 0,
+            moveTarget: { kind: "date", max: on },
+          }}
+        >
+          {/* THE DAY BAR (§3.2), the record's own: ‹ yesterday, the date with its
+              record count, and NO forward arrow — today has no day after it to walk to.
+              Going back lands on the plain record of that day, which owes nothing and
+              forecasts nothing. */}
+          <TimelineDayNav
+            prev={{
+              href: historyHref({ day: shiftDateStr(on, -1) }),
+              label: formatMonthDay(shiftDateStr(on, -1), formatPrefs),
+            }}
+            day={`${formatLongDate(on, formatPrefs)} — ${rowCount} record${
+              rowCount === 1 ? "" : "s"
+            }`}
+            trailing={<DaySelectToggle />}
+            targetSelector="[data-testid='dashboard-canvas']"
+          />
 
-  // Candidate builders below format only models already gathered above. No builder
-  // performs SQL, reads auth, or imports React.
-  const nowMinutes = hhmmToMinutes(zonedDateParts(timezone, clockNow()).hhmm);
-  // The existing mealtime-shaped anchors: the profile's intake reminder slots.
-  // NOT the food log — `food_log_events.recorded_at` is TAP time, documented as
-  // explicitly not eating time, so deriving a meal distribution from it would be
-  // the new engine this issue's scope guard forbids.
-  const nowSlots = getNotifySchedule(profile.id).supplementMinutes;
-  // This used to be gathered inside StreamLifecycleOffers. Resolve it here once
-  // so the placement manifest can distinguish a live offer from normal silence.
-  const streamLifecycleOffers =
-    access === "write" ? getStreamLifecycleOffers(profile.id) : [];
-  const nowMealAnchors = [
-    nowSlots.Morning,
-    nowSlots.Midday,
-    nowSlots.Evening,
-  ].filter((m): m is number => m != null);
+          <div className={dayGrid}>
+            <div className={dayRail} data-testid="home-glance-rail">
+              {/* ── THE GLANCE CARD (§3.2), BEHIND THE FIRST BOUNDARY (§6.1) ──────
+                  Current care, the Now band and the Quicklogger door are the shell;
+                  the card's own layers stream behind it, so Due now is interactive
+                  before the chart's gather resolves. The section opens its own primed
+                  settings scope: an AsyncLocalStorage scope reaches the frame that
+                  opened it and not the child Server Components React schedules below
+                  it (#5012), so "the cache spans every boundary" is this call. */}
+              <Suspense
+                fallback={<PendingSection label="The day at a glance" />}
+              >
+                <StreamedSection>
+                  <HomeGlance
+                    profileId={profile.id}
+                    loginId={login.id}
+                    day={on}
+                    dayEvents={feed.gather.dayEvents}
+                    formatPrefs={formatPrefs}
+                    timezone={timezone}
+                    nowMinutes={nowMinutes}
+                    nowInstant={nowInstant}
+                    foodLoggingApplicable={foodLoggingApplicable}
+                  />
+                </StreamedSection>
+              </Suspense>
+            </div>
 
-  const profileSubject = { scope: "profile" as const, profileId: profile.id };
-  const candidates: DashboardCandidate[] = [];
-  const presentations = new Map<string, DashboardStandingPresentation>();
-  const aheadPresentations = new Map<string, DashboardStandingPresentation>();
-  // THE DRAWING BELONGS TO THE FAMILY (#4969), resolved once here beside the
-  // presentation map instead of hanging off whichever member happened to carry
-  // it. `setDrawing` merges rather than replaces because a composed family's
-  // series and figure are declared at two different call sites below (the
-  // Day-so-far family's sparkline is steps', its figure is intraday's).
-  const drawings = new Map<StandingFamilyKey, StandingFamilyDrawing>();
-  const setDrawing = (key: StandingFamilyKey, patch: StandingFamilyDrawing) => {
-    drawings.set(key, { ...drawings.get(key), ...patch });
+            <div className={dayColumn}>
+              {/* ── THE LIST (§3.2): one list, three bands, in this order. ───────── */}
+              <HomeLaterFold
+                fold={homeList.later}
+                formatPrefs={formatPrefs}
+                today={on}
+              />
+              <HomeNowBand
+                band={homeList.now}
+                formatPrefs={formatPrefs}
+                today={on}
+                writable={writable}
+                routineControl={routineControl}
+                cycleControl={cycleControl}
+                openFast={openFast}
+                nowInstant={nowInstant}
+                workoutPresence={workoutPresence}
+                nextWorkoutTitle={nextWorkout?.title ?? null}
+              />
+
+              {/* THE VERBS SIT WITH THE ROWS THEY ACT ON (#5618 ruling 2's carve-out):
+                  selection is a MODE, not a form. Renders nothing until Select is on. */}
+              <div className="empty:hidden mb-3">
+                <DaySelectionBar />
+              </div>
+
+              {/* ── THE RECORD (§3.2 band 3) ──────────────────────────────────────
+                  The day's rows exactly as the record renders them under #5618 —
+                  bundle rows, per-row menu, sheet-hosted edit, selection mode —
+                  newest first, uncapped within the bounded day read. Not behind a
+                  boundary: the read that feeds it is the day bar's own count, so a
+                  boundary here would stream markup with no gather left behind it. */}
+              <div data-testid="home-record">
+                {rowCount === 0 ? (
+                  <p
+                    className="text-sm text-slate-500 dark:text-slate-400"
+                    data-testid="history-empty-filtered"
+                  >
+                    No entries yet today.
+                  </p>
+                ) : (
+                  <HistoryRows
+                    rows={groupHistoryBundles(
+                      layout.visible,
+                      feed.gather.bundleFacts
+                    )}
+                    writableProfileIds={writable ? [profile.id] : []}
+                    selectionSubjectId={profile.id}
+                    doseItems={doseItems}
+                    maxDates={{ [profile.id]: on }}
+                    defaultTime={zonedDateParts(timezone, nowInstant).hhmm}
+                    subjectNames={{}}
+                  />
+                )}
+              </div>
+
+              {/* ── SETUP (§3.4), THE SECOND BOUNDARY (§6.1) ─────────────────────── */}
+              <Suspense fallback={null}>
+                <StreamedSection>
+                  <HomeSetup
+                    profileId={profile.id}
+                    day={on}
+                    loginId={login.id}
+                    weightUnit={units.weightUnit}
+                    formatPrefs={formatPrefs}
+                  />
+                </StreamedSection>
+              </Suspense>
+            </div>
+          </div>
+        </DaySelectionProvider>
+      </LoggedViaSurface>
+    </PageContainer>
+  );
+}
+
+// ── ONE ROW SHAPE, TOP TO BOTTOM (§5.2) ─────────────────────────────────────────
+//
+// The Later, Now and Setup rows use the RECORD's own row shape — `LOGGED_EVENT_ROW`,
+// 44px minimum, title, muted detail, trailing control — so the page is one list rather
+// than three grammars stacked. The record band below them is the record's own rows
+// (#5618), which carry that shape already.
+//
+// `data-candidate-id` is the row contract's id in the DOM (§5.1): the e2e locator, the
+// dismissal key and the Telegram handoff's scroll target. The attribute NAME is kept
+// from the ranker deliberately — 84 specs visit `/`.
+function HomeRow({
+  id,
+  accent = false,
+  title,
+  detail,
+  control,
+  trailing,
+  testId,
+}: {
+  id: string;
+  /** The due slot's `--accent-soft` band (§5.2). */
+  accent?: boolean;
+  title: ReactNode;
+  detail?: ReactNode;
+  control?: ReactNode;
+  trailing?: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <li
+      // The id is also the fragment a Telegram nudge's open-in-app link lands on
+      // (§6.2): the row contract's own id, addressed the way a browser already
+      // addresses an element, so there is no second deep-link scheme to define.
+      id={id}
+      data-candidate-id={id}
+      data-testid={testId}
+      className={`${LOGGED_EVENT_ROW} scroll-mt-24 ${
+        accent ? "bg-(--accent-soft)" : ""
+      }`}
+    >
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="min-w-0 truncate">{title}</span>
+        {detail ? (
+          <span className="min-w-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+            {detail}
+          </span>
+        ) : null}
+      </span>
+      {trailing ? (
+        <span className={LOGGED_EVENT_TRAILING}>{trailing}</span>
+      ) : null}
+      {control ? <span className="shrink-0">{control}</span> : null}
+    </li>
+  );
+}
+
+// ── THE LATER FOLD (§3.2 band 1) ────────────────────────────────────────────────
+//
+// ONE row, never more, whatever the schedule: six dose slots and a dentist appointment
+// fold to one line, and so does one slot. Expanding lists the same entries as rows with
+// their names and windows and NO CONTROLS — nothing on Home pre-logs, the same rule the
+// quick-log sheet keeps (#5211). That is a property of `HomeLaterContent` itself: there
+// is no control to leave out and no item riding along to reach one through.
+//
+// `<details>` rather than client state: the disclosure is the browser's, so the fold
+// costs no JavaScript and works before hydration.
+function HomeLaterFold({
+  fold,
+  formatPrefs,
+  today,
+}: {
+  fold: HomeList["later"];
+  formatPrefs: DisplayFormatPrefs;
+  today: string;
+}) {
+  if (!fold) return null;
+  const label = (entry: HomeLaterEntry): string => {
+    const c = entry.content;
+    if (c.kind === "dose-slot")
+      return `${TIME_BUCKET_LABELS[c.bucket]} ${c.count}`;
+    if (c.kind === "action") return c.name;
+    return c.name;
   };
-  // ONE DECLARATION PER CANDIDATE (#4076): its row. Cards left `/` entirely, so
-  // there is no second node to declare and no lane left that would render one — what
-  // a fact EARNS goes in the row's trailing slot, its write included. A candidate
-  // that places with no row at all is a hard failure in the canvas, EXCEPT for the
-  // nav duplicates the tail deliberately drops (they own no content of their own).
-  const add = (
-    candidate: DashboardCandidate,
-    presentation?: DashboardStandingPresentation
-  ) => {
-    candidates.push(candidate);
-    if (presentation) presentations.set(candidate.candidateId, presentation);
+  const when = (entry: HomeLaterEntry): string | null => {
+    const c = entry.content;
+    if (c.kind === "commitment")
+      return c.on ? formatMonthDay(c.on, formatPrefs, { today }) : null;
+    return formatClockMinutes(formatPrefs.timeFormat, c.opensAt);
   };
-  let sourceOrder = 0;
+  return (
+    <Disclosure
+      className={`${LOGGED_EVENT_LIST} mb-3`}
+      data-testid="home-later"
+    >
+      <summary
+        id={fold.row.id}
+        data-candidate-id={fold.row.id}
+        className={`${LOGGED_EVENT_ROW} cursor-pointer text-slate-500 marker:content-[''] dark:text-slate-400`}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {["Later today", ...fold.entries.map(label)].join(" · ")}
+        </span>
+        {/* The disclosure chevron (§5.2), turned by the shared `group-open:`
+            state `Disclosure` declares, so the fold's motion is the app's one
+            continuity motion and not a second spelling of it (#3677). */}
+        <IconChevronDown
+          aria-hidden
+          className={`${LOGGED_EVENT_TRAILING} h-4 w-4 transition-transform group-open:rotate-180`}
+        />
+      </summary>
+      <ul>
+        {fold.entries.map((entry) => (
+          <HomeRow
+            key={entry.id}
+            id={entry.id}
+            title={label(entry)}
+            trailing={when(entry)}
+            testId="home-later-entry"
+          />
+        ))}
+      </ul>
+    </Disclosure>
+  );
+}
 
-  const attentionBadgeCount = attentionBadgeItems(attention, on).length;
-  const attentionItems = [...attention];
-  // WHICH SLOTS ALREADY HAVE A SEAT (#5063) — read below by the usual-routine offer,
-  // which becomes the seated slot's control instead of opening a row of its own.
-  const seatedDoseSlots = new Set<TimeBucket>();
-  // ONE SLOT, ONE ROW (#5063). The row IS the slot run #2579 already ships on
-  // /upcoming: the bucket and its count name it, its members are the dose chips
-  // under that header — each stating what the header does not, its own dose — and
-  // the trailing cell holds the one tap that writes the whole slot. When the
-  // usual-routine offer covers this same slot it IS that tap, rather than opening a
-  // second row further down the page for the same act.
-  const addDoseSlotRow = (
-    entry: Extract<AttentionEntry, { kind: "dose-slot" }>,
-    candidate: DashboardCandidate
-  ) => {
-    const label = `${TIME_BUCKET_LABELS[entry.bucket]} (${entry.items.length})`;
-    const members = entry.items.map((item) => ({
+// ── THE NOW BAND (§3.2 band 2) ──────────────────────────────────────────────────
+//
+// A rule reading "Now · <profile-local clock>", rendered once, between what is OWED and
+// what is RECORDED, and directly under it the exact current actions in the composer's
+// seat order. Nothing here decides which rows appear or in what order; every decision
+// above the JSX belongs to `composeHomeList`.
+function HomeNowBand({
+  band,
+  formatPrefs,
+  today,
+  writable,
+  routineControl,
+  cycleControl,
+  openFast,
+  nowInstant,
+  workoutPresence,
+  nextWorkoutTitle,
+}: {
+  band: HomeList["now"];
+  formatPrefs: DisplayFormatPrefs;
+  today: string;
+  writable: boolean;
+  routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
+  cycleControl: CycleControlState | null;
+  openFast: Fast | null;
+  nowInstant: Date;
+  workoutPresence: WorkoutPresence;
+  nextWorkoutTitle: string | null;
+}) {
+  if (!band) return null;
+  return (
+    <section className="mb-3" data-testid="home-now">
+      <h2
+        className="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+        data-testid="home-now-rule"
+      >
+        {`Now · ${formatClockMinutes(formatPrefs.timeFormat, band.minutesOfDay)}`}
+      </h2>
+      {band.rows.length > 0 ? (
+        <ul className={LOGGED_EVENT_LIST}>
+          {band.rows.map((row) => (
+            <HomeNowRowView
+              key={row.id}
+              row={row}
+              formatPrefs={formatPrefs}
+              today={today}
+              writable={writable}
+              routineControl={routineControl}
+              cycleControl={cycleControl}
+              openFast={openFast}
+              nowInstant={nowInstant}
+              workoutPresence={workoutPresence}
+              nextWorkoutTitle={nextWorkoutTitle}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function HomeNowRowView({
+  row,
+  formatPrefs,
+  today,
+  writable,
+  routineControl,
+  cycleControl,
+  openFast,
+  nowInstant,
+  workoutPresence,
+  nextWorkoutTitle,
+}: {
+  row: HomeNowRow;
+  formatPrefs: DisplayFormatPrefs;
+  today: string;
+  writable: boolean;
+  routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
+  cycleControl: CycleControlState | null;
+  openFast: Fast | null;
+  nowInstant: Date;
+  workoutPresence: WorkoutPresence;
+  nextWorkoutTitle: string | null;
+}) {
+  const content = row.content;
+
+  // A SLOT'S DUE DOSES ARE ONE ACT AT ONE MOMENT (#5063), so they are one row with its
+  // members: individually identifiable chips on a second line, and the slot's own single
+  // tap in the trailing cell — the usual-routine control when the routine's window IS
+  // this slot, rather than a second row further down for the same act.
+  if (content.kind === "dose-slot") {
+    const members = content.items.map((item) => ({
       doseId: item.doseId!,
-      // The CONTROL form of the name (#2858), collision-resolved across the whole
-      // profile by the gather — this chip's tap WRITES, so it may not wear a name
-      // another item also answers to.
+      // The CONTROL form of the name (#2858), collision-resolved by the gather: this
+      // chip's tap WRITES, so it may not wear a name another item answers to.
       name: item.shortLabel ?? item.title,
       title: item.title,
     }));
-    // Ahead is read-only, so it states the slot and when it opens and nothing else.
-    // Every member shares the bucket, so the lead member's sentence is the slot's.
-    aheadPresentations.set(candidate.candidateId, {
-      label,
-      detail: attentionAheadDetail(entry.items[0]!, on, formatPrefs),
-    });
     const routine =
-      routineControl != null && routineControl.window === entry.bucket
+      routineControl != null && routineControl.window === content.bucket
         ? routineControl
         : null;
-    add(candidate, {
-      label,
-      detail: actingCanWrite ? (
-        // `gap-3` BETWEEN TWO CHIPS, not a tighter list gap: `chip-base`'s
-        // coarse-pointer `::after` reaches 6px past the pill, so anything narrower
-        // overlaps two effective targets on a phone (#3938).
-        <span className="flex w-full flex-wrap items-center gap-3">
-          {members.map((member) => (
-            <DoseConfirmButton
-              key={member.doseId}
-              action={markAttentionDose}
-              undoAction={undoAttentionDose}
-              fields={{ dose_id: member.doseId }}
-              payload={member.name}
-              ariaLabel={`Take ${member.title}`}
-              testid="attention-mark-taken"
-            />
-          ))}
-          {/* THE BUNDLE'S FOOD MEMBERS, ON THE ROW (#5320). The chips name the
-              doses; these are the servings the same tap writes, and #3736 rules
-              they may not vanish into the control. So the row prints each member
-              exactly once — chips, then this — and the control is free to be a
-              count. The `+` is the seam `usualRoutinePhrase` already spends
-              between two different kinds of write. */}
-          {routine && routine.food.length > 0 ? (
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {`+ ${namesPhrase(routine.food.map((member) => member.name))}`}
-            </span>
-          ) : null}
-        </span>
-      ) : (
-        namesPhrase(members.map((member) => member.name))
-      ),
-      control: actingCanWrite ? (
-        routine ? (
-          <UsualRoutineControl {...routine} />
-        ) : (
-          <DoseSlotTakeAll date={on} doses={members} />
-        )
-      ) : undefined,
-    });
-  };
-  for (const entry of attentionEntries(attentionItems)) {
-    const candidate = attentionEntryCandidate(
-      profileSubject,
-      entry,
-      on,
-      sourceOrder
-    );
-    if (entry.kind === "dose-slot") {
-      seatedDoseSlots.add(entry.bucket);
-      addDoseSlotRow(entry, candidate);
-      continue;
-    }
-    const item = entry.item;
-    // AHEAD SAYS WHEN, AND NOW ALSO WHY (#4076, #4319). A schedule's sentence is its
-    // due text; the row below says WHAT, because outside Ahead the item's own detail
-    // is the content a person came to read — the biomarker retest sentence, "Vitamin
-    // D3 · 2000 IU". What the due text no longer does is defer the WHY one tap to
-    // /upcoming: the item's reason fragments come from the producer the digest reads,
-    // so the push and the page cannot word one fact two ways.
-    //
-    // THE DUE TEXT IS `attentionAheadDetail` AND NOT `upcomingDueText` (#4468), which
-    // is the whole of that fix: a dose scheduled for a later slot says "from 11:00"
-    // so the row states WHY it is here rather than now. It is passed IN as the due
-    // text rather than wrapping the result, because the two are not interchangeable
-    // and taking either alone silently drops the other's behaviour. Safe because a
-    // dose is not a named-line domain, so its due text flows through this producer
-    // instead of being replaced by a cause fragment. Pinned on a real dose item in
-    // lib/__db_tests__/upcoming-aggregate.test.ts — neither issue's own tests can see
-    // the nesting.
-    aheadPresentations.set(candidate.candidateId, {
-      label: item.title,
-      detail: upcomingRowQualifiers(
-        item,
-        attentionAheadDetail(item, on, formatPrefs)
-      ).join(" · "),
-      href: item.href,
-    });
-    // The write follows the control to the row (#4076). A non-actionable attention
-    // fact is still suppressible (isItemSuppressibleFlag) and this is the only mount
-    // of its snooze/dismiss, so the row hosts it in the trailing slot rather than the
-    // card that used to be the only shape that could.
-    add(candidate, {
-      label: item.title,
-      detail: attentionRowDetail(item, on, formatPrefs),
-      href: item.href,
-      control: actingCanWrite ? (
-        <>
-          {item.doseId != null && (
-            /* ONE ACTION GRAMMAR SECTION-WIDE (#4752 item 7). "Mark taken" was a
-               bare verb beside a row that already said everything except WHEN, so
-               the slot moves onto the control that writes it and the verb becomes
-               one word. Same action, same undo — only the sentence changed. */
-            <DoseConfirmButton
-              action={markAttentionDose}
-              undoAction={undoAttentionDose}
-              fields={{ dose_id: item.doseId }}
-              payload={attentionDoseChipLabel(item, on, formatPrefs)}
-              ariaLabel={`Take ${item.title}`}
-              testid="attention-mark-taken"
-            />
-          )}
-          {item.followUpResolve != null && (
-            <FollowUpResolveControls
-              action={async (fd) => {
-                "use server";
-                await resolveFollowUp(fd);
-              }}
-              carePlanItemId={item.followUpResolve.carePlanItemId}
-              resolvingRecordId={item.followUpResolve.resolvingRecordId}
-            />
-          )}
-          {isItemSuppressibleFlag(item) && (
-            <SnoozeDismissMenu
-              itemName={item.title}
-              signalKey={item.key}
-              snoozeOnly={item.carePersistent === true}
-              snoozeAction={snoozeAttention}
-              dismissAction={dismissAttention}
-            />
-          )}
-        </>
-      ) : undefined,
-    });
-  }
-  sourceOrder += attentionItems.length;
-
-  // Preventive review candidates (#3025): one fact per open record/rule pair
-  // riding on a due preventive item, keyed `preventive-review:<recordId>:
-  // <ruleKey>`. The builder bars them from the Now lane structurally (all rank
-  // reasons false, obligation "may"), so they can only render here in the
-  // exhaustive Show everything remainder — the same confirm-the-date / dismiss controls
-  // the Upcoming row shows beside the due item, and never a send.
-  for (const item of attentionItems) {
-    for (const offer of item.preventiveReview ?? []) {
-      add(preventiveReviewCandidate(profileSubject, offer, sourceOrder++), {
-        label: item.title,
-        detail: (
-          <>
-            {preventiveReviewQuestion(offer.ruleKey)}{" "}
-            <span className="font-medium">{offer.recordName}</span>
-          </>
-        ),
-        control: actingCanWrite ? (
-          <PreventiveReviewControls
-            confirmAction={async (fd) => {
-              "use server";
-              return confirmPreventiveRecord(fd);
-            }}
-            dismissAction={async (fd) => {
-              "use server";
-              return dismissPreventiveRecord(fd);
-            }}
-            recordId={offer.recordId}
-            ruleKey={offer.ruleKey}
-            recordName={offer.recordName}
-            recordDate={offer.recordDate}
-            question={preventiveReviewQuestion(offer.ruleKey)}
-            today={on}
-            profileId={profile.id}
-          />
-        ) : undefined,
-      });
-    }
-  }
-
-  if (workoutPresence?.state === "active") {
-    add(
-      setupCandidates.liveWorkout(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        workoutPresence.activityId
-      ),
-      {
-        label: "Workout in progress",
-        href: "/training",
-        actionLabel: "Continue",
-      }
-    );
-  }
-
-  for (const cockpit of illnessCockpits) {
-    const key = cockpit.episodeKey;
-    const href = cockpit.episodeHref ?? "/history";
-    const groupKey = `illness.episode:${key}`;
-    const episodeGroup = {
-      kind: "illness-episode" as const,
-      groupKey,
-      episodeKey: cockpit.episodeKey,
-      profileId: cockpit.profileId,
-      episodeOrder: cockpit.episodeOrder,
-    };
-    const stateDetail = [
-      cockpit.status.worsening ? "Symptoms worsening" : null,
-      cockpit.feverFree?.label ?? null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    add(
-      careCandidates.illnessState(
-        {
-          subject: { scope: "profile", profileId: cockpit.profileId },
-          sourceOrder: sourceOrder++,
-        },
-        key,
-        { ...episodeGroup, memberRole: "state", memberOrder: 0 }
-      ),
-      {
-        label: `${cockpit.displayName} is sick`,
-        value: cockpit.status.dayLabel,
-        detail: stateDetail,
-        href,
-      }
-    );
-    if (cockpit.status.temperature) {
-      add(
-        careCandidates.illnessReading(
-          {
-            subject: { scope: "profile", profileId: cockpit.profileId },
-            sourceOrder: sourceOrder++,
-          },
-          "temperature",
-          key,
-          cockpit.status.temperature.id,
-          { ...episodeGroup, memberRole: "reading", memberOrder: 0 }
-        ),
-        {
-          label: `${cockpit.displayName}'s latest temperature`,
-          value: cockpit.status.temperature.value,
-          detail: cockpit.status.temperature.when,
-          href,
-        }
-      );
-    }
-    if (cockpit.status.lastMeds) {
-      const medication = cockpit.status.lastMeds;
-      add(
-        careCandidates.illnessReading(
-          {
-            subject: { scope: "profile", profileId: cockpit.profileId },
-            sourceOrder: sourceOrder++,
-          },
-          "medication",
-          key,
-          medication.id,
-          { ...episodeGroup, memberRole: "reading", memberOrder: 1 }
-        ),
-        {
-          label: `${cockpit.displayName}'s latest illness medicine`,
-          value: [medication.name, medication.dose].filter(Boolean).join(" · "),
-          detail: medication.when,
-          href,
-        }
-      );
-    }
-  }
-
-  for (const item of recentlyResolved) {
-    const key = `${item.profileId}:${item.episodeId}`;
-    add(
-      careCandidates.illnessReopen(
-        {
-          subject: { scope: "profile", profileId: item.profileId },
-          applicable: actingCanWrite,
-          sourceOrder: sourceOrder++,
-        },
-        key
-      ),
-      {
-        label: "Recently resolved",
-        value: item.situation,
-        detail: item.crossProfile ? item.displayName : undefined,
-        href: item.episodeHref,
-        control: (
-          <RecentlyResolvedReopenControls
-            item={item}
-            dismissAction={dismissRecentlyResolved}
-          />
-        ),
-      }
-    );
-  }
-  if (promoteHouseholdHistory) {
-    // NO NODE AND NO ROW. This fact is a link to "Illness episodes" and nothing
-    // else, so Show everything draws the page as a door instead of a card that
-    // restates the sidebar (#3366). It still places, so completeness is unchanged.
-    add(
-      careCandidates.householdHistory({
-        subject: { scope: "login" },
-        sourceOrder: sourceOrder++,
-      }),
-      undefined
-    );
-  }
-
-  for (const offer of streamLifecycleOffers) {
-    add(
-      setupCandidates.streamOffer(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        offer.key
-      ),
-      {
-        label: offer.title,
-        detail: offer.body,
-        control: (
-          <StreamLifecycleOfferControls
-            offer={offer}
-            // The accept/decline PAIR is chosen by the offer's kind, once, here — so
-            // a row can never wire "Keep them ready" to the action that turns the
-            // reminder off.
-            acceptAction={
-              offer.kind === "onboard"
-                ? acceptStreamReminder
-                : declineStreamReminder
-            }
-            declineAction={
-              offer.kind === "onboard"
-                ? dismissStreamReminderOffer
-                : keepStreamReminder
-            }
-          />
-        ),
-      }
-    );
-  }
-
-  const finishedActivityId = workoutPresence?.activityId;
-  const finishedDayHref = historyDayIntradayHref(workoutPresence?.date ?? on);
-  if (showRecapCard && finishedRecap && finishedActivityId != null) {
-    const recapFacts = [
-      ["sets", `${finishedRecap.totalWorkingSets} working sets`],
-      ["volume", `${Math.round(finishedRecap.totalVolumeKg)} kg volume`],
-      ...finishedRecap.exercises.map((exercise, index) => [
-        `exercise-${index}`,
-        exercise.exercise,
-      ]),
-    ] as const;
-    recapFacts.forEach(([key, value], index) =>
-      add(
-        setupCandidates.sessionRecap(
-          { subject: profileSubject, sourceOrder: sourceOrder + index },
-          finishedActivityId,
-          key,
-          workoutPresence?.sinceMin ?? -1
-        ),
-        {
-          value,
-          // THE RECEIPT'S PHYSIOLOGY DOOR (#4767 item 4). "Session complete" used to
-          // land on /training, which answers what you LOGGED; the question this
-          // moment raises is what it DID to you, and only the day view's intraday
-          // panel answers that. The session's OWN day, not today — the finished
-          // window carries a day of slack across midnight.
-          href: finishedDayHref,
-          moment: { title: "Session complete", href: finishedDayHref },
-        }
-      )
-    );
-    sourceOrder += recapFacts.length;
-  }
-
-  todayStrengthRecords.forEach((record) => {
-    const key = prStrengthDismissalKey(
-      record.exercise,
-      record.equipmentId,
-      record.kind
-    );
-    const strengthValue =
-      record.kind === "1rm"
-        ? record.bodyweight
-          ? `BW × ${record.reps}`
-          : `${fmtWeight(record.weightKg, units.weightUnit)} × ${record.reps}`
-        : `${fmtWeight(record.weightKg, units.weightUnit)} top`;
-    add(
-      progressCandidates.trainingResult(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        key,
-        on,
-        0
-      ),
-      {
-        label: loadContextLabel(record.exercise, record.equipment),
-        value: strengthValue,
-        detail: "New personal record",
-        href: trainingTabHref("analyze"),
-      }
-    );
-  });
-  todayCardioRecords.forEach((record) => {
-    const key = prCardioDismissalKey(record.activity, record.kind);
-    const value =
-      record.kind === "distance"
-        ? fmtDistance(record.distanceKm, units.distanceUnit)
-        : record.kind === "speed"
-          ? fmtKmh(record.speedKmh, units.distanceUnit)
-          : formatMinutes(record.durationMin);
-    add(
-      progressCandidates.trainingResult(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        key,
-        on,
-        0
-      ),
-      {
-        label: record.activity,
-        value,
-        detail: "New personal record",
-        href: trainingTabHref("analyze"),
-      }
-    );
-  });
-
-  // The ride's own verdict, through the SAME training-best promotion the strength
-  // and cardio records already use — a ride best is a training result, not a fourth
-  // kind of thing — and perishable the same way, decaying at the end of its day.
-  // The sentence is fixed template text assembled from the ranked facts
-  // (lib/cycling-bests.ts): no learned or generated phrasing, and it states the
-  // population it was best of rather than saying "ever" (#2385).
-  todayRideBests.forEach((recap) => {
-    const rideHref = trainingActivityPageHref(recap.activityId);
-    const headline = recap.headline;
-    if (headline) {
-      add(
-        progressCandidates.trainingResult(
-          { subject: profileSubject, sourceOrder: sourceOrder++ },
-          `ride-best:${recap.activityId}`,
-          on,
-          0
-        ),
-        {
-          label: recap.activityName,
-          value:
-            headline.kind === "power"
-              ? `${headline.watts} W`
-              : formatSessionElapsed(headline.timeSec),
-          detail: rideBestStatementDetail(
-            headline.kind === "power"
-              ? `${powerCurveLabel(headline.seconds) ?? `${headline.seconds} sec`} power`
-              : `${fmtDistance(SPLIT_INTERVALS_M[units.distanceUnit] / 1000, units.distanceUnit)} split`,
-            headline
-          ),
-          href: rideHref,
-        }
-      );
-    }
-    const segments = segmentPrStatement(recap.segmentPrNames);
-    if (segments) {
-      add(
-        progressCandidates.trainingResult(
-          { subject: profileSubject, sourceOrder: sourceOrder++ },
-          `ride-segment-pr:${recap.activityId}`,
-          on,
-          0
-        ),
-        { label: recap.activityName, ...segments, href: rideHref }
-      );
-    }
-  });
-
-  if (onboardingState && onboardingPresence) {
-    const firstRemainingStep = nextOnboardingStep(
-      onboardingState,
-      hasOnboardingFirstValue(onboardingState.focuses, onboardingPresence)
-    );
-    const stepLabels = [
-      "Choose who this profile is for",
-      "Choose what matters most",
-      "Add profile basics",
-      "Add a first health value",
-      "Choose notification preferences",
-      "Finish profile setup",
-    ] as const;
-    for (
-      let step = firstRemainingStep;
-      step <= ONBOARDING_STEP_COUNT;
-      step += 1
-    ) {
-      add(
-        setupCandidates.onboardingStep(
-          { subject: profileSubject, sourceOrder: sourceOrder++ },
-          step
-        ),
-        {
-          label: stepLabels[step - 1],
-          detail: `Setup step ${step} of ${ONBOARDING_STEP_COUNT}`,
-          href: onboardingStepHref(step),
-          actionLabel: "Continue",
-        }
-      );
-    }
-    add(
-      setupCandidates.onboardingProgress(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        "wizard"
-      ),
-      {
-        label: "Profile setup progress",
-        value: `${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`,
-        href: "/onboarding",
-      }
-    );
-  }
-  if (onboardingChecklist && onboardingChecklistCompletion) {
-    const onboardingChecklistSteps = orderedOnboardingChecklistTasks(
-      onboardingChecklist.focuses,
-      onboardingChecklistCompletion
-    );
-    // THE CHECKLIST IS A MOMENT BLOCK, NOT A ROW (#4362 ruling 3). It was one
-    // candidate whose facts column joined every remaining label with "·" — one door
-    // for four steps, and none of the sentences saying why any of them is worth
-    // doing. A person setting up the app is exactly who deserves per-step doors, so
-    // each step is its own row under one header, which is what every other group of
-    // same-origin atoms already does.
-    onboardingChecklistSteps.forEach((step, index) => {
-      add(
-        setupCandidates.onboardingChecklistStep(
-          { subject: profileSubject, sourceOrder: sourceOrder++ },
-          step.suggestion
-        ),
-        {
-          label: step.label,
-          // The row's own door: with no control in the trailing slot the row is
-          // link-wrapped, so the step's name IS the way in.
-          href: step.href,
-          detail: step.benefit,
-          // The block's header, declared once by its first member (the canvas reads
-          // the first that has one) and printed over the whole set.
-          moment:
-            index === 0 ? { title: "A few useful next steps" } : undefined,
-        }
-      );
-    });
-    add(
-      setupCandidates.onboardingProgress(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        "checklist"
-      ),
-      {
-        // No label: the block's header already names the set, and printing it again
-        // on the row beneath would say the same thing twice. What this row carries
-        // is the reassurance the block's own copy owes a first-run reader, and the
-        // dismiss for the whole set.
-        //
-        // THE SENTENCE IS SHORTER THAN THE ONE THE CARD PRINTED, and not by taste:
-        // the card's second half ("You do not need to complete every suggestion")
-        // is second-person, and the dashboard is a cross-profile surface — a carer
-        // reading a ward's setup is not the person being addressed. #945's guard
-        // catches it here, where it could not in the deleted component. The first
-        // half already says the whole thing.
-        detail: "Pick what helps now and leave the rest for later.",
-        control: (
-          <form action={dismissOnboardingChecklist}>
-            <Button type="submit" pendingLabel="…">
-              Hide
-            </Button>
-          </form>
-        ),
-      }
-    );
-  }
-
-  const moodCheckinCandidate = dailyCandidates.moodCheckin(
-    {
-      subject: profileSubject,
-      applicable: actingCanWrite,
-      sourceOrder: sourceOrder++,
-    },
-    on,
-    nowSlots.Evening == null
-      ? { kind: "always" }
-      : localTimeWindow(nowSlots.Evening, 1439),
-    todayMood == null
-  );
-  // ROWS ARE NAMED BY THEIR NOUN (#4841 item 3 census): this row led with the same
-  // verb its own control already said — "Log today's mood" beside a button reading
-  // "Log", the #4841 item 2 shape — and once a mood is logged the mismatch turned
-  // outright wrong: the label switched to "Update" while the default control still
-  // read "Log". One noun names the row; the control's own label is the one place
-  // the verb lives, and now says what it will actually do.
-  add(moodCheckinCandidate, {
-    label: "Today's mood",
-    detail: isMoodCheckinPaused({
-      enabled: getProfileMoodCheckin(profile.id),
-      ignoredCount: getMoodCheckinIgnored(profile.id),
-    })
-      ? "Daily reminders are paused."
-      : undefined,
-    control: (
-      <DashboardQuickEntryAction
-        form="mood"
-        actionLabel={todayMood ? "Update" : "Log"}
-      />
-    ),
-  });
-  aheadPresentations.set(moodCheckinCandidate.candidateId, {
-    label: "Today's mood",
-    ...(nowSlots.Evening == null
-      ? {}
-      : {
-          detail: `Opens ${formatClockMinutes(
-            formatPrefs.timeFormat,
-            nowSlots.Evening
-          )}`,
-        }),
-  });
-
-  if (todayMood) {
-    const moodReadings = [
-      ["valence", "Mood", `${todayMood.valence} of 5`],
-      [
-        "energy",
-        "Energy",
-        todayMood.energy == null ? null : `${todayMood.energy} of 5`,
-      ],
-      [
-        "calm",
-        "Calm",
-        todayMood.anxiety == null ? null : `${6 - todayMood.anxiety} of 5`,
-      ],
-    ] as const;
-    moodReadings.forEach(([key, title, value], index) => {
-      if (value == null) return;
-      add(
-        dailyCandidates.moodReading(
-          { subject: profileSubject, sourceOrder: sourceOrder + index },
-          key,
-          on
-        ),
-        {
-          label: title,
-          value,
-          href: "/trends#body",
-          moment: { title: "Today's check-in", href: "/trends#body" },
-        }
-      );
-    });
-    sourceOrder += moodReadings.length;
-  }
-
-  // PRN DOSE CONTROLS LEFT THE TAIL (#4076 ruling 4, the #4083 pattern verbatim).
-  // The quick logger's Consume segment (`log-dose`, lib/log-sheet.ts) already owns
-  // doses, so the capability follows the sheet and the per-supplement tail rows retire
-  // with their controls rather than being restated as a row that cannot host them.
-
-  coachingRecs.forEach((rec, index) =>
-    add(
-      progressCandidates.statement(
-        {
-          subject: profileSubject,
-          applicable: trainingRelevant,
-          sourceOrder: sourceOrder + index,
-        },
-        "coaching.recommendation",
-        rec.id,
-        `coaching.${coachingDedupeKey(rec.id)}`
-      ),
-      // BOTH WRITES FOLLOW THE CONTROLS TO THE ROW (#4076). This is still the only
-      // mount of `snoozeCoaching` and `acknowledgeRest`; what changed is that a row
-      // can now host them. Every sentence the card printed is kept, in the facts
-      // column — the recommendation, its concurrent firing reasons (#1148: shown
-      // BEFORE a snooze can suppress them), its suggested set and its injury notes.
-      {
-        label: "Coaching",
-        value: rec.title,
-        detail: coachingRowDetail(rec),
-        href: rec.actionHref ?? "/training",
-        actionLabel: rec.actionHref ? (rec.actionLabel ?? "Open") : undefined,
-        control: (
-          <>
-            {canAcknowledgeRest(rec) && (
-              <form action={acknowledgeRest}>
-                <input
-                  type="hidden"
-                  name="reason_ids"
-                  value={(rec.firingReasonIds ?? []).join(",")}
+    return (
+      <HomeRow
+        id={row.id}
+        accent
+        testId="home-dose-slot"
+        title={`${TIME_BUCKET_LABELS[content.bucket]} (${members.length})`}
+        detail={
+          writable ? (
+            // `gap-3` between two chips: `chip-base`'s coarse-pointer reach extends
+            // 6px past the pill, so anything narrower overlaps two targets (#3938).
+            <span className="flex w-full flex-wrap items-center gap-3">
+              {members.map((member) => (
+                <DoseConfirmButton
+                  key={member.doseId}
+                  action={markAttentionDose}
+                  undoAction={undoAttentionDose}
+                  fields={{ dose_id: member.doseId }}
+                  payload={member.name}
+                  ariaLabel={`Take ${member.title}`}
+                  testid="attention-mark-taken"
                 />
-                <Button
-                  type="submit"
-                  pendingLabel="…"
-                  data-testid="coaching-training-anyway"
-                >
-                  Training anyway
-                </Button>
-              </form>
-            )}
-            <form action={snoozeCoaching}>
-              <input
-                type="hidden"
-                name="dedupe_key"
-                value={coachingDedupeKey(rec.id)}
-              />
-              <Button
-                type="submit"
-                pendingLabel="…"
-                data-testid="coaching-snooze"
-              >
-                Snooze
-              </Button>
-            </form>
-          </>
-        ),
-      }
-    )
-  );
-  sourceOrder += coachingRecs.length;
-
-  goals.forEach((goal, index) => {
-    // ENDPOINTS FIRST, PERCENT AS THE ANNOTATION (#5198). "Resting HR goal · 27%"
-    // asked the reader 27% of the way from WHAT to what; the row states
-    // "63 → 58 bpm · 27%" through the one goal-progress formatter every surface
-    // shares, so the percent has something to be a percent OF.
-    const statement = goalProgressStatement(
-      goal,
-      goalProgress.get(goal.id),
-      units.weightUnit
-    );
-    add(
-      progressCandidates.goal(
-        { subject: profileSubject, sourceOrder: sourceOrder + index },
-        goal.id,
-        outcomeGoalProgressChanged(goal, goalProgress.get(goal.id), on)
-      ),
-      {
-        label: goal.title,
-        value: statement.value,
-        detail: statement.percent ?? undefined,
-        href: trainingTabHref("plan", "goals"),
-        presence: "current",
-      }
-    );
-  });
-  sourceOrder += goals.length;
-  orderedFreqTargets.forEach((progress, index) => {
-    const id = progress.target.id;
-    const habitHref = dashboardHabitHref(
-      dashboardHabitDomain(progress.target.scope_kind)
-    );
-    // A moment, not the whole week (#3224). "Unmet" spans seven days, so spelling
-    // the window `!met` kept every open target parked in Now. The rhythm answers
-    // when this target normally gets done; with no rhythm there is no moment.
-    const momentOpen = frequencyTargetLogWindowOpen(
-      profile.id,
-      progress.target,
-      on,
-      nowMinutes
-    );
-    const behind = progress.pace === "behind";
-    // THE PRACTICE-TARGET ROW LOGS IN PLACE (owner ruling, #4076 from the #4384
-    // thread). A behind-pace practice target's row carries the shared
-    // `LogPracticeButton` (compact) in its trailing control slot instead of the
-    // `targetLog` door row below — the dashboard is the owner's primary
-    // practice-logging surface, and a door there cost three taps where the row
-    // costs one. Scoped to `scope_kind === "practice"`: the dose precedent
-    // (#4083) and every other habit domain (training, food) keep the door.
-    const logsInPlace =
-      actingCanWrite && behind && progress.target.scope_kind === "practice";
-    add(
-      progressCandidates.targetProgress(
-        { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
-        id,
-        // Owner ruling #3548: a behind target is a HIGHLIGHTED READING in Standing's
-        // attention tier, "not a Now card". The crossing is told by `owed`, and by
-        // #4756/#5064 that is the ONLY thing this family tells Now — the met and
-        // back-on-pace transitions used to mint a promoted reading, and a promoted
-        // reading of a finished week is a receipt, not a moment.
-        behind
-      ),
-      {
-        label: frequencyScopeLabel(
-          progress.target.scope_kind,
-          progress.target.scope_value
-        ),
-        value: `${progress.count} of ${progress.per_week}`,
-        // #3543: the count alone made the reader do the division against the day
-        // of the week. The verdict already exists on this object; the word is the
-        // non-color channel (#1220) and the tint only seconds it.
-        detail: behind ? (
-          <>
-            this week ·{" "}
-            <span
-              data-testid="standing-pace"
-              className={`badge ${PACE_BADGE_CLASS.behind}`}
-            >
-              {frequencyPaceLabel("behind")}
+              ))}
+              {routine && routine.food.length > 0 ? (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {`+ ${namesPhrase(routine.food.map((member) => member.name))}`}
+                </span>
+              ) : null}
             </span>
-          </>
-        ) : (
-          "this week"
-        ),
-        href: habitHref,
-        presence: "current",
-        control: logsInPlace ? (
-          <LogPracticeButton
-            practice={progress.target.scope_value}
-            todayCount={getPracticeDayCount(
-              profile.id,
-              progress.target.scope_value,
-              on
-            )}
-            today={on}
-            compact
-          />
-        ) : undefined,
-      }
-    );
-    // The door retires with `logsInPlace` (see above): the row's own control is
-    // the log offer now, so a second "Log <target>" row saying the same thing
-    // would be the three-tap door the ruling exists to remove.
-    if (!logsInPlace)
-      add(
-        progressCandidates.targetLog(
-          {
-            subject: profileSubject,
-            applicable: actingCanWrite && !progress.met,
-            sourceOrder: sourceOrder + index * 2 + 1,
-          },
-          id,
-          on,
-          // Owner ruling #3245: `owed` COMPOSES WITH THE MOMENT. Behind pace alone
-          // put a never-touched 2x/week target back in Now from day 4 of every
-          // week, filling the cap with cards nobody could act on. The standing fact
-          // is told by the pace word on the reading above; the card earns a Now slot
-          // only while this is a moment the person would normally do it.
-          behind && momentOpen,
-          momentOpen
-        ),
-        {
-          // THE ROW SAYS WHAT IT IS, AND THE CONTROL SAYS WHAT IT DOES (#4841
-          // item 2). `cadenceScopeNoun` is the app's existing answer to "what is
-          // this target called" (the recap and the practice nudge already ask
-          // it), so the noun comes from there rather than a second casing rule.
-          label: cadenceScopeNoun(
-            progress.target.scope_kind,
-            progress.target.scope_value
-          ),
-          detail: `${progress.count} of ${progress.per_week} this week`,
-          href: habitHref,
-          actionLabel: "Log",
+          ) : (
+            namesPhrase(members.map((member) => member.name))
+          )
         }
-      );
-  });
-  sourceOrder += orderedFreqTargets.length * 2;
-
-  activeProtocols.forEach((protocol, index) => {
-    add(
-      progressCandidates.protocol(
-        {
-          subject: profileSubject,
-          applicable: adultContentApplicable,
-          sourceOrder: sourceOrder + index * 4,
-        },
-        "state",
-        protocol.id
-      ),
-      {
-        label: protocol.name,
-        value: `${protocol.daysElapsed} days`,
-        href: protocol.href,
-      }
-    );
-    if (protocol.adherence)
-      add(
-        progressCandidates.protocol(
-          {
-            subject: profileSubject,
-            sourceOrder: sourceOrder + index * 4 + 1,
-          },
-          "adherence",
-          protocol.id
-        ),
-        {
-          label: "Adherence",
-          value: protocol.adherence.value,
-          detail: protocol.adherence.detail,
-          href: protocol.href,
-          moment: { title: protocol.name, href: protocol.href },
-        }
-      );
-    if (protocol.primaryOutcome)
-      add(
-        progressCandidates.protocol(
-          {
-            subject: profileSubject,
-            sourceOrder: sourceOrder + index * 4 + 2,
-          },
-          "outcome",
-          protocol.id
-        ),
-        {
-          label: protocol.primaryOutcome.label,
-          value: protocol.primaryOutcome.framing,
-          href: protocol.href,
-          moment: { title: protocol.name, href: protocol.href },
-        }
-      );
-    if (protocol.practiceName && protocol.practiceUsuallyToday && actingCanWrite)
-      add(
-        progressCandidates.protocol(
-          {
-            subject: profileSubject,
-            sourceOrder: sourceOrder + index * 4 + 3,
-          },
-          "practice",
-          protocol.id,
-          on,
-          protocol.practiceUsuallyToday
-        ),
-        {
-          // ROWS ARE NAMED BY THEIR NOUN (#4841 item 3, owner ruling 2026-09-03
-          // 14:05 UTC): the label used to lead with the same verb every row
-          // in this shape carries on its own action — "Log Cold plunge" beside
-          // an "Open" button that already says what the tap does. The row's
-          // identity is the practice's name; the action stays on the button.
-          label: protocol.practiceName,
-          href: protocol.href,
-          actionLabel: "Open",
-        }
-      );
-  });
-  sourceOrder += activeProtocols.length * 4;
-
-  for (const finding of dataQualityFindings) {
-    add(
-      progressCandidates.statement(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        "data-quality.finding",
-        finding.dedupeKey,
-        `finding.${finding.dedupeKey}`,
-        // THE SHARED groupKey (#4076 part 2). Five findings each carrying a unique
-        // key gave the moment-block fold nothing to fold on, so five rows each
-        // headed "Data quality" scrolled past saying the same words. It is only
-        // REACHABLE now: while these rendered cards the fold was never consulted.
-        "data-quality.finding"
-      ),
-      findingRow(finding, dismissDataQualityGap, "Data quality")
-    );
-  }
-
-  if (proteinToday) {
-    // A number and a goal (#3257). It read "≥ 69 g · Goal ~80–105 g/day (1.2–1.6 g/kg,
-    // general fitness) · … · From logged foods + protein logged — a floor, actual likely
-    // higher": an inequality, the band's derivation, two table names, and a hedge about
-    // the ESTIMATOR. Amount and band now come from the parts Telegram reads, so the "+"
-    // carries the floor in one character; the rest moved to the row's hover.
-    const proteinLine = proteinTodayLineParts(proteinToday);
-    add(
-      dailyCandidates.protein(
-        {
-          subject: profileSubject,
-          applicable: foodLoggingApplicable,
-          sourceOrder: sourceOrder++,
-        },
-        on,
-        // `both-sources` carries integration data too (#3903), so it is external.
-        proteinToday.todayIntake?.basis === "tracked" ||
-          proteinToday.todayIntake?.basis === "both-sources"
-          ? "external"
-          : "manual",
-        mealTimeWindows(nowMealAnchors)
-      ),
-      // The row renders every part of #3257's copy: the figure with its floor "+",
-      // the band, the trailing average in "g", and the derivation behind the
-      // disclosure control.
-      {
-        value: proteinLine.amount,
-        detail: [
-          `Goal ${proteinLine.band}`,
-          proteinToday.trailing.grams != null && !proteinToday.trailing.dayOne
-            ? `7-day average ${Math.round(proteinToday.trailing.grams)} g`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        disclosure: proteinTodayExplanation(proteinToday),
-        href: "/nutrition",
-        moment: { title: "Nutrition today", href: "/nutrition" },
-        presence: "current",
-      }
-    );
-  } else if (foodLoggingApplicable)
-    add(
-      dailyCandidates.nutritionBootstrap({
-        subject: profileSubject,
-        applicable: actingCanWrite,
-        sourceOrder: sourceOrder++,
-      }),
-      {
-        detail: "No food logged yet.",
-        href: "/nutrition",
-        actionLabel: "Log food",
-        presence: "never",
-      }
-    );
-  // ONE ACT, ONE SEAT (#5063). A slot seated above already carries this offer as its
-  // control, so a second row for the same tap would be the defect this issue names —
-  // the bundle sitting in the fold under the stragglers of the slot it would have
-  // written. Nothing is lost: the offer is on the page, on the row for its own slot.
-  if (
-    routineControl &&
-    routineTiming &&
-    !seatedDoseSlots.has(routineControl.window)
-  )
-    add(
-      dailyCandidates.usualRoutine(
-        {
-          subject: profileSubject,
-          applicable: foodLoggingApplicable,
-          sourceOrder: sourceOrder++,
-        },
-        routineControl.window,
-        on,
-        routineTiming
-      ),
-      {
-        // THE ROW TAKES THE GRAMMAR (#5066, superseding #4362 ruling 2). It was
-        // control-only, on the argument that the offer's card was its own label —
-        // which left the card starting a full label column in from every other row
-        // and two lines tall between one-line rows. Label names the slot, facts name
-        // the members, and the trailing cell holds one 34px control. Nothing is
-        // printed twice: #3736's rule was that the names stay ON the row, and the
-        // facts cell is where a row states them.
-        label: `Usual ${routineControl.window}`,
-        detail: (
-          <span data-testid="routine-usual-names">
-            {usualRoutinePhrase(
-              routineControl.food.map((member) => member.name),
-              routineControl.doses
-            )}
-          </span>
-        ),
-        control: <UsualRoutineControl {...routineControl} />,
-      }
-    );
-
-  if (intradayToday) {
-    // ONE ROUTE, NAMED ONCE: the intraday member's own door and the family's
-    // declared door are the same destination by construction, which is what puts
-    // the row's stretched surface on that member (#4969 ruling) instead of on two
-    // literals that have to keep agreeing.
-    const dayViewHref = historyDayIntradayHref(on);
-    add(
-      dailyCandidates.intraday(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        on
-      ),
-      {
-        // The lag sentence is the row's FACTS — the one thing the drawing cannot
-        // say about itself (#4767 item 5).
-        value: intradayFreshness(intradayToday) ?? undefined,
-        href: dayViewHref,
-        presence: "current",
-      }
-    );
-    // THE FAMILY'S FIGURE (#4969), not this member's: the Day-so-far row draws it
-    // full width under every member's facts, not inside this one's `<li>`. It is
-    // declared WITH its door — the figure leads to what it pictures, which is
-    // today's day view, whatever order the night's sleep and today's steps take
-    // above it (#4969 ruling, 2026-09-03).
-    setDrawing("day-so-far", {
-      figure: {
-        node: (
-          <IntradayChart
-            model={intradayToday}
-            formatPrefs={formatPrefs}
-            profileId={profile.id}
-            className="w-full"
-          />
-        ),
-        door: dayViewHref,
-      },
-    });
-  }
-
-  if (stepsSummary) {
-    add(
-      dailyCandidates.steps(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        on
-      ),
-      {
-        value:
-          stepsSummary.today == null
-            ? "No steps logged yet today"
-            : formatCount(stepsSummary.today),
-        detail:
-          [
-            stepsSummary.average7 == null
-              ? null
-              : `Prior 7 days · ${formatCount(stepsSummary.average7)} steps a day`,
-            // Absent for most of the day BY DESIGN (#3258): the summary withholds it
-            // until today can be compared, so the row states the neutral average alone
-            // rather than a percentage that was only ever counting the hours.
-            stepsSummary.deltaPct == null
-              ? null
-              : `${stepsSummary.deltaPct > 0 ? "+" : ""}${stepsSummary.deltaPct}% vs prior 7 days`,
-          ]
-            .filter(Boolean)
-            .join(" · ") || undefined,
-        href: "/trends#body",
-        presence: "current",
-      }
-    );
-    // THE FAMILY'S SERIES (#4969), not this member's: the desktop column (#3252)
-    // draws the window this row's own sentence talks about — today plus the
-    // prior seven days, the same span `summarizeStepsToday` averages, off the
-    // same series it was handed. Steps declare `slot-null`, so a day nobody
-    // measured is a HOLE in the stroke rather than a zero — a total is not a
-    // level and may not be bridged.
-    setDrawing("day-so-far", {
-      series: {
-        points: stepsRows.filter(
-          (row) => row.date >= shiftDateStr(on, -STEPS_TRAILING_DAYS)
-        ),
-        seriesKey: "metric:steps",
-        stale: false,
-        name: `Steps, today and the prior ${STEPS_TRAILING_DAYS} days`,
-        pointLabel: (point) =>
-          `${formatCount(point.value)} steps · ${formatLongDate(point.date, formatPrefs)}`,
-        loneCaption: `Single reading · ${formatLongDate(on, formatPrefs)}`,
-      },
-    });
-  } else
-    add(
-      dailyCandidates.stepsBootstrap({
-        subject: profileSubject,
-        applicable: actingCanWrite,
-        sourceOrder: sourceOrder++,
-      }),
-      {
-        detail: "No step data yet.",
-        href: "/integrations/health-connect",
-        actionLabel: "Connect a source",
-        presence: "never",
-      }
-    );
-
-  // Each vital row resolves its OWN state before it renders: a year-quiet quantity takes
-  // the dormant seat, a live one is untouched. The branch is per row rather than per
-  // family precisely so a 2022 blood pressure cannot collapse this morning's resting
-  // heart rate (#3226).
-  const bpAge = vitalsModel?.bp
-    ? glanceAgeToken({
-        date: vitalsModel.bp.date,
-        today: on,
-        freshness: vitalsModel.bp.freshness,
-        form: "long",
-        floorLabel: VITAL_PRESENTATION_FLOORS["blood-pressure"].label,
-        dateLabel: formatLongDate(vitalsModel.bp.date, formatPrefs),
-      })
-    : null;
-  const restingHrAge = vitalsModel?.restingHr
-    ? glanceAgeToken({
-        date: vitalsModel.restingHr.date,
-        today: on,
-        freshness: vitalsModel.restingHr.freshness,
-        form: "long",
-        floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
-        dateLabel: formatLongDate(vitalsModel.restingHr.date, formatPrefs),
-      })
-    : null;
-  // THE FAMILY EXISTS THE MOMENT EITHER QUANTITY HAS EVER BEEN RECORDED (#4841 item
-  // 4) — a reading years dormant still counts, which is what lets the Setup
-  // bootstrap row below retire. "Live in Standing" is narrower: a dormant reading
-  // takes its own tail seat (below) and carries its own door there, so it is not
-  // a candidate for the family's ONE Standing-cluster door.
-  const vitalsFamilyExists =
-    vitalsModel?.bp != null || vitalsModel?.restingHr != null;
-  const bpLiveInStanding = vitalsModel?.bp != null && !vitalsModel.bp.dormant;
-  const restingHrLiveInStanding =
-    vitalsModel?.restingHr != null && !vitalsModel.restingHr.dormant;
-  const vitalsFamilySeatKey = vitalsFamilySeat(
-    bpLiveInStanding,
-    restingHrLiveInStanding
-  );
-  // ONE "Log a vital" DOOR FOR THE FAMILY (owner ruling 2026-09-03 12:25 UTC),
-  // present whenever a member is live in Standing — fresh or individually stale —
-  // rather than gated on that row's own staleness the way #4826 left it. Seated
-  // by `vitalsFamilySeatKey`, never both rows at once.
-  const vitalsFamilyControl = vitalsFamilySeatKey ? (
-    <DashboardQuickEntryAction
-      form="measurements"
-      prefill={{ measurementGroup: "vitals" }}
-      actionLabel="Log a vital"
-    />
-  ) : undefined;
-  if (vitalsModel?.bp?.dormant)
-    add(
-      dailyCandidates.vitalDormant(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        "blood-pressure",
-        vitalsModel.bp.date
-      ),
-      {
-        detail:
-          dormantRecordSince("blood-pressure", vitalsModel.bp.date) ??
-          dormantRecordLine(
-            "blood-pressure",
-            freshnessAgeDays(vitalsModel.bp.date, on) ??
-              DORMANCY_DOMAINS["blood-pressure"].collapseAfterDays
-          ),
-        href: "/trends#body",
-        actionLabel: "Vitals history",
-        // THE DOOR THAT ENDS THE DORMANCY (#4841 item 3). The line says a reading is
-        // missing; until now the only thing it opened was the history of the reading
-        // it says is missing. This is the door #4757 gives a stale reading, on the
-        // row where the reading is gone altogether — the same form, the same group
-        // and the same words as `staleMeasurementDoor` puts on the live vitals rows,
-        // so the family speaks once. It is spelled out rather than borrowed because
-        // that helper is gated on a glance-age token, and a dormant row has no
-        // reading left to have an age. "Vitals history" stays beside it as the
-        // family's door, like every other row here.
-        control: (
-          <DashboardQuickEntryAction
-            form="measurements"
-            prefill={{ measurementGroup: "vitals" }}
-            actionLabel="Log a vital"
-          />
-        ),
-        presence: "dormant",
-      }
-    );
-  else if (vitalsModel?.bp)
-    add(
-      dailyCandidates.vital(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        "blood-pressure",
-        vitalsModel.bp.date
-      ),
-      {
-        value: (() => {
-          const age = bpAge!;
-          const direction = vitalsModel.bp.direction;
-          return (
-            <span
-              className="inline-flex flex-wrap items-baseline gap-x-2"
-              data-testid="vitals-latest-bp"
-            >
-              <span>{`${vitalsModel.bp.systolic}/${vitalsModel.bp.diastolic} mmHg`}</span>
-              <StandingAge age={age} testId="vitals-latest-bp-age" />
-              {direction && (
-                <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous blood pressure`}</span>
-              )}
-            </span>
-          );
-        })(),
-        href: "/trends#body",
-        disclosure: bpAge?.title ?? undefined,
-        control:
-          vitalsFamilySeatKey === "blood-pressure"
-            ? vitalsFamilyControl
-            : undefined,
-        presence: "current",
-      }
-    );
-  if (vitalsModel?.restingHr?.dormant)
-    add(
-      dailyCandidates.vitalDormant(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        "resting-heart-rate",
-        vitalsModel.restingHr.date
-      ),
-      {
-        detail:
-          dormantRecordSince("resting-hr", vitalsModel.restingHr.date) ??
-          dormantRecordLine(
-            "resting-hr",
-            freshnessAgeDays(vitalsModel.restingHr.date, on) ??
-              DORMANCY_DOMAINS["resting-hr"].collapseAfterDays
-          ),
-        href: "/trends#body",
-        actionLabel: "Vitals history",
-        // Its blood-pressure sibling's door, for the same reason (#4841 item 3).
-        control: (
-          <DashboardQuickEntryAction
-            form="measurements"
-            prefill={{ measurementGroup: "vitals" }}
-            actionLabel="Log a vital"
-          />
-        ),
-        presence: "dormant",
-      }
-    );
-  else if (vitalsModel?.restingHr)
-    add(
-      dailyCandidates.vital(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        "resting-heart-rate",
-        vitalsModel.restingHr.date
-      ),
-      {
-        value: (() => {
-          const age = restingHrAge!;
-          const direction = vitalsModel.restingHr.direction;
-          return (
-            <span
-              className="inline-flex flex-wrap items-baseline gap-x-2"
-              data-testid="vitals-latest-resting-hr"
-            >
-              <span>{`${vitalsModel.restingHr.value} bpm`}</span>
-              <StandingAge age={age} testId="vitals-latest-resting-hr-age" />
-              {direction && (
-                <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous resting heart rate`}</span>
-              )}
-            </span>
-          );
-        })(),
-        href: "/trends#body",
-        disclosure: restingHrAge?.title ?? undefined,
-        control:
-          vitalsFamilySeatKey === "resting-heart-rate"
-            ? vitalsFamilyControl
-            : undefined,
-        presence: "current",
-      }
-    );
-  if (vitalsModel?.restingHr && !vitalsModel.restingHr.dormant)
-    // THE FAMILY'S SERIES (#4969), not this member's — member order no longer
-    // decides which row keeps the sparkline (#4969 item 5). These are the points
-    // the gather ALREADY pulled to decide this row's arrow (the bounded trend
-    // tail, lib/queries/vitals-latest — two readings, or one), carried through
-    // rather than re-read: the plot draws exactly the movement the arrow claims.
-    // The tone follows the family's own glance age, so a resting HR past its
-    // 180-day floor is amber in both places at once.
-    setDrawing("resting-heart-rate", {
-      series: {
-        points: vitalsModel.restingHr.points,
-        seriesKey: "metric:resting_hr",
-        stale: vitalsModel.restingHr.freshness === "due",
-        name: "Resting heart rate, latest readings",
-        pointLabel: (point) =>
-          `${point.value} bpm · ${formatLongDate(point.date, formatPrefs)}`,
-        loneCaption: `Single reading · ${formatLongDate(vitalsModel.restingHr.date, formatPrefs)}`,
-      },
-    });
-  add(
-    setupCandidates.vitalsBootstrap({
-      subject: profileSubject,
-      // RETIRES ONCE THE FAMILY HAS ANY READING (#4841 item 4, 2026-09-02 report):
-      // this bootstrap door and the family's own Standing-cluster door both open
-      // the same form, so a profile with even a dormant reading gets ONE of them,
-      // never both. A profile with no vitals reading at all keeps this door — the
-      // #4160 first-run case, untouched.
-      applicable: actingCanWrite && !vitalsFamilyExists,
-      sourceOrder: sourceOrder++,
-    }),
-    {
-      label: "Vitals",
-      control: (
-        <DashboardQuickEntryAction
-          form="measurements"
-          prefill={{ measurementGroup: "vitals" }}
-          actionLabel="Log a vital"
-        />
-      ),
-    }
-  );
-  if (cycleModel)
-    add(
-      dailyCandidates.cyclePhase(
-        {
-          subject: profileSubject,
-          applicable: cycleApplicable,
-          sourceOrder: sourceOrder++,
-        },
-        on
-      ),
-      {
-        value: `Day ${cycleModel.day}`,
-        detail: cycleModel.phase,
-        href: "/medical/cycles",
-        presence: "current",
-      }
-    );
-  if (nextAppt)
-    add(
-      careCandidates.appointment(
-        {
-          subject: profileSubject,
-          applicable: hasScheduledAppt,
-          sourceOrder: sourceOrder++,
-        },
-        nextAppt.href
-      ),
-      {
-        label: nextAppt.title,
-        value: nextAppt.whenLabel,
-        detail: nextAppt.dueText,
-        href: nextAppt.href,
-        moment: { title: "Next appointment", href: "/records/history/visits" },
-      }
-    );
-
-  labRows.forEach((row, index) => {
-    const acknowledgeKey = labPromotions.get(row.name)?.acknowledgeKey;
-    const age = glanceAgeToken({
-      date: row.date,
-      today: on,
-      freshness: row.freshness,
-      form: "compact",
-      floorLabel: RECENT_LAB_STALE_LABEL,
-    });
-    add(
-      careCandidates.lab(
-        { subject: profileSubject, sourceOrder: sourceOrder + index },
-        row.name,
-        labPromotions.get(row.name)
-      ),
-      {
-        label: row.name,
-        value: (
-          <MedicalValue
-            value={row.value}
-            unit={row.unit}
-            flag={row.flag}
-            showFlagLabel
-          />
-        ),
-        detail: <StandingAge age={age} testId="recent-lab-date" />,
-        href: row.href,
-        disclosure: age.title ?? undefined,
-        moment: { title: "Recent clinical results", href: "/results" },
-        presence: "current",
-        control:
-          actingCanWrite && acknowledgeKey ? (
-            <SnoozeDismissMenu
-              itemName={row.name}
-              signalKey={acknowledgeKey}
-              snoozeAction={snoozeAttention}
-              dismissAction={dismissAttention}
-            />
-          ) : undefined,
-      }
-    );
-  });
-  sourceOrder += labRows.length;
-  if (labRows.length === 0)
-    add(
-      careCandidates.labBootstrap({
-        subject: profileSubject,
-        applicable: actingCanWrite,
-        sourceOrder: sourceOrder++,
-      }),
-      {
-        label: "Clinical results",
-        href: "/data",
-        actionLabel: "Import results",
-        presence: "never",
-      }
-    );
-
-  const lastWeightRecord = weightSeries.at(-1)?.date ?? null;
-  const weightDormant =
-    dormancyState({
-      lastRecordDate: lastWeightRecord,
-      today: on,
-      domain: "weight",
-    }) === "dormant";
-  if (lastWeightRecord == null)
-    add(
-      progressCandidates.weightBootstrap({
-        subject: profileSubject,
-        applicable: actingCanWrite,
-        sourceOrder: sourceOrder++,
-      }),
-      {
-        detail: "No weigh-ins yet.",
-        href: "/trends",
-        actionLabel: "Log weight",
-        presence: "never",
-      }
-    );
-  else if (weightDormant) {
-    const ageDays =
-      freshnessAgeDays(lastWeightRecord, on) ??
-      DORMANCY_DOMAINS.weight.collapseAfterDays;
-    add(
-      progressCandidates.weightDormant(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        lastWeightRecord
-      ),
-      {
-        detail: dormantRecordLine("weight", ageDays),
-        href: "/trends",
-        actionLabel: "Body metrics",
-        // THE SAME DOOR THE LIVE ROW EARNS (#4841 item 4, owner ruling 2026-09-03
-        // 14:05 UTC: "dormant weight gets the same log-a-weight door as the live
-        // row"). The live row's door is `staleMeasurementDoor`, gated on a glance-age
-        // token a dormant row has none of; spelled out here the same way the dormant
-        // vitals rows already are, on the same form and group. "Body metrics" stays
-        // as the row's own words for its history door.
-        control: (
-          <DashboardQuickEntryAction
-            form="measurements"
-            prefill={{ measurementGroup: "body" }}
-            actionLabel="Log weight"
-          />
-        ),
-        presence: "dormant",
-      }
-    );
-  } else {
-    const latestWeight = bodyMetrics.at(-1);
-    if (latestWeight) {
-      // Weight's glance floor is the one its Trends card already reads (#4757): the
-      // self-measured six weeks of TREND_METRIC_PRESENTATION_FLOORS, by reference, so
-      // the dashboard and the chart cannot disagree about how old a weigh-in may be.
-      // Between that floor and the 90-day dormancy collapse the row keeps its value,
-      // goes amber, and grows the door.
-      const weightAge = glanceAgeToken({
-        date: latestWeight.date,
-        today: on,
-        freshness: trendMetricPresentationFreshness(
-          "weight",
-          latestWeight.date,
-          on
-        ),
-        form: "long",
-        floorLabel: TREND_METRIC_PRESENTATION_FLOORS.weight.label,
-        dateLabel: formatLongDate(latestWeight.date, formatPrefs),
-      });
-      add(
-        progressCandidates.weightLatest(
-          { subject: profileSubject, sourceOrder: sourceOrder++ },
-          latestWeight.date,
-          weightEngagement
-        ),
-        {
-          label: "Latest",
-          value: `${latestWeight.value} ${units.weightUnit}`,
-          // The date stays visible when the destination door appears (#3555).
-          detail: <StandingAge age={weightAge} testId="weight-latest-age" />,
-          href: "/trends#body",
-          disclosure: weightAge.title ?? undefined,
-          control: staleMeasurementDoor(weightAge, "body", "Log weight"),
-          presence: "current",
-        }
-      );
-      // THE FAMILY'S SERIES (#4969), not the "Latest" member's: the SAME
-      // trailing-90-day series the weight domain already derived above for this
-      // page — not a second read, and not a second window. The tone follows the
-      // family's own glance age, as the resting HR plot does — member order is no
-      // longer what keeps a sparkline on the right member (#4969 item 5).
-      setDrawing("weight", {
-        series: {
-          points: bodyMetrics,
-          seriesKey: "metric:weight",
-          stale: weightAge.stale,
-          name: `Weight, last ${WEIGHT_TREND_WINDOW_DAYS} days`,
-          pointLabel: (point) =>
-            `${point.value} ${units.weightUnit} · ${formatLongDate(point.date, formatPrefs)}`,
-          loneCaption: `Single reading · ${formatLongDate(latestWeight.date, formatPrefs)}`,
-        },
-      });
-    }
-    add(
-      progressCandidates.weightTrend(
-        {
-          subject: profileSubject,
-          applicable: bodyMetrics.length > 1,
-          sourceOrder: sourceOrder++,
-        },
-        weightTrendSince,
-        on,
-        weightEngagement
-      ),
-      {
-        label: "Trend",
-        value: "View trend",
-        href: "/trends#body",
-        presence: "current",
-      }
-    );
-  }
-
-  const lastSleepRecord =
-    sleepSummary?.wakeDay ?? getLastSleepRecordDate(profile.id);
-  const sleepDormant =
-    dormancyState({
-      lastRecordDate: lastSleepRecord,
-      today: on,
-      domain: "sleep",
-    }) === "dormant";
-  if (sleepWaiting)
-    add(
-      sleepCandidates.waiting(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        on,
-        localTimeWindow(
-          typicalWakeMinutes ?? 420,
-          (typicalWakeMinutes ?? 420) + 180
-        )
-      ),
-      {
-        label: "Sleep",
-        // The SAME headline /sleep prints, marked the same way: one decision, three
-        // surfaces (#2097). The row replaces the figures rather than sitting above
-        // them — the state exists precisely because the only number available is a
-        // different night's.
-        value: (
-          <span
-            data-testid="sleep-waiting-headline"
-            data-kind={sleepWaiting.kind}
-          >
-            {sleepWaiting.headline}
-          </span>
-        ),
-        detail: [
-          sleepWaitingDetail(sleepWaiting, {
-            clock: (min) => formatClockMinutes(formatPrefs.timeFormat, min),
-            when: (iso) => formatRelativeTime(iso),
-          }),
-          sleepPreviousNightLabel,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        href: "/sleep",
-      }
-    );
-  else if (lastSleepRecord == null)
-    add(
-      sleepCandidates.bootstrap({
-        subject: profileSubject,
-        sourceOrder: sourceOrder++,
-      }),
-      {
-        detail: "No sleep recorded yet.",
-        href: "/data",
-        actionLabel: "Sync a source",
-        presence: "never",
-      }
-    );
-  else if (sleepDormant) {
-    const ageDays =
-      freshnessAgeDays(lastSleepRecord, on) ??
-      DORMANCY_DOMAINS.sleep.collapseAfterDays;
-    add(
-      sleepCandidates.dormant(
-        { subject: profileSubject, sourceOrder: sourceOrder++ },
-        lastSleepRecord
-      ),
-      {
-        detail: dormantRecordLine("sleep", ageDays),
-        href: "/data",
-        actionLabel: "Sync a source",
-        presence: "dormant",
-      }
-    );
-  } else if (sleepPresentation?.freshness === "stale") {
-    add(
-      sleepCandidates.refresh(
-        {
-          subject: profileSubject,
-          applicable: actingCanWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
-      ),
-      { label: "Sleep", href: "/data", actionLabel: "Sync a source" }
-    );
-  } else if (sleepSummary) {
-    const wakeDayAge = freshnessAgeDays(sleepSummary.wakeDay, on);
-    const wakeMinutes = sleepSummary.wakeMinutes ?? 420;
-    const sleepTiming = {
-      kind: "local-days" as const,
-      ageDays: wakeDayAge ?? -1,
-      maxDays: 3,
-    };
-    const values = [
-      ["duration", "Sleep duration", formatHm(sleepSummary.durationMin)],
-      [
-        "bed-time",
-        "Bed time",
-        sleepSummary.bedMinutes == null
-          ? "—"
-          : formatClockMinutes(formatPrefs.timeFormat, sleepSummary.bedMinutes),
-      ],
-      [
-        "wake-time",
-        "Wake time",
-        sleepSummary.wakeMinutes == null
-          ? "—"
-          : formatClockMinutes(
-              formatPrefs.timeFormat,
-              sleepSummary.wakeMinutes
-            ),
-      ],
-    ] as const;
-    values.forEach(([key, title, value], index) =>
-      add(
-        sleepCandidates.reading(
-          { subject: profileSubject, sourceOrder: sourceOrder + index },
-          key,
-          sleepSummary.wakeDay,
-          engagementFromSource(sleepSummary.source),
-          sleepTiming,
-          key === "duration" &&
-            sleepArrivedInWakeWindow(
-              sleepPresentation?.freshness ?? "stale",
-              wakeDayAge,
-              wakeMinutes,
-              nowMinutes,
-              sleepClockSkewSuspect
+        trailing={content.overdue ? "Overdue" : undefined}
+        control={
+          writable ? (
+            routine ? (
+              <UsualRoutineControl {...routine} />
+            ) : (
+              <DoseSlotTakeAll date={today} doses={members} />
             )
-        ),
-        {
-          label: title,
-          value,
-          // #3970 owner ruling (2026-08-30). The band used to be a DISCLOSURE on
-          // both the bed-time and the wake-time member — the same string, two 34px
-          // buttons, on one line. It inlines ONCE instead, as plain detail text after
-          // the wake time, so #3253's glance-context rider survives with no per-row
-          // control. Duration never carried it and still does not: a duration has no
-          // usual bed-and-wake pair to be measured against.
-          detail: sleepClockSkewSuspect
-            ? key === "duration"
-              ? undefined
-              : SLEEP_SKEW_HEDGE
-            : key === "wake-time"
-              ? usualSleepBand
-              : undefined,
-          href: "/sleep",
-          presence: "current",
+          ) : undefined
         }
-      )
+      />
     );
-    sourceOrder += values.length;
   }
 
-  todayNaps.forEach((nap, index) =>
-    add(
-      sleepCandidates.nap(
-        { subject: profileSubject, sourceOrder: sourceOrder + index },
-        nap.date,
-        nap.startMinutes,
-        engagementFromSource(nap.source),
-        nowMinutes - nap.endMinutes
-      ),
-      {
-        label: formatSleepWindow(
-          formatPrefs.timeFormat,
-          nap.startMinutes,
-          nap.endMinutes
-        ),
-        value: formatHm(nap.durationMin),
-        href: "/sleep#naps",
-        moment: { title: "Today's naps", href: "/sleep#naps" },
-      }
-    )
-  );
-  if (todayNaps.length > 0)
-    add(
-      sleepCandidates.napTotal(
-        {
-          subject: profileSubject,
-          sourceOrder: sourceOrder + todayNaps.length,
-        },
-        on
-      ),
-      {
-        value: formatHm(
-          todayNaps.reduce((sum, nap) => sum + nap.durationMin, 0)
-        ),
-        detail: `${todayNaps.length} ${todayNaps.length === 1 ? "nap" : "naps"}`,
-        href: "/sleep#naps",
-        presence: "current",
-      }
+  if (content.kind === "item") {
+    const item = content.item;
+    return (
+      <HomeRow
+        id={row.id}
+        testId="home-action"
+        title={item.title}
+        detail={attentionRowDetail(item, today, formatPrefs)}
+        control={
+          writable ? (
+            <>
+              {item.doseId != null && (
+                <DoseConfirmButton
+                  action={markAttentionDose}
+                  undoAction={undoAttentionDose}
+                  fields={{ dose_id: item.doseId }}
+                  payload={item.shortLabel ?? item.title}
+                  ariaLabel={`Take ${item.title}`}
+                  testid="attention-mark-taken"
+                />
+              )}
+              {item.practiceLog != null && (
+                <LogPracticeButton
+                  practice={item.practiceLog.practice}
+                  todayCount={item.practiceLog.todayCount}
+                  today={today}
+                  compact
+                />
+              )}
+              {item.followUpResolve != null && (
+                <FollowUpResolveControls
+                  action={async (fd) => {
+                    "use server";
+                    await resolveFollowUp(fd);
+                  }}
+                  carePlanItemId={item.followUpResolve.carePlanItemId}
+                  resolvingRecordId={item.followUpResolve.resolvingRecordId}
+                />
+              )}
+              {isItemSuppressibleFlag(item) && (
+                <SnoozeDismissMenu
+                  itemName={item.title}
+                  signalKey={item.key}
+                  snoozeOnly={item.carePersistent === true}
+                  snoozeAction={snoozeAttention}
+                  dismissAction={dismissAttention}
+                />
+              )}
+            </>
+          ) : undefined
+        }
+      />
     );
-  sourceOrder += todayNaps.length + 1;
+  }
 
-  pillars.forEach((pillar, index) =>
-    add(
-      progressCandidates.healthspan(
-        {
-          subject: profileSubject,
-          applicable: adultContentApplicable,
-          sourceOrder: sourceOrder + index,
-        },
-        pillar.key
-      ),
-      {
-        label: pillar.label,
-        value: (
-          <span className="inline-flex flex-wrap items-baseline gap-1.5">
-            <span>{pillar.value}</span>
-            <PillarToneBadge tone={pillar.tone} />
-          </span>
-        ),
-        detail: (
-          <span className="inline-flex flex-wrap items-center gap-1.5">
-            <span>{pillar.detail}</span>
-            <TrendArrow pillar={pillar} />
-          </span>
-        ),
-        href: pillar.href,
-        moment: { title: "Healthspan pillars", href: "/longevity" },
-        presence: "current",
-      }
-    )
-  );
-  sourceOrder += pillars.length;
-
-  coachingObservations.forEach((finding, index) =>
-    add(
-      progressCandidates.statement(
-        { subject: profileSubject, sourceOrder: sourceOrder + index },
-        "coaching.observation",
-        finding.dedupeKey,
-        `finding.${finding.dedupeKey}`,
-        "coaching.observation"
-      ),
-      findingRow(finding, dismissCoachingObservation, "Coaching observations")
-    )
-  );
-  sourceOrder += coachingObservations.length;
-
-  const recapMomentTitle = weeklyRecap
-    ? `${recapScaleEntry(weeklyRecap.scale).label} · ${recapRangeLabel(
-        weeklyRecap.start,
-        weeklyRecap.end,
-        formatPrefs
-      )}`
-    : "";
-  weeklyRecap?.lines.forEach((line, index) =>
-    add(
-      progressCandidates.recap(
-        {
-          subject: profileSubject,
-          applicable: trainingRelevant,
-          sourceOrder: sourceOrder + index,
-        },
-        // The shared per-line identity (#3033): `nutrient-missed` can appear once
-        // per nutrient, and a bare line.key would mint duplicate candidate ids.
-        recapLineId(line),
-        weeklyRecap.start,
-        weeklyRecap.end
-      ),
-      {
-        // A bare line is already self-labelled (#1935); printing the label
-        // beside it would name the row twice.
-        ...(line.bare ? {} : { label: line.label }),
-        value: line.value,
-        detail: recapLineAnnotation(line),
-        href: "/history",
-        // THE MOMENT (#3365). Six recap facts used to be six identical cards, one
-        // line each; the scale and the window they all share is stated once, at the
-        // head of the block they fold into.
-        moment: { title: recapMomentTitle, href: "/history" },
-      }
-    )
-  );
-
-  const dashboardPlacements = rankDashboardCandidates(candidates, {
-    activeProfileId: profile.id,
-    minutesOfDay: nowMinutes,
-    today: on,
-    upcoming,
-  });
-  const illnessGroupKeys = orderedIllnessGroupKeys(dashboardPlacements);
-  const illnessByGroupKey = new Map(
-    illnessCockpits.map((cockpit) => [cockpit.stateIdentity!.groupKey, cockpit])
-  );
-  const placedEpisodeCandidateIds = new Set(
-    dashboardPlacements
-      .filter(
-        (placement) =>
-          placement.lane === "now" && placement.nowLayer === "illness"
-      )
-      .map((placement) => placement.candidate.candidateId)
-  );
-  const placedIllnessCockpits = illnessGroupKeys.map((groupKey) => {
-    const cockpit = illnessByGroupKey.get(groupKey);
-    if (!cockpit)
-      throw new Error(`Missing dashboard illness group ${groupKey}`);
-    const stateIdentity = placedEpisodeCandidateIds.has(
-      cockpit.stateIdentity!.candidateId
-    )
-      ? cockpit.stateIdentity
-      : null;
-    const temperatureIdentity =
-      cockpit.temperatureIdentity &&
-      placedEpisodeCandidateIds.has(cockpit.temperatureIdentity.candidateId)
-        ? cockpit.temperatureIdentity
-        : null;
-    const medicationIdentity =
-      cockpit.medicationIdentity &&
-      placedEpisodeCandidateIds.has(cockpit.medicationIdentity.candidateId)
-        ? cockpit.medicationIdentity
-        : null;
-    const body = cockpit.body as ReactElement<
-      Parameters<typeof IllnessCockpitBody>[0]
-    >;
-    const episode = {
-      ...body.props.episode,
-      ...(cockpit.temperatureIdentity && !temperatureIdentity
-        ? { temperatures: [], maxTempF: null, latestTemp: null }
-        : {}),
-      ...(cockpit.medicationIdentity && !medicationIdentity
-        ? { medications: [], totalAdministrations: 0 }
-        : {}),
-    };
-    return {
-      ...cockpit,
-      stateIdentity,
-      temperatureIdentity,
-      medicationIdentity,
-      status: {
-        ...cockpit.status,
-        temperature: temperatureIdentity ? cockpit.status.temperature : null,
-        lastMeds: medicationIdentity ? cockpit.status.lastMeds : null,
-      },
-      body: cloneElement(body, {
-        episode,
-        temperatureIdentity,
-        medicationIdentity,
-      }),
-    };
-  });
-
-  // The placement canvas gets a DECLARED width (#3253). The dashboard rendered bare
-  // into the shell, whose only limit is the 110rem 3xl cap, so on a wide monitor
-  // "Mark taken" sat ~1,400px from its own card's title and Standing's rows were
-  // two-thirds dead space. `wide` is the existing 72rem token — no new width invented
-  // — and `mx-auto` centres it inside the shell exactly the way
-  // app/(app)/records/layout.tsx already does.
-  return (
-    <PageContainer width="wide" data-testid="dashboard-canvas">
-      {/* THE DASHBOARD DECLARES ITSELF (#3087). Every logging control placed on this
-          canvas — the weigh-in widget, the symptom bar, the food bar, the "Log a
-          dose" card, the reading button — is the SAME component its domain page
-          mounts, posting the SAME Server Action. Without this the server reads all of
-          them as that page's own form, and `dashboard-widget` is produced by nothing.
-          The attention card's act-now confirms are separate actions of their own and
-          stamp `dashboard-hero` at the action; this covers the widget half. */}
-      <LoggedViaSurface value="dashboard-widget">
-        <DashboardPlacementCanvas
-          dateLabel={formatLongDate(on, formatPrefs)}
-          placements={dashboardPlacements}
-          presentations={presentations}
-          drawings={drawings}
-          aheadPresentations={aheadPresentations}
-          attentionBadgeCount={attentionBadgeCount}
-          nowSubjects={nowSubjects}
-          illnessGroupNode={
-            placedIllnessCockpits.length > 0 ? (
-              <IllnessNowGroup
-                cockpits={placedIllnessCockpits}
-                initialCollapsedActive={illnessUi.collapsedActive}
-                initialOpenOtherKey={illnessUi.openOtherKey}
-                saveState={saveIllnessNowState}
-              />
-            ) : undefined
+  // TRAINING'S THREE STATES IN ONE DAY (§3.2). The state is the composer's reading of
+  // one open-episode lifecycle; what each arm says and where its door goes is here.
+  // The logged arm carries DURATION AND DISTANCE only (§7.2) — no PR verdict.
+  if (content.kind === "training") {
+    const state = content.state;
+    if (state.kind === "in-progress")
+      return (
+        <HomeRow
+          id={row.id}
+          testId="home-training"
+          title="Workout in progress"
+          detail={`Started ${formatMinutes(workoutPresence.sinceMin)} ago`}
+          control={
+            <a className="btn-ghost btn-sm" href="/training">
+              Continue
+            </a>
           }
         />
-      </LoggedViaSurface>
-    </PageContainer>
+      );
+    if (state.kind === "logged")
+      return (
+        <HomeRow
+          id={row.id}
+          testId="home-training"
+          title={workoutPresence.title ?? "Workout"}
+          detail={formatMinutes(workoutPresence.sinceMin)}
+          control={
+            <a
+              className="btn-ghost btn-sm"
+              href={
+                workoutPresence.activityId == null
+                  ? "/training"
+                  : trainingActivityPageHref(workoutPresence.activityId)
+              }
+            >
+              Open
+            </a>
+          }
+        />
+      );
+    return (
+      <HomeRow
+        id={row.id}
+        testId="home-training"
+        title="Next workout"
+        detail={nextWorkoutTitle ?? undefined}
+        control={
+          <a className="btn-ghost btn-sm" href="/training">
+            Start
+          </a>
+        }
+      />
+    );
+  }
+
+  // "Fast · elapsed · since clock", with End fast. Its START door is #3208's sheet row,
+  // not this band: Home states what is running, and the Quicklogger begins things.
+  if (content.kind === "fast") {
+    const elapsed = openFast ? fastElapsedMs(openFast, nowInstant) : null;
+    const start = openFast ? parseUtcSql(openFast.started_at) : null;
+    return (
+      <HomeRow
+        id={row.id}
+        testId="home-fast"
+        title={`Fast · ${elapsed == null ? "" : formatFastDuration(elapsed)}`}
+        detail={
+          start
+            ? `since ${formatClockMinutes(
+                formatPrefs.timeFormat,
+                start.getHours() * 60 + start.getMinutes()
+              )}`
+            : undefined
+        }
+        control={writable && openFast ? <HomeEndFastButton /> : undefined}
+      />
+    );
+  }
+
+  // THE PERIOD ROW, under the owner's 2026-09-11 amendment to §3.2: a pregnancy
+  // silences the two claim-making offers (which `cycleControlState` already encodes in
+  // `canStart`/`canReopen`), a postmenopausal suspension silences nothing, and End is
+  // never silenced — closing an open period would otherwise strand the row.
+  const state = content.state;
+  return (
+    <HomeRow
+      id={row.id}
+      testId="home-period"
+      title={state.kind === "open" ? `Period · day ${state.day}` : "Period"}
+      control={
+        writable && cycleControl ? (
+          <PeriodOfferButton
+            state={cycleControl}
+            surface="atom"
+            variant="compact"
+          />
+        ) : undefined
+      }
+    />
+  );
+}
+
+// ── THE GLANCE CARD (§3.2), BEHIND THE FIRST BOUNDARY (§6.1) ────────────────────
+//
+// The existing `getIntradayDay`/`IntradayChart` owner drawn full width of its column,
+// with ONE facts line above it and nothing else. Each fact renders only when it exists.
+//
+// THE DAY-EVENTS READ IS THE LIST'S (§7.3): the events handed in are the rows the record
+// band below shows, so a tick can never name something the list does not — and the day
+// is read once for both. Only the DRAWING keeps the more-than-one-same-day-HR-point
+// gate: no frame with fewer than two points, the facts line stays, and the card is
+// omitted when there is neither a frame nor a fact.
+async function HomeGlance({
+  profileId,
+  loginId,
+  day,
+  dayEvents,
+  formatPrefs,
+  timezone,
+  nowMinutes,
+  nowInstant,
+  foodLoggingApplicable,
+}: {
+  profileId: number;
+  loginId: number;
+  day: string;
+  dayEvents: Parameters<typeof getIntradayDay>[2];
+  formatPrefs: DisplayFormatPrefs;
+  timezone: string;
+  nowMinutes: number;
+  nowInstant: Date;
+  foodLoggingApplicable: boolean;
+}) {
+  // ITS OWN PRIMED SCOPE. An AsyncLocalStorage scope covers the frame that opened it,
+  // never the child Server Components React schedules below it (#5012) — so a streamed
+  // section that gathers has to open the cache itself. That is what §6.1's "the
+  // request-scoped setting read cache spans every boundary" asks for, and it is why
+  // `withPrimedSettings` being ONE call matters: this is its third caller.
+  return withPrimedSettings({ loginId, profileIds: [profileId] }, () =>
+    renderGlance({
+      profileId,
+      day,
+      dayEvents,
+      formatPrefs,
+      timezone,
+      nowMinutes,
+      nowInstant,
+      foodLoggingApplicable,
+    })
+  );
+}
+
+function renderGlance({
+  profileId,
+  day,
+  dayEvents,
+  formatPrefs,
+  timezone,
+  nowMinutes,
+  nowInstant,
+  foodLoggingApplicable,
+}: {
+  profileId: number;
+  day: string;
+  dayEvents: Parameters<typeof getIntradayDay>[2];
+  formatPrefs: DisplayFormatPrefs;
+  timezone: string;
+  nowMinutes: number;
+  nowInstant: Date;
+  foodLoggingApplicable: boolean;
+}) {
+  // LAST NIGHT. The same summary /sleep and the record's day view read — one decision,
+  // three surfaces (#2097) — with the waiting state taking the headline's place when the
+  // night has not arrived, the suspect-clock hedge replacing the usual band when the
+  // recorded session disagrees with the heart rate across it (#4299), and the naps line
+  // after it.
+  const sleepSummary = getLastNightSummary(profileId);
+  const sleepWaiting = getSleepWaitingState(
+    profileId,
+    sleepSummary?.wakeDay ?? null
+  );
+  const sleepPresentation = sleepSummary
+    ? sleepRecordPresentation(sleepSummary.wakeDay, day, formatPrefs)
+    : null;
+  const skewSuspect =
+    sleepSummary != null &&
+    isSuspectSleepWakeDay(profileId, sleepSummary.wakeDay);
+  const usualBand = (() => {
+    if (!sleepSummary || skewSuspect) return null;
+    const band = formatUsualSleepBand(
+      formatPrefs.timeFormat,
+      typicalBedTime(profileId),
+      typicalWakeTime(profileId)
+    );
+    return band == null ? null : `Usual ${band}`;
+  })();
+  const clock = (minutes: number | null | undefined) =>
+    minutes == null
+      ? null
+      : formatClockMinutes(formatPrefs.timeFormat, minutes);
+  // "Last night" ONLY when the wake day is today (§3.2); otherwise the
+  // tracking-aware waiting statement, which is the state the atom already owns.
+  const sleepLine = sleepWaiting
+    ? [
+        sleepWaiting.headline,
+        sleepWaitingDetail(sleepWaiting, {
+          clock: (min) => formatClockMinutes(formatPrefs.timeFormat, min),
+          when: (iso) => formatRelativeTime(iso),
+        }),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : sleepSummary
+      ? [
+          sleepSummary.wakeDay === day
+            ? "Last night"
+            : (sleepPresentation?.label ?? "Last night"),
+          formatHm(sleepSummary.durationMin),
+          clock(sleepSummary.bedMinutes) && clock(sleepSummary.wakeMinutes)
+            ? `${clock(sleepSummary.bedMinutes)}–${clock(sleepSummary.wakeMinutes)}`
+            : null,
+          skewSuspect ? SLEEP_SKEW_HEDGE : usualBand,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : null;
+  const naps = getNapHistory(profileId, 1).today;
+  const napsLine =
+    naps.length === 0
+      ? null
+      : `Naps · ${formatHm(
+          naps.reduce((sum, nap) => sum + nap.durationMin, 0)
+        )} · ${naps
+          .map((nap) =>
+            formatSleepWindow(
+              formatPrefs.timeFormat,
+              nap.startMinutes,
+              nap.endMinutes
+            )
+          )
+          .join(", ")}`;
+
+  // STEPS for the local day, with the prior seven days' average, and the declared target
+  // only after `STEPS_AFTERNOON_HOUR` — the summary withholds the comparison until today
+  // can be compared (#3258), so the line states the neutral average alone until then.
+  const localHour = hourInTz(timezone, nowInstant);
+  const stepsRows = getMetricDailyTotals(profileId, "steps");
+  const steps =
+    stepsRows.length > 0
+      ? summarizeStepsToday(stepsRows, day, localHour)
+      : null;
+  // The declared target joins the line only AFTER `STEPS_AFTERNOON_HOUR` (§3.2), which
+  // is the hour the steps domain already decided a day can be judged at — restating a
+  // target at 07:00 is a number, not news.
+  const stepsTarget =
+    localHour >= STEPS_AFTERNOON_HOUR ? getStepsDailyTarget(profileId) : null;
+  const stepsLine =
+    steps == null || steps.today == null
+      ? null
+      : [
+          `${formatCount(steps.today)} steps`,
+          steps.average7 == null
+            ? null
+            : `prior 7 days ${formatCount(steps.average7)}`,
+          stepsTarget == null ? null : `target ${formatCount(stepsTarget)}`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+  // PROTEIN with its resolved goal band and recorded-intake basis, from the parts
+  // Telegram reads — the "+" carries the floor in one character (#3257).
+  const protein = foodLoggingApplicable ? getProteinToday(profileId) : null;
+  const proteinParts = protein ? proteinTodayLineParts(protein) : null;
+  const proteinLine = proteinParts
+    ? `${proteinParts.amount} · Goal ${proteinParts.band}`
+    : null;
+
+  // THE RECORD'S EXISTING DAY FACTS — sunrise, sunset, outdoor minutes, peak UV — read
+  // exactly as the record's day view reads them, single-subject only. UV rides on
+  // daylight: the dose reader is only asked about a day that HAS outdoor minutes.
+  const home = getHomeLocation(profileId);
+  const sun = home ? solarDay(home.lat, home.lng, day, timezone) : null;
+  const outdoorMinutes = home
+    ? (getDaylightOutdoorMinutesByDay(profileId, [day]).get(day) ?? 0)
+    : 0;
+  const uv =
+    home && outdoorMinutes > 0
+      ? (getUvDoseForDays(profileId, [day]).get(day) ?? null)
+      : null;
+  const dayFacts = [
+    sun?.sunriseMin != null && sun.sunsetMin != null
+      ? `Sun ${clock(sun.sunriseMin)}–${clock(sun.sunsetMin)}`
+      : null,
+    outdoorMinutes > 0 ? `${outdoorMinutes} min outdoors` : null,
+    uv && uv.uvSource === "live" && uv.peakUvIndex != null
+      ? `Peak UV ${uv.peakUvIndex}`
+      : null,
+  ].filter(Boolean);
+
+  const facts = [
+    sleepLine,
+    napsLine,
+    stepsLine,
+    proteinLine,
+    ...dayFacts,
+  ].filter(Boolean) as string[];
+
+  // THE DRAWING'S OWN GATE, unchanged: a day gather always produces a model, and the
+  // FRAME needs more than one same-day heart-rate point — one sample is a dot, not a
+  // day. The facts line stays either way.
+  const model = getIntradayDay(profileId, day, dayEvents);
+  const frame = (model.hr?.pointCount ?? 0) > 1 ? model : null;
+
+  // ABSENCE IS SILENT (§2.7): neither a frame nor a fact means no card, not an empty one.
+  if (frame == null && facts.length === 0) return null;
+  return (
+    <div className="card mb-3" data-testid="home-glance">
+      {facts.length > 0 ? (
+        <p
+          className="text-xs text-slate-600 dark:text-slate-300"
+          data-testid="home-facts"
+        >
+          {facts.join(" · ")}
+        </p>
+      ) : null}
+      {frame ? (
+        // ONE ZOOM AND ONE CROSSHAIR FOR THE DAY (#4950): the chart renders its day
+        // twice — compact and wide, both in the DOM — so the interaction state is
+        // lifted here rather than owned by whichever drawing the container earns.
+        <IntradayInteractionProvider>
+          <IntradayChart
+            model={frame}
+            formatPrefs={formatPrefs}
+            profileId={profileId}
+            className="mt-2 w-full"
+          />
+          {intradayFreshness(frame) ? (
+            <p
+              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="intraday-freshness"
+            >
+              {intradayFreshness(frame)}
+            </p>
+          ) : null}
+        </IntradayInteractionProvider>
+      ) : null}
+    </div>
+  );
+}
+
+// ── SETUP (§3.4), THE LAST BOUNDARY (§6.1) ──────────────────────────────────────
+//
+// The #5285 setup rows and the data-quality gap row, through the existing coaching bus
+// and its existing dismissal identity, in the record's row grammar, each row opening its
+// editor and dismissible. The block is absent when the bus has nothing — there is no
+// "you're all set" row.
+//
+// HOME ASKS ONLY THE BUILDERS WHOSE FINDINGS IT SEATS (§7.1), never the whole coaching
+// collection. `COACHING_COLLECTION` is inspectable data for exactly this (#2962): the
+// subset is selected by joining on the builder NAME the registry records, so a typo is a
+// compile error and there is no parallel list of builder calls to drift.
+const HOME_SETUP_BUILDERS = ["buildDataQualityFindings"] as const;
+
+async function HomeSetup({
+  profileId,
+  loginId,
+  day,
+  weightUnit,
+  formatPrefs,
+}: {
+  profileId: number;
+  loginId: number;
+  day: string;
+  weightUnit: WeightUnit;
+  formatPrefs: DisplayFormatPrefs;
+}) {
+  return withPrimedSettings({ loginId, profileIds: [profileId] }, () => {
+    const findings = COACHING_COLLECTION.filter((entry) =>
+      (HOME_SETUP_BUILDERS as readonly string[]).includes(entry.builder)
+    ).flatMap((entry) =>
+      entry.run({ profileId, today: day, wu: weightUnit, prefs: formatPrefs })
+    );
+    const rows = composeHomeSetup(
+      { scope: "profile", profileId },
+      activeFindings(findings, getFindingSuppressions(profileId), day)
+    );
+    if (rows.length === 0) return null;
+    return (
+      <section className="mt-4" data-testid="home-setup">
+        <h2 className="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+          Setup
+        </h2>
+        <ul className={LOGGED_EVENT_LIST}>
+          {rows.map((row: HomeSetupRow) => (
+            <HomeSetupRowView key={row.id} row={row} />
+          ))}
+        </ul>
+      </section>
+    );
+  });
+}
+
+function HomeSetupRowView({ row }: { row: HomeSetupRow }) {
+  const finding = row.finding;
+  return (
+    <HomeRow
+      id={row.id}
+      testId="home-setup-row"
+      title={
+        finding.actionHref ? (
+          <a className="hover:underline" href={finding.actionHref}>
+            {finding.title}
+          </a>
+        ) : (
+          finding.title
+        )
+      }
+      detail={[finding.detail, finding.evidence].filter(Boolean).join(" · ")}
+      control={
+        <FindingDismissButton
+          finding={finding}
+          dismissAction={dismissDataQualityGap}
+          dismissTestid="finding-dismiss"
+        />
+      }
+    />
+  );
+}
+
+// AN ATTENTION ROW SAYS WHAT, THEN WHEN (#4076). Outside a fold the item's own detail is
+// the content a person came to read — the biomarker retest sentence, "Vitamin D3 · 2000
+// IU" — and the due text seconds it. The detail keeps its own testid because the
+// machine-date census ledger (e2e/machine-date-census.spec.ts) tracks
+// `attention-item-detail` on `/` as a known offender, and a shrink-only ledger reads a
+// silent deletion as a failure — correctly.
+function attentionRowDetail(
+  item: UpcomingItem,
+  today: string,
+  formatPrefs: DisplayFormatPrefs
+) {
+  const due = upcomingDueText(item, today, formatPrefs);
+  // THE DETAIL IS RENDERED, NOT READ (#3526). The biomarker retest row's sentence is
+  // composed by a login-less generator and carries the raw ISO day; this is a surface
+  // WITH a login, so it re-composes the row's carried facts through the same
+  // `formatPrefs` the due text already uses.
+  const detail = itemDetailText(item, today, formatPrefs);
+  if (!detail) return due;
+  return (
+    <>
+      <span data-testid="attention-item-detail">{detail}</span>
+      {due ? ` · ${due}` : null}
+    </>
   );
 }

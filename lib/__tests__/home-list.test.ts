@@ -4,6 +4,7 @@ import { doseSortKey } from "../dose-order";
 import type { Finding } from "../findings";
 import {
   composeHomeList,
+  composeHomeSetup,
   type HomeListInput,
   type HomeNowSeat,
   type HomeSubject,
@@ -120,7 +121,6 @@ function input(over: Partial<HomeListInput> = {}): HomeListInput {
     training: noTraining,
     fast: null,
     period: { episode: null, canStartToday: false, writable: true },
-    setup: [],
     ...over,
   };
 }
@@ -549,20 +549,23 @@ describe("the Setup list", () => {
   };
 
   it("is absent when the bus has nothing", () => {
-    expect(composeHomeList(input()).setup).toEqual([]);
+    expect(composeHomeSetup(subject, [])).toEqual([]);
   });
 
   it("keys its rows on the bus's own dismissal identity", () => {
-    const [row] = composeHomeList(input({ setup: [gap] })).setup;
+    const [row] = composeHomeSetup(subject, [gap]);
     expect(row?.factKey).toBe("data-quality:dose-amount-unreadable");
     expect(row?.finding).toBe(gap);
   });
 
-  it("never enters the Later or Now bands", () => {
-    // Configuration is not a daily fact (§2.9).
-    const list = composeHomeList(input({ setup: [gap] }));
+  it("is composed apart from the day's bands", () => {
+    // Configuration is not a daily fact (§2.9), and Setup streams behind its own
+    // boundary (§6.1) — so a setup finding cannot reach the Later or Now bands,
+    // because the composer that builds them never sees one.
+    const list = composeHomeList(input());
     expect(list.later).toBeNull();
     expect(list.now?.rows).toEqual([]);
+    expect(composeHomeSetup(subject, [gap])).toHaveLength(1);
   });
 });
 
@@ -577,6 +580,6 @@ describe("a day that is not today", () => {
         period: { episode: null, canStartToday: true, writable: true },
       })
     );
-    expect(list).toEqual({ later: null, now: null, setup: [] });
+    expect(list).toEqual({ later: null, now: null });
   });
 });
