@@ -118,14 +118,11 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     const weightTile = page.getByTestId("body-tile-weight");
     await expect(weightTile).toContainText("77.9 kg");
     const tileHeader = weightTile.getByTestId("trend-mini-header-link");
-    const tileBox = await weightTile.boundingBox();
-    const tileHeaderBox = await tileHeader.boundingBox();
-    expect(tileBox).not.toBeNull();
-    expect(tileHeaderBox).not.toBeNull();
-    expect(tileHeaderBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    const [, tileHeaderBox] = await settledBoxes([weightTile, tileHeader]);
+    expect(tileHeaderBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // A pinned tile now reserves a separate ⋯ control beside the header. The
     // detail link keeps a full tap target without claiming the menu's width.
-    expect(tileHeaderBox!.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    expect(tileHeaderBox.width).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     // The full chart is one tap away on its metric detail page, never inline on
     // mobile Overview (#2152). Following the header proves the whole tap target;
     // its hover paint is deliberately not part of the phone contract.
@@ -255,6 +252,10 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
       .evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
     expect(desktopLabelSize).toBeGreaterThanOrEqual(16);
 
+    // raw-box-ok: the read is already inside `expect.poll`, which supplies the
+    // retry `settledBoxes` exists for — settling inside a poll nests one loop in
+    // another. The `return null` is load-bearing: a box that is not there yet has
+    // to keep the poll going rather than throw out of it.
     await expect
       .poll(async () => {
         const emptyBox = await empty.boundingBox();
@@ -420,25 +421,20 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await expect(menuOptions).toHaveCSS("z-index", "50");
 
     // The open menu must win the stacking order where it overlaps the first chart.
-    const optionsBox = await menuOptions.boundingBox();
-    expect(optionsBox).not.toBeNull();
-    const triggerBox = await trigger.boundingBox();
-    expect(triggerBox).not.toBeNull();
-    if (optionsBox && triggerBox) {
-      expect(Math.abs(optionsBox.x - triggerBox.x)).toBeLessThanOrEqual(1);
-      const topmostTestId = await page.evaluate(
-        ({ x, y }) =>
-          document
-            .elementFromPoint(x, y)
-            ?.closest<HTMLElement>("[data-testid]")
-            ?.getAttribute("data-testid"),
-        {
-          x: optionsBox.x + optionsBox.width / 2,
-          y: Math.min(optionsBox.y + 32, DESKTOP.height - 4),
-        }
-      );
-      expect(topmostTestId).toMatch(/^chart-jump-/);
-    }
+    const [optionsBox, triggerBox] = await settledBoxes([menuOptions, trigger]);
+    expect(Math.abs(optionsBox.x - triggerBox.x)).toBeLessThanOrEqual(1);
+    const topmostTestId = await page.evaluate(
+      ({ x, y }) =>
+        document
+          .elementFromPoint(x, y)
+          ?.closest<HTMLElement>("[data-testid]")
+          ?.getAttribute("data-testid"),
+      {
+        x: optionsBox.x + optionsBox.width / 2,
+        y: Math.min(optionsBox.y + 32, DESKTOP.height - 4),
+      }
+    );
+    expect(topmostTestId).toMatch(/^chart-jump-/);
 
     // Present metrics get a menu option (the fixture seeds these). Since #1674 the
     // menu lists CARDS rather than section boxes, so each one names a chart.

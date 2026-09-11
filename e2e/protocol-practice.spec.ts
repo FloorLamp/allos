@@ -80,27 +80,23 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   // The Practice card renders the gear reference, adherence, and usage.
   const card = detailMain.getByTestId("protocol-practice-card");
   await expect(card).toBeVisible();
-  const detailBounds = await detailMain
-    .getByTestId("protocol-detail-page")
-    .boundingBox();
-  const cardBounds = await card.boundingBox();
-  const comparisonBounds = await detailMain
-    .getByTestId("protocol-comparison-column")
-    .boundingBox();
-  expect(detailBounds).not.toBeNull();
-  expect(cardBounds).not.toBeNull();
-  expect(comparisonBounds).not.toBeNull();
-  expect(detailBounds!.width).toBeLessThanOrEqual(768);
-  expect(cardBounds!.width).toBeGreaterThanOrEqual(detailBounds!.width - 1);
-  expect(comparisonBounds!.y).toBeGreaterThanOrEqual(
-    cardBounds!.y + cardBounds!.height
+  // FOUR boxes, ONE settled layout: every claim below is relative — the card fills
+  // the page's width, the comparison column stacks under the card, the history card
+  // under that — so they have to describe the same layout rather than four of them.
+  const [detailBounds, cardBounds, comparisonBounds, historyBounds] =
+    await settledBoxes([
+      detailMain.getByTestId("protocol-detail-page"),
+      card,
+      detailMain.getByTestId("protocol-comparison-column"),
+      detailMain.getByTestId("protocol-history-card"),
+    ]);
+  expect(detailBounds.width).toBeLessThanOrEqual(768);
+  expect(cardBounds.width).toBeGreaterThanOrEqual(detailBounds.width - 1);
+  expect(comparisonBounds.y).toBeGreaterThanOrEqual(
+    cardBounds.y + cardBounds.height
   );
-  const historyBounds = await detailMain
-    .getByTestId("protocol-history-card")
-    .boundingBox();
-  expect(historyBounds).not.toBeNull();
-  expect(historyBounds!.y).toBeGreaterThanOrEqual(
-    comparisonBounds!.y + comparisonBounds!.height
+  expect(historyBounds.y).toBeGreaterThanOrEqual(
+    comparisonBounds.y + comparisonBounds.height
   );
 
   const gearLink = card.getByTestId("protocol-gear-link");

@@ -356,7 +356,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       const svg = chart.getByTestId("intraday-svg");
       await svg.scrollIntoViewIfNeeded();
       const overChart = async () => {
-        const box = (await svg.boundingBox())!;
+        const [box] = await settledBoxes([svg]);
         await member.mouse.move(
           box.x + box.width / 2,
           box.y + box.height * 0.6
@@ -377,11 +377,11 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // AROUND that minute rather than around the middle of the day — and the page
       // does NOT move, which is the preventDefault half of the ruling.
       const morningTick = chart.getByTestId("intraday-tick").first(); // eslint-disable-line no-restricted-properties -- first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
-      const tickBox = (await morningTick.boundingBox())!;
+      const [tickBox] = await settledBoxes([morningTick]);
       const anchorX = tickBox.x + tickBox.width / 2;
       const settled = await member.evaluate(() => window.scrollY);
       for (let i = 0; i < 3; i++) {
-        const box = (await svg.boundingBox())!;
+        const [box] = await settledBoxes([svg]);
         await member.mouse.move(anchorX, box.y + box.height * 0.6);
         await member.mouse.wheel(0, -400);
       }
@@ -396,7 +396,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
 
       // HORIZONTAL WHEEL PANS a zoomed view: the window slides and its SPAN is the
       // one thing that may not change.
-      const box = (await svg.boundingBox())!;
+      const [box] = await settledBoxes([svg]);
       await member.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
       await member.mouse.wheel(300, 0);
       await expect
@@ -491,7 +491,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // full day moves nothing, scrolls nothing, and — the behaviour the ruling
       // exists to remove — does not zoom the PAGE, which is what an unhandled one
       // does and what `devicePixelRatio` would report.
-      const box = (await svg.boundingBox())!;
+      const [box] = await settledBoxes([svg]);
       await member.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
       const before = await member.evaluate(() => ({
         scrollY: window.scrollY,

@@ -713,13 +713,12 @@ test.describe("a dialog body cannot be parked sideways (#3360)", () => {
     // THE REPORTED GESTURE, on a body that genuinely overflows. This is the whole
     // guarantee: a `hidden` box is not user-scrollable, so the sideways component
     // of a logging tap moves nothing.
-    const box = await content.boundingBox();
-    expect(box).not.toBeNull();
-    const y = box!.y + Math.min(80, box!.height / 2);
+    const [box] = await settledBoxes([content]);
+    const y = box.y + Math.min(80, box.height / 2);
     await touchSwipe(
       page,
-      { x: box!.x + box!.width - 40, y },
-      { x: box!.x + 40, y }
+      { x: box.x + box.width - 40, y },
+      { x: box.x + 40, y }
     );
     expect(
       await content.evaluate((node) => node.scrollLeft),
