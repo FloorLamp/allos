@@ -125,9 +125,8 @@ describe("what a real merge-in does to a three-dot diff", () => {
     // THE MEASUREMENT THE DECISION RESTS ON, made both ways round: verbatim
     // these differ, and what differs is only addressing.
     expect(after).not.toBe(before);
-    const changed = after
-      .split("\n")
-      .filter((l, i) => l !== before.split("\n")[i]);
+    const was = before.split("\n");
+    const changed = after.split("\n").filter((l, i) => l !== was[i]);
     expect(changed.length).toBeGreaterThan(0);
     for (const l of changed)
       expect(l).toMatch(
