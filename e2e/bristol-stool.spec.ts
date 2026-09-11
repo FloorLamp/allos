@@ -275,13 +275,25 @@ test('a stated "Happened earlier?" time is the instant the reading carries (#327
     release = resolve;
   });
   const onThisPage = (url: URL): boolean => url.pathname === "/";
+  // THE WRITE, NOT MERELY A POST TO THIS PAGE. Every Server Action on "/" is a POST
+  // there, and since #5663 the picker asks for the day's receipt rows through one of
+  // them at mount. "Hold the first POST" would hold that READ and let the tap's write
+  // straight through — the opposite of the ordering this leg is built on, and it fails
+  // by leaving the write's row to land after the assertion rather than by saying so.
+  //
+  // A WRITE IS THE STAMPED ONE. `useWritePipeline` stamps every post it makes with the
+  // surface it happened on (#3087), so `logged_via` in the body is the property that
+  // separates a write from a read — not the field names of one action, and not an
+  // ordinal that assumes which request comes first.
+  const isWrite = (request: Request): boolean =>
+    request.method() === "POST" &&
+    new URL(request.url()).pathname === "/" &&
+    /name="[^"]*logged_via"/.test(request.postData() ?? "");
   await page.route(onThisPage, async (route) => {
-    if (route.request().method() !== "POST") return route.continue();
+    if (!isWrite(route.request())) return route.continue();
     await held;
     await route.continue();
   });
-  const isWrite = (request: Request): boolean =>
-    request.method() === "POST" && new URL(request.url()).pathname === "/";
   // Armed BEFORE the click so it cannot miss its event.
   const answered = page.waitForResponse((r) => isWrite(r.request()), {
     timeout: 30_000,
