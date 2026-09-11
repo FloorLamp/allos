@@ -400,7 +400,9 @@ describe("the shared weight stepper (#5371)", () => {
     mountLive(part({ sets: [planned, planned, planned] }));
     expect(screen.queryByTestId("weight-column-heading")).toBeNull();
     fireEvent.click(byId("set-confirm-1"));
-    expect(byId("weight-column-heading").textContent).toBe("Weight (kg)");
+    // Confirming one row of three changes no LAYOUT (#5762): the record among the
+    // plans is still a reps row under the one band, not a weight column for the part.
+    expect(screen.queryByTestId("weight-column-heading")).toBeNull();
     expect(byId("reps-column-heading").textContent).toBe("Reps");
     const weight = within(byId("exercise-weight")).getByRole("spinbutton");
     weight.focus();
@@ -596,6 +598,98 @@ describe("the shared weight stepper (#5371)", () => {
       "100",
       "80",
     ]);
+  });
+});
+
+// ONE LAYOUT PER EXERCISE, WHATEVER THE MIX OF PLANS AND RECORDS (#5762).
+//
+// The owner reported this from screenshots of a real transition: two confirmed sets
+// at one load, then "+ Add set" — and the band renamed itself, a weight stepper
+// column appeared on every row, and the new set showed "Vary" inside it. The defect
+// is not a bad state, it is a layout that CHANGES, so every case here reads the grid
+// ACROSS a transition. Reading only the after-state cannot tell a fixed grid from one
+// that was always per-set.
+describe("one layout per exercise (#5762)", () => {
+  const bench = (...loads: [string, string][]) => part({ sets: sets(...loads) });
+  // What the grid IS, by the testids the person's controls are addressed by — the
+  // band's own label, the schema headings, and each row's value controls in order.
+  const testidsIn = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll("[data-testid]")).map((n) =>
+      n.getAttribute("data-testid")
+    );
+  const gridShape = () => ({
+    band: byId("exercise-weight").querySelector("span")!.textContent,
+    headings: testidsIn(byId("set-column-headings")),
+    rows: screen
+      .getAllByTestId(/^set-values-\d+$/)
+      .map((el) => testidsIn(el as HTMLElement)),
+    weightSteppers: screen.queryAllByLabelText("Increase weight").length,
+    repsSteppers: screen.queryAllByLabelText("Add a rep").length,
+  });
+  const doors = () =>
+    screen.getAllByTestId(/^set-vary-\d+$/).map((el) => el.textContent);
+
+  it("adding a planned set to two records redraws nothing", () => {
+    mountLive(bench(["60", "8"], ["60", "8"]));
+    const before = gridShape();
+    // The shape the two records already had: one band, reps-only rows.
+    expect(before.band).toBe("Weight (kg)");
+    expect(before.weightSteppers).toBe(1);
+    fireEvent.click(screen.getByText("+ Add set"));
+    // The tap DID something — without this the case passes on a dead button.
+    expect(latest[0].sets).toHaveLength(3);
+    expect(latest[0].sets.map(setDone)).toEqual([true, true, false]);
+
+    const after = gridShape();
+    expect(after.band).toBe(before.band);
+    expect(after.headings).toEqual(before.headings);
+    // Sets 1 and 2 carry the SAME controls they carried before the tap.
+    expect(after.rows.slice(0, 2)).toEqual(before.rows);
+    // And set 3 is a reps row like set 2, with its confirm check in the options
+    // column rather than a "Vary" inside a weight cell it has no business opening.
+    // (Set 1's ids are the band's while the load is shared, so set 2 is the row
+    // whose id scheme a further row repeats.)
+    expect(after.rows[2]).toEqual(
+      before.rows[1].map((id) => id?.replace("2", "3"))
+    );
+    expect(after.weightSteppers).toBe(1);
+    expect(after.repsSteppers).toBe(3);
+    expect(byId("set-confirm-3")).toBeTruthy();
+    expect(screen.queryByTestId("weight-column-heading")).toBeNull();
+
+    // …and confirming the last plan returns nothing to a different layout, because
+    // none changed. Three grids for one exercise in one session is the defect.
+    fireEvent.click(byId("set-confirm-3"));
+    expect(latest[0].sets.every(setDone)).toBe(true);
+    expect(gridShape()).toEqual(after);
+  });
+
+  it("a record states its own load in the Vary door, and the door still varies", () => {
+    mountLive(bench(["60", "8"], ["60", "8"]));
+    fireEvent.click(screen.getByText("+ Add set"));
+    // Matching the band, every door reads what it does.
+    expect(doors()).toEqual(["Vary", "Vary", "Vary"]);
+    const before = gridShape();
+
+    // The band moves to 65 for the remaining plan; the records keep their 60 (#5484).
+    fireEvent.change(byId("set3-weight"), { target: { value: "65" } });
+    expect(weights()).toEqual(["60", "60", "65"]);
+    // Same slot, same control: sets 1 and 2 now STATE the load they were lifted at.
+    expect(doors()).toEqual(["60 kg", "60 kg", "Vary"]);
+    const after = gridShape();
+    expect(after.band).toBe(before.band);
+    expect(after.headings).toEqual(before.headings);
+    expect(after.rows).toEqual(before.rows);
+
+    // Same tap, too: the door opens the per-set column exactly as Vary does.
+    fireEvent.click(byId("set-vary-1"));
+    expect(screen.queryByTestId("exercise-weight")).toBeNull();
+    expect(byId("set1-weight")).toHaveProperty("value", "60");
+    expect(document.activeElement).toBe(byId("set1-weight"));
+    // And the record's saved weight was never rewritten on the way through.
+    expect(
+      buildActivityPayload(classifier, latest).flat.map((s) => s.weight)
+    ).toEqual([60, 60]);
   });
 });
 
