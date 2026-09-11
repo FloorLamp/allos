@@ -304,6 +304,11 @@ test("the strength picker creates and selects a travel machine without losing th
     const reps = page.getByTestId("set1-reps-stepper").locator("input");
     await settledFill(page, weight, "100");
     await settledFill(page, reps, "5");
+    // Filling reps CONFIRMED set 1, and rows 2-3 are still the plan — so the grid
+    // keeps its one shared layout and set 1 states its load behind its door (#5762).
+    // Open it here, once: the varied latch holds it open across the equipment
+    // round trip, which is exactly what the two reads below are asking about.
+    await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
     // The complete set auto-saves; Delete appearing is the stable "row exists" signal.
     await expect(
       page.getByRole("button", { name: "Delete", exact: true })
