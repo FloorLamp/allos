@@ -1,6 +1,6 @@
-// SELECTION EDIT OVER THE DAY LEDGER (#4118).
+// SELECTION EDIT OVER THE DAY LEDGER (#4118), MEDICATION DOSES INCLUDED (#5618).
 //
-// The ledger states a day as one list of food servings and supplement doses. When a day
+// The ledger states a day as one list of food servings and doses. When a day
 // was reconstructed late — the reported case: 65 of 325 food events in 60 days logged on
 // a later day than they happened — the repair is the same repair for every row on it, and
 // making it one row at a time through the ⋯ menu is the cost the owner reported.
@@ -20,6 +20,16 @@
 // row deleted in another tab, a row that was never on this day, and a forged id belonging
 // to another profile are all the same answer — absent from the day's set, so nothing is
 // written for it and it is named in `refused`.
+//
+// A MEDICATION DOSE IS ONE OF THESE ROWS (#5618, owner ruling 2026-09-10). It was
+// excluded here — and only here — by a `kind != 'medication'` clause in the SELECT
+// below. Neither core it would reach ever refused one: `updateHistoricalDose` and
+// `deleteAdministrationLog` are both kind-neutral by #1933's own decision, and the
+// single-row ⋯ menu on the record amends and removes medication doses through exactly
+// those two cores today. So the exclusion bought no safety; it bought an asymmetry —
+// fifteen supplement doses re-timing together while fifteen medication doses go one by
+// one — and the owner rejected keeping it. What the batch owes instead is the AUDIT,
+// and it owes it per ROW: see `auditedDoses` below.
 //
 // WHAT IS NOT SELECTABLE, and why it is not a drop:
 //   • SKIPPED doses. Both cores that could act on one scope themselves to `status =
@@ -77,11 +87,24 @@ export type LedgerSelectionOutcome =
       applied: number;
       refused: LedgerSelectionRefusal[];
       /**
-       * `intake_items.id` for every dose row amended or removed — what the action
-       * boundary writes its audit rows against (#1933: retroactively rewriting what the
-       * record says was given is audited, however many rows at a time).
+       * ONE ENTRY PER DOSE ROW the batch actually amended or removed, in write order —
+       * what the action boundary writes its audit rows against (#1933: retroactively
+       * rewriting what the record says was given is audited, however many rows at a
+       * time).
+       *
+       * PER ROW, NOT PER ITEM (#5618). This used to be a deduped `intake_items.id`
+       * list, so a batch over two administrations of ONE item earned one audit row
+       * where two single-row amends earn two. That gap was invisible while the batch
+       * could not reach a medication and a supplement is rarely taken twice a day; a
+       * PRN medication is the ordinary case, and the owner ruling extending selection
+       * to medications is explicit that the batch writes "the same audit rows the
+       * single-row amend already writes". n rows corrected, n audit rows.
+       *
+       * `itemId` is the audit row's target and `date` its detail — the day the row
+       * ENDS on, which is what `updateHistoricalDose` returns and what the single-row
+       * boundary records.
        */
-      auditedItemIds: number[];
+      auditedDoses: { itemId: number; date: string }[];
     }
   /** The batch's own input is unusable: nothing was read and nothing was written. */
   | { kind: "invalid-edit" }
@@ -112,7 +135,10 @@ interface SelectableDose {
  * is load-bearing on its own: without it a named id from another day would be re-timed or
  * re-dated by a batch whose whole premise is "these rows are the ones I am looking at".
  * `intake_item_logs` carries ownership through its parent item, which is why the dose
- * half joins.
+ * half joins — and the join no longer narrows by kind, so a medication administration
+ * is one of the day's rows here exactly as a supplement's is (#5618). Both dose cores
+ * downstream have been kind-neutral since #1933; the only thing that changed is that
+ * this re-derivation stopped hiding half of what they accept.
  */
 function selectableOn(
   profileId: number,
@@ -133,8 +159,7 @@ function selectableOn(
               l.occurred_at AS occurredAt
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'
-          AND s.kind != 'medication'`
+        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
     )
     .all(profileId, date) as SelectableDose[];
   return { servings, doses };
@@ -197,7 +222,7 @@ export function editDayLedgerSelectionCore(
     return { kind: "nothing-selected" };
 
   const refused: LedgerSelectionRefusal[] = [];
-  const auditedItemIds: number[] = [];
+  const auditedDoses: { itemId: number; date: string }[] = [];
   let applied = 0;
   const now = clockNow();
 
@@ -221,12 +246,17 @@ export function editDayLedgerSelectionCore(
   }
   for (const row of doses) {
     const outcome = editDose(profileId, row, edit, stamped, tz, now);
-    if (outcome === null) {
+    if (typeof outcome === "string")
+      refused.push({ row: `dose:${row.id}`, reason: outcome });
+    else {
       applied += 1;
-      if (!auditedItemIds.includes(row.itemId)) auditedItemIds.push(row.itemId);
-    } else refused.push({ row: `dose:${row.id}`, reason: outcome });
+      // The day the CORE says the row ended on, not the day the caller asked for —
+      // the same value the single-row boundary audits with (`outcome.date`), so a
+      // batch audit row and a ⋯-menu audit row for the same correction are equal.
+      auditedDoses.push({ itemId: row.itemId, date: outcome.date });
+    }
   }
-  return { kind: "applied", applied, refused, auditedItemIds };
+  return { kind: "applied", applied, refused, auditedDoses };
 }
 
 /** Null when the row moved; otherwise the reason it did not. */
@@ -275,7 +305,13 @@ function editServing(
   }
 }
 
-/** Null when the row moved; otherwise the reason it did not. */
+/**
+ * The day the row ended on when it moved; otherwise the reason it did not.
+ *
+ * A dose returns its DATE rather than a bare success because the action boundary
+ * audits every dose correction by (item, date) and must record the day the write
+ * actually landed on — for a delete, the day the removed row was filed under.
+ */
 function editDose(
   profileId: number,
   row: SelectableDose,
@@ -283,9 +319,10 @@ function editDose(
   stamped: Date | null,
   tz: string,
   now: Date
-): string | null {
+): { date: string } | string {
   if (edit.kind === "delete") {
-    return deleteAdministrationLog(profileId, row.id) ? null : ROW_GONE;
+    const removed = deleteAdministrationLog(profileId, row.id);
+    return removed ? { date: removed.date } : ROW_GONE;
   }
   // `updateHistoricalDose` is THE amend core (#2228 decision 6) and takes the pair
   // explicitly: the day the row files under and the instant it states. Set-time keeps the
@@ -312,5 +349,7 @@ function editDose(
     occurredAt,
     null
   );
-  return outcome.kind === "logged" ? null : historicalDoseErrorMessage(outcome);
+  return outcome.kind === "logged"
+    ? { date: outcome.date }
+    : historicalDoseErrorMessage(outcome);
 }

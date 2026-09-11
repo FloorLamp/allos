@@ -466,6 +466,11 @@ function ledgerGroups(dueDose = DUE_DOSE): LedgerGroup[] {
           bucket: "Morning",
           hhmm: "08:06",
           clockKind: "logged",
+          // `null`, not a day: `renderLedger` mounts these same groups under SEVERAL
+          // days, so any fixed filing day would make the row read "logged <date>" under
+          // whichever of them it differs from. These cases are about the two dose
+          // pieces; rule 6's own rendering is pinned in day-ledger-clock.test.tsx.
+          filedDay: null,
           logId: 55,
           doseId: 32,
           itemId: 7,
