@@ -6,6 +6,7 @@ import {
   settledFill,
   settledSelect,
 } from "./helpers";
+import { withRecordFact } from "./record-facts-helpers";
 
 // The Care › Overview sections are <details> disclosures (#1804). A save
 // revalidates the server tree, and the re-rendered <details> comes back CLOSED —
@@ -52,9 +53,19 @@ test.describe("Condition laterality / severity / stage (#1403)", () => {
     // reaching for the selects underneath (the conditions-icd10 spec's gesture).
     await nameField.press("Escape");
 
-    await settledSelect(page, dialog.locator("#cond-laterality-new"), "left");
-    await settledSelect(page, dialog.locator("#cond-severity-new"), "moderate");
-    await settledFill(page, dialog.locator("#cond-stage-new"), "Grade II");
+    // Side, grade and stage are OPTIONAL facts (#5302): a new condition states none
+    // of them, so each is reached through the trailing affordance that names it. The
+    // helper routes; the values and the round trip below are unchanged.
+    const addForm = dialog.getByTestId("condition-form");
+    await withRecordFact(addForm, "condition", "laterality", () =>
+      settledSelect(page, dialog.locator("#cond-laterality-new"), "left")
+    );
+    await withRecordFact(addForm, "condition", "severity", () =>
+      settledSelect(page, dialog.locator("#cond-severity-new"), "moderate")
+    );
+    await withRecordFact(addForm, "condition", "stage", () =>
+      settledFill(page, dialog.locator("#cond-stage-new"), "Grade II")
+    );
 
     await dialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Condition saved")).toBeVisible();
@@ -75,21 +86,29 @@ test.describe("Condition laterality / severity / stage (#1403)", () => {
     // error), so the edit form must round-trip the stored values and save a change.
     await row.getByLabel("Record actions").click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
-    const editForm = page.locator(
-      'form:has(select[id^="cond-laterality-"]:not([id="cond-laterality-new"]))'
+    // The add dialog is gone by now, so this is the one condition form on the page.
+    const editForm = section.getByTestId("condition-form");
+    // The stored values read back on the ROW, which is what the chips are for: the
+    // edit form's summary doubles as the record's review (#3218).
+    await expect(editForm.getByTestId("condition-fact-laterality")).toHaveText(
+      "Left"
     );
-    await expect(
-      editForm.locator('select[id^="cond-laterality-"]')
-    ).toHaveValue("left");
-    await settledSelect(
-      page,
-      editForm.locator('select[id^="cond-laterality-"]'),
-      "right"
-    );
-    await settledSelect(
-      page,
-      editForm.locator('select[id^="cond-severity-"]'),
-      "severe"
+    await withRecordFact(editForm, "condition", "laterality", async () => {
+      await expect(
+        editForm.locator('select[id^="cond-laterality-"]')
+      ).toHaveValue("left");
+      await settledSelect(
+        page,
+        editForm.locator('select[id^="cond-laterality-"]'),
+        "right"
+      );
+    });
+    await withRecordFact(editForm, "condition", "severity", () =>
+      settledSelect(
+        page,
+        editForm.locator('select[id^="cond-severity-"]'),
+        "severe"
+      )
     );
     await editForm.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Condition updated")).toBeVisible();
