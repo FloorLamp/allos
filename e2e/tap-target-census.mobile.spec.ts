@@ -412,8 +412,8 @@ async function boxOf(name: string, locator: Locator) {
  * hit-tested, because those are the two a covering element takes first.
  */
 async function ownsItsOwnEdges(page: Page, locator: Locator) {
-  // `settledBoxes` is the layout guard the message below used to hand-roll: it
-  // throws naming the locator when the field never gets a box.
+  // `settledBoxes` IS the layout guard the hand-rolled assertion here used to be:
+  // it throws, naming the locator, when the field never gets a box.
   const [box] = await settledBoxes([locator]);
   const handle = await locator.elementHandle();
   try {
