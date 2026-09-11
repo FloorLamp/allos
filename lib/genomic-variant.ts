@@ -177,6 +177,19 @@ export function significanceLabel(s: GenomicSignificance): string {
   }
 }
 
+// THE CALL: the most specific thing the report says this variant IS — a star-allele
+// diplotype, else a genotype, else the bare zygosity — or "" when it says none of them.
+// The precedence is the one `variantDisplayLabel` has always applied; it is named here
+// because the form's chip row states the same three columns as one fact and must read
+// them back exactly as the list does (#5302).
+export function variantCallLabel(v: {
+  genotype: string | null;
+  star_allele: string | null;
+  zygosity: Zygosity | null;
+}): string {
+  return v.star_allele?.trim() || v.genotype?.trim() || v.zygosity || "";
+}
+
 // The one-line identity a row shows in a list / tab / passport: the gene, then the
 // most specific call available (star-allele → genotype → zygosity), then the
 // variant id. Purely factual — no interpretation.
@@ -187,10 +200,7 @@ export function variantDisplayLabel(v: {
   star_allele: string | null;
   zygosity: Zygosity | null;
 }): string {
-  const call =
-    v.star_allele?.trim() ||
-    v.genotype?.trim() ||
-    (v.zygosity ? v.zygosity : null);
+  const call = variantCallLabel(v);
   const head = call ? `${v.gene} ${call}` : v.gene;
   const id = v.variant?.trim();
   return id ? `${head} (${id})` : head;

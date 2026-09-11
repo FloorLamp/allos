@@ -110,6 +110,10 @@ import type { FamilyHistoryFactKey } from "./family-history-facts";
 import type { SkinLesionFactKey } from "./skin-lesion-facts";
 import type { DentalProcedureFactKey } from "./dental-procedure-facts";
 import type { ProcedureFactKey } from "./procedure-facts";
+import type { ImmunizationFactKey } from "./immunization-facts";
+import type { ResultFactKey } from "./result-facts";
+import type { ImagingStudyFactKey } from "./imaging-study-facts";
+import type { GenomicVariantFactKey } from "./genomic-variant-facts";
 
 // Every form the app hosts. A new form joins this union and then must answer the
 // grammar below before it compiles; a host mount naming an id that is not here does
@@ -391,14 +395,18 @@ export const FORM_GRAMMAR = {
   // Family 3 of the census. Each renders six to fifteen labelled fields with no
   // shared scaffold, and each MEETS the primitive's preconditions better than most —
   // a coded vocabulary pre-answers the fields, most saves are confirmations, the
-  // fields are discrete facts. #5302 rewrites the family onto the chip row a slice at
-  // a time, and each adoption replaces its `fields` entry here with the fact keys it
-  // then has. EIGHT ARE ADOPTED (slice 1: allergy, condition; slice 2: family-history,
-  // care-plan, care-goal; slice 3: procedure, dental-procedure, skin-lesion); the rest
-  // still declare what they render today, and a reason that says so rather than
-  // dressing a deferral as a ruling. `audiogram` and `optical-prescription` are the two
-  // this family argues OUT rather than defers, both on #3218's numeric-grid
-  // precondition failure — which is why slice 3 is three forms and not four.
+  // fields are discrete facts. #5302 rewrote the family onto the chip row a slice at
+  // a time, and each adoption replaced its `fields` entry here with the fact keys it
+  // then has. ALL TWELVE ARE NOW ADOPTED (slice 1: allergy, condition; slice 2:
+  // family-history, care-plan, care-goal; slice 3: procedure, dental-procedure,
+  // skin-lesion; slice 4: immunization, result, imaging-study, genomic-variant).
+  // `audiogram` and `optical-prescription` are the two this family argues OUT rather
+  // than defers, both on #3218's numeric-grid precondition failure — which is why the
+  // thirteen of #5302's body are twelve here, and why slice 3 was three forms and not
+  // four (PM ruling, 2026-09-11). The three `fields` entries still in this section are
+  // ARGUMENTS rather than deferrals: two screening forms render an instrument's own
+  // item list, and `visit` is a door that opens one of two forms which declare their
+  // facts above.
   //
   // EACH ADOPTED FORM GETS ITS OWN FACTS MODULE rather than the thirteen sharing one
   // keyed union, and slice 1 argued it once so the other slices do not re-argue it.
@@ -645,10 +653,33 @@ export const FORM_GRAMMAR = {
     visit: "optional",
     notes: "optional",
   }),
-  immunization: fields(
-    "Renders labelled fields over the vaccine vocabulary; adopts the chip row with the family.",
-    "#5302"
-  ),
+  // app/(app)/immunizations/ImmunizationForm.tsx, ADOPTED (#5302 slice 4). The vaccine
+  // is rule 1's identifying field — the coded pick over the CVX catalog.
+  //
+  // `date` is the ONE essential, and both consumers drop an undated dose without saying
+  // so anywhere: `buildImmunizationRecord` opens its gather with `if (!r.date) continue`
+  // ("an undated dose can't be transcribed onto a form and can't be numbered"), so the
+  // shot is absent from the printed record a school or travel clinic asked for; and
+  // `assessSchedule`'s own gather skips it too, so it never reaches `datesByCode` and
+  // the vaccine keeps reading `due` with the shot already given.
+  //
+  // `dose` is OPTIONAL at its own end rather than by contrast: `resolveDoseLabels`
+  // numbers each dose within its vaccine's date-ordered sequence and only lets a
+  // non-empty label win, so a blank field reads back as "Dose 2 of 4". `lot`, `route`
+  // and `site` stay three chips rather than one grouped fact because no labeller reads
+  // them back as one line — the printed record gives each its own column, and the skin
+  // form's region-plus-side is one chip only because `bodyMapLabel` is the single
+  // function every skin surface reads those two columns through.
+  immunization: facts<ImmunizationFactKey>({
+    date: "essential",
+    dose: "optional",
+    lot: "optional",
+    route: "optional",
+    site: "optional",
+    reaction: "optional",
+    provider: "optional",
+    notes: "optional",
+  }),
   "mental-health-screening": fields(
     "An instrument's own item list — PHQ-9, GAD-7 — rendered as the instrument states it. The questionnaire is not a summary of facts the person may disagree with one of; it is the instrument, and it renders whole.",
     "#5302"
@@ -661,18 +692,126 @@ export const FORM_GRAMMAR = {
     "The add door picks between an appointment and an encounter before either form exists, so the door itself states no facts. Both forms it opens declare theirs above.",
     "#5302"
   ),
-  result: fields(
-    "`ResultForm.tsx` renders fifteen labelled fields, and four of them — `fasting`, `specimen`, `result_status` and `flag` — are facts the person states about THIS result rather than anything the analyte's definition supplies. The value, unit and reference range are the least of what it asks for. A pending adoption with the rest of the family, on the family's terms.",
-    "#5302"
-  ),
-  "imaging-study": fields(
-    "Renders labelled fields — modality, body site, date, findings; adopts the chip row with the family.",
-    "#5302"
-  ),
-  "genomic-variant": fields(
-    "Renders labelled fields over the gene and variant vocabularies; adopts the chip row with the family.",
-    "#5302"
-  ),
+  // components/ResultForm.tsx, ADOPTED (#5302 slice 4) — the largest of the twelve. The
+  // analyte name is rule 1's identifying field, and both actions already require it.
+  //
+  // THIS ENTRY'S PREDECESSOR WAS WRONG, and the correction is the finding worth keeping.
+  // It named `fasting`, `specimen`, `result_status` and `flag` as this form's facts and
+  // dismissed "the value, unit and reference range" as the least of what it asks for.
+  // Read against the consumers it comes out nearly inverted, for one reason repeated
+  // four times: each of those four has a module saying in its own words that ABSENCE IS
+  // A REAL ANSWER — `normalizeResultStatus` refuses to invent 'final', `fasting` is a
+  // tri-state whose null means "the source didn't say", the canonical vocabulary already
+  // splits the analytes whose specimen changes the interpretation, and `addResult`
+  // computes the flag itself on the next line (`reconcileFlags`). The READING's absence
+  // is not an absence; it is a silent claim.
+  //
+  // `reading` is the value and its unit as ONE fact over one editor — the line
+  // `revisionSummary` already prints. With no value `readingFromObservation` returns
+  // null and the row joins no numeric series at all; with a NUMERIC value and no unit
+  // `convertToCanonical` assumes the canonical unit (an mmol/L LDL judged against the
+  // mg/dL band) or declines outright for a bare count-per-volume canonical, and
+  // `reconciledFlag` returns undefined — "can't convert to the canonical unit — can't
+  // judge". The unit is prompted for ONLY when the value is numeric, by the action's own
+  // test: a qualitative "Reactive" has no unit to be missing.
+  //
+  // `date` is essential because both actions refuse a non-ISO day and `collapseReadings`
+  // groups on it. `category` is essential because `reconcileFlags`'s QUALITATIVE pass is
+  // gated `value_num IS NULL AND category = 'lab'`, so a "Reactive" filed elsewhere is
+  // never classified — and because a blank select posts as 'lab' by server fallback.
+  //
+  // `panel`, `flag`, `provider` and `ordering` render only in EDIT mode, because
+  // `addResult` parses none of them; the summary omits them on the add door rather than
+  // let the trailing affordance name four editors that do not exist there. They keep
+  // their roles here because the union is the form's, not the mode's.
+  result: facts<ResultFactKey>({
+    date: "essential",
+    category: "essential",
+    reading: "essential",
+    canonical: "optional",
+    reference: "optional",
+    specimen: "optional",
+    fasting: "optional",
+    status: "optional",
+    panel: "optional",
+    flag: "optional",
+    provider: "optional",
+    ordering: "optional",
+    notes: "optional",
+  }),
+  // app/(app)/results/imaging/ImagingStudyForm.tsx, ADOPTED (#5302 slice 4). The
+  // MODALITY is rule 1's identifying field: the coded pick over `IMAGING_MODALITIES`,
+  // what `studyDisplayLabel` leads with, and the key both consumers read first.
+  //
+  // `study_date` is the ONE essential, dropped by both: `cumulativeDose` skips an
+  // undated study and `doseContributions` reports it under the named `no-date` exclusion
+  // ("User-fixable"), and `findResolvingImagingStudy` returns null on its first line for
+  // an undated source, so a nodule follow-up can never be closed by the scan that closes
+  // it.
+  //
+  // `region` IS OPTIONAL, and the asymmetry with `skin-lesion.location` above is this
+  // slice's sharpest — argued at THIS end rather than inherited. `sameLesion` compares a
+  // STRICT region|side|label key, so an omitted region splits one mole's track;
+  // `sameImagingKind` is modality-anchored and deliberately loose — "one side
+  // unspecified → modality match suffices" — and bounds its looseness elsewhere instead
+  // ("never cross-modality"). The dose card agrees: `resolveDoseEntry` falls back to the
+  // modality's generic entry, which every modality but the unclassifiable `other` has,
+  // so a region-less CT still contributes its estimate. `laterality` stays its OWN chip
+  // rather than folding into the region, because imaging has no `bodyMapLabel` — nothing
+  // but display reads the side, and `sameImagingKind` reads the region alone.
+  //
+  // `dose` is optional although this is the dose card's own record: `estimateStudyDose`
+  // falls through to the curated typical estimate, which the field's helper text already
+  // promises.
+  "imaging-study": facts<ImagingStudyFactKey>({
+    study_date: "essential",
+    region: "optional",
+    laterality: "optional",
+    contrast: "optional",
+    dose: "optional",
+    indication: "optional",
+    impression: "optional",
+    status: "optional",
+    ordering: "optional",
+    radiologist: "optional",
+    notes: "optional",
+  }),
+  // app/(app)/results/genomics/GenomicVariantForm.tsx, ADOPTED (#5302 slice 4) — the
+  // last of the twelve. The GENE is rule 1's identifying field: the coded pick over
+  // `PGX_GENE_SYMBOLS`, the form's own required value, and the column the cross-check
+  // matches on an exact compare (#1676).
+  //
+  // `result_type` is essential and it is the ROUTER, not bookkeeping: `getPgxWarnings`
+  // filters `result_type === "pharmacogenomic"` and `drivesHereditaryCadence` gates on
+  // `"hereditary-risk"`, while the select is born `"other"` — the value
+  // `normalizeResultType` says "routes to neither the PGx nor the cadence consumer". It
+  // can never be blank, so it is ALWAYS stated (the allergy form's reading of a
+  // born-with-a-value select).
+  //
+  // `call` is essential — star allele, genotype and zygosity as ONE fact over one
+  // editor, read back through `variantCallLabel`. CPIC keys on phenotype, and with no
+  // diplotype `derivedPhenotype` declines, `resolvePhenotype` returns null, and
+  // `crossCheckPgx` skips every phenotype-keyed guidance row: a gene with nothing else
+  // warns about no drug at all.
+  //
+  // `significance` IS OPTIONAL, and that is the one most likely to be got wrong here.
+  // `drivesHereditaryCadence` tests the result type FIRST, so on the other four types —
+  // including this form's default — the ACMG class reaches no consumer; and a
+  // pharmacogenomic report states none, so a dashed prompt on every PGx row would press
+  // for a fact the report does not make. `report_date` is optional for the asymmetry
+  // with the other three forms in this slice: a genotype does not change, so no consumer
+  // drops an undated variant — the column is read only by
+  // `ORDER BY COALESCE(report_date, '')` and the search projection's day text.
+  "genomic-variant": facts<GenomicVariantFactKey>({
+    result_type: "essential",
+    call: "essential",
+    variant: "optional",
+    significance: "optional",
+    report_date: "optional",
+    source_lab: "optional",
+    interpretation: "optional",
+    notes: "optional",
+  }),
 
   // ── Everything else the hosts open ─────────────────────────────────────────
 
