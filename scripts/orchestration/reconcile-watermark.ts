@@ -36,7 +36,7 @@ import {
   extractWatermark,
   type TrackerIssue,
 } from "./reconcile-tracker-core";
-import { writeIssueBody } from "./issue-body-write";
+import { githubJsonHeaders, writeIssueBody } from "./issue-body-write";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
@@ -63,13 +63,7 @@ function curl(args: readonly string[]): { status: number; body: string } {
 }
 
 function get(token: string, url: string): unknown {
-  const { status, body } = curl([
-    "-H",
-    `Authorization: Bearer ${token}`,
-    "-H",
-    "Accept: application/vnd.github+json",
-    url,
-  ]);
+  const { status, body } = curl([...githubJsonHeaders(token), url]);
   if (status < 200 || status >= 300) {
     console.error(`GET ${url} -> ${status}`);
     process.exit(2);
@@ -234,10 +228,7 @@ function main(): void {
     number = carrier.number;
   } else {
     const { status, body: reply } = curl([
-      "-H",
-      `Authorization: Bearer ${token}`,
-      "-H",
-      "Accept: application/vnd.github+json",
+      ...githubJsonHeaders(token),
       "-X",
       "POST",
       "-d",

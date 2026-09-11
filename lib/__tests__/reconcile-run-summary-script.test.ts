@@ -40,7 +40,7 @@ const method = at("-X") ?? "GET";
 const state = JSON.parse(fs.readFileSync(process.env.STUB_STATE, "utf8"));
 fs.appendFileSync(
   process.env.STUB_LOG,
-  JSON.stringify({ method, url, data: at("--data-binary") }) + "\\n"
+  JSON.stringify({ args, method, url, data: at("--data-binary") }) + "\\n"
 );
 const reply = (code, body) => {
   process.stdout.write(JSON.stringify(body) + "\\n" + code);
@@ -60,6 +60,32 @@ if (method === "POST" && url.includes("/comments")) {
 process.stderr.write("stub curl: unhandled " + method + " " + url + "\\n");
 process.exit(9);
 `;
+
+interface Call {
+  /** The WHOLE curl argv, so what a request DECLARES is observable (#5792). */
+  args: string[];
+  method: string;
+  url: string;
+  data: string;
+}
+
+/** The header values one call sent, in order. */
+const headersOf = (c: Call): string[] =>
+  c.args.filter((_, i) => c.args[i - 1] === "-H");
+
+// What a JSON write must declare. Written out here rather than imported, so the
+// test disagrees with a change instead of following it. This pins CONSTRUCTION,
+// not delivery: writes from this container are credentialed by the agent proxy,
+// so a live round trip returns 2xx with no `Authorization` header at all.
+// `./issue-body-write.test.ts` records that measurement and the out-of-band
+// probe that pins delivery — against an issue number that cannot exist, the
+// request without `Content-Type` is refused by the proxy with 415 and the same
+// request with it reaches GitHub, which answers 404 (#5758, #5792).
+const JSON_WRITE_HEADERS = [
+  "Authorization: Bearer stub token 1",
+  "Accept: application/vnd.github+json",
+  "Content-Type: application/json",
+];
 
 interface State {
   comments: Array<{ id: number; body: string }>;
@@ -149,7 +175,7 @@ function runScript(
     .readFileSync(log, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as { method: string; url: string; data: string });
+    .map((l) => JSON.parse(l) as Call);
   return {
     ...run,
     dir,
@@ -250,6 +276,10 @@ describe("reconcile-run-summary.ts", () => {
     expect(writes[0].url).toContain(`/issues/${RUN_SUMMARY_ISSUE}/comments`);
     // One field, and no field an issue's state could ride in.
     expect(Object.keys(JSON.parse(writes[0].data))).toEqual(["body"]);
+    // And the request says the body is JSON (#5792). Without that the proxy
+    // answers 415, the comment never reaches #865, and the re-read below
+    // would be the only thing that noticed.
+    expect(headersOf(writes[0])).toEqual(JSON_WRITE_HEADERS);
     expect(run.state.comments).toHaveLength(1);
     expect(run.state.comments[0].body).toContain(
       `${RUN_SUMMARY_MARKER} ${RAN_AT}`

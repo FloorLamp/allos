@@ -33,7 +33,7 @@ const method = at("-X") ?? "GET";
 const state = JSON.parse(fs.readFileSync(process.env.STUB_STATE, "utf8"));
 fs.appendFileSync(
   process.env.STUB_LOG,
-  JSON.stringify({ method, url, data: at("-d") ?? at("--data-binary") }) + "\\n"
+  JSON.stringify({ args, method, url, data: at("-d") ?? at("--data-binary") }) + "\\n"
 );
 const save = () =>
   fs.writeFileSync(process.env.STUB_STATE, JSON.stringify(state));
@@ -89,6 +89,32 @@ const carrier = (iso: string) => ({
   body: `machine state\n\n\`\`\`json\n{"lastRunAt":"${iso}"}\n\`\`\``,
 });
 
+interface Call {
+  /** The WHOLE curl argv, so what a request DECLARES is observable (#5792). */
+  args: string[];
+  method: string;
+  url: string;
+  data: string;
+}
+
+/** The header values one call sent, in order. */
+const headersOf = (c: Call): string[] =>
+  c.args.filter((_, i) => c.args[i - 1] === "-H");
+
+// What a JSON write must declare. Written out here rather than imported, so the
+// test disagrees with a change instead of following it. This pins CONSTRUCTION,
+// not delivery: writes from this container are credentialed by the agent proxy,
+// so a live round trip returns 2xx with no `Authorization` header at all.
+// `./issue-body-write.test.ts` records that measurement and the out-of-band
+// probe that pins delivery — against an issue number that cannot exist, the
+// request without `Content-Type` is refused by the proxy with 415 and the same
+// request with it reaches GitHub, which answers 404 (#5758, #5792).
+const JSON_WRITE_HEADERS = [
+  "Authorization: Bearer stub token 1",
+  "Accept: application/vnd.github+json",
+  "Content-Type: application/json",
+];
+
 interface State {
   issues: Array<{ number: number; title: string; body: string }>;
 }
@@ -120,7 +146,7 @@ function runScript(state: State, scriptArgs: readonly string[], fullPages = 0) {
     .readFileSync(log, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as { method: string; url: string; data: string });
+    .map((l) => JSON.parse(l) as Call);
   return {
     ...run,
     calls,
@@ -182,6 +208,10 @@ describe("reconcile-watermark.ts", () => {
     const post = run.calls.find((c) => c.method === "POST");
     // parked keeps it out of every dispatch queue; infra is its domain.
     expect(JSON.parse(post!.data).labels).toEqual(["infra", "parked"]);
+    // The create sends a JSON body, so it must say so (#5792). Without the
+    // declaration the proxy answers 415 and no carrier is ever created, which
+    // reads downstream as a watermark that simply never advanced.
+    expect(headersOf(post!)).toEqual(JSON_WRITE_HEADERS);
   });
 
   it("refuses to rewind the window from a stale evidence file", () => {
