@@ -205,7 +205,7 @@ function schoolReturnStatusForRows(
   // (#2205 phase 3). The note has always used that to LABEL the clock honestly; the
   // arithmetic below used to ignore it and count from whichever instant came back.
   //
-  // A capture stamp is not a late bound on when a dose was given: a past-day
+  // And a capture stamp bounds the administration in NEITHER direction: a past-day
   // skipped→taken flip keeps the SKIP's `recorded_at`, which PREDATES the dose, so the
   // fever-free clock started early and could clear a child for school while a reducer
   // was still masking a fever. So an unstated dose contributes no instant at all and
@@ -229,22 +229,31 @@ function schoolReturnStatusForRows(
       continue;
     }
     const when = bestKnownInstant("intake_item_logs", r);
+    if (!when.known) {
+      // Neither column readable: the row states no time either, so it holds like any
+      // other unstated dose rather than dropping out — dropping a fever reducer is the
+      // permissive direction, and that is the whole point of this gather.
+      doses.push({
+        day: r.date,
+        statedMs: null,
+        name: r.name,
+        clockLabel: null,
+      });
+      continue;
+    }
     const d = instantDate(when);
     // The school-return note is a document a caregiver hands to a school, so its
     // claim must match what the row states (#2228 decision 4): "last ibuprofen
     // recorded 4:02pm" when nobody stated an intake time, a bare clock only when
     // somebody did. The value stays visible with its provenance either way.
-    const clock = when.known ? formatGivenAtClock(tz, when.at) || null : null;
+    const clock = formatGivenAtClock(tz, when.at) || null;
     doses.push({
       day: r.date,
-      // An `event` answer, and nothing else. A row whose instants are unreadable
-      // states no time either, and is held for the same reason rather than dropped —
-      // dropping a fever reducer is the permissive direction.
-      statedMs:
-        d && when.known && when.semantic === "event" ? d.getTime() : null,
+      // An `event` answer, and nothing else.
+      statedMs: d && when.semantic === "event" ? d.getTime() : null,
       name: r.name,
       clockLabel:
-        clock != null && when.known && when.semantic === "record"
+        clock != null && when.semantic === "record"
           ? `recorded ${clock}`
           : clock,
     });

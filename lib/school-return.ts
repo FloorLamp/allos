@@ -11,7 +11,9 @@
 // the convention is that a child may return once fever-free for that long WITHOUT a
 // fever reducer — so BOTH clocks (the measured fever-free clock AND time since the
 // last antipyretic administration) must clear the threshold. Taking a fever reducer
-// masks fever, so it resets the clock exactly like a fresh fever reading.
+// masks fever, so it resets the clock exactly like a fresh fever reading — and a
+// reducer that states no time when it was given resets it to an unknown instant, so the
+// countdown is HELD rather than computed (#5688).
 //
 // AND THE CLOCK REQUIRES EVIDENCE (#4685). It starts at the first NORMAL reading
 // after the last fever-range one, never at the fever itself: an unmeasured night is
@@ -59,7 +61,9 @@ interface SchoolReturnFacts {
   lastFeverDegF: number;
   // Whole hours since the last fever-range reading (floored, never negative).
   hoursSinceFever: number;
-  // Whole hours since the last antipyretic, or null when none was taken.
+  // Whole hours since the last antipyretic — null when none was taken AND null when
+  // the one that was states no administration time, since there is then nothing to
+  // count from (#5688). `lastAntipyreticName` is what tells those two apart.
   hoursSinceAntipyretic: number | null;
   lastAntipyreticName: string | null;
   lastAntipyreticClockLabel: string | null;
