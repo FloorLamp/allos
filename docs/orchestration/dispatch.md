@@ -74,14 +74,14 @@ owner operations outside a normal coding lane.
 
 ## Tooling
 
-Use the relevant script's `--help` before unfamiliar operations; check its declared
-behavior rather than assuming every executable is free of side effects.
+Read a script's `--help` before unfamiliar operations: not every executable is
+free of side effects.
 
 | Tool                           | Responsibility                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------- |
 | `dispatch-brief.mjs`           | Dispatches, claims, ports, validated state, and candidate promotion; deliver emitted role updates |
 | `agent-gates.sh`               | Assigned local checks in order; environment and gate triggers determine what runs                 |
-| `run-gates-recorded.sh`        | Captured PID and exit status; `--wait` resumes observation                                        |
+| `run-gates-recorded.sh`        | Captured PID and exit status; `--wait` resumes a run, or REPLAYs a finished one                   |
 | `ci-watch.mjs`                 | Settled check runs and commit statuses: 0 green, 1 red, 2 unsettled, 3 blocked                    |
 | `queue-snapshot.mjs`           | Dispatchable queue snapshot and held-lane markers                                                 |
 | `session-metrics.mjs`          | Throughput, review depth, queue shape, and `needs-human` issue age with denominators              |
