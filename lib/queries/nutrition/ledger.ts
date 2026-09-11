@@ -87,6 +87,11 @@ export interface FoodMealEvent {
   // present. `recorded_at` itself is never edited, so after a correction this is no
   // longer the number the user would recognise; the eating time above is.
   loggedTime: string;
+  // The profile-local DAY that same filing instant fell on (#5618 rule 6). Read from
+  // the one `recorded_at` beside the minute above, so the pair can never disagree: a
+  // filing minute is only honest under the day it happened on, and the ledger renders
+  // "logged Sep 8" instead of a minute when the two days differ.
+  loggedDay: string;
   // What the person wrote about THIS serving (#5304), or null. Carried so the
   // correction sheet opens on the note it is about to correct — a sheet seeded without
   // it would show an empty field over stored text.
@@ -169,6 +174,10 @@ export function getFoodMealDays(
     );
     const slotCounts = day.slotCounts[slot];
     slotCounts[event.name] = (slotCounts[event.name] ?? 0) + 1;
+    // ONE READING OF THE FILING INSTANT serves both of the fields below it. The minute
+    // and the day have to come from the same `recorded_at`, or the pair could disagree
+    // about which day the minute belongs to — which is the whole of what rule 6 reads.
+    const filed = zonedDateParts(tz, new Date(event.recorded_at));
     // Same event, same derived window — the correction row and the tally it feeds are
     // built in one pass, so the list can never offer a row the tally didn't count.
     day.events.push({
@@ -184,7 +193,8 @@ export function getFoodMealDays(
       eatenAt: event.occurred_at
         ? zonedDateParts(tz, new Date(event.occurred_at)).hhmm
         : null,
-      loggedTime: zonedDateParts(tz, new Date(event.recorded_at)).hhmm,
+      loggedTime: filed.hhmm,
+      loggedDay: filed.date,
       notes: event.notes,
     });
   }
