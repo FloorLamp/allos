@@ -2374,6 +2374,7 @@ function QuickEntryBody({
           doses={data.doses}
           prn={data.prn ? { ...data.prn, tz: subjectTimeZone } : undefined}
           pastDays={data.pastDays}
+          others={data.others}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
           selectedDay={selectedDay ?? data.today}

@@ -3,13 +3,21 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import DatedDoseControl from "@/components/medications/DatedDoseControl";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
+import Disclosure from "@/components/Disclosure";
+import { LabeledVerbChip } from "@/components/OfferRow";
+import { useTimeStatement } from "@/components/TimeStatement";
+import { useToast } from "@/components/Toast";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import {
   QuickEntryRow,
   QuickEntryRowList,
 } from "@/components/quick-entry/QuickEntryRowList";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
+import { logHistoricalDose } from "@/app/(app)/nutrition/intake-actions";
 import type {
   QuickEntryDose,
+  QuickEntryOtherItem,
+  QuickEntryOthers,
   QuickEntryPastDay,
   QuickEntryPastDose,
   QuickEntryPrn,
@@ -63,6 +71,7 @@ export default function QuickDoseList({
   doses,
   prn,
   pastDays,
+  others,
   onDone,
   subjectProfileId,
   selectedDay,
@@ -83,6 +92,9 @@ export default function QuickDoseList({
   doses: QuickEntryDose[];
   prn?: QuickEntryPrn;
   pastDays: QuickEntryPastDay[];
+  // The "Everything else" fold's offer per day (#5808) — the catalog slice this body
+  // is not otherwise showing. Absent (or empty for the standing day) renders no fold.
+  others?: QuickEntryOthers;
   // Called once the sheet has nothing left to confirm on ANY offered day — the
   // overlay closes itself rather than leaving an empty sheet on screen. Today
   // emptying on its own is NOT that moment any more: closing then would take the
@@ -264,6 +276,18 @@ export default function QuickDoseList({
           onLogged={onPrnLogged}
         />
       )}
+      {/* UNDER the due slots and the as-needed list, on every day the sheet stands
+          on — the owner's ruling put it last because it is the only part of this body
+          that is not about something owed. */}
+      <EverythingElseFold
+        items={others?.byDate[day] ?? []}
+        date={day}
+        liveDay={day === profileToday}
+        nowHhmm={others?.nowHhmm ?? ""}
+        tz={prn?.tz}
+        subjectProfileId={subjectProfileId}
+        onLogged={onPrnLogged}
+      />
       {canAdd && onAdd ? (
         <div className="flex flex-wrap gap-2 border-t border-(--border) pt-3">
           <button
@@ -394,5 +418,217 @@ function PastDayDoses({
         )}
       </QuickEntryRowList>
     </div>
+  );
+}
+
+// ── EVERYTHING ELSE (#5808, owner ruling 2026-09-10) ─────────────────────────
+//
+// ONE FOLDED ROW, and the fold is the bound. The body above it answers what is owed —
+// today's arrived slots, the as-needed medications, a recent day's unresolved doses —
+// so an active item that is simply not due had no row anywhere: an unscheduled
+// supplement (never due, #5285, and this is where it is logged instead), a scheduled
+// item wanted outside its slot, a second dose of one already taken. There is no search
+// field: a profile's item list is small enough that expanding IS the search, and a box
+// here would be a second catalog beside the intake pages' (#5344).
+//
+// ABSENT WHEN N IS ZERO — not an empty fold, and not a fold whose count disagrees with
+// what expanding shows. Both halves read the SAME array, so the count cannot drift.
+//
+// THE APP'S ONE FOLD PRIMITIVE (#3677): a `<details>` with `motion-disclose`, so it
+// opens without JavaScript, in-page find expands it, and the keyboard/AT semantics are
+// the platform's. Uncontrolled and always closed on arrival — the sheet is opened for
+// one write, and a remembered-open fold would put the whole catalog under the reader's
+// finger before they asked.
+function EverythingElseFold({
+  items,
+  date,
+  liveDay,
+  nowHhmm,
+  tz,
+  subjectProfileId,
+  onLogged,
+}: {
+  items: QuickEntryOtherItem[];
+  /** The day the sheet is standing on — the day every Take below states. */
+  date: string;
+  /** Whether that day is the profile's LIVE day, which is the only one with a "now". */
+  liveDay: boolean;
+  /** The SERVER's profile-local wall minute, which a live-day Take states. */
+  nowHhmm: string;
+  tz?: string;
+  subjectProfileId?: number;
+  onLogged?: () => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <Disclosure data-testid="quick-entry-others">
+      <summary
+        data-testid="quick-entry-others-summary"
+        className="fold-control cursor-pointer list-none text-sm text-link marker:content-none"
+      >
+        Everything else ({items.length})
+      </summary>
+      <div className="mt-2">
+        <QuickEntryRowList testId="quick-entry-others-list">
+          {items.map((item) => (
+            <OtherItemRow
+              key={item.itemId}
+              item={item}
+              date={date}
+              liveDay={liveDay}
+              nowHhmm={nowHhmm}
+              tz={tz}
+              subjectProfileId={subjectProfileId}
+              onLogged={onLogged}
+            />
+          ))}
+        </QuickEntryRowList>
+      </div>
+    </Disclosure>
+  );
+}
+
+// One catalog item offered for a one-tap dose on the sheet's day.
+//
+// IT POSTS `logHistoricalDose`, THE RECORD DOOR'S CORE — never `markDoseTaken`, which
+// resolves an OCCURRENCE and therefore cannot serve an item that has none. That is the
+// whole reason this row exists, so the write path is the row's first fact and not an
+// implementation detail: the dated core takes an item, a dose row, a day and a stated
+// minute, and files exactly one administration.
+//
+// WHERE THE MINUTE COMES FROM. The day is the surface's (#4738 ruling 1) and the time
+// half is #4426's collapsed statement, in its usual two pieces. On the LIVE day the tap
+// is one tap: it states the gather's server minute, or the minute already stated beside
+// it when the reader opened the door and filled it. On any other day there is no "now"
+// to state, so the tap OPENS the door and asks — the same grammar the as-needed row
+// above it uses for a day that has ended (#5489 fix 2), rather than inventing a number.
+//
+// THE ROW DOES NOT LEAVE. Nothing here was owed, so logging it resolves nothing; the
+// row stays, and the refresh the host already runs after an as-needed dose brings back
+// its "taken 8:15am" fact — which is what makes a second dose one more tap.
+function OtherItemRow({
+  item,
+  date,
+  liveDay,
+  nowHhmm,
+  tz,
+  subjectProfileId,
+  onLogged,
+}: {
+  item: QuickEntryOtherItem;
+  date: string;
+  liveDay: boolean;
+  nowHhmm: string;
+  tz?: string;
+  subjectProfileId?: number;
+  onLogged?: () => void;
+}) {
+  const toast = useToast();
+  const stampLoggedVia = useLoggedViaStamp();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const statement = useTimeStatement({
+    day: date,
+    tz,
+    timeLabel: `Time ${item.name} was taken`,
+    testId: `quick-entry-other-when-${item.itemId}`,
+    disabled: busy,
+  });
+
+  async function log(time: string): Promise<void> {
+    setBusy(true);
+    try {
+      const fd = stampLoggedVia(new FormData());
+      fd.set("id", String(item.itemId));
+      fd.set("dose_id", String(item.doseId));
+      fd.set("date", date);
+      fd.set("time", time);
+      // The sheet's chosen subject (#4932), re-gated server-side by `gateItemProfile`
+      // exactly as the record door's own add is. Absent on an acting-profile sheet.
+      if (subjectProfileId != null) {
+        fd.set("profile_id", String(subjectProfileId));
+      }
+      const result = await logHistoricalDose(fd);
+      if (!result.ok) {
+        // NEVER AN UNCONDITIONAL CONFIRM (#280), which is this file's own header rule:
+        // a refusal — a paused item, a day outside the course — says so in place.
+        setNote(result.error);
+        toast(result.error, { tone: "error" });
+        return;
+      }
+      setNote(null);
+      toast(`Logged ${item.name}${item.detail ? ` · ${item.detail}` : ""}.`);
+      // Rule 5: a statement is spent by the tap it answers, and only that one.
+      statement.setOpen(false);
+      statement.spend(time);
+      onLogged?.();
+    } catch {
+      toast("Couldn't log that dose. Try again.", { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function take(): void {
+    // ONLY WHAT IS ON SCREEN (`TimeStatement` rule 2): a minute typed and then
+    // dismissed is not a statement this tap may spend.
+    const stated = statement.open ? statement.at : null;
+    if (stated) {
+      void log(stated);
+      return;
+    }
+    if (liveDay && nowHhmm) {
+      void log(nowHhmm);
+      return;
+    }
+    statement.setOpen(true);
+  }
+
+  return (
+    <QuickEntryRow
+      testId={`quick-entry-other-${item.itemId}`}
+      identity={item.name}
+      facts={
+        <>
+          {item.takenAt && (
+            <span
+              data-testid={`quick-entry-other-taken-${item.itemId}`}
+              className="block text-xs text-slate-500 dark:text-slate-400"
+            >
+              taken {item.takenAt}
+            </span>
+          )}
+          {note && (
+            <span
+              data-testid={`quick-entry-other-note-${item.itemId}`}
+              className="block text-xs font-medium text-rose-600 dark:text-rose-400"
+            >
+              {note}
+            </span>
+          )}
+        </>
+      }
+      actions={
+        <>
+          {/* The chip's label is the PAYLOAD — the usual amount this tap writes — so
+              the verb stays one word and never says "now" (#4753). An item with no
+              recorded amount has nothing quantitative to promise, so it falls back to
+              naming itself. */}
+          <LabeledVerbChip
+            label={item.detail || item.name}
+            verb="Take"
+            tone="neutral"
+            onAct={take}
+            disabled={busy}
+            ariaLabel={`Take ${item.name}${item.detail ? ` · ${item.detail}` : ""}`}
+            testId={`quick-entry-other-take-${item.itemId}`}
+            clockDoor={statement.door}
+          />
+          {statement.reveal ? (
+            <div className="w-full">{statement.reveal}</div>
+          ) : null}
+        </>
+      }
+    />
   );
 }
