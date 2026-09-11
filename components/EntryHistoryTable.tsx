@@ -8,6 +8,7 @@ import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
+import ModalShell from "@/components/ModalShell";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import LoggedEventRow from "@/components/LoggedEventRow";
 import { CARD_MODE_ONLY } from "@/lib/card-row";
@@ -52,6 +53,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
   editLabel = "Edit",
   deleteLabel = "Delete",
   renderEditForm,
+  editHost = "row",
   confirmDelete,
   deleteFormData,
   deleteAction,
@@ -91,6 +93,29 @@ export default function EntryHistoryTable<T extends { id: number }>({
   // somewhere else (#5026 item 1), and an Edit that opened a day-count form there
   // would restate the rollup onto every event under it.
   renderEditForm?: (item: T, done: () => void) => ReactNode;
+  /**
+   * WHERE `renderEditForm` OPENS, AND IT IS OPT-IN ON PURPOSE (#5617 AC1).
+   *
+   * `"row"` is the shape every consumer has always had: the form replaces the
+   * row's cells in place. `"sheet"` is #5300 rule 5's converged host — the
+   * form opens in `ModalShell`, a sheet below `md` and a centred card above,
+   * titled by `menuItemName(item)` exactly as the record's own row editor is
+   * (`app/(app)/history/HistoryRows.tsx`, #5742).
+   *
+   * IT IS A PROP RATHER THAN A CHANGE TO THE SHARED BEHAVIOUR because this
+   * table hosts more than the eight log forms #5617 reaches: cycles
+   * (`CycleHistory.tsx` / `CycleForm`) and instruments
+   * (`InstrumentHistoryList.tsx` / `ScoreCorrectionForm`) mount here too, and
+   * #5302's record forms are a third set. Converting the shared path would move
+   * all of them and their spec suites in a change scoped to two files. Each
+   * consumer adopts the host when its own issue says to.
+   *
+   * THE FORM IS PORTALLED WHEN THIS IS `"sheet"`. `ModalShell` renders through
+   * `BottomSheet` to `<body>`, so a spec that scoped the form to the panel or
+   * the table around it must scope it to the dialog instead — the row is no
+   * longer the form's ancestor.
+   */
+  editHost?: "row" | "sheet";
   confirmDelete: (item: T) => {
     title: string;
     message: string;
@@ -169,6 +194,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
     return columns.some((col) => col.slot === "trailing" && !col.empty?.(item));
   }
 
+  const editingRow = items.find((item) => item.id === editingId);
   const visible =
     expanded || !expandToggle ? items : items.slice(0, collapsedCount);
   const colSpan = columns.length + (readOnly ? 0 : 1);
@@ -206,7 +232,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
               }
               className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
             >
-              {renderEditForm && editingId === item.id ? (
+              {renderEditForm && editingId === item.id && editHost === "row" ? (
                 <Td slot="full" colSpan={colSpan} className="px-2 py-2">
                   {renderEditForm(item, () => setEditingId(null))}
                 </Td>
@@ -306,6 +332,24 @@ export default function EntryHistoryTable<T extends { id: number }>({
           ))}
         </tbody>
       </ResponsiveTable>
+      {/* THE CONVERGED HOST, WHEN THE CONSUMER ASKED FOR IT (#5300 rule 5 / #5617
+          AC1). A SIBLING OF THE TABLE, not a child of the row: `ModalShell`
+          portals to `<body>` either way, but writing it inside `<tbody>` would
+          put a dialog in the middle of a table's markup for every reader of this
+          file and buy nothing. Titled by `menuItemName` — the same string the
+          row's ⋯ already announces — so the control that opened the sheet and the
+          sheet's own title cannot name two different rows (#5742's rule, applied
+          to the two mounts that had not converged). */}
+      {renderEditForm && editHost === "sheet" && editingRow ? (
+        <ModalShell
+          title={menuItemName(editingRow)}
+          onClose={() => setEditingId(null)}
+          size="sm"
+          testId="entry-history-edit-sheet"
+        >
+          {renderEditForm(editingRow, () => setEditingId(null))}
+        </ModalShell>
+      ) : null}
       {expandToggle && items.length > collapsedCount ? (
         <button
           type="button"
