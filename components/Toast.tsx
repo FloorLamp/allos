@@ -27,6 +27,7 @@ import {
   type ProfileToastScope,
 } from "@/lib/toast-upsert";
 import { motionClass, motionMs, overlayMotionClass } from "@/lib/motion";
+import { attentionAmber } from "@/lib/chart-colors";
 import { useCompactViewport } from "@/components/useCompactViewport";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { useHaptics } from "@/components/useHaptics";
@@ -383,7 +384,7 @@ function ToastCard({
         {success ? (
           <IconCircleCheck className="h-5 w-5 text-emerald-500" />
         ) : (
-          <IconAlertTriangle className="h-5 w-5 text-amber-500" />
+          <IconAlertTriangle className={`h-5 w-5 ${attentionAmber.class}`} />
         )}
       </span>
       <p className="col-start-2 row-start-1 min-w-0 text-sm text-slate-700 dark:text-slate-200">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExtractedResult } from "../medical-extract";
-import { uncuratedAnalytes } from "../canonical-name";
+import { uncuratedAnalytes } from "../datasets/uncurated-analytes";
 import {
   documentSource,
   bodyMetricsFromExtraction,

@@ -125,6 +125,27 @@ export function hhmmToMinutes(hhmm: string): number {
   return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
+// The inverse of `hhmmToMinutes`: a minute-of-day as its "HH:MM" wall-clock string,
+// zero-padded and 24-hour, with NO preference applied — the pref-aware render seam is
+// `formatClockMinutes` (lib/format-date.ts), which reads its digits from here.
+//
+// NORMALIZED MODULO THE DAY, which is the whole reason this is one function. The same
+// arithmetic had been spelled six ways and three of them disagreed off the end of the
+// day: a noon-anchored hour mapped to minutes (1440 -> "00:00"), a sunrise pushed past
+// midnight by an extreme longitude, and a wall-clock end that ran past midnight all
+// need the wrap, while a naive `Math.floor(m / 60)` with `padStart` answers "24:00" and
+// a naive `%` keeps JS's sign and answers "-1:-30" for -30. Both of those are wrong at
+// every call site, so neither is reachable from here.
+//
+// Malformed input folds to "00:00" for the same reason `hhmmToMinutes` folds to 0:
+// every caller renders the result, and "NaN:NaN" is not a clock.
+export function hhmmFromMinutes(minutes: number): string {
+  const total = (((Math.round(minutes) % 1440) + 1440) % 1440) | 0;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+    total % 60
+  ).padStart(2, "0")}`;
+}
+
 // The minute-resolution wall-clock stamp ('YYYY-MM-DDTHH:MM') of an instant in the
 // given IANA timezone — the profile-local minute an absolute timestamp is attributed
 // to.
@@ -410,6 +431,14 @@ export function parseDay(day: LocalDay): number {
 // Whole days from calendar date `a` to `b` (both YYYY-MM-DD), i.e. b − a.
 // UTC-anchored so it's timezone-independent and never crosses a DST boundary.
 // Returns null if either date is unparseable.
+//
+// TWO BRANDED DAYS ALWAYS SUBTRACT. A `LocalDay` is only ever minted by a validator or
+// a constructor in this module, so neither side can be unparseable and the `null` is
+// unreachable — declaring that in the type is what lets a caller holding two real days
+// use the number without inventing a fallback for a case it cannot reach (#5142). The
+// plain-string signature is unchanged for the callers that hand this stored text.
+export function daysBetweenDateStr(a: LocalDay, b: LocalDay): number;
+export function daysBetweenDateStr(a: string, b: string): number | null;
 export function daysBetweenDateStr(a: string, b: string): number | null {
   const ta = parseUtcSql(a.slice(0, 10) + "T00:00:00")?.getTime() ?? NaN;
   const tb = parseUtcSql(b.slice(0, 10) + "T00:00:00")?.getTime() ?? NaN;

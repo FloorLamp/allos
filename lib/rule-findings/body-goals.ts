@@ -11,6 +11,7 @@ import {
   getOutcomeGoals,
 } from "../queries";
 import { isGoalLive } from "../outcome-goals";
+import { SAFE_LOSS_FRACTION_PER_WEEK, policyPercent } from "../constants";
 import { shiftDateStr } from "../date";
 import { fmtWeight, round } from "../units";
 import {
@@ -268,7 +269,8 @@ export function buildGoalPacingFindings(
       supersedes: weightLossRateLegacyKey(),
       title: "Losing weight quickly",
       detail:
-        `You're down about ${pct}%/week lately — faster than the ~1%/week that ` +
+        `You're down about ${pct}%/week lately — faster than the ` +
+        `~${policyPercent(SAFE_LOSS_FRACTION_PER_WEEK)}/week that ` +
         `best preserves muscle. Easing off a little protects lean mass and makes ` +
         `the loss easier to sustain.`,
       tone: "caution",

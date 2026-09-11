@@ -17,6 +17,7 @@
 
 import { projectGoal, type ProjectionPoint } from "./trend-projection";
 import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
+import { SAFE_LOSS_FRACTION_PER_WEEK } from "./constants";
 
 // ---- 1. Off-pace goal -----------------------------------------------------
 
@@ -127,8 +128,9 @@ export function weightLossRateSignalKey(sinceMonth: string): string {
 // Sustained loss faster than this fraction of body weight PER WEEK trips the gentle
 // caution. ~1%/week is the widely-cited ceiling for preserving lean mass during a
 // cut; below it, loss is mostly fat and adherence holds. Above it, faster isn't
-// better.
-export const SAFE_LOSS_FRACTION_PER_WEEK = 0.01;
+// better. Declared with the app's other policy numerals (#4243) so the caution's
+// own copy states the same figure by formatting it, not by restating it.
+export { SAFE_LOSS_FRACTION_PER_WEEK };
 
 // The trailing window (days) the loss rate is fit over — four weeks, so a single
 // heavy week (a post-vacation drop, a stomach bug) can't trip it; the caution is

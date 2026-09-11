@@ -13,7 +13,8 @@
 // shipping timezone tables. Date-only appointments become all-day VALUE=DATE
 // events (no time, no zone — they're the same calendar day everywhere).
 
-import { shiftDateStr } from "./date";
+import { MONTHS_SHORT, shiftDateStr, WEEKDAYS_SHORT } from "./date";
+import { formatClock } from "./format-date";
 import type { AppointmentKind } from "./types";
 import { sharedSurfaceDetail } from "./appointment-sensitivity";
 
@@ -233,22 +234,9 @@ export interface CalendarFeedPreviewRow {
 
 // Fixed English labels (not locale-formatted) so the projection is deterministic
 // and unit-testable regardless of the runtime locale — matching how the rest of
-// this module avoids environment-dependent formatting.
-const PREVIEW_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const PREVIEW_MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+// this module avoids environment-dependent formatting. The tables are lib/date.ts's
+// `WEEKDAYS_SHORT` / `MONTHS_SHORT` (#4550): those are the same fixed English, for
+// the same reason (#964's locale purge), and this module had a second copy of both.
 
 // "Fri, Jul 10, 2026" from a YYYY-MM-DD calendar date. UTC-anchored, so the
 // weekday is stable regardless of the process timezone (the date is a bare
@@ -258,15 +246,15 @@ function formatPreviewDate(dateStr: string): string {
   const mo = +dateStr.slice(5, 7);
   const d = +dateStr.slice(8, 10);
   const dow = new Date(dateStr + "T00:00:00Z").getUTCDay();
-  return `${PREVIEW_WEEKDAYS[dow]}, ${PREVIEW_MONTHS[mo - 1]} ${d}, ${y}`;
+  return `${WEEKDAYS_SHORT[dow]}, ${MONTHS_SHORT[mo - 1]} ${d}, ${y}`;
 }
 
 // The public calendar preview has no login preference context, so it keeps its fixed
-// documented 12-hour clock while authenticated surfaces use the login formatter.
+// documented 12-hour clock while authenticated surfaces use the login formatter. The
+// CHOICE is fixed here; the RENDERING is `formatClock`'s 12h branch, which this had
+// re-spelled (#4550).
 function formatPreviewTime(h: number, mi: number): string {
-  const period = h < 12 ? "AM" : "PM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(mi).padStart(2, "0")} ${period}`;
+  return formatClock("12h", h, mi, "upper-space");
 }
 
 // Project one appointment to its preview row. Composes `appointmentToIcsEvent`

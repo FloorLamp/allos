@@ -16,7 +16,10 @@ import {
   parseConfidenceSummary,
   type ExtractionConfidenceSummary,
 } from "./extraction-confidence";
-import { uncuratedAnalyte, type UncuratedAnalyte } from "./canonical-name";
+import {
+  uncuratedAnalyte,
+  type UncuratedAnalyte,
+} from "./datasets/uncurated-analytes";
 
 // Why a candidate reading didn't make it into the imported set. A closed enum so
 // the UI can group + label consistently and a stored report stays stable.

@@ -29,7 +29,11 @@ import {
   formatLongDate,
   type DisplayFormatPrefs,
 } from "../format-date";
-import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "../findings";
+import {
+  FINDING_DASHBOARD_RELEVANCE,
+  type Finding,
+  type RollupOnlyFinding,
+} from "../findings";
 import { trainingTabHref, strengthAnalyzeHref, type AppRoute } from "../hrefs";
 import { getWeekStart } from "../settings";
 import {
@@ -72,7 +76,7 @@ export function buildFitnessCheckFindings(
   profileId: number,
   today: string,
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
-): Finding[] {
+): RollupOnlyFinding[] {
   // The check's call to action and copy are explicitly about adult-population
   // percentiles. Historical rows stay preserved, but a minor or unknown-age
   // profile must not get a dead-end reminder for an adult-only route.
@@ -184,10 +188,13 @@ function listNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 }
 
+// The training-stale GROUP envelope is rollup-only even though its builder has an
+// origin tab: the Training tab renders the per-exercise observations, never this
+// aggregate, so it clears the rollup floor itself (#3095).
 function staleExerciseGroupFinding(
   observations: readonly StaleExerciseObservation[],
   episodeStart: string
-): Finding | null {
+): RollupOnlyFinding | null {
   if (observations.length === 0) return null;
   const names = observations
     .slice(0, COACHING_ENTITY_FINDING_LIMITS.staleExerciseNames)

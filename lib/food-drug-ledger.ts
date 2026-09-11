@@ -17,7 +17,7 @@
 // "Alcohol logged today while taking Flagyl" and the label's sentence — never "you
 // shouldn't have", never a diagnosis, never a number we invented.
 
-import { shiftDateStr } from "./date";
+import { daysBetweenDateStr, shiftDateStr } from "./date";
 import type { FoodInteractionHit } from "./food-drug-interactions";
 import { foodGroupBySlug } from "./food-groups";
 
@@ -160,11 +160,15 @@ export function detectFoodDrugEvents(
 
 // Whole days from an (optional) course end to `date`, floored at 0. 0 for an open-ended
 // course or a date on/before the end — i.e. "still during treatment".
+//
+// The arithmetic is `daysBetweenDateStr`'s (lib/date.ts, #4553 item 6). It answers
+// NULL where this copy produced NaN — `Math.max(0, NaN)` is NaN, which would have
+// travelled into `daysAfterCourse` and made every comparison against it false. The
+// floor decides it: an unparseable date reads 0, "still during treatment", which is
+// this function's own documented conservative answer.
 function daysBetween(courseEnd: string | null, date: string): number {
   if (courseEnd == null || date <= courseEnd) return 0;
-  const ms =
-    Date.parse(`${date}T00:00:00Z`) - Date.parse(`${courseEnd}T00:00:00Z`);
-  return Math.max(0, Math.round(ms / 86_400_000));
+  return Math.max(0, daysBetweenDateStr(courseEnd, date) ?? 0);
 }
 
 // ---- Variance findings (a swing against "keep it steady") ----

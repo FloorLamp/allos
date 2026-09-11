@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { windowMovement } from "@/lib/movement";
 import {
   recapWindow,
   resolveRecapWindow,
   inWindow,
-  weightTrendKg,
   buildRecap,
   renderRecapMessage,
   pickRecapNarrative,
@@ -261,10 +261,26 @@ describe("completed-week window selection (issue #1021)", () => {
   });
 });
 
-describe("weightTrendKg", () => {
-  it("returns null for fewer than two readings", () => {
-    expect(weightTrendKg([])).toBeNull();
-    expect(weightTrendKg([{ date: "2026-07-03", weightKg: 74 }])).toBeNull();
+describe("the recap's weight lines read the shared WINDOW verdict (#3394)", () => {
+  // `weightTrendKg` retired into `windowMovement`: same robust median endpoints, one
+  // owner. These pin the recap's OWN behaviour through buildRecap rather than a
+  // re-exported private helper.
+  const weightRecap = (weights: { date: string; weightKg: number }[]) =>
+    buildRecap(baseInput({ weights }));
+
+  it("prints no within-window trend note for fewer than two readings", () => {
+    expect(
+      weightRecap([]).lines.find((l) => l.key === "weight")
+    ).toBeUndefined();
+    const one = weightRecap([{ date: "2026-07-03", weightKg: 74 }]).lines.find(
+      (l) => l.key === "weight"
+    )!;
+    expect((one.notes ?? []).filter(Boolean)).toEqual([]);
+    expect(
+      weightRecap([{ date: "2026-07-03", weightKg: 74 }]).lines.find(
+        (l) => l.key === "weight-trajectory"
+      )
+    ).toBeUndefined();
   });
 
   it("is a robust net change (median endpoints) resistant to one outlier", () => {
@@ -278,9 +294,13 @@ describe("weightTrendKg", () => {
       { date: "2026-07-07", weightKg: 73.2 },
       { date: "2026-07-08", weightKg: 73.0 },
     ];
-    const trend = weightTrendKg(w)!;
-    expect(trend).toBeLessThan(0); // net loss despite the spike
-    expect(trend).toBeGreaterThan(-2); // and not wildly distorted
+    const trend = windowMovement(w.map((r) => ({ value: r.weightKg })))!;
+    expect(trend.absChange).toBeLessThan(0); // net loss despite the spike
+    expect(trend.absChange).toBeGreaterThan(-2); // and not wildly distorted
+    // And that IS the number the recap prints.
+    const note = weightRecap(w).lines.find((l) => l.key === "weight")!
+      .notes![0];
+    expect(note).toBe(`−${Math.abs(trend.absChange).toFixed(1)} kg this week`);
   });
 });
 

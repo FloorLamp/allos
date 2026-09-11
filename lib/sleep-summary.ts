@@ -13,7 +13,12 @@
 // Angeles. A profile that has never moved passes a plain zone name and nothing
 // changes.
 
-import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "./date";
+import {
+  daysBetweenDateStr,
+  hhmmToMinutes,
+  shiftDateStr,
+  zonedDateParts,
+} from "./date";
 import { isStreamActive } from "./stream-activity";
 import {
   formatClockMinutes,
@@ -24,6 +29,11 @@ import {
 import { mainSleepPeriod, type SleepSession } from "./sleep-regularity";
 import type { BedtimeSupplementSummary } from "./sleep-bedtime-supplements";
 import { zoneOf, type ProfileDayZone } from "./travel-timezone";
+import {
+  versusBaselineMovement,
+  USUAL_BASELINE_DAYS,
+  type VersusBaselineMovement,
+} from "./movement";
 
 // A night's MAIN-sleep stage breakdown (minutes), attributed from timestamped
 // metric_samples by getSleepStageDailyTotals. Nap stages stay out so the stage
@@ -106,6 +116,34 @@ function groupByWakeDay(
   return byDay;
 }
 
+// The hero's presentation of the shared versus-baseline verdict: a ROUNDED baseline in
+// whole minutes (this surface's own rounding, deliberately kept — the delta it prints is
+// the difference from the number it shows), and a DECLINED day-one fallback. A night
+// with nothing behind it has no norm to be compared against, so the hero reports no
+// baseline rather than labelling the night's own duration an average (#1909's rule).
+function heroBaseline(
+  movement: VersusBaselineMovement | null,
+  durationMin: number
+): {
+  baselineAvgMin: number | null;
+  deltaMin: number | null;
+  baselineNights: number;
+} {
+  if (
+    movement == null ||
+    movement.baseline == null ||
+    movement.dayOneFallback
+  ) {
+    return { baselineAvgMin: null, deltaMin: null, baselineNights: 0 };
+  }
+  const baselineAvgMin = Math.round(movement.baseline);
+  return {
+    baselineAvgMin,
+    deltaMin: durationMin - baselineAvgMin,
+    baselineNights: movement.baselineCount,
+  };
+}
+
 // The most-recent night's summary, or null when the profile has no usable sleep
 // session. The hero and dashboard sleep presentation read THIS — same inputs, same answer.
 export function lastNightSummary(
@@ -114,7 +152,7 @@ export function lastNightSummary(
   stagesByDay: Map<string, SleepStageMinutes> = new Map(),
   opts: { baselineDays?: number } = {}
 ): LastNightSummary | null {
-  const baselineDays = opts.baselineDays ?? 30;
+  const baselineDays = opts.baselineDays ?? USUAL_BASELINE_DAYS;
   const byDay = groupByWakeDay(sessions, zone);
   if (byDay.size === 0) return null;
 
@@ -128,22 +166,28 @@ export function lastNightSummary(
   // its duration is the summed asleep minutes.
   const durationMin = period.durationMin;
 
-  // Baseline: the mean MAIN-session duration over the prior wake-days that fall in
-  // [latest − baselineDays, latest − 1]. Uses the SAME main-vs-nap classification
-  // per day so the average reflects overnight sleep, not nap-inflated totals.
-  const lower = shiftDateStr(latest, -baselineDays);
-  const priorMains: number[] = [];
+  // Baseline: the SHARED versus-baseline movement verdict (#3394, absorbing #5164)
+  // over this profile's nightly MAIN-session durations. The window is DATA-BEARING —
+  // the `baselineDays` most recent nights that carry a main session before this one —
+  // not the prior `baselineDays` CALENDAR days, which is what this module used to
+  // compute privately while the coaching sleep signal computed the data-bearing one.
+  // On a gappy profile those two norms differ, so the hero's delta for a night and the
+  // digest's verdict about the same night were measured against different things.
+  // One declared basis, one computation, both surfaces.
+  const nightly: { date: string; value: number }[] = [];
   for (const d of days) {
-    if (d >= latest || d < lower) continue;
     const m = mainSleepPeriod(byDay.get(d)!);
-    if (m) priorMains.push(m.durationMin);
+    if (m) nightly.push({ date: d, value: m.durationMin });
   }
-  const baselineNights = priorMains.length;
-  const baselineAvgMin =
-    baselineNights > 0
-      ? Math.round(priorMains.reduce((a, b) => a + b, 0) / baselineNights)
-      : null;
-  const deltaMin = baselineAvgMin == null ? null : durationMin - baselineAvgMin;
+  const movement = versusBaselineMovement(nightly, latest, {
+    days: baselineDays,
+    basis: "data-bearing",
+    includeToday: false,
+  });
+  const { baselineAvgMin, deltaMin, baselineNights } = heroBaseline(
+    movement,
+    durationMin
+  );
 
   const periodStart = new Date(period.start);
   const periodEnd = new Date(period.end);
@@ -191,21 +235,26 @@ export function latestDailySleepSummary(
     .sort((a, b) => (a.date < b.date ? -1 : 1));
   if (valid.length === 0) return null;
   const latest = valid[valid.length - 1];
-  const lower = shiftDateStr(latest.date, -(opts.baselineDays ?? 30));
-  const prior = valid.filter((r) => r.date >= lower && r.date < latest.date);
-  const baselineAvgMin =
-    prior.length === 0
-      ? null
-      : Math.round(prior.reduce((sum, r) => sum + r.value, 0) / prior.length);
   const durationMin = Math.round(latest.value);
+  // The SAME versus-baseline verdict and the SAME declared data-bearing basis as the
+  // session path above (#3394) — a manual logger's norm must not be computed a third
+  // way just because the rows carry no clock.
+  const { baselineAvgMin, deltaMin, baselineNights } = heroBaseline(
+    versusBaselineMovement(valid, latest.date, {
+      days: opts.baselineDays ?? USUAL_BASELINE_DAYS,
+      basis: "data-bearing",
+      includeToday: false,
+    }),
+    durationMin
+  );
   return {
     wakeDay: latest.date,
     durationMin,
     bedMinutes: null,
     wakeMinutes: null,
     baselineAvgMin,
-    deltaMin: baselineAvgMin == null ? null : durationMin - baselineAvgMin,
-    baselineNights: prior.length,
+    deltaMin,
+    baselineNights,
     stages: null,
     source,
   };
@@ -402,13 +451,6 @@ export interface ConsistencyNight {
   bedDeviationMin: number | null;
   wakeDeviationMin: number | null;
   offSchedule: boolean;
-}
-
-// Minute-of-day (0..1439) of a local "HH:MM". The model emits this NUMBER so the
-// render layer formats the clock through the login's 12h/24h pref (#1163).
-function hhmmToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
 }
 
 function clockHour(hhmm: string): number {

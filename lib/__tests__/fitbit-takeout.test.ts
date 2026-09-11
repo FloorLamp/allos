@@ -4,7 +4,7 @@ import {
   MOBILITY_ACTIVITIES,
   SPORTS,
 } from "@/lib/activities-catalog";
-import { zonedDateParts } from "@/lib/date";
+import { hhmmFromMinutes, hhmmToMinutes, zonedDateParts } from "@/lib/date";
 import {
   classifyTakeoutEntry,
   isHealthConnectRoundTrip,
@@ -21,8 +21,6 @@ import {
   fitbitActivityIdentity,
   fitbitComponentName,
   parseSleepJson,
-  hhmmToMinutes,
-  minutesToHhmm,
   parseHeartRateCsv,
   parseIntradaySumCsv,
   foldHrBuckets,
@@ -1046,8 +1044,9 @@ describe("the archive's TWO timestamp conventions", () => {
   });
 
   it("wraps an end clock past midnight rather than rolling the date", () => {
-    expect(minutesToHhmm(hhmmToMinutes("23:30") + 90)).toBe("01:00");
-    expect(minutesToHhmm(hhmmToMinutes("09:05") + 125)).toBe("11:10");
+    // The pair is lib/date.ts's now (#4550); this file no longer keeps its own.
+    expect(hhmmFromMinutes(hhmmToMinutes("23:30") + 90)).toBe("01:00");
+    expect(hhmmFromMinutes(hhmmToMinutes("09:05") + 125)).toBe("11:10");
   });
 });
 

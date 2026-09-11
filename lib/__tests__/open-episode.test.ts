@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { shiftDateStr } from "../date";
 import {
+  dayEpisodeClaimEnd,
+  dayEpisodeState,
   EPISODE_BOUNDS,
+  EPISODE_DAY_BOUNDS,
   episodeIsOpen,
   episodeState,
   type MinuteEpisodeKind,
@@ -155,5 +159,76 @@ describe("an episode that knows its own end", () => {
     expect(
       episodeState(episode("practice", 15, NOW + 30 * MIN), NOW).kind
     ).toBe("running");
+  });
+});
+
+// ── The day half (#5142 step 2) ─────────────────────────────────────────────────
+//
+// The same question in the other unit. These cases are stated in DAYS from a start
+// date with no clock behind it, which is the whole reason the day half exists: ten
+// local days is 240 hours only when no day is 23 or 25 hours long.
+
+const PERIOD_START = shiftDateStr("2026-04-01", 0);
+
+function periodOn(elapsedDays: number) {
+  return dayEpisodeState(
+    { kind: "period", lastSignalOn: PERIOD_START },
+    shiftDateStr(PERIOD_START, elapsedDays)
+  );
+}
+
+describe("the day bounds table", () => {
+  it("holds the period's ten-day bound, with nothing to abandon it", () => {
+    expect(EPISODE_DAY_BOUNDS.period).toEqual({
+      staleDays: 10,
+      abandonDays: null,
+    });
+  });
+});
+
+describe("a day-counted episode's quiet", () => {
+  it("counts the signal day as day 1, so the bound is outrun on day 11", () => {
+    expect(periodOn(9).kind).toBe("running");
+    expect(periodOn(10).kind).toBe("stale");
+  });
+
+  it("turns stale on the day after the claim end, never before it", () => {
+    // The claim cap and the state are one bound seen from two sides: the day the row
+    // stops reading as running is the day after the last day it still claims. A lane
+    // could otherwise put the right number in the table and the shift beside it.
+    const claimEnd = dayEpisodeClaimEnd("period", PERIOD_START);
+    for (let elapsed = 0; elapsed <= 20; elapsed++) {
+      const on = shiftDateStr(PERIOD_START, elapsed);
+      expect(periodOn(elapsed).kind === "stale").toBe(on > claimEnd);
+    }
+  });
+
+  it("reports the days it measured on every reading", () => {
+    expect(periodOn(3)).toEqual({ kind: "running", quietDays: 3 });
+    expect(periodOn(12)).toEqual({ kind: "stale", quietDays: 12 });
+  });
+
+  it("reads a day before the start as running, as the minute half does", () => {
+    expect(periodOn(-2)).toEqual({ kind: "running", quietDays: -2 });
+  });
+});
+
+describe("a day kind with no abandon bound", () => {
+  it("leaves a month-old open period stale rather than closing it", () => {
+    // `abandonDays: null` is the same statement the fast's `abandonMin: null` makes:
+    // only the person ends a period, however implausible the row has become.
+    const state = periodOn(30);
+    expect(state.kind).toBe("stale");
+    expect(episodeIsOpen(state)).toBe(true);
+  });
+});
+
+describe('one "still going?" predicate over both units', () => {
+  it("answers for a day episode and keeps the arm it was handed", () => {
+    const state = periodOn(2);
+    expect(episodeIsOpen(state)).toBe(true);
+    // The narrowing survives the generic: the caller reads the quiet it asked for
+    // without re-testing the kind.
+    if (episodeIsOpen(state)) expect(state.quietDays).toBe(2);
   });
 });

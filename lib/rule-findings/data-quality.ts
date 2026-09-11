@@ -29,7 +29,10 @@ import {
   type DataQualityInputs,
   type DataQualityGap,
 } from "../data-quality";
-import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "../findings";
+import {
+  FINDING_DASHBOARD_RELEVANCE,
+  type RollupOnlyFinding,
+} from "../findings";
 
 // ---- Structural data-quality gaps (#1045) ----------------------------------
 
@@ -86,7 +89,9 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
   return detectDataQualityGaps(inputs);
 }
 
-export function buildDataQualityFindings(profileId: number): Finding[] {
+export function buildDataQualityFindings(
+  profileId: number
+): RollupOnlyFinding[] {
   return collectDataQualityGaps(profileId).map((gap) => ({
     domain: "data-quality",
     dedupeKey: dataQualityDedupeKey(gap.key),

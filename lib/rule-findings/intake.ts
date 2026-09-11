@@ -23,7 +23,11 @@ import {
 } from "../supplement-demotion";
 import { isOnDemand } from "../intake-schedule";
 import { lastNDates } from "../date";
-import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "../findings";
+import {
+  FINDING_DASHBOARD_RELEVANCE,
+  type Finding,
+  type RollupOnlyFinding,
+} from "../findings";
 import { nutritionTabHref, MEDICATIONS_HREF } from "../hrefs";
 import {
   medDupSignalKey,
@@ -73,8 +77,8 @@ import { COACHING_ENTITY_FINDING_LIMITS } from "./limits";
 // stay as they were, so an existing dismissal keeps suppressing either rendering.
 export function buildMedicationDuplicationFindings(
   profileId: number
-): Finding[] {
-  const findings: { finding: Finding; newestMemberId: number }[] = [];
+): RollupOnlyFinding[] {
+  const findings: { finding: RollupOnlyFinding; newestMemberId: number }[] = [];
   for (const family of getActiveMedicationFamilies(profileId)) {
     if (family.members.length < 2) continue;
     const copy = medicationDuplicationNote(family.members);

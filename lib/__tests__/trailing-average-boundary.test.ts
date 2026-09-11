@@ -38,10 +38,16 @@ const HELPER = "lib/trailing-average.ts";
 // lives here, where a hand-rolled replacement fails this assertion. Its gather
 // (`lib/queries/nutrition.ts`) deliberately holds NO window arithmetic at all: it
 // assembles per-day parts and hands them here, so there is nothing there to drift.
+//
+// `lib/movement.ts` is the #3394 entry: the versus-baseline MOVEMENT verdict — "how
+// does the latest reading compare with this profile's usual" — is a trailing mean with
+// a declared basis, and it is now the ONE place sleep and resting HR ask it from. It
+// is listed here so the verdict can never quietly grow its own window back.
 const CALLERS = [
   "lib/steps-today.ts",
   "lib/trend-metrics.ts",
   "lib/protein.ts",
+  "lib/movement.ts",
 ];
 
 const SCAN_DIRS = ["lib", "app", "components", "scripts"];
@@ -56,10 +62,12 @@ const MEAN = /\/\s*[A-Za-z_$][\w$.]*\.length/;
 // Computations that legitimately match the shape without being a trailing average
 // of a daily series anchored on today. Each entry says why.
 const ALLOW: { file: string; why: string }[] = [
-  {
-    file: "lib/sleep-summary.ts",
-    why: "the baseline for ONE night: the mean is anchored on the latest recorded night rather than on today (a night logged four days ago still compares against the 30 nights before IT), so a today-anchored window would silently change which nights it covers. Already excludes its anchor day, i.e. it agrees with this helper's default.",
-  },
+  // lib/sleep-summary.ts is GONE from this list (#3394). Its night baseline was the
+  // reason for the exception — a mean anchored on the latest recorded night rather
+  // than on today — and that anchor is not an argument against the shared helper, only
+  // against assuming the anchor is today. `versusBaselineMovement` takes the anchor as
+  // an argument and the basis as a declaration, so the hero and the coaching sleep
+  // signal now reach the same window through it and the private mean is deleted.
   {
     file: "lib/illness-episode-format.ts",
     why: "early-half vs late-half fever means WITHIN one episode — the split is the episode's own midpoint, so there is no trailing window and no today.",

@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { AVERAGED_METRICS, metricAggregation } from "../metric-buckets";
+import {
+  AVERAGED_METRICS,
+  CATEGORICAL_METRICS,
+  metricAggregation,
+} from "../metric-buckets";
 
-// Locks the averaged-vs-summed bucket membership that getMetricDailyTotals keys
-// its AVG/SUM aggregation off. Instantaneous point metrics must average per day;
-// everything additive must sum. Adding a metric to the wrong bucket silently
-// double-counts (summing a point metric) or dilutes (averaging an additive one).
+// Locks the bucket membership that getMetricDailyTotals keys its AVG/SUM/NONE
+// aggregation off. Instantaneous point metrics must average per day; everything
+// additive must sum. Adding a metric to the wrong bucket silently double-counts
+// (summing a point metric) or dilutes (averaging an additive one). A CATEGORICAL
+// metric (#3167) is in neither: its value names a category, so it aggregates by
+// neither route and answers NONE.
 describe("metric bucket membership", () => {
   it("averages instantaneous point metrics", () => {
     const averaged = [
@@ -27,9 +33,6 @@ describe("metric bucket membership", () => {
   it("is exactly the set of averaged metrics (no accidental additions)", () => {
     expect([...AVERAGED_METRICS].sort()).toEqual(
       [
-        // #2785 — a FLOOR against the additive default, not a claim that a mean
-        // Bristol type means anything. See the comment on the set itself.
-        "bristol_stool_type",
         "bmr_kcal",
         "body_water_kg",
         "bone_mass_kg",
@@ -70,5 +73,17 @@ describe("metric bucket membership", () => {
 
   it("defaults an unknown metric to SUM", () => {
     expect(metricAggregation("some_new_metric")).toBe("SUM");
+  });
+
+  // #3167. Bristol left AVERAGED_METRICS, where it had sat as a floor against the
+  // additive default: averaging a categorical-ordinal scale is the less bad of two
+  // wrong answers, not a right one. It must not be in either arithmetic bucket, and
+  // it must not fall through to the SUM default either.
+  it("a categorical metric aggregates by neither route", () => {
+    expect([...CATEGORICAL_METRICS]).toEqual(["bristol_stool_type"]);
+    for (const m of CATEGORICAL_METRICS) {
+      expect(AVERAGED_METRICS.has(m)).toBe(false);
+      expect(metricAggregation(m)).toBe("NONE");
+    }
   });
 });

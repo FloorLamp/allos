@@ -26,6 +26,7 @@
 // carries an explicit unit selector for each and converts to the canonical unit here
 // (°C→°F, mmol/L→mg/dL). BP/SpO2/HRV/sleep have universal entry units.
 
+import { parseClockHhmm } from "./format-date";
 import { inMetricBounds } from "./ingest-bounds";
 import {
   PEAK_FLOW_CANONICAL,
@@ -387,15 +388,16 @@ export function temperatureRangeError(degF: number): string | null {
 // reading time, so a native <input type="time"> value ("07:00") and a hand-typed
 // "7:00" both land as the same wall clock. Never parsed for day attribution —
 // that's `date`.
+//
+// The reading is `parseClockHhmm`'s (lib/format-date.ts, #4550) — the documented
+// owner of "stored clock text -> canonical HH:MM", which this had been a third copy
+// of. Its two accepted shapes are a superset of the one this spelled: it also reads
+// "HH:MM:SS" and the legacy 12-hour display form, both of which now normalize here
+// instead of being rejected as "not a time".
 export function normalizeClockTime(
   time: string | null | undefined
 ): string | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec((time ?? "").trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
-  return `${String(h).padStart(2, "0")}:${m[2]}`;
+  return parseClockHhmm(time);
 }
 
 function blank(v: string | null | undefined): boolean {
