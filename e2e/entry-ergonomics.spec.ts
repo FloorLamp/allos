@@ -167,7 +167,8 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   // The shared app shell uses the available desktop width instead of stopping at
   // the old 6xl/7xl caps. The 3xl ultra-wide cap remains separate.
   const contentContainer = page.getByTestId("app-content-container");
-  expect((await contentContainer.boundingBox())!.width).toBeGreaterThan(1280);
+  const [contentContainerBox] = await settledBoxes([contentContainer]);
+  expect(contentContainerBox.width).toBeGreaterThan(1280);
   await page.setViewportSize({ width: 1280, height: 720 });
 
   // THE CADENCE STRIP AND THE WEEK SUMMARY LEFT THIS TAB (#4079, named
@@ -343,21 +344,19 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   const duration = page.getByTestId("activity-duration");
   await expect(duration).toHaveValue("60");
   await expect(duration).toBeEditable();
-  const dateBox = await page.locator("#activity-date").boundingBox();
-  const durationBox = await duration.boundingBox();
-  const startBox = await page.locator("#activity-start-time").boundingBox();
-  expect(dateBox).not.toBeNull();
-  expect(durationBox).not.toBeNull();
-  expect(startBox).not.toBeNull();
-  expect(Math.abs(durationBox!.y - dateBox!.y)).toBeLessThanOrEqual(2);
-  expect(Math.abs(durationBox!.y - startBox!.y)).toBeLessThanOrEqual(2);
-  const endBox = await page.locator("#activity-end-time").boundingBox();
-  expect(endBox).not.toBeNull();
+  const [dateBox, durationBox, startBox, endBox] = await settledBoxes([
+    page.locator("#activity-date"),
+    duration,
+    page.locator("#activity-start-time"),
+    page.locator("#activity-end-time"),
+  ]);
+  expect(Math.abs(durationBox.y - dateBox.y)).toBeLessThanOrEqual(2);
+  expect(Math.abs(durationBox.y - startBox.y)).toBeLessThanOrEqual(2);
   const sessionControlWidths = [
-    dateBox!.width,
-    durationBox!.width,
-    startBox!.width,
-    endBox!.width,
+    dateBox.width,
+    durationBox.width,
+    startBox.width,
+    endBox.width,
   ];
   expect(
     Math.max(...sessionControlWidths) - Math.min(...sessionControlWidths)
@@ -596,29 +595,25 @@ test("the activity form keeps workout entry primary and context visible across b
   const part = page.getByTestId("activity-part").first(); // eslint-disable-line no-restricted-properties -- first-ok: asserts an activity-part renders — order-agnostic presence
   await expect(part).not.toHaveClass(/rounded/);
   await page.evaluate(() => window.scrollTo(0, 0));
-  const formBox = await page.getByTestId("activity-form").boundingBox();
-  const partBox = await part.boundingBox();
-  expect(formBox).not.toBeNull();
-  expect(partBox).not.toBeNull();
-  expect(partBox!.x).toBeLessThan(formBox!.x);
-  expect(partBox!.x + partBox!.width).toBeGreaterThan(
-    formBox!.x + formBox!.width
-  );
-  const headerBox = await header.boundingBox();
-  const drawerBox = await drawer.boundingBox();
+  const [formBox, partBox, headerBox, drawerBox] = await settledBoxes([
+    page.getByTestId("activity-form"),
+    part,
+    header,
+    drawer,
+  ]);
+  expect(partBox.x).toBeLessThan(formBox.x);
+  expect(partBox.x + partBox.width).toBeGreaterThan(formBox.x + formBox.width);
   const viewport = page.viewportSize();
-  expect(headerBox).not.toBeNull();
-  expect(drawerBox).not.toBeNull();
   expect(viewport).not.toBeNull();
-  expect(drawerBox!.x + drawerBox!.width).toBe(viewport!.width);
-  expect(drawerBox!.width).toBeLessThan(viewport!.width);
+  expect(drawerBox.x + drawerBox.width).toBe(viewport!.width);
+  expect(drawerBox.width).toBeLessThan(viewport!.width);
   // The drawer itself grows with the long form. Its surface must continue behind
   // content below the first viewport instead of letting the form spill over a
   // viewport-height background.
-  expect(drawerBox!.height).toBeGreaterThan(viewport!.height);
-  expect(headerBox!.x).toBe(partBox!.x);
-  expect(headerBox!.x + headerBox!.width).toBe(partBox!.x + partBox!.width);
-  expect(headerBox!.y).toBeLessThanOrEqual(drawerBox!.y + 2);
+  expect(drawerBox.height).toBeGreaterThan(viewport!.height);
+  expect(headerBox.x).toBe(partBox.x);
+  expect(headerBox.x + headerBox.width).toBe(partBox.x + partBox.width);
+  expect(headerBox.y).toBeLessThanOrEqual(drawerBox.y + 2);
 
   // The workspace owns the scroll; the sticky form header stays at its top.
   const editorScroll = workspace;
@@ -683,17 +678,14 @@ test("the activity form keeps workout entry primary and context visible across b
         (node) => getComputedStyle(node).gridTemplateColumns.split(" ").length
       )
   ).toBe(2);
-  const startLabelBox = await page
-    .getByTestId("time-range-fields")
-    .getByText("Start", { exact: true })
-    .boundingBox();
-  const startShortcutBox = await page
-    .getByTestId("start-time-shortcut")
-    .boundingBox();
-  expect(startLabelBox).not.toBeNull();
-  expect(startShortcutBox).not.toBeNull();
+  const [startLabelBox, startShortcutBox] = await settledBoxes([
+    page
+      .getByTestId("time-range-fields")
+      .getByText("Start", { exact: true }),
+    page.getByTestId("start-time-shortcut"),
+  ]);
   expect(
-    startShortcutBox!.x - (startLabelBox!.x + startLabelBox!.width)
+    startShortcutBox.x - (startLabelBox.x + startLabelBox.width)
   ).toBeLessThan(16);
   await expect(
     page.getByRole("button", { name: /^More details/ })
@@ -717,10 +709,9 @@ test("the activity form keeps workout entry primary and context visible across b
   // the in-progress form mounted.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(workspace).toBeVisible();
-  const mobileDrawerBox = await drawer.boundingBox();
-  expect(mobileDrawerBox).not.toBeNull();
-  expect(mobileDrawerBox!.x).toBe(0);
-  expect(mobileDrawerBox!.width).toBe(390);
+  const [mobileDrawerBox] = await settledBoxes([drawer]);
+  expect(mobileDrawerBox.x).toBe(0);
+  expect(mobileDrawerBox.width).toBe(390);
   // The seeded Push day's first lift is a uniform run, so since #3336 it opens as the
   // compact sentence. Expand it, so the first-match locator below still means THE
   // FIRST PART's schema row rather than whichever later part happens to be varied —
@@ -983,9 +974,8 @@ test("strength set controls step, clamp, and toggle without losing their phone g
       };
     })
   ).toEqual({ top: "0px", right: "1px", bottom: "0px", left: "1px" });
-  const weightBox = await weightInput.boundingBox();
-  expect(weightBox).not.toBeNull();
-  expect(weightBox!.width).toBeGreaterThanOrEqual(64);
+  const [weightBox] = await settledBoxes([weightInput]);
+  expect(weightBox.width).toBeGreaterThanOrEqual(64);
   // The + stepper bumps the exercise weight by one increment — from the PLAN the band
   // is offering (#5373), not from zero, because a nudge is what a person does to an
   // offer. Only weight is set, so no row is a record yet and nothing auto-saves.
@@ -1048,7 +1038,8 @@ test("strength set controls step, clamp, and toggle without losing their phone g
     "Decrease reps",
     "Add a rep",
   ].map((name) => page.getByTestId("set-row-1").getByLabel(name));
-  expect(await stepTargets[0].boundingBox()).toMatchObject({
+  const [firstStepTargetBox] = await settledBoxes([stepTargets[0]]);
+  expect(firstStepTargetBox).toMatchObject({
     width: 28,
     height: 36,
   });

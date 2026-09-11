@@ -106,13 +106,15 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // vertical space, and that is what this reads.
     const heading = intro.getByRole("heading", { name: "Immunizations" });
     await expect(heading).toBeAttached();
-    const headingBox = await heading.boundingBox();
-    expect(headingBox!.height).toBeLessThanOrEqual(1);
+    // `settledBoxes` reads BOTH in one settled layout. An `sr-only` element and a
+    // zero-height wrapper are still LAID OUT — only `display: none` has no box —
+    // so neither is the null shape the helper throws on.
+    const [headingBox, introBox] = await settledBoxes([heading, intro]);
+    expect(headingBox.height).toBeLessThanOrEqual(1);
 
     // And the WRAPPER reserves nothing either: an element that paints nothing
     // must not keep its margin (#2399's rule, one level up).
-    const introBox = await intro.boundingBox();
-    expect(introBox!.height).toBe(0);
+    expect(introBox.height).toBe(0);
 
     // RESULTS INHERITS IT WITH NO RESULTS-SPECIFIC CODE, because the decision
     // landed in components/PaneIntro.tsx rather than under /records (#3236).
@@ -120,7 +122,8 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     const resultsIntro = page.getByTestId("results-pane-intro");
     await expect(resultsIntro).toBeAttached();
     await expect(resultsIntro.locator("p")).toBeHidden();
-    expect((await resultsIntro.boundingBox())!.height).toBe(0);
+    const [resultsIntroBox] = await settledBoxes([resultsIntro]);
+    expect(resultsIntroBox.height).toBe(0);
   });
 
   test("navigation chips and filter chips are visibly different things", async ({
@@ -343,8 +346,8 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // Below `md` the ⋯ is a bottom action sheet, not a desktop context menu
     // hanging off a kebab — the fork lives in AnchoredPanel and no consumer
     // chose it (#3374). Its rows clear the tap floor because the sheet's do.
-    const printBox = await print.boundingBox();
-    expect(printBox!.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+    const [printBox] = await settledBoxes([print]);
+    expect(printBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     await page.keyboard.press("Escape");
 
     // THE LIST STARTS 137px HIGHER THAN IT DID. The issue's headline complaint,
@@ -357,9 +360,9 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // that matches something other than what it names is worse than no check.
     const table = page.getByTestId("immunization-vaccines-table");
     await expect(table).toBeVisible();
-    const box = await table.boundingBox();
-    expect(box!.y).toBeLessThan(LIST_TOP_CEILING);
-    expect(box!.y).toBeLessThan(VIEWPORT_HEIGHT);
+    const [box] = await settledBoxes([table]);
+    expect(box.y).toBeLessThan(LIST_TOP_CEILING);
+    expect(box.y).toBeLessThan(VIEWPORT_HEIGHT);
   });
 
   test("the vaccine list is cards below sm, sortable without header cells", async ({
@@ -407,13 +410,12 @@ test.describe("Records panes — phone anatomy (#3408)", () => {
     // is exactly the kind of change that could have.
     const link = page.getByTestId("instrument-crisis-support-link");
     await expect(link).toBeVisible();
-    const box = await link.boundingBox();
-    expect(box!.y).toBeLessThan(VIEWPORT_HEIGHT);
-
-    // It is ABOVE the history, not merely present somewhere on the page.
+    // It is ABOVE the history, not merely present somewhere on the page — a
+    // RELATIVE claim, so both boxes come from one settled layout.
     const history = page.getByTestId("instrument-history");
-    const historyBox = await history.boundingBox();
-    expect(box!.y).toBeLessThan(historyBox!.y);
+    const [box, historyBox] = await settledBoxes([link, history]);
+    expect(box.y).toBeLessThan(VIEWPORT_HEIGHT);
+    expect(box.y).toBeLessThan(historyBox.y);
   });
 
   test("an instrument reading's actions fold behind the row's sheet", async ({
