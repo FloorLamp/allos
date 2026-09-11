@@ -49,6 +49,39 @@ function doseRow(profileId: number, doseId: number, date: string) {
     .get(profileId, doseId, date);
 }
 
+// The administration instant the row actually carries, as stored. `doseRow` above asks
+// the PAIR question (is this instant on its own day?) and a NULL satisfies it, so it
+// cannot tell an untimed row from a timed one — which is the whole subject of #5618
+// ruling 7 and needs its own reader.
+function doseInstant(
+  profileId: number,
+  doseId: number,
+  date: string
+): string | null | undefined {
+  return (
+    db
+      .prepare(
+        `SELECT l.occurred_at
+           FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE s.profile_id = ? AND l.dose_id = ? AND l.date = ?`
+      )
+      .get(profileId, doseId, date) as
+      { occurred_at: string | null } | undefined
+  )?.occurred_at;
+}
+
+// Every serving the day holds, as the two columns a placement reduces to.
+function servingPlacements(profileId: number, date: string) {
+  return db
+    .prepare(
+      `SELECT group_key, meal_slot, occurred_at, time_source FROM food_log_events
+        WHERE profile_id = ? AND date = ? ORDER BY group_key`
+    )
+    .all(profileId, date);
+}
+
 function itemOf(doseId: number): number {
   return (
     db
@@ -611,4 +644,153 @@ describe("logUsualRoutine on a past day", () => {
       expect(auditRows(profile.id)).toEqual([]);
     }
   );
+
+  // ── A DATED BUNDLE NEVER INVENTS A TIME (#5618 ruling 7) ──────────────────
+  //
+  // "The chart is the prompt." The record's offers line posts the window the chart is
+  // showing on the one `occurred_at` field this action already reads, and the act is
+  // written at it — ON EVERY MEMBER, servings and doses alike, because one tap is one
+  // act. With no window nothing states a time and nothing invents one.
+  //
+  // ASSERTED ON BOTH DOSE WRITERS. Day 2 is `markDoseTaken`'s and day 3 is
+  // `logHistoricalDose`'s, and which writer a day routes to (#4305) is not a fact about
+  // what time the person stated — a ruling satisfied on one side of that edge and not
+  // the other is the defect this issue was filed about, one edge over.
+  describe("the act's stated time, and the wall clock it replaces", () => {
+    const WINDOW = "07:30";
+
+    function tapBundle(
+      profile: number,
+      target: string,
+      dose: number,
+      at?: string
+    ) {
+      return logUsualRoutine(
+        fd({
+          meal_slot: "Morning",
+          groups: "berries,fermented",
+          dose_ids: String(dose),
+          date: target,
+          occurred_at: at,
+        })
+      );
+    }
+
+    it.each([2, 3] as const)(
+      "%i days back: the chart's window lands on every member, food and dose",
+      async (back) => {
+        const { profile, anchor, creatine } = seedWithHole(
+          `ruling7-window-${back}`,
+          back
+        );
+        const target = shiftDateStr(anchor, -back);
+        const res = await tapBundle(profile.id, target, creatine, WINDOW);
+        expect(res.ok).toBe(true);
+        expect(res.ok && res.doses.map((d) => d.outcome)).toEqual(["logged"]);
+
+        const at = `${target}T07:30:00Z`;
+        // A STATEMENT STORES THE INSTANT AND NO SLOT (#2269) on the food half; the dose
+        // half has only the instant to store.
+        expect(servingPlacements(profile.id, target)).toEqual([
+          {
+            group_key: "berries",
+            meal_slot: null,
+            occurred_at: at,
+            time_source: "stated",
+          },
+          {
+            group_key: "fermented",
+            meal_slot: null,
+            occurred_at: at,
+            time_source: "stated",
+          },
+        ]);
+        expect(doseInstant(profile.id, creatine, target)).toBe(at);
+      }
+    );
+
+    it.each([2, 3] as const)(
+      "%i days back: with no window the whole bundle is untimed",
+      async (back) => {
+        // The dose's own declared time is "morning" — a bucket word, not a clock — so
+        // before this ruling day 3 filed THE WALL CLOCK OF THE TAP onto a day three days
+        // back, while day 2 was already untimed. One rule now, on both.
+        const { profile, anchor, creatine } = seedWithHole(
+          `ruling7-untimed-${back}`,
+          back
+        );
+        const target = shiftDateStr(anchor, -back);
+        const res = await tapBundle(profile.id, target, creatine);
+        expect(res.ok && res.doses.map((d) => d.outcome)).toEqual(["logged"]);
+        expect(servingPlacements(profile.id, target)).toEqual([
+          {
+            group_key: "berries",
+            meal_slot: "Morning",
+            occurred_at: null,
+            time_source: null,
+          },
+          {
+            group_key: "fermented",
+            meal_slot: "Morning",
+            occurred_at: null,
+            time_source: null,
+          },
+        ]);
+        expect(doseInstant(profile.id, creatine, target)).toBeNull();
+      }
+    );
+
+    // WHAT A BUNDLE'S DOSE MAY DECLARE, and it is narrower than it looks — established
+    // here rather than assumed, because the two cases below are vacuous if it is wrong.
+    // A dose is in a food window's bundle only while `timeBucket` reads its declared
+    // text as that window's WORD, and `parseClockHhmm` only accepts a whole clock. A
+    // bare "08:00" therefore buckets to Anytime and is never in any bundle; "8:00 am"
+    // carries both — the word the bucket needs and the clock the writer can read — and
+    // is the shape the declared-clock branch actually serves.
+    const DECLARED = "8:00 am";
+
+    function seedAgedDose(profileId: number, name: string, timeOfDay: string) {
+      const born = `${shiftDateStr(today(profileId), -60)} 09:00:00`;
+      const dose = seedItem(profileId, name, { timeOfDay });
+      db.prepare(
+        `UPDATE intake_items SET created_at = ?
+          WHERE id = (SELECT item_id FROM intake_item_doses WHERE id = ?)`
+      ).run(born, dose);
+      db.prepare(
+        `UPDATE intake_item_doses SET created_at = ? WHERE id = ?`
+      ).run(born, dose);
+      return dose;
+    }
+
+    it("keeps a dose's OWN declared clock when nobody framed a window", async () => {
+      // The converse, and the half the ruling does NOT reverse: the clock on the dose
+      // row is a statement somebody made, not one this write invented, so the dated
+      // writer still files the row at it. Without this case, deleting the whole hhmm
+      // derivation would look like a correct implementation of the ruling.
+      const { profile, anchor } = seedWithHole("ruling7-declared", 3);
+      const target = shiftDateStr(anchor, -3);
+      const dosed = seedAgedDose(profile.id, "Magnesium", DECLARED);
+
+      const res = await tapBundle(profile.id, target, dosed);
+      expect(res.ok && res.doses.map((d) => d.outcome)).toEqual(["logged"]);
+      expect(doseInstant(profile.id, dosed, target)).toBe(
+        `${target}T08:00:00Z`
+      );
+    });
+
+    it("lets the framed window outrank the dose's own declared clock", async () => {
+      // A minute somebody framed on the trace is about THIS act on THIS day; a declared
+      // time-of-day is what a dose says in the abstract. The same precedence the kind
+      // chips' dose form already takes (#4950: "the window's start beats the
+      // vocabulary's default").
+      const { profile, anchor } = seedWithHole("ruling7-outranks", 3);
+      const target = shiftDateStr(anchor, -3);
+      const dosed = seedAgedDose(profile.id, "Magnesium", DECLARED);
+
+      await tapBundle(profile.id, target, dosed, WINDOW);
+      expect(doseInstant(profile.id, dosed, target)).toBe(
+        `${target}T07:30:00Z`
+      );
+    });
+  });
 });

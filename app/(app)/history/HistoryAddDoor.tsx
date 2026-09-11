@@ -15,6 +15,8 @@ import {
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedInstantOnDate } from "@/lib/stated-time";
+import { useIntradayInteraction } from "@/components/IntradayInteraction";
+import { formatClockMinute, windowFromView } from "@/lib/intraday-window";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SymptomForm from "@/components/illness/SymptomForm";
@@ -128,6 +130,14 @@ export interface HistoryAddVocabulary {
 // ON A DAY WITH NO STANDING OFFER IT RENDERS NOTHING, which is what lets it sit above
 // every kind rather than inside one — the offer's own gate is the food half, and the
 // line is silent wherever that gate is.
+//
+// AND IT READS THE WINDOW THE KIND CHIPS READ (#5618 ruling 7). "The chart is the
+// prompt": a bundle tapped while the chart shows 07:30 is written at 07:30 on every
+// member, and one tapped with the chart showing nothing states no time at all rather
+// than inventing the clock the tap happened at. The same derivation the add row makes
+// off the same provider state — one view, one window, so the offer and the chip beneath
+// it cannot name different minutes — and no control of its own, which is the ruling's
+// own answer to "prompt user for a time?".
 export function HistoryUsualOffers({
   offers,
   date,
@@ -137,6 +147,11 @@ export function HistoryUsualOffers({
   date: string;
 }) {
   const router = useRouter();
+  const { view, pin } = useIntradayInteraction();
+  const chartWindow = windowFromView(view, pin);
+  // The START alone, as every timed kind on this layer takes it: a span says when the
+  // act began, and a bundle has no length to put the other end of one on.
+  const statedTime = chartWindow ? formatClockMinute(chartWindow.from) : null;
   if (offers.length === 0) return null;
   return (
     // A PLAIN BLOCK, NOT A GRID (#4918 ruling 6). A grid track's default minimum is
@@ -156,6 +171,7 @@ export function HistoryUsualOffers({
           doses={offer.doses}
           subjectName={null}
           date={date}
+          statedTime={statedTime}
           testIds={{
             button: `history-add-usual-${offer.window}`,
             names: `history-add-usual-${offer.window}-names`,
