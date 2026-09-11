@@ -428,6 +428,80 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     );
   });
 
+  // THE SAME FLIP, TWO DAYS LATER — the case that falsified the SECOND pass of this
+  // fix (#5688), pinned so it can never do it a third time. That pass bounded the hold
+  // by max(end of the dose's schedule-owned day, the row's `recorded_at`), reasoning
+  // that past both of those the dose provably could not be inside the fever-free
+  // window. But a past-day skipped→taken flip does not move `recorded_at` — the
+  // tri-state write keeps it out of its SET list on purpose — so the only stamp the row
+  // carries is the SKIP's, hours BEFORE the dose, and the day is the one the SCHEDULE
+  // owns (#614), not the one the dose was given on. A dose skipped on D and tapped
+  // Taken on a LATER day therefore sits past BOTH bounds, and at D+2 00:00 the
+  // note read "Fever-free 40h of 24", met — naming no reducer at all. It holds now,
+  // and it holds for as long as the dose states no time.
+  it("a past-day flip still HOLDS days later — no bound ends the hold, only a stated time", () => {
+    const p = newProfile("sr-flip-longrun");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 6);
+    const td = today(p);
+    const d = shiftDateStr(td, -2);
+    logTemperatureCore(p, 103.4, "F", d, "page", "06:00");
+    logTemperatureCore(p, 98.6, "F", d, "page", "08:00"); // the clock's evidence
+    const { doseId, logId } = addAntipyretic(
+      p,
+      "Ibuprofen",
+      d,
+      `${d} 07:00:00`,
+      "skipped"
+    );
+
+    // Tapped Taken on the day-D row on a LATER day, through the shipped path —
+    // `DOSE_LOG_DATE_WINDOW_DAYS` is 2, so this is as far back as a real tap reaches.
+    expect(
+      setDoseStatusCore(p, doseId, d, "taken", "page", { takenAt: null })
+    ).toBe("logged");
+    expect(
+      db
+        .prepare(
+          `SELECT status, occurred_at, recorded_at FROM intake_item_logs WHERE id = ?`
+        )
+        .get(logId)
+    ).toEqual({
+      status: "taken",
+      occurred_at: null, // no minute stated…
+      recorded_at: `${d} 07:00:00`, // …and the flip left the SKIP's stamp alone
+    });
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+
+    // D+2 00:00 — 40h after the normal reading, and past both retired bounds (the end
+    // of D, and the D 07:00 capture). This is the exact moment the second pass cleared
+    // the child.
+    const at40h = schoolReturnStatusFor(
+      p,
+      ep,
+      Date.parse(`${shiftDateStr(d, 2)}T00:00:00Z`)
+    )!;
+    expect(at40h.evidence).toBe("held");
+    expect(at40h.met).toBe(false);
+    expect(at40h.clearedForHours).toBeNull();
+    expect(schoolReturnCompactClause(at40h)).toBe(
+      "fever-free clock held — add the ibuprofen time in Dose history"
+    );
+    expect(schoolReturnCompactClause(at40h)).not.toContain("fever-free 40h");
+
+    // And much later still. The hold does not age out — there is no hour at which the
+    // record starts stating a time it never stated.
+    const muchLater = schoolReturnStatusFor(
+      p,
+      ep,
+      Date.parse(`${td}T09:00:00Z`)
+    )!;
+    expect(muchLater.evidence).toBe("held");
+    expect(muchLater.met).toBe(false);
+    expect(muchLater.lastAntipyreticName).toBe("Ibuprofen");
+  });
+
   // THE DISCRIMINATION THE FIX RESTS ON. Dropping an unstated dose would also keep the
   // filing stamp out of the arithmetic — and would be MORE permissive, because the
   // clock then runs from the normal reading and clears. The held state must therefore
@@ -462,77 +536,14 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     );
   });
 
-  // THE HOLD ENDS WHEN THE DOSE PROVABLY CANNOT MATTER. An unstated dose two days back
-  // could have been given no later than the end of its day, which is past the
-  // threshold, so it cannot be inside the fever-free window however it is placed and
-  // the clock computes from the stated dose instead. This is what keeps the door
-  // meaningful on a long episode.
-  it("an unstated dose past the threshold no longer holds a later stated one", () => {
-    const p = newProfile("sr-older-unstated");
-    setProfileSetting(p, "timezone", "UTC");
-    makeSick(p, 4);
-    const td = today(p);
-    const yd = shiftDateStr(td, -1);
-    const dbd = shiftDateStr(td, -2);
-    logTemperatureCore(p, 103.4, "F", dbd, "page", "06:00");
-    logTemperatureCore(p, 98.6, "F", dbd, "page", "08:00");
-    addAntipyretic(p, "Ibuprofen", dbd, `${dbd} 07:00:00`); // unstated, older
-    const { logId } = addAntipyretic(p, "Ibuprofen", yd, `${yd} 20:30:00`);
-    db.prepare(`UPDATE intake_item_logs SET occurred_at = ? WHERE id = ?`).run(
-      `${yd}T20:00:00Z`,
-      logId
-    );
-
-    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
-    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T08:00:00Z`))!;
-    expect(s.evidence).toBe("measured");
-    expect(s.hoursSinceAntipyretic).toBe(12); // 08:00 − yesterday 20:00
-    expect(s.clearedForHours).toBe(12); // the stated dose governs, not the stamp
-    expect(s.met).toBe(false);
-  });
-
-  // THE SEAM OF THE HOLD RULE ITSELF. An unstated dose is bounded by the latest moment
-  // it could have been given — the end of its schedule-owned day, or its capture stamp
-  // if it was filed later. Inside the threshold of that bound it could still be
-  // masking, so it holds; past it, it provably cannot be, so the clock computes. Both
-  // sides of the same fixture, because a rule tested only where it fires is half tested.
-  it("holds until the dose provably cannot be inside the fever-free window", () => {
-    const p = newProfile("sr-bound");
-    setProfileSetting(p, "timezone", "UTC");
-    makeSick(p, 4);
-    const td = today(p);
-    const d0 = shiftDateStr(td, -2);
-    const d1 = shiftDateStr(td, -1);
-    logTemperatureCore(p, 103.4, "F", d0, "page", "00:00");
-    logTemperatureCore(p, 98.6, "F", d0, "page", "00:30");
-    addAntipyretic(p, "Ibuprofen", d0, `${d0} 01:00:00`);
-
-    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
-    // The dose could have been given as late as the end of d0 (= d1 00:00). At d1
-    // 23:00 that is 23h ago — inside a 24h threshold, so it still holds.
-    const inside = schoolReturnStatusFor(p, ep, Date.parse(`${d1}T23:00:00Z`))!;
-    expect(inside.evidence).toBe("held");
-    expect(inside.met).toBe(false);
-
-    // An hour and a half later it is 24.5h ago: no placement of that dose puts it in
-    // the window, so the countdown runs again — from the measured normal reading.
-    const outside = schoolReturnStatusFor(
-      p,
-      ep,
-      Date.parse(`${td}T00:30:00Z`)
-    )!;
-    expect(outside.evidence).toBe("measured");
-    expect(outside.hoursSinceAntipyretic).toBeNull(); // still no stated time to count
-    expect(outside.met).toBe(true);
-  });
-
   // THE MIDNIGHT-CROSSING REPRODUCTION (#5688 falsifying pass). A dose's day is
   // SCHEDULE-OWNED (#614): `restampDoseLogsCore` moves `occurred_at` across midnight and
   // leaves `date` where the schedule put it, reporting `crossedMidnight` for exactly
   // this. So a dose dated TODAY can have been given YESTERDAY, and an earlier pass of
   // this fix — which scoped the hold to MAX(date) — dropped yesterday's unstated dose
   // as "not the last one" and cleared the child on a reducer nobody placed. That is the
-  // same unearned clearance #5688 exists to close, so the bound is an INSTANT now.
+  // same unearned clearance #5688 exists to close. The hold is scoped by nothing now:
+  // ANY dose that states no time holds, whatever day the schedule filed it under.
   it("a dose dated today but GIVEN yesterday does not unscope the hold", () => {
     const p = newProfile("sr-crossing");
     setProfileSetting(p, "timezone", "UTC");

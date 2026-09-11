@@ -83,6 +83,11 @@ interface SchoolReturnFacts {
 // second hands the clock to an earlier dose or to none. So the countdown is held, and
 // `held` borrows `none`'s shape for the same reason `none` has it: with no number to
 // carry, no formatter and no caller can render a clearance out of it.
+//
+// THE HOLD HAS NO EXPIRY, and the gather (lib/school-return-data.ts) is where that is
+// argued: one unstated dose holds this countdown for the rest of the illness, until an
+// administration time is stated through the Dose history door the clause names. Every
+// bound tried for it turned out to be an instant nobody logged.
 export type SchoolReturnStatus = SchoolReturnFacts &
   (
     | { evidence: "none"; clearedForHours: null; met: false }
