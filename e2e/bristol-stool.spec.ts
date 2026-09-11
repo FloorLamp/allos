@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Request } from "@playwright/test";
+import { type Locator, type Request } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -78,6 +78,13 @@ function seedBristol(date: string, hhmmss: string, type: number): void {
   } finally {
     db.close();
   }
+}
+
+/** One receipt row, addressed by the `metric_samples` id the store gave it. */
+function receiptFor(picker: Locator, id: number): Locator {
+  return picker.locator(
+    `[data-testid="quick-entry-stool-receipt"][data-reading-id="${id}"]`
+  );
 }
 
 test.beforeEach(() => clearBristol());
@@ -398,15 +405,19 @@ test("the sheet lists the day's movements and the newest tap is undoable (#5663)
   await expect(rows).toHaveCount(1);
   const logged = bristolRows();
   expect(logged.map((r) => r.value)).toEqual([6]);
+  // ADDRESSED BY THE ROW THE STORE SAYS WAS WRITTEN, not by position: the sentence
+  // under test belongs to a particular reading, and reading it off "whichever row is
+  // on top" would pass for a row about some other movement.
+  const tapped = receiptFor(picker, logged[0].id);
   await expect(
-    rows.first().getByTestId("quick-entry-stool-receipt-heading")
+    tapped.getByTestId("quick-entry-stool-receipt-heading")
   ).toHaveText("Type 6 · Mushy");
   await expect(
-    rows.first().getByTestId("quick-entry-stool-receipt-facts")
+    tapped.getByTestId("quick-entry-stool-receipt-facts")
   ).toHaveText(
     `Fluffy pieces with ragged edges, a mushy stool · ${logged[0].started_at.slice(11, 16)}`
   );
-  await expect(rows.first()).toHaveAttribute(
+  await expect(rows.nth(0)).toHaveAttribute(
     "data-reading-id",
     String(logged[0].id)
   );
@@ -448,7 +459,9 @@ test("movements logged before the sheet opened are listed, without an Undo (#566
       String(row.id)
     );
   await expect(
-    rows.first().getByTestId("quick-entry-stool-receipt-heading")
+    receiptFor(picker, newestFirst[0].id).getByTestId(
+      "quick-entry-stool-receipt-heading"
+    )
   ).toHaveText("Type 5 · Soft blobs");
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
     "2 today"
