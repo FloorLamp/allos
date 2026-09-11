@@ -1,8 +1,11 @@
 // Write cores for the menstrual-cycle log (issue #714). profileId-first, and the id must be
-// the one a write gate returned: the parameter is lib/auth's WriteAuthorizedProfileId, minted
-// only by the gates, so an ungated action has no value to pass and `tsc` refuses the call
-// (#5348). That is a type-only import — erased at build, so the core still runs auth-blind and
-// the Server Action still owns the gate + revalidation (#319). The one-tap
+// the one a write gate returned: the parameter is lib/auth's WriteAuthorizedProfileId, which
+// only the gates mint, so an action that never gated has no value to pass and `tsc` refuses
+// the call (#5348). That stops the ACCIDENTAL ungated call and not a deliberate one — nothing
+// refuses `as WriteAuthorizedProfileId` yet, in this tier or in production, and the lint rule
+// that would (WRITE_BRAND_CAST, shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed
+// on that file. The import is type-only — erased at build, so the core still runs auth-blind
+// and the Server Action still owns the gate + revalidation (#319). The one-tap
 // "period started" / "period ended" / "still bleeding" transitions carry the interesting
 // logic (dedup, the open-period guard, the plausible-gap guard, the end-after-start check,
 // the reopen recency window) and answer from a typed outcome union, so a handler never
