@@ -15,7 +15,10 @@
 //   4. the entries sit ABOVE the practice that names them and above the kind's static
 //      list entry ("Practice history");
 //   5. the group is capped at FIVE ACROSS ALL KINDS, ranked date-first over the union —
-//      the last describe seeds the fixture that can tell that apart from five per kind.
+//      the last describe seeds the fixture that can tell that apart from five per kind;
+//   6. each hit carries its KIND AS DATA (#5096), the Q&A citation badge names that kind
+//      for every one of the seven, and the subtitle's leading noun is the same value —
+//      one field, two readers, still one domain.
 //
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts. Synthetic,
 // clearly fictional fixtures only (no PHI).
@@ -27,9 +30,17 @@ import { gatherHistoryLog } from "@/lib/history";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import { setLoginSetting, setProfileSetting } from "@/lib/settings";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
-import type { SearchHit } from "@/lib/search-rank";
+import {
+  SEARCH_LOGGED_KIND_LABELS,
+  type SearchHit,
+  type SearchLoggedKind,
+} from "@/lib/search-rank";
+import {
+  buildRetrievalSet,
+  citationLabel,
+  DOMAIN_LABEL,
+} from "@/lib/record-qa";
 import { machineDateHits } from "@/lib/machine-date-census";
-import type { SearchLoggedKind } from "@/lib/queries/search-logged";
 
 const TZ = "America/Los_Angeles";
 // Six days, oldest first: one more than the bound, so "at most five, newest first" is
@@ -325,6 +336,36 @@ describe("the logged kinds in global search (#5006)", () => {
     expect(found[0].date).toBe(DAYS[DAYS.length - 1]);
   });
 
+  // THE BADGE, PER KIND (#5096). Seven kinds flattened to one "Logged entry" when the
+  // seven `log-<kind>` domains became one `logged` domain, so a single representative
+  // case cannot see the family come back — every kind is asserted, over the REAL gather
+  // rather than a hand-built hit.
+  //
+  // And ONE FIELD, TWO READERS: the subtitle's leading segment IS the badge, compared
+  // here as values rather than against two re-typed strings that happen to agree today.
+  // A badge resolved from anything but the kind the subtitle is rendered from goes red.
+  it.each(FIXTURES)(
+    "$kind: the citation badge names the kind, and the subtitle leads with that same word",
+    (fixture) => {
+      const found = hitsOf(mine, fixture);
+      expect(found).not.toHaveLength(0);
+      const citations = buildRetrievalSet(found);
+      expect(citations).toHaveLength(found.length);
+      for (const citation of citations) {
+        expect(citation.domain).toBe("logged");
+        expect(citation.loggedKind).toBe(fixture.kind);
+        expect(citationLabel(citation)).toBe(
+          SEARCH_LOGGED_KIND_LABELS[fixture.kind]
+        );
+        // The flattening itself, named: no kind may answer with the domain's word.
+        expect(citationLabel(citation)).not.toBe(DOMAIN_LABEL.logged);
+        expect(citation.subtitle?.split(" · ")[0]).toBe(
+          citationLabel(citation)
+        );
+      }
+    }
+  );
+
   // The rule module itself, not a second spelling of it: no logged subtitle may carry
   // a machine date, whatever kind or day it came from.
   it.each(FIXTURES)("$kind: no subtitle states a machine date", (fixture) => {
@@ -454,5 +495,15 @@ describe("the five-across-all-kinds cap (#5006)", () => {
     expect(logged).toHaveLength(1);
     expect(logged[0].label).toBe("Logged");
     expect(logged[0].hits).toHaveLength(5);
+    // THE KIND IS A FIELD, NOT A PARTITION (#5096): these five hits are two different
+    // kinds and still ONE domain, one group, one cap. A per-kind domain restored to
+    // carry the kind would split them and fail the length above; carrying it as data
+    // is asserted here so the fix cannot quietly undo the ruling it depends on.
+    expect(new Set(logged[0].hits.map((h) => h.domain))).toEqual(
+      new Set(["logged"])
+    );
+    expect(new Set(logged[0].hits.map((h) => h.loggedKind))).toEqual(
+      new Set<SearchLoggedKind>(["practice", "dose"])
+    );
   });
 });

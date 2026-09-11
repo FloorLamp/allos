@@ -12,11 +12,17 @@ import {
   singularizeTerm,
   buildRetrievalSet,
   buildAskPrompt,
+  citationLabel,
   composeOfflineAnswer,
+  DOMAIN_LABEL,
   MAX_CITATIONS,
   type RecordCitation,
 } from "@/lib/record-qa";
-import type { SearchHit } from "@/lib/search-rank";
+import {
+  SEARCH_LOGGED_KINDS,
+  SEARCH_LOGGED_KIND_LABELS,
+  type SearchHit,
+} from "@/lib/search-rank";
 import type { AppRoute } from "@/lib/hrefs";
 
 const HIT = (over: Partial<SearchHit>): SearchHit => ({
@@ -117,6 +123,54 @@ describe("buildRetrievalSet — numbered, capped citations", () => {
       HIT({ key: `supplement:${i}`, title: `Item ${i}` })
     );
     expect(buildRetrievalSet(many)).toHaveLength(MAX_CITATIONS);
+  });
+});
+
+// THE CITATION BADGE NAMES THE KIND (#5096). One `logged` domain carried seven kinds,
+// and the badge read the DOMAIN, so "Logged dose", "Practice", "Sleep" all printed
+// "Logged entry". The kind is a field on the hit now; the badge resolves from it.
+describe("citationLabel — the badge a logged row shows", () => {
+  it.each(SEARCH_LOGGED_KINDS)("names the %s kind, not the domain", (kind) => {
+    const label = citationLabel({ domain: "logged", loggedKind: kind });
+    expect(label).toBe(SEARCH_LOGGED_KIND_LABELS[kind]);
+    expect(label).not.toBe(DOMAIN_LABEL.logged);
+    expect(label.trim()).not.toBe("");
+  });
+
+  it("gives the seven kinds seven different words", () => {
+    // The defect was a whole family collapsing onto one word. Seven labels that are
+    // not seven distinct words would be the same flattening under another spelling.
+    const labels = SEARCH_LOGGED_KINDS.map((k) => SEARCH_LOGGED_KIND_LABELS[k]);
+    expect(new Set(labels).size).toBe(SEARCH_LOGGED_KINDS.length);
+  });
+
+  it("leaves every other domain on its own DOMAIN_LABEL", () => {
+    expect(citationLabel({ domain: "supplement" })).toBe(
+      DOMAIN_LABEL.supplement
+    );
+    expect(citationLabel({ domain: "encounter" })).toBe("Visit");
+    // A logged row that states no kind still reads as a record, never as blank.
+    expect(citationLabel({ domain: "logged" })).toBe("Logged entry");
+  });
+
+  it("carries the hit's kind into the citation and onto the prompt line", () => {
+    // The citation's fields are the HIT's own — `buildRetrievalSet` copies the kind
+    // rather than parsing it back out of the rendered subtitle.
+    const [cite] = buildRetrievalSet([
+      HIT({
+        domain: "logged",
+        loggedKind: "practice",
+        key: "logged:practice:7",
+        title: "Sauna",
+        subtitle: "Practice · Aug 31",
+        href: "/history?kind=practice&day=2026-08-31" as AppRoute,
+        date: "2026-08-31",
+      }),
+    ]);
+    expect(cite.loggedKind).toBe("practice");
+    // The subtitle's leading noun and the badge are one value, not two that agree.
+    expect(cite.subtitle?.split(" · ")[0]).toBe(citationLabel(cite));
+    expect(buildAskPrompt("sauna?", [cite])).toContain("(Practice)");
   });
 });
 
