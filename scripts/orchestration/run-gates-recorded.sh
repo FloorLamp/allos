@@ -7,8 +7,9 @@
 #        harness detached the first call: wait on the recorded PID, then report
 #
 # Run from the worktree root (agent-gates.sh reads the diff there). Files land
-# under the state dir host.mjs resolves — the one the brief's worktree lives in,
-# whose parent `start` creates, so a branch name containing `/` works (#5761):
+# under the state dir host.mjs resolves — the one the brief's worktree lives in.
+# A branch name containing `/` puts a directory inside these three paths, and
+# `start` creates it (#5761):
 #   gates-<branch>.log       every line the gates printed
 #   gates-<branch>.log.pid   the run's PID, captured from $! — the one fact no
 #                            other process's command line can impersonate
