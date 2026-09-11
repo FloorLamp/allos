@@ -28,6 +28,7 @@ import {
   BODY_SIDES,
   ABCDE_DIMENSIONS,
   skinLesionStatusLabel,
+  skinLesionDisplayLabel,
   bodyRegionLabel,
   bodySideLabel,
   type AbcdeKey,
@@ -194,12 +195,16 @@ export default function SkinLesionForm({
       {/* THE RECORD'S OWN NAME IS THE HEADING ON A PAGE-HOSTED EDIT (#5300 rule 6);
           the add door is a dialog and takes "Add skin lesion" from its host. It states
           the lesion AS STORED — the field below states what Save will write. */}
-      {editing && record!.label && (
+      {editing && (
         <h3
           data-testid="skin-lesion-form-heading"
           className="font-semibold text-slate-800 dark:text-slate-100"
         >
-          {record!.label}
+          {/* Through the shared display labeller, not the raw column: an unlabeled
+              lesion is named by its body map everywhere else ("Left forearm lesion"),
+              and a heading that went blank there would be the one surface that
+              cannot say which record is open. */}
+          {skinLesionDisplayLabel(record!)}
         </h3>
       )}
       <div>
