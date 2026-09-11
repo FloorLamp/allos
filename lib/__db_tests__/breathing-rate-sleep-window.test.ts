@@ -488,6 +488,45 @@ describe("the migration is the adoption run over history", () => {
     );
   });
 
+  it("never adopts one source's reading into another source's session", () => {
+    // THE SECOND GATE, ON ITS OWN. The source allowlist keeps a clinical row out of the
+    // candidate set; this keeps a wearable row out of a window its own archive never
+    // stated. Both have to hold, and a fixture where only one of them could fire proves
+    // only that one: here the ONLY session on the day belongs to Health Connect and the
+    // only reading to Takeout, so if the match ignored `source` the reading would land
+    // on that window — and it must take the day label instead.
+    const profileId = newProfile("Two sources");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 15.9,
+      stamp: null,
+      source: "fitbit-takeout",
+    });
+
+    breathingRateMigration(
+      db as unknown as Parameters<typeof breathingRateMigration>[0]
+    );
+
+    expect(nightlyRows(profileId)).toEqual([
+      {
+        date: WAKE_DAY,
+        source: "fitbit-takeout",
+        origin: null,
+        started_at: `${WAKE_DAY}T00:00:00.000Z`,
+        ended_at: `${WAKE_DAY}T23:59:59.999Z`,
+        value: 15.9,
+        edited: 0,
+      },
+    ]);
+  });
+
   it("moves nothing on a second run", () => {
     // Replay safety, which the DB tier exercises for every migration: after the first
     // pass the only wearable rows left are the spot readings it declines.
