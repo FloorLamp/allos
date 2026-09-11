@@ -27,6 +27,8 @@
 import {
   attentionEntries,
   doseSlotKey,
+  itemDoseBucket,
+  itemIsActionable,
 } from "./dashboard-candidates/attention";
 import {
   dashboardAttentionCandidateId,
@@ -34,7 +36,6 @@ import {
 } from "./dashboard-attention-identity";
 import type { Finding } from "./findings";
 import { pickNextAppointment } from "./household";
-import { doseBucketFromSortHint } from "./dose-order";
 import { TIME_BUCKET_OPENS_AT, type TimeBucket } from "./intake-schedule";
 import {
   dayEpisodeState,
@@ -242,27 +243,9 @@ export interface HomeList {
 
 // ── Classification ──────────────────────────────────────────────────────────────
 
-// Whether this item hosts something the person can DO. Home's Now band is exact
-// current ACTIONS (§2.2); a fact with no control belongs to the glance card or the
-// record, which read it from a neutral dated reader and state it once.
-//
-// The affordance fields are the item's own declaration of what it can host, so this
-// asks the item rather than its domain — the same distinction #2578 drew when asking
-// the domain deleted three unrelated row kinds at once.
-function itemIsActionable(item: UpcomingItem): boolean {
-  return (
-    item.actionLabel != null ||
-    item.altAction != null ||
-    item.doseId != null ||
-    item.practiceLog != null ||
-    item.preventiveRuleKey != null ||
-    item.bookHref != null ||
-    item.carePlanItemId != null ||
-    item.conditionSuggestion != null ||
-    item.followUpResolve != null ||
-    item.followUpSettle != null
-  );
-}
+// Home's Now band is exact current ACTIONS (§2.2), and "can the person DO this" is
+// `itemIsActionable`, imported above. It is the attention model's own predicate, not
+// Home's reading of it: one question, one answer, one place it can change.
 
 // A PRACTICE TARGET IS A DUE ACTION IN ITS OWN RIGHT (§3.2). It arrives banded `week`
 // because /upcoming plans a week, but the control on it logs a session TODAY, so on
@@ -317,8 +300,7 @@ interface PartitionedActions {
 // The slot a due dose sits in, for the one-member case `attentionEntries` leaves as a
 // plain item. A slot's window is its bucket's, whether it holds one dose or six.
 function doseBucket(item: UpcomingItem): TimeBucket | null {
-  if (item.domain !== "dose" || item.doseId == null) return null;
-  return doseBucketFromSortHint(item.sortHint);
+  return item.doseId == null ? null : itemDoseBucket(item);
 }
 
 function attentionRow(

@@ -165,19 +165,24 @@ describe("the order stays fixed while windows and facts change", () => {
     ).toEqual(openSlots);
   });
 
-  // ONE ROW ABOVE THE RULE, WHATEVER THE SCHEDULE. Five slots, a practice target and a
-  // dentist, and the depth of the fold never changes — that is the property the folded
-  // row exists to hold.
-  it.each(hours)("folds to exactly one row at %s", (_label, minutesOfDay) => {
-    const list = composeHomeList(
-      input({
-        minutesOfDay,
-        attention: [...SCHEDULE, PRACTICE, PACE, DENTIST],
-      })
-    );
-    expect(list.later).not.toBeNull();
-    expect(list.later?.entries.length).toBeGreaterThan(0);
-  });
+  // EVERYTHING NOT YET CURRENT GOES INTO THE FOLD, WHATEVER THE SCHEDULE. That the
+  // fold is ONE row is the type's job — `HomeLaterFold.row` is a single `HomeRow`, so
+  // no depth but one can be constructed. What the type cannot hold is that the fold
+  // COLLECTS: at every hour it carries each slot whose window has not opened plus the
+  // dated commitment, and lets nothing leak past the rule or vanish.
+  it.each(hours)(
+    "collects every not-yet-current thing at %s",
+    (_label, minutesOfDay, openSlots) => {
+      const list = composeHomeList(
+        input({
+          minutesOfDay,
+          attention: [...SCHEDULE, PRACTICE, PACE, DENTIST],
+        })
+      );
+      // The five scheduled slots less those already open, plus the dentist in two days.
+      expect(list.later?.entries).toHaveLength(5 - openSlots.length + 1);
+    }
+  );
 });
 
 describe("the owner's 07:40", () => {
