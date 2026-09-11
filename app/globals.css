@@ -706,8 +706,9 @@
    the CHILDREN's margins rather than its own — same seam, different property, so
    it needs the same convention rather than a second one.
 
-   `components/dashboard/NowStrip.tsx` is deliberately NOT a tenant: #3460 owns
-   the Now strip's own margin and trims it there. */
+   The Now strip was deliberately NOT a tenant — #3460 owned its margin and trimmed
+   it in `components/dashboard/NowStrip.tsx` — and #5435 §4 deleted the strip, so the
+   exception is history rather than a rule to maintain. */
 @utility section-seam {
   @apply max-sm:mb-4!;
 }
@@ -2044,15 +2045,19 @@
   animation: micro-tick var(--motion-tick) var(--motion-ease);
 }
 
-/* A reading being PROMOTED into Now while you watch (#3253 decision 4). The card
-   arrives from below — where its Standing row was — and settles: one lift, one fade,
-   nothing else on the page moving. Transform and opacity only, so the gap it lands in
-   was already closed by the re-render and no neighbour is pushed around by the
-   animation.
+/* Something arriving while you watch: one lift, one fade, nothing else on the page
+   moving. Transform and opacity only, so the gap it lands in was already closed by
+   the re-render and no neighbour is pushed around by the animation.
 
-   Applied ONLY to a card whose arrival was witnessed. components/dashboard/NowCards.tsx
-   asks lib/dashboard-motion.ts, which withholds the class on the first paint and across
-   a hidden interval — a resume must land quiet. */
+   ITS FIRST TENANT IS GONE (#3253 decision 4, retired by #5435 §4). This was written
+   for a reading PROMOTED into Now from its Standing row, and the witness rule that
+   went with it — components/dashboard/NowCards.tsx asked lib/dashboard-motion.ts,
+   which withheld the class on the first paint and across a hidden interval so a
+   resume landed quiet — is deleted with the band and the ranker that promoted. What
+   still uses the keyframe is `microMotionPlan("promote")`
+   (components/ControlTooltip.tsx), whose arrival is an interaction and needs no
+   witness. A future promoting surface owes its own quiet-resume rule; it does not
+   inherit one from here. */
 @keyframes micro-promote {
   0% {
     transform: translateY(8px);
