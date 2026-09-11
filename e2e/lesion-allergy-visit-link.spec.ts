@@ -121,7 +121,11 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
     // trailing affordance. The helper routes to each; the picker is unchanged.
     const form = dialog.getByTestId("allergy-form");
     await withRecordFact(form, "allergy", "reaction", () =>
-      settledFill(page, dialog.getByTestId("allergy-reaction-new-0"), "swelling")
+      settledFill(
+        page,
+        dialog.getByTestId("allergy-reaction-new-0"),
+        "swelling"
+      )
     );
 
     // The picker: choose the seeded dermatology visit by its shared visit label.

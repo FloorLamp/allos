@@ -219,33 +219,33 @@ describe("a record add door is gated on write access (#4694)", () => {
   it.each<{ formId: FormId; label: string }>([
     { formId: "condition", label: "Add condition" },
     { formId: "allergy", label: "Add allergy" },
-  ])("$label renders for a writer and not for a read-only viewer", ({
-    formId,
-    label,
-  }) => {
-    const door = (access: "read" | "write") => (
-      <AddEntryPanel
-        formId={formId}
-        access={access}
-        label={label}
-        panelId={`${formId}-panel`}
-        testId={`add-${formId}-panel`}
-        presentation="modal"
-      >
-        <p>form</p>
-      </AddEntryPanel>
-    );
+  ])(
+    "$label renders for a writer and not for a read-only viewer",
+    ({ formId, label }) => {
+      const door = (access: "read" | "write") => (
+        <AddEntryPanel
+          formId={formId}
+          access={access}
+          label={label}
+          panelId={`${formId}-panel`}
+          testId={`add-${formId}-panel`}
+          presentation="modal"
+        >
+          <p>form</p>
+        </AddEntryPanel>
+      );
 
-    const writer = render(door("write"));
-    expect(
-      screen.getByTestId(`add-${formId}-panel-toggle`).textContent
-    ).toContain(label);
-    writer.unmount();
+      const writer = render(door("write"));
+      expect(
+        screen.getByTestId(`add-${formId}-panel-toggle`).textContent
+      ).toContain(label);
+      writer.unmount();
 
-    // No door at all, not a disabled one: a control that cannot do anything still
-    // says the write exists here, and still costs a tap to find out otherwise.
-    render(door("read"));
-    expect(screen.queryByTestId(`add-${formId}-panel-toggle`)).toBeNull();
-    expect(screen.queryByText(label)).toBeNull();
-  });
+      // No door at all, not a disabled one: a control that cannot do anything still
+      // says the write exists here, and still costs a tap to find out otherwise.
+      render(door("read"));
+      expect(screen.queryByTestId(`add-${formId}-panel-toggle`)).toBeNull();
+      expect(screen.queryByText(label)).toBeNull();
+    }
+  );
 });

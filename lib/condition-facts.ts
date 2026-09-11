@@ -68,7 +68,6 @@ export const CONDITION_FACT_NOUNS: Record<ConditionFactKey, string> = {
   notes: "notes",
 };
 
-
 const STATUS_LABELS: Record<ConditionStatus, string> = {
   active: "Active",
   inactive: "Inactive",
@@ -133,7 +132,11 @@ export function conditionFactSummary(
     f.onsetDate,
     f.onsetDate.trim() ? `Onset ${day(f.onsetDate)}` : ""
   );
-  row.state("laterality", f.laterality, f.laterality ? cased(f.laterality) : "");
+  row.state(
+    "laterality",
+    f.laterality,
+    f.laterality ? cased(f.laterality) : ""
+  );
   row.state("severity", f.severity, f.severity ? cased(f.severity) : "");
   // The stage reads as recorded — staging vocabularies are open-ended, so the chip
   // states the person's own token rather than a word bolted onto it.

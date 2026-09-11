@@ -69,7 +69,6 @@ export const ALLERGY_FACT_NOUNS: Record<AllergyFactKey, string> = {
   notes: "notes",
 };
 
-
 const STATUS_LABELS: Record<AllergyStatus, string> = {
   active: "Active",
   inactive: "Inactive",
@@ -122,7 +121,10 @@ export function allergyFactSummary(
 
   const stated = f.reactions.filter((r) => r.manifestation.trim());
   if (stated.length > 0)
-    row.stated("reaction", stated.map((r) => r.manifestation.trim()).join(", "));
+    row.stated(
+      "reaction",
+      stated.map((r) => r.manifestation.trim()).join(", ")
+    );
   else row.missing("reaction", "Add a reaction");
 
   // The grades of the manifestations that HAVE one. A graded subset states what it

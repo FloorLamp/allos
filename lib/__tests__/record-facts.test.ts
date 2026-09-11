@@ -89,7 +89,10 @@ describe("the condition row (#5302)", () => {
   });
 
   it("offers the resolved date only while the condition is resolved", () => {
-    const active = conditionFactSummary({ ...FULL_CONDITION, resolvedDate: "" });
+    const active = conditionFactSummary({
+      ...FULL_CONDITION,
+      resolvedDate: "",
+    });
     expect(keysOf(active.chips)).not.toContain("resolved");
     expect(active.more).not.toContain("resolved");
 
