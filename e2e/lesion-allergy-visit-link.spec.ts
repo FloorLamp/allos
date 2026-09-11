@@ -111,11 +111,14 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
     const dialog = page.getByRole("dialog", { name: "Add allergy" });
     await expect(dialog).toBeVisible();
 
-    await settledFill(
-      page,
-      dialog.locator("#allergy-substance-new"),
-      LESIONALLERGY_ALLERGY_PICKED
-    );
+    const substance = dialog.locator("#allergy-substance-new");
+    await settledFill(page, substance, LESIONALLERGY_ALLERGY_PICKED);
+    // The catalog dropdown hangs directly below the field, which is where the chip row
+    // now is; dismiss it before reaching for a chip underneath. The same gesture the
+    // conditions specs make, and the same one a person makes.
+    await substance.press("Escape");
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+
     // Both the reaction and the visit link are facts behind their chips now (#5302):
     // the reaction is a dashed essential, the visit an absent optional named by the
     // trailing affordance. The helper routes to each; the picker is unchanged.
