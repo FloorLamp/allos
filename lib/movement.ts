@@ -57,10 +57,11 @@ export function movementDirection(
   delta: number,
   toleranceAbs = 0
 ): MovementDirection {
-  // Written as a POSITIVE test so a NaN delta — an unparseable reading that reached
-  // here through a cast — falls to "flat" rather than to whichever arm a comparison
-  // with NaN happens to leave. "No movement I can evidence" is the honest answer to a
-  // delta that is not a number; `!(abs < tol)` would call it a direction.
+  // Written as a NEGATED POSITIVE test so a NaN delta — an unparseable reading that
+  // reached here through a cast — lands on "flat". The natural form, `if (abs < tol)
+  // return flat`, is FALSE for NaN and falls through to the direction ternary, where
+  // NaN loses both comparisons and comes out "down". "No movement I can evidence" is
+  // the honest answer to a delta that is not a number.
   if (!(Math.abs(delta) >= toleranceAbs) || delta === 0) return "flat";
   return delta > 0 ? "up" : "down";
 }
@@ -207,11 +208,11 @@ export function windowMovement(
 // says so at its own call site.
 export const USUAL_BASELINE_DAYS = 30;
 
-export const USUAL_BASELINE_SPEC: TrailingWindowSpec = {
+export const USUAL_BASELINE_SPEC = {
   days: USUAL_BASELINE_DAYS,
   basis: "data-bearing",
   includeToday: false,
-};
+} as const satisfies TrailingWindowSpec;
 
 export interface VersusBaselineMovement {
   // The day asked about, and its reading.
