@@ -2239,9 +2239,7 @@ function QuickEntryBodyMount({
         </p>
       ) : null}
       <BodyBoundary key={props.bodies.attempt} onRetry={props.onRetry}>
-        <Suspense
-          fallback={QUICK_ENTRY_LOADING}
-        >
+        <Suspense fallback={QUICK_ENTRY_LOADING}>
           <QuickEntryBody {...props} state={currentState} />
         </Suspense>
       </BodyBoundary>
