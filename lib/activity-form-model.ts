@@ -431,7 +431,7 @@ export const blankPart = (): PartEntry => ({
 // The load a row STATES: what was typed into it, else what it still offers (#5373).
 // A plan of `125 × 12, 120 × 10` is a varying grid before a single row is confirmed,
 // so the question has to be asked of what the person is reading.
-const shownLoad = (s: SetEntry, side: "weight" | "weightRight") =>
+export const shownLoad = (s: SetEntry, side: "weight" | "weightRight") =>
   s[side] || s.plan?.[side] || "";
 // Shared edits belong to remaining plans, or to every record when none remain.
 export const sharedLoadSets = (sets: readonly SetEntry[]) => {

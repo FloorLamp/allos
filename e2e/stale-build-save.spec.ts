@@ -240,6 +240,10 @@ test("a live workout edited through a deploy reloads itself and comes back with 
       .getByTestId("next-set-card")
       .getByRole("button", { name: "Use" })
       .click();
+    // Use CONFIRMS set 1 while the rest of the plan remains, so the grid keeps one
+    // layout and set 1's load sits behind its door (#5762). Tapping it once reopens
+    // the per-set field for the mid-set edit below too — the latch keeps it open.
+    await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
     await expect(page.getByTestId("set1-weight")).toHaveValue(/^\d/);
     await expect(
       page.getByRole("button", { name: "Delete", exact: true })
