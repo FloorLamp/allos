@@ -138,6 +138,16 @@ export interface Finding {
   suppressionPolicy?: LifecycleSuppressionPolicy;
 }
 
+// A finding whose ONLY surface is the dashboard rollup (#3129). The rollup applies a
+// relevance floor, so a class with no origin tab of its own renders NOWHERE on the
+// tone-derived default — the producer must clear the floor itself. Stating that as a
+// REQUIRED field is what retires the source-text scan that used to look for the literal
+// annotation (#4241, #5351): a producer declared rollup-only cannot construct its
+// finding without the declaration, whatever it spells the constant.
+export interface RollupOnlyFinding extends Finding {
+  dashboardRelevance: typeof FINDING_DASHBOARD_RELEVANCE.review;
+}
+
 export interface FindingGroup {
   band: UrgencyBand;
   label: string;

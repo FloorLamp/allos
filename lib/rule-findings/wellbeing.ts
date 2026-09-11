@@ -33,7 +33,10 @@ import {
 import { sleepClockSkewSignalKey } from "../sleep-clock-skew";
 import { activityProvenanceLabel } from "../training-log-format";
 import { shiftDateStr } from "../date";
-import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "../findings";
+import {
+  FINDING_DASHBOARD_RELEVANCE,
+  type RollupOnlyFinding,
+} from "../findings";
 
 // ---- Wellbeing (#992): the sustained low-mood observation ------------------
 
@@ -63,7 +66,10 @@ function lowMoodWindowFor(
 // instrument prompt, no crisis linkage, no escalation of any kind (those belong
 // to #716/#996, never the daily layer). No owned SQL added here (reads through
 // the profile-scoped getMoodLogs).
-export function buildMoodFindings(profileId: number, today: string): Finding[] {
+export function buildMoodFindings(
+  profileId: number,
+  today: string
+): RollupOnlyFinding[] {
   const low = lowMoodWindowFor(profileId, today);
   if (!low) return [];
   return [
@@ -111,7 +117,7 @@ export function buildMoodFindings(profileId: number, today: string): Finding[] {
 export function buildSleepClockSkewFindings(
   profileId: number,
   today: string
-): Finding[] {
+): RollupOnlyFinding[] {
   const suspect = getSuspectSleepSessions(
     profileId,
     shiftDateStr(today, -SLEEP_SKEW_HISTORY_DAYS)
@@ -178,7 +184,7 @@ export function buildSleepClockSkewFindings(
 export function buildSleepMoodBridgeFindings(
   profileId: number,
   today: string
-): Finding[] {
+): RollupOnlyFinding[] {
   const low = lowMoodWindowFor(profileId, today);
   if (!low) return [];
 
@@ -239,7 +245,7 @@ export function buildSleepMoodBridgeFindings(
 export function buildPairedObservationFindings(
   profileId: number,
   today: string
-): Finding[] {
+): RollupOnlyFinding[] {
   const entries = pairedObservationsFor({
     isKnownMinor: isMinor(getProfileAge(profileId)),
   });
@@ -250,7 +256,7 @@ export function buildPairedObservationFindings(
   // short-circuit — so without this the registry costs a range scan per entry.
   const days = factorDaysReader(profileId);
   const monthAnchor = today.slice(0, 7);
-  const out: Finding[] = [];
+  const out: RollupOnlyFinding[] = [];
   for (const entry of entries) {
     const nights = gatherPairedNights(profileId, entry, today, series, days);
     const verdict = decidePairedObservation(entry, nights, today, monthAnchor);
