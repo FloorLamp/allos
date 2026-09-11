@@ -8,6 +8,7 @@ import {
   settledFill,
   settledSelect,
 } from "./helpers";
+import { openRecordFact, withRecordFact } from "./record-facts-helpers";
 import { openCombobox } from "./helpers";
 import { openFact } from "./intake-form-helpers";
 import {
@@ -183,10 +184,18 @@ test.describe("Entry vocabularies (#1676)", () => {
       .getByRole("listbox")
       .getByRole("button", { name: new RegExp(`Use .*${DRIFTED_ALLERGEN}`) })
       .click();
-    await settledFill(
-      page,
-      allergyDialog.getByTestId("allergy-reaction-new-0"),
-      "rash"
+    // The reaction is an ESSENTIAL fact behind its own dashed prompt (#5302), so the
+    // chip is the way in. Everything after it is unchanged.
+    await withRecordFact(
+      allergyDialog.getByTestId("allergy-form"),
+      "allergy",
+      "reaction",
+      () =>
+        settledFill(
+          page,
+          allergyDialog.getByTestId("allergy-reaction-new-0"),
+          "rash"
+        )
     );
     await settledClick(
       page,
@@ -216,10 +225,16 @@ test.describe("Entry vocabularies (#1676)", () => {
       .getByRole("option", { name: PICKED_ALLERGEN, exact: true })
       .click();
     await expect(picker).toHaveValue(PICKED_ALLERGEN);
-    await settledFill(
-      page,
-      pickedDialog.getByTestId("allergy-reaction-new-0"),
-      "rash"
+    await withRecordFact(
+      pickedDialog.getByTestId("allergy-form"),
+      "allergy",
+      "reaction",
+      () =>
+        settledFill(
+          page,
+          pickedDialog.getByTestId("allergy-reaction-new-0"),
+          "rash"
+        )
     );
     await settledClick(
       page,
@@ -304,16 +319,23 @@ test.describe("Entry vocabularies (#1676)", () => {
     await page.goto("/records/care/overview");
     const carePlanDialog = await openCarePlanDialog(page);
     await settledFill(page, carePlanDialog.locator("#cp-desc-new"), CARE_ITEM);
-    await settledSelect(
-      page,
-      carePlanDialog.locator("#cp-category-new"),
-      "procedure"
+    const addForm = carePlanDialog.getByTestId("care-plan-form");
+    // Category, status and the planned date are FACTS now (#5302): the planned date
+    // is the row's essential and so wears its own dashed chip, while an unstated
+    // category and status are reached through the trailing affordance that names
+    // them. The helper routes either way; the values and the flow below are
+    // unchanged.
+    await withRecordFact(addForm, "care-plan", "category", () =>
+      settledSelect(
+        page,
+        carePlanDialog.locator("#cp-category-new"),
+        "procedure"
+      )
     );
-    await settledSelect(
-      page,
-      carePlanDialog.locator("#cp-status-new"),
-      "planned"
+    await withRecordFact(addForm, "care-plan", "status", () =>
+      settledSelect(page, carePlanDialog.locator("#cp-status-new"), "planned")
     );
+    await openRecordFact(addForm, "care-plan", "planned");
     // DateField re-renders the committed ISO value as a formatted display string, so
     // a plain fill is right here — the settled fills above already proved this form
     // is hydrated.
@@ -324,12 +346,16 @@ test.describe("Entry vocabularies (#1676)", () => {
     await expect(
       carePlanDialog.getByTestId("date-field-calendar")
     ).toBeHidden();
+    // Escape is ALSO the fact editor's own close gesture, so the row may already be
+    // back. Routing, not an assertion — press Done only if the editor outlived it.
+    if (await addForm.getByTestId("care-plan-editor").isVisible())
+      await addForm.getByTestId("care-plan-editor-done").click();
+    await expect(addForm.getByTestId("care-plan-fact-row")).toBeVisible();
     const desktopViewport = page.viewportSize();
     expect(
       desktopViewport,
       "the desktop project supplies the compact-width baseline"
     ).not.toBeNull();
-    const addForm = carePlanDialog.locator("form");
     const addSubmit = addForm.getByRole("button", {
       name: "Add",
       exact: true,
@@ -375,6 +401,10 @@ test.describe("Entry vocabularies (#1676)", () => {
     const editForm = page.locator(
       'form:has(select[id^="cp-status-"]:not([id="cp-status-new"]))'
     );
+    // The stored status is stated, so its chip is on the row; the free-text escape
+    // and the notice that explains it both live inside the status editor now —
+    // which is #5300 rule 4's point: the sentence sits beside the value it is about.
+    await openRecordFact(editForm, "care-plan", "status");
     await settledSelect(
       page,
       editForm.locator('select[id^="cp-status-"]'),
@@ -385,6 +415,8 @@ test.describe("Entry vocabularies (#1676)", () => {
     await expect(
       editForm.locator('[data-testid^="cp-status-unrecognized-"]')
     ).toContainText("keeps counting as open");
+    await editForm.getByTestId("care-plan-editor-done").click();
+    await expect(editForm.getByTestId("care-plan-fact-row")).toBeVisible();
     const editSubmit = editForm.getByRole("button", { name: "Save" });
     const editCancel = editForm.getByRole("button", { name: "Cancel" });
     await expectDesktopFormSubmit({
@@ -423,10 +455,12 @@ test.describe("Entry vocabularies (#1676)", () => {
     const editAgain = page.locator(
       'form:has(select[id^="cp-status-"]:not([id="cp-status-new"]))'
     );
-    await settledSelect(
-      page,
-      editAgain.locator('select[id^="cp-status-"]'),
-      "completed"
+    await withRecordFact(editAgain, "care-plan", "status", () =>
+      settledSelect(
+        page,
+        editAgain.locator('select[id^="cp-status-"]'),
+        "completed"
+      )
     );
     await settledClick(page, editAgain.getByRole("button", { name: "Save" }));
     await expect(page.getByText("Care-plan item updated")).toBeVisible();

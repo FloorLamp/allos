@@ -60,6 +60,10 @@ export default function DentalSection({ scope }: { scope: ProfileScope }) {
       <div className="space-y-6">
         <AddEntryPanel
           formId="dental-procedure"
+          // #4694, riding #5302's adoption: the door gates on what the scope already
+          // resolved for the ACTING profile, so a read-only viewer is never offered a
+          // form whose submit would redirect them and lose the typing.
+          access={scope.access.get(scope.actingProfileId)}
           testId="add-dental-record-panel"
           panelId="add-dental-record-panel-body"
           label="Add dental record"

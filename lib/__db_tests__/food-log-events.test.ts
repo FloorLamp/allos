@@ -512,3 +512,61 @@ describe("getFoodMealDays event times (#2227 decision 7)", () => {
     });
   });
 });
+
+// THE FILING DAY THE LEDGER'S CLOCK GRAMMAR READS (#5618 rule 6, owner ruling
+// 2026-09-10 22:36Z: the rule belongs to the grammar, so the ledger obeys it too).
+//
+// THIS IS WHERE A TIMEZONE CAN BE GOT WRONG, and the only place: the component that
+// renders the cell is handed a resolved day, so its cases cannot fail for a zone reason.
+// The pair below can, in OPPOSITE directions — a UTC-date comparison calls the first
+// another day when the person was still living the row's evening, and agrees with the
+// second for the wrong reason. Neither is passable by guessing a zone.
+describe("getFoodMealDays filing day (#5618 rule 6)", () => {
+  function zonedProfile(name: string, tz: string): number {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'timezone', ?)`
+    ).run(profileId, tz);
+    return profileId;
+  }
+
+  /** A serving nobody timed, filed at a named UTC instant on `date`. */
+  function filedServing(profileId: number, date: string, at: string): void {
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, 'berries', ?, ?)`
+    ).run(profileId, date, at);
+  }
+
+  function eventOn(profileId: number, date: string) {
+    return getFoodMealDays(profileId, [date])[0].events[0];
+  }
+
+  it("is the profile's own day west of UTC, where the stored date has already turned", () => {
+    // 22:00 on 2026-06-01 in Los Angeles: the filing landed on the row's OWN day, and
+    // the minute stands. On the stored UTC date this is 2026-06-02 — another day — and
+    // the ledger would print a date for a filing that happened during the row's evening.
+    const profileId = zonedProfile("ledger rule6 west", "America/Los_Angeles");
+    filedServing(profileId, "2026-06-01", "2026-06-02T05:00:00.000Z");
+    expect(eventOn(profileId, "2026-06-01")).toMatchObject({
+      loggedTime: "22:00",
+      loggedDay: "2026-06-01",
+    });
+  });
+
+  it("is the profile's own day east of UTC, where the stored date has not yet turned", () => {
+    // 10:00 on 2026-06-02 in Auckland, filed against 2026-06-01: a day GENUINELY was
+    // crossed, and the stored UTC date (2026-06-01) still says it was not — so a UTC
+    // comparison keeps a minute belonging to the following morning.
+    const profileId = zonedProfile("ledger rule6 east", "Pacific/Auckland");
+    filedServing(profileId, "2026-06-01", "2026-06-01T22:00:00.000Z");
+    expect(eventOn(profileId, "2026-06-01")).toMatchObject({
+      loggedTime: "10:00",
+      loggedDay: "2026-06-02",
+    });
+  });
+});

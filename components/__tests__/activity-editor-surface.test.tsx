@@ -81,7 +81,13 @@ function OverlayStandIn({
     </>
   );
 }
-vi.mock("../ActivityOverlay", () => ({ default: OverlayStandIn }));
+// `loadActivityForm` is the shell's warm of the form's own chunk (#5206) — the real
+// workspace loads its body on demand. The stand-in IS the body here, so the warm is
+// a resolved no-op.
+vi.mock("../ActivityOverlay", () => ({
+  default: OverlayStandIn,
+  loadActivityForm: () => Promise.resolve({ default: OverlayStandIn }),
+}));
 // The dock is the OTHER thing inside the editor's region, and the only one still
 // mounted while the editor is closed — which is exactly the window in which a stale
 // declaration used to survive.

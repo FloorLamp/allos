@@ -26,9 +26,8 @@ type Box = NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>;
 
 async function box(locator: Locator, name: string): Promise<Box> {
   await expect(locator, name).toBeVisible();
-  const measured = await locator.boundingBox();
-  expect(measured, name).not.toBeNull();
-  return measured!;
+  const [measured] = await settledBoxes([locator]);
+  return measured;
 }
 
 async function sheetGeometry(sheet: Locator) {
@@ -229,17 +228,20 @@ test("every segment keeps the sheet still and fills the phone width (#3675)", as
     const reserved = Number(await list.getAttribute("data-max-rows"));
     expect(drawn).toBeGreaterThan(0);
     expect(drawn).toBeLessThan(reserved);
-    const lastRow = await box(rows.last(), "Train's last row");
-    const spacer = await sheet.getByTestId("log-sheet-spacer").boundingBox();
-    expect(spacer, "trailing spacer").not.toBeNull();
+    // ONE settled group for the row and the spacer under it: the first claim below
+    // is the gap BETWEEN them, so they have to come from the same layout.
+    const [lastRow, spacer] = await settledBoxes([
+      rows.last(),
+      sheet.getByTestId("log-sheet-spacer"),
+    ]);
     // The list's own `pb-1` is the 4px the row block already counts.
-    expect(spacer!.y - (lastRow.y + lastRow.height)).toBeLessThanOrEqual(
+    expect(spacer.y - (lastRow.y + lastRow.height)).toBeLessThanOrEqual(
       4 + PX_EPSILON
     );
     // Whatever rows Train is short of the reserve, the SPACER is holding them
     // and the list is not — derived from the two counts rather than pinned, so
     // it stays true for a persona whose training gates leave a different number.
-    expect(spacer!.height + PX_EPSILON).toBeGreaterThanOrEqual(
+    expect(spacer.height + PX_EPSILON).toBeGreaterThanOrEqual(
       (reserved - drawn) * LOG_SHEET_ROW_BLOCK_PX
     );
 
@@ -301,12 +303,19 @@ test("a delayed gather paints into the reserved slot without moving the sheet (#
     await ready;
     await expect(sheet.getByTestId("log-sheet-context")).toHaveCount(0);
     const before = await sheetGeometry(sheet);
-    // Not `box`: with nothing gathered the slot is content-sized to nothing, and
-    // a zero-height element is not "visible" (#3736).
-    const reservedBefore = await sheet
-      .getByTestId("log-sheet-context-slot")
-      .boundingBox();
-    expect(reservedBefore, "empty context slot").not.toBeNull();
+    // NOT this file's `box()` helper, and the reason is `box()`'s own
+    // `toBeVisible()` — with nothing gathered the slot is content-sized to
+    // nothing, and a zero-height element is not "visible" (#3736).
+    //
+    // That objection is to the VISIBILITY ASSERTION, not to settling, so it is no
+    // reason to read this raw. `settledBoxes` asserts no visibility; it throws
+    // only on a box that is never THERE. Measured on this exact slot while empty:
+    // `display: block`, `visibility: visible`, one client rect, box
+    // `{x:16, y:437, width:392, height:0}` — attached-but-zero, which is a box,
+    // not the `display: none` shape the helper names.
+    const [reservedBefore] = await settledBoxes([
+      sheet.getByTestId("log-sheet-context-slot"),
+    ]);
 
     release();
     await expect(sheet.getByTestId("log-sheet-context")).toBeVisible();
@@ -319,7 +328,7 @@ test("a delayed gather paints into the reserved slot without moving the sheet (#
       sheet.getByTestId("log-sheet-context-slot"),
       "filled context slot"
     );
-    expect(reservedAfter.height).toBeGreaterThan(reservedBefore!.height);
+    expect(reservedAfter.height).toBeGreaterThan(reservedBefore.height);
     await expect(sheet.getByTestId("log-sheet-context-status")).toHaveText(
       "Due and usual options are ready."
     );

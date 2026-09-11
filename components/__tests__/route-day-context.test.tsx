@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useState } from "react";
-import RouteDayContext from "@/components/RouteDayContext";
+import RouteDayContext, {
+  RouteDayBoundary,
+} from "@/components/RouteDayContext";
 import {
   useLiveProfileDays,
   useOptionalDayContext,
@@ -23,6 +25,18 @@ function Probe() {
   const day = useOptionalDayContext();
   return (
     <output data-testid="route-day">
+      {day ? `${day.parts.day}:${day.backing}` : "undated"}
+    </output>
+  );
+}
+
+// A GLOBAL MOUNT: a sibling of the page rather than a child of it — where the
+// sidebar's `+ Log` panel, the dock sheet, the palette and the shortcut handler
+// stand in the shell. #5769's ruling is that these never read the route's day.
+function GlobalMountProbe() {
+  const day = useOptionalDayContext();
+  return (
+    <output data-testid="global-mount-day">
       {day ? `${day.parts.day}:${day.backing}` : "undated"}
     </output>
   );
@@ -110,15 +124,17 @@ it("keeps Nutrition projection local while the selected date navigates", () => {
   }
   const layout = (offered: FoodLogDay[]) => (
     <RouteDayContext profileId={7} timeZone="UTC">
-      <FoodSuggestionsLayout
-        today={today.date}
-        days={offered}
-        logger={<Logger />}
-        todaySidebar={null}
-        weeklySidebar={null}
-        suggestionContent={null}
-        suggestionCount={0}
-      />
+      <RouteDayBoundary profileId={7} timeZone="UTC">
+        <FoodSuggestionsLayout
+          today={today.date}
+          days={offered}
+          logger={<Logger />}
+          todaySidebar={null}
+          weeklySidebar={null}
+          suggestionContent={null}
+          suggestionCount={0}
+        />
+      </RouteDayBoundary>
     </RouteDayContext>
   );
   route.pathname = "/nutrition";
@@ -144,7 +160,9 @@ it("refreshes the route day when a persistent layout crosses local midnight", ()
   route.query = "day=2026-09-08";
   render(
     <RouteDayContext profileId={7} timeZone="UTC">
-      <Probe />
+      <RouteDayBoundary profileId={7} timeZone="UTC">
+        <Probe />
+      </RouteDayBoundary>
     </RouteDayContext>
   );
   expect(screen.getByTestId("route-day").textContent).toBe("2026-09-07:url");
@@ -185,7 +203,9 @@ it("rearms through a local midnight gap until the calendar day changes", () => {
   route.query = "day=2018-11-04";
   render(
     <RouteDayContext profileId={7} timeZone="America/Sao_Paulo">
-      <Probe />
+      <RouteDayBoundary profileId={7} timeZone="America/Sao_Paulo">
+        <Probe />
+      </RouteDayBoundary>
     </RouteDayContext>
   );
   expect(screen.getByTestId("route-day").textContent).toBe("2018-11-03:url");
@@ -196,15 +216,19 @@ it("rearms through a local midnight gap until the calendar day changes", () => {
   expect(screen.getByTestId("route-day").textContent).toBe("2018-11-04:url");
 });
 
-it("provides dated history and Food contexts while Home and supplements stay undated", () => {
+it("dates the page's own subtree while global mounts beside it stay undated (#5769)", () => {
   const surface = () => (
     <RouteDayContext profileId={7} timeZone="UTC">
-      <Probe />
-      <ChildState />
+      <GlobalMountProbe />
+      <RouteDayBoundary profileId={7} timeZone="UTC">
+        <Probe />
+        <ChildState />
+      </RouteDayBoundary>
     </RouteDayContext>
   );
   const view = render(surface());
   expect(screen.getByTestId("route-day").textContent).toBe("undated");
+  expect(screen.getByTestId("global-mount-day").textContent).toBe("undated");
   fireEvent.change(screen.getByRole("textbox", { name: "Persistent child" }), {
     target: { value: "kept" },
   });
@@ -213,6 +237,8 @@ it("provides dated history and Food contexts while Home and supplements stay und
   route.query = "day=2026-09-05";
   view.rerender(surface());
   expect(screen.getByTestId("route-day").textContent).toBe("2026-09-05:url");
+  // THE WHOLE POINT (#5769): the same render, one level up, has no day at all.
+  expect(screen.getByTestId("global-mount-day").textContent).toBe("undated");
   expect(
     (
       screen.getByRole("textbox", {
@@ -225,6 +251,7 @@ it("provides dated history and Food contexts while Home and supplements stay und
   route.query = "date=2026-09-04";
   view.rerender(surface());
   expect(screen.getByTestId("route-day").textContent).toBe("2026-09-04:url");
+  expect(screen.getByTestId("global-mount-day").textContent).toBe("undated");
 
   route.query = "tab=supplements&date=2026-09-04";
   view.rerender(surface());

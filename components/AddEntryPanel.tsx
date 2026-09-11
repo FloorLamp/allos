@@ -12,6 +12,7 @@ import { IconChevronDown, IconPlus } from "@tabler/icons-react";
 import Collapse from "./Collapse";
 import ModalShell from "./ModalShell";
 import type { FormId } from "@/lib/form-grammar";
+import type { Access } from "@/lib/auth";
 
 // The shared RARE-CADENCE ENTRY disclosure (the #1497 rule), defined once.
 //
@@ -48,6 +49,7 @@ export function useAddEntryModalClose() {
 
 export default function AddEntryPanel({
   formId,
+  access,
   label,
   addLabel,
   defaultOpen = false,
@@ -67,6 +69,37 @@ export default function AddEntryPanel({
   // originally asked for, which would have listed `*Form.tsx` files — a set that is
   // neither all the forms nor only forms.
   formId: FormId;
+  // WHETHER THE ACTING PROFILE MAY WRITE HERE (#4694). A read-only viewer used to get
+  // the full add door, fill the form in, and be bounced by `requireWriteAccess()`'s
+  // redirect on submit — their work lost, with nothing saying why. Server-side security
+  // was never the problem; the false affordance was.
+  //
+  // WHERE THE VALUE COMES FROM. A section that already has a `ProfileScope` passes
+  // what it resolved (`scope.access.get(actingProfileId)`) and never looks the access
+  // up a second time — that is the rule for every cross-profile pane, and all but one
+  // of the mounts wired so far follow it. The exception is a SINGLE-PROFILE page,
+  // which has no scope to read from: `app/(app)/records/specialty/skin/page.tsx` calls
+  // `accessForProfile(login.id, login.role, profile.id)` directly.
+  //
+  // THAT IS ALLOWED HERE RATHER THAN AN OVERSIGHT, and the reason is not "the page
+  // happens not to resolve a scope today" — it is that lib/scope.ts's own closing note
+  // reserves `requireSession()` for single-profile pages and says the primitive "does
+  // not move the app to multi-profile-by-default". A bare `requireScope()` reads the
+  // persisted session-wide VIEW SET, which the skin pane deliberately ignores (it is
+  // acting-profile-only by design, and its own header says so), so routing it through
+  // scope to satisfy this paragraph would import semantics the pane refuses in order
+  // to delete one call. The two cannot disagree in any case: `resolveScope` fills its
+  // map with exactly `accessForProfile(login.id, login.role, id)` (lib/scope.ts), so
+  // this is the same answer by the same function, not a second opinion. The
+  // training-event page makes the same call for its own single-profile gate.
+  //
+  // IT IS OPTIONAL ONLY BECAUSE #4694 IS NOT LANDED YET, and the owner's ruling on that
+  // issue says where this ends: a REQUIRED prop with no default, so a section cannot
+  // mount a door without the value the shell gates on, and the shell is the only gate
+  // by construction. #5302's first slice wires the two mounts it owns (conditions,
+  // allergies); the remaining twenty supply it in #4694's own change, and the last step
+  // there is deleting this paragraph along with the `?`.
+  access?: Access;
   // The heading shown when the panel is OPEN, and the fallback for the collapsed
   // button (for example, "+ Add result").
   label: string;
@@ -94,6 +127,10 @@ export default function AddEntryPanel({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // No door at all for a read-only viewer — not a disabled one. A control that cannot
+  // do anything still says the write exists here and still takes a tap to find out
+  // otherwise (the row tier's rule, lib/multi-view.ts).
+  const gated = access === "read";
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeModal = useCallback(() => {
     setOpen(false);
@@ -103,6 +140,8 @@ export default function AddEntryPanel({
   }, []);
   const gap =
     presentation === "modal" ? "" : dense ? "mb-5" : "section-seam mb-6";
+
+  if (gated) return null;
 
   if (presentation === "modal") {
     return (

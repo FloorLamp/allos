@@ -31,6 +31,7 @@ export default function EncounterField({
   profileId,
   encounters,
   testid,
+  onChange,
 }: {
   // Disambiguates the id/label pair across the add form and the per-row edit forms
   // rendered on the same page (the `record?.id ?? "new"` convention).
@@ -44,6 +45,11 @@ export default function EncounterField({
   // callers outside a provider (and for tests).
   encounters?: readonly LinkedEncounterRef[];
   testid?: string;
+  // Notified with the LABEL of the visit now selected — blank when none is — for a
+  // form that states the link as a fact chip rather than as a standing field (#5302).
+  // The select stays DOM-owned: this is a mirror for the summary, not a controlled
+  // value, so a form that ignores it behaves exactly as before.
+  onChange?: (label: string) => void;
 }) {
   const fmt = useFormatPrefs();
   const fromContext = useEncounterOptions(profileId);
@@ -61,6 +67,15 @@ export default function EncounterField({
         className="input"
         data-testid={testid}
         defaultValue={defaultValue == null ? "" : String(defaultValue)}
+        onChange={
+          onChange &&
+          ((event) => {
+            const picked = rows.find(
+              (e) => String(e.id) === event.target.value
+            );
+            onChange(picked ? formatVisitLabel(picked, fmt) : "");
+          })
+        }
       >
         <option value="">Not linked to a visit</option>
         {rows.map((e) => (

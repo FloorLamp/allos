@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, openMeasurementGroup } from "./helpers";
+import { appContent, hydratedClick, openMeasurementGroup } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -145,5 +145,85 @@ test.describe("View-only access (issue #33)", () => {
     await expect(memberPage).toHaveURL(/\/trends/);
 
     await memberPage.context().close();
+  });
+
+  // THE DOOR ITSELF, on the two record panes that gate on it (#4694, riding #5302's
+  // adoption of the facts primitive). The measurements case above is the SERVER half:
+  // the write is refused whoever asks. This is the affordance half, and it is the one
+  // that costs a person their typing — the add door used to render for everyone, so a
+  // read-only member filled the form in and was redirected to the app root with
+  // nothing saved and nothing said. Asserted per form, because the gate is a value
+  // each section passes to the shared add-panel shell.
+  test("a read-only member is offered no add door on the record panes", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const memberPage = await loginAs(browser, {
+      username: E2E_LOGIN_VIEWONLY_READ,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      for (const [route, door, section] of [
+        [
+          "/records/problems/conditions",
+          "add-condition-panel-toggle",
+          "records-conditions",
+        ],
+        [
+          "/records/problems/allergies",
+          "add-allergy-panel-toggle",
+          "records-allergies",
+        ],
+        // #5302 slice 2's three, all on the one care-overview route. Each is its own
+        // entry rather than one route check, because the gate is a value each SECTION
+        // passes to the shared shell — three call sites, three chances to miss it.
+        [
+          "/records/care/overview",
+          "add-family-history-panel-toggle",
+          "records-family-history",
+        ],
+        [
+          "/records/care/overview",
+          "add-care-plan-panel-toggle",
+          "records-care-plan",
+        ],
+        [
+          "/records/care/overview",
+          "add-health-goal-panel-toggle",
+          "records-health-goals",
+        ],
+        // #5302 slice 3. The skin pane is the one that resolves NO scope — it is
+        // acting-profile-only by design — so its page asks `accessForProfile`
+        // directly and hands the section the value; a third supply route is a third
+        // chance to miss it, which is why it gets its own entry here.
+        [
+          "/records/specialty/skin",
+          "add-skin-lesion-panel-toggle",
+          "records-skin",
+        ],
+        [
+          "/records/history/procedures",
+          "add-procedure-panel-toggle",
+          "records-procedures",
+        ],
+        // The DENTAL door is gated the same way and asserted at the component tier
+        // instead (components/__tests__/record-facts-forms.test.tsx). Its route is
+        // DATA-GATED — `/records/specialty/dental` redirects when the view set has no
+        // dental rows — so the positive control this loop depends on would be
+        // asserting the seed rather than the gate, and seeding a dental row for the
+        // view-only member is a fixture change in a spec every worker shares.
+      ] as const) {
+        await memberPage.goto(route);
+        // THE POSITIVE CONTROL, and the test is worth little without it: the pane
+        // renders for a read-only viewer — reads are allowed — so the missing door
+        // below is the gate and not a page that failed to load.
+        const pane = appContent(memberPage);
+        await expect(pane.getByTestId(section)).toBeVisible();
+        await expect(pane.getByTestId(door)).toHaveCount(0);
+      }
+    } finally {
+      await memberPage.context().close();
+    }
   });
 });

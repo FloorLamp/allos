@@ -293,6 +293,10 @@ function ledgerFor(day: FoodLogDay) {
           bucket: event.mealSlot,
           hhmm: event.eatenAt ?? event.loggedTime,
           clockKind: event.eatenAt ? ("stated" as const) : ("logged" as const),
+          // Every fixture event here was filed on the day it sits on, so the clock
+          // grammar keeps its minute — these cases are about the undo refusal, and the
+          // filing day's own rendering is pinned in day-ledger-clock.test.tsx.
+          filedDay: event.eatenAt ? null : day.date,
         })),
         doses: [],
         pending: [],

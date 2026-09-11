@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
@@ -9,7 +9,7 @@ import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { RpeTracking } from "@/lib/rpe";
 import type { Equipment } from "@/lib/types";
-import ActivityForm, { type ActivityEditData } from "./ActivityForm";
+import type { ActivityEditData } from "./ActivityForm";
 import { useLockBodyScroll } from "./useLockBodyScroll";
 import { useFocusTrap } from "./useFocusTrap";
 import {
@@ -18,6 +18,43 @@ import {
   OVERLAY_SCRIM_TINT_SM,
   useOverlayDrag,
 } from "./overlay";
+
+// ── THE FORM'S CODE IS LOADED, NOT SHIPPED WITH THE SHELL (#5206) ────────────
+//
+// ActivityEditorProvider is mounted by the app shell on EVERY authenticated route,
+// and it imports this file — which used to import ActivityForm, and so the whole of
+// components/activity-form/*, statically. The heaviest client code in the app was
+// therefore downloaded, parsed and hydrated on every dashboard visit whether or not
+// anybody opened the editor.
+//
+// THE CHROME STAYS EAGER AND ONLY THE BODY IS LAZY, which is the split
+// components/QuickEntryProvider.tsx already makes for the same reason. This panel is
+// small and its primitives (components/overlay, the focus trap, the scroll lock) are
+// in the shell anyway, so keeping it here means the workspace still OPENS instantly
+// — with its dialog, its focus and its close paths live — and only the form arrives
+// a beat later. There is no separate loading surface to leave blank.
+//
+// WARMED FROM THE SHELL, because this component only exists while the editor is
+// open: ActivityEditorProvider calls `loadActivityForm` as it mounts, so by the time
+// this panel is on screen the module is already in the browser. That is also what
+// keeps the shell's promise that the editor opens with NO CONNECTION
+// (e2e/offline-reachability.mobile.spec.ts).
+//
+// AND A FAILED FETCH IS HANDLED HERE RATHER THAN THROWN. next/dynamic (React.lazy)
+// rejects into the nearest error boundary, which for a shell-mounted workspace is
+// app/(app)/error.tsx — a missing chunk would replace the WHOLE APP with "Something
+// went wrong", the regression components/ChartErrorBoundary.tsx exists to contain for
+// the chart bundles. Loading the module into state instead keeps the failure inside
+// this panel, where Retry is one tap and the browser coming back online retries on
+// its own.
+export function loadActivityForm(): Promise<typeof import("./ActivityForm")> {
+  return import("./ActivityForm");
+}
+
+type FormState =
+  | { status: "loading" }
+  | { status: "ready"; Form: (typeof import("./ActivityForm"))["default"] }
+  | { status: "failed" };
 
 // A RECORDED EXCEPTION TO THE DIALOG-HOST CONVERGENCE (#3405) — see
 // docs/internals/overlays.md. It is not hostless in the sense that matters: it is
@@ -105,6 +142,47 @@ export default function ActivityOverlay({
   onDeleted?: (id: number) => void;
 }) {
   const [workoutRunning, setWorkoutRunning] = useState(live);
+  // The form's own code (see the note at the top of this file). The shell warmed it
+  // as it mounted, so this normally resolves before the panel's first paint.
+  const [form, setForm] = useState<FormState>({ status: "loading" });
+  const [formAttempt, setFormAttempt] = useState(0);
+  const retryForm = useCallback(() => {
+    setForm({ status: "loading" });
+    setFormAttempt((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    // `mounted`, not `live` — this panel already has a `live` prop and it means a
+    // running workout.
+    let mounted = true;
+    void loadActivityForm().then(
+      (mod) => {
+        if (mounted) setForm({ status: "ready", Form: mod.default });
+      },
+      () => {
+        if (mounted) setForm({ status: "failed" });
+      }
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [formAttempt]);
+  useEffect(() => {
+    if (form.status !== "failed") return;
+    window.addEventListener("online", retryForm);
+    return () => window.removeEventListener("online", retryForm);
+  }, [form.status, retryForm]);
+  // THE DIALOG IS STILL THE LANDING SPOT (#5095), which loading the form on demand
+  // silently took away. A child's effects run before its parent's, so while the form
+  // was rendered in the same commit as this panel the trap's focus always ran LAST
+  // and won; a form that mounts a commit later runs its own autofocus after the trap
+  // and takes the landing spot back — measured on a phone, where the workspace opened
+  // with focus inside the form instead of on the dialog. Put it back, once, when the
+  // body lands. A minimized workspace is skipped: it is not trapping focus at all,
+  // and restoring it focuses the panel through the trap's own effect.
+  useEffect(() => {
+    if (form.status !== "ready" || hidden) return;
+    panelRef.current?.focus();
+  }, [form.status, hidden]);
   const minimizeRunningWorkout = workoutRunning ? onMinimize : undefined;
   const panelRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
@@ -221,40 +299,63 @@ export default function ActivityOverlay({
             </button>
           </div>
         )}
-        <ActivityForm
-          units={units}
-          suggestions={suggestions}
-          history={history}
-          equipment={equipment}
-          recentActivityEquipment={recentActivityEquipment}
-          bodyweightKg={bodyweightKg}
-          strengthTrainingAvailable={strengthTrainingAvailable}
-          editData={editData}
-          prefill={prefill}
-          initialDate={initialDate}
-          initialStartTime={initialStartTime}
-          initialEndTime={initialEndTime}
-          live={live}
-          onLiveFinished={() => {
-            setWorkoutRunning(false);
-            onLiveFinished?.();
-          }}
-          adoptRowId={adoptRowId}
-          adoptPending={adoptPending}
-          onRowOwned={onRowOwned}
-          deloadContext={deloadContext}
-          recoveringContext={recoveringContext}
-          plateauHints={plateauHints}
-          rpeTracking={rpeTracking}
-          // CLOSE AND PARK ARE TWO ROUTES, not one overloaded callback (#5111).
-          // `onClose` used to be minimize whenever a workout was running, so the
-          // form's only reachable commit made a live session vanish into the dock.
-          onClose={onClose}
-          onMinimize={minimizeRunningWorkout}
-          onCloseRequestReady={registerCloseRequest}
-          onDeleted={onDeleted}
-          stickyFooter
-        />
+        {form.status === "ready" ? (
+          <form.Form
+            units={units}
+            suggestions={suggestions}
+            history={history}
+            equipment={equipment}
+            recentActivityEquipment={recentActivityEquipment}
+            bodyweightKg={bodyweightKg}
+            strengthTrainingAvailable={strengthTrainingAvailable}
+            editData={editData}
+            prefill={prefill}
+            initialDate={initialDate}
+            initialStartTime={initialStartTime}
+            initialEndTime={initialEndTime}
+            live={live}
+            onLiveFinished={() => {
+              setWorkoutRunning(false);
+              onLiveFinished?.();
+            }}
+            adoptRowId={adoptRowId}
+            adoptPending={adoptPending}
+            onRowOwned={onRowOwned}
+            deloadContext={deloadContext}
+            recoveringContext={recoveringContext}
+            plateauHints={plateauHints}
+            rpeTracking={rpeTracking}
+            // CLOSE AND PARK ARE TWO ROUTES, not one overloaded callback (#5111).
+            // `onClose` used to be minimize whenever a workout was running, so the
+            // form's only reachable commit made a live session vanish into the dock.
+            onClose={onClose}
+            onMinimize={minimizeRunningWorkout}
+            onCloseRequestReady={registerCloseRequest}
+            onDeleted={onDeleted}
+            stickyFooter
+          />
+        ) : (
+          <div data-testid="activity-editor-loading">
+            <p
+              role={form.status === "failed" ? "alert" : "status"}
+              className="text-sm text-slate-500 dark:text-slate-400"
+            >
+              {form.status === "failed"
+                ? "Couldn't load the activity form. It will retry when you're back online."
+                : "Loading…"}
+            </p>
+            {form.status === "failed" && (
+              <button
+                type="button"
+                data-testid="activity-editor-retry"
+                onClick={retryForm}
+                className="btn-ghost mt-2"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>,
     document.body

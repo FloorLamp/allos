@@ -640,13 +640,15 @@ test("a protocol deep link pins its group, and the protein control still sits by
     // outranks BY RANK rather than by position in a list it never joined.
     const control = quickLog.getByTestId("protein-quickadd");
     await expect(control).toBeVisible();
-    const controlBox = await control.boundingBox();
-    expect(controlBox).not.toBeNull();
-    const rowTops = (await rows.all()).map(
-      async (row) => (await row.boundingBox())!.y
-    );
-    for (const top of await Promise.all(rowTops)) {
-      expect(top).toBeGreaterThan(controlBox!.y);
+    // The control AND every row it outranks, in ONE settled group: the claim is
+    // relative, and `Promise.all` over per-row `boundingBox()` reads is the exact
+    // shape that looks atomic and is not — each is its own round-trip.
+    const [controlBox, ...rowBoxes] = await settledBoxes([
+      control,
+      ...(await rows.all()),
+    ]);
+    for (const row of rowBoxes) {
+      expect(row.y).toBeGreaterThan(controlBox.y);
     }
   } finally {
     await page.context().close();

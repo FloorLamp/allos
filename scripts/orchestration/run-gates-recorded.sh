@@ -7,7 +7,9 @@
 #        harness detached the first call: wait on the recorded PID, then report
 #
 # Run from the worktree root (agent-gates.sh reads the diff there). Files land
-# under the state dir host.mjs resolves — the one the brief's worktree lives in:
+# under the state dir host.mjs resolves — the one the brief's worktree lives in.
+# A branch name containing `/` puts a directory inside these three paths, and
+# `start` creates it (#5761):
 #   gates-<branch>.log       every line the gates printed
 #   gates-<branch>.log.pid   the run's PID, captured from $! — the one fact no
 #                            other process's command line can impersonate
@@ -23,7 +25,8 @@
 # `pgrep -f agent-gates.sh` wait matches its siblings (#5366).
 #
 # Exit code: the gates' own (from the `.exit` file); 1 if the run died without
-# writing one; 2 for a usage or state-dir failure before anything ran.
+# writing one; 2 for a usage or state-dir failure before anything ran, and for a
+# report with no log at all — nothing ran, which is not a killed run.
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ] || [ -z "${1:-}" ]; then # the header IS the usage (usage.mjs is the JS twin)
   sed -n '2,${/^#/!q;s/^#[[:space:]]\{0,1\}//p;}' "$0"
@@ -53,6 +56,14 @@ report() {
   local code
   if code=$(cat "$L.exit" 2>/dev/null); then
     echo "GATES EXIT=$code  (log: $L)"
+  elif [ ! -f "$L" ]; then
+    # NOTHING RAN is not a killed run (#5761). The redirection creates the log
+    # as its first act, so a missing log means agent-gates.sh was never
+    # invoked. Saying KILLED there names a cause that did not happen — a
+    # session limit, an OOM, a lost container — and the reader re-runs into
+    # the same wall instead of looking at the path.
+    echo "=== GATES: NOTHING RAN — no log at $L, so the run never started; is $(dirname "$L") writable? ===" >&2
+    exit 2
   else
     echo "GATES EXIT=KILLED — no exit recorded in $L.exit"
     code=1
@@ -63,6 +74,17 @@ report() {
 
 case "$MODE" in
   start)
+    # `$L` interpolates the branch, so every `codex/…` name puts a DIRECTORY
+    # component in the path (#5761). Nothing else creates it, and without it
+    # both the `> "$L"` redirection and the `.pid` write fail before
+    # agent-gates.sh is invoked — no gate runs at all. Creating the parent
+    # keeps the path an exact image of the branch name; flattening the name
+    # instead would map `codex/foo` and `codex-foo` onto one log, one `.pid`
+    # and one `.exit`, so two lanes could read each other's verdict.
+    if ! mkdir -p "$(dirname "$L")"; then
+      echo "=== GATES: CANNOT CREATE $(dirname "$L") for the log of branch $BRANCH; nothing ran ===" >&2
+      exit 2
+    fi
     rm -f "$L.exit"
     { bash "$HELPERS/agent-gates.sh"; echo $? > "$L.exit"; } > "$L" 2>&1 &
     echo $! > "$L.pid"

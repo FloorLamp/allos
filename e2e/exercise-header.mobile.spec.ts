@@ -42,9 +42,8 @@ async function pickActivity(
 
 async function box(locator: Locator) {
   await expect(locator).toBeVisible();
-  const b = await locator.boundingBox();
-  expect(b).not.toBeNull();
-  return b!;
+  const [b] = await settledBoxes([locator]);
+  return b;
 }
 
 // Delete the auto-saved draft (the completed set makes the activity savable, so

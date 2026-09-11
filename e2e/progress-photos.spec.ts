@@ -409,7 +409,8 @@ test("crop zoom keeps native range behavior and fixed phone geometry", async ({
   await page.keyboard.press("ArrowRight");
   await expect(zoom).toHaveValue("1.01");
   await page.setViewportSize({ width: 1280, height: 844 });
-  expect((await zoom.boundingBox())!.height).toBeLessThan(44);
+  const [zoomBox] = await settledBoxes([zoom]);
+  expect(zoomBox.height).toBeLessThan(44);
   await page.getByRole("button", { name: "Cancel" }).click();
 });
 

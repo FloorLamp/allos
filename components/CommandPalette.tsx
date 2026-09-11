@@ -45,7 +45,7 @@ import {
   askRecordsAction,
   type AskRecordsResult,
 } from "@/app/(app)/search-actions";
-import { DOMAIN_LABEL, type RecordCitation } from "@/lib/record-qa";
+import { citationLabel, type RecordCitation } from "@/lib/record-qa";
 import NotesText from "@/components/NotesText";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import { stampWebOrigin, type WebLoggedVia } from "@/lib/logged-via";
@@ -702,7 +702,7 @@ export default function CommandPalette({
                                 <span className="font-medium">{c.title}</span>
                                 <span className="text-slate-500 dark:text-slate-400">
                                   {" · "}
-                                  {DOMAIN_LABEL[c.domain]}
+                                  {citationLabel(c)}
                                   {c.date ? ` · ${c.date}` : ""}
                                 </span>
                               </span>

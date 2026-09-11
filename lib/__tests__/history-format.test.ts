@@ -7,6 +7,7 @@ import {
   historyClock,
   historyClockFields,
   parseHistoryShow,
+  historyRowPick,
   resolveHistoryDoseClass,
   resolveHistoryFamily,
   resolveHistoryItem,
@@ -350,6 +351,75 @@ function permutations<T>(items: readonly T[]): T[][] {
   }
   return out;
 }
+
+describe("historyRowPick — which record rows a selection may act on (#5618)", () => {
+  // ITS WHOLE JOB IS TO MIRROR `selectableOn` IN lib/day-ledger-edit.ts. That mirror is
+  // load-bearing twice over: the server counts with it to decide whether Select appears
+  // at all, and the client draws boxes with it, so a disagreement between the two
+  // surfaces is a disagreement inside one function. Pinned here because until this slice
+  // the predicate had no unit coverage and its medication arm was wrong.
+  const pickRow = (edit: HistoryRow["edit"], profileId = 1): HistoryRow => ({
+    ...row("dose:1", "08:00"),
+    profileId,
+    edit,
+  });
+  const doseEdit = (itemKind: "supplement" | "medication", logId: number) =>
+    ({
+      kind: "dose",
+      logId,
+      itemId: 7,
+      doseId: 9,
+      statedAt: null,
+      amount: null,
+      itemKind,
+    }) as const;
+
+  it("picks a supplement dose and a medication dose alike", () => {
+    // THE MEDICATION ARM IS THE SLICE. Both cores behind the three verbs
+    // (`updateHistoricalDose`, `deleteAdministrationLog`) have been kind-neutral since
+    // #1933, and the record's dose reader is `status = 'taken'` throughout, so every
+    // dose row the record renders is one the batch can reach.
+    expect(historyRowPick(pickRow(doseEdit("supplement", 21)), 1)).toEqual({
+      kind: "doses",
+      id: 21,
+    });
+    expect(historyRowPick(pickRow(doseEdit("medication", 22)), 1)).toEqual({
+      kind: "doses",
+      id: 22,
+    });
+  });
+
+  it("picks a food serving by its event id", () => {
+    expect(
+      historyRowPick(
+        pickRow({
+          kind: "food",
+          eventId: 31,
+          groupKey: "berries",
+          mealSlot: "Morning",
+          clock: null,
+          clockKind: "logged",
+          slotBoundaries: { midday: 11 * 60, evening: 17 * 60 },
+          substanceCorrectable: false,
+          notes: null,
+        }),
+        1
+      )
+    ).toEqual({ kind: "servings", id: 31 });
+  });
+
+  it("refuses another subject's row, because one batch names one profile", () => {
+    expect(
+      historyRowPick(pickRow(doseEdit("medication", 22), 2), 1)
+    ).toBeNull();
+  });
+
+  it("refuses a row with no editor at all", () => {
+    // Every other kind on the record — a symptom day, a movement, a reading — has no
+    // core behind these three verbs, and a row the caller may not write carries no edit.
+    expect(historyRowPick(pickRow(null), 1)).toBeNull();
+  });
+});
 
 describe("within-day order", () => {
   it("is instant descending, with date-only rows sunk below timed ones", () => {

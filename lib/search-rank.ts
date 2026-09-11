@@ -6,13 +6,14 @@
 // DB/React so it can be unit-tested (lib/__tests__/search-rank.test.ts).
 
 import type { AppRoute } from "./hrefs";
+import type { HistoryKind } from "./history-format";
 
 export type SearchDomain =
   // THE RECORD'S OWN ROWS (#5006). The record's row-only Logs kinds — doses, food
   // servings, practice sessions, symptoms, check-ins, body readings, sleep nights —
   // have no page, so a hit lands on the day view scrolled to the row it names
-  // (lib/queries/search-logged.ts builds them). ONE domain for all of them: the kind
-  // lives in the subtitle (`<kind> · <date>`), so `practice` stays the wellness
+  // (lib/queries/search-logged.ts builds them). ONE domain for all of them, with the
+  // kind carried as the hit's own `loggedKind` field, so `practice` stays the wellness
   // practice you track and a session of it is a `logged` hit.
   | "logged"
   | "clinical-result"
@@ -39,6 +40,43 @@ export type SearchDomain =
   | "care-goal"
   | "goal"
   | "page";
+
+// THE RECORD ROWS' SEVEN KINDS (#5096). `logged` stays ONE domain — one group, one cap
+// of five over the union, ranked date-first (owner ruling, 2026-09-04) — so a hit's
+// kind is a FIELD ON THE HIT and never a domain of its own. Carrying it as data is what
+// lets the Q&A citation badge name the KIND rather than the domain's one word, and a
+// spec assert "this hit is a practice session" without parsing rendered text.
+//
+// `as const satisfies readonly HistoryKind[]` is the whole guard on the list: a kind
+// that is not one of the record's own is a type error here rather than a hit whose
+// `?kind=` opens on nothing.
+export const SEARCH_LOGGED_KINDS = [
+  "dose",
+  "food",
+  "practice",
+  "symptom",
+  "mood",
+  "body",
+  "sleep",
+] as const satisfies readonly HistoryKind[];
+
+export type SearchLoggedKind = (typeof SEARCH_LOGGED_KINDS)[number];
+
+// THE ONE TABLE BOTH READERS READ. The record's SINGULAR word for ONE row of a kind —
+// not the plural chip label `HISTORY_KIND_LABELS` gives a SET of them ("Doses", "Food"),
+// which answers a different question. The palette subtitle leads with it (`<noun> ·
+// <date>`, lib/queries/search-logged.ts) and the Q&A citation badge IS it
+// (`citationLabel`, lib/record-qa.ts), so the two cannot name one hit differently:
+// there is a single place to change, not two that happen to agree.
+export const SEARCH_LOGGED_KIND_LABELS: Record<SearchLoggedKind, string> = {
+  dose: "Dose",
+  food: "Serving",
+  practice: "Practice",
+  symptom: "Symptom",
+  mood: "Check-in",
+  body: "Reading",
+  sleep: "Sleep",
+};
 
 // A per-hit contextual action (#662): act on a FOUND entity without first
 // navigating to its page — log a dose of this medication, refill it, complete
@@ -79,6 +117,12 @@ export interface SearchHit {
   // Per-hit contextual actions (#662), when the hit's kind offers any. Absent for
   // navigation-only hits.
   actions?: HitAction[];
+  // WHICH logged kind this row is (#5096) — set by, and only by, the `logged` domain's
+  // builder, absent on every other domain. The subtitle's leading noun and the Q&A
+  // citation badge both resolve from it through SEARCH_LOGGED_KIND_LABELS, so neither
+  // can drift from the other, and a reader that wants the kind no longer has to parse
+  // the rendered subtitle back apart.
+  loggedKind?: SearchLoggedKind;
 }
 
 export interface SearchGroup {

@@ -914,6 +914,10 @@ test.describe("Sleep page (#1066)", () => {
       // mousemove over the chart surface, and a hover that lands where the pointer
       // already sat emits none — the CI-load failure mode where the wrapper stays
       // hidden (empty innerText) for the whole budget (#1556 family).
+      // raw-box-ok: a HOVER COORDINATE re-read on every `toPass` attempt, inside
+      // the retry loop that already supplies the settling — and the `if` is the
+      // point: a bar that is not there this attempt must fall through to the next
+      // one rather than throw out of the loop.
       const barBox = await stageBar.boundingBox();
       if (barBox) {
         await page.mouse.move(
@@ -943,6 +947,8 @@ test.describe("Sleep page (#1066)", () => {
       // Same fresh-mousemove nudge as the stage bar above — this loop is where the
       // CI failures actually landed (empty wrapper for the full budget, twice on
       // 2026-07-26), and the dot is the smaller hover target.
+      // raw-box-ok: same shape as the stage bar above — a hover coordinate re-read
+      // per `toPass` attempt, guarded so a missing dot retries instead of throwing.
       const dotBox = await sriDot.boundingBox();
       if (dotBox) {
         await page.mouse.move(
@@ -1132,9 +1138,8 @@ test.describe("Sleep page (#1066)", () => {
   }) => {
     await page.setViewportSize({ width: 1600, height: 1000 });
     await page.goto("/sleep");
-    const box = await page.getByTestId("sleep-page").boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.width).toBeLessThanOrEqual(1152);
+    const [box] = await settledBoxes([page.getByTestId("sleep-page")]);
+    expect(box.width).toBeLessThanOrEqual(1152);
   });
 });
 

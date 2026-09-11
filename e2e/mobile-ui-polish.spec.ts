@@ -80,10 +80,9 @@ test.describe("family login-row actions stay in the viewport (#641)", () => {
 
     // The button's right edge must not run off the 390px viewport (the clip bug:
     // the action group used to sit ~90–170px past the edge, unreachable).
-    const box = await del.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width + 1);
-    expect(box!.x).toBeGreaterThanOrEqual(0);
+    const [box] = await settledBoxes([del]);
+    expect(box.x + box.width).toBeLessThanOrEqual(PHONE.width + 1);
+    expect(box.x).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -147,8 +146,8 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     expect(detailsBox.y).toBeGreaterThanOrEqual(
       actionsBox.y + actionsBox.height
     );
-    expect(detailsBox!.x + detailsBox!.width).toBeGreaterThanOrEqual(
-      actionsBox!.x + actionsBox!.width
+    expect(detailsBox.x + detailsBox.width).toBeGreaterThanOrEqual(
+      actionsBox.x + actionsBox.width
     );
   });
 });
@@ -210,7 +209,7 @@ test.describe("the record's month calendar clears the floor on a phone (#3377/#3
       await page.goto("/");
       const drawer = await openMobileDrawer(page);
       const [box] = await settledBoxes([drawer]);
-      expect(box!.width, `the drawer at a ${width}px viewport`).toBeCloseTo(
+      expect(box.width, `the drawer at a ${width}px viewport`).toBeCloseTo(
         Math.min(width, 320),
         0
       );
@@ -516,9 +515,8 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
 
     // The name box right edge stays within the viewport — it wraps (break-words)
     // rather than running off the clipped-right edge.
-    const box = await name.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width + 1);
+    const [box] = await settledBoxes([name]);
+    expect(box.x + box.width).toBeLessThanOrEqual(PHONE.width + 1);
 
     // Clean up so the fixture is left as found.
     const row = page.locator("div.card").filter({ hasText: NAME });

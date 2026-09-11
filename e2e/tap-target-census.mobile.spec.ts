@@ -46,12 +46,11 @@ async function reachOf(
 
 async function expectEffectiveFloor(name: string, locator: Locator) {
   await expect(locator, name).toBeVisible();
-  const box = await locator.boundingBox();
-  expect(box, name).not.toBeNull();
+  const [box] = await settledBoxes([locator]);
   const reach = await reachOf(locator);
   expect(
-    box!.height + 2 * reach.block + TAP_FLOOR_FLOAT_EPSILON_PX,
-    `${name} effective height (${box!.height} rendered + 2x${reach.block} reach)`
+    box.height + 2 * reach.block + TAP_FLOOR_FLOAT_EPSILON_PX,
+    `${name} effective height (${box.height} rendered + 2x${reach.block} reach)`
   ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
   // THE INLINE AXIS TOO (#4505, C's finding on #5399). This read height alone, so
   // the cadence weekday tiles — marked as a tiled track, 42px wide with no inline
@@ -74,9 +73,8 @@ async function expectEffectiveFloor(name: string, locator: Locator) {
   });
   expect(
     flush ||
-      box!.width + 2 * reach.inline + TAP_FLOOR_FLOAT_EPSILON_PX >=
-        TAP_FLOOR_PX,
-    `${name} effective inline width (${box!.width} rendered + 2x${reach.inline} reach) is under the floor and it is not tiled against a sibling`
+      box.width + 2 * reach.inline + TAP_FLOOR_FLOAT_EPSILON_PX >= TAP_FLOOR_PX,
+    `${name} effective inline width (${box.width} rendered + 2x${reach.inline} reach) is under the floor and it is not tiled against a sibling`
   ).toBe(true);
 }
 
@@ -86,10 +84,9 @@ async function expectOverlayFloor(
   exactRenderedPx: number
 ) {
   await expect(locator, name).toBeVisible();
-  const box = await locator.boundingBox();
-  expect(box, name).not.toBeNull();
+  const [box] = await settledBoxes([locator]);
   expect(
-    Math.abs(box!.height - exactRenderedPx),
+    Math.abs(box.height - exactRenderedPx),
     `${name} rendered height delta from ${exactRenderedPx}px`
   ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
   await expectEffectiveFloor(name, locator);
@@ -403,9 +400,8 @@ const DESKTOP = { width: 1280, height: 900 };
 
 async function boxOf(name: string, locator: Locator) {
   await expect(locator, name).toBeVisible();
-  const box = await locator.boundingBox();
-  expect(box, name).not.toBeNull();
-  return box!;
+  const [box] = await settledBoxes([locator]);
+  return box;
 }
 
 /**
@@ -416,11 +412,9 @@ async function boxOf(name: string, locator: Locator) {
  * hit-tested, because those are the two a covering element takes first.
  */
 async function ownsItsOwnEdges(page: Page, locator: Locator) {
-  const box = await locator.boundingBox();
-  expect(
-    box,
-    "the field must be laid out before it is hit-tested"
-  ).not.toBeNull();
+  // `settledBoxes` IS the layout guard the hand-rolled assertion here used to be:
+  // it throws, naming the locator, when the field never gets a box.
+  const [box] = await settledBoxes([locator]);
   const handle = await locator.elementHandle();
   try {
     return await page.evaluate(
@@ -430,9 +424,9 @@ async function ownsItsOwnEdges(page: Page, locator: Locator) {
       },
       [
         handle,
-        box!.x + box!.width / 2,
-        box!.y + 2,
-        box!.y + box!.height - 2,
+        box.x + box.width / 2,
+        box.y + 2,
+        box.y + box.height - 2,
       ] as const
     );
   } finally {
