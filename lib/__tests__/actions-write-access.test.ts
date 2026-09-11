@@ -48,7 +48,8 @@ const MODULE_ALLOW = [
 // they gate the ROW's subject through gateItemProfile rather than the acting profile,
 // so without `gate` the only thing asserted about them is that they do NOT call
 // requireWriteAccess — which a body that gates nothing at all also satisfies.
-const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
+type AllowEntry = { file: string; fn: string; why: string; gate?: string };
+const ALLOW: AllowEntry[] = [
   // --- Read-only actions (return data, mutate nothing) ---
   {
     file: "app/(app)/data/actions.ts",
@@ -1180,14 +1181,17 @@ const PROFILE_REPOINT_ACTIONS: readonly {
 
 // Extract every exported async function as { name, body }. Balanced-brace scan
 // from the function's opening `{` to its matching `}`.
-function exportedAsyncFunctions(src: string): { name: string; body: string }[] {
-  const out: { name: string; body: string }[] = [];
+function exportedAsyncFunctions(
+  src: string
+): { name: string; params: string; body: string }[] {
+  const out: { name: string; params: string; body: string }[] = [];
   const re = /export\s+async\s+function\s+([A-Za-z0-9_]+)\s*\(/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
     const name = m[1];
     // Walk to the end of the parameter list, then to the body's opening brace.
     let i = m.index + m[0].length;
+    const paramsStart = i;
     let depth = 1; // we're just past the '('
     while (i < src.length && depth > 0) {
       const c = src[i];
@@ -1195,6 +1199,7 @@ function exportedAsyncFunctions(src: string): { name: string; body: string }[] {
       else if (c === ")") depth--;
       i++;
     }
+    const params = src.slice(paramsStart, i - 1);
     // Skip a return-type annotation up to the body's opening '{', ignoring any
     // '{' nested inside a <...> generic — e.g. `: Promise<{ ok: true }>`, whose
     // object brace must NOT be mistaken for the function body.
@@ -1221,13 +1226,123 @@ function exportedAsyncFunctions(src: string): { name: string; body: string }[] {
       body += c;
       j++;
     }
-    out.push({ name, body });
+    out.push({ name, params, body });
     re.lastIndex = j + 1;
   }
   return out;
 }
 
 const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
+
+// ── The brand is the other gate, and tsc enforces it (#5348) ──────────────────
+//
+// A write core whose profile parameter is lib/auth's `WriteAuthorizedProfileId`
+// instead of `profileId: number` cannot be reached with an id no gate returned: the
+// brand symbol is not exported, `requireWriteAccess` / `requireProfileWriteAccess` /
+// `requireAdmin` are its only minters, and eslint.config.mjs's WRITE_BRAND_CAST
+// refuses production code the cast. An action that calls such a core therefore holds
+// a value only a gate could produce — a compiler-checked statement of exactly what
+// GATE_RE looks for in text, on every path rather than somewhere in the body. It
+// needs no allowlist entry to record it, which is how `ALLOW` shrinks as cores are
+// converted instead of being edited by hand.
+//
+// The registry is DERIVED from the tree, not declared here: nothing to keep in step.
+// It also cannot fall open — an empty registry sends every action it used to skip
+// back to needing an entry, so the removed entries are reported as missing rather
+// than silently unenforced.
+//
+// WHAT THIS DOES NOT PROVE is that the gated id is the one the write uses; the
+// literal GATE_RE accepts does not prove that either (a body that gates the actor and
+// writes a posted id satisfies both), so the claim is unchanged. That question is
+// #5348's acting-profile-versus-authorized-profile fork, decided in lib/auth.ts.
+const WRITE_BRAND = "WriteAuthorizedProfileId";
+
+function productionSources(root: string): string[] {
+  const all: string[] = [];
+  walk(path.join(REPO, root), all);
+  return all.filter(
+    (f) =>
+      f.endsWith(".ts") && !f.endsWith(".test.ts") && !/__\w*tests__/.test(f)
+  );
+}
+
+// Every exported function in the product tree that takes the brand, keyed by the
+// module specifier an action imports it through — the same `RegisteredImports` shape
+// the route and outcome scans use, so `registeredImportLocals` resolves aliases here
+// too.
+function brandedWriteCores(): RegisteredImports {
+  const out: Record<string, string[]> = {};
+  for (const root of ["lib", "app"]) {
+    for (const file of productionSources(root)) {
+      const src = fs.readFileSync(file, "utf8");
+      if (!src.includes(WRITE_BRAND)) continue;
+      const sf = ts.createSourceFile(
+        file,
+        src,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TS
+      );
+      const branded = (p: ts.ParameterDeclaration) =>
+        !!p.type && p.type.getText().includes(WRITE_BRAND);
+      const names: string[] = [];
+      for (const statement of sf.statements) {
+        if (
+          !ts.isFunctionDeclaration(statement) &&
+          !ts.isVariableStatement(statement)
+        ) {
+          continue;
+        }
+        const exported = (ts.getModifiers(statement) ?? []).some(
+          (m) => m.kind === ts.SyntaxKind.ExportKeyword
+        );
+        if (!exported) continue;
+        if (
+          ts.isFunctionDeclaration(statement) &&
+          statement.name &&
+          statement.parameters.some(branded)
+        ) {
+          names.push(statement.name.text);
+        }
+        if (ts.isVariableStatement(statement)) {
+          for (const d of statement.declarationList.declarations) {
+            const fn = d.initializer;
+            if (!fn || !ts.isIdentifier(d.name)) continue;
+            if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn))
+              continue;
+            if (fn.parameters.some(branded)) names.push(d.name.text);
+          }
+        }
+      }
+      if (!names.length) continue;
+      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      out[`@/${rel.replace(/\.ts$/, "")}`] = names;
+    }
+  }
+  return out;
+}
+
+const BRANDED_CORES = brandedWriteCores();
+
+// The exported actions in `src` the type system gates.
+function typeGatedActions(src: string, cores: RegisteredImports): Set<string> {
+  const out = new Set<string>();
+  const locals = registeredImportLocals(src, cores);
+  if (locals.size === 0) return out;
+  for (const { name, params, body } of exportedAsyncFunctions(src)) {
+    // An action that names the brand in its OWN signature has not been handed one by
+    // a gate: a Server Action's arguments come from the client. It stays on the
+    // ordinary requirement.
+    if (params.includes(WRITE_BRAND)) continue;
+    for (const local of locals.keys()) {
+      if (new RegExp(`\\b${local}\\s*\\(`).test(body)) {
+        out.add(name);
+        break;
+      }
+    }
+  }
+  return out;
+}
 
 // ── Every posted-subject branch gates (#5348) ─────────────────────────────────
 //
@@ -1542,6 +1657,90 @@ function profileRepointScan(
   return { violations, matched };
 }
 
+// One pass over an action surface: the gate violations it finds, and which
+// exemptions it needed. Takes its inventory, allowlist and branded-core registry as
+// arguments so the controls below can run the real decision over a source the tree
+// does not contain — a scan that skipped everything and a scan that skipped nothing
+// both pass on the tree alone.
+function gateScan(
+  sources: Iterable<readonly [string, string]>,
+  allow: readonly AllowEntry[],
+  cores: RegisteredImports
+): {
+  scanned: number;
+  violations: string[];
+  stale: string[];
+  staleModules: string[];
+} {
+  const violations: string[] = [];
+  const matchedAllow = new Set<string>();
+  const matchedModules = new Set<string>();
+  let scanned = 0;
+
+  for (const [rel, src] of sources) {
+    const moduleAllow = MODULE_ALLOW.find((entry) => entry.file === rel);
+    // A gate somewhere in the body is not a gate on every branch (#5348).
+    violations.push(...actionBranchScan(rel, src));
+    const typeGated = typeGatedActions(src, cores);
+    for (const { name, body } of exportedAsyncFunctions(src)) {
+      scanned++;
+      if (GATE_RE.test(body)) continue; // write-gated (or admin-gated)
+      if (typeGated.has(name)) continue; // gated by the brand, and tsc says so (#5348)
+      const allowEntry = allow.find((a) => a.file === rel && a.fn === name);
+      if (allowEntry) {
+        matchedAllow.add(`${allowEntry.file}#${allowEntry.fn}`);
+        // An entry that DECLARES a gate must actually call it — the allowlist
+        // exemption alone is not enough. The message names the declared gate
+        // rather than a reason, because the fourteen entries that carry one do
+        // not share one: #278's are demo-mode guards on login auth state, and
+        // the twelve gateItemProfile ones are cross-profile subject gates. It
+        // said "the demo-mode guard regressed" for all of them until #4067,
+        // which sends a reader hitting it on a record correction looking for a
+        // demo regression that is not there.
+        if (
+          allowEntry.gate &&
+          !new RegExp(`\\b${allowEntry.gate}\\s*\\(`).test(body)
+        ) {
+          violations.push(
+            `${rel}#${name}: allowlisted with gate "${allowEntry.gate}" but the body never calls it — the declared ${allowEntry.gate}() gate regressed`
+          );
+        }
+        continue;
+      }
+      if (moduleAllow) {
+        matchedModules.add(moduleAllow.file);
+        const gated = moduleAllow.gates.some((gate) =>
+          new RegExp(`\\b${gate}\\s*\\(`).test(body)
+        );
+        if (!gated) {
+          violations.push(
+            `${rel}#${name}: module-scoped exemption requires ${moduleAllow.gates.join(" or ")}`
+          );
+        }
+        continue;
+      }
+      violations.push(
+        `${rel}#${name}: mutating action missing requireWriteAccess() — add the guard, or allowlist it with a justification if it is a read/login-scoped/admin/delegating action`
+      );
+    }
+  }
+
+  // No stale allowlist entries: every exemption must correspond to a real exported
+  // action still present and still needing it — a renamed or removed action, and now
+  // one the brand has made unnecessary, must drop its entry so the list cannot rot
+  // into a silent hole.
+  return {
+    scanned,
+    violations,
+    stale: allow
+      .filter((a) => !matchedAllow.has(`${a.file}#${a.fn}`))
+      .map((a) => `${a.file}#${a.fn}`),
+    staleModules: MODULE_ALLOW.filter(
+      (entry) => !matchedModules.has(entry.file)
+    ).map((entry) => entry.file),
+  };
+}
+
 describe("write-access enforcement: every mutating Server Action is gated", () => {
   const sources = [...actionSources];
 
@@ -1551,75 +1750,109 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
   });
 
   it("every exported action calls requireWriteAccess()/requireAdmin() or is allowlisted", () => {
-    const violations: string[] = [];
-    const matchedAllow = new Set<string>();
-    const matchedModules = new Set<string>();
-    let scanned = 0;
+    const { scanned, violations, stale, staleModules } = gateScan(
+      sources.map(
+        ([file, raw]) =>
+          [
+            path.relative(REPO, file).split(path.sep).join("/"),
+            stripComments(raw),
+          ] as const
+      ),
+      ALLOW,
+      BRANDED_CORES
+    );
 
-    for (const [file, rawSrc] of sources) {
-      const rel = path.relative(REPO, file).split(path.sep).join("/");
-      const src = stripComments(rawSrc);
-      const moduleAllow = MODULE_ALLOW.find((entry) => entry.file === rel);
-      // A gate somewhere in the body is not a gate on every branch (#5348).
-      violations.push(...actionBranchScan(rel, src));
-      for (const { name, body } of exportedAsyncFunctions(src)) {
-        scanned++;
-        if (GATE_RE.test(body)) continue; // write-gated (or admin-gated)
-        const allow = ALLOW.find((a) => a.file === rel && a.fn === name);
-        if (allow) {
-          matchedAllow.add(`${allow.file}#${allow.fn}`);
-          // An entry that DECLARES a gate must actually call it — the allowlist
-          // exemption alone is not enough. The message names the declared gate
-          // rather than a reason, because the fourteen entries that carry one do
-          // not share one: #278's are demo-mode guards on login auth state, and
-          // the twelve gateItemProfile ones are cross-profile subject gates. It
-          // said "the demo-mode guard regressed" for all of them until #4067,
-          // which sends a reader hitting it on a record correction looking for a
-          // demo regression that is not there.
-          if (allow.gate && !new RegExp(`\\b${allow.gate}\\s*\\(`).test(body)) {
-            violations.push(
-              `${rel}#${name}: allowlisted with gate "${allow.gate}" but the body never calls it — the declared ${allow.gate}() gate regressed`
-            );
-          }
-          continue;
-        }
-        if (moduleAllow) {
-          matchedModules.add(moduleAllow.file);
-          const gated = moduleAllow.gates.some((gate) =>
-            new RegExp(`\\b${gate}\\s*\\(`).test(body)
-          );
-          if (!gated) {
-            violations.push(
-              `${rel}#${name}: module-scoped exemption requires ${moduleAllow.gates.join(" or ")}`
-            );
-          }
-          continue;
-        }
-        violations.push(
-          `${rel}#${name}: mutating action missing requireWriteAccess() — add the guard, or allowlist it with a justification if it is a read/login-scoped/admin/delegating action`
-        );
-      }
-    }
-
-    // The scan must actually see the whole action surface.
+    // The scan must actually see the whole action surface, and the branded cores it
+    // now reads exemptions from must actually have been discovered.
     expect(scanned).toBeGreaterThan(70);
+    expect(
+      Object.keys(BRANDED_CORES),
+      "no branded write core found — the #5348 registry stopped discovering"
+    ).not.toEqual([]);
     expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
-
-    // No stale allowlist entries: every exemption must correspond to a real
-    // exported action still present (a renamed/removed action must drop its entry
-    // so the list can't rot into a silent hole).
-    const stale = ALLOW.filter(
-      (a) => !matchedAllow.has(`${a.file}#${a.fn}`)
-    ).map((a) => `${a.file}#${a.fn}`);
     expect(stale, `stale allowlist entries: ${stale.join(", ")}`).toEqual([]);
-
-    const staleModules = MODULE_ALLOW.filter(
-      (entry) => !matchedModules.has(entry.file)
-    ).map((entry) => entry.file);
     expect(
       staleModules,
       `stale module allowlist entries: ${staleModules.join(", ")}`
     ).toEqual([]);
+  });
+
+  // ── The brand in place of an allowlist entry (#5348) ────────────────────────
+  //
+  // Run through the SAME gateScan the tree runs, over a CONSTRUCTED action: no action
+  // in the tree is type-gated yet (the only branded core, @/lib/cycle-write, is called
+  // by actions that already gate with the literal), so there is no real fixture to
+  // use. The core it calls is real and really branded, so the registry's discovery,
+  // its module resolution and its alias handling are all exercised; only the caller is
+  // invented. It is written as a conversion leaves one — the id comes from the shared
+  // subject gate, so the body carries no gate literal at all.
+  const typeGatedAction = (
+    core: string,
+    module: string,
+    params = "formData: FormData"
+  ) => `
+import { ${core} } from "${module}";
+import { gateItemProfile } from "@/app/(app)/gate-item";
+export async function savePeriodAction(${params}) {
+  const profileId = await gateItemProfile(formData);
+  return ${core}(profileId, String(formData.get("day")));
+}`;
+  const CYCLES = "app/(app)/medical/cycles/actions.ts";
+  const MISSING_GATE = "mutating action missing requireWriteAccess()";
+
+  it.each([
+    [
+      "a branded core, discovered from the tree",
+      typeGatedAction("startPeriodCore", "@/lib/cycle-write"),
+      BRANDED_CORES,
+      null,
+    ],
+    // The positive controls. Without them "the scan skips a branded action" also
+    // passes on a scan that skips every action.
+    [
+      "the same action before its core was branded",
+      typeGatedAction("startPeriodCore", "@/lib/cycle-write"),
+      {},
+      MISSING_GATE,
+    ],
+    [
+      "a sibling export of the branded module, still unbranded",
+      typeGatedAction("startPeriodCore", "@/lib/cycle-write"),
+      { "@/lib/cycle-write": ["endPeriodCore"] },
+      MISSING_GATE,
+    ],
+    [
+      "an action that declares the brand in its own signature",
+      typeGatedAction(
+        "startPeriodCore",
+        "@/lib/cycle-write",
+        "formData: FormData, profileId: WriteAuthorizedProfileId"
+      ),
+      BRANDED_CORES,
+      MISSING_GATE,
+    ],
+  ])("type gate: %s", (_shape, src, cores, flagged) => {
+    const { violations } = gateScan([[CYCLES, src]], [], cores);
+    expect(violations).toEqual(
+      flagged === null ? [] : [expect.stringContaining(flagged)]
+    );
+  });
+
+  // …and the entry it replaces cannot be left behind: the file's stale-entry check
+  // already reaps an exemption whose action was renamed or started gating, and a
+  // type-gated action takes the same early exit, so it reaps that one too.
+  it("reports the allowlist entry a branded core has made unnecessary", () => {
+    const entry: AllowEntry = {
+      file: CYCLES,
+      fn: "savePeriodAction",
+      why: "constructed: the entry a conversion leaves behind",
+    };
+    const src = typeGatedAction("startPeriodCore", "@/lib/cycle-write");
+    expect(gateScan([[CYCLES, src]], [entry], BRANDED_CORES).stale).toEqual([
+      `${CYCLES}#savePeriodAction`,
+    ]);
+    // …and is NOT reported while the core it calls is still a plain number.
+    expect(gateScan([[CYCLES, src]], [entry], {}).stale).toEqual([]);
   });
 
   // The posted-subject shapes, each intact and with one gate taken away. The first

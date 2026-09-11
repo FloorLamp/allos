@@ -23,34 +23,37 @@ const TEMPORAL_BRANDS = [
   "CanonicalInstant",
   "BareInstant",
 ];
-// A reference to a brand by bare name, qualified name (`TT.LocalDay`) or
-// `import("…").LocalDay`.
-const TEMPORAL_BRAND_REF = (() => {
-  const names = `/^(?:${TEMPORAL_BRANDS.join("|")})$/`;
-  return `:matches(TSTypeReference[typeName.name=${names}], TSTypeReference[typeName.right.name=${names}], TSImportType[qualifier.name=${names}])`;
-})();
+// #5348 — lib/auth.ts's write-authorization brand. Same seam, same shapes: it is
+// minted by the three write gates and by nothing else, so the cast is the one forge
+// tsc cannot refuse. One name, run through the SAME builder as the temporal brands
+// rather than a second hand-written selector — a cast ban that only covers
+// `x as Brand` is walked past by `type B = Brand; x as B`.
+const WRITE_BRANDS = ["WriteAuthorizedProfileId"];
 // The shapes a cast to a brand can take, by NAME — this rule is syntactic and does
 // not chase what a name resolves to (lib/temporal-types.ts says what that leaves to
 // review). `.typeAnnotation` pins a match to the cast's TYPE side, so a brand inside
 // the expression being cast (`foo<LocalDay>() as string`) is not this rule's business;
 // the `:not(TSTypeLiteral …)` clause is the row-shape exemption.
-const TEMPORAL_BRAND_CAST_SELECTORS = (() => {
+const brandCastSelectors = (brands) => {
   const cast = ":matches(TSAsExpression, TSTypeAssertion)";
-  const names = `/^(?:${TEMPORAL_BRANDS.join("|")})$/`;
+  const names = `/^(?:${brands.join("|")})$/`;
+  // A reference to a brand by bare name, qualified name (`TT.LocalDay`) or
+  // `import("…").LocalDay`.
+  const ref = `:matches(TSTypeReference[typeName.name=${names}], TSTypeReference[typeName.right.name=${names}], TSImportType[qualifier.name=${names}])`;
   return [
     // `s as LocalDay`, `<LocalDay>s`, `s as unknown as LocalDay`.
-    `${cast} > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
+    `${cast} > ${ref}.typeAnnotation`,
     // The brand anywhere inside the cast's type — a union, array, tuple, intersection,
     // `NonNullable<>`, `Readonly<>`, `Array<>` — except inside an object type literal.
-    `${cast} > *.typeAnnotation ${TEMPORAL_BRAND_REF}:not(TSTypeLiteral ${TEMPORAL_BRAND_REF})`,
+    `${cast} > *.typeAnnotation ${ref}:not(TSTypeLiteral ${ref})`,
     // `type D = LocalDay`, `type D = LocalDay & {}`, `type Ds = LocalDay[]` — an alias
     // that mentions a brand outside an object shape exists only to cast around the
     // rule. `type Row = { d: LocalDay }` is a row shape and stays allowed.
-    `TSTypeAliasDeclaration > ${TEMPORAL_BRAND_REF}.typeAnnotation`,
-    `TSTypeAliasDeclaration > *.typeAnnotation ${TEMPORAL_BRAND_REF}:not(TSTypeLiteral ${TEMPORAL_BRAND_REF})`,
+    `TSTypeAliasDeclaration > ${ref}.typeAnnotation`,
+    `TSTypeAliasDeclaration > *.typeAnnotation ${ref}:not(TSTypeLiteral ${ref})`,
     // `type G<T = LocalDay> = T` — the brand named in an alias's type parameters
     // rather than its body.
-    `TSTypeAliasDeclaration > TSTypeParameterDeclaration ${TEMPORAL_BRAND_REF}`,
+    `TSTypeAliasDeclaration > TSTypeParameterDeclaration ${ref}`,
     // `import { LocalDay as LD }` / `export { LocalDay as LD }` — renaming a brand
     // takes its name out of every selector above. Covers the ES2022 string-literal
     // spelling (`import { "LocalDay" as LD }`) and `import LD = TT.LocalDay`.
@@ -60,7 +63,9 @@ const TEMPORAL_BRAND_CAST_SELECTORS = (() => {
     `ExportSpecifier[local.value=${names}]`,
     `TSImportEqualsDeclaration > TSQualifiedName.moduleReference[right.name=${names}]`,
   ];
-})();
+};
+const TEMPORAL_BRAND_CAST_SELECTORS = brandCastSelectors(TEMPORAL_BRANDS);
+const WRITE_BRAND_CAST_SELECTORS = brandCastSelectors(WRITE_BRANDS);
 
 // ── The scanners that used to reread the tree ────────────────────────────────
 //
@@ -118,6 +123,21 @@ const RPE_BRAND_CAST = {
   message:
     "Do not cast to RpeTracking. Obtain it from mintRpeTracking, which is reached only when the profile opted in (lib/rpe.ts, #3335).",
 };
+// #5348 — the write-authorization seam, the RPE seam's twin one level up.
+// `WriteAuthorizedProfileId` is minted by `requireWriteAccess`, `requireProfileWriteAccess`
+// and `requireAdmin` in lib/auth.ts and by nothing else — the brand symbol is not
+// exported, so a CAST is the only way production code can hand a write core an id no
+// gate ever checked, and tsc cannot refuse one. A test tier may cast: a db or action
+// fixture has no request to gate, and exporting a minter for it would put the mint in
+// two places, which is what the seam exists to prevent.
+const WRITE_BRAND_CAST = WRITE_BRAND_CAST_SELECTORS.map((selector) => ({
+  selector,
+  message:
+    "Do not cast or re-alias to WriteAuthorizedProfileId. Take it from a write gate's session: requireWriteAccess(), requireProfileWriteAccess(id) and requireAdmin() return it as `writeProfileId` (lib/auth.ts, #5348).",
+}));
+// The one file that mints it, and so the one file that keeps the cast.
+const WRITE_BRAND_MINTER = "lib/auth.ts";
+
 // The stored key is an identity: two spellings of it would be two opt-ins.
 const RPE_KEY_LITERAL = [
   {
@@ -550,6 +570,7 @@ const SYNTAX_APP_SURFACE = [...SYNTAX_ALL, ...APP_SURFACE_SYNTAX];
 const SYNTAX_PRODUCTION = [
   ...SYNTAX_APP_SURFACE,
   RPE_BRAND_CAST,
+  ...WRITE_BRAND_CAST,
   ...UI_SYNTAX,
   FLAG_NORMAL_BAN,
 ];
@@ -1413,6 +1434,20 @@ const config = [
         IMPORT_PATHS_PRODUCTION,
         without(IMPORT_PATTERNS_LIB_APP, EMAIL_RAW_SEND_BAN)
       ),
+    },
+  },
+  // ── The owner of the #5348 write-brand cast ban ─────────────────────────────
+  // lib/auth.ts is where the three write gates turn a checked profile id into a
+  // WriteAuthorizedProfileId, so it alone may cast to one; every other ban of its
+  // level stays on. A block rather than a disable comment because the mint is one
+  // expression inside an otherwise ordinary module.
+  {
+    files: [WRITE_BRAND_MINTER],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...without(SYNTAX_LIB_APP, ...WRITE_BRAND_CAST),
+      ],
     },
   },
   // ── lib/notifications: no runtime import cycle (#2961 AC 3) ─────────────────
