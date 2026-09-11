@@ -7,10 +7,11 @@
 // the side each sits on, its `larger-wins` precedence kind (#4127, which generalised
 // #3903's ruling to fiber) and its `floor` goal shape, and the substrate computes the
 // figure together with the winning source, the period it describes and the resulting
-// floor/caveat. Fiber's DRI bands, supplement recognition and wording stay here. No DB, no clock, no network — the DB gather (lib/queries/
-// nutrition.ts → getFiberAdequacy) assembles the typed inputs and hands them here, so the
-// card and the finding are formatters over the SAME result ("one question, one
-// computation").
+// floor/caveat. Fiber's DRI bands, supplement recognition and wording stay here.
+//
+// No DB, no clock, no network — the DB gather (lib/queries/nutrition.ts →
+// getFiberAdequacy) assembles the typed inputs and hands them here, so the card and the
+// finding are formatters over the SAME result ("one question, one computation").
 //
 // Intake composition (fiberIntake):
 //   - `tracked`      — an integration's fiber_g daily total (Health Connect

@@ -92,13 +92,17 @@ const PROTEIN: NutrientDeclaration<ProteinSource> = {
 //   logged       — manually-logged grams only (no protein-bearing food groups logged).
 //   estimated    — the food-group floor only (no manual grams).
 //
-// `basis` names WHICH COLUMNS FED THE SUM. It is NOT the floor predicate: whether the
-// figure is a floor depends on the period and the winning source too, and that question
+// `basis` names WHICH COLUMNS FED THE SUM — not which source won, and NOT whether the
+// figure is a floor. That last question needs the period and the winning source too, and
 // is now answered once, on `floor` (lib/nutrient-adequacy.ts). Every site still reading
 // `basis !== "tracked"` as "this is a floor" — the two adequacy details, the two intake
 // summaries, this module's today explanation, `fiberBasisIsFloor` and its readers, both
 // nutrition-day positions, and the two gauges — is #4145's remaining work, and moving
-// them is a visible change of wording rather than part of this extraction.
+// them changes visible wording rather than belonging to this extraction.
+//
+// One site reads `basis` for PROVENANCE rather than floor-ness and is unaffected:
+// app/(app)/page.tsx treats `both-sources` as `external`, not `manual`, because it
+// carries integration data.
 export type ProteinBasis =
   "tracked" | "both-sources" | "combined" | "logged" | "estimated";
 
