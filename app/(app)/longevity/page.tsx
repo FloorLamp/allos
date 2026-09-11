@@ -55,7 +55,7 @@ export default async function LongevityPage({
   const template = protocolTemplateById((await searchParams).template);
 
   return (
-    <PageContainer width="wide" className="mx-auto">
+    <PageContainer width="wide">
       <PageHeader
         title="Longevity"
         subtitle="Follow the signals that shape healthspan, then test what moves them."

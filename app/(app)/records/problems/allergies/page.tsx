@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function RecordsAllergiesPage() {
   const scope = await requireScope();
   return (
-    <PageContainer width="flow" data-testid="records-allergies">
+    <PageContainer width="flow" align="start" data-testid="records-allergies">
       <SectionSubtitle title="Allergies">
         Review documented allergies and sensitizations.
       </SectionSubtitle>

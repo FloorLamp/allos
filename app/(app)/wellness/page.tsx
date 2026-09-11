@@ -76,11 +76,7 @@ export default async function WellnessPage(props: {
     .map(([key, v]) => ({ key, label: v.label }));
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="wellness-page"
-    >
+    <PageContainer width="reading" data-testid="wellness-page">
       <PageHeader
         title="Wellness"
         subtitle="Track recurring wellness routines such as sauna, meditation, breathwork, and light exposure."

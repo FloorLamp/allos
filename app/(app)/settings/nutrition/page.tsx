@@ -25,7 +25,7 @@ export default async function NutritionSettingsPage() {
   const relevant = isFoodLoggingRelevant(getProfileAge(profile.id));
   return (
     <SettingsGroupLayout group="nutrition" login={login} profile={profile}>
-      <PageContainer width="form" className="space-y-6">
+      <PageContainer width="form" align="start" className="space-y-6">
         {relevant ? (
           <>
             <ProteinGoalForm goal={getProteinGoalLevel(profile.id)} />

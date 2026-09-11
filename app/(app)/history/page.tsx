@@ -976,7 +976,6 @@ async function renderHistory(
       // width, and `rail` IS `reading` below the rail's threshold, so the feed and
       // every narrower day view are unchanged.
       width={day ? "rail" : "reading"}
-      className="mx-auto"
       data-testid="history-page"
     >
       {/* NO SUBTITLE ON THE DAY VIEW (#4918 ruling 5). "Everything recorded, newest
