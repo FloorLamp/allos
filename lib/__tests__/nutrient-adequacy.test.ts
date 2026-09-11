@@ -246,21 +246,47 @@ describe("the declared goal shape is the only comparison", () => {
   });
 });
 
-describe("estimatedNutrientGrams", () => {
-  it("sums servings × the catalog column, skipping non-bearing and unknown slugs", () => {
-    const servings = [
-      { slug: "poultry", servings: 1 },
-      { slug: "whole_grains", servings: 2 },
-      { slug: "__retired__", servings: 5 },
-      { slug: "legumes", servings: 0 },
-    ];
-    // The two columns disagree, which is what makes the column an input rather than a
-    // second copy of the loop.
-    expect(estimatedNutrientGrams(servings, "protein_g")).not.toBe(
-      estimatedNutrientGrams(servings, "fiber_g")
-    );
+describe("estimatedNutrientGrams — one rollup sum, two catalog columns", () => {
+  // The catalog figures each nutrient's floor is summed from. Both columns are pinned
+  // here because the loop is now shared: a column read for the wrong nutrient would
+  // otherwise only show up as a wrong gram figure somewhere downstream.
+  it.each([
+    [
+      "protein_g",
+      [
+        { slug: "poultry", servings: 1 }, // 35
+        { slug: "eggs", servings: 2 }, // 12 × 2 = 24
+        { slug: "fruit", servings: 3 }, // non-bearing → 0
+        { slug: "__retired__", servings: 5 }, // unknown slug → 0
+      ],
+      35 + 24,
+    ],
+    [
+      "fiber_g",
+      [
+        { slug: "legumes", servings: 2 }, // 8 × 2 = 16
+        { slug: "whole_grains", servings: 1 }, // 3
+        { slug: "poultry", servings: 3 }, // no fiber_g → 0
+        { slug: "not_a_group", servings: 5 }, // unknown slug → 0
+      ],
+      19,
+    ],
+  ] as const)(
+    "sums the %s column, skipping non-bearing and unknown slugs",
+    (column, servings, expected) => {
+      expect(estimatedNutrientGrams(servings, column)).toBe(expected);
+    }
+  );
+
+  it("ignores zero and negative servings", () => {
     expect(
-      estimatedNutrientGrams([{ slug: "__retired__", servings: 5 }], "fiber_g")
+      estimatedNutrientGrams(
+        [
+          { slug: "poultry", servings: 0 },
+          { slug: "legumes", servings: -1 },
+        ],
+        "protein_g"
+      )
     ).toBe(0);
   });
 });

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TODAY_PERIOD } from "@/lib/nutrient-adequacy";
 import {
-  estimatedProteinGrams,
   proteinIntake,
   proteinTarget,
   assessProteinAdequacy,
@@ -21,27 +20,6 @@ import {
 
 // Pure engine tests for protein adequacy (#767): the three-basis intake pick, the
 // goal-scaled target band (LBM-preferred), and the adequacy verdict + caveated wording.
-
-describe("estimatedProteinGrams", () => {
-  it("sums servings × the catalog per-serving grams, skipping non-bearing + unknown slugs", () => {
-    const g = estimatedProteinGrams([
-      { slug: "poultry", servings: 1 }, // 35
-      { slug: "eggs", servings: 2 }, // 12 × 2 = 24
-      { slug: "fruit", servings: 3 }, // non-bearing → 0
-      { slug: "__retired__", servings: 5 }, // unknown → 0
-    ]);
-    expect(g).toBe(35 + 24);
-  });
-
-  it("ignores zero/negative servings", () => {
-    expect(
-      estimatedProteinGrams([
-        { slug: "poultry", servings: 0 },
-        { slug: "legumes", servings: -1 },
-      ])
-    ).toBe(0);
-  });
-});
 
 // The composition an intake result states, projected out of the fuller result the
 // substrate now returns (#4485 — it also carries the period, the winning source and the

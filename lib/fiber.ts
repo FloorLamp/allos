@@ -44,7 +44,6 @@
 import type { Sex } from "./types";
 import {
   composeNutrientIntake,
-  estimatedNutrientGrams,
   fmtGrams,
   nutrientAdequacyStatus,
   FLOOR_CAVEAT,
@@ -52,7 +51,6 @@ import {
   type NutrientDeclaration,
   type NutrientIntakeResult,
   type NutrientPeriod,
-  type NutrientServing,
 } from "./nutrient-adequacy";
 import { parseQuantity } from "./dri";
 
@@ -64,7 +62,7 @@ import { parseQuantity } from "./dri";
 // IS ENCODED, NOT DECIDED: changing it is an owner ruling.
 export type FiberSource = "tracked" | "estimated" | "supplemented";
 
-const FIBER: NutrientDeclaration<FiberSource> = {
+export const FIBER_DECLARATION: NutrientDeclaration<FiberSource> = {
   nutrient: "fiber",
   precedence: "larger-wins",
   // A single DRI Adequate-Intake figure, not a band — so `below` is scored against
@@ -92,15 +90,6 @@ export interface FiberIntake extends NutrientIntakeResult<FiberSource> {
   // lets the surface note "a fiber supplement was taken (grams unknown)" honestly rather
   // than pretend the day had none. The substrate's `unquantified`, under fiber's name.
   unknownSupplement: boolean;
-}
-
-// A group's summed servings, as the #579 rollup produces.
-export type FiberServing = NutrientServing;
-
-// Sum fiber grams over a set of food-group servings — the shared rollup sum against the
-// catalog's `fiber_g` column.
-export function estimatedFiberGrams(servings: FiberServing[]): number {
-  return estimatedNutrientGrams(servings, FIBER.column);
 }
 
 // ---- Fiber supplement recognition + dose-gram parsing ----------------------
@@ -167,6 +156,33 @@ export function fiberDoseGrams(amount: string | null): FiberDoseGrams {
   return { grams: 0, known: false };
 }
 
+// Fold a window of CONFIRMED intake doses into the two facts every fiber surface needs:
+// `gramsByDate`, what each day's QUANTIFIED fiber doses add up to, and `unknownDates`,
+// the days that carried a confirmed dose whose grams could not be quantified (#4155
+// renders that caveat on every basis, so the days are named rather than flattened to one
+// boolean; a caller that only needs "any" asks for `.size > 0`). A day absent from the
+// map logged no quantifiable dose, which is not the same as logging none.
+//
+// THE ONE SCAN (#4485) — the week gather, the day picker and the fiber × GI panel each
+// spelled this loop out separately, and a fourth reader would have spelled it a fourth
+// time. Both answers are keyed BY DAY, so a caller narrows with its own lookup rather
+// than by pre-filtering the window; this decides only what counts as a fiber dose and how
+// many grams it contributes.
+export function fiberDoseDays(
+  doses: readonly { date: string; name: string; amount: string | null }[]
+): { gramsByDate: Map<string, number>; unknownDates: Set<string> } {
+  const gramsByDate = new Map<string, number>();
+  const unknownDates = new Set<string>();
+  for (const d of doses) {
+    if (!isFiberSupplement(d.name)) continue;
+    const { grams, known } = fiberDoseGrams(d.amount);
+    if (known && grams > 0)
+      gramsByDate.set(d.date, (gramsByDate.get(d.date) ?? 0) + grams);
+    else unknownDates.add(d.date);
+  }
+  return { gramsByDate, unknownDates };
+}
+
 // Compose the intake (issues #976, #4127) through the shared substrate, which owns the
 // precedence, the winner, and the period-aware floor. Each input is an already-per-period
 // figure the gather computed (an average over the days carrying it). Returns null when no
@@ -181,7 +197,7 @@ export function fiberIntake(args: {
   // default: the floor cannot be answered without it (#4145).
   period: NutrientPeriod;
 }): FiberIntake | null {
-  const result = composeNutrientIntake(FIBER, {
+  const result = composeNutrientIntake(FIBER_DECLARATION, {
     grams: {
       tracked: args.dailyTracked,
       estimated: args.dailyEstimated,

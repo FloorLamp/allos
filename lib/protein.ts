@@ -53,7 +53,6 @@ import { shiftDateStr } from "./date";
 import {
   composeNutrientIntake,
   dayPeriod,
-  estimatedNutrientGrams,
   fmtGrams,
   nutrientAdequacyStatus,
   FLOOR_CAVEAT,
@@ -61,7 +60,6 @@ import {
   type NutrientDeclaration,
   type NutrientIntakeResult,
   type NutrientPeriod,
-  type NutrientServing,
 } from "./nutrient-adequacy";
 import { trailingAverage } from "./trailing-average";
 
@@ -74,7 +72,7 @@ import { trailingAverage } from "./trailing-average";
 // THE PRECEDENCE IS ENCODED HERE, NOT DECIDED HERE: changing it is an owner ruling.
 export type ProteinSource = "tracked" | "estimated" | "logged";
 
-const PROTEIN: NutrientDeclaration<ProteinSource> = {
+export const PROTEIN_DECLARATION: NutrientDeclaration<ProteinSource> = {
   nutrient: "protein",
   precedence: "larger-wins",
   // A bodyweight-scaled g/kg BAND (#767), so `below` is scored against its bottom.
@@ -117,15 +115,6 @@ export interface ProteinIntake extends NutrientIntakeResult<ProteinSource> {
   loggedGrams: number;
 }
 
-// A group's summed servings, as the #579 rollup produces.
-export type ProteinServing = NutrientServing;
-
-// Sum protein grams over a set of food-group servings — the shared rollup sum against
-// the catalog's `protein_g` column.
-export function estimatedProteinGrams(servings: ProteinServing[]): number {
-  return estimatedNutrientGrams(servings, PROTEIN.column);
-}
-
 // Compose the intake (issue #824, #3903) through the shared substrate, which owns the
 // precedence, the winner, and the period-aware floor. Each input is an already-per-period
 // figure the gather computed (an average over the days that carry it). Returns null when
@@ -140,7 +129,7 @@ export function proteinIntake(args: {
   // default: the floor cannot be answered without it (#4145).
   period: NutrientPeriod;
 }): ProteinIntake | null {
-  const result = composeNutrientIntake(PROTEIN, {
+  const result = composeNutrientIntake(PROTEIN_DECLARATION, {
     grams: {
       tracked: args.dailyTracked,
       estimated: args.dailyEstimated,

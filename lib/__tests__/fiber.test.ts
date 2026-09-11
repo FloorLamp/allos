@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TODAY_PERIOD } from "@/lib/nutrient-adequacy";
 import {
-  estimatedFiberGrams,
   isFiberSupplement,
   fiberDoseGrams,
   fiberIntake,
@@ -16,32 +15,9 @@ import {
 } from "@/lib/fiber";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 
-// Pure-tier tests for the fiber-adequacy engine (issue #976): the #767 protein pipeline
-// re-instantiated with a fourth (supplemented) basis. No DB/clock/network.
-
-describe("estimatedFiberGrams", () => {
-  it("sums servings × catalog fiber_g, skipping non-fiber and unknown slugs", () => {
-    // legumes 8 g/serving × 2 = 16; whole_grains 3 × 1 = 3; poultry has no fiber_g (0);
-    // an unknown slug contributes 0.
-    expect(
-      estimatedFiberGrams([
-        { slug: "legumes", servings: 2 },
-        { slug: "whole_grains", servings: 1 },
-        { slug: "poultry", servings: 3 },
-        { slug: "not_a_group", servings: 5 },
-      ])
-    ).toBe(19);
-  });
-
-  it("ignores zero/negative servings", () => {
-    expect(
-      estimatedFiberGrams([
-        { slug: "legumes", servings: 0 },
-        { slug: "berries", servings: -1 },
-      ])
-    ).toBe(0);
-  });
-});
+// Pure-tier tests for the fiber-adequacy engine (issue #976): its own supplemented
+// source, DRI target and wording. The intake precedence, the period and the floor are the
+// shared substrate's and are covered in nutrient-adequacy.test.ts. No DB/clock/network.
 
 describe("isFiberSupplement", () => {
   it("matches the common fiber products and brands", () => {
