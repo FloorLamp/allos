@@ -36,6 +36,7 @@ const COMPACT = '[data-variant="compact"]';
 
 /** The viewBox each geometry draws — what a container query cannot fake. */
 const WIDE_VIEWBOX = /^0 0 720 /;
+const COMPACT_VIEWBOX = /^0 0 360 /;
 
 /** The fixture's intraday day IS the profile's today. Resolved from the page
  *  rather than by recomputing the run's frozen clock here. */
@@ -534,11 +535,27 @@ test.describe("the day view's intraday panel (#1068)", () => {
     }
   });
 
-  // #4767 item 2 — the dashboard mount. The chart is the SAME component and the
-  // SAME day model; what this pins is that it is present on `/`, that it carries
-  // the day's own causes (the shaded ride window), that the row states the lag in
-  // the same words the panel does, and that tapping it lands on the panel.
-  test("the dashboard's Today band draws today's chart and doors to the panel", async ({
+  // #4767 item 2 — HOME'S MOUNT. The chart is the SAME component and the SAME day
+  // model; what this pins is that it is present on `/`, that it carries the day's own
+  // causes (the shaded ride window), and that the card states the lag in the same
+  // words the panel does.
+  //
+  // WHERE IT MOVED (#5435 §3.2). It was the Standing `day-so-far` family's figure,
+  // drawn once under every member's facts and reached through the family row. Home v3
+  // draws it in the Glance card (`home-glance`), full width of its column, with one
+  // facts line above it — the same `getIntradayDay` frame through the same
+  // `IntradayChart`, and the same `intradayFreshness` string the panel prints, which
+  // is what makes the "same words" claim below a comparison and not a coincidence.
+  //
+  // WHAT IS NOT ASSERTED HERE ANY MORE, AND WHY: the whole-row door. The #4969 ruling
+  // put ONE declared door on the family row so a tap on the drawing landed on the day
+  // the drawing is of, and this proved the pointer found that href, that there was
+  // exactly one primary surface, and that the figure was `inert` so the keyboard could
+  // not reach past the door. Home has no family row and no door on the Glance card:
+  // the chart-click door is #5435 §3.3 and it is NOT DELIVERED IN PR 2. This is
+  // recorded rather than quietly dropped — when that door lands, the reach assertions
+  // belong here again, against whatever element carries it.
+  test("Home's Glance card draws today's chart and states the same lag as the panel", async ({
     browser,
   }) => {
     test.slow();
@@ -549,131 +566,44 @@ test.describe("the day view's intraday panel (#1068)", () => {
     });
     try {
       await member.goto("/");
-      // THE FAMILY, NOT THE MEMBER (#4969): the chart mounts on the Day-so-far
-      // family row now, alongside this fixture's own last-night sleep members —
-      // there is no single-purpose "intraday-today" family left to scope to.
-      const family = member.locator('[data-standing-family="day-so-far"]');
-      await expect(family).toBeVisible();
-      // It is in TODAY and nowhere else — the band the issue names.
-      await expect(
-        member
-          .locator('[data-standing-section="today"]')
-          .locator('[data-standing-family="day-so-far"]')
-      ).toHaveCount(1);
+      const glance = member.getByTestId("home-glance");
+      await expect(glance).toBeVisible();
+      // It is on `/` ONCE — the Glance card is the day's one drawing here.
+      await expect(glance.getByTestId("intraday-chart")).toHaveCount(1);
 
-      // The figure, in the geometry THIS CELL's width earns (#4973) — which at
-      // 1280 is the wide one, where the mount used to hard-code compact and draw a
-      // phone-sized chart in a desktop row. It is the FAMILY's drawing, not the
-      // member's — rendered once under every member's facts rather than inside the
-      // intraday candidate's own `<li>`.
-      const figure = family.getByTestId("dashboard-family-figure");
-      const chart = figure.locator(WIDE);
+      // The figure, in the geometry THIS COLUMN's width earns (#4973). Home's Glance
+      // sits in the 20rem rail (§6.1), so at 1280 it earns the COMPACT box while the
+      // day view's panel earns the wide one at the same viewport — which is the
+      // container rule working, not a regression. The next test measures that pair.
+      const chart = glance.locator(COMPACT);
       await expect(chart).toBeVisible();
       // WAIT FOR THE CONTENT, NOT THE BOX: the HR band is what makes this a chart
       // rather than an axis, and it is the layer the presence gate is about.
       await expect(chart.getByTestId("intraday-hr")).toBeVisible();
       // The seeded ride's window, shaded on the axis — the AC's "shaded window" —
-      // beside the morning practice's on the row below it (#4852).
+      // beside the morning practice's (#4852).
       await expect(chart.getByTestId("intraday-block")).toHaveCount(2);
 
-      // The lag sentence, on the intraday member's OWN facts — scoped to that one
-      // candidate, because the family now also carries the night's sleep members,
-      // each with their own `standing-value`.
-      const rowValue = family
-        .locator('[data-candidate-id^="activity.intraday:"]')
-        .getByTestId("standing-value");
-      await expect(rowValue).toHaveText(/^Synced .+ ago$/);
-      const dashboardLag = (await rowValue.textContent())!.trim();
+      // #1518's half, ON THIS MOUNT, and it is here because this mount broke it. The
+      // rail was 20rem when Home v3 landed, which gave the chart a 278px container —
+      // under `INTRADAY_VARIANTS.compact.minContainerPx` (300) — and the chart drew
+      // anyway, at 8.49px. Nothing in the geometry assertions below or on the panel
+      // could see that: both mounts were reading the variant, and the variant was
+      // right. What was wrong was the box it was handed. So the painted size is asked
+      // for HERE, where the narrow container is.
+      await expectSvgTextLegible(member);
 
-      // THE WHOLE ROW IS ONE DOOR, THE CHART INCLUDED — a decision, so it is
-      // MEASURED. RETARGETED FROM THE MEMBER'S LINK TO THE FAMILY ROW (#4969),
-      // and the destination is now DECLARED rather than inherited (#4969 ruling,
-      // 2026-09-03): the figure leads to what it pictures. The door that reaches
-      // under the figure is the family's primary surface (`.standing-primary`),
-      // which is the member whose own href IS the family's declared door — the
-      // intraday candidate's, whatever order the night's sleep and today's steps
-      // members take above it. It used to be whichever member sorted first, so
-      // this same tap landed on `/sleep`.
-      //
-      // WHAT IS ASSERTED IS THE HREF THE POINTER FINDS, not merely that it finds
-      // a door: "the hit is inside `.standing-primary`" is green on the tree this
-      // ruling fixed AND on the tree where that class sits on a sleep member. The
-      // row's link carries `standing-stretch`, whose `::after` insets to the WHOLE
-      // family's relatively-positioned box — which is why this reaches the figure
-      // at all, sitting below every member's `<li>` in the very same box.
-      //
-      // It is also why the figure is `inert`. It used to be because the chart's own
-      // tick anchors named `#timeline-entry-…` fragments that exist on the day view
-      // and NOT here, so the keyboard reached a link that scrolls nowhere while the
-      // pointer could not. #5262 took the ticks off this chart — the dashboard row
-      // draws the day's session blocks and no feed-sourced marks — and the reason
-      // survives them: the block's own anchor is a real second destination inside a
-      // row the ruling above declares to be ONE door, so the keyboard must not reach
-      // past the door either.
-      //
-      // NOT asserted with a click: Playwright refuses to click an element that
-      // another element intercepts, so `click(chart)` fails whether the figure is
-      // correctly covered by the door or simply broken. This asks the question the
-      // behaviour is actually about.
-      const doorReach = await family.evaluate((el) => {
-        const plot = el.querySelector(
-          '[data-variant="wide"]'
-        ) as HTMLElement | null;
-        const door = el.querySelector(
-          "a.standing-primary"
-        ) as HTMLElement | null;
-        if (!plot || !door)
-          return { hitHref: null, doors: 0, anchors: 0, focusable: true };
-        const box = plot.getBoundingClientRect();
-        const hit = document.elementFromPoint(
-          box.x + box.width / 2,
-          box.y + box.height / 2
-        );
-        // Through the FIGURE's own anchors — the ones this chart actually renders,
-        // not a fresh query written to check the work. Every anchor, not the
-        // fragment ones: since #5262 this chart draws no ticks, and the anchor left
-        // inside the figure is the workout block's own link to its session.
-        const anchors = Array.from(
-          el.querySelectorAll<HTMLElement>(
-            '[data-testid="dashboard-family-figure"] a[href]'
-          )
-        );
-        const focusable = anchors.some((anchor) => {
-          anchor.focus();
-          return document.activeElement === anchor;
-        });
-        return {
-          // The href of the door the pointer actually landed in, read THROUGH the
-          // same element the reach is measured against.
-          hitHref: door.contains(hit) ? door.getAttribute("href") : null,
-          doors: el.querySelectorAll("a.standing-primary").length,
-          anchors: anchors.length,
-          focusable,
-        };
-      });
-      // The control that keeps the focus claim from being vacuous: the figure really
-      // does render an anchor, so "none is focusable" is about something.
-      expect(doorReach.anchors).toBeGreaterThan(0);
-      // ONE primary surface on the row — the family declares one door, not one per
-      // member — and a tap on the drawing lands on the day the drawing is of.
-      expect(doorReach.doors).toBe(1);
-      expect(doorReach.hitHref).toMatch(
-        /\/history\?day=\d{4}-\d{2}-\d{2}#day-at-a-glance/
-      );
-      expect(doorReach.focusable).toBe(false);
+      // The lag sentence, on the card that draws the day.
+      const glanceLag = glance.getByTestId("intraday-freshness");
+      await expect(glanceLag).toHaveText(/^Synced .+ ago$/);
+      const homeLag = (await glanceLag.textContent())!.trim();
 
-      await followLink(
-        member,
-        // Keyed on the DESTINATION, not on position.
-        family.locator('a[href*="day-at-a-glance"]'),
-        /\/history\?day=\d{4}-\d{2}-\d{2}#day-at-a-glance/
-      );
-      const panel = member.getByTestId("intraday-panel");
+      // …and the panel says it in the SAME WORDS, which is the claim: one
+      // `intradayFreshness` over one day model, printed by two mounts.
+      await openFixtureDay(member);
+      const panel = appContent(member).getByTestId("intraday-panel");
       await expect(panel).toBeVisible();
-      await expect(panel).toBeInViewport();
-      await expect(panel.getByTestId("intraday-freshness")).toHaveText(
-        dashboardLag
-      );
+      await expect(panel.getByTestId("intraday-freshness")).toHaveText(homeLag);
     } finally {
       await member.context().close();
     }
@@ -702,27 +632,37 @@ test.describe("the day view's intraday panel (#1068)", () => {
     const widthOf = (chart: Locator) =>
       chart.evaluate((el) => el.getBoundingClientRect().width);
     try {
+      // HOME'S MOUNT, AND IT IS THE SHARPER HALF OF THE PAIR NOW. The Standing family
+      // row this used to read was full width, so both mounts drew WIDE and the test
+      // could only say "neither hard-codes the phone box". Home v3 puts the Glance
+      // card in the 20rem rail (§6.1), so at ONE viewport the two mounts draw
+      // DIFFERENT variants — which no viewport-keyed fork can produce, and which a
+      // dead `@container` breaks in the opposite direction (the compact default would
+      // survive at BOTH mounts and the day view's wide box would never appear).
       await member.goto("/");
-      const figure = member
-        .locator('[data-standing-family="day-so-far"]')
-        .getByTestId("dashboard-family-figure");
+      const figure = member.getByTestId("home-glance");
       // ONE chart per mount, which is the count that used to be two on the panel.
       await expect(figure.getByTestId("intraday-chart")).toHaveCount(1);
-      const dashboard = figure.locator(WIDE);
+      const home = figure.locator(COMPACT);
       // The DRAWING, not the frame: a viewBox read before the layers land is a
       // claim about an empty box.
-      await expect(dashboard.getByTestId("intraday-hr")).toBeVisible();
-      await expect(figure.locator(COMPACT)).toBeHidden();
-      await expect(dashboard.getByTestId("intraday-svg")).toHaveAttribute(
+      await expect(home.getByTestId("intraday-hr")).toBeVisible();
+      await expect(figure.locator(WIDE)).toBeHidden();
+      await expect(home.getByTestId("intraday-svg")).toHaveAttribute(
         "viewBox",
-        WIDE_VIEWBOX
+        COMPACT_VIEWBOX
       );
-      expect(
-        await widthOf(figure.getByTestId("intraday-chart"))
-      ).toBeGreaterThanOrEqual(INTRADAY_VARIANTS.wide.minContainerPx);
+      // Its container really is inside the compact band — so the variant is what the
+      // width earns, not what the mount happens to render.
+      const homeWidth = await widthOf(figure.getByTestId("intraday-chart"));
+      expect(homeWidth).toBeGreaterThanOrEqual(
+        INTRADAY_VARIANTS.compact.minContainerPx
+      );
+      expect(homeWidth).toBeLessThan(INTRADAY_VARIANTS.wide.minContainerPx);
 
       // The day view's panel is unchanged at this viewport — the same wide box it
-      // has always drawn here, now for a reason its own card can state.
+      // has always drawn here, now for a reason its own card can state, and at the
+      // SAME 1280 that just earned Home the compact one.
       await openFixtureDay(member);
       const panel = appContent(member).getByTestId("intraday-panel");
       await expect(panel.getByTestId("intraday-chart")).toHaveCount(1);

@@ -756,7 +756,15 @@ async function renderHome(
   // it is what the record puts directly under the day bar (#4918 ruling 2). The rail is
   // first in the document for that reason and placed into column 2 explicitly, so source
   // order reads correctly at the width that has no columns.
-  const dayGrid = "md:grid md:grid-cols-[minmax(0,1fr)_20rem] md:gap-6";
+  //
+  // THE RAIL'S WIDTH IS THE CHART'S FLOOR, MEASURED (#1518/#4973). It was 20rem, which
+  // gave the glance card a 320px box and the chart a 278px container once the card's
+  // `px-4` came out — below `INTRADAY_VARIANTS.compact.minContainerPx` (300), the
+  // narrowest container that variant renders into. The chart still drew: it painted its
+  // labels at 8.49px, under the 9px legibility floor, which is the exact failure that
+  // floor's divisor exists to prevent. 22rem gives the chart ~310px and the labels
+  // ~9.5px. A narrower rail needs the chart moved, not the floor lowered.
+  const dayGrid = "md:grid md:grid-cols-[minmax(0,1fr)_22rem] md:gap-6";
   const dayRail =
     "md:col-start-2 md:row-start-1 md:sticky md:top-6 md:self-start";
   const dayColumn = "md:col-start-1 md:row-start-1 md:min-w-0";
