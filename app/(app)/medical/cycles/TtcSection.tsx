@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/ui";
+import TtcLogControls from "@/components/cycle/TtcLogControls";
 import type { TemperatureUnit } from "@/lib/settings";
 import { fmtTemp } from "@/lib/units";
 import {
@@ -8,7 +9,6 @@ import {
 } from "@/lib/ttc";
 import type { TtcState } from "@/lib/ttc-store";
 import TtcDeclareControl from "./TtcDeclareControl";
-import TtcLogBar from "./TtcLogBar";
 import TtcOffDisclosure from "./TtcOffDisclosure";
 
 // The trying-to-conceive surface (issue #1680), rendered inside the Cycle page. A SERVER
@@ -144,7 +144,7 @@ export default function TtcSection({
         )}
       </div>
 
-      <TtcLogBar
+      <TtcLogControls
         todayLh={state.todayLh}
         todayBbtF={state.todayBbtF}
         todayMucus={state.todayMucus}
