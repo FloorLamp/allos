@@ -1508,7 +1508,7 @@
       "optimal_high": null,
       "direction": "in_range",
       "note": "The average breaths per minute a wrist tracker measured across one sleep session — a nightly aggregate, not a clinical count. Deliberately carries NO population band: the 12-20 range beside it is for a spot count taken while awake, and a sleeping average read against it would flag a normal night. It is read as a trend against your own usual nights, the way Resting Heart Rate is read apart from Heart Rate.",
-      "panel": "respiratory"
+      "panel": "vital-signs"
     },
     {
       "name": "Resting Heart Rate",

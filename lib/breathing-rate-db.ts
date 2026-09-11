@@ -3,6 +3,7 @@ import {
   BREATHING_RATE_METRIC,
   CLINICAL_RESPIRATORY_CANONICAL,
   WEARABLE_RESPIRATORY_SOURCES,
+  breathingRateDayWindow,
   mainSessionForDay,
   sessionForStamp,
   type BreathingRateSession,
@@ -133,7 +134,7 @@ export function adoptWearableBreathingRates(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const dropObservation = handle.prepare(
-    "DELETE FROM medical_records WHERE id = ?"
+    "DELETE FROM medical_records WHERE id = ? AND profile_id = ?"
   );
 
   interface Target {
@@ -215,8 +216,7 @@ export function adoptWearableBreathingRates(
     if (row.occurred_at == null)
       return {
         night: null,
-        startedAt: `${row.date}T00:00:00.000Z`,
-        endedAt: `${row.date}T23:59:59.999Z`,
+        ...breathingRateDayWindow(row.date),
         date: row.date,
       };
     // A wearable SPOT reading - a stamped instant with no session around it. It stays
@@ -279,7 +279,7 @@ export function adoptWearableBreathingRates(
       adopted++;
     }
     for (const row of target.rows) {
-      dropObservation.run(row.id);
+      dropObservation.run(row.id, row.profile_id);
       removed++;
     }
   }

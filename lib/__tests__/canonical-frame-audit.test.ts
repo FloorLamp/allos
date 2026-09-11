@@ -212,6 +212,11 @@ const FRAME_AUDIT: Record<string, AuditRow> = {
     reason:
       "No band is set: interpretation depends on clinical context. 'random' is the COLLECTION protocol (spot vs 24-hour), which is structural, not patient-state.",
   },
+  "Breathing Rate (sleep)": {
+    verdict: "no-band",
+    reason:
+      "#5409. It judges nothing: there is no curated population range for a sleeping breathing rate, which is the entire reason it is a separate name from `Respiratory Rate` rather than a second reading of it. The frame it does have is IN the name already — the reading is an average across one sleep session — and the word the scan caught is 'Resting Heart Rate', which appears in the note only as the analogy for why a wearable's nightly aggregate is a different quantity from its clinical namesake.",
+  },
 
   // ── Intrinsic: the frame word is the quantity ───────────────────────────────
   "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)": {

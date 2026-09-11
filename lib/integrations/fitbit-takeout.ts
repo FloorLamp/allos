@@ -18,6 +18,7 @@ import { resolveActivityType } from "@/lib/activity-meta";
 import {
   BREATHING_RATE_CANONICAL,
   BREATHING_RATE_METRIC,
+  breathingRateDayWindow,
   mainSessionForDay,
   type BreathingRateSession,
 } from "@/lib/breathing-rate";
@@ -542,11 +543,12 @@ export function parseDailyVitalCsv(
       // other Takeout daily aggregate keys on (`finalizeDailySums`), so a re-import of
       // the archive updates in place. It is a PROVISIONAL window: the archive's own
       // sleep logs narrow it to the night below, when the archive carried them.
+      const window = breathingRateDayWindow(date);
       out.samples.push({
         metric: BREATHING_RATE_METRIC,
         date,
-        started_at: `${date}T00:00:00.000Z`,
-        ended_at: `${date}T23:59:59.999Z`,
+        started_at: window.startedAt,
+        ended_at: window.endedAt,
         value,
       });
       continue;

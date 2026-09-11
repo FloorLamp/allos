@@ -188,9 +188,18 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // the dataset is the change, `name`/`ref_*`/`optimal_*`/`direction` are all
 // FLAG_RELEVANT_FIELDS, and the signature therefore moves on its own — the same route
 // #918, #698 and #705 took. Bumping as well would claim a logic change nobody made.
+// Updated for #5409: `Breathing Rate (sleep)` joins the vocabulary — a wearable's
+// nightly breathing rate, its own quantity, deliberately carrying NO band. `name` is a
+// FLAG_RELEVANT_FIELD, so the signature moves on its own and the boot reconcile
+// revisits what is stored, which is the same route #2787/#918/#705 took. FLAG_LOGIC_VERSION
+// is NOT bumped: no derivation logic moved, and the new entry publishes no band, so the
+// reconcile finds nothing to flag under it. What the pass DOES matter for is the other
+// side of the split — the #5409 migration takes the wearable rows out of
+// `medical_records` entirely, and the clinical `Respiratory Rate` rows that remain are
+// judged at 12-20 exactly as before.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "14af80474c5e10448f556faeedf307128d8070b349a2f3a6afff899dd2535972"; // phi-scan-ok
+  "20ac970c7d6785044c766840a39b6d5d773fffed883d07c99a287d9e72a8d737"; // phi-scan-ok
 
 describe("canonical-result-definitions dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

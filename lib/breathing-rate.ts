@@ -94,6 +94,29 @@ export function isWearableRespiratorySource(
   return source != null && WEARABLE_RESPIRATORY_SOURCES.includes(source);
 }
 
+/**
+ * The window a day-labelled reading takes when its night is unknown.
+ *
+ * ONE SPELLING, shared by the Fitbit Takeout parser and the adoption pass, because the
+ * two have to agree exactly: the parser writes this window on import and the adoption
+ * writes it for a historical row, and `started_at` is the natural key — a byte of
+ * disagreement is two rows for one day rather than an upsert.
+ *
+ * It is the day-bucket span every other Takeout daily aggregate already keys on
+ * (`finalizeDailySums`), which is also the shape `isDayBucketWindow` recognizes. It is a
+ * LABEL, not a measured instant: the reading is the vendor's own per-night aggregate and
+ * the archive states no clock for it, which is why nothing here consults a timezone.
+ */
+export function breathingRateDayWindow(date: string): {
+  startedAt: string;
+  endedAt: string;
+} {
+  return {
+    startedAt: `${date}T00:00:00.000Z`,
+    endedAt: `${date}T23:59:59.999Z`,
+  };
+}
+
 /** One sleep session's window, in the columns the match below reads. */
 export interface BreathingRateSession {
   startedAt: string;
