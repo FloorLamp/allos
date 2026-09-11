@@ -101,6 +101,9 @@ async function completeFirstSet(page: Page) {
     .getByTestId("next-set-card")
     .getByRole("button", { name: "Use" })
     .click();
+  // Use CONFIRMS set 1 and the rows after it stay planned, so the load sits behind
+  // set 1's door in the shared layout (#5762); one tap reads it back.
+  await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
   await expect(weight).toHaveValue(/^\d/);
   // The Delete button appearing confirms the draft persisted (so it's ours to clean up).
   await expect(
