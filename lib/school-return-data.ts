@@ -10,7 +10,7 @@
 // intake_items, matching assembleIllnessEpisode's own PRN gather).
 
 import { db } from "./db";
-import { parseUtcSql, shiftDateStr, zonedWallTimeToUtc } from "./date";
+import { zonedWallTimeToUtc } from "./date";
 import { bestKnownInstant, instantDate } from "./row-instants";
 import { getTimezone, getProfileSetting } from "./settings";
 import { formatGivenAtClock } from "./administration-format";
@@ -212,11 +212,7 @@ function schoolReturnStatusForRows(
   // the countdown is HELD (owner ruling, #5688) behind the "add it in Dose history"
   // door. No conservative-hour fallback: this document quotes no time it was not given.
   const doses: {
-    day: string;
     statedMs: number | null;
-    // The row's capture stamp, used ONLY as the plausibility bound below — never as an
-    // instant the countdown computes from.
-    recordedMs: number | null;
     name: string;
     clockLabel: string | null;
   }[] = [];
@@ -237,9 +233,7 @@ function schoolReturnStatusForRows(
       // other unstated dose rather than dropping out — dropping a fever reducer is the
       // permissive direction, and that is the whole point of this gather.
       doses.push({
-        day: r.date,
         statedMs: null,
-        recordedMs: parseUtcSql(r.recorded_at)?.getTime() ?? null,
         name: r.name,
         clockLabel: null,
       });
@@ -252,10 +246,8 @@ function schoolReturnStatusForRows(
     // somebody did. The value stays visible with its provenance either way.
     const clock = formatGivenAtClock(tz, when.at) || null;
     doses.push({
-      day: r.date,
       // An `event` answer, and nothing else.
       statedMs: d && when.semantic === "event" ? d.getTime() : null,
-      recordedMs: parseUtcSql(r.recorded_at)?.getTime() ?? null,
       name: r.name,
       clockLabel:
         clock != null && when.semantic === "record"
@@ -264,64 +256,47 @@ function schoolReturnStatusForRows(
     });
   }
 
-  // HOW LONG AN UNSTATED DOSE HOLDS, AND WHY IT IS NOT "UNTIL ITS DAY IS OVER".
+  // HOW LONG AN UNSTATED DOSE HOLDS: UNTIL SOMEBODY STATES ITS TIME. There is no
+  // second bound, and both of the ones this fix tried are in the branch history for
+  // the same reason — each ended by manufacturing an instant the record does not
+  // carry, which is the one thing the ruling forbids.
   //
-  // An earlier pass of this fix scoped the hold to the latest `l.date` carrying a
-  // reducer, on the reasoning that a later day's instants all follow an earlier day's.
-  // THAT IS FALSE FOR THIS TABLE and the tree already said so: a dose's day is
-  // SCHEDULE-OWNED (#614) and a midnight-crossing correction moves `occurred_at` while
-  // leaving `date` where the schedule put it (`restampDoseLogsCore`, which returns
-  // `crossedMidnight` for exactly this). `prn-family.ts` refuses a `MAX(date)`
-  // narrowing for the same reason — "drops the genuinely-latest dose". So a dose dated
-  // TODAY can have been given yesterday, a `MAX(date)` filter drops yesterday's
-  // unstated dose as "not the last one", and the countdown clears on a reducer nobody
-  // placed. The bound has to be an INSTANT.
+  //   • Scoped to the latest `l.date` carrying a reducer. A dose's day is
+  //     SCHEDULE-OWNED (#614): a midnight-crossing correction moves `occurred_at` and
+  //     leaves `date` where the schedule put it (`restampDoseLogsCore` reports
+  //     `crossedMidnight` for exactly this), and `prn-family.ts` refuses a `MAX(date)`
+  //     narrowing on the same grounds — it "drops the genuinely-latest dose". So a
+  //     dose dated today can have been given yesterday, and the narrowing dropped
+  //     yesterday's unstated one as "not the last".
+  //   • Bounded by max(end of its schedule-owned day, its own capture stamp). A
+  //     past-day skipped→taken flip does NOT move `recorded_at` — the tri-state write
+  //     keeps that column out of its SET list on purpose, so the stamp stays the
+  //     SKIP's — and a dose skipped on a day and tapped Taken after midnight sits past
+  //     both of those bounds, so the note cleared the child again.
   //
-  // So the question is not "which dose is last" but "could any unstated dose still be
-  // masking a fever". A dose that states no time is bounded by the latest moment it
-  // could plausibly have been given:
+  // Both are the same mistake: they answer "when could this dose have been given" with
+  // a number nobody logged. So the hold rests on the only thing the row does state —
+  // that it states no administration time (`when.semantic === "record"`) — and runs
+  // until one is added.
   //
-  //   • the END of its schedule-owned day, in the profile's zone; and
-  //   • its own capture stamp, for a dose FILED after that day ended (a backfill, or a
-  //     confirm just past midnight). Read as a plausibility bound only — it is never
-  //     an instant the countdown computes from, which is what the ruling forbids.
+  // THE CONSEQUENCE, WRITTEN DOWN RATHER THAN SOFTENED: one unstated fever-reducer
+  // dose on day one of a ten-day illness holds the fever-free countdown for the whole
+  // illness, until somebody states that dose's time through the Dose history door the
+  // held clause names. That is what this code does, deliberately. Any expiry — the
+  // dose's day, its filing stamp, a "surely by now" hour — is the manufactured instant
+  // again in a new spelling, and it fails in the reassuring direction: a countdown
+  // that clears itself is a clearance nobody measured. Whether the door is escape
+  // enough is a PRODUCT question on the owner's report (#5688), not one this
+  // computation may settle for itself.
   //
-  // Past that bound plus the threshold, the dose cannot be inside the fever-free window
-  // however it is placed, so dropping it is provably safe and the hold ends. That keeps
-  // the door meaningful: one unstated dose on day 1 of a ten-day flu stops holding, and
-  // does not train anyone to ignore the one that matters.
-  //
-  // WHAT THIS STILL DOES NOT COVER, stated rather than claimed away: a dose logged
-  // against a day it OUTLIVED — given at 00:30 and confirmed onto the previous day's
-  // bedtime schedule with no minute — sits past both bounds, by the gap between that
-  // day's end and when it was really given. Stating the time removes the guess
-  // entirely, which is what the door asks for.
-  const thresholdHours =
-    prefetchedSettings?.thresholdHours ??
-    getSchoolReturnThresholdHours(profileId);
-  // The latest moment a dose that states no time could have been given. An unreadable
-  // day AND an unreadable capture leave it unbounded, which holds: nothing about such a
-  // row rules the fever-free window out.
-  const latestPossibleMs = (dose: (typeof doses)[number]): number => {
-    const dayEnd = zonedWallTimeToUtc(tz, shiftDateStr(dose.day, 1), "00:00");
-    return Math.max(
-      dayEnd ? dayEnd.getTime() : Number.NEGATIVE_INFINITY,
-      dose.recordedMs ?? Number.NEGATIVE_INFINITY
-    );
-  };
-
+  // And this narrows ONE computation, nothing wider: it keeps the filing stamp out of
+  // the school-return clock. It does not make every unsafe clearance impossible.
   let lastAntipyretic: LastAntipyretic | null = null;
-  const holding = doses
-    .filter((dose) => dose.statedMs == null)
-    .map((dose) => ({ dose, bound: latestPossibleMs(dose) }))
-    .filter(
-      ({ bound }) =>
-        !Number.isFinite(bound) || nowMs - bound < thresholdHours * 3_600_000
-    );
-  if (holding.length > 0) {
-    // The dose the note names is the one holding the clock longest: the latest moment
-    // any unstated dose could still have been given.
-    const shown = holding.reduce((a, b) => (b.bound >= a.bound ? b : a)).dose;
+  const unstated = doses.filter((dose) => dose.statedMs == null);
+  if (unstated.length > 0) {
+    // The dose the note names is the last unstated one in the gather's own order
+    // (event-then-capture ascending, id tie-break).
+    const shown = unstated[unstated.length - 1];
     lastAntipyretic = {
       timeStated: false,
       name: shown.name,
@@ -355,7 +330,9 @@ function schoolReturnStatusForRows(
     firstNormalAfterFeverAtMs,
     lastAntipyretic,
     nowMs,
-    thresholdHours,
+    thresholdHours:
+      prefetchedSettings?.thresholdHours ??
+      getSchoolReturnThresholdHours(profileId),
   });
 }
 
