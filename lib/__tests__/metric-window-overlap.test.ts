@@ -1124,15 +1124,18 @@ describe("anchorImpliedDay — the day a bucket names, read off its own anchor (
     expect(anchorImpliedDay("steps", start, end, offset)).toBe(expected);
   });
 
-  it("reads the START where the start states an anchor, whatever the end is", () => {
-    // The partial-day bucket the exporter is pushing right now: a real NY midnight
-    // start and an end that is only the push moment. The start answers, so this fix
-    // changes nothing for it — and nothing for any bucket whose start is aligned.
+  it("reads the START where the start states an anchor, whatever the end says", () => {
+    // The partial-day bucket the exporter is pushing right now: a real New York
+    // midnight start, six hours in, and an end that is only the push moment. The end
+    // is never consulted, and this window is one where consulting it would CHANGE the
+    // answer — a 10:00Z close is an admissible -10 midnight whose day the Los Angeles
+    // profile keeps, so reading from the end would say 08-26. Every bucket whose start
+    // states an anchor takes the same path it always did.
     expect(
       anchorImpliedDay(
         "steps",
         "2026-08-27T04:00:00Z",
-        "2026-08-27T21:00:00Z",
+        "2026-08-27T10:00:00Z",
         -7 * HOUR
       )
     ).toBe("2026-08-27");
