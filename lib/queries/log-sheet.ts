@@ -1,18 +1,14 @@
 import {
-  isDraftActivityRow,
-  type DraftCandidateRow,
-} from "@/lib/activity-draft";
-import { hoistedStatement } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
-import {
   LOG_HABIT_WINDOW_DAYS,
+  LOG_LEDGER_SEGMENT,
   type LogSegmentId,
   type SegmentLogDays,
 } from "@/lib/log-sheet";
+import { channelDays, getSurfaceUsage } from "@/lib/queries/surface-usage";
 
 // THE "MOST-LOGGED DOMAIN" GATHER (issue #2709) — the data half of the dashboard
 // sheet's opening segment. `lib/log-sheet.ts` owns the decision, the window, the
-// evidence floor and the churn argument; this module only counts.
+// evidence floor and the churn argument; this module only folds.
 //
 // ── WHAT IT COUNTS, AND WHY THAT AND NOT ROWS ────────────────────────────────
 //
@@ -22,132 +18,46 @@ import {
 // of six food taps outweigh a fortnight of morning weigh-ins, and would move the
 // opening segment on a burst.
 //
-// ── AND WHY MANUAL ROWS ONLY ─────────────────────────────────────────────────
+// ── AND WHY WEB DAYS ONLY (#4249) ────────────────────────────────────────────
 //
-// The question is which domain this PERSON reaches the sheet for, so an ingested
-// row is no evidence about it. Every store that can tell a hand-entered row from a
-// synced one is filtered to the hand-entered half. Without that filter one
-// connected wearable — pushing sleep, HRV and resting heart rate every night,
-// unattended — would pin the answer to Body forever and no amount of tapping could
-// move it, which is the opposite of adapting to what somebody logs.
+// THE DEFECT THIS REPLACES. The question is which domain this person reaches THE
+// SHEET for, and the sheet is on the web. The measure used to answer it with
+// `source` filters, and `source` describes device-versus-hand, not surface: two
+// ledgers took no source filter at all, and every Telegram write is manual-source
+// anyway. So a profile who logged food exclusively through the chat taught the WEB
+// sheet a food habit it did not have on the web, and the sheet opened on Consume
+// for somebody who had never logged food there. The filter read like evidence
+// while measuring a different quantity.
 //
-// ── "HAND-ENTERED" IS SPELLED PER COLUMN, NOT ONCE ─────────────────────────────
+// WHAT IT ASKS NOW. The surface-usage read model (lib/queries/surface-usage.ts)
+// over `logged_via` — the column that has recorded exactly this since #3087 — and
+// the `web` channel of it. An ingested row answers `import` and is not a web act,
+// so the wearable argument the `source` filters existed for still holds, now as a
+// consequence of asking the right column rather than as a per-store predicate.
 //
-// Three arms below spell it three ways, and that is a property of the COLUMNS
-// rather than an inconsistency to tidy. Each arm's predicate is read off its own
-// store's writers, because a predicate that disagrees with its writer counts
-// nothing while still reading like a filter — which is exactly what this
-// statement did until #2720: `medical_records` was filtered on `source IS NULL`
-// while `insertVitals`, the core behind the sheet's own "Log measurements" entry,
-// stamps `source = 'manual'` through `recordReading`. The store added so that a
-// blood-pressure logger would not be under-counted counted that logger at zero.
+// THE THREE STABILISERS ARE UNCHANGED: the 90-day window, the day grain, and the
+// seven-day floor are exactly what they were, and `LOG_HABIT_WINDOW_DAYS` is
+// passed to the read model explicitly rather than inherited, because the sheet's
+// window is the sheet's own argument (see its declaration).
 //
-//   activities / body_metrics / practice_logs — `source IS NULL`. The column is
-//     nullable and every manual writer omits it (`saveActivityCore`,
-//     `insertBodyMetric`, `logPracticeSession`); only an integration binds it.
-//   metric_samples — `source = 'manual'`. The column is NOT NULL, so there is no
-//     null half to admit and `OR source IS NULL` here would be dead SQL. Its one
-//     manual writer, `upsertManualSample`, always stamps 'manual'.
-//   symptom_logs — no filter at all (#4064). The table has no `source` column because
-//     it has no ingest path: every row is a person tapping a severity chip, through
-//     the Telegram verb or the AI intake's confirm step. `food_daily_totals`, `cycles`
-//     and `intake_item_logs` are the same shape, and adding a predicate that matches
-//     nothing would read like a filter while counting the whole table anyway.
-//   substance_daily_totals — `source = 'manual'` (#3327). NOT NULL with a 'manual'
-//     default, exactly like metric_samples, so there is no null half to admit. Only
-//     the NON-food substances are here: alcohol's taps land on food_daily_totals and
-//     are already counted by the `log-food` source declaration for Consume. This arm
-//     therefore owns only the dedicated substance store rather than giving one store
-//     two quick-log owners.
-//   medical_records — `source IS NULL OR source = 'manual'`. Nullable AND written
-//     by hand-entry paths that disagree: `insertVitals`/`recordReading` and the
-//     temperature logger stamp 'manual', while the /results "add a result" form
-//     leaves it NULL. Both are a person typing, so both count, and nothing synced
-//     slips in — the integration vitals writer always binds its source id, and an
-//     imported reading is already excluded by `document_id IS NULL`.
+// ── WHAT MOVES, AND WHAT MAY NEVER ───────────────────────────────────────────
 //
-// ── ONE STATEMENT, HOISTED, AND WRITTEN OUT IN FULL ──────────────────────────
-//
-// It is read once per app-shell render — the hottest path there is — so it is a
-// single UNION ALL compiled once per connection (`hoistedStatement`) rather than
-// eight prepares per request. It is also ONE LITERAL rather than a registry
-// assembled at runtime, deliberately: the owned-table scans read prepare
-// arguments as TEXT, and SQL composed out of fragments passes those scans by
-// being invisible to them. Every arm therefore names its own profile filter here,
-// where the scan can see it — including `intake_item_logs`, which has no
-// profile_id of its own and scopes through its parent item as it does everywhere
-// else.
-
-// Every day-producing arm, tagged with the segment it counts toward. Which stores
-// answer for which quick-log entry is DECLARED in `LOG_DAY_SOURCES`
-// (lib/log-sheet.ts, pure so the census can be read without a database), and
-// `lib/__tests__/log-sheet-sources.test.ts` holds this statement to it in both
-// directions — a declared store that is not counted, and a counted store that was
-// never declared, each fail.
-//
-// THE `activities` ARM IS ITS OWN STATEMENT (#3191), and this is the one place the
-// tagged-arm shape above is written twice. A create-at-start session is manual and
-// dated from its first second, so opening a session and logging nothing used to make
-// a Train habit day — and habit days are what decide which segment the sheet opens
-// on. Whether a row is a draft is settled by `isDraftActivityRow`
-// (lib/activity-draft.ts) reading the whole row, which a `COUNT(DISTINCT d)`
-// aggregate cannot show it; restating the rule in SQL would be a SECOND definition
-// of a draft, which is what the census forbids. So the arm keeps its `SELECT 'train'
-// AS segment` shape — the census test reads BOTH literals and holds this one to
-// `LOG_DAY_SOURCES` exactly as it holds the union — and emits its candidate DAYS,
-// which `getSegmentLogDays` folds to distinct non-draft days below. Cost: one extra
-// prepared statement on the app-shell path, which is the price of the rule having
-// one home.
-const TRAIN_HABIT_DAYS = hoistedStatement(
-  `SELECT 'train' AS segment, a.date AS d,
-          a.start_time, a.end_time, a.duration_min, a.components, a.notes,
-          a.distance_km, a.source,
-          EXISTS (
-            SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
-          ) AS has_sets
-     FROM activities a
-    WHERE a.profile_id = @profileId AND a.source IS NULL AND a.date >= @from`
-);
-
-const HABIT_DAYS = hoistedStatement(
-  `SELECT segment, COUNT(DISTINCT d) AS days FROM (
-     SELECT 'food' AS segment, date AS d FROM food_daily_totals
-       WHERE profile_id = @profileId AND date >= @from
-     UNION ALL
-     SELECT 'body' AS segment, date AS d FROM body_metrics
-       WHERE profile_id = @profileId AND source IS NULL AND date >= @from
-     UNION ALL
-     SELECT 'body' AS segment, date AS d FROM metric_samples
-       WHERE profile_id = @profileId AND source = 'manual' AND date >= @from
-     UNION ALL
-     SELECT 'body' AS segment, date AS d FROM medical_records
-       WHERE profile_id = @profileId AND category = 'vitals'
-         AND document_id IS NULL
-         AND (source IS NULL OR source = 'manual')
-         AND date >= @from
-     UNION ALL
-     SELECT 'body' AS segment, period_start AS d FROM cycles
-       WHERE profile_id = @profileId AND period_start >= @from
-     UNION ALL
-     SELECT 'food' AS segment, l.date AS d FROM intake_item_logs l
-       JOIN intake_items ii ON ii.id = l.item_id
-      WHERE ii.profile_id = @profileId AND l.date >= @from
-     UNION ALL
-     SELECT 'care' AS segment, date AS d FROM practice_logs
-       WHERE profile_id = @profileId AND source IS NULL AND date >= @from
-     UNION ALL
-     SELECT 'care' AS segment, date AS d FROM symptom_logs
-       WHERE profile_id = @profileId AND date >= @from
-     UNION ALL
-     SELECT 'food' AS segment, date AS d FROM substance_daily_totals
-       WHERE profile_id = @profileId AND source = 'manual' AND date >= @from
-   ) WHERE d IS NOT NULL AND d != ''
-   GROUP BY segment`
-);
+// Profiles who log a domain only in the chat, only from an import, or only before
+// #3087's tranche stamped anything now have LESS evidence than before, so more of
+// them fall under the floor and keep the route's own default. That is the
+// intended direction: under the floor the answer is not adapted at all. The #3077
+// guardrail binds the rest — usage evidence may pick a default or an order, never
+// remove or hide. Every segment stays on the track, every entry stays one tap
+// away, and no profile can lose a domain because of what this counts.
 
 /**
  * How many DAYS in the trailing `LOG_HABIT_WINDOW_DAYS` this profile logged each
- * segment on. `today` is the profile's own local day, resolved by the caller.
+ * segment on FROM THE WEB. `today` is the profile's own local day, resolved by the
+ * caller.
+ *
+ * Day sets are unioned before they are counted: Consume is fed by three ledgers
+ * and a day somebody logged food AND a dose on is one day's evidence, exactly as
+ * six food taps in one evening are.
  *
  * Read-only and side-effect free. The decision over it is `openingLogSegment`
  * (lib/log-sheet.ts), which is where the window, the floor and the fallback live.
@@ -156,35 +66,24 @@ export function getSegmentLogDays(
   profileId: number,
   today: string
 ): SegmentLogDays {
-  const from = shiftDateStr(today, -(LOG_HABIT_WINDOW_DAYS - 1));
-  const rows = HABIT_DAYS.all({ profileId, from }) as {
-    segment: LogSegmentId;
-    days: number;
-  }[];
-  const out: Partial<Record<LogSegmentId, number>> = {};
-  for (const r of rows) out[r.segment] = r.days;
-  // The Train arm's own distinct-day fold — a create-at-start draft is not a day
-  // this person logged training on (#3191), and only the pure rule can say which
-  // rows those are.
-  const trainRows = TRAIN_HABIT_DAYS.all({
-    profileId,
-    from,
-  }) as (DraftCandidateRow & {
-    segment: LogSegmentId;
-    d: string | null;
-    /** 0 or 1 — the draft rule only asks whether ANY set exists. */
-    has_sets: number;
-  })[];
-  const trainDays = new Set<string>();
-  for (const row of trainRows) {
-    if (!row.d) continue;
-    if (isDraftActivityRow(row, row.has_sets)) continue;
-    trainDays.add(row.d);
+  const web = channelDays(
+    getSurfaceUsage(profileId, today, LOG_HABIT_WINDOW_DAYS),
+    "web"
+  );
+  const bySegment = new Map<LogSegmentId, Set<string>>();
+  for (const [ledger, days] of web) {
+    // A ledger the census does not declare contributes nothing rather than
+    // guessing a segment for it — the census is the only place the pairing is
+    // decided, and it is checked in both directions by its own test.
+    const segment = LOG_LEDGER_SEGMENT[ledger];
+    if (!segment) continue;
+    const into = bySegment.get(segment) ?? new Set<string>();
+    for (const day of days) into.add(day);
+    bySegment.set(segment, into);
   }
-  // Tagged by the arm itself, like every other arm, and omitted at zero — the
-  // grouped union emits no row for a segment with no days, and the decision over
+  // Omitted at zero — a segment with no web day gets no key, and the decision over
   // this map (`openingLogSegment`) reads a missing segment as none.
-  const trainSegment = trainRows[0]?.segment;
-  if (trainSegment && trainDays.size > 0) out[trainSegment] = trainDays.size;
+  const out: Partial<Record<LogSegmentId, number>> = {};
+  for (const [segment, days] of bySegment) out[segment] = days.size;
   return out;
 }

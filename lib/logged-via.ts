@@ -18,14 +18,22 @@
 //     person used". `import` is the single value where `source` is the
 //     authoritative half and this column merely says so.
 //
-// WHAT IT IS FOR, AND THE BOUND ON THAT. The #3077 relevance ranker's engagement
-// axis is the consumer (deliberately a separate issue — a storage bug must not be
-// able to hide behind a ranking argument). The standing guardrail governs every
-// use: **provenance may reduce or reorder what the app shows, never increase
-// contact.** Knowing somebody ignores a nudge is grounds for sending it LESS. It is
-// never grounds for sending more, and never for a new "you never use this" message.
-// Nothing here leaves the instance and nothing here adds a field to an outbound
-// message.
+// WHAT IT IS FOR, AND THE BOUND ON THAT. The reader is the SURFACE-USAGE READ MODEL
+// (#4249, lib/surface-usage.ts and lib/queries/surface-usage.ts): the one place that
+// answers "which surfaces does this profile act on", per ledger, over a declared
+// 90-day window. Its first consumer is the log sheet's opening segment — which
+// domain a person reaches THE WEB SHEET for, a question `source` cannot answer
+// because it describes device-versus-hand rather than surface. (The #3077 relevance
+// ranker's `engagement` axis was named here as the consumer for a year and never
+// became one; its documented use, the card-vs-line rule, died with #4076's cards.)
+//
+// The standing guardrail governs every use: **provenance may reduce or reorder what
+// the app shows, never increase contact** — and, in #4249's words for the reading
+// half, usage evidence may pick a default or an order, never remove or hide.
+// Knowing somebody ignores a nudge is grounds for sending it LESS. It is never
+// grounds for sending more, for a new "you never use this" message, or for taking a
+// domain off a menu. Nothing here leaves the instance and nothing here adds a field
+// to an outbound message.
 
 /**
  * The closed vocabulary. Every value is a SURFACE A PERSON ACTED ON, except
@@ -281,7 +289,8 @@ export const USUAL_BACKFILL: LoggedVia = "usual-backfill";
  *
  * That is the creation-not-mutation rule working exactly as #3087 specifies. It is
  * written down because "which surface a person used" reads, at a glance, like a claim
- * about the row's present value, and #3077's ranker is what will read it.
+ * about the row's present value, and the surface-usage read model (#4249) is what
+ * reads it — for this ledger it means "the surface that OPENED this symptom-day".
  *
  * `substance_daily_totals` (#4435) is the second day-row and follows that same rule,
  * with one thing worth naming beside it: this row DOES re-stamp `recorded_at` on every

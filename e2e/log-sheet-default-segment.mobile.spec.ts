@@ -77,6 +77,15 @@ function profileId(db: Database.Database): number {
 // Write a run of food servings on PAST days and remove exactly those rows again.
 // Never a blanket delete, and never today: the neighbouring spec logs this group's
 // siblings on the frozen today and reads that day's totals back.
+//
+// BOTH LEDGERS, and the per-tap one is the one that counts (#4249). The habit
+// measure reads `food_log_events` — the per-tap row `logFoodServingCore` writes in
+// the same transaction, carrying the `logged_via` surface — and no longer reads
+// `food_daily_totals`, a counter row with no surface column that cannot answer "was
+// this logged here?". Seeding only the counter is what this fixture used to do, and
+// under the surface measure it means "this profile has never logged food on the
+// web", which is the correct answer to the question the counter cannot be asked.
+// The day totals stay because the neighbouring spec reads them back.
 function setFoodHistory(present: boolean): void {
   const db = openDb();
   try {
@@ -88,9 +97,28 @@ function setFoodHistory(present: boolean): void {
     const remove = db.prepare(
       "DELETE FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
     );
+    // `page` is the web surface the sheet's own taps carry, so this is a profile
+    // that logs food HERE — the claim the test's name makes.
+    //
+    // NO `recorded_at`: the column is NOT NULL with its own canonical DEFAULT, and
+    // the habit measure groups by `date` and never reads the tap instant. Stating
+    // one here would be an undeclared fixture date-time (the #2287 guard), and the
+    // honest answer is that this fixture has no opinion about the instant.
+    const insertEvent = db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, logged_via)
+         VALUES (?, ?, ?, 'page')`
+    );
+    const removeEvent = db.prepare(
+      "DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?"
+    );
     for (const date of fixtureDates()) {
-      if (present) insert.run(id, date, FIXTURE_GROUP);
-      else remove.run(id, date, FIXTURE_GROUP);
+      if (present) {
+        insert.run(id, date, FIXTURE_GROUP);
+        insertEvent.run(id, FIXTURE_GROUP, date);
+      } else {
+        remove.run(id, date, FIXTURE_GROUP);
+        removeEvent.run(id, date, FIXTURE_GROUP);
+      }
     }
   } finally {
     db.close();
