@@ -463,11 +463,26 @@ export function normaliseDiff(diff) {
  * ONE CALLER TODAY: `mergeInReceipt`, below. The gate holds a SECOND head-bound
  * mark that goes stale on the same merge-in for the same reason — the
  * falsifying pass, whose own refusal says the head change "VOIDS it exactly as
- * it voids a receipt" — and it deliberately does NOT call this. #4994 ruled on
- * the receipt only. The falsifying pass is a SAFETY gate, MANDATORY on the
- * paths where the stakes are highest, and relaxing it is a ruling to be taken
- * rather than a symmetry to be noticed: if it is taken, this is the call site
- * to add, not a second derivation of the same judgement.
+ * it voids a receipt".
+ *
+ * THE PASS IS RULED IN AND NOT YET WRITTEN (owner 2026-09-11). It takes this
+ * predicate AND a second clause the receipt does not: the merged-in commits
+ * must touch no module in the head's transitive import closure. The reason is
+ * the asymmetry in what the two marks assert — a receipt says the tree builds
+ * and passes, which a byte-identical diff does say; a pass says somebody
+ * ATTACKED this tree, which it does not. Measured on #5853: attacking the
+ * merged tree moved a finding from "pre-existing" to "introduced here and
+ * untested", because a merged file the head imports had changed what the claim
+ * meant — and a three-dot diff cannot see that file, since the file is not in
+ * the diff.
+ *
+ * That second clause needs an import graph over a tree at the head, which this
+ * gate does not have on this path and cannot approximate safely: an approximate
+ * closure that errs toward ACCEPTING is the one shape a safety marker must not
+ * ship. So the pass caller is dispatched separately, and this stays the
+ * judgement it will call rather than a second derivation of it. The merged-in
+ * file list it needs is already free here — it is `files` on the
+ * `compare/{reviewed}...{head}` read the caller makes for `ancestry`.
  *
  * @param {object} input
  * @param {string} input.head the PR head SHA
