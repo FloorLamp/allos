@@ -289,9 +289,9 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
     prnRow.getByTestId("prn-log-now"),
     prnRow.getByTestId("prn-log-when-toggle"),
   ];
-  const actionWidths = await Promise.all(
-    actionButtons.map(async (button) => (await button.boundingBox())!.width)
-  );
+  // ONE settled group, not four round-trips inside a `Promise.all`: the claim is
+  // that these four share a width, so they have to be measured in one layout.
+  const actionWidths = (await settledBoxes(actionButtons)).map((b) => b.width);
   expect(
     Math.max(...actionWidths) - Math.min(...actionWidths)
   ).toBeLessThanOrEqual(1);

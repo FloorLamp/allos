@@ -134,7 +134,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
 
       const svg = chart.getByTestId("intraday-svg");
       await svg.scrollIntoViewIfNeeded();
-      const box = (await svg.boundingBox())!;
+      const [box] = await settledBoxes([svg]);
       const centre = { x: box.x + box.width / 2, y: box.y + box.height * 0.6 };
 
       // SPREAD: the fingers' gap triples, so the window narrows to about a third
@@ -240,7 +240,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       // Drag across the middle of the plot. The gesture is the zoom that already
       // shipped (#1515) — this asserts a SECOND READER of it, not a second meaning.
       const svg = chart.getByTestId("intraday-svg");
-      const box = (await svg.boundingBox())!;
+      const [box] = await settledBoxes([svg]);
       const y = box.y + box.height / 2;
       await member.mouse.move(box.x + box.width * 0.4, y);
       await member.mouse.down();

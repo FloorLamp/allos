@@ -77,11 +77,9 @@ async function expectStackedAbove(toast: Locator, bar: Locator) {
   // mid-flight — ~46px low, which reads exactly like a broken bottom-edge claim.
   // A wait on the element's own animation, not a widened tolerance.
   await settledAfterAnimation(toast);
-  const toastBox = await toast.boundingBox();
-  const barBox = await bar.boundingBox();
-  expect(toastBox).not.toBeNull();
-  expect(barBox).not.toBeNull();
-  expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(barBox!.y + 1);
+  // …and the two boxes come from ONE settled layout, because the claim is relative.
+  const [toastBox, barBox] = await settledBoxes([toast, bar]);
+  expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(barBox.y + 1);
 }
 
 // Pick an activity in the editor's exercise combobox (the shape-tolerant matcher
@@ -187,7 +185,7 @@ test("a toast raised during a live workout stacks above the dock, never over it 
       );
       throw e;
     }
-    const navBox = (await page.getByTestId("mobile-dock").boundingBox())!;
+    const [navBox] = await settledBoxes([page.getByTestId("mobile-dock")]);
     await expect
       .poll(() =>
         page.evaluate(() =>
@@ -271,7 +269,7 @@ function claimedOffset(page: Page): Promise<number> {
  * and a thumb only ever experiences the second.
  */
 async function testIdAtCentre(control: Locator): Promise<string> {
-  const box = (await control.boundingBox())!;
+  const [box] = await settledBoxes([control]);
   return control.page().evaluate(
     ([x, y]) => {
       const hit = document.elementFromPoint(x, y);
@@ -426,6 +424,6 @@ test("a direct quick-entry sheet claims while its body is still arriving, and re
   // so a scrim click is intercepted by the very surface it would dismiss.
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
-  const navBox = (await page.getByTestId("mobile-dock").boundingBox())!;
+  const [navBox] = await settledBoxes([page.getByTestId("mobile-dock")]);
   await expect.poll(() => claimedOffset(page)).toBeCloseTo(navBox.height, 0);
 });

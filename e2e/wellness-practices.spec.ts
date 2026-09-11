@@ -87,9 +87,8 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
     page.getByRole("main").getByRole("heading", { name: "Wellness" })
   ).toBeVisible();
   const wellnessPage = page.getByTestId("wellness-page");
-  const bounds = await wellnessPage.boundingBox();
-  expect(bounds).not.toBeNull();
-  expect(bounds!.width).toBeLessThanOrEqual(768);
+  const [bounds] = await settledBoxes([wellnessPage]);
+  expect(bounds.width).toBeLessThanOrEqual(768);
 
   // Creation stays out of the reading flow until requested. Its modal combobox
   // must still paint above the page and modal surfaces.
@@ -97,8 +96,7 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
   await create.getByLabel("Practice").focus();
   const listbox = page.getByRole("listbox");
   await expect(listbox).toBeVisible();
-  const listboxBounds = await listbox.boundingBox();
-  expect(listboxBounds).not.toBeNull();
+  const [listboxBounds] = await settledBoxes([listbox]);
   const listboxIsTopmost = await page.evaluate(
     ({ x, y }) =>
       document
@@ -106,8 +104,8 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
         ?.closest('[role="listbox"]')
         ?.getAttribute("role") === "listbox",
     {
-      x: listboxBounds!.x + listboxBounds!.width / 2,
-      y: listboxBounds!.y + listboxBounds!.height - 4,
+      x: listboxBounds.x + listboxBounds.width / 2,
+      y: listboxBounds.y + listboxBounds.height - 4,
     }
   );
   expect(listboxIsTopmost).toBe(true);
@@ -153,9 +151,8 @@ test("a relevant Wellness profile can reach its practice home from nav (#1620)",
     .locator("td:not([data-card])", { hasText: "—" });
   await expect(emptyNotes).toBeHidden();
   await expect(rowAction).toBeVisible();
-  const actionBounds = await rowAction.boundingBox();
-  expect(actionBounds).not.toBeNull();
-  expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(390);
+  const [actionBounds] = await settledBoxes([rowAction]);
+  expect(actionBounds.x + actionBounds.width).toBeLessThanOrEqual(390);
 });
 
 // THE ZERO STATE (#3066). Every other test in this file runs on a profile that

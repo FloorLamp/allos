@@ -76,11 +76,10 @@ test.describe("Training → Analyze, All training (#3512)", () => {
     // The workout-history chart was #1492's answer to a 1,776px pre-chart wall.
     // Moving it must preserve that measured phone outcome, not merely its DOM.
     const firstChart = page.getByTestId("workout-day-history");
-    const box = await firstChart.boundingBox();
+    const [box] = await settledBoxes([firstChart]);
     const viewport = page.viewportSize();
-    expect(box).not.toBeNull();
     expect(viewport).not.toBeNull();
-    expect(box!.y).toBeLessThan(viewport!.height);
+    expect(box.y).toBeLessThan(viewport!.height);
     await expectNoClippedContent(page);
 
     await page.close();

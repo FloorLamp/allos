@@ -12,6 +12,7 @@ import { IconChevronDown, IconPlus } from "@tabler/icons-react";
 import Collapse from "./Collapse";
 import ModalShell from "./ModalShell";
 import type { FormId } from "@/lib/form-grammar";
+import type { Access } from "@/lib/auth";
 
 // The shared RARE-CADENCE ENTRY disclosure (the #1497 rule), defined once.
 //
@@ -48,6 +49,7 @@ export function useAddEntryModalClose() {
 
 export default function AddEntryPanel({
   formId,
+  access,
   label,
   addLabel,
   defaultOpen = false,
@@ -67,6 +69,19 @@ export default function AddEntryPanel({
   // originally asked for, which would have listed `*Form.tsx` files — a set that is
   // neither all the forms nor only forms.
   formId: FormId;
+  // WHETHER THE ACTING PROFILE MAY WRITE HERE (#4694). A read-only viewer used to get
+  // the full add door, fill the form in, and be bounced by `requireWriteAccess()`'s
+  // redirect on submit — their work lost, with nothing saying why. Server-side security
+  // was never the problem; the false affordance was. A section passes what `scope`
+  // already resolved (`scope.access.get(actingProfileId)`), never a second lookup.
+  //
+  // IT IS OPTIONAL ONLY BECAUSE #4694 IS NOT LANDED YET, and the owner's ruling on that
+  // issue says where this ends: a REQUIRED prop with no default, so a section cannot
+  // mount a door without the value the shell gates on, and the shell is the only gate
+  // by construction. #5302's first slice wires the two mounts it owns (conditions,
+  // allergies); the remaining twenty supply it in #4694's own change, and the last step
+  // there is deleting this paragraph along with the `?`.
+  access?: Access;
   // The heading shown when the panel is OPEN, and the fallback for the collapsed
   // button (for example, "+ Add result").
   label: string;
@@ -94,6 +109,10 @@ export default function AddEntryPanel({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // No door at all for a read-only viewer — not a disabled one. A control that cannot
+  // do anything still says the write exists here and still takes a tap to find out
+  // otherwise (the row tier's rule, lib/multi-view.ts).
+  const gated = access === "read";
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeModal = useCallback(() => {
     setOpen(false);
@@ -103,6 +122,8 @@ export default function AddEntryPanel({
   }, []);
   const gap =
     presentation === "modal" ? "" : dense ? "mb-5" : "section-seam mb-6";
+
+  if (gated) return null;
 
   if (presentation === "modal") {
     return (

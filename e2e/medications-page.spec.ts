@@ -349,7 +349,10 @@ test("the medications phone header carries title, subtitle and one action (#3479
   // still wrapped its actions onto a second row cannot clear this bound. Stated as an
   // inequality with the control reading in the comment, not as a pinned number, so an
   // unrelated change to the subtitle does not read as this regression coming back.
-  const top = (await page.getByTestId("medications-today").boundingBox())!.y;
+  const [todayBox] = await settledBoxes([
+    page.getByTestId("medications-today"),
+  ]);
+  const top = todayBox.y;
   console.log(`[#3479] medications-today top at 390px: ${top}px (main: 229px)`);
   expect(top).toBeLessThan(229);
 

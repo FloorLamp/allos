@@ -50,6 +50,10 @@ export default function HealthGoalsSection({ scope }: { scope: ProfileScope }) {
     <div className="space-y-6">
       <AddEntryPanel
         formId="care-goal"
+        // #4694, riding #5302's adoption: the door gates on what the scope already
+        // resolved for the ACTING profile, so a read-only viewer is never offered a
+        // form whose submit would redirect them and lose the typing.
+        access={scope.access.get(scope.actingProfileId)}
         testId="add-health-goal-panel"
         panelId="add-health-goal-panel-body"
         label="Add health goal"

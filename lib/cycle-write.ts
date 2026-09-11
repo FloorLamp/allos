@@ -1,5 +1,11 @@
-// Auth-blind write cores for the menstrual-cycle log (issue #714). profileId-first, never
-// imports lib/auth — the Server Action owns the gate + revalidation (#319). The one-tap
+// Write cores for the menstrual-cycle log (issue #714). profileId-first, and the id must be
+// the one a write gate returned: the parameter is lib/auth's WriteAuthorizedProfileId, which
+// only the gates mint, so an action that never gated has no value to pass and `tsc` refuses
+// the call (#5348). That stops the ACCIDENTAL ungated call and not a deliberate one — nothing
+// refuses `as WriteAuthorizedProfileId` yet, in this tier or in production, and the lint rule
+// that would (WRITE_BRAND_CAST, shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed
+// on that file. The import is type-only — erased at build, so the core still runs auth-blind
+// and the Server Action still owns the gate + revalidation (#319). The one-tap
 // "period started" / "period ended" / "still bleeding" transitions carry the interesting
 // logic (dedup, the open-period guard, the plausible-gap guard, the end-after-start check,
 // the reopen recency window) and answer from a typed outcome union, so a handler never
@@ -14,6 +20,7 @@
 // together, so two quick taps can't mint a second open period. Nested store writeTx calls
 // become SAVEPOINTs.
 
+import type { WriteAuthorizedProfileId } from "./auth";
 import { writeTx } from "./db";
 import type { FlowLevel } from "./cycle";
 import {
@@ -41,7 +48,7 @@ export type StartPeriodOutcome =
 // One-tap "period started" on `date`. Reports instead of writing when a period is already
 // open, when one already starts on this day, or when the last one ended too recently.
 export function startPeriodCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string,
   flow: FlowLevel | null = null
 ): StartPeriodOutcome {
@@ -66,7 +73,7 @@ export type EndPeriodOutcome =
 // One-tap "period ended" as of `date` — closes the open period (inclusive last bleeding
 // day). Refuses an end before the start, and reports when nothing is open.
 export function endPeriodCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string
 ): EndPeriodOutcome {
   return writeTx(() => {
@@ -103,7 +110,7 @@ export type ReopenPeriodOutcome =
 // resurrect last month's period. It only ever clears the end date — flow, note, and the
 // start day are the user's and are left exactly as recorded.
 export function reopenPeriodCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string
 ): ReopenPeriodOutcome {
   return writeTx(() => {

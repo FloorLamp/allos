@@ -21,6 +21,11 @@
 // up these mocks without repeating them.
 
 import { beforeAll, vi } from "vitest";
+import type {
+  CurrentSession,
+  WriteAuthorizedProfileId,
+  WriteSession,
+} from "@/lib/auth";
 import * as cacheSpies from "./cache-spies";
 import { clearActingSession } from "./session-state";
 
@@ -81,6 +86,20 @@ vi.mock("@/lib/auth", async () => {
   // Faithful accessibility: admins reach every profile, members only their
   // granted set (login_profiles) — the same rule accessibleProfiles() enforces in
   // prod. Reads the REAL temp DB so reassign/access tests exercise genuine grants.
+  // What prod's three write gates return beside the session: the id they authorized,
+  // branded as WriteAuthorizedProfileId, which the action passes straight into a write
+  // core (#5348). The brand's minter is private to lib/auth, so a stand-in for a gate has
+  // to cast. No rule refuses that cast anywhere today — not here and not in production;
+  // the WRITE_BRAND_CAST rule that would refuse it in production is owed on
+  // eslint.config.mjs, outside this lane's fence (#5348). Typed as WriteSession, so the
+  // stand-in reds if prod's shape moves.
+  const writeAuthorized = (
+    session: CurrentSession,
+    profileId: number
+  ): WriteSession => ({
+    ...session,
+    writeProfileId: profileId as WriteAuthorizedProfileId,
+  });
   const getAccessibleProfiles = () => {
     const s = getActingSession();
     const rows =
@@ -166,7 +185,7 @@ vi.mock("@/lib/auth", async () => {
       if (s.access === "read") {
         throw new Error("requireWriteAccess: acting session is read-only");
       }
-      return s;
+      return writeAuthorized(s, s.profile.id);
     },
     // Faithful to the login-mutation guard (#278): same pure predicate as prod
     // (a demo-restricted login's account-management writes are refused; prod
@@ -205,7 +224,7 @@ vi.mock("@/lib/auth", async () => {
           throw new Error("requireProfileWriteAccess: read-only on target");
         }
       }
-      return s;
+      return writeAuthorized(s, profileId);
     },
     // Faithful to prod requireAdmin: a non-admin is bounced (redirect("/") throws
     // NEXT_REDIRECT in prod; a recognizable marker here), so an action test can assert
@@ -216,7 +235,7 @@ vi.mock("@/lib/auth", async () => {
       if (s.login.role !== "admin") {
         throw new Error("NEXT_REDIRECT: requireAdmin refused a non-admin");
       }
-      return s;
+      return writeAuthorized(s, s.profile.id);
     },
     // The persisted cross-profile VIEW (#1331). Prod reads it off the view cookie;
     // this tier has no cookie, and null is exactly what prod returns for a session
