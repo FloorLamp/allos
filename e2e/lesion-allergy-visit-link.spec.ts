@@ -8,6 +8,7 @@ import {
   settledFill,
   settledSelect,
 } from "./helpers";
+import { withRecordFact } from "./record-facts-helpers";
 import {
   E2E_LOGIN_LESIONALLERGY,
   E2E_MEMBER_PASSWORD,
@@ -115,21 +116,31 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
       dialog.locator("#allergy-substance-new"),
       LESIONALLERGY_ALLERGY_PICKED
     );
-    await settledFill(
-      page,
-      dialog.getByTestId("allergy-reaction-new-0"),
-      "swelling"
+    // Both the reaction and the visit link are facts behind their chips now (#5302):
+    // the reaction is a dashed essential, the visit an absent optional named by the
+    // trailing affordance. The helper routes to each; the picker is unchanged.
+    const form = dialog.getByTestId("allergy-form");
+    await withRecordFact(form, "allergy", "reaction", () =>
+      settledFill(page, dialog.getByTestId("allergy-reaction-new-0"), "swelling")
     );
 
-    // The new picker: choose the seeded dermatology visit by its shared visit label.
-    const picker = dialog.getByTestId("allergy-encounter-new");
-    await expect(picker).toBeVisible();
-    const option = picker.locator("option", {
-      hasText: LESIONALLERGY_VISIT_TYPE,
+    // The picker: choose the seeded dermatology visit by its shared visit label.
+    await withRecordFact(form, "allergy", "encounter", async () => {
+      const picker = dialog.getByTestId("allergy-encounter-new");
+      await expect(picker).toBeVisible();
+      const option = picker.locator("option", {
+        hasText: LESIONALLERGY_VISIT_TYPE,
+      });
+      const value = await option.getAttribute("value");
+      expect(value).toMatch(/^\d+$/);
+      await settledSelect(page, picker, value!);
     });
-    const value = await option.getAttribute("value");
-    expect(value).toMatch(/^\d+$/);
-    await settledSelect(page, picker, value!);
+
+    // And the row reads the pick back as a stated fact, in the SAME visit label the
+    // picker offered — one computation, so the chip and the option cannot disagree.
+    await expect(form.getByTestId("allergy-fact-encounter")).toContainText(
+      LESIONALLERGY_VISIT_TYPE
+    );
 
     // exact: the repeatable-reactions fieldset also has an "Add reaction" button.
     await settledClick(
