@@ -34,14 +34,20 @@ export const CHANGE_DETECTION_KIND_REGISTRY = {
     ownerSymbol: "summarizeTrends",
     surfaces: ["Trends digest", "Trends tile badges"],
   },
+  // The ARITHMETIC of both movement kinds above and below lives in lib/movement.ts
+  // (#3394) — `windowMovement` under the digest's news gate, `versusBaselineMovement`
+  // under every trailing-baseline surface. These rows still name the module that owns
+  // the KIND at its surfaces, which is the question this registry answers.
   "versus-baseline": {
-    ownerModule: "lib/sleep-summary.ts",
-    ownerSymbol: "lastNightSummary",
+    ownerModule: "lib/movement.ts",
+    ownerSymbol: "versusBaselineMovement",
     surfaces: [
+      "Sleep hero",
       "Dashboard sleep row",
       "Morning digest",
       "Wear reminder",
       "Weekly recap",
+      "Coaching sleep and resting-HR signals",
     ],
   },
   "streak-lapse": {

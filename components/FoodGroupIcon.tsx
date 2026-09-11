@@ -30,13 +30,14 @@ import {
 } from "@tabler/icons-react";
 import { foodGroupIconKey, type FoodGroupIconKey } from "@/lib/food-group-icon";
 import type { FoodGroupTier } from "@/lib/food-groups";
+import { attentionAmber } from "@/lib/chart-colors";
 
 type IconCmp = typeof IconFish;
 
 export const FOOD_GROUP_TIER_TINT: Record<FoodGroupTier, string> = {
   encourage: "text-emerald-500",
   neutral: "text-slate-400",
-  limit: "text-amber-500",
+  limit: attentionAmber.class,
 };
 
 const KEY_ICONS: Record<FoodGroupIconKey, IconCmp> = {

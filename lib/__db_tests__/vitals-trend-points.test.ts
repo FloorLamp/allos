@@ -22,7 +22,7 @@ import {
   getVitalsLatestModel,
 } from "@/lib/queries";
 import { ALL_ROWS } from "@/lib/trends";
-import { latestTrend } from "@/lib/latest-trend";
+import { pointToPointMovement } from "@/lib/movement";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
@@ -131,9 +131,9 @@ describe("vitals trend-tail readers (#1367)", () => {
     expect(tail).toEqual(full.slice(-2));
     // ...and the null-value_num newest row is NOT one of them.
     expect(tail.map((t) => t.value)).toEqual([128, 124]);
-    // latestTrend agrees whether fed the tail or the whole history.
-    expect(latestTrend(tail)).toEqual(latestTrend(full));
-    expect(latestTrend(tail)?.direction).toBe("down"); // 128 → 124
+    // pointToPointMovement agrees whether fed the tail or the whole history.
+    expect(pointToPointMovement(tail)).toEqual(pointToPointMovement(full));
+    expect(pointToPointMovement(tail)?.direction).toBe("down"); // 128 → 124
   });
 
   it("getLatestBodyMetricDailyPoints returns exactly the full daily-series tail", () => {
@@ -147,8 +147,8 @@ describe("vitals trend-tail readers (#1367)", () => {
       { date: shiftDateStr(p.todayStr, -5), value: 62 },
       { date: shiftDateStr(p.todayStr, -1), value: 55 },
     ]);
-    expect(latestTrend(tail)).toEqual(latestTrend(full));
-    expect(latestTrend(tail)?.direction).toBe("down"); // 62 → 55
+    expect(pointToPointMovement(tail)).toEqual(pointToPointMovement(full));
+    expect(pointToPointMovement(tail)?.direction).toBe("down"); // 62 → 55
   });
 });
 

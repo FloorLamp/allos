@@ -1,6 +1,6 @@
 // The Latest-vitals dashboard card's prepared MODEL (#1221, recency floor #2303).
 // PURE — no DB, no clock: the page gathers the two bounded trend tails, reduces each
-// through `latestTrend`, and hands the results here; the card is a thin formatter over
+// through `pointToPointMovement`, and hands the results here; the card is a thin formatter over
 // what comes back (#221).
 //
 // ── The question this module asks ────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ import {
   freshnessState,
   type FreshnessState,
 } from "./freshness";
-import type { LatestTrend, TrendDirection } from "./latest-trend";
+import type { MovementDirection, PointToPointMovement } from "./movement";
 
 // The two quantities this card renders. Deliberately not a general per-metric table:
 // a presentation floor is glance-framing policy, and METRIC_KNOWLEDGE (clinical
@@ -97,9 +97,9 @@ export function vitalDormant(
 // reading the card is still presenting as current. `not-applicable` (an undatable
 // reading) withholds it too: no age is knowable, so no claim either way.
 export function presentedDirection(
-  direction: TrendDirection | null,
+  direction: MovementDirection | null,
   freshness: FreshnessState
-): TrendDirection | null {
+): MovementDirection | null {
   return freshness === "current" ? direction : null;
 }
 
@@ -109,7 +109,7 @@ export function presentedDirection(
 export interface VitalsLatestRow {
   date: string;
   freshness: FreshnessState;
-  direction: TrendDirection | null;
+  direction: MovementDirection | null;
   // Past the year floor: the row renders the dormancy statement instead of the number
   // (#3226). Per ROW, like `freshness` and for the same reason — the two quantities age
   // independently.
@@ -144,9 +144,9 @@ export interface VitalsLatestModel {
 // governs; only `dormant` — a year past the floor — retires the number, and it does so by
 // saying when the record stops, which is the one fact the aged value was standing in for.
 export function vitalsLatestModel(
-  systolic: LatestTrend | null,
-  diastolic: LatestTrend | null,
-  restingHr: LatestTrend | null,
+  systolic: PointToPointMovement | null,
+  diastolic: PointToPointMovement | null,
+  restingHr: PointToPointMovement | null,
   today: string
 ): VitalsLatestModel | null {
   // A BP row needs both halves; it is dated by the systolic reading, which the paired
