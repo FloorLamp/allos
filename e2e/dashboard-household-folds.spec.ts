@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, openDashboardAll } from "./helpers";
+import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
@@ -47,29 +47,38 @@ test("eligible closed episodes emit independent reopen actions", async ({
   );
   try {
     await page.goto("/");
-    await openDashboardAll(page);
+    // ON THE PAGE, NOT BEHIND A FOLD (#5435 §3.1). Reopen is part of Current care
+    // now — "at most one eligible, undismissed row per profile, after the open
+    // episodes" — so nothing has to be opened to reach it. The rows keep the
+    // identity the ranker minted for them (`illness.reopen:<profileId>:<episodeId>`,
+    // through `careCandidates.illnessReopen`), which is what lets this spec and the
+    // dismissal case below address them unchanged.
     const reopen = dashboardCandidatePrefix(page, "illness.reopen:");
     await expect(reopen).toHaveCount(2);
-    await expect(
-      reopen.filter({ hasText: FOLD_REOPEN_KID_A_SITUATION })
-    ).toHaveAttribute("data-kind", "action");
-    await expect(
-      reopen.filter({ hasText: FOLD_REOPEN_KID_B_SITUATION })
-    ).toHaveAttribute("data-kind", "action");
+    // EACH IS AN OFFER WITH ITS OWN CONTROLS, which is what `data-kind="action"`
+    // said under the ranker's four kinds. v3 has no kinds: a row either carries a
+    // control or it does not, so the claim is made of the controls themselves.
+    for (const situation of [
+      FOLD_REOPEN_KID_A_SITUATION,
+      FOLD_REOPEN_KID_B_SITUATION,
+    ]) {
+      const row = reopen.filter({ hasText: situation });
+      await expect(
+        row.getByTestId("recently-resolved-reopen-btn")
+      ).toBeVisible();
+      await expect(row.getByTestId("recently-resolved-dismiss")).toBeVisible();
+    }
 
-    // The household-history fact is a link to a page the nav already carries, so the
-    // tail DROPS it (#3366) — and since #4076 draws no door row in its place either
-    // (owner: the Elsewhere list is "utterly useless"; the nav already names that
-    // page). The fact still places, which is what keeps the exact-once contract
-    // true, and that half is asserted where it can go red: the placement manifest
-    // (lib/__db_tests__/dashboard-placement-manifest.test.ts).
+    // THE HOUSEHOLD-HISTORY DOOR IS GONE FROM THE PAGE, not merely from a fold
+    // (#5435 §3.1: "the separate household-history door is removed; the episode link
+    // remains"). #3366 had already dropped it from the tail and #4076 drew no door
+    // row in its place; the cutover removes the fact as well, so this is the same
+    // absence asked of the whole page rather than of one band — and the episode link
+    // it left behind is what the rows above still carry.
     await expect(
       dashboardCandidatePrefix(page, "household.episode-history")
     ).toHaveCount(0);
-    await expect(page.getByTestId("dashboard-all-door")).toHaveCount(0);
-    await expect(
-      page.getByTestId("dashboard-all-contents").getByText("Elsewhere")
-    ).toHaveCount(0);
+    await expect(page.getByRole("main").getByText("Elsewhere")).toHaveCount(0);
   } finally {
     await page.context().close();
   }
@@ -85,19 +94,15 @@ test("the household-history action follows its existing 14-day window", async ({
   );
   try {
     await tail.goto("/");
-    await openDashboardAll(tail);
     await expect(dashboardCandidatePrefix(tail, "illness.reopen:")).toHaveCount(
       0
     );
-    // The control: the tail rendered and holds entries, so the door's absence below
-    // is about a populated tail and not an empty selector.
-    expect(
-      await tail
-        .getByTestId("dashboard-all-contents")
-        .getByTestId("dashboard-candidate")
-        .count()
-    ).toBeGreaterThan(0);
-    await expect(tail.getByTestId("dashboard-all-door")).toHaveCount(0);
+    // The control: Home rendered and holds rows, so the absence above is about a
+    // populated page and not an empty selector. It counted the retired tail's rows
+    // until #5435 §4 removed the tail; the rows it counts now are the page's own.
+    expect(await tail.locator("[data-candidate-id]").count()).toBeGreaterThan(
+      0
+    );
   } finally {
     await tail.context().close();
   }
@@ -136,7 +141,6 @@ test("dismissing one reopen action persists without hiding its sibling", async (
   );
   try {
     await page.goto("/");
-    await openDashboardAll(page);
     const reopen = dashboardCandidatePrefix(page, "illness.reopen:");
     await expect(reopen).toHaveCount(2);
     const dismissed = reopen.filter({ hasText: FOLD_REOPEN_KID_A_SITUATION });
@@ -150,11 +154,8 @@ test("dismissing one reopen action persists without hiding its sibling", async (
     await expect(reopen).toHaveCount(1);
 
     await page.reload();
-    await openDashboardAll(page);
     await expect(
-      page.locator(
-        `[data-testid='dashboard-candidate'][data-candidate-id='${dismissedId}']`
-      )
+      page.locator(`[data-candidate-id='${dismissedId}']`)
     ).toHaveCount(0);
     await expect(dashboardCandidatePrefix(page, "illness.reopen:")).toHaveCount(
       1

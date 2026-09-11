@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, openDashboardAll } from "./helpers";
+import { followLink } from "./helpers";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_DQ_ADULT,
@@ -11,11 +11,21 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { dashboardCandidateWithText } from "./dashboard-candidate";
 
-// Issues #1146 + #1219 — every dashboard signal carries its affordance, and every
+/** Home's Setup band rows — one per admitted data-quality finding (#5435 §3.4). */
+const SETUP_GAP = '[data-candidate-id^="home.setup:data-quality:"]';
+
+// Issues #1146 + #1219 — every Home signal carries its affordance, and every
 // data-quality CTA deep-links the exact form that fixes the gap (the #1083
 // deep-link-the-concrete-action principle in the #1045 lane):
+//
+// WHERE THE FINDINGS LIVE NOW (#5435 §3.4). They were `data-quality.finding:` rows in
+// the ranker's tail, reached by opening Show everything. Home v3 seats them in its
+// Setup band as `home.setup:data-quality:<key>`, built from the same
+// `buildDataQualityFindings` bus with the same dismissal identity, and each row's
+// trailing slot carries the finding's OWN verb — "Fix it" — pointing at the same href
+// the finding declares. So the deep-link claims below are unchanged; only the row they
+// are read from moved, and they no longer need a fold opened first.
 //   • data-quality CTAs land on the anchored smoking/risk forms, the prefilled
 //     biomarker add form, and the sole unconfirmed med's edit form / the filtered
 //     med list (#1146);
@@ -57,13 +67,11 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
     });
     try {
       await page.goto("/");
-      await openDashboardAll(page);
       const ctaFor = (label: string) =>
-        dashboardCandidateWithText(
-          page,
-          "data-quality.finding:",
-          label
-        ).getByRole("link", { name: "Fix it" });
+        page
+          .locator(SETUP_GAP)
+          .filter({ hasText: label })
+          .getByRole("link", { name: "Fix it" });
 
       // Each CTA names the exact target (asserted before navigating).
       await expect(ctaFor("Record smoking status")).toHaveAttribute(
@@ -93,7 +101,6 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
 
       // Follow the PhenoAge CTA: the biomarker add form opens prefilled.
       await page.goto("/");
-      await openDashboardAll(page);
       await followLink(
         page,
         ctaFor("Complete the PhenoAge panel"),
@@ -119,12 +126,10 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
     });
     try {
       await page.goto("/");
-      await openDashboardAll(page);
-      const cta = dashboardCandidateWithText(
-        page,
-        "data-quality.finding:",
-        "Confirm 1 RxNorm match"
-      ).getByRole("link", { name: "Fix it" });
+      const cta = page
+        .locator(SETUP_GAP)
+        .filter({ hasText: "Confirm 1 RxNorm match" })
+        .getByRole("link", { name: "Fix it" });
       await expect(cta).toHaveAttribute(
         "href",
         /\/medications\/\d+\?action=edit$/
@@ -190,27 +195,21 @@ test("the measurements form honors ?focus=height (#1146 pediatric-height CTA)", 
   }
 });
 
-test("a target-less Standing goal fact links to the goals surface (#1219)", async ({
-  browser,
-}) => {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DQ_ADULT,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    const goalFact = page
-      .getByRole("main")
-      .locator('[data-standing-family="outcome-goals"]')
-      .locator(
-        '[data-testid="dashboard-candidate"][data-candidate-id^="goal.progress:"][data-fact-key^="outcome-goal.progress:"]'
-      )
-      .filter({ hasText: "Feel better all around" });
-    await expect(goalFact).toHaveAttribute("data-lane", "standing");
-    const goalLink = goalFact.getByRole("link");
-    await expect(goalLink).toHaveAttribute("href", "/training?tab=plan#goals");
-    await followLink(page, goalLink, /\/training\?tab=plan#goals$/);
-  } finally {
-    await page.context().close();
-  }
-});
+// THE TARGET-LESS GOAL FACT WAS A STANDING ROW (#1219, #5435 §4).
+//
+// A test here proved that a Standing goal fact with no target of its own still carries
+// a door, and that the door is the goals surface — `/training?tab=plan#goals` — rather
+// than a browse page. It read `[data-standing-family="outcome-goals"]`, a
+// `goal.progress:` candidate in the `standing` lane.
+//
+// `goal.progress:` is a progress candidate matched by lib/dashboard-standing.ts, and
+// no route mounts the Standing cluster after Home v3. Home does seat goals, but as
+// attention facts whose row is a title and a detail with NO door (§3.2) — a different
+// row making a different promise, so pointing this at it would assert something the
+// page does not claim.
+//
+// WHAT RETIRED: the rendered proof that a target-less goal fact has a door at all.
+// What did not: the destination itself, pinned in lib/__tests__/training-tabs.test.ts
+// (`retiredTrainingTabTarget("goals")`), in lib/__db_tests__/target-rightsize.test.ts
+// (the rightsize finding's `actionHref`) and in lib/__db_tests__/search-hrefs.test.ts.
+// The candidate and its lane belong to PR 3 with the rest of the ranker.

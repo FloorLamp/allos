@@ -9,8 +9,8 @@ For development entry points and checks, use [Development](development.md).
 
 | Feature         | Behavior                                                                                                                                                                                                      |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dashboard       | Presents current attention, standing context, and upcoming work. Shared findings decide placement; the page does not invent another health score. Expanded views expose the underlying items.                 |
-| Timeline        | Combines dated records across domains. Preserve the distinction between when something happened and when it was recorded or imported.                                                                         |
+| Home            | The record's day view at today plus what is owed: current care, a folded later row, current actions under a Now rule, the day's entries. Seats are fixed, nothing ranked, no score invented.                  |
+| Record          | Dated records across domains, day by day. Keep when something happened apart from when it was logged.                                                                                                         |
 | Symptoms        | Logs symptom severity, context, media, and illness episodes. Cited duration/trajectory findings can prompt review; symptom logging is not a diagnosis or combination-triage engine.                           |
 | Daily wellbeing | Records mood and other self-reported context. Missing entries are unknown rather than evidence of poor wellbeing.                                                                                             |
 | Upcoming        | Combines due work and review signals. Dismissal and snooze follow the shared finding lifecycle; safety items retain their own rules. A never-recorded screening is unknown rather than automatically overdue. |
@@ -18,9 +18,8 @@ For development entry points and checks, use [Development](development.md).
 
 [Finding reach and attention](internals/findings.md), [reading placement](internals/reading-model.md),
 [freshness](internals/freshness.md), and [time](internals/time-model.md) define the
-shared behavior behind these surfaces. The dashboard's layout follows #3077: one
-ranker over Now, Standing, and Ahead plus a show-everything fold; row identity
-comes from columns, not icons.
+shared behavior behind these surfaces. Home's layout is #5435's: fixed seats in
+one list, no ranking; row identity comes from columns, not icons.
 
 ## Training and trends
 

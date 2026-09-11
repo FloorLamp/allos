@@ -150,13 +150,22 @@ test("a clean tab takes the deploy by itself and says so afterwards (#2471)", as
   ).toBeNull();
   // ANY client-side navigation will do here — this case is about the taken-build
   // marker, not about which row was clicked. It uses a TOP-LEVEL row on purpose:
-  // #4965 moved Trends into the collapsed "Plan & review" group and put History
-  // in its old top-level slot, and a spec that has no opinion about nav shape
-  // should not have to expand a group to say so.
+  // a spec that has no opinion about nav shape should not have to expand a group
+  // to say so.
+  //
+  // That row was History (#4965 put it in Trends's old top-level slot) until
+  // #5435 §4 retired it: Home is the daily read now, so a `/history` nav row would
+  // be a second door to the page the reader is already on. Settings is the
+  // replacement because it is the top-level row that CANNOT be gated away —
+  // `isNavLeafVisible` (lib/nav.ts) drops a leaf on `adminOnly`,
+  // `requiresMultiProfile`, `requiresTraining`, `requiresFoodLogging`, a
+  // `relevanceKey` or the adult-only set, and `/settings` carries none of them —
+  // and it grows no badge into its accessible name the way `/data` does. Nutrition
+  // below is a second vehicle, not a second opinion about the registry.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "History" }),
-    /\/history/
+    page.locator("aside nav").getByRole("link", { name: "Settings" }),
+    /\/settings/
   );
   expect(
     await page.evaluate((k) => sessionStorage.getItem(k), UPDATE_TAKEN_KEY)
@@ -238,8 +247,8 @@ test("with the automatic attempt spent, the deploy raises exactly one bar and it
   // client navigation is the subject, not the nav registry.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "History" }),
-    /\/history/
+    page.locator("aside nav").getByRole("link", { name: "Settings" }),
+    /\/settings/
   );
   await expect(bar).toBeVisible();
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(1);

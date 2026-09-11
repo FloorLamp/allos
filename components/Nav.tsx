@@ -6,7 +6,6 @@ import PendingNavLink from "@/components/PendingNavLink";
 import {
   IconCamera,
   IconLayoutDashboard,
-  IconTimelineEvent,
   IconTrendingUp,
   IconMoon,
   IconHourglass,
@@ -302,7 +301,7 @@ const PLAN_REVIEW: Group = {
 // Wellness in all 102 desktop captures, so the un-visited rows were pushing real
 // destinations below the fold.
 const entries: Entry[] = [
-  { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
+  { href: "/", label: "Home", icon: IconLayoutDashboard },
   {
     href: "/training",
     label: "Training",
@@ -316,17 +315,16 @@ const entries: Entry[] = [
     // Hidden for an infant profile (< 1 y); the page also gates server-side (#591).
     requiresFoodLogging: true,
   },
-  // HISTORY (#4965) — earned this row. It used to inherit the fold's slot from
-  // Timeline (#3958 phase 2, #3343) as a destination reached FROM CONTEXT — used
-  // constantly, never from the nav. #4918 changed that: `/history?day=` is now
-  // the owner's daily morning read, opened on purpose from the dock's Home, so
-  // the ORDER rule above counts it as a deliberate visit and it earns a
-  // permanent row instead of a folded one. Its other doors are unchanged — every
-  // DayHistory heatmap cell, every mini-calendar day (components/EventCalendar.tsx),
-  // the weekly recap widget, several sleep and trends surfaces, and the same
-  // permanent mobile dock slot (lib/mobile-dock.ts, the Q5 half of the same
-  // ruling).
-  { href: "/history", label: "History", icon: IconTimelineEvent },
+  // HISTORY IS NOT A NAV ENTRY (#5435 §4, 2026-09-10 revision). It had this row
+  // because `/history?day=` was the owner's daily morning read (#4965), opened
+  // on purpose from the dock's Home. Home IS that read now — `/` renders the
+  // record's day view at today — so the row would be a second door to the page
+  // the reader is already on. Its other doors are unchanged and are what reach
+  // the rest of the record: the day bar's ‹ arrow reaches any day, the Calendar
+  // door on that page reaches the all-time folded record, and every DayHistory
+  // heatmap cell, mini-calendar day (components/EventCalendar.tsx), weekly recap
+  // widget, sleep and trends surface still links to it. The `/history` route
+  // stays; only the permanent nav row goes.
   // Year in review (#2179/#2762) remains user-initiated and ungated, but a
   // once-a-year commemorative page does not spend permanent nav chrome. It was
   // reached from the Timeline's header action until #3958 phase 2 deleted that

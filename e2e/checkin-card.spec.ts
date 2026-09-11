@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { openDashboardAll, settledClick } from "./helpers";
-import { createProfileViaFamily, switchToProfile } from "./family-helpers";
+import { appContent, settledClick } from "./helpers";
+import { switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import {
@@ -9,22 +9,10 @@ import {
   E2E_MEMBER_PASSWORD,
   WELL_SYMPTOM_PROFILE,
 } from "./fixture-logins";
-import { frozenNow, workerDbPath } from "./worker-env";
-import {
-  dashboardCandidatePrefix,
-  dashboardCandidateWithText,
-} from "./dashboard-candidate";
+import { workerDbPath } from "./worker-env";
+import { dashboardCandidatePrefix } from "./dashboard-candidate";
 
 const ADMIN_PROFILE = "admin";
-
-function moodOpeningTimes(): { exact: string; oneMinuteLater: string } {
-  const minute = frozenNow().getUTCMinutes();
-  return {
-    exact: `13:${String(minute).padStart(2, "0")}`,
-    oneMinuteLater:
-      minute === 59 ? "14:00" : `13:${String(minute + 1).padStart(2, "0")}`,
-  };
-}
 
 test.afterEach(async ({ page }) => {
   await page.goto("/");
@@ -74,8 +62,13 @@ test("the well-day symptom action logs burden without activating illness", async
     // the dashboard tail; the ruling of 2026-08-29 retired the tail's generic write
     // cards because the quick logger is the app's one quick-write surface. Both
     // halves are asserted, so a tree where well-day logging vanished instead of
-    // moving cannot pass: gone from the tail, offered by the sheet's Care segment.
-    await openDashboardAll(page);
+    // moving cannot pass: absent from `/`, offered by the sheet's Care segment.
+    //
+    // The absence is READ AGAINST A RENDERED PAGE (#5435 §4 removed the fold this
+    // used to open). A count of 0 is what a 404, a redirect or an unrendered shell
+    // also produce, so the Now band is proved on screen first and the absence is
+    // only then believed.
+    await expect(appContent(page).getByTestId("home-now")).toBeVisible();
     await expect(
       dashboardCandidatePrefix(page, "symptom.well-day-log")
     ).toHaveCount(0);
@@ -98,17 +91,18 @@ test("the well-day symptom action logs burden without activating illness", async
     );
     await expect(bar.getByTestId("symptom-illness-bridge")).toBeVisible();
 
+    // AND COACHING SAW IT. The committed severity reaches `reportedBurden`, which
+    // adds the basis-aware rest tilt ("You logged severe headache today …") to the
+    // recommendation's reason. That reason was read off the dashboard's coaching row;
+    // Home's next-workout seat carries the TITLE only, so it is read where the reason
+    // is printed in full — the Training overview's next-workout card, which renders
+    // the same single computation (#221).
     // eslint-disable-next-line no-restricted-properties -- topass-ok: re-read until the committed symptom log changes coaching
     await expect(async () => {
-      await page.reload();
-      await openDashboardAll(page);
+      await page.goto("/training?tab=overview");
       await expect(
-        dashboardCandidateWithText(
-          page,
-          "coaching.recommendation:",
-          "severe headache"
-        )
-      ).toBeVisible({ timeout: 3_000 });
+        appContent(page).getByTestId("next-workout-card")
+      ).toContainText("severe headache", { timeout: 3_000 });
     }).toPass({ timeout: 20_000 });
   } finally {
     resetWellSymptomState();
@@ -116,54 +110,20 @@ test("the well-day symptom action logs burden without activating illness", async
   }
 });
 
-function setMoodCheckinState(
-  profileName: string,
-  count: number,
-  eveningTime: string
-): void {
-  const db = new Database(workerDbPath());
-  try {
-    db.pragma("busy_timeout = 5000");
-    const row = db
-      .prepare("SELECT id FROM profiles WHERE name = ?")
-      .get(profileName) as { id: number } | undefined;
-    if (!row) throw new Error(`no profile ${profileName}`);
-    db.prepare(
-      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'mood_checkin_enabled', '1')
-       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-    ).run(row.id);
-    db.prepare(
-      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'mood_checkin_ignored', ?)
-       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-    ).run(row.id, String(count));
-    db.prepare(
-      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'notify_supp_evening_hour', ?)
-       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-    ).run(row.id, eveningTime);
-  } finally {
-    db.close();
-  }
-}
-
-test("a mood check-in crosses from read-only Ahead to actionable Now at its opening minute", async ({
-  page,
-}) => {
-  const aheadProfile = await createProfileViaFamily(page, "checkinahead");
-  setMoodCheckinState(aheadProfile, 0, moodOpeningTimes().oneMinuteLater);
-  await page.goto("/");
-
-  const aheadMood = dashboardCandidatePrefix(page, "checkin.mood");
-  await expect(aheadMood).toBeVisible();
-  await expect(aheadMood).toHaveAttribute("data-lane", "ahead");
-  await expect(aheadMood.getByRole("button")).toHaveCount(0);
-
-  const openProfile = await createProfileViaFamily(page, "checkinpause");
-  setMoodCheckinState(openProfile, 5, moodOpeningTimes().exact);
-  await page.goto("/");
-
-  const openMood = dashboardCandidatePrefix(page, "checkin.mood");
-  await expect(openMood).toBeVisible();
-  await expect(openMood).toHaveAttribute("data-lane", "now");
-  await expect(openMood).toContainText("Daily reminders are paused.");
-  await expect(openMood.getByRole("button")).not.toHaveCount(0);
-});
+// THE AHEAD→NOW CROSSING WAS THE RANKER'S (#5435 §4).
+//
+// A test here proved the mood check-in row crosses lanes at its opening minute: before
+// it, `data-lane="ahead"` and NO button — a read-only preview of something not yet
+// actionable; at it, `data-lane="now"`, the "Daily reminders are paused." sentence for
+// a profile that has ignored five, and a control the reader can press.
+//
+// Both halves of that claim are the ranker's. `checkin.mood` is a
+// `dailyCandidates.moodCheckin` candidate, the lanes are the placement canvas's, and
+// Home v3 seats fixed kinds (dose, practice, care, training, fast, period) — it builds
+// no daily candidates and has no Ahead lane, so the row has no surface to cross on.
+//
+// WHAT RETIRED: the RENDERED read-only-versus-actionable distinction at the minute
+// boundary. What did not: the builder and its lane derivation, which are untouched and
+// belong to PR 3 with the rest of the ranker, and the check-in's Telegram half, which
+// is covered in lib/__db_tests__/mood-log-store.test.ts and the telegram-commands
+// tests. `setMoodCheckinState`, which existed only for this test, went with it.
