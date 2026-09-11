@@ -12,6 +12,7 @@
 // lift done at a gym).
 
 import type { Equipment, EquipmentCategory } from "./types";
+import { EQUIPMENT_CATEGORIES } from "./types";
 import { isBarbellLift, variantOf, defaultEquipment } from "./lifts";
 
 // The availability summary: whether the registry has ANY (non-retired) gear, and
@@ -37,24 +38,38 @@ export function summarizeEquipmentAvailability(
   return { hasAny: live.length > 0, categories: [...categories] };
 }
 
-// The equipment CATEGORY a lift requires, or null when it needs nothing trackable
-// (bodyweight, cable — no registry category — or an unknown/custom lift). Only the
-// three clear strength categories that map onto registry categories gate:
-// Barbell, Dumbbell, Machine. A cable/bodyweight/unknown lift is ALWAYS available.
+// WHICH IMPLEMENT A LIFT USES, as a registry category — ONE walk of the two sources
+// that answer it: the equipment composed into the lift's own name ("Dumbbell Curl"),
+// then the lift's normal implement. Null when that implement is not a registry
+// category ("Cable", "Trap Bar", "Smith", "Bodyweight"), when the lift offers a
+// CHOICE of implements and none is chosen ("Curl"), or when the lift is unknown.
+//
+// Every category, deliberately — the callers disagree about which ones their own
+// question covers, and each narrows for its own reason (see the gate below, and the
+// quick-add's category prefill in components/activity-form/EquipmentQuickAdd.tsx).
+// Both used to re-resolve the implement themselves; that walk is what converged here.
+export function liftImplementCategory(name: string): EquipmentCategory | null {
+  const implement = variantOf(name)?.equipment ?? defaultEquipment(name);
+  const want = (implement ?? "").trim().toLowerCase();
+  return EQUIPMENT_CATEGORIES.find((c) => c.toLowerCase() === want) ?? null;
+}
+
+// The equipment CATEGORY a lift requires, or null when it needs nothing trackable.
+// Only the three implements whose absence reliably means the lift cannot be done
+// gate: Barbell, Dumbbell, Machine. Everything else — cable, bodyweight, unknown,
+// and KETTLEBELL, which IS a registry category this resolver returns — is ALWAYS
+// available. Null is that answer, not a missing case: widening the gate is a
+// behavior change, not a spelling.
 export function liftRequiredCategory(name: string): EquipmentCategory | null {
+  // Plate-loaded first: a trap-bar deadlift's implement reads "Trap Bar", but it is
+  // loaded on plates, so a barbell is what it needs.
   if (isBarbellLift(name)) return "Barbell";
-  const v = variantOf(name);
-  if (v?.equipment) {
-    if (v.equipment === "Barbell") return "Barbell";
-    if (v.equipment === "Dumbbell") return "Dumbbell";
-    if (v.equipment === "Machine") return "Machine";
-    return null; // Cable variant → not a registry category → always available
-  }
-  const def = defaultEquipment(name);
-  if (def === "Barbell") return "Barbell";
-  if (def === "Dumbbell") return "Dumbbell";
-  if (def === "Machine") return "Machine";
-  return null; // Cable / Bodyweight / unknown → always available
+  const category = liftImplementCategory(name);
+  return category === "Barbell" ||
+    category === "Dumbbell" ||
+    category === "Machine"
+    ? category
+    : null;
 }
 
 // Whether a set logged on this equipment CATEGORY contradicts a free-weight
