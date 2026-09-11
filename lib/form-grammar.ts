@@ -665,17 +665,15 @@ export const FORM_GRAMMAR = {
   //
   // `dose` is OPTIONAL at its own end rather than by contrast: `resolveDoseLabels`
   // numbers each dose within its vaccine's date-ordered sequence and only lets a
-  // non-empty label win, so a blank field reads back as "Dose 2 of 4". `lot`, `route`
-  // and `site` stay three chips rather than one grouped fact because no labeller reads
-  // them back as one line — the printed record gives each its own column, and the skin
-  // form's region-plus-side is one chip only because `bodyMapLabel` is the single
-  // function every skin surface reads those two columns through.
+  // non-empty label win, so a blank field reads back as "Dose 2 of 4". `lot_number`,
+  // `route` and `site` are ONE fact — `immunizationAdministrationLine` is already the
+  // one computation the history table, the dose list and the export read the three back
+  // with, "so they can never phrase the same dose differently" — the skin form's
+  // region-and-side rule with the labeller supplied rather than invented.
   immunization: facts<ImmunizationFactKey>({
     date: "essential",
     dose: "optional",
-    lot: "optional",
-    route: "optional",
-    site: "optional",
+    administration: "optional",
     reaction: "optional",
     provider: "optional",
     notes: "optional",

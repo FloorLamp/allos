@@ -17,13 +17,21 @@ import FamilyHistoryForm from "@/app/(app)/records/care/overview/FamilyHistoryFo
 import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
 import DentalProcedureForm from "@/app/(app)/records/specialty/dental/DentalProcedureForm";
 import ProcedureForm from "@/app/(app)/records/history/procedures/ProcedureForm";
+import ImmunizationForm from "@/app/(app)/immunizations/ImmunizationForm";
+import ResultForm from "@/components/ResultForm";
+import ImagingStudyForm from "@/app/(app)/results/imaging/ImagingStudyForm";
+import GenomicVariantForm from "@/app/(app)/results/genomics/GenomicVariantForm";
 import type {
   Allergy,
   CareGoal,
   CarePlanItem,
+  ClinicalObservation,
   Condition,
   DentalProcedure,
   FamilyHistory,
+  GenomicVariant,
+  ImagingStudy,
+  Immunization,
   Procedure,
   SkinLesion,
 } from "@/lib/types";
@@ -249,6 +257,13 @@ describe("a record add door is gated on write access (#4694)", () => {
     { formId: "skin-lesion", label: "Add skin lesion" },
     { formId: "dental-procedure", label: "Add dental record" },
     { formId: "procedure", label: "Add procedure" },
+    // #5302 slice 4's four, which are also the last four doors this issue owns —
+    // three of them on the Results hub rather than under /records, so they are three
+    // more separate call sites and not one section wired four times.
+    { formId: "immunization", label: "Add immunization" },
+    { formId: "result", label: "Add result" },
+    { formId: "imaging-study", label: "Add imaging study" },
+    { formId: "genomic-variant", label: "Add genomic variant" },
   ])(
     "$label renders for a writer and not for a read-only viewer",
     ({ formId, label }) => {
@@ -625,5 +640,188 @@ describe("no standing prose on a specialty record form (#5300 rule 4)", () => {
     fireEvent.click(screen.getByTestId("skin-lesion-fact-more"));
     fireEvent.click(screen.getByTestId("skin-lesion-more-abcde"));
     expect(screen.getByText(MEANING).closest("[hidden]")).toBeNull();
+  });
+});
+
+// ── #5302 slice 4: the coded-catalogue forms ─────────────────────────────────
+//
+// Seeded MISSING the essential each form declares, one fixture per form, because the
+// thing being seeded away differs at every address.
+
+const undatedDose: Immunization = {
+  id: 21,
+  date: "",
+  vaccine: "tdap",
+  dose_label: null,
+  notes: null,
+  lot_number: null,
+  route: null,
+  site: null,
+  reaction: null,
+  source: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+  provider_id: null,
+  provider_name: null,
+};
+
+const unitlessNumericResult: ClinicalObservation = {
+  id: 22,
+  date: "2026-03-04",
+  category: "lab",
+  name: "LDL cholesterol",
+  value: "95",
+  unit: null,
+  reference_range: null,
+  notes: null,
+  created_at: "2026-09-01T10:00:00Z",
+  document_id: null,
+  panel: null,
+  flag: null,
+  value_num: 95,
+  canonical_name: "LDL Cholesterol",
+  provider_id: null,
+};
+
+const qualitativeResult: ClinicalObservation = {
+  ...unitlessNumericResult,
+  id: 23,
+  name: "HIV 1/2 Antibody",
+  value: "Non-Reactive",
+  value_num: null,
+  canonical_name: "HIV 1/2 Antibody",
+};
+
+const undatedStudy: ImagingStudy = {
+  id: 24,
+  modality: "ct",
+  body_region: null,
+  laterality: null,
+  contrast: false,
+  contrast_agent: null,
+  study_date: null,
+  dose_msv: null,
+  impression: null,
+  report_narrative: null,
+  indication: null,
+  status: null,
+  ordering_provider_id: null,
+  reading_provider_id: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+};
+
+const uncalledVariant: GenomicVariant = {
+  id: 25,
+  gene: "CYP2C19",
+  variant: null,
+  genotype: null,
+  star_allele: null,
+  zygosity: null,
+  significance: null,
+  result_type: "pharmacogenomic",
+  interpretation: null,
+  source_lab: null,
+  report_date: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+};
+
+describe("slice 4's rows prompt for the essentials they are missing (#5302)", () => {
+  it("the immunization row prompts for a date it does not have", () => {
+    wrap(
+      <ImmunizationForm
+        action={noop}
+        immunization={undatedDose}
+        defaultDate="2026-09-01"
+      />
+    );
+    expect(factState("immunization-fact-date")).toBe("missing");
+    // On the ROW, not behind the trailing affordance — an absent optional renders
+    // nothing at all, which is the quiet failure this asks about.
+    expect(
+      within(screen.getByTestId("immunization-fact-row")).getByTestId(
+        "immunization-fact-date"
+      )
+    ).toBeTruthy();
+  });
+
+  it("the result row prompts for the unit of a NUMERIC value", () => {
+    wrap(
+      <ResultForm
+        mode="edit"
+        action={noop}
+        observation={unitlessNumericResult}
+      />
+    );
+    expect(factState("result-fact-reading")).toBe("missing");
+  });
+
+  it("and states a qualitative result that has no unit to be missing", () => {
+    // The positive control for the test above: without it, "missing" could be what
+    // this form renders for every reading, and the asymmetry would be invisible.
+    wrap(
+      <ResultForm mode="edit" action={noop} observation={qualitativeResult} />
+    );
+    expect(factState("result-fact-reading")).toBe("stated");
+  });
+
+  it("the add door offers no editor for a column addResult never parses", () => {
+    // Four facts exist only in edit mode. In add mode they are absent from the row AND
+    // from the trailing affordance's menu, so the person is never offered an editor
+    // whose value would be dropped on save.
+    wrap(<ResultForm mode="add" action={noop} defaultDate="2026-09-01" />);
+    fireEvent.click(screen.getByTestId("result-fact-more"));
+    expect(screen.queryByTestId("result-more-flag")).toBeNull();
+    expect(screen.queryByTestId("result-more-provider")).toBeNull();
+    // The positive control: the menu really did open and really does hold facts.
+    expect(screen.getByTestId("result-more-specimen")).toBeTruthy();
+  });
+
+  it("the imaging row prompts for a study date and stays quiet about the region", () => {
+    // The slice's asymmetry as the person meets it: one dashed prompt, and no chip at
+    // all for the body region that `sameImagingKind` is deliberately loose about.
+    wrap(<ImagingStudyForm action={noop} study={undatedStudy} />);
+    expect(factState("imaging-study-fact-study_date")).toBe("missing");
+    expect(screen.queryByTestId("imaging-study-fact-region")).toBeNull();
+    fireEvent.click(screen.getByTestId("imaging-study-fact-more"));
+    expect(screen.getByTestId("imaging-study-more-region")).toBeTruthy();
+  });
+
+  it("the genomic row prompts for the call and states the result type", () => {
+    wrap(<GenomicVariantForm action={noop} variant={uncalledVariant} />);
+    expect(factState("genomic-variant-fact-call")).toBe("missing");
+    // Born with a value, so it is always stated and the more-line can never hold it.
+    expect(factState("genomic-variant-fact-result_type")).toBe("stated");
+  });
+
+  it("and leaves an unclassified variant's significance off the row entirely", () => {
+    // The one most likely to be got wrong: it reads like the headline clinical fact,
+    // and a pharmacogenomic report states none.
+    wrap(<GenomicVariantForm action={noop} variant={uncalledVariant} />);
+    expect(
+      screen.queryByTestId("genomic-variant-fact-significance")
+    ).toBeNull();
+    fireEvent.click(screen.getByTestId("genomic-variant-fact-more"));
+    expect(
+      screen.getByTestId("genomic-variant-more-significance")
+    ).toBeTruthy();
+  });
+
+  it("every slice-4 chip is a disclosure that opens one editor beneath the row", () => {
+    wrap(<ImagingStudyForm action={noop} study={undatedStudy} />);
+    fireEvent.click(screen.getByTestId("imaging-study-fact-study_date"));
+    expect(
+      screen.getByTestId("imaging-study-editor").getAttribute("data-panel")
+    ).toBe("study_date");
+    expect(screen.queryByTestId("imaging-study-fact-row")).toBeNull();
+    fireEvent.click(screen.getByTestId("imaging-study-editor-done"));
+    expect(screen.getByTestId("imaging-study-fact-row")).toBeTruthy();
   });
 });

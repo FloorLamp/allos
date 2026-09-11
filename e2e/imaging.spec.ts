@@ -9,6 +9,11 @@ import {
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
+  openRecordFact,
+  withRecordDateFact,
+  withRecordFact,
+} from "./record-facts-helpers";
+import {
   expectDesktopRecordFormSubmit,
   expectPhoneRecordFormSubmit,
 } from "./record-form-actions";
@@ -180,11 +185,37 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     });
 
     // Add an MRI with contrast.
+    //
+    // EVERY FIELD BUT THE MODALITY IS BEHIND A CHIP SINCE #5302. The modality is rule
+    // 1's one identifying field — it is also what `studyDisplayLabel` leads with and
+    // what both consumers key on — and stays above the row; the rest are reached
+    // through `withRecordFact`, which opens the chip when the row states the fact and
+    // the trailing affordance when it does not. What the study stores, and every
+    // assertion below about how the list and the dose card read it back, is unchanged.
     await form.getByLabel("Modality").selectOption("mri");
-    await form.getByLabel("Body region").fill(REGION);
-    await form.getByLabel("Laterality").selectOption("left");
-    await form.getByLabel("Contrast given").check();
-    await form.getByLabel("Impression").fill("No acute abnormality.");
+    await withRecordFact(form, "imaging-study", "region", () =>
+      form.getByLabel("Body region").fill(REGION)
+    );
+    await withRecordFact(form, "imaging-study", "laterality", async () => {
+      await form.getByLabel("Laterality").selectOption("left");
+    });
+    // The checkbox and its agent are ONE fact over ONE editor.
+    await withRecordFact(form, "imaging-study", "contrast", () =>
+      form.getByLabel("Contrast given").check()
+    );
+    await withRecordFact(form, "imaging-study", "impression", () =>
+      form.getByLabel("Impression").fill("No acute abnormality.")
+    );
+    // THE ROW'S OWN CLAIM, asserted where a real browser can see it: this study has no
+    // date, which is an ESSENTIAL — both the dose card and the follow-up resolver drop
+    // an undated study — so the chip is DASHED and on the row rather than silent behind
+    // the trailing affordance, and it carries no `data-suggested`, because a fact with
+    // no value cannot have borrowed one. The body REGION, by contrast, is stated here
+    // and would simply be absent if it were not: `sameImagingKind` is deliberately
+    // loose about it where `sameLesion` is strict (#5302 slice 4).
+    const studyDateChip = form.getByTestId("imaging-study-fact-study_date");
+    await expect(studyDateChip).toHaveAttribute("data-fact-state", "missing");
+    await expect(studyDateChip).not.toHaveAttribute("data-suggested", /.*/);
     await submitWithToast(page, addSubmit, "Study saved");
 
     // It appears in the list with its factual identity + contrast badge.
@@ -224,7 +255,9 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       }),
       name: "phone imaging study edit",
     });
-    await editForm.getByLabel("Impression").fill("Interval improvement.");
+    await withRecordFact(editForm, "imaging-study", "impression", () =>
+      editForm.getByLabel("Impression").fill("Interval improvement.")
+    );
     await submitWithToast(
       page,
       editForm.getByRole("button", { name: "Save", exact: true }),
@@ -266,13 +299,17 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     // reported CT dose prints two decimals, so 10.05 is an ordinary value, not a
     // pathological one — the row shows it at the display precision, 10.1.
     await form.getByLabel("Modality").selectOption("ct");
-    await form.getByLabel("Body region").fill(DOSE_REGION);
+    await withRecordFact(form, "imaging-study", "region", () =>
+      form.getByLabel("Body region").fill(DOSE_REGION)
+    );
 
     // A study happened; it is not scheduled. A date typed in 2099 used to reach the
     // dose card and make it say "From your records, since January 1, 2099." (#2970), so
     // the field carries the profile's today as its max and the browser refuses the
     // value. An ordinary recent date is of course accepted — the cap is on the future,
-    // not on entry.
+    // not on entry. The cap is still the FIELD's, so it is asserted inside the fact
+    // editor that now holds it (#5302).
+    await openRecordFact(form, "imaging-study", "study_date");
     const studyDate = form.getByLabel("Study date");
     await studyDate.fill("2099-01-01");
     await expect(studyDate).toHaveJSProperty(
@@ -281,8 +318,15 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     );
     await studyDate.fill(recentDate());
     await expect(studyDate).toHaveJSProperty("validationMessage", "");
+    // Escape closes the calendar the fill opened, and the fact editor with it.
+    await page.keyboard.press("Escape");
+    if (await form.getByTestId("imaging-study-editor").isVisible())
+      await form.getByTestId("imaging-study-editor-done").click();
+    await expect(form.getByTestId("imaging-study-fact-row")).toBeVisible();
 
-    await form.getByLabel("Effective dose (mSv)").fill("10.05");
+    await withRecordFact(form, "imaging-study", "dose", () =>
+      form.getByLabel("Effective dose (mSv)").fill("10.05")
+    );
     await submitWithToast(
       page,
       form.getByRole("button", { name: "Add", exact: true }),
@@ -295,9 +339,19 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     const secondForm = page.getByTestId("imaging-study-form");
     await expect(secondForm).toBeVisible();
     await secondForm.getByLabel("Modality").selectOption("ct");
-    await secondForm.getByLabel("Body region").fill(DOSE_SUM_REGION);
-    await secondForm.getByLabel("Study date").fill(recentDate());
-    await secondForm.getByLabel("Effective dose (mSv)").fill("10.05");
+    await withRecordFact(secondForm, "imaging-study", "region", () =>
+      secondForm.getByLabel("Body region").fill(DOSE_SUM_REGION)
+    );
+    await withRecordDateFact(
+      page,
+      secondForm,
+      "imaging-study",
+      "study_date",
+      () => secondForm.getByLabel("Study date").fill(recentDate())
+    );
+    await withRecordFact(secondForm, "imaging-study", "dose", () =>
+      secondForm.getByLabel("Effective dose (mSv)").fill("10.05")
+    );
     await submitWithToast(
       page,
       secondForm.getByRole("button", { name: "Add", exact: true }),
@@ -385,10 +439,14 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     // the estimate path. The 'pet' option existing at all is part of #1034 (the
     // modality formerly fell to 'other' and contributed 0).
     await form.getByLabel("Modality").selectOption("pet");
-    await form.getByLabel("Body region").fill(PET_REGION);
-    await form.getByLabel("Study date").fill(recentDate());
-    // Close the DateField calendar popup so it can't intercept the Add click.
-    await page.keyboard.press("Escape");
+    await withRecordFact(form, "imaging-study", "region", () =>
+      form.getByLabel("Body region").fill(PET_REGION)
+    );
+    // The helper closes the DateField calendar popup, so it can't intercept the Add
+    // click, and returns to the chips.
+    await withRecordDateFact(page, form, "imaging-study", "study_date", () =>
+      form.getByLabel("Study date").fill(recentDate())
+    );
     // Assert the SUBMIT OUTCOME, exactly as the two sibling tests do. This test
     // used to click blind through settledClick, which resolves on any same-origin
     // POST — including one carrying a REFUSAL. `addImagingStudy` surfaces a
@@ -473,9 +531,16 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     const xrayForm = page.getByTestId("imaging-study-form");
     await expect(xrayForm).toBeVisible();
     await xrayForm.getByLabel("Modality").selectOption("x-ray");
-    await xrayForm.getByLabel("Body region").fill(BREAKDOWN_REGION);
-    await xrayForm.getByLabel("Study date").fill(recentDate());
-    await page.keyboard.press("Escape");
+    await withRecordFact(xrayForm, "imaging-study", "region", () =>
+      xrayForm.getByLabel("Body region").fill(BREAKDOWN_REGION)
+    );
+    await withRecordDateFact(
+      page,
+      xrayForm,
+      "imaging-study",
+      "study_date",
+      () => xrayForm.getByLabel("Study date").fill(recentDate())
+    );
     await submitWithToast(
       page,
       xrayForm.getByRole("button", { name: "Add", exact: true }),
@@ -488,9 +553,12 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     const usForm = page.getByTestId("imaging-study-form");
     await expect(usForm).toBeVisible();
     await usForm.getByLabel("Modality").selectOption("ultrasound");
-    await usForm.getByLabel("Body region").fill(EXCLUDED_REGION);
-    await usForm.getByLabel("Study date").fill(recentDate());
-    await page.keyboard.press("Escape");
+    await withRecordFact(usForm, "imaging-study", "region", () =>
+      usForm.getByLabel("Body region").fill(EXCLUDED_REGION)
+    );
+    await withRecordDateFact(page, usForm, "imaging-study", "study_date", () =>
+      usForm.getByLabel("Study date").fill(recentDate())
+    );
     await submitWithToast(
       page,
       usForm.getByRole("button", { name: "Add", exact: true }),
@@ -504,9 +572,12 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     const oldForm = page.getByTestId("imaging-study-form");
     await expect(oldForm).toBeVisible();
     await oldForm.getByLabel("Modality").selectOption("x-ray");
-    await oldForm.getByLabel("Body region").fill(OLD_REGION);
-    await oldForm.getByLabel("Study date").fill(oldDate());
-    await page.keyboard.press("Escape");
+    await withRecordFact(oldForm, "imaging-study", "region", () =>
+      oldForm.getByLabel("Body region").fill(OLD_REGION)
+    );
+    await withRecordDateFact(page, oldForm, "imaging-study", "study_date", () =>
+      oldForm.getByLabel("Study date").fill(oldDate())
+    );
     await submitWithToast(
       page,
       oldForm.getByRole("button", { name: "Add", exact: true }),
@@ -518,7 +589,9 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     const undatedForm = page.getByTestId("imaging-study-form");
     await expect(undatedForm).toBeVisible();
     await undatedForm.getByLabel("Modality").selectOption("ultrasound");
-    await undatedForm.getByLabel("Body region").fill(UNDATED_REGION);
+    await withRecordFact(undatedForm, "imaging-study", "region", () =>
+      undatedForm.getByLabel("Body region").fill(UNDATED_REGION)
+    );
     await submitWithToast(
       page,
       undatedForm.getByRole("button", { name: "Add", exact: true }),

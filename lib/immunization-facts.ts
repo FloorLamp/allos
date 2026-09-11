@@ -32,15 +32,16 @@
 // what a school form wants and what the person would have typed. The field is for the
 // case the numbering cannot know ("2025 seasonal").
 //
-// AND WHY THE THREE ADMINISTRATION COLUMNS ARE OPTIONAL AND SEPARATE. `lot`, `route`
-// and `site` reach exactly one consumer, `buildImmunizationRecord`, which prints "one
-// row per dose with every stated fact and an em dash for every unstated one — never a
-// guess" (lib/immunization-record.ts:7-9). Absence is designed for there. They stay
-// THREE chips rather than one grouped fact because no labeller reads them back as one
-// line: the printed record gives each its own column, and the skin form's region-plus-
-// side is one chip precisely because `bodyMapLabel` is the single function every skin
-// surface reads those two columns through. There is no such function here, and
-// inventing one to make the row shorter would state a line no other surface prints.
+// AND WHY THE THREE ADMINISTRATION COLUMNS ARE **ONE** FACT. `lot_number`, `route` and
+// `site` reach exactly one consumer, and it reads them back as ONE LINE:
+// `immunizationAdministrationLine` ("Lot AB1234 · IM · Left deltoid") is already the one
+// computation the history table, the per-vaccine dose list and the export share, "so
+// they can never phrase the same dose differently". Three chips would state one line
+// three times and let the chip disagree with the row it becomes — the skin form's
+// region-and-side rule at this address, with the labeller supplied rather than invented.
+// The fact is optional because the printed record is built for its absence: one row per
+// dose "with every stated fact and an em dash for every unstated one — never a guess"
+// (lib/immunization-record.ts:7-9).
 //
 // WHAT A TEST SHOULD ASSERT: the chip KEYS and their states, never this file's wording.
 //
@@ -52,54 +53,19 @@ import {
   formatMonthDay,
   type DisplayFormatPrefs,
 } from "./format-date";
+import { immunizationAdministrationLine } from "./record-format";
 import { recordFactRow, type RecordFactSummary } from "./record-facts";
 import { IMMUNIZATION_ROUTES } from "./types";
 
-// Human labels for the CHECK-pinned route vocabulary (#1406). "Not stated" is the
-// default and a real answer — never a guessed 'intramuscular'. They live beside the
-// fact that reads them so the chip and the form's own select cannot name a route
-// differently.
-export const IMMUNIZATION_ROUTE_LABELS: Record<
-  (typeof IMMUNIZATION_ROUTES)[number],
-  string
-> = {
-  intramuscular: "Intramuscular (IM)",
-  subcutaneous: "Subcutaneous (SC)",
-  intradermal: "Intradermal (ID)",
-  oral: "Oral (PO)",
-  intranasal: "Intranasal (IN)",
-  other: "Other",
-};
-
-function isRoute(v: string): v is (typeof IMMUNIZATION_ROUTES)[number] {
-  return (IMMUNIZATION_ROUTES as readonly string[]).includes(v);
-}
-
-/** The stored route as a person reads it, or "" when none is stated. */
-export function immunizationRouteLabel(raw: string): string {
-  const v = raw.trim();
-  return isRoute(v) ? IMMUNIZATION_ROUTE_LABELS[v] : "";
-}
-
-// The facts, in the order the row draws them. The one essential leads; the three
-// administration columns sit together because a transcriber reads them together.
+// The facts, in the order the row draws them. The one essential leads.
 export type ImmunizationFactKey =
-  | "date"
-  | "dose"
-  | "lot"
-  | "route"
-  | "site"
-  | "reaction"
-  | "provider"
-  | "notes";
+  "date" | "dose" | "administration" | "reaction" | "provider" | "notes";
 
 // The nouns, so the trailing affordance can name what it holds.
 export const IMMUNIZATION_FACT_NOUNS: Record<ImmunizationFactKey, string> = {
   date: "date given",
   dose: "dose label",
-  lot: "lot number",
-  route: "route",
-  site: "site",
+  administration: "lot, route and site",
   reaction: "reaction",
   provider: "administered by",
   notes: "notes",
@@ -109,6 +75,7 @@ export interface ImmunizationFactInput {
   /** The date field as the picker holds it. Seeded to today on the add door. */
   date: string;
   doseLabel: string;
+  /** The three administration columns; read back as one line. */
   lotNumber: string;
   /** The route select's value — "" is "Not stated", which is a real answer. */
   route: string;
@@ -118,6 +85,12 @@ export interface ImmunizationFactInput {
   provider: string;
   notes: string;
   prefs?: DisplayFormatPrefs;
+}
+
+/** A route the CHECK set holds, else null — the action's own `routeOf` rule. */
+function storedRoute(raw: string): string | null {
+  const v = raw.trim();
+  return (IMMUNIZATION_ROUTES as readonly string[]).includes(v) ? v : null;
 }
 
 /**
@@ -136,13 +109,17 @@ export function immunizationFactSummary(
 
   const dose = f.doseLabel.trim();
   row.state("dose", dose, dose);
-  const lot = f.lotNumber.trim();
-  row.state("lot", lot, lot ? `Lot ${lot}` : "");
-  // Through the label map the form's own select renders, so the chip cannot name a
-  // route differently from the option that set it.
-  const route = immunizationRouteLabel(f.route);
-  row.state("route", route, route);
-  row.state("site", f.site, f.site.trim());
+
+  // Through the ONE line the history table, the dose list and the export already read
+  // these three columns with — and through the action's own route rule, so a value the
+  // CHECK set would refuse is never stated as though it will be stored.
+  const administration = immunizationAdministrationLine({
+    lot_number: f.lotNumber || null,
+    route: storedRoute(f.route),
+    site: f.site || null,
+  });
+  row.state("administration", administration, administration);
+
   // The reaction MARKER, not the reaction: what was recorded is a sentence, and a chip
   // states a fact (the skin row's reading of its finding field).
   row.state("reaction", f.reaction, "Reaction noted");

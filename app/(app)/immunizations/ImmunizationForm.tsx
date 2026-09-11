@@ -18,7 +18,6 @@ import { PICKER_NAMES, vaccineDisplayName } from "@/lib/immunization-catalog";
 import {
   immunizationFactSummary,
   IMMUNIZATION_FACT_NOUNS,
-  IMMUNIZATION_ROUTE_LABELS,
   type ImmunizationFactKey,
 } from "@/lib/immunization-facts";
 import InlineError from "@/components/InlineError";
@@ -27,6 +26,20 @@ import {
   type FormResult,
   type Immunization,
 } from "@/lib/types";
+
+// Human labels for the CHECK-pinned route vocabulary (#1406), as the PICKER offers
+// them. "Not stated" is the default and a real answer — never a guessed
+// 'intramuscular'. Deliberately not `lib/record-format`'s abbreviations: this is an
+// option list a person chooses from, and that is the one line every surface PRINTS the
+// stored value back as — including the row's own administration chip.
+const ROUTE_LABELS: Record<(typeof IMMUNIZATION_ROUTES)[number], string> = {
+  intramuscular: "Intramuscular (IM)",
+  subcutaneous: "Subcutaneous (SC)",
+  intradermal: "Intradermal (ID)",
+  oral: "Oral (PO)",
+  intranasal: "Intranasal (IN)",
+  other: "Other",
+};
 
 // WHICH PANELS EXIST is the fact keys plus the trailing affordance's own menu — the
 // intake form's shape (#3216).
@@ -227,54 +240,58 @@ export default function ImmunizationForm({
         </div>
 
         {/* Administration details (#1406): lot / route / site are exactly what school,
-            travel, camp and employer forms ask for, and had nowhere to live. All
-            optional — a blank field stores NULL, not a guess. */}
-        <div hidden={openEditor !== "lot"}>
-          <label className="label" htmlFor={`imm-lot-${uid}`}>
-            Lot number
-          </label>
-          <input
-            id={`imm-lot-${uid}`}
-            name="lot_number"
-            className="input"
-            defaultValue={immunization?.lot_number ?? ""}
-            onChange={(e) => setLotNumber(e.target.value)}
-            placeholder="e.g. AB1234"
-          />
-        </div>
-
-        <div hidden={openEditor !== "route"}>
-          <label className="label" htmlFor={`imm-route-${uid}`}>
-            Route
-          </label>
-          <select
-            id={`imm-route-${uid}`}
-            name="route"
-            className="input"
-            defaultValue={immunization?.route ?? ""}
-            onChange={(e) => setRoute(e.target.value)}
-          >
-            <option value="">Not stated</option>
-            {IMMUNIZATION_ROUTES.map((r) => (
-              <option key={r} value={r}>
-                {IMMUNIZATION_ROUTE_LABELS[r]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div hidden={openEditor !== "site"}>
-          <label className="label" htmlFor={`imm-site-${uid}`}>
-            Site
-          </label>
-          <input
-            id={`imm-site-${uid}`}
-            name="site"
-            className="input"
-            defaultValue={immunization?.site ?? ""}
-            onChange={(e) => setSite(e.target.value)}
-            placeholder="e.g. Left deltoid"
-          />
+            travel, camp and employer forms ask for, and had nowhere to live. ONE fact
+            over ONE editor, because `immunizationAdministrationLine` already reads the
+            three back as one line everywhere else. All optional — a blank field stores
+            NULL, not a guess. */}
+        <div hidden={openEditor !== "administration"} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor={`imm-lot-${uid}`}>
+                Lot number
+              </label>
+              <input
+                id={`imm-lot-${uid}`}
+                name="lot_number"
+                className="input"
+                defaultValue={immunization?.lot_number ?? ""}
+                onChange={(e) => setLotNumber(e.target.value)}
+                placeholder="e.g. AB1234"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor={`imm-route-${uid}`}>
+                Route
+              </label>
+              <select
+                id={`imm-route-${uid}`}
+                name="route"
+                className="input"
+                defaultValue={immunization?.route ?? ""}
+                onChange={(e) => setRoute(e.target.value)}
+              >
+                <option value="">Not stated</option>
+                {IMMUNIZATION_ROUTES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROUTE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor={`imm-site-${uid}`}>
+              Site
+            </label>
+            <input
+              id={`imm-site-${uid}`}
+              name="site"
+              className="input"
+              defaultValue={immunization?.site ?? ""}
+              onChange={(e) => setSite(e.target.value)}
+              placeholder="e.g. Left deltoid"
+            />
+          </div>
         </div>
 
         <div hidden={openEditor !== "reaction"}>

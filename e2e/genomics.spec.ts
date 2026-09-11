@@ -5,6 +5,7 @@ import {
   expectDesktopRecordFormSubmit,
   expectPhoneRecordFormSubmit,
 } from "./record-form-actions";
+import { withRecordFact } from "./record-facts-helpers";
 import { workerDbPath } from "./worker-env";
 
 // Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
@@ -71,14 +72,40 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     // Gene is a controlled Combobox over the PGx symbols since #1676; a non-PGx
     // gene is still free text, and settledFill keeps the value out of the
     // pre-hydration revert window.
+    //
+    // EVERY FIELD BUT THE GENE IS BEHIND A CHIP SINCE #5302. The gene is rule 1's one
+    // identifying field — the column the PGx cross-check matches exactly — and stays
+    // above the row; the rest are reached through `withRecordFact`, which opens the
+    // chip when the row states the fact and the trailing affordance when it does not.
+    // What the variant stores, and every assertion below about how the list reads it
+    // back, is unchanged.
     await settledFill(page, form.getByLabel("Gene"), GENE);
-    await form.getByLabel("Variant (rsID / HGVS)").fill("c.123A>G");
-    await form.getByLabel("Zygosity").selectOption("heterozygous");
-    await form.getByLabel("Result type").selectOption("hereditary-risk");
-    await form
-      .getByLabel("Clinical significance")
-      .selectOption("likely-pathogenic");
-    await form.getByLabel("Source lab").fill("E2E Genetics Lab");
+    await withRecordFact(form, "genomic-variant", "variant", () =>
+      form.getByLabel("Variant (rsID / HGVS)").fill("c.123A>G")
+    );
+    // The star allele, the genotype and the zygosity are ONE fact over ONE editor,
+    // read back through `variantCallLabel`'s precedence.
+    await withRecordFact(form, "genomic-variant", "call", async () => {
+      await form.getByLabel("Zygosity").selectOption("heterozygous");
+    });
+    await withRecordFact(form, "genomic-variant", "result_type", async () => {
+      await form.getByLabel("Result type").selectOption("hereditary-risk");
+    });
+    await withRecordFact(form, "genomic-variant", "significance", async () => {
+      await form
+        .getByLabel("Clinical significance")
+        .selectOption("likely-pathogenic");
+    });
+    await withRecordFact(form, "genomic-variant", "source_lab", () =>
+      form.getByLabel("Source lab").fill("E2E Genetics Lab")
+    );
+    // THE ROW'S OWN CLAIM, where a real browser can see it: the result type is a chip
+    // this form ALWAYS states, because its select is born "other" — the value that
+    // routes to neither the PGx nor the cadence consumer — so the trailing affordance
+    // can never hold it.
+    await expect(
+      form.getByTestId("genomic-variant-fact-result_type")
+    ).toHaveAttribute("data-fact-state", "stated");
     await settledClick(page, addSubmit);
     await expect(page.getByText("Variant saved")).toBeVisible();
 
@@ -106,9 +133,16 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
       }),
       name: "phone genomic variant edit",
     });
-    await editForm
-      .getByLabel("Clinical significance")
-      .selectOption("pathogenic");
+    await withRecordFact(
+      editForm,
+      "genomic-variant",
+      "significance",
+      async () => {
+        await editForm
+          .getByLabel("Clinical significance")
+          .selectOption("pathogenic");
+      }
+    );
     await settledClick(
       page,
       editForm.getByRole("button", { name: "Save", exact: true })
