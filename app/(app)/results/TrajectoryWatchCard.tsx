@@ -1,5 +1,6 @@
 import { IconTrendingUp, IconX } from "@tabler/icons-react";
 import type { Finding } from "@/lib/findings";
+import { attentionAmber } from "@/lib/chart-colors";
 import FindingRow from "@/components/FindingRow";
 import IconButton from "@/components/IconButton";
 import PhoneFold from "@/components/PhoneFold";
@@ -113,7 +114,7 @@ export default function TrajectoryWatchCard({
     <div className="card section-seam mb-6" data-testid="trajectory-findings">
       <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
         <IconTrendingUp
-          className="h-4 w-4 shrink-0 text-amber-500"
+          className={`h-4 w-4 shrink-0 ${attentionAmber.class}`}
           stroke={2}
         />
         Trajectory watch

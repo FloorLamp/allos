@@ -7,7 +7,7 @@
 //   3. the inline activity-form hint     (components/activity-form/StrengthSets.tsx, #923)
 //
 // Before this, each surface hand-phrased the advice differently — only the finding
-// carried the concrete "~10%" magnitude, and none of them NAMED a variation (a
+// carried the concrete deload magnitude, and none of them NAMED a variation (a
 // dead-end suggestion). This module owns both concrete facts so every surface shows
 // the same ones: the deload magnitude (`deloadPhrase`) and 1–2 named catalog
 // variations (`plateauVariations`). Pure and client-safe — no DB/network.
@@ -19,10 +19,12 @@ import {
   LIFT_OPTIONS,
   type MuscleId,
 } from "./lifts";
+import { DELOAD_LOAD_FACTOR, policyPercent } from "./constants";
 
-// The ad-hoc deload magnitude — the ONE place the "~10%" fact lives, shared verbatim
-// across the surfaces so they can't drift (#1203).
-const DELOAD_DROP = "drop the load ~10% and rebuild";
+// The ad-hoc deload magnitude, shared verbatim across the surfaces so they can't
+// drift (#1203) — and FORMATTED from `DELOAD_LOAD_FACTOR` (#4243) so the sentence
+// cannot drift from the lever the deload prescription actually applies either.
+const DELOAD_DROP = `drop the load ~${policyPercent(1 - DELOAD_LOAD_FACTOR)} and rebuild`;
 
 // A deload week the active routine's mesocycle already schedules soon (#741) — the
 // plateau finding cross-references it so it points at that built-in light week
