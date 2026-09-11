@@ -37,7 +37,7 @@ export default async function HealthProfileSettingsPage() {
   const home = getHomeLocation(profile.id);
   return (
     <SettingsGroupLayout group="health" login={login} profile={profile}>
-      <PageContainer width="form" className="space-y-6">
+      <PageContainer width="form" align="start" className="space-y-6">
         <ProfilePhotoCard profile={profile} disabled={demoRestricted} />
         <ProfileForm
           fullName={getProfileFullName(profile.id)}

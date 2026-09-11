@@ -137,7 +137,7 @@ export default function OfflinePage() {
   if (showCard && card) {
     return (
       <main data-offline-shell className="min-h-screen px-4 py-8">
-        <PageContainer width="narrow" className="mx-auto">
+        <PageContainer width="narrow">
           <button
             type="button"
             className="btn-ghost mb-4 print:hidden"
@@ -155,7 +155,7 @@ export default function OfflinePage() {
   if (openEnv) {
     return (
       <main data-offline-shell className="min-h-screen px-4 py-8">
-        <PageContainer width="narrow" className="mx-auto">
+        <PageContainer width="narrow">
           <button
             type="button"
             data-testid="offline-snapshot-back"

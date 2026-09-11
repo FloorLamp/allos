@@ -29,7 +29,7 @@ export default async function RecordsDentalPage() {
   // The first VISIBLE pane, from the shared gated list (see the Vision pane's note).
   if (!relevance.dental) redirect(visibleSpecialtyPanes(relevance)[0].href);
   return (
-    <PageContainer width="flow" data-testid="records-dental">
+    <PageContainer width="flow" align="start" data-testid="records-dental">
       <SectionSubtitle title="Dental">
         Review dental procedures and tooth-specific exam findings.
       </SectionSubtitle>

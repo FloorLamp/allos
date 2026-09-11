@@ -23,7 +23,7 @@ export default async function TrainingSettingsPage() {
   if (!isTrainingRelevant(age)) redirect("/settings");
   return (
     <SettingsGroupLayout group="training" login={login} profile={profile}>
-      <PageContainer width="form" className="space-y-6">
+      <PageContainer width="form" align="start" className="space-y-6">
         <TrainingZonesForm
           maxHrOverride={getMaxHrOverride(profile.id)}
           zone2Target={getZone2WeeklyTargetMin(profile.id)}

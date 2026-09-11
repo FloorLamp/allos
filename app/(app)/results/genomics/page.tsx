@@ -11,11 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function ResultsGenomicsPage() {
   const scope = await requireScope();
   return (
-    <PageContainer
-      width="flow"
-      className="mx-auto"
-      data-testid="results-genomics"
-    >
+    <PageContainer width="flow" align="start" data-testid="results-genomics">
       <PaneIntro title="Genomics" testId="results-pane-intro">
         Genetic and pharmacogenomic results from clinical reports.
       </PaneIntro>

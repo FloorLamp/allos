@@ -18,7 +18,7 @@ export default async function RecordsProceduresPage(props: {
   const prefillName =
     newParam === "1" && nameParam?.trim() ? nameParam.trim() : undefined;
   return (
-    <PageContainer width="flow" data-testid="records-procedures">
+    <PageContainer width="flow" align="start" data-testid="records-procedures">
       <SectionSubtitle title="Procedures">
         Review procedures and surgical history.
       </SectionSubtitle>

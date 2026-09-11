@@ -58,7 +58,7 @@ export default async function RecordsLayout({
     getRecordsSpecialtyRelevanceForView(scope.actingProfileId, scope.viewIds)
   );
   return (
-    <PageContainer width="wide" className="mx-auto">
+    <PageContainer width="wide">
       <AnchorRedirect map={ANCHOR_MAP} />
       <TabFirstPage config={RECORDS_TAB_FIRST_PAGE} testId="records-page">
         <RecordsTabs groups={groups} />

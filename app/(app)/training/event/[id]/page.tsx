@@ -71,7 +71,7 @@ export default async function TrainingEventPage(props: {
   }));
 
   return (
-    <PageContainer width="reading" className="mx-auto">
+    <PageContainer width="reading">
       <PageHeader
         back={{ href: "/training", destination: "Training" }}
         title={eventTitle(plan, km)}

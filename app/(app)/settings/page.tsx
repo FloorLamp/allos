@@ -43,7 +43,7 @@ export default async function SettingsIndexPage() {
   );
 
   return (
-    <PageContainer width="reading">
+    <PageContainer width="reading" align="start">
       <PageHeader
         title="Settings"
         subtitle={`Signed in as ${login.username}, viewing ${profile.name}. Each group says who it applies to.`}

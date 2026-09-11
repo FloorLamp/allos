@@ -23,7 +23,7 @@ export default async function PrivacySettingsPage() {
   const { login, profile } = await requireSession();
   return (
     <SettingsGroupLayout group="privacy" login={login} profile={profile}>
-      <PageContainer width="form" className="space-y-6">
+      <PageContainer width="form" align="start" className="space-y-6">
         <MentalHealthPrivacyForm
           shareFull={getMentalHealthShareFull(profile.id)}
         />

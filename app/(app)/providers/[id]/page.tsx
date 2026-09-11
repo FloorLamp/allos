@@ -255,11 +255,7 @@ export default async function ProviderDetailPage(props: {
     provider.type === "individual" ? IconStethoscope : IconBuildingHospital;
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="provider-detail"
-    >
+    <PageContainer width="reading" data-testid="provider-detail">
       <PageHeader
         back={{ href: "/records/care/providers", destination: "Providers" }}
         title={provider.name}

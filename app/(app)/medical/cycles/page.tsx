@@ -81,7 +81,7 @@ export default async function CyclePage() {
   // logged period keeps the whole page (data always wins).
   if (!getNavRelevance(profile.id).cycle) {
     return (
-      <PageContainer width="reading" className="mx-auto space-y-6">
+      <PageContainer width="reading" className="space-y-6">
         <PageHeader
           title="Cycle"
           subtitle="Log your period, see the derived phase and cycle-length trends, and a confidence-framed projection of the next one."
@@ -116,7 +116,7 @@ export default async function CyclePage() {
   const ttc = ttcEligible ? getTtcState(profile.id, todayStr) : null;
 
   return (
-    <PageContainer width="reading" className="mx-auto space-y-6">
+    <PageContainer width="reading" className="space-y-6">
       <PageHeader
         title="Cycle"
         subtitle="Log your period, see the derived phase and cycle-length trends, and a confidence-framed projection of the next one."

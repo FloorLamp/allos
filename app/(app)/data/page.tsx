@@ -218,7 +218,7 @@ export default async function DataPage(
   }
 
   return (
-    <PageContainer width="wide" className="mx-auto">
+    <PageContainer width="wide">
       <TabFirstPage config={DATA_TAB_FIRST_PAGE} testId="data-page">
         {activeSection}
       </TabFirstPage>

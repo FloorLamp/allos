@@ -114,7 +114,7 @@ export default async function SymptomTrendsPage() {
   return (
     <PageContainer
       width="reading"
-      className="mx-auto space-y-4 md:space-y-6"
+      className="space-y-4 md:space-y-6"
       data-testid="symptom-trends-page"
     >
       <PageHeader
