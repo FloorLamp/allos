@@ -126,11 +126,12 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
   [
     "components/quick-entry/QuickDoseList.tsx",
     {
-      mounts: false,
+      mounts: true,
       why:
-        "DEBT, named: a confirm writes intake_item_logs.recorded_at from the tap " +
-        "and the sheet cannot state a late one — the correction row (#2206) is the " +
-        "repair today; migrates on touch",
+        "MIGRATED ON TOUCH (#5808): the \u201cEverything else\u201d fold\u2019s Take writes " +
+        "through logHistoricalDose, which states its own minute \u2014 so the body now " +
+        "mounts the shared statement rather than carrying the named debt. The due " +
+        "rows above it still delegate theirs to DatedDoseControl",
     },
   ],
   [
@@ -599,6 +600,7 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
       "components/medications/QuickLogPrnControl.tsx",
       "components/medications/ScheduledDoseAction.tsx",
       "components/practices/LogPracticeButton.tsx",
+      "components/quick-entry/QuickDoseList.tsx",
       "components/stool/StoolTypeControl.tsx",
       "components/substances/SubstanceUnitControl.tsx",
     ]);
