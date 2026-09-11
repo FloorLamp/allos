@@ -10,6 +10,7 @@ import {
   expectDesktopSpecialtySubmit,
   expectPhoneSpecialtySubmit,
 } from "./specialty-form-actions";
+import { withRecordFact } from "./record-facts-helpers";
 import { workerDbPath } from "./worker-env";
 
 // Skin-lesion tracking on the Skin section of /records (#715, folded #1042): add a body-map-anchored lesion through the real
@@ -88,12 +89,37 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     });
 
     // Add a WATCH lesion on the scalp with an ABCDE observation + a recheck interval.
+    //
+    // EVERY FIELD BUT THE LABEL IS BEHIND A CHIP SINCE #5302. The label is rule 1's
+    // one identifying field and stays above the row; the rest are reached through
+    // `withRecordFact`, which opens the chip when the row states the fact and the
+    // trailing affordance when it does not. What the lesion ends up storing, and every
+    // assertion below about how the card reads it back, is unchanged.
     await form.getByLabel("Label / location").fill(LABEL);
-    await form.getByLabel("Region").selectOption("scalp");
-    await form.getByLabel("Status").selectOption("watch");
-    await form.getByRole("checkbox", { name: /Evolving/ }).check();
-    await form.getByLabel("Finding / note").fill("Even brown, watch it.");
-    await form.getByLabel("Recheck in (days)").fill("91");
+    await withRecordFact(form, "skin-lesion", "location", async () => {
+      await form.getByLabel("Region").selectOption("scalp");
+    });
+    await withRecordFact(form, "skin-lesion", "status", async () => {
+      await form.getByLabel("Status").selectOption("watch");
+    });
+    // The five ABCDE observations are ONE fact over ONE editor (#5302): the chip is
+    // `abcde`, and the five checkboxes live inside it.
+    await withRecordFact(form, "skin-lesion", "abcde", async () => {
+      await form.getByRole("checkbox", { name: /Evolving/ }).check();
+    });
+    await withRecordFact(form, "skin-lesion", "finding", async () => {
+      await form.getByLabel("Finding / note").fill("Even brown, watch it.");
+    });
+    await withRecordFact(form, "skin-lesion", "recheck", async () => {
+      await form.getByLabel("Recheck in (days)").fill("91");
+    });
+    // THE ROW'S OWN CLAIM, asserted where a real browser can see it: the lesion has no
+    // observation date, which is an ESSENTIAL, so the chip is DASHED and on the row
+    // rather than silent behind the trailing affordance — and it carries no
+    // `data-suggested`, because a fact with no value cannot have borrowed one.
+    const observed = form.getByTestId("skin-lesion-fact-observed");
+    await expect(observed).toHaveAttribute("data-fact-state", "missing");
+    await expect(observed).not.toHaveAttribute("data-suggested", /.*/);
     await settledClick(page, add);
     await expect(page.getByText("Lesion saved")).toBeVisible();
 
@@ -194,9 +220,11 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     );
     await page.getByRole("menuitem", { name: "Edit" }).click();
     editForm = card.getByTestId("skin-lesion-form");
-    await editForm
-      .getByLabel("Finding / note")
-      .fill("Unchanged since baseline.");
+    await withRecordFact(editForm, "skin-lesion", "finding", async () => {
+      await editForm
+        .getByLabel("Finding / note")
+        .fill("Unchanged since baseline.");
+    });
     await settledClick(
       page,
       editForm.getByRole("button", { name: "Save", exact: true })

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   enqueue: vi.fn(),
   setDoseStatus: vi.fn(),
+  logHistoricalDose: vi.fn(async () => ({ ok: true as const })),
 }));
 
 // #3936. The switcher's job is to say what the accepted window IS, so the guards below
@@ -54,6 +55,9 @@ vi.mock("@/components/useOptimisticLedger", () => ({
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   resolveDayDoses: vi.fn(),
   setDoseStatus: mocks.setDoseStatus,
+  // The fold's Take (#5808) posts the DATED core, never the occurrence one. Its
+  // payload is asserted in dose-two-pieces.test.tsx; here it only has to exist.
+  logHistoricalDose: mocks.logHistoricalDose,
 }));
 
 afterEach(() => vi.restoreAllMocks());
@@ -583,5 +587,137 @@ describe("the Dose body owns its add doors (#3203)", () => {
     expect(screen.queryByTestId("quick-entry-add-medication")).toBeNull();
     expect(screen.queryByTestId("quick-entry-add-supplement")).toBeNull();
     expect(screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`)).toBeTruthy();
+  });
+});
+
+// ── "EVERYTHING ELSE" (#5808, owner ruling 2026-09-10) ───────────────────────
+//
+// The fold is the sheet's reach to items the body cannot otherwise show, and both of
+// its failure modes are QUIET: a fold that renders empty, and a fold whose count
+// disagrees with what expanding holds. So the claims here are about the count and the
+// zero case — which rows belong in it at all is a SET DIFFERENCE taken server-side and
+// pinned in lib/__action_tests__/past-dose-day.actions.test.ts, where the lists it
+// subtracts actually exist.
+describe("the dose body folds everything else under its due rows (#5808)", () => {
+  const OTHERS = {
+    nowHhmm: "09:30",
+    byDate: {
+      [TODAY]: [
+        {
+          itemId: 71,
+          doseId: 171,
+          name: "Magnesium Glycinate",
+          detail: "400 mg",
+          takenAt: null,
+        },
+        {
+          itemId: 72,
+          doseId: 172,
+          name: "NAC",
+          detail: "600 mg",
+          takenAt: null,
+        },
+      ],
+      "2026-08-27": [
+        {
+          itemId: 72,
+          doseId: 172,
+          name: "NAC",
+          detail: "600 mg",
+          takenAt: "8:15am",
+        },
+      ],
+      "2026-08-26": [],
+    },
+  };
+
+  function renderWithFold(day = TODAY) {
+    return render(
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={day}
+        doses={[
+          {
+            doseId: DAILY_DOSE,
+            title: "Creatine",
+            detail: null,
+            dueText: "8:00am",
+          },
+        ]}
+        pastDays={PAST_DAYS}
+        others={OTHERS}
+        onDone={vi.fn()}
+      />
+    );
+  }
+
+  it("names its count and holds exactly that many rows", () => {
+    renderWithFold();
+    expect(screen.getByTestId("quick-entry-others-summary").textContent).toBe(
+      "Everything else (2)"
+    );
+    // ONE ARRAY BEHIND BOTH HALVES — a count the fold cannot be expanded into is the
+    // defect this pins.
+    expect(
+      within(screen.getByTestId("quick-entry-others-list")).getAllByRole(
+        "listitem"
+      )
+    ).toHaveLength(2);
+    expect(screen.getByTestId("quick-entry-other-71").textContent).toContain(
+      "Magnesium Glycinate"
+    );
+    // The chip's label is the PAYLOAD the tap writes, not a verb that says when.
+    expect(
+      screen.getByTestId("quick-entry-other-take-71").textContent
+    ).toContain("400 mg");
+  });
+
+  it("is UNDER the due rows and the as-needed list, never above them", () => {
+    const { container } = renderWithFold();
+    const list = screen.getByTestId("quick-entry-dose-list");
+    const fold = screen.getByTestId("quick-entry-others");
+    expect(
+      list.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(container).toBeTruthy();
+  });
+
+  it("follows the sheet's day, carrying that day's already-taken fact", () => {
+    renderWithFold("2026-08-27");
+    expect(screen.getByTestId("quick-entry-others-summary").textContent).toBe(
+      "Everything else (1)"
+    );
+    // An item already taken on that day STILL lists — a second dose is one tap.
+    expect(screen.getByTestId("quick-entry-other-taken-72").textContent).toBe(
+      "taken 8:15am"
+    );
+    expect(screen.queryByTestId("quick-entry-other-71")).toBeNull();
+  });
+
+  it.each([
+    ["a day whose fold is empty", "2026-08-26"],
+    ["a payload with no fold at all", TODAY],
+  ])("renders NOTHING for %s", (label, day) => {
+    render(
+      <QuickDoseList
+        today={TODAY}
+        selectedDay={day}
+        doses={[
+          {
+            doseId: DAILY_DOSE,
+            title: "Creatine",
+            detail: null,
+            dueText: "8:00am",
+          },
+        ]}
+        pastDays={PAST_DAYS}
+        others={label.startsWith("a day") ? OTHERS : undefined}
+        onDone={vi.fn()}
+      />
+    );
+    // ABSENT WHEN N IS ZERO. An empty fold reads as "there is nothing else", which is
+    // a claim, and a wrong one whenever the count was simply not gathered.
+    expect(screen.queryByTestId("quick-entry-others")).toBeNull();
+    expect(screen.queryByTestId("quick-entry-others-list")).toBeNull();
   });
 });

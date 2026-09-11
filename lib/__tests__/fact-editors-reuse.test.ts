@@ -240,6 +240,39 @@ const CONSUMERS = [
     chips: "components/records/RecordFactRow.tsx",
     host: "app/(app)/records/care/overview/CareGoalForm.tsx",
   },
+  {
+    // #5302 slice 3, and the first consumer whose grouped fact is a set of CHECKBOXES:
+    // the five ABCDE observations are one chip over one editor, read back through
+    // `abcdeLetters`. The family-history row above was the first to map one chip to a
+    // group of fields; this is the first where the group's members post ONLY when
+    // checked, which is what makes the host's hidden-not-unmounted rule load-bearing
+    // here rather than merely conventional — an unmounted panel would clear five
+    // observations at once. It is also the first with TWO grouped facts on one row
+    // (the region and side are the other).
+    name: "the skin-lesion form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/specialty/skin/SkinLesionForm.tsx",
+  },
+  {
+    // #5302 slice 3, and the first consumer whose essentials are argued from a SAFETY
+    // screen rather than from a list column or a scheduling window: `cdt` is dashed
+    // because `isInvasiveDentalProcedure` is the one gate #704's MRONJ /
+    // prophylaxis / anticoagulant notes fire behind, and it reads that code first.
+    // Nothing structural is new about the row itself.
+    name: "the dental-procedure form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/specialty/dental/DentalProcedureForm.tsx",
+  },
+  {
+    // #5302 slice 3. Nothing is new about this one — four facts, one chip each, one
+    // editor each, no grouped fact and no free-text escape, which is the care-goal
+    // row's shape at a second address. Recorded as such, because "another
+    // straightforward instance" is a useful thing for this census to say about a
+    // consumer and inventing a distinction to fill the comment would not be.
+    name: "the procedure form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/records/history/procedures/ProcedureForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not

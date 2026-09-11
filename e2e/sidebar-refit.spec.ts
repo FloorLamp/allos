@@ -4,6 +4,9 @@ import { loginAs } from "./nav";
 import { awaitHydrated, hydratedClick } from "./helpers";
 import { showLogRow } from "./log-sheet-helpers";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { dateStrInTz, shiftDateStr } from "@/lib/date";
 
 // THE DESKTOP SIDEBAR REFIT (#3154). The sidebar spent ~570px before its first
 // nav row — 63% of a 1280x900 viewport — and Data, Settings and the whole footer
@@ -98,6 +101,37 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
     await expect(panel).toBeVisible();
     await expect(page).toHaveURL(/\/nutrition$/);
+  });
+
+  // THE SECOND GLOBAL MOUNT, AT DESKTOP WIDTH (#5769). The panel and the phone's
+  // dock sheet are the two hosts of the same `QuickLogMenu`, and both stand
+  // BESIDE <main> in the shell — which is why a dated record page used to hand
+  // them its day. The owner's report was this exact surface: on History at
+  // yesterday, a "Due & usual now" chip computed from TODAY opened a dose list
+  // for yesterday. The day context now mounts at the page, so the panel's forms
+  // are back on the sheet's own today with its bounded switcher.
+  test("the + Log panel opens on the sheet's own day, not the record's (#5769)", async ({
+    page,
+  }) => {
+    // The profile's yesterday, in the run's pinned instance timezone — a date off
+    // the host clock is the wrong day for most of the day.
+    const zone = pinnedTimezone(frozenNow().toISOString()).zone;
+    const yesterday = shiftDateStr(dateStrInTz(zone, frozenNow()), -1);
+    await page.goto(`/history?day=${yesterday}`);
+    const panel = await openLogPanel(page);
+    await (await showLogRow(panel, "log-dose")).click();
+
+    const overlay = page.getByRole("dialog", { name: "Log dose", exact: true });
+    await expect(overlay).toBeVisible();
+    // The switcher is PRESENT and standing on Today: both halves matter, because
+    // the reversed rule hid the switcher AND moved the day, and an overlay that
+    // merely rendered one would satisfy half the ruling.
+    await expect(overlay.getByTestId("day-context-0")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    // And the body is today's own, not the dated one the record's day would draw.
+    await expect(overlay.getByTestId("quick-entry-dose-day")).toHaveCount(0);
   });
 
   test("the record's Calendar trigger opens the month grid, shifts nothing, and a marked day opens that day", async ({
