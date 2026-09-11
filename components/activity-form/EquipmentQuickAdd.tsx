@@ -6,12 +6,10 @@ import { liftImplementCategory } from "@/lib/equipment-availability";
 import type { WeightUnit } from "@/lib/settings";
 import EquipmentForm from "../EquipmentForm";
 
-// The category to PREFILL when registering gear from inside a lift's row: the lift's
-// own implement, when that implement is one this strength-only form can offer. A
-// non-strength or unresolved implement prefills "" — the field is then empty and
-// required rather than guessed, which is why this narrows on kind and does not reuse
-// `liftRequiredCategory`'s three-implement gate (that one answers a different
-// question and would drop the kettlebell this form can register).
+// The category to PREFILL when gear is registered from inside a lift's row: the
+// lift's own implement, when it is one this strength-only form offers. Anything else
+// prefills "" — empty and required rather than guessed. Narrowed by KIND, not by
+// `liftRequiredCategory`: that gate drops the kettlebell this form can register.
 export function defaultCategoryForLift(name: string): string {
   const category = liftImplementCategory(name);
   return category && kindOf(category) === "strength" ? category : "";
