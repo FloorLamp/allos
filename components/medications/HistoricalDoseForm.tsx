@@ -317,7 +317,6 @@ export default function HistoricalDoseForm({
           <span className="label">Taken</span>
           <WhenControl
             mode={editing ? "correct" : "state"}
-            grain="minute"
             value={when}
             onChange={(next) => {
               if (!editing && !amountEdited && next.date !== when.date) {

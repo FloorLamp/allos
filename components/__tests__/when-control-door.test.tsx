@@ -27,9 +27,12 @@ import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 // fields, and that is deliberate rather than incidental: an empty time field at
 // rest is the honest "no time stated", which a composed button cannot say.
 //
-// The four rows below are the whole decision table — the same four inputs the
-// control reads (`mode`, `timeRequired`, whether the day is fixed, and the grain)
-// — because a rule stated for one mount and asserted for one mount is not a rule.
+// The four rows below are the whole decision table — the same three inputs the
+// control reads (`mode`, `timeRequired`, and whether the day is fixed) — because a
+// rule stated for one mount and asserted for one mount is not a rule. A fourth
+// input, `grain`, was retired with its last consumer (#4426): the enumerated hour
+// `<select>` it forked to is gone, so there is no longer a shape for the
+// composition to leave alone.
 //
 // jsdom answers false to every media query through the tier's stand-in, so the
 // panel mounts in its desktop host here. The sheet is a browser claim and lives
@@ -76,7 +79,6 @@ function mount(
           <FormatPrefsProvider prefs={{ dateFormat: "iso", timeFormat }}>
             <WhenControl
               mode="state"
-              grain="minute"
               tz="UTC"
               value={value}
               onChange={(next) => {
@@ -131,14 +133,6 @@ describe("WhenControl composes one door only when the pair is one required value
     mount({ timeRequired: true, minDate: DAY, maxDate: DAY });
     expect(door()).toBeNull();
     expect(split().time).toBeTruthy();
-  });
-
-  // The hour grain is an enumerated offer list, not a free time input, and #4218
-  // leaves it exactly where #3938 has it.
-  it("the hour grain is untouched by the composition", () => {
-    mount({ grain: "hour", timeRequired: true, maxDate: "2026-12-31" });
-    expect(door()).toBeNull();
-    expect(split().time?.tagName).toBe("SELECT");
   });
 });
 
@@ -307,7 +301,6 @@ function fixedDayText(
     const control = (
       <WhenControl
         mode="state"
-        grain="minute"
         tz="UTC"
         value={value}
         onChange={(next) => {
@@ -351,9 +344,9 @@ describe("the fixed-day arm speaks the surface's words, never a storage day (#54
     new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
   );
 
-  // components/illness/SymptomLogBar.tsx — the temperature fold. Minute grain, and the
-  // minute is REQUIRED on a day that has ended (#4685), which is the arm that survived
-  // the composed-door split. Inside the cockpit's day context, standing on the alt day:
+  // components/illness/SymptomLogBar.tsx — the temperature fold. The minute is
+  // REQUIRED on a day that has ended (#4685), which is the arm that survived the
+  // composed-door split. Inside the cockpit's day context, standing on the alt day:
   // it must say what the toggle beside it says.
   it("the illness temperature fold says the card's alt-day words", () => {
     expect(
@@ -372,8 +365,8 @@ describe("the fixed-day arm speaks the surface's words, never a storage day (#54
     );
   });
 
-  // app/(app)/nutrition/DayLedger.tsx — the batch "Set time…" sheet. Minute grain with
-  // a required time, and NO day context: the ledger is a single-day surface, so the day
+  // components/DaySelection.tsx — the batch "Set time…" sheet. A required time, and
+  // NO day context: the ledger is a single-day surface, so the day
   // renders through the login's own date shape rather than through a card's words.
   it("the day ledger's batch sheet renders the login's date shape", () => {
     const text = fixedDayText({ timeRequired: true }, YESTERDAY);
@@ -381,11 +374,14 @@ describe("the fixed-day arm speaks the surface's words, never a storage day (#54
     expect(text).toContain(YESTERDAY);
   });
 
-  // app/(app)/nutrition/FoodLogBar.tsx — the eating-time fold. The HOUR grain, which is
-  // a different branch of this control entirely, and the one a fix aimed at the minute
-  // grain would miss.
-  it("the food bar's eating-time fold renders the login's date shape", () => {
-    const text = fixedDayText({ grain: "hour" }, YESTERDAY);
+  // app/(app)/nutrition/FoodLogBar.tsx — the eating-time statement, which reaches this
+  // arm through components/TimeStatement.tsx on a surface with NO card above it: an
+  // optional statement, on a past day, with nobody else to borrow words from. It used
+  // to be the HOUR grain's own branch; #4426 retired that branch, and the case stays
+  // because the combination it covers — no context, not required — is still nobody
+  // else's here.
+  it("the food bar's eating-time statement renders the login's date shape", () => {
+    const text = fixedDayText({}, YESTERDAY);
     expect(text).not.toMatch(STORAGE_DAY);
     expect(text).toContain(YESTERDAY);
   });
