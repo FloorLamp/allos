@@ -1042,13 +1042,15 @@ export function parseHealthConnectPayload(
         continue;
       }
       // THE DAY A DAY BUCKET IS FILED UNDER IS THE ONE ITS OWN ANCHOR NAMES (#3901).
-      // `start` is a DEVICE-local midnight, and the profile's zone lags it by hours
-      // around every travel switch — long enough for a re-anchored bucket to land on
-      // its neighbour's date, supersede the neighbour's completed row, and then walk
-      // off that date on the next re-send. `anchorImpliedDay` answers only for the
-      // windows the supersede rule reads as device-cut day buckets; a fine-grained
-      // bucket, hydration, or a window that implies no real offset keeps the profile
-      // attribution above, which is what every non-bucket row still wants.
+      // A day bucket is cut at DEVICE-local midnight, and the profile's zone lags it by
+      // hours around every travel switch — long enough for a re-anchored bucket to land
+      // on its neighbour's date, supersede the neighbour's completed row, and then walk
+      // off that date on the next re-send. The anchor is `start` where the exporter sent
+      // the whole day, and `end` where it clamped the oldest bucket to the sync window's
+      // own start (#5849), so both instants go in. `anchorImpliedDay` answers only for
+      // the windows the supersede rule reads as device-cut day buckets; a fine-grained
+      // bucket, hydration, or a window that implies no real offset at either end keeps
+      // the profile attribution above, which is what every non-bucket row still wants.
       const anchorDay = anchorImpliedDay(
         metric,
         start,

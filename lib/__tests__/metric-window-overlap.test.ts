@@ -1026,16 +1026,119 @@ describe("anchorImpliedDay — the day a bucket names, read off its own anchor (
       "2026-08-25T10:00:00",
       "2026-08-25T21:00:00",
     ],
-    // Off the quarter-hour grid: no real zone keeps a midnight here, so the window
-    // states no anchor and the profile attribution stands.
+    // Off the quarter-hour grid at BOTH ends: no real zone keeps a midnight at either
+    // instant, so the window states no anchor and the profile attribution stands. A
+    // still-open bucket looks exactly like this — it begins at the last sync and ends
+    // at the push moment, and neither is a midnight.
     [
-      "an anchor at 04:07Z",
+      "a window off the grid at both ends",
       "steps",
       "2026-08-25T04:07:00Z",
-      "2026-08-25T21:00:00Z",
+      "2026-08-25T21:07:00Z",
+    ],
+    // THE GATE STILL DECIDES FIRST, and the end derivation does not reach around it: a
+    // 23-minute bucket ending at a real device midnight is a `15m`/`1m` exporter
+    // setting's row, and reading its end would file a sliver of one day as the whole
+    // of the day before it.
+    [
+      "a fine-grained bucket ending at a device midnight",
+      "steps",
+      "2026-08-27T03:37:00Z",
+      "2026-08-27T04:00:00Z",
+    ],
+    // Wider than the day its end closes, so it is not one device day and names none:
+    // the midnight 24 h before the end falls INSIDE the window rather than opening it.
+    [
+      "a window reaching back past its end's own midnight",
+      "steps",
+      "2026-08-23T09:07:00Z",
+      "2026-08-25T04:00:00Z",
     ],
   ])("declines %s", (_name, metric, start, end) => {
     expect(anchorImpliedDay(metric, start, end, 0)).toBeNull();
+  });
+
+  // THE OLDEST BUCKET OF A SYNC IS CLAMPED TO THE SYNC'S OWN START (#5849), so its
+  // `started_at` is an arbitrary instant and states nothing. Its END is still the
+  // device's midnight — the one that CLOSES the day it covers, which is why every case
+  // below would be a day LATE if the end's own date were taken as the answer.
+  it.each([
+    // The prod travel case of #3901 with a clamped start, and the clamp is what makes
+    // 05:37Z state nothing: it is no quarter-hour offset from any midnight. Three
+    // answers are on the table and this separates all three — 2026-08-26 is the profile
+    // attribution the fix exists to stop using, 2026-08-28 is the day the end instant
+    // itself falls on, and 2026-08-27 is the day the New York device actually lived.
+    [
+      "NY bucket clamped to the sync start, profile still LA",
+      "2026-08-27T05:37:00Z",
+      "2026-08-28T04:00:00Z",
+      -7 * HOUR,
+      "2026-08-27",
+    ],
+    [
+      "clamped, UTC device",
+      "2026-08-25T06:17:43Z",
+      "2026-08-26T00:00:00Z",
+      0,
+      "2026-08-25",
+    ],
+    // A quarter-hour zone, which is why the grid is 15 minutes: 18:30Z closes the
+    // Kolkata 08-25.
+    [
+      "clamped, +05:30 device",
+      "2026-08-25T02:11:09Z",
+      "2026-08-25T18:30:00Z",
+      KOLKATA,
+      "2026-08-25",
+    ],
+    // THE AMBIGUOUS BAND, REACHED THROUGH THE END. A 10:00Z close is equally a UTC-10
+    // and a UTC+12…+14 midnight, and the profile decides — against the bucket's OWN
+    // midnight, so a clamped bucket gets the answer its unclamped twin would get.
+    [
+      "10:00Z close, Honolulu profile keeps -10",
+      "2026-08-25T19:42:00Z",
+      "2026-08-26T10:00:00Z",
+      HONOLULU,
+      "2026-08-25",
+    ],
+    [
+      "10:00Z close, +14 profile keeps +14",
+      "2026-08-25T19:42:00Z",
+      "2026-08-26T10:00:00Z",
+      KIRITIMATI,
+      "2026-08-26",
+    ],
+    // #3924's refutation, carried into the end derivation: a completed Honolulu bucket
+    // arriving against a profile already on Tokyo time. The profile's day for the
+    // bucket's own midnight is 08-25, so it stays on 08-25 — where reading the profile's
+    // day for the CLAMPED START (08-26 in Tokyo) or the nearest offset (+14) would both
+    // hand it to the genuine JST bucket to supersede, which is this issue's own loss.
+    [
+      "10:00Z close, HST bucket against a Tokyo profile",
+      "2026-08-25T19:42:00Z",
+      "2026-08-26T10:00:00Z",
+      9 * HOUR,
+      "2026-08-25",
+    ],
+  ])("derives %s from the end", (_name, start, end, offset, expected) => {
+    expect(anchorImpliedDay("steps", start, end, offset)).toBe(expected);
+  });
+
+  it("reads the START where the start states an anchor, whatever the end says", () => {
+    // The partial-day bucket the exporter is pushing right now: a real New York
+    // midnight start, six hours in, and an end that is only the push moment. The end
+    // is never consulted, and this window is one where consulting it would CHANGE the
+    // answer — a 10:00Z close is an admissible -10 midnight whose day the Los Angeles
+    // profile keeps, so reading from the end would say 08-26. Every bucket whose start
+    // states an anchor takes the same path it always did.
+    expect(
+      anchorImpliedDay(
+        "steps",
+        "2026-08-27T04:00:00Z",
+        "2026-08-27T10:00:00Z",
+        -7 * HOUR
+      )
+    ).toBe("2026-08-27");
   });
 });
 
