@@ -15,6 +15,7 @@ import {
 } from "@/lib/ingest-bounds";
 import { toKg } from "@/lib/units";
 import { resolveActivityType } from "@/lib/activity-meta";
+import { instantMs } from "@/lib/metric-window-overlap";
 import {
   BREATHING_RATE_CANONICAL,
   BREATHING_RATE_METRIC,
@@ -591,9 +592,12 @@ export function resolveTakeoutBreathingRateWindows(
   const sessions: BreathingRateSession[] = [];
   for (const s of parsed.samples) {
     if (s.metric !== "sleep_min") continue;
-    const startMs = Date.parse(s.started_at);
-    const endMs = Date.parse(s.ended_at);
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+    // instantMs, the strict read: every window this parser itself just wrote carries an
+    // explicit `Z` (`sleepInstant` normalizes through `toISOString`), so a value without
+    // one did not come from the sleep family and must not be matched against.
+    const startMs = instantMs(s.started_at);
+    const endMs = instantMs(s.ended_at);
+    if (startMs === null || endMs === null) continue;
     sessions.push({
       startedAt: s.started_at,
       endedAt: s.ended_at,

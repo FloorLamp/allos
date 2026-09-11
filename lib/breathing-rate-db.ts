@@ -9,6 +9,7 @@ import {
   type BreathingRateSession,
 } from "@/lib/breathing-rate";
 import { roundForMetric } from "@/lib/ingest-bounds";
+import { parseUtcSql } from "@/lib/date";
 
 // ADOPTION: A WEARABLE READING JOINS THE NIGHT IT SUMMARIZES (issue #5409), store half.
 //
@@ -166,8 +167,11 @@ export function adoptWearableBreathingRates(
       }[]
     ).flatMap((s) => {
       if (s.source !== row.source) return [];
-      const startMs = Date.parse(s.started_at);
-      const endMs = Date.parse(s.ended_at);
+      // parseUtcSql, not the typed seam: `metric_samples.started_at`/`ended_at` carry no
+      // brand, and the shape expected is a synced session's own instant - `Z`, an
+      // offset, or no suffix read as UTC (the same read `sleep-overlap-db` makes).
+      const startMs = parseUtcSql(s.started_at)?.getTime() ?? NaN;
+      const endMs = parseUtcSql(s.ended_at)?.getTime() ?? NaN;
       if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return [];
       return [
         {
@@ -186,7 +190,9 @@ export function adoptWearableBreathingRates(
 
   const placementOf = (row: Candidate): Placement | null => {
     const sessions = sessionsFor(row);
-    const stampMs = row.occurred_at ? Date.parse(row.occurred_at) : NaN;
+    // `medical_records.occurred_at` is unbranded too; a pre-#2154 row stores NULL and a
+    // written one is canonical UTC, so the same tolerant read applies.
+    const stampMs = parseUtcSql(row.occurred_at)?.getTime() ?? NaN;
     let night: BreathingRateSession | undefined;
     if (Number.isFinite(stampMs)) {
       // A REAL INSTANT: containment, the same test the parser applies. The stored
