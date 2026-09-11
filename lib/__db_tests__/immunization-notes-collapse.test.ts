@@ -10,9 +10,11 @@
 // These cases assert the REACHABLE TEXT on the two display surfaces the issue names
 // (the Timeline event's detail and a Search query for the note's own words), never a
 // row count: a row count cannot tell "the note is shown" from "the note is gone and
-// the dose is still listed". The last case holds the other direction — the collapse
-// itself still happens and distinct administrations still stay apart — so a run that
-// went green because de-duplication stopped working is not mistaken for a pass.
+// the dose is still listed". One case holds the OTHER direction — the collapse itself
+// still happens and distinct administrations still stay apart — so a run that went
+// green because de-duplication stopped working is not mistaken for a pass, and two
+// more state the limits this fix does not cross (it stays inside one profile, and it
+// does not reach the editable rows `getImmunizations` returns).
 //
 // The both-rows-carry-different-notes case is the one that CHOSE the fix. A
 // note-preference in the election (the issue's smaller option) answers the first case
