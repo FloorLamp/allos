@@ -30,7 +30,7 @@ import type { RpeTracking } from "@/lib/rpe";
 import type { Equipment } from "@/lib/types";
 import type { WorkoutPresence } from "@/lib/workout-presence";
 import { workoutOffer, type WorkoutOffer } from "@/lib/workout-offer";
-import ActivityOverlay from "./ActivityOverlay";
+import ActivityOverlay, { loadActivityForm } from "./ActivityOverlay";
 import type { ActivityEditData } from "./ActivityForm";
 import WorkoutDock from "./WorkoutDock";
 import {
@@ -249,6 +249,19 @@ export default function ActivityEditorProvider({
 }) {
   const tz = useTimezone();
   const [mountedAt] = useState(Date.now);
+  // WARM THE EDITOR'S CODE FROM THE SHELL (#5206). ActivityOverlay loads
+  // ActivityForm on demand, and the workspace itself is only mounted while the
+  // editor is OPEN — so the warm has to be asked for by something that is always
+  // mounted, which is this. Started as the shell mounts, the fetch is off the
+  // critical path (the page hydrates without it) and lands long before anything
+  // can be tapped: a first open stays instant, and the shell keeps its promise
+  // that the editor opens with no connection at all
+  // (e2e/offline-reachability.mobile.spec.ts). It is a fetch and not a
+  // `<link rel=preload>` in the HTML, which would put the bytes back on the
+  // initial load and erase the saving.
+  useEffect(() => {
+    void loadActivityForm().catch(() => {});
+  }, []);
   const [open, setOpen] = useState(false);
   // Minimized-but-MOUNTED: the live overlay collapses to the bottom bar without
   // unmounting ActivityForm, so the running rest timer + elapsed clock survive
@@ -433,6 +446,15 @@ export default function ActivityEditorProvider({
       })
       .catch(() => {});
   }, [editData, router, trainingRelevant]);
+
+  // Put the workspace away: the one close both routes to it share — the API's
+  // `close` and the overlay's own dismiss.
+  const closeEditor = useCallback(() => {
+    setMinimized(false);
+    setOpen(false);
+    releaseOpenedFrom();
+    abandonEmptyLiveRow();
+  }, [releaseOpenedFrom, abandonEmptyLiveRow]);
 
   const leaveDeletedActivityPage = useCallback(
     (id: number) => {
@@ -734,12 +756,7 @@ export default function ActivityEditorProvider({
         (strengthTrainingAvailable ||
           !activityEditDataHasStrength(lastActivity)),
       subjectName,
-      close: () => {
-        setMinimized(false);
-        setOpen(false);
-        releaseOpenedFrom();
-        abandonEmptyLiveRow();
-      },
+      close: closeEditor,
       leaveFor,
       open,
       minimized,
@@ -748,7 +765,6 @@ export default function ActivityEditorProvider({
     [
       declareOpenedFrom,
       commitOpenedFrom,
-      releaseOpenedFrom,
       open,
       minimized,
       editData,
@@ -760,7 +776,7 @@ export default function ActivityEditorProvider({
       offer,
       startLiveSession,
       preserveCurrentWorkout,
-      abandonEmptyLiveRow,
+      closeEditor,
       leaveFor,
     ]
   );
@@ -855,12 +871,7 @@ export default function ActivityEditorProvider({
               setLive(false);
               setLiveStartEpoch(null);
             }}
-            onClose={() => {
-              setMinimized(false);
-              setOpen(false);
-              releaseOpenedFrom();
-              abandonEmptyLiveRow();
-            }}
+            onClose={closeEditor}
             onCloseRequestReady={(requestClose) => {
               requestCloseRef.current = requestClose;
             }}
