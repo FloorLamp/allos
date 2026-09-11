@@ -94,6 +94,8 @@ import {
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import HistoryRows from "./history/HistoryRows";
 import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
+import { getActivitiesByDate } from "@/lib/queries/training/activities";
+import type { Activity } from "@/lib/types/training";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import { isOnDemand } from "@/lib/intake-schedule";
 import {
@@ -172,6 +174,8 @@ import {
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import { formatCount } from "@/lib/format-number";
+import { fmtDistance } from "@/lib/units";
+import type { DistanceUnit } from "@/lib/settings/display";
 import {
   isItemSuppressibleFlag,
   upcomingDueText,
@@ -570,11 +574,27 @@ async function renderHome(
           expectedEnd: null,
         }
       : null;
-  // A session RECORDED on the profile's today. Presence already resolves the day a
-  // just-finished session belongs to (§3.2: one that ended before midnight belongs to
-  // yesterday's record), so this reads its answer rather than re-deriving the boundary.
-  const loggedToday =
-    workoutPresence.state === "finished" && workoutPresence.date === on;
+  // A SESSION RECORDED ON THE PROFILE'S TODAY, which is not the same question as
+  // `workoutPresence.state === "finished"`: that window is sixty minutes wide, so a
+  // session logged this morning stops being "finished" by lunchtime and the row would
+  // fall through to the next-workout arm for the rest of the day. The activity row's
+  // own `date` IS the profile-local day it counts for, so "a session that ended before
+  // midnight belongs to yesterday's record" (§3.2) is answered by the column rather
+  // than re-derived here.
+  //
+  // A HUSK IS NOT A SESSION. The live draft is excluded by id — it is the in-progress
+  // arm above, and a row cannot be both — and so is a row carrying no end, no duration
+  // and no distance, which is the abandoned-draft shape `isDraftActivityRow` names.
+  // Asked WITHOUT its set-count term, because the three columns here are also exactly
+  // what the logged row prints, so one read answers both.
+  const todaySession =
+    getActivitiesByDate(profile.id, on).find(
+      (activity) =>
+        activity.id !== workoutPresence.activityId &&
+        (activity.end_time != null ||
+          activity.duration_min != null ||
+          activity.distance_km != null)
+    ) ?? null;
   // The shared next-workout recommendation, through the reader Home already pays for.
   // #5110's direct strength scan left Home with §7.2, so the logged state below carries
   // duration and distance only and this is asked purely for "is there one".
@@ -656,7 +676,7 @@ async function renderHome(
     attention,
     training: {
       live: liveWorkout,
-      loggedToday,
+      loggedToday: todaySession != null,
       recommended: nextWorkout != null,
       applicable: trainingRelevant,
     },
@@ -856,6 +876,8 @@ async function renderHome(
                 openFast={openFast}
                 nowInstant={nowInstant}
                 workoutPresence={workoutPresence}
+                todaySession={todaySession}
+                distanceUnit={units.distanceUnit}
                 nextWorkoutTitle={nextWorkout?.title ?? null}
               />
 
@@ -1068,6 +1090,8 @@ function HomeNowBand({
   openFast,
   nowInstant,
   workoutPresence,
+  todaySession,
+  distanceUnit,
   nextWorkoutTitle,
 }: {
   band: HomeList["now"];
@@ -1079,6 +1103,8 @@ function HomeNowBand({
   openFast: Fast | null;
   nowInstant: Date;
   workoutPresence: WorkoutPresence;
+  todaySession: Activity | null;
+  distanceUnit: DistanceUnit;
   nextWorkoutTitle: string | null;
 }) {
   if (!band) return null;
@@ -1104,6 +1130,8 @@ function HomeNowBand({
               openFast={openFast}
               nowInstant={nowInstant}
               workoutPresence={workoutPresence}
+              todaySession={todaySession}
+              distanceUnit={distanceUnit}
               nextWorkoutTitle={nextWorkoutTitle}
             />
           ))}
@@ -1123,6 +1151,8 @@ function HomeNowRowView({
   openFast,
   nowInstant,
   workoutPresence,
+  todaySession,
+  distanceUnit,
   nextWorkoutTitle,
 }: {
   row: HomeNowRow;
@@ -1134,6 +1164,8 @@ function HomeNowRowView({
   openFast: Fast | null;
   nowInstant: Date;
   workoutPresence: WorkoutPresence;
+  todaySession: Activity | null;
+  distanceUnit: DistanceUnit;
   nextWorkoutTitle: string | null;
 }) {
   const content = row.content;
@@ -1279,15 +1311,29 @@ function HomeNowRowView({
         <HomeRow
           id={row.id}
           testId="home-training"
-          title={workoutPresence.title ?? "Workout"}
-          detail={formatMinutes(workoutPresence.sinceMin)}
+          title={todaySession?.title ?? "Workout"}
+          // DURATION AND DISTANCE ONLY (§7.2). #5110's direct strength scan — the PR
+          // row's `getStrengthByExercise` — left Home with the rest of the verdict
+          // vocabulary; what the logged state says is what the session recorded.
+          detail={
+            [
+              todaySession?.duration_min == null
+                ? null
+                : formatMinutes(todaySession.duration_min),
+              todaySession?.distance_km == null
+                ? null
+                : fmtDistance(todaySession.distance_km, distanceUnit),
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined
+          }
           control={
             <a
               className="btn-ghost btn-sm"
               href={
-                workoutPresence.activityId == null
+                todaySession == null
                   ? "/training"
-                  : trainingActivityPageHref(workoutPresence.activityId)
+                  : trainingActivityPageHref(todaySession.id)
               }
             >
               Open

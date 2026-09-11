@@ -381,12 +381,12 @@ describe("Home's one list, rendered", () => {
   // the day read that serves the day bar, the record band and the chart, the three
   // bands, and both streamed sections resolved.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 191,
-    "marathon-runner": 203,
-    household: 261,
-    pregnant: 196,
-    "diabetic-cgm": 203,
-    biohacker: 208,
+    bodybuilder: 192,
+    "marathon-runner": 204,
+    household: 262,
+    pregnant: 197,
+    "diabetic-cgm": 204,
+    biohacker: 209,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound on
@@ -459,12 +459,12 @@ describe("Home's one list, rendered", () => {
   // cold table, and the same reason for having numbers rather than a ratio: a move
   // here has to be accounted for, in either direction.
   const WARM_BASELINE: Record<string, number> = {
-    bodybuilder: 172,
-    "marathon-runner": 183,
-    household: 238,
-    pregnant: 177,
-    "diabetic-cgm": 184,
-    biohacker: 188,
+    bodybuilder: 173,
+    "marathon-runner": 184,
+    household: 239,
+    pregnant: 178,
+    "diabetic-cgm": 185,
+    biohacker: 189,
   };
 
   it("home query budget: a second load with no write in between matches its warm baseline (#5073)", () => {
