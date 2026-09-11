@@ -146,7 +146,7 @@
   "history-linked-context.spec.ts": 3,
   "history-scrubber.spec.ts": 18,
   "history-windowing.spec.ts": 14,
-  "history.spec.ts": 33,
+  "history.spec.ts": 32,
   "home-assistant-notify.spec.ts": 22,
   "home-location.spec.ts": 11,
   "household-history.spec.ts": 17,
