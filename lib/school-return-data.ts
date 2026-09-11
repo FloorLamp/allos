@@ -18,7 +18,11 @@ import { parseRxcuiIngredients } from "./rxnorm";
 import { isAntipyreticIntakeItem } from "./prn-defaults";
 import { isOutOfRange } from "./reference-range/flags";
 import type { AssembledEpisode } from "./illness-episode-format";
-import { computeSchoolReturn, type SchoolReturnStatus } from "./school-return";
+import {
+  computeSchoolReturn,
+  type LastAntipyretic,
+  type SchoolReturnStatus,
+} from "./school-return";
 
 // The far-past floor for an episode whose start is unknown (before the change-log),
 // mirroring assembleIllnessEpisode.
@@ -195,9 +199,24 @@ function schoolReturnStatusForRows(
   const rows =
     prefetchedRows ?? antipyreticAdministrationRows(profileId, from, to);
 
-  let lastAntipyreticAtMs: number | null = null;
-  let lastAntipyreticName: string | null = null;
-  let lastAntipyreticClockLabel: string | null = null;
+  // ONLY A STATED ADMINISTRATION TIME FEEDS THE CLOCK (#5688). `bestKnownInstant`
+  // answers with the stated event instant (`occurred_at`) when the row has one and with
+  // the record chain's immutable capture (`recorded_at`) otherwise — and SAYS which
+  // (#2205 phase 3). The note has always used that to LABEL the clock honestly; the
+  // arithmetic below used to ignore it and count from whichever instant came back.
+  //
+  // A capture stamp is not a late bound on when a dose was given: a past-day
+  // skipped→taken flip keeps the SKIP's `recorded_at`, which PREDATES the dose, so the
+  // fever-free clock started early and could clear a child for school while a reducer
+  // was still masking a fever. So an unstated dose contributes no instant at all and
+  // the countdown is HELD (owner ruling, #5688) behind the "add it in Dose history"
+  // door. No conservative-hour fallback: this document quotes no time it was not given.
+  const doses: {
+    day: string;
+    statedMs: number | null;
+    name: string;
+    clockLabel: string | null;
+  }[] = [];
   for (const r of rows) {
     if (r.date < from || r.date > to) continue;
     if (
@@ -209,28 +228,77 @@ function schoolReturnStatusForRows(
     ) {
       continue;
     }
-    // The dose's own instant, asked as a question rather than paired by hand (#2205
-    // phase 3). `bestKnownInstant` answers with the stated event instant
-    // (`occurred_at`) when the row has one and with the record chain
-    // immutable capture (`recorded_at`) otherwise — and SAYS which, so this note can
-    // mark a captured clock instead of quoting it as an administration time.
     const when = bestKnownInstant("intake_item_logs", r);
     const d = instantDate(when);
-    if (!d || !when.known) continue;
-    const stored = when.at;
-    const ms = d.getTime();
-    if (lastAntipyreticAtMs == null || ms >= lastAntipyreticAtMs) {
-      lastAntipyreticAtMs = ms;
-      lastAntipyreticName = r.name;
-      // The school-return note is a document a caregiver hands to a school, so its
-      // claim must match what the row states (#2228 decision 4): "last ibuprofen
-      // recorded 4:02pm" when nobody stated an intake time, a bare clock only when
-      // somebody did. The value stays visible with its provenance either way.
-      const clock = formatGivenAtClock(tz, stored) || null;
-      lastAntipyreticClockLabel =
-        clock != null && when.semantic === "record"
+    // The school-return note is a document a caregiver hands to a school, so its
+    // claim must match what the row states (#2228 decision 4): "last ibuprofen
+    // recorded 4:02pm" when nobody stated an intake time, a bare clock only when
+    // somebody did. The value stays visible with its provenance either way.
+    const clock = when.known ? formatGivenAtClock(tz, when.at) || null : null;
+    doses.push({
+      day: r.date,
+      // An `event` answer, and nothing else. A row whose instants are unreadable
+      // states no time either, and is held for the same reason rather than dropped —
+      // dropping a fever reducer is the permissive direction.
+      statedMs:
+        d && when.known && when.semantic === "event" ? d.getTime() : null,
+      name: r.name,
+      clockLabel:
+        clock != null && when.known && when.semantic === "record"
           ? `recorded ${clock}`
-          : clock;
+          : clock,
+    });
+  }
+
+  // WHICH DOSE IS "THE LAST" is not answerable by arithmetic, for the same reason
+  // `establishedAfterFever` above is not: a stated instant and a filing stamp answer
+  // different questions and do not order against each other. What DOES order them is
+  // the row's own profile-local `date` (#94), because every instant on a later day
+  // follows every instant on an earlier one. So the hold is scoped to the LATEST DAY
+  // carrying a fever reducer — if any dose on it states no time, which of that day's
+  // doses came last is unknown and no clearance can rest on them.
+  //
+  // Doses on EARLIER days are then left out of the clock, and that cannot loosen it:
+  // the clock takes the MAX stated instant, which sits on the last dose day whenever
+  // that day has one. What this does NOT do is make every unsafe clearance impossible
+  // — it removes the filing stamp from this one computation, nothing more.
+  const lastDoseDay = doses.reduce<string | null>(
+    (latest, dose) => (latest == null || dose.day > latest ? dose.day : latest),
+    null
+  );
+  const unstated = doses.filter(
+    (dose) => dose.day === lastDoseDay && dose.statedMs == null
+  );
+
+  let lastAntipyretic: LastAntipyretic | null = null;
+  if (unstated.length > 0) {
+    // The dose the note names is the last unstated one in the gather's own order
+    // (event-then-capture ascending, id tie-break).
+    const shown = unstated[unstated.length - 1];
+    lastAntipyretic = {
+      timeStated: false,
+      name: shown.name,
+      clockLabel: shown.clockLabel,
+    };
+  } else {
+    let best: { ms: number; name: string; clockLabel: string | null } | null =
+      null;
+    for (const dose of doses) {
+      if (dose.statedMs != null && (best == null || dose.statedMs >= best.ms)) {
+        best = {
+          ms: dose.statedMs,
+          name: dose.name,
+          clockLabel: dose.clockLabel,
+        };
+      }
+    }
+    if (best != null) {
+      lastAntipyretic = {
+        timeStated: true,
+        atMs: best.ms,
+        name: best.name,
+        clockLabel: best.clockLabel,
+      };
     }
   }
 
@@ -238,9 +306,7 @@ function schoolReturnStatusForRows(
     lastFeverAtMs,
     lastFeverDegF,
     firstNormalAfterFeverAtMs,
-    lastAntipyreticAtMs,
-    lastAntipyreticName,
-    lastAntipyreticClockLabel,
+    lastAntipyretic,
     nowMs,
     thresholdHours:
       prefetchedSettings?.thresholdHours ??

@@ -15,7 +15,7 @@ import {
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import { staleEpisodeNudgeFor, ackStaleNudge } from "@/lib/stale-episode-data";
-import { updateHistoricalDose } from "@/lib/queries";
+import { updateHistoricalDose, setDoseStatusCore } from "@/lib/queries";
 
 // The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
 // wall time this file states has already happened and `logTemperatureCore` judges it
@@ -55,14 +55,16 @@ function makeSick(p: number, startDaysAgo: number) {
   ).run(p, shiftDateStr(today(p), -startDaysAgo));
 }
 
-// Insert a taken PRN administration of a named item at a fixed UTC recorded_at.
-// Returns the ids so a test can drive the real amend path against the log row.
+// Insert a PRN administration of a named item at a fixed UTC recorded_at — `taken` by
+// default, `skipped` for the flip fixture below. Returns the ids so a test can drive
+// the real amend and tri-state paths against the log row.
 function addAntipyretic(
   p: number,
   name: string,
   date: string,
-  recordedAtUtc: string
-): { itemId: number; logId: number } {
+  recordedAtUtc: string,
+  status: "taken" | "skipped" = "taken"
+): { itemId: number; doseId: number; logId: number } {
   const itemId = Number(
     db
       .prepare(
@@ -83,11 +85,18 @@ function addAntipyretic(
     db
       .prepare(
         `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at, status)
-         VALUES (?, ?, ?, '200 mg', ?, 'taken')`
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(dose, itemId, date, recordedAtUtc).lastInsertRowid
+      .run(
+        dose,
+        itemId,
+        date,
+        status === "taken" ? "200 mg" : null,
+        recordedAtUtc,
+        status
+      ).lastInsertRowid
   );
-  return { itemId, logId };
+  return { itemId, doseId: dose, logId };
 }
 
 describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
@@ -105,10 +114,15 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     makeSick(p, 2);
     const td = today(p);
     // Fever reading at 09:00 UTC today, a NORMAL one at 12:00 (the evidence the
-    // clock starts on, #4685); ibuprofen at 06:00 UTC today.
+    // clock starts on, #4685); ibuprofen STATED at 06:00 UTC today — the clock
+    // computes from a stated administration time and from nothing else (#5688).
     logTemperatureCore(p, 101.5, "F", td, "page", "09:00");
     logTemperatureCore(p, 98.6, "F", td, "page", "12:00");
-    addAntipyretic(p, "Ibuprofen", td, `${td} 06:00:00`);
+    const { logId } = addAntipyretic(p, "Ibuprofen", td, `${td} 07:30:00`);
+    db.prepare(`UPDATE intake_item_logs SET occurred_at = ? WHERE id = ?`).run(
+      `${td}T06:00:00Z`,
+      logId
+    );
 
     const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
     const nowMs = Date.parse(`${td}T20:00:00Z`);
@@ -116,15 +130,12 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(s).not.toBeNull();
     expect(s!.evidence).toBe("measured");
     expect(s!.hoursSinceFever).toBe(11); // 20:00 - 09:00
-    expect(s!.hoursSinceAntipyretic).toBe(14); // 20:00 - 06:00
+    expect(s!.hoursSinceAntipyretic).toBe(14); // 20:00 - 06:00, the STATED instant
     // Cleared clock runs from the LATER event (the normal reading at 12:00).
     expect(s!.clearedForHours).toBe(8);
     expect(s!.met).toBe(false);
     expect(s!.lastAntipyreticName).toBe("Ibuprofen");
-    // #2228 decision 4: nobody stated an intake time (`occurred_at` is unwritten),
-    // so the note's clock is the RECORD chain and says so — "last ibuprofen
-    // recorded 6:00am", never a bare clock claiming an administration time.
-    expect(s!.lastAntipyreticClockLabel).toBe("recorded 6:00am");
+    expect(s!.lastAntipyreticClockLabel).toBe("6:00am");
   });
 
   // THE SILENCE CASE (#4685), the owner's screenshot end to end: a fever reading and
@@ -309,6 +320,9 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     // real hour the tier runs at; the countdown's `now` is injected anyway.
     const yd = shiftDateStr(td, -1);
     logTemperatureCore(p, 101.5, "F", yd, "page", "09:00");
+    // The clock's evidence (#4685) — without a normal reading after the fever there is
+    // no countdown for the hold to act on, and this test is about the countdown.
+    logTemperatureCore(p, 98.6, "F", yd, "page", "10:00");
     const { itemId, logId } = addAntipyretic(
       p,
       "Ibuprofen",
@@ -319,9 +333,11 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     const nowMs = Date.parse(`${yd}T20:00:00Z`);
     const ep = () => assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
     const before = schoolReturnStatusFor(p, ep(), nowMs)!;
-    // Nobody has stated an intake time: the clock runs from the filing stamp and
-    // the note SAYS so.
-    expect(before.hoursSinceAntipyretic).toBe(13); // 20:00 − 07:00
+    // Nobody has stated an intake time, so there is no clock to run: the countdown is
+    // HELD (#5688) and the note names the reducer with its filing stamp marked as one.
+    expect(before.evidence).toBe("held");
+    expect(before.hoursSinceAntipyretic).toBeNull();
+    expect(before.met).toBe(false);
     expect(before.lastAntipyreticClockLabel).toBe("recorded 7:00am");
 
     // The caregiver amends the dose, stating it was actually given at 04:00 —
@@ -341,13 +357,128 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     // clinical reading — bestKnownInstant prefers the event), and the note's
     // clock renders unmarked. The filing stamp itself is untouched history.
     const after = schoolReturnStatusFor(p, ep(), nowMs)!;
+    expect(after.evidence).toBe("measured"); // the hold is released
     expect(after.hoursSinceAntipyretic).toBe(16); // 20:00 − 04:00
+    expect(after.clearedForHours).toBe(10); // from the 10:00 normal reading
     expect(after.lastAntipyreticClockLabel).toBe("4:00am");
     expect(
       db
         .prepare(`SELECT recorded_at FROM intake_item_logs WHERE id = ?`)
         .get(logId)
     ).toEqual({ recorded_at: `${yd} 07:00:00` });
+  });
+
+  // ── THE CLOCK NEEDS A STATED ADMINISTRATION TIME (#5688) ───────────────────
+  //
+  // THE REPRODUCING CASE, end to end through the real tri-state write. A caregiver
+  // skips yesterday's 07:00 ibuprofen, then flips that row to taken — and a PAST-DAY
+  // flip states no minute (`takenAt: null`, #4428) while `recorded_at` deliberately
+  // stays put as the SKIP's stamp. So the row's only instant is 07:00, hours BEFORE
+  // the dose was actually given. The old clock counted from it and cleared the child.
+  it("a past-day skipped→taken flip HOLDS the countdown instead of clearing early", () => {
+    const p = newProfile("sr-flip");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 3);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 103.4, "F", yd, "page", "06:00");
+    logTemperatureCore(p, 98.6, "F", yd, "page", "08:00"); // the clock's evidence
+    const { doseId, logId } = addAntipyretic(
+      p,
+      "Ibuprofen",
+      yd,
+      `${yd} 07:00:00`,
+      "skipped"
+    );
+
+    // The flip itself — the shipped path, not a hand-set column.
+    setDoseStatusCore(p, doseId, yd, "taken", "page", { takenAt: null });
+    expect(
+      db
+        .prepare(
+          `SELECT status, occurred_at, recorded_at FROM intake_item_logs WHERE id = ?`
+        )
+        .get(logId)
+    ).toEqual({
+      status: "taken",
+      occurred_at: null, // a past-day flip states no minute…
+      recorded_at: `${yd} 07:00:00`, // …and the SKIP's stamp is what remains
+    });
+
+    // 25h after the normal reading, and the retired arithmetic read exactly that:
+    // max(normal 08:00, "antipyretic" 07:00) = 08:00, 25h ≥ 24h, convention MET —
+    // a clearance resting on a stamp the dose itself may postdate by hours.
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T09:00:00Z`))!;
+    expect(s.evidence).toBe("held");
+    expect(s.met).toBe(false);
+    expect(s.clearedForHours).toBeNull();
+    expect(s.hoursSinceAntipyretic).toBeNull();
+    expect(schoolReturnCompactClause(s)).toBe(
+      "fever-free clock held — add the ibuprofen time in Dose history"
+    );
+  });
+
+  // THE DISCRIMINATION THE FIX RESTS ON. Dropping an unstated dose would also keep the
+  // filing stamp out of the arithmetic — and would be MORE permissive, because the
+  // clock then runs from the normal reading and clears. The held state must therefore
+  // be distinguishable from "no fever reducer was taken" on the same fixture.
+  it("holding is not the same as having no fever reducer at all", () => {
+    const make = (label: string, withDose: boolean) => {
+      const p = newProfile(label);
+      setProfileSetting(p, "timezone", "UTC");
+      makeSick(p, 3);
+      const td = today(p);
+      const yd = shiftDateStr(td, -1);
+      logTemperatureCore(p, 103.4, "F", yd, "page", "06:00");
+      logTemperatureCore(p, 98.6, "F", yd, "page", "08:00");
+      if (withDose) addAntipyretic(p, "Ibuprofen", yd, `${yd} 07:00:00`);
+      const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+      return schoolReturnStatusFor(p, ep, Date.parse(`${td}T09:00:00Z`))!;
+    };
+    const held = make("sr-disc-held", true);
+    const nothing = make("sr-disc-none", false);
+
+    // With no reducer on record the clock genuinely runs, and at 25h it clears.
+    expect(nothing.evidence).toBe("measured");
+    expect(nothing.met).toBe(true);
+    expect(schoolReturnCompactClause(nothing)).toBe("fever-free 25h of 24");
+
+    // With an unstated one it does not — and says which dose is holding it.
+    expect(held.evidence).toBe("held");
+    expect(held.met).toBe(false);
+    expect(held.lastAntipyreticName).toBe("Ibuprofen");
+    expect(schoolReturnCompactClause(held)).not.toBe(
+      schoolReturnCompactClause(nothing)
+    );
+  });
+
+  // THE HOLD IS SCOPED TO THE LATEST DOSE DAY. An unstated dose two days back cannot be
+  // the last one — every instant on an earlier day precedes every instant on a later
+  // one — so it neither holds the clock nor loosens it: the clock takes the MAX stated
+  // instant, which is the later day's.
+  it("an unstated dose on an EARLIER day does not hold a later stated one", () => {
+    const p = newProfile("sr-older-unstated");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 4);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    const dbd = shiftDateStr(td, -2);
+    logTemperatureCore(p, 103.4, "F", dbd, "page", "06:00");
+    logTemperatureCore(p, 98.6, "F", dbd, "page", "08:00");
+    addAntipyretic(p, "Ibuprofen", dbd, `${dbd} 07:00:00`); // unstated, older
+    const { logId } = addAntipyretic(p, "Ibuprofen", yd, `${yd} 20:30:00`);
+    db.prepare(`UPDATE intake_item_logs SET occurred_at = ? WHERE id = ?`).run(
+      `${yd}T20:00:00Z`,
+      logId
+    );
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T08:00:00Z`))!;
+    expect(s.evidence).toBe("measured");
+    expect(s.hoursSinceAntipyretic).toBe(12); // 08:00 − yesterday 20:00
+    expect(s.clearedForHours).toBe(12); // the stated dose governs, not the stamp
+    expect(s.met).toBe(false);
   });
 
   it("a NON-antipyretic PRN doesn't count as a fever reducer", () => {
