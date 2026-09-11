@@ -81,7 +81,10 @@ const NOTE_SEPARATOR = " · ";
 // is the deliberate direction to err: text shown twice is something a reader can
 // resolve, text dropped is not.
 //
-// Binds ONE profile_id, before whatever the reading statement binds.
+// Binds ONE profile_id, before whatever the reading statement binds. The ORDER BY
+// inside `group_concat` needs SQLite >= 3.44; the bundled better-sqlite3 reports
+// 3.53.4 (measured, not assumed) — the same kind of floor the election's own window
+// functions have carried since 3.25.
 const immunizationSpec = REPRESENTATIVE_SPECS.immunizations;
 export const IMMUNIZATION_CONTRIBUTED_NOTES_CTE = `imm_notes AS (
     SELECT rep_id AS id,
