@@ -18,9 +18,6 @@ import {
 import {
   collectDueDosesNow,
   type FoodMealEvent,
-  getAdministrationsForItemsOnDate,
-  getIntakeDoses,
-  getIntakeItems,
   getMoodOnDate,
   getPediatricFormContext,
   getPrnMedicationsForQuickLog,
@@ -28,12 +25,9 @@ import {
   type TrackedPractice,
   type PrnMedForQuickLog,
 } from "@/lib/queries";
-import { doseScheduleAsOf } from "@/lib/intake-cadence";
-import { bestKnownInstant } from "@/lib/row-instants";
-import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
-import { formatClock, formatWeekdayDate } from "@/lib/format-date";
+import { formatWeekdayDate } from "@/lib/format-date";
 import type { TimeFormat } from "@/lib/format-date";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import {
@@ -139,48 +133,6 @@ export interface QuickEntryPastDose {
   amountAssumed: boolean;
 }
 
-// ── THE FOLD: EVERYTHING ELSE (#5808, owner ruling 2026-09-10) ───────────────
-//
-// One item the sheet's dose body can log that it is not otherwise showing. The body's
-// three sources are all about what is OWED or offered right now — today's arrived
-// slots, the as-needed medications, the recent days' unresolved doses — so an active
-// item that is simply not due had no row at all: an unscheduled supplement (never due
-// by #5285's ruling, and correctly so), a scheduled item wanted outside its slot, or a
-// second dose of one already taken. Once #5435 moves the record's kind chips off today
-// the sheet is today's only door, and those items would have none.
-//
-// IT IS A CATALOG SLICE, NOT A FOURTH DUENESS. Nothing here is due, nothing here
-// becomes due, and the Take writes through the DATED core (`logHistoricalDose`) rather
-// than resolving an occurrence — an unscheduled item HAS no occurrence, which is the
-// whole reason this row exists.
-export interface QuickEntryOtherItem {
-  itemId: number;
-  // The dose row the Take writes against: the item's FIRST live dose, by the same
-  // (sort, id) order every other one-row-per-item read in this domain picks an amount
-  // with (the PRN gather, the `may` offer). An item's several slots are the record
-  // door's question, not this row's — the fold offers the item, once.
-  doseId: number;
-  name: string;
-  // The usual amount ON THE SHEET'S DAY (`doseScheduleAsOf`), formatted the way the
-  // offer tail formats it — the chip's payload, so the row says what a tap writes.
-  detail: string | null;
-  // The latest dose ALREADY logged on that day, as a profile-local clock ("8:15am"),
-  // or null. An item taken this morning still lists here so a second dose is one tap.
-  takenAt: string | null;
-}
-
-// The fold's offer for every day the sheet may stand on. Keyed by date because the
-// body's exclusions, the day's resolved amount and the day's logs are all per-day, and
-// the switcher may land on any of them without a re-gather.
-export interface QuickEntryOthers {
-  byDate: Record<string, QuickEntryOtherItem[]>;
-  // The gather's profile-local wall minute. `logHistoricalDose` REQUIRES a stated
-  // time, and the live day's one-tap Take has none to ask for — so the minute comes
-  // from the SERVER's clock here, never a browser read: the sheet is a client
-  // component, and lib/clock's frozen-test override does not exist in the browser.
-  nowHhmm: string;
-}
-
 // NOT the measurements form. It is the one quick-write surface a person is
 // expected to reach with NO CONNECTION (#4091), and a Server Action rejects
 // offline — so its props are resolved in the app shell and handed to the overlay
@@ -234,10 +186,6 @@ export type QuickEntryData =
       // that silently disappeared would read as "there is nothing back there" when
       // the truth is "that day is already settled".
       pastDays: QuickEntryPastDay[];
-      // The fold's offer per offered day (#5808). Optional so a cached former-shape
-      // response still renders — an absent fold is the zero case, which is the state
-      // the ruling asks for anyway.
-      others?: QuickEntryOthers;
     }
   | {
       // The tracked practices, each with the standing the shared card shows (#1633).
@@ -699,10 +647,7 @@ async function gatherQuickEntry(
   const nowHhmm = zonedDateParts(tz, now).hhmm;
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const prnMeds = getPrnMedicationsForQuickLog(profile.id);
-  const dueNow = collectDueDosesNow(profile.id, date, nowHhmm);
-  // The items today's list already shows, for the fold below to subtract.
-  const doseItemIds = dueNow.map((item) => item.itemId);
-  const doses = dueNow.map((item) => ({
+  const doses = collectDueDosesNow(profile.id, date, nowHhmm).map((item) => ({
     doseId: item.doseId!,
     title: item.title,
     detail: item.detail ?? null,
@@ -714,13 +659,12 @@ async function gatherQuickEntry(
   // The recent past (#3936). `doseLogDays` reads DOSE_LOG_DATE_WINDOW_DAYS, the same
   // constant the write cores gate on, so the offer and the gate cannot drift; `date`
   // is already the profile-LOCAL today, so each shifted day is a profile-local day.
-  const pastPending = doseLogDays(date)
+  const pastDays = doseLogDays(date)
     .slice(1)
-    .map((day) => ({ date: day, pending: pendingDayDoses(profile.id, day) }));
-  const pastDays = pastPending.map(({ date: day, pending }) => ({
-    date: day,
-    slots: groupDosesByBucket(pending),
-  }));
+    .map((day) => ({
+      date: day,
+      slots: groupDosesByBucket(pendingDayDoses(profile.id, day)),
+    }));
   return {
     form: "dose",
     today: date,
@@ -736,116 +680,7 @@ async function gatherQuickEntry(
       ),
     },
     pastDays,
-    others: {
-      // WHAT EACH DAY ALREADY SHOWS is what the fold subtracts, and it is read from
-      // the very lists above rather than re-derived: a fold that double-listed a due
-      // item would be the one defect this row can introduce. The as-needed list is
-      // drawn on EVERY day the sheet stands on, so its ids are subtracted from all of
-      // them; the scheduled half differs per day, which is why this is keyed by date.
-      byDate: quickEntryOthersByDate(
-        profile.id,
-        [
-          { date, shown: doseItemIds },
-          ...pastPending.map(({ date: day, pending }) => ({
-            date: day,
-            shown: pending.map((dose) => dose.itemId),
-          })),
-        ],
-        prnMeds.map((med) => med.id),
-        tz,
-        formatPrefs.timeFormat
-      ),
-      nowHhmm,
-    },
   };
-}
-
-// The fold's items for each offered day (#5808).
-//
-// NO NEW STATEMENT, AND NO NEW CACHE. The catalog half is `getIntakeItems` +
-// `getIntakeDoses` — the same two snapshot-cached reads `collectDueDosesNow` has
-// already run on this request, so asking for the whole catalog here costs nothing —
-// and the only read of its own is the day's administrations, through the BATCHED
-// `getAdministrationsForItemsOnDate` the medications Today panel already uses (one
-// bounded query per day, exactly as `pendingDayDoses` above is already one read per
-// day). A fold-specific SQL statement would have been a third opinion about what an
-// item's usual amount is.
-//
-// ACTIVE ITEMS WITH A LIVE DOSE ROW. An item with no dose row has nothing to write
-// against (`logHistoricalDose` takes a dose id), and an inactive one is not on offer;
-// `getIntakeItems` orders `active DESC, name`, so the surviving order is the
-// alphabetical one the catalog pages read down.
-function quickEntryOthersByDate(
-  profileId: number,
-  days: readonly { date: string; shown: readonly number[] }[],
-  alwaysShownItemIds: readonly number[],
-  tz: string,
-  timeFormat: TimeFormat
-): Record<string, QuickEntryOtherItem[]> {
-  // FIRST live dose per item — `getIntakeDoses` excludes retired rows and orders
-  // (item_id, sort, id), so first-seen IS that row.
-  const firstDose = new Map<
-    number,
-    ReturnType<typeof getIntakeDoses>[number]
-  >();
-  for (const dose of getIntakeDoses(profileId)) {
-    if (!firstDose.has(dose.item_id)) firstDose.set(dose.item_id, dose);
-  }
-  const catalog = getIntakeItems(profileId).filter(
-    (item) => item.active === 1 && firstDose.has(item.id)
-  );
-  const always = new Set(alwaysShownItemIds);
-  const byDate: Record<string, QuickEntryOtherItem[]> = {};
-  for (const { date, shown } of days) {
-    const hidden = new Set([...always, ...shown]);
-    const rows = catalog.filter((item) => !hidden.has(item.id));
-    const logs = getAdministrationsForItemsOnDate(
-      profileId,
-      rows.map((item) => item.id),
-      date
-    );
-    byDate[date] = rows.map((item) => {
-      const dose = firstDose.get(item.id)!;
-      // The amount IN FORCE ON THAT DAY (#1973), never the live row: a dose whose
-      // amount changed last week must not relabel the day before it.
-      const amount = doseScheduleAsOf(dose, date).amount ?? null;
-      // Most-recent-intake first, which is `getAdministrationsForItemsOnDate`'s own
-      // ordering — so this is the day's LATEST dose, the one a second tap follows.
-      // ASKED, NOT PAIRED BY HAND (#2205): `bestKnownInstant` answers with the stated
-      // administration instant when the row has one and the capture stamp otherwise,
-      // and SAYS which — the fall this fact makes is the same one the as-needed row's
-      // "last 4:02pm" makes, and it is named rather than spelled as a `??`.
-      const latest = logs.get(item.id)?.[0];
-      const takenInstant = latest
-        ? bestKnownInstant("intake_item_logs", latest, tz)
-        : null;
-      return {
-        itemId: item.id,
-        doseId: dose.id,
-        name: item.name,
-        detail:
-          item.kind === "medication"
-            ? formatMedicationDoseProduct(amount, item.product)
-            : amount,
-        takenAt: takenInstant?.known
-          ? clockOfInstant(tz, takenInstant.at, timeFormat)
-          : null,
-      };
-    });
-  }
-  return byDate;
-}
-
-// One logged administration's profile-local clock ("8:15am"), through the login's own
-// 12h/24h preference. The lower-case, space-less meridiem is the facts column's
-// register, not a heading's.
-function clockOfInstant(
-  tz: string,
-  iso: string,
-  timeFormat: TimeFormat
-): string {
-  const [h, m] = zonedDateParts(tz, new Date(iso)).hhmm.split(":");
-  return formatClock(timeFormat, Number(h), Number(m), "lower-nospace");
 }
 
 // A day's unresolved doses in declared-bucket order, empty buckets dropped. The order

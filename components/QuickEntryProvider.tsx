@@ -2368,15 +2368,12 @@ function QuickEntryBody({
       );
     case "dose":
       return (
-        // THE GATHERED PAYLOAD IS THE LIST'S SERVER HALF, so it is spread whole
-        // rather than re-listed field by field: `others` (#5808) is the third field
-        // this mount had to remember, and a forgotten one costs a silently missing
-        // section. The two fields below are the ones this host genuinely decides —
-        // the subject's zone and the live day — and they override the spread.
         <QuickDoseList
-          {...data}
+          today={data.today}
           profileToday={profileToday ?? data.today}
+          doses={data.doses}
           prn={data.prn ? { ...data.prn, tz: subjectTimeZone } : undefined}
+          pastDays={data.pastDays}
           onDone={onDone}
           subjectProfileId={subjectProfileId}
           selectedDay={selectedDay ?? data.today}
