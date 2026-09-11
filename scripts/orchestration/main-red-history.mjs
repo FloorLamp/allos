@@ -206,7 +206,12 @@ export function renderHistory({ heads, firstRed }, attribution = new Map()) {
       ...heads.map(row),
     ];
   out.push(
-    `First failing head in this window: ${heads[firstRed].sha} — and every head after it.`,
+    // This names ONE head. The clause that used to follow it — "and every head
+    // after it" — claimed the rest of the window was red too, over rows that
+    // say otherwise whenever main recovers (#5783). The rows below already
+    // carry every later head's own state, and a sentence recomputed from them
+    // would only be a second copy that can drift.
+    `First failing head in this window: ${heads[firstRed].sha}.`,
     ...(firstRed === 0
       ? [
           "THE WINDOW OPENS ON A FAILING HEAD: an older red may precede it.",

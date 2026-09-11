@@ -1,4 +1,8 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { perTestCeiling } from "../../vitest.timeouts";
 import { hops, reach, terminalSet } from "../../scripts/reach-graph";
 
 // WHAT A SHARED DERIVATION REACHES, PINNED (#5680).
@@ -137,4 +141,66 @@ describe("what a shared derivation reaches (#5680)", () => {
     expect(terminalSet(result)).toEqual(terminals);
     expect(hops(result)).toEqual(expect.arrayContaining(missed));
   });
+});
+
+// WHAT THE CLI HANDS A CALLER THROUGH A PIPE (#5804).
+//
+// `scripts/reach.ts --json` is read as a child process — by the merge gate's
+// reach row, and by anyone piping it to `jq`. It used to `console.log` the
+// document and `process.exit(0)` in the next statement; on a pipe that write is
+// asynchronous, so anything past the buffer was dropped and the caller saw
+// status 0 over a half-written document. The gate reported it as
+// `Unterminated string in JSON at position 146176`, which reads like a walker
+// fault and sends the reader to the wrong file.
+//
+// A pipe is the whole mechanism, so the run below is spawned the way
+// merge-gate.mjs spawns it (stdio `pipe`), and the payload has to be bigger than
+// this platform will carry across one. The size that has to mean is not ours to
+// assert — it is the OS pipe buffer plus whatever the parent happened to drain —
+// so the control states it as behaviour instead: the same `console.log` +
+// `process.exit` shape, at the size of this walk's own answer, must still come
+// back cut.
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const MAX_BUFFER = 64 * 1024 * 1024; // merge-gate.mjs's own ceiling
+const PIPE_MS = perTestCeiling(2, "green"); // ~9.1 s observed, 2026-09-11
+
+describe("the --json CLI over a pipe (#5804)", () => {
+  // Reached by most of the app, so its answer is far larger than any pipe
+  // buffer. If that stops being true the control below says so.
+  const FILE = "lib/date.ts";
+  const SYMBOL = "hhmmToMinutes";
+
+  it(
+    "delivers the whole document, not the part that fit",
+    () => {
+      const walked = reach(FILE, SYMBOL);
+      const complete = JSON.stringify({
+        start: walked.start,
+        terminals: terminalSet(walked),
+        hops: hops(walked),
+      });
+      const size = Buffer.byteLength(complete);
+
+      // THE CONTROL ON THE FIXTURE. Write that many bytes and exit on them: if
+      // this platform delivers them all, the walk above is too small to have
+      // caught the defect and the symbol has to be replaced with a bigger one.
+      const cut = spawnSync(
+        process.execPath,
+        ["-e", `console.log("x".repeat(${size})); process.exit(0);`],
+        { encoding: "utf8", maxBuffer: MAX_BUFFER }
+      );
+      expect(cut.status).toBe(0);
+      expect(Buffer.byteLength(cut.stdout)).toBeLessThan(size);
+
+      const run = spawnSync(
+        "npx",
+        ["tsx", "scripts/reach.ts", FILE, SYMBOL, "--json"],
+        { cwd: REPO, encoding: "utf8", maxBuffer: MAX_BUFFER }
+      );
+      expect(run.status).toBe(0);
+      expect(JSON.parse(run.stdout)).toEqual(JSON.parse(complete));
+    },
+    PIPE_MS
+  );
 });
