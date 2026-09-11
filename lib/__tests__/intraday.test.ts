@@ -856,13 +856,26 @@ describe("intradayFreshness (#4767)", () => {
     expect(intradayFreshness(model(nowMinute))).toBe(expected);
   });
 
-  it("names the session the watch has not caught up with", () => {
-    // A ride 09:00–10:00 — after the 07:00 last sample. "Synced 3h ago" is true and
-    // answers a different question than the one someone who just finished is asking.
-    const withRide = model(720, {
+  // WHICH ROW MAY MOVE THE SENTENCE (#4863 owner ruling, 2026-09-04). Both cases put
+  // the SAME window 09:00–10:00 after the 07:00 last sample and differ only in the
+  // ledger it travelled on, so the ledger is the only thing either result can turn
+  // on. An activity still anchors — "Synced 5h ago" is true and answers a different
+  // question than the one someone who just finished a ride is asking. A practice may
+  // not: it is a statement about the past, and naming it reads as a device that
+  // stopped reporting at the sauna, so the day falls through to the plain lag.
+  it.each([
+    [
+      "an activity block still anchors",
+      "activity",
+      "No data since Late window yet",
+    ],
+    ["a practice window may not anchor", "practice", "Synced 5h ago"],
+  ] as const)("%s", (_name, category, expected) => {
+    const withBlock = model(720, {
       events: [
-        activityEvent("activity:9", {
-          title: "Evening ride",
+        activityEvent("event:9", {
+          category,
+          title: "Late window",
           sortTime: "09:00",
           clockWindow: {
             date: DAY,
@@ -873,7 +886,7 @@ describe("intradayFreshness (#4767)", () => {
         }),
       ],
     });
-    expect(intradayFreshness(withRide)).toBe("No data since Evening ride yet");
+    expect(intradayFreshness(withBlock)).toBe(expected);
   });
 
   it("says so when today has no worn minutes at all", () => {
