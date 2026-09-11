@@ -126,9 +126,10 @@ describe("buildRetrievalSet — numbered, capped citations", () => {
   });
 });
 
-// THE CITATION BADGE NAMES THE KIND (#5096). One `logged` domain carried seven kinds,
-// and the badge read the DOMAIN, so "Logged dose", "Practice", "Sleep" all printed
-// "Logged entry". The kind is a field on the hit now; the badge resolves from it.
+// THE CITATION BADGE NAMES THE KIND (#5096). One `logged` domain carries seven kinds,
+// and the badge read the DOMAIN, so a dose, a session and a night all printed the one
+// word "Logged entry" — a total lookup giving a coarse answer, never a broken one. The
+// kind is a field on the hit now; the badge resolves from it, so the answer gets finer.
 // The seven words a reader sees, WRITTEN OUT rather than read back off the table
 // under test — a control that re-reads the implementation cannot see a label change.
 // `Record<SearchLoggedKind, …>` keeps it total: an eighth kind is a type error here.
@@ -150,7 +151,7 @@ describe("citationLabel — the badge a logged row shows", () => {
   });
 
   it("gives the seven kinds seven different words", () => {
-    // The defect was a whole family collapsing onto one word. Seven labels that are
+    // What this converges is a whole family reading as one word. Seven labels that are
     // not seven distinct words would be the same flattening under another spelling.
     expect(new Set(Object.values(KIND_BADGE)).size).toBe(
       SEARCH_LOGGED_KINDS.length
@@ -162,7 +163,8 @@ describe("citationLabel — the badge a logged row shows", () => {
       DOMAIN_LABEL.supplement
     );
     expect(citationLabel({ domain: "encounter" })).toBe("Visit");
-    // A logged row that states no kind still reads as a record, never as blank.
+    // `loggedKind` is optional, so a logged row that states no kind answers with the
+    // domain's own word — the same total map, not a fallback against a blank render.
     expect(citationLabel({ domain: "logged" })).toBe("Logged entry");
   });
 

@@ -66,9 +66,9 @@ export const DOMAIN_LABEL: Record<SearchDomain, string> = {
   activity: "Activity",
   // The record's logged rows (#5006). They reach Q&A through the same fan-out every
   // other domain does, so "when did I last take ibuprofen" can now cite the dose
-  // itself rather than only the medication it came out of. The DOMAIN's own word; a
-  // logged citation's badge is its KIND's word, resolved by `citationLabel` below —
-  // this is what a reader sees only for a logged row that states no kind.
+  // itself rather than only the medication it came out of. The DOMAIN's own word, and
+  // still total — a logged citation's badge is its KIND's word (`citationLabel` below),
+  // and this is what answers for a logged row that states no kind.
   logged: "Logged entry",
   supplement: "Supplement or medication",
   protocol: "Protocol",
@@ -268,10 +268,18 @@ export function buildRetrievalSet(
 // The badge one citation shows. A `logged` row names its KIND — "Dose", "Serving",
 // "Practice" — through the SAME `SEARCH_LOGGED_KIND_LABELS` table its subtitle's
 // leading noun is rendered from (lib/queries/search-logged.ts), so the badge and the
-// line under it can never name one row two ways (#5096). Seven kinds flattened to one
-// "Logged entry" when the seven `log-<kind>` domains became one `logged` domain
-// (#5006); the domain collapse was the ruling and stands — the kind came back as a
-// field, not as seven domains. Every other domain reads its own DOMAIN_LABEL.
+// line under it can never name one row two ways (#5096).
+//
+// A CONVERGENCE, NOT A REPAIR. `DOMAIN_LABEL` is `Record<SearchDomain, string>` and a
+// citation's `domain` IS a `SearchDomain`, so the lookup it replaces was total: every
+// logged row always rendered a real word. The word was just the whole family's — one
+// "Logged entry" for all seven kinds, since the seven `log-<kind>` domains became one
+// `logged` domain (#5006). That collapse was the owner's ruling and stands; the kind
+// came back as a field, not as seven domains, and the badge is finer for it.
+//
+// The un-kinded branch is the same totality, not a guard: `loggedKind` is optional on
+// the hit, so a `logged` citation that states no kind answers with the DOMAIN's own
+// word. Every other domain reads its DOMAIN_LABEL exactly as before.
 export function citationLabel(
   citation: Pick<RecordCitation, "domain" | "loggedKind">
 ): string {

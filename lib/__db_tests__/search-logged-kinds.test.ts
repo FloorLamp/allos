@@ -345,10 +345,11 @@ describe("the logged kinds in global search (#5006)", () => {
     expect(found[0].date).toBe(DAYS[DAYS.length - 1]);
   });
 
-  // THE BADGE, PER KIND (#5096). Seven kinds flattened to one "Logged entry" when the
-  // seven `log-<kind>` domains became one `logged` domain, so a single representative
-  // case cannot see the family come back — every kind is asserted, over the REAL gather
-  // rather than a hand-built hit.
+  // THE BADGE, PER KIND (#5096). Seven kinds read as one "Logged entry" once the seven
+  // `log-<kind>` domains became one `logged` domain — a coarse answer from a total map,
+  // not a broken render. A single representative case cannot see a whole family get its
+  // own word back, so every kind is asserted, over the REAL gather rather than a
+  // hand-built hit.
   //
   // And ONE FIELD, TWO READERS: the subtitle's leading segment IS the badge, compared
   // here as values rather than against two re-typed strings that happen to agree today.
@@ -364,7 +365,7 @@ describe("the logged kinds in global search (#5006)", () => {
         expect(citation.domain).toBe("logged");
         expect(citation.loggedKind).toBe(fixture.kind);
         expect(citationLabel(citation)).toBe(fixture.badge);
-        // The flattening itself, named: no kind may answer with the domain's word.
+        // The coarsening itself, named: no kind may answer with the domain's word.
         expect(citationLabel(citation)).not.toBe(DOMAIN_LABEL.logged);
         expect(citation.subtitle?.split(" · ")[0]).toBe(
           citationLabel(citation)

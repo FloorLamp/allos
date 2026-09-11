@@ -44,8 +44,8 @@ export type SearchDomain =
 // THE RECORD ROWS' SEVEN KINDS (#5096). `logged` stays ONE domain — one group, one cap
 // of five over the union, ranked date-first (owner ruling, 2026-09-04) — so a hit's
 // kind is a FIELD ON THE HIT and never a domain of its own. Carrying it as data is what
-// lets the Q&A citation badge name the kind again and a spec assert "this hit is a
-// practice session" without parsing rendered text.
+// lets the Q&A citation badge name the KIND rather than the domain's one word, and a
+// spec assert "this hit is a practice session" without parsing rendered text.
 //
 // `as const satisfies readonly HistoryKind[]` is the whole guard on the list: a kind
 // that is not one of the record's own is a type error here rather than a hit whose

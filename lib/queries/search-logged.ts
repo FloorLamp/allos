@@ -18,8 +18,8 @@
 // `loggedKind`, and its subtitle's leading noun is RENDERED FROM that kind through the
 // one `SEARCH_LOGGED_KIND_LABELS` table (lib/search-rank.ts) that the Q&A citation
 // badge also reads — so `<kind> · <date>` still reads the same, the badge names the
-// kind again instead of flattening seven to "Logged entry", and neither can drift from
-// the other because there is only one place to change.
+// KIND instead of answering for all seven with "Logged entry", and neither can drift
+// from the other because there is only one place to change.
 //
 // ONE SHAPE, SEVEN DECLARATIONS. Every source hands back the same `LoggedEntry`
 // (the record row's own id, its title, the profile-local day it is filed under) and
