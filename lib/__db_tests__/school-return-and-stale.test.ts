@@ -585,6 +585,118 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(s.lastAntipyreticName).toBe("Ibuprofen");
   });
 
+  // ── THE GATHER IS NOT BOUNDED BY `l.date` (#5882) ──────────────────────────
+  //
+  // The gather used to bound `l.date` to the episode's own day window, so an
+  // antipyretic the record says was TAKEN vanished from the clearance computation
+  // whenever its SCHEDULE-OWNED day (#614) fell outside that window. A dose's `date`
+  // is not a fact about when it was given, so it cannot decide which administrations
+  // EXIST — and the sibling redose clock refuses this exact narrowing on the same
+  // grounds (`prn-family.ts`: a `MAX(date)` narrowing "drops the genuinely-latest
+  // dose"). Dropping a reducer is the permissive direction on a document a caregiver
+  // hands to a school.
+  it("an unstated dose dated BEFORE the episode's first day still holds the clock", () => {
+    const p = newProfile("sr-before-window");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 1); // the episode starts YESTERDAY, so `firstDay` is yesterday
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    const earlier = shiftDateStr(td, -2); // one day BEFORE the episode's first day
+    logTemperatureCore(p, 103.4, "F", yd, "page", "06:00");
+    logTemperatureCore(p, 98.6, "F", yd, "page", "08:00"); // the clock's evidence
+
+    // An ibuprofen filed on the PREVIOUS day's schedule, skipped, then flipped with
+    // the shipped one-tap writer — a past-day flip states no minute and leaves the
+    // SKIP's stamp where it was.
+    const { doseId, logId } = addAntipyretic(
+      p,
+      "Ibuprofen",
+      earlier,
+      `${earlier} 20:00:00`,
+      "skipped"
+    );
+    expect(
+      setDoseStatusCore(p, doseId, earlier, "taken", "page", { takenAt: null })
+    ).toBe("logged");
+    expect(
+      db
+        .prepare(
+          `SELECT date, status, occurred_at, recorded_at FROM intake_item_logs WHERE id = ?`
+        )
+        .get(logId)
+    ).toEqual({
+      date: earlier,
+      status: "taken",
+      occurred_at: null,
+      recorded_at: `${earlier} 20:00:00`,
+    });
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    // The fixture reaches the state it forbids: the row really is outside the window
+    // the retired bound gathered over.
+    expect(ep.firstDay).toBe(yd);
+    expect(earlier < ep.firstDay!).toBe(true);
+
+    // 25h after the normal reading. The bounded gather never saw the row, so the note
+    // read "fever-free 25h of 24", met, naming no reducer at all.
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T09:00:00Z`))!;
+    expect(s.evidence).toBe("held");
+    expect(s.met).toBe(false);
+    expect(s.clearedForHours).toBeNull();
+    expect(s.lastAntipyreticName).toBe("Ibuprofen");
+    expect(schoolReturnCompactClause(s)).toBe(
+      "fever-free clock held — add the ibuprofen time in Dose history"
+    );
+  });
+
+  // AND THE SAME BOUND MADE A RUNNING HOLD DEFEASIBLE BY AN UNRELATED EDIT (#5882).
+  // `updateHistoricalDose` accepts ANY past day when no time is stated
+  // (`isHistoricalDoseDateAccepted` is `diff <= 0`), and the day ledger's amend calls
+  // it that way on purpose — "a dose nobody timed amends by date alone". So a
+  // caregiver correcting WHICH DAY a dose belonged to, while still stating no time,
+  // walked the row out of the window and ended a hold that only a STATED TIME may end.
+  it("an amend that moves the dose's day out of the window cannot end the hold", () => {
+    const p = newProfile("sr-amend-out-of-window");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 1);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    const earlier = shiftDateStr(td, -2);
+    logTemperatureCore(p, 103.4, "F", yd, "page", "06:00");
+    logTemperatureCore(p, 98.6, "F", yd, "page", "08:00");
+    const { itemId, logId } = addAntipyretic(
+      p,
+      "Ibuprofen",
+      yd,
+      `${yd} 07:00:00`
+    );
+
+    const nowMs = Date.parse(`${td}T09:00:00Z`);
+    const ep = () => assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const before = schoolReturnStatusFor(p, ep(), nowMs)!;
+    expect(before.evidence).toBe("held"); // the hold is running
+
+    // The day is corrected one day back; the time is left BLANK, as it was.
+    expect(updateHistoricalDose(p, itemId, logId, earlier, null, null)).toEqual(
+      {
+        kind: "logged",
+        date: earlier,
+      }
+    );
+    expect(
+      db
+        .prepare(`SELECT date, occurred_at FROM intake_item_logs WHERE id = ?`)
+        .get(logId)
+    ).toEqual({ date: earlier, occurred_at: null });
+
+    // Nothing about WHEN THE DOSE WAS GIVEN changed, so nothing about the hold may.
+    const after = schoolReturnStatusFor(p, ep(), nowMs)!;
+    expect(after.evidence).toBe("held");
+    expect(after.met).toBe(false);
+    expect(after.clearedForHours).toBeNull();
+    expect(after.lastAntipyreticName).toBe("Ibuprofen");
+  });
+
   // THE HELD CLAUSE AND THE DOSE CLAUSE MUST NOT CONTRADICT EACH OTHER. The cockpit
   // line prints the school-return clause beside the episode's last dose, and that dose
   // clause quoted the record-chain clock BARE — so the held arm rendered "add the

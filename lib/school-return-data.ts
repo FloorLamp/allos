@@ -24,10 +24,6 @@ import {
   type SchoolReturnStatus,
 } from "./school-return";
 
-// The far-past floor for an episode whose start is unknown (before the change-log),
-// mirroring assembleIllnessEpisode.
-const OPEN_START_FLOOR = "0001-01-01";
-
 const DEFAULT_THRESHOLD_HOURS = 24;
 
 interface AntipyreticAdministrationRow {
@@ -35,28 +31,45 @@ interface AntipyreticAdministrationRow {
   name: string;
   rxcui: string | null;
   rxcui_ingredients: string | null;
-  date: string;
   occurred_at: string | null;
   recorded_at: string;
 }
 
+// EVERY ANTIPYRETIC ADMINISTRATION ON THE RECORD — **NOT BOUNDED BY `l.date`** (#5882,
+// owner ruling), exactly as the sibling redose clock gathers (`prn-family.ts`).
+//
+// A dose's `date` is SCHEDULE-OWNED (#614 — the token's date is the day the reminder
+// was asking about), not a fact about when the dose was given: `restampDoseLogsCore`
+// moves `occurred_at` across midnight and leaves `date` where the schedule put it,
+// reporting `crossedMidnight` for exactly this. `prn-family.ts` refuses a `MAX(date)`
+// narrowing on those grounds — it "drops the genuinely-latest dose" — and a window
+// bound against the EPISODE's days drops it the same way, in the same direction: an
+// antipyretic the record says was TAKEN disappeared from a school-clearance
+// computation because its schedule-owned day sat outside the episode. The note then
+// read "fever-free 25h of 24", met, naming no reducer at all.
+//
+// So the day decides nothing about which administrations EXIST. The row is not even
+// selected: this query reads no `l.date` anywhere, and the only ordering key is the
+// stated instant with the capture chain behind it.
+//
+// The cost is honest and small: one profile's `may`-obligation taken administrations,
+// filtered to fever reducers in TypeScript below. There is no cheaper bound that is
+// also sound — every one tried was a day or a stamp standing in for an instant nobody
+// logged.
 function antipyreticAdministrationRows(
-  profileId: number,
-  from: string,
-  to: string
+  profileId: number
 ): AntipyreticAdministrationRow[] {
   return db
     .prepare(
       `SELECT ii.name AS name, ii.rxcui AS rxcui,
-              ii.rxcui_ingredients AS rxcui_ingredients, l.date AS date,
+              ii.rxcui_ingredients AS rxcui_ingredients,
               l.occurred_at AS occurred_at, l.recorded_at AS recorded_at
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
         WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
-          AND l.date >= ? AND l.date <= ?
         ORDER BY COALESCE(l.occurred_at, l.recorded_at) ASC, l.id ASC`
     )
-    .all(profileId, from, to) as AntipyreticAdministrationRow[];
+    .all(profileId) as AntipyreticAdministrationRow[];
 }
 
 // The per-profile school-return threshold in hours (the common 24h convention by
@@ -191,13 +204,11 @@ function schoolReturnStatusForRows(
     }
   }
 
-  // Last ANTIPYRETIC administration in the episode window. Mirrors
-  // assembleIllnessEpisode's PRN gather (obligation 'may' + status 'taken', profile-scoped by
-  // JOIN), then filters to fever reducers via the curated PRN dataset.
-  const from = episode.firstDay ?? OPEN_START_FLOOR;
-  const to = episode.lastActiveDay ?? episode.asOf;
-  const rows =
-    prefetchedRows ?? antipyreticAdministrationRows(profileId, from, to);
+  // Last ANTIPYRETIC administration ON THE RECORD — no episode window (#5882; the
+  // gather says why). Mirrors assembleIllnessEpisode's PRN gather (obligation 'may' +
+  // status 'taken', profile-scoped by JOIN), then filters to fever reducers via the
+  // curated PRN dataset.
+  const rows = prefetchedRows ?? antipyreticAdministrationRows(profileId);
 
   // ONLY A STATED ADMINISTRATION TIME FEEDS THE CLOCK (#5688). `bestKnownInstant`
   // answers with the stated event instant (`occurred_at`) when the row has one and with
@@ -217,7 +228,6 @@ function schoolReturnStatusForRows(
     clockLabel: string | null;
   }[] = [];
   for (const r of rows) {
-    if (r.date < from || r.date > to) continue;
     if (
       !isAntipyreticIntakeItem({
         name: r.name,
@@ -279,15 +289,34 @@ function schoolReturnStatusForRows(
   // that it states no administration time (`when.semantic === "record"`) — and runs
   // until one is added.
   //
+  // AND THE THIRD BOUND, WHICH WAS NEVER THIS FIX'S AND IS GONE TOO (#5882): the
+  // gather's own `l.date >= ? AND l.date <= ?` against the episode's day window, which
+  // predated every pass of #5688 and dropped an unstated reducer out of the
+  // computation entirely whenever its schedule-owned day fell outside. Same mistake in
+  // a third spelling — a day deciding which administrations exist — and the same
+  // direction: the note cleared the child naming no reducer at all. See the gather.
+  //
+  // "THE LATEST STATED DOSE COMPUTES; ANY UNSTATED DOSE LATER THAN IT HOLDS" (the
+  // ruling) IS THE `unstated.length > 0` BELOW, and the step between the two sentences
+  // is the point: an unstated dose can never be established to be EARLIER than the
+  // stated one, because establishing that needs an instant it does not carry. Its day
+  // will not do it — that is this whole issue. So "later than it" is true of every
+  // unstated dose the record holds, and mere existence is the test. `prn-family.ts`
+  // reaches the identical rule from the identical premise: `ARMING_ORDER` sorts a taken
+  // administration that states no instant AHEAD of every one that does, "such a row
+  // could be the latest and nothing in it says otherwise".
+  //
   // THE CONSEQUENCE, WRITTEN DOWN RATHER THAN SOFTENED: one unstated fever-reducer
-  // dose on day one of a ten-day illness holds the fever-free countdown for the whole
-  // illness, until somebody states that dose's time through the Dose history door the
-  // held clause names. That is what this code does, deliberately. Any expiry — the
-  // dose's day, its filing stamp, a "surely by now" hour — is the manufactured instant
-  // again in a new spelling, and it fails in the reassuring direction: a countdown
-  // that clears itself is a clearance nobody measured. Whether the door is escape
-  // enough is a PRODUCT question on the owner's report (#5688), not one this
-  // computation may settle for itself.
+  // dose holds the fever-free countdown until somebody states that dose's time through
+  // the Dose history door the held clause names — and since the gather is no longer
+  // bounded by the episode, that dose need not be in this illness at all: an unstated
+  // antipyretic filed months ago holds today's note. That is what this code does,
+  // deliberately. Any expiry — the dose's day, its filing stamp, a "surely by now"
+  // hour — is the manufactured instant again in a new spelling, and it fails in the
+  // reassuring direction: a countdown that clears itself is a clearance nobody
+  // measured. Whether the door is escape enough, and whether a stale unstated dose
+  // should be openable some other way, are PRODUCT questions on the owner's report
+  // (#5688 / #5882), not ones this computation may settle for itself.
   //
   // And this narrows ONE computation, nothing wider: it keeps the filing stamp out of
   // the school-return clock. It does not make every unsafe clearance impossible.
@@ -347,6 +376,17 @@ export function schoolReturnStatusFor(
 // Resolve every open cockpit for one profile over a single antipyretic read. The
 // fever side already rides each preassembled episode; adding an episode therefore
 // changes only the pure partition below, not SQL count.
+//
+// THE PREFETCH STILL EARNS ITS EXISTENCE, AND EARNS IT MORE PLAINLY THAN BEFORE. It
+// used to fold a min/max day window across the episodes and read that union, which
+// meant each episode was handed rows it then had to re-narrow to its own window — the
+// prefetch and the per-episode answer were not reading the same thing. With the
+// window gone (#5882) the gather's only argument is `profileId`, so every episode
+// wants the SAME row set, byte for byte; reading it once is the whole of the saving
+// and there is nothing left to re-narrow. Dropping the prefetch would re-issue one
+// identical unbounded query per open episode for no answer that differs, so it stays.
+// The SQL count is unchanged by this change — one antipyretic read before, one now —
+// so no query budget needed adjusting; no budget test covers this path today anyway.
 export function schoolReturnStatusesFor(
   profileId: number,
   episodes: readonly (AssembledEpisode & { id: number })[],
@@ -362,15 +402,7 @@ export function schoolReturnStatusesFor(
     for (const episode of episodes) out.set(episode.id, null);
     return out;
   }
-  const from = episodes.reduce((earliest, episode) => {
-    const start = episode.firstDay ?? OPEN_START_FLOOR;
-    return start < earliest ? start : earliest;
-  }, episodes[0].firstDay ?? OPEN_START_FLOOR);
-  const to = episodes.reduce((latest, episode) => {
-    const end = episode.lastActiveDay ?? episode.asOf;
-    return end > latest ? end : latest;
-  }, episodes[0].lastActiveDay ?? episodes[0].asOf);
-  const rows = antipyreticAdministrationRows(profileId, from, to);
+  const rows = antipyreticAdministrationRows(profileId);
   const settings = {
     timeZone: getTimezone(profileId),
     thresholdHours: getSchoolReturnThresholdHours(profileId),
