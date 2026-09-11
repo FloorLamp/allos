@@ -1,7 +1,8 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Page, type Route } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
+  awaitHydrated,
   expectInView,
   expectPhoneTapTargets,
   openMobileDrawer,
@@ -567,6 +568,370 @@ test.describe("the nav drawer declares itself a modal (#3463)", () => {
       .click({ position: { x: 360, y: 400 } });
     await expect(reopened).toHaveCount(0);
     await expect(page.getByTestId("dock-slot-more")).toBeFocused();
+  });
+});
+
+// ── WHAT THE PHONE SHELL COSTS BEFORE ANYBODY LOGS ANYTHING (#5206) ──────────
+//
+// The app shell mounts ActivityEditorProvider on every authenticated route, and
+// that provider used to reach ActivityForm — and all of components/activity-form/*
+// — through a static import chain. So the heaviest client code in the app was
+// downloaded, parsed and hydrated on every visit whether or not the editor was
+// ever opened. The form's code now arrives as its own chunk, warmed from the shell
+// so a first open is still instant and an offline open still works
+// (e2e/offline-reachability.mobile.spec.ts owns that half).
+//
+// WHAT "NOT IN THE INITIAL JAVASCRIPT" MEANS HERE, and why it is read off the
+// SERVER-RENDERED HTML rather than off everything the browser fetched: the warm
+// starts as the shell mounts, so "everything fetched" would be racing it and would
+// answer a different question every run. The HTML's own script set is the
+// timing-free statement of what a page load costs before it is interactive — those
+// are the chunks the browser must have to hydrate.
+//
+// THE POSITIVE CONTROL matters more than usual, because the absence half would pass
+// just as well if somebody renamed the two literals it looks for. So the form's code
+// also has to be FOUND, in a chunk the initial HTML never asked for.
+//
+// It PRINTS its measurements — initial chunk count and bytes, and the first open
+// from the sheet's row to a visible form — so a later lane re-takes the budget the
+// same way instead of inheriting a number:
+//   E2E_FORCE_BUILD=1 npx playwright test e2e/shell.mobile.spec.ts --retries=0
+// The phone here is a 390x844 viewport on the runner's own Chromium, not a slow
+// device or a throttled link: the byte counts are exact and the millisecond is a
+// local upper bound that includes Playwright's action overhead.
+
+// Two literals that exist only inside the form's own code: the exercise name
+// field's placeholder (components/activity-form/ActivityPartsList.tsx) and the form
+// root's test id (components/ActivityForm.tsx). Nothing that stays in the shell may
+// echo either — the workspace's own pending and retry ids are deliberately
+// `activity-editor-*` rather than `activity-form-*` for exactly that reason.
+const EDITOR_MARKERS = ["What did you do", "activity-form"] as const;
+
+/** The `/_next/static/**.js` paths the server-rendered HTML itself pulls in. */
+function scriptPathsIn(html: string): string[] {
+  const paths = new Set<string>();
+  for (const m of html.matchAll(/["'](\/_next\/static\/[^"']+?\.js)["']/g))
+    paths.add(m[1]);
+  return [...paths];
+}
+
+async function measureChunks(
+  page: Page,
+  paths: string[]
+): Promise<{ bytes: number; withEditor: string[] }> {
+  let bytes = 0;
+  const withEditor: string[] = [];
+  for (const path of paths) {
+    const body = await (await page.request.get(path)).text();
+    bytes += Buffer.byteLength(body);
+    if (EDITOR_MARKERS.some((marker) => body.includes(marker)))
+      withEditor.push(`${path} (${Buffer.byteLength(body)} bytes)`);
+  }
+  return { bytes, withEditor };
+}
+
+test("the closed activity editor is not in the shell's initial JavaScript (#5206)", async ({
+  page,
+}) => {
+  // What the browser actually asked for, recorded from the harness side: this suite
+  // runs on a patched clock, which leaves performance.getEntries() empty in the
+  // page, so the browser's own resource timeline cannot answer here.
+  const requested: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/_next/static/") && path.endsWith(".js"))
+      requested.push(path);
+  });
+
+  await page.goto("/");
+  await awaitHydrated(page.getByTestId("dock-log-puck")); // testid-scope-ok: the dock is app chrome outside every streamed boundary, one copy
+
+  const html = await (await page.request.get("/")).text();
+  const initialPaths = scriptPathsIn(html);
+  expect(initialPaths.length).toBeGreaterThan(0);
+  const initial = await measureChunks(page, initialPaths);
+  console.log(
+    `[#5206] shell initial JS: ${initialPaths.length} chunks, ${initial.bytes} bytes`
+  );
+
+  // First open, through the quick logger's own path: puck → Train → Log activity.
+  const row = await showLogRow(await openLogSheet(page), "log-activity");
+  const startedAt = Date.now(); // eslint-disable-line no-restricted-properties -- clock-ok: this spec's own elapsed wall time, never a stored timestamp
+  await row.click();
+  await expect(page.getByTestId("activity-form")).toBeVisible(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+  console.log(
+    `[#5206] first open (row tap -> form visible): ${Date.now() - startedAt} ms` // eslint-disable-line no-restricted-properties -- clock-ok: elapsed wall time for the measurement above
+  );
+
+  const onDemand = await measureChunks(
+    page,
+    [...new Set(requested)].filter((path) => !initialPaths.includes(path))
+  );
+  console.log(
+    `[#5206] editor chunks loaded on demand: ${onDemand.withEditor.join(", ") || "none"}`
+  );
+
+  // EVERY MEASUREMENT IS PRINTED BEFORE ANYTHING IS ASSERTED, so a run that fails
+  // this boundary still reports the budget it measured rather than dying halfway
+  // through it. That is what makes a before-and-after possible at all.
+  expect(
+    initial.withEditor,
+    "the closed editor's code is in the shell's initial JavaScript"
+  ).toEqual([]);
+  expect(
+    onDemand.withEditor.length,
+    "the editor's code was not found in any chunk outside the initial set"
+  ).toBeGreaterThan(0);
+});
+
+// ── AND THE SAME FIRST OPEN ON A THROTTLED PHONE (#5206) ─────────────────────
+//
+// The test above proves the editor's code LEFT the initial JavaScript. This one
+// asks what that costs at the only moment it can cost anything — the first open —
+// on a phone slow enough for one chunk fetch to be visible. It is the comparison
+// #5206 asks for before landing, and it is a committed spec rather than a report
+// so the next lane re-takes it instead of inheriting it.
+//
+// THE DEVICE: this file runs in the `mobile` project, so the viewport is already
+// the phone's 390×844 (playwright.config.ts). On top of that, per sample:
+//   • 4× CPU        `Emulation.setCPUThrottlingRate`
+//   • slow 4G       `Network.emulateNetworkConditions`
+//   • COLD CACHE    `Network.setCacheDisabled` for the whole test, and
+//                   `serviceWorkers: "block"` — otherwise the one thing being
+//                   measured, a chunk arriving over the wire, is served out of a
+//                   store the shell already filled and the measurement is a lie.
+//
+// THE ARMS DIFFER IN ONE THING — whether the editor's chunk is in the browser when
+// the row is tapped. Everything else (the load, the sheet, the segment tap) is
+// identical and runs UNTHROTTLED, so the arms differ by the chunk and nothing else:
+//
+//   cold    the shell's warm is STARVED (its request is aborted), so the tap itself
+//           fetches the chunk over the throttled link. The worst case the split can
+//           produce, and the only case that can regress.
+//   warmed  the warm landed, which is what a real visit gets: it starts as the app
+//           shell mounts, long before anything is tappable.
+//   resident  the same page's SECOND open. THIS IS THE CONTROL FOR THE CHANGE:
+//           before the split ActivityForm sat in the initial JavaScript, so it was
+//           downloaded AND evaluated before the page was interactive — exactly the
+//           state a repeat open is in. Slightly generous (React has rendered the
+//           form once already), which is the safe direction: it makes a regression
+//           easier to see, not harder.
+//
+// AND IT RUNS ON THE PRE-SPLIT TREE TOO, which is what makes it a comparison rather
+// than a number. On a tree that ships the editor eagerly there is nothing to starve,
+// so the cold arm reports itself not applicable and the other two are measured
+// exactly as they are here — same runner, same spec, same code. Taken that way, with
+// the split's two files reverted and nothing else changed (medians of five, three for
+// the load):
+//
+//                                  pre-split        this tree
+//   shell initial JS           46 chunks / 2,304,384 B   43 / 2,068,830 B
+//   editor code in that set    219,976 B (shared)        none — 118,926 B on demand
+//   throttled shell load       8,314 ms                  7,898 ms   (8,278–8,442 vs 7,789–7,910)
+//   first open, throttled      296 ms                    283 ms     (292–308 vs 264–337)
+//   repeat open, throttled     212 ms                    211 ms
+//
+// FIRST OPEN DID NOT MOVE, in either direction: 296 → 283 ms sits inside the two
+// spreads, which overlap. What did move is the load — 416 ms off becoming interactive
+// on a slow phone, and the two spreads there do NOT overlap — and that is the whole
+// deliverable. The repeat opens agreeing to a millisecond across the two trees is the
+// check that the arms are measuring the same thing on both sides.
+test.describe("the throttled phone's first open (#5206)", () => {
+  test.use({ serviceWorkers: "block" });
+
+  // Lighthouse's `mobileSlow4G` profile — what the pairing "slow 4G" and "4× CPU"
+  // names — in the units CDP takes: 1.6 Mbps down / 750 kbps up at a 150 ms RTT,
+  // with DevTools' own 0.9 throughput and 3.75 request-latency adjustments.
+  const SLOW_4G = {
+    offline: false,
+    latency: 150 * 3.75,
+    downloadThroughput: (1.6 * 1024 * 1024 * 0.9) / 8,
+    uploadThroughput: (750 * 1024 * 0.9) / 8,
+  };
+  const UNTHROTTLED = {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  };
+  const CPU_RATE = 4;
+  const SAMPLES = 5;
+  const LOAD_SAMPLES = 3;
+
+  const median = (ms: number[]): number => {
+    const sorted = [...ms].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2
+      ? sorted[mid]
+      : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+  function report(label: string, ms: number[]): void {
+    const sorted = [...ms].sort((a, b) => a - b);
+    console.log(
+      `[#5206] ${label}: ${ms.join(" / ")} ms → median ${median(ms)}, min ${sorted[0]}, max ${sorted[sorted.length - 1]}`
+    );
+  }
+
+  /** Tap the sheet's Log-activity row and time the form onto the screen. */
+  async function timeOpen(page: Page): Promise<number> {
+    const row = await showLogRow(await openLogSheet(page), "log-activity");
+    // eslint-disable-next-line no-restricted-properties -- clock-ok: this spec's own elapsed wall time, never a stored timestamp
+    const startedAt = Date.now();
+    await row.click();
+    const form = page.getByTestId("activity-form"); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
+    await expect(form).toBeVisible({ timeout: 60_000 });
+    // eslint-disable-next-line no-restricted-properties -- clock-ok: elapsed wall time for the measurement above
+    return Date.now() - startedAt;
+  }
+
+  async function closeWorkspace(page: Page): Promise<void> {
+    const panel = page.getByTestId("activity-overlay-panel"); // testid-scope-ok: ActivityOverlay portals to <body>, one copy
+    await panel.getByTestId("close-activity").click();
+    await expect(panel).toHaveCount(0);
+  }
+
+  test("the shell's warm keeps a first open as fast as shipping the form eagerly", async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+    const throttle = async (on: boolean) => {
+      await cdp.send("Emulation.setCPUThrottlingRate", {
+        rate: on ? CPU_RATE : 1,
+      });
+      await cdp.send(
+        "Network.emulateNetworkConditions",
+        on ? SLOW_4G : UNTHROTTLED
+      );
+    };
+
+    // The shell's own initial JavaScript, read off the server-rendered HTML for the
+    // reason the test above states at length. Whether the editor is IN it is what
+    // tells this test which tree it is running on.
+    const initialPaths = scriptPathsIn(
+      await (await page.request.get("/")).text()
+    );
+    const initial = await measureChunks(page, initialPaths);
+    const shipsEditorEagerly = initial.withEditor.length > 0;
+    console.log(
+      `[#5206] shell initial JS: ${initialPaths.length} chunks, ${initial.bytes} bytes` +
+        ` — editor in it: ${shipsEditorEagerly ? initial.withEditor.join(", ") : "none"}`
+    );
+
+    const onDemandJs = (url: string) => {
+      const path = new URL(url).pathname;
+      return (
+        path.startsWith("/_next/static/") &&
+        path.endsWith(".js") &&
+        !initialPaths.includes(path)
+      );
+    };
+    const ON_DEMAND = "**/_next/static/**.js";
+    const starve = async (route: Route) =>
+      onDemandJs(route.request().url())
+        ? await route.abort()
+        : await route.fallback();
+
+    // ── What the shell itself costs on this link ─────────────────────────────
+    // The initial JavaScript is what this change made smaller, so this is the win
+    // side in milliseconds rather than bytes, and it is the figure the pre-split
+    // tree is compared against.
+    const shellLoad: number[] = [];
+    for (let i = 0; i < LOAD_SAMPLES; i++) {
+      await throttle(true);
+      // eslint-disable-next-line no-restricted-properties -- clock-ok: this spec's own elapsed wall time, never a stored timestamp
+      const startedAt = Date.now();
+      await page.goto("/", { timeout: 180_000 });
+      await awaitHydrated(page.getByTestId("dock-log-puck"), 120_000); // testid-scope-ok: the dock is app chrome outside every streamed boundary, one copy
+      // eslint-disable-next-line no-restricted-properties -- clock-ok: elapsed wall time for the measurement above
+      shellLoad.push(Date.now() - startedAt);
+      await throttle(false);
+    }
+    report("throttled cold shell load (goto → dock hydrated)", shellLoad);
+
+    // ── Cold: the tap fetches the chunk ──────────────────────────────────────
+    const cold: number[] = [];
+    if (shipsEditorEagerly) {
+      console.log(
+        "[#5206] first open, chunk COLD (throttled): n/a — this tree ships the editor eagerly, so there is nothing to fetch on demand"
+      );
+    } else {
+      for (let i = 0; i < SAMPLES; i++) {
+        const starved = page.waitForEvent("requestfailed", (request) =>
+          onDemandJs(request.url())
+        );
+        await page.route(ON_DEMAND, starve);
+        await page.goto("/");
+        await awaitHydrated(page.getByTestId("dock-log-puck")); // testid-scope-ok: the dock is app chrome outside every streamed boundary, one copy
+        await starved; // the warm was issued AND refused: the chunk is not in the browser
+        await page.unroute(ON_DEMAND, starve);
+        await throttle(true);
+        cold.push(await timeOpen(page));
+        await throttle(false);
+        await closeWorkspace(page);
+      }
+      report("first open, chunk COLD (throttled)", cold);
+    }
+
+    // ── Warmed, and the same page's resident repeat open ─────────────────────
+    const warmed: number[] = [];
+    const resident: number[] = [];
+    for (let i = 0; i < SAMPLES; i++) {
+      const landed = shipsEditorEagerly
+        ? null
+        : page.waitForResponse(
+            (response) => onDemandJs(response.url()) && response.ok()
+          );
+      await page.goto("/");
+      await awaitHydrated(page.getByTestId("dock-log-puck")); // testid-scope-ok: the dock is app chrome outside every streamed boundary, one copy
+      await landed; // the shell's warm arrived, which is what a real visit gets
+      await throttle(true);
+      warmed.push(await timeOpen(page));
+      await throttle(false);
+      await closeWorkspace(page);
+      await throttle(true);
+      resident.push(await timeOpen(page));
+      await throttle(false);
+      await closeWorkspace(page);
+    }
+    report("first open, chunk WARMED (throttled)", warmed);
+    report("repeat open, module resident (throttled) — CONTROL", resident);
+
+    // EVERY MEASUREMENT IS PRINTED BEFORE ANYTHING IS ASSERTED, and both bounds
+    // below were picked FROM the distribution above rather than before it. Two runs
+    // on this runner, 4× CPU + slow 4G, medians of five:
+    //
+    //   warmed 263 / 283 ms · resident 225 / 211 ms · cold 1106 / 1173 ms
+    //
+    // So the warm costs 38–72 ms against having shipped the form eagerly, and buys
+    // 843–890 ms on a slow phone: starved, a first open is 1,173 ms against the
+    // pre-split tree's 296 ms, and that WOULD be a regression this issue refuses.
+    // THAT IS THE WHOLE CASE FOR IDLE WARMING, and also the reason the answer is not
+    // an unconditional preload: a preload puts those bytes back on every visit,
+    // including every visit that never opens the editor, which is the cost this
+    // change exists to remove.
+    if (shipsEditorEagerly) return;
+
+    // The change, stated as a budget: a warmed first open is indistinguishable from
+    // having shipped the form in the initial JavaScript. 250 ms is ~3.5× the worst
+    // difference measured and roughly a quarter of the gap to the cold path, so it
+    // has room for a loaded runner and still cannot pass if the warm stops working.
+    expect(
+      median(warmed) - median(resident),
+      "a warmed first open is materially slower than one with the module already resident"
+    ).toBeLessThan(250);
+
+    // AND THE CONTROL IS A CONTROL. If this fails, the cold arm is not measuring a
+    // cold fetch — the starve missed, or the module is reaching the browser some
+    // other way — and the bound above is passing for no reason. 200 ms is under a
+    // quarter of the 843–890 ms measured gap.
+    expect(
+      median(cold) - median(warmed),
+      "starving the warm made no difference, so the cold arm proved nothing"
+    ).toBeGreaterThan(200);
   });
 });
 
