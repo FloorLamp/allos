@@ -101,12 +101,6 @@ or a destructive action repeated per row or beside a commit, whose confirm step
 carries the fill. Rare or destructive row actions confirm through `OverflowMenu`
 ([Overlays](overlays.md)).
 
-A log form's commit is also the widest control in it: Save is `layout="block"`
-and its Cancel is the text-style dismiss below (`FormDismissAction`), never a
-same-size box beside it (owner ruling 2026-09-11, #5617). Both keep the control
-box — the commit got wider, not taller — and a fact control beside them keeps its
-own size, because it is not a commit.
-
 The shared `--control-box` is 34px at every viewport, padding from `1lh` and a
 reserved border. It covers chips, the button family, typed fields, native
 selects, and summaries marked `fold-control` — never row disclosures.

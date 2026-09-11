@@ -28,6 +28,16 @@ import Button from "@/components/Button";
  * That is the whole point of the ruling's word "text-style": subordinate to the
  * eye, not smaller to the thumb.
  *
+ * NOT WRITTEN DOWN IN docs/internals/design-system.md, AND THAT IS THE GATE'S
+ * DOING RATHER THAN AN OVERSIGHT. A row was drafted for its control-grammar
+ * section and `check-doc-brevity.mjs` refused it: that file is at its 1500-word
+ * budget, and the rule is that new text DISPLACES old. Choosing which of that
+ * doc's existing rules to delete is the doc owner's call, not this change's, so
+ * the shape is recorded here and in the two tests that measure it —
+ * `e2e/button-height-floor.mobile.spec.ts`'s "#5617 step 4" block and
+ * `e2e/ordinary-submit-actions.ts`'s `expectProminentCommit` — and the doc row
+ * is reported rather than bought with somebody else's words.
+ *
  * THE UTILITY'S NAME IS NOW HALF WRONG, AND THAT IS DELIBERATE RATHER THAN
  * MISSED. `inline-submit-action` (app/globals.css) is the app's one text-style
  * control treatment and was named when its only consumers were submits; this is
