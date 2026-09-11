@@ -82,6 +82,7 @@ export default function TimelineDayNav({
   prev,
   next,
   day,
+  nameBelowSmOnly = false,
   trailing,
   targetSelector,
 }: {
@@ -90,6 +91,16 @@ export default function TimelineDayNav({
   next?: DayNavDestination;
   /** What the bar NAMES — the day's own header line (#3958's grammar). */
   day: string;
+  /**
+   * THE NAME IS THE BAR'S ONLY BELOW `sm` (#5764). Opt-in, and NOT the default,
+   * because this component has two mounts and only one of them has a heading
+   * above it: the day view's `PageHeader` takes the day as its h1 (#5764), so
+   * from `sm` up a bar that also printed it said the day twice. HOME mounts the
+   * same bar under an `sr-only` "Home" h1 (`app/(app)/page.tsx`), where this bar
+   * IS the only visible name of the day at every width — hiding it there would
+   * leave desktop Home with no day on it at all.
+   */
+  nameBelowSmOnly?: boolean;
   /**
    * ONE MODE CONTROL FOR THE WHOLE DAY (#5618 ruling 4) — the record's Select, which
    * is to this bar what the ledger's is to its section header: a control over every
@@ -215,40 +226,54 @@ export default function TimelineDayNav({
           control. */}
       <h2
         data-testid="timeline-day-name"
-        className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-slate-800 dark:text-slate-100"
+        className={`min-w-0 flex-1 truncate text-center text-sm font-semibold text-slate-800 dark:text-slate-100 ${
+          nameBelowSmOnly ? "sm:hidden" : ""
+        }`}
       >
         {day}
       </h2>
       {/* NO ARROW ON TODAY, which is what the comment beside this control claimed
           from the day it landed while the code passed today's own href. There is no
           empty slot left behind either: the name is `flex-1`, so it simply takes the
-          room. */}
-      {next ? (
-        <PendingLink
-          href={next.href}
-          label={next.label}
-          testId="timeline-day-next"
-          className="btn-ghost shrink-0 text-xs"
-        >
-          {(pending) => (
-            <>
-              {next.label}
-              <PendingIconSlot
-                pending={pending || swipePending("next")}
-                size="h-4 w-4"
-                icon={
-                  <IconChevronRight
-                    className="h-4 w-4"
-                    stroke={2}
-                    aria-hidden="true"
+          room.
+
+          THE TRAILING END IS ONE GROUP, and that is what keeps `justify-between`
+          honest once the name can leave the layout (#5764). With the name present
+          it absorbs the slack and every child lands where it always did; with
+          `sm:hidden` it is `display:none`, so an ungrouped bar of prev / next /
+          Select spreads three items evenly and parks the NEXT-DAY ARROW in the
+          middle of the column. Grouped, the bar is two ends at two edges at every
+          width, which is what it has always looked like. */}
+      {next || trailing ? (
+        <div className="flex shrink-0 items-center gap-2">
+          {next ? (
+            <PendingLink
+              href={next.href}
+              label={next.label}
+              testId="timeline-day-next"
+              className="btn-ghost shrink-0 text-xs"
+            >
+              {(pending) => (
+                <>
+                  {next.label}
+                  <PendingIconSlot
+                    pending={pending || swipePending("next")}
+                    size="h-4 w-4"
+                    icon={
+                      <IconChevronRight
+                        className="h-4 w-4"
+                        stroke={2}
+                        aria-hidden="true"
+                      />
+                    }
                   />
-                }
-              />
-            </>
-          )}
-        </PendingLink>
+                </>
+              )}
+            </PendingLink>
+          ) : null}
+          {trailing ? <span className="shrink-0">{trailing}</span> : null}
+        </div>
       ) : null}
-      {trailing ? <span className="shrink-0">{trailing}</span> : null}
       {/* The arrows announce themselves from inside PendingLink; a swipe has no
           link to do that, so the bar names the day it is opening. */}
       {swiping && (

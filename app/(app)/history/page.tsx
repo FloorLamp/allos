@@ -46,6 +46,7 @@ import { isOnDemand } from "@/lib/intake-schedule";
 import {
   formatClockMinutes,
   formatLongDate,
+  formatWeekdayDate,
   formatMonthDay,
   formatRelativeTime,
 } from "@/lib/format-date";
@@ -887,6 +888,11 @@ async function renderHistory(
   );
 
   const rowCount = renderedDays.reduce((n, d) => n + d.events.length, 0);
+  // THE DAY'S COUNT, SPELLED ONCE. The header's subtitle and the phone bar's name
+  // are the same fact at two widths (#5764), and a second literal is how they
+  // drift into two grammars — which is the defect #4918 ruling 1 already fixed
+  // between the bar and the retired per-group header. "0 records" included.
+  const recordCount = `${rowCount} record${rowCount === 1 ? "" : "s"}`;
   const hasMore = feeds.some((feed) => feed.gather.hasMore);
 
   // EVERY DAY THE VIEWED MEMBERS HAVE AN EVENT ON, read ONCE (#4280). It feeds the
@@ -978,10 +984,27 @@ async function renderHistory(
       width={day ? "rail" : "reading"}
       data-testid="history-page"
     >
-      {/* NO SUBTITLE ON THE DAY VIEW (#4918 ruling 5). "Everything recorded, newest
-          first." describes the FEED — a day view is one day, and the day bar under
-          this header already says which. On the day view it was a sentence about a
-          different page sitting above the day's own name. */}
+      {/* THE DAY VIEW'S TITLE IS THE DAY (#5764), and `History` is the way back.
+          The page printed that word twice one line apart — the `back` slot's
+          destination (#5411 ruling 4) directly above an h1 that still named the
+          section — while the day, which is the page's whole subject, was `text-sm`
+          and centred between two arrows. NOTHING IS ADDED HERE: `PageHeader` already
+          owns the h1, the back link, the subtitle and the `compactBelowSm` hide, so
+          the props below are the entire change and no other page is reached.
+
+          THE SUBTITLE IS NOT THE ONE #4918 RULING 5 REMOVED, which is worth naming
+          rather than leaving to be re-litigated. That ruling took "Everything
+          recorded, newest first." off this view: a sentence about the FEED, sitting
+          above a different page's name. The count is the day's OWN line — the same
+          fact the bar has printed since ruling 1, "0 records" included — so it says
+          what this page is rather than what another one is. The feed keeps its
+          sentence and its "History" title, unchanged.
+
+          BELOW `sm` THE PHONE SPENDS NOTHING NEW, which is what makes moving the h1
+          here safe at all (#1616/#1661): `compactBelowSm` already renders the h1
+          `sr-only` and the subtitle `hidden`, so neither takes a line in the day
+          view's phone stack, and the visible name stays the sticky bar's. AT hears
+          one h1 per page at both widths; it names the day now, not the section. */}
       <div className={railGutter}>
         <PageHeader
           back={
@@ -992,8 +1015,8 @@ async function renderHistory(
                 }
               : undefined
           }
-          title="History"
-          subtitle={day ? undefined : "Everything recorded, newest first."}
+          title={day ? formatLongDate(day, prefs) : "History"}
+          subtitle={day ? recordCount : "Everything recorded, newest first."}
           compactBelowSm
         />
       </div>
@@ -1172,9 +1195,20 @@ async function renderHistory(
                   }
                 : undefined
             }
-            day={`${formatLongDate(day, prefs)} — ${rowCount} record${
-              rowCount === 1 ? "" : "s"
-            }`}
+            // THE SHORT GRAMMAR, WHICH IS THE ONE THE RULING WROTE (#5764). #4918
+            // ruling 1 spells this slot `Wed, Sep 3 — 15 records`; the code shipped
+            // the long weekday and the long month, and at 390px the bar's inner width
+            // less two `shrink-0` arrows left the name too little room — so `truncate`
+            // ate ` — 13 records`, the count, on every phone. Truncation is the last
+            // resort the comment beside the name chose; it was never meant to be the
+            // normal case. `formatWeekdayDate` is the spelling `WhenControl`'s
+            // fixed-day label already uses.
+            day={`${formatWeekdayDate(day, prefs)} — ${recordCount}`}
+            // AND THE BAR NAMES IT ONLY BELOW `sm`: from there up the h1 above names
+            // the day, and a bar that also printed it would say the day twice the way
+            // this page used to say `History` twice. The arrows stay exactly where
+            // they are — their placement from `sm` up is out of scope on #5764.
+            nameBelowSmOnly
             // SELECT LIVES IN THE DAY BAR (#5618 ruling 4), which is this page's
             // answer to the ledger's section header: the frame that names the day and
             // counts it, above every row the mode acts on. Draws nothing on a day with

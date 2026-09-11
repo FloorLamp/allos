@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TimelineDayNav from "@/components/TimelineDayNav";
+import { PageHeader } from "@/components/ui";
 import IntradayPanel from "@/components/IntradayPanel";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import type { IntradayModel } from "@/lib/intraday";
@@ -50,9 +51,17 @@ const TOMORROW = { href: "/history?day=2026-09-04" as const, label: "Sep 4" };
 describe("the day bar names the day (#4918 ruling 1)", () => {
   // "0 records" is not an edge case here, it is THE case: the empty day is the one
   // the per-group header could never name, because it renders once per group of rows.
+  //
+  // THE SHORT GRAMMAR (#5764) is what the page now composes — `formatWeekdayDate`,
+  // the spelling ruling 1 itself wrote — and these fixtures are spelled that way to
+  // match. BE CLEAR ABOUT WHAT THAT BUYS: nothing. This component prints the string
+  // it is handed, so the assertion below is true of every grammar and cannot fail on
+  // the long one. The grammar is a claim about what `app/(app)/history/page.tsx`
+  // COMPOSES and about whether the result fits beside two arrows at 390px, and both
+  // are observed where they are real — `e2e/history.spec.ts`, against a painted bar.
   it.each([
-    ["Wed, September 3 — 0 records", undefined],
-    ["Wed, September 3 — 15 records", TOMORROW],
+    ["Wed, Sep 3 — 0 records", undefined],
+    ["Wed, Sep 3 — 15 records", TOMORROW],
   ])("prints %s whether or not there is a next day", (label, next) => {
     render(
       <TimelineDayNav
@@ -72,7 +81,7 @@ describe("today draws no next destination at all (#4918 ruling 1)", () => {
       <TimelineDayNav
         prev={YESTERDAY}
         next={TOMORROW}
-        day="Wed, September 3 — 15 records"
+        day="Wed, Sep 3 — 15 records"
         targetSelector="main"
       />
     );
@@ -86,7 +95,7 @@ describe("today draws no next destination at all (#4918 ruling 1)", () => {
     render(
       <TimelineDayNav
         prev={YESTERDAY}
-        day="Wed, September 3 — 0 records"
+        day="Wed, Sep 3 — 0 records"
         targetSelector="main"
       />
     );
@@ -98,6 +107,135 @@ describe("today draws no next destination at all (#4918 ruling 1)", () => {
     );
     expect(gestures).toContainEqual({ direction: "left", enabled: false });
     expect(gestures).toContainEqual({ direction: "right", enabled: true });
+  });
+});
+
+// ── THE BAR IS THE PHONE'S NAME, NOT EVERY WIDTH'S (#5764) ───────────────────
+//
+// The day view's h1 takes the day from `sm` up, so the bar printing it there would
+// say the day twice the way the page used to say `History` twice. The hide is a
+// PROP AND NOT THE COMPONENT'S DEFAULT, and the default is the half worth pinning:
+// Home mounts this same bar under an `sr-only` "Home" h1, so there the bar is the
+// only visible name of the day at EVERY width, and an unconditional `sm:hidden`
+// would leave desktop Home with no date on it — a regression in a file #5764 never
+// opens, caught by `e2e/machine-date-census.spec.ts`'s `/` route only afterwards.
+//
+// ON THE CLASS, which this repo normally refuses: jsdom computes no media query, so
+// the hide itself is unobservable at this tier. What the browser paints is asserted
+// in `e2e/history.spec.ts` (`timeline-day-name` hidden at 1280, visible at 390).
+// This is the WIRING — that the opt-in reaches the element and that the default
+// leaves it alone.
+describe("the bar's name is the phone's, only when asked (#5764)", () => {
+  it("hides the name from `sm` up when the page above it names the day", () => {
+    render(
+      <TimelineDayNav
+        prev={YESTERDAY}
+        next={TOMORROW}
+        day="Wed, Sep 3 — 15 records"
+        nameBelowSmOnly
+        targetSelector="main"
+      />
+    );
+    expect(screen.getByTestId("timeline-day-name").className).toContain(
+      "sm:hidden"
+    );
+  });
+
+  it("leaves the name at every width by default, which is Home's mount", () => {
+    render(
+      <TimelineDayNav
+        prev={YESTERDAY}
+        next={TOMORROW}
+        day="Wed, Sep 3 — 15 records"
+        targetSelector="main"
+      />
+    );
+    expect(screen.getByTestId("timeline-day-name").className).not.toContain(
+      "sm:hidden"
+    );
+  });
+
+  // AND THE ARROWS STAY AT THE TWO EDGES. `justify-between` shares the slack, and the
+  // name is what absorbed it; once the name can be `display:none`, an ungrouped bar of
+  // prev / next / Select spreads THREE items evenly and parks the next-day arrow in
+  // the middle of the column. The trailing end is one group, so the bar is two ends at
+  // two edges whether or not the name is in the layout. Structure here, painted edges
+  // in `e2e/history.spec.ts`.
+  it("keeps the next arrow and the trailing control in one group at the far end", () => {
+    render(
+      <TimelineDayNav
+        prev={YESTERDAY}
+        next={TOMORROW}
+        day="Wed, Sep 3 — 15 records"
+        nameBelowSmOnly
+        trailing={<button data-testid="day-nav-trailing">Select</button>}
+        targetSelector="main"
+      />
+    );
+    const nav = screen.getByTestId("timeline-day-nav");
+    const next = screen.getByTestId("timeline-day-next");
+    const trailing = screen.getByTestId("day-nav-trailing");
+    // Neither is a direct child of the bar any more: they share one end.
+    expect(next.parentElement).toBe(trailing.parentElement!.parentElement);
+    expect(next.parentElement!.parentElement).toBe(nav);
+    // …and the bar's own children are the prev arrow, the name, and that one group.
+    expect([...nav.children].filter((el) => el.clientHeight >= 0).length).toBe(
+      3
+    );
+    expect(nav.children[2]).toBe(next.parentElement);
+  });
+});
+
+// ── THE HEADER CONTRACT #5764 RESTS ON ─────────────────────────────────────────
+//
+// A REGRESSION GUARD, AND IT IS NOT FALSIFIABLE BY THIS CHANGE: `PageHeader` is not
+// edited on #5764: the day view's whole fix is passing it different props. That is
+// exactly why the contract is worth pinning here. Three of its existing behaviours
+// carry the fix, and each would break the day view silently if it moved —
+//   • `back` renders ABOVE the h1 (#5411 ruling 4), so `← History` reads as the way
+//     back from a page whose h1 is the day rather than as a second copy of it;
+//   • `compactBelowSm` sends the h1 `sr-only` below `sm` (#1616/#1661), which is what
+//     lets the day view take the h1 at all without spending a phone line on it;
+//   • `compactBelowSm` drops the subtitle to `hidden` below `sm`, so the count costs
+//     the phone nothing either — the day view's phone stack is unchanged (#5764's own
+//     out-of-scope note about the chrome budget depends on this being true).
+// AT hears ONE h1, and it is the day.
+describe("the header contract the day view now leans on (#5764)", () => {
+  it("renders the back link above one `sr-only`-below-sm h1 that names the day", () => {
+    const { container } = render(
+      <PageHeader
+        back={{ href: "/history", destination: "History" }}
+        title="Thursday, September 10"
+        subtitle="13 records"
+        compactBelowSm
+      />
+    );
+    const headings = container.querySelectorAll("h1");
+    expect(headings.length).toBe(1);
+    const h1 = headings[0];
+    expect(h1.textContent).toBe("Thursday, September 10");
+    expect(h1.className).toContain("sr-only");
+    expect(h1.className).toContain("sm:not-sr-only");
+
+    const back = screen.getByRole("link", { name: "History" });
+    // DOCUMENT_POSITION_FOLLOWING: the h1 comes after the back link, which is the
+    // order the day view reads in — the way back, then the day.
+    expect(
+      back.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // The word `History` is printed exactly once, and the link is where it is.
+    const historyTextNodes: Text[] = [];
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.textContent?.trim() === "History") historyTextNodes.push(n as Text);
+    }
+    expect(historyTextNodes.length).toBe(1);
+    expect(back.contains(historyTextNodes[0])).toBe(true);
+
+    const subtitle = screen.getByText("13 records");
+    expect(subtitle.className).toContain("hidden");
+    expect(subtitle.className).toContain("sm:block");
   });
 });
 

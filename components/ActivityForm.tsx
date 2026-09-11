@@ -74,7 +74,7 @@ import {
   requestUpdateReload,
   useManualUpdateFallback,
 } from "./update-reload-channel";
-import type { PartEntry } from "@/lib/activity-form-model";
+import type { PartEntry, SetEntry } from "@/lib/activity-form-model";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
 import IntensityPicker from "./activity-form/IntensityPicker";
@@ -96,6 +96,7 @@ import {
   activityDraftHasTypedContent,
   savedShapeOfParts,
   sharedLoadSets,
+  shownLoad,
   activityEditDataHasStrength,
 } from "@/lib/activity-form-model";
 import { activityIconIdentitiesAreComposite } from "@/lib/activity-icon";
@@ -103,6 +104,17 @@ import { activityIconIdentitiesAreComposite } from "@/lib/activity-icon";
 // Re-exported so existing callers keep importing the edit-payload shape from
 // this module; the definition now lives in ./activity-form/model.
 export type { ActivityEditData };
+
+// What the plate builder opens on for a targeted row: the load that row STATES,
+// not the half of it that was typed (#5875). Since #5373 a set arrives as a plan
+// and its load is a ghost placeholder over an empty field, so reading the field
+// directly opened a bare bar beside a row that reads 90. `shownLoad` asks the
+// question the person is reading. A missing part or an empty set list states
+// nothing and still opens an empty bar rather than throwing.
+const statedLoadNumber = (
+  set: SetEntry | undefined,
+  side: "weight" | "weightRight"
+) => (set ? Number(shownLoad(set, side)) || 0 : 0);
 
 // The shared activity create/edit form, rendered inside ActivityOverlay or docked
 // in the training log's right column. Either way it auto-saves: changes persist a
@@ -1726,14 +1738,12 @@ export default function ActivityForm({
           initialBarId={parts[plateTarget.pi]?.equipmentId ?? null}
           initialWeight={
             plateTarget.seed ??
-            (Number(
-              (plateTarget.si === "all"
+            statedLoadNumber(
+              plateTarget.si === "all"
                 ? sharedLoadSets(parts[plateTarget.pi]?.sets ?? [])[0]
-                : parts[plateTarget.pi]?.sets[plateTarget.si])?.[
-                plateTarget.field
-              ]
-            ) ||
-              0)
+                : parts[plateTarget.pi]?.sets[plateTarget.si],
+              plateTarget.field
+            )
           }
           onUse={applyPlateBuild}
           onCreated={addEquipment}
