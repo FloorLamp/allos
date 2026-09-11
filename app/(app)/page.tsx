@@ -880,7 +880,6 @@ async function renderHome(
                     dayEvents={feed.gather.dayEvents}
                     formatPrefs={formatPrefs}
                     timezone={timezone}
-                    nowMinutes={nowMinutes}
                     nowInstant={nowInstant}
                     foodLoggingApplicable={foodLoggingApplicable}
                   />
@@ -1433,7 +1432,6 @@ async function HomeGlance({
   dayEvents,
   formatPrefs,
   timezone,
-  nowMinutes,
   nowInstant,
   foodLoggingApplicable,
 }: {
@@ -1443,7 +1441,6 @@ async function HomeGlance({
   dayEvents: Parameters<typeof getIntradayDay>[2];
   formatPrefs: DisplayFormatPrefs;
   timezone: string;
-  nowMinutes: number;
   nowInstant: Date;
   foodLoggingApplicable: boolean;
 }) {
@@ -1459,7 +1456,6 @@ async function HomeGlance({
       dayEvents,
       formatPrefs,
       timezone,
-      nowMinutes,
       nowInstant,
       foodLoggingApplicable,
     })
@@ -1472,7 +1468,6 @@ function renderGlance({
   dayEvents,
   formatPrefs,
   timezone,
-  nowMinutes,
   nowInstant,
   foodLoggingApplicable,
 }: {
@@ -1481,7 +1476,6 @@ function renderGlance({
   dayEvents: Parameters<typeof getIntradayDay>[2];
   formatPrefs: DisplayFormatPrefs;
   timezone: string;
-  nowMinutes: number;
   nowInstant: Date;
   foodLoggingApplicable: boolean;
 }) {
