@@ -13,6 +13,7 @@
 
 import { db, writeTx } from "@/lib/db";
 import { roundCoord } from "@/lib/home-location";
+import { num } from "./payload-fields";
 import type { DailyWeatherRow, HourlyUvRow } from "./open-meteo";
 import {
   classifyUpsert,
@@ -33,10 +34,6 @@ export interface CachedUvHour {
   // existed and on any hour the source omitted it — the readers treat a partial day as
   // having no timing rather than guessing from the hours they do have.
   precipitationMm: number | null;
-}
-
-function num(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 function eq(a: number | null, b: number | null): boolean {

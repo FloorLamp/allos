@@ -1,4 +1,5 @@
 import { utcInstant, zonedDateParts } from "@/lib/date";
+import { dayStr, num, str } from "./payload-fields";
 import {
   boundedOrNull,
   canonicalDurationMin,
@@ -64,18 +65,6 @@ export const WITHINGS_SLEEP_FIELDS = [
   "wakeupduration",
 ] as const;
 
-// ---- tolerant field reads ----
-
-function num(...vals: unknown[]): number | null {
-  for (const v of vals) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-  }
-  return null;
-}
-
-function str(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v.trim() : null;
-}
 
 // A Withings measure-group id, as the digit string that goes into an external id.
 //
@@ -89,12 +78,6 @@ function str(v: unknown): string | null {
 function groupIdOf(v: unknown): string | null {
   if (typeof v === "number" && Number.isFinite(v)) return String(v);
   return str(v);
-}
-
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-function dayStr(v: unknown): string | null {
-  const s = str(v);
-  return s && DAY_RE.test(s) ? s : null;
 }
 
 function round(v: number | null): number | null {

@@ -4,6 +4,7 @@ import {
   type ClockReading,
 } from "@/lib/clock-skew";
 import { hhmmToMinutes } from "@/lib/date";
+import { num, str } from "./payload-fields";
 import type { ActivityType } from "@/lib/types";
 import {
   boundedOrNull,
@@ -59,7 +60,7 @@ const LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/;
 
 // `ms` is the wall-clock numerals interpreted as UTC, used purely for adding the
 // elapsed time to derive an end time — not a real instant.
-function parts(
+function wallClockParts(
   local: unknown
 ): { date: string; hhmm: string; ms: number } | null {
   if (typeof local !== "string") return null;
@@ -93,16 +94,6 @@ function partsOfReading(r: ClockReading): {
   };
 }
 
-function num(...vals: unknown[]): number | null {
-  for (const v of vals) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-  }
-  return null;
-}
-
-function str(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v.trim() : null;
-}
 
 // ---- sport classification ----
 
@@ -235,7 +226,7 @@ export function mapStravaActivity(
   const rec = a as Record<string, unknown>;
   const id = num(rec.id);
   const startLocal = str(rec.start_date_local);
-  const reported = parts(startLocal);
+  const reported = wallClockParts(startLocal);
   if (id == null || !startLocal || !reported) return null;
 
   // #2088 branch A: the true instant read in the profile's zone, when we have both.

@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/log";
+import { dateStrInTz, shiftDateStr } from "@/lib/date";
 import { userErrorCopy } from "@/lib/user-error-copy";
 import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
@@ -90,16 +91,6 @@ export function isDeterministicFailure(status: number | undefined): boolean {
   return status != null && status >= 400 && status < 500;
 }
 
-function shiftDate(day: string, n: number): string {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 // One run's two upsert halves (hourly UV + daily aggregates) as a single split, so the
 // integration_sync_events row reports ONE honest insert/update/unchanged accounting for
 // the run rather than two partial ones.
@@ -121,10 +112,10 @@ export async function runWeatherSync(
   if (!home) return { error: "no home location" };
 
   const timezone = getTimezone(profileId);
-  const today = todayUtc();
-  const startDate = shiftDate(today, -(WEATHER_WINDOW_DAYS - 1));
+  const today = dateStrInTz("UTC");
+  const startDate = shiftDateStr(today, -(WEATHER_WINDOW_DAYS - 1));
   // End a day past today so the forecast endpoint covers the whole current local day.
-  const endDate = shiftDate(today, 1);
+  const endDate = shiftDateStr(today, 1);
   // The DAILY half reaches further (below). Computed HERE, before the first fetch,
   // because it is also the run's stamped window: every event this run records —
   // success or failure — describes the window the RUN SET OUT TO COVER, not the half
@@ -132,7 +123,7 @@ export async function runWeatherSync(
   // half's shorter reach made interleaved events of one source describe two
   // different window shapes, which read in Review as if a failure had shrunk the
   // coverage target.
-  const dailyEnd = shiftDate(today, WEATHER_FORECAST_DAYS);
+  const dailyEnd = shiftDateStr(today, WEATHER_FORECAST_DAYS);
 
   const res = await source.fetchHourly(
     home.lat,
