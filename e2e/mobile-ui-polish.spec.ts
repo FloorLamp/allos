@@ -146,8 +146,8 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     expect(detailsBox.y).toBeGreaterThanOrEqual(
       actionsBox.y + actionsBox.height
     );
-    expect(detailsBox!.x + detailsBox!.width).toBeGreaterThanOrEqual(
-      actionsBox!.x + actionsBox!.width
+    expect(detailsBox.x + detailsBox.width).toBeGreaterThanOrEqual(
+      actionsBox.x + actionsBox.width
     );
   });
 });
@@ -209,7 +209,7 @@ test.describe("the record's month calendar clears the floor on a phone (#3377/#3
       await page.goto("/");
       const drawer = await openMobileDrawer(page);
       const [box] = await settledBoxes([drawer]);
-      expect(box!.width, `the drawer at a ${width}px viewport`).toBeCloseTo(
+      expect(box.width, `the drawer at a ${width}px viewport`).toBeCloseTo(
         Math.min(width, 320),
         0
       );
