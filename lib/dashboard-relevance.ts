@@ -42,7 +42,6 @@ export type DashboardTiming =
   | { kind: "local-days"; ageDays: number; maxDays: number }
   | { kind: "until-signal"; active: boolean };
 
-
 // The owner-ratified reading-promotion registry (#3077 / #3137). A reading may
 // carry `changed` only when it names one of these existing semantic signals.
 // Raw numeric deltas deliberately have no representation here.
