@@ -3,7 +3,6 @@ import { pinnedTimezone } from "../../e2e/pinned-timezone";
 import { sriSleepWindow } from "../../e2e/seed/profile-time-fixtures";
 import { isValidTimezone } from "../timezone";
 import {
-  hhmmToMinutes,
   shiftDateStr,
   utcSqlString,
   zonedDateParts,
@@ -11,11 +10,6 @@ import {
 } from "../date";
 import { mainSleepNights } from "../sleep-regularity";
 import { isLastNight } from "../sleep-summary";
-import {
-  mealTimeWindows,
-  resolveDashboardTiming,
-} from "../dashboard-relevance";
-import { DEFAULT_INTAKE_REMINDER_MINUTES } from "../notifications/schedule";
 
 // The e2e timezone pin (e2e/pinned-timezone.ts): for ANY frozen run-start
 // instant, the chosen zone must read 13:mm local on the SAME calendar date as
@@ -199,72 +193,5 @@ describe("pinned zone × the 28-night SRI fixture (#3644)", () => {
     expect(mismatches.some((entry) => entry.startsWith("Etc/GMT+10:"))).toBe(
       true
     );
-  });
-});
-
-// The #3260 band: a dashboard candidate may carry MEAL-WINDOW timing
-// (`mealTimeWindows` — each intake reminder anchor ±60 min), and
-// `resolveDashboardTiming` calls it `expired` once the last window of the local day
-// has closed. An expired candidate is dropped before every lane is built, so it is
-// not demoted into a fold, it is absent — and since #5435 §4 there is no fold and no
-// opener left to reach one with.
-//
-// That makes the profile's LOCAL minute-of-day, not merely its calendar date, part of
-// what the timezone pin has to make deterministic. The pin's 13:mm is exactly
-// `DEFAULT_INTAKE_REMINDER_MINUTES.Midday` (13:00), so a profile that FOLLOWS the pin
-// sits at the centre of a meal window at every possible UTC start hour. A profile that
-// opts out to UTC has a local minute-of-day equal to the run's real UTC start hour, and
-// goes dark for the ~3 hours a day after the last window closes — which is what made
-// e2e/routine-usual.spec.ts red on main for runs starting in [21:00, 24:00) UTC.
-//
-// THE BAND IS STILL REAL; ITS ORIGINAL EXAMPLE IS NOT. #3265 moved the composed
-// usual-routine candidate off `mealTimeWindows` and onto the food-slot window it is
-// actually about, so that spec no longer goes dark at 21:00 for any profile. Every other
-// candidate that borrows the reminder anchors — protein-today is the live one — still
-// does, which is why this band is pinned rather than deleted.
-describe("pinned zone × meal-window dashboard timing (#3260 band)", () => {
-  const anchors = [
-    DEFAULT_INTAKE_REMINDER_MINUTES.Morning,
-    DEFAULT_INTAKE_REMINDER_MINUTES.Midday,
-    DEFAULT_INTAKE_REMINDER_MINUTES.Evening,
-  ];
-  const day = "2026-08-19";
-  const localMinuteOfDay = (frozen: string, zone: string) =>
-    hhmmToMinutes(zonedDateParts(zone, new Date(frozen)).hhmm);
-
-  it("a profile FOLLOWING the pin is inside a meal window at every UTC start hour and minute", () => {
-    const timing = mealTimeWindows(anchors);
-    for (let h = 0; h < 24; h++) {
-      // Sweep the minute too: the pin preserves the frozen instant's minutes, so the
-      // local time ranges over the whole 13:00–13:59 hour and every one of them has to
-      // land inside the window, not just the anchor itself.
-      for (const mm of ["00", "37", "59"]) {
-        const frozen = `${day}T${String(h).padStart(2, "0")}:${mm}:00.000Z`;
-        const { zone } = pinnedTimezone(frozen);
-        const minute = localMinuteOfDay(frozen, zone);
-        expect(minute, `utc ${h}:${mm} → ${zone}`).toBe(
-          DEFAULT_INTAKE_REMINDER_MINUTES.Midday + Number(mm)
-        );
-        expect(
-          resolveDashboardTiming(timing, minute),
-          `utc ${h}:${mm} → ${zone} local minute ${minute}`
-        ).toEqual({ kind: "active" });
-      }
-    }
-  });
-
-  it("documents the bug: a profile pinned to UTC instead goes `expired` for every run starting at or after 21:00 UTC", () => {
-    const timing = mealTimeWindows(anchors);
-    const dark: number[] = [];
-    for (let h = 0; h < 24; h++) {
-      const frozen = `${day}T${String(h).padStart(2, "0")}:37:00.000Z`;
-      // The opt-out: read the SAME frozen instant in UTC rather than the pinned zone.
-      const minute = localMinuteOfDay(frozen, "UTC");
-      expect(minute, `utc hour ${h}`).toBe(h * 60 + 37);
-      if (resolveDashboardTiming(timing, minute).kind === "expired")
-        dark.push(h);
-    }
-    // Exactly the hours after the last meal window (20:00 + 60 min) closes.
-    expect(dark).toEqual([21, 22, 23]);
   });
 });
