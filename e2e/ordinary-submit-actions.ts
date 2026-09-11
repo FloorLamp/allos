@@ -76,6 +76,59 @@ export async function expectDesktopOrdinarySubmit({
     expectDisjoint(submitBox, adjacentBox, `${name} desktop actions disjoint`);
 }
 
+// ── THE OTHER SHAPE, AND WHY IT IS NOT THIS FILE'S DEFAULT ──────────────────
+//
+// Everything above is the ORDINARY submit: content-sized, with its neighbour
+// beside it. A log form's submit is not that, by owner ruling 2026-09-11 11:15
+// UTC on #5617 — the owner reported the record's dose edit form as a Save "the
+// same size as the other controls", and the ruling makes Save the form's one
+// prominent commit, full-width at the control box, with Cancel kept as a
+// subordinate text-style dismiss rather than an identical box beside it.
+//
+// THE ORDINARY ASSERTIONS ARE NOT WEAKENED TO ADMIT IT. Ten of this file's
+// eleven call sites are not log forms — a session bulk action, an episode
+// timeline editor, an immunization override, an instrument reading — and the
+// ruling reaches none of them, so "a submit is content-sized" is still true
+// where it was true, and still asserted. What changes is that a SECOND shape now
+// exists and gets its own name here, rather than the one rule being loosened
+// until it fits both and catches neither.
+//
+// EVERY CHECK THAT STILL APPLIES IS STILL MADE, from the same private helpers:
+// the submit is inside its owner is inside the form, the commit and the dismiss
+// do not overlap, and the box stays compact. Exactly one assertion inverts —
+// content-sized becomes full-width — and one is added: the dismiss is
+// subordinate, which is the half of the ruling a width check on Save alone
+// cannot see.
+export async function expectProminentCommit({
+  form,
+  owner,
+  submit,
+  adjacent,
+  name,
+}: OrdinarySubmit) {
+  const locators = [form, owner, submit];
+  if (adjacent) locators.push(adjacent);
+  const [formBox, ownerBox, submitBox, adjacentBox] =
+    await settledBoxes(locators);
+
+  expect(submitBox.height, `${name} commit stays compact`).toBeLessThan(
+    TAP_FLOOR_PX
+  );
+  expect(
+    Math.abs(submitBox.width - ownerBox.width),
+    `${name} commit is ${submitBox.width} in a ${ownerBox.width} row; the log form's Save is full-width`
+  ).toBeLessThanOrEqual(TAP_FLOOR_FLOAT_EPSILON_PX);
+  expectContained(formBox, ownerBox, `${name} owner in form`);
+  expectContained(ownerBox, submitBox, `${name} commit in owner`);
+  if (adjacentBox) {
+    expect(
+      adjacentBox.width,
+      `${name} dismiss is ${adjacentBox.width} against a ${submitBox.width} commit; it must not be a same-size box`
+    ).toBeLessThan(submitBox.width / 2);
+    expectDisjoint(submitBox, adjacentBox, `${name} commit and dismiss disjoint`);
+  }
+}
+
 export async function expectPhoneOrdinarySubmit({
   form,
   owner,

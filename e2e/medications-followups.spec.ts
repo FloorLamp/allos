@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import {
   comboboxRows,
   dismissToast,
+  expectPhoneTapTargets,
   followLink,
   hydratedClick,
   settledBoxes,
@@ -18,6 +19,7 @@ import { shiftDateStr, utcSqlString } from "@/lib/date";
 import {
   expectDesktopOrdinarySubmit,
   expectPhoneOrdinarySubmit,
+  expectProminentCommit,
 } from "./ordinary-submit-actions";
 import { frozenNow, workerDbPath } from "./worker-env";
 
@@ -468,20 +470,31 @@ test("logs, edits, and deletes a historical medication dose", async ({
       desktopViewport,
       "the medication history project has a fixed desktop viewport"
     ).not.toBeNull();
-    await expectDesktopOrdinarySubmit({
+    // AMENDED, NOT DROPPED (#5617 step 4, owner ruling 2026-09-11 11:15 UTC).
+    // This asserted the ORDINARY submit shape — content-sized, Cancel beside it —
+    // which is exactly the shape the owner reported as the defect: a Save the same
+    // size as the controls around it. The dose form is a log form, so it now
+    // asserts the prominent-commit shape instead, at both viewports, from the same
+    // helper file. Everything that still applies is still asserted — containment,
+    // disjointness, the compact box — and the ordinary assertion keeps its ten
+    // other call sites untouched, none of which is one of the eight log forms.
+    await expectProminentCommit({
       form,
       owner: actions,
       submit,
       adjacent: cancel,
-      name: "historical dose primary",
+      name: "historical dose primary desktop",
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await expectPhoneOrdinarySubmit({
+    await expectPhoneTapTargets(page, "historical dose primary phone", [
+      submit,
+    ]);
+    await expectProminentCommit({
       form,
       owner: actions,
       submit,
       adjacent: cancel,
-      name: "historical dose primary",
+      name: "historical dose primary phone",
     });
     await settledClick(page, submit);
 
