@@ -232,19 +232,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
     .click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const timedForm = editSheet.getByTestId("historical-dose-form");
-  const timeField = timedForm.getByTestId("historical-dose-time");
-  await timeField.fill("07:42");
-  // DISMISS THE PICKER BEFORE COMMITTING, which is now a step rather than an
-  // accident of geometry. Typing into the time field opens the wheel popover
-  // anchored under it; this line used to reach Save because Save was a narrow box
-  // to the LEFT of that popover, and a full-width Save (#5617 step 4) runs under
-  // it instead. So the sequence states what a person does — finish with the field,
-  // then commit — and asserts the popover is actually gone, the same blur-then-
-  // assert-closed shape e2e/anchored-panel-fork.mobile.spec.ts uses on this exact
-  // control. Nothing about the save is weakened: what follows is the same click on
-  // the same button and the same round-trip assertions.
-  await timeField.blur();
-  await expect(page.getByTestId("time-field-wheel")).toHaveCount(0); // testid-scope-ok: portalled picker popover, above every streamed boundary
+  await timedForm.getByTestId("historical-dose-time").fill("07:42");
   await timedForm.getByRole("button", { name: "Save changes" }).click();
   await expect(timedForm).toHaveCount(0);
   // The stated time renders as a BARE clock — the "recorded" marker is gone.

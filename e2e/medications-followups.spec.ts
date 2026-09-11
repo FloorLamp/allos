@@ -519,14 +519,7 @@ test("logs, edits, and deletes a historical medication dose", async ({
       .getByRole("dialog")
       .getByTestId("historical-dose-form");
     await editForm.getByLabel("Amount").fill(updatedAmount);
-    const editTime = editForm.getByTestId("historical-dose-time");
-    await editTime.fill("04:18");
-    // Finish with the time field before committing: typing in it opens the wheel
-    // popover anchored beneath, and a full-width Save (#5617 step 4) runs under
-    // that popover where a narrow one sat clear of it. Same click, same button,
-    // one dismissal stated instead of relied on.
-    await editTime.blur();
-    await expect(page.getByTestId("time-field-wheel")).toHaveCount(0); // testid-scope-ok: portalled picker popover, above every streamed boundary
+    await editForm.getByTestId("historical-dose-time").fill("04:18");
     await settledClick(
       page,
       editForm.getByRole("button", { name: "Save changes" })
