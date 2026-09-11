@@ -17,7 +17,7 @@ export default async function DisclaimerPage() {
   await requireSession();
 
   return (
-    <PageContainer width="reading" className="mx-auto space-y-6">
+    <PageContainer width="reading" className="space-y-6">
       <PageHeader
         title="Disclaimer"
         subtitle="What Allos is — and what it is not."

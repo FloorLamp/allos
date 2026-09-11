@@ -233,7 +233,7 @@ export default async function OnboardingPage({
   );
 
   return (
-    <PageContainer width="flow" className="mx-auto">
+    <PageContainer width="flow">
       <OnboardingProgress step={activeStep} unlockedStep={unlockedStep} />
       {activeStep === 1 ? (
         <div className="section-seam mb-6">

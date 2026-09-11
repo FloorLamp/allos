@@ -164,11 +164,7 @@ export default async function ProtocolDetailPage(props: {
   const ongoing = protocol.end_date == null;
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="protocol-detail-page"
-    >
+    <PageContainer width="reading" data-testid="protocol-detail-page">
       <div className="space-y-6">
         {/* The edit form's situation picker reads the SAME merged vocabulary the
             supplement and medication forms do (#1676). */}

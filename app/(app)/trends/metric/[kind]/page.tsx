@@ -543,7 +543,7 @@ export default async function TrendMetricDetailPage(props: {
     <TrendAnnotationProvider>
       <PageContainer
         width="wide"
-        className="mx-auto space-y-4 md:space-y-6"
+        className="space-y-4 md:space-y-6"
         data-testid="metric-detail-page"
       >
         {meta.quickAdd === "measurements" && measurementEntry ? (

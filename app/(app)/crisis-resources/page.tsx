@@ -18,7 +18,7 @@ export default async function CrisisResourcesPage() {
   const isAdmin = login.role === "admin";
 
   return (
-    <PageContainer width="reading" className="mx-auto space-y-6">
+    <PageContainer width="reading" className="space-y-6">
       <PageHeader
         title="Crisis support"
         subtitle="If things feel like too much, these resources are here whenever you need them."

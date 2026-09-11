@@ -11,11 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function ResultsImagingPage() {
   const scope = await requireScope();
   return (
-    <PageContainer
-      width="flow"
-      className="mx-auto"
-      data-testid="results-imaging"
-    >
+    <PageContainer width="flow" align="start" data-testid="results-imaging">
       <PaneIntro title="Imaging" testId="results-pane-intro">
         Radiology studies, their findings, and the radiation they added up to.
       </PaneIntro>

@@ -190,11 +190,7 @@ export default async function EncounterDetailPage(props: {
     Boolean(scheduledDate);
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="encounter-detail"
-    >
+    <PageContainer width="reading" data-testid="encounter-detail">
       <PageHeader
         back={{ href: "/records/history/visits", destination: "Visits" }}
         title={encounterTypeDisplay(encounter.type, encounter.class_code)}

@@ -257,11 +257,7 @@ export default async function TrainingActivityPage(props: {
   ];
   return (
     <ActivityDetailControlsProvider>
-      <PageContainer
-        width="reading"
-        className="mx-auto"
-        data-testid="training-activity-page"
-      >
+      <PageContainer width="reading" data-testid="training-activity-page">
         {/* Back to the log, and ‹ older / newer › walking the ledger in
           (date, id) order so a review session continues without bouncing back
           to a list (#2870). All three answer their own tap (#2983).

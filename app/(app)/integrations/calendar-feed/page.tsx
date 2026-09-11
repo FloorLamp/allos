@@ -108,11 +108,7 @@ export default async function CalendarFeedPage() {
   const familyGroups = groupConsolidatedPreviewRows(familyRows);
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="integration-page"
-    >
+    <PageContainer width="reading" data-testid="integration-page">
       <PageHeader
         back={{ href: "/data", destination: "Data" }}
         title={def.name}

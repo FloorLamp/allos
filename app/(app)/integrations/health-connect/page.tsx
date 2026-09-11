@@ -64,11 +64,7 @@ export default async function HealthConnectPage() {
   )!;
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto"
-      data-testid="integration-page"
-    >
+    <PageContainer width="reading" data-testid="integration-page">
       <PageHeader
         back={{ href: dataSectionHref("import"), destination: "Import" }}
         title={def.name}

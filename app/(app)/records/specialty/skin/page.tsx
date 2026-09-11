@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function RecordsSkinPage() {
   const { login, profile } = await requireSession();
   return (
-    <PageContainer width="flow" data-testid="records-skin">
+    <PageContainer width="flow" align="start" data-testid="records-skin">
       <SectionSubtitle title="Skin">
         Track moles and spots over time.
       </SectionSubtitle>

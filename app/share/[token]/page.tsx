@@ -58,10 +58,7 @@ export default async function SharePage(props: {
   });
   if (!rl.ok) {
     return (
-      <PageContainer
-        width="reading"
-        className="mx-auto min-h-screen px-4 py-10"
-      >
+      <PageContainer width="reading" className="min-h-screen px-4 py-10">
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
           Too many requests. Try again in about {rl.retryAfterSec} seconds.
         </p>
@@ -103,7 +100,7 @@ export default async function SharePage(props: {
       <ConfirmProvider>
         <PageContainer
           width="reading"
-          className="mx-auto min-h-screen px-4 py-6 sm:py-10"
+          className="min-h-screen px-4 py-6 sm:py-10"
         >
           <div className="mb-4 flex items-center justify-end">
             <PrintButton />
@@ -132,7 +129,7 @@ export default async function SharePage(props: {
     return (
       <PageContainer
         width="reading"
-        className="mx-auto min-h-screen px-4 py-6 sm:py-10"
+        className="min-h-screen px-4 py-6 sm:py-10"
       >
         <div className="mb-4 flex items-center justify-end">
           <PrintButton />
@@ -157,7 +154,7 @@ export default async function SharePage(props: {
     return (
       <PageContainer
         width="reading"
-        className="mx-auto min-h-screen px-4 py-6 sm:py-10"
+        className="min-h-screen px-4 py-6 sm:py-10"
       >
         <div className="mb-4 flex items-center justify-end">
           <PrintButton />
@@ -186,10 +183,7 @@ export default async function SharePage(props: {
   };
 
   return (
-    <PageContainer
-      width="reading"
-      className="mx-auto min-h-screen px-4 py-6 sm:py-10"
-    >
+    <PageContainer width="reading" className="min-h-screen px-4 py-6 sm:py-10">
       <ProfilePassport
         summary={summary}
         profile={sharedProfile}
