@@ -350,7 +350,12 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
       shared: review.user?.login === pr.user?.login,
       shas: shasStated(review.body).filter((sha) => !head.startsWith(sha)),
     }))
-    .filter((candidate) => candidate.shas.length);
+    .filter((candidate) => candidate.shas.length)
+    // NEWEST FIRST, because the caller caps how many it will read for: the
+    // latest review is the one most likely to be the receipt, and on a PR with
+    // a long review history the oldest are the least likely to still describe
+    // this change. The cap only ever costs a pass, never grants one.
+    .reverse();
   return {
     ok: false,
     ancestorCandidates,
