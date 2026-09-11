@@ -187,6 +187,7 @@ import {
   normalizeCanonicalKey,
 } from "./canonical-name";
 import { METRIC_KNOWLEDGE } from "./metric-judgment";
+import { readingIdentity, streamSourcesForIdentity } from "./reading-model";
 import {
   TREND_METRIC_META,
   TREND_METRIC_SLUGS,
@@ -661,5 +662,22 @@ export function listedInResultsCatalog(row: {
 }): boolean {
   if ((row.category ?? "") !== HOMED_ANALYTE_CATEGORY) return true;
   const identity = row.canonical_name?.trim() || row.name;
-  return !hasTrendMetricHome(identity);
+  if (hasTrendMetricHome(identity)) return false;
+  // ...AND A STREAM-ONLY IDENTITY IS NOT A CATALOG ANALYTE EITHER (#5409).
+  //
+  // The clause above asks "does some chart already own this quantity". This one asks
+  // the same question one step earlier, for the quantity whose readings are not
+  // observations AT ALL: `Breathing Rate (sleep)` is a wearable's per-night aggregate,
+  // and the placement rule sends every reading of it to `metric_samples`
+  // (`STREAM_READING_SOURCES`). The catalog lists `medical_records` rows, so an analyte
+  // that produces none contributes nothing to list — and the panel FACET, which is
+  // derived from this same predicate over the vocabulary, would otherwise offer a
+  // "Vital signs" filter that can only answer "No clinical results match these filters".
+  //
+  // IT CHANGES NO EXISTING ANALYTE. Every other `vitals` entry carrying a registered
+  // stream — Resting Heart Rate, Peak Expiratory Flow — already fails the clause above,
+  // so this term is reached only by a stream identity with no metric surface yet. The
+  // pure test enumerates the vocabulary and pins that the two clauses drop the same set
+  // they did before, plus exactly this one name.
+  return streamSourcesForIdentity(readingIdentity(identity ?? "")).length === 0;
 }
