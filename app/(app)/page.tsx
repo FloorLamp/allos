@@ -1716,16 +1716,21 @@ function HomeSetupRowView({ row }: { row: HomeSetupRow }) {
     <HomeRow
       id={row.id}
       testId="home-setup-row"
-      title={
-        finding.actionHref ? (
-          <a className="hover:underline" href={finding.actionHref}>
-            {finding.title}
-          </a>
-        ) : (
-          finding.title
-        )
-      }
+      title={finding.title}
       detail={[finding.detail, finding.evidence].filter(Boolean).join(" · ")}
+      // THE ROW OPENS ITS EDITOR, UNDER THE FINDING'S OWN VERB (#5435 §3.4). The
+      // finding declares both the destination and the word for it — "Fix it" on a
+      // data-quality gap — and the word is the promise: a labelled door says what the
+      // tap will let you do, where a linked title only says where it goes. Falls back
+      // to "View" exactly as the retired card did, so a finding that declares a href
+      // and no label still has a door rather than an unreachable sentence.
+      trailing={
+        finding.actionHref ? (
+          <a className="btn-ghost btn-sm" href={finding.actionHref}>
+            {finding.actionLabel ?? "View"}
+          </a>
+        ) : undefined
+      }
       control={
         <FindingDismissButton
           finding={finding}

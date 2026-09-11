@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { openDashboardAll, openFoodAdd, settledClick } from "./helpers";
+import { openFoodAdd, settledClick } from "./helpers";
 import { E2E_LOGIN_ROUTINEUSUAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // THE MORNING IS ONE PHYSICAL EVENT (#2458) — the composed one-tap on the dashboard.
@@ -22,7 +22,12 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
   try {
     test.slow();
     await page.goto("/");
-    await openDashboardAll(page);
+    // NO FOLD TO OPEN (#5435 §4). The usual-routine offer is the seated dose slot's
+    // own control now — "Take all, or the usual-routine control when the routine's
+    // window is this slot" (§3.2) — so it is under the Now rule rather than behind
+    // the retired tail. Same component, same testid, same accessible name; what
+    // changed is that nothing has to be opened to reach it.
+    await expect(page.getByTestId("home-now")).toBeVisible();
 
     // The control names EVERY write it will perform — both halves, with the seam
     // between servings and dose confirms visible. The label IS the promise.
@@ -91,7 +96,6 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
     await expect(page.getByTestId("count-fermented")).toHaveText("0");
 
     await page.goto("/");
-    await openDashboardAll(page);
     await expect(page.getByTestId("routine-usual-offer")).toBeVisible();
     await expect(page.getByTestId("routine-usual-offer")).toHaveAttribute(
       "aria-label",

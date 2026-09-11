@@ -7,7 +7,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
-import { openDashboardAll, openEverythingFold } from "./helpers";
+
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // Cross-item PRN safety counters (issue #1027). The dedicated fixture profile tracks
@@ -76,31 +76,20 @@ test("the OTC ibuprofen card shows the family-held redose line (no false GO)", a
   await page.context().close();
 });
 
-test("the therapeutic-duplication note surfaces on the dashboard coaching rollup", async ({
-  browser,
-}) => {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_PRN_FAMILY,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  await page.goto("/");
-  await openDashboardAll(page);
-  // The rollup is a folded BLOCK of rows since #4076 — one observation, one row,
-  // all of them under one "Coaching observations" header. Coaching observations
-  // are Understand's statements, and this seeded fixture's Understand band crosses
-  // the three-block cap (#4065), so the rollup sits behind Understand's own fold.
-  await openEverythingFold(page, "understand");
-  const rollup = page.locator('[data-moment-key="coaching.observation"]');
-  await expect(rollup).toBeVisible();
-  await expect(rollup).toContainText(
-    "Ibuprofen appears in 2 active medications"
-  );
-  // Calm/informational framing — the note explains the shared counters, and never
-  // tells the user to change anything.
-  await expect(rollup).toContainText("count together");
-
-  await page.context().close();
-});
+// THE THERAPEUTIC-DUPLICATION NOTE'S HOME CASE RETIRED WITH ITS SEAT (#5435 §4).
+//
+// It asserted the note on the dashboard's coaching-observations rollup: that the
+// finding said "Ibuprofen appears in 2 active medications" and framed it calmly
+// ("count together") rather than telling anyone to change a dose. #5435 §4 takes the
+// five Home-only coaching findings off `/` as written — too long, with disclaimer
+// copy — and #5634 owns their rewrite and re-surfacing. There is no rollup, no
+// Understand band and no fold left for this case to open.
+//
+// WHAT STILL PROTECTS THE FINDING ITSELF: it is built and deduped on the shared bus,
+// which is unchanged, and `lib/__db_tests__/` covers the builder. What is NOT covered
+// any more is its presentation to a reader, because it has no reader surface until
+// #5634 gives it one — stated here so the gap is visible rather than inferred from a
+// deleted block.
 
 // PRN DOSE CONTROLS LEFT THE TAIL FOR THE QUICK LOGGER (#4076 ruling 4, the #4083
 // pattern verbatim). The dashboard used to render one `intake.prn:<id>` card per
@@ -130,16 +119,16 @@ test("PRN dose logging left the dashboard tail for the quick logger (#4076)", as
   );
   try {
     await page.goto("/");
-    await openDashboardAll(page);
 
-    // The control: this profile's tail rendered and holds entries, so the absence
-    // below is about a populated tail rather than a selector that found nothing.
-    expect(
-      await page
-        .getByTestId("dashboard-all-contents")
-        .getByTestId("dashboard-candidate")
-        .count()
-    ).toBeGreaterThan(0);
+    // The control: this profile's Home rendered and holds rows, so the absence below
+    // is about a populated page rather than a selector that found nothing. It used
+    // to count the TAIL's rows — #5435 §4 retires the "Show everything" tail with
+    // the ranker that filled it, so the control counts the rows the page renders.
+    // Without this line the assertion under it would pass on a page drawing nothing,
+    // which is the failure that makes an absence test worthless.
+    expect(await page.locator("[data-candidate-id]").count()).toBeGreaterThan(
+      0
+    );
     await expect(
       page.locator('[data-candidate-id^="intake.prn:"]')
     ).toHaveCount(0);
