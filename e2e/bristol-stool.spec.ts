@@ -221,14 +221,20 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   expect(stampedAt!.getTime()).toBeLessThanOrEqual(after);
 
   // Reduced motion keeps the write/count end state and removes both transient
-  // animation bands. The frozen instant makes this a correction of the reading,
-  // so the daily count correctly remains one.
+  // animation bands.
+  //
+  // THE COUNT GOES TO TWO, AND THAT IS THE FIX (#5872 defect 1). The run freezes the
+  // clock, so this second tap lands on the very same second as the first — and under
+  // the samples table's natural key that made it an UPSERT, so the count "correctly
+  // remained one" and the first movement was gone. It was the merge defect, reachable
+  // by two taps in one test. The ledger is append-only: two movements are two rows.
   await page.emulateMedia({ reducedMotion: "reduce" });
   const reducedSettle = picker.getByTestId("stool-settle-5");
   await settledClick(page, picker.getByTestId("stool-type-5"));
   await expect(page.getByTestId("quick-entry-stool-count")).toHaveText(
-    "1 today"
+    "2 today"
   );
+  expect(bristolRows().map((r) => r.value)).toEqual([6, 5]);
   await expect(reducedSettle).toHaveAttribute("data-reduced-motion", "true");
   await expect(reducedSettle).not.toHaveClass(/motion-settle/);
   await expect(reducedSettle).toHaveAttribute("data-motion-runs", "0");

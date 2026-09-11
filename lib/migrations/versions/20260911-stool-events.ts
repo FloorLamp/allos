@@ -139,20 +139,22 @@ export function move(db: Database.Database): void {
   const insert = db.prepare(
     `INSERT INTO stool_events
        (profile_id, date, recorded_at, occurred_at, time_source, type)
-     VALUES (?, ?, ?, ?, 'stated', ?)`
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
   for (const sample of samples) {
     const parts = LOCAL_DATETIME.exec(sample.started_at);
-    // A shape this metric's two writers cannot produce. Falling back to the DAY keeps
-    // the row — losing a recorded movement is the one outcome this move may not have —
-    // and the minute it never legibly carried is the only thing that changes.
-    const instant = parts
+    const at = parts
       ? zonedWallTimeToUtc(zoneOf(sample.profile_id), parts[1], parts[2])
       : null;
-    const at =
-      instant ??
-      zonedWallTimeToUtc(zoneOf(sample.profile_id), sample.date, "00:00");
     const canonical = at ? (utcInstant(at) as string) : null;
+    // A `started_at` NEITHER of this metric's two writers can produce, so this arm is
+    // defence rather than behaviour — both build `<date>T<HH:MM>:<SS>` from local parts.
+    // It is spelled anyway because the alternative is worse in both directions: a NULL
+    // `recorded_at` violates NOT NULL and aborts the whole move, losing every row over
+    // one unreadable stamp, and claiming `stated` over an instant nothing legible
+    // produced would assert a minute nobody can point at. So the row KEEPS its day and
+    // says honestly that no instant came across.
+    const recordedAt = canonical ?? `${sample.date}T00:00:00Z`;
     // The type is the stored REAL. Anything outside the scale never came from a write
     // path this app has, and the CHECK would refuse it — it moves as an untyped
     // occurrence rather than being dropped, which is the same "keep the row" rule.
@@ -160,7 +162,14 @@ export function move(db: Database.Database): void {
       Number.isInteger(sample.value) && sample.value >= 1 && sample.value <= 7
         ? sample.value
         : null;
-    insert.run(sample.profile_id, sample.date, canonical, canonical, type);
+    insert.run(
+      sample.profile_id,
+      sample.date,
+      recordedAt,
+      canonical,
+      canonical === null ? null : "stated",
+      type
+    );
   }
 
   db.prepare(
