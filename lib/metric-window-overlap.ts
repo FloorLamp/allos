@@ -510,6 +510,14 @@ export function anchorImpliedDay(
   // the push moment, not a midnight — on the attribution it already had. And a window
   // reaching back PAST that midnight is not one device day at all, so it states
   // nothing rather than naming the last of the days it spans.
+  //
+  // THE RESIDUAL IS A PUSH MOMENT THAT LANDS ON THE GRID, and it is worth knowing
+  // rather than discovering: a sync whose whole window sits inside one device day cuts
+  // a bucket clamped at BOTH ends, and an end that happens to fall on a quarter hour
+  // then states an anchor the device never cut. It cannot reach a day the bucket did
+  // not touch, because the guard below holds the derived day's own window around the
+  // whole window — so the worst it does is the day BEFORE the one covered, which is
+  // the same size and direction of error the profile attribution makes today.
   const endMs = instantMs(endedAt);
   if (endMs === null) return null;
   const impliedStart = endMs - DAY_MS;
