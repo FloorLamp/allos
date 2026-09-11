@@ -287,7 +287,7 @@ export function readinessVerdict(pr) {
   return { failures, ready: !pr.draft };
 }
 
-/** Every SHA-shaped token a review body states, longest-prefix rules aside. */
+/** Every SHA-shaped token a review body states, in the order it states them. */
 const shasStated = (body) =>
   [...String(body ?? "").matchAll(/[0-9a-f]{8,40}/g)].map((match) => match[0]);
 
