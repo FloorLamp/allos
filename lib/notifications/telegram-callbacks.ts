@@ -279,15 +279,21 @@ export const TAP_SWEEP_BUDGET_MS = TELEGRAM_CALL_TIMEOUT_MS;
 export async function handleCallbackQuery(
   cq: TelegramCallbackQuery
 ): Promise<void> {
-  const attempt = dispatchTap(cq);
-  if (attempt == null) {
-    // Unknown/malformed token — a button from a message whose token shape has since
-    // been retired. Nothing is written, so answer honestly rather than silently (#1716).
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
-    return;
-  }
+  // RECOGNITION IS INSIDE THE TRY, exactly as it was when `dispatchTap` was itself
+  // async: a throw out of a parser, or out of the outdated-token answer, took the
+  // catch's sweep before and still does. Only the SHAPE moved, never the envelope —
+  // `attempt` is simply still undefined when the throw came from before it was built.
+  let attempt: TapAttempt | null | undefined;
   let wrote: TapWrote;
   try {
+    attempt = dispatchTap(cq);
+    if (attempt == null) {
+      // Unknown/malformed token — a button from a message whose token shape has since
+      // been retired. Nothing is written, so answer honestly rather than silently
+      // (#1716).
+      await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+      return;
+    }
     wrote = await attempt.done;
   } catch (e) {
     // ── A WRITE THAT LANDS WITH A FAILED REBUILD KEEPS ITS SWEEP (#3951 F4) ───
@@ -325,7 +331,7 @@ export async function handleCallbackQuery(
     });
     const chatId = cq.message?.chat?.id;
     await sweepAfterTap([
-      ...attempt.subjects,
+      ...(attempt?.subjects ?? []),
       ...(chatId == null ? [] : getProfilesByTelegramChatId(String(chatId))),
     ]);
     throw e;
