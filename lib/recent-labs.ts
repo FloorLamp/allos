@@ -17,15 +17,16 @@ import {
 // year is the natural window for routine labs; a value beyond it read as "current"
 // on a glance dashboard is the dishonesty this closes.
 //
-// NOT THE RETEST CLOCK, AND ANY AGREEMENT WITH IT IS A COINCIDENCE (#4242). The other
-// year-shaped lab interval in the repo is `DEFAULT_RETEST_DAYS`
+// NOT THE RETEST CLOCK, AND ANY AGREEMENT WITH IT IS A COINCIDENCE (#4242). The repo's
+// other lab-wide staleness interval is `DEFAULT_RETEST_DAYS`
 // (lib/reference-range/retest.ts), and the two answer DIFFERENT questions from the
 // freshness doctrine: this one is a PRESENTATION FLOOR ("may this card frame the reading
 // as current?", consequence: an age label) and that one is a RETEST CLOCK ("is a redraw
 // due?", consequence: a nudge). They are deliberately NOT shared by reference — a change
 // to how long a glance may claim currency must not silently move when somebody is told to
-// go and get blood drawn. Whenever the two numbers happen to match, that is coincidence,
-// not agreement, and neither may be edited by reading the other.
+// go and get blood drawn. Whenever the two intervals happen to coincide — as they do at
+// the time of writing — that is coincidence, not agreement, and neither may be edited by
+// reading the other.
 export const RECENT_LAB_STALE_DAYS = 365;
 
 // FRESH ENOUGH TO CLAIM THE GLANCE (owner ruling #4232, 2026-08-30). A clinical
