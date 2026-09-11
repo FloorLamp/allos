@@ -1,16 +1,19 @@
-// DB INTEGRATION TIER — the Bristol stool-form write core (issue #2785).
+// DB INTEGRATION TIER — the stool write core (issues #2785, #5872).
 //
 // The pure tier pins the vocabulary and the panel shape. What only the real schema can
-// prove is the GRAIN, which is the whole placement decision:
+// prove is the GRAIN, and #5872 CHANGED THE ANSWER:
 //
-//   • two movements at different times of one day are TWO rows, because the natural
-//     key `(profile_id, metric, source, origin, started_at)` carries the instant. The
-//     shared point-measure writer files at the day's midnight, so a Bristol row written
-//     through it would have CORRECTED the morning's reading with the evening's — and
-//     nothing downstream could tell, because the surviving row looks perfectly normal.
-//   • a re-tap inside the same minute settles on ONE row, so a double-tap is a
-//     correction rather than a phantom second movement.
-//   • a value the scale does not name never reaches the table at all, from any door.
+//   • two movements are TWO ROWS, unconditionally. The ledger is append-only and has no
+//     natural key, so the day, the minute and the second are all irrelevant to whether
+//     a second log makes a second row.
+//   • a second movement STATED AT THE SAME MINUTE is a second row, where the samples
+//     table's `(profile_id, metric, source, origin, started_at)` key made it an UPSERT
+//     that silently replaced the first. That is the defect the ledger exists to close,
+//     and the case below is the one whose expectation inverted.
+//   • a movement nobody timed writes `occurred_at` NULL, where the old store stamped
+//     the wall clock and left the row unable to say which it was.
+//   • a value the scale does not name never reaches the table at all, from any door —
+//     and NULL is not such a value: it is a movement nobody saw the form of.
 //
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
 //
@@ -25,7 +28,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
-import { zonedWallIsoToUtc } from "@/lib/date";
+import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { logBristolStool } from "@/lib/offline/writes";
 import {
@@ -33,7 +36,11 @@ import {
   getBristolReadings,
 } from "@/lib/queries/bristol-stool";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
-import { deleteMetricRow, updateMetricRow } from "@/lib/metric-readings";
+import {
+  correctStoolEventCore,
+  deleteStoolEventCore,
+  logStoolCore,
+} from "@/lib/stool-log-write";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import { STATED_FUTURE_SKEW_MS } from "@/lib/stated-time";
 import { FROZEN_WALL_TIME_UTC } from "./frozen-clock";
@@ -41,17 +48,25 @@ import { FROZEN_WALL_TIME_UTC } from "./frozen-clock";
 // Profiles here take the instance-default timezone, so profile-local is UTC.
 let profileId: number;
 
-function rows(): { date: string; started_at: string; value: number }[] {
+interface Row {
+  date: string;
+  occurred_at: string | null;
+  time_source: string | null;
+  type: number | null;
+}
+
+function rows(): Row[] {
   return db
     .prepare(
-      `SELECT date, started_at, value FROM metric_samples
-        WHERE profile_id = ? AND metric = ? ORDER BY started_at`
+      `SELECT date, occurred_at, time_source, type FROM stool_events
+        WHERE profile_id = ? ORDER BY id`
     )
-    .all(profileId, BRISTOL_STOOL_METRIC) as {
-    date: string;
-    started_at: string;
-    value: number;
-  }[];
+    .all(profileId) as Row[];
+}
+
+/** The profile-local "HH:MM" a stored canonical instant renders at. */
+function hhmm(at: string | null): string | null {
+  return at === null ? null : zonedDateParts(getTimezone(profileId), new Date(at)).hhmm;
 }
 
 beforeEach(() => {
@@ -73,19 +88,26 @@ describe("logBristolStool — instant grain", () => {
 
     const stored = rows();
     expect(stored).toHaveLength(2);
-    expect(stored.map((r) => r.value)).toEqual([2, 6]);
-    expect(stored.map((r) => r.started_at)).toEqual([
-      `${date}T08:12:00`,
-      `${date}T19:40:00`,
-    ]);
+    expect(stored.map((r) => r.type)).toEqual([2, 6]);
+    expect(stored.map((r) => hhmm(r.occurred_at))).toEqual(["08:12", "19:40"]);
+    expect(stored.map((r) => r.time_source)).toEqual(["stated", "stated"]);
     // And the reader hands both over — a day is not collapsed on the way out either.
     const day = getBristolPanel(profileId, date).days.at(-1)!;
     expect(day.types).toEqual([2, 6]);
   });
 
-  it("settles a re-log of the SAME STATED time onto one row (a correction)", () => {
-    // A stated wall time is a claim about WHEN, so restating it corrects that
-    // reading rather than inventing a second movement at the same minute.
+  // THE MERGE DEFECT, AND THE CASE WHOSE EXPECTATION INVERTED (#5872 defect 1).
+  //
+  // This test used to assert the opposite, and its comment argued for it: "a stated
+  // wall time is a claim about WHEN, so restating it corrects that reading rather than
+  // inventing a second movement at the same minute." The argument is coherent and the
+  // consequence is data loss — two movements a minute apart, both stated to the minute,
+  // and the first one is gone with the surviving row looking perfectly normal. Nobody
+  // with an active gut condition finds that hypothetical.
+  //
+  // FALSIFIED against the unfixed tree: run this case with `logBristolStool` still
+  // writing `metric_samples` and it fails with one row where two are expected.
+  it("keeps two movements stated at the SAME minute as two rows", () => {
     const date = today(profileId);
     expect(logBristolStool(profileId, date, 5, "09:00")).toEqual({
       wrote: true,
@@ -93,67 +115,50 @@ describe("logBristolStool — instant grain", () => {
     expect(logBristolStool(profileId, date, 4, "09:00")).toEqual({
       wrote: true,
     });
-    expect(rows()).toEqual([
-      { date, started_at: `${date}T09:00:00`, value: 4 },
-    ]);
+    const stored = rows();
+    expect(stored).toHaveLength(2);
+    expect(stored.map((r) => r.type)).toEqual([5, 4]);
+    expect(stored.map((r) => hhmm(r.occurred_at))).toEqual(["09:00", "09:00"]);
   });
 
-  it("resolves to the SECOND, so a deliberate second reading is its own row", () => {
-    // The resolution is the whole design. `stool-form` is declared `additive` and its
-    // accidental double-tap is absorbed by the ledger's two-second cooldown, so a tap
-    // the ledger would absorb and a tap this key would collapse are the same tap —
-    // any deliberate second movement lands on a later second and survives. At MINUTE
-    // resolution they would not line up, and a genuine second reading forty seconds
-    // after the first would vanish with the surviving row looking perfectly normal.
-    //
-    // Use the stated-time door to distinguish the writes under the tier clock freeze.
+  // THE INVENTED INSTANT (#5872 defect 2). FALSIFIED against the unfixed tree: the old
+  // core stamped `sampleTime`'s reading of the wall clock, so `occurred_at`'s
+  // equivalent was always present and the row could not say nobody had timed it.
+  it("writes no instant at all when no time is given", () => {
     const date = today(profileId);
-    expect(logBristolStool(profileId, date, 3, "09:00")).toEqual({
-      wrote: true,
-    });
-    db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
-         VALUES (?, 'manual', ?, ?, ?, ?, 6)`
-    ).run(
-      profileId,
-      BRISTOL_STOOL_METRIC,
-      date,
-      `${date}T09:00:40`,
-      `${date}T09:00:40`
-    );
-    expect(rows().map((r) => r.value)).toEqual([3, 6]);
-  });
-
-  it("stamps the profile-local clock when no time is given", () => {
-    const date = today(profileId);
-    // BRACKETED, not "not midnight" (#3214). A one-tap log records WHEN, which is
-    // what makes a second tap a second observation rather than an overwrite of the
-    // first — and the property that says so is "stamped during this operation", so
-    // the write is bracketed between two readings of the app's own clock seam and
-    // the stamp has to land between them. The old check inferred the clock from a
-    // single value the stamp was unlikely to equal (`${date}T00:00:00`), which is
-    // wrong the moment the real value IS the marker: it reds for the first second
-    // after local midnight, and it would go on passing if the fallback were ever
-    // changed to any other fixed time.
-    //
-    // The stored stamp is DECODED back to an instant rather than compared against a
-    // rebuilt string — rebuilding it would restate the writer's own arithmetic and
-    // could not see a mutant in it.
-    const zone = getTimezone(profileId);
     const before = clockNow().getTime();
     expect(logBristolStool(profileId, date, 3)).toEqual({ wrote: true });
     const after = clockNow().getTime();
 
     const stored = rows();
     expect(stored).toHaveLength(1);
-    const stampedAt = zonedWallIsoToUtc(zone, stored[0].started_at);
-    expect(stampedAt).not.toBeNull();
-    // Whole seconds, so the lower bound is `before` floored to its own second; the
-    // upper bound needs no slack.
-    expect(stampedAt!.getTime()).toBeGreaterThanOrEqual(
-      Math.floor(before / 1000) * 1000
-    );
-    expect(stampedAt!.getTime()).toBeLessThanOrEqual(after);
+    expect(stored[0].occurred_at).toBeNull();
+    expect(stored[0].time_source).toBeNull();
+
+    // The TAP instant is still recorded, and it is the only clock read on this path —
+    // bracketed between two readings of the app's own clock seam (#3214) rather than
+    // compared against a rebuilt string, which would restate the writer's arithmetic
+    // and could not see a mutant in it.
+    const recordedAt = db
+      .prepare("SELECT recorded_at FROM stool_events WHERE profile_id = ?")
+      .get(profileId) as { recorded_at: string };
+    const at = new Date(recordedAt.recorded_at).getTime();
+    expect(at).toBeGreaterThanOrEqual(Math.floor(before / 1000) * 1000);
+    expect(at).toBeLessThanOrEqual(after);
+  });
+
+  // REGRESSION GUARD for the invariant the optional type exists to serve. Nothing in
+  // slice 1 calls this from a surface — slice 2's `Didn't see` tile does — so this is
+  // the core's own contract, pinned before the tile that depends on it is built.
+  it("records an occurrence with no type at all", () => {
+    const date = today(profileId);
+    const outcome = logStoolCore(profileId, date, null);
+    expect(outcome.kind).toBe("logged");
+    expect(rows()).toEqual([
+      { date, occurred_at: null, time_source: null, type: null },
+    ]);
+    // And it is not a reading: the panel counts typed rows and never sees this one.
+    expect(getBristolReadings(profileId, date, date)).toEqual([]);
   });
 });
 
@@ -247,7 +252,12 @@ describe("logBristolStool — a stated time is judged (#4425)", () => {
     );
     const stored = rows();
     expect(stored).toHaveLength(1);
-    expect(stored[0].started_at.slice(0, 16)).toBe(`${date}T${filedAt}`);
+    // A REFUSED statement no longer falls back onto a stamped minute — it falls back to
+    // NO stated instant, which is the honest state the ledger can now hold. The row is
+    // still filed on the day it named.
+    expect(stored[0].date).toBe(date);
+    expect(hhmm(stored[0].occurred_at)).toBe(refusal ? null : filedAt);
+    expect(stored[0].time_source).toBe(refusal ? null : "stated");
   });
 
   // The refusal costs the STATEMENT, never the observation — the whole point of the
@@ -282,80 +292,108 @@ describe("logBristolStool — any real past day, never the future", () => {
   });
 });
 
-// THE RECORD'S CORRECTION AND DELETE (#4433). Stool takes no write core of its own for
-// either: a Bristol reading IS a `metric_samples` row, so `app/(app)/stool-actions.ts`
-// addresses it through the shared reading contract, which is where the #133 edit lock,
-// the #507/#508 tombstone and the #2642 undo capture already live. This proves the
-// target the actions build reaches exactly this row and nothing beside it.
+// THE RECORD'S CORRECTION AND DELETE (#4433), on the ledger's own cores since #5872.
+//
+// Stool used to take no write core of its own for either: a reading WAS a
+// `metric_samples` row, so the actions addressed it through the shared reading contract.
+// A movement is its own event now, so the cores here are what the actions call — and the
+// correction gained the two moves the old store could not express, because it had
+// nowhere to hold an absent type.
 describe("a logged movement is correctable and deletable (#4433)", () => {
-  const target = (id: number) =>
-    ({ store: "metric_samples", id, metric: BRISTOL_STOOL_METRIC }) as const;
-
   const onlyRow = () =>
     db
-      .prepare(
-        `SELECT id, value FROM metric_samples
-          WHERE profile_id = ? AND metric = ? ORDER BY id`
-      )
-      .all(profileId, BRISTOL_STOOL_METRIC) as { id: number; value: number }[];
+      .prepare("SELECT id, type FROM stool_events WHERE profile_id = ? ORDER BY id")
+      .all(profileId) as { id: number; type: number | null }[];
 
-  it("corrects the mis-tapped type in place, leaving the instant alone", () => {
+  // REGRESSION GUARD — this worked through `updateMetricRow` before and must go on
+  // working through the new core.
+  it("corrects the mis-tapped type in place, leaving the instant and day alone", () => {
     const date = today(profileId);
     logBristolStool(profileId, date, 3, "08:12");
     const [row] = onlyRow();
 
-    expect(updateMetricRow(profileId, target(row.id), 4)).toEqual({ ok: true });
-    // ONE row still, at the same instant: a correction moves the type and nothing
-    // else, which is why the form offers no time field (the key IS the instant).
+    expect(correctStoolEventCore(profileId, row.id, { type: 4 })).toEqual({
+      kind: "updated",
+      eventId: row.id,
+      date,
+    });
     expect(rows()).toEqual([
-      { date, started_at: `${date}T08:12:00`, value: 4 },
+      { date, occurred_at: rows()[0].occurred_at, time_source: "stated", type: 4 },
     ]);
+    expect(hhmm(rows()[0].occurred_at)).toBe("08:12");
   });
 
-  it("deletes with an undo token, and the undo puts the reading back", () => {
+  // FALSIFIED against the unfixed tree in the strongest sense available: there is no
+  // unfixed tree in which this CAN pass. `metric_samples.value` is REAL NOT NULL, so
+  // "clear the type" had no representation at all and `updateMetricRow` took a number.
+  it("sets a type on an untyped row and clears one back off", () => {
+    const date = today(profileId);
+    logStoolCore(profileId, date, null);
+    const [untyped] = onlyRow();
+
+    expect(correctStoolEventCore(profileId, untyped.id, { type: 6 })).toMatchObject({
+      kind: "updated",
+    });
+    expect(onlyRow().map((r) => r.type)).toEqual([6]);
+
+    expect(correctStoolEventCore(profileId, untyped.id, { type: null })).toMatchObject({
+      kind: "updated",
+    });
+    expect(onlyRow().map((r) => r.type)).toEqual([null]);
+  });
+
+  // REGRESSION GUARD: an ABSENT field leaves the row alone, which is the house patch
+  // convention and the thing that keeps "clear the type" from being what an untouched
+  // form posts.
+  it("leaves the type alone when the patch does not name it", () => {
+    const date = today(profileId);
+    logBristolStool(profileId, date, 5, "10:00");
+    const [row] = onlyRow();
+    expect(correctStoolEventCore(profileId, row.id, {})).toMatchObject({
+      kind: "updated",
+    });
+    expect(onlyRow().map((r) => r.type)).toEqual([5]);
+  });
+
+  // REGRESSION GUARD — the #2642 shape the record's ⋯ → Delete depends on.
+  it("deletes with an undo token, and the undo puts the movement back", () => {
     const date = today(profileId);
     logBristolStool(profileId, date, 6, "19:40");
     const [row] = onlyRow();
 
-    const outcome = deleteMetricRow(profileId, target(row.id));
-    expect(outcome.ok).toBe(true);
+    const outcome = deleteStoolEventCore(profileId, row.id);
     expect(outcome.undoId).toBeTypeOf("number");
     expect(rows()).toEqual([]);
 
     expect(restoreDeletedRow(profileId, outcome.undoId!)).toBe(true);
-    expect(rows()).toEqual([
-      { date, started_at: `${date}T19:40:00`, value: 6 },
-    ]);
+    const back = rows();
+    expect(back).toHaveLength(1);
+    expect(back[0].type).toBe(6);
+    expect(hhmm(back[0].occurred_at)).toBe("19:40");
   });
 
-  it("refuses a target naming another metric's row", () => {
+  // REGRESSION GUARD on the profile boundary — the invariant every read and write here
+  // is scoped by. It used to be bought by the metric in the target; it is bought by the
+  // core's own WHERE clause now, and the outcome must be the same refusal.
+  it("refuses another profile's row from both doors", () => {
+    const other = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Neighbour')").run()
+        .lastInsertRowid
+    );
     const date = today(profileId);
-    db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
-         VALUES (?, 'manual', 'waist_circumference_cm', ?, ?, ?, 82)`
-    ).run(profileId, date, `${date}T07:00:00`, `${date}T07:00:00`);
-    const waist = db
-      .prepare(
-        `SELECT id FROM metric_samples
-          WHERE profile_id = ? AND metric = 'waist_circumference_cm'`
-      )
-      .get(profileId) as { id: number };
+    logBristolStool(other, date, 4, "07:00");
+    const theirs = db
+      .prepare("SELECT id FROM stool_events WHERE profile_id = ?")
+      .get(other) as { id: number };
 
-    expect(deleteMetricRow(profileId, target(waist.id))).toEqual({
-      ok: false,
-      undoId: null,
+    expect(correctStoolEventCore(profileId, theirs.id, { type: 1 })).toEqual({
+      kind: "not-found",
     });
-    expect(updateMetricRow(profileId, target(waist.id), 4)).toEqual({
-      ok: false,
-      error: "not-found",
-    });
-    // The waist row is untouched — the guard is the metric in the target, not luck.
+    expect(deleteStoolEventCore(profileId, theirs.id)).toEqual({ undoId: null });
     expect(
       db
-        .prepare(
-          `SELECT value FROM metric_samples WHERE id = ? AND profile_id = ?`
-        )
-        .get(waist.id, profileId)
-    ).toEqual({ value: 82 });
+        .prepare("SELECT type FROM stool_events WHERE id = ?")
+        .get(theirs.id)
+    ).toEqual({ type: 4 });
   });
 });
