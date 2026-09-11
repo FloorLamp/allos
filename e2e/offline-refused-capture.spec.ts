@@ -809,6 +809,9 @@ test("a refused workout capture at close says so and claims no sync", async ({
       .getByTestId("next-set-card")
       .getByRole("button", { name: "Use" })
       .click();
+    // "Use" confirms set 1 while the later rows stay planned, so the load sits
+    // behind set 1's door in the shared layout (#5762); one tap reads it back.
+    await page.getByTestId("set-vary-1").click(); // testid-scope-ok: ActivityOverlay portals the workspace to <body>, one copy
     await expect(page.getByTestId("set1-weight")).toHaveValue(/^\d/);
     await page.getByLabel("Activity name").fill(marker);
 

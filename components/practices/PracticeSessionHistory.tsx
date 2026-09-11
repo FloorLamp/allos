@@ -170,6 +170,9 @@ export default function PracticeSessionHistory({
         rowTestId={(session) => `practice-session-${session.id}`}
         editTestId={() => "practice-session-edit"}
         deleteTestId={() => "practice-session-delete"}
+        // #5300 rule 5 / #5617 AC1: the correction opens in the converged
+        // sheet host rather than swapping the row's cells out for a form.
+        editHost="sheet"
         renderEditForm={(session, done) => (
           <PracticeSessionForm
             key={session.id}

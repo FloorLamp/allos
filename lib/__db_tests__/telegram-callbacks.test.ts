@@ -43,6 +43,7 @@ import { db, rawDb, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   getProfileSetting,
+  getProfilesByTelegramChatId,
   setProfileSetting,
   setTelegramBotConfig,
   getPublicUrl,
@@ -1352,22 +1353,116 @@ async function orderedFixture() {
   return { ...profile, pointer, tap, data };
 }
 
-async function receivedFixture() {
+// The chat defaults to OWN_CHAT for every case that quotes a prompt explicitly. The
+// BARE-number cases (#5654) take a chat of their own instead, because their lookup is
+// "every open prompt this sender left in this chat" — and this file's DB is shared
+// across its tests, so a receipt an earlier test deliberately left pending in OWN_CHAT
+// would be a second candidate and turn a one-prompt case into the ambiguous one.
+async function receivedFixture(chatId = OWN_CHAT) {
   const profile = seedProfile("Received", { quantityOnHand: 4 });
-  const loginId = seedLoginTelegram(profile.profileId, OWN_CHAT);
+  const loginId = seedLoginTelegram(profile.profileId, chatId);
   const action = refillReceivedAction(profile.profileId, profile.supplementId)!;
   const messageId = await sendTelegramMessage(
-    OWN_CHAT,
+    chatId,
     { title: "Supply", body: "Running low", actions: [action], kind: "refill" },
     profile.profileId
   );
   const offerId = Number(action.data!.split(":")[2]);
   const open = {
-    ...cq(action.data!, OWN_CHAT),
+    ...cq(action.data!, chatId),
     from: { id: 71 },
-    message: { ...cq(action.data!, OWN_CHAT).message, message_id: messageId! },
+    message: { ...cq(action.data!, chatId).message, message_id: messageId! },
   };
-  return { ...profile, loginId, offerId, open, action };
+  return { ...profile, chatId, loginId, offerId, open, action };
+}
+
+// Synthetic, low-entropy, and unique per case so one test's leftovers are never
+// another's candidates. Telegram chat ids and sender ids here are invented.
+let receiptChatSeq = 0;
+const nextReceiptChat = () =>
+  `55504${String(receiptChatSeq++).padStart(2, "0")}`;
+
+// A number typed as an ORDINARY message: no `reply_to_message` at all (#5654).
+function bareNumber(
+  chatId: string,
+  text: string,
+  messageId = 901,
+  senderId = 71
+) {
+  return {
+    message_id: messageId,
+    chat: { id: chatId },
+    from: { id: senderId },
+    text,
+  };
+}
+
+// Bodies of the receipt answers sent since `from` — the acknowledgement the chat sees.
+// The title arrives PREFIXED with the subject's label, so match on its tail.
+function receiptBodies(from: number): string[] {
+  return vi
+    .mocked(sendMessageRaw)
+    .mock.calls.slice(from)
+    .filter((call) => call[1].title?.endsWith("Supply receipt"))
+    .map((call) => {
+      const body = call[1].body ?? "";
+      // A receipt answer is plain text; anything else is a change worth failing on.
+      if (typeof body !== "string")
+        throw new Error("receipt answer was not plain text");
+      return body;
+    });
+}
+
+function sendCount(): number {
+  return vi.mocked(sendMessageRaw).mock.calls.length;
+}
+
+function quantityOf(profileId: number, itemId: number): number {
+  return (
+    db
+      .prepare(
+        "SELECT quantity_on_hand FROM intake_items WHERE profile_id = ? AND id = ?"
+      )
+      .get(profileId, itemId) as { quantity_on_hand: number }
+  ).quantity_on_hand;
+}
+
+// A second tracked bottle for the same profile, so one sender can leave two prompts
+// open at once.
+function seedSecondBottle(profileId: number, name: string): number {
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+    VALUES (?, ?, 1, 'supplement', 'daily', 'should', 4, 1)`
+      )
+      .run(profileId, name).lastInsertRowid
+  );
+  db.prepare(
+    "INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort) VALUES (?, '1 tablet', 'morning', 'any', 0)"
+  ).run(itemId);
+  return itemId;
+}
+
+// Send the reminder carrying this item's Received button and tap it, leaving the
+// prompt pending — the same two steps `receivedFixture` + `handleCallbackQuery` do.
+async function openReceipt(
+  profileId: number,
+  itemId: number,
+  chatId: string
+): Promise<number> {
+  const action = refillReceivedAction(profileId, itemId)!;
+  const messageId = await sendTelegramMessage(
+    chatId,
+    { title: "Supply", body: "Running low", actions: [action], kind: "refill" },
+    profileId
+  );
+  await handleCallbackQuery({
+    ...cq(action.data!, chatId),
+    from: { id: 71 },
+    message: { ...cq(action.data!, chatId).message, message_id: messageId! },
+  });
+  return Number(action.data!.split(":")[2]);
 }
 
 function receiptReply(
@@ -1378,7 +1473,7 @@ function receiptReply(
   const offer = readRefillOffer(f.profileId, f.offerId)!.offer;
   return {
     message_id: messageId,
-    chat: { id: OWN_CHAT },
+    chat: { id: f.chatId },
     from: { id: 71 },
     text: amount,
     reply_to_message: {
@@ -1564,6 +1659,93 @@ describe("Received receipt operation", () => {
     expect(receivedCount(f)).toBe(4);
     await handleReceivedReply(reply);
     expect(receivedCount(f)).toBe(34);
+  });
+
+  // ---- #5654: the same number, typed WITHOUT the Reply swipe ----
+
+  it("settles a bare number against the sender's one open prompt, and never adds twice", async () => {
+    const chat = nextReceiptChat();
+    const f = await receivedFixture(chat);
+    await handleCallbackQuery(f.open);
+    const before = sendCount();
+    expect(await handleReceivedReply(bareNumber(chat, "120"))).toBe(true);
+    expect(receivedCount(f)).toBe(124);
+    // The acknowledgement an explicit Reply earns today, on the same wording.
+    expect(receiptBodies(before)).toEqual(["Added 120 · 124 on hand"]);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "completed"
+    );
+    // The settled prompt still answers an explicit Reply, and adds nothing.
+    const replayed = sendCount();
+    await handleReceivedReply(receiptReply(f, "120", 902));
+    expect(receiptBodies(replayed)).toEqual([
+      "Already recorded: Added 120 · 124 on hand",
+    ]);
+    expect(receivedCount(f)).toBe(124);
+    // A second BARE 120 finds no open prompt: it is not claimed, and writes nothing.
+    const second = sendCount();
+    expect(await handleReceivedReply(bareNumber(chat, "120", 903))).toBe(false);
+    expect(receivedCount(f)).toBe(124);
+    expect(receiptBodies(second)).toEqual([]);
+  });
+
+  it("refuses to choose between one sender's two open prompts", async () => {
+    const chat = nextReceiptChat();
+    const f = await receivedFixture(chat);
+    await handleCallbackQuery(f.open);
+    const otherId = seedSecondBottle(f.profileId, "Second receipt bottle");
+    const otherOffer = await openReceipt(f.profileId, otherId, chat);
+    const before = sendCount();
+    expect(await handleReceivedReply(bareNumber(chat, "120"))).toBe(true);
+    expect(receiptBodies(before)).toEqual(["Reply to the prompt you mean."]);
+    // NOTHING written, and neither prompt consumed.
+    expect(receivedCount(f)).toBe(4);
+    expect(quantityOf(f.profileId, otherId)).toBe(4);
+    for (const id of [f.offerId, otherOffer])
+      expect(readRefillOffer(f.profileId, id)!.offer.state).toBe("pending");
+  });
+
+  it("refuses to choose between two profiles served by one chat", async () => {
+    const chat = nextReceiptChat();
+    const a = await receivedFixture(chat);
+    const b = await receivedFixture(chat);
+    expect(getProfilesByTelegramChatId(chat)).toEqual(
+      [a.profileId, b.profileId].sort((x, y) => x - y)
+    );
+    await handleCallbackQuery(a.open);
+    await handleCallbackQuery(b.open);
+    const before = sendCount();
+    expect(await handleReceivedReply(bareNumber(chat, "120"))).toBe(true);
+    expect(receiptBodies(before)).toEqual(["Reply to the prompt you mean."]);
+    expect(receivedCount(a)).toBe(4);
+    expect(receivedCount(b)).toBe(4);
+  });
+
+  it("claims a bare number only for the sender who opened the prompt", async () => {
+    const chat = nextReceiptChat();
+    const f = await receivedFixture(chat);
+    await handleCallbackQuery(f.open);
+    const before = sendCount();
+    // Another member of the same chat, same text: not this person's prompt.
+    expect(await handleReceivedReply(bareNumber(chat, "120", 921, 72))).toBe(
+      false
+    );
+    // Not a number: the message is not claimed at all.
+    expect(await handleReceivedReply(bareNumber(chat, "abc", 922))).toBe(false);
+    // A linked chat with no open prompt: unchanged.
+    const quiet = nextReceiptChat();
+    await receivedFixture(quiet);
+    expect(await handleReceivedReply(bareNumber(quiet, "120", 923))).toBe(
+      false
+    );
+    expect(receivedCount(f)).toBe(4);
+    expect(receiptBodies(before)).toEqual([]);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    // The CONTRAST: the sender who opened it settles the very same text.
+    expect(await handleReceivedReply(bareNumber(chat, "120", 924))).toBe(true);
+    expect(receivedCount(f)).toBe(124);
   });
 
   it("rolls stock and receipt state back together when completion persistence fails", async () => {
