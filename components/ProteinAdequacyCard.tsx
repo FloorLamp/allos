@@ -1,20 +1,14 @@
 import type { ProteinAdequacy, ProteinToday } from "@/lib/protein";
+import AdequacyRow from "./AdequacyRow";
 import ProteinGauge from "./ProteinGauge";
 
 // The protein ROW of the "Today's nutrients" card (issues #767, #824, #974, #980). A pure
 // formatter over the ONE computation (getProteinToday + getProteinAdequacy → the pure
 // protein engine), shared with the coaching-tier adequacy finding so the surfaces can't
 // disagree — the FINDING copy is untouched, this is one more formatter (#980 item 1). The
-// band gauge (#974) leads. The gram quick-add now lives in the food logging flow, leaving
-// this analysis row read-only. The adequacy sentence (#767) demotes to a muted caption
-// under the gauge. A left status accent (never a full card border now — it's a row)
-// carries the weekly verdict. Coaching tier only — never a push.
-
-const STATUS_ACCENT: Record<string, string> = {
-  below: "border-l-amber-300 dark:border-l-amber-700",
-  within: "border-l-emerald-300 dark:border-l-emerald-700",
-  above: "border-l-slate-300 dark:border-l-slate-600",
-};
+// row's accent, heading and verdict word are AdequacyRow's, shared with fiber (#4485);
+// the band gauge (#974) leads beneath them. The gram quick-add lives in the food logging
+// flow, leaving this analysis row read-only. Coaching tier only — never a push.
 
 const STATUS_LABEL: Record<string, string> = {
   below: "Below goal",
@@ -39,23 +33,14 @@ export default function ProteinAdequacyCard({
   // The accent follows the WEEKLY verdict, never today's in-progress figure.
   const status = adequacy?.status;
   return (
-    <div
-      data-testid="protein-adequacy"
-      data-status={status ?? ""}
-      data-basis={adequacy?.intake.basis ?? today?.todayIntake?.basis ?? ""}
-      className={`border-l-4 pl-3 ${STATUS_ACCENT[status ?? ""] ?? STATUS_ACCENT.within}`}
+    <AdequacyRow
+      testId="protein-adequacy"
+      title="Protein"
+      status={status}
+      basis={adequacy?.intake.basis ?? today?.todayIntake?.basis ?? ""}
+      statusLabel={status && STATUS_LABEL[status]}
     >
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-          Protein
-        </h3>
-        {status && (
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            {STATUS_LABEL[status]}
-          </span>
-        )}
-      </div>
       {today && <ProteinGauge today={today} periodLabel={periodLabel} />}
-    </div>
+    </AdequacyRow>
   );
 }

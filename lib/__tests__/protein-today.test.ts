@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { TODAY_PERIOD } from "@/lib/nutrient-adequacy";
 import {
   proteinGaugeMarker,
   proteinIntake,
@@ -39,6 +40,7 @@ function makeToday(over: Partial<ProteinToday>): ProteinToday {
 describe("proteinTodayNudgeLine", () => {
   it("a floor basis (estimated + logged) marks the floor with a trailing '+'", () => {
     const todayIntake = proteinIntake({
+      period: TODAY_PERIOD,
       dailyTracked: null,
       dailyLogged: 30,
       dailyEstimated: 25,
@@ -58,6 +60,7 @@ describe("proteinTodayNudgeLine", () => {
   // integration writes one per meal as it syncs, so at 09:00 the reading is breakfast.
   it("a tracked reading carries the floor marker too — the '+' is unconditional (#3903)", () => {
     const todayIntake = proteinIntake({
+      period: TODAY_PERIOD,
       dailyTracked: 120,
       dailyEstimated: 0,
     })!;
@@ -133,6 +136,7 @@ describe("proteinTodayNudgeLine", () => {
 describe("gauge/nudge share one figure (#221)", () => {
   it("the nudge line's today figure is exactly todayGrams", () => {
     const todayIntake = proteinIntake({
+      period: TODAY_PERIOD,
       dailyTracked: null,
       dailyLogged: 42,
       dailyEstimated: 0,
@@ -284,7 +288,9 @@ describe("the dashboard protein line says the situation, not the estimator (#325
   it.each(STATES)(
     "%s: a plain figure on the row, and only true statements in the hover",
     (label, args, amount, hover) => {
-      const todayIntake = args ? proteinIntake(args)! : null;
+      const todayIntake = args
+        ? proteinIntake({ ...args, period: TODAY_PERIOD })!
+        : null;
       if (todayIntake) expect(todayIntake.basis).toBe(label);
       const t = makeToday({
         todayIntake,
@@ -321,11 +327,19 @@ describe("the dashboard protein line says the situation, not the estimator (#325
   it("#3903's probe: the larger floor is the in-app sum, and the hover names both sources", () => {
     const target70 = proteinTarget({ goal: "active", bodyweightKg: 70 })!;
     const todayIntake = proteinIntake({
+      period: TODAY_PERIOD,
       dailyTracked: 20,
       dailyLogged: 40,
       dailyEstimated: 30,
     })!;
-    expect(todayIntake).toEqual({
+    // The composition the probe turns on; the period, winner and floor the result
+    // also carries are asserted in lib/__tests__/nutrient-adequacy.test.ts.
+    expect({
+      grams: todayIntake.grams,
+      basis: todayIntake.basis,
+      estimatedGrams: todayIntake.estimatedGrams,
+      loggedGrams: todayIntake.loggedGrams,
+    }).toEqual({
       grams: 70,
       basis: "both-sources",
       estimatedGrams: 30,
@@ -351,6 +365,7 @@ describe("the dashboard protein line says the situation, not the estimator (#325
     // the SAME sentence: the row reports, the adequacy computation judges, and
     // neither does the other's job.
     const floorBasis = proteinIntake({
+      period: TODAY_PERIOD,
       dailyTracked: null,
       dailyEstimated: 20,
     })!;

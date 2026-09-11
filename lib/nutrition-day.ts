@@ -32,6 +32,7 @@
 // predicate reads it rather than inventing a severity of its own.
 
 import type { FiberAdequacy } from "./fiber";
+import type { NutrientAdequacyStatus } from "./nutrient-adequacy";
 import type { MessageLine } from "./notifications/message-line";
 import type { ProteinAdequacy } from "./protein";
 
@@ -46,10 +47,6 @@ export const NUTRIENT_LABELS: Record<NutrientKey, string> = {
   protein: "protein",
   fiber: "fiber",
 };
-
-// `ProteinAdequacyStatus` and `FiberAdequacyStatus` are the SAME three-value vocabulary;
-// this names it once so a position can hold either without a union at every call site.
-export type NutrientAdequacyStatus = "below" | "within" | "above";
 
 // Where one nutrient finished on one day.
 export interface NutrientPosition {
