@@ -1077,6 +1077,33 @@ export function hasActiveIllnessSituation(profileId: number): boolean {
 // user-created situation. Resolves (get-or-create) the id-keyed row first so a not-yet-
 // persisted suggested chip can be flagged; the built-in "Illness" is created flagged by
 // resolveSituationId regardless.
+//
+// THE BUILT-IN "Illness" IS FLAGGED BY IDENTITY, AND THIS IS WHERE THAT HOLDS (#5271).
+// Every other producer of that row already says so: resolveSituationId is born flagged
+// for it "regardless" (below), and migration 042 backfilled every pre-existing row of
+// that name to 1. This function was the one place that could say otherwise, and the row
+// it left behind — `illness_type = 0` with `active = 1` — had no other producer, no UI
+// that offers it, and no meaning: the situation literally named Illness, declared not to
+// be one. It did have a consequence. `getIllnessSituations` stopped seeing the container
+// while `getActiveSituations` still saw the situation, so the symptom card's "Mark as
+// illness" bridge and the fever offer's "Open an episode" both drew a door onto a
+// container that no longer existed, and re-activating could not rebuild one: the whole-set
+// rewrite in setActiveSituations syncs episodes for `illness_type = 1` rows only, and
+// resolveSituationId re-flags nothing that already exists. Every retry returned a null
+// episode id, forever. Refusing the opt-out keeps that state from being minted at all,
+// rather than teaching each reader to repair it.
+//
+// SCOPED TO THE BUILT-IN, deliberately. A user situation ("Kid sick", "Migraine") opts in
+// and back out freely and KEEPS its own `active` — unflagged-and-active is not a damaged
+// state, it is what every Travel/High-stress row looks like, and clearing `active` on
+// opt-out would make this toggle a hidden situation-deactivate button that takes the
+// situational supplements keyed on the row down with it.
+//
+// WHAT THIS DOES NOT GUARANTEE: it is a rule in this function, not an enforced barrier.
+// lib/stateful-writes.ts gates `situations` on the `active` column only — illness_type
+// opt-ins are explicitly named there as the vocabulary's ordinary writes — so the scan
+// would not notice a second module learning to write this column. It holds today because
+// this is production's only writer of it.
 export function setSituationIllnessType(
   profileId: number,
   name: string,
@@ -1085,9 +1112,10 @@ export function setSituationIllnessType(
   writeTx(() => {
     const id = resolveSituationId(profileId, name);
     if (id == null) return;
+    const flagged = illnessType || isBuiltInIllnessSituation(name);
     db.prepare(
       `UPDATE situations SET illness_type = ? WHERE id = ? AND profile_id = ?`
-    ).run(illnessType ? 1 : 0, id, profileId);
+    ).run(flagged ? 1 : 0, id, profileId);
     // Keep the open-episode row coherent (#856): a situation is an episode container
     // only while it is illness-type AND active. Flagging an active situation opens an
     // episode; un-flagging one closes its open episode.
@@ -1102,7 +1130,7 @@ export function setSituationIllnessType(
     syncOpenIllnessEpisode(
       profileId,
       normalizeSituationName(name),
-      illnessType && active,
+      flagged && active,
       today(profileId)
     );
   });
