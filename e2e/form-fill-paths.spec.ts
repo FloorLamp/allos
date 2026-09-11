@@ -131,7 +131,7 @@ test("deload week shaves the routine lift's next-set suggestion (#923)", async (
       page,
       page.getByRole("button", { name: "Open plate builder" })
     );
-    const builder = page.getByTestId("plate-builder");
+    const builder = page.getByTestId("plate-builder"); // testid-scope-ok: the plate builder is a modal this click just opened, portalled out of the page tree — one copy, and no streamed boundary to stage a second
     await expect(builder).toBeVisible();
     await expect(
       builder
