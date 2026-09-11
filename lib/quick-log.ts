@@ -297,9 +297,9 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     icon: "toilet",
     // Bristol stool form (#2785). The overlay mounts a seven-button picker over the
     // published scale — icon, type number and a short label on the button, the
-    // scale's own description in the aria-label — and each tap writes one
-    // metric_samples row at its own instant. Several a day is ordinary, so the sheet
-    // stays open after a tap the way the food bar does.
+    // scale's own description in the aria-label — and each tap appends one
+    // `stool_events` row (#5872). Several a day is ordinary, so the sheet stays open
+    // after a tap the way the food bar does.
     target: { kind: "overlay", form: "stool" },
   },
   {

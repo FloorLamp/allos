@@ -314,12 +314,12 @@ export const LOG_DAY_SOURCES = {
   "log-period": arguedExclusion(
     "`cycles` is outside the #3087 `logged_via` tranche, so a period start cannot say which surface opened it, and the measure now counts WEB acts. Guessing 'web' for an unstamped row is the exact claim #4249 removed. Body is carried by the weigh-in and vitals ledgers instead; extending the tranche is a write-path change this issue excludes."
   ),
-  // A Bristol tap is one hand-entered metric_samples row (#2785) — and that table
-  // is outside the tranche, so the tap is unattributable for the same reason a
-  // period start is. Argued rather than dropped: the entry still exists, still
-  // opens Body one tap away, and simply contributes no habit evidence.
+  // A stool tap is one `stool_events` row (#2785, #5872) — and that ledger carries no
+  // `logged_via`, so the tap is unattributable for the same reason a period start is.
+  // Argued rather than dropped: the entry still exists, still opens Body one tap away,
+  // and simply contributes no habit evidence.
   "log-stool": arguedExclusion(
-    "`metric_samples` is outside the #3087 `logged_via` tranche, so a stool tap cannot say which surface it came from, and the measure counts WEB acts. The store has no ingest path and no chat verb, so the honest reading is 'unknown surface', not 'web' — and an unknown surface is not evidence of a web habit."
+    "`stool_events` carries no `logged_via` and is outside the #3087 tranche, so a stool tap cannot say which surface it came from, and the measure counts WEB acts. The ledger has exactly one door — no ingest path and no chat verb — so a column recording the surface would be a constant, and the honest reading of an unstamped row is 'unknown surface', not 'web'. An unknown surface is not evidence of a web habit."
   ),
   "log-dose": ["intake_item_logs"],
   "log-practice": ["practice_logs"],
