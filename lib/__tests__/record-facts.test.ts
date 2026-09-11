@@ -1,16 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
   conditionFactSummary,
-  moreConditionFactsLabel,
+  CONDITION_FACT_NOUNS,
   type ConditionFactInput,
   type ConditionFactKey,
 } from "@/lib/condition-facts";
 import {
   allergyFactSummary,
-  moreAllergyFactsLabel,
+  ALLERGY_FACT_NOUNS,
   type AllergyFactInput,
   type AllergyFactKey,
 } from "@/lib/allergy-facts";
+import { moreRecordFactsLabel } from "@/lib/record-facts";
 
 // The clinical record family's fact summaries (#5302), in ONE file for the family
 // rather than one per form. The question every one of the thirteen asks is the same —
@@ -111,7 +112,9 @@ describe("the condition row (#5302)", () => {
     });
     const expected: ConditionFactKey[] = ["laterality", "stage", "notes"];
     expect(more).toEqual(expected);
-    expect(moreConditionFactsLabel(more)).toBe("side, stage, notes…");
+    expect(moreRecordFactsLabel(more, CONDITION_FACT_NOUNS)).toBe(
+      "side, stage, notes…"
+    );
   });
 });
 
@@ -188,7 +191,7 @@ describe("the allergy row (#5302)", () => {
     });
     const expected: AllergyFactKey[] = ["criticality", "provider", "encounter"];
     expect(more).toEqual(expected);
-    expect(moreAllergyFactsLabel(more)).toBe(
+    expect(moreRecordFactsLabel(more, ALLERGY_FACT_NOUNS)).toBe(
       "criticality, who documented it, visit…"
     );
   });

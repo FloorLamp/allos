@@ -13,16 +13,14 @@ import { useToast } from "@/components/Toast";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import InlineError from "@/components/InlineError";
-import FactChipRow, {
-  FactChip,
-  FactMoreChip,
-} from "@/components/facts/FactChipRow";
 import FactEditorHost, {
   useFactEditor,
 } from "@/components/facts/FactEditorHost";
+import RecordFactRow, {
+  RecordFactMoreMenu,
+} from "@/components/records/RecordFactRow";
 import {
   allergyFactSummary,
-  moreAllergyFactsLabel,
   ALLERGY_FACT_NOUNS,
   type AllergyFactKey,
 } from "@/lib/allergy-facts";
@@ -284,31 +282,16 @@ export default function AllergyForm({
 
       {/* THE SENTENCE, and the one open editor behind it (#3218). */}
       {openEditor == null && (
-        <FactChipRow testId="allergy-fact-row">
-          {summary.chips.map((chip) => (
-            <FactChip
-              key={chip.key}
-              testId={`allergy-fact-${chip.key}`}
-              // The CHIP's own identity, which is not its panel's here: the reaction
-              // and the severity are two chips over one editor, so focus has to come
-              // back to the one that was tapped (#3311).
-              focusKey={chip.key}
-              label={chip.label}
-              state={chip.state}
-              expanded={openEditor === PANEL_OF_FACT[chip.key]}
-              onOpen={(focusKey) => openPanel(PANEL_OF_FACT[chip.key], focusKey)}
-            />
-          ))}
-          {summary.more.length > 0 && (
-            <FactMoreChip
-              testId="allergy-fact-more"
-              focusKey="more"
-              label={moreAllergyFactsLabel(summary.more)}
-              expanded={openEditor === "more"}
-              onOpen={(focusKey) => openPanel("more", focusKey)}
-            />
-          )}
-        </FactChipRow>
+        <RecordFactRow
+          prefix="allergy"
+          summary={summary}
+          nouns={ALLERGY_FACT_NOUNS}
+          openEditor={openEditor}
+          panelOf={(key) => PANEL_OF_FACT[key]}
+          onOpen={(panel, focusKey) =>
+            openPanel(panel as AllergyOpenPanel, focusKey)
+          }
+        />
       )}
 
       <FactEditorHost
@@ -534,22 +517,14 @@ export default function AllergyForm({
           />
         </div>
 
-        {/* The trailing affordance's panel is a MENU, not an editor. */}
         <div hidden={openEditor !== "more"}>
-          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
-            {summary.more.map((key) => (
-              <button
-                key={key}
-                type="button"
-                data-testid={`allergy-more-${key}`}
-                onClick={() => openPanel(PANEL_OF_FACT[key])}
-                data-fact-chip="solo"
-                className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
-              >
-                {ALLERGY_FACT_NOUNS[key]}
-              </button>
-            ))}
-          </div>
+          <RecordFactMoreMenu
+            prefix="allergy"
+            more={summary.more}
+            nouns={ALLERGY_FACT_NOUNS}
+            panelOf={(key) => PANEL_OF_FACT[key]}
+            onOpen={(panel) => openPanel(panel as AllergyOpenPanel)}
+          />
         </div>
       </FactEditorHost>
 

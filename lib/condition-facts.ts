@@ -21,6 +21,10 @@
 // exactly the kind of fact the row exists to show before it is written (the injury
 // form's reading of the same case, lib/injury-facts.ts).
 //
+// The chip shape, the more-line's label and the state-or-defer loop are the family's,
+// not this form's: see lib/record-facts.ts, which also carries the argument for why
+// each record form has a module of its own at all.
+//
 // WHAT A TEST SHOULD ASSERT: the chip KEYS and their states — which facts the row
 // states, which it prompts for, which fall behind the trailing affordance — never this
 // file's wording.
@@ -32,7 +36,12 @@ import {
   formatMonthDay,
   type DisplayFormatPrefs,
 } from "./format-date";
-import type { ConditionLaterality, ConditionSeverity, ConditionStatus } from "./types";
+import { recordFactRow, type RecordFactSummary } from "./record-facts";
+import type {
+  ConditionLaterality,
+  ConditionSeverity,
+  ConditionStatus,
+} from "./types";
 
 // The facts, in the order the row draws them. `code` leads because it is what the
 // seeding pick answers (#3218's contract: the chips follow the pick), and `resolved`
@@ -47,37 +56,7 @@ export type ConditionFactKey =
   | "resolved"
   | "notes";
 
-export type ConditionFactState = "stated" | "missing";
-
-export interface ConditionFactChip {
-  key: ConditionFactKey;
-  /** The sentence this chip states. */
-  label: string;
-  state: ConditionFactState;
-  /**
-   * The value was supplied FOR the person — the catalog pick applied the code, or the
-   * suggestion was accepted — rather than stated by them (#846). An editable
-   * suggestion, and the chip has to say so.
-   *
-   * Absent when this surface does not track suggestion for that fact at all, which is
-   * different from tracking it and finding it false (see FactChipRow's
-   * `suggestedAttrs`).
-   */
-  suggested?: boolean;
-}
-
-export interface ConditionFactSummary {
-  /** The facts with something to state, plus any MISSING essential, in reading order. */
-  chips: ConditionFactChip[];
-  /**
-   * The OPTIONAL facts with nothing to state, in reading order. They render no chip at
-   * all and are reached through the one trailing affordance, which names them.
-   */
-  more: ConditionFactKey[];
-}
-
-// The nouns, so the trailing affordance can name what it holds and a missing essential
-// can prompt for itself in the same words.
+// The nouns, so the trailing affordance can name what it holds.
 export const CONDITION_FACT_NOUNS: Record<ConditionFactKey, string> = {
   code: "code",
   status: "status",
@@ -89,13 +68,6 @@ export const CONDITION_FACT_NOUNS: Record<ConditionFactKey, string> = {
   notes: "notes",
 };
 
-/** What the trailing affordance says. Names the facts it holds, in row order. */
-export function moreConditionFactsLabel(
-  more: readonly ConditionFactKey[]
-): string {
-  if (more.length === 0) return "";
-  return `${more.map((k) => CONDITION_FACT_NOUNS[k]).join(", ")}…`;
-}
 
 const STATUS_LABELS: Record<ConditionStatus, string> = {
   active: "Active",
@@ -137,65 +109,44 @@ const cased = (v: string): string => v[0].toUpperCase() + v.slice(1);
  */
 export function conditionFactSummary(
   f: ConditionFactInput
-): ConditionFactSummary {
+): RecordFactSummary<ConditionFactKey> {
   const prefs = f.prefs ?? DEFAULT_FORMAT_PREFS;
-  const chips: ConditionFactChip[] = [];
-  const more: ConditionFactKey[] = [];
+  const row = recordFactRow<ConditionFactKey>();
+  const day = (iso: string) => formatMonthDay(iso, prefs);
 
   const code = f.code.trim();
   const system = f.codeSystem.trim();
   if (code) {
-    chips.push({
-      key: "code",
-      // The system qualifies the code rather than standing as its own chip: a bare
-      // "250.00" is a different concept in ICD-9 and ICD-10, so the two read together
-      // or the chip states less than it appears to.
-      label: system ? `${code} · ${system}` : code,
-      state: "stated",
-      suggested: f.codeSuggested,
-    });
+    // The system qualifies the code rather than standing as its own chip: a bare
+    // "250.00" is a different concept in ICD-9 and ICD-10, so the two read together or
+    // the chip states less than it appears to.
+    row.stated("code", system ? `${code} · ${system}` : code, f.codeSuggested);
   } else {
     // #5287's `condition-code` gap, as the dashed prompt. On the row rather than behind
     // "more", because a code-less condition is the row the coded screens cannot read.
-    chips.push({ key: "code", label: "Add a code", state: "missing" });
+    row.missing("code", "Add a code");
   }
 
-  chips.push({
-    key: "status",
-    label: STATUS_LABELS[f.status],
-    state: "stated",
-  });
-
-  // An optional fact with a value states it; an empty one goes behind the trailing chip.
-  const state = (key: ConditionFactKey, value: string, label: string) => {
-    if (value.trim()) chips.push({ key, label, state: "stated" });
-    else more.push(key);
-  };
-
-  state(
+  row.stated("status", STATUS_LABELS[f.status]);
+  row.state(
     "onset",
     f.onsetDate,
-    f.onsetDate.trim()
-      ? `Onset ${formatMonthDay(f.onsetDate, prefs)}`
-      : ""
+    f.onsetDate.trim() ? `Onset ${day(f.onsetDate)}` : ""
   );
-  state("laterality", f.laterality, f.laterality ? cased(f.laterality) : "");
-  state("severity", f.severity, f.severity ? cased(f.severity) : "");
+  row.state("laterality", f.laterality, f.laterality ? cased(f.laterality) : "");
+  row.state("severity", f.severity, f.severity ? cased(f.severity) : "");
   // The stage reads as recorded — staging vocabularies are open-ended, so the chip
   // states the person's own token rather than a word bolted onto it.
-  state("stage", f.stage, f.stage.trim());
-  if (f.status === "resolved") {
-    state(
+  row.state("stage", f.stage, f.stage.trim());
+  if (f.status === "resolved")
+    row.state(
       "resolved",
       f.resolvedDate,
-      f.resolvedDate.trim()
-        ? `Resolved ${formatMonthDay(f.resolvedDate, prefs)}`
-        : ""
+      f.resolvedDate.trim() ? `Resolved ${day(f.resolvedDate)}` : ""
     );
-  }
   // The notes MARKER, not the notes: a chip states a fact, and a pasted paragraph would
   // state it at the row's expense (the visit row's reading of the same field).
-  state("notes", f.notes, "Notes added");
+  row.state("notes", f.notes, "Notes added");
 
-  return { chips, more };
+  return row.summary();
 }

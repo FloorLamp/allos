@@ -9,13 +9,12 @@ import Combobox from "@/components/Combobox";
 import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import InlineError from "@/components/InlineError";
-import FactChipRow, {
-  FactChip,
-  FactMoreChip,
-} from "@/components/facts/FactChipRow";
 import FactEditorHost, {
   useFactEditor,
 } from "@/components/facts/FactEditorHost";
+import RecordFactRow, {
+  RecordFactMoreMenu,
+} from "@/components/records/RecordFactRow";
 import {
   bestIcd10Suggestion,
   icd10CodeForName,
@@ -25,7 +24,6 @@ import {
 } from "@/lib/icd10";
 import {
   conditionFactSummary,
-  moreConditionFactsLabel,
   CONDITION_FACT_NOUNS,
   type ConditionFactKey,
 } from "@/lib/condition-facts";
@@ -285,31 +283,16 @@ export default function ConditionForm({
           is on screen: the row is unmounted while a panel is open, and the host is
           display:none while none is. */}
       {openEditor == null && (
-        <FactChipRow testId="condition-fact-row">
-          {summary.chips.map((chip) => (
-            <FactChip
-              key={chip.key}
-              testId={`condition-fact-${chip.key}`}
-              // One chip, one panel here, so the chip's focus identity is its fact
-              // key (#3311).
-              focusKey={chip.key}
-              label={chip.label}
-              state={chip.state}
-              suggested={chip.suggested}
-              expanded={openEditor === chip.key}
-              onOpen={(focusKey) => openPanel(chip.key, focusKey)}
-            />
-          ))}
-          {summary.more.length > 0 && (
-            <FactMoreChip
-              testId="condition-fact-more"
-              focusKey="more"
-              label={moreConditionFactsLabel(summary.more)}
-              expanded={openEditor === "more"}
-              onOpen={(focusKey) => openPanel("more", focusKey)}
-            />
-          )}
-        </FactChipRow>
+        <RecordFactRow
+          prefix="condition"
+          summary={summary}
+          nouns={CONDITION_FACT_NOUNS}
+          openEditor={openEditor}
+          // One chip, one panel here, so a chip's focus identity is its fact key.
+          onOpen={(panel, focusKey) =>
+            openPanel(panel as ConditionOpenPanel, focusKey)
+          }
+        />
       )}
 
       <FactEditorHost
@@ -500,24 +483,13 @@ export default function ConditionForm({
           />
         </div>
 
-        {/* The trailing affordance's panel is a MENU, not an editor: it names the
-            optional facts with nothing to state and hands off to one of them, so
-            opening it still leaves exactly one editor on screen. */}
         <div hidden={openEditor !== "more"}>
-          <div className="flex flex-wrap gap-1.5 pointer-coarse:gap-3.5">
-            {summary.more.map((key) => (
-              <button
-                key={key}
-                type="button"
-                data-testid={`condition-more-${key}`}
-                onClick={() => openPanel(key)}
-                data-fact-chip="solo"
-                className="rounded-full border border-(--border) px-3 text-sm transition hover:bg-(--ghost-hover)"
-              >
-                {CONDITION_FACT_NOUNS[key]}
-              </button>
-            ))}
-          </div>
+          <RecordFactMoreMenu
+            prefix="condition"
+            more={summary.more}
+            nouns={CONDITION_FACT_NOUNS}
+            onOpen={(panel) => openPanel(panel as ConditionOpenPanel)}
+          />
         </div>
       </FactEditorHost>
 
