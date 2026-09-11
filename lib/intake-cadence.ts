@@ -74,8 +74,28 @@ export interface DoseScheduleVersion extends DoseSchedule {
   amount_captured?: 0 | 1;
 }
 
+// The schedule in force on a day, plus TWO separate facts about its amount. They were
+// one field until #5775 and must not be re-merged:
+//
+//   • `amountAssumed` — the day PRECEDES every recorded version, so the amount shown is
+//     the oldest one on file standing in for a day nothing was recorded about. This is
+//     the reader-facing fact, and the only thing the "using the oldest known amount"
+//     copy may turn on.
+//
+//   • `amountCaptured` — the selected version's amount was typed by a person rather than
+//     copied from the live row by the #5547 backfill. This is PROVENANCE, and it is what
+//     the write path stamps onto the next version it appends.
+//
+// Before #5775 the copy read the provenance: `amountAssumed` was true whenever
+// `amount_captured !== 1`, and the backfill left that 0 on every version that existed,
+// so every past day claimed its amount was a stand-in — including days long after the
+// version took effect. The sentence was therefore true of nearly every row and said
+// nothing, and the one row where it mattered (a day before any version existed) read
+// exactly like the rest. The provenance did not become wrong; it was answering the wrong
+// question. It stays on the row, and now only the write path reads it.
 export interface ResolvedDoseSchedule extends DoseSchedule {
   amountAssumed: boolean;
+  amountCaptured: boolean;
 }
 
 // The per-dose calendar fields: an optional weekday subset and an optional inclusive
@@ -184,7 +204,7 @@ export function doseScheduleAsOf(
 ): ResolvedDoseSchedule {
   const versions = dose.versions;
   if (!versions || versions.length === 0) {
-    return { ...dose, amountAssumed: true };
+    return { ...dose, amountAssumed: true, amountCaptured: false };
   }
   let best: DoseScheduleVersion | null = null;
   let earliest: DoseScheduleVersion | null = null;
@@ -200,10 +220,20 @@ export function doseScheduleAsOf(
     if (best == null || v.effective_from >= best.effective_from) best = v;
   }
   const selected = best ?? earliest;
-  if (!selected) return { ...dose, amountAssumed: true };
+  if (!selected) return { ...dose, amountAssumed: true, amountCaptured: false };
   return {
     ...selected,
-    amountAssumed: best == null || selected.amount_captured !== 1,
+    // ASSUMED means "no version had taken effect yet on this day", nothing more (#5775).
+    // `best` is null only on a day before the earliest `effective_from`, which is the one
+    // day whose amount really is a stand-in — every later day is showing the amount its
+    // own version carries, whether a person typed it or the #5547 backfill copied it off
+    // the live row. Reading `amount_captured` here made the copy fire on every past day
+    // of every pre-backfill dose, which is every dose that existed.
+    amountAssumed: best == null,
+    // Provenance, unchanged and deliberately NOT the negation of the line above: the
+    // write path stamps this onto the version it appends next, so a backfilled amount
+    // must not be promoted to a captured one by passing through a retire/restore.
+    amountCaptured: best != null && selected.amount_captured === 1,
   };
 }
 
