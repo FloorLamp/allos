@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { TODAY_PERIOD } from "@/lib/nutrient-adequacy";
 import {
-  estimatedProteinGrams,
   proteinIntake,
   proteinTarget,
   assessProteinAdequacy,
@@ -15,31 +15,22 @@ import {
   proteinAdequacyDetail,
   proteinAdequacySignalKey,
   PROTEIN_ADEQUACY_PREFIX,
+  type ProteinIntake,
 } from "@/lib/protein";
 
 // Pure engine tests for protein adequacy (#767): the three-basis intake pick, the
 // goal-scaled target band (LBM-preferred), and the adequacy verdict + caveated wording.
 
-describe("estimatedProteinGrams", () => {
-  it("sums servings × the catalog per-serving grams, skipping non-bearing + unknown slugs", () => {
-    const g = estimatedProteinGrams([
-      { slug: "poultry", servings: 1 }, // 35
-      { slug: "eggs", servings: 2 }, // 12 × 2 = 24
-      { slug: "fruit", servings: 3 }, // non-bearing → 0
-      { slug: "__retired__", servings: 5 }, // unknown → 0
-    ]);
-    expect(g).toBe(35 + 24);
-  });
-
-  it("ignores zero/negative servings", () => {
-    expect(
-      estimatedProteinGrams([
-        { slug: "poultry", servings: 0 },
-        { slug: "legumes", servings: -1 },
-      ])
-    ).toBe(0);
-  });
-});
+// The composition an intake result states, projected out of the fuller result the
+// substrate now returns (#4485 — it also carries the period, the winning source and the
+// floor, each asserted in lib/__tests__/nutrient-adequacy.test.ts).
+const composition = (i: ProteinIntake | null) =>
+  i && {
+    grams: i.grams,
+    basis: i.basis,
+    estimatedGrams: i.estimatedGrams,
+    loggedGrams: i.loggedGrams,
+  };
 
 describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#824, #3903)", () => {
   // #3903's owner ruling: a tracked reading no longer OVERRIDES the in-app sum, it is
@@ -92,7 +83,9 @@ describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#
       0,
     ],
   ])("%s", (_name, args, grams, basis, estimatedGrams, loggedGrams) => {
-    expect(proteinIntake(args)).toEqual({
+    expect(
+      composition(proteinIntake({ ...args, period: TODAY_PERIOD }))
+    ).toEqual({
       grams,
       basis,
       estimatedGrams,
@@ -103,7 +96,14 @@ describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#
   it("SUMS the estimated floor + logged grams — a manual entry is a partial addition, never an eraser", () => {
     // The load-bearing #824 semantic: 90 g estimated + 30 g logged = 120 g, not 30.
     expect(
-      proteinIntake({ dailyTracked: null, dailyLogged: 30, dailyEstimated: 90 })
+      composition(
+        proteinIntake({
+          period: TODAY_PERIOD,
+          dailyTracked: null,
+          dailyLogged: 30,
+          dailyEstimated: 90,
+        })
+      )
     ).toEqual({
       grams: 120,
       basis: "combined",
@@ -114,7 +114,14 @@ describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#
 
   it("is `logged` when only manual grams are present (no protein-bearing foods)", () => {
     expect(
-      proteinIntake({ dailyTracked: null, dailyLogged: 40, dailyEstimated: 0 })
+      composition(
+        proteinIntake({
+          period: TODAY_PERIOD,
+          dailyTracked: null,
+          dailyLogged: 40,
+          dailyEstimated: 0,
+        })
+      )
     ).toEqual({
       grams: 40,
       basis: "logged",
@@ -124,7 +131,15 @@ describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#
   });
 
   it("is `estimated` when only the food-group floor is present (no manual grams)", () => {
-    expect(proteinIntake({ dailyTracked: null, dailyEstimated: 60 })).toEqual({
+    expect(
+      composition(
+        proteinIntake({
+          period: TODAY_PERIOD,
+          dailyTracked: null,
+          dailyEstimated: 60,
+        })
+      )
+    ).toEqual({
       grams: 60,
       basis: "estimated",
       estimatedGrams: 60,
@@ -133,6 +148,7 @@ describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#
     // A null/absent dailyLogged is treated as zero, not an error.
     expect(
       proteinIntake({
+        period: TODAY_PERIOD,
         dailyTracked: null,
         dailyLogged: null,
         dailyEstimated: 60,
@@ -141,10 +157,27 @@ describe("proteinIntake — the LARGER FLOOR of tracked vs estimated + logged (#
   });
 
   it("returns null when no basis has any signal", () => {
-    expect(proteinIntake({ dailyTracked: null, dailyEstimated: 0 })).toBeNull();
-    expect(proteinIntake({ dailyTracked: 0, dailyEstimated: 0 })).toBeNull();
     expect(
-      proteinIntake({ dailyTracked: null, dailyLogged: 0, dailyEstimated: 0 })
+      proteinIntake({
+        period: TODAY_PERIOD,
+        dailyTracked: null,
+        dailyEstimated: 0,
+      })
+    ).toBeNull();
+    expect(
+      proteinIntake({
+        period: TODAY_PERIOD,
+        dailyTracked: 0,
+        dailyEstimated: 0,
+      })
+    ).toBeNull();
+    expect(
+      proteinIntake({
+        period: TODAY_PERIOD,
+        dailyTracked: null,
+        dailyLogged: 0,
+        dailyEstimated: 0,
+      })
     ).toBeNull();
   });
 });
@@ -266,30 +299,25 @@ describe("the goal picker vocabulary (#1503)", () => {
 
 // Intake literal builders so the assessment tests read cleanly (the interface carries the
 // estimated/logged composition parts now, #824).
-const estimated = (grams: number) => ({
-  grams,
-  basis: "estimated" as const,
-  estimatedGrams: grams,
-  loggedGrams: 0,
-});
-const tracked = (grams: number) => ({
-  grams,
-  basis: "tracked" as const,
-  estimatedGrams: 0,
-  loggedGrams: 0,
-});
-const combined = (est: number, logged: number) => ({
-  grams: est + logged,
-  basis: "combined" as const,
-  estimatedGrams: est,
-  loggedGrams: logged,
-});
-const loggedOnly = (grams: number) => ({
-  grams,
-  basis: "logged" as const,
-  estimatedGrams: 0,
-  loggedGrams: grams,
-});
+// The wording fixtures are the ENGINE's own results, not hand-built literals: an
+// intake now carries the period, the winning source and the floor alongside the grams
+// (#4485), and a formatter must be exercised over what it will actually be handed.
+const intake = (args: {
+  dailyTracked?: number | null;
+  dailyEstimated?: number;
+  dailyLogged?: number | null;
+}) =>
+  proteinIntake({
+    dailyTracked: args.dailyTracked ?? null,
+    dailyEstimated: args.dailyEstimated ?? 0,
+    dailyLogged: args.dailyLogged ?? null,
+    period: TODAY_PERIOD,
+  })!;
+const estimated = (grams: number) => intake({ dailyEstimated: grams });
+const tracked = (grams: number) => intake({ dailyTracked: grams });
+const combined = (est: number, logged: number) =>
+  intake({ dailyEstimated: est, dailyLogged: logged });
+const loggedOnly = (grams: number) => intake({ dailyLogged: grams });
 
 describe("assessProteinAdequacy + wording", () => {
   const target = proteinTarget({ goal: "active", bodyweightKg: 80 })!; // 95–130

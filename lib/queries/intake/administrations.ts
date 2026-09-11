@@ -258,10 +258,20 @@ function itemHasCourses(profileId: number, itemId: number): boolean {
     .get(itemId, profileId);
 }
 
-// Backfill one taken dose at an explicit profile-local date/time. This is
-// intentionally separate from reminder/quick-log ingestion: a deliberate history edit
-// may reach any past date inside a medication course, including a stopped course,
-// while stale buttons keep their tighter two-day bound.
+// WHEN THE DOSE WAS TAKEN, AND WHICH DAY THE ROW IS FILED UNDER. An instant answers
+// both — the row's date is that instant read in the profile's zone. A bare `{ date }` is
+// the OTHER real answer (#5618 ruling 7): the day is known and no intake time was ever
+// stated, so the row carries a NULL `occurred_at` rather than an invented clock. The
+// amend core beside this one has taken exactly that pair since #2228 decision 3; the
+// create core could only ever take a clock, which is why a composed backfill with no
+// time to state had to make one up.
+export type HistoricalDoseWhen = Date | { date: string };
+
+// Backfill one taken dose on an explicit profile-local day, at a stated time or at none
+// (see `HistoricalDoseWhen`). This is intentionally separate from reminder/quick-log
+// ingestion: a deliberate history edit may reach any past date inside a medication
+// course, including a stopped course, while stale buttons keep their tighter two-day
+// bound.
 //
 // KIND-NEUTRAL since #1933 (it was logHistoricalMedicationDose, with `s.kind =
 // 'medication'` in its ownership SELECT). Historical dose correction IS adherence
@@ -292,7 +302,7 @@ export function logHistoricalDose(
   profileId: number,
   itemId: number,
   doseId: number,
-  occurredAt: Date,
+  when: HistoricalDoseWhen,
   amountOverride: string | null,
   adjustSupply: boolean,
   loggedVia: LoggedVia,
@@ -303,13 +313,20 @@ export function logHistoricalDose(
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
+  const date = when instanceof Date ? dateStrInTz(tz, when) : when.date;
+  const occurredAt = when instanceof Date ? when : null;
   // The app clock, not the wall clock (#2031): `todayStr` above is seam-derived and
   // so is the stored occurred_at this may be re-validating, so all three must agree.
-  if (!isHistoricalDoseTimeAccepted(tz, todayStr, occurredAt, clockNow())) {
+  // A day with no clock under it is judged by the DATE half of the identical window
+  // (#2228) rather than skipping validation — any past day, never the future.
+  if (
+    occurredAt
+      ? !isHistoricalDoseTimeAccepted(tz, todayStr, occurredAt, clockNow())
+      : !isHistoricalDoseDateAccepted(todayStr, date)
+  ) {
     return { kind: "invalid-time" };
   }
-  const date = dateStrInTz(tz, occurredAt);
-  const occurredAtStr = utcInstant(occurredAt);
+  const occurredAtStr = occurredAt ? utcInstant(occurredAt) : null;
 
   return writeTx((tx): HistoricalDoseOutcome => {
     const dose = db
@@ -380,17 +397,25 @@ export function logHistoricalDose(
         };
       }
     } else {
-      const duplicate = db
-        .prepare(
-          `SELECT l.id
+      // THE PER-ADMINISTRATION DEDUP IS A PROXIMITY RULE, so it applies only to a row
+      // that states an instant. An untimed write has nothing to be within two hours of,
+      // and letting the comparison fold to SQL NULL would answer "not a duplicate" for
+      // the wrong reason. Asked out loud instead. No standing bundle can arrive here
+      // untimed with a `may` dose anyway — a `may` item has no dueness (#1505) — so this
+      // is the rule's reach stated, not a hole opened.
+      const duplicate = occurredAtStr
+        ? db
+            .prepare(
+              `SELECT l.id
              FROM intake_item_logs l
              JOIN intake_items s ON s.id = l.item_id
             WHERE l.dose_id = ? AND l.status = 'taken'
               AND s.profile_id = ? AND l.occurred_at IS NOT NULL
               AND ABS(strftime('%s', l.occurred_at) - strftime('%s', ?)) <= ?
             LIMIT 1`
-        )
-        .get(doseId, profileId, occurredAtStr, ADMIN_DEDUP_WINDOW_SEC);
+            )
+            .get(doseId, profileId, occurredAtStr, ADMIN_DEDUP_WINDOW_SEC)
+        : undefined;
       if (duplicate) return { kind: "duplicate" };
     }
 

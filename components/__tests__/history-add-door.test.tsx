@@ -14,6 +14,10 @@ import HistoryAddDoor, {
 import { HISTORY_KIND_LABELS } from "@/lib/history-format";
 import { logHeading } from "@/lib/log-manifest";
 import { FORM_ID_OF_LOG_DOMAIN } from "@/lib/form-grammar";
+import {
+  IntradayInteractionProvider,
+  useIntradayInteraction,
+} from "@/components/IntradayInteraction";
 
 // WHAT THE RECORD'S ADD DOOR POSTS (#4045 §1).
 //
@@ -956,5 +960,88 @@ describe("a window the chart stated opens each kind's time control", () => {
     // An untouched time field stays empty and emits nothing (#2236 invariant 3), so a
     // backfill that states no minute still states none.
     expect(only("logStoolForm")).not.toHaveProperty("at");
+  });
+});
+
+// ── THE USUAL OFFER READS THE SAME WINDOW (#5618 ruling 7) ───────────────────
+//
+// "A dated usual bundle never invents a time; the chart is the prompt." The offers line
+// is the one host of this control that stands on a chart, so it is the only one that can
+// state the act's minute — and it does it with NO CONTROL OF ITS OWN, which is the
+// ruling's own answer to the owner's "prompt user for a time?".
+//
+// WHAT IS ASSERTED IS THE POSTED CLOCK, exactly as the per-kind window cases above: a
+// window that never reaches the write is not a window. Where every member then lands is
+// the action tier's subject and is proved there.
+describe("the composed usual and the chart's window", () => {
+  function Driver() {
+    const { setView, setPin } = useIntradayInteraction();
+    return (
+      <>
+        <button
+          data-testid="drive-zoom"
+          onClick={() => setView({ from: 7 * 60 + 30, to: 9 * 60 })}
+        />
+        <button data-testid="drive-pin" onClick={() => setPin(7 * 60 + 30)} />
+      </>
+    );
+  }
+
+  function offersOnChart() {
+    render(
+      <IntradayInteractionProvider>
+        <Driver />
+        <HistoryUsualOffers offers={[MORNING_OFFER]} date={FOUND_DAY} />
+      </IntradayInteractionProvider>
+    );
+  }
+
+  const usualButton = () => screen.getByTestId("history-add-usual-Morning");
+
+  // BOTH GESTURES, because the row's label reads them both (#4950): a zoom IS the
+  // window and a pinned minute is a start alone. A ruling satisfied on one and not the
+  // other would show as "Add at 07:30" over a bundle that wrote a different minute.
+  it.each(["zoom", "pin"] as const)(
+    "posts the window's start as the act's time after a %s",
+    async (gesture) => {
+      offersOnChart();
+      fireEvent.click(screen.getByTestId(`drive-${gesture}`));
+      await act(async () => fireEvent.click(usualButton()));
+      const sent = only("logUsualRoutine");
+      expect(sent.occurred_at).toBe("07:30");
+      expect(sent.date).toBe(FOUND_DAY);
+      // The bundle is unchanged in every other respect — the window states WHEN, never
+      // what.
+      expect(sent.groups).toBe("berries,fermented");
+      expect(sent.dose_ids).toBe("41");
+    }
+  );
+
+  // The promise a person can hear has to carry the minute too: the tap writes at 07:30
+  // and there is no field on screen showing it.
+  it("names the minute in the offer's accessible name", () => {
+    offersOnChart();
+    fireEvent.click(screen.getByTestId("drive-pin"));
+    expect(usualButton().getAttribute("aria-label")).toContain(
+      `at 07:30 on ${FOUND_DAY}`
+    );
+  });
+
+  it("states no time at all while the chart shows nothing", async () => {
+    offersOnChart();
+    await act(async () => fireEvent.click(usualButton()));
+    expect(only("logUsualRoutine")).not.toHaveProperty("occurred_at");
+    expect(usualButton().getAttribute("aria-label")).toBe(
+      `Your usual Morning (3) on ${FOUND_DAY}: Berries and Fermented foods + Creatine`
+    );
+  });
+
+  // THE OTHER TWO HOSTS ARE UNTOUCHED, and this is the assertion that says so rather
+  // than the absence of one: the dashboard row and the quick-log sheet mount the same
+  // control with no chart above them, so their post must be exactly what it always was.
+  it("posts no time from a mount with no chart over it", async () => {
+    render(<HistoryUsualOffers offers={[MORNING_OFFER]} date={FOUND_DAY} />);
+    await act(async () => fireEvent.click(usualButton()));
+    expect(only("logUsualRoutine")).not.toHaveProperty("occurred_at");
   });
 });

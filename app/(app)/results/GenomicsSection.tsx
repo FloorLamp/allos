@@ -39,6 +39,9 @@ export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
       <div>
         <AddEntryPanel
           formId="genomic-variant"
+          // The write gate (#4694), from the scope this section already resolved —
+          // never a second lookup.
+          access={scope.access.get(scope.actingProfileId)}
           testId="add-genomic-panel"
           panelId="add-genomic-panel-body"
           label="Add genomic variant"

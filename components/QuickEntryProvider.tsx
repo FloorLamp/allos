@@ -575,6 +575,15 @@ function withLiveDayLabels(
 const QUICK_ENTRY_LOAD_TIMEOUT_MS = 10_000;
 const QUIET_STATE_CLASS = "text-sm text-slate-500 dark:text-slate-400";
 
+// The sheet's cold-open paragraph, in ONE place: the Suspense fallback below and the
+// body's own loading branch are the same wait, and they must not be able to differ —
+// `quick-entry-loading` is the testid every spec waits on.
+const QUICK_ENTRY_LOADING = (
+  <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
+    Loading…
+  </p>
+);
+
 // THE SHEET'S TITLE ROW, right of the heading: the form's own instrument vocabulary
 // where it has one, then who this entry is being logged for.
 //
@@ -2230,13 +2239,7 @@ function QuickEntryBodyMount({
         </p>
       ) : null}
       <BodyBoundary key={props.bodies.attempt} onRetry={props.onRetry}>
-        <Suspense
-          fallback={
-            <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
-              Loading…
-            </p>
-          }
-        >
+        <Suspense fallback={QUICK_ENTRY_LOADING}>
           <QuickEntryBody {...props} state={currentState} />
         </Suspense>
       </BodyBoundary>
@@ -2284,13 +2287,7 @@ function QuickEntryBody({
 }) {
   const dayContext = useOptionalDayContext();
   const subjectTimeZone = useTimezone();
-  if (state.status === "loading") {
-    return (
-      <p data-testid="quick-entry-loading" className={QUIET_STATE_CLASS}>
-        Loading…
-      </p>
-    );
-  }
+  if (state.status === "loading") return QUICK_ENTRY_LOADING;
   if (state.status === "error") {
     return <QuickEntryError onRetry={onRetry} />;
   }
@@ -2395,7 +2392,12 @@ function QuickEntryBody({
       // start/end/reopen is one transaction with a real end, and #1468's contract is
       // that it lands you back where you were. No subject prop: a non-acting subject
       // never reaches this case (`loadFor` turns it into `unavailable` above).
-      return <QuickCyclePanel state={data.state} onDone={onDone} />;
+      //
+      // SPREAD WHOLE, for the reason the dose case states: `ttc` (#5810) is the second
+      // field this mount would have to remember, and it is present only for a profile
+      // that declared a TTC start — a forgotten prop would be a silently missing half
+      // for exactly the profile the gate is for.
+      return <QuickCyclePanel {...data} onDone={onDone} />;
     case "mood":
       // The SAME MoodValencePicker + logMood write the dashboard card runs, with
       // the shared sheet day above — a second mounting context, never a second

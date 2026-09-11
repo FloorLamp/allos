@@ -16,6 +16,14 @@ import {
   type CuratedSupplementSuggestion,
 } from "../../supplement-suggest-curated";
 import { weekWindowStart } from "../profile-week";
+import {
+  aggregatePeriod,
+  dayPeriod,
+  estimatedNutrientGrams,
+  type NutrientDeclaration,
+  type NutrientServing,
+} from "../../nutrient-adequacy";
+import { daysBetweenDateStr } from "../../date";
 import { suggestFoods, type FoodSuggestion } from "../../food-suggest";
 import {
   getMetricDailyTotals,
@@ -37,7 +45,7 @@ import {
   proteinTrailingAverage,
   proteinTrailingWindowStart,
   assessProteinAdequacy,
-  estimatedProteinGrams,
+  PROTEIN_DECLARATION,
   type ProteinAdequacy,
   type ProteinDayParts,
   type ProteinToday,
@@ -47,11 +55,9 @@ import {
   fiberIntake,
   fiberTarget,
   assessFiberAdequacy,
-  estimatedFiberGrams,
-  isFiberSupplement,
-  fiberDoseGrams,
+  fiberDoseDays,
+  FIBER_DECLARATION,
   type FiberAdequacy,
-  type FiberServing,
 } from "../../fiber";
 import {
   buildFiberSymptomPanel,
@@ -201,7 +207,8 @@ export function getMacroFiberDays(
         tracked.get("protein_g")!,
         getProteinDailyTotals(profileId, range.from ?? "0000-01-01").map(
           (r) => ({ date: r.date, value: r.grams })
-        )
+        ),
+        today(profileId)
       ),
       carbs: tracked.get("carbs_g")!,
       fat: tracked.get("fat_g")!,
@@ -209,6 +216,72 @@ export function getMacroFiberDays(
     }),
     range
   );
+}
+
+// ---- The window both nutrient gathers read the same way (#4485) ----
+
+// A source's per-day mean over the DAYS THAT CARRY A VALUE, never over the window, so a
+// partial week is not diluted by the days nobody logged. Every source here arrives as ONE
+// value per day already — `protein_daily_totals` is UNIQUE(profile_id, date), the metric
+// readers GROUP BY date, and fiber doses come folded by `fiberDoseDays` — so the count of
+// values IS the count of days. Null when nothing carries one: unknown, never 0.
+function dailyMean(values: readonly number[]): number | null {
+  return values.length === 0
+    ? null
+    : values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+// The halves BOTH week gathers used to spell out identically: the profile's week window,
+// the food-group estimated floor averaged over the days actually logged, the integration's
+// daily totals averaged over the days that carry a reading, and the WEEK-TO-DATE period,
+// which always ends on a today that is still accumulating (#4145 — a day-complete boolean
+// is not a weekly model). The whole of the difference between the two gathers was the
+// declaration's catalog column, which names the metric key too.
+function weekToDateSources<K extends string>(
+  profileId: number,
+  declaration: NutrientDeclaration<K>
+) {
+  const weekStart = weekWindowStart(profileId);
+  const entries = getFoodDailyServingTotals(profileId, weekStart);
+  const loggedDays = new Set(entries.map((e) => e.date)).size;
+  return {
+    weekStart,
+    period: aggregatePeriod(
+      (daysBetweenDateStr(weekStart, today(profileId)) ?? 0) + 1,
+      true
+    ),
+    dailyEstimated:
+      loggedDays > 0
+        ? estimatedNutrientGrams(rollupServings(entries), declaration.column) /
+          loggedDays
+        : 0,
+    dailyTracked: dailyMean(
+      getMetricDailyTotals(profileId, declaration.column)
+        .filter((r) => r.date >= weekStart)
+        .map((r) => r.value)
+    ),
+  };
+}
+
+// The same halves for ONE calendar day, which the two day-picker gathers also spelled out
+// twice. A historical day is composed from its own servings and its own tracked reading,
+// never from the current week's figures.
+function onDateSources<K extends string>(
+  profileId: number,
+  declaration: NutrientDeclaration<K>,
+  date: string
+) {
+  const servings = [...getFoodServingsOnDate(profileId, date).entries()].map(
+    ([slug, n]) => ({ slug, servings: n })
+  );
+  return {
+    period: dayPeriod(date, today(profileId)),
+    dailyEstimated: estimatedNutrientGrams(servings, declaration.column),
+    dailyTracked:
+      getMetricDailyTotals(profileId, declaration.column).find(
+        (r) => r.date === date
+      )?.value ?? null,
+  };
 }
 
 // ---- Protein adequacy (issue #767, #824) ----
@@ -221,54 +294,41 @@ export function getMacroFiberDays(
 // getLatestMetricValue, all profile-scoped, so the profile-scoping guard is satisfied.
 // Returns null when there's no intake signal or no bodyweight to scale by.
 //
-// Windowing: intake is a PER-DAY average over this week — the estimated floor averages the
-// week's summed food-group protein over the distinct days actually logged (so a partial
-// week isn't diluted by unlogged days), and the tracked basis averages the integration's
-// daily protein_g totals over the days that carry a reading. Same week the servings
-// rollup uses (weekWindowStart), so the card's "this week" numbers line up.
+// Windowing is `weekToDateSources` (#4485) — the same week the servings rollup uses, so
+// the card's "this week" numbers line up, and the same per-source mean over the days that
+// carry a value, so a partial week isn't diluted by unlogged days. Only the quick-add
+// LOGGED floor is protein's own, because no other nutrient has that source.
 export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
-  const weekStart = weekWindowStart(profileId);
-
-  // Estimated floor: this week's food-group servings → protein grams / distinct logged days.
-  const entries = getFoodDailyServingTotals(profileId, weekStart);
-  const rollup = rollupServings(entries);
-  const loggedDays = new Set(entries.map((e) => e.date)).size;
-  const estWeekGrams = estimatedProteinGrams(rollup);
-  const dailyEstimated = loggedDays > 0 ? estWeekGrams / loggedDays : 0;
-
-  // Logged floor (#824): this week's quick-add protein grams / distinct days with grams.
-  // Averaged over the days that carry it (same per-basis-average design as estimated), so
-  // a partial week isn't diluted by days with no manual entry. Summed with the estimate
-  // in proteinIntake (a manual entry is a partial addition, never an eraser).
-  const proteinRows = getProteinDailyTotals(profileId, weekStart);
-  const proteinDays = new Set(proteinRows.map((r) => r.date)).size;
-  const loggedWeekGrams = proteinRows.reduce((s, r) => s + r.grams, 0);
-  const dailyLogged = proteinDays > 0 ? loggedWeekGrams / proteinDays : null;
-
-  // Tracked: integration protein_g daily totals this week, averaged over days with data.
-  const trackedRows = getMetricDailyTotals(profileId, "protein_g").filter(
-    (r) => r.date >= weekStart
+  // The estimated floor, the tracked mean and the WEEK-TO-DATE period — a mean over the
+  // profile's week so far, which always ends on a today that is still accumulating
+  // (#4145 — a day-complete boolean is not a weekly model).
+  const { weekStart, period, dailyEstimated, dailyTracked } = weekToDateSources(
+    profileId,
+    PROTEIN_DECLARATION
   );
-  const dailyTracked =
-    trackedRows.length > 0
-      ? trackedRows.reduce((s, r) => s + r.value, 0) / trackedRows.length
-      : null;
+
+  // Logged floor (#824): this week's quick-add protein grams, averaged over the days that
+  // carry them, so a partial week isn't diluted by days with no manual entry. Summed with
+  // the estimate in proteinIntake (a manual entry is a partial addition, never an eraser).
+  const dailyLogged = dailyMean(
+    getProteinDailyTotals(profileId, weekStart).map((r) => r.grams)
+  );
 
   // Bodyweight (ascending for bodyweightAsOf) + latest lean mass (preferred when present).
-  const t = today(profileId);
   const weightsAsc = getWeights(profileId)
     .map((w) => ({ date: w.date, weight_kg: w.weight_kg }))
     .sort((a, b) => (a.date < b.date ? -1 : 1));
-  const bodyweightKg = bodyweightAsOf(weightsAsc, t);
+  const bodyweightKg = bodyweightAsOf(weightsAsc, today(profileId));
   const leanMassKg = getLatestMetricValue(profileId, "lean_mass_kg");
 
   // Goal level — the profile's training goal (Settings → Nutrition, #1503), or the
   // documented default when they have not picked one. ONE reader for every surface.
   const goal = getProteinGoalLevel(profileId);
 
-  const intake = proteinIntake({ dailyTracked, dailyLogged, dailyEstimated });
-  const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
-  return assessProteinAdequacy(intake, target);
+  return assessProteinAdequacy(
+    proteinIntake({ dailyTracked, dailyLogged, dailyEstimated, period }),
+    proteinTarget({ goal, bodyweightKg, leanMassKg })
+  );
 }
 
 // The TRAILING 7-day protein average (issue #1917) — the number a card labelled
@@ -317,7 +377,10 @@ function getProteinTrailing(
     date,
     dailyTracked: trackedByDate.get(date) ?? null,
     dailyLogged: loggedByDate.get(date) ?? null,
-    dailyEstimated: estimatedProteinGrams(estimatedByDate.get(date) ?? []),
+    dailyEstimated: estimatedNutrientGrams(
+      estimatedByDate.get(date) ?? [],
+      PROTEIN_DECLARATION.column
+    ),
   }));
   // The reads above stop at the window, so the series alone cannot tell a FIRST-ever
   // log from a stale one: both arrive as "nothing complete". One existence check per
@@ -398,20 +461,17 @@ export function getProteinOnDate(
   const target = proteinTargetOnDate(profileId, date);
   if (!target) return null;
 
-  const servings = getFoodServingsOnDate(profileId, date);
-  const dayServings = [...servings.entries()].map(([slug, n]) => ({
-    slug,
-    servings: n,
-  }));
-  const dailyEstimated = estimatedProteinGrams(dayServings);
-  const loggedOnDate = getProteinDailyGrams(profileId, date);
-  const trackedOnDate = getMetricDailyTotals(profileId, "protein_g").find(
-    (r) => r.date === date
+  const { period, dailyEstimated, dailyTracked } = onDateSources(
+    profileId,
+    PROTEIN_DECLARATION,
+    date
   );
+  const loggedOnDate = getProteinDailyGrams(profileId, date);
   const dayIntake = proteinIntake({
-    dailyTracked: trackedOnDate ? trackedOnDate.value : null,
+    dailyTracked,
     dailyLogged: loggedOnDate > 0 ? loggedOnDate : null,
     dailyEstimated,
+    period,
   });
   const dayGrams = dayIntake?.grams ?? 0;
   if (dayGrams <= 0) return null;
@@ -537,67 +597,43 @@ export function getConfirmedIntakeDosesInRange(
 }
 
 // The ONE gather behind the /nutrition fiber-adequacy card AND the coaching-tier fiber
-// finding (buildFiberAdequacyFindings). The #767 protein gather re-instantiated with a
-// fourth basis (supplemented). It assembles the pure engine's typed inputs from PROFILE-
-// SCOPED reads and returns the pure verdict, so the card and the finding are formatters
-// over the same result ("one question, one computation"). Reads through getFoodDailyServingTotals
-// / getConfirmedIntakeDosesInRange / getMetricDailyTotals, all profile-scoped, so the
+// finding (buildFiberAdequacyFindings), with one source protein doesn't have
+// (supplemented). It assembles the pure engine's typed inputs from PROFILE-SCOPED reads
+// and returns the pure verdict, so the card and the finding are formatters over the same
+// result ("one question, one computation"). Reads through getFoodDailyServingTotals /
+// getConfirmedIntakeDosesInRange / getMetricDailyTotals, all profile-scoped, so the
 // scoping guard is satisfied. Returns null when there's no intake signal or no DRI target.
 //
-// Windowing mirrors protein: intake is a PER-DAY average over this week (same
-// weekWindowStart), each source averaged over the distinct days that carry it (so a partial
-// week isn't diluted by unlogged days). `fiberIntake` compares the tracked mean with the
-// sum of the estimated and supplemented means; it does not add the independent sources.
+// NO LONGER "the protein gather re-instantiated" (#4485): the window, the estimated floor
+// and the tracked mean are the SAME `weekToDateSources` protein reads, differing only by
+// the declaration handed to it. `fiberIntake` compares the tracked mean with the sum of
+// the estimated and supplemented means; it does not add the independent sources.
 export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
-  const weekStart = weekWindowStart(profileId);
+  const { weekStart, period, dailyEstimated, dailyTracked } = weekToDateSources(
+    profileId,
+    FIBER_DECLARATION
+  );
 
-  // Estimated floor: this week's food-group servings → fiber grams / distinct logged days.
-  const entries = getFoodDailyServingTotals(profileId, weekStart);
-  const rollup = rollupServings(entries);
-  const loggedDays = new Set(entries.map((e) => e.date)).size;
-  const estWeekGrams = estimatedFiberGrams(rollup);
-  const dailyEstimated = loggedDays > 0 ? estWeekGrams / loggedDays : 0;
-
-  // Supplemented floor: this week's CONFIRMED fiber doses → grams / distinct days with a
-  // KNOWN-gram fiber dose (a capsule/unknown-unit dose sets the flag but isn't in the
+  // Supplemented floor: this week's CONFIRMED fiber doses, averaged over the days with a
+  // KNOWN-gram dose (a capsule/unknown-unit dose raises the caveat but isn't in the
   // divisor). Snapshot amounts; a skipped dose is already excluded by the query.
-  const doseRows = getConfirmedIntakeDosesInRange(profileId, weekStart);
-  const fiberGramsByDate = new Map<string, number>();
-  let unknownSupplement = false;
-  for (const r of doseRows) {
-    if (!isFiberSupplement(r.name)) continue;
-    const { grams, known } = fiberDoseGrams(r.amount);
-    if (known && grams > 0)
-      fiberGramsByDate.set(r.date, (fiberGramsByDate.get(r.date) ?? 0) + grams);
-    else unknownSupplement = true;
-  }
-  const suppDays = fiberGramsByDate.size;
-  const suppWeekGrams = [...fiberGramsByDate.values()].reduce(
-    (s, g) => s + g,
-    0
+  const doses = fiberDoseDays(
+    getConfirmedIntakeDosesInRange(profileId, weekStart)
   );
-  const dailySupplemented = suppDays > 0 ? suppWeekGrams / suppDays : null;
 
-  // Tracked: integration fiber_g daily totals this week, averaged over days with data.
-  const trackedRows = getMetricDailyTotals(profileId, "fiber_g").filter(
-    (r) => r.date >= weekStart
+  return assessFiberAdequacy(
+    fiberIntake({
+      dailyTracked,
+      dailyEstimated,
+      dailySupplemented: dailyMean([...doses.gramsByDate.values()]),
+      unknownSupplement: doses.unknownDates.size > 0,
+      period,
+    }),
+    fiberTarget({
+      ageYears: getProfileAge(profileId),
+      sex: getProfileSex(profileId),
+    })
   );
-  const dailyTracked =
-    trackedRows.length > 0
-      ? trackedRows.reduce((s, r) => s + r.value, 0) / trackedRows.length
-      : null;
-
-  const intake = fiberIntake({
-    dailyTracked,
-    dailyEstimated,
-    dailySupplemented,
-    unknownSupplement,
-  });
-  const target = fiberTarget({
-    ageYears: getProfileAge(profileId),
-    sex: getProfileSex(profileId),
-  });
-  return assessFiberAdequacy(intake, target);
 }
 
 // A SINGLE calendar day's fiber estimate for the seven-day Food picker. Unlike
@@ -608,34 +644,30 @@ export function getFiberOnDate(
   profileId: number,
   date: string
 ): FiberAdequacy | null {
-  const servings = [...getFoodServingsOnDate(profileId, date).entries()].map(
-    ([slug, n]) => ({ slug, servings: n })
+  const { period, dailyEstimated, dailyTracked } = onDateSources(
+    profileId,
+    FIBER_DECLARATION,
+    date
   );
-  const dailyEstimated = estimatedFiberGrams(servings);
+  // The ranged read starts at `date`, so a later day's doses can be in it — and they do
+  // not need filtering out, because `fiberDoseDays` keys both of its answers BY DAY and
+  // this reads only `date`. The narrowing is the lookup, not a second pass.
+  const doses = fiberDoseDays(getConfirmedIntakeDosesInRange(profileId, date));
+  const dailySupplemented = doses.gramsByDate.get(date) ?? 0;
 
-  let dailySupplemented = 0;
-  let unknownSupplement = false;
-  for (const row of getConfirmedIntakeDosesInRange(profileId, date)) {
-    if (row.date !== date || !isFiberSupplement(row.name)) continue;
-    const { grams, known } = fiberDoseGrams(row.amount);
-    if (known && grams > 0) dailySupplemented += grams;
-    else unknownSupplement = true;
-  }
-
-  const trackedOnDate = getMetricDailyTotals(profileId, "fiber_g").find(
-    (row) => row.date === date
+  return assessFiberAdequacy(
+    fiberIntake({
+      dailyTracked,
+      dailyEstimated,
+      dailySupplemented: dailySupplemented > 0 ? dailySupplemented : null,
+      unknownSupplement: doses.unknownDates.has(date),
+      period,
+    }),
+    fiberTarget({
+      ageYears: getProfileAge(profileId),
+      sex: getProfileSex(profileId),
+    })
   );
-  const intake = fiberIntake({
-    dailyTracked: trackedOnDate?.value ?? null,
-    dailyEstimated,
-    dailySupplemented: dailySupplemented > 0 ? dailySupplemented : null,
-    unknownSupplement,
-  });
-  const target = fiberTarget({
-    ageYears: getProfileAge(profileId),
-    sex: getProfileSex(profileId),
-  });
-  return assessFiberAdequacy(intake, target);
 }
 
 // ---- Fiber × GI symptoms, read together (issue #2788) ----
@@ -650,34 +682,33 @@ export function getFiberOnDate(
 // re-aggregates the profile's whole fiber_g history and runs an open-ended dose scan,
 // so 28 of them per render is an N+1 the page pays on every visit. The per-day figure
 // still comes from the SAME pure pieces the picker's gather composes
-// (estimatedFiberGrams / isFiberSupplement / fiberDoseGrams / fiberIntake), so the
+// (estimatedNutrientGrams / fiberDoseDays / fiberIntake), so the
 // two surfaces cannot disagree about a day — and the panel deliberately skips the
 // TARGET half (fiberTarget/assessFiberAdequacy): it draws intake, not adequacy.
 export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
-  const dates = fiberSymptomPanelDates(today(profileId));
+  const todayStr = today(profileId);
+  const dates = fiberSymptomPanelDates(todayStr);
   const from = dates[0];
   const to = dates[dates.length - 1];
 
   // Servings per day, from the shared ranged reader. A day PRESENT here with only
   // zero-fiber groups is an honest 0 g, distinct from an unlogged day's null (#2258).
-  const servingsByDate = new Map<string, FiberServing[]>();
+  const servingsByDate = new Map<string, NutrientServing[]>();
   for (const r of getFoodDailyServingTotalsInRange(profileId, from, to)) {
     const list = servingsByDate.get(r.date) ?? [];
     list.push({ slug: r.group_key, servings: r.servings });
     servingsByDate.set(r.date, list);
   }
 
-  // Confirmed fiber doses per day — known grams sum; an unknown-unit dose flags the
-  // day (the caveat the panel must carry rather than claiming "0 g").
-  const suppGramsByDate = new Map<string, number>();
-  const unknownSupplementDates = new Set<string>();
-  for (const r of getConfirmedIntakeDosesInRange(profileId, from)) {
-    if (r.date > to || !isFiberSupplement(r.name)) continue;
-    const { grams, known } = fiberDoseGrams(r.amount);
-    if (known && grams > 0)
-      suppGramsByDate.set(r.date, (suppGramsByDate.get(r.date) ?? 0) + grams);
-    else unknownSupplementDates.add(r.date);
-  }
+  // Confirmed fiber doses per day — known grams summed; an unknown-unit dose flags the
+  // day (the caveat the panel must carry rather than claiming "0 g"). The SAME scan the
+  // week gather and the day picker read, windowed to the panel's range here.
+  const { gramsByDate: suppGramsByDate, unknownDates: unknownSupplementDates } =
+    fiberDoseDays(
+      getConfirmedIntakeDosesInRange(profileId, from).filter(
+        (r) => r.date <= to
+      )
+    );
 
   // Tracked fiber_g daily totals, once, as a date → value map.
   const trackedByDate = new Map(
@@ -690,9 +721,12 @@ export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
     const supplemented = suppGramsByDate.get(date) ?? null;
     const intake = fiberIntake({
       dailyTracked: trackedByDate.get(date) ?? null,
-      dailyEstimated: servings ? estimatedFiberGrams(servings) : 0,
+      dailyEstimated: servings
+        ? estimatedNutrientGrams(servings, FIBER_DECLARATION.column)
+        : 0,
       dailySupplemented: supplemented,
       unknownSupplement: unknownSupplementDates.has(date),
+      period: dayPeriod(date, todayStr),
     });
     // fiberIntake refuses a zero-signal day (null); a day that LOGGED only
     // zero-fiber groups upgrades to an honest 0.

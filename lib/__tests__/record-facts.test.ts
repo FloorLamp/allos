@@ -47,6 +47,30 @@ import {
   type ProcedureFactInput,
   type ProcedureFactKey,
 } from "@/lib/procedure-facts";
+import {
+  immunizationFactSummary,
+  IMMUNIZATION_FACT_NOUNS,
+  type ImmunizationFactInput,
+  type ImmunizationFactKey,
+} from "@/lib/immunization-facts";
+import {
+  resultFactSummary,
+  RESULT_FACT_NOUNS,
+  type ResultFactInput,
+  type ResultFactKey,
+} from "@/lib/result-facts";
+import {
+  imagingStudyFactSummary,
+  IMAGING_STUDY_FACT_NOUNS,
+  type ImagingStudyFactInput,
+  type ImagingStudyFactKey,
+} from "@/lib/imaging-study-facts";
+import {
+  genomicVariantFactSummary,
+  GENOMIC_VARIANT_FACT_NOUNS,
+  type GenomicVariantFactInput,
+  type GenomicVariantFactKey,
+} from "@/lib/genomic-variant-facts";
 import { moreRecordFactsLabel } from "@/lib/record-facts";
 
 // The clinical record family's fact summaries (#5302), in ONE file for the family
@@ -739,6 +763,453 @@ describe("the procedure row (#5302)", () => {
     expect(more).toEqual(expected);
     expect(moreRecordFactsLabel(more, PROCEDURE_FACT_NOUNS)).toBe(
       "provider, notes…"
+    );
+  });
+});
+
+// ── #5302 slice 4: the coded-catalogue forms, and the last of the twelve ──────
+
+const FULL_IMMUNIZATION: ImmunizationFactInput = {
+  date: "2026-03-04",
+  doseLabel: "2025 seasonal",
+  lotNumber: "AB1234",
+  route: "intramuscular",
+  site: "Left deltoid",
+  reaction: "Sore arm for two days",
+  provider: "Example Medical Center",
+  notes: "given at the pharmacy",
+};
+
+describe("the immunization row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = immunizationFactSummary(FULL_IMMUNIZATION);
+    expect(keysOf(chips)).toEqual([
+      "date",
+      "dose",
+      "administration",
+      "reaction",
+      "provider",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("prompts for a missing date, which BOTH readers drop the dose for", () => {
+    // `buildImmunizationRecord` skips an undated dose, so it is absent from the
+    // printed record; `assessSchedule`'s gather skips it too, so the vaccine keeps
+    // reading `due` with the shot already given.
+    const { chips, more } = immunizationFactSummary({
+      ...FULL_IMMUNIZATION,
+      date: "",
+    });
+    expect(stateOf(chips, "date")).toBe("missing");
+    expect(more).not.toContain("date");
+  });
+
+  it("lets an unlabelled dose go quiet instead of prompting", () => {
+    // The asymmetry with `date`, asserted rather than only argued: `resolveDoseLabels`
+    // numbers a blank label within its vaccine's own sequence ("Dose 2 of 4"), so an
+    // absent label is answered rather than missing.
+    const { chips, more } = immunizationFactSummary({
+      ...FULL_IMMUNIZATION,
+      doseLabel: "",
+    });
+    expect(keysOf(chips)).not.toContain("dose");
+    expect(more).toContain("dose");
+  });
+
+  it("reads lot, route and site as ONE fact, through the shared line", () => {
+    // `immunizationAdministrationLine` is the one computation the history table, the
+    // dose list and the export share, so the chip cannot phrase the dose differently
+    // from the row it becomes.
+    expect(
+      immunizationFactSummary(FULL_IMMUNIZATION).chips.find(
+        (c) => c.key === "administration"
+      )?.label
+    ).toBe("Lot AB1234 · IM · Left deltoid");
+  });
+
+  it("drops an off-vocabulary route from that line rather than echoing it", () => {
+    // `routeOf` in the action lands anything outside the CHECK set as NULL, so the
+    // chip must not state a route the row will not store.
+    expect(
+      immunizationFactSummary({
+        ...FULL_IMMUNIZATION,
+        route: "sublingual",
+      }).chips.find((c) => c.key === "administration")?.label
+    ).toBe("Lot AB1234 · Left deltoid");
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = immunizationFactSummary({
+      ...FULL_IMMUNIZATION,
+      lotNumber: "",
+      route: "",
+      site: "",
+      reaction: "",
+      notes: "",
+    });
+    const expected: ImmunizationFactKey[] = [
+      "administration",
+      "reaction",
+      "notes",
+    ];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, IMMUNIZATION_FACT_NOUNS)).toBe(
+      "lot, route and site, reaction, notes…"
+    );
+  });
+});
+
+const FULL_RESULT: ResultFactInput = {
+  date: "2026-03-04",
+  category: "lab",
+  name: "LDL cholesterol",
+  canonical: "LDL Cholesterol, Direct",
+  value: "95",
+  unit: "mg/dL",
+  referenceRange: "< 100",
+  specimen: "Serum",
+  fasting: "1",
+  resultStatus: "final",
+  notes: "fasted 12h",
+  editing: true,
+  panel: "Lipid panel",
+  flag: "normal",
+  provider: "Quest Diagnostics",
+  orderingProvider: "Dr. Ada Lovelace",
+};
+
+describe("the result row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = resultFactSummary(FULL_RESULT);
+    expect(keysOf(chips)).toEqual([
+      "date",
+      "category",
+      "reading",
+      "canonical",
+      "reference",
+      "specimen",
+      "fasting",
+      "status",
+      "panel",
+      "flag",
+      "provider",
+      "ordering",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("reads the value and its unit as ONE fact", () => {
+    expect(
+      resultFactSummary(FULL_RESULT).chips.find((c) => c.key === "reading")
+        ?.label
+    ).toBe("95 mg/dL");
+  });
+
+  it("prompts for the result when there is no value at all", () => {
+    // `readingFromObservation` returns null without a numeric value and the
+    // qualitative pass has no text to classify: the row records that a test happened
+    // and nothing about what it said.
+    const { chips, more } = resultFactSummary({
+      ...FULL_RESULT,
+      value: "",
+      unit: "",
+    });
+    expect(stateOf(chips, "reading")).toBe("missing");
+    expect(more).not.toContain("reading");
+  });
+
+  it("prompts for the unit on a NUMERIC value with none", () => {
+    // `convertToCanonical` would assume the canonical unit — an mmol/L LDL judged
+    // against the mg/dL band — or decline outright for a count-per-volume canonical.
+    const { chips } = resultFactSummary({ ...FULL_RESULT, unit: "" });
+    expect(stateOf(chips, "reading")).toBe("missing");
+    expect(chips.find((c) => c.key === "reading")?.label).toBe("Add the unit");
+  });
+
+  it("does NOT prompt for a unit a qualitative result cannot have", () => {
+    // The asymmetry inside the one fact, and the failure this guards: a serology row
+    // reads "Reactive" and has no unit, so `value_num` is null and the unit is never
+    // consulted. Dashing it would press for a fact the report does not make.
+    const { chips } = resultFactSummary({
+      ...FULL_RESULT,
+      value: "Reactive",
+      unit: "",
+    });
+    expect(stateOf(chips, "reading")).toBe("stated");
+    expect(chips.find((c) => c.key === "reading")?.label).toBe("Reactive");
+  });
+
+  it("prompts for a blank category rather than letting the server pick one", () => {
+    // A blank select posts as 'lab' by server fallback, and the qualitative flag pass
+    // is gated on that column.
+    const { chips, more } = resultFactSummary({ ...FULL_RESULT, category: "" });
+    expect(stateOf(chips, "category")).toBe("missing");
+    expect(more).not.toContain("category");
+  });
+
+  it("states the canonical name only when it differs from the name above", () => {
+    const same = resultFactSummary({
+      ...FULL_RESULT,
+      canonical: "ldl cholesterol",
+    });
+    expect(keysOf(same.chips)).not.toContain("canonical");
+    expect(same.more).toContain("canonical");
+  });
+
+  it("offers no edit-only fact on the add door", () => {
+    // `addResult` parses none of them, and a fact the form does not post is not a
+    // fact — so they are absent from the chips AND from the more-line, which would
+    // otherwise name four editors the add door does not have.
+    const { chips, more } = resultFactSummary({
+      ...FULL_RESULT,
+      editing: false,
+    });
+    for (const key of ["panel", "flag", "provider", "ordering"] as const) {
+      expect(keysOf(chips)).not.toContain(key);
+      expect(more).not.toContain(key);
+    }
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = resultFactSummary({
+      ...FULL_RESULT,
+      editing: false,
+      canonical: "",
+      referenceRange: "",
+      specimen: "",
+      fasting: "",
+      resultStatus: "",
+      notes: "",
+    });
+    const expected: ResultFactKey[] = [
+      "canonical",
+      "reference",
+      "specimen",
+      "fasting",
+      "status",
+      "notes",
+    ];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, RESULT_FACT_NOUNS)).toBe(
+      "canonical name, reference range, specimen, fasting, result status, notes…"
+    );
+  });
+});
+
+const FULL_IMAGING: ImagingStudyFactInput = {
+  studyDate: "2026-03-04",
+  bodyRegion: "Chest",
+  laterality: "left",
+  contrast: true,
+  contrastAgent: "gadolinium",
+  doseMsv: "7",
+  indication: "screening",
+  impression: "6 mm RLL nodule",
+  status: "final",
+  orderingProvider: "Dr. Lee",
+  readingProvider: "Dr. Osei",
+  notes: "compare with prior",
+};
+
+describe("the imaging-study row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = imagingStudyFactSummary(FULL_IMAGING);
+    expect(keysOf(chips)).toEqual([
+      "study_date",
+      "region",
+      "laterality",
+      "contrast",
+      "dose",
+      "indication",
+      "impression",
+      "status",
+      "ordering",
+      "radiologist",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("prompts for a missing study date, which both consumers drop it for", () => {
+    const { chips, more } = imagingStudyFactSummary({
+      ...FULL_IMAGING,
+      studyDate: "",
+    });
+    expect(stateOf(chips, "study_date")).toBe("missing");
+    expect(more).not.toContain("study_date");
+  });
+
+  it("lets a region-less study go quiet instead of prompting", () => {
+    // THE SLICE'S ASYMMETRY, asserted rather than only argued. `sameLesion` is strict
+    // on the skin form's region, so an omitted one splits a mole's track;
+    // `sameImagingKind` returns true when either side's region is unspecified, and
+    // `resolveDoseEntry` falls back to the modality's generic entry. An absent region
+    // costs specificity here, never the record.
+    const { chips, more } = imagingStudyFactSummary({
+      ...FULL_IMAGING,
+      bodyRegion: "",
+    });
+    expect(keysOf(chips)).not.toContain("region");
+    expect(more).toContain("region");
+  });
+
+  it("reads the contrast agent WITH the contrast claim, not as its own chip", () => {
+    expect(
+      imagingStudyFactSummary(FULL_IMAGING).chips.find(
+        (c) => c.key === "contrast"
+      )?.label
+    ).toBe("With contrast (gadolinium)");
+  });
+
+  it("states nothing about contrast when the box is unchecked", () => {
+    // `normalizeContrast` presumes a study non-contrast unless the report says
+    // otherwise, so an unchecked box is the presumption rather than an omission.
+    const { chips, more } = imagingStudyFactSummary({
+      ...FULL_IMAGING,
+      contrast: false,
+      contrastAgent: "",
+    });
+    expect(keysOf(chips)).not.toContain("contrast");
+    expect(more).toContain("contrast");
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = imagingStudyFactSummary({
+      ...FULL_IMAGING,
+      laterality: "",
+      doseMsv: "",
+      indication: "",
+      notes: "",
+    });
+    const expected: ImagingStudyFactKey[] = [
+      "laterality",
+      "dose",
+      "indication",
+      "notes",
+    ];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, IMAGING_STUDY_FACT_NOUNS)).toBe(
+      "laterality, effective dose, indication, notes…"
+    );
+  });
+});
+
+const FULL_VARIANT: GenomicVariantFactInput = {
+  resultType: "pharmacogenomic",
+  genotype: "*2/*2",
+  starAllele: "*2/*2",
+  zygosity: "homozygous",
+  variant: "rs4986893",
+  significance: "likely-pathogenic",
+  reportDate: "2026-03-04",
+  sourceLab: "Invitae",
+  interpretation: "Poor metabolizer",
+  notes: "confirmed on repeat",
+};
+
+describe("the genomic-variant row (#5302)", () => {
+  it("states every fact it has, and holds nothing behind the more-line", () => {
+    const { chips, more } = genomicVariantFactSummary(FULL_VARIANT);
+    expect(keysOf(chips)).toEqual([
+      "result_type",
+      "call",
+      "variant",
+      "significance",
+      "report_date",
+      "source_lab",
+      "interpretation",
+      "notes",
+    ]);
+    expect(more).toEqual([]);
+  });
+
+  it("always states the result type, because the select is never blank", () => {
+    // Born "other" — the value `normalizeResultType` says routes to neither the PGx
+    // nor the cadence consumer — so the more-line can never hold it.
+    const { chips, more } = genomicVariantFactSummary({
+      ...FULL_VARIANT,
+      resultType: "",
+    });
+    expect(stateOf(chips, "result_type")).toBe("stated");
+    expect(chips.find((c) => c.key === "result_type")?.label).toBe("Other");
+    expect(more).not.toContain("result_type");
+  });
+
+  it("prompts for the call when neither a star allele nor a genotype is stated", () => {
+    // `derivedPhenotype` declines without a diplotype, `resolvePhenotype` returns
+    // null, and `crossCheckPgx` skips every phenotype-keyed guidance row: a gene with
+    // nothing else warns about no drug at all.
+    const { chips, more } = genomicVariantFactSummary({
+      ...FULL_VARIANT,
+      genotype: "",
+      starAllele: "",
+      zygosity: "",
+    });
+    expect(stateOf(chips, "call")).toBe("missing");
+    expect(more).not.toContain("call");
+  });
+
+  it("reads the three call columns as ONE fact, in the shared precedence", () => {
+    // star allele → genotype → zygosity, the order `variantCallLabel` applies
+    // everywhere else.
+    const byZygosity = genomicVariantFactSummary({
+      ...FULL_VARIANT,
+      genotype: "",
+      starAllele: "",
+    });
+    expect(byZygosity.chips.find((c) => c.key === "call")?.label).toBe(
+      "homozygous"
+    );
+    const byGenotype = genomicVariantFactSummary({
+      ...FULL_VARIANT,
+      starAllele: "",
+      genotype: "ε3/ε4",
+    });
+    expect(byGenotype.chips.find((c) => c.key === "call")?.label).toBe("ε3/ε4");
+  });
+
+  it("lets an unclassified variant go quiet instead of prompting", () => {
+    // The one most likely to be got wrong: `drivesHereditaryCadence` tests the result
+    // type FIRST, and a pharmacogenomic report states no ACMG class at all.
+    const { chips, more } = genomicVariantFactSummary({
+      ...FULL_VARIANT,
+      significance: "",
+    });
+    expect(keysOf(chips)).not.toContain("significance");
+    expect(more).toContain("significance");
+  });
+
+  it("lets an undated variant go quiet, unlike the other three forms in its slice", () => {
+    // A genotype does not change, so no consumer drops an undated variant — the
+    // column is read only for ordering and the search projection's day text.
+    const { chips, more } = genomicVariantFactSummary({
+      ...FULL_VARIANT,
+      reportDate: "",
+    });
+    expect(keysOf(chips)).not.toContain("report_date");
+    expect(more).toContain("report_date");
+  });
+
+  it("names the facts the trailing affordance holds", () => {
+    const { more } = genomicVariantFactSummary({
+      ...FULL_VARIANT,
+      variant: "",
+      significance: "",
+      reportDate: "",
+      notes: "",
+    });
+    const expected: GenomicVariantFactKey[] = [
+      "variant",
+      "significance",
+      "report_date",
+      "notes",
+    ];
+    expect(more).toEqual(expected);
+    expect(moreRecordFactsLabel(more, GENOMIC_VARIANT_FACT_NOUNS)).toBe(
+      "variant id, clinical significance, report date, notes…"
     );
   });
 });

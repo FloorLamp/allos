@@ -288,13 +288,17 @@ test.describe("Entry vocabularies (#1676)", () => {
       .getByRole("option", { name: "TPMT", exact: true })
       .click();
     await expect(gene).toHaveValue("TPMT");
-    await settledFill(page, form.getByLabel("Star allele"), "*3A/*3A");
-    await settledSelect(
-      page,
-      form.getByLabel("Result type"),
-      "pharmacogenomic"
+    // Behind the chip row since #5302: the star allele is half of the `call` fact and
+    // the result type is what routes this row to the cross-check at all.
+    await withRecordFact(form, "genomic-variant", "call", () =>
+      settledFill(page, form.getByLabel("Star allele"), "*3A/*3A")
     );
-    await settledFill(page, form.getByLabel("Source lab"), PGX_LAB);
+    await withRecordFact(form, "genomic-variant", "result_type", () =>
+      settledSelect(page, form.getByLabel("Result type"), "pharmacogenomic")
+    );
+    await withRecordFact(form, "genomic-variant", "source_lab", () =>
+      settledFill(page, form.getByLabel("Source lab"), PGX_LAB)
+    );
     await settledClick(
       page,
       form.getByRole("button", { name: "Add", exact: true })

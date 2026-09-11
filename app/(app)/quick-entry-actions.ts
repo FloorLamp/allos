@@ -6,11 +6,16 @@ import { gateSubjectProfile } from "./gate-item";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "@/lib/date";
-import { getTimezone, getUnitPrefs } from "@/lib/settings";
+import { getTimezone, getTtcStart, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
+import {
+  getTtcObservations,
+  ttcTodayReadings,
+  type TtcTodayReadings,
+} from "@/lib/ttc-store";
 import {
   cycleControlState,
   type CycleControlState,
@@ -172,6 +177,14 @@ export interface QuickEntryOtherItem {
 // The fold's offer for every day the sheet may stand on. Keyed by date because the
 // body's exclusions, the day's resolved amount and the day's logs are all per-day, and
 // the switcher may land on any of them without a re-gather.
+// The three daily TTC observations' server half (#5810) — today's already-recorded
+// reading per kind, plus the unit the temperature is entered in. Exactly the props
+// <TtcLogControls> takes on the Cycle page, so the sheet mount and the page mount are
+// handed the same numbers rather than two readings of the same rows.
+export type QuickEntryTtc = TtcTodayReadings & {
+  temperatureUnit: TemperatureUnit;
+};
+
 export interface QuickEntryOthers {
   byDate: Record<string, QuickEntryOtherItem[]>;
   // The gather's profile-local wall minute. `logHistoricalDose` REQUIRES a stated
@@ -257,6 +270,13 @@ export type QuickEntryData =
       // stale as the page it rode in on.
       form: "cycle";
       state: CycleControlState;
+      // THE TTC GATE (#5810), and the ABSENCE is the contract: this field is present
+      // only for a profile that has DECLARED a TTC start, so the overlay a profile who
+      // has not declared one opens is the object this arm has always been — no field to
+      // read, no control to render, nothing gathered on their behalf. Declared-only,
+      // like every other TTC surface: the app never infers the intent, and the one
+      // `getTtcStart` read below is the whole of what a non-TTC profile costs.
+      ttc?: QuickEntryTtc;
     }
   | {
       // The daily check-in (#2130), with the #2128 backfill window: today first,
@@ -617,13 +637,26 @@ async function gatherQuickEntry(
           "Cycle tracking isn't set up for this profile. Turn it on by recording a period under Medical \u2192 Cycle.",
       };
     }
+    const state = cycleControlState(
+      listCyclePeriods(profile.id),
+      date,
+      getForecastSuspension(profile.id)
+    );
+    // The gate, and it is the whole of the feature's cost to everyone else: one
+    // settings read, and an EARLY RETURN of the payload this arm has always sent. A
+    // profile that has not declared a TTC start gathers no observations, sends no
+    // extra field, and opens the overlay it opened yesterday.
+    if (getTtcStart(profile.id) == null) return { form: "cycle", state };
+    // Declared. TODAY ONLY, because the three actions stamp the profile's today
+    // server-side and take no date — the sheet's day context does not reach them,
+    // exactly as it does not reach the period lifecycle beside them.
     return {
       form: "cycle",
-      state: cycleControlState(
-        listCyclePeriods(profile.id),
-        date,
-        getForecastSuspension(profile.id)
-      ),
+      state,
+      ttc: {
+        ...ttcTodayReadings(getTtcObservations(profile.id, date), date),
+        temperatureUnit: getUnitPrefs(login.id).temperatureUnit,
+      },
     };
   }
 
