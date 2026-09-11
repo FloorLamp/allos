@@ -280,9 +280,21 @@ export const HOVER_CAPTURES = [
   // point, so a profile without today's HR renders no chart at all. Registered, it would
   // log a BLIND SPOT line on every census whose profile is quiet — the cost this module's
   // header says a registration must not carry, and worse than no entry because a surface
-  // that quietly stops being photographed reads like one that was. Register it if the
-  // chart ever becomes unconditional, or if the census gains a profile that guarantees
-  // the reading.
+  // that quietly stops being photographed reads like one that was.
+  //
+  // TWO ROUTES BACK, AND THE CHEAPER ONE IS NOT A PRODUCT CHANGE. Either the
+  // `pointCount > 1` gate stops standing between the crosshair and the census — the
+  // chart becomes unconditional, which is a Home decision — OR the census simply runs
+  // against a profile that HAS same-day heart rate. scripts/ux-walkthrough.mjs signs in
+  // as `UX_ADMIN_USER || "admin"` against a fresh seed by default, which is why the
+  // registration would blind-spot on every default run; seed that profile a day of
+  // intraday HR and the affordance is photographable with nothing about Home changed.
+  // Re-add the entry as
+  // `target: '[data-variant="wide"] [data-testid="intraday-svg"]'`,
+  // `reveals: '[data-testid="intraday-cursor"]'` — the wide drawing specifically, since
+  // the compact one is rendered first and `@min-[520px]:hidden` — and give
+  // e2e/ux-hover-capture.spec.ts a SURFACES floor cut from a measured run, as the
+  // comment there records the old one was.
   {
     // #3375's load-bearing case: the CDC schedule grid's per-vaccine and per-dose
     // content uses the same panel for mouse hover and pinned tap/keyboard access.
