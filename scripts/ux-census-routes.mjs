@@ -177,30 +177,16 @@ export const DISCLOSURE_EXPANSIONS = [
       '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
     loadMore: '[data-testid="clinical-result-panel-pager-row"]',
   },
-  {
-    // THE DASHBOARD'S ONE FOLD, and the census's only picture of the tail (#3366).
-    //
-    // It began as Standing's quiet tail (#3548) — dormant lines, months-old
-    // results, quiet pillars, out-ranked connect-a-source CTAs. #4480 merged that
-    // fold into Show everything, so a single <details> now hides BOTH it and the
-    // exhaustive remainder, and the resting dashboard shot photographs neither.
-    //
-    // WHAT IS BEHIND IT CHANGED TWICE UNDER THIS ENTRY, which is what #3366's
-    // census criterion is about and why the label above it moved:
-    //   * #4083 retired the tail's four always-available write cards — weight,
-    //     vitals, well-day and cycle — to the quick-log sheet. The expanded shot
-    //     is a picture of a tail that no longer offers a write.
-    //   * #4396 then removed the "Elsewhere" door rows #4083 had drawn for the one
-    //     nav-duplicate candidate it drops (owner: "utterly useless"). So there is
-    //     no door row to photograph either; that drop's completeness is proven at
-    //     the placement-manifest tier instead.
-    //
-    // The fold is a native <details>, which publishes its state as the element's
-    // own `open` rather than as an aria attribute — hence the structural selector.
-    route: "/",
-    label: "the dashboard's Show everything fold",
-    closedToggle: 'details:not([open]) > [data-testid="dashboard-all-summary"]',
-  },
+  // THE DASHBOARD'S ONE FOLD IS GONE, AND SO IS THE ENTRY (#5435 §4). `/` carried a
+  // `DISCLOSURE_EXPANSIONS` entry for "the dashboard's Show everything fold" — a
+  // native `<details>` keyed on `dashboard-all-summary`, which began as Standing's
+  // quiet tail (#3548) and absorbed the exhaustive remainder when #4480 merged the two
+  // folds. §4 retires the tail with the ranker that filled it and the placement canvas
+  // that drew it, so the toggle is written by no markup anywhere and the expansion pass
+  // would log a BLIND SPOT for a fold that cannot exist. Home v3's one fold is the
+  // Later band, which is a ROW rather than a control (#3979) and is photographed in the
+  // resting shot; it needs no entry here. The hover entry for `/` went the same way in
+  // PR 2, for the same reason.
 ];
 
 // Hover-capture registry (#3489 deliverable 4). The census photographs the
