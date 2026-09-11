@@ -52,6 +52,7 @@ import { metricSourceLabel } from "@/lib/metric-source-priority";
 import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
+import { BREATHING_RATE_METRIC } from "@/lib/breathing-rate";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
@@ -295,6 +296,28 @@ export default async function BodySection({
     date: d.date,
     value: Math.round(d.value * 10) / 10,
   }));
+  // The sleeping breathing rate (#5409) — the OTHER nightly wearable stream, gathered
+  // exactly as HRV and skin temperature are and for the same reason: it lives in
+  // `metric_samples` keyed to the sleep session, not in `medical_records`. It is NOT the
+  // `respiratory-rate` series two lines up — that one stays `getBiomarkerSeries(…,
+  // "Respiratory Rate")`, the clinical spot count judged at 12–20, and after this
+  // issue's migration it carries only those clinical rows. Two identities, two charts.
+  //
+  // getMetricDailyTotals AVERAGES this metric per day (AVERAGED_METRICS), never sums: a
+  // night can carry both a Health Connect and a Fitbit Takeout reading, and two agreeing
+  // 13.6s summed would chart a 27.2 br/min night nobody breathed.
+  //
+  // One decimal, through the registry's own `decimals` rather than a hand-rolled ×10,
+  // so this gather and `STREAM_SERIES["breathing-rate"]` (the detail page's reader)
+  // cannot round the same night two ways.
+  const breathingRateAll = getMetricDailyTotals(
+    profile.id,
+    BREATHING_RATE_METRIC,
+    ALL_ROWS
+  ).map((d) => ({
+    date: d.date,
+    value: round(d.value, TREND_METRIC_META["breathing-rate"].decimals),
+  }));
 
   const systolicAll = vitalPoints(systolicRows);
   const diastolicAll = vitalPoints(diastolicRows);
@@ -309,6 +332,7 @@ export default async function BodySection({
   const hrvChart = filterSeriesByRange(hrvAll, range);
   const peakFlowChart = filterSeriesByRange(peakFlowAll, range);
   const skinTempChart = filterSeriesByRange(skinTempAll, range);
+  const breathingRateChart = filterSeriesByRange(breathingRateAll, range);
 
   // Age drives chart MEMBERSHIP: for a growth-tracked profile the tab charts height
   // (and head circ for the very young) and drops body fat entirely. That decision
@@ -556,6 +580,24 @@ export default async function BodySection({
       data: peakFlowChart,
       unit: TREND_METRIC_META["peak-flow"].unit,
       color: TREND_METRIC_META["peak-flow"].color,
+    });
+  }
+  if (breathingRateAll.length > 0) {
+    // Between peak flow and skin temperature, which is where `BODY_CARD_LAYOUT` seats
+    // it: the respiratory family a reader looks for it in, beside the other card fed by
+    // one value per sleep session from the same wearable. Present-gated like its
+    // neighbours — a profile whose tracker never reported a breathing rate gets no card.
+    vitalsCharts.push({
+      key: "breathing-rate",
+      testid: "vitals-breathing-rate",
+      detailHref: metricDetailHref("breathing-rate"),
+      title: TREND_METRIC_META["breathing-rate"].title,
+      data: breathingRateChart,
+      unit: TREND_METRIC_META["breathing-rate"].unit,
+      color: TREND_METRIC_META["breathing-rate"].color,
+      decimals: TREND_METRIC_META["breathing-rate"].decimals,
+      about:
+        "Your tracker's average breaths per minute across one night's sleep — one reading per night, not the count a clinician takes while you are awake. Read it against your own usual nights rather than a reference range.",
     });
   }
   if (skinTempAll.length > 0) {
@@ -1146,6 +1188,7 @@ export default async function BodySection({
     "peak-flow": peakFlowAll,
     temperature: temperatureAll,
     "skin-temp": skinTempAll,
+    "breathing-rate": breathingRateAll,
     weight: weightAll,
     "body-fat": bodyFatAll,
     "resting-hr": restingHrAll,
