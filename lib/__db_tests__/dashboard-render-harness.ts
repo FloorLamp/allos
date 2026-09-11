@@ -433,9 +433,10 @@ export interface ResolvedTree {
    * DOM as `data-candidate-id`, and a census of those ids IS the manifest now that
    * there is no placement array to read one from).
    *
-   * HOST elements only, which is the honest bound: a client component cannot be run
-   * here — it reaches for hooks and throws — so its own markup is absent and only the
-   * server-rendered rows around it are counted. That is exactly the set this tier can
+   * Every element the walk REACHED — host elements and components alike, a component's
+   * props captured before it is run. A client component cannot be run here (it reaches
+   * for hooks and throws), so its own markup is absent and only its props and the
+   * server-rendered tree around it are present. That is exactly the set this tier can
    * speak for, and naming it here stops a reader inferring coverage of the rest.
    */
   elements: AnyProps[];
@@ -465,6 +466,11 @@ export async function resolveAsyncTree(
     const type = element.type;
     if (typeof type === "function") {
       const name = (type as { name?: string }).name || "(anon)";
+      // A COMPONENT'S OWN PROPS ARE COLLECTED TOO, and before it is run: a control
+      // handed down as an element (`<HomeRow control={…}>`) is a prop rather than
+      // markup, and a client component's props are the only thing a reader can see of
+      // it at all here, because the component itself throws.
+      stats.elements.push(element.props);
       try {
         stats.components += 1;
         let rendered = (type as (props: AnyProps) => unknown)(element.props);
