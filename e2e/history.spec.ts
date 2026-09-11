@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
 import { MONTHS_SHORT, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
+import { formatLongDate } from "@/lib/format-date";
 
 // `/history` — THE APP'S RECORD (#3958 phase 1).
 //
@@ -24,6 +25,10 @@ const PROFILE = 1;
 // Comfortably inside the 14-day recent band at any run date. The shared profile's
 // pinned timezone guarantees its local date equals the frozen instant's UTC date.
 const DAY = shiftDateStr(frozenNow().toISOString().slice(0, 10), -7);
+// The profile-LOCAL today, which the pinned timezone above makes equal to the frozen
+// instant's UTC date. Today is the day #5764's phone criterion is stated on, and the
+// day the bar draws no next arrow for.
+const TODAY = frozenNow().toISOString().slice(0, 10);
 // The month-and-day a row must NOT print, derived from DAY and built from the app's
 // own month table rather than an implicit-locale `toLocaleDateString` (#1020).
 //
@@ -173,19 +178,137 @@ test.describe("the record (#3958)", () => {
 
     const day = page.getByTestId("history-day");
     await expect(day).toHaveCount(1);
-    // THE DAY VIEW'S NAME IS THE BAR'S (#4918 ruling 1), in the same #3958 grammar
-    // the feed's header keeps. The per-group header is gone from THIS view and the
+    // THE PER-GROUP HEADER IS GONE FROM THIS VIEW (#4918 ruling 1) and the
     // self-linking door with it — asserted as the absence of the door rather than of
-    // an `h2`, because the bar's name is an `h2` too.
+    // an `h2`, because whatever names the day is an `h2` or an `h1` too.
     await expect(day.getByTestId("history-day-link")).toHaveCount(0);
+
+    // ── AND THE NAME IS THE HEADER'S HERE (#5764) ────────────────────────────────
+    //
+    // At this project's 1280px the day view's title IS the day: one h1, the long
+    // date, the count on the line under it, and `History` printed exactly once — as
+    // the way back. Scoped to the page, because the app shell's nav carries its own
+    // History link and the claim is about what this page says twice.
+    const content = page.getByTestId("history-page");
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(h1).toHaveCount(1);
+    await expect(h1).toHaveText(formatLongDate(DAY));
+    const count = content.getByText(/^\d+ records?$/);
+    await expect(count).toBeVisible();
+    await expect(content.getByText("History", { exact: true })).toHaveCount(1);
+    await expect(
+      content.getByRole("link", { name: "History", exact: true })
+    ).toHaveCount(1);
+    // The bar does not say it a second time at this width…
     const header = page.getByTestId("timeline-day-name");
-    await expect(header).toBeVisible();
-    await expect(header).toContainText(/\d+ records?/);
+    await expect(header).toBeHidden();
+    // …and the arrows it leaves behind are still its two ends, not three items
+    // spread evenly across the column by `justify-between` with the name removed.
+    const nav = page.getByTestId("timeline-day-nav"); // testid-scope-ok: the day bar is the page frame, outside any streamed boundary
+    const next = page.getByTestId("timeline-day-next");
+    const [navBox, prevBox, nextBox, endBox] = await Promise.all(
+      [
+        nav,
+        page.getByTestId("timeline-day-prev"),
+        next,
+        next.locator("xpath=.."),
+      ].map(async (locator) => (await locator.boundingBox())!)
+    );
+    expect(Math.round(prevBox.x)).toBeLessThanOrEqual(Math.round(navBox.x) + 1);
+    expect(
+      Math.round(navBox.x + navBox.width) - Math.round(endBox.x + endBox.width),
+      `the bar's trailing end stops at ${Math.round(endBox.x + endBox.width)}, the bar at ${Math.round(navBox.x + navBox.width)}`
+    ).toBeLessThanOrEqual(1);
+    // …and the next-day arrow is AT that end rather than adrift in the middle of the
+    // column, which is where `justify-between` puts a third item once the hidden name
+    // stops absorbing the slack.
+    expect(
+      nextBox.x,
+      `the next arrow starts at ${Math.round(nextBox.x)} in a bar spanning ${Math.round(navBox.x)}–${Math.round(navBox.x + navBox.width)}`
+    ).toBeGreaterThan(navBox.x + navBox.width / 2);
+
     // AND THE NAME IS ABOVE THE CHART, not below it: the defect was a date printed
     // after the day's content, so the order is the claim and not merely the presence.
-    const nameBox = (await header.boundingBox())!;
     const chartBox = (await page.getByTestId("intraday-panel").boundingBox())!;
-    expect(nameBox.y).toBeLessThan(chartBox.y);
+    expect((await h1.boundingBox())!.y).toBeLessThan(chartBox.y);
+
+    // ── ON THE PHONE THE BAR IS STILL THE NAME (#4918 ruling 1, #5764) ───────────
+    //
+    // The h1 goes `sr-only` below `sm` (#1616/#1661), so the visible name is the
+    // sticky bar's, in the SHORT grammar ruling 1 wrote — `Wed, Sep 9 — 13 records`
+    // and not `Wednesday, September 9 — 13 records`. AT still hears exactly one h1.
+    await phone(page);
+    await expect(header).toBeVisible();
+    await expect(header).toHaveText(/^\w{3}, \w{3} \d{1,2} — \d+ records?$/);
+    // The two counts are ONE fact: the header's line and the bar's tail agree.
+    expect((await header.textContent())!).toContain(
+      (await count.textContent())!
+    );
+    await expect(h1).toHaveCount(1);
+    const phoneNameBox = (await header.boundingBox())!;
+    expect(phoneNameBox.y).toBeLessThan(
+      (await page.getByTestId("intraday-panel").boundingBox())!.y
+    );
+
+    // ── AND ON TODAY IT IS READ IN FULL, WITH ROOM TO SPARE (#5764) ──────────────
+    //
+    // The defect: at 390px `truncate` ate ` — 13 records` — the COUNT — off the long
+    // spelling, so the bar printed `Wednesday, September 9 —…`. Asserted as the
+    // property (`scrollWidth === clientWidth`, nothing clipped) rather than against a
+    // pixel figure, which would only describe this fixture's own label.
+    //
+    // ON TODAY, which is the day the AC names and the day this claim is TRUE of: today
+    // draws no next arrow, so the name has that arrow's room. A PAST day with rows to
+    // select carries four items — both arrows AND #5618 ruling 4's Select — and at
+    // 390px that leaves the name 116px for a 156px string, so it still truncates. The
+    // short grammar takes ~63px off the old one and does not buy the whole gap back.
+    // Measured 2026-09-11 at 390×844, Chromium: inner width 358, `gap-2` ×2 = 16,
+    // each arrow 81, Select 56. #5764's own arithmetic omits Select, which landed
+    // after #4918 — the invariant "in full on ANY date" is not met on that one case
+    // and is reported rather than silently asserted away here.
+    //
+    // THE HEADROOM IS THE THREE-DIGIT CASE, without a 132-row fixture on the shared
+    // profile's today: the slack is compared against two more digits MEASURED IN THE
+    // BAR'S OWN FONT, so the claim is "a busier day would still fit" rather than a
+    // constant that stops being true when the type changes.
+    await page.goto(`/history?day=${TODAY}`);
+    await expect(header).toBeVisible();
+    await expect(page.getByTestId("timeline-day-next")).toHaveCount(0);
+    const fit = await header.evaluate((el) => {
+      // The BOX is flex-sized, so `scrollWidth` equals `clientWidth` the moment the
+      // text fits and can measure no headroom. The text's own Range can.
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const text = range.getBoundingClientRect().width;
+      const probe = document.createElement("span");
+      const style = getComputedStyle(el);
+      probe.style.font = style.font;
+      probe.style.letterSpacing = style.letterSpacing;
+      probe.style.position = "absolute";
+      probe.style.whiteSpace = "pre";
+      probe.style.visibility = "hidden";
+      probe.textContent = "88";
+      el.appendChild(probe);
+      const twoDigits = probe.getBoundingClientRect().width;
+      probe.remove();
+      return {
+        scroll: el.scrollWidth,
+        client: el.clientWidth,
+        text,
+        twoDigits,
+      };
+    });
+    expect(
+      fit.scroll - fit.client,
+      `the bar's name overflows its ${fit.client}px slot by ${fit.scroll - fit.client}px`
+    ).toBeLessThanOrEqual(0);
+    expect(
+      fit.client - fit.text,
+      `"${await header.textContent()}" lays out ${Math.round(fit.text)}px in a ${fit.client}px slot; two more digits need ${Math.round(fit.twoDigits)}px`
+    ).toBeGreaterThanOrEqual(fit.twoDigits);
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/history?day=${DAY}`);
 
     const serving = page
       .getByTestId("history-row")
@@ -492,12 +615,18 @@ test.describe("the record (#3958)", () => {
     // inherited.
     await page.goto("/history?day=2099-01-01");
     await expect(page.getByTestId("history-filters")).toBeVisible();
-    // THE BAR IS WHAT NAMES THE CLAMPED DAY NOW (#4918 ruling 1) — and it names it
-    // whether or not the day has rows, which the retired per-group header could not:
-    // a clamp landing on a quiet today used to leave this assertion nothing to read.
-    const named = page.getByTestId("timeline-day-name");
+    // THE FRAME IS WHAT NAMES THE CLAMPED DAY NOW (#4918 ruling 1, #5764) — and it
+    // names it whether or not the day has rows, which the retired per-group header
+    // could not: a clamp landing on a quiet today used to leave this assertion
+    // nothing to read. At this width the frame is the header's h1; the bar is the
+    // phone's, so both are asked.
+    const named = page.getByRole("heading", { level: 1 });
     await expect(named).toBeVisible();
     expect(await named.textContent()).not.toContain("2099");
+    await phone(page);
+    const barName = page.getByTestId("timeline-day-name");
+    await expect(barName).toBeVisible();
+    expect(await barName.textContent()).not.toContain("2099");
   });
 
   test("the jump rail owns a lane and never overlaps a row's action column", async ({

@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { expectNoClippedContent, settledBoxes } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { formatLongDate } from "@/lib/format-date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // THE TIMELINE JUMP RAIL (issue #2657 item 4).
@@ -483,7 +484,12 @@ test.describe("the rail's column on a phone (#3403)", () => {
     // the surfaces underneath must then use the full column rather than carrying an
     // empty 28px band for a strip that is not there.
     await page.goto(`/history?kind=goal&day=${DATES.mid}`);
-    await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
+    // THE DAY VIEW'S HEADING IS THE DAY (#5764), not the section: `History` is the
+    // back link above it now, so the premise this case needs — the page rendered —
+    // is read off the h1 that actually names it.
+    await expect(
+      page.getByRole("heading", { level: 1, name: formatLongDate(DATES.mid) })
+    ).toBeVisible();
     await expect(strip(page)).toHaveCount(0);
     // The feed itself rendered — a day that fell through to the empty state would
     // make the padding read 0px for a reason this test is not asserting.
