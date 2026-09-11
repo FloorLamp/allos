@@ -147,7 +147,8 @@ export function skinLesionFactSummary(
   else row.missing("location", "Add a body-map region");
 
   const observed = f.observedDate.trim();
-  if (observed) row.stated("observed", `Observed ${formatMonthDay(observed, prefs)}`);
+  if (observed)
+    row.stated("observed", `Observed ${formatMonthDay(observed, prefs)}`);
   else row.missing("observed", "Add the observation date");
 
   row.stated("status", skinLesionStatusLabel(f.status));

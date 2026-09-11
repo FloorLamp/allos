@@ -86,7 +86,9 @@ test.describe("Dental records — add → view → filter → track recheck → 
       await form.getByLabel("Tooth").fill(TOOTH);
     });
     await withRecordFact(form, "dental-procedure", "finding", async () => {
-      await form.getByLabel("Finding / note").fill("Watch for recurrent decay.");
+      await form
+        .getByLabel("Finding / note")
+        .fill("Watch for recurrent decay.");
     });
     // THE ROW'S OWN CLAIM, asserted where a real browser can see it: this record has
     // no CDT code, which is an ESSENTIAL — the #704 invasiveness gate reads that

@@ -161,6 +161,7 @@ test.describe("preventive deep-links per class (#1083)", () => {
     // `data-suggested`: nothing proposed a code, and a missing fact cannot have
     // borrowed one.
     const code = page
+      .getByRole("main")
       .getByTestId("procedure-form")
       .getByTestId("procedure-fact-code");
     await expect(code).toHaveAttribute("data-fact-state", "missing");

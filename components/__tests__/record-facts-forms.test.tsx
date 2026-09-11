@@ -534,18 +534,22 @@ describe("the specialty and history rows prompt for the essentials they are miss
   it.each<{ name: string; render: () => void; prompts: string[] }>([
     {
       name: "the skin-lesion row prompts for the body map and the observation date",
-      render: () => wrap(<SkinLesionForm action={noop} record={unplacedLesion} />),
+      render: () =>
+        wrap(<SkinLesionForm action={noop} record={unplacedLesion} />),
       prompts: ["skin-lesion-fact-location", "skin-lesion-fact-observed"],
     },
     {
       name: "the dental row prompts for the date and the CDT code",
       render: () =>
-        wrap(<DentalProcedureForm action={noop} record={uncodedDentalRecord} />),
+        wrap(
+          <DentalProcedureForm action={noop} record={uncodedDentalRecord} />
+        ),
       prompts: ["dental-procedure-fact-date", "dental-procedure-fact-cdt"],
     },
     {
       name: "the procedure row prompts for both the code and the date",
-      render: () => wrap(<ProcedureForm action={noop} procedure={uncodedProcedure} />),
+      render: () =>
+        wrap(<ProcedureForm action={noop} procedure={uncodedProcedure} />),
       prompts: ["procedure-fact-code", "procedure-fact-date"],
     },
   ])("$name", ({ render: renderForm, prompts }) => {

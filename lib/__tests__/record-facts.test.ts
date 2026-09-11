@@ -526,7 +526,10 @@ describe("the skin-lesion row (#5302)", () => {
     // The select is born "active" and the action normalizes whatever it holds onto the
     // CHECK set, so the fact can never be absent — the allergy row's reading.
     expect(
-      stateOf(skinLesionFactSummary({ ...FULL_SKIN_LESION, status: "" }).chips, "status")
+      stateOf(
+        skinLesionFactSummary({ ...FULL_SKIN_LESION, status: "" }).chips,
+        "status"
+      )
     ).toBe("stated");
   });
 

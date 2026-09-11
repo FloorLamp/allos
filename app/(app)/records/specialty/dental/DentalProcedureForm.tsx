@@ -230,7 +230,9 @@ export default function DentalProcedureForm({
             name="status"
             className="input"
             defaultValue={record?.status ?? "completed"}
-            onChange={(e) => setStatus(e.target.value as DentalProcedure["status"])}
+            onChange={(e) =>
+              setStatus(e.target.value as DentalProcedure["status"])
+            }
           >
             {DENTAL_STATUSES.map((s) => (
               <option key={s} value={s}>
