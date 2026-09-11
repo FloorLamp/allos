@@ -14,6 +14,7 @@ import { dispWeight, kgTo, toKg, round } from "../units";
 import type { WeightUnit } from "../settings";
 import { fmtRpe } from "../rpe";
 import { within, byDateDesc } from "./common";
+import { DELOAD_LOAD_FACTOR, policyPercent } from "../constants";
 
 // ---- Strength ----
 
@@ -514,9 +515,11 @@ export function suggestNextSet(
 // can clear before the next cycle turns over. Two conservative, FIXED levers — the
 // cycle is a user-set counter, not a readiness model (#559), so these are constants,
 // not fatigue-driven:
-//   • load: ~10% lighter (rounded to a loadable jump), and
+//   • load: `DELOAD_LOAD_FACTOR` lighter (rounded to a loadable jump), and
 //   • volume: one fewer working set per slot (never below one).
-export const DELOAD_LOAD_FACTOR = 0.9; // −10% load
+// The load lever is declared with the app's other policy numerals (#4243); the
+// plateau advice's "~10%" prose formats from that same declaration.
+export { DELOAD_LOAD_FACTOR };
 export const DELOAD_SET_REDUCTION = 1; // −1 working set per slot
 export const DELOAD_MIN_SETS = 1; // never drop below a single working set
 
@@ -632,7 +635,9 @@ function deloadNextSet(
   return {
     ...ns,
     weightKg,
-    rationale: "Deload week — ~10% lighter to recover",
+    // The magnitude the reader is told is the magnitude just applied — both
+    // formatted from `DELOAD_LOAD_FACTOR` (#4243).
+    rationale: `Deload week — ~${policyPercent(1 - DELOAD_LOAD_FACTOR)} lighter to recover`,
   };
 }
 

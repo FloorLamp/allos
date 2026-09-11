@@ -18,8 +18,10 @@ import { dateStrInTz, parseUtcSql } from "./date";
 import { zoneOf, type ProfileDayZone } from "./travel-timezone";
 
 // How many days the per-item adherence strip spans (the intake surfaces and
-// any windowed-history consumer share the window length).
-export const STRIP_DAYS = 14;
+// any windowed-history consumer share the window length). The number is declared
+// with the app's other policy numerals (#4243) so the adherence NOTIFICATION's
+// window reads the same declaration rather than restating it.
+export { ADHERENCE_WINDOW_DAYS as STRIP_DAYS } from "./constants";
 
 // How far back a LIST surface shows recorded administrations in its per-item dose
 // history panel (#1933). Longer than the strip on purpose — the strip answers "how has
