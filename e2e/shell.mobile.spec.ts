@@ -127,6 +127,10 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
 
     // Transform-based: the element still "exists" and is still `visible` to the
     // DOM, but it has travelled off the top of the viewport.
+    // raw-box-ok: the subject is a transform IN MOTION, and the read already sits
+    // inside `expect.poll`, which is the retry `settledBoxes` would nest a second
+    // settle loop inside. The `?? 0` sentinel is load-bearing: a box that is not
+    // there yet has to keep the poll going rather than throw out of it.
     await expect
       .poll(async () => (await chrome.boundingBox())?.y ?? 0)
       .toBeLessThan(0);
@@ -134,6 +138,8 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     // Any upward scroll brings it straight back, still deep in the page.
     await scrollTo(page, deep - 300);
     await expect(chrome).toHaveAttribute("data-hidden", "false");
+    // raw-box-ok: same shape as the travel poll above — a transform in motion,
+    // read inside `expect.poll`, with `?? -1` standing for "not there yet".
     await expect
       .poll(async () => (await chrome.boundingBox())?.y ?? -1)
       .toBe(0);
@@ -182,6 +188,8 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     };
     // Control and assertion through the SAME read: flush with no notch, below the
     // band with one.
+    // raw-box-ok: converting one side of that parity would break it, and the read
+    // is driven by `expect.poll` below, which already supplies the retry.
     const parkedY = async () => (await chrome.boundingBox())?.y ?? -1;
     await pin();
     await expect.poll(parkedY).toBe(0);

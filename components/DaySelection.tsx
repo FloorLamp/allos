@@ -182,6 +182,159 @@ export function DaySelectionBar() {
   return <SelectionVerbs value={value} />;
 }
 
+/** The rows one batch names, in the two id spaces the correction cores take. */
+export interface LedgerBatchTarget {
+  /** The day whose rows these are. The core re-derives it and narrows to it. */
+  date: string;
+  /** The subject, where the surface holds several (#4009 item 1). */
+  profileId?: number;
+  /** `food_log_events.id` for each serving. */
+  servings: readonly number[];
+  /** `intake_item_logs.id` for each taken dose. */
+  doses: readonly number[];
+}
+
+/**
+ * POST ONE BATCH AND SAY WHAT LANDED — the whole of what a surface needs to drive the
+ * three Server Actions, and deliberately the only spelling of it.
+ *
+ * The action answers with the rows it wrote and every row it refused, each carrying the
+ * reason its own core gave, so a batch that half-lands says so rather than confirming
+ * all of it (#232's contract, at batch grain). The rows themselves come back from the
+ * server revalidation the action ran.
+ *
+ * A HOOK RATHER THAN A FUNCTION because the wording is a toast and the in-flight state
+ * is a render, and both belong to whichever surface is posting. Selection mode's bar is
+ * one caller; the record's bundle row (#5618 ruling 5) is the other — one composed act
+ * is a fixed selection of exactly these two id spaces, so it drives the same three
+ * actions over the same cores rather than growing a fourth verb of its own.
+ *
+ * Answers whether the batch LANDED, which is the one thing the caller has to branch on:
+ * selection mode leaves the mode, a bundle row closes its sheet.
+ */
+export function useLedgerBatch(): {
+  busy: boolean;
+  run: (
+    verb: "Updated" | "Removed",
+    action: (fd: FormData) => Promise<LedgerSelectionEditResult>,
+    target: LedgerBatchTarget,
+    extra?: Record<string, string>
+  ) => Promise<boolean>;
+} {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return {
+    busy,
+    run: async (verb, action, target, extra) => {
+      const fd = new FormData();
+      fd.set("date", target.date);
+      if (target.profileId !== undefined)
+        fd.set("profile_id", String(target.profileId));
+      fd.set("serving_ids", target.servings.join(","));
+      fd.set("dose_log_ids", target.doses.join(","));
+      for (const [key, value] of Object.entries(extra ?? {}))
+        fd.set(key, value);
+      setBusy(true);
+      try {
+        const result = await action(fd);
+        if (!result.ok) {
+          toast(result.error, { tone: "error" });
+          return false;
+        }
+        if (result.applied === 0) {
+          toast(result.refused[0]?.reason ?? "Nothing changed.", {
+            tone: "error",
+          });
+          return false;
+        }
+        toast(
+          result.refused.length === 0
+            ? `${verb} ${result.applied} ${result.applied === 1 ? "row" : "rows"}.`
+            : `${verb} ${result.applied} of ${result.applied + result.refused.length} — ${result.refused[0]!.reason}`,
+          result.refused.length === 0 ? undefined : { tone: "error" }
+        );
+        return true;
+      } catch {
+        toast("Something went wrong — reload to see what changed.", {
+          tone: "error",
+        });
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+  };
+}
+
+/**
+ * THE ONE `WhenControl` MOUNT ON THE AFTER-THE-FACT CORRECTION PATH.
+ *
+ * #4426 keeps this composition where it is — the shared time statement tells the time
+ * AT a tap, and this is the correction people reach for afterwards by naming rows and
+ * asking for it. What #5618 ruling 5 adds is a second surface asking the same question
+ * of a FIXED selection: a composed act is a selection nobody had to make by hand, so
+ * its Edit is this control over the act's members. It lives here rather than growing a
+ * second mount on the record, exactly as ruling 4's Set time… moved here rather than
+ * being re-grown — one mount for every surface that corrects a batch.
+ *
+ * THE DAY IS FIXED to the one being read (min === max), so the control renders it as
+ * text and the pair rule holds trivially. The wall clock is what travels; the core
+ * re-anchors it on that day, so a time that has not happened yet is refused THERE by
+ * the same gate every other stated instant passes rather than talked out of here.
+ * Re-dating is Move to day…'s question, and giving this a day picker too would be two
+ * answers to one.
+ */
+export function LedgerBatchWhen({
+  date,
+  testId,
+  timeLabel,
+  applyTestId,
+  applyLabel = "Apply",
+  busy,
+  onApply,
+}: {
+  /** The day the rows sit on — the control's floor, ceiling and rendered text. */
+  date: string;
+  /** The `WhenControl` id stem; its time input is `${testId}-time`. */
+  testId: string;
+  /** The visible label on the control's time field. */
+  timeLabel: string;
+  applyTestId: string;
+  applyLabel?: string;
+  /** Whether a batch this control's host started is still in flight. */
+  busy: boolean;
+  /** The stated profile-local "HH:MM" the host posts as the batch's `time`. */
+  onApply: (hhmm: string) => void;
+}) {
+  const tz = useTimezone();
+  const [when, setWhen] = useState<WhenValue>(() => whenOnDay(date, tz));
+  return (
+    <>
+      <WhenControl
+        mode="state"
+        grain="minute"
+        timeRequired
+        value={when}
+        onChange={setWhen}
+        minDate={date}
+        maxDate={date}
+        timeLabel={timeLabel}
+        testId={testId}
+      />
+      <Button
+        data-testid={applyTestId}
+        disabled={busy || when.statedAt === null}
+        onClick={() => {
+          if (when.statedAt === null) return;
+          onApply(statedHhmm(when.statedAt, tz));
+        }}
+      >
+        {applyLabel}
+      </Button>
+    </>
+  );
+}
+
 // The verbs' own state — which sheet is open, what it holds, whether a batch is in
 // flight — lives BELOW the mode's gate, so leaving selection discards a half-filled
 // sheet by unmounting it rather than by remembering to clear four things.
@@ -195,62 +348,25 @@ function SelectionVerbs({ value }: { value: DaySelectionValue }) {
     pickedCount,
     leave,
   } = value;
-  const toast = useToast();
   const confirm = useConfirm();
-  const tz = useTimezone();
-  const [busy, setBusy] = useState(false);
+  const { busy, run } = useLedgerBatch();
   const [sheet, setSheet] = useState<"time" | "day" | null>(null);
-  // THE ONE "WHEN" CONTROL (#2236/#3273), with its day FIXED to the one being read:
-  // min === max, so it renders the day as text and the pair rule holds trivially. The
-  // batch never re-dates through this control — Move to day… is the other verb, and
-  // giving Set time… a day picker too would be two answers to one question.
-  const [batchWhen, setBatchWhen] = useState<WhenValue>(() =>
-    whenOnDay(date, tz)
-  );
   const [batchDay, setBatchDay] = useState("");
 
-  // Post one batch and SAY WHAT LANDED. The action answers with the rows it wrote and
-  // every row it refused, each carrying the reason its own core gave — so a batch that
-  // half-lands says so rather than confirming all of it (#232's contract, at batch
-  // grain). The rows themselves come back from the server revalidation the action ran.
+  // The mode's own wrapper around the shared poster: same batch, and leaving selection
+  // is what this surface does with a landing.
   async function runBatch(
     verb: "Updated" | "Removed",
     action: (fd: FormData) => Promise<LedgerSelectionEditResult>,
     extra: Record<string, string>
   ): Promise<void> {
-    const fd = new FormData();
-    fd.set("date", date);
-    if (profileId !== undefined) fd.set("profile_id", String(profileId));
-    fd.set("serving_ids", picked.servings.join(","));
-    fd.set("dose_log_ids", picked.doses.join(","));
-    for (const [key, value] of Object.entries(extra)) fd.set(key, value);
-    setBusy(true);
-    try {
-      const result = await action(fd);
-      if (!result.ok) {
-        toast(result.error, { tone: "error" });
-        return;
-      }
-      if (result.applied === 0) {
-        toast(result.refused[0]?.reason ?? "Nothing changed.", {
-          tone: "error",
-        });
-        return;
-      }
-      toast(
-        result.refused.length === 0
-          ? `${verb} ${result.applied} ${result.applied === 1 ? "row" : "rows"}.`
-          : `${verb} ${result.applied} of ${result.applied + result.refused.length} — ${result.refused[0]!.reason}`,
-        result.refused.length === 0 ? undefined : { tone: "error" }
-      );
-      leave();
-    } catch {
-      toast("Something went wrong — reload to see what changed.", {
-        tone: "error",
-      });
-    } finally {
-      setBusy(false);
-    }
+    const landed = await run(
+      verb,
+      action,
+      { date, profileId, servings: picked.servings, doses: picked.doses },
+      extra
+    );
+    if (landed) leave();
   }
 
   async function removeSelection(): Promise<void> {
@@ -304,33 +420,18 @@ function SelectionVerbs({ value }: { value: DaySelectionValue }) {
       </Button>
       {sheet === "time" && (
         <span className="flex items-center gap-2">
-          {/* ONE time for the batch, in the app's one time vocabulary. The wall
-              clock is what travels; the core re-anchors it on the day being
-              rendered, so a time that has not happened yet is refused THERE by the
-              same gate every other stated instant passes, rather than talked out
-              of here. */}
-          <WhenControl
-            mode="state"
-            grain="minute"
-            timeRequired
-            value={batchWhen}
-            onChange={setBatchWhen}
-            minDate={date}
-            maxDate={date}
-            timeLabel="Time for the selected rows"
+          {/* ONE time for the batch, in the app's one time vocabulary — and the same
+              control the record's bundle row opens, above. */}
+          <LedgerBatchWhen
+            date={date}
             testId={`${testIdPrefix}-selection-when`}
-          />
-          <Button
-            data-testid={`${testIdPrefix}-selection-time-apply`}
-            disabled={busy || batchWhen.statedAt === null}
-            onClick={() =>
-              void runBatch("Updated", setLedgerSelectionTime, {
-                time: statedHhmm(batchWhen.statedAt, tz),
-              })
+            timeLabel="Time for the selected rows"
+            applyTestId={`${testIdPrefix}-selection-time-apply`}
+            busy={busy}
+            onApply={(time) =>
+              void runBatch("Updated", setLedgerSelectionTime, { time })
             }
-          >
-            Apply
-          </Button>
+          />
         </span>
       )}
       {sheet === "day" && (

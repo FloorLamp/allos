@@ -12,6 +12,7 @@ import JumpRailScrubber, {
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
+import { groupHistoryBundles } from "@/lib/history-bundle";
 import { HistoryUsualOffers } from "./HistoryAddDoor";
 import HistoryFoldCard from "./HistoryFoldCard";
 import { requireScope } from "@/lib/scope";
@@ -284,6 +285,14 @@ export default async function HistoryPage(props: {
   // order is its comparator's: instant descending, date-only rows sinking below timed
   // ones, and a same-instant tie-break on id — which is what makes the order
   // byte-stable when one usual-routine tap writes six rows in the same minute.
+  // WHICH OF THE DAY'S ROWS WERE ONE ACT (#5618 ruling 5), merged across the members in
+  // view exactly as their rows are. The gather answers it per member and only on a day —
+  // the row ids the map is keyed by are the tables' own autoincrement ids, so two
+  // members' facts share one map without colliding.
+  const bundleFacts = new Map(
+    feeds.flatMap((feed) => [...feed.gather.bundleFacts])
+  );
+
   const allDays = mergeMemberTimelines(feeds);
   const days = allDays.slice(0, undefined);
 
@@ -808,9 +817,15 @@ export default async function HistoryPage(props: {
         </h2>
       ) : null}
       <HistoryRows
-        rows={
-          layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible
-        }
+        // A COMPOSED ACT IS ONE ROW (#5618 ruling 5), collapsed AFTER the day's layout
+        // rather than before it: `layoutHistoryDay` decides which rows are visible and
+        // which fall to the rollup lines, and an act is only ever collapsed among the
+        // rows a reader is actually being shown. Empty on the feed, where the gather
+        // reads no facts at all, so nothing there changes.
+        rows={groupHistoryBundles(
+          layoutHistoryDay(group.events as HistoryRow[], { rollup }).visible,
+          bundleFacts
+        )}
         rollups={layoutHistoryDay(group.events as HistoryRow[], {
           rollup,
         }).rollups.map((line) => ({

@@ -295,17 +295,15 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     ).toHaveClass(/\bsection-label\b/);
 
     // Vertical order on mobile: compact logger → Today → This week → Insights.
-    const barBox = await page.getByTestId("food-log-bar").boundingBox();
-    const todayBox = await today.boundingBox();
-    const weekBox = await week.boundingBox();
-    const insightsBox = await insights.boundingBox();
-    expect(barBox).not.toBeNull();
-    expect(todayBox).not.toBeNull();
-    expect(weekBox).not.toBeNull();
-    expect(insightsBox).not.toBeNull();
-    expect(barBox!.y).toBeLessThan(todayBox!.y);
-    expect(todayBox!.y).toBeLessThan(weekBox!.y);
-    expect(weekBox!.y).toBeLessThan(insightsBox!.y);
+    const [barBox, todayBox, weekBox, insightsBox] = await settledBoxes([
+      page.getByTestId("food-log-bar"),
+      today,
+      week,
+      insights,
+    ]);
+    expect(barBox.y).toBeLessThan(todayBox.y);
+    expect(todayBox.y).toBeLessThan(weekBox.y);
+    expect(weekBox.y).toBeLessThan(insightsBox.y);
 
     // Day context scrolls with the page on mobile, matching the tab strip and
     // auto-hiding shell chrome. The logger header states the day and nothing

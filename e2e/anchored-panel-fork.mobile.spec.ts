@@ -669,7 +669,7 @@ test.describe("from md up the popover is capped to the room on screen", () => {
       top: el.getBoundingClientRect().top,
       overflowY: getComputedStyle(el).overflowY,
     }));
-    const triggerBox = (await trigger.boundingBox())!;
+    const [triggerBox] = await settledBoxes([trigger]);
 
     // NATURALLY TALLER THAN THE ROOM ON EITHER SIDE OF THE TRIGGER — measured
     // from the trigger actually on screen, not from a viewport constant, because
