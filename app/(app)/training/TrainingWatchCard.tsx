@@ -1,5 +1,6 @@
 import { IconBarbell } from "@tabler/icons-react";
 import type { Finding } from "@/lib/findings";
+import { attentionAmber } from "@/lib/chart-colors";
 import FindingRow from "@/components/FindingRow";
 import {
   rollupTrainingFindings,
@@ -89,7 +90,10 @@ export default function TrainingWatchCard({
   return (
     <div className="card" data-testid="training-findings">
       <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
-        <IconBarbell className="h-4 w-4 shrink-0 text-amber-500" stroke={2} />
+        <IconBarbell
+          className={`h-4 w-4 shrink-0 ${attentionAmber.class}`}
+          stroke={2}
+        />
         Training watch
       </h2>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">

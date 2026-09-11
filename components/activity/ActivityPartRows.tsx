@@ -8,7 +8,7 @@ import type { ProgressDelta } from "@/lib/progress-delta";
 import type { ActivityStrengthRecord } from "@/lib/training-activity-detail";
 import type { MuscleId } from "@/lib/lifts";
 import { SET_STATUS_TITLES } from "@/lib/training-log-format";
-import { verdictText } from "@/lib/chart-colors";
+import { attentionAmber, verdictText } from "@/lib/chart-colors";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 function strengthRecordPresentation(record: ActivityStrengthRecord): {
@@ -144,6 +144,12 @@ export default function ActivityPartRows({
               >
                 {part.text}
               </span>
+              {/* Down is not a verdict (#5760). The arrow says this set moved
+                  against last session's; the app makes no judgment about that,
+                  so it takes the non-verdict amber rather than `verdictText.warn`
+                  — which would announce "you lifted less than last time" as
+                  "Fair" through VERDICT_TONE_LABEL. "Missed target" below IS a
+                  verdict and keeps the warn ink. */}
               {delta && (
                 <span
                   data-testid="exercise-vs-last"
@@ -151,7 +157,7 @@ export default function ActivityPartRows({
                     delta.direction === "up"
                       ? "text-brand-600 dark:text-brand-400"
                       : delta.direction === "down"
-                        ? "text-amber-600 dark:text-amber-400"
+                        ? attentionAmber.class
                         : "text-slate-500 dark:text-slate-400"
                   }`}
                 >
