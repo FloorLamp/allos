@@ -527,6 +527,54 @@ describe("the migration is the adoption run over history", () => {
     ]);
   });
 
+  it("leaves a key the next push UPDATES, not one it duplicates", () => {
+    // THE SEAM BETWEEN THE TWO HALVES, and the one place they could disagree silently.
+    // The migration writes the row with the SESSION's origin, because a
+    // `medical_records` row carries none; the parser writes it with the RESPIRATORY
+    // RECORD's own origin. The natural key includes `origin`, so if those two answers
+    // could differ the next rolling-window push would insert a SECOND row for the night
+    // instead of refreshing the first — the very defect this issue is about, re-created
+    // one layer down. They cannot differ for a reading the parser claims (it only
+    // claims a session of the same origin), and this is what proves it end to end.
+    const profileId = newProfile("Migration then push");
+    storedSession(profileId, {
+      source: "health-connect",
+      origin: ORIGIN,
+      date: WAKE_DAY,
+      start: BED,
+      end: FINAL_WAKE,
+    });
+    legacyWearableReading(profileId, {
+      date: WAKE_DAY,
+      value: 13.6,
+      stamp: FINAL_WAKE,
+      source: "health-connect",
+    });
+    breathingRateMigration(
+      db as unknown as Parameters<typeof breathingRateMigration>[0]
+    );
+    expect(nightlyRows(profileId)).toHaveLength(1);
+
+    // The exporter re-sends the last 48 hours, with a corrected value this time.
+    push(profileId, {
+      stamp: "2026-09-05T12:00:00Z",
+      sessions: [{ start: BED, end: FINAL_WAKE }],
+      breathing: [{ time: FINAL_WAKE, rate: 13.9 }],
+    });
+    expect(nightlyRows(profileId)).toEqual([
+      {
+        date: WAKE_DAY,
+        source: "health-connect",
+        origin: ORIGIN,
+        started_at: BED,
+        ended_at: FINAL_WAKE,
+        value: 13.9,
+        edited: 0,
+      },
+    ]);
+    expect(respiratoryObservations(profileId)).toEqual([]);
+  });
+
   it("moves nothing on a second run", () => {
     // Replay safety, which the DB tier exercises for every migration: after the first
     // pass the only wearable rows left are the spot readings it declines.
