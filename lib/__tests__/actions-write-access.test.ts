@@ -571,6 +571,12 @@ const ALLOW: AllowEntry[] = [
   },
   {
     file: "app/(app)/stool-actions.ts",
+    fn: "loadStoolDay",
+    why: "#5663: a READ, not a write — the quick-log sheet lists the day's movements as receipt rows and asks for them here; it follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) so the rows it answers with are the gated subject's and no other profile's reading can reach the sheet",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/stool-actions.ts",
     fn: "logStoolForm",
     why: "#4932: the quick-log sheet's subject chip mounts the SAME seven-button control cross-profile, so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId) like its own correction siblings above; every other mount posts no subject and falls back to the acting-profile gate",
     gate: "gateItemProfile",
