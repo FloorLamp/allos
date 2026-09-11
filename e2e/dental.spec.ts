@@ -5,6 +5,7 @@ import {
   expectDesktopSpecialtySubmit,
   expectPhoneSpecialtySubmit,
 } from "./specialty-form-actions";
+import { withRecordFact } from "./record-facts-helpers";
 import { workerDbPath } from "./worker-env";
 
 // Dental-record CRUD on the Dental section of /records (#705, folded #1042): add a tooth-anchored procedure through the
@@ -70,10 +71,31 @@ test.describe("Dental records — add → view → filter → track recheck → 
     });
 
     // Add a caries WATCH finding on tooth #97 with a recheck interval.
+    //
+    // EVERY FIELD BUT THE NAME IS BEHIND A CHIP SINCE #5302. The name is rule 1's one
+    // identifying field and stays above the row; the rest are reached through
+    // `withRecordFact`, which opens the chip when the row states the fact and the
+    // trailing affordance when it does not. What the record stores, and every
+    // assertion below about how the list reads it back, is unchanged.
     await form.getByLabel("Procedure / finding").fill(NAME);
-    await form.getByLabel("Status").selectOption("watch");
-    await form.getByLabel("Tooth").fill(TOOTH);
-    await form.getByLabel("Finding / note").fill("Watch for recurrent decay.");
+    await withRecordFact(form, "dental-procedure", "status", async () => {
+      await form.getByLabel("Status").selectOption("watch");
+    });
+    // The tooth, its numbering system and its surface are ONE fact over ONE editor.
+    await withRecordFact(form, "dental-procedure", "tooth", async () => {
+      await form.getByLabel("Tooth").fill(TOOTH);
+    });
+    await withRecordFact(form, "dental-procedure", "finding", async () => {
+      await form.getByLabel("Finding / note").fill("Watch for recurrent decay.");
+    });
+    // THE ROW'S OWN CLAIM, asserted where a real browser can see it: this record has
+    // no CDT code, which is an ESSENTIAL — the #704 invasiveness gate reads that
+    // column first — so the chip is DASHED and on the row rather than silent behind
+    // the trailing affordance, and it carries no `data-suggested`, because a fact with
+    // no value cannot have borrowed one.
+    const cdt = form.getByTestId("dental-procedure-fact-cdt");
+    await expect(cdt).toHaveAttribute("data-fact-state", "missing");
+    await expect(cdt).not.toHaveAttribute("data-suggested", /.*/);
     await settledClick(page, add);
     await expect(page.getByText("Record saved")).toBeVisible();
 
@@ -156,7 +178,9 @@ test.describe("Dental records — add → view → filter → track recheck → 
     );
     await page.getByRole("menuitem", { name: "Edit" }).click();
     editForm = list.getByTestId("dental-procedure-form");
-    await editForm.getByLabel("Finding / note").fill("Interval stable.");
+    await withRecordFact(editForm, "dental-procedure", "finding", async () => {
+      await editForm.getByLabel("Finding / note").fill("Interval stable.");
+    });
     await settledClick(
       page,
       editForm.getByRole("button", { name: "Save", exact: true })

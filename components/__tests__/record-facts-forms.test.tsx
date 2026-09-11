@@ -14,12 +14,18 @@ import ConditionForm from "@/app/(app)/records/problems/conditions/ConditionForm
 import CarePlanForm from "@/app/(app)/records/care/overview/CarePlanForm";
 import CareGoalForm from "@/app/(app)/records/care/overview/CareGoalForm";
 import FamilyHistoryForm from "@/app/(app)/records/care/overview/FamilyHistoryForm";
+import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
+import DentalProcedureForm from "@/app/(app)/records/specialty/dental/DentalProcedureForm";
+import ProcedureForm from "@/app/(app)/records/history/procedures/ProcedureForm";
 import type {
   Allergy,
   CareGoal,
   CarePlanItem,
   Condition,
+  DentalProcedure,
   FamilyHistory,
+  Procedure,
+  SkinLesion,
 } from "@/lib/types";
 import type { FormId } from "@/lib/form-grammar";
 
@@ -36,6 +42,9 @@ import type { FormId } from "@/lib/form-grammar";
 
 vi.mock("@/app/(app)/records/problems/allergies/actions", () => ({}));
 vi.mock("@/app/(app)/records/problems/conditions/actions", () => ({}));
+vi.mock("@/app/(app)/records/specialty/skin/actions", () => ({}));
+vi.mock("@/app/(app)/records/specialty/dental/actions", () => ({}));
+vi.mock("@/app/(app)/records/history/procedures/actions", () => ({}));
 
 const noop = async () => ({ ok: true as const });
 
@@ -234,6 +243,12 @@ describe("a record add door is gated on write access (#4694)", () => {
     { formId: "family-history", label: "Add family history" },
     { formId: "care-plan", label: "Add care-plan item" },
     { formId: "care-goal", label: "Add health goal" },
+    // #5302 slice 3's three, across three separate panes — the skin pane resolves no
+    // scope at all and gets its value from `accessForProfile` on the page, which is a
+    // third way for a section to supply the prop and so a third chance to miss it.
+    { formId: "skin-lesion", label: "Add skin lesion" },
+    { formId: "dental-procedure", label: "Add dental record" },
+    { formId: "procedure", label: "Add procedure" },
   ])(
     "$label renders for a writer and not for a read-only viewer",
     ({ formId, label }) => {
@@ -445,6 +460,166 @@ describe("no standing prose on a care-overview form (#5300 rule 4)", () => {
     // And the positive half: it is there for the person choosing the value. The
     // status now reads back as stated, so its own chip is the way in.
     fireEvent.click(screen.getByTestId("care-plan-fact-status"));
+    expect(screen.getByText(MEANING).closest("[hidden]")).toBeNull();
+  });
+});
+
+// The three slice-3 records, each seeded MISSING the essential its form declares
+// (#5302). One fixture per form, for the reason the slice-2 block above records: the
+// essentials are each form's own judgement.
+const unplacedLesion: SkinLesion = {
+  id: 21,
+  label: "Upper arm mole",
+  body_region: null,
+  body_side: null,
+  size_mm: null,
+  asymmetry: 0,
+  border: 0,
+  color: 0,
+  diameter: 0,
+  evolving: 0,
+  status: "watch",
+  observed_date: null,
+  finding: null,
+  follow_up_interval_days: null,
+  provider_id: null,
+  provider_name: null,
+  encounter_id: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+};
+
+const uncodedDentalRecord: DentalProcedure = {
+  id: 22,
+  name: "Caries watch",
+  status: "watch",
+  tooth: null,
+  tooth_system: null,
+  surface: null,
+  cdt_code: null,
+  procedure_date: null,
+  finding: null,
+  follow_up_interval_days: null,
+  provider_id: null,
+  provider_name: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+};
+
+const uncodedProcedure: Procedure = {
+  id: 23,
+  name: "Colonoscopy",
+  code: null,
+  code_system: null,
+  date: null,
+  provider_id: null,
+  provider_name: null,
+  notes: null,
+  source: null,
+  document_id: null,
+  external_id: null,
+  created_at: "2026-09-01T10:00:00Z",
+};
+
+describe("the specialty and history rows prompt for the essentials they are missing (#5302)", () => {
+  // THE SAME QUIET FAILURE the condition case above names, asked at the three slice-3
+  // addresses: an absent OPTIONAL renders nothing at all, so a form that classified an
+  // essential as optional just looks like a shorter row.
+  it.each<{ name: string; render: () => void; prompts: string[] }>([
+    {
+      name: "the skin-lesion row prompts for the body map and the observation date",
+      render: () => wrap(<SkinLesionForm action={noop} record={unplacedLesion} />),
+      prompts: ["skin-lesion-fact-location", "skin-lesion-fact-observed"],
+    },
+    {
+      name: "the dental row prompts for the date and the CDT code",
+      render: () =>
+        wrap(<DentalProcedureForm action={noop} record={uncodedDentalRecord} />),
+      prompts: ["dental-procedure-fact-date", "dental-procedure-fact-cdt"],
+    },
+    {
+      name: "the procedure row prompts for both the code and the date",
+      render: () => wrap(<ProcedureForm action={noop} procedure={uncodedProcedure} />),
+      prompts: ["procedure-fact-code", "procedure-fact-date"],
+    },
+  ])("$name", ({ render: renderForm, prompts }) => {
+    renderForm();
+    const rowId = prompts[0].replace(/-fact-.*$/, "-fact-row");
+    for (const testId of prompts) {
+      const chip = screen.getByTestId(testId);
+      expect(chip.getAttribute("data-fact-state")).toBe("missing");
+      // It is the row's own chip, not something behind the trailing affordance.
+      expect(within(screen.getByTestId(rowId)).getByTestId(testId)).toBe(chip);
+      // A missing chip carries NO suggestion marking: a fact with no value cannot
+      // have borrowed one (FactChipRow's `suggestedAttrs`).
+      expect(chip.hasAttribute("data-suggested")).toBe(false);
+    }
+  });
+
+  it("an untoothed dental record goes quiet while an unplaced lesion prompts", () => {
+    // THE ASYMMETRY, asserted rather than only argued in the grammar. Both facts say
+    // "where on the body" and the two resolution matchers read absence in opposite
+    // directions: `sameLesion` is strict, so a lesion with no region splits its own
+    // track; `sameTooth` matches on recency when either side is unspecified.
+    wrap(<DentalProcedureForm action={noop} record={uncodedDentalRecord} />);
+    expect(screen.queryByTestId("dental-procedure-fact-tooth")).toBeNull();
+    expect(screen.getByTestId("dental-procedure-fact-more")).toBeTruthy();
+    cleanup();
+
+    wrap(<SkinLesionForm action={noop} record={unplacedLesion} />);
+    expect(factState("skin-lesion-fact-location")).toBe("missing");
+  });
+
+  it("the five ABCDE checkboxes are one chip over one editor", () => {
+    // The grouped-fact claim at the DOM: one chip, and the editor it opens holds all
+    // five named inputs — which is also why they stay mounted when it closes.
+    wrap(<SkinLesionForm action={noop} record={unplacedLesion} />);
+    // Unobserved, so the fact is behind the trailing affordance rather than on the row.
+    fireEvent.click(screen.getByTestId("skin-lesion-fact-more"));
+    fireEvent.click(screen.getByTestId("skin-lesion-more-abcde"));
+    const editor = screen.getByTestId("skin-lesion-editor");
+    expect(editor.getAttribute("data-panel")).toBe("abcde");
+    // By NAME, because the names are what post: the five are one fact on the row and
+    // five separate columns in the write, and this is the claim that they all live
+    // under the one panel.
+    expect(
+      [...editor.querySelectorAll("input[type='checkbox']")].map((el) =>
+        el.getAttribute("name")
+      )
+    ).toEqual(["asymmetry", "border", "color", "diameter", "evolving"]);
+    // And no chip of their own: five would state one set of observations five times.
+    fireEvent.click(screen.getByTestId("skin-lesion-editor-done"));
+    expect(screen.queryByTestId("skin-lesion-fact-asymmetry")).toBeNull();
+  });
+});
+
+describe("no standing prose on a specialty record form (#5300 rule 4)", () => {
+  // The skin form carried the ABCDE fieldset's legend — "what you noticed, not an
+  // assessment" — standing open on every render. It is the VALUE's meaning (#715's
+  // scope law, said where the observations are recorded), so it belongs inside the
+  // editor that records them and nowhere else.
+  //
+  // Asked as reachability rather than as text-in-the-document, for the reason the
+  // allergy case above records: this form is DOM-collected, so a closed editor is
+  // HIDDEN and not unmounted.
+  const MEANING = /not an assessment/;
+
+  it("the ABCDE scope sentence is behind its editor, not on the form", () => {
+    wrap(<SkinLesionForm action={noop} />);
+    // The state where the unwanted effect could occur: the form is up and its chip
+    // row is on screen, so an inert harness cannot pass this by rendering nothing.
+    expect(screen.getByTestId("skin-lesion-fact-row")).toBeTruthy();
+    expect(screen.getByText(MEANING).closest("[hidden]")).not.toBeNull();
+
+    // And the positive half: it is there for the person recording the observations.
+    fireEvent.click(screen.getByTestId("skin-lesion-fact-more"));
+    fireEvent.click(screen.getByTestId("skin-lesion-more-abcde"));
     expect(screen.getByText(MEANING).closest("[hidden]")).toBeNull();
   });
 });
