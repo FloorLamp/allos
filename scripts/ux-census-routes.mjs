@@ -251,15 +251,38 @@ export const DISCLOSURE_EXPANSIONS = [
 
 /** @type {HoverCapture[]} */
 export const HOVER_CAPTURES = [
-  {
-    // #3459 item 2 / #3253 decision 2: the door label slides in at the right edge
-    // of the facts cell, so the static census needs one hovered capture.
-    route: "/",
-    label: "Standing family door labels",
-    target: "a.standing-row",
-    reveals: '[data-testid="standing-door"]',
-    ruling: "#3253 decision 2, re-ruled by #3459 item 2",
-  },
+  // `/` IS NO LONGER REGISTERED, AND THAT IS A LOSS RATHER THAN A TIDY-UP (#5435 §4).
+  //
+  // This list opened with the Standing family door labels — `target: "a.standing-row"`,
+  // `reveals: '[data-testid="standing-door"]'`, ruling "#3253 decision 2, re-ruled by
+  // #3459 item 2" — the named miss the whole deliverable was built for (see the top of
+  // scripts/ux-hover-census.mjs). It cannot be re-pointed at another route, because the
+  // markup is DEAD rather than moved: `.standing-row` is rendered by
+  // components/dashboard/DashboardStandingCluster.tsx and by nothing else, that cluster
+  // is mounted only by components/dashboard/DashboardPlacementCanvas.tsx, and §4 stops
+  // mounting the canvas — at this head no file under app/ or components/ imports it, so
+  // the selector matches nothing on any route for any profile.
+  //
+  // AND HOME v3 HIDES NOTHING BEHIND HOVER, which is the claim that actually removes the
+  // entry. Every hover rule reachable from `/` — `hover:underline` on the episode link,
+  // `hover:bg-slate-50` and the `group-hover:` glyph tint in
+  // components/dashboard/IllnessNowGroup.tsx, `hover:text-slate-700` in
+  // app/(app)/history/HistoryRows.tsx — changes paint and nothing else. Under this
+  // module's own rule that is decoration: the payload is an element that flips
+  // visible/invisible across the hover, and none of these do.
+  //
+  // THE ONE CANDIDATE, AND WHY IT IS NOT HERE. components/IntradayChart.tsx sets its
+  // cursor from `onPointerMove` with no button held and renders
+  // `[data-testid="intraday-cursor"]` plus the #1515 B readout, which IS a real
+  // page-rendered reveal and would qualify on the immunization entry's own
+  // "hover preserved, tap/keyboard pin the same content" ground. It is DATA-GATED:
+  // app/(app)/page.tsx draws the chart only when the day carries more than one heart-rate
+  // point, so a profile without today's HR renders no chart at all. Registered, it would
+  // log a BLIND SPOT line on every census whose profile is quiet — the cost this module's
+  // header says a registration must not carry, and worse than no entry because a surface
+  // that quietly stops being photographed reads like one that was. Register it if the
+  // chart ever becomes unconditional, or if the census gains a profile that guarantees
+  // the reading.
   {
     // #3375's load-bearing case: the CDC schedule grid's per-vaccine and per-dose
     // content uses the same panel for mouse hover and pinned tap/keyboard access.
