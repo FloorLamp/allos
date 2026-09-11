@@ -1122,13 +1122,33 @@ test.describe("the fact chip wears the box (#4035)", () => {
 // where Cancel sat beside Save as an identical box. #5658 had shipped that pair
 // deliberately, carrying #4978's conversion — so this is a later ruling changing
 // an earlier one rather than a defect in what #5658 built, and the half of #5658
-// that SURVIVES is asserted here too: the control box does not move. Save is
-// wider, not taller.
+// that SURVIVES is asserted here too: the control box does not move.
+//
+// AND THE COMMIT IS PROMINENT, NOT WIDE — the 15:15 amendment, which is why this
+// block asserts the OPPOSITE of what it first did. The 11:15 ruling made Save
+// full-width; above tablet width that ran it under the time wheel, whose popover
+// `TimeField` opens on FOCUS, so a click aimed at the middle of Save landed on a
+// minute column and PICKED A TIME instead of saving. Measured on the stool door:
+// a content-sized Save sat at [441,213,43,34], entirely clear of a wheel at
+// [593,147,224,246]; full-width it became [441,213,398,34] with its centre inside
+// the wheel. Seven specs went red on it. So Save is content-sized and the anchored
+// panel is untouched: "the owner's concern was prominence, not width."
+//
+// WHICH MOVES THE WHOLE CLAIM ONTO RANK, and that is what is asserted below. A
+// content-sized filled control and a content-sized text one can be within a few
+// pixels of each other — measured here, "Save dose" is 78.7 and "Cancel" 45.6, but
+// the SAME commit wearing this family's short label ("Add", which Stool, Symptom,
+// Substance and Food all render) is 43.4, NARROWER than the dismiss beside it. So
+// "the commit is the widest control" is not true of these forms and is not
+// asserted; it would have passed here on this fixture's long label alone and
+// misled the next reader. What IS true of all eight is the PAINT and the BOX:
+// the commit is the form's one filled control and carries the family's horizontal
+// padding, the dismiss is transparent and carries none.
 //
 // AND IT IS MEASURED, NOT READ OFF A CLASS. `layout="block"` in a call site is a
-// declaration; `w-full` in a stylesheet is a declaration; neither is evidence the
-// control rendered wide, and this file exists because #3514 shipped exactly that
-// gap. Every number below is a `getBoundingClientRect()`.
+// declaration and `w-full` in a stylesheet is a declaration; neither is evidence
+// of what rendered, and this file exists because #3514 shipped exactly that gap.
+// Every number below is a `getBoundingClientRect()` or a `getComputedStyle()`.
 //
 // WHY THE DOSE FORM. It is the surface the owner's screenshot was of, it is one of
 // the eight by name (`lib/log-manifest.ts`), and the record's Doses chip opens it
@@ -1139,16 +1159,17 @@ test.describe("the fact chip wears the box (#4035)", () => {
 // a shape this test cannot claim anything about. The Doses chip opens the form in
 // ADD mode, whose corpus is the submit row alone: the time is required there, so no
 // "Not stated" chip renders. The owner's screenshot was the CORRECT mode, where that
-// chip sits above the submit — the ruling leaves the chip's size alone, so what a
-// correction adds to this sweep is one more control Save must out-measure, not a
-// different claim. The sweep therefore reads fact chips as well as bound controls,
-// so the correction shape joins it the day a dose fixture reaches this file rather
-// than needing the test rewritten; the corpus shape is asserted below so that
-// arrival reads as "extend this" instead of as a silent widening.
+// chip sits above the submit — the ruling leaves the chip's size alone, and it is a
+// fact control rather than a commit, so it joins this sweep as one more control the
+// commit must be told apart from by PAINT. The sweep therefore reads fact chips as
+// well as bound controls, so the correction shape joins it the day a dose fixture
+// reaches this file rather than needing the test rewritten; the corpus shape is
+// asserted below so that arrival reads as "extend this" instead of a silent
+// widening.
 test.describe("the log form's Save is the one prominent commit (#5617 step 4)", () => {
   test.use({ viewport: PHONE });
 
-  test(`the dose form's Save is full-width and Cancel subordinate at ${BOX_WIDTHS.join(
+  test(`the dose form's Save is content-sized, filled and clear of the row at ${BOX_WIDTHS.join(
     "/"
   )}`, async ({ page }) => {
     await page.goto("/history?kind=dose");
@@ -1170,12 +1191,27 @@ test.describe("the log form's Save is the one prominent commit (#5617 step 4)", 
       const geometry = await form.evaluate((el) => {
         const box = (t: Element | null) => {
           if (!t) return null;
-          const r = t.getBoundingClientRect();
+          const el = t as HTMLElement;
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          // INTRINSIC WIDTH, measured rather than inferred: a control whose
+          // rendered width equals its `max-content` width was never stretched.
+          // That is the exact reading of "content-sized", and unlike a threshold
+          // it cannot be satisfied by a merely narrow row.
+          const before = el.style.width;
+          el.style.width = "max-content";
+          const intrinsic = el.getBoundingClientRect().width;
+          el.style.width = before;
           return {
             width: r.width,
             height: r.height,
             top: r.top,
             bottom: r.bottom,
+            intrinsic,
+            // The alpha channel of the painted background. A filled control has
+            // one; the text-style dismiss is `rgba(0, 0, 0, 0)`.
+            opaque: !/^rgba\(.*,\s*0\)$/.test(cs.backgroundColor),
+            padX: Number.parseFloat(cs.paddingLeft),
           };
         };
         const named = (name: string) =>
@@ -1192,6 +1228,11 @@ test.describe("the log form's Save is the one prominent commit (#5617 step 4)", 
             what: (b.textContent ?? "").trim().slice(0, 24),
             width: b.getBoundingClientRect().width,
             height: b.getBoundingClientRect().height,
+            // A fact chip paints its own tone and is not a commit; the rank
+            // census below reads this to say which control the form exists for.
+            opaque: !/^rgba\(.*,\s*0\)$/.test(
+              getComputedStyle(b).backgroundColor
+            ),
           }));
         return {
           save: box(named("Save dose")),
@@ -1214,40 +1255,51 @@ test.describe("the log form's Save is the one prominent commit (#5617 step 4)", 
       const save = geometry.save!;
       const cancel = geometry.cancel!;
 
-      // 1. FULL-WIDTH AT THE CONTROL BOX — rule 3's shape. The tolerance is a
-      //    rounding allowance, not a band: a Save that lost its `w-full` renders
-      //    its own intrinsic width, which is a fraction of the form's.
+      // 1. CONTENT-SIZED, WHICH IS WHAT CLEARS THE WHEEL (the 15:15 amendment).
+      //    Asserted as "its rendered width IS its intrinsic width" rather than as
+      //    a threshold: `layout="block"` or an `items-stretch` column would both
+      //    put the full width back, and both are caught here exactly.
       expect(
-        Math.abs(save.width - geometry.form.width),
-        `@${width} Save is ${save.width} in a ${geometry.form.width} form; it must be full-width`
+        Math.abs(save.width - save.intrinsic),
+        `@${width} Save renders ${save.width} against an intrinsic ${save.intrinsic}; it is stretched, not content-sized`
       ).toBeLessThanOrEqual(1);
-
-      // 2. VISIBLY LARGER THAN EVERY SIBLING CONTROL, which is the owner's own
-      //    wording and the thing a width-only check on Save cannot establish: a
-      //    form where everything went full-width would pass assertion 1.
-      for (const sibling of geometry.siblings) {
-        if (sibling.what === "Save dose") continue;
-        expect(
-          sibling.width,
-          `@${width} "${sibling.what}" is ${sibling.width} beside a ${save.width} Save; the commit must be the widest control in the form`
-        ).toBeLessThan(save.width);
-      }
-
-      // 3. CANCEL IS SUBORDINATE AND UNDER, not a same-size box beside. Both halves
-      //    are asserted: a Cancel that kept its width would fail the first, and one
-      //    that shrank but stayed on Save's line would fail the second.
+      //    …and it leaves most of the row, which is the clearance the ruling is
+      //    actually buying. Measured here Save is ~79 in a 358-607 row.
       expect(
-        cancel.width,
-        `@${width} Cancel is ${cancel.width} against a ${save.width} Save`
-      ).toBeLessThan(save.width / 2);
+        save.width,
+        `@${width} Save spans ${save.width} of a ${geometry.form.width} row; a commit that reaches across the form runs under the time wheel`
+      ).toBeLessThanOrEqual(geometry.form.width / 2);
+
+      // 2. THE FORM'S ONE FILLED CONTROL — the prominence the ruling kept when it
+      //    dropped the width. This is the rank census on one form: a second filled
+      //    control here would mean nothing says which one commits.
+      const filled = geometry.siblings.filter((b) => b.opaque).map((b) => b.what);
+      expect(
+        filled,
+        `@${width} the form's filled controls are ${JSON.stringify(filled)}; exactly one — the commit — may be filled`
+      ).toEqual(["Save dose"]);
+
+      // 3. THE DISMISS IS NOT A SAME-SIZE BOX, and it is under rather than beside.
+      //    Expressed as PAINT and PADDING rather than as width: with a short label
+      //    this family's commit ("Add", 43.4) is narrower than its dismiss
+      //    ("Cancel", 45.6), so a width comparison would assert something untrue of
+      //    six of the eight forms while passing here.
+      expect(
+        cancel.opaque,
+        `@${width} the dismiss is painted like a commit`
+      ).toBe(false);
+      expect(
+        [save.padX > 0, cancel.padX],
+        `@${width} the commit must carry the family's horizontal padding and the dismiss none`
+      ).toEqual([true, 0]);
       expect(
         cancel.top + TAP_FLOOR_FLOAT_EPSILON_PX,
         `@${width} Cancel sits beside Save rather than under it`
       ).toBeGreaterThanOrEqual(save.bottom);
 
-      // 4. AND THE BOX DID NOT MOVE — the half of #5658 this ruling did NOT
-      //    reverse. Save got wider; neither control got shorter, and a text-style
-      //    dismiss that gave up its height would give up its tap target with it.
+      // 4. AND THE BOX DID NOT MOVE — the half of #5658 neither ruling reversed.
+      //    The commit changed PAINT, not height, and a text-style dismiss that
+      //    gave up its height would give up its tap target with it.
       expect(
         [Math.round(save.height), Math.round(cancel.height)],
         `@${width} the submit row renders a height other than the control box`

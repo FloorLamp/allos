@@ -587,10 +587,9 @@ export default function MoodForm({
                 }
               />
             </label>
-            <div className="flex flex-col items-stretch gap-1">
+            <div className="flex flex-col items-start gap-1">
               <SubmitButton
                 variant="primary"
-                layout="block"
                 disabled={busy || valence == null}
               >
                 {busy ? "Saving…" : "Save"}

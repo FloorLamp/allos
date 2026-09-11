@@ -414,8 +414,8 @@ export default function HistoricalDoseForm({
       ) : null}
 
       <InlineError>{error}</InlineError>
-      <div className="flex flex-col items-stretch gap-1">
-        <SubmitButton pendingLabel="Saving…" variant="primary" layout="block">
+      <div className="flex flex-col items-start gap-1">
+        <SubmitButton pendingLabel="Saving…" variant="primary">
           {editing ? "Save changes" : "Save dose"}
         </SubmitButton>
         <FormDismissAction onClick={onDone}>Cancel</FormDismissAction>
