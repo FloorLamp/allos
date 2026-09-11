@@ -52,6 +52,7 @@ import {
   summarizeRun,
   type ReconcileEvidence,
 } from "./reconcile-tracker-core";
+import { githubJsonHeaders } from "./issue-body-write";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
@@ -70,15 +71,6 @@ function curl(args: readonly string[]): { status: number; body: string } {
   return { status: Number(out.slice(cut + 1)), body: out.slice(0, cut) };
 }
 
-function authHeaders(token: string): string[] {
-  return [
-    "-H",
-    `Authorization: Bearer ${token}`,
-    "-H",
-    "Accept: application/vnd.github+json",
-  ];
-}
-
 interface GhComment {
   id: number;
   body: string | null;
@@ -89,7 +81,7 @@ function readComments(token: string): GhComment[] {
   const out: GhComment[] = [];
   for (let page = 1; page <= 20; page++) {
     const { status, body } = curl([
-      ...authHeaders(token),
+      ...githubJsonHeaders(token),
       `${COMMENTS_URL}?per_page=100&page=${page}`,
     ]);
     if (status < 200 || status >= 300) {
@@ -216,7 +208,7 @@ function main(): void {
   }
 
   const { status, body: reply } = curl([
-    ...authHeaders(token),
+    ...githubJsonHeaders(token),
     "-X",
     "POST",
     "--data-binary",

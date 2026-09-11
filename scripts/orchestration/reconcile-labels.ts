@@ -54,6 +54,7 @@ import {
   type RepoIndex,
   type TrackerIssue,
 } from "./reconcile-tracker-core";
+import { githubJsonHeaders } from "./issue-body-write";
 import { helpGuard } from "./usage.mjs";
 helpGuard(process.argv, import.meta.url);
 
@@ -84,15 +85,12 @@ if (!config.token) {
   console.error("reconcile-labels: no GH_TOKEN/GITHUB_TOKEN. Refusing.");
   process.exit(2);
 }
-
-function authHeaders(): string[] {
-  return [
-    "-H",
-    `Authorization: Bearer ${config.token}`,
-    "-H",
-    "Accept: application/vnd.github+json",
-  ];
-}
+/**
+ * Narrowed past the guard above, so no request site can build
+ * `Authorization: Bearer null` — the property alone is `string | null` and
+ * TypeScript drops that narrowing inside every function below.
+ */
+const token = config.token;
 
 function curlJson(args: readonly string[]): unknown {
   return JSON.parse(
@@ -119,7 +117,12 @@ function toTrackerIssue(raw: GhIssue): TrackerIssue {
 
 function readIssue(issue: number): TrackerIssue {
   return toTrackerIssue(
-    curlJson(["-X", "GET", ...authHeaders(), issueUrl(issue)]) as GhIssue
+    curlJson([
+      "-X",
+      "GET",
+      ...githubJsonHeaders(token),
+      issueUrl(issue),
+    ]) as GhIssue
   );
 }
 
@@ -139,7 +142,7 @@ function readOpenIssues(): TrackerIssue[] {
   let swept = false;
   for (let page = 1; page <= PAGE_CAP; page++) {
     const url = `https://api.github.com/repos/${config.repo}/issues?state=open&per_page=100&page=${page}`;
-    const batch = curlJson(["-X", "GET", ...authHeaders(), url]);
+    const batch = curlJson(["-X", "GET", ...githubJsonHeaders(token), url]);
     if (!Array.isArray(batch) || batch.length === 0) {
       swept = true;
       break;
@@ -186,7 +189,7 @@ function removeLabel(issue: number, label: string): void {
       "--fail-with-body",
       "-X",
       "DELETE",
-      ...authHeaders(),
+      ...githubJsonHeaders(token),
       `${issueUrl(issue)}/labels/${encodeURIComponent(label)}`,
     ],
     { encoding: "utf8" }
@@ -198,7 +201,7 @@ function addLabels(issue: number, labels: readonly string[]): void {
   curlJson([
     "-X",
     "POST",
-    ...authHeaders(),
+    ...githubJsonHeaders(token),
     "--data-binary",
     JSON.stringify({ labels }),
     `${issueUrl(issue)}/labels`,
