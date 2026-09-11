@@ -12,6 +12,7 @@ import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
 import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
 import SkinLesionList from "@/app/(app)/records/specialty/skin/SkinLesionList";
 import { addSkinLesion } from "@/app/(app)/records/specialty/skin/actions";
+import type { Access } from "@/lib/auth";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { getSpecialtyLensEntries } from "@/lib/queries/specialty-lens";
 import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
@@ -31,9 +32,14 @@ import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
 // single-profile lesion list would answer a question the pane is not asking.
 export default function SkinSection({
   profileId,
+  access,
   formatPrefs,
 }: {
   profileId: number;
+  // Whether the acting profile may write here (#4694), resolved by the page. The
+  // add door is the only creation path for this domain, so gating it is the whole
+  // affordance half of that issue at this address.
+  access?: Access;
   formatPrefs?: DisplayFormatPrefs;
 }) {
   const records = getSkinLesions(profileId);
@@ -55,6 +61,9 @@ export default function SkinSection({
         <div className="space-y-6">
           <AddEntryPanel
             formId="skin-lesion"
+            // #4694, riding #5302's adoption: a read-only viewer is never offered a
+            // form whose submit would redirect them and lose the typing.
+            access={access}
             testId="add-skin-lesion-panel"
             panelId="add-skin-lesion-panel-body"
             label="Add skin lesion"
