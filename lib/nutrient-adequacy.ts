@@ -158,7 +158,7 @@ function precedenceTotal(
 //    a completed tracked total that won the max is the whole day.
 //  - A tracked reading is a floor only while its day is still accumulating.
 //  - An unquantified dose is a floor on every basis and in every period.
-export function nutrientFloor(args: {
+function nutrientFloor(args: {
   trackedPresent: boolean;
   inAppPresent: boolean;
   winner: NutrientWinner;

@@ -332,7 +332,14 @@ describe("the dashboard protein line says the situation, not the estimator (#325
       dailyLogged: 40,
       dailyEstimated: 30,
     })!;
-    expect(todayIntake).toEqual({
+    // The composition the probe turns on; the period, winner and floor the result
+    // also carries are asserted in lib/__tests__/nutrient-adequacy.test.ts.
+    expect({
+      grams: todayIntake.grams,
+      basis: todayIntake.basis,
+      estimatedGrams: todayIntake.estimatedGrams,
+      loggedGrams: todayIntake.loggedGrams,
+    }).toEqual({
       grams: 70,
       basis: "both-sources",
       estimatedGrams: 30,

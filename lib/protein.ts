@@ -34,6 +34,14 @@
 // rejected — it hid the profile's own logging). The property a reader can rely on:
 // connecting an integration can no longer LOWER the number.
 //
+// THE PRECEDENCE, THE PERIOD AND THE FLOOR ARE NOT SPELLED HERE (#4485). This module
+// DECLARES protein's three sources and the side each sits on, its `larger-wins`
+// precedence kind (#3903, above) and its `range` goal shape; lib/nutrient-adequacy.ts
+// computes the figure together with the winning source, the period it describes and the
+// resulting floor/caveat. What was extracted is exactly the part fiber — and the next
+// nutrient — used to answer in its own words; protein's bands, wording and finding
+// identity stay here.
+//
 // Goal-scaled target (proteinTarget): a bodyweight-scaled g/kg band by training goal.
 // Lean body mass is PREFERRED when available (lean_mass_kg) because g/kg-total overshoots
 // for higher-body-fat individuals — the same ISSN band applied to the smaller lean mass
