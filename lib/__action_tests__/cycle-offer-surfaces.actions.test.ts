@@ -9,7 +9,11 @@
 //     nav entry and the dashboard presentation, server-side, so a deep link can't reach it;
 //   • a STALE tap — the surface offering a verb the state has since moved past — is
 //     REFUSED with the write core's typed message, never a double-log or an invented
-//     period. That is what makes putting the button on a long-lived dashboard safe.
+//     period. That is what makes putting the button on a long-lived dashboard safe;
+//   • the TTC gate (#5810): the overlay reaches the three daily observation taps for a
+//     profile that has DECLARED a start, and for every other profile the gathered
+//     payload is the one it has always been — which is a claim only a tier with a
+//     database and a settings store can make.
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
@@ -28,7 +32,12 @@ import {
   REOPEN_PERIOD_LABEL,
   START_PERIOD_LABEL,
 } from "@/lib/cycle-plausibility";
-import { setProfileSetting } from "@/lib/settings";
+import { setProfileSetting, setTtcStart } from "@/lib/settings";
+import {
+  logBbtAction,
+  logLhTestAction,
+  logMucusAction,
+} from "@/app/(app)/medical/cycles/ttc-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 async function readyQuickEntry(...args: Parameters<typeof loadQuickEntry>) {
@@ -202,5 +211,86 @@ describe("a STALE tap is refused, never double-logged (#1892)", () => {
     // The ended period keeps its end date; nothing was merged.
     const ended = listCyclePeriods(profileId).find((p) => p.period_end != null);
     expect(ended?.period_end).toBe(today(profileId));
+  });
+});
+
+describe("the overlay's TTC half is gated on a DECLARED start (#5810)", () => {
+  let profileId: number;
+  beforeEach(() => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Sheet TTC Actor", login.id);
+    actAs(login, profile);
+    profileId = profile.id;
+    makeCycleRelevant(profileId);
+  });
+
+  it("sends NOTHING extra to a profile that has not declared TTC — the payload is byte-for-byte what it was", async () => {
+    // THE ABSENCE TEST. No profile on prod has declared TTC, so this is the case the
+    // whole feature must be invisible in — and the assertion is deliberately over the
+    // WHOLE payload rather than over `data.ttc`: a deep equality against the two
+    // fields this arm has always carried fails if ANY part of the gate leaks, including
+    // one added later by someone who never read this comment.
+    seedPeriod(profileId, 4, null);
+    const data = await readyQuickEntry("cycle");
+    expect(data).toEqual({
+      form: "cycle",
+      state: cycleControlState(
+        listCyclePeriods(profileId),
+        today(profileId),
+        getForecastSuspension(profileId)
+      ),
+    });
+    expect(Object.keys(data).sort()).toEqual(["form", "state"]);
+  });
+
+  it("sends today's readings once the start is declared — and no earlier day's", async () => {
+    // Declared, with one observation of each kind already recorded today and an older
+    // one that must NOT be mistaken for it: the controls reflect the DAY, not the
+    // window they are derived from.
+    setTtcStart(profileId, shiftDateStr(today(profileId), -90));
+    await logLhTestAction(fd({ result: "positive" }));
+    await logMucusAction(fd({ quality: "egg_white" }));
+    await logBbtAction(fd({ value: "97.4", unit: "F" }));
+
+    const data = await readyQuickEntry("cycle");
+    expect(data.form).toBe("cycle");
+    if (data.form !== "cycle") return;
+    expect(data.ttc).toEqual({
+      todayLh: "positive",
+      todayMucus: "egg_white",
+      todayBbtF: 97.4,
+      temperatureUnit: "F",
+    });
+  });
+
+  it("opens empty for a declared profile with nothing logged today, and the offer beside it is untouched", async () => {
+    setTtcStart(profileId, shiftDateStr(today(profileId), -30));
+    const data = await readyQuickEntry("cycle");
+    expect(data.form).toBe("cycle");
+    if (data.form !== "cycle") return;
+    expect(data.ttc).toEqual({
+      todayLh: null,
+      todayMucus: null,
+      todayBbtF: null,
+      temperatureUnit: "F",
+    });
+    // The gate adds a half; it never changes the verb the row is labelled with.
+    expect(cycleOffer(data.state)?.label).toBe(START_PERIOD_LABEL);
+  });
+
+  it("clearing the declaration takes the half away again", async () => {
+    setTtcStart(profileId, shiftDateStr(today(profileId), -30));
+    await logLhTestAction(fd({ result: "negative" }));
+    const declared = await readyQuickEntry("cycle");
+    expect(declared.form === "cycle" && declared.ttc).toBeTruthy();
+
+    // Clearing stops the surfaces and leaves the recorded observations where they are
+    // (ttc-actions.ts): the reading is still in the store, and the overlay stops
+    // offering the taps because the DECLARATION is what the gate reads.
+    setTtcStart(profileId, null);
+    const cleared = await readyQuickEntry("cycle");
+    expect(cleared.form).toBe("cycle");
+    if (cleared.form !== "cycle") return;
+    expect(cleared.ttc).toBeUndefined();
   });
 });

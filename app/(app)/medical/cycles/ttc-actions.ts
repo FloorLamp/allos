@@ -7,6 +7,11 @@ import { isRealIsoDate } from "@/lib/date";
 import { setTtcStart } from "@/lib/settings";
 import { toCanonicalTempF } from "@/lib/vitals-input";
 import { isLhResult, isMucusQuality } from "@/lib/ttc";
+import {
+  LOGGED_VIA_FIELD,
+  parseWebOrigin,
+  type StampedFormData,
+} from "@/lib/logged-via";
 import { logBbtCore, logLhTestCore, logMucusCore } from "@/lib/ttc-store";
 
 // Server Actions for the trying-to-conceive observations (issue #1680). Standard
@@ -16,6 +21,14 @@ import { logBbtCore, logLhTestCore, logMucusCore } from "@/lib/ttc-store";
 //
 // Each core returns a TYPED outcome and each handler maps EVERY one of them — a locked row
 // writes nothing and says so. Nothing here confirms a write that did not happen.
+//
+// THE SURFACE RIDES THE POST for the two that write a `logged_via` ledger (#3087/#5349).
+// Since #5810 the three observation taps are mounted twice — the Cycle page's TtcSection
+// and the quick-log sheet's cycle overlay render ONE component — so a hard-coded `page`
+// would file every sheet tap as a page tap, which is exactly the claim the surface
+// column exists to stop the app making. `StampedFormData` is what makes the second
+// mounting spell its surface instead of inheriting the fallback; `logBbtAction` keeps a
+// plain FormData because `metric_samples` carries no surface column to state one into.
 
 export type TtcActionResult = { ok: true } | { ok: false; error: string };
 
@@ -55,14 +68,19 @@ export async function setTtcStartAction(
 
 // One-tap LH test result for today.
 export async function logLhTestAction(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<TtcActionResult> {
   const { profile } = await requireWriteAccess();
   const result = formData.get("result");
   if (!isLhResult(result)) {
     return { ok: false, error: "Record the test as positive or negative." };
   }
-  const outcome = logLhTestCore(profile.id, today(profile.id), result, "page");
+  const outcome = logLhTestCore(
+    profile.id,
+    today(profile.id),
+    result,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   if (outcome.kind === "locked") return { ok: false, error: LOCKED_ERROR };
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
   revalidateTtc();
@@ -94,14 +112,19 @@ export async function logBbtAction(
 
 // One-tap cervical-mucus observation for today.
 export async function logMucusAction(
-  formData: FormData
+  formData: StampedFormData
 ): Promise<TtcActionResult> {
   const { profile } = await requireWriteAccess();
   const quality = formData.get("quality");
   if (!isMucusQuality(quality)) {
     return { ok: false, error: "Pick a cervical-mucus observation." };
   }
-  const outcome = logMucusCore(profile.id, today(profile.id), quality, "page");
+  const outcome = logMucusCore(
+    profile.id,
+    today(profile.id),
+    quality,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
   if (outcome.kind === "locked") return { ok: false, error: LOCKED_ERROR };
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
   revalidateTtc();
