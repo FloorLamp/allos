@@ -5,13 +5,13 @@ because their inputs are different; the registry describes ownership and coverag
 but does not dispatch any detector. The authoritative code registry is
 `lib/change-detection.ts`.
 
-| Kind                           | Owner module                          | Rule                                                                                | Surfaces                                                  |
-| ------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Series magnitude               | `lib/trends-digest.ts`                | Robust endpoints plus a per-series materiality threshold, then the shared news gate | Trends digest and tile badges                             |
-| Versus baseline                | `lib/sleep-summary.ts`                | Last night against the trailing 30-night mean                                       | Dashboard sleep row, morning digest, wear reminder, recap |
-| Streak / lapse                 | `lib/intake-deltas.ts`                | A taken streak broke or resumed                                                     | Telegram digest, recap, dashboard recap, household        |
-| Categorical verdict transition | `lib/dashboard-reading-promotions.ts` | One of the declared stored-verdict transitions                                      | Dashboard Now                                             |
-| Pipeline silence               | `lib/domain-dormancy.ts`              | A window-bounded domain stopped arriving                                            | Dashboard dormancy rows                                   |
+| Kind                           | Owner module                          | Rule                                                                                                   | Surfaces                                                                                |
+| ------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Series magnitude               | `lib/trends-digest.ts`                | Robust endpoints (`windowMovement`) plus a per-series materiality threshold, then the shared news gate | Trends digest and tile badges                                                           |
+| Versus baseline                | `lib/movement.ts`                     | The latest reading against a trailing mean over a DECLARED window basis                                | Sleep hero, dashboard sleep row, morning digest, wear reminder, recap, coaching signals |
+| Streak / lapse                 | `lib/intake-deltas.ts`                | A taken streak broke or resumed                                                                        | Telegram digest, recap, dashboard recap, household                                      |
+| Categorical verdict transition | `lib/dashboard-reading-promotions.ts` | One of the declared stored-verdict transitions                                                         | Dashboard Now                                                                           |
+| Pipeline silence               | `lib/domain-dormancy.ts`              | A window-bounded domain stopped arriving                                                               | Dashboard dormancy rows                                                                 |
 
 The existing `LOGGABLE_DOMAINS` axis is censused by
 `CHANGE_DETECTION_DOMAIN_CENSUS`. Every logging domain must name its detector kind,
