@@ -258,6 +258,15 @@ function itemHasCourses(profileId: number, itemId: number): boolean {
     .get(itemId, profileId);
 }
 
+// WHEN THE DOSE WAS TAKEN, AND WHICH DAY THE ROW IS FILED UNDER. An instant answers
+// both — the row's date is that instant read in the profile's zone. A bare `{ date }` is
+// the OTHER real answer (#5618 ruling 7): the day is known and no intake time was ever
+// stated, so the row carries a NULL `occurred_at` rather than an invented clock. The
+// amend core beside this one has taken exactly that pair since #2228 decision 3; the
+// create core could only ever take a clock, which is why a composed backfill with no
+// time to state had to make one up.
+export type HistoricalDoseWhen = Date | { date: string };
+
 // Backfill one taken dose on an explicit profile-local day, at a stated time or at none
 // (see `HistoricalDoseWhen`). This is intentionally separate from reminder/quick-log
 // ingestion: a deliberate history edit may reach any past date inside a medication
@@ -289,15 +298,6 @@ function itemHasCourses(profileId: number, itemId: number): boolean {
 // Supply movement is explicit because an older dose may predate a later refill or
 // inventory reconciliation; when requested it runs through the shared decrementSupply,
 // so a pooled item (#1374) draws the household bottle down, identically for both kinds.
-// WHEN THE DOSE WAS TAKEN, AND WHICH DAY THE ROW IS FILED UNDER. An instant answers
-// both — the row's date is that instant read in the profile's zone. A bare `{ date }` is
-// the OTHER real answer (#5618 ruling 7): the day is known and no intake time was ever
-// stated, so the row carries a NULL `occurred_at` rather than an invented clock. The
-// amend core beside this one has taken exactly that pair since #2228 decision 3; the
-// create core could only ever take a clock, which is why a composed backfill with no
-// time to state had to make one up.
-export type HistoricalDoseWhen = Date | { date: string };
-
 export function logHistoricalDose(
   profileId: number,
   itemId: number,
