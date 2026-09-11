@@ -266,9 +266,13 @@ describe("a fixture with its own calendar is not asserted as a dashboard atom (#
 
   it("recognises a dashboard-atom assertion where one certainly exists", () => {
     // The marker list is the whole sensitivity of this guard, so it is proved against a
-    // spec known to assert atoms rather than trusted. dashboard-atomic-personas is the
-    // spec #3337 fired in.
-    expect(assertsDashboardAtom("e2e/dashboard-atomic-personas.spec.ts")).toBe(
+    // spec known to assert atoms rather than trusted. It named
+    // `dashboard-atomic-personas`, the spec #3337 fired in, which retired with the
+    // ranker (#5435 §4). `dashboard-illness-phase5` replaces it: Home keeps the illness
+    // cockpit (§3.1), the spec reads `data-candidate-id` directly, and the row contract
+    // deliberately keeps that attribute — so this control cannot go quiet the way the
+    // last one did.
+    expect(assertsDashboardAtom("e2e/dashboard-illness-phase5.spec.ts")).toBe(
       true
     );
     expect(assertsDashboardAtom("e2e/fixture-timezones.ts")).toBe(false);
