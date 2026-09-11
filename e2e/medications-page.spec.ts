@@ -429,6 +429,11 @@ test("a medication row links to its clinical-record detail page", async ({
     "updates adherence history for that date"
   );
   await page.keyboard.press("Escape");
+  // The tooltip closes as its own escape layer, leaving the dialog open (#3222 /
+  // #3409). Asserted rather than assumed, because the dismiss below is now a
+  // text-style control under a full-width Save and a tooltip still on screen
+  // would be over it.
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await historyForm.getByRole("button", { name: "Cancel" }).click();
 
   // A structured prescriber is a real navigation target, not inert metadata.

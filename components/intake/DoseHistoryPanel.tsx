@@ -293,6 +293,11 @@ export default function DoseHistoryPanel({
             className="btn-ghost btn-sm"
             disabled={!!backfillDisabledReason}
             aria-expanded={!!backfill}
+            // The offers are still an inline list under this control, but the form
+            // arm now opens a dialog (#5617 AC1) — so the trigger says so, the way
+            // the record's own add door does. `aria-expanded` still carries which
+            // arm is open; this says what opening reaches.
+            aria-haspopup="dialog"
             data-testid="dose-history-add"
           >
             {/* ONE identity (#3674). The control used to rename itself "Cancel"

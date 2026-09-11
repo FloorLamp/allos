@@ -1134,6 +1134,17 @@ test.describe("the fact chip wears the box (#4035)", () => {
 // the eight by name (`lib/log-manifest.ts`), and the record's Doses chip opens it
 // in one click from a plain `goto` — the cheapest honest way to a log form, in a
 // file whose whole table is a goto plus a readiness marker.
+//
+// AND WHAT THIS FIXTURE REACHES, said plainly, because a shape it cannot produce is
+// a shape this test cannot claim anything about. The Doses chip opens the form in
+// ADD mode, whose corpus is the submit row alone: the time is required there, so no
+// "Not stated" chip renders. The owner's screenshot was the CORRECT mode, where that
+// chip sits above the submit — the ruling leaves the chip's size alone, so what a
+// correction adds to this sweep is one more control Save must out-measure, not a
+// different claim. The sweep therefore reads fact chips as well as bound controls,
+// so the correction shape joins it the day a dose fixture reaches this file rather
+// than needing the test rewritten; the corpus shape is asserted below so that
+// arrival reads as "extend this" instead of as a silent widening.
 test.describe("the log form's Save is the one prominent commit (#5617 step 4)", () => {
   test.use({ viewport: PHONE });
 
@@ -1167,7 +1178,9 @@ test.describe("the log form's Save is the one prominent commit (#5617 step 4)", 
             (b) => (b.textContent ?? "").trim() === name
           ) ?? null;
         const siblings = Array.from(
-          el.querySelectorAll<HTMLElement>("[data-button-control]")
+          el.querySelectorAll<HTMLElement>(
+            "[data-button-control],[data-fact-chip]"
+          )
         )
           .filter((b) => b.getBoundingClientRect().height > 0)
           .map((b) => ({
@@ -1186,6 +1199,11 @@ test.describe("the log form's Save is the one prominent commit (#5617 step 4)", 
         };
       });
 
+      // The corpus this fixture actually produced, recorded rather than assumed.
+      expect(
+        geometry.siblings.map((b) => b.what).sort(),
+        `@${width} the dose add form's control corpus changed shape`
+      ).toEqual(["Cancel", "Save dose"]);
       expect(geometry.save, `@${width} no Save`).not.toBeNull();
       expect(geometry.cancel, `@${width} no Cancel`).not.toBeNull();
       const save = geometry.save!;
