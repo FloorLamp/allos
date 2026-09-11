@@ -61,6 +61,7 @@ import {
   type PreventiveTapOutcome,
   type HouseholdDoseCallback,
   type TakeCallback,
+  type TapAttempt,
   type TapWrote,
   OUTDATED_MESSAGE_TEXT,
   STALE_TOKEN_REFUSAL,
@@ -278,9 +279,16 @@ export const TAP_SWEEP_BUDGET_MS = TELEGRAM_CALL_TIMEOUT_MS;
 export async function handleCallbackQuery(
   cq: TelegramCallbackQuery
 ): Promise<void> {
+  const attempt = dispatchTap(cq);
+  if (attempt == null) {
+    // Unknown/malformed token — a button from a message whose token shape has since
+    // been retired. Nothing is written, so answer honestly rather than silently (#1716).
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
   let wrote: TapWrote;
   try {
-    wrote = await dispatchTap(cq);
+    wrote = await attempt.done;
   } catch (e) {
     // ── A WRITE THAT LANDS WITH A FAILED REBUILD KEEPS ITS SWEEP (#3951 F4) ───
     //
@@ -292,13 +300,23 @@ export async function handleCallbackQuery(
     // new coverage rather than a regression; before #3933 a rebuild throw lost nothing
     // because there was no sweep to lose.
     //
-    // The thrown value cannot name the profile — the handler that computed it is gone —
-    // so the target is resolved the way an inbound tap resolves one whose token does
-    // not name a profile: the profiles this chat can act as. That is a SUPERSET for a
-    // single-subject write and costs nothing (a swept profile with nothing stale edits
-    // zero times), and it is INCOMPLETE for the household round, which writes under a
-    // member whose own chat this may not be. Sweeping the wrong-but-adjacent set beats
-    // sweeping none, and the tick still reaches the member within the hour.
+    // ── AND IT SWEEPS THE PROFILE THE WRITE WAS MADE UNDER (#4012) ────────────
+    //
+    // The thrown value still cannot name the profile — the handler that computed it is
+    // gone — so the chat's own bindings remain the fallback: a SUPERSET for a
+    // single-subject write, costing nothing (a swept profile with nothing stale edits
+    // zero times). What that set cannot see is a write made under a profile this chat
+    // is not bound to: the household round writes under the MEMBER, an escalation under
+    // the PATIENT whose caregiver chat this may be. Both stood stale until the next
+    // tick, on the surface the sweep exists to correct.
+    //
+    // The entry's own `subject` declaration closes that (`TapAttempt`, callback-data.ts):
+    // it is read off the already-parsed token BEFORE the handler runs, so it survives
+    // the throw. #4012 weighed a `(chatId, messageId) -> profile` lookup instead; that
+    // cannot work here, because the household message's pointer subject is the RECEIVER
+    // and the write ran under the MEMBER — the lookup would return a profile the chat
+    // set already holds, at the price of a read. This costs no read at all, so nothing
+    // is added beside F5's budget.
     //
     // F5's budget had to land first: this adds a sweep on exactly the degraded path
     // that already threatened the webhook's timeout.
@@ -306,9 +324,10 @@ export async function handleCallbackQuery(
       err: e instanceof Error ? e.message : String(e),
     });
     const chatId = cq.message?.chat?.id;
-    await sweepAfterTap(
-      chatId == null ? [] : getProfilesByTelegramChatId(String(chatId))
-    );
+    await sweepAfterTap([
+      ...attempt.subjects,
+      ...(chatId == null ? [] : getProfilesByTelegramChatId(String(chatId))),
+    ]);
     throw e;
   }
   if (wrote != null) await sweepAfterTap([wrote]);
@@ -333,7 +352,11 @@ async function sweepAfterTap(profileIds: readonly number[]): Promise<void> {
   // profiles. Sharing the deadline is what keeps the bound a property of the RESPONSE
   // rather than of each profile.
   const until = Date.now() + TAP_SWEEP_BUDGET_MS;
-  for (const profileId of profileIds) {
+  // Deduped, because the error path unions a declared subject with the chat's own
+  // bindings (#4012) and the household member IS in that set whenever the member shares
+  // the caregiver's chat. A repeat is not merely wasted: the second pass spends the
+  // SHARED budget the profiles still waiting on it need.
+  for (const profileId of new Set(profileIds)) {
     try {
       const rc = await reconcileProfileMessages(
         profileId,
@@ -453,6 +476,13 @@ export const CALLBACK_REGISTRY = [
     // esctake/escskip run the same markDoseTaken/markDoseSkipped cores a dose tap does,
     // so they accept the same window; escack writes no dated row.
     dateGuard: "dose-window",
+    // THE SECOND CROSS-CHAT FAMILY, and #4012 named only the first. An escalation fans
+    // out to every managing login's chat and to the dose's escalate override (#615,
+    // #1072), and `resolveEscalationTap` authorizes the tap from THAT set rather than
+    // from the chat's profile bindings — so a caregiver's confirm writes under a patient
+    // whose own chat is elsewhere, and had the same hole. Declaring it authorizes
+    // nothing new: `resolveEscalationTap` still decides whether the write happens.
+    subject: (esc) => esc.profileId,
   }),
 
   // Household dose round (#1459): a caregiver's cross-profile confirm. ORDER: before
@@ -465,6 +495,11 @@ export const CALLBACK_REGISTRY = [
     handle: handleHouseholdDoseTap,
     // handleHouseholdDoseTap consults tapDateGuard directly (#1719).
     dateGuard: "exact-day",
+    // THE FAMILY #4012 WAS FILED ABOUT. The write runs under the member and the
+    // message belongs to the receiver, so on a failed rebuild the chat's own bindings
+    // name the receiver and miss the member entirely — the one whose keyboards just
+    // went stale.
+    subject: (tap) => tap.memberProfileId,
   }),
 
   // "Still going?" nudge (#1205, one family at #5142): 🏁 Finish / 🗑️ Discard — resolve
@@ -711,14 +746,16 @@ const _everyDeclaredPrefixIsDispatched: [UndispatchedPrefix] extends [never]
   : UndispatchedPrefix = true;
 void _everyDeclaredPrefixIsDispatched;
 
-async function dispatchTap(cq: TelegramCallbackQuery): Promise<TapWrote> {
+// Recognise the token and START its handler, returning the attempt so the caller keeps
+// the subject the throw would otherwise lose (#4012). Synchronous on purpose: the
+// subject has to be in the caller's hand BEFORE it awaits, and awaiting here would put
+// the handler's throw back inside a frame that no longer holds it.
+function dispatchTap(cq: TelegramCallbackQuery): TapAttempt | null {
   for (const entry of CALLBACK_REGISTRY) {
-    const handled = entry.run(cq);
-    if (handled) return handled;
+    const attempt = entry.run(cq);
+    if (attempt) return attempt;
   }
-  // Unknown/malformed token — a button from a message whose token shape has since
-  // been retired. Nothing is written, so answer honestly rather than silently (#1716).
-  await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+  return null;
 }
 
 // A per-render nonce carried in a PRN log button's callback_data — the "dedup

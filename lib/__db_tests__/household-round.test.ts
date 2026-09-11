@@ -28,6 +28,27 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 // the setup file's, and nothing here drives a Server Action, so nothing needs the stub.
 vi.mock("@/lib/auth", async (importActual) => await importActual());
 
+// WHICH PROFILES THE TAP SWEEP WAS ASKED TO RECONCILE (#4012). The sweep itself stays
+// real — this records the call and delegates — because the property under test is WHO
+// the dispatcher hands to it on the failure path, not what reconciling then does.
+const tapSweepState = vi.hoisted(() => ({
+  swept: [] as number[],
+}));
+
+vi.mock("@/lib/notifications/reconcile", async (importActual) => {
+  const actual =
+    await importActual<typeof import("@/lib/notifications/reconcile")>();
+  return {
+    ...actual,
+    reconcileProfileMessages: (
+      ...args: Parameters<typeof actual.reconcileProfileMessages>
+    ) => {
+      tapSweepState.swept.push(args[0]);
+      return actual.reconcileProfileMessages(...args);
+    },
+  };
+});
+
 // Stub ONLY the raw transport; the chokepoint, the pure render and every decision
 // stay real.
 vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
@@ -43,7 +64,11 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 });
 
 import { db, today } from "@/lib/db";
-import { setProfileHouseholdRound } from "@/lib/settings";
+import {
+  getProfilesByTelegramChatId,
+  setProfileHouseholdRound,
+  setProfileMutedForLogin,
+} from "@/lib/settings";
 import {
   buildHouseholdRound,
   collectHouseholdRound,
@@ -58,8 +83,10 @@ import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
   answerCallbackQuery,
   editMessageReplyMarkupRaw,
+  editMessageTextRaw,
   sendMessageRaw,
 } from "@/lib/notifications/telegram-api";
+import { TelegramApiError } from "@/lib/notifications/telegram-error";
 import { telegramChannel } from "@/lib/notifications/telegram";
 import { getHouseholdRoundPointer } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
@@ -175,6 +202,7 @@ const SLOTS = ["Morning"] as const;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  tapSweepState.swept = [];
 });
 
 describe("householdRoundOfferableMembers — the §1 offer set", () => {
@@ -558,5 +586,58 @@ describe("resolveHouseholdTapAccess + the tap handler (#1459 §3)", () => {
     });
     await handleCallbackQuery(tapQuery(forged, CAREGIVER_CHAT));
     expect(logsFor(kaiDose.doseId)).toBe(0);
+  });
+
+  // ── A FAILED ROUND TAP SWEEPS THE MEMBER, NOT ONLY THE CHAT (#4012) ─────────
+  //
+  // #3951 F4 made a write whose message rebuild throws keep its sweep, but the throw
+  // carries no profile, so the target fell back to the profiles the TAPPING CHAT is
+  // bound to. For every single-subject family that is a harmless superset; the round
+  // writes under the MEMBER, and #4012 filed the gap as "the member is not in
+  // `getProfilesByTelegramChatId(chat)`".
+  //
+  // THAT IS NOT THE MECHANISM, and the plain fixture proves it: the round is authorized
+  // BY a write grant from a login of the receiver's, and `profilesManagedByLogin` reads
+  // the same `login_profiles` rows — so in the ordinary configuration the member IS in
+  // the chat's set and the superset already reaches them. The gap is the one thing that
+  // subtracts from that set and from nothing the round's access check consults: the
+  // per-(login, profile) MUTE. Muting a member's own notifications while keeping the
+  // one collapsed round is what the round is FOR, `resolveHouseholdTapAccess` reads the
+  // mute for the receiver only (§3 step 1), and `getProfilesByTelegramChatId` drops a
+  // muted profile — so the write lands under Ada and the fallback cannot see her.
+  it("a rebuild throw sweeps the MEMBER the write landed under", async () => {
+    const s = setup("TapThrowSweep");
+    // The caregiver keeps the round but has muted Ada's individual notifications.
+    setProfileMutedForLogin(s.loginId, s.ada, true);
+    const chatProfiles = getProfilesByTelegramChatId(CAREGIVER_CHAT);
+    expect(chatProfiles).toContain(s.receiver);
+    // The absence IS the bug: the fallback target cannot name the profile that is about
+    // to be written to.
+    expect(chatProfiles).not.toContain(s.ada);
+
+    // Every edit from here fails — the degraded-chat shape. The write and the answer
+    // both land first, so this is a rebuild throw and nothing else.
+    vi.mocked(editMessageTextRaw).mockRejectedValue(
+      new TelegramApiError({
+        method: "editMessageText",
+        status: 502,
+        description: null,
+        message: "Telegram editMessageText failed: HTTP 502",
+      })
+    );
+    await expect(
+      handleCallbackQuery(tapQuery(s.token, CAREGIVER_CHAT))
+    ).rejects.toThrow("HTTP 502");
+
+    // The write really landed — otherwise "the sweep was lost" would describe a tap
+    // that did nothing, and there would be nothing stale to reconcile.
+    expect(logsFor(s.dose.doseId)).toBe(1);
+    // And the throw still propagates to the route, unchanged (the rejects assertion
+    // above), while the member reached the sweep alongside the chat's own receiver.
+    expect(tapSweepState.swept).toContain(s.ada);
+    expect(tapSweepState.swept).toContain(s.receiver);
+    // Once each: the union shares ONE TAP_SWEEP_BUDGET_MS, so a repeat would spend the
+    // budget the other profile is still waiting on.
+    expect(tapSweepState.swept).toHaveLength(new Set(tapSweepState.swept).size);
   });
 });

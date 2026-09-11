@@ -158,7 +158,11 @@ import {
   formatProseGatherRecord,
   parseProseGatherRecord,
 } from "@/lib/notifications/reconcile-core";
-import { getProfileSetting, setProfileSetting } from "@/lib/settings";
+import {
+  getProfileSetting,
+  getProfilesByTelegramChatId,
+  setProfileSetting,
+} from "@/lib/settings";
 import {
   handleCallbackQuery,
   TAP_SWEEP_BUDGET_MS,
@@ -2965,6 +2969,82 @@ describe("the tap sweep stops starting edits once its budget is spent (#3951)", 
     expect(tapSweepState.swept[0].budgetMs).toBeLessThanOrEqual(
       TAP_SWEEP_BUDGET_MS
     );
+  });
+
+  // ── AND UNDER THE PROFILE THE WRITE LANDED ON, NOT ONLY THE CHAT'S (#4012) ──
+  //
+  // The case above is single-subject, so the chat's own bindings already name the
+  // profile and it cannot tell the fallback apart from the fix. An ESCALATION can:
+  // `resolveEscalationTap` authorizes a tap from the dose's `escalate_chat_id` (#615),
+  // which is a bare chat id on the supplement and need not have ANY login behind it —
+  // a neighbour's or a care agency's chat. That chat resolves to NO profiles, so before
+  // this the failure path swept nothing at all while the patient's own live keyboards
+  // stood offering a dose that was already logged.
+  //
+  // This is the more total shape of the gap #4012 filed against the household round,
+  // and #4012 did not name it.
+  it("sweeps the patient when an escalation from a login-less care chat throws", async () => {
+    const pid = newProfile("Escalation Elsa");
+    seedLoginTelegram(pid, "5553961");
+    const CARE_CHAT = "5553962";
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation, critical, escalate_chat_id)
+           VALUES (?, 'Elsa Warfarin', 1, 'medication', 'daily', 'must', 1, ?)`
+        )
+        .run(pid, CARE_CHAT).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '5 mg', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const date = today(pid);
+    // Nobody is logged in on the care chat — that absence IS the gap.
+    expect(getProfilesByTelegramChatId(CARE_CHAT)).toEqual([]);
+
+    tapSweepState.swept = [];
+    editText.mockImplementation(async () => {
+      throw new TelegramApiError({
+        method: "editMessageText",
+        status: 502,
+        description: null,
+        message: "Telegram editMessageText failed: HTTP 502",
+      });
+    });
+    try {
+      await expect(
+        handleCallbackQuery(
+          tapCq(CARE_CHAT, 9310, `esctake:${pid}:${doseId}:${itemId}:${date}`, [
+            [
+              {
+                text: "✅",
+                callback_data: `esctake:${pid}:${doseId}:${itemId}:${date}`,
+              },
+            ],
+          ])
+        )
+      ).rejects.toThrow("HTTP 502");
+    } finally {
+      editText.mockImplementation(async () => {});
+    }
+
+    // The caregiver's confirm really did land on the patient's ledger.
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+          )
+          .get(doseId, date) as { status: string } | undefined
+      )?.status
+    ).toBe("taken");
+    expect(tapSweepState.swept.map((s) => s.profileId)).toEqual([pid]);
   });
 });
 
