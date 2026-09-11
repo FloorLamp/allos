@@ -84,7 +84,7 @@ function modelFor(profileId: number, anchor: string, cadence = 180) {
 describe("per-test freshness policy over the real gather (#2025)", () => {
   it("one date, two clocks: a synced body value is stale while a protocol is current", () => {
     const { profileId, anchor } = makeAdult("freshness-policy-cross");
-    // 100 days back: inside the 180-day protocol cadence, past the 30/60-day body clocks.
+    // 100 days back: inside the 180-day protocol cadence, past the 14/45-day body floors.
     const when = shiftDateStr(anchor, -100);
     seedVital(profileId, "VO2 Max", 48, when, "oura");
     seedBody(profileId, when, "withings", {
@@ -105,7 +105,7 @@ describe("per-test freshness policy over the real gather (#2025)", () => {
     expect(by.get("bodyfat")!.freshness).toBe("due");
     // The interval that applied is disclosed, so a surface never has to guess.
     expect(by.get("vo2max")!.provenance!.freshnessDays).toBe(180);
-    expect(by.get("bodyfat")!.provenance!.freshnessDays).toBe(60);
+    expect(by.get("bodyfat")!.provenance!.freshnessDays).toBe(45);
 
     // All three are measured; only one is current.
     expect(m.coverage.measured).toBe(3);
@@ -134,7 +134,7 @@ describe("per-test freshness policy over the real gather (#2025)", () => {
     expect(grip.provenance!.kind).toBe("check");
     expect(grip.freshness).toBe("current");
     expect(rhr.provenance!.kind).toBe("synced");
-    // 45 days > the 30-day resting-HR clock, even though the profile cadence is 180.
+    // 45 days > the 14-day resting-HR floor, even though the profile cadence is 180.
     expect(rhr.freshness).toBe("due");
 
     // Coverage reconciles with the per-test verdicts the tiles render.

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FITNESS_FRESHNESS,
+  FITNESS_FLOOR_QUANTITIES,
   FITNESS_FRESHNESS,
+  fitnessFloorsNotShared,
   fitnessFreshnessDays,
   fitnessFreshnessPolicy,
   missingFreshnessPolicies,
 } from "@/lib/fitness-freshness";
+import { TREND_METRIC_PRESENTATION_FLOORS } from "@/lib/trend-metric-freshness";
 import {
   buildFitnessCheckModel,
   type AmbientReading,
@@ -53,12 +56,26 @@ describe("the freshness registry is complete (#2025)", () => {
       expect(batteryKeys.has(key)).toBe(true);
   });
 
-  it("every fixed-days exception states why it exists", () => {
+  it("every exception to the profile cadence states why it exists", () => {
     for (const policy of Object.values(FITNESS_FRESHNESS)) {
-      if (policy.kind !== "fixed-days") continue;
-      expect(policy.days).toBeGreaterThan(0);
+      if (policy.kind === "profile-cadence") continue;
+      if (policy.kind === "fixed-days") expect(policy.days).toBeGreaterThan(0);
       expect(policy.because.length).toBeGreaterThan(20);
     }
+  });
+
+  // #4242 — the second completeness census, reading the way the one above does.
+  it("no shared quantity declares a second freshness number of its own", () => {
+    expect(fitnessFloorsNotShared()).toEqual([]);
+  });
+
+  it("catches a shared quantity that restates a number instead of referencing", () => {
+    expect(
+      fitnessFloorsNotShared({
+        ...FITNESS_FRESHNESS,
+        restinghr: { kind: "fixed-days", days: 30, because: "a second answer" },
+      })
+    ).toEqual(["restinghr"]);
   });
 });
 
@@ -69,11 +86,18 @@ describe("policy resolution", () => {
     expect(fitnessFreshnessDays("vo2max", 90)).toBe(90);
   });
 
-  it("a continuously measurable value keeps its own shorter clock", () => {
-    expect(fitnessFreshnessDays("restinghr", 180)).toBe(30);
-    expect(fitnessFreshnessDays("bodyfat", 180)).toBe(60);
-    // …and does not lengthen when the profile picks a long cadence.
-    expect(fitnessFreshnessDays("restinghr", 365)).toBe(30);
+  // #4242 — the floor is the QUANTITY'S, read through the trend-metric registry, so the
+  // expectation names the shared entry rather than repeating a number that could drift.
+  it("a shared quantity takes its own surfaces' presentation floor", () => {
+    for (const [key, slug] of Object.entries(FITNESS_FLOOR_QUANTITIES))
+      for (const cadence of [90, 180, 365])
+        expect(fitnessFreshnessDays(key, cadence)).toBe(
+          TREND_METRIC_PRESENTATION_FLOORS[slug].days
+        );
+    // The reconciled values as they stand, so a deliberate move to either floor is a
+    // visible edit here rather than a silent one (was 30 / 60 before #4242).
+    expect(fitnessFreshnessDays("restinghr", 180)).toBe(14);
+    expect(fitnessFreshnessDays("bodyfat", 180)).toBe(45);
   });
 
   it("an unknown key falls back to the documented default rather than throwing", () => {
@@ -83,7 +107,7 @@ describe("policy resolution", () => {
 
 describe("per-test freshness in the check model", () => {
   it("one cadence no longer decides every test: same date, different verdicts", () => {
-    // 100 days ago: inside the 180-day protocol cadence, past the 30/60-day body clocks.
+    // 100 days ago: inside the 180-day protocol cadence, past the 14/45-day body floors.
     const sessions: AssessmentLike[] = [
       {
         date: "2026-04-27",
@@ -101,7 +125,7 @@ describe("per-test freshness in the check model", () => {
     expect(by.get("bodyfat")!.freshness).toBe("due");
     // The interval that applied is disclosed on the provenance.
     expect(by.get("vo2max")!.provenance!.freshnessDays).toBe(180);
-    expect(by.get("restinghr")!.provenance!.freshnessDays).toBe(30);
+    expect(by.get("restinghr")!.provenance!.freshnessDays).toBe(14);
   });
 
   it("stale results stay measured and keep their provenance", () => {
