@@ -29,8 +29,11 @@ import {
 // below. A TEST TIER IS ALLOWED THAT CAST: eslint.config.mjs's WRITE_BRAND_CAST bans it in
 // PRODUCTION only (#5852), the same allowance RPE_BRAND_CAST makes, because a fixture has no
 // request to gate and exporting a minter for it would put the mint in two places. In
-// production the brand now refuses BOTH the accidental ungated call, which `tsc` catches,
-// and the deliberate cast, which that rule does. A branded number is still a number, so
+// production the brand refuses BOTH the accidental ungated call, which `tsc` catches
+// everywhere, and the deliberate cast, which that rule refuses across lib/, app/, components/
+// and scripts/ — though not in every production file: lib/revalidate.ts and the repo-root
+// modules outside PRODUCTION_TREES keep only the temporal selectors, so a cast there is
+// unrefused (#5856, open). A branded number is still a number, so
 // insertMchc() and the reads below take it unchanged.
 let profileId: WriteAuthorizedProfileId;
 let mislabeledId: number; // MCHC 33 g/L, stated range 31-37 (really g/dL)

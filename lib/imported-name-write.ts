@@ -10,10 +10,16 @@ import { serializeRxcuiIngredients } from "./rxnorm";
 // lib/auth's WriteAuthorizedProfileId, which only the three gates mint, so an action that
 // never gated has no value to pass and `tsc` refuses the call (#5348). The DELIBERATE forgery
 // is refused too, now that eslint.config.mjs's WRITE_BRAND_CAST bans the cast in production —
-// including through a type alias or a renaming re-export (#5852). What that rule does not do
-// is chase what a name resolves to: it matches the brand BY NAME, which is its stated limit.
-// lib/auth.ts, which mints the brand, is exempted by the config's own `without()` block
-// rather than a disable comment, and a TEST TIER MAY STILL CAST — the same allowance
+// including through a type alias or a renaming re-export (#5852). It has TWO limits, and the
+// second is why it is not the whole barrier: it matches the brand BY NAME rather than chasing
+// what a name resolves to, and it does not reach every production file. lib/revalidate.ts is
+// named in the `ignores` of all three blocks carrying the ban, and the repo-root modules
+// (middleware.ts, instrumentation-client.ts) sit outside PRODUCTION_TREES, so those three keep
+// only the ten temporal selectors and a cast there is unrefused — filed as #5856, open. lib/,
+// app/, components/ and scripts/ ARE covered, and `tsc` refuses the accidental ungated call
+// everywhere regardless of any of this. lib/auth.ts, which mints the brand, is exempted by
+// the config's own `without()` block rather than a disable comment, and a TEST TIER MAY
+// STILL CAST — the same allowance
 // RPE_BRAND_CAST makes. The import is type-only — erased at build — so this module still
 // pulls in no lib/auth runtime, and the read below (importedMedicationName) is unchanged: a
 // branded number is still a number.
