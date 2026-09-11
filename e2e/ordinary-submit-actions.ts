@@ -125,7 +125,11 @@ export async function expectProminentCommit({
       adjacentBox.width,
       `${name} dismiss is ${adjacentBox.width} against a ${submitBox.width} commit; it must not be a same-size box`
     ).toBeLessThan(submitBox.width / 2);
-    expectDisjoint(submitBox, adjacentBox, `${name} commit and dismiss disjoint`);
+    expectDisjoint(
+      submitBox,
+      adjacentBox,
+      `${name} commit and dismiss disjoint`
+    );
   }
 }
 

@@ -1171,12 +1171,17 @@ test.describe("the log form's Save is the one prominent commit (#5617 step 4)", 
         const box = (t: Element | null) => {
           if (!t) return null;
           const r = t.getBoundingClientRect();
-          return { width: r.width, height: r.height, top: r.top, bottom: r.bottom };
+          return {
+            width: r.width,
+            height: r.height,
+            top: r.top,
+            bottom: r.bottom,
+          };
         };
         const named = (name: string) =>
-          Array.from(el.querySelectorAll<HTMLElement>("[data-button-control]")).find(
-            (b) => (b.textContent ?? "").trim() === name
-          ) ?? null;
+          Array.from(
+            el.querySelectorAll<HTMLElement>("[data-button-control]")
+          ).find((b) => (b.textContent ?? "").trim() === name) ?? null;
         const siblings = Array.from(
           el.querySelectorAll<HTMLElement>(
             "[data-button-control],[data-fact-chip]"

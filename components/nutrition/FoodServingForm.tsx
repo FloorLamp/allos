@@ -336,10 +336,7 @@ export default function FoodServingForm({
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
         </SubmitButton>
-        <FormDismissAction
-          data-testid={`${testId}-cancel`}
-          onClick={onCancel}
-        >
+        <FormDismissAction data-testid={`${testId}-cancel`} onClick={onCancel}>
           Cancel
         </FormDismissAction>
       </div>
