@@ -303,6 +303,111 @@
           "category": "General",
           "title": "Home’s day-so-far chart drops its tick marks; they stay on the day view",
           "issues": [5262]
+        },
+        {
+          "pr": 5755,
+          "kind": "feature",
+          "category": "History",
+          "title": "Tapping a kind chip on the day view opens its form instead of filtering",
+          "issues": [5618]
+        },
+        {
+          "pr": 5742,
+          "kind": "feature",
+          "category": "History",
+          "title": "Day view log forms open in the same sheet the quick logger uses",
+          "issues": [5617]
+        },
+        {
+          "pr": 5771,
+          "kind": "feature",
+          "category": "History",
+          "title": "Select several day view rows to set their time, move them or delete them",
+          "issues": [5618]
+        },
+        {
+          "pr": 5789,
+          "kind": "fix",
+          "category": "History",
+          "title": "An untimed entry added from another day names that day, not a clock",
+          "issues": [5618]
+        },
+        {
+          "pr": 5770,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Quick Log’s dose card reads the same on any day, and as-needed doses join it",
+          "issues": [5753]
+        },
+        {
+          "pr": 5770,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "The stool type picker describes each type in words",
+          "issues": [5756]
+        },
+        {
+          "pr": 5740,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "A food tap the device refuses while offline says so and stays refused",
+          "issues": [3728]
+        },
+        {
+          "pr": 5780,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Logging your usual meal records the eating time set on the bar",
+          "issues": [4438]
+        },
+        {
+          "pr": 5744,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Good, warning and bad colours share one palette that passes contrast checks",
+          "issues": [5187, 5725]
+        },
+        {
+          "pr": 5778,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Form warnings and the import feed’s ring are readable on light screens",
+          "issues": [5725]
+        },
+        {
+          "pr": 5757,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Each card has one filled button; destructive controls carry their own emphasis",
+          "issues": [5696]
+        },
+        {
+          "pr": 5785,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Disabling the calendar feed or revoking a passport link asks first",
+          "issues": [4978]
+        },
+        {
+          "pr": 5748,
+          "kind": "security",
+          "category": "Security",
+          "title": "A demo member sees no edit controls on any profile, including their own",
+          "issues": [4844]
+        },
+        {
+          "pr": 5747,
+          "kind": "fix",
+          "category": "Training",
+          "title": "The activity form explains warmup and intensity once, on the control itself",
+          "issues": [5726]
+        },
+        {
+          "pr": 5801,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Activity clocks typed in 12-hour form no longer read twelve hours off",
+          "issues": [4550]
         }
       ],
       "operatorNotes": []
