@@ -99,9 +99,14 @@ function setFoodHistory(present: boolean): void {
     );
     // `page` is the web surface the sheet's own taps carry, so this is a profile
     // that logs food HERE — the claim the test's name makes.
+    //
+    // NO `recorded_at`: the column is NOT NULL with its own canonical DEFAULT, and
+    // the habit measure groups by `date` and never reads the tap instant. Stating
+    // one here would be an undeclared fixture date-time (the #2287 guard), and the
+    // honest answer is that this fixture has no opinion about the instant.
     const insertEvent = db.prepare(
-      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at, logged_via)
-         VALUES (?, ?, ?, ?, 'page')`
+      `INSERT INTO food_log_events (profile_id, group_key, date, logged_via)
+         VALUES (?, ?, ?, 'page')`
     );
     const removeEvent = db.prepare(
       "DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = ?"
@@ -109,7 +114,7 @@ function setFoodHistory(present: boolean): void {
     for (const date of fixtureDates()) {
       if (present) {
         insert.run(id, date, FIXTURE_GROUP);
-        insertEvent.run(id, FIXTURE_GROUP, date, `${date}T08:00:00Z`);
+        insertEvent.run(id, FIXTURE_GROUP, date);
       } else {
         remove.run(id, date, FIXTURE_GROUP);
         removeEvent.run(id, date, FIXTURE_GROUP);
