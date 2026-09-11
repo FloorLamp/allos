@@ -124,6 +124,10 @@ test("deload week shaves the routine lift's next-set suggestion (#923)", async (
 
     // Use fills the shaved load into the set (create-and-clean, mirroring #335).
     await card.getByRole("button", { name: "Use" }).click();
+    // Use confirms set 1 and the rows after it stay planned, so the grid keeps one
+    // layout and set 1 states its load behind its door (#5762). The shaved number
+    // is the subject, so it is read through that door.
+    await page.getByTestId("set-vary-1").click(); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
     await expect(weight).toHaveValue(/^90/);
 
     await cleanUpDraft(page);
@@ -195,6 +199,10 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
     // Confirming row 1 turns the plan it states into the record.
     const row1 = page.getByTestId("set-row-1"); // testid-scope-ok: the set grid is inside the held editor overlay, one copy
     await row1.getByTestId("set-confirm-1").click();
+    // Confirming row 1 leaves row 2 planned, so the grid keeps its one shared
+    // layout and row 1 states its load behind its door (#5762) — the repeated
+    // numbers are read back through it.
+    await row1.getByTestId("set-vary-1").click();
     await expect(load).toHaveValue("30");
     await expect(reps).toHaveValue("8");
 
