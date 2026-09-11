@@ -1,12 +1,6 @@
 import { test, expect } from "./fixtures";
-import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import {
-  dismissToast,
-  hydratedClick,
-  settledClick,
-  settledBoxes,
-} from "./helpers";
+import { hydratedClick, settledBoxes, submitWithToast } from "./helpers";
 import { loginAs } from "./nav";
 import {
   openRecordFact,
@@ -129,23 +123,6 @@ function addPrintedFigures(figures: string[]): string {
   const frac = places > 0 ? digits.slice(digits.length - places) : "";
   const trimmed = frac.replace(/0+$/, "");
   return `${digits.slice(0, digits.length - places)}${trimmed ? `.${trimmed}` : ""}`;
-}
-
-async function submitWithToast(
-  page: Page,
-  button: Locator,
-  message: string
-): Promise<void> {
-  // A cold Server Action response can outlive the toast it triggers. Observe the
-  // transient feedback concurrently while settledClick still owns durability. Then
-  // dismiss the observed receipt through its real control: leaving it to auto-expire
-  // adds no product evidence and can cover the next save on a phone viewport.
-  const toast = page.getByTestId("toast").filter({ hasText: message });
-  await Promise.all([
-    expect(toast).toHaveCount(1, { timeout: 15_000 }),
-    settledClick(page, button),
-  ]);
-  await dismissToast(page, message);
 }
 
 test.describe("Imaging studies — add → view → filter → edit → delete (#702)", () => {

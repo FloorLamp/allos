@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  submitWithToast,
+} from "./helpers";
 import {
   expectDesktopRecordFormSubmit,
   expectPhoneRecordFormSubmit,
@@ -106,8 +111,11 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await expect(
       form.getByTestId("genomic-variant-fact-result_type")
     ).toHaveAttribute("data-fact-state", "stated");
-    await settledClick(page, addSubmit);
-    await expect(page.getByText("Variant saved")).toBeVisible();
+    // Observed CONCURRENTLY with the click, not after it: a cold Server Action
+    // response can outlive the six-second toast it triggers, so a sequential wait can
+    // open its window after the receipt has gone while the write itself was fine
+    // (helpers.submitWithToast, the imaging spec's rule).
+    await submitWithToast(page, addSubmit, "Variant saved");
 
     // It appears in the list with its factual identity + reported classification.
     const list = page.getByTestId("genomic-variant-list");
@@ -143,11 +151,11 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
           .selectOption("pathogenic");
       }
     );
-    await settledClick(
+    await submitWithToast(
       page,
-      editForm.getByRole("button", { name: "Save", exact: true })
+      editForm.getByRole("button", { name: "Save", exact: true }),
+      "Variant updated"
     );
-    await expect(page.getByText("Variant updated")).toBeVisible();
     await expect(list.getByRole("row").filter({ hasText: GENE })).toContainText(
       "Pathogenic",
       { timeout: 15_000 }
