@@ -207,6 +207,21 @@ test.describe("View-only access (issue #33)", () => {
           "add-procedure-panel-toggle",
           "records-procedures",
         ],
+        // #5302 slice 4's four, and the first three of them are on the RESULTS hub
+        // rather than under /records — three more separate sections, each passing the
+        // value its own scope resolved.
+        [
+          "/records/history/immunizations",
+          "add-immunization-panel-toggle",
+          "records-immunizations",
+        ],
+        [
+          "/results/clinical-results",
+          "add-result-panel-toggle",
+          "results-clinical-results",
+        ],
+        ["/results/imaging", "add-imaging-panel-toggle", "results-imaging"],
+        ["/results/genomics", "add-genomic-panel-toggle", "results-genomics"],
         // The DENTAL door is gated the same way and asserted at the component tier
         // instead (components/__tests__/record-facts-forms.test.tsx). Its route is
         // DATA-GATED — `/records/specialty/dental` redirects when the view set has no

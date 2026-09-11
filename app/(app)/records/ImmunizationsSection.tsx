@@ -222,6 +222,9 @@ export default function ImmunizationsSection({
         <div className="section-seam mb-6 flex flex-wrap items-center gap-2">
           <AddEntryPanel
             formId="immunization"
+            // The write gate (#4694), from the scope this section already resolved —
+            // never a second lookup.
+            access={scope.access.get(profileId)}
             testId="add-immunization-panel"
             panelId="add-immunization-panel-body"
             label="Add immunization"

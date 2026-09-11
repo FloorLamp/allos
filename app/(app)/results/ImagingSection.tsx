@@ -86,6 +86,9 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
           action={
             <AddEntryPanel
               formId="imaging-study"
+              // The write gate (#4694), from the scope this section already resolved —
+              // never a second lookup.
+              access={scope.access.get(profileId)}
               testId="add-imaging-panel"
               panelId="add-imaging-panel-body"
               label="Add imaging study"

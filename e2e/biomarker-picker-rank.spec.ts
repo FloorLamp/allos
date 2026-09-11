@@ -6,6 +6,7 @@ import {
   settledClick,
   settledFill,
 } from "./helpers";
+import { openRecordFact } from "./record-facts-helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_BIOMARKER_PICKER,
@@ -178,6 +179,14 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
 
+      // The canonical name is an OPTIONAL fact behind the chip row since #5302 — the
+      // action defaults it to the observation's own name — so the picker is reached
+      // through the trailing affordance rather than standing open.
+      await openRecordFact(
+        dialog.getByTestId("result-form"),
+        "result",
+        "canonical"
+      );
       const field = dialog.getByRole("combobox", { name: "Canonical name" });
       const listbox = await openCombobox(page, field);
 

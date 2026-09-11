@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
+import { logHeading } from "@/lib/log-manifest";
 
 export interface PracticeBackfillItem {
   name: string;
@@ -33,11 +34,16 @@ export default function PracticeBackfillLauncher({
       data-testid="practice-backfill-launcher"
       aria-labelledby="practice-backfill-title"
     >
+      {/* ONE PHRASE PER DOMAIN, FROM THE MANIFEST (#5300 rule 6, #5617 step 2), for
+          the same reason the dose backfill destination reads it: "Log a past
+          practice" was a fifth spelling of a domain the sheet, the record's door and
+          the practice card had already converged on. The date this page opens on is
+          the `?log=` day it was sent to. */}
       <h2
         id="practice-backfill-title"
         className="font-semibold text-slate-800 dark:text-slate-100"
       >
-        Log a past practice
+        {logHeading("practice")}
       </h2>
       {invalidRequestedDate ? (
         <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">

@@ -273,6 +273,45 @@ const CONSUMERS = [
     chips: "components/records/RecordFactRow.tsx",
     host: "app/(app)/records/history/procedures/ProcedureForm.tsx",
   },
+  {
+    // #5302 slice 4. Nothing structural is new: eight facts, one chip each, one editor
+    // each. What IS new is that its one essential is argued from a record being DROPPED
+    // rather than mis-judged — `buildImmunizationRecord` and `assessSchedule` both skip
+    // an undated dose — which is the first time an essential on this family means
+    // "otherwise this row does not exist downstream".
+    name: "the immunization form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/immunizations/ImmunizationForm.tsx",
+  },
+  {
+    // #5302 slice 4, and the first consumer whose fact set depends on the form's MODE:
+    // `addResult` parses none of panel / flag / provider / ordering, so in add mode
+    // those four are absent from the summary entirely rather than sitting behind the
+    // trailing affordance. It is also the first whose grouped fact is prompted for
+    // CONDITIONALLY — the unit is dashed only when the value is numeric, because a
+    // qualitative "Reactive" has none to be missing.
+    name: "the clinical-result form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "components/ResultForm.tsx",
+  },
+  {
+    // #5302 slice 4, and the address where this family's location question comes out
+    // the OTHER way: `sameImagingKind` is deliberately loose about the body region
+    // where `sameLesion` is strict, so `region` is optional here and the skin form's
+    // `location` is essential. The contrast pair is its grouped fact.
+    name: "the imaging-study form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/results/imaging/ImagingStudyForm.tsx",
+  },
+  {
+    // #5302 slice 4, the last of the twelve. Its grouped fact spans two text inputs AND
+    // a select (the star allele, the genotype and the zygosity), read back through one
+    // precedence — the first group in this family whose members are alternatives rather
+    // than parts.
+    name: "the genomic-variant form (#5302)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/results/genomics/GenomicVariantForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not

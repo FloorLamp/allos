@@ -187,6 +187,11 @@ export default function ClinicalResultsSection({
               action={
                 <AddEntryPanel
                   formId="result"
+                  // The write gate (#4694), from the scope this section already
+                  // resolved — never a second lookup. The add form is acting-scoped
+                  // (see `now` above), so the acting profile's access is the one that
+                  // decides whether its door exists.
+                  access={scope.access.get(scope.actingProfileId)}
                   // A same-route ?new=1 Link preserves this client component. Change
                   // its identity only when route intent changes so defaultOpen is
                   // deliberately re-applied without making the modal controlled.

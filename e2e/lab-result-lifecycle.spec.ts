@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick, settledFill, settledSelect } from "./helpers";
+import {
+  openRecordFact,
+  withRecordDateFact,
+  withRecordFact,
+} from "./record-facts-helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -142,26 +147,46 @@ test.describe("lab result lifecycle (#1404)", () => {
     const form = page.getByRole("dialog", { name: "Add result" });
     await expect(form.getByLabel("Name", { exact: true })).toHaveValue(FASTING);
 
+    // EVERY FIELD BUT THE NAME IS BEHIND A CHIP SINCE #5302. The analyte name is rule
+    // 1's one identifying field and stays above the row; the rest are reached through
+    // `withRecordFact`. What the reading stores, and everything this test asserts about
+    // how the analyte page reads it back, is unchanged.
+    const fields = form.getByTestId("result-form");
     // DateField DISPLAYS a friendly format ("Jan 12, 2026") while posting the ISO
     // value, so it is filled directly rather than through settledFill's readback.
-    await form.getByLabel("Date", { exact: true }).fill(DRAW_DATE);
-    await settledFill(page, form.getByLabel("Value", { exact: true }), "92");
-    await settledFill(page, form.getByLabel("Unit", { exact: true }), "mg/dL");
-    await settledSelect(
-      page,
-      form.getByTestId("record-result-status"),
-      "final"
+    await withRecordDateFact(page, fields, "result", "date", () =>
+      form.getByLabel("Date", { exact: true }).fill(DRAW_DATE)
     );
-    await settledSelect(page, form.getByTestId("record-fasting"), "1");
+    // The value and its unit are ONE fact over ONE editor: a number without its unit
+    // is a different fact, not a smaller one (#5302).
+    await withRecordFact(fields, "result", "reading", async () => {
+      await settledFill(page, form.getByLabel("Value", { exact: true }), "92");
+      await settledFill(
+        page,
+        form.getByLabel("Unit", { exact: true }),
+        "mg/dL"
+      );
+    });
+    await withRecordFact(fields, "result", "status", () =>
+      settledSelect(page, form.getByTestId("record-result-status"), "final")
+    );
+    await withRecordFact(fields, "result", "fasting", () =>
+      settledSelect(page, form.getByTestId("record-fasting"), "1")
+    );
     // The specimen picker is the shared free-text Combobox: typing opens its
     // suggestion list, which would cover the submit button — Escape closes the list
-    // and keeps the typed value (the free-text contract).
+    // and keeps the typed value (the free-text contract). Escape is also the fact
+    // editor's close, so the row may already be back; pressing Done is routing.
+    await openRecordFact(fields, "result", "specimen");
     await settledFill(
       page,
       form.getByLabel("Specimen", { exact: true }),
       "Plasma"
     );
     await page.keyboard.press("Escape");
+    if (await fields.getByTestId("result-editor").isVisible())
+      await fields.getByTestId("result-editor-done").click();
+    await expect(fields.getByTestId("result-fact-row")).toBeVisible();
     await hydratedClick(
       page,
       form.getByRole("button", { name: "Save result" })
