@@ -11,7 +11,7 @@ import {
   getBristolRows,
   type BristolRow,
 } from "@/lib/queries/bristol-stool";
-import { parseBristolType } from "@/lib/bristol-stool";
+import { parseBristolType, UNTYPED_FIELD_VALUE } from "@/lib/bristol-stool";
 import {
   correctStoolEventCore,
   deleteStoolEventCore,
@@ -310,13 +310,6 @@ export async function correctStoolReading(
   revalidateStool();
   return { ok: true };
 }
-
-/**
- * The posted value that CLEARS a row's type. A sentinel rather than an empty string,
- * because an empty field is what a browser sends for a control that was never touched
- * and "untouched" must not mean "erase the type somebody recorded".
- */
-export const UNTYPED_FIELD_VALUE = "none";
 
 /**
  * Remove one logged movement, in the shape `useUndoableDelete` reads (#2642).

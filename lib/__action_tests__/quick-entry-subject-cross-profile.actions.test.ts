@@ -32,7 +32,6 @@ import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { logStoolForm } from "@/app/(app)/stool-actions";
 import { logSubstanceUnitAction } from "@/app/(app)/medical/substance-use/actions";
 import { loadQuickEntryIntakeContext } from "@/app/(app)/quick-entry-actions";
-import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { setTimezone } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -104,9 +103,9 @@ function bristolCountOf(profileId: number, date: string): number {
   return (
     db
       .prepare(
-        "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ? AND metric = ? AND date = ?"
+        "SELECT COUNT(*) AS n FROM stool_events WHERE profile_id = ? AND date = ?"
       )
-      .get(profileId, BRISTOL_STOOL_METRIC, date) as { n: number }
+      .get(profileId, date) as { n: number }
   ).n;
 }
 

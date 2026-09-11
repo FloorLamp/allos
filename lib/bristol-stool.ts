@@ -173,6 +173,20 @@ export function bristolStoolType(value: unknown): BristolStoolType | null {
 }
 
 /**
+ * THE POSTED VALUE THAT CLEARS A ROW'S TYPE (#5872), back to an occurrence nobody saw
+ * the form of.
+ *
+ * A SENTINEL RATHER THAN AN EMPTY STRING, because an empty field is what a browser
+ * sends for a control that was never touched, and "untouched" must never mean "erase
+ * the type somebody recorded". It lives here, in the vocabulary, rather than beside the
+ * action that reads it: `app/(app)/stool-actions.ts` is a `"use server"` module, and
+ * such a module may export nothing but async functions — a const exported from one
+ * makes EVERY export in the file invisible to the bundler, which is a build failure
+ * several import traces away from its cause.
+ */
+export const UNTYPED_FIELD_VALUE = "none";
+
+/**
  * Parse a submitted form field into a stored type, or null when it names none.
  * Whole numbers only — "4.0" is a type, "3.5" is not.
  */
