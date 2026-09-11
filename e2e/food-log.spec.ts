@@ -798,7 +798,7 @@ test("unstated and Now captures store distinct eating-time truth (#2053/#3273)",
   await hydratedClick(page, page.getByTestId("food-when-now"));
   const field = page.getByTestId("food-when-time");
   await expect(field).not.toHaveValue("");
-  const filled = (await field.locator("option:checked").textContent())!.trim();
+  const filled = (await field.inputValue()).trim();
   expect(filled).toMatch(/^([01]\d|2[0-3]):[0-5]\d$/);
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     `recorded as eaten at ${filled}`
@@ -821,7 +821,7 @@ test("unstated and Now captures store distinct eating-time truth (#2053/#3273)",
     Math.abs(new Date(stamped.occurred_at!).getTime() - frozenNow().getTime())
   ).toBeLessThan(10 * 60_000);
 
-  // The statement is withdrawable — the empty option is a real answer, so there is no
+  // The statement is withdrawable — an emptied field is a real answer, so there is no
   // way to be stuck having said something.
   await settledFill(page, page.getByTestId("food-when-time"), "");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
