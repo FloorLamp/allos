@@ -1,13 +1,15 @@
 // Write cores for the unit-mislabel correction (issue #761). profileId-first, and the id
 // must be the one a write gate returned: the parameter is lib/auth's
-// WriteAuthorizedProfileId, which only the gates mint, so an action that never gated has no
-// value to pass and `tsc` refuses the call (#5348). That stops the ACCIDENTAL ungated call
-// and not a deliberate one — nothing refuses `as WriteAuthorizedProfileId` yet, in this tier
-// or in production, and the lint rule that would (WRITE_BRAND_CAST, shaped like
-// eslint.config.mjs's RPE_BRAND_CAST) is still owed on that file, which is outside this
-// lane's fence. The import is type-only — erased at build, so these cores still run
-// auth-blind and the Data → Review Server Actions still own the requireWriteAccess() gate.
-// Every statement is profile-scoped, so a foreign id changes nothing.
+// WriteAuthorizedProfileId, which only the three gates mint, so an action that never gated
+// has no value to pass and `tsc` refuses the call (#5348). The DELIBERATE forgery is refused
+// too, now that eslint.config.mjs's WRITE_BRAND_CAST bans the cast in production — including
+// through a type alias or a renaming re-export (#5852). What that rule does not do is chase
+// what a name resolves to: it matches the brand BY NAME, which is its stated limit. lib/auth.ts,
+// which mints the brand, is exempted by the config's own `without()` block rather than a
+// disable comment, and a TEST TIER MAY STILL CAST — the same allowance RPE_BRAND_CAST makes.
+// The import is type-only — erased at build, so these cores still run auth-blind and the
+// Data → Review Server Actions still own the requireWriteAccess() gate. Every statement is
+// profile-scoped, so a foreign id changes nothing.
 
 import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
