@@ -54,6 +54,12 @@ export default function CatalogRow<Props, Item>({
   // OPTIONAL, the shared-primitive posture (see ConfirmDialog): this row is rendered
   // by catalogs inside the app shell, where a provider always stands, but a primitive
   // that CRASHES outside one is a primitive the next surface cannot reuse.
+  //
+  // WHAT THAT POSTURE DOES NOT CARRY IS THE DELETE. ModalShell, the only other
+  // consumer, fails OPEN when no provider stands — it dismisses a modal, so the cost
+  // of not asking is unsaved input, which is bad and bounded. The delete below says
+  // "This cannot be undone" in its own copy, so the two directions are not symmetric
+  // and the pattern must not be inherited whole: with nobody to ask, it refuses.
   const confirm = useOptionalConfirm();
   return (
     <li
@@ -103,11 +109,28 @@ export default function CatalogRow<Props, Item>({
                   role="menuitem"
                   className={MENU_ITEM_DANGER}
                   onClick={async () => {
+                    // FAIL CLOSED. A question nobody can be asked is not a question
+                    // that was answered yes, and the refusal is SAID rather than
+                    // silent: a delete that quietly does nothing is the same mystery
+                    // as a delete that quietly happens. It rides the menu's own
+                    // outcome channel (#2133), which is what renders every other
+                    // typed refusal here — and `no-alert` rules out the browser's
+                    // dialog as a stand-in, correctly.
+                    if (!confirm) {
+                      await runAction(
+                        async () => ({
+                          ok: false as const,
+                          error: `Couldn't ask you to confirm deleting ${name}, so nothing was deleted.`,
+                        }),
+                        new FormData(),
+                        ""
+                      );
+                      return;
+                    }
                     // The menu stands down the moment the decision opens over it
                     // (#2599, handled by OverflowMenu itself), so a cancelled delete
                     // leaves no backdrop behind to eat the next tap.
                     if (
-                      confirm &&
                       !(await confirm({
                         title: `Delete ${kind.toLowerCase()}`,
                         message: `Delete ${name}? This cannot be undone.`,
