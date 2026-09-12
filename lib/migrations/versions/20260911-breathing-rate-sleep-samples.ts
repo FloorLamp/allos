@@ -40,9 +40,13 @@ import { deleteRowsWithCascade } from "../cascade-delete";
 // -- WHY IT IS SAFE TO RUN, AND TO RUN AGAIN ---------------------------------------
 //
 // IDEMPOTENT. After it runs, the only wearable `Respiratory Rate` rows left are the
-// spot readings it declines, so a replay over an at-rest database moves nothing. The
-// DB tier replays migrations, so this is a property it is exercised for rather than
-// one that is merely claimed.
+// three kinds it DECLINES - a spot reading with no session around it, a row carrying a
+// #1404 correction lineage, and a hand-corrected row whose night already stated a
+// number - so a replay over an at-rest database moves nothing. Each of the three is
+// declined by the same test on the second pass as on the first, which is why the
+// replay is a no-op rather than a second, different answer. The DB tier replays
+// migrations, so this is a property it is exercised for rather than one that is merely
+// claimed.
 //
 // -- THE DELETE, AND WHAT POINTS AT WHAT IT DELETES ---------------------------------
 //

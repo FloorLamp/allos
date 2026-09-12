@@ -39,8 +39,9 @@ import { parseUtcSql } from "@/lib/date";
 // -- IT FILLS, IT NEVER OVERWRITES -------------------------------------------------
 //
 // A night that already holds a `respiratory_rate_bpm` row keeps its VALUE; the stale
-// observations on it are removed and nothing else happens. That is not caution, it is
-// the ranking: an observation is left over exactly when no session contained its stamp
+// observations on it are removed - all but the ones the next section holds back - and
+// nothing else happens. That is not caution, it is the ranking: an observation is left
+// over exactly when no session contained its stamp
 // at the time, and the session's own re-published reading is stamped at the session's
 // END - at or after every stamp that could still be sitting in `medical_records` for
 // it. Preferring the observation would replace a final reading with the provisional one
