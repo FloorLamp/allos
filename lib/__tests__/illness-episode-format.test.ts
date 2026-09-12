@@ -1025,6 +1025,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
         thresholdHours: 24,
         met: false,
         label: "No reading since 104.2 °F (4h ago)",
+        noReadingSinceFever: true,
         lastFeverLabel: "104.2 °F",
       }
     );
@@ -1054,6 +1055,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
           thresholdHours: 24,
           met: false,
           label: "No reading since 104.2 °F (4h ago)",
+          noReadingSinceFever: true,
           lastFeverLabel: "104.2 °F",
         }
       )
@@ -1084,6 +1086,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
         thresholdHours: 24,
         met: false,
         label: "No reading since 103.4 °F (14h ago)",
+        noReadingSinceFever: true,
         lastFeverLabel: "103.4 °F",
       }
     );
@@ -1096,6 +1099,47 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
     expect(line).not.toContain("No reading since 95.0 °F");
   });
 
+  // ── A HELD COUNTDOWN IS NOT A SILENT ONE (#5688) ───────────────────────────
+  //
+  // The held arm also carries a null `clearedForHours` — the countdown is waiting on a
+  // dose time, not on a thermometer — so a merge keyed on that null would print "No
+  // reading since 103.4 °F" over an episode that HAS a reading since, which is false in
+  // the reassuring direction about the very fact the clause reports. The ARM is the key
+  // now, and this is the case that separates the two.
+  it("does NOT merge a HELD countdown, whose null clock is not a missing reading", () => {
+    const heldRecovery = {
+      clearedForHours: null,
+      thresholdHours: 24,
+      met: false,
+      label: "Fever-free clock held — add the ibuprofen time in Dose history",
+      lastFeverLabel: "103.4 °F",
+      noReadingSinceFever: false,
+    };
+    const reading = {
+      id: 4,
+      value: "103.4 °F",
+      when: "at 11:39 AM (5 hrs ago)",
+      high: true,
+    };
+    const line = cockpitSummaryLine(
+      status({ temperature: reading }),
+      heldRecovery
+    );
+    expect(line).toContain("add the ibuprofen time in Dose history");
+    expect(line).toContain("last reading 103.4 °F");
+    expect(line).not.toContain("No reading since");
+
+    // The same fixture on the "none" arm DOES merge — so the gate is the arm, not
+    // something incidental to this recovery object.
+    expect(
+      cockpitSummaryLine(status({ temperature: reading }), {
+        ...heldRecovery,
+        label: "No reading since 103.4 °F (14h ago)",
+        noReadingSinceFever: true,
+      })
+    ).toContain("No reading since 103.4 °F at 11:39 AM (5 hrs ago)");
+  });
+
   // The merge is gated on there BEING a reading: a recovery object with no
   // temperature keeps the school-return clause rather than inventing one.
   it("falls back to the recovery clause when there is no reading at all", () => {
@@ -1105,6 +1149,7 @@ describe("the cockpit recovery header (#4752 item 1)", () => {
         thresholdHours: 24,
         met: false,
         label: "No reading since 104.2 °F (4h ago)",
+        noReadingSinceFever: true,
         lastFeverLabel: "104.2 °F",
       })
     ).toBe(
