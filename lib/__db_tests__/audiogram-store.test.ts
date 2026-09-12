@@ -13,6 +13,7 @@
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect } from "vitest";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   deleteAudiogram,
@@ -32,11 +33,25 @@ import {
 import { getOtotoxicWarnings } from "@/lib/queries";
 import { ototoxicDetail, ototoxicHasShift } from "@/lib/ototoxic";
 
-function makeProfile(name: string): number {
+// The write cores take the id a write gate minted (#5348), and this tier has no gate to
+// call, so the fixture casts — once, and named here rather than repeated at every call site
+// below. A TEST TIER IS ALLOWED THAT CAST: eslint.config.mjs's WRITE_BRAND_CAST bans it in
+// PRODUCTION only (#5852), the same allowance RPE_BRAND_CAST makes, because a fixture has no
+// request to gate and exporting a minter for it would put the mint in two places. That
+// production ban now reaches EVERY production module: #5864 carried it into lib/revalidate.ts
+// and the repo-root entrypoints, which is what closed #5856, and a coverage test asserts it
+// from ESLint's own resolved config. But it bans a CAST, and the residual is not one — `tsc`
+// alone does not refuse an unbranded call written in METHOD position (method parameters stay
+// bivariant even under `strict`; the property spelling is refused at TS2322), nor an argument
+// that is an implicit `any` from JSON.parse. So in production "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one; the step-aside that rests on it is documented in
+// lib/__tests__/actions-write-access.test.ts. A branded number is still a number, so
+// the reads and the ototoxic helpers below take it unchanged.
+function makeProfile(name: string): WriteAuthorizedProfileId {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
-  );
+  ) as WriteAuthorizedProfileId;
 }
 
 describe("audiogram store — canonical medical_records rows (#1600)", () => {

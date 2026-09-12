@@ -1,8 +1,29 @@
-// Write cores for the unit-mislabel correction (issue #761). Auth-BLIND — the Data
-// → Review Server Actions own the requireWriteAccess() gate; these take profileId
-// first (the profileId-first convention) and never import lib/auth. Every statement
-// is profile-scoped, so a foreign id changes nothing.
+// Write cores for the unit-mislabel correction (issue #761). profileId-first, and the id
+// must be the one a write gate returned: the parameter is lib/auth's
+// WriteAuthorizedProfileId, which only the three gates mint, so an action that never gated
+// holds nothing these take — `tsc` refuses a call here that passes a plain `number` (#5348).
+// The DELIBERATE forgery, a cast, is refused in EVERY production module: eslint.config.mjs's
+// WRITE_BRAND_CAST (#5852) matches the brand by name, through a type alias or a renaming
+// re-export, and since #5864 it reaches lib/revalidate.ts and the repo-root entrypoints too
+// — which is what closed #5856. A coverage test in lib/__tests__ asserts that from ESLint's
+// own resolved config rather than from a list, so a new root file or a new `ignores` entry
+// reds the scan on the commit that adds it. lib/auth.ts, which mints the brand, is the one
+// declared owner, exempted by the config's own `without()` block rather than a disable
+// comment; and a TEST TIER MAY STILL CAST, the same allowance RPE_BRAND_CAST makes.
+//
+// THE RESIDUAL IS NOT A CAST, so no lint coverage closes it: `tsc` alone does not refuse an
+// unbranded call written in METHOD position (an interface member declared `f(id: number)`
+// accepts a branded-parameter function — method parameters stay bivariant even under
+// `strict`, while the property spelling `f: (id: number) => …` is refused at TS2322), nor
+// one whose argument is an implicit `any` from JSON.parse. So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — recorded at
+// lib/__tests__/actions-write-access.test.ts, whose step-aside formally rests on it.
+//
+// The import is type-only — erased at build, so these cores still run auth-blind and the
+// Data → Review Server Actions still own the requireWriteAccess() gate. Every statement is
+// profile-scoped, so a foreign id changes nothing.
 
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import {
   detectRecordUnitMislabel,
@@ -30,7 +51,7 @@ export type ApplyUnitMislabelResult =
 // is right, the #761 suppression lifts and the true — typically Normal — flag is
 // computed). Returns the captured prior state for undo.
 export function applyUnitMislabelCorrection(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   recordId: number
 ): ApplyUnitMislabelResult {
   const hit = detectRecordUnitMislabel(profileId, recordId);
@@ -72,7 +93,7 @@ export function applyUnitMislabelCorrection(
 // the prior derived flag, AND the prior edit-lock in one write. Profile-scoped, so a
 // replayed token from another profile is a no-op. Returns whether a row changed.
 export function undoUnitMislabelCorrection(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   undo: UnitMislabelUndo
 ): boolean {
   const info = db
@@ -86,7 +107,10 @@ export function undoUnitMislabelCorrection(
 // Record a mislabel detection as a false positive so it never re-surfaces. Uses the
 // shared findings-suppression bus (upcoming_dismissals) — the same store the
 // Upcoming/coaching dismissals use — keyed by the record id. Profile-scoped.
-export function dismissUnitMislabel(profileId: number, recordId: number): void {
+export function dismissUnitMislabel(
+  profileId: WriteAuthorizedProfileId,
+  recordId: number
+): void {
   db.prepare(
     `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
      VALUES (?, ?, datetime('now'))

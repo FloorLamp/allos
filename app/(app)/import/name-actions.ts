@@ -49,7 +49,7 @@ const RXCUI_SHAPE = /^\d{1,10}$/;
 export async function adoptImportedMedicationName(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const itemId = Number(formData.get("item_id"));
   const documentId = Number(formData.get("document_id"));
   const rxcui = String(formData.get("rxcui") ?? "").trim();
@@ -81,7 +81,7 @@ export async function adoptImportedMedicationName(
   const ingredients = await lookupRxNormIngredients(rxcui);
 
   const res = adoptImportedName(
-    profile.id,
+    writeProfileId,
     documentId,
     itemId,
     chosen,

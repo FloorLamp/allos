@@ -1,9 +1,35 @@
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import { isCleanerName, isImportedDocumentName } from "./imported-name";
 import { serializeRxcuiIngredients } from "./rxnorm";
 
 // The WRITE half of the imported-name boundary (issue #3480) — the only path in the
 // tree that changes a stored medication name because of an import.
+//
+// THE WRITE CORE TAKES THE ID A WRITE GATE RETURNED: adoptImportedName's profileId is
+// lib/auth's WriteAuthorizedProfileId, which only the three gates mint, so an action that
+// never gated holds nothing it takes — `tsc` refuses a call here that passes a plain
+// `number` (#5348). The DELIBERATE forgery, a cast, is refused in EVERY production module:
+// eslint.config.mjs's WRITE_BRAND_CAST (#5852) matches the brand by name, through a type
+// alias or a renaming re-export, and since #5864 it reaches lib/revalidate.ts and the
+// repo-root entrypoints too — which is what closed #5856. A coverage test in lib/__tests__
+// asserts that from ESLint's own resolved config rather than from a list, so a new root file
+// or a new `ignores` entry reds the scan on the commit that adds it. lib/auth.ts, which
+// mints the brand, is the one declared owner, exempted by the config's own `without()` block
+// rather than a disable comment; and a TEST TIER MAY STILL CAST, the same allowance
+// RPE_BRAND_CAST makes.
+//
+// THE RESIDUAL IS NOT A CAST, so no lint coverage closes it: `tsc` alone does not refuse an
+// unbranded call written in METHOD position (an interface member declared `f(id: number)`
+// accepts a branded-parameter function — method parameters stay bivariant even under
+// `strict`, while the property spelling `f: (id: number) => …` is refused at TS2322), nor
+// one whose argument is an implicit `any` from JSON.parse. So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — recorded at
+// lib/__tests__/actions-write-access.test.ts, whose step-aside formally rests on it.
+//
+// The import is type-only — erased at build — so this module still pulls in no lib/auth
+// runtime, and the read below (importedMedicationName) is unchanged: a branded number is
+// still a number.
 //
 // It lives in lib/ rather than inside the Server Action for the reason the medical
 // pipeline does (lib/medical-pipeline.ts): the action is auth, a network lookup and
@@ -101,7 +127,7 @@ export type AdoptResult =
 // later — must not overwrite the portal string with the first standardized name. The
 // document's own label is written once and then never again.
 export function adoptImportedName(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   documentId: number,
   itemId: number,
   chosen: string,

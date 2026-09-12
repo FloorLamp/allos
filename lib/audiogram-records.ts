@@ -1,6 +1,28 @@
-// Audiogram WRITE CORE + reads (issue #1600). AUTH-BLIND and profileId-first — no
-// lib/auth import; the calling Server Action is the only auth boundary. The sibling of
-// lib/instrument-records.ts, which does the same job for screening-instrument scores.
+// Audiogram WRITE CORE + reads (issue #1600). profileId-first, and the WRITE cores take the
+// id a write gate returned: the parameter is lib/auth's WriteAuthorizedProfileId, which only
+// the three gates mint, so an action that never gated holds nothing these take — `tsc`
+// refuses a call here that passes a plain `number` (#5348). The DELIBERATE forgery, a cast,
+// is refused in EVERY production module: eslint.config.mjs's WRITE_BRAND_CAST (#5852)
+// matches the brand by name, through a type alias or a renaming re-export, and since #5864
+// it reaches lib/revalidate.ts and the repo-root entrypoints too — which is what closed
+// #5856. A coverage test in lib/__tests__ asserts that from ESLint's own resolved config
+// rather than from a list, so a new root file or a new `ignores` entry reds the scan on the
+// commit that adds it. lib/auth.ts, which mints the brand, is the one declared owner,
+// exempted by the config's own `without()` block rather than a disable comment; and a TEST
+// TIER MAY STILL CAST, the same allowance RPE_BRAND_CAST makes.
+//
+// THE RESIDUAL IS NOT A CAST, so no lint coverage closes it: `tsc` alone does not refuse an
+// unbranded call written in METHOD position (an interface member declared `f(id: number)`
+// accepts a branded-parameter function — method parameters stay bivariant even under
+// `strict`, while the property spelling `f: (id: number) => …` is refused at TS2322), nor
+// one whose argument is an implicit `any` from JSON.parse. So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — recorded at
+// lib/__tests__/actions-write-access.test.ts, whose step-aside formally rests on it.
+//
+// The import is type-only — erased at build, so this module still pulls in no lib/auth
+// runtime and the calling Server Action is still the only auth boundary. The reads below are
+// unchanged: a branded number is still a number. The sibling of lib/instrument-records.ts,
+// which does the same job for screening-instrument scores.
 //
 // STORE: `medical_records`, category `vitals`, one row per (ear, frequency) under the
 // canonical analyte names lib/canonical-result-definitions.json already curates for the
@@ -24,6 +46,7 @@
 //   • latestByGroup  — reached through currentThresholds() in the pure module, keyed on
 //                      the domain identity audiogramSeriesKey.
 
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { reconcileFlags } from "./queries/medical";
@@ -218,7 +241,7 @@ export type AudiogramOrigin = "manual" | "sync";
 // that audiogram in place rather than stacking a duplicate — which is what makes the
 // insert/update/unchanged accounting meaningful.
 export function recordAudiogram(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   input: RecordAudiogramInput,
   // Which surface recorded this audiogram (#3087). Required, no default — and
   // deliberately NOT folded into the `origin` argument beside it, which answers a
@@ -340,7 +363,7 @@ export type DeleteAudiogramOutcome =
 // last reading of a starred/snoozed analyte must not leave the star pointing at
 // nothing (#203/#327).
 export function deleteAudiogram(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   date: string
 ): DeleteAudiogramOutcome {
   const removed = writeTx((): number => {
