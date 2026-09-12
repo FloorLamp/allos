@@ -94,6 +94,8 @@ import {
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import HistoryRows from "./history/HistoryRows";
 import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
+import { poolRefillSignalKey, refillSignalKey } from "@/lib/refill-nudge";
+import RefillButton from "@/components/medications/RefillButton";
 import { getActivitiesByDate } from "@/lib/queries/training/activities";
 import type { Activity } from "@/lib/types/training";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
@@ -678,6 +680,47 @@ async function renderHome(
       }
     : null;
 
+  // ── THE LOW-SUPPLY CUE'S TARGET (#5121, §9) ───────────────────────────────────
+  //
+  // "An eligible Home low-supply cue opens the shared refill action; no inventory
+  // strip." The cue itself is already in the shared attention model — `refillItems` and
+  // `poolRefillItems` put a tracked item or bottle that has run down into the same list
+  // the dose rows arrive on — so what Home was missing is the CONTROL, not the fact.
+  //
+  // NO STRIP, and that is a hard exclusion rather than a layout preference: #5121's own
+  // fix put Refilled "on the low-supply strip", and §9 keeps the tap while deleting the
+  // strip it was drawn on. A strip is an inventory READING of every tracked item, which
+  // §2.1 and §2.4 both refuse — the shortage that has arrived is one eligible action in
+  // the Now band, and the rest of the cabinet is the Supplements page's.
+  //
+  // IT COSTS NO READ (§2.5). `getIntakeItems` is the same snapshot-cached list the dose
+  // ledger below already takes, and the target is a projection over it: the shared key
+  // MINTERS are applied forward, so a cue and its control are joined on the identity the
+  // producer stamped rather than by parsing one back out of a string.
+  const intakeItems = getIntakeItems(profile.id);
+  const refillTargets = new Map<
+    string,
+    { itemId: number; supplyId: number | null; lastFillSize: number | null }
+  >();
+  for (const item of intakeItems) {
+    const target = {
+      itemId: item.id,
+      supplyId: item.supply_id,
+      lastFillSize: item.last_fill_size,
+    };
+    refillTargets.set(refillSignalKey(item.id), target);
+    // A POOLED BOTTLE IS KEYED ON THE POOL, never on a member (#1374), and its cue
+    // names ONE subject. `poolRefillItems` picks this profile's lowest-id member to
+    // carry it, so the same pick is made here — the row and its control then act on
+    // the same item, and a second member of the same bottle can never mint a rival
+    // control for it.
+    if (item.supply_id == null) continue;
+    const poolKey = poolRefillSignalKey(item.supply_id);
+    const seated = refillTargets.get(poolKey);
+    if (seated == null || item.id < seated.itemId)
+      refillTargets.set(poolKey, target);
+  }
+
   // ── THE ONE LIST (§3.2) ───────────────────────────────────────────────────────
   //
   // Every seat decision below this line is `composeHomeList`'s. It renders nothing,
@@ -690,6 +733,7 @@ async function renderHome(
     minutesOfDay: nowMinutes,
     subject: { scope: "profile", profileId: profile.id },
     attention,
+    refillTargets: new Set(refillTargets.keys()),
     training: {
       live: liveWorkout,
       loggedToday: todaySession != null,
@@ -733,16 +777,14 @@ async function renderHome(
     });
     dosesByItem.set(dose.item_id, list);
   }
-  const doseItems: DoseLedgerItem[] = getIntakeItems(profile.id).map(
-    (item) => ({
-      id: item.id,
-      name: item.name,
-      kind: item.kind,
-      product: item.product,
-      asNeeded: isOnDemand(item),
-      doses: dosesByItem.get(item.id) ?? [],
-    })
-  );
+  const doseItems: DoseLedgerItem[] = intakeItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    kind: item.kind,
+    product: item.product,
+    asNeeded: isOnDemand(item),
+    doses: dosesByItem.get(item.id) ?? [],
+  }));
 
   // SELECTION MODE, THE LEDGER'S (#5618 ruling 4), inherited whole: the record's Select
   // in the day bar, its boxes on the rows below, over the same per-row correction cores.
@@ -920,6 +962,7 @@ async function renderHome(
                 formatPrefs={formatPrefs}
                 today={on}
                 writable={writable}
+                refillTargets={refillTargets}
                 routineControl={routineControl}
                 cycleControl={cycleControl}
                 fastFacts={fastFacts}
@@ -1129,6 +1172,16 @@ function HomeLaterFold({
   );
 }
 
+// What the page can mount the shared refill action ON, for one low-supply cue key
+// (#5121). `supplyId` is the bottle when the cue is a pooled one and null for a private
+// supply; `lastFillSize` is the remembered fill, whose ABSENCE is what makes the first
+// tap ask for a size instead of writing one.
+type HomeRefillTarget = {
+  itemId: number;
+  supplyId: number | null;
+  lastFillSize: number | null;
+};
+
 // ── THE NOW BAND (§3.2 band 2) ──────────────────────────────────────────────────
 //
 // A rule reading "Now · <profile-local clock>", rendered once, between what is OWED and
@@ -1140,6 +1193,7 @@ function HomeNowBand({
   formatPrefs,
   today,
   writable,
+  refillTargets,
   routineControl,
   cycleControl,
   fastFacts,
@@ -1152,6 +1206,7 @@ function HomeNowBand({
   formatPrefs: DisplayFormatPrefs;
   today: string;
   writable: boolean;
+  refillTargets: ReadonlyMap<string, HomeRefillTarget>;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
   fastFacts: { elapsed: string; since: string } | null;
@@ -1178,6 +1233,7 @@ function HomeNowBand({
               formatPrefs={formatPrefs}
               today={today}
               writable={writable}
+              refillTargets={refillTargets}
               routineControl={routineControl}
               cycleControl={cycleControl}
               fastFacts={fastFacts}
@@ -1198,6 +1254,7 @@ function HomeNowRowView({
   formatPrefs,
   today,
   writable,
+  refillTargets,
   routineControl,
   cycleControl,
   fastFacts,
@@ -1210,6 +1267,7 @@ function HomeNowRowView({
   formatPrefs: DisplayFormatPrefs;
   today: string;
   writable: boolean;
+  refillTargets: ReadonlyMap<string, HomeRefillTarget>;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
   fastFacts: { elapsed: string; since: string } | null;
@@ -1284,6 +1342,18 @@ function HomeNowRowView({
 
   if (content.kind === "item") {
     const item = content.item;
+    // THE CUE'S OWN CONTROL (#5121, §9): the shared one-tap Refilled, the SAME
+    // component the medication row, the medication card and Manage mount, so a refill
+    // taken from Home goes through the compare-and-set write core and the re-log
+    // question exactly as one taken anywhere else. The composer only seats a cue whose
+    // key is in this map, so a lookup here cannot miss for a seated row.
+    //
+    // `supplyCycleDays` is left unstated rather than guessed: sizing the re-log
+    // question needs `getRefillRates`, a reader Home does not take, and §2.5 admits no
+    // new one. Unstated means the affordance's own shared default cycle, which is what
+    // every surface without a rate to hand already uses.
+    const refillTarget =
+      item.domain === "refill" ? (refillTargets.get(item.key) ?? null) : null;
     return (
       <HomeRow
         id={row.id}
@@ -1293,6 +1363,14 @@ function HomeNowRowView({
         control={
           writable ? (
             <>
+              {refillTarget != null && (
+                <RefillButton
+                  itemId={refillTarget.itemId}
+                  supplyId={refillTarget.supplyId}
+                  hasLastFill={refillTarget.lastFillSize != null}
+                  lastFillSize={refillTarget.lastFillSize}
+                />
+              )}
               {item.doseId != null && (
                 <DoseConfirmButton
                   action={markAttentionDose}

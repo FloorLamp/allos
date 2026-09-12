@@ -164,6 +164,45 @@ const hrWindowReads = new Map<string, string[]>();
  */
 const HR_FIXTURE = "hr-minutes fixture";
 
+/**
+ * The low-supply render (#5121, #5435 §9), on its own profile after the persona loop
+ * for the same reason the heart-rate one is: it cannot move a number in QUERY_BASELINE,
+ * and it seeds the seam directly rather than hoping a persona happens to run out of
+ * something. No persona does, which is what would make a persona-only check vacuous.
+ */
+const REFILL_FIXTURE = "low-supply fixture";
+/** Every element prop bag the low-supply render produced, control props included. */
+let refillElements: Record<string, unknown>[] = [];
+let refillRowIds: string[] = [];
+/** The item the fixture runs out of, so the control can be checked against its target. */
+let refillItemId = 0;
+
+/**
+ * A tracked medication with nothing left on the shelf: one scheduled dose (so the
+ * shared rate reader has a consumption estimate at all), `quantity_on_hand` at zero (so
+ * `daysOfSupplyLeft` is 0 and the cue's due date is today) and a remembered fill size
+ * (so the shared action is a one-tap rather than a first-use question).
+ */
+function seedRunOutItem(profileId: number): number {
+  const born = `${shiftDateStr(today(profileId), -60)}T08:00:00`;
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, kind, active, obligation, condition,
+            quantity_on_hand, qty_per_dose, last_fill_size, created_at)
+         VALUES (?, 'Vitamin D3', 'supplement', 1, 'should', 'daily', 0, 1, 90, ?)`
+      )
+      .run(profileId, born).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses
+       (item_id, amount, time_of_day, food_timing, sort, created_at)
+     VALUES (?, '1 capsule', 'Morning', 'any', 0, ?)`
+  ).run(itemId, born);
+  return itemId;
+}
+
 function windowsRead(
   trace: ReturnType<typeof installStatementTrace>
 ): string[] {
@@ -217,6 +256,13 @@ function seedHrMinutes(profileId: number, days: number): void {
 const rowIds = new Map<string, string[]>();
 /** Persona → every `data-testid` the render put in the document. */
 const testIds = new Map<string, string[]>();
+/**
+ * Persona → every element prop bag the render produced. A control handed down as an
+ * element is a PROP rather than markup here, so this is where the retained care
+ * controls' own arguments — the subject each names and the day each reads — can be
+ * read (#4932 / #5211, #5435 §9).
+ */
+const personaElements = new Map<string, Record<string, unknown>[]>();
 const queryCounts = new Map<string, number>();
 // THE WARM READING BESIDE THE COLD ONE (#5073). A second render of the same persona
 // with no write in between, so the commit-scoped gathers are answered from the memo
@@ -265,6 +311,7 @@ describe("Home's one list, rendered", () => {
       return {
         ids: attribute("data-candidate-id"),
         testIds: attribute("data-testid"),
+        elements: resolved.elements,
       };
     };
 
@@ -281,6 +328,7 @@ describe("Home's one list, rendered", () => {
       const cold = await renderHome();
       rowIds.set(persona.name, cold.ids);
       testIds.set(persona.name, cold.testIds);
+      personaElements.set(persona.name, cold.elements);
       queryCounts.set(persona.name, trace.count());
       hrWindowReads.set(persona.name, windowsRead(trace));
       personaProfileIds.set(persona.name, profileId);
@@ -310,6 +358,27 @@ describe("Home's one list, rendered", () => {
     trace.clear();
     await renderHome();
     hrWindowReads.set(HR_FIXTURE, windowsRead(trace));
+
+    // ── THE LOW-SUPPLY RENDER (#5121), also on its own profile and also after the
+    // loop. It is a bare profile rather than a persona: the cue and its control are
+    // what is being read, and a persona's whole day around them only adds ways for the
+    // assertion to pass for the wrong reason.
+    const refillBefore = new Set(allProfileIds());
+    const refillProfileId = newProfile(`dashboard:${REFILL_FIXTURE}`);
+    refillItemId = seedRunOutItem(refillProfileId);
+    session.accessible = profiles(
+      allProfileIds().filter((id) => !refillBefore.has(id))
+    );
+    session.profile = session.accessible.find(
+      (profile) => profile.id === refillProfileId
+    )!;
+    const refillRender = await requestCache.during(async () =>
+      resolveAsyncTree((await Dashboard()) as ReactElement)
+    );
+    refillElements = refillRender.elements;
+    refillRowIds = refillRender.elements
+      .map((props) => props["data-candidate-id"])
+      .filter((value): value is string => typeof value === "string");
   }, MANIFEST_HOOK_MS);
 
   for (const persona of PERSONAS) {
@@ -526,6 +595,140 @@ describe("Home's one list, rendered", () => {
         "Account for the move, then refresh WARM_BASELINE with:\n\n" +
         `  const WARM_BASELINE: Record<string, number> = {\n${refreshed}\n  };\n`
     ).toEqual([]);
+  });
+
+  // ── DATE AND OPENERS ON THE RETAINED CONTROLS (#4932 / #5211, §9) ─────────────
+  //
+  // §9 maps those two issues onto "retained care/Quicklogger controls", and the
+  // retained care control is the cockpit: `DashboardQuickEntryAction`, the one Home
+  // opener #4932 named, was deleted in #5883, and Home's remaining Quicklogger doors
+  // are the dock puck and the sidebar's Log button — the subject-LESS openers #4932
+  // leaves on the acting profile by design. So what is left to hold on Home is the
+  // cockpit's subject and the cockpit's day, and both are pinned here rather than
+  // asserted in prose, because a page rewrite is exactly what loses them quietly.
+  //
+  // `household` is the persona that has cockpits at all — Dave plus two sick children
+  // — so it is the only render where these claims are not vacuous, and the control for
+  // that is the first expectation in each case.
+  const cockpitsOf = (persona: string) =>
+    (personaElements.get(persona) ?? [])
+      .flatMap((props) =>
+        Array.isArray((props as { cockpits?: unknown }).cockpits)
+          ? ((props as { cockpits: Record<string, unknown>[] }).cockpits ?? [])
+          : []
+      )
+      .map((cockpit) => ({
+        cockpit,
+        body:
+          (cockpit.body as { props?: Record<string, unknown> })?.props ?? {},
+      }));
+
+  it("names a subject on every care control Home retained (#4932)", () => {
+    const cockpits = cockpitsOf("household");
+    expect(
+      cockpits.length,
+      "the household render mounted no cockpit, so the checks below are vacuous"
+    ).toBeGreaterThan(0);
+    // THE ROW AND ITS BODY NAME THE SAME PERSON. Household facts stay separated by
+    // subject (§3.1), and the whole point of #4932 is that a write cannot be aimed by
+    // screen position: the accordion line that names Riley must hand the controls
+    // Riley's id, never the acting profile's.
+    expect(
+      cockpits.map(({ cockpit, body }) => ({
+        named: cockpit.profileId,
+        writesFor: body.profileId,
+      }))
+    ).toEqual(
+      cockpits.map(({ cockpit }) => ({
+        named: cockpit.profileId,
+        writesFor: cockpit.profileId,
+      }))
+    );
+    // …and the write answer is that target's own, not one test of the acting profile
+    // reused across the fanout (#5878 landed the same correction on the Reopen row).
+    for (const { cockpit, body } of cockpits) {
+      expect(typeof cockpit.canWrite).toBe("boolean");
+      expect(body.canWrite).toBe(cockpit.canWrite);
+      expect(body.crossProfile).toBe(
+        cockpit.profileId !== personaProfileIds.get("household")
+      );
+    }
+  });
+
+  it("gives the retained care control Home's own day, and no wider reach (#5211)", () => {
+    const cockpits = cockpitsOf("household");
+    expect(
+      cockpits.length,
+      "the household render mounted no cockpit, so the checks below are vacuous"
+    ).toBeGreaterThan(0);
+    for (const { body } of cockpits) {
+      const model = body.model as {
+        date: string;
+        controls: Record<string, unknown> | null;
+      };
+      // The day is Home's own, read from the subject's local clock — not a day the
+      // control chose and not one carried over from another surface.
+      expect(model.date).toBe(today(personaProfileIds.get("household")!));
+      if (model.controls == null) continue;
+      // THE PAIR THE COCKPIT ALREADY HAD, and nothing more. #5435 §9 records the
+      // #5211 cockpit day-toggle as UNAPPROVED, so the retained control keeps its own
+      // today/yesterday and does not acquire the shared bounded switcher's reach: an
+      // `altDate` that is not exactly yesterday, or a day LIST beside it, is that
+      // adoption arriving without the approval.
+      expect(model.controls.altDate).toBe(shiftDateStr(model.date, -1));
+      expect(Object.keys(model.controls)).not.toContain("days");
+      expect(Object.keys(model.controls)).not.toContain("reach");
+    }
+  });
+
+  // ── THE LOW-SUPPLY CUE OPENS THE SHARED REFILL ACTION (#5121, §9) ──────────────
+
+  it("seats the low-supply cue under the rule with its own row id", () => {
+    // THE CUE IS A ROW. Before this it was a dated fact with no affordance field, so
+    // the composer seated it nowhere and Home neither stated the shortage nor offered
+    // the fix — §9's gap, in one assertion.
+    expect(
+      refillRowIds,
+      `${REFILL_FIXTURE} rendered no rows at all, so the check below is vacuous.`
+    ).not.toEqual([]);
+    expect(refillRowIds).toContain(`attention.fact:refill:${refillItemId}`);
+  });
+
+  it("hands that row the SHARED refill action, aimed at the item that ran out", () => {
+    // THE CONTROL IS READ OFF THE ELEMENT'S PROPS, which is all a client component
+    // leaves behind here (the harness says so where it collects them). What matters is
+    // that the props are the shared affordance's own contract — the item it refills and
+    // whether a fill size is remembered — rather than a second control built for Home.
+    const controls = refillElements.filter(
+      (props) =>
+        props.hasLastFill !== undefined && props.itemId === refillItemId
+    );
+    expect(
+      controls,
+      "The low-supply row carried no refill control.\n" +
+        "§9 says an eligible Home low-supply cue OPENS THE SHARED REFILL ACTION, so a\n" +
+        "row with no control is only half of it: the cue would state a shortage the\n" +
+        "page cannot do anything about."
+    ).toHaveLength(1);
+    // The remembered fill is what makes it a one-tap rather than a first-use question,
+    // and it is the fixture's own 90.
+    expect(controls[0]).toMatchObject({ hasLastFill: true, lastFillSize: 90 });
+  });
+
+  it("draws no inventory strip beside it (§9, a hard exclusion)", () => {
+    // "No inventory strip" is not a layout preference: a strip is a READING of the
+    // whole cabinet, which §2.1 and §2.4 both refuse. The cue that has arrived is one
+    // row; the rest of the cabinet is the Supplements page's. The fixture's profile has
+    // exactly one tracked item, so the claim is that Home emitted ONE refill row and no
+    // container holding a second reading of it.
+    expect(
+      refillRowIds.filter((id) => id.startsWith("attention.fact:refill:"))
+    ).toEqual([`attention.fact:refill:${refillItemId}`]);
+    const testIds = refillElements
+      .map((props) => props["data-testid"])
+      .filter((value): value is string => typeof value === "string");
+    expect(testIds.filter((id) => id.includes("supply"))).toEqual([]);
+    expect(testIds.filter((id) => id.includes("inventory"))).toEqual([]);
   });
 
   it("reads each hr_minutes window once per render (#5010)", () => {
