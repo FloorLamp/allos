@@ -5,11 +5,12 @@
 // obligation (attribution prefix, length/keyboard limits, HTML escaping, delivery
 // accounting) is owned in ONE place and a new sender or reply-handler physically
 // cannot reach the wire without inheriting it (issue #454). That boundary is
-// enforced by a source-scan test (lib/__tests__/telegram-chokepoint.test.ts).
+// enforced by `TELEGRAM_RAW_SEND_BAN` in eslint.config.mjs, which is where the
+// source-scan test it names retired to at #5699.
 //
-// The INBOUND / config primitives here (`answerCallbackQuery`, `setWebhook`,
-// `deleteWebhook`, `getUpdates`) carry no outbound-message obligations, so they are
-// not guarded and may be imported anywhere. The pure size-guard policy lives in
+// The INBOUND / config primitives here (`answerCallbackQuery`, `setMessageReaction`,
+// `setWebhook`, `deleteWebhook`, `getUpdates`) carry no outbound-message obligations, so
+// they are not guarded and may be imported anywhere. The pure size-guard policy lives in
 // ./telegram-limits; the render helpers (`renderMessageHtml`, `messageKeyboard`)
 // are pure and unguarded.
 
@@ -33,6 +34,9 @@ export {
   type InlineKeyboard,
 } from "./telegram-render";
 import { GLYPH } from "./glyphs";
+import { createLogger } from "../log";
+
+const log = createLogger("telegram");
 
 // The subset of Telegram's Update / CallbackQuery shapes the app consumes —
 // shared by the webhook route and the getUpdates poller.
@@ -310,6 +314,47 @@ export async function answerCallbackQuery(
     ...(text ? { text } : {}),
     ...(opts?.alert ? { show_alert: true } : {}),
   });
+}
+
+// Set a single emoji reaction on an existing message (Bot API 7.0). INBOUND-SIDE, and
+// that is why it sits beside `answerCallbackQuery` in the unguarded half rather than
+// with the send/edit primitives: it delivers no text, no keyboard and no attribution, so
+// it carries none of the obligations the chokepoint exists to own (#454). It is the
+// acknowledgement a TYPED reply gets (#5650) — the same "answer without adding a line to
+// the chat" that a tap gets from a toast.
+//
+// THAT PLACEMENT IS A DECISION, AND THE GUARD ENUMERATES NAMES. `TELEGRAM_RAW_SEND_BAN`
+// (eslint.config.mjs) restricts `**/telegram-api` imports of `sendMessageRaw`,
+// `editMessageTextRaw` and `editMessageReplyMarkupRaw` to the chokepoint — three names,
+// listed one by one, so a NEW primitive is unguarded by default rather than by argument.
+// Adding this one outside that list is the claim that it owes the chokepoint nothing;
+// a reaction that ever carried text or a keyboard would have to join the list instead.
+//
+// BEST-EFFORT BY CONTRACT. A reaction is confirmation, never the act: the write has
+// already happened by the time it is set, and Telegram refuses reactions in some chats
+// and for messages past its edit horizon. A refusal must not turn a recorded reading
+// into a failure the caller reports, so this swallows the API error and says whether it
+// landed.
+export async function setMessageReaction(
+  chatId: string | number,
+  messageId: number,
+  emoji: string
+): Promise<boolean> {
+  try {
+    await call("setMessageReaction", {
+      chat_id: chatId,
+      message_id: messageId,
+      reaction: [{ type: "emoji", emoji }],
+    });
+    return true;
+  } catch (error) {
+    log.info("telegram reaction not set", {
+      chat: chatId,
+      message: messageId,
+      err: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 // Register the inbound webhook with Telegram; the secret is echoed back on every

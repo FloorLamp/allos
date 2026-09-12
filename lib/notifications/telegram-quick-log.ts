@@ -1,4 +1,3 @@
-import { handleReceivedReply } from "./refill";
 function prnLogToken(): string {
   return crypto.randomBytes(4).toString("hex");
 }
@@ -692,9 +691,11 @@ export async function handleSymptomSeverity(
 }
 
 // `/temp` command (#859 item 5): prompt the chat to REPLY with a reading. The prompt
-// body carries a "(#temp:<profileId>)" marker per profile, so the reply
-// (handleTempReply) attributes without any server-side pending state. A multi-profile
-// chat gets one named prompt each.
+// body carries a "(#temp:<profileId>)" marker per profile, which is what attributes an
+// explicit Reply; since #5650 the send also records a POINTER, which is what lets a bare
+// number reach the prompt and what the acknowledgement edits. A multi-profile chat gets
+// one named prompt each — and therefore two open prompts, which is why a bare number in
+// one is refused rather than guessed.
 export async function handleTempCommand(
   message: TelegramMessage
 ): Promise<void> {
@@ -731,7 +732,7 @@ export async function handleTempCommand(
         title: "Log a temperature",
         body:
           `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
-          `(add C or F to be explicit). ${tempReplyMarker(pid)}`,
+          `(add C or F to be explicit). ${typedReplyMarker("temp", pid)}`,
         kind: "temp",
       },
       pid
@@ -739,49 +740,57 @@ export async function handleTempCommand(
   }
 }
 
-// A reply to a `/temp` prompt (#859 item 5): resolve the profile from the prompt's
-// marker, parse the value + unit from the reply body, log it, and answer honestly from
-// the typed TemperatureLogOutcome — with the single-reading red-flag note when the
-// reading crosses one. Returns whether the message was a temp reply (so the message
-// dispatcher can stop). Never unconditionally confirms.
-export async function handleTempReply(
-  message: TelegramMessage
-): Promise<boolean> {
-  const chatId = message.chat?.id;
-  const replyText = message.reply_to_message?.text;
-  const markedProfile = parseTempReplyMarker(replyText);
-  if (chatId == null || markedProfile == null) return false;
+// THE TEMPERATURE VALUE GRAMMAR (#859 item 5). Parse a temperature reply ("38.5",
+// "101F", "38,5 c") into a value + unit. An explicit C/F suffix wins; a bare number
+// auto-detects (human body temps never overlap across scales below 45° — °C readings sit
+// ~35–42, °F ~95–108), since a Telegram chat carries no #857 login unit preference.
+// Returns null when there's no parseable number.
+//
+// It lives beside the settle function that consumes it, the way `/weight`'s grammar
+// lives in the palette's `parseWeightEntry`. The MARKER grammar left with #5650 — that
+// one is shared across families and belongs to the contract; a value grammar is the
+// family's own and always was.
+export function parseTempReply(
+  body: string | null | undefined
+): { value: number; unit: "C" | "F" } | null {
+  if (!body) return null;
+  const m = /(-?\d+(?:[.,]\d+)?)\s*(°?\s*[cCfF])?/.exec(body.trim());
+  if (!m) return null;
+  const value = Number(m[1].replace(",", "."));
+  if (!Number.isFinite(value)) return null;
+  const suffix = (m[2] ?? "").replace(/[^cCfF]/g, "").toUpperCase();
+  const unit: "C" | "F" =
+    suffix === "C" || suffix === "F"
+      ? (suffix as "C" | "F")
+      : value < 45
+        ? "C"
+        : "F";
+  return { value, unit };
+}
 
-  // Only honor the marker when the profile is actually reachable from this chat.
-  const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (!profileIds.includes(markedProfile)) {
-    await sendTelegramMessage(
-      chatId,
-      {
-        title: `${GLYPH.temperature} Temperature not logged`,
-        body: "That profile isn't linked to this chat anymore.",
-      },
-      CHAT_WIDE
-    );
-    return true;
-  }
+// Settle a typed reply to a `/temp` prompt (#859 item 5, under #5650's contract): parse
+// the value + unit from the reply body, log it, and answer honestly from the typed
+// TemperatureLogOutcome — with the single-reading red-flag note when the reading crosses
+// one. Never unconditionally confirms.
+//
+// THE ANSWER IS THE PROMPT ITSELF NOW (ruling 1). What used to be a second message —
+// `🌡 Temperature logged: 38.5 °C` under the prompt that asked for it — is the prompt's
+// own new text, and the reading wears a 👍. Only a refusal still costs the chat a line.
+async function settleTempReply(
+  reply: TypedReply,
+  ctx: TypedReplyContext
+): Promise<TypedReplyOutcome> {
+  const parsed = parseTempReply(reply.text);
+  if (!parsed)
+    return {
+      applied: false,
+      refusal:
+        "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
+    };
 
-  const parsed = parseTempReply(message.text);
-  if (!parsed) {
-    await sendTelegramMessage(
-      chatId,
-      {
-        title: `${GLYPH.temperature} Temperature not logged`,
-        body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
-      },
-      markedProfile
-    );
-    return true;
-  }
-
-  const date = today(markedProfile);
+  const date = today(reply.profileId);
   const outcome = logTemperatureCore(
-    markedProfile,
+    reply.profileId,
     parsed.value,
     parsed.unit,
     date,
@@ -789,56 +798,34 @@ export async function handleTempReply(
     // typed rather than tapped (#877's vocabulary member).
     "telegram-text"
   );
-  if (outcome.kind === "invalid") {
-    await sendTelegramMessage(
-      chatId,
-      {
-        title: `${GLYPH.temperature} Temperature not logged`,
-        body: outcome.error,
-      },
-      markedProfile
-    );
-    return true;
-  }
+  if (outcome.kind === "invalid")
+    return { applied: false, refusal: outcome.error };
   // Event-driven red-flag push (#1025): a crossing reading dispatches the
   // co-caregiver nudge NOW (fire-and-forget, quiet-hours exempt like redose); the
-  // per-finding marker + bus own dedup, so the logger's own toast below and the
-  // push can't double-nag.
-  queueTempRedFlagDispatch(markedProfile, outcome.degF);
+  // per-finding marker + bus own dedup, so the edited prompt below and the push
+  // can't double-nag.
+  queueTempRedFlagDispatch(reply.profileId, outcome.degF);
   const redFlag = inlineTempRedFlagNote(
     outcome.degF,
-    profileAgeMonths(markedProfile, date)
+    profileAgeMonths(reply.profileId, date)
   );
   const feverNote = outcome.flag === "high" ? " — fever" : "";
-  // "Logged." duplicated the title's verb and said nothing (#1722 item 6). With no
-  // red flag the reply states the reading and offers the episode, which the red-flag
-  // and illness-care messages both already carry.
   const base = getPublicUrl().replace(/\/$/, "");
-  const episodeId = currentEpisodeForProfile(markedProfile)?.id ?? null;
-  // The subject is the profile the REPLY MARKER named and this chat was just checked
-  // against (#1995) — the one whose reading was logged. The confirmation can carry a
-  // keyboard (the episode link), so before the subject was declared this pointer was
-  // recorded against whichever profile happened to sort first in the chat.
-  await sendTelegramMessage(
-    chatId,
-    {
-      title: `${GLYPH.temperature} Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
-      body:
-        redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
-      ...(base && episodeId != null
-        ? {
-            actions: [
-              {
-                label: "View episode",
-                url: `${base}${episodeHref(episodeId)}`,
-              },
-            ],
-          }
-        : {}),
-    },
-    markedProfile
-  );
-  return true;
+  const episodeId = currentEpisodeForProfile(reply.profileId)?.id ?? null;
+  await settlePrompt(reply, ctx, {
+    title: `${GLYPH.temperature} Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
+    body:
+      redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
+    kind: "temp",
+    ...(base && episodeId != null
+      ? {
+          actions: [
+            { label: "View episode", url: `${base}${episodeHref(episodeId)}` },
+          ],
+        }
+      : {}),
+  });
+  return { applied: true, refusal: null };
 }
 
 // `/mood` command (#1895): the daily wellbeing check-in keyboard, ON DEMAND. Scheduled
@@ -1078,7 +1065,7 @@ export async function handleWeightCommand(
         title: "Log a weight",
         body:
           `Reply to this message with ${who}weight — e.g. 82.5, or 180 lb ` +
-          `(kg unless you say otherwise). ${weightReplyMarker(pid)}`,
+          `(kg unless you say otherwise). ${typedReplyMarker("weight", pid)}`,
         kind: "weight",
       },
       pid
@@ -1086,54 +1073,31 @@ export async function handleWeightCommand(
   }
 }
 
-// A reply to a `/weight` prompt (#1895) — the `/temp` reply handler's twin: resolve the
-// profile from the prompt's marker, parse the number through the SAME grammar the
-// palette's `weight 82.5` uses, write through the SAME `insertBodyMetric` core every
-// weight entry goes through (canonical kg conversion server-side, at the boundary), and
-// answer from what the write actually returned. Returns whether the message was a weight
-// reply, so the dispatcher can stop. Never confirms unconditionally.
-export async function handleWeightReply(
-  message: TelegramMessage
-): Promise<boolean> {
-  const chatId = message.chat?.id;
-  const markedProfile = parseWeightReplyMarker(message.reply_to_message?.text);
-  if (chatId == null || markedProfile == null) return false;
-
-  const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (!profileIds.includes(markedProfile)) {
-    await sendTelegramMessage(
-      chatId,
-      {
-        title: `${GLYPH.weight} Weight not logged`,
-        body: "That profile isn't linked to this chat anymore.",
-      },
-      CHAT_WIDE
-    );
-    return true;
-  }
-
+// Settle a typed reply to a `/weight` prompt (#1895) — the `/temp` settle's twin: parse
+// the number through the SAME grammar the palette's `weight 82.5` uses, write through the
+// SAME `insertBodyMetric` core every weight entry goes through (canonical kg conversion
+// server-side, at the boundary), and answer from what the write actually returned. Never
+// confirms unconditionally.
+async function settleWeightReply(
+  reply: TypedReply,
+  ctx: TypedReplyContext
+): Promise<TypedReplyOutcome> {
   // kg by default: a chat carries no login unit preference (#857 lives on the login,
   // and several logins with different preferences can watch one profile), so the
   // notification unit policy applies — canonical kg, with an explicit lb still honored.
-  const parsed = parseWeightEntry((message.text ?? "").trim(), "kg");
-  if (parsed.error || !Number.isFinite(parsed.value)) {
-    await sendTelegramMessage(
-      chatId,
-      {
-        title: `${GLYPH.weight} Weight not logged`,
-        body:
-          parsed.error ??
-          "Couldn't read a weight there — reply with a number like 82.5.",
-      },
-      markedProfile
-    );
-    return true;
-  }
+  const parsed = parseWeightEntry(reply.text.trim(), "kg");
+  if (parsed.error || !Number.isFinite(parsed.value))
+    return {
+      applied: false,
+      refusal:
+        parsed.error ??
+        "Couldn't read a weight there — reply with a number like 82.5.",
+    };
 
   // Time-blind: a `/weight` reply states a number and nothing about when, so the
   // core's stated-time verdict is always "unstated" on this path (#2311).
-  const { wrote } = insertBodyMetric(markedProfile, {
-    date: today(markedProfile),
+  const { wrote } = insertBodyMetric(reply.profileId, {
+    date: today(reply.profileId),
     weight: String(parsed.value),
     weightUnit: parsed.unit,
     bodyFatPct: null,
@@ -1142,20 +1106,185 @@ export async function handleWeightReply(
     // A free-text REPLY to the `/weight` prompt — typed, not tapped.
     loggedVia: "telegram-text",
   });
-  await sendTelegramMessage(
-    chatId,
-    wrote
-      ? {
-          title: `${GLYPH.weight} Weight logged: ${fmtWeight(toKg(parsed.value, parsed.unit), "kg")}`,
-          body: "Recorded for today.",
-        }
-      : {
-          title: `${GLYPH.weight} Weight not logged`,
-          body: "Couldn't record that weight — try again in the app.",
-        },
-    markedProfile
+  if (!wrote)
+    return {
+      applied: false,
+      refusal: "Couldn't record that weight — try again in the app.",
+    };
+  await settlePrompt(reply, ctx, {
+    title: `${GLYPH.weight} Weight logged: ${fmtWeight(toKg(parsed.value, parsed.unit), "kg")}`,
+    body: "Recorded for today.",
+    kind: "weight",
+  });
+  return { applied: true, refusal: null };
+}
+
+// ---- THE ONE TYPED-REPLY ARM (#5650) ----------------------------------------
+
+// Edit a prompt in place to state its own result, then retire it as an open prompt.
+//
+// TWO THINGS, AND THEY ARE NOT THE SAME THING. The EDIT is the acknowledgement: the
+// message that asked the question now answers it, in the chat position the reader is
+// already looking at. Dropping the POINTER is what closes the question — a prompt is
+// "open" exactly while its pointer stands, so an answered `/temp` can no longer swallow
+// the next bare number somebody types for an unrelated reason. The MARKER stays in the
+// edited body on purpose: it is the attribution on an explicit Reply, and a second
+// reading typed as a Reply to the same prompt is a legitimate thing to do (the marker was
+// always stateless), it simply has to be aimed rather than assumed.
+//
+// DROPPING THE POINTER STRANDS NOTHING (#1779). What the edited prompt can carry is a
+// deep LINK — `/temp`'s episode button — which is a URL and makes no state claim; neither
+// settled prompt mints a callback token. A family whose result did would have to keep its
+// pointer and close the question some other way.
+async function settlePrompt(
+  reply: TypedReply,
+  ctx: TypedReplyContext,
+  msg: NotificationMessage
+): Promise<void> {
+  if (!reply.promptId) return;
+  const marker = typedReplyMarker(reply.family, reply.profileId);
+  await rebuildMessage(reply.profileId, ctx.chatId, reply.promptId, {
+    ...msg,
+    body: `${msg.body}\n${marker}`,
+  });
+  forgetMessagePointerAt(reply.profileId, ctx.chatId, reply.promptId);
+}
+
+// The prompts this chat is still waiting on an answer for, for THIS sender.
+//
+// Two sources, because the two kinds of prompt know they are open in two different ways.
+// A refill receipt holds an offer row bound to the sender who opened it (#5654's lookup,
+// now the family's `openRefillPrompts`). A `/temp` or `/weight` prompt holds no operation
+// state at all, so its openness IS its pointer: recorded at send since #5650, dated in the
+// subject's own day, and dropped the moment the prompt is answered.
+//
+// THE TWO BINDINGS ARE NOT THE SAME AND THE WEAKER ONE IS STATED HERE. A receipt is bound
+// to its sender; a quick-log prompt is bound only to the chat and the profile's day,
+// because `/temp` is a chat-addressed command that anybody in the chat may answer — and a
+// chat with two profiles gets two named prompts, which makes a bare number ambiguous and
+// therefore refused rather than guessed.
+function openTypedPrompts(
+  chatId: string,
+  senderId: number | null
+): OpenTypedPrompt[] {
+  const prompts: OpenTypedPrompt[] =
+    senderId == null ? [] : [...openRefillPrompts(chatId, senderId)];
+  for (const profileId of getProfilesByTelegramChatId(chatId)) {
+    const date = today(profileId);
+    for (const family of ["temp", "weight"] as const)
+      for (const pointer of liveMessagePointersForKind(
+        profileId,
+        chatId,
+        family
+      ))
+        if (pointer.date === date)
+          prompts.push({
+            family,
+            profileId,
+            operationId: null,
+            promptId: pointer.messageId,
+          });
+  }
+  return prompts;
+}
+
+// The title a REFUSAL wears, per family. Only a refusal is ever sent, so this is the
+// whole outbound vocabulary of the contract's message path; an applied reply is a
+// reaction and an edit and carries no title at all.
+const REFUSAL_TITLE: Record<TypedReplyFamily, string> = {
+  temp: `${GLYPH.temperature} Temperature not logged`,
+  weight: `${GLYPH.weight} Weight not logged`,
+  refill: "Supply receipt",
+};
+
+// THE ONE DISPATCH ARM. Chat, sender, prompt and profile are resolved ONCE here and the
+// family gets a typed `{family, profileId, operationId, text}`; before #5650 three
+// handlers each re-derived all four from `reply_to_message`, and the newest of them was
+// the only one that had learned a bare number is a reply too.
+//
+// AUTHORIZATION IS THE ARM'S, NOT THE FAMILY'S. A marker is a string anybody can copy
+// into a reply, so the profile it names is honored only when this chat can actually write
+// it — checked here, once, for every family, before any family sees the reply. The refill
+// arm used to make this check and then return SILENTLY, which is the defect ruling 4 names.
+//
+// THE RETURN IS TWO DIFFERENT ANSWERS AND THEY MUST STAY DIFFERENT (#5654). `false` LEAVES
+// the message to the rest of the chain — the slash-command router, then the free-text
+// symptom intake — and `true` swallows it. A quoted MARKER means the message was addressed
+// to this arm, so it claims even when the answer is a refusal; a BARE number that resolves
+// to no open prompt was never addressed to anything, so it must fall through untouched.
+// Collapsing the two either swallows ordinary chat or re-offers a claimed message to a
+// later handler.
+export async function handleTypedReply(
+  message: TelegramMessage
+): Promise<boolean> {
+  const chatId = message.chat?.id;
+  const senderId = message.from?.id;
+  const messageId = message.message_id;
+  if (chatId == null) return false;
+  const chat = String(chatId);
+  const resolved = resolveTypedReply(
+    {
+      text: message.text,
+      replyToText: message.reply_to_message?.text,
+      replyToId: message.reply_to_message?.message_id,
+    },
+    // Read LAZILY: ordinary chat that is not a number at all must not pay for an offer
+    // or pointer lookup on its way to the symptom intake.
+    () => openTypedPrompts(chat, senderId ?? null)
   );
+  if (resolved.kind === "none") return false;
+  if (resolved.kind === "ambiguous") {
+    // Named by no profile, deliberately: the ambiguity may span two.
+    await sendTelegramMessage(
+      chatId,
+      { title: "More than one open prompt", body: TYPED_REPLY_AMBIGUOUS },
+      CHAT_WIDE
+    );
+    return true;
+  }
+  const reply = resolved.reply;
+  const authorized = getProfilesByTelegramChatId(chat).includes(
+    reply.profileId
+  );
+  const outcome = authorized
+    ? await settleTypedReply(reply, {
+        chatId: chat,
+        senderId: senderId ?? null,
+        messageId: messageId ?? null,
+      })
+    : { applied: false, refusal: TYPED_REPLY_UNAUTHORIZED };
+
+  if (outcome.applied) {
+    // Best-effort by contract: the write has already happened, so a chat that refuses
+    // reactions — or an update with no message id to put one on — costs the reader the
+    // 👍 and nothing else.
+    if (messageId != null)
+      await setMessageReaction(chatId, messageId, TYPED_REPLY_REACTION);
+  } else if (outcome.refusal)
+    // The subject is the profile the MARKER named and this chat was just checked against
+    // (#1995) — except when that check FAILED, where naming it would put a name this chat
+    // is not entitled to into the chat. An unauthorized refusal is chat-wide and says
+    // nothing about whose profile was quoted.
+    await sendTelegramMessage(
+      chatId,
+      { title: REFUSAL_TITLE[reply.family], body: outcome.refusal },
+      authorized ? reply.profileId : CHAT_WIDE
+    );
   return true;
+}
+
+function settleTypedReply(
+  reply: TypedReply,
+  ctx: TypedReplyContext
+): Promise<TypedReplyOutcome> {
+  switch (reply.family) {
+    case "temp":
+      return settleTempReply(reply, ctx);
+    case "weight":
+      return settleWeightReply(reply, ctx);
+    case "refill":
+      return settleRefillReply(reply, ctx);
+  }
 }
 
 // The ONE inbound text-message dispatcher (webhook + poller both call this), and since
@@ -1169,21 +1298,20 @@ export async function handleWeightReply(
 //
 // Order matters and is deliberate:
 //
-//   1. a REPLY to a `/temp` prompt, which is not a command and must not be re-parsed;
+//   1. a TYPED REPLY to a prompt this bot is waiting on — `/temp`, `/weight` or a refill
+//      receipt — which is not a command and must not be re-parsed as one. ONE arm since
+//      #5650, where it was three chained by hand, each re-deriving the same four facts;
 //   2. a slash command, routed by the parsed verb (aliases resolved) — one switch, so a
 //      verb in the vocabulary that nobody wired up is a compile-time gap rather than a
 //      silent one;
 //   3. ordinary text, which is NOT addressed to the bot and is the only case that may
 //      go unanswered — the free-text symptom intake (#877) claims it or nothing does.
+//      NARROWED for numeric text (#5650 ruling 2): a bare number in a chat with exactly
+//      one open prompt is an answer, not ordinary text, and is claimed by arm 1.
 export async function handleIncomingMessage(
   message: TelegramMessage
 ): Promise<void> {
-  if (await handleReceivedReply(message)) return;
-  if (await handleTempReply(message)) return;
-  // The second prompt-reply flow (#1895). Same arm, same reason: a REPLY to a prompt is
-  // not a command and must not be re-parsed as one. Each marker is its own, so the two
-  // cannot claim each other's replies.
-  if (await handleWeightReply(message)) return;
+  if (await handleTypedReply(message)) return;
 
   const parsed = parseCommand(message.text);
   if (!parsed) {
@@ -1460,12 +1588,22 @@ import { fmtTemp } from "../units";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
-  parseTempReply,
-  parseTempReplyMarker,
-  parseWeightReplyMarker,
-  tempReplyMarker,
-  weightReplyMarker,
-} from "./reply-markers";
+  resolveTypedReply,
+  typedReplyMarker,
+  TYPED_REPLY_AMBIGUOUS,
+  TYPED_REPLY_REACTION,
+  TYPED_REPLY_UNAUTHORIZED,
+  type OpenTypedPrompt,
+  type TypedReply,
+  type TypedReplyContext,
+  type TypedReplyFamily,
+  type TypedReplyOutcome,
+} from "./typed-reply";
+import { openRefillPrompts, settleRefillReply } from "./refill";
+import {
+  forgetMessagePointerAt,
+  liveMessagePointersForKind,
+} from "./message-pointers";
 import {
   moodKeepAnswerText,
   moodKeepCloseText,
@@ -1491,12 +1629,13 @@ import {
   closeMessage,
   rebuildMessage,
   sendTelegramMessage,
+  setMessageReaction,
   updateMessageKeyboard,
   CHAT_WIDE,
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
-import type { NotificationAction } from "./types";
+import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";
 
 // An offer-tail tap (#1505): expand the digest's "➕ Doses" button IN PLACE into

@@ -17,9 +17,12 @@ import {
   answerCallbackQuery,
   editMessageTextRaw,
   sendMessageRaw,
+  setMessageReaction,
 } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
-import { tempReplyMarker } from "@/lib/notifications/reply-markers";
+import { typedReplyMarker } from "@/lib/notifications/typed-reply";
+import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
+import { liveMessagePointersForKind } from "@/lib/notifications/message-pointers";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
@@ -30,6 +33,23 @@ beforeAll(() => stubTelegramSends());
 const answerMock = vi.mocked(answerCallbackQuery);
 const editMock = vi.mocked(editMessageTextRaw);
 const sendMock = vi.mocked(sendMessageRaw);
+const reactMock = vi.mocked(setMessageReaction);
+
+// A typed reply to a prompt already sitting in the chat: the prompt's own id is what the
+// acknowledgement edits, and the reply's own id is what wears the reaction (#5650).
+const PROMPT_ID = 700;
+function tempReply(text: string, profileId: number, messageId = 801) {
+  return {
+    message_id: messageId,
+    chat: { id: CHAT },
+    from: { id: 71 },
+    text,
+    reply_to_message: {
+      message_id: PROMPT_ID,
+      text: `Reply with the temperature. ${typedReplyMarker("temp", profileId)}`,
+    },
+  };
+}
 
 const CHAT = "5550150";
 
@@ -94,16 +114,26 @@ describe("symptom quick-log (button grid → severity → log)", () => {
   });
 });
 
+function tempCount(profileId: number): number {
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM medical_records
+          WHERE profile_id = ? AND canonical_name = 'Body Temperature'`
+      )
+      .get(profileId) as { c: number }
+  ).c;
+}
+
 describe("temperature reply quick-log", () => {
-  it("a reply to a /temp prompt logs a reading and confirms", async () => {
+  // #5650 ruling 1: an applied reply is a REACTION and an IN-PLACE EDIT of the prompt.
+  // The `🌡 Temperature logged: …` message this flow used to send is now the prompt's own
+  // text, so a successful reading costs the chat no new line at all.
+  it("a reply to a /temp prompt logs a reading, wears 👍 and edits its prompt", async () => {
     sendMock.mockClear();
-    const handled = await handleIncomingMessage({
-      chat: { id: CHAT },
-      text: "38.9",
-      reply_to_message: {
-        text: `Reply with the temperature. ${tempReplyMarker(p.profileId)}`,
-      },
-    });
+    editMock.mockClear();
+    reactMock.mockClear();
+    const handled = await handleIncomingMessage(tempReply("38.9", p.profileId));
     // 38.9°C ≈ 102.0°F canonical.
     const row = db
       .prepare(
@@ -115,49 +145,152 @@ describe("temperature reply quick-log", () => {
     expect(row).toBeTruthy();
     expect(row!.value_num).toBeGreaterThan(101);
     expect(row!.value_num).toBeLessThan(103);
-    // A confirmation was sent through the chokepoint.
-    expect(sendMock).toHaveBeenCalled();
+    expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 801, "👍"]);
+    const edit = editMock.mock.calls.at(-1)!;
+    expect(edit[1]).toBe(PROMPT_ID);
+    expect(edit[2]).toMatch(/Temperature logged/);
+    // The marker stays: an explicit Reply to the settled prompt still attributes.
+    expect(edit[2]).toContain(`(#temp:${p.profileId})`);
+    expect(sendMock).not.toHaveBeenCalled();
     expect(handled).toBeUndefined(); // handleIncomingMessage returns void
   });
 
   it("refuses a copied marker for a profile not linked to the replying chat", async () => {
     const foreign = seedProfile("TG temp marker foreign");
     sendMock.mockClear();
+    reactMock.mockClear();
 
-    await handleIncomingMessage({
-      chat: { id: CHAT },
-      text: "38.2",
-      reply_to_message: {
-        text: `Reply with the temperature. ${tempReplyMarker(foreign.profileId)}`,
-      },
-    });
+    await handleIncomingMessage(tempReply("38.2", foreign.profileId, 802));
 
-    const rows = db
-      .prepare(
-        `SELECT COUNT(*) AS c FROM medical_records
-          WHERE profile_id = ? AND canonical_name = 'Body Temperature'`
-      )
-      .get(foreign.profileId) as { c: number };
-    expect(rows.c).toBe(0);
+    expect(tempCount(foreign.profileId)).toBe(0);
+    // A refusal is the ONE case that still costs a message — and it is spoken, never
+    // swallowed. No reaction: nothing was applied.
     expect(sendMock).toHaveBeenCalledTimes(1);
     const reply = sendMock.mock.calls[0][1] as { body: string };
     expect(reply.body).toMatch(/isn't linked to this chat/i);
+    expect(reactMock).not.toHaveBeenCalled();
   });
 
-  it("ignores a plain message with no temp-reply marker", async () => {
+  it("refuses an unreadable reading with one message and no reaction", async () => {
     sendMock.mockClear();
-    const before = db
-      .prepare(
-        `SELECT COUNT(*) AS c FROM medical_records WHERE profile_id = ? AND canonical_name = 'Body Temperature'`
-      )
-      .get(p.profileId) as { c: number };
+    reactMock.mockClear();
+    const before = tempCount(p.profileId);
+    await handleIncomingMessage(tempReply("no idea", p.profileId, 803));
+    expect(tempCount(p.profileId)).toBe(before);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect((sendMock.mock.calls[0][1] as { body: string }).body).toMatch(
+      /Couldn't read a temperature/i
+    );
+    expect(reactMock).not.toHaveBeenCalled();
+  });
+
+  // #5650 ruling 2: the obvious thing to type after the bot asks a question.
+  it("resolves a BARE number to the chat's one open /temp prompt, then stops", async () => {
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 810,
+      chat: { id: CHAT },
+      from: { id: 71 },
+      text: "/temp",
+    });
+    const promptId = (await sendMock.mock.results.at(-1)!.value) as number;
+    const before = tempCount(p.profileId);
+    sendMock.mockClear();
+    editMock.mockClear();
+
+    await handleIncomingMessage({
+      message_id: 811,
+      chat: { id: CHAT },
+      from: { id: 71 },
+      text: "38.4",
+    });
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 811, "👍"]);
+    expect(editMock.mock.calls.at(-1)![1]).toBe(promptId);
+    expect(sendMock).not.toHaveBeenCalled();
+
+    // The prompt is answered, so it is no longer open: the next bare number in the same
+    // chat is ordinary text again and reaches nothing.
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 812,
+      chat: { id: CHAT },
+      from: { id: 71 },
+      text: "120",
+    });
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  // #5650 put `temp` and `weight` pointers into the hourly reconcile sweep for the
+  // FIRST time — the send chokepoint records one now, and `reconcileProfileMessages`
+  // walks every live pointer a profile holds. A `/temp` prompt reaches the generic arm
+  // with no keyboard, no prose reconciler and `family === null`, and is left alone
+  // because `planEdit` returns null for a family with no rebuilder
+  // (lib/notifications/reconcile.ts's `if (!reconciler?.rebuild) return null;` under
+  // `decision.action === "none"`), so `reconcilePointer` exits at its `if (!plan)`
+  // guard without claiming, editing, closing or dropping anything.
+  //
+  // THAT IS A READING OF SOMEBODY ELSE'S CONTROL FLOW, WHICH IS WHY IT IS PINNED HERE.
+  // Both ways it could go wrong are silent: a DROPPED pointer stops bare-number
+  // resolution from the first tick onward, and an EDITED one rewrites an open question
+  // under the person who was about to answer it. Neither shows up in a reply-flow
+  // drive, because none of those runs a sweep.
+  it("survives the reconcile sweep, and still answers a bare number after it", async () => {
+    sendMock.mockClear();
+    editMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 820,
+      chat: { id: CHAT },
+      from: { id: 71 },
+      text: "/temp",
+    });
+    const promptId = (await sendMock.mock.results.at(-1)!.value) as number;
+    const before = tempCount(p.profileId);
+
+    const live = () =>
+      liveMessagePointersForKind(p.profileId, CHAT, "temp").filter(
+        (ptr) => ptr.messageId === promptId
+      );
+    expect(live()).toHaveLength(1);
+    expect(live()[0].date).toBe(today(p.profileId));
+
+    editMock.mockClear();
+    sendMock.mockClear();
+    const swept = await reconcileProfileMessages(p.profileId);
+    // The sweep really did look at it — a vacuous pass would prove nothing.
+    expect(swept.examined).toBeGreaterThan(0);
+
+    // (a) still live, same date; (b) the sweep sent and edited NOTHING for it.
+    expect(live()).toHaveLength(1);
+    expect(live()[0].date).toBe(today(p.profileId));
+    expect(editMock.mock.calls.filter((call) => call[1] === promptId)).toEqual(
+      []
+    );
+    expect(sendMock).not.toHaveBeenCalled();
+
+    // (c) THE PROPERTY THAT MATTERS: the prompt is still answerable. This fails
+    // whichever way the sweep could have gone wrong.
+    await handleIncomingMessage({
+      message_id: 821,
+      chat: { id: CHAT },
+      from: { id: 71 },
+      text: "37.2",
+    });
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 821, "👍"]);
+    expect(editMock.mock.calls.at(-1)![1]).toBe(promptId);
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a plain message with no open prompt and no marker", async () => {
+    sendMock.mockClear();
+    const before = tempCount(p.profileId);
     await handleIncomingMessage({ chat: { id: CHAT }, text: "hello there" });
-    const after = db
-      .prepare(
-        `SELECT COUNT(*) AS c FROM medical_records WHERE profile_id = ? AND canonical_name = 'Body Temperature'`
-      )
-      .get(p.profileId) as { c: number };
-    expect(after.c).toBe(before.c);
+    expect(tempCount(p.profileId)).toBe(before);
   });
 });
 

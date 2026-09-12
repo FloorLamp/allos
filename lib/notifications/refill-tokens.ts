@@ -55,18 +55,7 @@ export function parseRefillCallback(data: unknown): RefillCallback | null {
   return { profileId, itemId };
 }
 
-export function parseRefillReplyMarker(
-  text: string | undefined
-): { profileId: number; offerId: number } | null {
-  const match = text?.match(/\(refill:([1-9]\d*):([1-9]\d*)\)/);
-  return match
-    ? { profileId: Number(match[1]), offerId: Number(match[2]) }
-    : null;
-}
-
-export function parseReceivedAmount(text: string | undefined): number | null {
-  const value = text?.trim();
-  if (!value || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) return null;
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
-}
+// The receipt's REPLY marker and its number grammar left this file at #5650: both are
+// the typed-reply contract's (./typed-reply), shared now with `/temp` and `/weight`
+// rather than spelled a third time here. What stays is what is genuinely this family's
+// — the CALLBACK tokens its buttons carry.
