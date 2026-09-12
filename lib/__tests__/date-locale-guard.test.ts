@@ -36,13 +36,16 @@ import { fileURLToPath } from "node:url";
 // The numbering above keeps its holes on purpose. Rule (ii) banned pref-LESS calls
 // of the pref-taking formatters by counting call arguments in source text against a
 // per-formatter table, with a per-file allowlist for the login-less channels. That
-// invariant is now the compiler's: `prefs` is a REQUIRED parameter on every
-// pref-taking formatter in lib/format-date.ts and lib/record-format.ts, so omitting
-// it is TS2554 at the call site rather than a text match here. The login-less
-// channels (Telegram/push/HA sends, the .ics feed — a profile but no login in
-// context) now pass `DEFAULT_FORMAT_PREFS` by name, which is the point of the
-// conversion: the fixed shape is a stated choice at the three files entitled to it
-// instead of an invisible fallback available everywhere.
+// invariant is now the compiler's: `prefs` is a REQUIRED parameter on all NINE
+// `DisplayFormatPrefs`-taking formatters — `formatLongDate`, `formatMonthDay`,
+// `formatDateWithYear`, `formatWeekdayDate`, `formatTimestampDisplay` and
+// `formatTimestamp` in lib/format-date.ts, `formatRecordDate`,
+// `formatRecordDateTime` and `formatVisitLabel` in lib/record-format.ts — so
+// omitting it is TS2554 at the call site rather than a text match here. The
+// login-less channels (Telegram/push/HA sends, the .ics feed — a profile but no
+// login in context) now pass `DEFAULT_FORMAT_PREFS` by name at the three files
+// entitled to it, which is the point of the conversion: the fixed shape is a stated
+// choice where it is exercised instead of an invisible fallback on the formatter.
 //
 // The scan's own table is why converting beat trusting it. It named six formatters
 // when ten take a display pref — `formatWeekdayDate`, `formatTimestampDisplay`,
@@ -52,11 +55,28 @@ import { fileURLToPath } from "node:url";
 // docs/internals/verification-failure-modes.md line 83 exactly: a guard that lists
 // a union's members does not track the union.
 //
+// TWO RESIDUES, named rather than claimed away. `formatClockValue` is the tenth,
+// and it keeps its `timeFormat = DEFAULT_FORMAT_PREFS.timeFormat` default: no
+// production call omits the argument today, but five pass a `timeFormat?:` carrier
+// that may be `undefined` (four in lib/illness-episode-format.ts, one through
+// lib/emergency-card-load.ts's login-less `getEmergencyCard`), so requiring it is a
+// second cascade with its own login-less policy question and was out of this slice.
+// Separately, about forty second-tier helpers — `visitFacts`, `resultFacts`, the
+// rule-findings builders, `EpisodeSummary` and the rest — still take `prefs` with a
+// `= DEFAULT_FORMAT_PREFS` parameter default or an `?? DEFAULT_FORMAT_PREFS`
+// fallback of their own, so a pref-less call one level ABOVE the formatters is
+// still silent. Rule (ii) saw neither: its table listed leaf formatters only, and a
+// wrapper that passes its own default satisfies an argument COUNT. Neither is
+// protection this slice gave up; both are what a later slice would take.
+//
 // lib/__tests__/format-locale-leak.test.ts (44 lines) went in the same commit. Its
 // ban on `toLocale*(undefined` across four formatter modules is a strict SUBSET of
 // rule (i) above, which bans every non-"en-US" `.toLocale*String(` call in all of
 // app/, components/ and lib/ against an EMPTY allowlist — a live successor already
-// in this file, not a deletion into thin air.
+// in this file, not a deletion into thin air. Verified by planting
+// `.toLocaleDateString(undefined, {})` in each of its four modules
+// (lib/record-format.ts, lib/administration-format.ts, lib/format-date.ts,
+// lib/training-log-card.ts) in turn: rule (i) below reds on all four.
 //
 // ---- Rule (i) STAYS, and is waiting on lint --------------------------------
 //
