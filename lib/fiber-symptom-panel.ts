@@ -25,6 +25,7 @@
 //   fiber rise happened.
 
 import { lastNDates } from "./date";
+import { GI_SYMPTOM_EFFECTS } from "./gi-effects";
 
 // The panel's window: four whole weeks, so a weekday-shaped rhythm is sampled the
 // same number of times whichever day it renders on. The window lives HERE, not in
@@ -38,21 +39,18 @@ export function fiberSymptomPanelDates(today: string): string[] {
   return lastNDates(today, FIBER_SYMPTOM_PANEL_DAYS);
 }
 
-// The GI subset of the symptom vocabulary this panel marks. A DECLARED list, not a
-// domain filter: `SymptomDomain` is an order-only lever by its own contract (bloating
-// sits under `cycle`), so reusing it here would cut against that contract and miss the
-// members. Bristol 6–7 days (#2785) are a natural second marker now that the
-// observation exists. The panel test pins that every member resolves to a curated
-// symptom slug, so a vocabulary rename cannot silently drop one.
-export const GI_PANEL_SYMPTOMS: readonly string[] = [
-  "diarrhea",
-  // Constipation (#2783) — the counterpart this list named as pending. Without it the
-  // panel marked one direction of dysfunction only, so a fiber rise that traded
-  // constipation for looser stools read as GI symptom days APPEARING out of nowhere.
-  "constipation",
-  "bloating",
-  "abdominal_pain",
-];
+// The GI subset of the symptom vocabulary this panel marks. The LIST ITSELF now lives
+// in lib/gi-effects.ts (#5865), because a declared food sensitivity names an effect out
+// of the same set and two copies of a vocabulary are two copies that drift. Everything
+// that made it a DECLARED list rather than a `SymptomDomain` filter is written there,
+// beside the members; this name stays because the panel is the reader that named it and
+// its test pins every member to a curated symptom slug.
+//
+// The vocabulary is WIDER than this panel: it also carries the Bristol 6–7 stool
+// effect (#2785), which is an instant-grain observation in another store and not
+// something this panel's `symptoms` input can ever hold. So the panel takes the SYMPTOM
+// arm of the set by name rather than the whole list.
+export const GI_PANEL_SYMPTOMS: readonly string[] = GI_SYMPTOM_EFFECTS;
 
 // One GI symptom logged on a panel day.
 export interface PanelSymptom {

@@ -312,6 +312,20 @@ const CONSUMERS = [
     chips: "components/records/RecordFactRow.tsx",
     host: "app/(app)/results/genomics/GenomicVariantForm.tsx",
   },
+  {
+    // #5865 slice 1, and the first consumer of the shared record row from OUTSIDE the
+    // clinical record family. Two facts, one of them optional, and the identifying
+    // field above the chips is a select over two closed vocabularies rather than a
+    // name or a coded pick. It is also the first whose host is the CATALOG dialog
+    // (#5237) rather than the add-entry panel or a page: the form keeps its own state
+    // and hands the dialog a saved item, so its editors are unmounted rather than
+    // hidden — the opposite of the DOM-collected record forms above, and a reminder
+    // that the hidden-not-unmounted rule belongs to the posting form, not to the
+    // primitive.
+    name: "the food-sensitivity form (#5865)",
+    chips: "components/records/RecordFactRow.tsx",
+    host: "app/(app)/nutrition/SensitivityForm.tsx",
+  },
 ] as const;
 
 // Files that name the primitive's module paths without consuming it, and so are not

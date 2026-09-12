@@ -281,6 +281,13 @@ describe("CreateAction", () => {
           kind: "equipment",
           control: <CatalogCreateControl onActivate={vi.fn()} />,
         },
+        // The catalog's second adopter (#5865). The SAME control, which is the point:
+        // it carries no copy of its own, so the label it renders is the registry's for
+        // whichever kind houses it.
+        {
+          kind: "sensitivity",
+          control: <CatalogCreateControl onActivate={vi.fn()} />,
+        },
         {
           kind: "supplement",
           control: (
@@ -331,6 +338,7 @@ describe("CreateAction", () => {
       routine: { label: "Add routine", housing: ["section"] },
       equipment: { label: "Add equipment", housing: ["section"] },
       supplement: { label: "Add supplement", housing: ["section"] },
+      sensitivity: { label: "Add sensitivity", housing: ["section"] },
     });
 
     const accepts = (_declaration: CreateActionDeclaration) => undefined;

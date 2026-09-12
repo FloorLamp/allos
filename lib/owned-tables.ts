@@ -164,6 +164,11 @@ export const OWNED_TABLES = [
   // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
   // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.
   "protein_daily_totals",
+  // Declared food sensitivities (#5865): one row per "after <trigger>, <effect>"
+  // statement the person wrote themselves — the user-authored half of a paired
+  // observation, never proposed by the app. Directly owned; nothing FKs into it, so a
+  // delete is a plain row delete and deleteProfile clears it by profile_id.
+  "food_sensitivities",
   // Non-food substance consumption ledger (#1078): one row per (date, substance)
   // with a per-use `units` count — nicotine/cannabis one-tap log/undo (alcohol
   // stays on food_daily_totals; the reconciliation is recorded in lib/substance-use.ts).

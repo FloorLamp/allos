@@ -20,6 +20,7 @@ import ProcedureForm from "@/app/(app)/records/history/procedures/ProcedureForm"
 import ImmunizationForm from "@/app/(app)/immunizations/ImmunizationForm";
 import ResultForm from "@/components/ResultForm";
 import ImagingStudyForm from "@/app/(app)/results/imaging/ImagingStudyForm";
+import SensitivityForm from "@/app/(app)/nutrition/SensitivityForm";
 import GenomicVariantForm from "@/app/(app)/results/genomics/GenomicVariantForm";
 import type {
   Allergy,
@@ -53,6 +54,7 @@ vi.mock("@/app/(app)/records/problems/conditions/actions", () => ({}));
 vi.mock("@/app/(app)/records/specialty/skin/actions", () => ({}));
 vi.mock("@/app/(app)/records/specialty/dental/actions", () => ({}));
 vi.mock("@/app/(app)/records/history/procedures/actions", () => ({}));
+vi.mock("@/app/(app)/nutrition/sensitivity-actions", () => ({}));
 
 const noop = async () => ({ ok: true as const });
 
@@ -823,5 +825,72 @@ describe("slice 4's rows prompt for the essentials they are missing (#5302)", ()
     expect(screen.queryByTestId("imaging-study-fact-row")).toBeNull();
     fireEvent.click(screen.getByTestId("imaging-study-editor-done"));
     expect(screen.getByTestId("imaging-study-fact-row")).toBeTruthy();
+  });
+});
+
+// THE FOOD SENSITIVITY (#5865 slice 1), which is not one of the thirteen and is asked
+// here for the reason the thirteen are: this is where a form's conformance to the one
+// grammar (#5300) is read as the person meets it, and the failure it catches — an
+// essential classified as optional, which just makes the row shorter — is the same
+// quiet one.
+//
+// It is hosted by the CATALOG dialog rather than by `AddEntryPanel`, so there is no
+// add-door gate to table above; the door's copy is the create registry's
+// (components/CreateAction.tsx) and is pinned in create-action.test.tsx.
+describe("the sensitivity row states its effect and keeps its note quiet (#5865)", () => {
+  const declaredSpicy = {
+    id: 21,
+    trigger_kind: "property" as const,
+    trigger_slug: "spicy",
+    effect: "loose_stools",
+    note: null,
+    status: "active" as const,
+  };
+  const callbacks = {
+    onSaved: () => {},
+    onCancel: () => {},
+  };
+
+  it("prompts for an effect it does not have, and never prompts for the note", () => {
+    wrap(<SensitivityForm {...callbacks} />);
+    const chip = screen.getByTestId("sensitivity-fact-effect");
+    expect(chip.getAttribute("data-fact-state")).toBe("missing");
+    expect(
+      within(screen.getByTestId("sensitivity-fact-row")).getByTestId(
+        "sensitivity-fact-effect"
+      )
+    ).toBe(chip);
+    // An absent OPTIONAL renders nothing at all; it is reached through the one trailing
+    // affordance, which names it.
+    expect(screen.queryByTestId("sensitivity-fact-note")).toBeNull();
+    fireEvent.click(screen.getByTestId("sensitivity-fact-more"));
+    expect(screen.getByTestId("sensitivity-more-note")).toBeTruthy();
+  });
+
+  it("states a declared effect in the shared vocabulary's own words", () => {
+    wrap(<SensitivityForm {...callbacks} sensitivity={declaredSpicy} />);
+    const chip = screen.getByTestId("sensitivity-fact-effect");
+    expect(chip.getAttribute("data-fact-state")).toBe("stated");
+    expect(chip.textContent).toContain("Loose stools");
+  });
+
+  it("keeps the trigger as the identifying field above the chips, never as a chip", () => {
+    // Rule 1: the trigger is what the declaration IS, so it stands open above the row
+    // rather than being summarised back at the person.
+    wrap(<SensitivityForm {...callbacks} sensitivity={declaredSpicy} />);
+    const field = screen.getByLabelText("After") as HTMLSelectElement;
+    expect(field.value).toBe("property:spicy");
+    expect(screen.queryByTestId("sensitivity-fact-trigger")).toBeNull();
+  });
+
+  it("the effect chip is a disclosure that opens one editor beneath the row", () => {
+    wrap(<SensitivityForm {...callbacks} sensitivity={declaredSpicy} />);
+    fireEvent.click(screen.getByTestId("sensitivity-fact-effect"));
+    expect(
+      screen.getByTestId("sensitivity-editor").getAttribute("data-panel")
+    ).toBe("effect");
+    expect(screen.queryByTestId("sensitivity-fact-row")).toBeNull();
+    fireEvent.click(screen.getByTestId("sensitivity-editor-done"));
+    expect(screen.getByTestId("sensitivity-fact-row")).toBeTruthy();
   });
 });

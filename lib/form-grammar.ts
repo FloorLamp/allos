@@ -114,6 +114,7 @@ import type { ImmunizationFactKey } from "./immunization-facts";
 import type { ResultFactKey } from "./result-facts";
 import type { ImagingStudyFactKey } from "./imaging-study-facts";
 import type { GenomicVariantFactKey } from "./genomic-variant-facts";
+import type { FoodSensitivityFactKey } from "./food-sensitivity-facts";
 
 // Every form the app hosts. A new form joins this union and then must answer the
 // grammar below before it compiles; a host mount naming an id that is not here does
@@ -129,6 +130,7 @@ export type FormId =
   | "encounter"
   | "injury"
   | "sleep-mood"
+  | "food-sensitivity"
   // ── The log domains' field forms (#4424) ───────────────────────────────────
   | "food-serving"
   | "historical-dose"
@@ -352,6 +354,15 @@ export const FORM_GRAMMAR = {
     night: "essential",
     duration: "essential",
     mood: "essential",
+  }),
+
+  // app/(app)/nutrition/SensitivityForm.tsx, hosted by the catalog dialog on the
+  // Nutrition Manage tab (#5865). The TRIGGER is rule 1's identifying field and so is
+  // not a fact key; the argument for each of the two below is in
+  // lib/food-sensitivity-facts.ts, beside the facts themselves.
+  "food-sensitivity": facts<FoodSensitivityFactKey>({
+    effect: "essential",
+    note: "optional",
   }),
 
   // ── The log domains' field forms ───────────────────────────────────────────

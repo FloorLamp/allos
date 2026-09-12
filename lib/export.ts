@@ -1510,6 +1510,21 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Declared food sensitivities (#5865): "after <trigger>, I get <effect>", written by
+    // the person and never proposed by the app. User-entered health data, so it is in the
+    // portable export — and it is the one part of this model a new instance cannot
+    // recompute from the logs, since the declaration is the thing that made the logs
+    // worth comparing. id-keyed + owned, so deletable like the other authored datasets.
+    key: "food_sensitivities",
+    label: "Food sensitivities",
+    table: "food_sensitivities",
+    columns: ["trigger_kind", "trigger_slug", "effect", "note", "status"],
+    select: `SELECT id, trigger_kind, trigger_slug, effect, note, status
+       FROM food_sensitivities WHERE profile_id = ?
+       ORDER BY trigger_kind, trigger_slug, effect`,
+    countSql: `SELECT COUNT(*) AS n FROM food_sensitivities WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Non-food substance consumption ledger (#1078): one row per (date, substance)
     // with a per-use units count (nicotine/cannabis; alcohol rides food_daily_totals above).
     // User-entered health data, so it's in the portable export.
@@ -1827,6 +1842,13 @@ export const DELETE_POLICY = {
   frequency_targets: { revalidate: ["/training", "/"] },
   food_daily_totals: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
+  // A declared sensitivity (#5865) is a plain id + profile_id delete: nothing FKs into
+  // the table, no counter sits beside it, and the marks on past meals are facts about
+  // THOSE meals rather than about this row — so removing rows here means exactly "I no
+  // longer say this", with nothing left dangling. Not an undo root (no UNDO_KINDS
+  // entry), so DATASET_UNDO_KIND needs no decision, and the declaration is one line to
+  // write again.
+  food_sensitivities: { revalidate: ["/nutrition", "/"] },
   // `substance_daily_totals` and `substance_log_events` HAVE NO ENTRY, which is what
   // makes the browse-only decision above enforceable rather than remembered: the
   // manage action resolves a dataset through this map, so a key that is absent here is

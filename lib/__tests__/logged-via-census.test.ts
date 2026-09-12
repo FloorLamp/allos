@@ -114,6 +114,8 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   endurance_plans: "a plan, not a session",
   equipment: "a definition",
   frequency_targets: "a target, not a session logged against it",
+  food_sensitivities:
+    "a standing declaration about eating, not an occurrence of one",
   goals: "a target",
   intake_dose_schedule_versions: "schedule history",
   intake_item_doses: "the schedule, not a dose taken",
