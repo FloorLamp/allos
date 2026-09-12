@@ -39,7 +39,7 @@ export default function SpecialtyHistoryStrip({
 }: {
   line: SpecialtyLine;
   entries: SpecialtyStripEntry[];
-  formatPrefs?: DisplayFormatPrefs;
+  formatPrefs: DisplayFormatPrefs;
   // Present only in a multi-profile view — the chip rule's `multi` half.
   actingProfileId?: number;
 }) {

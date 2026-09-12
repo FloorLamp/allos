@@ -10,7 +10,7 @@ import {
 import { frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr, zonedDateParts } from "@/lib/date";
-import { formatMonthDay } from "@/lib/format-date";
+import { DEFAULT_FORMAT_PREFS, formatMonthDay } from "@/lib/format-date";
 
 // The ⋯ row actions on the food log: CORRECT a logged serving (#1934) and REMOVE one
 // (#1963).
@@ -408,7 +408,7 @@ test("the sheet corrects a serving's eating time to a MINUTE; Meal follows it un
     frozenNow()
   ).date;
   await expect(row).toContainText(
-    `logged ${formatMonthDay(filedDay, undefined, { today: yesterday })}`
+    `logged ${formatMonthDay(filedDay, DEFAULT_FORMAT_PREFS, { today: yesterday })}`
   );
   // AND NO MINUTE SURVIVES: a cell that printed the date AND kept the clock would
   // satisfy the line above while still claiming a time the row does not have.

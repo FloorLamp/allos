@@ -220,9 +220,12 @@ function localTodayStr(): string {
 //
 // "auto-year" = the year is appended only outside the current calendar year, which
 // is right for an in-app surface and WRONG for one that outlives the session (see
-// formatDateWithYear). All four honor the login's dateFormat/timeFormat prefs; the
-// pure guard lib/__tests__/date-locale-guard.test.ts fails CI on a pref-less call
-// and on any implicit-locale toLocale* date render.
+// formatDateWithYear). All four honor the login's dateFormat/timeFormat prefs, and
+// `prefs` is REQUIRED on every one of them (#5351): a pref-less call is TS2554 at
+// the call site, not a source scan's finding, and DEFAULT_FORMAT_PREFS is passed by
+// name at the login-less channels entitled to the fixed shape (Telegram/push/HA
+// sends, the .ics feed). The pure guard lib/__tests__/date-locale-guard.test.ts
+// still fails CI on any implicit-locale toLocale* date render.
 
 // Consistent training log date formatting: "Weekday, Month Day", with the year
 // appended only when it isn't the current calendar year by default. A dense set
@@ -233,7 +236,7 @@ function localTodayStr(): string {
 // January 5[, 2026]").
 export function formatLongDate(
   iso: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  prefs: DisplayFormatPrefs,
   options: { year?: "auto" | "always" } = {}
 ): string {
   const d = new Date(iso + "T00:00:00");
@@ -267,7 +270,7 @@ export function formatLongDate(
 // year turned over. Only the YEAR decision moves; the date itself is always `iso`.
 export function formatMonthDay(
   iso: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  prefs: DisplayFormatPrefs,
   opts: { today?: string } = {}
 ): string {
   const d = new Date(iso + "T00:00:00");
@@ -302,7 +305,7 @@ export function formatMonthDay(
 // formatters. Pure, fixed-English, pref-aware like the rest of the vocabulary.
 export function formatDateWithYear(
   iso: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs
 ): string {
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
@@ -321,7 +324,7 @@ export function formatDateWithYear(
 // the year only when the date falls outside the current calendar year.
 export function formatWeekdayDate(
   iso: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs
 ): string {
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
@@ -389,7 +392,7 @@ export interface TimestampDisplay {
 // ledgers must render in the same zone that assigned their calendar day.
 export function formatTimestampDisplay(
   input: string | number | Date,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  prefs: DisplayFormatPrefs,
   opts: TimestampFormatOptions = {}
 ): TimestampDisplay | null {
   const d = parseTimestamp(input);
@@ -416,7 +419,7 @@ export function formatTimestampDisplay(
 
 export function formatTimestamp(
   input: string | number | Date,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  prefs: DisplayFormatPrefs,
   opts: TimestampFormatOptions = {}
 ): string {
   return (

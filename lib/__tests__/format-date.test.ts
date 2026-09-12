@@ -32,14 +32,16 @@ afterEach(() => vi.useRealTimers());
 
 describe("formatLongDate", () => {
   it("omits the year for the current calendar year", () => {
-    const s = formatLongDate("2026-06-30");
+    const s = formatLongDate("2026-06-30", DEFAULT_FORMAT_PREFS);
     expect(s).toContain("June");
     expect(s).toContain("30");
     expect(s).not.toContain("2026");
   });
 
   it("appends the year for other years", () => {
-    expect(formatLongDate("2024-12-25")).toContain("2024");
+    expect(formatLongDate("2024-12-25", DEFAULT_FORMAT_PREFS)).toContain(
+      "2024"
+    );
   });
 
   it("can include the year for the current calendar year", () => {
@@ -50,16 +52,20 @@ describe("formatLongDate", () => {
 
   it("parses the ISO date as local midnight (no day shift)", () => {
     // Should render the 30th, not the 29th, regardless of timezone.
-    expect(formatLongDate("2026-06-30")).toContain("30");
+    expect(formatLongDate("2026-06-30", DEFAULT_FORMAT_PREFS)).toContain("30");
   });
 
   it("returns the input unchanged when unparseable", () => {
-    expect(formatLongDate("not-a-date")).toBe("not-a-date");
+    expect(formatLongDate("not-a-date", DEFAULT_FORMAT_PREFS)).toBe(
+      "not-a-date"
+    );
   });
 
   it("default prefs are byte-identical to the long-date shape", () => {
     // "mdy" long with weekday, year appended for a non-current year.
-    expect(formatLongDate("2024-12-25")).toBe("Wednesday, December 25, 2024");
+    expect(formatLongDate("2024-12-25", DEFAULT_FORMAT_PREFS)).toBe(
+      "Wednesday, December 25, 2024"
+    );
     expect(formatLongDate("2024-12-25", DEFAULT_FORMAT_PREFS)).toBe(
       "Wednesday, December 25, 2024"
     );
@@ -78,8 +84,10 @@ describe("formatLongDate", () => {
 describe("formatMonthDay", () => {
   it("default prefs render the compact 'Mon D' shape", () => {
     // Fake time is 2026, so a 2026 date omits the year.
-    expect(formatMonthDay("2026-08-03")).toBe("Aug 3");
-    expect(formatMonthDay("2024-08-03")).toBe("Aug 3, 2024");
+    expect(formatMonthDay("2026-08-03", DEFAULT_FORMAT_PREFS)).toBe("Aug 3");
+    expect(formatMonthDay("2024-08-03", DEFAULT_FORMAT_PREFS)).toBe(
+      "Aug 3, 2024"
+    );
   });
 
   it("reorders for a dmy / iso login", () => {
@@ -126,7 +134,9 @@ describe("formatMonthDay", () => {
 
 describe("formatWeekdayDate", () => {
   it("renders a compact weekday label and omits the current year", () => {
-    expect(formatWeekdayDate("2026-07-22")).toBe("Wed, Jul 22");
+    expect(formatWeekdayDate("2026-07-22", DEFAULT_FORMAT_PREFS)).toBe(
+      "Wed, Jul 22"
+    );
   });
 
   it("respects dmy and iso date preferences", () => {
@@ -145,8 +155,12 @@ describe("formatWeekdayDate", () => {
   });
 
   it("appends the year when it differs and preserves invalid input", () => {
-    expect(formatWeekdayDate("2024-07-22")).toBe("Mon, Jul 22, 2024");
-    expect(formatWeekdayDate("not-a-date")).toBe("not-a-date");
+    expect(formatWeekdayDate("2024-07-22", DEFAULT_FORMAT_PREFS)).toBe(
+      "Mon, Jul 22, 2024"
+    );
+    expect(formatWeekdayDate("not-a-date", DEFAULT_FORMAT_PREFS)).toBe(
+      "not-a-date"
+    );
   });
 });
 

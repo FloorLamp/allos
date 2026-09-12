@@ -30,7 +30,7 @@ export default function HearingSection({
   formatPrefs,
 }: {
   profileId: number;
-  formatPrefs?: DisplayFormatPrefs;
+  formatPrefs: DisplayFormatPrefs;
 }) {
   const audiograms = getAudiograms(profileId);
   const baseline = getHearingBaseline(profileId);

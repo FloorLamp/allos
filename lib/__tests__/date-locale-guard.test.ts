@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 // Static guard for the date/time display-pref rollout (#964, finished by #1020) —
 // the profile-scoping / telegram-chokepoint source-scan pattern applied to date
 // rendering. It reads the repo's own production source as TEXT (no DB, no
-// browser, so it stays "pure" in the vitest sense) and enforces three rules:
+// browser, so it stays "pure" in the vitest sense) and enforces two rules:
 //
 //   (i)  No implicit-locale Date formatting. `.toLocaleDateString(` /
 //        `.toLocaleTimeString(` / `.toLocaleString(` render in the RUNTIME's
@@ -20,25 +20,53 @@ import { fileURLToPath } from "node:url";
 //        were grandfathered here by #1020 and were migrated by #1448, so the
 //        allowlist is now EMPTY.
 //
-//   (ii) No pref-less calls of the pref-taking date formatters. `formatLongDate`
-//        and `formatMonthDay` take prefs as their 2nd argument,
-//        `formatRecordDate`/`formatRecordDateTime` as their 3rd; the defaults
-//        exist for the documented LOGIN-LESS channels (Telegram/push/HA sends,
-//        the .ics feed — a profile but no login in context), not as an app-code
-//        convenience. A call that omits the prefs argument silently pins the
-//        viewer to the fixed default shape — the exact ~95-site rot #1020
-//        cleaned up. Login-less channel modules are allowlisted by file below.
-//
 //  (iii) No raw `<input type="date">`. A native date control renders its value
 //        in the BROWSER's format, which the app neither chooses nor can style —
 //        a fifth date shape sitting beside pref-aware fields on the same form
 //        (issue #1448). components/DateField.tsx is the styled, pref-aware
 //        replacement; two deliberate survivors are frozen below.
 //
-// All three allowlists are per-file COUNT freezes (the e2e-hygiene model): an entry
+// Both allowlists are per-file COUNT freezes (the e2e-hygiene model): an entry
 // only ever shrinks — going below the frozen count fails with a message to lower
 // it here in the same PR, so the lists can't silently go stale; a NEW occurrence
 // (count above frozen, or a new file) fails the build.
+//
+// ---- Rule (ii) MOVED TO THE TYPE SYSTEM (#5351, owner ruling 2026-09-05) ------
+//
+// The numbering above keeps its holes on purpose. Rule (ii) banned pref-LESS calls
+// of the pref-taking formatters by counting call arguments in source text against a
+// per-formatter table, with a per-file allowlist for the login-less channels. That
+// invariant is now the compiler's: `prefs` is a REQUIRED parameter on every
+// pref-taking formatter in lib/format-date.ts and lib/record-format.ts, so omitting
+// it is TS2554 at the call site rather than a text match here. The login-less
+// channels (Telegram/push/HA sends, the .ics feed — a profile but no login in
+// context) now pass `DEFAULT_FORMAT_PREFS` by name, which is the point of the
+// conversion: the fixed shape is a stated choice at the three files entitled to it
+// instead of an invisible fallback available everywhere.
+//
+// The scan's own table is why converting beat trusting it. It named six formatters
+// when ten take a display pref — `formatWeekdayDate`, `formatTimestampDisplay`,
+// `formatVisitLabel` and `formatClockValue` were never in it — and it recorded
+// `formatRecordDateTime`'s prefs as the 3rd argument when the signature puts it
+// 4th, so a three-argument pref-less call passed. That is
+// docs/internals/verification-failure-modes.md line 83 exactly: a guard that lists
+// a union's members does not track the union.
+//
+// lib/__tests__/format-locale-leak.test.ts (44 lines) went in the same commit. Its
+// ban on `toLocale*(undefined` across four formatter modules is a strict SUBSET of
+// rule (i) above, which bans every non-"en-US" `.toLocale*String(` call in all of
+// app/, components/ and lib/ against an EMPTY allowlist — a live successor already
+// in this file, not a deletion into thin air.
+//
+// ---- Rule (i) STAYS, and is waiting on lint --------------------------------
+//
+// #5351's table routes the `toLocale*` ban to an ESLint rule. `eslint.config.mjs`
+// has no such rule today, and no TYPE can state "this module contains no
+// `.toLocaleDateString(` call", so until that lint rule exists this scan is the
+// only thing holding the ban and it stays. Whoever owns eslint.config.mjs retires
+// rule (i) — and only rule (i) — by porting TOLOCALE_RE to a `no-restricted-syntax`
+// selector and deleting its block here. Rule (iii) is neither lint's nor a type's:
+// its subject is a JSX attribute on a native element, so it stays either way.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
@@ -104,70 +132,6 @@ const TOLOCALE_RE = /\.toLocale(?:Date|Time)?String\((?!\s*["']en-US["'])/g;
 
 function countMatches(text: string, re: RegExp): number {
   return [...text.matchAll(re)].length;
-}
-
-// ---- Rule (ii): pref-less pref-taking formatter calls ----------------------
-
-// Formatter → the argument position (1-based count) its prefs parameter holds.
-const FORMATTER_MIN_ARGS: Record<string, number> = {
-  formatLongDate: 2,
-  formatMonthDay: 2,
-  formatDateWithYear: 2,
-  formatTimestamp: 2,
-  formatRecordDate: 3,
-  formatRecordDateTime: 3,
-};
-const FORMATTER_CALL_NEEDLES = Object.keys(FORMATTER_MIN_ARGS).map(
-  (name) => `${name}(`
-);
-
-// EMPTY since #5351. The login-less channels (documented fixed-format policy — see
-// lib/format-date.ts's header) render into a channel with a profile but NO login in
-// context, so the fixed default IS the correct shape there — but they now say so by
-// passing DEFAULT_FORMAT_PREFS by name rather than by being listed here:
-// lib/administration-format.ts (the Telegram redose notice's stamp),
-// lib/notifications/callback-data.ts (the two Telegram callback answers) and
-// lib/notifications/reconcile-core.ts (the #2867 dose-close receipt, which dates its
-// clauses only when one close spans more than a day). A pref-less call is now a
-// defect everywhere, with no exceptions to keep in step.
-const PREFLESS_ALLOWLIST: Record<string, number> = {};
-
-// Count top-level arguments of the call starting at `open` (index of "(").
-// Paren/bracket/brace balancing spans newlines; good enough for source scanning
-// (string literals containing unbalanced brackets would be pathological here).
-function callArgCount(text: string, open: number): number {
-  let depth = 0;
-  let args = 0;
-  let sawContent = false;
-  for (let i = open; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === "(" || ch === "[" || ch === "{") depth++;
-    else if (ch === ")" || ch === "]" || ch === "}") {
-      depth--;
-      if (depth === 0) return sawContent ? args + 1 : 0;
-    } else if (ch === "," && depth === 1) args++;
-    else if (depth >= 1 && !/\s/.test(ch)) sawContent = true;
-  }
-  return sawContent ? args + 1 : 0;
-}
-
-function preflessCalls(text: string): { name: string; index: number }[] {
-  const out: { name: string; index: number }[] = [];
-  for (const [name, minArgs] of Object.entries(FORMATTER_MIN_ARGS)) {
-    const re = new RegExp(`\\b${name}\\(`, "g");
-    for (const m of text.matchAll(re)) {
-      // Skip the definition itself (`function formatLongDate(`).
-      const before = text.slice(Math.max(0, m.index - 12), m.index);
-      if (/function\s+$/.test(before)) continue;
-      const argc = callArgCount(text, m.index + name.length);
-      if (argc < minArgs) out.push({ name, index: m.index });
-    }
-  }
-  return out;
-}
-
-function lineOf(text: string, index: number): number {
-  return text.slice(0, index).split("\n").length;
 }
 
 // ---- Rule (iii): raw <input type="date"> ----------------------------------
@@ -275,48 +239,6 @@ describe("date/time display-pref guard (#964/#1020)", () => {
       if (!seen.has(rel)) {
         problems.push(
           `${rel} is in NATIVE_DATE_ALLOWLIST but has no raw date input (or no ` +
-            `longer exists) — remove its entry (the list only shrinks).`
-        );
-      }
-    }
-    expect(problems, problems.join("\n")).toEqual([]);
-  });
-
-  it("every pref-taking date-formatter call passes prefs, outside the login-less allowlist", () => {
-    const problems: string[] = [];
-    const seen = new Set<string>();
-    for (const { rel, text } of productionSources) {
-      if (!FORMATTER_CALL_NEEDLES.some((needle) => text.includes(needle))) {
-        continue;
-      }
-      const calls = preflessCalls(text);
-      if (calls.length === 0) continue;
-      seen.add(rel);
-      const allowed = PREFLESS_ALLOWLIST[rel] ?? 0;
-      if (calls.length > allowed) {
-        problems.push(
-          `${rel}: pref-less formatter call(s) ` +
-            calls
-              .map((c) => `${c.name}(…) at line ${lineOf(text, c.index)}`)
-              .join(", ") +
-            ` (allowed ${allowed}). Thread DisplayFormatPrefs — client ` +
-            `components via useFormatPrefs(), server components via ` +
-            `getDisplayFormatPrefs(login.id) at the page boundary. Only a ` +
-            `documented login-less channel may rely on the fixed default ` +
-            `(add it to PREFLESS_ALLOWLIST with a comment).`
-        );
-      } else if (calls.length < allowed) {
-        problems.push(
-          `${rel}: ${calls.length} pref-less formatter call(s), allowlist ` +
-            `froze ${allowed}. Lower its entry in PREFLESS_ALLOWLIST to ` +
-            `${calls.length} in this PR (the list only shrinks).`
-        );
-      }
-    }
-    for (const rel of Object.keys(PREFLESS_ALLOWLIST)) {
-      if (!seen.has(rel)) {
-        problems.push(
-          `${rel} is in PREFLESS_ALLOWLIST but has no pref-less calls (or no ` +
             `longer exists) — remove its entry (the list only shrinks).`
         );
       }

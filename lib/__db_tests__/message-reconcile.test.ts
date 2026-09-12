@@ -82,7 +82,7 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 import { db, today } from "@/lib/db";
 import { getTakenDoseIds } from "@/lib/queries";
 import { shiftDateStr, utcSqlString } from "@/lib/date";
-import { formatMonthDay } from "@/lib/format-date";
+import { DEFAULT_FORMAT_PREFS, formatMonthDay } from "@/lib/format-date";
 import {
   setTelegramBotConfig,
   setTimezone,
@@ -1642,8 +1642,8 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     const yesterday = shiftDateStr(date, -1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      `Cora A taken ${formatMonthDay(yesterday)}, 23:50 · ` +
-        `Cora B taken ${formatMonthDay(date)}, 08:12.`
+      `Cora A taken ${formatMonthDay(yesterday, DEFAULT_FORMAT_PREFS)}, 23:50 · ` +
+        `Cora B taken ${formatMonthDay(date, DEFAULT_FORMAT_PREFS)}, 08:12.`
     );
   });
 

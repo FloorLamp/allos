@@ -1,7 +1,7 @@
 import { expect, test } from "./fixtures";
 import type { Locator } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
-import { formatDateWithYear } from "@/lib/format-date";
+import { DEFAULT_FORMAT_PREFS, formatDateWithYear } from "@/lib/format-date";
 import { frozenNow } from "./worker-env";
 import { hydratedClick } from "./helpers";
 
@@ -88,7 +88,7 @@ test("dated entry destinations preserve their own bounds and prefill the day (#2
 
   await page.goto(`/training?tab=log&date=${yesterday}`);
   await expect(page.locator("#activity-date")).toHaveValue(
-    formatDateWithYear(yesterday)
+    formatDateWithYear(yesterday, DEFAULT_FORMAT_PREFS)
   );
   await expect(page).toHaveURL(/\/training\?tab=log$/);
 });
