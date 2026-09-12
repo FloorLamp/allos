@@ -51,9 +51,7 @@ const FIXTURES = [
       "send lib/notifications/reconcile.ts reconcilePointer",
       "send lib/notifications/reconcile.ts reconcileProse",
       "send lib/notifications/refill.ts applyRefillReceiptPlan",
-      "send lib/notifications/refill.ts handleOrderedRefillCallback",
       "send lib/notifications/refill.ts handleReceivedCallback",
-      "send lib/notifications/refill.ts handleReceivedReply",
       "send lib/notifications/telegram-callbacks.ts handleAllTaken",
       "send lib/notifications/telegram-callbacks.ts handleDoseTap",
       "send lib/notifications/telegram-callbacks.ts handleFoodExpand",
@@ -66,6 +64,14 @@ const FIXTURES = [
       "send lib/notifications/telegram-quick-log.ts handleFoodCommand",
       "send lib/notifications/telegram-quick-log.ts handlePracticeDoneTap",
       "send lib/notifications/telegram-quick-log.ts handleSymptomPick",
+      // RE-PINNED BY #5650, which moved two senders and retired two. The three typed
+      // reply handlers became one arm (`handleTypedReply`) in the dispatcher, with
+      // `settlePrompt` the edit that acknowledges an applied reply, so what used to send
+      // from `refill.ts#handleReceivedReply` now sends from here. And
+      // `handleOrderedRefillCallback` stopped being a sender at all: a stale tap edits
+      // the message it was made on rather than adding a fourth kind of message under it.
+      "send lib/notifications/telegram-quick-log.ts handleTypedReply",
+      "send lib/notifications/telegram-quick-log.ts settlePrompt",
       "send lib/notifications/telegram-time-correction.ts rebuildDose",
       "send lib/notifications/telegram-time-correction.ts rebuildFood",
       "send lib/notifications/telegram-time-correction.ts rebuildPractice",

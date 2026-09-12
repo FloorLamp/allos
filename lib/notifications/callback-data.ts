@@ -1180,8 +1180,10 @@ export const SYMPTOM_SEVERITY_LABELS: Record<number, string> = {
   4: "Very severe",
 };
 
-// The `/temp` and `/weight` REPLY-MARKER family lives in ./reply-markers (#2961 step 2)
-// — one grammar, one statelessness argument, and no imports, so it is a leaf.
+// EVERY typed-reply marker — `/temp`, `/weight` and the refill receipt alike — lives in
+// ./typed-reply (#5650), which absorbed the ./reply-markers leaf #2961 step 2 carved
+// out and the refill receipt's third grammar with it: one grammar, one parser, one
+// resolution rule, and still no imports, so it is still a leaf.
 
 // ---- Household dose round (issue #1459) --------------------------------------
 // The caregiver-subscribed cross-profile dose reminder: one message in the RECEIVING

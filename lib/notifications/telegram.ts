@@ -34,6 +34,7 @@ import { today, writeTx } from "../db";
 import { now } from "../clock";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
+import { awaitsTypedReply } from "./typed-reply";
 import {
   PartialDeliveryError,
   type DispatchOptions,
@@ -92,6 +93,7 @@ export {
   getUpdates,
   messageKeyboard,
   renderMessageHtml,
+  setMessageReaction,
   setMyCommands,
   setWebhook,
   // The per-call transport cap, re-exported because a caller holding a request open
@@ -271,7 +273,15 @@ function recordPointer(
   // one message whose CLAIMS ARE ITS SENTENCES. `prose` also decides whether a body hash
   // is worth storing. Food also compares its tally independently of its keyboard.
   const prose = proseReconcilerFor(msg.kind);
-  if (keyboard.length === 0 && !prose) return;
+  // A THIRD THING THAT NEEDS A HANDLE AFTER THE SEND (#5650): a prompt awaiting a TYPED
+  // reply. The first two — a keyboard whose tap would now be refused (#1779) and a
+  // sentence an in-app write has since answered (#1913 item 4) — are both about a
+  // message going stale on its own. This one is about answering it: the typed-reply
+  // contract acknowledges a reply by EDITING the prompt in place, and resolves a bare
+  // number to the sender's single open prompt, and both need to be able to name the
+  // prompt message afterwards. `/temp` and `/weight` carried neither a keyboard nor a
+  // prose claim, so nothing could find or edit them once they were sent.
+  if (keyboard.length === 0 && !prose && !awaitsTypedReply(msg.kind)) return;
   recordMessagePointer({
     profileId,
     chatId,

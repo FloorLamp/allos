@@ -41,7 +41,7 @@ process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 // A spec that wants the network stopped calls `stubTelegramSends()`, which is a
 // plain function call and costs no isolation.
 //
-// `...actual` is kept: only the four network primitives are wrapped, so
+// `...actual` is kept: only the five network primitives are wrapped, so
 // TelegramApiError, the wire-limit constants and the rest stay real.
 vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
   const actual =
@@ -54,6 +54,7 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
     editMessageTextRaw: spies.editMessageTextRaw,
     editMessageReplyMarkupRaw: spies.editMessageReplyMarkupRaw,
     answerCallbackQuery: spies.answerCallbackQuery,
+    setMessageReaction: spies.setMessageReaction,
   };
 });
 

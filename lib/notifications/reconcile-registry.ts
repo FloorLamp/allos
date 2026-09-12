@@ -476,12 +476,12 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   {
     kind: "temp",
     reissuable: false,
-    why: "A `/temp` call in a MULTI-PROFILE chat sends one prompt PER profile in a single invocation, each carrying its own reply marker. The sibling-closing hazard that first justified this entry is gone since #1995 — those prompts now declare their own subjects, so the supersede lookup is per profile and cannot reach a sibling's copy — but the entry stands on its own footing: a `/temp` prompt asks for a typed REPLY and carries no keyboard, so it records no pointer and supersedes nothing either way. If a prompt ever gains buttons, re-issue becomes a real question and gets answered then, per profile.",
+    why: "A `/temp` call in a MULTI-PROFILE chat sends one prompt PER profile in a single invocation, each carrying its own reply marker. The sibling-closing hazard that first justified this entry is gone since #1995 — those prompts now declare their own subjects, so the supersede lookup is per profile and cannot reach a sibling's copy. Its second clause — that the prompt carries no keyboard, so it records no pointer and supersedes nothing either way — stopped being true at #5650: the typed-reply contract acknowledges a reply by EDITING the prompt in place and resolves a bare number to the sender's single open prompt, so the prompt kind now declares itself in `TYPED_REPLY_PROMPT_KINDS` and DOES record a pointer. Re-issue is still refused on the first clause alone, which was always the load-bearing one: a second `/temp` in the same chat asks a second question, and closing the first would take away a prompt somebody may be mid-answer to.",
   },
   {
     kind: "weight",
     reissuable: false,
-    why: "A `/weight` prompt asks for a typed REPLY and carries no keyboard (#1895), so it records no pointer and supersedes nothing either way — the `temp` entry's reasoning, one quantity over. A multi-profile chat's per-profile prompts each declare their own subject (#1995), so re-issue cannot reach a sibling's copy even if the prompt gained buttons.",
+    why: "The `temp` entry's reasoning, one quantity over (#1895): a multi-profile chat's per-profile prompts each declare their own subject (#1995), so re-issue cannot reach a sibling's copy, and a second `/weight` asks a second question rather than replacing the first. It records a pointer since #5650 for the same reason `temp` does — the typed-reply contract has to be able to name the prompt it edits.",
   },
   {
     kind: "food",

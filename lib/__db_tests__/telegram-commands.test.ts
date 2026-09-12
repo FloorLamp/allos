@@ -18,7 +18,9 @@ import { setProfileSetting } from "@/lib/settings";
 import { handleIncomingMessage } from "@/lib/notifications/telegram-quick-log";
 import {
   editMessageReplyMarkupRaw,
+  editMessageTextRaw,
   sendMessageRaw,
+  setMessageReaction,
 } from "@/lib/notifications/telegram-api";
 import { TELEGRAM_COMMANDS } from "@/lib/notifications/telegram-commands";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
@@ -36,6 +38,8 @@ import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 beforeAll(() => stubTelegramSends());
 
 const sendMock = vi.mocked(sendMessageRaw);
+const editMock = vi.mocked(editMessageTextRaw);
+const reactMock = vi.mocked(setMessageReaction);
 const stripMock = vi.mocked(editMessageReplyMarkupRaw);
 
 // The id Telegram answered the most recent send with. Read off the stub's own result
@@ -386,11 +390,15 @@ describe("/weight on demand (#1895)", () => {
       )
       .get(p.profileId, today(p.profileId)) as { n: number };
 
+    editMock.mockClear();
+    reactMock.mockClear();
     await handleIncomingMessage({
       message_id: 2,
       chat: { id: CHAT },
+      from: { id: 71 },
       text: "82.5",
       reply_to_message: {
+        message_id: 60,
         text: `Reply with weight (#weight:${p.profileId})`,
       },
     });
@@ -417,7 +425,13 @@ describe("/weight on demand (#1895)", () => {
     // invents an occurred_at nor clears a stated one.
     expect(after.n).toBe(before.n);
     expect(row.occurred_at).toBeNull();
-    expect(replyBody()).toContain("82.5 kg");
+    // #5650 ruling 1: the answer is the PROMPT, edited where it already sits, plus a 👍
+    // on the reading. The `⚖️ Weight logged: …` message this used to send is gone.
+    expect(sendMock).not.toHaveBeenCalled();
+    const edit = editMock.mock.calls.at(-1)!;
+    expect(edit[1]).toBe(60);
+    expect(String(edit[2])).toContain("82.5 kg");
+    expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 2, "👍"]);
   });
 
   it("refuses a copied marker for a profile not linked to the replying chat", async () => {

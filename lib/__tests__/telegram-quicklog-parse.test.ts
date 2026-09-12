@@ -14,11 +14,14 @@ import {
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
 } from "@/lib/notifications/callback-data";
+import { parseTempReply } from "@/lib/notifications/telegram-quick-log";
 import {
-  parseTempReply,
-  parseTempReplyMarker,
-  tempReplyMarker,
-} from "@/lib/notifications/reply-markers";
+  parseTypedReplyMarker,
+  resolveTypedReply,
+  typedReplyMarker,
+  typedReplyNumber,
+  type OpenTypedPrompt,
+} from "@/lib/notifications/typed-reply";
 
 // Pure tests for the Telegram symptom/temp quick-log parsers (issue #859 item 5). No DB.
 
@@ -48,16 +51,129 @@ describe("symptom callback parsers", () => {
   });
 });
 
-describe("temperature reply flow parsers", () => {
-  it("round-trips the profile marker through the prompt text", () => {
-    const prompt = `Reply with the temperature. ${tempReplyMarker(12)}`;
-    expect(parseTempReplyMarker(prompt)).toBe(12);
-  });
-  it("returns null when no marker is present", () => {
-    expect(parseTempReplyMarker("just some text")).toBeNull();
-    expect(parseTempReplyMarker(null)).toBeNull();
+// ---- The one typed-reply contract (issue #5650) ----
+//
+// Three grammars became one, and the three that already shipped have prompts sitting in
+// real chats: every delivered string is pinned here as written, beside the canonical form
+// new prompts carry. A regex that stops accepting one of the three is a prompt somebody
+// replies to and gets silence from.
+
+describe("the typed-reply marker grammar", () => {
+  it.each([
+    ["(#temp:12)", "temp", 12, null],
+    ["(#weight:12)", "weight", 12, null],
+    ["(refill:7:12)", "refill", 7, 12],
+  ] as const)(
+    "reads the delivered %s exactly as shipped",
+    (marker, family, profileId, operationId) => {
+      expect(parseTypedReplyMarker(`How many arrived? ${marker}`)).toEqual({
+        family,
+        profileId,
+        operationId,
+      });
+    }
+  );
+
+  it("round-trips its own canonical form, which differs only by the spelled #", () => {
+    expect(typedReplyMarker("temp", 12)).toBe("(#temp:12)");
+    expect(typedReplyMarker("weight", 12)).toBe("(#weight:12)");
+    expect(typedReplyMarker("refill", 7, 12)).toBe("(#refill:7:12)");
+    for (const [family, profileId, operationId] of [
+      ["temp", 12, undefined],
+      ["refill", 7, 12],
+    ] as const)
+      expect(
+        parseTypedReplyMarker(
+          `Reply to this. ${typedReplyMarker(family, profileId, operationId)}`
+        )
+      ).toEqual({ family, profileId, operationId: operationId ?? null });
   });
 
+  it("returns null when no marker is present", () => {
+    expect(parseTypedReplyMarker("just some text")).toBeNull();
+    expect(parseTypedReplyMarker(null)).toBeNull();
+    // Not a family this build ships, and a zero profile is not a profile.
+    expect(parseTypedReplyMarker("(#mood:12)")).toBeNull();
+    expect(parseTypedReplyMarker("(#temp:0)")).toBeNull();
+  });
+});
+
+describe("the bare-number rule", () => {
+  it.each(["", "0", "-1", "Infinity", "2 bottles", "1,000", "2e3", "1 2"])(
+    "refuses the whole ambiguous or nonpositive input %s",
+    (text) => {
+      expect(typedReplyNumber(text)).toBeNull();
+    }
+  );
+  it("accepts a plain positive amount", () => {
+    expect(typedReplyNumber(" 30.5 ")).toBe(30.5);
+  });
+});
+
+describe("resolving a message to one open prompt", () => {
+  const open: OpenTypedPrompt[] = [
+    { family: "refill", profileId: 7, operationId: 12, promptId: 500 },
+  ];
+  const second: OpenTypedPrompt = {
+    family: "temp",
+    profileId: 7,
+    operationId: null,
+    promptId: 501,
+  };
+
+  it("attributes an explicit reply from the quoted marker, open prompts unread", () => {
+    let read = 0;
+    expect(
+      resolveTypedReply(
+        { text: "120", replyToText: "(refill:7:12)", replyToId: 500 },
+        () => {
+          read++;
+          return [];
+        }
+      )
+    ).toEqual({
+      kind: "reply",
+      reply: {
+        family: "refill",
+        profileId: 7,
+        operationId: 12,
+        promptId: 500,
+        text: "120",
+      },
+    });
+    expect(read).toBe(0);
+  });
+
+  it("resolves a bare number to the sender's single open prompt", () => {
+    expect(resolveTypedReply({ text: "120" }, () => open)).toEqual({
+      kind: "reply",
+      reply: { ...open[0], text: "120" },
+    });
+  });
+
+  it("refuses to choose, and leaves everything else to the rest of the chain", () => {
+    expect(resolveTypedReply({ text: "120" }, () => [...open, second])).toEqual(
+      {
+        kind: "ambiguous",
+      }
+    );
+    // No open prompt, not a number, and a reply that quoted something ELSE.
+    expect(resolveTypedReply({ text: "120" }, () => [])).toEqual({
+      kind: "none",
+    });
+    expect(resolveTypedReply({ text: "abc" }, () => open)).toEqual({
+      kind: "none",
+    });
+    expect(
+      resolveTypedReply(
+        { text: "120", replyToText: "some other message", replyToId: 9 },
+        () => open
+      )
+    ).toEqual({ kind: "none" });
+  });
+});
+
+describe("temperature reply value grammar", () => {
   it("auto-detects °C for a bare low number and °F for a bare high one", () => {
     expect(parseTempReply("38.5")).toEqual({ value: 38.5, unit: "C" });
     expect(parseTempReply("101")).toEqual({ value: 101, unit: "F" });
