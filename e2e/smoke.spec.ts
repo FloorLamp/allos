@@ -180,6 +180,30 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
 });
 
+// #5121 / #5435 §9: "An eligible Home low-supply cue opens the shared refill action;
+// no inventory strip." The composer's seat and the control's arguments are pinned in
+// the DB tier (lib/__db_tests__/dashboard-placement-manifest.test.ts), but that harness
+// cannot RUN a client component — it reads the element's props and records that the
+// component threw. So a refill control that mounted with the wrong boundary, or not at
+// all, would leave every one of those assertions green and red only here. This is that
+// one browser reading: the seeded run-out medication is a row on Home, it says what is
+// wrong, and the tap that fixes it is on the row.
+test("a run-out medication is a Home row carrying the shared Refilled tap (#5121)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  // The named fixture's own row, not "whichever refill row leads": this profile is a
+  // shared seed and a neighbour's dose log can move another item's days-left, so the
+  // claim is about THIS item rather than about how many rows the band holds.
+  const row = page
+    .getByRole("main")
+    .locator('[data-candidate-id^="attention.fact:refill:"]')
+    .filter({ hasText: "Low Supply Med (e2e)" });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Out of supply");
+  await expect(row.getByTestId("refill-button")).toBeVisible();
+});
+
 // #272: a medication whose name carries a PERCENT strength ("Hydrocortisone
 // 2.5% Cream", seeded in e2e/seed-events.ts) must still resolve its educational
 // "What is this?" explainer — the dead `%\b` regex never stripped percent
