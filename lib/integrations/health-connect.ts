@@ -12,6 +12,11 @@ import {
 import { toKg, type Kg } from "@/lib/units";
 import { metricAggregation } from "@/lib/metric-buckets";
 import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
+import {
+  BREATHING_RATE_METRIC,
+  sessionForStamp,
+  type BreathingRateSession,
+} from "@/lib/breathing-rate";
 import { SUB_DAILY_WINDOW_MAX_MIN } from "./health-connect-metrics";
 import type {
   NormActivity,
@@ -1273,9 +1278,10 @@ export function parseHealthConnectPayload(
     const c = num(r.celsius, r.value);
     return c == null ? null : Math.round(((c * 9) / 5 + 32) * 10) / 10;
   });
-  vital("respiratory_rate", "Respiratory Rate", "vitals", "breaths/min", (r) =>
-    sampleSeriesValue(r, ["rate", "value"])
-  );
+  // RESPIRATORY RATE IS REGISTERED BELOW, AFTER THE SLEEP BLOCK (#5409), because the
+  // decision it needs — is this reading inside a sleep session this payload carried? —
+  // cannot be made before the sessions have been read. Skin temperature already sits
+  // there for the same reason.
   // VO2 Max files as `vitals` — the canonical registry's own classification for it
   // (#2479 part 2). It used to write the legacy `biomarker` catch-all, which gave a
   // watch estimate a LAB retest clock it never earned.
@@ -1315,7 +1321,10 @@ export function parseHealthConnectPayload(
   // session spans midnight, so everything (total + every stage) is attributed to the
   // local date the session *ends* (the wake-up day), matching how sleep trackers show
   // "last night" and keeping stages aligned with the total. Natural key = time window.
-  const sleepNights: { startMs: number; endMs: number; wakeDay: string }[] = [];
+  // The sessions this payload carried, in the columns the two per-NIGHT readings below
+  // borrow: skin temperature takes the wake day, and the breathing rate (#5409) takes
+  // the whole window as its own natural key.
+  const sleepNights: BreathingRateSession[] = [];
   for (const s of asArray(payload.sleep)) {
     const end =
       (typeof s.session_end_time === "string" && s.session_end_time) ||
@@ -1351,9 +1360,12 @@ export function parseHealthConnectPayload(
     const sessionEndMs = new Date(end).getTime();
     if (!Number.isNaN(sessionStartMs) && !Number.isNaN(sessionEndMs)) {
       sleepNights.push({
+        startedAt: start,
+        endedAt: end,
         startMs: sessionStartMs,
         endMs: sessionEndMs,
         wakeDay,
+        origin: dataOrigin(s),
       });
     }
     out.samples.push({
@@ -1411,6 +1423,71 @@ export function parseHealthConnectPayload(
       });
     }
   }
+
+  // --- breathing rate → metric_samples (per NIGHT), or an observation (#5409) ---
+  //
+  // ONE READING PER NIGHT, AND THE NIGHT IS THE KEY. Fitbit computes one breathing rate
+  // per sleep log and stamps it at the log's CURRENT end; when it extends the log it
+  // re-publishes the SAME reading with a new stamp. Keyed on the stamp — which is what
+  // `external_id: <id>:<canonical>:<t>` did — every re-stamp was a new `medical_records`
+  // row, and a night carried two or three "Respiratory Rate" results. Keyed on the
+  // SESSION START, the same key the session itself uses, the re-published reading is an
+  // `ON CONFLICT DO UPDATE` on value and window: one row, no provisional survivors.
+  //
+  // WHICH READINGS THIS CLAIMS, exactly. A reading whose stamp falls inside (or on
+  // either edge of) a sleep session THIS PAYLOAD carried, recorded by the same package.
+  // That is an exact containment test against the session's own instants, not a clock
+  // heuristic — the same discipline the skin-temperature attribution below states.
+  //
+  // WHAT IT DOES NOT CLAIM, and this is the half that keeps the change honest: a reading
+  // with no such session is a SPOT reading and lands exactly as it always has, as a
+  // `Respiratory Rate` observation in `medical_records` with its own instant. That is
+  // what the `owns` predicate below expresses, and it is why the provisional first stamp
+  // — published before Health Connect has the night at all — is not lost here. It is an
+  // observation until the session arrives; `adoptWearableBreathingRates` (lib/
+  // breathing-rate-db.ts) is what moves it into the night when it does.
+  //
+  // IT IS A DIFFERENT QUANTITY FROM THE OBSERVATION IT USED TO BE. The sample is a
+  // `Breathing Rate (sleep)` reading (lib/breathing-rate.ts); only the spot reading is a
+  // clinical `Respiratory Rate`. Nothing here writes one as the other.
+  const breathingRateNight = (rec: Record<string, unknown>) => {
+    const t = typeof rec.time === "string" ? rec.time : undefined;
+    if (!t) return undefined;
+    const ms = new Date(t).getTime();
+    if (Number.isNaN(ms)) return undefined;
+    return sessionForStamp(ms, dataOrigin(rec), sleepNights);
+  };
+  for (const rec of asArray(payload.respiratory_rate)) {
+    const night = breathingRateNight(rec);
+    if (!night) continue; // the observation path below owns it
+    const value = boundedOrNull(
+      BREATHING_RATE_METRIC,
+      sampleSeriesValue(rec, ["rate", "value"])
+    );
+    if (value == null) {
+      skip("respiratory_rate");
+      continue;
+    }
+    out.samples.push({
+      metric: BREATHING_RATE_METRIC,
+      date: night.wakeDay,
+      started_at: night.startedAt,
+      ended_at: night.endedAt,
+      value,
+      origin: dataOrigin(rec),
+    });
+  }
+  // The spot readings — every respiratory record the night above did not claim. The
+  // `owns` mechanism is glucose's (#3182): one record type, two destinations, and a
+  // record routed to the other store is neither written here nor counted as skipped.
+  vital(
+    "respiratory_rate",
+    "Respiratory Rate",
+    "vitals",
+    "breaths/min",
+    (r) => sampleSeriesValue(r, ["rate", "value"]),
+    (rec) => breathingRateNight(rec) === undefined
+  );
 
   // --- skin temperature variation → metric_samples (per NIGHT) ---
   //

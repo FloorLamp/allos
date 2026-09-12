@@ -15,6 +15,7 @@ import { CANONICAL_RESULT_DEFINITIONS } from "../datasets/canonical-result-defin
 import { DERIVED_NAMES } from "../derived-biomarkers";
 import { RESULTS_CATALOG_CATEGORIES } from "../medical-categories";
 import { hasTrendMetricHome } from "../trend-metric-analytes";
+import { readingIdentity, streamSourcesForIdentity } from "../reading-model";
 
 // #1581 section D — the panel facet must not offer an option that can never return a
 // row. The derivation is over the controlled vocabulary, so these assertions are
@@ -90,8 +91,9 @@ describe("reachablePanelIds (#1581 section D)", () => {
 
   it("agrees with a from-scratch walk of the vocabulary", () => {
     // The independent oracle: a panel is reachable iff some canonical entry in it
-    // carries a listed category AND is not an analyte the browser drops for having a
-    // body-metric home (#2365), or a derived index resolves to it, or it is `other`.
+    // carries a listed category AND is not an analyte the browser drops — for having a
+    // body-metric home (#2365), or for producing no observation row at all (#5409) —
+    // or a derived index resolves to it, or it is `other`.
     const listed = new Set<string>(
       RESULTS_CATALOG_CATEGORIES as readonly string[]
     );
@@ -99,6 +101,15 @@ describe("reachablePanelIds (#1581 section D)", () => {
     for (const e of CANONICAL_RESULT_DEFINITIONS) {
       if (!listed.has(e.category)) continue;
       if (e.category === "vitals" && hasTrendMetricHome(e.name)) continue;
+      // #5409: a STREAM-ONLY identity. Its readings are `metric_samples` rows by the
+      // placement rule, so no `medical_records` row of it can exist for the catalog to
+      // list. Spelled here as the placement question rather than by naming the analyte,
+      // so a second stream identity is covered without editing this oracle.
+      if (
+        e.category === "vitals" &&
+        streamSourcesForIdentity(readingIdentity(e.name)).length > 0
+      )
+        continue;
       expected.add(panelForCanonicalName(e.name));
     }
     for (const n of DERIVED_NAMES) expected.add(panelForCanonicalName(n));

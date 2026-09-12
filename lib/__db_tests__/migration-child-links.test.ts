@@ -54,6 +54,7 @@ import {
 import { runMigrations } from "@/lib/migrations/runner";
 import { linkLiterals } from "./migration-link-scan";
 import { up as up184 } from "@/lib/migrations/versions/184-care-plan-dangling-record-links";
+import { up as breathingRateUp } from "@/lib/migrations/versions/20260911-breathing-rate-sleep-samples";
 import { up as upSweep } from "@/lib/migrations/versions/20260813-cascade-orphan-sweep";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -1627,5 +1628,171 @@ describe("the orphan probe's own arithmetic (#2703)", () => {
     expect(tally?.size).toBe(1);
     expect(introducedViolations(null, tally)).toEqual([]);
     expect(introducedViolations(new Map(), null)).toEqual([]);
+  });
+});
+
+// ---- the OTHER shape the scan cannot see: a delete factored into a lib helper ----
+//
+// #5409 / PR #5880's falsifying pass. `migrationDeletes()` reads the source of the
+// files in `lib/migrations/versions` and nothing else, so a migration whose body is one
+// call into a shared module is invisible to it however that module deletes. Nobody
+// evaded anything: `20260911-breathing-rate-sleep-samples.ts` is
+// `adoptWearableBreathingRates(db, …)` and the row removal is in
+// lib/breathing-rate-db.ts, one import away. A ratchet that scans one directory is
+// defeated by ordinary good factoring.
+//
+// The answer taken here is the one the ratchet's own wording asks for — "a compliant
+// migration does not WRITE `DELETE FROM <cascading parent>`, it calls
+// `deleteRowsWithCascade`" — so the migration passes the store half a remover built
+// from the helper, and its removal is guarded rather than merely unseen. That is a
+// property of BEHAVIOUR, not of the file's text, so it is pinned behaviourally below,
+// through the real `up` and the real runner. Widening the scan to follow a migration's
+// local value-imports is the repo-wide alternative and is deliberately not done here;
+// a measurement of what it would cost is in the PR discussion.
+//
+// SYNTHETIC ONLY: fictional profiles, invented readings, a fictional child table.
+
+/**
+ * The adoption's own minimal shape: the two tables it reads plus the revision child
+ * it must never orphan, and `wearable_record_tags` — a CASCADE child standing in for
+ * any inbound link that is NOT a revision, so the helper has something to clean up.
+ */
+function adoptionDb(): Database.Database {
+  const mem = new Database(":memory:");
+  mem.pragma("foreign_keys = ON");
+  mem.exec(`
+    CREATE TABLE medical_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      occurred_at TEXT,
+      category TEXT,
+      name TEXT,
+      canonical_name TEXT,
+      value TEXT,
+      value_num REAL,
+      unit TEXT,
+      source TEXT,
+      external_id TEXT,
+      edited INTEGER
+    );
+    CREATE TABLE medical_record_revisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL REFERENCES medical_records(id) ON DELETE CASCADE,
+      value TEXT
+    );
+    CREATE TABLE wearable_record_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL REFERENCES medical_records(id) ON DELETE CASCADE,
+      tag TEXT
+    );
+    CREATE TABLE metric_samples (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      origin TEXT,
+      metric TEXT NOT NULL,
+      date TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      value REAL NOT NULL,
+      edited INTEGER
+    );
+  `);
+  mem.exec(`
+    INSERT INTO metric_samples
+      (profile_id, source, origin, metric, date, started_at, ended_at, value)
+    VALUES (1, 'health-connect', 'com.fitbit.FitbitMobile', 'sleep_min',
+            '2016-02-11', '2016-02-11T02:52:00Z', '2016-02-11T08:53:00Z', 361);
+    INSERT INTO medical_records
+      (id, profile_id, date, occurred_at, category, name, canonical_name,
+       value, value_num, unit, source, external_id)
+    VALUES (4, 1, '2016-02-11', '2016-02-11T08:53:00Z', 'vitals',
+            'Respiratory Rate', 'Respiratory Rate', '13.6', 13.6, 'breaths/min',
+            'health-connect', 'health-connect:Respiratory Rate:2016-02-11T08:53:00Z');
+    INSERT INTO wearable_record_tags (id, record_id, tag) VALUES (1, 4, 'nightly');
+  `);
+  return mem;
+}
+
+describe("a migration whose delete lives in a lib helper is still guarded (#5409)", () => {
+  it("the source scan sees no delete for it at all — which is why the pin below is behavioural", () => {
+    // The blind spot, asserted rather than described. If a raw `DELETE FROM
+    // medical_records` ever appears in this migration's own file the main ratchet
+    // above judges it; what this pins is that the scan's silence here is the
+    // compliant shape and not an unguarded delete hiding one import away.
+    expect(
+      migrationDeletes().filter(
+        (d) => d.file === "20260911-breathing-rate-sleep-samples.ts"
+      )
+    ).toEqual([]);
+    expect(
+      fs.readFileSync(
+        path.join(VERSIONS, "20260911-breathing-rate-sleep-samples.ts"),
+        "utf8"
+      )
+    ).toContain("deleteRowsWithCascade");
+  });
+
+  it("clears a cascading child the runner's foreign_keys = OFF would have orphaned", () => {
+    const mem = adoptionDb();
+    runMigrations(mem, [
+      { name: "20260911-breathing-rate-sleep-samples", up: breathingRateUp },
+    ]);
+
+    // The reading moved: one nightly sample on the session's own start.
+    expect(
+      mem
+        .prepare(
+          `SELECT source, started_at, value FROM metric_samples
+            WHERE metric = 'respiratory_rate_bpm'`
+        )
+        .all()
+    ).toEqual([
+      {
+        source: "health-connect",
+        started_at: "2016-02-11T02:52:00Z",
+        value: 13.6,
+      },
+    ]);
+    expect(
+      mem.prepare("SELECT COUNT(*) AS n FROM medical_records").get()
+    ).toEqual({ n: 0 });
+    // And the child went with it, exactly as the runtime delete would have taken it.
+    expect(
+      mem.prepare("SELECT COUNT(*) AS n FROM wearable_record_tags").get()
+    ).toEqual({ n: 0 });
+    expect(fkViolations(mem)).toEqual([]);
+  });
+
+  it("declines the reading entirely when the child is a #1404 correction lineage", () => {
+    // The other half of the same obligation: a revision cannot follow its reading into
+    // `metric_samples`, so the reading is not moved and not deleted — kept, rather than
+    // orphaned here or cascaded away at runtime.
+    const mem = adoptionDb();
+    mem
+      .prepare(
+        "INSERT INTO medical_record_revisions (record_id, value) VALUES (4, '13.9')"
+      )
+      .run();
+    runMigrations(mem, [
+      { name: "20260911-breathing-rate-sleep-samples", up: breathingRateUp },
+    ]);
+
+    expect(
+      mem
+        .prepare(
+          `SELECT COUNT(*) AS n FROM metric_samples
+            WHERE metric = 'respiratory_rate_bpm'`
+        )
+        .get()
+    ).toEqual({ n: 0 });
+    expect(mem.prepare("SELECT id FROM medical_records").all()).toEqual([
+      { id: 4 },
+    ]);
+    expect(
+      mem.prepare("SELECT record_id, value FROM medical_record_revisions").all()
+    ).toEqual([{ record_id: 4, value: "13.9" }]);
+    expect(fkViolations(mem)).toEqual([]);
   });
 });

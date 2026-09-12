@@ -432,9 +432,29 @@ describe("Fitbit Takeout import", () => {
           WHERE profile_id = ? ORDER BY canonical_name`
       )
       .all(profileId) as { canonical_name: string; value_num: number }[];
+    // ONLY SpO2 (#5409). `daily_respiratory_rate` is the wearable's per-night
+    // breathing rate labelled by day, so it is a `metric_samples` sample under its own
+    // identity now and never a clinical `Respiratory Rate` observation.
     expect(vitals).toEqual([
       { canonical_name: "Oxygen Saturation", value_num: 94.8 },
-      { canonical_name: "Respiratory Rate", value_num: 13.8 },
+    ]);
+    // The archive's one sleep log is 2026-07-09, so this day has no session to name
+    // and the reading keeps the day-bucket window the parser gave it — never a clock,
+    // and never an observation.
+    expect(
+      db
+        .prepare(
+          `SELECT date, started_at, ended_at, value FROM metric_samples
+            WHERE profile_id = ? AND metric = 'respiratory_rate_bpm'`
+        )
+        .all(profileId)
+    ).toEqual([
+      {
+        date: "2026-06-11",
+        started_at: "2026-06-11T00:00:00.000Z",
+        ended_at: "2026-06-11T23:59:59.999Z",
+        value: 13.8,
+      },
     ]);
   });
 

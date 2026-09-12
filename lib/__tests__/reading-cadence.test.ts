@@ -28,7 +28,7 @@ const entries = (
 ).definitions;
 
 // Every `category = 'vitals'` canonical entry and the cadence it arrives at. The
-// continuous six stream from a wearable or a cuff and are read as a trend; every
+// continuous eight stream from a wearable or a cuff and are read as a trend; every
 // other one is an episodic clinical measurement read against a band or an age/sex
 // percentile, so it keeps the reference-range renderer.
 const VITALS_AUDIT: Record<string, ReadingCadence> = {
@@ -83,6 +83,20 @@ const VITALS_AUDIT: Record<string, ReadingCadence> = {
   // directions — the page charts its `metric_samples` stream AND folds in a
   // clinic-measured PEF of the same identity (see vitals-reading-surface.test.ts).
   "Peak Expiratory Flow": "continuous",
+  // The sleeping breathing rate (#5409) — CONTINUOUS, and the only entry here that is
+  // continuous without any `medical_records` row behind it.
+  //
+  // `readingCadence` answers "which renderer does a reading of this canonical name
+  // use", and for this name the readings are `metric_samples` `respiratory_rate_bpm`
+  // rows written by the two wearable parsers and by nothing else. It is continuous for
+  // the reason #2032 and #1850 generalized this table to: the destination has to hold
+  // readings of the same #482 identity, not to hold them in `medical_records` — and the
+  // `breathing-rate` metric page charts exactly this identity's stream.
+  //
+  // A clinical count of the same analyte is the SEPARATE `Respiratory Rate` identity
+  // below, which is continuous for its own reasons and keeps the 12-20 band this one
+  // does not have.
+  "Breathing Rate (sleep)": "continuous",
   // Spirometry is EPISODIC: FEV1 / FVC / the ratio are measured on a pulmonology
   // report a handful of times in a life and read against a band (or, for the two
   // absolute volumes, against nothing — no predicted equation ships here), which is
@@ -135,14 +149,18 @@ describe("reading cadence — the vitals audit", () => {
     expect(readingCadence(name)).toBe(expected);
   });
 
-  it("declares a metric kind for exactly the continuous seven", () => {
+  it("declares a metric kind for exactly the continuous eight", () => {
     // Named out loud so the set can't grow or shrink without a deliberate edit here —
-    // and so the two entries whose destination is a STREAM store (Resting Heart Rate,
-    // #2032; Peak Expiratory Flow, #1850) are visible rather than folded into a count.
+    // and so the three entries whose destination is a STREAM store (Resting Heart Rate,
+    // #2032; Peak Expiratory Flow, #1850; Breathing Rate (sleep), #5409) are visible
+    // rather than folded into a count. The last of those is the only member with NO
+    // `medical_records` rows at all: its readings are stream rows exclusively, which is
+    // the shape this half of the map generalized to hold.
     expect(Object.keys(CONTINUOUS_READING_METRIC).sort()).toEqual([
       "Blood Pressure Diastolic",
       "Blood Pressure Systolic",
       "Body Temperature",
+      "Breathing Rate (sleep)",
       "Oxygen Saturation",
       "Peak Expiratory Flow",
       "Respiratory Rate",

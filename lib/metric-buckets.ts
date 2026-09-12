@@ -1,4 +1,8 @@
 import { BRISTOL_STOOL_METRIC } from "./bristol-stool";
+import {
+  BREATHING_RATE_METRIC,
+  breathingRateSourceRank,
+} from "./breathing-rate";
 
 // Instantaneous (point) metrics: a day can hold several readings, so they must be
 // averaged per day, not summed. Everything else (steps, distance, calories,
@@ -29,7 +33,45 @@ export const AVERAGED_METRICS = new Set([
   // Waist circumference (#2322) is a point measure like height: a tape reading and a
   // same-date imported one must AGREE (average), never SUM into a 168 cm waist.
   "waist_circumference_cm",
+  // The sleeping breathing rate (#5409) is a point measure, and the reason is ONE
+  // SOURCE'S OWN TWO SESSIONS, not two sources.
+  //
+  // The reason first written here — "two agreeing 13.6s from Health Connect and Fitbit
+  // Takeout would sum to 27.2" — was false, and the falsifying pass on PR #5880 is what
+  // caught it: two SOURCES never reach the additive default together, because the SUM
+  // path elects one of them per day through `pickOneSourcePerDay` / `SOURCE_PREFERENCE`
+  // (#14). What does reach it is one source's own two rows in one wake day — a nap and
+  // the night, each keyed on its own session start — and 13.6 + 13.6 is the 27.2 br/min
+  // night nobody breathed. A day's two sleeps are two readings of one quantity, so the
+  // day averages them, exactly as a flare day's two peak-flow blows average.
+  //
+  // AVERAGING IS NOT THE SOURCE ELECTION. Which of two SOURCES a night states is
+  // `pointSourceRank` below, not this set — an average of two sources would state a
+  // number neither device reported.
+  BREATHING_RATE_METRIC,
 ]);
+
+/**
+ * The per-day SOURCE election a point metric declares, or null when its sources average.
+ *
+ * WHY A POINT METRIC MAY NEED ONE. The AVG default averages every source's readings for
+ * a day, and for height or a waist tape that is right: a manual entry and an imported
+ * one are two measurements of one quantity and must AGREE, so their mean is the reading.
+ * A wearable's nightly breathing rate is not that. A night covered by both a live Health
+ * Connect sync and a Fitbit Takeout archive holds two rows that are two SPELLINGS of one
+ * vendor number, and their mean is a third value neither device published — measured on
+ * the record that raised #5409 as a 14.8 br/min chart point against a 13.6 br/min sleep
+ * row for the same night. So the night ELECTS, by the same rank the sleep row and
+ * `lib/history.ts` use: a real window beats a day label.
+ *
+ * The election runs BETWEEN sources; within the elected source the day still averages,
+ * which is what keeps a nap and a night from summing (see `AVERAGED_METRICS` above).
+ */
+export function pointSourceRank(
+  metric: string
+): ((source: string | null) => number) | null {
+  return metric === BREATHING_RATE_METRIC ? breathingRateSourceRank : null;
+}
 
 // Categorical metrics (#3167, from #3165): the stored number NAMES A CATEGORY
 // rather than measuring a quantity, so no arithmetic over a day's readings is

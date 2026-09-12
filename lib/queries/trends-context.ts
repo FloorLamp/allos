@@ -29,6 +29,7 @@ import { isGoalLive } from "../outcome-goals";
 import { getHomeLocation, getProfileAge } from "../settings";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "../vitals-input";
 import { PEAK_FLOW_METRIC } from "../peak-flow";
+import { BREATHING_RATE_METRIC } from "../breathing-rate";
 import { WAIST_CIRC_METRIC } from "../waist-circ-extract";
 import {
   conditionMonitorTags,
@@ -55,6 +56,11 @@ const METRIC_SAMPLE_CARDS: Readonly<Partial<Record<BodyCardId, string>>> = {
   sleep: "sleep_min",
   hrv: HRV_METRIC,
   "skin-temp": SKIN_TEMP_DELTA_METRIC,
+  // The sleeping breathing rate (#5409) — a wearable stream in the tall store, counted
+  // exactly as HRV and skin temperature are. It belongs in THIS pass rather than in
+  // BIOMARKER_CARDS below: its readings are `metric_samples` rows, and the clinical
+  // `Respiratory Rate` biomarker that IS read below belongs to a different card.
+  "breathing-rate": BREATHING_RATE_METRIC,
   height: "height_cm",
   "head-circ": "head_circumference_cm",
   "waist-circ": WAIST_CIRC_METRIC,

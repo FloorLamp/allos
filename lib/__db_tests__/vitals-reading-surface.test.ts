@@ -25,6 +25,7 @@ import {
 import { METRIC_READING_STORE, getMetricReadings } from "@/lib/metric-readings";
 import { placeReading } from "@/lib/reading-placement";
 import { metricObservationFoldIdentity } from "@/lib/metric-judgment";
+import { METRIC_DOCUMENT_REACH } from "@/lib/trend-metric-analytes";
 import { fullTrendMetricSeries } from "@/lib/trend-metric-series";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { seedProfile, type SeededProfile } from "./fixtures";
@@ -73,12 +74,29 @@ describe("every continuous reading has a real metric-detail destination", () => 
       expect(METRIC_READING_STORE[slug]).toEqual(
         placeReading({ name: canonical }).placed
       );
-      // …and the fold is what supplies the other store's rows on a stream destination,
-      // so no reading of the identity is stranded off the page it routes to.
+      // …and no reading of the identity is stranded off the page it routes to. Two
+      // shapes satisfied that before #5409: the page's own store IS `medical_records`,
+      // or the page plots a stream and FOLDS the same identity's observations into it
+      // (#1996), which is what supplies the other store's rows on a stream destination.
+      //
+      // A THIRD shape satisfies it by having no other store. `Breathing Rate (sleep)` is
+      // STREAM-ONLY: the assertion above pins that every reading of it places into
+      // `metric_samples`, and no observation of the quantity exists for a fold to
+      // rescue — a respiratory rate extracted from a document or typed by hand is the
+      // separate CLINICAL identity by construction (`isWearableRespiratorySource`,
+      // pinned in both directions by the pure tier). There is no second store, so there
+      // is nothing for a fold to do.
+      //
+      // Asked through `METRIC_DOCUMENT_REACH`, whose whole job is that question and
+      // whose other arms the pure tier checks against the code implementing them — so
+      // this is not an escape hatch a future slug can take quietly: declaring `false`
+      // for a slug that DOES fold fails `\`observation-fold\` matches
+      // metricObservationFoldIdentity` in lib/__tests__/trend-metric-analytes.test.ts.
       const observationsFold =
         metricObservationFoldIdentity(slug) != null ||
         METRIC_READING_STORE[slug]?.table === "medical_records";
-      expect(observationsFold).toBe(true);
+      const noObservationsExist = METRIC_DOCUMENT_REACH[slug].reaches === false;
+      expect(observationsFold || noObservationsExist).toBe(true);
     }
   );
 });

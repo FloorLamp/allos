@@ -204,6 +204,12 @@ export const METRIC_GAP: SeriesIdRegistry<SeriesGap> = {
   resting_hr: "bridge",
   hrv: "bridge",
   "skin-temp": "bridge",
+  // The sleeping breathing rate (#5409) is a LEVEL by the same argument as the two
+  // above: you breathed on the nights the band was charging, so the quantity existed
+  // and the stroke may cross the hole. NOT "bridge-with-limit" — that policy is opt-in
+  // and the check-in ratings are its only members; the hole is still NAMED here once it
+  // runs past `METRIC_GAP_LIMIT_DAYS`, which is what an unworn week should get.
+  "breathing-rate": "bridge",
   hr: "bridge",
   height: "bridge",
   "head-circ": "bridge",
@@ -345,7 +351,7 @@ export function gapBreaksPastLimit(gap: SeriesGap): boolean {
 // the two registries are provably consistent instead of merely coexisting.
 //
 // THE TIERS, named for how the reading ARRIVES — the same discipline the floors
-// registry uses, so 27 metrics declare a cadence rather than 27 loose integers.
+// registry uses, so 28 metrics declare a cadence rather than 28 loose integers.
 
 /** Arrives every day something is worn or a check-in is tapped. A fortnight
  *  between two of them means the stream stopped, not that it moved smoothly. */
@@ -388,6 +394,12 @@ export const METRIC_CONTINUITY_DAYS: SeriesIdRegistry<number> = {
   resting_hr: STREAM_CONTINUITY,
   hrv: STREAM_CONTINUITY,
   "skin-temp": STREAM_CONTINUITY,
+  // One value per sleep session from the same wearable as the two above, so the same
+  // fortnight: past two weeks between two nights, the stroke is interpolating across
+  // more unworn nights than measured ones. It also sits exactly ON this metric's
+  // presentation floor, which is the invariant `sparse-series.test.ts` pins — a series
+  // may never be called sparse while its latest reading is still presented as current.
+  "breathing-rate": STREAM_CONTINUITY,
   hr: STREAM_CONTINUITY,
   "peak-flow": STREAM_CONTINUITY,
   height: SLOW_CONTINUITY,
@@ -671,6 +683,10 @@ export const METRIC_GAP_LIMIT_DAYS: SeriesIdRegistry<number> = {
   resting_hr: STREAM_GAP_LIMIT,
   hrv: STREAM_GAP_LIMIT,
   "skin-temp": STREAM_GAP_LIMIT,
+  // Device-reported, one reading per night worn — the same tier the sleep series below
+  // sit on, and for the same reason: a third consecutive night with no breathing rate
+  // is a band that is not going to bed, which is worth naming.
+  "breathing-rate": STREAM_GAP_LIMIT,
   hr: STREAM_GAP_LIMIT,
   "peak-flow": STREAM_GAP_LIMIT,
   height: SLOW_GAP_LIMIT,

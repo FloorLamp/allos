@@ -41,6 +41,13 @@ export const TREND_METRIC_SLUGS = [
   "hrv",
   "temperature",
   "skin-temp",
+  // The sleeping breathing rate (#5409) — a wearable's per-night aggregate, and a
+  // SEPARATE quantity from `respiratory-rate` above rather than a second reading of it.
+  // That one is a spot count taken while AWAKE, curated at 12–20 with LOINC 9279-1;
+  // this is an overnight average from a wrist device with no population band, the way
+  // Resting Heart Rate is a daily aggregate distinct from Heart Rate. They share no
+  // chart, no band and no canonical name (`Breathing Rate (sleep)`).
+  "breathing-rate",
   // Peak expiratory flow (#1850) — the respiratory domain's home-measured half.
   // A metric slug because it arrives at the metric cadence: a person with asthma
   // blows once or twice a day during a flare, and "what is this doing lately?" is
@@ -227,6 +234,32 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     title: "Skin Temperature Variation",
     unit: " °C",
     color: chartSeries.violet,
+    decimals: 1,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: null,
+  },
+  // The sleeping breathing rate (#5409) — NOT the `respiratory-rate` entry above.
+  //
+  // 1 DECIMAL because the reading genuinely carries one and the readable spread is
+  // narrow: an adult's nights sit at roughly 12–18 br/min and the signal people read
+  // it for is a drift of a breath or two, which 0dp would render as a flat line with
+  // occasional steps. The same argument skin temperature's decimal makes one entry up.
+  //
+  // IMPORT-ONLY, so no quick-add. Nobody counts their own breaths while asleep; the two
+  // wearable parsers are the only writers (`WEARABLE_RESPIRATORY_SOURCES`), and a
+  // counted rate taken while awake is the OTHER slug's `medical_records` row, which the
+  // combined "Log measurements" form already offers.
+  //
+  // `goalMetric: null` and `countMetric` unset: a nightly respiratory average is not a
+  // Goal.body_metric and not a count, so neither the target overlay nor the zero-floored
+  // thousands-grouped axis applies.
+  "breathing-rate": {
+    slug: "breathing-rate",
+    label: "Breathing Rate",
+    title: "Breathing Rate (Sleep)",
+    unit: " br/min",
+    color: chartSeries.sky,
     decimals: 1,
     windowed: true,
     goalMetric: null,

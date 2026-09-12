@@ -187,6 +187,7 @@ import {
   normalizeCanonicalKey,
 } from "./canonical-name";
 import { METRIC_KNOWLEDGE } from "./metric-judgment";
+import { readingIdentity, streamSourcesForIdentity } from "./reading-model";
 import {
   TREND_METRIC_META,
   TREND_METRIC_SLUGS,
@@ -320,6 +321,29 @@ export const METRIC_DOCUMENT_REACH: Record<
     reaches: false,
     reason:
       "An import-only tracker baseline DEVIATION with no canonical entry — nothing folds and nothing projects, so an imported row would be lost.",
+  },
+  // The sleeping breathing rate (#5409). The ONLY `false` here whose quantity is
+  // nonetheless absent from the flat catalog, and the distinction is worth stating
+  // rather than leaving to be rediscovered.
+  //
+  // `false` is the honest answer to the question THIS registry asks — "can a
+  // document-imported reading reach this chart" — because the document path never
+  // produces a reading of this quantity. A respiratory rate extracted from a document,
+  // or typed by hand, is CLINICAL by construction (`isWearableRespiratorySource` matches
+  // the two wearable integration ids exactly and nothing else), so it is a
+  // `Respiratory Rate` observation on the `respiratory-rate` slug's chart. This chart's
+  // rows come from the two wearable parsers and from nowhere else.
+  //
+  // AND NOTHING IS STRANDED BY THAT, which is the guard's actual concern. The name is
+  // removed from the catalog by the STREAM clause in `listedInResultsCatalog` below —
+  // `Breathing Rate (sleep)` has a registered stream, so the placement rule sends every
+  // reading of it to `metric_samples`, where this chart already reads it. `false` here
+  // therefore withholds an ANALYTE-NAME claim (see `registryNamesFor`, which returns
+  // nothing for a `false` slug) without withholding a home.
+  "breathing-rate": {
+    reaches: false,
+    reason:
+      "The document path produces no reading of this quantity: an extracted or hand-entered respiratory rate is CLINICAL by construction and lands on the `respiratory-rate` chart as a `Respiratory Rate` observation, while this chart's rows come only from the two wearable parsers. The name leaves the catalog through the stream clause instead, so nothing is stranded (#5409).",
   },
   "lean-mass": {
     reaches: false,
@@ -661,5 +685,26 @@ export function listedInResultsCatalog(row: {
 }): boolean {
   if ((row.category ?? "") !== HOMED_ANALYTE_CATEGORY) return true;
   const identity = row.canonical_name?.trim() || row.name;
-  return !hasTrendMetricHome(identity);
+  if (hasTrendMetricHome(identity)) return false;
+  // ...AND A STREAM-ONLY IDENTITY IS NOT A CATALOG ANALYTE EITHER (#5409).
+  //
+  // The clause above asks "does some chart already own this quantity". This one asks
+  // the same question one step earlier, for the quantity whose readings are not
+  // observations AT ALL: `Breathing Rate (sleep)` is a wearable's per-night aggregate,
+  // and the placement rule sends every reading of it to `metric_samples`
+  // (`STREAM_READING_SOURCES`). The catalog lists `medical_records` rows, so an analyte
+  // that produces none contributes nothing to list — and the panel FACET, which is
+  // derived from this same predicate over the vocabulary, would otherwise offer a
+  // "Vital signs" filter that can only answer "No clinical results match these filters".
+  //
+  // IT CHANGES NO EXISTING ANALYTE. Every other `vitals` entry carrying a registered
+  // stream — Resting Heart Rate, Peak Expiratory Flow — already fails the clause above,
+  // so this term is reached only by a stream identity whose slug claims no analyte name.
+  // `Breathing Rate (sleep)` is that identity and, since #5409's app half, it HAS a
+  // metric surface: what keeps it here rather than in the clause above is its
+  // `METRIC_DOCUMENT_REACH` entry, which declares `false` because no document-imported
+  // reading of the quantity exists — so `registryNamesFor` claims nothing for the slug
+  // and the first clause never fires. The pure test enumerates the vocabulary and pins
+  // that the two clauses drop the same set they did before, plus exactly this one name.
+  return streamSourcesForIdentity(readingIdentity(identity ?? "")).length === 0;
 }

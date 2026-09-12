@@ -88,6 +88,27 @@ function dumpState(db: Database.Database): string {
     if (o.name === "schema_migrations") {
       rows = rows.map((r) => ({ name: r.name }));
     }
+    if (o.name === "data_write_revision") {
+      // THE RUNNER'S OWN VALUE, NOT A MIGRATION BODY'S (#5409 found it).
+      //
+      // `runner.ts` calls `advanceDataWriteRevisionForMigration` for every migration
+      // that runs AFTER the revision row exists, and that helper mints a fresh
+      // `migration:<uuid>` each time. It is per-RUN random by construction, so the two
+      // databases below can never agree on it however well the bodies behave — the same
+      // class as `schema_migrations.applied_at` above, and reduced for the same reason.
+      //
+      // It was dormant until now only because `20260909-data-write-revision` was the
+      // LAST shipped migration, so nothing had ever reached the advance. The first
+      // migration appended after it — this branch's — is what made the column appear,
+      // and every migration appended from here on would have done the same.
+      //
+      // `revision` is NOT elided: how many times the counter moved is a real property
+      // of the run, and the comparison still holds it.
+      rows = rows.map((r) => ({
+        ...r,
+        transaction_id: "<per-run uuid minted by the runner>",
+      }));
+    }
     if (o.name === "settings") {
       rows = rows.map((r) =>
         WALL_CLOCK_SETTING_KEYS.includes(String(r.key))
