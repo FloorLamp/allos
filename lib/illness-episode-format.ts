@@ -529,6 +529,16 @@ export interface EpisodeCollapsedStatus {
   worsening: EpisodeWorsening | null;
 }
 
+// Mark a when-phrase whose clock came from the record chain rather than a stated
+// administration instant. The value stays visible with its provenance; honesty is about
+// the claim, not about hiding the number (#2228 decision 4).
+function markRecordedClock(
+  when: string | null,
+  recorded: boolean
+): string | null {
+  return when != null && recorded ? `recorded ${when}` : when;
+}
+
 function collapsedReadingWhen(
   date: string,
   time: string | null,
@@ -618,12 +628,21 @@ export function episodeCollapsedStatus(
             `${lastDose.itemId}:${lastDose.date}:${lastDose.time ?? "day"}`,
           name: lastDose.name,
           dose: formatMedicationDoseProduct(lastDose.amount, lastDose.product),
-          when: collapsedReadingWhen(
-            lastDose.date,
-            lastDose.time,
-            ep.asOf,
-            "",
-            timeContext
+          // A DOSE CLOCK FROM THE RECORD CHAIN IS MARKED HERE TOO (#2228 decision 4).
+          // The timeline has always marked it — "recorded 7:02am" — but this collapsed
+          // line quoted the same filing stamp bare, and beside a school-return clause
+          // that says the dose states no time (#5688) it read as a flat contradiction:
+          // "add the ibuprofen time in Dose history · last med Ibuprofen Yesterday,
+          // 07:00". `timeRecorded` is the flag the assembly already sets for this.
+          when: markRecordedClock(
+            collapsedReadingWhen(
+              lastDose.date,
+              lastDose.time,
+              ep.asOf,
+              "",
+              timeContext
+            ),
+            lastDose.timeRecorded === true && lastDose.time != null
           ),
         }
       : null,
@@ -959,6 +978,15 @@ export interface CockpitRecovery {
    * fails the comparison and falls back rather than merging two different scales.
    */
   lastFeverLabel: string;
+  /**
+   * True ONLY on the arm where no normal reading is established after the fever
+   * (`evidence: "none"`). `clearedForHours` is null on the HELD arm too (#5688) —
+   * where a normal reading DOES exist and the countdown is waiting on a dose time —
+   * so the "No reading since" merge below must key on this and not on the null.
+   * Optional: a caller that omits it keeps BOTH clauses, which is the honest shape
+   * the merge itself falls back to, never a sentence nobody measured.
+   */
+  noReadingSinceFever?: boolean;
 }
 
 // THE HEADLINE, AND WHAT IT REFUSES TO SAY. It states only what the fever-free clock
@@ -1021,9 +1049,13 @@ export function cockpitSummaryParts(
   // So the merge is gated on the two clauses NAMING THE SAME READING, compared as the
   // strings both surfaces render. When they differ the line keeps both clauses, which
   // is the honest shape: two different readings are two facts.
+  // AND THE NULL CLOCK IS NO LONGER THE ARM (#5688). A held countdown also carries a
+  // null `clearedForHours`, and merging there would print "No reading since 103.4 °F"
+  // over an episode that HAS a reading since — the reassuring direction again, and this
+  // time about the very fact the clause exists to report. The arm itself is the key.
   const noReadingSinceFever =
     recovery != null &&
-    recovery.clearedForHours == null &&
+    recovery.noReadingSinceFever === true &&
     recovery.lastFeverLabel === status.temperature?.value;
   const readingWhen = status.temperature?.when
     ? ` ${status.temperature.when}`
