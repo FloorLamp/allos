@@ -121,20 +121,16 @@ const FORMATTER_CALL_NEEDLES = Object.keys(FORMATTER_MIN_ARGS).map(
   (name) => `${name}(`
 );
 
-// Login-less channels (documented fixed-format policy — see lib/format-date.ts's
-// header): these files render into a channel with a profile but NO login in
-// context, so the fixed default IS the correct shape, deliberately.
-const PREFLESS_ALLOWLIST: Record<string, number> = {
-  // Telegram redose notice timestamps — the notify tick has a profile but no login.
-  "lib/administration-format.ts": 1,
-  // Telegram callback answers ("Snoozed until …") — fixed Telegram channel shape.
-  "lib/notifications/callback-data.ts": 2,
-  // The dose close's administration-time receipt (#2867), which dates its clauses only
-  // when one close spans more than a single day. A reconcile sweep runs off a profile
-  // pointer and has no login in context — the same login-less channel as the two
-  // entries above — so the fixed default shape is the correct one.
-  "lib/notifications/reconcile-core.ts": 1,
-};
+// EMPTY since #5351. The login-less channels (documented fixed-format policy — see
+// lib/format-date.ts's header) render into a channel with a profile but NO login in
+// context, so the fixed default IS the correct shape there — but they now say so by
+// passing DEFAULT_FORMAT_PREFS by name rather than by being listed here:
+// lib/administration-format.ts (the Telegram redose notice's stamp),
+// lib/notifications/callback-data.ts (the two Telegram callback answers) and
+// lib/notifications/reconcile-core.ts (the #2867 dose-close receipt, which dates its
+// clauses only when one close spans more than a day). A pref-less call is now a
+// defect everywhere, with no exceptions to keep in step.
+const PREFLESS_ALLOWLIST: Record<string, number> = {};
 
 // Count top-level arguments of the call starting at `open` (index of "(").
 // Paren/bracket/brace balancing spans newlines; good enough for source scanning
