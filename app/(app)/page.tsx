@@ -718,7 +718,20 @@ async function renderHome(
     const poolKey = poolRefillSignalKey(item.supply_id);
     const seated = refillTargets.get(poolKey);
     if (seated == null || item.id < seated.itemId)
-      refillTargets.set(poolKey, target);
+      refillTargets.set(poolKey, {
+        ...target,
+        // A PAUSED CARRIER REMEMBERS NO FILL THE BOTTLE CAN USE. Carrying the cue is a
+        // POSITION, not a claim to consume: `poolPushes` and `poolConsumers` both drop
+        // inactive members, so the lowest-id member can be one the pool has already
+        // decided drains it at nothing. Its private fill size is then a stopped item's
+        // number, and the one-tap would write it onto the household-shared bottle
+        // silently — `hasLastFill` suppresses the size input, and the row names the
+        // BOTTLE, so nothing on screen says whose fill was reused. Unremembered
+        // instead, which is the documented first-use path: the action asks for the
+        // size. An ACTIVE carrier keeps reusing its own fill, as every other surface
+        // that mounts this affordance does.
+        lastFillSize: item.active ? item.last_fill_size : null,
+      });
   }
 
   // ── THE ONE LIST (§3.2) ───────────────────────────────────────────────────────
@@ -733,7 +746,12 @@ async function renderHome(
     minutesOfDay: nowMinutes,
     subject: { scope: "profile", profileId: profile.id },
     attention,
-    refillTargets: new Set(refillTargets.keys()),
+    // WHAT THIS CALLER CAN ACTUALLY MOUNT THE ACTION ON, which for a read-only viewer
+    // is nothing: the control below renders only with write access, and a cue with no
+    // control is the half-row `isRefillCue` refuses to admit (§2.2/§2.4). The gate is
+    // on the ADMISSION rather than on the render, so the seat and the affordance can
+    // never disagree about whether the fix exists.
+    refillTargets: writable ? new Set(refillTargets.keys()) : new Set(),
     training: {
       live: liveWorkout,
       loggedToday: todaySession != null,

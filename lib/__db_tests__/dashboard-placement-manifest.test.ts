@@ -32,7 +32,11 @@ import { beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { db, today, writeTx } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
-import { reconcileFlags } from "@/lib/queries";
+import {
+  createSharedSupply,
+  linkItemToPool,
+  reconcileFlags,
+} from "@/lib/queries";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
 import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
 import { getTimezone, setWeekMode } from "@/lib/settings";
@@ -176,6 +180,28 @@ let refillElements: Record<string, unknown>[] = [];
 let refillRowIds: string[] = [];
 /** The item the fixture runs out of, so the control can be checked against its target. */
 let refillItemId = 0;
+/**
+ * The SAME fixture rendered for a VIEW-ONLY viewer. §9's cue is an action, and a
+ * caller who cannot take it must not be seated a row stating the shortage with no fix
+ * beside it. Nothing else in this tier renders without write access — the harness's
+ * scope handed every profile "write" until this render needed otherwise — so a cue
+ * dropped only at render time was structurally unobservable here.
+ */
+let readOnlyRefillRowIds: string[] = [];
+let readOnlyRefillElements: Record<string, unknown>[] = [];
+
+/**
+ * The POOLED low-supply render, whose carrying member is PAUSED (#5435 §9). A shared
+ * bottle's cue is carried by this profile's lowest-id member, and that member can be
+ * one the pool's own math has already excluded — `poolPushes` and `poolConsumers` both
+ * drop inactive members. Its own remembered fill is then a number nobody fills at.
+ */
+const POOL_REFILL_FIXTURE = "pooled low-supply fixture";
+let poolRefillElements: Record<string, unknown>[] = [];
+let poolRefillRowIds: string[] = [];
+/** The paused lowest-id member that carries the pooled cue, and the bottle it draws on. */
+let pausedCarrierItemId = 0;
+let poolSupplyId = 0;
 
 /**
  * A tracked medication with nothing left on the shelf: one scheduled dose (so the
@@ -200,6 +226,54 @@ function seedRunOutItem(profileId: number): number {
        (item_id, amount, time_of_day, food_timing, sort, created_at)
      VALUES (?, '1 capsule', 'Morning', 'any', 0, ?)`
   ).run(itemId, born);
+  return itemId;
+}
+
+/**
+ * An empty household-shared bottle drawn on by two of one profile's items: a PAUSED
+ * one seeded first (so it holds the lower id and therefore carries the cue) that
+ * remembers a 30-unit fill, and the ACTIVE one that is the bottle's only real consumer
+ * and fills at 90. Linking nulls each item's private count, so the only low-supply cue
+ * this profile can raise is the pool's.
+ */
+function seedPausedCarrierPool(profileId: number): void {
+  poolSupplyId = createSharedSupply(
+    {
+      name: "Shared D3",
+      strength: null,
+      form: null,
+      lowSupplyDays: null,
+      notes: null,
+    },
+    0
+  );
+  pausedCarrierItemId = seedPoolMember(profileId, "Old D3 (paused)", 0, 30);
+  seedPoolMember(profileId, "New D3", 1, 90);
+}
+
+function seedPoolMember(
+  profileId: number,
+  name: string,
+  active: number,
+  lastFillSize: number
+): number {
+  const born = `${shiftDateStr(today(profileId), -60)}T08:00:00`;
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, kind, active, obligation, condition,
+            quantity_on_hand, qty_per_dose, last_fill_size, created_at)
+         VALUES (?, ?, 'supplement', ?, 'should', 'daily', NULL, 1, ?, ?)`
+      )
+      .run(profileId, name, active, lastFillSize, born).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses
+       (item_id, amount, time_of_day, food_timing, sort, created_at)
+     VALUES (?, '1 capsule', 'Morning', 'any', 0, ?)`
+  ).run(itemId, born);
+  linkItemToPool(profileId, itemId, poolSupplyId);
   return itemId;
 }
 
@@ -372,13 +446,33 @@ describe("Home's one list, rendered", () => {
     session.profile = session.accessible.find(
       (profile) => profile.id === refillProfileId
     )!;
-    const refillRender = await requestCache.during(async () =>
-      resolveAsyncTree((await Dashboard()) as ReactElement)
-    );
+    const refillRender = await renderHome();
     refillElements = refillRender.elements;
-    refillRowIds = refillRender.elements
-      .map((props) => props["data-candidate-id"])
-      .filter((value): value is string => typeof value === "string");
+    refillRowIds = refillRender.ids;
+
+    // ── THE SAME PROFILE, SEEN READ-ONLY. One render more on the identical fixture,
+    // with only the access level changed, so the difference between the two is the
+    // grant and nothing else. Restored immediately: every other reader in this file
+    // renders with write access and must keep doing so.
+    session.access = "read";
+    const readOnlyRender = await renderHome();
+    session.access = "write";
+    readOnlyRefillElements = readOnlyRender.elements;
+    readOnlyRefillRowIds = readOnlyRender.ids;
+
+    // ── THE POOLED LOW-SUPPLY RENDER, on its own profile for the same reasons.
+    const poolBefore = new Set(allProfileIds());
+    const poolProfileId = newProfile(`dashboard:${POOL_REFILL_FIXTURE}`);
+    seedPausedCarrierPool(poolProfileId);
+    session.accessible = profiles(
+      allProfileIds().filter((id) => !poolBefore.has(id))
+    );
+    session.profile = session.accessible.find(
+      (profile) => profile.id === poolProfileId
+    )!;
+    const poolRender = await renderHome();
+    poolRefillElements = poolRender.elements;
+    poolRefillRowIds = poolRender.ids;
   }, MANIFEST_HOOK_MS);
 
   for (const persona of PERSONAS) {
@@ -729,6 +823,63 @@ describe("Home's one list, rendered", () => {
       .filter((value): value is string => typeof value === "string");
     expect(testIds.filter((id) => id.includes("supply"))).toEqual([]);
     expect(testIds.filter((id) => id.includes("inventory"))).toEqual([]);
+  });
+
+  it("seats no low-supply cue at all for a view-only viewer", () => {
+    // AN ACTION OR NOTHING (§2.2/§2.4). The control renders only with write access, so
+    // a read-only viewer seated this cue would get a row announcing "out of supply"
+    // with nothing beside it — the half-row `isRefillCue` exists to refuse, and one the
+    // viewer cannot act on from any other surface either. The positive control is the
+    // writable render above: the same fixture, the same day, one grant apart.
+    expect(
+      readOnlyRefillRowIds,
+      `${REFILL_FIXTURE} rendered no rows read-only, so the check below is vacuous.`
+    ).not.toEqual([]);
+    expect(
+      readOnlyRefillRowIds.filter((id) =>
+        id.startsWith("attention.fact:refill:")
+      )
+    ).toEqual([]);
+    expect(
+      readOnlyRefillElements.filter((props) => props.hasLastFill !== undefined)
+    ).toEqual([]);
+  });
+
+  // ── THE POOLED CUE'S CARRIER IS A POSITION, NOT A CONSUMER (#1374, §9) ────────
+
+  it("carries a pooled cue on the lowest-id member even when it is paused", () => {
+    // The carrier pick is `poolRefillItems`' — this profile's lowest-id member — and it
+    // has to stay that, because the row and its control would otherwise name different
+    // items. The paused member holding the lower id is exactly the case that makes the
+    // pick's indifference to `active` observable.
+    expect(
+      poolRefillRowIds,
+      `${POOL_REFILL_FIXTURE} rendered no rows at all, so the checks below are vacuous.`
+    ).not.toEqual([]);
+    expect(poolRefillRowIds).toContain(
+      `attention.fact:pool-refill:${poolSupplyId}`
+    );
+    expect(
+      poolRefillElements.filter((props) => props.hasLastFill !== undefined)
+    ).toHaveLength(1);
+  });
+
+  it("asks a paused carrier's pooled refill for a size instead of reusing its fill", () => {
+    // THE HARM IS A SILENT WRITE ONTO A SHARED BOTTLE. `poolPushes` and `poolConsumers`
+    // both drop inactive members, so this carrier drains the pool at nothing, and its
+    // remembered 30 is a number no one fills at — the only member actually drawing on
+    // the bottle fills at 90. With `hasLastFill` true the affordance never reveals the
+    // size input, and the row names the BOTTLE, so a tap would set the household's
+    // count to a stopped item's fill with nothing on screen saying whose it was.
+    const control = poolRefillElements.find(
+      (props) => props.hasLastFill !== undefined
+    );
+    expect(control).toMatchObject({
+      itemId: pausedCarrierItemId,
+      supplyId: poolSupplyId,
+      hasLastFill: false,
+      lastFillSize: null,
+    });
   });
 
   it("reads each hr_minutes window once per render (#5010)", () => {
