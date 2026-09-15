@@ -286,6 +286,86 @@ describe("temperature reply quick-log", () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
+  // #5650 FIX ROUND — THE ACKNOWLEDGEMENT EDIT IS ALLOWED TO BE REFUSED.
+  //
+  // Ruling 1 turned this flow's answer from a `sendMessage` into an EDIT of the prompt,
+  // and an edit is the one answer that can fail for being OLD: `message can't be edited`
+  // sits in `PERMANENT_DESCRIPTIONS` for Telegram's ~48h horizon while a prompt pointer
+  // lives `MESSAGE_POINTER_RETENTION_DAYS` = 3 days, so a swipe-reply to Tuesday's prompt
+  // is refused by design. Awaited un-wrapped, that throw escaped before the arm read
+  // `applied`: the reading was WRITTEN and the chat was told nothing — no reaction and no
+  // message — and the prompt stayed open, so the natural retype logged the day a SECOND
+  // time. Both halves are asserted below, and both red on the un-fixed code.
+  //
+  // `/weight` settles through the SAME `settlePrompt`, so this covers both quick-log
+  // families; the refill family's half of the same failure is in
+  // lib/__db_tests__/telegram-callbacks.test.ts.
+  it("states the result in a message when the prompt edit is refused, and closes the prompt", async () => {
+    sendMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 830,
+      chat: { id: CHAT },
+      from: { id: 71 },
+      text: "/temp",
+    });
+    const promptId = (await sendMock.mock.results.at(-1)!.value) as number;
+    const before = tempCount(p.profileId);
+    sendMock.mockClear();
+    editMock.mockClear();
+    reactMock.mockClear();
+
+    // The wire refuses THIS prompt, with Telegram's own description for a message past
+    // the edit horizon. Everything else in the flow is real.
+    editMock.mockImplementation(async (_chatId, messageId) => {
+      if (messageId === promptId)
+        throw new Error(
+          "Telegram editMessageText failed: message can't be edited"
+        );
+    });
+    try {
+      await handleIncomingMessage({
+        message_id: 831,
+        chat: { id: CHAT },
+        from: { id: 71 },
+        text: "38.6",
+      });
+    } finally {
+      editMock.mockImplementation(async () => {});
+    }
+
+    // (a) The reading landed AND the chat was told: the 👍 the arm never reached, plus
+    //     one message saying what the edit would have said.
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 831, "👍"]);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const sent = sendMock.mock.calls[0][1] as { title: string; kind?: string };
+    expect(sent.title).toMatch(/Temperature logged/);
+    // A RESULT, NOT A SECOND QUESTION: no prompt `kind`, so the fallback records no
+    // pointer of its own — one that did would be the same double-log one message further
+    // along, with the chat now holding a prompt nobody was asked.
+    expect(sent.kind).toBeUndefined();
+
+    // (b) The prompt is CLOSED even though its edit never landed. Its pointer is gone,
+    //     so the retype the silence used to provoke finds nothing open and writes
+    //     nothing — which is the half that turned one reading into two.
+    expect(
+      liveMessagePointersForKind(p.profileId, CHAT, "temp").map(
+        (ptr) => ptr.messageId
+      )
+    ).not.toContain(promptId);
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 832,
+      chat: { id: CHAT },
+      from: { id: 71 },
+      text: "38.6",
+    });
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
   it("ignores a plain message with no open prompt and no marker", async () => {
     sendMock.mockClear();
     const before = tempCount(p.profileId);

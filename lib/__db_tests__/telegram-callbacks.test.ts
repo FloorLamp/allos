@@ -1757,6 +1757,47 @@ describe("Received receipt operation", () => {
     expect(receiptBodies(second)).toEqual([]);
   });
 
+  // #5650 FIX ROUND — the receipt half of the refused-edit failure. Since ruling 1
+  // `refreshReceipt` IS the applied reply's only answer, and it edits a prompt that may
+  // be past Telegram's ~48h edit horizon (`OFFER_RETENTION_DAYS` is three days, so the
+  // offer deliberately outlives its prompt's editability). Un-wrapped, the throw escaped
+  // `handleTypedReply` before it could react or speak: supply 4 → 124, offer `completed`,
+  // and the chat told nothing at all.
+  it("speaks the receipt when the prompt edit is refused, and still never adds twice", async () => {
+    const chat = nextReceiptChat();
+    const f = await receivedFixture(chat);
+    await handleCallbackQuery(f.open);
+    const promptId = readRefillOffer(f.profileId, f.offerId)!.offer.promptId!;
+    const before = sendCount();
+    reactMock.mockClear();
+    // Telegram's own description for a message past the edit horizon, on THIS prompt.
+    editTextMock.mockImplementation(async (_chatId, messageId) => {
+      if (messageId === promptId)
+        throw new Error(
+          "Telegram editMessageText failed: message can't be edited"
+        );
+    });
+    try {
+      expect(await handleTypedReply(bareNumber(chat, "120"))).toBe(true);
+    } finally {
+      editTextMock.mockImplementation(async () => {});
+    }
+    expect(receivedCount(f)).toBe(124);
+    expect(reactMock.mock.calls.at(-1)).toEqual([chat, 901, "👍"]);
+    // The `Supply receipt` message main always sent — spoken here ONLY because the edit
+    // could not land, which is the whole difference between a preference and a silence.
+    expect(receiptBodies(before)).toEqual(["Added 120 · 124 on hand"]);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "completed"
+    );
+    // And the operation is still settled exactly once: the offer is no longer pending,
+    // so the retype is not claimed at all and adds nothing.
+    const retyped = sendCount();
+    expect(await handleTypedReply(bareNumber(chat, "120", 905))).toBe(false);
+    expect(receivedCount(f)).toBe(124);
+    expect(receiptBodies(retyped)).toEqual([]);
+  });
+
   it("refuses to choose between one sender's two open prompts", async () => {
     const chat = nextReceiptChat();
     const f = await receivedFixture(chat);

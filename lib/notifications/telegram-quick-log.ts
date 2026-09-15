@@ -1143,11 +1143,35 @@ async function settlePrompt(
 ): Promise<void> {
   if (!reply.promptId) return;
   const marker = typedReplyMarker(reply.family, reply.profileId);
-  await rebuildMessage(reply.profileId, ctx.chatId, reply.promptId, {
-    ...msg,
-    body: `${msg.body}\n${marker}`,
-  });
-  forgetMessagePointerAt(reply.profileId, ctx.chatId, reply.promptId);
+  const promptId = reply.promptId;
+  try {
+    // THE EDIT IS THE ACKNOWLEDGEMENT AND IT IS ALLOWED TO BE REFUSED. The reading is
+    // already written when we get here, and a prompt past Telegram's ~48h edit horizon —
+    // precisely the population already sitting in real chats — refuses the edit forever.
+    // Un-wrapped, that throw escaped before the arm read `applied`, so the person got no
+    // 👍 and no message for a reading that had landed. `acknowledgeInPlace` classifies it
+    // and states the same result in a message instead (./telegram).
+    await acknowledgeInPlace(
+      `${reply.family} reply`,
+      reply.profileId,
+      ctx.chatId,
+      () =>
+        rebuildMessage(reply.profileId, ctx.chatId, promptId, {
+          ...msg,
+          body: `${msg.body}\n${marker}`,
+        }),
+      // The sentence, without the prompt's `kind` and without the episode link: a result
+      // stated in a new message is not a new question, and must not become one.
+      { title: msg.title, body: msg.body }
+    );
+  } finally {
+    // RETIRED WHICHEVER WAY THE ACKNOWLEDGEMENT WENT. Dropping the pointer is what closes
+    // the question, and leaving it live is what turns a refused edit into a SECOND
+    // reading for the day: the person sees nothing, retypes, and the bare number finds
+    // the same prompt still open. In a `finally`, so that even a fallback send that
+    // cannot reach Telegram at all closes the question rather than inviting the retype.
+    forgetMessagePointerAt(reply.profileId, ctx.chatId, promptId);
+  }
 }
 
 // The prompts this chat is still waiting on an answer for, for THIS sender.
@@ -1625,6 +1649,7 @@ import type {
   RightSizeLowerCallback,
 } from "./practice-tokens";
 import {
+  acknowledgeInPlace,
   answerCallbackQuery,
   closeMessage,
   rebuildMessage,

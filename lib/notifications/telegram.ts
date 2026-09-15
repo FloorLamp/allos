@@ -761,6 +761,65 @@ export async function rebuildMessage(
   });
 }
 
+// ---- The acknowledgement edit, made failure-safe (#5650) ----
+//
+// Acknowledge a WRITE THAT HAS ALREADY HAPPENED by editing the message that asked for
+// it — and, when that edit cannot land, by SAYING the same result in a message instead.
+//
+// THE FAILURE THIS EXISTS FOR. #5650 ruling 1 turned every typed reply's answer from a
+// `sendMessage` into an edit of the prompt. A send cannot fail for being old; an edit
+// can, and permanently — `PERMANENT_DESCRIPTIONS` (./telegram-error) lists
+// `message can't be edited` for Telegram's ~48h edit horizon, while
+// `MESSAGE_POINTER_RETENTION_DAYS` and `OFFER_RETENTION_DAYS` are both three days, so a
+// prompt is deliberately answerable for longer than it is editable. Awaited un-wrapped,
+// the throw escaped the whole acknowledgement: the reading was written and the chat was
+// told NOTHING, no reaction and no message — the "indistinguishable from the bot being
+// broken" state ruling 4 exists to remove.
+//
+// A PREFERENCE IS NOT A GUARANTEE. "Never a new message" is what ruling 1 buys the
+// reader on the path that works; a silent write is not an acceptable price for keeping
+// it on the path that does not. The fallback is ONE message stating the same result the
+// edit would have — the answer main always sent, spoken only when the edit is refused.
+//
+// THE CLASSIFICATION IS THE ONE EVERY OTHER EDIT-OF-A-POSSIBLY-OLD-MESSAGE SITE READS
+// (#1885, `rotatePointer` above): permanent (deleted, too old, chat lost) against
+// transient (rate limit, 5xx, network). BOTH fall back, and that is deliberate — an
+// acknowledgement has no later retry (nobody re-runs a settled reply) and a reader who
+// was told nothing cannot tell the two apart. What the class buys is the log line
+// saying which happened, in the vocabulary the sweep and the rotation already use.
+//
+// THE FALLBACK IS A SENTENCE, NOT A SECOND PROMPT: title and body only. Carrying the
+// prompt's own `kind` would record a new pointer (`recordPointer`'s `awaitsTypedReply`
+// arm above) and leave a fresh open prompt sitting in the chat — the same double-log
+// this path exists to close, one message further along.
+export async function acknowledgeInPlace(
+  label: string,
+  profileId: number,
+  chatId: number | string,
+  edit: () => Promise<void>,
+  fallback: { title: string; body: string } | null
+): Promise<void> {
+  try {
+    await edit();
+  } catch (e) {
+    const permanent = classifyTelegramFailure(e) === "permanent";
+    log.info(
+      permanent
+        ? `${label}: prompt can no longer be edited, stating the result instead`
+        : `${label}: prompt edit did not land (transient), stating the result instead`,
+      {
+        profile: profileId,
+        chat: String(chatId),
+        err: e instanceof Error ? e.message : String(e),
+      }
+    );
+    // Null: this outcome already has a sentence the CALLER sends (every refill refusal
+    // refreshes the prompt too), so a fallback here would put two messages in the chat
+    // for one reply — the noise ruling 1 is about.
+    if (fallback) await sendTelegramMessage(chatId, fallback, profileId);
+  }
+}
+
 // Replace a consumed message's text with a closing line and drop all buttons. The
 // `text` is a pre-composed plain string (the callback layer's replacementWithTitle,
 // which retains the already-attributed original title line from cq.message.text) —

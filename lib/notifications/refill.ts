@@ -59,6 +59,7 @@ import { composeForRebuild } from "./compose";
 import { deliveredKeyboard } from "./delivered-keyboard";
 import { getPoolView } from "../queries/intake/supply-pool";
 import {
+  acknowledgeInPlace,
   sendTelegramMessage,
   answerCallbackQuery,
   rebuildMessage,
@@ -721,10 +722,12 @@ export function openRefillPrompts(
 
 // Settle one typed reply against a receipt operation.
 //
-// AN APPLIED REPLY SENDS NOTHING (ruling 1). `refreshReceipt` already edited the prompt
-// in place to `Added 120 · 128 on hand` — it has since #5580 — and the `Supply receipt`
-// message that used to follow it said the same thing a second time, growing the chat by
-// two messages per delivery. The caller sets the reaction; this returns what happened.
+// AN APPLIED REPLY SENDS NOTHING WHEN THE EDIT LANDS (ruling 1). `refreshReceipt`
+// already edited the prompt in place to `Added 120 · 128 on hand` — it has since #5580 —
+// and the `Supply receipt` message that used to follow it said the same thing a second
+// time, growing the chat by two messages per delivery. The caller sets the reaction; this
+// returns what happened. WHEN THE EDIT CANNOT LAND the receipt is spoken instead, because
+// a written supply the chat was never told about is worse than an extra line.
 //
 // A REFUSAL IS SPOKEN, ALWAYS. An unauthorized reply used to be CLAIMED and answered
 // with nothing, which from the chat's side is indistinguishable from the bot being
@@ -744,19 +747,34 @@ export async function settleRefillReply(
     ctx.messageId == null
   )
     return { applied: false, refusal: "This receipt is no longer available." };
+  const offerId = reply.operationId;
   const outcome = settleReceived(
     reply.profileId,
-    reply.operationId,
+    offerId,
     ctx.chatId,
     reply.promptId,
     ctx.senderId,
     String(ctx.messageId),
     { amount: reply.text }
   );
-  if (outcome.refresh) await refreshReceipt(reply.profileId, reply.operationId);
   // APPLIED means the ledger moved. `Already recorded` and `Receipt canceled` refresh
   // the prompt too, and neither is an answer to THIS reply that deserves a 👍.
-  return outcome.wroteProfileId != null
+  const applied = outcome.wroteProfileId != null;
+  // THE REFRESH IS THE APPLIED REPLY'S ONLY ANSWER, so it may not throw the answer away:
+  // the supply is already refilled and the offer already `completed` when it runs, and
+  // an edit refused for age (or a 429) used to escape the arm before it could react or
+  // speak. An applied reply therefore falls back to the `Supply receipt` message main
+  // always sent; every other outcome here carries a REFUSAL the arm sends itself, so its
+  // failed refresh stays silent rather than doubling the chat.
+  if (outcome.refresh)
+    await acknowledgeInPlace(
+      "refill receipt",
+      reply.profileId,
+      ctx.chatId,
+      () => refreshReceipt(reply.profileId, offerId),
+      applied ? { title: "Supply receipt", body: outcome.text } : null
+    );
+  return applied
     ? { applied: true, refusal: null }
     : { applied: false, refusal: outcome.text };
 }
