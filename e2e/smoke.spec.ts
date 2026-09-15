@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
+import { appContent } from "./helpers";
 import { followLink, loginAs, openCommandPalette } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
@@ -230,7 +231,7 @@ test("a run-out medication is a Home row carrying the shared Refilled tap (#5121
   // The named fixture's own row, not "whichever refill row leads": this profile is a
   // shared seed and a neighbour's dose log can move another item's days-left, so the
   // claim is about THIS item rather than about how many rows the band holds.
-  const row = page
+  const row = appContent(page)
     .getByTestId("home-now")
     .locator('[data-candidate-id^="attention.fact:refill:"]')
     .filter({ hasText: "Low Supply Med (e2e)" });
