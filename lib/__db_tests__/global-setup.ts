@@ -58,8 +58,8 @@ export default async function setup(): Promise<void> {
   fs.mkdirSync(staging, { recursive: true });
   const built = path.join(staging, "template.db");
 
-  // Point the singleton at the template for the duration of the build, then put
-  // the environment back so nothing downstream inherits it.
+  // Point the singleton at the STAGED copy for the duration of the build, then
+  // put the environment back so nothing downstream inherits it.
   const priorPath = process.env.ALLOS_DB_PATH;
   const priorAdmin = process.env.ADMIN_PASSWORD;
   process.env.ALLOS_DB_PATH = built;
