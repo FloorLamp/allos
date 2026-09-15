@@ -788,7 +788,8 @@ export async function rebuildMessage(
 // was told nothing cannot tell the two apart. What the class buys is the log line
 // saying which happened, in the vocabulary the sweep and the rotation already use.
 //
-// THE FALLBACK IS A SENTENCE, NOT A SECOND PROMPT: title and body only. Carrying the
+// THE FALLBACK IS A SENTENCE, NOT A SECOND PROMPT: the message's OWN title and body,
+// and nothing else of it (`Pick`, so the words cannot drift from the edit's). Carrying the
 // prompt's own `kind` would record a new pointer (`recordPointer`'s `awaitsTypedReply`
 // arm above) and leave a fresh open prompt sitting in the chat — the same double-log
 // this path exists to close, one message further along.
@@ -797,7 +798,7 @@ export async function acknowledgeInPlace(
   profileId: number,
   chatId: number | string,
   edit: () => Promise<void>,
-  fallback: { title: string; body: string } | null
+  fallback: Pick<NotificationMessage, "title" | "body"> | null
 ): Promise<void> {
   try {
     await edit();
