@@ -1,4 +1,6 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 import { followLink, loginAs, openCommandPalette } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
@@ -191,12 +193,45 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
 test("a run-out medication is a Home row carrying the shared Refilled tap (#5121)", async ({
   page,
 }) => {
+  // PIN THE PRECONDITION, because this fixture is SHARED AND MUTATED. The seeded
+  // "Low Supply Med (e2e)" starts at 3 units against ~10 units/day, so it is out of
+  // supply and its cue is due today. But medications-ux-r2.spec.ts item 3 taps the
+  // very same item's one-tap Refilled, which adds the remembered fill of 30 — and
+  // that item's seed comment says so on purpose, since its own assertion needs the
+  // button to persist across repeated runs. Both files land in shard 5 and the seed
+  // is not reset between them, so whenever that spec runs first this item arrives
+  // here with ~3 days left.
+  //
+  // At which point Home is RIGHT to drop it: "eligible means today" (#5435 §2.1)
+  // keeps a cue that is still days out in the Later fold with no control, which is
+  // exactly what it did — the row rendered as `home-later-entry` reading
+  // "Low Supply Med (e2e) Sep 18". So the product needs no change and the assertion
+  // needs no weakening; what was missing is that the precondition was never pinned.
+  // Restoring the seeded quantity (not zero — the seed's own value) makes this test
+  // order-independent and leaves the item exactly as the seed built it.
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `UPDATE intake_items SET quantity_on_hand = 3
+        WHERE profile_id = 1 AND name = ?`
+    ).run("Low Supply Med (e2e)");
+  } finally {
+    db.close();
+  }
+
   await page.goto("/");
+  // Scoped to the NOW BAND, not to `main`: a cue that is merely present proves
+  // nothing, because the Later fold renders the same item under the same
+  // `attention.fact:refill:` id and carries no control. Asking the Now band for it is
+  // what separates "the cue is somewhere on Home" from "the cue is an action today",
+  // and it is the assertion that catches a regression in the seat rule itself.
+  //
   // The named fixture's own row, not "whichever refill row leads": this profile is a
   // shared seed and a neighbour's dose log can move another item's days-left, so the
   // claim is about THIS item rather than about how many rows the band holds.
   const row = page
-    .getByRole("main")
+    .getByTestId("home-now")
     .locator('[data-candidate-id^="attention.fact:refill:"]')
     .filter({ hasText: "Low Supply Med (e2e)" });
   await expect(row).toHaveCount(1);
