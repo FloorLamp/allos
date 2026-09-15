@@ -200,6 +200,9 @@ export function gatherDashboardIllnessCockpits(
               met: schoolStatus.met,
               clearedForHours: schoolStatus.clearedForHours,
               thresholdHours: schoolStatus.thresholdHours,
+              // The ARM, not the null clock: a held countdown (#5688) also has no
+              // number, and only this arm means "nothing measured since the fever".
+              noReadingSinceFever: schoolStatus.evidence === "none",
             }
           : null,
       controls: sharedControls
