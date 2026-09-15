@@ -85,7 +85,13 @@ export interface BristolRow {
   occurred_at: string | null;
   /** The tap instant, canonical UTC. Always present — the row was filed at some moment. */
   recorded_at: string;
-  /** 'stated' | 'tap' | null, the provenance of `occurred_at`. */
+  /**
+   * 'stated' | 'tap' | null, the provenance of `occurred_at`. In practice this
+   * ledger yields only 'stated' or null: 'tap' is permitted by the CHECK for
+   * vocabulary symmetry with the sibling event ledgers and no stool writer can
+   * produce it, which is deliberate and argued at the column in
+   * 20260911-stool-events.ts — a reader should not treat it as an unhandled case.
+   */
   time_source: string | null;
 }
 

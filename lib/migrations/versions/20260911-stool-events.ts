@@ -79,6 +79,22 @@ export function up(db: Database.Database): void {
       -- The movement's own instant, nullable: NULL means nobody stated one, and the
       -- app never stamps a stool with a time nobody stated. time_source records
       -- where a present value came from — the same closed pair the sibling ledgers use.
+      --
+      -- 'tap' IS PERMITTED AND UNREACHABLE, AND THAT IS THE DESIGN, NOT A MISSING ARM.
+      -- logStoolCore writes 'stated' or NULL and no other writer exists. 'tap' means
+      -- the SURFACE carried an "it is happening now" contract of its own, and the only
+      -- surface that has ever carried one is the Telegram food button (the vocabulary
+      -- is 154-food-eating-time's). Stool is app-only by the argued exclusion on the
+      -- Telegram vocabulary (#5872), so there is no surface here that could assert
+      -- one. substance_log_events sits in exactly this position already — its column
+      -- permits 'tap', its core's statedAt (string | null) is what makes the value
+      -- unreachable from the app, and the reason is written out at that parameter in
+      -- lib/substance-log-write.ts. The enum is kept closed and IDENTICAL across the
+      -- three ledgers so a reader comparing them meets one vocabulary, not three
+      -- dialects that happen to overlap.
+      --
+      -- So this is not a gap to fill. Adding a 'tap' writer here means claiming a new
+      -- surface that carries that contract, and owes the argument for it.
       occurred_at TEXT,
       time_source TEXT
         CHECK (time_source IS NULL OR time_source IN ('tap', 'stated')),
