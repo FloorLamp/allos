@@ -5,7 +5,7 @@ import SegmentedControl from "@/components/SegmentedControl";
 import { daySwitcherOwnsDay, useDayContext } from "@/components/DayContext";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { shiftDateStr } from "@/lib/date";
-import { formatWeekdayDate } from "@/lib/format-date";
+import { daySwitcherLabel } from "@/lib/format-date";
 import { historyDayHref } from "@/lib/hrefs";
 
 export default function BoundedDaySwitcher() {
@@ -20,12 +20,12 @@ export default function BoundedDaySwitcher() {
     const date = shiftDateStr(day.today, -ago);
     return {
       value: date,
-      label:
-        ago === 0
-          ? "Today"
-          : ago === 1
-            ? "Yesterday"
-            : formatWeekdayDate(date, prefs),
+      // The tab's word, from the vocabulary the surfaces BENEATH this switcher now
+      // share (#5663 ruling 5) — a count line that says "today" under a tab reading
+      // "Yesterday" is the sheet disagreeing with itself. Asked for by day rather than
+      // by `ago` so one function answers both callers; this loop is the only place
+      // `ago` exists.
+      label: daySwitcherLabel(date, day.today, prefs).label,
       testId: `day-context-${ago}`,
       dataAttributes: { "data-days-ago": ago },
     };

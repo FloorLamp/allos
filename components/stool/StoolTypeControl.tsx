@@ -6,8 +6,7 @@ import { useWritePipeline } from "@/components/useWritePipeline";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useToast } from "@/components/Toast";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { formatClockValue, formatWeekdayDate } from "@/lib/format-date";
-import { daysBetweenDateStr } from "@/lib/date";
+import { daySwitcherLabel, formatClockValue } from "@/lib/format-date";
 import { undoRefusalText, type UndoOffer } from "@/lib/undo-offer";
 import { BRISTOL_STOOL_TYPES, bristolReceiptLines } from "@/lib/bristol-stool";
 import {
@@ -381,19 +380,21 @@ export default function StoolTypeControl({
   // ruled word is the one `BoundedDaySwitcher` is already showing on the selected tab,
   // and never "today" for a past day.
   //
-  // DERIVED THE SWITCHER'S OWN WAY, deliberately: Today / Yesterday / `formatWeekdayDate`
-  // for anything earlier, from the same day and the same prefs the switcher reads, so
-  // the tab and the line beneath it cannot disagree. It is a second copy of that
-  // derivation for now — the one shared helper needs clearance the fence note on #5903
-  // is still waiting for, and building it here anyway would be the speculative version
-  // of an answer nobody has given.
-  const daysBack = daysBetweenDateStr(writeDate, dayContext?.today ?? today);
+  // THE SWITCHER'S OWN FUNCTION, not a second copy of its ternary: `daySwitcherLabel`
+  // is the one place that vocabulary lives, and `BoundedDaySwitcher` reads its tabs out
+  // of it too, so the tab and the line beneath it cannot drift apart. Only the CASE is
+  // this surface's: a tab is titled and a count line is prose, which is what the
+  // returned kind is for — "1 yesterday" rather than "1 Yesterday", and `on` before a
+  // weekday date, which must keep its capitals.
+  const selectedDay = daySwitcherLabel(
+    writeDate,
+    dayContext?.today ?? today,
+    prefs
+  );
   const dayWord =
-    daysBack === 0
-      ? "today"
-      : daysBack === 1
-        ? "yesterday"
-        : `on ${formatWeekdayDate(writeDate, prefs)}`;
+    selectedDay.kind === "date"
+      ? `on ${selectedDay.label}`
+      : selectedDay.label.toLowerCase();
 
   // THE ROWS AS RENDERED: the vocabulary's two lines per reading, and the Undo on the
   // newest one — offered only while that newest reading is the one THIS MOUNT landed,
