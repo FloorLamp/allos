@@ -1,8 +1,9 @@
 // DB INTEGRATION TIER — issue #3265, at the SURFACE: Home read the composed one-tap
 // against a window it had already left.
 //
-// lib/__db_tests__/usual-routine-window.test.ts pins the two windows against each other.
-// This file asks the only question that binds `app/(app)/page.tsx` itself: at 22:30
+// The pure pin that held the two windows against each other retired with the placement
+// pipeline it measured (#5885), so this is now the whole of #3265's regression cover.
+// It asks the only question that binds `app/(app)/page.tsx` itself: at 22:30
 // local, does the offer reach the page? It renders the real Home and reads the rows it
 // produced, the same way the #3096 census does.
 //
