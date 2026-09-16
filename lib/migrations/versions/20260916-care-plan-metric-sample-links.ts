@@ -31,12 +31,11 @@ import type { Migration } from "../runner";
 // migrations whose delete target had one declared it, and at runtime an unfreed
 // blocking link raises SQLITE_CONSTRAINT_FOREIGNKEY inside somebody else's write.
 //
-// `metric_samples` is not `medical_records`: it HAS live delete paths that know
-// nothing about follow-ups — the same-origin overlap supersede re-times a night and
-// deletes the sample it replaced (#3628, lib/integrations/sleep-overlap-db.ts), the
-// per-reading delete on a metric detail page (#1488), the offline queue's replay. A
-// new NO ACTION link into it would make every one of those a potential throw, guarded
-// by a hand survey of exactly the kind that just failed. `SET NULL` binds without one:
+// `metric_samples` is not `medical_records`: it HAS live delete paths written without
+// follow-ups in mind — integration re-times, whole-table wipes, the offline queue's
+// replay — and it keeps growing them, which is the point rather than the list. A new
+// NO ACTION link into it would make each of those a potential throw, guarded by a hand
+// survey of exactly the kind that just failed. `SET NULL` binds without one:
 // SQLite applies it at runtime and `inboundDeleteLinks` reads it inside a migration, in
 // both postures, for every delete path including the ones written after this one.
 //
