@@ -6,7 +6,7 @@ import { useWritePipeline } from "@/components/useWritePipeline";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useToast } from "@/components/Toast";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { formatClockValue } from "@/lib/format-date";
+import { daySwitcherLabel, formatClockValue } from "@/lib/format-date";
 import { undoRefusalText, type UndoOffer } from "@/lib/undo-offer";
 import { BRISTOL_STOOL_TYPES, bristolReceiptLines } from "@/lib/bristol-stool";
 import {
@@ -62,9 +62,9 @@ import { OFFLINE_OTHER_SUBJECT_MESSAGE } from "@/lib/offline/queue";
 // receipt row, newest first, two lines each, with one count line beneath.
 //
 //     Type 6 · Mushy
-//     Fluffy pieces with ragged edges, a mushy stool · 8:31am      [Undo]
+//     Fluffy pieces with ragged edges, a mushy stool · 8:31 AM     [Undo]
 //     Type 3 · Cracked
-//     Like a sausage but with cracks on the surface · 6:02am
+//     Like a sausage but with cracks on the surface · 6:02 AM
 //     2 today
 //
 // THE ROWS COME FROM THE SERVER, never from arithmetic on a client copy. The write
@@ -211,8 +211,16 @@ export default function StoolTypeControl({
 
   // The reading's own clock, through the login's 12h/24h seam (#964) rather than the
   // stored 24-hour spelling — a row is prose, not a stored value being edited.
+  //
+  // `upper-space`, so a 12h login reads `8:31 AM` (#5663 ruling 1, owner 2026-09-15).
+  // These rows shipped `lower-nospace` while the illness card three inches above them
+  // printed `upper-space`, putting two clock voices on one screen; the owner ruled the
+  // one voice and ruled out a third spelling, so this is a call-site change and NOT a
+  // new mode. Surfaces still on `lower-nospace` migrate as they are touched. The
+  // toast's minute is read through here too, which is what keeps a row and the
+  // confirmation of it from naming one instant two ways.
   const clockOf = (hhmm: string) =>
-    formatClockValue(hhmm, prefs.timeFormat, "", "lower-nospace");
+    formatClockValue(hhmm, prefs.timeFormat, "", "upper-space");
 
   // THE INVERSE, PICKED BY WHAT THE WRITE ACTUALLY DID. Both halves are the record's own
   // row writes (#4433) — nothing stool-shaped is added for the undo — and both re-derive
@@ -366,6 +374,28 @@ export default function StoolTypeControl({
     if (result === "captured") statement.spend(stated);
   }
 
+  // THE COUNT LINE'S DAY WORD (#5663 ruling 5, owner 2026-09-15). `count` counts
+  // `writeDate` — the day the sheet is POINTED AT — so the line that read `1 today`
+  // said "today" while the rows directly above it named yesterday's clock times. The
+  // ruled word is the one `BoundedDaySwitcher` is already showing on the selected tab,
+  // and never "today" for a past day.
+  //
+  // THE SWITCHER'S OWN FUNCTION, not a second copy of its ternary: `daySwitcherLabel`
+  // is the one place that vocabulary lives, and `BoundedDaySwitcher` reads its tabs out
+  // of it too, so the tab and the line beneath it cannot drift apart. Only the CASE is
+  // this surface's: a tab is titled and a count line is prose, which is what the
+  // returned kind is for — "1 yesterday" rather than "1 Yesterday", and `on` before a
+  // weekday date, which must keep its capitals.
+  const selectedDay = daySwitcherLabel(
+    writeDate,
+    dayContext?.today ?? today,
+    prefs
+  );
+  const dayWord =
+    selectedDay.kind === "date"
+      ? `on ${selectedDay.label}`
+      : selectedDay.label.toLowerCase();
+
   // THE ROWS AS RENDERED: the vocabulary's two lines per reading, and the Undo on the
   // newest one — offered only while that newest reading is the one THIS MOUNT landed,
   // so the word stays "undo" rather than becoming a delete on a row gathered from the
@@ -482,15 +512,17 @@ export default function StoolTypeControl({
         data-testid="quick-entry-stool-count"
         className="mt-3 text-sm text-slate-500 dark:text-slate-400"
       >
-        {/* THE RULED COUNT LINE: `2 today`, beneath the rows. The zero state keeps its
-            own sentence — with no rows above it, `0 today` would be the sheet printing
-            the absence of a fact beside a control that already says what a tap does
-            (#5431's argument for dropping a zero count). */}
+        {/* THE RULED COUNT LINE: `2 today` beneath the rows, in the day switcher's own
+            word for the day the sheet is standing on. The zero state keeps its own
+            sentence — with no rows above it, `0 <day>` would be the sheet printing the
+            absence of a fact beside a control that already says what a tap does
+            (#5431's argument for dropping a zero count); the PM ruled it as built on
+            2026-09-11 and ruling 5 does not reach it. */}
         <RollingNumber
           value={count}
           testId="quick-entry-stool-rolling-count"
           format={(value) =>
-            value === 0 ? "Nothing logged today." : `${value} today`
+            value === 0 ? "Nothing logged today." : `${value} ${dayWord}`
           }
         />
       </p>

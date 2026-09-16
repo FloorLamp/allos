@@ -2019,9 +2019,12 @@ test("the sheet's own day carries Food, Practice and Stool into the same History
     );
     await settledFill(page, picker.getByTestId("stool-when-time"), "08:10");
     await settledClick(page, picker.getByTestId("stool-type-4"));
-    // #5663 ruled this line's wording: one count beneath the day's receipt rows.
+    // #5663 ruled this line's wording: one count beneath the day's receipt rows, in the
+    // word the day switcher is showing on the tab just pressed. The sheet is standing
+    // on YESTERDAY here, so "1 today" was the count line contradicting the receipt rows
+    // above it, which name yesterday's clock times (ruling 5, owner 2026-09-15).
     await expect(picker.getByTestId("quick-entry-stool-count")).toContainText(
-      "1 today"
+      "1 yesterday"
     );
     await page.keyboard.press("Escape");
     await expect(stool).toHaveCount(0);
