@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import {
+  appContent,
   comboboxRows,
   expectNoClippedContent,
   hydratedClick,
@@ -671,10 +672,10 @@ for (const [label, viewport, wide] of [
       // the day view and the Now band is a separate list below it, so the cockpit
       // shares a frame with nothing and there is no sibling for it to step in from.
       //
-      // WHAT SURVIVES IS THE HALF THAT IS STILL ABOUT THIS CARD: the cockpit is the
-      // whole of its own container at every width. That is the assertion that fails
-      // if the card ever re-acquires a cap of its own, which is the defect #4752
-      // item 2 was about — the band was only ever how it was seen.
+      // ONE HALF IS STILL ABOUT THIS CARD: the cockpit is the whole of its own
+      // container at every width. That is the assertion that fails if the card ever
+      // re-acquires a cap of its own, which is the defect #4752 item 2 was about —
+      // the band was only ever how it was seen.
       const [cardBox, columnBox] = await settledBoxes([
         card,
         card.locator("xpath=.."),
@@ -683,6 +684,38 @@ for (const [label, viewport, wide] of [
         Math.abs(cardBox.width - columnBox.width),
         `${label} cockpit spans its own container`
       ).toBeLessThan(2);
+
+      // AND THE OTHER HALF HAS A HOST AGAIN (#5894, owner ruling 2026-09-15 option
+      // (a)). §4 left the cockpit running to Home's 72rem canvas, which is the
+      // full-bleed §2 was bought to dissolve; the declaration now sits on the CURRENT
+      // CARE block, so the claim is that block's relationship to the page it sits in
+      // rather than a number — a block that has merely been made narrow, or one whose
+      // own canvas is narrow, satisfies `width <= 880` and says nothing. Below the cap
+      // the block is the whole line, which is what the phone already rendered.
+      const [careBox, canvasBox] = await settledBoxes([
+        appContent(page).getByTestId("home-current-care"),
+        appContent(page).getByTestId("dashboard-canvas"),
+      ]);
+      const leftInset = careBox.x - canvasBox.x;
+      const rightInset =
+        canvasBox.x + canvasBox.width - (careBox.x + careBox.width);
+      if (wide) {
+        expect(
+          leftInset,
+          `${label} Current care is inset, not full-bleed`
+        ).toBeGreaterThan(1);
+        // Both edges, because a centred cap is symmetric and a single-edge claim
+        // would pass on a block that had only been pushed over.
+        expect(
+          Math.abs(leftInset - rightInset),
+          `${label} Current care is centered in the canvas`
+        ).toBeLessThan(2);
+      } else {
+        expect(
+          Math.abs(careBox.width - canvasBox.width),
+          `${label} Current care spends the whole line`
+        ).toBeLessThan(2);
+      }
 
       // IN PLACE (#4752 item 3). Everything the panel opens BENEATH keeps its exact
       // box, and the card keeps its edges — a panel that reflowed the chips, or one
