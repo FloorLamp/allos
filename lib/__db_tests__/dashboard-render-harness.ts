@@ -57,6 +57,9 @@ import {
 import { vi } from "vitest";
 import { db } from "@/lib/db";
 import { authorizedProfileSubset } from "@/lib/cross-profile";
+// Type-only, so it is erased before the mock registry ever sees it — the no-top-level-
+// import rule above is about the runtime cycle, which a type cannot make.
+import type { Access } from "@/lib/auth";
 
 /** The identity a render sees. Mutable on purpose: the meter walks personas through it. */
 export interface HarnessProfile {
@@ -76,7 +79,21 @@ export const session: {
    * a spec cannot widen a view past what the scope would authorize.
    */
   viewIds: number[] | null;
-} = { loginId: 0, profile: null, accessible: [], viewIds: null };
+  /**
+   * The ACCESS LEVEL this identity holds, on the session and on every accessible
+   * profile in the scope. "write" — the default — is the session every existing
+   * reader here renders under. A spec sets "read" to render as a view-only viewer,
+   * which is the only way this tier can observe an affordance that is dropped at
+   * render, and restores it afterwards.
+   */
+  access: Access;
+} = {
+  loginId: 0,
+  profile: null,
+  accessible: [],
+  viewIds: null,
+  access: "write",
+};
 
 interface MemoNode {
   children: Map<unknown, MemoNode>;
@@ -148,7 +165,7 @@ export function authModule(actual: AuthModule): AuthModule {
           role: "admin",
         },
         profile: session.profile,
-        access: "write" as const,
+        access: session.access,
         deviceSessionKey: "dashboard-test-device",
       } as Awaited<ReturnType<AuthModule["requireSession"]>>;
     },
@@ -181,7 +198,7 @@ export function scopeModule(
           ids,
           session.viewIds ?? [session.profile.id]
         ),
-        access: new Map(ids.map((id) => [id, "write" as const])),
+        access: new Map(ids.map((id) => [id, session.access])),
       } as Awaited<ReturnType<ScopeModule["requireScope"]>>;
     },
   };

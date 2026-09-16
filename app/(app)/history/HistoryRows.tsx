@@ -539,9 +539,12 @@ export default function HistoryRows({
           });
           break;
         case "stool":
-          // The `metric_samples` row id IS the address, and `deleteStoolReading` runs
-          // the shared reading delete — so the tombstone and the undo capture are the
-          // ones every other reading delete already gets (#2642).
+          // The `stool_events` row id IS the address (#5872). NOT the shared reading
+          // delete the two cases above take: a movement is its own event, so
+          // `deleteStoolReading` runs the ledger's own core, which re-derives the
+          // target against (id, profile_id) in its own transaction. It still routes
+          // through `captureDelete`, so the tombstone and the undo capture are the
+          // ones every other delete here already gets (#2642).
           fd.set("id", String(edit.rowId));
           await undoable(deleteStoolReading, fd, {
             deletedMessage: "Movement removed",
@@ -771,9 +774,12 @@ export default function HistoryRows({
       case "stool":
         // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
         // It stamps the ROW's profile itself, like the dose, substance and symptom
-        // forms above, so it does not run through `post()`. No date and no time: the
-        // instant is the row's ADDRESS (see `StoolForm`), so a correction moves the
-        // type and a reading filed on the wrong day is a delete and a re-log.
+        // forms above, so it does not run through `post()`. No date and no time — not
+        // because the instant is the address, which the ledger retired (a movement is
+        // addressed by its id), but because a when-field is what would reach
+        // `correctStoolEventCore`'s un-re-judged date arm; `StoolForm` argues it at
+        // length. A correction moves the TYPE, and a movement filed on the wrong day
+        // is a delete and a re-log — the ⋯ offers both.
         return (
           <StoolForm
             date={row.date}

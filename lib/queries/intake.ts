@@ -4,6 +4,7 @@
 // (everything is still re-exported from @/lib/queries). Every export keeps its
 // original name and signature.
 export * from "./intake/schedule";
+export * from "./intake/dose-ledger";
 export * from "./intake/refill";
 export * from "./intake/supply-pool";
 export * from "./intake/adherence";

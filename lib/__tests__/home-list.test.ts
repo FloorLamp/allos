@@ -118,6 +118,7 @@ function input(over: Partial<HomeListInput> = {}): HomeListInput {
     minutesOfDay: 12 * 60,
     subject,
     attention: [],
+    refillTargets: new Set<string>(),
     training: noTraining,
     fast: null,
     period: { episode: null, canStartToday: false, writable: true },
@@ -372,6 +373,98 @@ describe("the Now band pins what is owed", () => {
   });
 });
 
+// ── The low-supply cue (#5121, §9) ──────────────────────────────────────────────
+
+describe("the low-supply cue", () => {
+  // The two shapes the shared gather emits: a private tracked supply, keyed on the
+  // ITEM, and a shared bottle, keyed on the POOL. Both arrive with a run-out date and
+  // no affordance field, which is exactly why the model's own actionable predicate
+  // cannot seat them.
+  const cue = (key: string, daysLeft: number): UpcomingItem =>
+    ({
+      key,
+      domain: "refill",
+      title: "Vitamin D3",
+      detail:
+        daysLeft <= 0 ? "Out of supply" : `≈${daysLeft} days of supply left`,
+      href: "/nutrition?tab=supplements",
+      dueDate: shiftDateStr(TODAY, daysLeft),
+    }) as UpcomingItem;
+
+  const PRIVATE = cue("refill:7", 0);
+  const POOLED = cue("pool-refill:2", 0);
+
+  it("seats a cue that has run out under the rule, in the care seat", () => {
+    const list = composeHomeList(
+      input({ attention: [PRIVATE], refillTargets: new Set(["refill:7"]) })
+    );
+    expect(seats(list)).toEqual(["care"]);
+    expect(list.now?.rows[0]?.content).toEqual({
+      kind: "item",
+      item: PRIVATE,
+    });
+  });
+
+  it("seats a pooled bottle on the pool's own key", () => {
+    expect(
+      seats(
+        composeHomeList(
+          input({
+            attention: [POOLED],
+            refillTargets: new Set(["pool-refill:2"]),
+          })
+        )
+      )
+    ).toEqual(["care"]);
+  });
+
+  // AN ACTION OR NOTHING (§2.2/§2.4). A cue the caller cannot mount the shared action
+  // on would be a row that states a shortage and offers no fix, which is the shape the
+  // admission test refuses. The targets set is the caller's answer, so an empty one
+  // seats nothing even though the cue itself is present and due.
+  it("seats nothing when the caller cannot offer the shared action", () => {
+    expect(
+      seats(
+        composeHomeList(
+          input({ attention: [PRIVATE], refillTargets: new Set() })
+        )
+      )
+    ).toEqual([]);
+  });
+
+  // ELIGIBLE MEANS TODAY (§2.1). A cue days out is a dated commitment: it keeps the
+  // Later fold's tail, named and with no control, and it does NOT take a seat under
+  // the rule — Home states what is owed today, not what a week's consumption implies.
+  it("leaves a cue that is still days away in the Later fold, with no control", () => {
+    const list = composeHomeList(
+      input({
+        attention: [cue("refill:7", 4)],
+        refillTargets: new Set(["refill:7"]),
+      })
+    );
+    expect(seats(list)).toEqual([]);
+    expect(list.later?.entries.map((entry) => entry.content)).toEqual([
+      { kind: "commitment", name: "Vitamin D3", on: shiftDateStr(TODAY, 4) },
+    ]);
+  });
+
+  // NO INVENTORY STRIP (§9, hard exclusion). The cue is one row per item that has run
+  // out, and a tracked item that has NOT is not a row at all — the gather never emits
+  // one, and nothing here invents a reading for it.
+  it("is one row per cue and never a reading of the cabinet", () => {
+    const list = composeHomeList(
+      input({
+        attention: [PRIVATE, POOLED],
+        refillTargets: new Set(["refill:7", "pool-refill:2"]),
+      })
+    );
+    expect(list.now?.rows.map((row) => row.id)).toEqual([
+      "attention.fact:refill:7",
+      "attention.fact:pool-refill:2",
+    ]);
+  });
+});
+
 // ── The three state rows on one lifecycle (#5142) ───────────────────────────────
 
 describe("the Training row moves through its three states in one day", () => {
@@ -556,6 +649,56 @@ describe("the Setup list", () => {
     const [row] = composeHomeSetup(subject, [gap]);
     expect(row?.factKey).toBe("data-quality:dose-amount-unreadable");
     expect(row?.finding).toBe(gap);
+  });
+
+  // ── #5285'S TWO SETUP ROWS, THROUGH EXISTING ADMISSION (#5435 §9) ────────────
+  //
+  // §9: "The two setup rows land in §3.4 through existing admission." These are the
+  // rows as #5285 specifies them — `intake-unscheduled` and `intake-obligation-mismatch`,
+  // each on the data-quality bus's own `data-quality:<key>` dedupe key, each opening
+  // the editor its copy names. The claim under test is that §3.4 needs NOTHING for
+  // them: the seat is keyed on what the bus stamps, not on a list of keys Home knows,
+  // so the day the detector emits them they arrive seated and dismissible.
+  //
+  // WHAT THIS DOES NOT CLAIM: that the gaps exist. They do not — `DataQualityGapKey`
+  // carries neither key on main, and detecting them is the correctness half #5285 and
+  // §9 both hold apart from Home. This is the Home half, and it is the whole Home half.
+  const setupRow = (key: string, title: string, href: string): Finding => ({
+    domain: "data-quality",
+    dedupeKey: `data-quality:${key}`,
+    title,
+    actionHref: href as Finding["actionHref"],
+  });
+
+  it("seats #5285's two rows on nothing but what the bus stamps", () => {
+    const rows = composeHomeSetup(subject, [
+      setupRow(
+        "intake-unscheduled",
+        "Ibuprofen has no dose time — set one and it will be due, reminded and counted.",
+        "/medications/1"
+      ),
+      setupRow(
+        "intake-obligation-mismatch",
+        "Ibuprofen is set as a daily obligation; it is usually taken as needed.",
+        "/medications/1"
+      ),
+    ]);
+    expect(rows.map((row) => row.id)).toEqual([
+      "home.setup:data-quality:intake-unscheduled",
+      "home.setup:data-quality:intake-obligation-mismatch",
+    ]);
+    // Each keeps its own editor door, so the two rows are two different fixes rather
+    // than one row that happens to appear twice.
+    expect(rows.map((row) => row.finding.actionHref)).toEqual([
+      "/medications/1",
+      "/medications/1",
+    ]);
+    // And the dismissal identity is the bus's, not a Home spelling of it: a dismiss
+    // here is the same dismiss the coaching surfaces take (#5285's suppression clause).
+    expect(rows.map((row) => row.factKey)).toEqual([
+      "data-quality:intake-unscheduled",
+      "data-quality:intake-obligation-mismatch",
+    ]);
   });
 
   it("is composed apart from the day's bands", () => {

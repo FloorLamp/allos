@@ -11,7 +11,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
-import { loadStoolDay, logStoolForm } from "@/app/(app)/stool-actions";
+import {
+  correctStoolReading,
+  loadStoolDay,
+  logStoolForm,
+} from "@/app/(app)/stool-actions";
+import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
+import { UNTYPED_FIELD_VALUE } from "@/lib/bristol-stool";
 import { logBristolStool } from "@/lib/offline/writes";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
@@ -442,5 +448,52 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
         (await loadStoolDay(fd({ profile_id: notAProfile, date }))).readings,
         `profile_id=${notAProfile}`
       ).toEqual([{ id: mine, type: 5, hhmm: "08:00" }]);
+  });
+});
+
+// ── THE COUNT LINE COUNTS MOVEMENTS, NOT READINGS (#5872) ────────────────────
+//
+// #5872's invariant: the distribution counts TYPED rows only, and every other count
+// counts every row. An untyped movement names no bar and contributes zero to any
+// loose-stool count, and it is still a movement that happened — so the number beside
+// the picker has to include it. The sheet lists the day's rows ABOVE that number, so a
+// count that dropped the untyped one would render two rows over the word "1".
+//
+// The state is created the way the app can actually reach it today: `correctStoolReading`
+// takes the `none` field value and clears a type off a standing row. No shipped control
+// posts it yet — the `Didn't see` tile is slice 2 — so the correction door is the whole
+// reachable path, and seeding the row with raw SQL instead would prove nothing about it.
+describe("the day's count counts every movement, typed or not (#5872)", () => {
+  it("counts an untyped movement on the log answer, the day re-read and the sheet's open", async () => {
+    const login = createLogin();
+    const profile = createProfile("untyped-day-count", login.id);
+    actAs(login, profile);
+    const date = today(profile.id);
+
+    const first = await logStoolForm(fd({ type: 4, at: "08:12" }));
+    if (!first.ok) throw new Error(first.error);
+    const cleared = first.reading?.id;
+    expect(cleared).toEqual(expect.any(Number));
+    expect(
+      await correctStoolReading(fd({ id: cleared!, type: UNTYPED_FIELD_VALUE }))
+    ).toEqual({ ok: true });
+
+    // THE LOG PATH'S ANSWER. Two movements stand on the day; one of them names no
+    // type. FALSIFIED against the unfixed tree, which answers `dayCount: 1` here.
+    const second = await logStoolForm(fd({ type: 6, at: "19:40" }));
+    if (!second.ok) throw new Error(second.error);
+    expect(second.dayCount).toBe(2);
+    // …while the RECEIPT ROWS still carry only the typed one. That filter is argued at
+    // `dayReadings` and is not what this is about: the point is the two answers
+    // disagreeing, which is what the sheet renders as rows above a count line.
+    expect(second.readings).toHaveLength(1);
+
+    // THE DAY RE-READ the sheet does after an Undo, and the count the sheet OPENS on.
+    expect(await loadStoolDay(fd({ date }))).toMatchObject({ dayCount: 2 });
+    const opened = await loadQuickEntry("stool");
+    expect(opened).toMatchObject({
+      kind: "ready",
+      data: { form: "stool", todayCount: 2 },
+    });
   });
 });
