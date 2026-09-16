@@ -6,8 +6,10 @@ import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
   collectAttentionDashboardData,
+  doseLedgerItems,
   getCycleTrackingRelevance,
   getDaylightOutdoorMinutesByDay,
+  getIntakeItems,
   getFindingSuppressions,
   getLastNightSummary,
   getMetricDailyTotals,
@@ -16,6 +18,8 @@ import {
   getSleepWaitingState,
   getWorkoutPresence,
   gatherCoachingInput,
+  refillCueTargets,
+  type RefillCueTarget,
   typicalBedTime,
   typicalWakeTime,
 } from "@/lib/queries";
@@ -93,13 +97,9 @@ import {
 } from "@/lib/history-format";
 import { groupHistoryBundles } from "@/lib/history-bundle";
 import HistoryRows from "./history/HistoryRows";
-import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
-import { poolRefillSignalKey, refillSignalKey } from "@/lib/refill-nudge";
 import RefillButton from "@/components/medications/RefillButton";
 import { getActivitiesByDate } from "@/lib/queries/training/activities";
 import type { Activity } from "@/lib/types/training";
-import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
-import { isOnDemand } from "@/lib/intake-schedule";
 import {
   DaySelectToggle,
   DaySelectionBar,
@@ -694,54 +694,10 @@ async function renderHome(
   // the Now band, and the rest of the cabinet is the Supplements page's.
   //
   // IT COSTS NO READ (§2.5). `getIntakeItems` is the same snapshot-cached list the dose
-  // ledger below already takes, and the target is a projection over it: the shared key
-  // MINTERS are applied forward, so a cue and its control are joined on the identity the
-  // producer stamped rather than by parsing one back out of a string.
-  const intakeItems = getIntakeItems(profile.id);
-  const refillTargets = new Map<
-    string,
-    { itemId: number; supplyId: number | null; lastFillSize: number | null }
-  >();
-  for (const item of intakeItems) {
-    // A MEMBER OF A POOL GETS NO PRIVATE KEY. Its `refill:<id>` entry carried the
-    // member's `supply_id`, so mounting it would have written to the BOTTLE under a
-    // key that names one person's item; it was unreachable only because linking nulls
-    // `quantity_on_hand` and `refillItems` requires one — a convention six write cores
-    // keep and no CHECK constraint enforces. Not writing it makes Home structurally
-    // incapable of mounting a pool-writing refill anywhere but on the pooled key.
-    if (item.supply_id == null) {
-      refillTargets.set(refillSignalKey(item.id), {
-        itemId: item.id,
-        supplyId: null,
-        lastFillSize: item.last_fill_size,
-      });
-      continue;
-    }
-    // A POOLED BOTTLE IS KEYED ON THE POOL, never on a member (#1374), and its cue
-    // names ONE subject. `poolRefillItems` picks this profile's lowest-id member to
-    // carry it, so the same pick is made here — the row and its control then act on
-    // the same item, and a second member of the same bottle can never mint a rival
-    // control for it.
-    const poolKey = poolRefillSignalKey(item.supply_id);
-    const seated = refillTargets.get(poolKey);
-    if (seated == null || item.id < seated.itemId)
-      refillTargets.set(poolKey, {
-        itemId: item.id,
-        supplyId: item.supply_id,
-        // NO MEMBER'S REMEMBERED FILL EVER REACHES A POOLED CUE. Carrying it is a
-        // POSITION — this profile's lowest id, picked to aim an href — and a position's
-        // fill size is not the bottle's. No predicate over the member rescues it: one
-        // the pool rates at nothing (paused, situationally held, never dosed) is one
-        // case, and a member refilled at 30 while it was still PRIVATE and only then
-        // linked is another, because `linkItemToPool` drops the private count and keeps
-        // `last_fill_size` — a number that was never a fill of this jar, on a fully
-        // active sole member. So the input is removed rather than filtered: with nothing
-        // remembered the first tap reveals the size field, which is the documented
-        // first-use path, and the household's count moves only by a number someone
-        // typed for THIS bottle.
-        lastFillSize: null,
-      });
-  }
+  // ledger below already takes, and the target is a PROJECTION over it — pure, ahead of
+  // any JSX and answering to `poolRefillItems` rather than to this page, so it lives in
+  // lib/queries/upcoming/refill-targets.ts and the page hands it the list it read.
+  const refillTargets = refillCueTargets(getIntakeItems(profile.id));
 
   // ── THE ONE LIST (§3.2) ───────────────────────────────────────────────────────
   //
@@ -790,28 +746,6 @@ async function renderHome(
   const dayRows = feed.gather.rows as HistoryRow[];
   const rowCount = dayRows.length;
   const layout = layoutHistoryDay(dayRows, { rollup: false });
-
-  // The dose form's vocabulary, read once: which items exist (a retired item still took
-  // the dose history keeps listing) and which still have a live dose to log against.
-  const dosesByItem = new Map<number, DoseLedgerItem["doses"]>();
-  for (const dose of getIntakeDoses(profile.id)) {
-    const list = dosesByItem.get(dose.item_id) ?? [];
-    list.push({
-      id: dose.id,
-      amount: dose.amount,
-      time_of_day: dose.time_of_day,
-      versions: dose.versions,
-    });
-    dosesByItem.set(dose.item_id, list);
-  }
-  const doseItems: DoseLedgerItem[] = intakeItems.map((item) => ({
-    id: item.id,
-    name: item.name,
-    kind: item.kind,
-    product: item.product,
-    asNeeded: isOnDemand(item),
-    doses: dosesByItem.get(item.id) ?? [],
-  }));
 
   // SELECTION MODE, THE LEDGER'S (#5618 ruling 4), inherited whole: the record's Select
   // in the day bar, its boxes on the rows below, over the same per-row correction cores.
@@ -1035,7 +969,7 @@ async function renderHome(
                       )}
                       writableProfileIds={writable ? [profile.id] : []}
                       selectionSubjectId={profile.id}
-                      doseItems={doseItems}
+                      doseItems={doseLedgerItems(profile.id)}
                       maxDates={{ [profile.id]: on }}
                       defaultTime={zonedDateParts(timezone, nowInstant).hhmm}
                       subjectNames={{}}
@@ -1199,17 +1133,6 @@ function HomeLaterFold({
   );
 }
 
-// What the page can mount the shared refill action ON, for one low-supply cue key
-// (#5121). `supplyId` is the bottle when the cue is a pooled one and null for a private
-// supply; `lastFillSize` is the remembered fill, whose ABSENCE is what makes the first
-// tap ask for a size instead of writing one — and a pooled target never carries one,
-// because no member's remembered fill is a fact about the shared bottle.
-type HomeRefillTarget = {
-  itemId: number;
-  supplyId: number | null;
-  lastFillSize: number | null;
-};
-
 // ── THE NOW BAND (§3.2 band 2) ──────────────────────────────────────────────────
 //
 // A rule reading "Now · <profile-local clock>", rendered once, between what is OWED and
@@ -1234,7 +1157,7 @@ function HomeNowBand({
   formatPrefs: DisplayFormatPrefs;
   today: string;
   writable: boolean;
-  refillTargets: ReadonlyMap<string, HomeRefillTarget>;
+  refillTargets: ReadonlyMap<string, RefillCueTarget>;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
   fastFacts: { elapsed: string; since: string } | null;
@@ -1295,7 +1218,7 @@ function HomeNowRowView({
   formatPrefs: DisplayFormatPrefs;
   today: string;
   writable: boolean;
-  refillTargets: ReadonlyMap<string, HomeRefillTarget>;
+  refillTargets: ReadonlyMap<string, RefillCueTarget>;
   routineControl: React.ComponentProps<typeof UsualRoutineControl> | null;
   cycleControl: CycleControlState | null;
   fastFacts: { elapsed: string; since: string } | null;
