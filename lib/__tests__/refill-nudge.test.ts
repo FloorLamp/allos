@@ -5,12 +5,15 @@ import {
   refillAttemptDue,
   cancelRefillRequest,
   refillSignalKey,
+  poolRefillSignalKey,
   refillMarkerKey,
   refillIdFromMarker,
   REFILL_MARKER_PREFIX,
   leftRefillTrackedSet,
   type RefillCandidate,
 } from "@/lib/refill-nudge";
+import { refillCueTargets } from "@/lib/queries/upcoming/refill-targets";
+import type { IntakeItem } from "@/lib/types";
 
 // Episode-dedup + page-suppression for the low-supply refill nudge (issues #87/#227),
 // mirroring the preventive nudge's plan tests. planRefillNudges is pure: given each
@@ -256,5 +259,70 @@ describe("explicit refill delivery state", () => {
     expect(
       refillAttemptDue(parseRefillMarker("broken"), "2026-09-08", 150000)
     ).toBe(false);
+  });
+});
+
+// ── The cue's control target (#5121 §9, #5907) ───────────────────────────────
+//
+// `refillCueTargets` is the projection Home used to spell inline: one target per cue
+// KEY, minted by the two functions above. Tested here, beside the minters, because the
+// two claims it makes are about THEM — that a pooled bottle is keyed on the pool and
+// carried by this profile's lowest-id member (the pick `poolRefillItems` makes), and
+// that no member's remembered fill ever reaches that pooled key. Both used to be
+// reachable only by rendering the page.
+describe("refillCueTargets", () => {
+  const cueItem = (id: number, over: Partial<IntakeItem> = {}): IntakeItem =>
+    ({
+      id,
+      name: `item-${id}`,
+      active: 1,
+      supply_id: null,
+      quantity_on_hand: null,
+      last_fill_size: null,
+      ...over,
+    }) as IntakeItem;
+
+  it("keys a private supply on the item and keeps its remembered fill", () => {
+    const targets = refillCueTargets([
+      cueItem(4, { quantity_on_hand: 2, last_fill_size: 30 }),
+    ]);
+    expect([...targets]).toEqual([
+      [refillSignalKey(4), { itemId: 4, supplyId: null, lastFillSize: 30 }],
+    ]);
+  });
+
+  it("keys a bottle on the pool and carries this profile's LOWEST-id member", () => {
+    // The same pick poolRefillItems makes, and made whatever order the rows arrive in
+    // and whatever the carrier's own state is: an inactive member with the lowest id
+    // still carries, because the pool's own math — not this projection — decides
+    // whether the cue exists at all.
+    for (const order of [
+      [9, 7, 4],
+      [4, 7, 9],
+      [7, 4, 9],
+    ]) {
+      const targets = refillCueTargets(
+        order.map((id) =>
+          cueItem(id, { supply_id: 900, active: id === 4 ? 0 : 1 })
+        )
+      );
+      expect(targets.get(poolRefillSignalKey(900))?.itemId).toBe(4);
+      expect(targets.has(refillSignalKey(4))).toBe(false);
+    }
+  });
+
+  it("never lets a member's remembered fill reach a pooled key", () => {
+    // A member refilled at 30 while still PRIVATE and linked afterwards keeps
+    // last_fill_size; it was never a fill of this jar, so the pooled target states
+    // none — on every render, not only the first.
+    const targets = refillCueTargets([
+      cueItem(2, { supply_id: 900, last_fill_size: 30 }),
+      cueItem(6, { supply_id: 900, last_fill_size: 60 }),
+    ]);
+    expect(targets.get(poolRefillSignalKey(900))).toEqual({
+      itemId: 2,
+      supplyId: 900,
+      lastFillSize: null,
+    });
   });
 });

@@ -46,6 +46,18 @@ export const SUPPLY_CHILD_LOW_MED = "Supply Child Cetirizine (e2e)";
 export const SUPPLY_EDIT_BOTTLE = "Editable Shared Loratadine (e2e)";
 export const SUPPLY_PARENT_EDIT_MED = "Supply Parent Loratadine (e2e)";
 
+// #5435 §9 — a POOLED bottle at ZERO, so a pooled low-supply cue reaches Home's Now
+// band as an ACTION. The bottles above sit at ~2 days, so no browser reading of that
+// existed at all. A DEDICATED member login with its own dedicated adult profile, the
+// same shape the #1374 bottles use: spec-owned end to end (smoke.spec.ts), so nothing
+// else reads this profile, this bottle or its member, and nothing else can move them
+// out from under the assertion. The member is an ordinary active daily medication —
+// on its own profile there is no neighbouring fixture to shape it around.
+export const E2E_LOGIN_HOME_POOL = "e2e_home_pool";
+export const HOME_POOL_PROFILE = "Home Pooled (e2e)";
+export const HOME_POOL_BOTTLE = "Home Pooled Bottle (e2e)";
+export const HOME_POOL_MED = "Home Pooled Med (e2e)";
+
 // #1504 — the Upcoming page's display aggregation. A DEDICATED member login granted a
 // dedicated adult profile whose Today band is deliberately shaped like the audit's:
 // six scheduled doses (one already taken, so the fold can state a real fraction),
