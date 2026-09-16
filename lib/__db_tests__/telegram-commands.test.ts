@@ -501,21 +501,29 @@ describe("/weight on demand (#1895)", () => {
   });
 
   it("an unreadable reply is REFUSED, never confirmed", async () => {
+    const promptId = await openWeightPrompt();
+    // The prompt's own send is not the answer under test — `replyBody` reads the ONE
+    // message the reply produced.
+    sendMock.mockClear();
     await handleIncomingMessage({
       message_id: 4,
       chat: { id: CHAT },
       text: "quite heavy today",
-      reply_to_message: { message_id: await openWeightPrompt() },
+      reply_to_message: { message_id: promptId },
     });
     expect(replyBody()).toMatch(/not logged/i);
   });
 
   it("an implausible number is refused with the FORM's own message", async () => {
+    const promptId = await openWeightPrompt();
+    // The prompt's own send is not the answer under test — `replyBody` reads the ONE
+    // message the reply produced.
+    sendMock.mockClear();
     await handleIncomingMessage({
       message_id: 5,
       chat: { id: CHAT },
       text: "9000",
-      reply_to_message: { message_id: await openWeightPrompt() },
+      reply_to_message: { message_id: promptId },
     });
     expect(replyBody()).toMatch(/too high to be real/i);
   });

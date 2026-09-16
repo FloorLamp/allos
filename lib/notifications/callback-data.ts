@@ -1183,10 +1183,11 @@ export const SYMPTOM_SEVERITY_LABELS: Record<number, string> = {
   4: "Very severe",
 };
 
-// EVERY typed-reply marker — `/temp`, `/weight` and the refill receipt alike — lives in
-// ./typed-reply (#5650), which absorbed the ./reply-markers leaf #2961 step 2 carved
-// out and the refill receipt's third grammar with it: one grammar, one parser, one
-// resolution rule, and still no imports, so it is still a leaf.
+// THERE IS NO REPLY-MARKER FAMILY ANY MORE (#5650). The `/temp` and `/weight` markers
+// ./reply-markers held, and the refill receipt's third grammar beside them, are retired:
+// a typed reply resolves against the pointer the bot recorded for the quoted message, and
+// no code reads a message's text to decide which prompt an answer belongs to. What lives
+// in ./typed-reply now is that resolution rule, and it is still a leaf.
 
 // ---- Household dose round (issue #1459) --------------------------------------
 // The caregiver-subscribed cross-profile dose reminder: one message in the RECEIVING
