@@ -23,7 +23,8 @@
 // import-then-export, and which top-level declarations reference it — same-module
 // siblings included. That is precisely where the two hand instruments diverged (one
 // followed only named, non-type imports called as a bare identifier), so the census
-// asks the module that already does it right, and `--compare-naive` measures the gap.
+// asks the module that already does it right and prints, beside its own answer, the
+// answer that weaker resolution gives — the gap measured rather than asserted.
 // lib/__tests__/strip-comments.ts owns not mistaking a sentence of prose for SQL.
 //
 // WHAT THIS CANNOT SEE, by construction, so nothing reads a bucket as more than it is:
@@ -36,13 +37,7 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript-api";
 import { stripComments } from "../lib/__tests__/strip-comments.ts";
-import {
-  ROOT,
-  consumersOf,
-  fileFacts,
-  resolveSpecifier,
-  visibleAs,
-} from "./reach-graph.ts";
+import { ROOT, consumersOf, fileFacts, visibleAs } from "./reach-graph.ts";
 
 // ─── the predicate, as data ──────────────────────────────────────────────────
 
@@ -389,9 +384,6 @@ export function census(root = ROOT) {
   }
 
   const cores = shape.bare.filter((c) => c.decl.writes).map((c) => c.decl);
-  const nonWriting = shape.bare
-    .filter((c) => !c.decl.writes)
-    .map((c) => c.decl);
 
   // DELEGATING CORES. The parameter half passes, the body half does not, and the
   // declaration HANDS ITS OWN PROFILE ID to something that writes. The argument test
@@ -533,9 +525,6 @@ export function census(root = ROOT) {
       line: d.line,
       fence: fenceFor(d.file),
     })),
-    nonWritingUnresolved: nonWriting.filter(
-      (d) => !delegating.some((x) => x.decl === d)
-    ).length,
   };
 }
 
