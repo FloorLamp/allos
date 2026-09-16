@@ -27,11 +27,11 @@ export async function purgeTrashEntry(
 ): Promise<
   { ok: true } | { ok: false; reason: "invalid" | "gone"; message: string }
 > {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   if (!Number.isInteger(undoId) || undoId <= 0)
     return { ok: false, reason: "invalid", message: "Nothing to delete." };
 
-  const outcome = purgeDeletedRow(profile.id, undoId);
+  const outcome = purgeDeletedRow(writeProfileId, undoId);
   if (outcome.kind === "gone")
     return {
       ok: false,
@@ -47,8 +47,8 @@ export async function purgeTrashEntry(
 // the surface can say so rather than claim a number it assumed — an empty trash and a
 // trash of forty are the same tap and must not read the same afterwards.
 export async function emptyTrashNow(): Promise<{ purged: number }> {
-  const { profile } = await requireWriteAccess();
-  const purged = emptyTrash(profile.id);
+  const { writeProfileId } = await requireWriteAccess();
+  const purged = emptyTrash(writeProfileId);
   if (purged > 0) revalidateRoute("/data");
   return { purged };
 }

@@ -53,12 +53,19 @@ export const editMessageReplyMarkupRaw = vi.fn<
 export const answerCallbackQuery = vi.fn<TelegramApi["answerCallbackQuery"]>(
   (...a) => realOrThrow().answerCallbackQuery(...a)
 );
+// The typed-reply acknowledgement (#5650). Inbound-side like `answerCallbackQuery` —
+// it delivers no text — and spied for the same reason: a spec that asserts a reply was
+// acknowledged without a new message has to be able to see the 👍.
+export const setMessageReaction = vi.fn<TelegramApi["setMessageReaction"]>(
+  (...a) => realOrThrow().setMessageReaction(...a)
+);
 
 const ALL = [
   sendMessageRaw,
   editMessageTextRaw,
   editMessageReplyMarkupRaw,
   answerCallbackQuery,
+  setMessageReaction,
 ] as const;
 
 function delegateAll(): void {
@@ -73,6 +80,9 @@ function delegateAll(): void {
   );
   answerCallbackQuery.mockImplementation((...a) =>
     realOrThrow().answerCallbackQuery(...a)
+  );
+  setMessageReaction.mockImplementation((...a) =>
+    realOrThrow().setMessageReaction(...a)
   );
 }
 
@@ -94,6 +104,7 @@ export function stubTelegramSends(): void {
   editMessageTextRaw.mockImplementation(async () => {});
   editMessageReplyMarkupRaw.mockImplementation(async () => {});
   answerCallbackQuery.mockImplementation(async () => {});
+  setMessageReaction.mockImplementation(async () => true);
 }
 
 /**

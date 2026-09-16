@@ -45,6 +45,15 @@ import { snapshotKeeperFold, writeActivityFold } from "@/lib/merge-activity";
 import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
 import { toKm } from "@/lib/units";
 import { saveActivityCore } from "@/lib/activity-write";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 function makeProfile(name: string): number {
   return Number(
@@ -1452,7 +1461,9 @@ describe("events link their activities (#3285 item 2)", () => {
     // Both decided rows leave — one to the Trash, one purged outright.
     const undoId = captureDelete("activity", profileId, second)!;
     db.prepare("DELETE FROM activities WHERE id = ?").run(first);
-    expect(purgeDeletedRow(profileId, undoId)).toEqual({ kind: "purged" });
+    expect(purgeDeletedRow(gated(profileId), undoId)).toEqual({
+      kind: "purged",
+    });
     expect(
       db
         .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")

@@ -32,6 +32,15 @@ import {
 } from "@/lib/retention";
 import { BULK_CORRECTION_KIND } from "@/lib/bulk-correction";
 import { seedProfile, type SeededProfile } from "./fixtures";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 let p: SeededProfile;
 
@@ -113,8 +122,8 @@ describe("listing the trash", () => {
     expect(mine[0].id).toBe(newerUndo);
     expect(mine[1].expiresInDays).toBeLessThan(mine[0].expiresInDays);
 
-    purgeDeletedRow(p.profileId, olderUndo);
-    purgeDeletedRow(p.profileId, newerUndo);
+    purgeDeletedRow(gated(p.profileId), olderUndo);
+    purgeDeletedRow(gated(p.profileId), newerUndo);
   });
 
   it("never surfaces another profile's captures", () => {
@@ -125,7 +134,7 @@ describe("listing the trash", () => {
     expect(listTrash(p.profileId, 30).map((e) => e.id)).not.toContain(undoId);
     expect(listTrash(other.profileId, 30).map((e) => e.id)).toContain(undoId);
 
-    purgeDeletedRow(other.profileId, undoId);
+    purgeDeletedRow(gated(other.profileId), undoId);
   });
 });
 
@@ -176,15 +185,19 @@ describe("delete permanently", () => {
     const drop = newActivity(p.profileId, "TRASH purge target");
     const dropUndo = captureDelete("activity", p.profileId, drop)!;
 
-    expect(purgeDeletedRow(p.profileId, dropUndo)).toEqual({ kind: "purged" });
+    expect(purgeDeletedRow(gated(p.profileId), dropUndo)).toEqual({
+      kind: "purged",
+    });
     expect(holdingRows(dropUndo)).toBe(0);
     expect(holdingRows(keepUndo)).toBe(1);
 
     // A second tap (or another tab's) is "gone", not a second purge — the surface
     // must not report a write it did not perform.
-    expect(purgeDeletedRow(p.profileId, dropUndo)).toEqual({ kind: "gone" });
+    expect(purgeDeletedRow(gated(p.profileId), dropUndo)).toEqual({
+      kind: "gone",
+    });
 
-    purgeDeletedRow(p.profileId, keepUndo);
+    purgeDeletedRow(gated(p.profileId), keepUndo);
   });
 
   it("refuses another profile's token", () => {
@@ -192,10 +205,12 @@ describe("delete permanently", () => {
     const act = newActivity(other.profileId, "TRASH-PURGE-OTHER row");
     const undoId = captureDelete("activity", other.profileId, act)!;
 
-    expect(purgeDeletedRow(p.profileId, undoId)).toEqual({ kind: "gone" });
+    expect(purgeDeletedRow(gated(p.profileId), undoId)).toEqual({
+      kind: "gone",
+    });
     expect(holdingRows(undoId)).toBe(1);
     // The rightful owner can.
-    expect(purgeDeletedRow(other.profileId, undoId)).toEqual({
+    expect(purgeDeletedRow(gated(other.profileId), undoId)).toEqual({
       kind: "purged",
     });
   });
@@ -203,7 +218,9 @@ describe("delete permanently", () => {
   it("a purged capture is unrestorable — the point of 'permanently'", () => {
     const act = newActivity(p.profileId, "TRASH purge unrestorable");
     const undoId = captureDelete("activity", p.profileId, act)!;
-    expect(purgeDeletedRow(p.profileId, undoId)).toEqual({ kind: "purged" });
+    expect(purgeDeletedRow(gated(p.profileId), undoId)).toEqual({
+      kind: "purged",
+    });
     expect(restoreDeletedRow(p.profileId, undoId)).toBe(false);
   });
 });
@@ -227,7 +244,7 @@ describe("empty trash", () => {
     )!;
 
     expect(countTrash(mine.profileId)).toBe(2);
-    expect(emptyTrash(mine.profileId)).toBe(2);
+    expect(emptyTrash(gated(mine.profileId))).toBe(2);
 
     expect(countTrash(mine.profileId)).toBe(0);
     for (const id of mineUndos) expect(holdingRows(id)).toBe(0);
@@ -236,9 +253,9 @@ describe("empty trash", () => {
     expect(countTrash(theirs.profileId)).toBe(1);
 
     // Emptying an empty trash purges nothing, and says so.
-    expect(emptyTrash(mine.profileId)).toBe(0);
+    expect(emptyTrash(gated(mine.profileId))).toBe(0);
 
-    purgeDeletedRow(theirs.profileId, theirUndo);
+    purgeDeletedRow(gated(theirs.profileId), theirUndo);
   });
 });
 
@@ -277,10 +294,10 @@ describe("a bulk correction shares the table but is not a deleted row", () => {
     expect(countTrash(owner.profileId)).toBe(1);
 
     // Neither purge touches it.
-    expect(purgeDeletedRow(owner.profileId, correctionId)).toEqual({
+    expect(purgeDeletedRow(gated(owner.profileId), correctionId)).toEqual({
       kind: "gone",
     });
-    expect(emptyTrash(owner.profileId)).toBe(1);
+    expect(emptyTrash(gated(owner.profileId))).toBe(1);
     expect(holdingRows(correctionId)).toBe(1);
 
     // The GLOBAL expiry sweep still takes it, on its own schedule.

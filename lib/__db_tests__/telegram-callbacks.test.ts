@@ -5,7 +5,6 @@ import {
 import { setProfileMutedForLogin } from "@/lib/settings";
 import {
   refillReceivedAction,
-  handleReceivedReply,
   handleReceivedCallback,
   reconcileRefillReceipt,
   renderRefillMessage,
@@ -14,7 +13,14 @@ import {
 } from "@/lib/notifications/refill";
 import { readRefillOffer } from "@/lib/notifications/offer-store";
 import { sendTelegramMessage } from "@/lib/notifications/telegram";
-import { sendMessageRaw } from "@/lib/notifications/telegram-api";
+import {
+  sendMessageRaw,
+  setMessageReaction,
+} from "@/lib/notifications/telegram-api";
+// The ONE typed-reply arm (#5650) replaced `handleReceivedReply`: a receipt reply now
+// arrives the same way a `/temp` reply does, through the dispatcher every inbound
+// message goes through.
+import { handleTypedReply } from "@/lib/notifications/telegram-quick-log";
 import { updateIntakeSupplyCount } from "@/lib/queries/intake/supply-pool";
 import { dismissFinding, restoreFinding } from "@/lib/queries/upcoming";
 import { decrementSupply, incrementSupply } from "@/lib/queries/intake/refill";
@@ -46,8 +52,6 @@ import {
   getProfilesByTelegramChatId,
   setProfileSetting,
   setTelegramBotConfig,
-  getPublicUrl,
-  setPublicUrl,
 } from "@/lib/settings";
 import { preventiveSignalKey } from "@/lib/preventive-upcoming";
 import {
@@ -55,7 +59,6 @@ import {
   refillMarkerKey,
   parseRefillMarker,
 } from "@/lib/refill-nudge";
-import { intakeSupplyHref } from "@/lib/hrefs";
 import {
   orderedRefillToken,
   parseOrderedRefillCallback,
@@ -87,6 +90,7 @@ beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const editTextMock = vi.mocked(editMessageTextRaw);
+const reactMock = vi.mocked(setMessageReaction);
 
 const OWN_CHAT = "5550100";
 const CARE_CHAT = "5550199";
@@ -1397,13 +1401,23 @@ function bareNumber(
   };
 }
 
-// Bodies of the receipt answers sent since `from` — the acknowledgement the chat sees.
-// The title arrives PREFIXED with the subject's label, so match on its tail.
+// Bodies of the typed-reply REFUSALS sent since `from` — which, since #5650, is the whole
+// of what a reply can put in the chat: an applied reply is a reaction and an in-place
+// edit, so an empty list here is what success looks like. The title arrives PREFIXED with
+// the subject's label, so match on its tail; the ambiguity answer is named by no profile
+// and carries its own title.
+const REPLY_TITLES = [
+  "Supply receipt",
+  "More than one open prompt",
+  "That prompt isn't open",
+];
 function receiptBodies(from: number): string[] {
   return vi
     .mocked(sendMessageRaw)
     .mock.calls.slice(from)
-    .filter((call) => call[1].title?.endsWith("Supply receipt"))
+    .filter((call) =>
+      REPLY_TITLES.some((title) => call[1].title?.endsWith(title))
+    )
     .map((call) => {
       const body = call[1].body ?? "";
       // A receipt answer is plain text; anything else is a change worth failing on.
@@ -1476,10 +1490,11 @@ function receiptReply(
     chat: { id: f.chatId },
     from: { id: 71 },
     text: amount,
-    reply_to_message: {
-      message_id: offer.promptId,
-      text: `(refill:${f.profileId}:${f.offerId})`,
-    },
+    // THE QUOTED MESSAGE'S ID AND NOTHING ELSE (#5650, pointer-only). The receipt prompt
+    // used to end in `(refill:<pid>:<offerId>)` and this is where that string was replayed;
+    // the offer row's own `promptId` is the handle now, and the prompt body carries no
+    // marker for anybody to replay.
+    reply_to_message: { message_id: offer.promptId },
   };
 }
 
@@ -1499,7 +1514,7 @@ describe("Received receipt operation", () => {
     await handleCallbackQuery(f.open);
     expect(receivedCount(f)).toBe(4);
     const oldReply = receiptReply(f, "2");
-    await handleReceivedReply(oldReply);
+    await handleTypedReply(oldReply);
     expect(receivedCount(f)).toBe(6);
     expect(editTextMock.mock.calls.at(-1)?.[2]).toContain("running low");
     const next = refillReceivedAction(f.profileId, f.supplementId)!;
@@ -1509,23 +1524,21 @@ describe("Received receipt operation", () => {
       readRefillOffer(f.profileId, Number(next.data!.split(":")[2]))!.offer
         .state
     ).toBe("pending");
-    await handleReceivedReply(oldReply);
-    await handleReceivedReply({ ...oldReply, message_id: 802 });
+    await handleTypedReply(oldReply);
+    await handleTypedReply({ ...oldReply, message_id: 802 });
     expect(receivedCount(f)).toBe(6);
     const nextId = Number(next.data!.split(":")[2]);
     expect(readRefillOffer(f.profileId, nextId)!.offer.defaultSize).toBe(2);
-    await handleReceivedReply(
-      receiptReply({ ...f, offerId: nextId }, "3", 803)
-    );
+    await handleTypedReply(receiptReply({ ...f, offerId: nextId }, "3", 803));
     expect(receivedCount(f)).toBe(9);
-    await handleReceivedReply(oldReply);
+    await handleTypedReply(oldReply);
     expect(receivedCount(f)).toBe(9);
   });
 
   it("reports a stock write only for a newly confirmed receipt", async () => {
     const f = await receivedFixture();
     await handleCallbackQuery(f.open);
-    await handleReceivedReply(receiptReply(f, "2"));
+    await handleTypedReply(receiptReply(f, "2"));
     const action = refillReceivedAction(f.profileId, f.supplementId)!;
     const token = {
       profileId: f.profileId,
@@ -1640,7 +1653,7 @@ describe("Received receipt operation", () => {
     const reply = receiptReply(f, "30");
     updateIntakeSupplyCount(f.profileId, f.supplementId, null, 8, 4);
     updateIntakeSupplyCount(f.profileId, f.supplementId, null, 4, 8);
-    await handleReceivedReply(reply);
+    await handleTypedReply(reply);
     expect(receivedCount(f)).toBe(4);
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
       "invalidated"
@@ -1651,14 +1664,110 @@ describe("Received receipt operation", () => {
     const f = await receivedFixture();
     await handleCallbackQuery(f.open);
     const reply = receiptReply(f, "30");
-    await handleReceivedReply({ ...reply, from: { id: 72 } });
-    await handleReceivedReply({
+    await handleTypedReply({ ...reply, from: { id: 72 } });
+    await handleTypedReply({
       ...reply,
       reply_to_message: { ...reply.reply_to_message, message_id: 999999 },
     });
     expect(receivedCount(f)).toBe(4);
-    await handleReceivedReply(reply);
+    const before = sendCount();
+    reactMock.mockClear();
+    await handleTypedReply(reply);
     expect(receivedCount(f)).toBe(34);
+    // An EXPLICIT Reply earns exactly what a bare number does (#5650 ruling 1): the
+    // reaction and the edit, and no message.
+    expect(receiptBodies(before)).toEqual([]);
+    expect(reactMock.mock.calls.at(-1)).toEqual([f.chatId, 801, "👍"]);
+  });
+
+  // #5650 ruling 1: a reply that cannot be applied is the one case that still costs the
+  // chat a line — and ruling 4: it is always spoken. The refusal used to be either a
+  // duplicate of the receipt (`Supply receipt` on every success) or, for an
+  // unauthorized sender, nothing at all.
+  it("speaks every refusal exactly once, and reacts to none of them", async () => {
+    const f = await receivedFixture();
+    await handleCallbackQuery(f.open);
+    const before = sendCount();
+    reactMock.mockClear();
+    // A NUMBER typed with the Reply swipe claims the message even when the answer is a
+    // refusal (#5654's two-answer rule): `true`, so no later handler is re-offered it.
+    expect(await handleTypedReply(receiptReply(f, "abc", 811))).toBe(true);
+    expect(receiptBodies(before)).toEqual([
+      "Enter a positive number of units, such as 90.",
+    ]);
+    expect(receivedCount(f)).toBe(4);
+
+    // THERE IS NO FORGED MARKER TO REFUSE ANY MORE (#5650, pointer-only). This used to
+    // quote a marker naming a profile the chat may not write, and assert the arm answered
+    // `That profile isn't linked to this chat anymore.` rather than swallowing it. A reply
+    // now carries only the quoted message's ID, and every id the registry resolves belongs
+    // to a profile of THIS chat — so the whole forgery class is unreachable rather than
+    // refused, and what is left to pin is what an id the registry does NOT hold gets.
+    const unrecorded = sendCount();
+    expect(
+      await handleTypedReply({
+        ...receiptReply(f, "30", 812),
+        reply_to_message: { message_id: 999999 },
+      })
+    ).toBe(true);
+    expect(receiptBodies(unrecorded)).toEqual([
+      "Reply to the prompt you mean.",
+    ]);
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    expect(reactMock).not.toHaveBeenCalled();
+  });
+
+  // #5650 — THE WIDENING THE REGISTRY CLOSES BY CONSTRUCTION.
+  //
+  // `kind` is NOT the family, and a design round that assumed it was would have shipped
+  // this: THREE different messages carry `kind: "refill"` and record a pointer — the
+  // low-supply reminder with its Received button, the receipt prompt that button opens,
+  // and the `Supply update` rebuild — and only the middle one is a question. Resolving a
+  // reply by the pointer's kind would let a number typed under the REMINDER settle a
+  // receipt nobody opened, with the offer id recovered from the reminder's own keyboard.
+  // Neither `main` nor any earlier head can do that, because a reminder carried no marker
+  // and so could not be replied to at all.
+  //
+  // `typedPromptAt` keys on the OFFER ROW'S `promptId` instead, so a reminder's message id
+  // matches no offer and the reply resolves to nothing. This asserts that, because the
+  // failure it guards against would be a write nobody asked for.
+  it("a number replied to the low-supply REMINDER settles no receipt", async () => {
+    const f = await receivedFixture(nextReceiptChat());
+    // Open the receipt, so a pending offer with a promptId really does exist — the attack
+    // is worthless if there is nothing for it to settle.
+    await handleCallbackQuery(f.open);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    const reminderId = f.open.message.message_id;
+    // The reminder holds a pointer, of a typed-reply kind, with the offer's own token on
+    // its keyboard. Every ingredient a kind-keyed resolver would have used is present.
+    expect(
+      liveMessagePointers(f.profileId).find(
+        (ptr) => ptr.messageId === reminderId
+      )?.kind
+    ).toBe("refill");
+
+    const before = sendCount();
+    reactMock.mockClear();
+    expect(
+      await handleTypedReply({
+        message_id: 850,
+        chat: { id: f.chatId },
+        from: { id: 71 },
+        text: "120",
+        reply_to_message: { message_id: reminderId },
+      })
+    ).toBe(true);
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    expect(receiptBodies(before)).toEqual(["Reply to the prompt you mean."]);
+    expect(reactMock).not.toHaveBeenCalled();
   });
 
   // ---- #5654: the same number, typed WITHOUT the Reply swipe ----
@@ -1668,25 +1777,79 @@ describe("Received receipt operation", () => {
     const f = await receivedFixture(chat);
     await handleCallbackQuery(f.open);
     const before = sendCount();
-    expect(await handleReceivedReply(bareNumber(chat, "120"))).toBe(true);
+    reactMock.mockClear();
+    editTextMock.mockClear();
+    expect(await handleTypedReply(bareNumber(chat, "120"))).toBe(true);
     expect(receivedCount(f)).toBe(124);
-    // The acknowledgement an explicit Reply earns today, on the same wording.
+    // #5650 ruling 1: the acknowledgement is the 👍 on the person's own message plus the
+    // prompt edited in place — and NOTHING is sent. `refreshReceipt` already wrote that
+    // sentence into the prompt; the `Supply receipt` message repeated it.
+    expect(receiptBodies(before)).toEqual([]);
+    expect(reactMock.mock.calls.at(-1)).toEqual([chat, 901, "👍"]);
+    expect(
+      editTextMock.mock.calls.some((call) =>
+        String(call[2]).includes("Added 120 · 124 on hand")
+      )
+    ).toBe(true);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "completed"
+    );
+    // The settled prompt still answers an explicit Reply, and adds nothing. A closed
+    // prompt is a REFUSAL, so it keeps its one message — and wears no reaction.
+    const replayed = sendCount();
+    reactMock.mockClear();
+    await handleTypedReply(receiptReply(f, "120", 902));
+    expect(receiptBodies(replayed)).toEqual([
+      "Already recorded: Added 120 · 124 on hand",
+    ]);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect(receivedCount(f)).toBe(124);
+    // A second BARE 120 finds no open prompt: it is not claimed, and writes nothing.
+    const second = sendCount();
+    expect(await handleTypedReply(bareNumber(chat, "120", 903))).toBe(false);
+    expect(receivedCount(f)).toBe(124);
+    expect(receiptBodies(second)).toEqual([]);
+  });
+
+  // #5650 FIX ROUND — the receipt half of the refused-edit failure. Since ruling 1
+  // `refreshReceipt` IS the applied reply's only answer, and it edits a prompt that may
+  // be past Telegram's ~48h edit horizon (`OFFER_RETENTION_DAYS` is three days, so the
+  // offer deliberately outlives its prompt's editability). Un-wrapped, the throw escaped
+  // `handleTypedReply` before it could react or speak: supply 4 → 124, offer `completed`,
+  // and the chat told nothing at all.
+  it("speaks the receipt when the prompt edit is refused, and still never adds twice", async () => {
+    const chat = nextReceiptChat();
+    const f = await receivedFixture(chat);
+    await handleCallbackQuery(f.open);
+    const promptId = readRefillOffer(f.profileId, f.offerId)!.offer.promptId!;
+    const before = sendCount();
+    reactMock.mockClear();
+    // Telegram's own description for a message past the edit horizon, on THIS prompt.
+    editTextMock.mockImplementation(async (_chatId, messageId) => {
+      if (messageId === promptId)
+        throw new Error(
+          "Telegram editMessageText failed: message can't be edited"
+        );
+    });
+    try {
+      expect(await handleTypedReply(bareNumber(chat, "120"))).toBe(true);
+    } finally {
+      editTextMock.mockImplementation(async () => {});
+    }
+    expect(receivedCount(f)).toBe(124);
+    expect(reactMock.mock.calls.at(-1)).toEqual([chat, 901, "👍"]);
+    // The `Supply receipt` message main always sent — spoken here ONLY because the edit
+    // could not land, which is the whole difference between a preference and a silence.
     expect(receiptBodies(before)).toEqual(["Added 120 · 124 on hand"]);
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
       "completed"
     );
-    // The settled prompt still answers an explicit Reply, and adds nothing.
-    const replayed = sendCount();
-    await handleReceivedReply(receiptReply(f, "120", 902));
-    expect(receiptBodies(replayed)).toEqual([
-      "Already recorded: Added 120 · 124 on hand",
-    ]);
+    // And the operation is still settled exactly once: the offer is no longer pending,
+    // so the retype is not claimed at all and adds nothing.
+    const retyped = sendCount();
+    expect(await handleTypedReply(bareNumber(chat, "120", 905))).toBe(false);
     expect(receivedCount(f)).toBe(124);
-    // A second BARE 120 finds no open prompt: it is not claimed, and writes nothing.
-    const second = sendCount();
-    expect(await handleReceivedReply(bareNumber(chat, "120", 903))).toBe(false);
-    expect(receivedCount(f)).toBe(124);
-    expect(receiptBodies(second)).toEqual([]);
+    expect(receiptBodies(retyped)).toEqual([]);
   });
 
   it("refuses to choose between one sender's two open prompts", async () => {
@@ -1696,7 +1859,7 @@ describe("Received receipt operation", () => {
     const otherId = seedSecondBottle(f.profileId, "Second receipt bottle");
     const otherOffer = await openReceipt(f.profileId, otherId, chat);
     const before = sendCount();
-    expect(await handleReceivedReply(bareNumber(chat, "120"))).toBe(true);
+    expect(await handleTypedReply(bareNumber(chat, "120"))).toBe(true);
     expect(receiptBodies(before)).toEqual(["Reply to the prompt you mean."]);
     // NOTHING written, and neither prompt consumed.
     expect(receivedCount(f)).toBe(4);
@@ -1715,8 +1878,13 @@ describe("Received receipt operation", () => {
     await handleCallbackQuery(a.open);
     await handleCallbackQuery(b.open);
     const before = sendCount();
-    expect(await handleReceivedReply(bareNumber(chat, "120"))).toBe(true);
+    expect(await handleTypedReply(bareNumber(chat, "120"))).toBe(true);
     expect(receiptBodies(before)).toEqual(["Reply to the prompt you mean."]);
+    // CHAT_WIDE, so the title carries NO profile-name prefix: naming a subject here
+    // would tell the chat which household member has an open receipt.
+    expect(vi.mocked(sendMessageRaw).mock.calls.at(-1)?.[1].title).toBe(
+      "More than one open prompt"
+    );
     expect(receivedCount(a)).toBe(4);
     expect(receivedCount(b)).toBe(4);
   });
@@ -1727,24 +1895,22 @@ describe("Received receipt operation", () => {
     await handleCallbackQuery(f.open);
     const before = sendCount();
     // Another member of the same chat, same text: not this person's prompt.
-    expect(await handleReceivedReply(bareNumber(chat, "120", 921, 72))).toBe(
+    expect(await handleTypedReply(bareNumber(chat, "120", 921, 72))).toBe(
       false
     );
     // Not a number: the message is not claimed at all.
-    expect(await handleReceivedReply(bareNumber(chat, "abc", 922))).toBe(false);
+    expect(await handleTypedReply(bareNumber(chat, "abc", 922))).toBe(false);
     // A linked chat with no open prompt: unchanged.
     const quiet = nextReceiptChat();
     await receivedFixture(quiet);
-    expect(await handleReceivedReply(bareNumber(quiet, "120", 923))).toBe(
-      false
-    );
+    expect(await handleTypedReply(bareNumber(quiet, "120", 923))).toBe(false);
     expect(receivedCount(f)).toBe(4);
     expect(receiptBodies(before)).toEqual([]);
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
       "pending"
     );
     // The CONTRAST: the sender who opened it settles the very same text.
-    expect(await handleReceivedReply(bareNumber(chat, "120", 924))).toBe(true);
+    expect(await handleTypedReply(bareNumber(chat, "120", 924))).toBe(true);
     expect(receivedCount(f)).toBe(124);
   });
 
@@ -1756,7 +1922,7 @@ describe("Received receipt operation", () => {
       WHEN json_extract(NEW.payload, '$.state') = 'completed'
       BEGIN SELECT RAISE(ABORT, 'synthetic completion failure'); END`);
     try {
-      await expect(handleReceivedReply(reply)).rejects.toThrow(
+      await expect(handleTypedReply(reply)).rejects.toThrow(
         "synthetic completion failure"
       );
     } finally {
@@ -1766,7 +1932,7 @@ describe("Received receipt operation", () => {
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
       "pending"
     );
-    await handleReceivedReply(reply);
+    await handleTypedReply(reply);
     expect(receivedCount(f)).toBe(34);
   });
 });
@@ -2253,32 +2419,45 @@ it.each(["recovery", "pause"])(
   }
 );
 
-it("offers the actual item link for an authorized missing legacy receipt, but not foreign or consumed-generation taps", async () => {
+// #5650 ruling 3: a stale tap is answered by the TOAST and, where the tapped message is
+// one this profile still holds a pointer for, by rebuilding THAT message in place. The
+// fourth kind of message this used to send — "This reminder is out of date. Open the
+// current refill form." — left the out-of-date reminder sitting above it still showing
+// the button that had just been refused, and grew the chat by a line saying what the
+// toast had already said.
+it("answers a stale legacy receipt in place, and adds no message for foreign or consumed-generation taps", async () => {
   const f = await orderedFixture();
-  const before = getPublicUrl();
   const send = vi.mocked(sendMessageRaw);
-  setPublicUrl("https://allos.example.test");
+  const data = `rfsnooze:${f.profileId}:${f.supplementId}`;
+  const token = { profileId: f.profileId, itemId: f.supplementId };
   send.mockClear();
-  try {
-    const data = `rfsnooze:${f.profileId}:${f.supplementId}`;
-    const token = { profileId: f.profileId, itemId: f.supplementId };
-    await handleOrderedRefillCallback(cq(data, OTHER_CHAT), token);
-    expect(send).not.toHaveBeenCalled();
-    await handleOrderedRefillCallback(cq(data, OWN_CHAT), token);
-    expect(send.mock.calls.at(-1)?.[1].actions?.[0].url).toBe(
-      `https://allos.example.test${intakeSupplyHref("supplement", f.supplementId, true)}`
-    );
-    await handleOrderedRefillCallback(
-      f.tap,
-      parseOrderedRefillCallback(f.data)!
-    );
-    send.mockClear();
-    await handleOrderedRefillCallback(
-      f.tap,
-      parseOrderedRefillCallback(f.data)!
-    );
-    expect(send).not.toHaveBeenCalled();
-  } finally {
-    setPublicUrl(before);
-  }
+  editTextMock.mockClear();
+
+  // A chat this profile is not linked to: not even an edit.
+  await handleOrderedRefillCallback(cq(data, OTHER_CHAT), token);
+  expect(send).not.toHaveBeenCalled();
+  expect(editTextMock).not.toHaveBeenCalled();
+
+  // Authorized, stale, and ON the reminder it belongs to.
+  await handleOrderedRefillCallback(
+    {
+      ...cq(data, OWN_CHAT),
+      message: { message_id: f.pointer.messageId, chat: { id: OWN_CHAT } },
+    },
+    token
+  );
+  expect(lastAnswerText()).toMatch(/out of date/i);
+  expect(send).not.toHaveBeenCalled();
+  // The TAPPED message is what changed, through the pointer path every other refill
+  // edit already uses.
+  expect(editTextMock.mock.calls.at(-1)?.[1]).toBe(f.pointer.messageId);
+
+  // A tap on a message with no pointer left to rebuild keeps the toast and nothing else.
+  await handleOrderedRefillCallback(cq(data, OWN_CHAT), token);
+  expect(send).not.toHaveBeenCalled();
+
+  await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+  send.mockClear();
+  await handleOrderedRefillCallback(f.tap, parseOrderedRefillCallback(f.data)!);
+  expect(send).not.toHaveBeenCalled();
 });

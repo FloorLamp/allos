@@ -256,6 +256,53 @@ export function pendingRefillOffersFromSender(
   });
 }
 
+// THE RECEIPT PROMPT RECORDED AT THIS MESSAGE ID (#5650, pointer-only).
+//
+// The EXPLICIT-REPLY half of the typed-reply registry. `pendingRefillOffersFromSender`
+// above answers "which receipts is this sender still being asked about", which is the
+// right question for a BARE number and the wrong one for a Reply swipe: the person
+// quoted a specific message, and the offer that message belongs to is a fact regardless
+// of who is typing now or what state the offer reached since.
+//
+// So this filters on NEITHER state NOR sender, deliberately:
+//
+//   - no SENDER filter, because a `/temp` prompt is answerable by anyone in the chat and
+//     a receipt prompt quoted by name should not be the one exception; the arm still
+//     checks the profile against this chat, and `settleReceived` re-checks the sender
+//     binding inside its own transaction and speaks its own refusal;
+//   - no STATE filter, because a settled receipt still owes the reader `Already
+//     recorded` rather than silence — the marker path allowed that and pointer-only
+//     must not lose it.
+//
+// Keyed on `origin.chatId` as well as `promptId` so a message id from another chat can
+// never match: Telegram message ids are per chat and repeat freely across them.
+export function refillOfferAtPrompt(
+  profileId: number,
+  chatId: string,
+  promptId: number
+): { offerId: number; offer: RefillOffer; createdAt: string } | null {
+  const row = db
+    .prepare(
+      `SELECT id, payload, created_at FROM notify_offers
+      WHERE profile_id = ? AND family = 'refill'
+        AND json_extract(payload, '$.promptId') = ?
+        AND json_extract(payload, '$.origin.chatId') = ?
+      ORDER BY id DESC LIMIT 1`
+    )
+    .get(profileId, promptId, chatId) as
+    { id: number; payload: string; created_at: string } | undefined;
+  if (!row) return null;
+  try {
+    return {
+      offerId: row.id,
+      offer: JSON.parse(row.payload) as RefillOffer,
+      createdAt: row.created_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Called under the stock reader's write transaction. One successor per predecessor,
 // including during concurrent message rebuilds; rendering retains the same identity.
 export function currentRefillOffer(

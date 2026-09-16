@@ -17,6 +17,15 @@ import {
   reopenEligibleEpisodeForProfile,
 } from "@/lib/illness-episode-store";
 import { shiftDateStr } from "@/lib/date";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 function newProfile(name: string): number {
   return Number(
@@ -111,7 +120,7 @@ describe("migration 094 data move (single FK → link rows)", () => {
 describe("episode delete + merge carry the visit-link side-state (#1198/#203)", () => {
   it("deleting an episode clears its visit links + stopped-med records", () => {
     const p = newProfile("Del");
-    const epId = createEpisodeRow(p, "Flu", "2026-03-01", "2026-03-08");
+    const epId = createEpisodeRow(gated(p), "Flu", "2026-03-01", "2026-03-08");
     const e = newEncounter(p, "2026-03-04");
     linkEpisodeToEncounter(p, epId, e);
     insertStoppedMed(p, epId);
@@ -138,8 +147,8 @@ describe("episode delete + merge carry the visit-link side-state (#1198/#203)", 
 
   it("merging episodes re-parents the loser's links onto the keeper (de-duped)", () => {
     const p = newProfile("Merge");
-    const keep = createEpisodeRow(p, "Flu", "2026-03-01", "2026-03-05");
-    const drop = createEpisodeRow(p, "Flu", "2026-03-05", "2026-03-09");
+    const keep = createEpisodeRow(gated(p), "Flu", "2026-03-01", "2026-03-05");
+    const drop = createEpisodeRow(gated(p), "Flu", "2026-03-05", "2026-03-09");
     const shared = newEncounter(p, "2026-03-04");
     const only = newEncounter(p, "2026-03-07");
     linkEpisodeToEncounter(p, keep, shared);
@@ -147,7 +156,7 @@ describe("episode delete + merge carry the visit-link side-state (#1198/#203)", 
     linkEpisodeToEncounter(p, drop, only);
     insertStoppedMed(p, drop);
 
-    expect(mergeEpisodeRows(p, keep, drop)).toBe(keep);
+    expect(mergeEpisodeRows(gated(p), keep, drop)).toBe(keep);
     // Keeper now holds the union (shared collapses to one).
     expect(
       encountersForEpisode(p, keep)
@@ -173,14 +182,14 @@ describe("recently-resolved reopen eligibility (#1140 Part A)", () => {
     // end_date is the INCLUSIVE last active day (#2232). Resolved 6 days ago:
     // last active day = end_date = today-6.
     const sixAgoEnd = shiftDateStr(today(p), -6);
-    createEpisodeRow(p, "Cold", shiftDateStr(today(p), -10), sixAgoEnd);
+    createEpisodeRow(gated(p), "Cold", shiftDateStr(today(p), -10), sixAgoEnd);
     const eligible = reopenEligibleEpisodeForProfile(p);
     expect(eligible?.situation).toBe("Cold");
 
     const q = newProfile("Expired");
     // Resolved 8 days ago: last active = end_date = today-8 (> 7-day window).
     createEpisodeRow(
-      q,
+      gated(q),
       "Cold",
       shiftDateStr(today(q), -12),
       shiftDateStr(today(q), -8)
@@ -191,13 +200,13 @@ describe("recently-resolved reopen eligibility (#1140 Part A)", () => {
   it("hides the affordance when the same situation is open again (an illness Now cockpit)", () => {
     const p = newProfile("Relapse");
     createEpisodeRow(
-      p,
+      gated(p),
       "Flu",
       shiftDateStr(today(p), -8),
       shiftDateStr(today(p), -2)
     );
     // A currently-open Flu episode → not a reopen prompt.
-    createEpisodeRow(p, "Flu", shiftDateStr(today(p), -1), null);
+    createEpisodeRow(gated(p), "Flu", shiftDateStr(today(p), -1), null);
     expect(reopenEligibleEpisodeForProfile(p)).toBeNull();
   });
 });

@@ -23,6 +23,15 @@ import { recommendCoaching } from "@/lib/coaching";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
 import { reportNiggle } from "@/lib/niggle-store";
 import { NIGGLE_QUIET_DAYS } from "@/lib/niggle-model";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 const DAY_MS = 86_400_000;
 
@@ -123,7 +132,7 @@ describe("a live niggle tempers the real coaching recommendation (#3211)", () =>
   it("an open illness episode HOLDS the whole recommendation, niggle included", () => {
     const p = squatProfile();
     reportKnee(p, 1);
-    createEpisodeRow(p, "Illness", shiftDateStr(today(p), -2), null);
+    createEpisodeRow(gated(p), "Illness", shiftDateStr(today(p), -2), null);
 
     const recs = recommendCoaching(gatherCoachingInput(p, "kg", "km"));
     expect(recs.some((r) => r.kind === "illness")).toBe(true);

@@ -81,6 +81,15 @@ import { createEpisodeRow } from "@/lib/illness-episode-store";
 import { shiftDateStr } from "@/lib/date";
 import { setRecapScale, getWeekMode, getWeekStart } from "@/lib/settings";
 import { seedProfile, seedLoginTelegram } from "./fixtures";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // The period a SCALE covers for this profile, read through the profile's OWN week
 // settings rather than a hardcoded pair. The week scale honours `week_mode`, whose
@@ -1392,7 +1401,7 @@ describe("runEaseBack (#837)", () => {
     // A closed flagged-illness episode last active yesterday (#2232 inclusive
     // end_date) — today is the first well day, the ease-back ramp's first day.
     const episodeId = createEpisodeRow(
-      p,
+      gated(p),
       "Illness",
       shiftDateStr(td, -4),
       shiftDateStr(td, -1)
@@ -1421,7 +1430,7 @@ describe("runEaseBack (#837)", () => {
     const p = newProfile("EaseBackOpen");
     const td = today(p);
     configureTelegram(p, "555001");
-    createEpisodeRow(p, "Illness", shiftDateStr(td, -2), null); // still open
+    createEpisodeRow(gated(p), "Illness", shiftDateStr(td, -2), null); // still open
 
     const input = gatherCoachingInput(p, "kg", "km");
     const fetchMock = stubFetch();

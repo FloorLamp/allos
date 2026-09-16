@@ -36,9 +36,23 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       // #2134: the scheduled/completed/cancelled flag — appointments' one-tap
       // status transitions now pass a state-named CAS core.
       "appointments",
+      // #5941: the Data → Coverage opt-in registry. A tracked gap is a durable user
+      // decision keyed by UNIQUE(profile_id, kind, item_key); the alias-merge re-key and
+      // the reclass drop are cores because they move that identity rather than replace it.
+      "coverage_gaps",
       "cycles",
+      // #5941: custody of a deleted row between the delete and the purge. The payload is
+      // the only remaining copy, and its captured media must be read before the DELETE.
+      "deleted_rows",
+      // #5941: the acquirer's refused-as-duplicate evidence (#1828); the verdict over it
+      // is recomputed on every read, so a second writer has nothing to invalidate.
+      "document_coverage_markers",
       // #2138: the retire flag that gates pickers/availability/suggestions —
       // equipment's state-named CAS core.
+      // #5941: the reversal record of an episode's medication reconciliation — the only
+      // thing that can undo "ending this illness closed these courses", and the reason the
+      // med NAME travels as a snapshot (#1808) that survives the med row.
+      "episode_stopped_meds",
       "equipment",
       // #2756: the fasting lifecycle. `ended_at IS NULL` IS the active state, and the
       // one-active-per-profile invariant is what every derivation downstream assumes —
@@ -46,6 +60,9 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       // columns ARE the machine.
       "fasts",
       "illness_episodes",
+      // #5941: the "an import may not put this back" refusal (#507/#1777) — the only
+      // trace of a decision about something that has already been deleted.
+      "import_tombstones",
       // The dose SCHEDULE's retired flag, added by #2131 — the parent whose gating the
       // ledger below had and it lacked.
       "intake_item_doses",
@@ -85,6 +102,13 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "shared_supplies",
       // #2140: the active-situation set rewrite + illness-episode sync machine.
       "situations",
+      // #5941: a row is the only pointer to a stripped photo on disk (#1844) — the
+      // delete reclaims the file, the insert dedups on the processed hash, and the
+      // re-key re-parents the #1093 binding rather than cascade-dropping it.
+      "symptom_photos",
+      // #5941: the same custody for a clip and its poster (#1224), plus `has_location`
+      // — the flag that says an embedded GPS atom was detected rather than assumed.
+      "symptom_videos",
     ]);
   });
 

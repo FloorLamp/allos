@@ -12,9 +12,30 @@
 // The import footprint (clearImportedDocumentRows / the reassign move set /
 // extracted_count) is untouched here — it lives in lib/import-persist and stays
 // bound by its tests; this module only relocates the engine that drives it.
+//
+// THE TWO REPROCESS-BY-ID CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on
+// reprocessDocumentById and reprocessFromRawById is lib/auth's WriteAuthorizedProfileId,
+// which only the gates mint, so an action that never gated holds nothing they take (#5348).
+// The import is type-only — erased at build — so this module still runs auth-blind and
+// document-actions.ts still owns the gate and the revalidation. A branded number is still a
+// number, so everything else here takes one unchanged, including three write paths this
+// conversion does not reach: ingestMedicalUpload and reprocessOne, whose callers include a
+// route handler and this module itself, and reprocessAllForProfile, which holds no write of
+// its own and delegates to reprocessOne.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
@@ -1299,7 +1320,7 @@ function commitCachedPreview(
 // background completion is observed by the existing extraction toaster.
 export function reprocessDocumentById(
   loginId: number,
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   id: number,
   previewToken?: string
 ): ReprocessApplyOutcome {
@@ -1408,7 +1429,7 @@ export interface ReprocessFromRawResult {
 // FHIR) carry no raw_extraction — they have nothing to replay and report 'skipped'.
 export async function reprocessFromRawById(
   loginId: number,
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   id: number
 ): Promise<ReprocessFromRawResult> {
   const d = db

@@ -32,6 +32,15 @@ import { seedActor } from "@/lib/__action_tests__/harness";
 import { SmartHealthCardError } from "@/lib/smart-health-card";
 import { UserFacingError, userErrorCopy } from "@/lib/user-error-copy";
 import { ZipIndexError } from "@/lib/zip-index";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const PARSER_ERRORS = new Set([
@@ -326,7 +335,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     const id = seedDoc(profile.id, JSON.stringify(FLAT));
     expect(recordCount(profile.id)).toBe(0);
 
-    const res = await reprocessFromRawById(login.id, profile.id, id);
+    const res = await reprocessFromRawById(login.id, gated(profile.id), id);
 
     expect(res.status).toBe("done");
     expect(res.message).toMatch(/2 observation\(s\)/);
@@ -340,7 +349,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     const { login, profile } = seedActor();
     const id = seedDoc(profile.id, JSON.stringify({ document_data: FLAT }));
 
-    const res = await reprocessFromRawById(login.id, profile.id, id);
+    const res = await reprocessFromRawById(login.id, gated(profile.id), id);
 
     expect(res.status).toBe("done");
     expect(recordCount(profile.id)).toBe(2);
@@ -349,7 +358,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
   it("preserves the ORIGINAL model attribution (a replay, not a fresh run)", async () => {
     const { login, profile } = seedActor();
     const id = seedDoc(profile.id, JSON.stringify(FLAT));
-    await reprocessFromRawById(login.id, profile.id, id);
+    await reprocessFromRawById(login.id, gated(profile.id), id);
     const row = db
       .prepare("SELECT model FROM medical_documents WHERE id = ?")
       .get(id) as { model: string | null };
@@ -359,7 +368,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
   it("skips a document with no saved extraction (e.g. a health record)", async () => {
     const { login, profile } = seedActor();
     const id = seedDoc(profile.id, null);
-    const res = await reprocessFromRawById(login.id, profile.id, id);
+    const res = await reprocessFromRawById(login.id, gated(profile.id), id);
     expect(res.status).toBe("skipped");
     expect(res.message).toMatch(/no saved ai extraction/i);
   });
@@ -368,7 +377,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     const { login, profile } = seedActor();
     // Import once so the document owns rows...
     const id = seedDoc(profile.id, JSON.stringify(FLAT));
-    await reprocessFromRawById(login.id, profile.id, id);
+    await reprocessFromRawById(login.id, gated(profile.id), id);
     expect(recordCount(profile.id)).toBe(2);
 
     // ...then corrupt the saved extraction and re-import: the failure must leave
@@ -376,7 +385,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     db.prepare(
       "UPDATE medical_documents SET raw_extraction = ? WHERE id = ?"
     ).run("{not json", id);
-    const res = await reprocessFromRawById(login.id, profile.id, id);
+    const res = await reprocessFromRawById(login.id, gated(profile.id), id);
     expect(res.status).toBe("failed");
     expect(recordCount(profile.id)).toBe(2);
     const row = db
@@ -388,7 +397,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
   it("fails on a saved extraction whose shape is unrecognized", async () => {
     const { login, profile } = seedActor();
     const id = seedDoc(profile.id, JSON.stringify({ nothing: "useful" }));
-    const res = await reprocessFromRawById(login.id, profile.id, id);
+    const res = await reprocessFromRawById(login.id, gated(profile.id), id);
     expect(res.status).toBe("failed");
     expect(res.message).toMatch(/unrecognized shape/i);
     expect(recordCount(profile.id)).toBe(0);
@@ -401,10 +410,10 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     const { login, profile } = seedActor();
     const id = seedDoc(profile.id, JSON.stringify(FLAT));
 
-    await reprocessFromRawById(login.id, profile.id, id);
+    await reprocessFromRawById(login.id, gated(profile.id), id);
     expect(recordCount(profile.id)).toBe(2);
 
-    const again = await reprocessFromRawById(login.id, profile.id, id);
+    const again = await reprocessFromRawById(login.id, gated(profile.id), id);
     expect(again.status).toBe("done");
     expect(recordCount(profile.id)).toBe(2);
   });
@@ -417,11 +426,11 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     const before = getAiUsageCount(profile.id, "extraction");
 
     const ok = seedDoc(profile.id, JSON.stringify(FLAT));
-    await reprocessFromRawById(login.id, profile.id, ok);
+    await reprocessFromRawById(login.id, gated(profile.id), ok);
     expect(getAiUsageCount(profile.id, "extraction")).toBe(before);
 
     const bad = seedDoc(profile.id, "{not json");
-    await reprocessFromRawById(login.id, profile.id, bad);
+    await reprocessFromRawById(login.id, gated(profile.id), bad);
     expect(getAiUsageCount(profile.id, "extraction")).toBe(before);
   });
 
@@ -434,7 +443,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
       "UPDATE medical_documents SET extraction_status = 'processing' WHERE id = ?"
     ).run(id);
 
-    const res = await reprocessFromRawById(login.id, profile.id, id);
+    const res = await reprocessFromRawById(login.id, gated(profile.id), id);
 
     expect(res.status).toBe("skipped");
     expect(res.message).toMatch(/already processing/i);
@@ -448,7 +457,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
 
     const res = await reprocessFromRawById(
       other.login.id,
-      other.profile.id,
+      gated(other.profile.id),
       id
     );
 

@@ -38,6 +38,15 @@ import {
   purgeDeletedRow,
   sweepDeletedRows,
 } from "@/lib/undo-delete-db";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 let profileId: number;
 let activityId: number;
@@ -115,7 +124,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
     expect(v.hasLocation).toBe(true);
     const poster = Buffer.from("SYNTHETIC-POSTER-BYTES");
     const out = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-05-01", symptom: "tremor", caption: "  left hand  " },
       v,
       poster
@@ -152,7 +161,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
 
     // Re-uploading the identical clip reuses the existing row.
     const again = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-05-01", symptom: null, caption: null },
       v,
       poster
@@ -165,7 +174,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
       buildMp4Fixture({ durationSec: 3, creationDate: "2026-05-05" })
     );
     const out = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-05-05", symptom: null, caption: null },
       v,
       null
@@ -183,13 +192,13 @@ describe("attachSymptomVideoCore / read / delete", () => {
       getSymptomVideosInRange(profileId, "2026-01-01", "2026-01-31")
     ).toHaveLength(0);
 
-    expect(updateSymptomVideoCaptionCore(profileId, out.id, "swaying")).toBe(
-      true
-    );
+    expect(
+      updateSymptomVideoCaptionCore(gated(profileId), out.id, "swaying")
+    ).toBe(true);
     // Forged cross-profile caption edit is a no-op.
-    expect(updateSymptomVideoCaptionCore(profileId + 9999, out.id, "x")).toBe(
-      false
-    );
+    expect(
+      updateSymptomVideoCaptionCore(gated(profileId + 9999), out.id, "x")
+    ).toBe(false);
   });
 
   it("delete removes the row AND both files, path-contained + idempotent", () => {
@@ -197,7 +206,7 @@ describe("attachSymptomVideoCore / read / delete", () => {
       buildMp4Fixture({ durationSec: 4, creationDate: "2026-06-02" })
     );
     const out = attachSymptomVideoCore(
-      profileId,
+      gated(profileId),
       { date: "2026-06-02", symptom: null, caption: null },
       v,
       Buffer.from("POSTER-2")
@@ -211,19 +220,19 @@ describe("attachSymptomVideoCore / read / delete", () => {
       .get(out.id, profileId) as { stored_path: string; poster_path: string };
 
     // Forged cross-profile delete is a no-op.
-    expect(deleteSymptomVideoCore(profileId + 9999, out.id)).toBe(false);
+    expect(deleteSymptomVideoCore(gated(profileId + 9999), out.id)).toBe(false);
     expect(fs.existsSync(path.resolve(process.cwd(), row.stored_path))).toBe(
       true
     );
 
-    expect(deleteSymptomVideoCore(profileId, out.id)).toBe(true);
+    expect(deleteSymptomVideoCore(gated(profileId), out.id)).toBe(true);
     expect(fs.existsSync(path.resolve(process.cwd(), row.stored_path))).toBe(
       false
     );
     expect(fs.existsSync(path.resolve(process.cwd(), row.poster_path))).toBe(
       false
     );
-    expect(deleteSymptomVideoCore(profileId, out.id)).toBe(false);
+    expect(deleteSymptomVideoCore(gated(profileId), out.id)).toBe(false);
   });
 });
 
@@ -416,7 +425,9 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       expect(fs.existsSync(abs(row.stored_path))).toBe(true);
 
       // No backdating, no tick — the user said "permanently" and meant now.
-      expect(purgeDeletedRow(profileId, undoId)).toEqual({ kind: "purged" });
+      expect(purgeDeletedRow(gated(profileId), undoId)).toEqual({
+        kind: "purged",
+      });
       expect(fs.existsSync(abs(row.stored_path))).toBe(false);
       expect(fs.existsSync(abs(row.poster_path))).toBe(false);
     });
@@ -441,7 +452,7 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       captureDelete("activity", profileId, act);
       expect(fs.existsSync(abs(row.stored_path))).toBe(true);
 
-      expect(emptyTrash(profileId)).toBeGreaterThanOrEqual(1);
+      expect(emptyTrash(gated(profileId))).toBeGreaterThanOrEqual(1);
       expect(fs.existsSync(abs(row.stored_path))).toBe(false);
       expect(fs.existsSync(abs(row.poster_path))).toBe(false);
     });

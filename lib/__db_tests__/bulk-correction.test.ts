@@ -17,6 +17,15 @@ import {
   undoBulkCorrection,
   type CorrectionFilter,
 } from "@/lib/bulk-correction-db";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 const RANGE: CorrectionFilter = {
   from: "2026-03-01",
@@ -64,7 +73,7 @@ function applyRun(
   const plan = planCorrection("weight", rows, op);
   if (!plan.ok) throw new Error("fixture plan out of range");
   return applyBulkCorrection(
-    profileId,
+    gated(profileId),
     "weight",
     filter,
     op,
@@ -141,7 +150,13 @@ describe("applyBulkCorrection", () => {
     // A sync lands mid-preview: one value moves.
     db.prepare("UPDATE body_metrics SET weight_kg = 177.0 WHERE id = ?").run(a);
 
-    const res = applyBulkCorrection(pid, "weight", RANGE, op, staleSignature);
+    const res = applyBulkCorrection(
+      gated(pid),
+      "weight",
+      RANGE,
+      op,
+      staleSignature
+    );
     expect(res).toEqual({ ok: false, error: "drift" });
     // Nothing was applied.
     expect(weightRow(a).weight_kg).toBe(177);
@@ -151,7 +166,7 @@ describe("applyBulkCorrection", () => {
     const pid = newProfile("bulkfix empty");
     expect(
       applyBulkCorrection(
-        pid,
+        gated(pid),
         "weight",
         RANGE,
         { kind: "add", amount: 1 },
@@ -162,7 +177,7 @@ describe("applyBulkCorrection", () => {
     addWeight(pid, "2026-03-01", 3, "withings");
     expect(
       applyBulkCorrection(
-        pid,
+        gated(pid),
         "weight",
         RANGE,
         { kind: "add", amount: -5 },
@@ -183,7 +198,7 @@ describe("applyBulkCorrection", () => {
 
     // And a foreign undo token is not-found for this profile.
     if (!res.ok) throw new Error("unreachable");
-    expect(undoBulkCorrection(otherPid, res.undoId)).toEqual({
+    expect(undoBulkCorrection(gated(otherPid), res.undoId)).toEqual({
       ok: false,
       error: "not-found",
     });
@@ -205,7 +220,7 @@ describe("undoBulkCorrection", () => {
       "UPDATE body_metrics SET weight_kg = 84.9, edited = 1 WHERE id = ?"
     ).run(b);
 
-    const undo = undoBulkCorrection(pid, res.undoId);
+    const undo = undoBulkCorrection(gated(pid), res.undoId);
     expect(undo).toEqual({ ok: true, restored: 2, skipped: 1 });
 
     // a: value back, OUR lock cleared. b: the later edit stands, lock stands.
@@ -215,7 +230,7 @@ describe("undoBulkCorrection", () => {
     expect(weightRow(c)).toEqual({ weight_kg: 168, edited: 1 });
 
     // The holding row is consumed — a second undo finds nothing.
-    expect(undoBulkCorrection(pid, res.undoId)).toEqual({
+    expect(undoBulkCorrection(gated(pid), res.undoId)).toEqual({
       ok: false,
       error: "not-found",
     });
@@ -231,7 +246,7 @@ describe("undoBulkCorrection", () => {
         )
         .run(pid).lastInsertRowid
     );
-    expect(undoBulkCorrection(pid, undoId)).toEqual({
+    expect(undoBulkCorrection(gated(pid), undoId)).toEqual({
       ok: false,
       error: "not-found",
     });
@@ -266,7 +281,7 @@ describe("metric_samples and activities stores", () => {
     const plan = planCorrection("hrv", rows, op);
     if (!plan.ok) throw new Error("unreachable");
     const res = applyBulkCorrection(
-      pid,
+      gated(pid),
       "hrv",
       filter,
       op,
@@ -288,7 +303,7 @@ describe("metric_samples and activities stores", () => {
       ).value
     ).toBe(9000);
 
-    expect(undoBulkCorrection(pid, res.undoId)).toEqual({
+    expect(undoBulkCorrection(gated(pid), res.undoId)).toEqual({
       ok: true,
       restored: 1,
       skipped: 0,
@@ -312,7 +327,7 @@ describe("metric_samples and activities stores", () => {
     const plan = planCorrection("distance", rows, op);
     if (!plan.ok) throw new Error("unreachable");
     const res = applyBulkCorrection(
-      pid,
+      gated(pid),
       "distance",
       filter,
       op,
@@ -327,7 +342,7 @@ describe("metric_samples and activities stores", () => {
         .get(id) as { distance_km: number; edited: number };
     expect(row()).toEqual({ distance_km: 8.04672, edited: 1 });
 
-    expect(undoBulkCorrection(pid, res.undoId)).toEqual({
+    expect(undoBulkCorrection(gated(pid), res.undoId)).toEqual({
       ok: true,
       restored: 1,
       skipped: 0,

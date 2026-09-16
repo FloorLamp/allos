@@ -19,6 +19,15 @@ import { recommendCoaching } from "@/lib/coaching";
 import { recommendWorkout } from "@/lib/notifications/recommend";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 const GO_TRAIN = new Set(["strength", "cardio", "ontrack"]);
 
@@ -73,7 +82,7 @@ describe("situation-aware coaching gather (#837)", () => {
   it("open episode: card holds the nags AND the workout slot goes quiet", () => {
     const { p, td } = trainedProfile("Illness Open");
     // An open flagged-illness episode covering today.
-    createEpisodeRow(p, "Illness", shiftDateStr(td, -2), null);
+    createEpisodeRow(gated(p), "Illness", shiftDateStr(td, -2), null);
 
     const input = gatherCoachingInput(p, "kg", "km");
     expect(input.illness?.openEpisode).toBe(true);
@@ -93,7 +102,12 @@ describe("situation-aware coaching gather (#837)", () => {
     // Closed episode whose inclusive last active day (#2232) was yesterday — today is
     // the first well day, the first day of the ease-back ramp. (An end_date of today
     // would still COVER today and read as held, not ease-back.)
-    createEpisodeRow(p, "Illness", shiftDateStr(td, -4), shiftDateStr(td, -1));
+    createEpisodeRow(
+      gated(p),
+      "Illness",
+      shiftDateStr(td, -4),
+      shiftDateStr(td, -1)
+    );
 
     const input = gatherCoachingInput(p, "kg", "km");
     expect(input.illness?.openEpisode).toBe(false);
@@ -109,7 +123,12 @@ describe("situation-aware coaching gather (#837)", () => {
   it("ramp elapsed: normal coaching resumes on both surfaces", () => {
     const { p, td } = trainedProfile("Illness Recovered");
     // Last active 4 days ago (beyond the 3-day ease-back ramp).
-    createEpisodeRow(p, "Illness", shiftDateStr(td, -8), shiftDateStr(td, -4));
+    createEpisodeRow(
+      gated(p),
+      "Illness",
+      shiftDateStr(td, -8),
+      shiftDateStr(td, -4)
+    );
 
     const input = gatherCoachingInput(p, "kg", "km");
     expect(input.illness?.openEpisode).toBe(false);

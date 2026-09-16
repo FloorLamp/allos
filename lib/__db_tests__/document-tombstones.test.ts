@@ -42,6 +42,15 @@ import {
   fd,
   seedActor,
 } from "@/lib/__action_tests__/harness";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // A stored document row for a profile. Low-entropy, obviously-fictional hashes on
 // purpose: a realistic sha-256 literal is what trips the repo's secret scanning.
@@ -112,7 +121,7 @@ describe("document tombstone store", () => {
     const hash = "e2e-doc-hash-store-1";
 
     expect(isDocumentTombstoned(profile.id, hash)).toBe(false);
-    writeDocumentTombstone(profile.id, hash, "labs-march.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "labs-march.pdf");
     expect(isDocumentTombstoned(profile.id, hash)).toBe(true);
     expect(tombstonedDocumentHashes(profile.id)).toContain(hash);
 
@@ -134,8 +143,8 @@ describe("document tombstone store", () => {
     const { profile } = seedActor();
     const hash = "e2e-doc-hash-store-2";
 
-    writeDocumentTombstone(profile.id, hash, "first-name.pdf");
-    writeDocumentTombstone(profile.id, hash, "second-name.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "first-name.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "second-name.pdf");
 
     const rows = db
       .prepare(
@@ -155,7 +164,7 @@ describe("document tombstone store", () => {
     const b = seedActor();
     const hash = "e2e-doc-hash-scope-1";
 
-    writeDocumentTombstone(a.profile.id, hash, "a.pdf");
+    writeDocumentTombstone(gated(a.profile.id), hash, "a.pdf");
 
     expect(isDocumentTombstoned(a.profile.id, hash)).toBe(true);
     expect(isDocumentTombstoned(b.profile.id, hash)).toBe(false);
@@ -234,7 +243,7 @@ describe("reassignDocument reconciles the destination's tombstone", () => {
     const hash = "e2e-doc-hash-reassign-1";
 
     // The destination previously deleted these exact bytes.
-    writeDocumentTombstone(dest.id, hash, "old-copy.pdf");
+    writeDocumentTombstone(gated(dest.id), hash, "old-copy.pdf");
 
     actAs(login, src);
     const docId = insertDoc(src.id, "misfiled.pdf", hash);

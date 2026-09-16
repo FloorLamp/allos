@@ -42,6 +42,15 @@ import {
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
 import { coachingObservationFindings } from "@/lib/dashboard-presentation";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 function newProfile(name: string): number {
   return Number(
@@ -57,19 +66,19 @@ describe("LH tests reuse medical_records", () => {
     const p = newProfile("ttc-lh");
     const d = today(p);
 
-    const first = logLhTestCore(p, d, "negative", "page");
+    const first = logLhTestCore(gated(p), d, "negative", "page");
     expect(first.kind).toBe("logged");
     if (first.kind === "logged") expect(first.counts.inserted).toBe(1);
 
     // Re-logging the same result writes nothing new and reports `unchanged`.
-    const again = logLhTestCore(p, d, "negative", "page");
+    const again = logLhTestCore(gated(p), d, "negative", "page");
     if (again.kind === "logged") {
       expect(again.counts.unchanged).toBe(1);
       expect(again.counts.inserted).toBe(0);
     }
 
     // A correction UPDATES the same row rather than minting a second one.
-    const corrected = logLhTestCore(p, d, "positive", "page");
+    const corrected = logLhTestCore(gated(p), d, "positive", "page");
     if (corrected.kind === "logged") expect(corrected.counts.updated).toBe(1);
 
     const rows = db
@@ -98,12 +107,12 @@ describe("LH tests reuse medical_records", () => {
   it("refuses to overwrite a hand-corrected (edit-locked) row", () => {
     const p = newProfile("ttc-lh-locked");
     const d = today(p);
-    logLhTestCore(p, d, "negative", "page");
+    logLhTestCore(gated(p), d, "negative", "page");
     db.prepare(
       `UPDATE medical_records SET edited = 1 WHERE profile_id = ? AND name = ?`
     ).run(p, LH_TEST_RECORD_NAME);
 
-    expect(logLhTestCore(p, d, "positive", "page").kind).toBe("locked");
+    expect(logLhTestCore(gated(p), d, "positive", "page").kind).toBe("locked");
     expect(listLhTests(p, WINDOW_START)[0].result).toBe("negative");
   });
 });
@@ -113,8 +122,8 @@ describe("BBT reuses metric_samples", () => {
     const p = newProfile("ttc-bbt");
     const d = today(p);
 
-    expect(logBbtCore(p, d, 97.3).kind).toBe("logged");
-    const second = logBbtCore(p, d, 97.9);
+    expect(logBbtCore(gated(p), d, 97.3).kind).toBe("logged");
+    const second = logBbtCore(gated(p), d, 97.9);
     if (second.kind === "logged") expect(second.counts.updated).toBe(1);
 
     const rows = db
@@ -139,7 +148,7 @@ describe("BBT reuses metric_samples", () => {
 
   it("refuses an implausible waking temperature without writing", () => {
     const p = newProfile("ttc-bbt-bounds");
-    const out = logBbtCore(p, today(p), 36.6); // a °C value typed into a °F field
+    const out = logBbtCore(gated(p), today(p), 36.6); // a °C value typed into a °F field
     expect(out.kind).toBe("invalid");
     expect(listBbtReadings(p, WINDOW_START)).toEqual([]);
   });
@@ -147,11 +156,11 @@ describe("BBT reuses metric_samples", () => {
   it("honours the edit lock on a corrected sample", () => {
     const p = newProfile("ttc-bbt-locked");
     const d = today(p);
-    logBbtCore(p, d, 97.3);
+    logBbtCore(gated(p), d, 97.3);
     db.prepare(
       `UPDATE metric_samples SET edited = 1 WHERE profile_id = ? AND metric = ?`
     ).run(p, BBT_METRIC);
-    expect(logBbtCore(p, d, 98.1).kind).toBe("locked");
+    expect(logBbtCore(gated(p), d, 98.1).kind).toBe("locked");
     expect(listBbtReadings(p, WINDOW_START)[0].degF).toBe(97.3);
   });
 });
@@ -161,14 +170,14 @@ describe("cervical mucus reuses symptom_logs", () => {
     const p = newProfile("ttc-mucus");
     const d = today(p);
 
-    const first = logMucusCore(p, d, "creamy", "page");
+    const first = logMucusCore(gated(p), d, "creamy", "page");
     if (first.kind === "logged") expect(first.counts.inserted).toBe(1);
-    const same = logMucusCore(p, d, "creamy", "page");
+    const same = logMucusCore(gated(p), d, "creamy", "page");
     if (same.kind === "logged") expect(same.counts.unchanged).toBe(1);
 
     // An explicit correction may LOWER the ordinal — the observation is categorical, not a
     // day's worst severity.
-    const lowered = logMucusCore(p, d, "dry", "page");
+    const lowered = logMucusCore(gated(p), d, "dry", "page");
     if (lowered.kind === "logged") expect(lowered.counts.updated).toBe(1);
 
     const rows = db
@@ -207,7 +216,7 @@ describe("getTtcState — the assembled gather", () => {
   it("is entirely off until the user declares a start", () => {
     const p = newProfile("ttc-undeclared");
     seedRegularCycles(p, 20);
-    logMucusCore(p, today(p), "egg_white", "page"); // an observation is NOT a declaration
+    logMucusCore(gated(p), today(p), "egg_white", "page"); // an observation is NOT a declaration
     const s = getTtcState(p, today(p));
     expect(s.ttcStart).toBeNull();
     expect(s.active).toBe(false);
@@ -223,7 +232,7 @@ describe("getTtcState — the assembled gather", () => {
     expect(calendarOnly.active).toBe(true);
     expect(calendarOnly.window?.evidence).toBe("calendar");
 
-    logLhTestCore(p, today(p), "positive", "page");
+    logLhTestCore(gated(p), today(p), "positive", "page");
     const withSurge = getTtcState(p, today(p));
     expect(withSurge.window?.evidence).toBe("lh");
     expect(withSurge.todayLh).toBe("positive");
@@ -236,7 +245,9 @@ describe("getTtcState — the assembled gather", () => {
     setTtcStart(p, shiftDateStr(anchor, -100));
     // Six baseline mornings then three elevated ones, all inside the current cycle.
     const temps = [97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 97.9, 98.0, 97.9];
-    temps.forEach((t, i) => logBbtCore(p, shiftDateStr(anchor, -19 + i), t));
+    temps.forEach((t, i) =>
+      logBbtCore(gated(p), shiftDateStr(anchor, -19 + i), t)
+    );
 
     const s = getTtcState(p, anchor);
     expect(s.confirmation).not.toBeNull();
@@ -249,7 +260,7 @@ describe("getTtcState — the assembled gather", () => {
     seedRegularCycles(p, 20);
     const declared = shiftDateStr(today(p), -300);
     setTtcStart(p, declared);
-    logLhTestCore(p, today(p), "positive", "page");
+    logLhTestCore(gated(p), today(p), "positive", "page");
     setRiskAttributes(p, { ...EMPTY_RISK_ATTRIBUTES, pregnant: true });
 
     const s = getTtcState(p, today(p));
