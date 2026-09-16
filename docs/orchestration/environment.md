@@ -39,14 +39,12 @@ For Codex, workers, separate tasks, and automations are distinct capabilities;
 creating a user-owned task is not a substitute for an internal worker. For Claude
 Remote, a scheduled relay must target the existing `persistent_session_id`;
 `fire_trigger` can create another session and is not a direct-message substitute.
-Use only APIs actually available in the current session.
 
 Some legacy scripts still recognize only Claude session trailers/PR footers or
 process ancestry. Missing attribution from another host remains UNKNOWN, never
 an ownership grant. Check actual task state, branch claims and PRs; use the
 existing explicit adoption path only after resolving ownership. Do not fabricate
-a Claude session ID to satisfy a script. Skills portability does not imply these
-legacy parsers can identify every host.
+a Claude session ID to satisfy a script.
 
 ## Environment
 
@@ -73,6 +71,8 @@ legacy parsers can identify every host.
   Wall time alone cannot distinguish a hang, contention, or shared-state leakage.
   For untouched-file failures, use [dispatch's attribution procedure](dispatch.md)
   before blaming the change or the machine.
+- The checkout lags REST: a merge is readable through the API before any local
+  ref knows it, so fetch before comparing against `origin/main`.
 - Wait on a captured process/tool handle. For recorded gates, use
   [run-gates-recorded.sh](../../scripts/orchestration/run-gates-recorded.sh) and its
   recorded PID/exit status. A script-name process search can match other lanes or
@@ -90,8 +90,7 @@ expand tool grants or override session instructions or an approval rejection.
   and Actions writes. REST's merge endpoint is the fallback when MCP is absent;
   [review and merge](review-merge.md) owns the merge requirements.
 - A narrowly granted maintenance role may use scoped MCP readers and its confined
-  writers, as specified by that role. Do not replace a restricted grant with
-  general shell access.
+  writers, as specified by that role.
 - Public repository reads can often run unauthenticated. Missing write credentials
   do not by themselves block gathering. Report endpoint refusals and rate limits;
   if search is unavailable, list the relevant collection and filter locally.
@@ -101,6 +100,11 @@ expand tool grants or override session instructions or an approval rejection.
   variable alone does not establish that all write access is absent. Never print
   tokens or search the filesystem or environment for credentials. Follow
   [recovery](recovery.md) when authorized access is actually unavailable.
+- A job's `/logs` endpoint redirects to a pre-signed blob URL that refuses a
+  forwarded credential; follow the redirect without the `Authorization` header.
+- A transport can refuse ref deletion with 403: a squash merge then leaves the
+  remote branch alive, and `dispatch-brief.mjs done` refuses until
+  [recovery](recovery.md)'s `--keep`.
 - Respect sandbox and approval refusals. Follow the session's escalation process;
   do not switch verbs or transports to evade a denial.
 - Open the sole landing candidate ready for review (`"draft": false`). Keep

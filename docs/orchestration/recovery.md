@@ -35,8 +35,7 @@ the session's approved credential mechanism and verify push access with a dry ru
 Never search for secrets. Continue useful authorized work and checkpoint locally
 while writes are unavailable; report which results remain unpushed.
 
-An approval rejection is different from missing credentials. Do not switch
-transports or use an indirect write to bypass it.
+An approval rejection is different from missing credentials.
 
 ## Stall test
 

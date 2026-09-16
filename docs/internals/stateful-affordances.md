@@ -47,7 +47,11 @@ write does not need an artificial compare-and-swap.
 ## Existing owners
 
 Start with [STATEFUL_WRITE_TABLES](../../lib/stateful-writes.ts) for the current
-write owners and offer derivations. Keep that inventory in code.
+write owners and offer derivations. Keep that inventory in code. It gates 22
+tables, 17 of the 86 in [OWNED_TABLES](../../lib/owned-tables.ts); for the other
+69 any module can `writeTx` another profile's rows ungated, so a write brand is
+evidence of a gate, not proof of one. Recount both constants — nothing
+recomputes these numbers.
 
 For a complete example, [cycleControlState and cycleOffer](../../lib/cycle-plausibility.ts)
 derive the period state and at most one start, end, or reopen offer.
@@ -84,15 +88,13 @@ This is a source check, not proof that every write is safe. It excludes migratio
 and test fixtures, cannot resolve arbitrary computed SQL or interpolated table
 names, and does not prove authorization, transaction correctness, typed-outcome
 handling, or UI behavior. Generic restore and bulk-delete paths using dynamic
-table names require separate review. Column narrowing checks mentions anywhere
-in the SQL, so DELETE can match when its predicate mentions a gated column.
+table names require separate review.
 
 When extending the registry, identify an actual lifecycle or counter invariant
 and route its writes through the existing owner first. Keep exceptions narrow
-and explain why they preserve that invariant. Name an offer derivation only when
-it exists. Check column names against the schema and inspect existing DB coverage;
-add a focused case only for a meaningful uncovered failure. A registry entry alone
-does not establish the core’s correctness.
+and explain why they preserve that invariant. Check column names against the
+schema and inspect existing DB coverage; add a focused case only for a
+meaningful uncovered failure.
 
 ## One-tap feedback
 
