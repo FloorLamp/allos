@@ -159,6 +159,11 @@ export function declarationsIn(file, root = ROOT) {
     true,
     file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   );
+  // MODULE-LEVEL PREPARED STATEMENTS. `const S = hoistedStatement("UPDATE …")` puts
+  // the DML outside every declaration's own body, so the predicate's body half
+  // cannot see the write that `S.run(…)` performs. Collected so the report can say
+  // how many declarations write that way instead of silently calling them readers.
+  const hoistedDml = new Set();
   const exportedByList = new Set();
   for (const st of sf.statements)
     if (
@@ -171,6 +176,19 @@ export function declarationsIn(file, root = ROOT) {
       for (const el of st.exportClause.elements)
         if (!el.isTypeOnly)
           exportedByList.add((el.propertyName ?? el.name).text);
+
+  for (const st of sf.statements) {
+    if (!ts.isVariableStatement(st)) continue;
+    for (const vd of st.declarationList.declarations) {
+      if (!ts.isIdentifier(vd.name) || !vd.initializer) continue;
+      if (!ts.isCallExpression(vd.initializer)) continue;
+      const literal = vd.initializer.arguments.find((a) =>
+        ts.isStringLiteralLike(a)
+      );
+      if (literal && DML.some((re) => re.test(literal.text)))
+        hoistedDml.add(vd.name.text);
+    }
+  }
 
   const out = [];
   const add = (name, node, fn, exported) => {
@@ -214,6 +232,9 @@ export function declarationsIn(file, root = ROOT) {
       calls,
       memberCalls,
       argsTo,
+      usesHoistedDml: [...memberCalls].some((m) =>
+        hoistedDml.has(m.slice(0, m.indexOf(".")))
+      ),
       hasDml: DML.some((re) => re.test(text)),
     });
   };
@@ -378,6 +399,7 @@ export function census(root = ROOT) {
   // that happens to call a writer joins in, which is the unusable set the manifest
   // measured. `wideReach` counts that flood so the narrowing is visible, not assumed.
   const delegating = [];
+  const hoisted = [];
   let wideReach = 0;
   const writerBehind = (file, callee) => {
     const target = resolveCallee(file, callee);
@@ -398,6 +420,7 @@ export function census(root = ROOT) {
       }
     }
     if (landed) delegating.push({ decl: start, ...landed });
+    else if (start.usesHoistedDml) hoisted.push(start);
     // The wider walk, for the number only.
     const seen = new Set([declKey(start)]);
     let frontier = [start];
@@ -504,6 +527,12 @@ export function census(root = ROOT) {
       }))
       .sort((a, b) => (a.file + a.name).localeCompare(b.file + b.name)),
     wideReach,
+    hoisted: hoisted.map((d) => ({
+      file: d.file,
+      name: d.name,
+      line: d.line,
+      fence: fenceFor(d.file),
+    })),
     nonWritingUnresolved: nonWriting.filter(
       (d) => !delegating.some((x) => x.decl === d)
     ).length,
@@ -526,6 +555,7 @@ const uniq = (xs) => [...new Set(xs)];
 const sitesIn = (core, files) =>
   files.reduce((n, f) => n + (core.sitesByFile[f] ?? 0), 0);
 const pad = (s, n) => String(s).padEnd(n);
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function trancheTable(rows, label) {
   const key = label === "naive" ? "naiveTranche" : "tranche";
@@ -533,9 +563,9 @@ function trancheTable(rows, label) {
   for (const t of ["A", "B", "N"]) {
     const slice = rows.filter((r) => r[key] === t);
     lines.push(
-      `  ${t}  ${pad(uniq(slice.map((r) => r.file)).length + " files", 12)}${pad(
-        slice.length + " cores",
-        12
+      `  ${t}  ${pad(plural(uniq(slice.map((r) => r.file)).length, "file"), 12)}${plural(
+        slice.length,
+        "core"
       )}`
     );
   }
@@ -582,14 +612,20 @@ export function report(data) {
     `  · A profile-shaped parameter written as anything but \`number\` or \`${BRAND}\``
   );
   say(
-    `    (\`number | null\`, a union, an object field) is NOT a core. ${data.shape.other.length} declaration(s):`
+    `    (\`number | null\`, a union, an object field) is NOT a core. ${plural(
+      data.shape.other.length,
+      "declaration"
+    )}:`
   );
   for (const o of data.shape.other.slice(0, 12))
     say(`      ${o.key}  ${o.type}`);
   if (data.shape.other.length > 12)
     say(`      … and ${data.shape.other.length - 12} more (--json for all)`);
   say(
-    `  · ${data.shape.branded} exported declaration(s) already take the brand and so are`
+    `  · ${plural(
+      data.shape.branded,
+      "exported declaration"
+    )} already take the brand and so are`
   );
   say(
     "    outside the predicate by construction — that is how a converted core"
@@ -619,14 +655,15 @@ export function report(data) {
     `    hop, argument-checked. Dropping the argument test and walking ${DELEGATE_MAX_DEPTH} hops`
   );
   say(
-    `    instead admits ${data.wideReach} declarations, which is the unusable set, not a bucket.`
+    `    instead admits ${data.wideReach} further declarations, which is the unusable`
   );
+  say("    set the manifest measured rather than a bucket anyone can act on.");
   say("");
   say("FUNNEL");
   say(`  lib production files scanned            ${data.scanned}`);
   say(`  top-level function declarations in them ${data.declarations}`);
   say(
-    `  exported, profile-id parameter as \`number\`   ${data.shape.bare}${" ".repeat(
+    `  exported with a profile-id parameter    ${data.shape.bare}${" ".repeat(
       5
     )}(${data.shape.bareFiles} files)`
   );
@@ -654,9 +691,9 @@ export function report(data) {
     const slice = data.cores.filter((c) => c.fence === owner);
     say(
       `      ${pad(owner, 22)}${pad(
-        uniq(slice.map((c) => c.file)).length + " files",
+        plural(uniq(slice.map((c) => c.file)).length, "file"),
         10
-      )}${slice.length} cores`
+      )}${plural(slice.length, "core")}`
     );
   }
   say(
@@ -703,7 +740,7 @@ export function report(data) {
   out.push(...trancheTable(inFence, "naive"));
   const moved = inFence.filter((c) => c.tranche !== c.naiveTranche);
   say(
-    `  ${moved.length} core(s) classify differently. Of those, ${
+    `  ${plural(moved.length, "core")} classify differently. Of those, ${
       moved.filter((c) => c.naiveTranche === "N").length
     } fall into the naive`
   );
@@ -714,7 +751,7 @@ export function report(data) {
     (c) => c.callerFiles.length && !c.naiveFiles.length
   );
   say(
-    `  ${barrelOnly.length} core(s) have every caller reachable ONLY through a barrel or a`
+    `  ${plural(barrelOnly.length, "core")} have every caller reachable ONLY through a barrel or a`
   );
   say("  same-module sibling.");
   say("");
@@ -738,6 +775,26 @@ export function report(data) {
     say(`  ${pad(`${d.file}:${d.line}`, 46)}${pad(d.name, 36)}→ ${d.via}`);
   const fenced = data.delegating.length - openDelegating.length;
   if (fenced) say(`  (${fenced} behind an ownership fence, --json for them)`);
+  say("");
+  say(
+    `WRITES THROUGH A MODULE-LEVEL PREPARED STATEMENT — ${data.hoisted.length} declarations. The DML`
+  );
+  say(
+    '  sits in a file-level `const S = hoistedStatement("UPDATE …")`, so it is not in'
+  );
+  say(
+    "  the declaration's OWN body and the predicate as written does not reach it."
+  );
+  say(
+    "  Reported rather than counted: folding them in would move the headline away"
+  );
+  say(
+    "  from the predicate the programme agreed, and that is not this script's call."
+  );
+  for (const h of data.hoisted)
+    say(
+      `  ${pad(`${h.file}:${h.line}`, 46)}${pad(h.name, 36)}${h.fence ?? ""}`
+    );
   say("");
   say(
     "PER-ROW MEMBERSHIP — a row is the app/(app) directory of its action callers."
@@ -771,9 +828,13 @@ function rowSection(cores, only = null) {
       .filter((f) => row !== "(no action caller)" && actionDomain(f) === row)
       .sort();
     out.push(
-      `── ${row}  —  ${uniq(slice.map((c) => c.file)).length} lib files, ${
-        slice.length
-      } cores, ${actionFiles.length} action files, ${slice.reduce(
+      `── ${row}  —  ${plural(
+        uniq(slice.map((c) => c.file)).length,
+        "lib file"
+      )}, ${plural(slice.length, "core")}, ${plural(
+        actionFiles.length,
+        "action file"
+      )}, ${slice.reduce(
         (n, c) => n + sitesIn(c, actionFiles),
         0
       )} sites in them`
@@ -809,43 +870,58 @@ if (invoked) {
     const i = argv.indexOf(name);
     return i === -1 ? null : argv[i + 1];
   };
-  const data = census();
-  // NEVER `process.exit` here: the report is far larger than a pipe buffer and a
-  // write to a pipe is asynchronous, so exiting drops whatever had not drained
-  // and hands the caller status 0 over half a document (#5804).
-  if (argv.includes("--json")) console.log(JSON.stringify(data, null, 2));
-  else if (flag("--core")) {
-    const key = flag("--core");
-    const c = data.cores.find((c) => `${c.file}::${c.name}` === key);
-    const d = data.delegating.find((d) => `${d.file}::${d.name}` === key);
-    if (c)
-      console.log(
-        [
-          `${key}  line ${c.line}`,
-          `  writes by      ${c.writesBy}`,
-          `  fence          ${c.fence ?? "G (in scope)"}`,
-          `  tranche        ${c.tranche}  (naive resolution: ${c.naiveTranche})`,
-          `  rows           ${c.domains.join(", ") || "(no action caller)"}`,
-          `  sites          ${Object.entries(c.sitesByFile)
-            .map(([f, n]) => `${n} ${f}`)
-            .join("\n                 ")}`,
-          `  callers        ${c.callerFiles.join("\n                 ") || "(none in app/ components/ lib/)"}`,
-          `  of those, reachable by a direct named import called bare:`,
-          `                 ${c.naiveFiles.join("\n                 ") || "(none)"}`,
-        ].join("\n")
-      );
-    else if (d)
-      console.log(
-        `${key}  line ${d.line}\n  delegating core: no DML, no writeTx; hands its profile id to ${d.via}`
-      );
-    else console.log(`${key} is not a write core at this head.`);
-  } else if (flag("--row")) {
-    const rows = rowSection(
-      data.cores.filter((c) => !c.fence),
-      flag("--row")
-    );
+  if (argv.includes("--help") || argv.includes("-h")) {
     console.log(
-      rows.length ? rows.join("\n") : `No row named ${flag("--row")}.`
+      [
+        "Usage: node scripts/write-core-census.mjs [--row <domain>] [--core <file::name>] [--json]",
+        "",
+        "With no flag it prints the predicate, the funnel, the tranche split, the",
+        "delegating-core bucket and per-row membership. --row prints one domain row's",
+        "membership; --core explains where one symbol landed and why; --json prints",
+        "the same facts as data.",
+      ].join("\n")
     );
-  } else console.log(report(data));
+  }
+  const data = argv.includes("--help") || argv.includes("-h") ? null : census();
+  if (!data) {
+    // fall through to nothing: --help already said everything.
+  } else
+    // NEVER `process.exit` here: the report is far larger than a pipe buffer and a
+    // write to a pipe is asynchronous, so exiting drops whatever had not drained
+    // and hands the caller status 0 over half a document (#5804).
+    if (argv.includes("--json")) console.log(JSON.stringify(data, null, 2));
+    else if (flag("--core")) {
+      const key = flag("--core");
+      const c = data.cores.find((c) => `${c.file}::${c.name}` === key);
+      const d = data.delegating.find((d) => `${d.file}::${d.name}` === key);
+      if (c)
+        console.log(
+          [
+            `${key}  line ${c.line}`,
+            `  writes by      ${c.writesBy}`,
+            `  fence          ${c.fence ?? "G (in scope)"}`,
+            `  tranche        ${c.tranche}  (naive resolution: ${c.naiveTranche})`,
+            `  rows           ${c.domains.join(", ") || "(no action caller)"}`,
+            `  sites          ${Object.entries(c.sitesByFile)
+              .map(([f, n]) => `${n} ${f}`)
+              .join("\n                 ")}`,
+            `  callers        ${c.callerFiles.join("\n                 ") || "(none in app/ components/ lib/)"}`,
+            `  of those, reachable by a direct named import called bare:`,
+            `                 ${c.naiveFiles.join("\n                 ") || "(none)"}`,
+          ].join("\n")
+        );
+      else if (d)
+        console.log(
+          `${key}  line ${d.line}\n  delegating core: no DML, no writeTx; hands its profile id to ${d.via}`
+        );
+      else console.log(`${key} is not a write core at this head.`);
+    } else if (flag("--row")) {
+      const rows = rowSection(
+        data.cores.filter((c) => !c.fence),
+        flag("--row")
+      );
+      console.log(
+        rows.length ? rows.join("\n") : `No row named ${flag("--row")}.`
+      );
+    } else console.log(report(data));
 }
