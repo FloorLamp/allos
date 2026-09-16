@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import { useWritePipeline } from "@/components/useWritePipeline";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import RollingNumber from "@/components/RollingNumber";
+import { BusyMark } from "@/components/Button";
 import { addProteinGrams, undoProteinGrams } from "./actions";
 
 // Direct protein grams contribute to the day's manual total. The typed amount is
@@ -141,10 +142,15 @@ export default function ProteinQuickAdd({
         data-testid="protein-quickadd-undo"
         aria-label="Remove protein grams"
         disabled={!canSubmit || total <= 0}
+        aria-busy={pipeline.pending("undo") || undefined}
         onClick={() => apply(-1)}
         className="tap-target flex h-(--control-box) w-(--control-box) shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
       >
-        <IconMinus className="h-4 w-4" stroke={2} />
+        {pipeline.pending("undo") ? (
+          <BusyMark />
+        ) : (
+          <IconMinus className="h-4 w-4" stroke={2} />
+        )}
       </button>
       <div className="relative w-16 shrink-0 sm:w-20">
         <input
@@ -169,10 +175,19 @@ export default function ProteinQuickAdd({
         data-testid="protein-quickadd-add"
         aria-label="Add protein grams"
         disabled={!canSubmit}
+        aria-busy={pipeline.pending("add") || undefined}
         onClick={() => apply(1)}
         className="tap-target flex h-(--control-box) w-(--control-box) shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-30"
       >
-        <IconPlus className="h-4 w-4" stroke={2} />
+        {/* Both arms are icon-only inside a fixed `--control-box` disc, so the
+            mark takes the glyph's seat and the pair's geometry never moves
+            (#5900). `canSubmit` already excludes `busy`, so the refusal half of
+            the treatment was here before the spinner was. */}
+        {pipeline.pending("add") ? (
+          <BusyMark />
+        ) : (
+          <IconPlus className="h-4 w-4" stroke={2} />
+        )}
       </button>
     </div>
   );

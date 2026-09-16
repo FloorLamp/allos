@@ -311,6 +311,96 @@ describe("Button", () => {
     expect(link.querySelector("svg")).not.toBeNull();
   });
 
+  // THE SAME TREATMENT, REACHED FROM OUTSIDE A FORM (#5900). The failure this
+  // catches is the one that produced five spellings of "in flight" across eleven
+  // quick-log bodies: a tap body posts through `useWritePipeline`, not a form
+  // action, so `useFormStatus` reports nothing and the primitive's own treatment
+  // was unreachable. Each half is asserted, because a `busy` that only disabled
+  // would be the bare `disabled={busy}` mount this replaces.
+  it("gives a tap body the in-flight treatment and leaves its label where it was", () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <Button onClick={onClick} data-testid="tap">
+        Log
+      </Button>
+    );
+    const control = screen.getByTestId("tap");
+    const idleClassName = control.className;
+    expect(control.getAttribute("aria-busy")).toBeNull();
+    expect(control.querySelector("svg")).toBeNull();
+    expect((control as HTMLButtonElement).disabled).toBe(false);
+
+    rerender(
+      <Button busy onClick={onClick} data-testid="tap">
+        Log
+      </Button>
+    );
+    expect(control.getAttribute("aria-busy")).toBe("true");
+    expect((control as HTMLButtonElement).disabled).toBe(true);
+    expect(control.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    // THE WIDTH CLAIM, in the form this tier can hold it: the label is the same
+    // string in the same element it was before the tap, so there is nothing
+    // about its box that could have moved. The defect being retired swapped
+    // "Log" for "Logging…" and shifted the word out from under the finger; a
+    // width assertion needs layout, but a label that never changes cannot.
+    expect(control.textContent).toBe("Log");
+    expect(control.className).toBe(idleClassName);
+    fireEvent.click(control);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  // THE REGRESSION THE OR EXISTS TO PREVENT (#5903 clearance, constraint 1).
+  // `busy` widens the form derivation; it does not stand in for it. An
+  // implementation that REPLACED `pending && type === "submit"` with the prop
+  // would typecheck, lint and pass every test above while silently dropping the
+  // spinner from every shipped form submit — which all pass `busy` as `false`,
+  // explicitly here and by default everywhere else.
+  it("ORs the busy prop with the form derivation instead of replacing it", async () => {
+    const result = Promise.withResolvers<void>();
+    const submitted = vi.fn((_formData: FormData) => result.promise);
+    render(
+      <form action={submitted}>
+        <SubmitActionChip busy={false} data-testid="commit">
+          Archive
+        </SubmitActionChip>
+      </form>
+    );
+
+    const button = screen.getByTestId("commit");
+    fireEvent.click(button);
+    await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+
+    await act(async () => result.resolve());
+    await waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
+  });
+
+  // AND THE LABEL SWAP SURVIVES WHERE IT WAS ALREADY STATED (constraint 2).
+  // `pendingLabel` is the form callers' own spelling and dozens of them rely on
+  // it; #5900 forbids a tap body passing BOTH, which is a caller rule rather
+  // than a runtime guard. This pins that the busy path still honours it, so
+  // retiring the tap bodies' swaps cannot quietly retire the form ones.
+  it("still swaps to a pendingLabel for the form callers that state one", async () => {
+    const result = Promise.withResolvers<void>();
+    const submitted = vi.fn((_formData: FormData) => result.promise);
+    render(
+      <form action={submitted}>
+        <SubmitActionChip pendingLabel="Saving…" data-testid="commit">
+          Save
+        </SubmitActionChip>
+      </form>
+    );
+
+    const button = screen.getByTestId("commit");
+    fireEvent.click(button);
+    await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
+    expect(button.textContent).toBe("Saving…");
+
+    await act(async () => result.resolve());
+    await waitFor(() => expect(button.textContent).toBe("Save"));
+  });
+
   it("forwards its submitter and owns the pending label, spinner, and state", async () => {
     const result = Promise.withResolvers<void>();
     const submitted = vi.fn((_formData: FormData) => result.promise);

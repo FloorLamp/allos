@@ -35,9 +35,10 @@ its durable history instead of deleting earlier claim notes.
 `claims <path>` sees only local lanes. For each path in a brief, also inspect the
 diff of other sessions' live branches against current `origin/main`, for example
 `git diff --name-only origin/main...origin/<branch>`. Establish which branches are
-live and fetch the refs needed for that comparison. Resolve overlap through
-sequencing or a revised assignment; bank work or take the next eligible issue
-while the fence is unresolved.
+live and fetch the refs needed for that comparison. A shallow clone has no merge
+base below its horizon: deepen first, or read two-dot as the wider answer.
+Resolve overlap through sequencing or a revised assignment; bank work or take
+the next eligible issue while the fence is unresolved.
 
 ## One candidate per session, serial merges
 

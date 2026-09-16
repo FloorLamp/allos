@@ -59,12 +59,12 @@ function parseThresholds(formData: FormData): AudiogramThresholdInput[] {
 }
 
 export async function addAudiogram(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   if (!isRealIsoDate(date)) return formError("Enter the date of the test.");
   const thresholds = parseThresholds(formData);
   const outcome = recordAudiogram(
-    profile.id,
+    writeProfileId,
     { date, thresholds, notes: String(formData.get("notes") ?? "") },
     "page"
   );
@@ -77,11 +77,11 @@ export async function addAudiogram(formData: FormData): Promise<FormResult> {
 }
 
 export async function removeAudiogram(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   if (!isRealIsoDate(date))
     return formError("Couldn't find that hearing test.");
-  const outcome = deleteAudiogram(profile.id, date);
+  const outcome = deleteAudiogram(writeProfileId, date);
   if (outcome.kind === "not-found")
     return formError("Couldn't find that hearing test.");
   revalidateHearing();

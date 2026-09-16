@@ -16,10 +16,13 @@ import type { useTemperatureUnitDetection } from "@/components/useTemperatureUni
 // AND IT DECLARES ITS OWN MEASURE (#5490 site 2, #3938's ruling): a temperature is a
 // short number, so the field is a short field — at every host, once, rather than
 // whatever a call site's flex row has left over. The illness fold gave it `flex-1`,
-// which made a five-character reading ~530px inside the cockpit's 880px measure and
-// let every sibling's content move it: flipping the card's day toggle resized a text
-// input that might be focused and being typed into. Below `sm` it is still the line's
-// width, which is what a phone wants and what the fold already rendered.
+// which handed a five-character reading whatever the cockpit's line had left and let
+// every sibling's content move it: flipping the card's day toggle resized a text input
+// that might be focused and being typed into. That is why the field is unaffected by
+// what the cockpit's container does — the ~880px measure it used to be sized against
+// moved from the Now band to Home's Current care block (#5894), and this field's own
+// width did not move with it. Below `sm` it is still the line's width, which is what a
+// phone wants and what the fold already rendered.
 //
 // DETECTION IS THE HOST'S, passed in rather than owned here, because a host resets it
 // on its own schedule (the measurements form clears the whole sitting; the bar clears

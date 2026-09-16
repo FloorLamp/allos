@@ -89,10 +89,10 @@ vi.mock("@/lib/auth", async () => {
   // What prod's three write gates return beside the session: the id they authorized,
   // branded as WriteAuthorizedProfileId, which the action passes straight into a write
   // core (#5348). The brand's minter is private to lib/auth, so a stand-in for a gate has
-  // to cast. No rule refuses that cast anywhere today — not here and not in production;
-  // the WRITE_BRAND_CAST rule that would refuse it in production is owed on
-  // eslint.config.mjs, outside this lane's fence (#5348). Typed as WriteSession, so the
-  // stand-in reds if prod's shape moves.
+  // to cast. eslint.config.mjs's WRITE_BRAND_CAST refuses that cast in production modules
+  // (#5852, #5864) and deliberately leaves the test tiers free to make it — the same
+  // allowance RPE_BRAND_CAST makes — which is what keeps this stand-in legal. Typed as
+  // WriteSession, so the stand-in reds if prod's shape moves.
   const writeAuthorized = (
     session: CurrentSession,
     profileId: number

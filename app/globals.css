@@ -401,6 +401,32 @@
   }
 }
 
+@utility current-care-measure {
+  /* CURRENT CARE'S READABLE MEASURE, DECLARED ONCE (#5894, owner ruling 2026-09-15
+     option (a), over #4752 §2's approved "a readable measure (~880px), centered —
+     never full-bleed").
+
+     THE HOST IS THE BLOCK, NOT THE ROW, and #5490 site 3 is why. The illness cockpit
+     is a ROW (#4076): a centred cap spent on the row steps its own edges
+     (1152 − 880) / 2 = 136px in from every sibling sharing its frame, so #5490 moved
+     the cap off the cockpit and onto the Now band that held them all. #5435 §4 deleted
+     that band (#5883) and Home mounted the cockpit straight into
+     `PageContainer width="wide"` — which is how the measure lost its host, and how a
+     med's name came to sit a monitor's width from its own Give button again.
+
+     Current care is the host now. This marks the BLOCK's rows — the illness cockpit
+     group and the Reopen list — so they share one column and one left edge instead of
+     one stepping in from the other. The rest of Home stays at `wide` (72rem) with the
+     day view's two columns: #3253's page-width decision is not reopened, because this
+     is a content measure INSIDE the page and `PageContainer` still owns the page's own.
+
+     A named utility rather than two copies of `mx-auto max-w-[880px]` at the two call
+     sites: the ruling is that ONE measure frames both rows, and two literals are two
+     decisions that can drift apart. Below the cap the block is the full line, which is
+     what the phone already rendered. */
+  @apply mx-auto max-w-[880px];
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    BELOW `sm`, NO CARD DRAWS A FRAME AND ITS FILL IS FULL-BLEED (#3673, #3920).
 

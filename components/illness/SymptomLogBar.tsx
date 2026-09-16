@@ -962,9 +962,10 @@ export default function SymptomLogBar({
                         (intakeStaged.symptoms.length === 0 &&
                           !intakeStaged.temperature)
                       }
+                      busy={intakePending}
                       onClick={() => void confirmIntake()}
                     >
-                      {intakePending ? "Logging…" : "Confirm & log"}
+                      Confirm &amp; log
                     </Button>
                     <Button
                       type="button"
@@ -1150,9 +1151,10 @@ export default function SymptomLogBar({
               <SubmitButton
                 data-testid="temp-quick-save"
                 disabled={tempPending}
+                busy={tempPending}
                 variant="primary"
               >
-                {tempPending ? "Logging…" : "Log temp"}
+                Log temp
               </SubmitButton>
             </div>
             {tempError && (
