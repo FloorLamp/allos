@@ -7,6 +7,23 @@
 // denormalized copy of manifestation 0 because exactly one function maintains both
 // sides, in one IMMEDIATE transaction.
 
+// THE WRITE CORE TAKES THE ID A WRITE GATE RETURNED: `profileId` on setAllergyReactions is
+// lib/auth's WriteAuthorizedProfileId, which only the gates mint, so an action that never
+// gated holds nothing it takes (#5348). The import is type-only — erased at build — so this
+// module still runs auth-blind and app/(app)/records/problems/allergies/actions.ts still
+// owns the gate, on both of its call sites (the create's own requireWriteAccess and the
+// multi-view edit's gateItemProfile).
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import type { AllergyManifestation } from "./allergy-reactions";
 
@@ -39,7 +56,7 @@ export function sanitizeAllergyReactions(
 // looking at, so a removed row must actually disappear. The child rows are re-minted
 // with fresh ids; nothing references an allergy_reactions row by id.
 export function setAllergyReactions(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   allergyId: number,
   reactions: readonly { manifestation: string; severity?: string | null }[]
 ): boolean {

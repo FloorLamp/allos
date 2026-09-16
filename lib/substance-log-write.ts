@@ -23,6 +23,29 @@
 // NEVER GAMIFIED (#998/#1078 law): these writes never touch `activities`, so the
 // milestone/streak machinery stays structurally blind to the domain.
 
+// THE RECORD-ROW CORES TAKE THE ID A WRITE GATE RETURNED: `profileId` on
+// undoSubstanceUnitCore, correctSubstanceEventCore and deleteSubstanceEventCore is
+// lib/auth's WriteAuthorizedProfileId, which only the gates mint, so an action that never
+// gated holds nothing they take (#5348). The import is type-only — erased at build — so this
+// module still runs auth-blind and app/(app)/medical/substance-use/actions.ts still owns the
+// gate. deleteSubstanceEventCore holds no SQL of its own — its whole write is captureDelete
+// — so the #5348 census cannot see it; it is branded anyway, because the three record-row
+// taps are one surface and gating two of them would be the arbitrary half.
+//
+// A branded number is still a number, so logSubstanceUnitCore takes one unchanged — it is
+// reached from lib/substance-daily-totals-write.ts as well as from a Server Action, so it has
+// no single gated caller to take a minted id from.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, today, writeTx } from "./db";
 import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { instantNow, now as clockNow } from "./clock";
@@ -166,7 +189,7 @@ export const logSubstanceUnitCoreDeclares = SUBSTANCE_USE_WRITE;
 // removes the use that tap created rather than asking which. A use somebody wants to
 // pick out is deleted on its own record row.
 export function undoSubstanceUnitCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   substance: string,
   date: string,
   expectedEventId?: number
@@ -226,7 +249,7 @@ export const undoSubstanceUnitCoreDeclares = SUBSTANCE_USE_WRITE;
 // the statement IS the submission, and not the log path's "keep the row, drop the
 // minute".
 export function correctSubstanceEventCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   eventId: number,
   patch: { date?: string; statedAt?: Date | null; notes?: string | null }
 ): SubstanceEventEditOutcome {
@@ -335,7 +358,7 @@ export function correctSubstanceEventCore(
 // placement its outcome carries. This ledger has no group to refuse and no window to
 // vacate, so the same shape here would be ceremony around a duplicate predicate.
 export function deleteSubstanceEventCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   eventId: number
 ): { kind: "deleted"; undoId: number } | { kind: "not-found" } {
   const undoId = captureDelete("substance-use", profileId, eventId);

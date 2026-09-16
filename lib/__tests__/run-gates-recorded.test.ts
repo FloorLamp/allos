@@ -39,10 +39,17 @@ function harness(gateExit: number) {
       { mode: 0o755 }
     );
   setGate(gateExit);
-  // The resolver answers from the environment, or refuses like the real one.
+  // The resolver answers from the environment, or refuses like the real one —
+  // and `node-check` refuses on TEST_NODE_REFUSAL the way the real one refuses
+  // on a wrong major, so the script's own wiring is what is under test here.
   fs.writeFileSync(
     path.join(helpers, "host.mjs"),
-    'if (!process.env.TEST_STATE_DIR) { console.error("host.mjs: boom"); process.exit(1); }\nconsole.log(process.env.TEST_STATE_DIR);\n'
+    'if (process.argv[2] === "node-check") {\n' +
+      "  if (!process.env.TEST_NODE_REFUSAL) process.exit(0);\n" +
+      "  console.error(process.env.TEST_NODE_REFUSAL);\n" +
+      "  process.exit(3);\n" +
+      "}\n" +
+      'if (!process.env.TEST_STATE_DIR) { console.error("host.mjs: boom"); process.exit(1); }\nconsole.log(process.env.TEST_STATE_DIR);\n'
   );
   const run = (args: string[], env: Record<string, string> = {}) =>
     spawnSync("bash", [script, ...args], {
@@ -93,7 +100,33 @@ function backdate(log: string) {
     if (fs.existsSync(p)) fs.utimesSync(p, when, when);
 }
 
+// What the real host.mjs prints on a wrong major — asserted verbatim so the
+// script is shown to pass the diagnosis THROUGH rather than compose its own.
+// The message's own content is pinned in host-resolution.test.ts.
+const REFUSAL =
+  "host.mjs: this shell runs node v22.22.2 (/opt/node22/bin/node) but .nvmrc at origin/main pins 24.";
+
 describe("run-gates-recorded.sh", () => {
+  // THE GUARD'S FAILURE MODE IS PASSING (#5940). A wrong-major shell produced
+  // gate results that looked ordinary and meant nothing in both directions, so
+  // the refusal is worth nothing unless the matching case still runs: same
+  // harness, same branch, the interpreter verdict the only difference.
+  it("refuses the whole run on a wrong interpreter, and runs it on the right one", () => {
+    const h = harness(0);
+    const refused = h.run(["br"], { TEST_NODE_REFUSAL: REFUSAL });
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain(REFUSAL);
+    // No log, no pid, no exit: the run was refused, not recorded as killed.
+    expect(fs.readdirSync(h.state)).toEqual([]);
+
+    const ran = h.run(["br"]);
+    expect(ran.status).toBe(0);
+    expect(ran.stdout).toContain("GATES EXIT=0");
+    expect(
+      fs.readFileSync(path.join(h.state, "gates-br.log"), "utf8")
+    ).toContain("=== GATE lint: PASS ===");
+  });
+
   it.each([
     [0, 0],
     [3, 3],
@@ -161,6 +194,11 @@ describe("run-gates-recorded.sh", () => {
       ["STATE-DIR RESOLVER FAILED", "host.mjs: boom"],
     ],
     [["br", "--frob"], {}, ["unknown mode --frob"]],
+    // BOTH MODES, on purpose (#5940). `--wait` only reads a record, but a
+    // shell that cannot run gates cannot act on their verdict either, and the
+    // refusal names the export that fixes it.
+    [["br"], { TEST_NODE_REFUSAL: REFUSAL }, ["NODE PIN", REFUSAL]],
+    [["br", "--wait"], { TEST_NODE_REFUSAL: REFUSAL }, ["NODE PIN", REFUSAL]],
   ])(
     "refuses before running — args %j, env %j — and touches nothing",
     (args, env, fragments) => {

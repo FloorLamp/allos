@@ -78,6 +78,16 @@ import {
 import { CHANGE_DETECTION_DOMAIN_CENSUS } from "@/lib/change-detection";
 import { isArguedExclusion } from "@/lib/loggable-domains";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 function newProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -115,7 +125,7 @@ describe("recordInstrumentScore (substance) — a biomarker reading, no flag, no
     const p = newProfile("SU audit-c");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       {
         instrument: "AUDIT-C",
         date: td,
@@ -157,12 +167,12 @@ describe("recordInstrumentScore (substance) — a biomarker reading, no flag, no
     const p = newProfile("SU no-crisis");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "AUDIT", date: td, total: 32 },
       "page"
     );
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "DAST-10", date: td, total: 10 },
       "page"
     );
@@ -180,12 +190,12 @@ describe("screening satisfaction (#998)", () => {
     setBirthdate(p, "1990-01-01");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "AUDIT-C", date: td, total: 2 },
       "page"
     );
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "DAST-10", date: td, total: 0 },
       "page"
     );
@@ -199,7 +209,7 @@ describe("screening satisfaction (#998)", () => {
     const p = newProfile("SU screen audit");
     setBirthdate(p, "1985-06-15");
     recordInstrumentScore(
-      p,
+      gated(p),
       {
         instrument: "AUDIT",
         date: today(p),
@@ -321,7 +331,7 @@ describe("no gamification (#998) — structural exemption + copy guard", () => {
     const p = newProfile("SU exempt");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "AUDIT-C", date: td, total: 4 },
       "page"
     );
@@ -388,11 +398,11 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
       .all(p, td) as { substance: string; units: number }[];
     expect(rows).toEqual([{ substance: "nicotine", units: 2 }]);
 
-    const undone = undoSubstanceUnitCore(p, "nicotine", td);
+    const undone = undoSubstanceUnitCore(gated(p), "nicotine", td);
     expect(undone).toEqual({ kind: "undone", units: 1, substance: "nicotine" });
     // Undo to zero drops the row entirely; a further undo is a no-op at 0.
-    undoSubstanceUnitCore(p, "nicotine", td);
-    expect(undoSubstanceUnitCore(p, "nicotine", td)).toEqual({
+    undoSubstanceUnitCore(gated(p), "nicotine", td);
+    expect(undoSubstanceUnitCore(gated(p), "nicotine", td)).toEqual({
       kind: "undone",
       units: 0,
       substance: "nicotine",
@@ -425,7 +435,7 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
     if (a.kind !== "logged" || b.kind !== "logged")
       throw new Error("fixtures did not log");
 
-    expect(undoSubstanceUnitCore(p, "nicotine", td, a.eventId)).toEqual({
+    expect(undoSubstanceUnitCore(gated(p), "nicotine", td, a.eventId)).toEqual({
       kind: "undone",
       units: 1,
       substance: "nicotine",
@@ -441,13 +451,15 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
 
     const other = newProfile("SU exact undo other");
     for (const eventId of [a.eventId, 9_999_999]) {
-      expect(undoSubstanceUnitCore(p, "nicotine", td, eventId)).toEqual({
+      expect(undoSubstanceUnitCore(gated(p), "nicotine", td, eventId)).toEqual({
         kind: "changed",
         units: 1,
         substance: "nicotine",
       });
     }
-    expect(undoSubstanceUnitCore(other, "nicotine", td, b.eventId)).toEqual({
+    expect(
+      undoSubstanceUnitCore(gated(other), "nicotine", td, b.eventId)
+    ).toEqual({
       kind: "changed",
       units: 0,
       substance: "nicotine",
@@ -689,7 +701,7 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
       const p = newProfile(`SU events ${substance}`);
       const date = shiftDateStr(today(p), -3);
       const added = addSubstanceDailyTotalCore(
-        p,
+        gated(p),
         substance,
         { date, amount: 2, statedAt: `${date}T21:00:00Z`, notes: "as filed" },
         "page"
@@ -721,7 +733,12 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
   it("an unstated use keeps a NULL instant rather than inheriting its tap stamp", () => {
     const p = newProfile("SU events unstated");
     const date = shiftDateStr(today(p), -2);
-    addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
+    addSubstanceDailyTotalCore(
+      gated(p),
+      "nicotine",
+      { date, amount: 1 },
+      "page"
+    );
     logSubstanceUnitCore(p, "nicotine", date, "page", `${date}T08:15:00Z`);
     expect(uses(p, "nicotine")).toEqual([
       { id: expect.any(Number), date, occurred_at: null, time_source: null },
@@ -742,13 +759,13 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     const p = newProfile("SU events correct one");
     const date = shiftDateStr(today(p), -3);
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "nicotine",
       { date, amount: 1, statedAt: `${date}T21:00:00Z` },
       "page"
     );
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "nicotine",
       { date, amount: 1, statedAt: `${date}T23:00:00Z` },
       "page"
@@ -757,7 +774,7 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     const moved = shiftDateStr(date, 1);
 
     expect(
-      correctSubstanceEventCore(p, first.id, {
+      correctSubstanceEventCore(gated(p), first.id, {
         date: moved,
         statedAt: new Date(`${moved}T09:30:00Z`),
       })
@@ -792,14 +809,14 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     const p = newProfile("SU events clear");
     const date = shiftDateStr(today(p), -1);
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "cannabis",
       { date, amount: 1, statedAt: `${date}T20:00:00Z` },
       "page"
     );
     const [only] = uses(p, "cannabis");
     expect(
-      correctSubstanceEventCore(p, only.id, { date, statedAt: null })
+      correctSubstanceEventCore(gated(p), only.id, { date, statedAt: null })
     ).toEqual({ kind: "updated", eventId: only.id, date });
     expect(uses(p, "cannabis")).toEqual([
       { id: only.id, date, occurred_at: null, time_source: null },
@@ -816,12 +833,17 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
   ] as const)("refuses %s", (_label, patch, kind) => {
     const p = newProfile(`SU events refuse ${kind}`);
     const date = shiftDateStr(today(p), -1);
-    addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
+    addSubstanceDailyTotalCore(
+      gated(p),
+      "nicotine",
+      { date, amount: 1 },
+      "page"
+    );
     const [only] = uses(p, "nicotine");
     const outcome =
       patch === null
-        ? correctSubstanceEventCore(p, only.id + 9000, { date })
-        : correctSubstanceEventCore(p, only.id, patch);
+        ? correctSubstanceEventCore(gated(p), only.id + 9000, { date })
+        : correctSubstanceEventCore(gated(p), only.id, patch);
     expect(outcome.kind).toBe(kind);
     expect(uses(p, "nicotine")).toEqual([
       { id: only.id, date, occurred_at: null, time_source: null },
@@ -831,10 +853,15 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
   it("refuses an instant that is not on the use's own day", () => {
     const p = newProfile("SU events other day");
     const date = shiftDateStr(today(p), -2);
-    addSubstanceDailyTotalCore(p, "nicotine", { date, amount: 1 }, "page");
+    addSubstanceDailyTotalCore(
+      gated(p),
+      "nicotine",
+      { date, amount: 1 },
+      "page"
+    );
     const [only] = uses(p, "nicotine");
     expect(
-      correctSubstanceEventCore(p, only.id, {
+      correctSubstanceEventCore(gated(p), only.id, {
         statedAt: new Date(`${shiftDateStr(date, -1)}T12:00:00Z`),
       })
     ).toEqual({ kind: "invalid-stated-at", reason: "other-day" });
@@ -853,19 +880,21 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     const date = shiftDateStr(today(p), -3);
     const moved = shiftDateStr(date, 1);
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "nicotine",
       { date, amount: 1, notes: "quitting attempt, day 4" },
       "page"
     );
     addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "nicotine",
       { date: moved, amount: 1, notes: "birthday" },
       "page"
     );
     const [first] = uses(p, "nicotine");
-    expect(correctSubstanceEventCore(p, first.id, { date: moved })).toEqual({
+    expect(
+      correctSubstanceEventCore(gated(p), first.id, { date: moved })
+    ).toEqual({
       kind: "updated",
       eventId: first.id,
       date: moved,
@@ -892,7 +921,9 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     logSubstanceUnitCore(theirs, "nicotine", d, "page", `${d}T11:00:00Z`);
 
     const [first] = uses(mine, "nicotine");
-    expect(deleteSubstanceEventCore(mine, first.id).kind).toBe("deleted");
+    expect(deleteSubstanceEventCore(gated(mine), first.id).kind).toBe(
+      "deleted"
+    );
 
     // Two units minus the one deleted, not minus two — and the neighbour is untouched.
     expect(dayRows(mine, "nicotine")).toEqual([{ date: d, units: 1 }]);
@@ -933,7 +964,7 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
       )
       .get(theirs, d) as { id: number };
     const deleted = deleteSubstanceDailyTotalCore(
-      theirs,
+      gated(theirs),
       "nicotine",
       theirRow.id
     );
@@ -969,9 +1000,9 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
           WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
       )
       .get(p, d) as { id: number };
-    expect(deleteSubstanceDailyTotalCore(p, "nicotine", row.id).kind).toBe(
-      "deleted"
-    );
+    expect(
+      deleteSubstanceDailyTotalCore(gated(p), "nicotine", row.id).kind
+    ).toBe("deleted");
 
     // The day it named is gone on both halves…
     expect(dayRows(p, "nicotine")).toEqual([{ date: before, units: 1 }]);
@@ -1005,7 +1036,7 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
           WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
       )
       .get(p, d) as { id: number };
-    const deleted = deleteSubstanceDailyTotalCore(p, "nicotine", row.id);
+    const deleted = deleteSubstanceDailyTotalCore(gated(p), "nicotine", row.id);
     if (deleted.kind !== "deleted") throw new Error("the day was not deleted");
 
     const stored = db
@@ -1039,7 +1070,7 @@ describe("one use, one row, one clock (#5026 phase 2)", () => {
     logSubstanceUnitCore(p, "nicotine", day, "page", `${day}T09:00:00Z`);
     logSubstanceUnitCore(p, "nicotine", day, "page", `${day}T10:00:00Z`);
     expect(uses(p, "nicotine")).toHaveLength(2);
-    expect(undoSubstanceUnitCore(p, "nicotine", day)).toEqual({
+    expect(undoSubstanceUnitCore(gated(p), "nicotine", day)).toEqual({
       kind: "undone",
       units: 1,
       substance: "nicotine",
@@ -1090,7 +1121,7 @@ describe("custom substances (#3279)", () => {
     // The ledger IS the register: undo the last unit and the row is dropped, so the
     // substance quietly leaves the vocabulary. That is why no forget-this-substance
     // affordance exists (docs/internals/substances.md).
-    expect(undoSubstanceUnitCore(p, "Kratom", day)).toEqual({
+    expect(undoSubstanceUnitCore(gated(p), "Kratom", day)).toEqual({
       kind: "undone",
       units: 0,
       substance: "Kratom",
@@ -1151,7 +1182,7 @@ describe("custom substances (#3279)", () => {
     const day = today(p);
     logSubstanceUnitCore(p, "Kratom", day, "page");
     expect(hasLoggedSubstance(p)).toBe(true);
-    undoSubstanceUnitCore(p, "Kratom", day);
+    undoSubstanceUnitCore(gated(p), "Kratom", day);
     expect(getLoggedSubstanceKeys(p)).toEqual([]);
     expect(hasLoggedSubstance(p)).toBe(false);
   });
@@ -1160,7 +1191,7 @@ describe("custom substances (#3279)", () => {
     const p = newProfile("SU custom history");
     const date = shiftDateStr(today(p), -3);
     const added = addSubstanceDailyTotalCore(
-      p,
+      gated(p),
       "  Energy drinks ",
       {
         date,
@@ -1268,7 +1299,7 @@ describe("the substance write core keeps the shared food contracts (#4435)", () 
       const p = newProfile(`SU additive ${substance}`);
       const date = shiftDateStr(today(p), -4);
       const first = addSubstanceDailyTotalCore(
-        p,
+        gated(p),
         substance,
         { date, amount: 1, notes: "the first one" },
         "page"
@@ -1278,7 +1309,12 @@ describe("the substance write core keeps the shared food contracts (#4435)", () 
       // The second one lands on the SAME day row rather than being refused as a
       // conflict: remembering a second drink is the ordinary case, not an error.
       expect(
-        addSubstanceDailyTotalCore(p, substance, { date, amount: 2 }, "page")
+        addSubstanceDailyTotalCore(
+          gated(p),
+          substance,
+          { date, amount: 2 },
+          "page"
+        )
       ).toEqual({ kind: "added", id: first.id });
       expect(historyOn(p, date)).toEqual([
         { id: first.id, substance, date, amount: 3 },
@@ -1299,7 +1335,7 @@ describe("the substance write core keeps the shared food contracts (#4435)", () 
       "backfill",
       (p: number, date: string) =>
         addSubstanceDailyTotalCore(
-          p,
+          gated(p),
           "nicotine",
           { date, amount: 2 },
           "quick-log"
