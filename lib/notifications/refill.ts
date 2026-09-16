@@ -18,6 +18,7 @@ import {
   replaceRefillOffer,
   refillOfferIsTerminal,
   pendingRefillOffersFromSender,
+  refillOfferAtPrompt,
   OFFER_RETENTION_DAYS,
   type RefillOffer,
 } from "./offer-store";
@@ -27,14 +28,19 @@ import {
   type OfferCallback,
 } from "./offer-tokens";
 import {
-  parseReceivedAmount,
-  parseRefillReplyMarker,
   parseRefillCallback,
   parseOrderedRefillCallback,
   orderedRefillToken,
   type RefillCallback,
   type OrderedRefillCallback,
 } from "./refill-tokens";
+import {
+  typedReplyNumber,
+  type OpenTypedPrompt,
+  type TypedReply,
+  type TypedReplyContext,
+  type TypedReplyOutcome,
+} from "./typed-reply";
 import {
   removeRowContaining,
   refillAnswerText,
@@ -53,13 +59,12 @@ import { composeForRebuild } from "./compose";
 import { deliveredKeyboard } from "./delivered-keyboard";
 import { getPoolView } from "../queries/intake/supply-pool";
 import {
+  acknowledgeInPlace,
   sendTelegramMessage,
   answerCallbackQuery,
   rebuildMessage,
-  CHAT_WIDE,
   type TelegramCallbackQuery,
 } from "./telegram";
-import type { TelegramMessage } from "./telegram-api";
 import type { TapWrote } from "./callback-data";
 import { getFindingSuppressions, snoozeFinding } from "../queries/upcoming";
 import {
@@ -363,16 +368,22 @@ function receiptPrompt(
   offer: RefillOffer
 ): NotificationMessage {
   const stock = refillStock(profileId, offer.itemId);
-  const marker = `(refill:${profileId}:${offerId})`;
   const actions: NotificationAction[] = [];
   let body: string;
+  // NO MARKER IN THE BODY (#5650, pointer-only). The prompt used to end in
+  // `(refill:<pid>:<offerId>)` and the reply arm read that string back off the reply
+  // target to decide which family and which operation a typed answer meant. It is gone:
+  // the operation is `promptId` on the offer row, and `refillOfferAtPrompt` recovers it
+  // from the quoted message id. A body that carries no marker is a body whose TITLE —
+  // the supply item's own name, which a person types in-app — can no longer steer
+  // anything, which is the defect this retirement closes on `main` as well as here.
   if (offer.state === "completed" && offer.result)
-    body = `${receiptText(offer.result)}\n${marker}`;
+    body = receiptText(offer.result);
   else if (refillOfferIsTerminal(offer))
     body =
       "This receipt is closed. Open a new Received request from the reminder.";
   else {
-    body = `How many arrived?\nReply to this message with the number of units.\n${marker}`;
+    body = "How many arrived?\nReply to this message with the number of units.";
     if (offer.defaultSize != null)
       actions.push({
         label: `Confirm ${offer.defaultSize}`,
@@ -632,7 +643,7 @@ function settleReceived(
     const amount =
       answer === "confirm"
         ? (offer.defaultSize ?? null)
-        : parseReceivedAmount(answer.amount);
+        : typedReplyNumber(answer.amount);
     if (amount == null || !Number.isFinite(amount) || amount <= 0)
       return {
         text: "Enter a positive number of units, such as 90.",
@@ -682,91 +693,127 @@ async function refreshReceipt(
   }
 }
 
-// A number typed with NO Reply swipe, the obvious thing to send after the prompt asks
-// for one (#5654). Telegram quotes nothing, so the receipt is named by its own record of
-// who opened it and where: the sender's still-open prompts in THIS chat.
+// THE REFILL FAMILY'S TWO HALVES OF THE TYPED-REPLY CONTRACT (#5650), which is where
+// #5654's bare-number lookup now lives: the OPEN PROMPTS this family can offer the one
+// dispatch arm, and the SETTLE the arm calls once it has decided which prompt a number
+// names.
 //
 // THE LOOKUP IS THE SAFETY PROPERTY, not a convenience. `pendingRefillOffersFromSender`
 // is keyed on profile, chat and sender at once, and it is asked once per profile this
 // chat may act for — so a candidate was opened by this sender, in this chat, for a
 // profile this chat is already authorized to write. It can no more settle a housemate's
-// prompt than a stranger's: a different `message.from.id` matches no row at all.
-//
-// Ambiguity is REFUSED, never guessed. Two open prompts — the same person's two bottles,
-// or two profiles served by one chat — mean the number names neither, and `settleReceived`
-// would happily write to whichever we picked. The caller answers and writes nothing.
-function bareNumberReceipts(
-  message: TelegramMessage,
+// prompt than a stranger's: a different `message.from.id` matches no row at all. The
+// numeric test, the "no quoted message" test and the refusal to choose between two
+// candidates are the CONTRACT's (./typed-reply), shared now with temp and weight; what
+// stays here is the part only this family can answer — which of its offers is still open.
+export function openRefillPrompts(
   chatId: string,
   senderId: number
-): { profileId: number; offerId: number; promptId: number }[] {
-  // Only an unquoted message. A reply that quoted something ELSE is that thing's
-  // business, and a reply carrying the marker never reaches here.
-  if (message.reply_to_message) return [];
-  if (parseReceivedAmount(message.text) == null) return [];
+): OpenTypedPrompt[] {
   return getProfilesByTelegramChatId(chatId).flatMap((profileId) =>
     pendingRefillOffersFromSender(profileId, chatId, senderId).flatMap((row) =>
       row.offer.promptId == null || refillExpired(row.createdAt)
         ? []
-        : [{ profileId, offerId: row.offerId, promptId: row.offer.promptId }]
+        : [
+            {
+              family: "refill" as const,
+              profileId,
+              operationId: row.offerId,
+              promptId: row.offer.promptId,
+            },
+          ]
     )
   );
 }
 
-export async function handleReceivedReply(
-  message: TelegramMessage
-): Promise<boolean> {
-  const marker = parseRefillReplyMarker(message.reply_to_message?.text);
-  const chatId = message.chat?.id;
-  const senderId = message.from?.id;
-  const messageId = message.message_id;
-  let target: { profileId: number; offerId: number; promptId: number };
-  if (marker) {
-    const promptId = message.reply_to_message?.message_id;
-    if (
-      chatId == null ||
-      promptId == null ||
-      senderId == null ||
-      messageId == null
-    )
-      return true;
-    target = { profileId: marker.profileId, offerId: marker.offerId, promptId };
-  } else {
-    // Nothing claimed yet, so an undeliverable answer must LEAVE the message to the
-    // rest of the chain rather than swallow it — `false`, not `true`.
-    if (chatId == null || senderId == null || messageId == null) return false;
-    const open = bareNumberReceipts(message, String(chatId), senderId);
-    const only = open[0];
-    if (!only) return false;
-    if (open.length > 1) {
-      // Named by no profile: the ambiguity may span two, and saying which would be the
-      // guess this branch exists to refuse.
-      await sendTelegramMessage(
-        chatId,
-        { title: "Supply receipt", body: "Reply to the prompt you mean." },
-        CHAT_WIDE
-      );
-      return true;
-    }
-    target = only;
-  }
-  if (!receiptAuthorized(target.profileId, String(chatId))) return true;
+// The EXPLICIT-REPLY half of the registry: the receipt prompt recorded at this message
+// id, if this chat's profile has one.
+//
+// KEYED ON THE OFFER'S OWN `promptId`, NOT ON THE POINTER'S KIND, and that distinction is
+// the reason this function exists. Three different messages record a pointer with
+// `kind: "refill"` — the low-supply reminder (with its Received button), the receipt
+// prompt it opens, and the `Supply update` rebuild — and only the middle one is a
+// question. Resolving a reply by kind would let a number typed under a REMINDER settle a
+// receipt nobody had opened, which is a widening neither `main` nor any earlier head has;
+// a reminder's message id is no offer's `promptId`, so keying here closes it by
+// construction rather than by an exclusion list somebody has to maintain.
+//
+// Terminal offers are returned too, so the family speaks `Already recorded` for a second
+// reply to a settled receipt instead of the contract answering "that prompt isn't open"
+// over the top of it.
+export function refillPromptAt(
+  profileId: number,
+  chatId: string,
+  messageId: number
+): OpenTypedPrompt | null {
+  const row = refillOfferAtPrompt(profileId, chatId, messageId);
+  if (!row) return null;
+  return {
+    family: "refill",
+    profileId,
+    operationId: row.offerId,
+    promptId: messageId,
+  };
+}
+
+// Settle one typed reply against a receipt operation.
+//
+// AN APPLIED REPLY SENDS NOTHING WHEN THE EDIT LANDS (ruling 1). `refreshReceipt`
+// already edited the prompt in place to `Added 120 · 128 on hand` — it has since #5580 —
+// and the `Supply receipt` message that used to follow it said the same thing a second
+// time, growing the chat by two messages per delivery. The caller sets the reaction; this
+// returns what happened. WHEN THE EDIT CANNOT LAND the receipt is spoken instead, because
+// a written supply the chat was never told about is worse than an extra line.
+//
+// A REFUSAL IS SPOKEN, ALWAYS. An unauthorized reply used to be CLAIMED and answered
+// with nothing, which from the chat's side is indistinguishable from the bot being
+// broken; the arm now answers that one before any family sees the reply, and everything
+// below is a sentence this family spoke already and now returns instead of sending.
+export async function settleRefillReply(
+  reply: TypedReply,
+  ctx: TypedReplyContext
+): Promise<TypedReplyOutcome> {
+  // A resolution that named no operation cannot name a receipt. Under pointer-only the
+  // operation comes from the offer row itself, so this branch is unreachable for refill
+  // and kept as the type's own floor rather than as a live case. What it does still cover
+  // is an update with no sender or no id of its own — a receipt is bound to the sender who
+  // opened it and settles under its reply's id, so neither can be assumed.
+  if (
+    reply.operationId == null ||
+    ctx.senderId == null ||
+    ctx.messageId == null
+  )
+    return { applied: false, refusal: "This receipt is no longer available." };
+  const offerId = reply.operationId;
   const outcome = settleReceived(
-    target.profileId,
-    target.offerId,
-    String(chatId),
-    target.promptId,
-    senderId,
-    String(messageId),
-    { amount: message.text }
+    reply.profileId,
+    offerId,
+    ctx.chatId,
+    reply.promptId,
+    ctx.senderId,
+    String(ctx.messageId),
+    { amount: reply.text }
   );
-  await sendTelegramMessage(
-    chatId,
-    { title: "Supply receipt", body: outcome.text },
-    target.profileId
-  );
-  if (outcome.refresh) await refreshReceipt(target.profileId, target.offerId);
-  return true;
+  // APPLIED means the ledger moved. `Already recorded` and `Receipt canceled` refresh
+  // the prompt too, and neither is an answer to THIS reply that deserves a 👍.
+  const applied = outcome.wroteProfileId != null;
+  // THE REFRESH IS THE APPLIED REPLY'S ONLY ANSWER, so it may not throw the answer away:
+  // the supply is already refilled and the offer already `completed` when it runs, and
+  // an edit refused for age (or a 429) used to escape the arm before it could react or
+  // speak. An applied reply therefore falls back to the `Supply receipt` message main
+  // always sent; every other outcome here carries a REFUSAL the arm sends itself, so its
+  // failed refresh stays silent rather than doubling the chat.
+  if (outcome.refresh)
+    await acknowledgeInPlace(
+      "refill receipt",
+      reply.profileId,
+      ctx.chatId,
+      () => refreshReceipt(reply.profileId, offerId),
+      applied ? { title: "Supply receipt", body: outcome.text } : null
+    );
+  return applied
+    ? { applied: true, refusal: null }
+    : { applied: false, refusal: outcome.text };
 }
 
 function receiptIds(tokens: readonly string[]): number[] {
@@ -968,24 +1015,17 @@ export async function handleOrderedRefillCallback(
   });
   if (!result) {
     await answerCallbackQuery(cq.id, refillAnswerText("stale-item"));
+    // A STALE TAP EDITS THE MESSAGE IT WAS MADE ON (#5650 ruling 3). The toast has
+    // already said the tap did nothing; a FOURTH kind of message under the reminder —
+    // "This reminder is out of date. Open the current refill form." — said it again and
+    // left the out-of-date reminder sitting above it, still showing the button that had
+    // just been refused. Rebuilding the tapped message through the pointer path states
+    // the current truth IN PLACE and drops the dead button, which is what every tap
+    // family already does; the chat gains no line. A tap with no pointer to rebuild
+    // (the reminder is past the retention horizon) keeps the toast and nothing else.
     if (!("generation" in token) && receiptAuthorized(token.profileId, chat)) {
-      const stock = refillStock(token.profileId, token.itemId);
-      const base = getPublicUrl().replace(/\/$/, "");
-      if (stock && base)
-        await sendTelegramMessage(
-          chat,
-          {
-            title: "Refill reminder",
-            body: "This reminder is out of date. Open the current refill form.",
-            actions: [
-              {
-                label: "Open refill form",
-                url: `${base}${intakeSupplyHref(stock.kind, token.itemId, true)}`,
-              },
-            ],
-          },
-          token.profileId
-        );
+      const pointer = messagePointerAt(token.profileId, chat, messageId);
+      if (pointer) await reconcileRefillReceipt(token.profileId, pointer);
     }
     return;
   }

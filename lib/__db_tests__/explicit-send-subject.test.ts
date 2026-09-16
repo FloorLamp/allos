@@ -226,10 +226,14 @@ describe("the real commands keep their subjects (#1995)", () => {
   });
 
   it("`/temp` prompts each member SEPARATELY — the per-profile shape", async () => {
-    // Two messages, each carrying its own subject's reply marker. This is the send
-    // shape the guess could not attribute; the prompts are button-less today, so what
-    // the fix buys here is that the attribution is right the moment one gains a
-    // keyboard rather than the day someone notices.
+    // Two messages, each recorded under its OWN subject. This is the send shape the
+    // guess could not attribute.
+    //
+    // THE ASSERTION MOVED WITH THE ATTRIBUTION (#5650, pointer-only). It used to read
+    // `#temp:<pid>` out of each body, because the attribution was a marker the body
+    // carried. The marker is retired — a prompt body also renders a profile NAME a
+    // person types in-app, and a reader that trusts one has to trust the other — so the
+    // attribution is the POINTER the send records, and that is what this reads now.
     await handleIncomingMessage({
       message_id: 3,
       chat: { id: CHAT },
@@ -237,11 +241,17 @@ describe("the real commands keep their subjects (#1995)", () => {
     });
 
     expect(sendMock).toHaveBeenCalledTimes(2);
+    for (const who of [ada, basil]) {
+      const live = liveMessagePointersForKind(who.profileId, CHAT, "temp");
+      expect(live).toHaveLength(1);
+      expect(live[0].chatWide).toBe(false);
+    }
+    // And each body still names its own subject in words.
     const bodies = sendMock.mock.calls.map((c) =>
       String((c[1] as NotificationMessage).body)
     );
-    expect(bodies[0]).toContain(`#temp:${ada.profileId}`);
-    expect(bodies[1]).toContain(`#temp:${basil.profileId}`);
+    expect(bodies[0]).toContain("ada");
+    expect(bodies[1]).toContain("basil");
   });
 });
 

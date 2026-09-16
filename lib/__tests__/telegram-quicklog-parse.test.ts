@@ -14,11 +14,13 @@ import {
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
 } from "@/lib/notifications/callback-data";
+import { parseTempReply } from "@/lib/notifications/telegram-quick-log";
 import {
-  parseTempReply,
-  parseTempReplyMarker,
-  tempReplyMarker,
-} from "@/lib/notifications/reply-markers";
+  resolveTypedReply,
+  typedReplyNumber,
+  type OpenTypedPrompt,
+  type TypedPromptRegistry,
+} from "@/lib/notifications/typed-reply";
 
 // Pure tests for the Telegram symptom/temp quick-log parsers (issue #859 item 5). No DB.
 
@@ -48,16 +50,139 @@ describe("symptom callback parsers", () => {
   });
 });
 
-describe("temperature reply flow parsers", () => {
-  it("round-trips the profile marker through the prompt text", () => {
-    const prompt = `Reply with the temperature. ${tempReplyMarker(12)}`;
-    expect(parseTempReplyMarker(prompt)).toBe(12);
+// ---- The one typed-reply contract (issue #5650), POINTER-ONLY ----
+//
+// The marker grammar these tests used to pin is GONE (owner ruling, 2026-09-16), and the
+// tests that pinned it went with it — there is no `parseTypedReplyMarker` to call and no
+// string a prompt carries for it to read. A typed reply resolves against the bot's own
+// record of the quoted message and nothing else, so what is pinned here is that the
+// resolver takes NO TEXT from the quoted message at all: its input carries an id.
+
+describe("the bare-number rule", () => {
+  it.each(["", "0", "-1", "Infinity", "2 bottles", "1,000", "2e3", "1 2"])(
+    "refuses the whole ambiguous or nonpositive input %s",
+    (text) => {
+      expect(typedReplyNumber(text)).toBeNull();
+    }
+  );
+  it("accepts a plain positive amount", () => {
+    expect(typedReplyNumber(" 30.5 ")).toBe(30.5);
   });
-  it("returns null when no marker is present", () => {
-    expect(parseTempReplyMarker("just some text")).toBeNull();
-    expect(parseTempReplyMarker(null)).toBeNull();
+});
+
+describe("resolving a message to one open prompt", () => {
+  const receipt: OpenTypedPrompt = {
+    family: "refill",
+    profileId: 7,
+    operationId: 12,
+    promptId: 500,
+  };
+  const tempPrompt: OpenTypedPrompt = {
+    family: "temp",
+    profileId: 7,
+    operationId: null,
+    promptId: 501,
+  };
+
+  // A registry that answers from a fixed set, and COUNTS its reads — both selectors are
+  // DB work in production and ordinary chat must not pay for either.
+  function registry(prompts: readonly OpenTypedPrompt[]) {
+    const reads = { at: 0, open: 0 };
+    const r: TypedPromptRegistry = {
+      at: (id) => {
+        reads.at++;
+        return prompts.find((p) => p.promptId === id) ?? null;
+      },
+      open: () => {
+        reads.open++;
+        return prompts;
+      },
+    };
+    return { registry: r, reads };
+  }
+
+  it("resolves an explicit reply from the RECORD at the quoted id, open prompts unread", () => {
+    const { registry: r, reads } = registry([receipt]);
+    expect(resolveTypedReply({ text: "120", replyToId: 500 }, r)).toEqual({
+      kind: "reply",
+      reply: { ...receipt, text: "120" },
+    });
+    // The uniqueness selector is for BARE numbers; a Reply names its own message.
+    expect(reads.open).toBe(0);
   });
 
+  it("takes the family and the attribution from the record, never from the reply", () => {
+    // The same quoted id, the same typed text, two different records: everything about
+    // WHICH prompt this answers comes from the store. There is no other input that could
+    // carry it — which is the property pointer-only exists for.
+    const { registry: asTemp } = registry([{ ...tempPrompt, promptId: 500 }]);
+    expect(resolveTypedReply({ text: "38.5", replyToId: 500 }, asTemp)).toEqual(
+      {
+        kind: "reply",
+        reply: { ...tempPrompt, promptId: 500, text: "38.5" },
+      }
+    );
+    const { registry: asRefill } = registry([receipt]);
+    expect(
+      resolveTypedReply({ text: "38.5", replyToId: 500 }, asRefill)
+    ).toEqual({ kind: "reply", reply: { ...receipt, text: "38.5" } });
+  });
+
+  it("refuses a number replied to a message the store has no prompt for", () => {
+    // THE ACCEPTED COST OF POINTER-ONLY. A prompt sent before pointers were recorded, one
+    // pruned at retention, one already answered, or a message that was never a prompt:
+    // all four are the same thing here — no record — and none of them may be resolved by
+    // guessing at the chat's other open prompts.
+    const { registry: r, reads } = registry([receipt]);
+    expect(resolveTypedReply({ text: "38.5", replyToId: 9 }, r)).toEqual({
+      kind: "unrecorded",
+    });
+    expect(reads.open).toBe(0);
+  });
+
+  it("leaves a non-numeric reply to an unrecorded message as ordinary chat", () => {
+    const { registry: r } = registry([receipt]);
+    expect(resolveTypedReply({ text: "thanks!", replyToId: 9 }, r)).toEqual({
+      kind: "none",
+    });
+  });
+
+  it("resolves a bare number to the sender's single open prompt", () => {
+    const { registry: r, reads } = registry([receipt]);
+    expect(resolveTypedReply({ text: "120" }, r)).toEqual({
+      kind: "reply",
+      reply: { ...receipt, text: "120" },
+    });
+    // No quoted id, so the by-id selector is never asked.
+    expect(reads.at).toBe(0);
+  });
+
+  it("refuses to choose, and leaves everything else to the rest of the chain", () => {
+    const both = registry([receipt, tempPrompt]).registry;
+    expect(resolveTypedReply({ text: "120" }, both)).toEqual({
+      kind: "ambiguous",
+    });
+    // No open prompt, and not a number.
+    expect(resolveTypedReply({ text: "120" }, registry([]).registry)).toEqual({
+      kind: "none",
+    });
+    expect(
+      resolveTypedReply({ text: "abc" }, registry([receipt]).registry)
+    ).toEqual({ kind: "none" });
+  });
+
+  it("never reads the open set on a lookup path, and never guesses across them", () => {
+    // A live temp prompt in the chat and a Reply to a DIFFERENT, unrecorded message:
+    // resolving that to the temp prompt would be the guess this branch refuses, and is
+    // how a reply aimed at yesterday's question would land on today's.
+    const { registry: r } = registry([tempPrompt]);
+    expect(resolveTypedReply({ text: "38.5", replyToId: 777 }, r)).toEqual({
+      kind: "unrecorded",
+    });
+  });
+});
+
+describe("temperature reply value grammar", () => {
   it("auto-detects °C for a bare low number and °F for a bare high one", () => {
     expect(parseTempReply("38.5")).toEqual({ value: 38.5, unit: "C" });
     expect(parseTempReply("101")).toEqual({ value: 101, unit: "F" });
