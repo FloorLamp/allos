@@ -1241,29 +1241,19 @@ function exportedAsyncFunctions(
 
 const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
 
-// ── The brand is the other gate, and tsc enforces it (#5348) ──────────────────
+// ── The brand is the other signal, and what tsc enforces (#5348) ──────────────
 //
 // A write core whose profile parameter is lib/auth's `WriteAuthorizedProfileId`
-// instead of `profileId: number` cannot be reached with an id no gate returned BY
-// ACCIDENT — and that is the whole of the claim, so read it as written rather than
-// as "cannot be reached". The brand symbol is not exported, `requireWriteAccess` /
-// `requireProfileWriteAccess` / `requireAdmin` are its only minters, and
-// eslint.config.mjs's WRITE_BRAND_CAST refuses production code the cast SHAPES: the
-// brand named in a cast target, a type alias or an import specifier, and a row-shape
-// cast read straight back out by property, non-null assertion or destructuring.
-//
-// DELIBERATELY IS ANOTHER MATTER, and the residual is partly made of casts. Some need
-// a NAME resolved (`({ id } as Row).id`, `n as Row["id"]`), some need a VALUE followed
-// though the brand is spelled in the cast (an element of a cast array, an awaited cast
-// promise, a cast function's return, a spread copy, a row bound to a `const` first),
-// and one is a DECISION rather than a limit (the brand as a call's type argument).
-// eslint.config.mjs states which is which and why, and temporal-types.test.ts executes
-// every one of them against the real rule (#5914).
-//
-// So an action that calls such a core holds a value no ACCIDENT could produce — a
-// compiler-checked statement of exactly what GATE_RE looks for in text, on every path
-// rather than somewhere in the body. It needs no allowlist entry to record it, which
-// is how `ALLOW` shrinks as cores are converted instead of being edited by hand.
+// instead of `profileId: number` refuses a plain `number` at the call site;
+// `requireWriteAccess` / `requireProfileWriteAccess` / `requireAdmin` mint it, and
+// eslint.config.mjs's WRITE_BRAND_CAST refuses production code the
+// `as WriteAuthorizedProfileId` forge, in every production module since #5864 closed
+// #5856. An action that calls such a core therefore holds a value that ORDINARILY
+// only a gate produces — a compiler-checked statement of what GATE_RE looks for in
+// text, on every path rather than somewhere in the body. It needs no allowlist entry
+// to record it, which is how `ALLOW` shrinks as cores are converted instead of being
+// edited by hand. Read the strength of that statement off the limits below, not off
+// this paragraph.
 //
 // THAT LAST CLAUSE IS A DEPENDENCY ON THE LINT CONFIG'S FILE COVERAGE, and it is not
 // a claim this file may make on its own. It held for every production module but
@@ -1290,6 +1280,15 @@ const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
 // literal GATE_RE accepts does not prove that either (a body that gates the actor and
 // writes a posted id satisfies both), so the claim is unchanged. That question is
 // #5348's acting-profile-versus-authorized-profile fork, decided in lib/auth.ts.
+//
+// NOR DOES IT PROVE THAT A GATE RAN AT ALL, and the coverage sweep above cannot make
+// it. The ban refuses the `as WriteAuthorizedProfileId` cast; it does not make the
+// brand unforgeable, and the residual is not a list anyone has closed (#5892, #5914).
+// So "calls a branded core" is EVIDENCE of a gate, not PROOF of one, and the
+// step-aside below is a tightening of the allowlist's bookkeeping rather than a second
+// authorization boundary. What the brand does refuse is the ordinary accident — a
+// plain `number` reaching a write core — which is the shape #5348 converts cores to
+// catch.
 const WRITE_BRAND = "WriteAuthorizedProfileId";
 
 function productionSources(root: string): string[] {

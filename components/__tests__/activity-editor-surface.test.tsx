@@ -96,8 +96,16 @@ function DockStandIn({ onOpen }: { onOpen: () => void }) {
   return <button data-testid="workout-dock" onClick={onOpen} />;
 }
 vi.mock("../WorkoutDock", () => ({ default: DockStandIn }));
+// STABLE across renders, not a fresh `vi.fn()` per call: `QuickLogMenu` publishes
+// the gather's food-window splits back through this api in an effect keyed on it
+// (#5902), and a new function identity every render would re-run that effect forever.
+const quickEntryApi = vi.hoisted(() => ({
+  open: vi.fn(),
+  close: vi.fn(),
+  noteSlotBoundaries: vi.fn(),
+}));
 vi.mock("../QuickEntryProvider", () => ({
-  useQuickEntry: () => ({ open: vi.fn() }),
+  useQuickEntry: () => quickEntryApi,
   useQuickEntryVisit: () => ({
     identity: "test-visit",
     active: null,

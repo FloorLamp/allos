@@ -148,9 +148,13 @@ describe("a view, never a correlation engine (#2788)", () => {
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
 
-  it("imports only the calendar — no findings bus, no dismissal keys, no send path to reach", () => {
+  it("imports only the calendar and the shared vocabulary — no findings bus, no dismissal keys, no send path to reach", () => {
     const imports = [...code.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
-    expect(imports).toEqual(["./date"]);
+    // ./gi-effects joined the list when #5865 extracted the GI set the sensitivity
+    // form names too. It is a VOCABULARY — slugs and labels, no store and no verdict —
+    // so the claim this test makes is unchanged: nothing the panel imports can mint a
+    // finding, key a dismissal, or reach a send path.
+    expect(imports).toEqual(["./date", "./gi-effects"]);
   });
 
   it("mints no finding and no dedupe key", () => {

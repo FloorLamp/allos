@@ -1311,7 +1311,11 @@ export default function MeasurementsQuickAdd({
       )}
 
       <InlineError>{error}</InlineError>
-      <SubmitButton pendingLabel="Saving…" variant="primary">
+      {/* NO `pendingLabel` (#5900): the submit is already `aria-busy` with the
+          shared spinner through `useFormStatus`, and swapping "Save reading" for
+          "Saving…" changed the control's width under the finger for nothing the
+          spinner does not already say. */}
+      <SubmitButton variant="primary">
         {metric ? `Save ${metric.label.toLowerCase()}` : "Save measurements"}
       </SubmitButton>
     </form>

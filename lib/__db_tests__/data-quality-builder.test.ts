@@ -25,6 +25,13 @@ import {
   setRiskAttributesReviewed,
 } from "@/lib/settings";
 import { dataQualityDedupeKey } from "@/lib/data-quality";
+import { activeFindings } from "@/lib/findings";
+import {
+  createSharedSupply,
+  dismissFinding,
+  getFindingSuppressions,
+  linkItemToPool,
+} from "@/lib/queries";
 import { unretireDose } from "@/lib/queries/intake/dose-lifecycle";
 import {
   dedupeKeyHasKnownPrefix,
@@ -357,5 +364,242 @@ describe("dose-amount-unreadable — the legacy rows nothing can read (#3320)", 
       "kg"
     ).map((f) => f.dedupeKey);
     expect(rolled).toContain(dataQualityDedupeKey("dose-amount-unreadable"));
+  });
+});
+
+// ── #5285's two setup rows, end to end on the existing bus ──────────────────────
+//
+// The issue's ACs 2 and 3. The fixture is the shape the issue is ABOUT — the prod
+// screenshot's shared-bottle Ibuprofen: a `must` medication whose one live dose states
+// an amount and no time, which is exactly the row the #5581 migration deliberately
+// LEFT in place ("untimed rows that carry an amount stay as data and simply stop being
+// due"). A convenient synthetic with no dose at all would miss it.
+//
+// WHY THE SETUP TIER NEEDS NOTHING HERE: Home's Setup block asks
+// `buildDataQualityFindings` and nothing else (`HOME_SETUP_BUILDERS`), and seats each
+// finding on the bus's own `data-quality:<key>` — pinned already by
+// lib/__tests__/home-list.test.ts, which seats both of these keys without knowing them.
+// So this tier's job is the key arriving on the bus at all; the seat is someone else's
+// proof and no Home file changes.
+describe("intake-unscheduled / intake-obligation-mismatch (#5285)", () => {
+  function addItem(
+    profileId: number,
+    name: string,
+    over: {
+      kind?: "supplement" | "medication";
+      obligation?: "must" | "should" | "may";
+      active?: number;
+      // A confirmed code, where the fixture needs the med-rxcui gap out of the way so
+      // "raises nothing" can be asserted as nothing at all.
+      rxcui?: string;
+    } = {}
+  ): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation, rxcui)
+           VALUES (?, ?, ?, ?, 'daily', ?, ?)`
+        )
+        .run(
+          profileId,
+          name,
+          over.active ?? 1,
+          over.kind ?? "medication",
+          over.obligation ?? "must",
+          over.rxcui ?? null
+        ).lastInsertRowid
+    );
+  }
+
+  function addDose(
+    itemId: number,
+    over: { timeOfDay?: string; amount?: string | null; retired?: number } = {}
+  ): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort, retired)
+           VALUES (?, ?, ?, 'any', 0, ?)`
+        )
+        .run(
+          itemId,
+          over.amount ?? "400 mg",
+          over.timeOfDay ?? "",
+          over.retired ?? 0
+        ).lastInsertRowid
+    );
+  }
+
+  // A profile with nothing else to say, so the keys under test are the only ones the
+  // bus can carry and an assertion about the whole list stays readable.
+  function completeProfile(name: string): number {
+    const { profileId } = makeProfile(name);
+    setProfileSex(profileId, "male");
+    setProfileBirthdate(profileId, "1985-01-01");
+    setSmokingHistory(profileId, {
+      status: "never",
+      packYears: null,
+      quitYear: null,
+    });
+    setRiskAttributesReviewed(profileId, true);
+    return profileId;
+  }
+
+  it("AC2: the untimed dose raises the gap, and stating a time retires it", () => {
+    const profileId = completeProfile("dq-unscheduled");
+    const itemId = addItem(profileId, "Ibuprofen");
+    const doseId = addDose(itemId); // an amount, and no time — the prod row
+
+    const gap = collectDataQualityGaps(profileId).find(
+      (g) => g.key === "intake-unscheduled"
+    );
+    expect(gap?.whyLine).toBe(
+      "Ibuprofen has no dose time — set one and it will be due, reminded and counted."
+    );
+    expect(gap?.ctaHref).toBe(`/medications/${itemId}?action=edit`);
+
+    // …on the coaching bus, under the shared dedupeKey every surface keys on.
+    expect(
+      collectCoachingFindings(profileId, today(profileId), "kg").map(
+        (f) => f.dedupeKey
+      )
+    ).toContain(dataQualityDedupeKey("intake-unscheduled"));
+
+    // SELF-HEALING BY CONSTRUCTION: state the time and the gap simply stops being
+    // detected — no marker, no dismissal, nothing to clean up.
+    db.prepare(`UPDATE intake_item_doses SET time_of_day = ? WHERE id = ?`).run(
+      "08:00",
+      doseId
+    );
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("intake-unscheduled")
+    );
+  });
+
+  it("NEGATIVE CONTROL: a properly scheduled obligation raises nothing", () => {
+    // Without this the detector could pass by firing on everything. Two items, both
+    // `must`: one with a stated time, one whose ONLY timed dose sits beside an untimed
+    // sibling — an item-wide filter that looked at any dose would wrongly flag it.
+    const profileId = completeProfile("dq-unscheduled-control");
+    addDose(addItem(profileId, "Metformin", { rxcui: "6809" }), {
+      timeOfDay: "08:00",
+    });
+    const mixed = addItem(profileId, "Levothyroxine", { rxcui: "10582" });
+    addDose(mixed, { timeOfDay: "07:00" });
+    addDose(mixed, {}); // a second, untimed row on an item that IS scheduled
+
+    expect(collectDataQualityGaps(profileId)).toEqual([]);
+  });
+
+  it("stays out of scope for a retired dose, an inactive item and an as-needed one", () => {
+    const profileId = completeProfile("dq-unscheduled-scope");
+    // A `may` item is not owed on any day, so it has no schedule to be missing.
+    addItem(profileId, "Aspirin", { obligation: "may" });
+    // Inactive: out of the stack, the same boundary every other gap here draws.
+    addDose(addItem(profileId, "Stopped Med", { active: 0 }), {
+      timeOfDay: "09:00",
+    });
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("intake-unscheduled")
+    );
+
+    // A RETIRED timed dose is history, not a schedule: the item is left owing a dose
+    // it has no live row for, so the gap fires.
+    const retiredOnly = addItem(profileId, "Amlodipine");
+    addDose(retiredOnly, { timeOfDay: "09:00", retired: 1 });
+    expect(keysOf(profileId)).toContain(
+      dataQualityDedupeKey("intake-unscheduled")
+    );
+  });
+
+  it("AC3: a must Ibuprofen raises the mismatch; as-needed raises nothing", () => {
+    const profileId = completeProfile("dq-mismatch");
+    const itemId = addItem(profileId, "Ibuprofen");
+    addDose(itemId, { timeOfDay: "08:00" }); // scheduled, so ONLY the mismatch fires
+
+    const gap = collectDataQualityGaps(profileId).find(
+      (g) => g.key === "intake-obligation-mismatch"
+    );
+    expect(gap?.whyLine).toBe(
+      "Ibuprofen is set as a daily obligation; it is usually taken as needed — " +
+        "keep the schedule, or switch it to as-needed."
+    );
+    expect(gap?.ctaHref).toBe(`/medications/${itemId}?action=edit`);
+
+    // Switching the obligation is the fix, and it retires the gap by construction.
+    db.prepare(`UPDATE intake_items SET obligation = 'may' WHERE id = ?`).run(
+      itemId
+    );
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("intake-obligation-mismatch")
+    );
+  });
+
+  it("AC3: a dismissed mismatch stays silent on the next evaluation", () => {
+    // The other legitimate answer: a person who genuinely takes ibuprofen on a
+    // schedule keeps it and dismisses once. Nothing bespoke — the ordinary
+    // suppression bus, under the gap's own dedupeKey, which is also the identity the
+    // Setup seat persists on.
+    const profileId = completeProfile("dq-mismatch-dismissed");
+    addDose(addItem(profileId, "Ibuprofen"), { timeOfDay: "08:00" });
+    const day = today(profileId);
+    const key = dataQualityDedupeKey("intake-obligation-mismatch");
+
+    const before = buildDataQualityFindings(profileId);
+    expect(
+      activeFindings(before, getFindingSuppressions(profileId), day).map(
+        (f) => f.dedupeKey
+      )
+    ).toContain(key);
+
+    dismissFinding(profileId, key);
+
+    expect(
+      activeFindings(
+        buildDataQualityFindings(profileId),
+        getFindingSuppressions(profileId),
+        day
+      ).map((f) => f.dedupeKey)
+    ).not.toContain(key);
+  });
+
+  it("the BOTTLE owns what the product is, not the item's label (#5518)", () => {
+    // The prod row's actual shape: a second household member's item, seeded from a
+    // shared bottle, carrying whatever name that person calls it. Asking the registry
+    // about the label alone would find nothing and the mismatch would never fire on
+    // the row this issue was reported from.
+    const profileId = completeProfile("dq-mismatch-bottle");
+    const itemId = addItem(profileId, "Pain pills");
+    addDose(itemId, { timeOfDay: "08:00" });
+    expect(keysOf(profileId)).not.toContain(
+      dataQualityDedupeKey("intake-obligation-mismatch")
+    );
+
+    const supplyId = createSharedSupply(
+      {
+        name: "Ibuprofen",
+        strength: "200 mg",
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    linkItemToPool(profileId, itemId, supplyId);
+    expect(keysOf(profileId)).toContain(
+      dataQualityDedupeKey("intake-obligation-mismatch")
+    );
+  });
+
+  it("a scheduled medication the registry does not know raises neither gap", () => {
+    // The second half of the negative control, on the mismatch side: the registry is
+    // what decides, so an ordinary daily medication is silent on both keys.
+    const profileId = completeProfile("dq-mismatch-control");
+    addDose(addItem(profileId, "Metformin", { rxcui: "6809" }), {
+      timeOfDay: "08:00",
+    });
+    expect(collectDataQualityGaps(profileId)).toEqual([]);
   });
 });

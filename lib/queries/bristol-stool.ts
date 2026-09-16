@@ -3,7 +3,7 @@
 // rows and hands them over.
 //
 // Reading `stool_events` since #5872: a stool is an occurrence that MAY carry a type,
-// so the row shape below carries `type: number | null` and the two readers here differ on
+// so the row shape below carries `type: number | null` and the readers here differ on
 // what they do with the absence.
 //
 // Nothing here aggregates. The one thing a stool reader must not do is average, and the
@@ -17,6 +17,11 @@
 // exactly as they were before the type could be absent: an untyped occurrence names no
 // bar and contributes zero to any loose-stool count. `getBristolRows` — the record's —
 // returns every row, because "2 today" and the history list count what HAPPENED.
+//
+// `getBristolDayCount` is here because NEITHER of those answers "how many movements on
+// this day": one filters the untyped row out, and the other is windowed, so its length
+// is a page size dressed up as a count. The quick-log count line asked the filtering one
+// and read two rows over the word "1" (#5872's follow-up).
 
 import { hoistedStatement, today } from "@/lib/db";
 import {
@@ -120,4 +125,24 @@ export function getBristolRows(
 ): BristolRow[] {
   const rows = rowsStmt.all(profileId, from, to, limit) as BristolRow[];
   return rows;
+}
+
+const dayCountStmt = hoistedStatement(
+  `SELECT COUNT(*) AS n FROM stool_events WHERE profile_id = ? AND date = ?`
+);
+
+/**
+ * HOW MANY MOVEMENTS ONE DAY HOLDS — every row, typed or not, and no window.
+ *
+ * The number the quick-log sheet prints beside the picker, so a second tap is informed
+ * rather than accidental, and the same number after a correction or an Undo.
+ *
+ * COUNTED IN SQL rather than taken off `getBristolRows`, because that reader is bounded
+ * (its window is the receipt's work bound, not its answer) and a count must not silently
+ * inherit a row cap: a day past the bound would go on reporting the bound. The delete
+ * core says the same thing from the other side — this ledger keeps no day counter,
+ * the count IS the rows.
+ */
+export function getBristolDayCount(profileId: number, date: string): number {
+  return (dayCountStmt.get(profileId, date) as { n: number }).n;
 }

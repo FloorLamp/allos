@@ -15,7 +15,7 @@ import {
   getMedicationsMissingRxcuiCount,
   getMedicationMissingRxcuiSoleId,
   getFailedExtractionDocumentCount,
-  getUnreadableDoseAmounts,
+  getIntakeDataQualityRows,
   getLatestMetricSample,
   getBioAgeReadings,
   hasImportedSmokingHistory,
@@ -58,7 +58,11 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     hasImportedSmokingHistory(profileId)
   );
   const sex = getProfileSex(profileId);
-  const unreadableDoses = getUnreadableDoseAmounts(profileId);
+  // ONE pass over the intake rows for all three intake-shaped gaps (#3320, #5285):
+  // Home's Setup section runs outside the read snapshot, so a second reader would be a
+  // second execution of the item and dose reads rather than a cache hit.
+  const intakeRows = getIntakeDataQualityRows(profileId);
+  const unreadableDoses = intakeRows.unreadableAmounts;
   const inputs: DataQualityInputs = {
     age: getProfileAge(profileId),
     sexKnown: sex !== null,
@@ -85,6 +89,15 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     unreadableDoseAmountItem: unreadableDoses[0]
       ? { id: unreadableDoses[0].itemId, kind: unreadableDoses[0].kind }
       : null,
+    // The two #5285 setup rows, from the same already-cached item/dose reads the
+    // unreadable-amount gather above takes: an obligation whose schedule states no
+    // time, and one the curated PRN registry knows as an as-needed product. Same
+    // arrangement, same reason — the rules live in `stackSchedule` / `prnDefaultsFor`
+    // and the read owns no SQL of its own.
+    unscheduledObligations: intakeRows.unscheduled.length,
+    unscheduledObligationItem: intakeRows.unscheduled[0] ?? null,
+    obligationMismatches: intakeRows.obligationMismatch.length,
+    obligationMismatchItem: intakeRows.obligationMismatch[0] ?? null,
   };
   return detectDataQualityGaps(inputs);
 }
