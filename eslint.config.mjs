@@ -24,10 +24,9 @@ const TEMPORAL_BRANDS = [
   "BareInstant",
 ];
 // #5348 — lib/auth.ts's write-authorization brand. Same seam, same shapes: it is
-// minted by the three write gates and by nothing else, so the cast is the one forge
-// tsc cannot refuse. One name, run through the SAME builder as the temporal brands
-// rather than a second hand-written selector — a cast ban that only covers
-// `x as Brand` is walked past by `type B = Brand; x as B`.
+// minted by the three write gates. One name, run through the SAME builder as the
+// temporal brands rather than a second hand-written selector — a cast ban that only
+// covers `x as Brand` is walked past by `type B = Brand; x as B`.
 const WRITE_BRANDS = ["WriteAuthorizedProfileId"];
 // The shapes a cast to a brand can take, by NAME — this rule is syntactic and does
 // not chase what a name resolves to (lib/temporal-types.ts says what that leaves to
@@ -42,7 +41,7 @@ const WRITE_BRANDS = ["WriteAuthorizedProfileId"];
 // and it is about where the NAME may appear, never about whether a value of brand
 // type can be obtained.
 //
-// WHAT ESCAPES IS NOT A LIST. A brand-minting cast escapes exactly when a branded
+// WHAT ESCAPES IS NOT A LIST. A brand-minting cast escapes when a branded
 // object type literal stands between the cast and the brand while not being the
 // cast's own type node, or when the value is taken one node further out than the read
 // positions matched here; shapes that are not casts at all escape for their own
@@ -139,7 +138,7 @@ const WRITE_BRAND_CAST_SELECTORS = brandCastSelectors(WRITE_BRANDS);
 // which is why the temporal-brand block stays first and broadest.
 
 // Test tiers are not shipped surfaces: a fixture may name anything it is asserting
-// about. Every scan replaced below excluded them.
+// about.
 const TEST_TREES = [
   "**/__tests__/**",
   "**/__db_tests__/**",
@@ -177,9 +176,9 @@ const REVALIDATE_PATH_BAN = {
     "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
 };
 
-// #3335 — the RPE opt-in seam. `RpeTracking` is minted on one branch of one module,
-// so exactly one production module may import the minter and nothing may cast past
-// the brand. (was lib/__tests__/rpe-opt-in.test.ts)
+// #3335 — the RPE opt-in seam. `RpeTracking` is minted on one branch of one module;
+// the two bans below refuse the minter's `@/lib/rpe` import and the direct cast
+// spelling. (was lib/__tests__/rpe-opt-in.test.ts)
 const RPE_MINTER_BAN = {
   name: "@/lib/rpe",
   importNames: ["mintRpeTracking"],
@@ -204,7 +203,7 @@ const WRITE_BRAND_CAST = WRITE_BRAND_CAST_SELECTORS.map((selector) => ({
   message:
     "Do not cast or re-alias to WriteAuthorizedProfileId. Take it from a write gate's session: requireWriteAccess(), requireProfileWriteAccess(id) and requireAdmin() return it as `writeProfileId` (lib/auth.ts, #5348).",
 }));
-// The one file that mints it, and so the one file that keeps the cast.
+// The one file that mints it, and so the one the cast ban exempts.
 const WRITE_BRAND_MINTER = "lib/auth.ts";
 
 // The stored key is an identity: two spellings of it would be two opt-ins.
@@ -252,7 +251,7 @@ const vendorScoreBan = (vendor, names) =>
     // different symbol (`ouraSleepScoreLabel` is not the kind), so prefix-matching
     // identifiers would fire on unrelated names. A longer STRING containing the key is
     // the key plus a suffix — `oura_sleep_score_v2` is still a vendor score key — so the
-    // quote and the backtick spellings must ban the same twenty characters. They did not
+    // quote and the backtick spellings must ban the same characters. They did not
     // until #5347: the string was legal and the template was not.
     `Identifier[name=/^(?:${names.join("|")})$/]`,
     `Literal[value=/(?:${names.join("|")})/]`,
@@ -618,7 +617,6 @@ const REVALIDATE_DYNAMIC_IMPORT_BAN = {
   message:
     "Use revalidateRoute from lib/revalidate.ts so the target remains compile-checked (#1636/#2149).",
 };
-// Shared syntax restrictions remain active in every narrower block below.
 const APP_SURFACE_SYNTAX = [
   {
     selector:
@@ -783,8 +781,8 @@ const HYGIENE_DOC = "see docs/internals/e2e-hygiene.md.";
 const WALL_CLOCK_MESSAGE = `A spec's "now" is the harness's frozen now, never the wall clock (#1538) — use frozenNow() from ./worker-env, or carry a \`clock-ok: <why>\` disable line for a use that is NOT a stored timestamp (a unique-name suffix, a TOTP probe); ${HYGIENE_DOC}`;
 
 // THE FOUR BANS THAT CARRY LIVE ESCAPE TRAFFIC sit on `no-restricted-properties`
-// rather than on `no-restricted-syntax`, and that placement is the point: 748 of the
-// 750 reviewed escapes in e2e/ today are one of these four, and a disable directive
+// rather than on `no-restricted-syntax`, and that placement is the point: all but two
+// of the reviewed escapes in e2e/ today are one of these four, and a disable directive
 // is per-RULE where the retired scan's same-line marker was per-PATTERN. Splitting
 // them off means a line excused for `.first()` still cannot smuggle in a temporal
 // brand cast, a wall-clock CONSTRUCTOR or any other no-restricted-syntax ban. The
@@ -1143,8 +1141,8 @@ const config = [
   // root export into a version stub and moves `createSourceFile` / `forEachChild` to
   // entries it marks UNSTABLE, so a plain `import ts from "typescript"` stops
   // resolving to a compiler at all — which would take the Server Action
-  // authorization sweep and the adult-only write scan red on a version bump. Sixteen
-  // files import the alias today; this is what stops a seventeenth reopening it.
+  // authorization sweep and the adult-only write scan red on a version bump. This ban
+  // is what stops another file reopening it.
   {
     rules: {
       "no-restricted-imports": [
@@ -1510,7 +1508,7 @@ const config = [
   },
   // ── The owner of the #5348 write-brand cast ban ─────────────────────────────
   // lib/auth.ts is where the three write gates turn a checked profile id into a
-  // WriteAuthorizedProfileId, so it alone may cast to one; every other ban of its
+  // WriteAuthorizedProfileId, so the cast ban exempts it; every other ban of its
   // level stays on. A block rather than a disable comment because the mint is one
   // expression inside an otherwise ordinary module.
   {
@@ -1527,8 +1525,7 @@ const config = [
   // `no-restricted-syntax` ban of its level with them — so a shipped module sat
   // outside the write-brand cast ban (#5348) and the RPE cast ban (#3335) while
   // every sampled row of eslint-config-composition.test.ts stayed green. This block
-  // restores the level and leaves `no-restricted-imports` unset, which is the whole
-  // and only exemption the module was granted.
+  // restores the rest of the level and leaves `no-restricted-imports` unset.
   {
     files: [REVALIDATE_MODULE],
     rules: {
