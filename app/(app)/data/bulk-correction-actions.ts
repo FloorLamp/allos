@@ -156,7 +156,7 @@ export type BulkCorrectionApplyResult =
 export async function applyBulkCorrectionAction(
   input: BulkCorrectionRequest & { signature: string }
 ): Promise<BulkCorrectionApplyResult> {
-  const { login, profile } = await requireWriteAccess();
+  const { login, writeProfileId } = await requireWriteAccess();
   const parsed = parseRequest(input);
   // Re-resolved from the pref AS IT IS NOW, deliberately: the unit is per-login,
   // so it may have flipped in another tab since the preview. That re-resolution is
@@ -175,7 +175,7 @@ export async function applyBulkCorrectionAction(
   }
 
   const outcome = applyBulkCorrection(
-    profile.id,
+    writeProfileId,
     parsed.field,
     parsed.filter,
     op,
@@ -211,10 +211,10 @@ export type BulkCorrectionUndoResult =
 export async function undoBulkCorrectionAction(
   undoId: number
 ): Promise<BulkCorrectionUndoResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   if (!Number.isInteger(undoId) || undoId <= 0)
     return { ok: false, message: "That correction can no longer be undone." };
-  const outcome = undoBulkCorrection(profile.id, undoId);
+  const outcome = undoBulkCorrection(writeProfileId, undoId);
   if (!outcome.ok) {
     return {
       ok: false,

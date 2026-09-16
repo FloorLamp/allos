@@ -30,6 +30,15 @@ import {
 } from "@/lib/queries";
 import { getCoverageGapCandidates } from "@/lib/queries/coverage";
 import { countImportedDocumentRows } from "@/lib/import-persist";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // The names the defect turned into analytes.
 const SITE = "Temperature site";
@@ -237,7 +246,7 @@ describe("re-importing the same CCD is idempotent (#2318)", () => {
     const vocabBefore = getCanonicalVocabulary();
     const footprintBefore = countImportedDocumentRows(profile.id, doc.id);
 
-    reprocessDocumentById(login.id, profile.id, doc.id);
+    reprocessDocumentById(login.id, gated(profile.id), doc.id);
 
     // Same logical rows — the assessment rows dedupe onto their prior external_id
     // rather than duplicating, exactly like the labs beside them.

@@ -22,12 +22,21 @@ import {
   writeDocumentTombstone,
 } from "@/lib/document-tombstones";
 import { actAs, createLogin, createProfile, fd, seedActor } from "./harness";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 describe("allowDocumentReacquisition", () => {
   it("clears the tombstone and says so", async () => {
     const { profile } = seedActor();
     const hash = "e2e-doc-hash-allow-1";
-    writeDocumentTombstone(profile.id, hash, "allowed-again.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "allowed-again.pdf");
 
     const res = await allowDocumentReacquisition(fd({ hash }));
 
@@ -40,7 +49,7 @@ describe("allowDocumentReacquisition", () => {
   it("returns a typed already-allowed outcome rather than a false success", async () => {
     const { profile } = seedActor();
     const hash = "e2e-doc-hash-allow-2";
-    writeDocumentTombstone(profile.id, hash, "twice.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "twice.pdf");
 
     expect((await allowDocumentReacquisition(fd({ hash }))).status).toBe(
       "done"
@@ -58,7 +67,7 @@ describe("allowDocumentReacquisition", () => {
     const login = createLogin({ role: "member" });
     const profile = createProfile(`Readonly allow ${login.id}`, login.id);
     const hash = "e2e-doc-hash-allow-3";
-    writeDocumentTombstone(profile.id, hash, "readonly.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "readonly.pdf");
 
     actAs(login, profile, "read");
     await expect(allowDocumentReacquisition(fd({ hash }))).rejects.toThrow();
@@ -70,7 +79,11 @@ describe("allowDocumentReacquisition", () => {
 
   it("refuses a missing hash without touching anything", async () => {
     const { profile } = seedActor();
-    writeDocumentTombstone(profile.id, "e2e-doc-hash-allow-4", "kept.pdf");
+    writeDocumentTombstone(
+      gated(profile.id),
+      "e2e-doc-hash-allow-4",
+      "kept.pdf"
+    );
 
     const res = await allowDocumentReacquisition(fd({ hash: "" }));
 
@@ -82,7 +95,7 @@ describe("allowDocumentReacquisition", () => {
     const a = seedActor();
     const b = seedActor();
     const hash = "e2e-doc-hash-allow-5";
-    writeDocumentTombstone(a.profile.id, hash, "not-yours.pdf");
+    writeDocumentTombstone(gated(a.profile.id), hash, "not-yours.pdf");
 
     // b is the acting profile; the clear is profile-scoped, so it finds nothing.
     actAs(
@@ -107,7 +120,7 @@ describe("allowDocumentReacquisition", () => {
       acquirer: true,
     });
     const hash = first.contentHash!;
-    writeDocumentTombstone(profile.id, hash, "allow-lifts.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "allow-lifts.pdf");
 
     // Blocked while the tombstone stands.
     const blocked = await ingestMedicalUpload(login.id, profile.id, file(), {

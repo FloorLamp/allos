@@ -26,6 +26,15 @@ import {
 } from "@/lib/document-tombstones";
 import { deleteMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { fd, seedActor } from "@/lib/__action_tests__/harness";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 // A minimal PDF the content sniff accepts, with per-test bytes so each test owns its
 // own content hash and never collides with another's.
@@ -149,7 +158,7 @@ describe("acquirer path: a tombstoned hash is refused", () => {
   it("never un-deletes: an acquirer offer leaves the tombstone standing", async () => {
     const { login, profile } = seedActor();
     const hash = "e2e-doc-hash-never-undelete";
-    writeDocumentTombstone(profile.id, hash, "blocked.pdf");
+    writeDocumentTombstone(gated(profile.id), hash, "blocked.pdf");
 
     // Not the same bytes as the tombstone above — this only proves the acquirer path
     // has no tombstone-clearing branch at all, for any file.
