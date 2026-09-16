@@ -2198,47 +2198,53 @@ export function QuickEntryVisitBodies({
   // sheet's own children for layout. It exists to be a NODE: the resume check
   // (#5902) asks the dirty-form registry whether this subtree holds unsaved input,
   // and that question needs a root. Nothing else reads it.
+  //
+  // The mount callback is spelled INLINE because react-hooks/refs treats a bound
+  // ref-ish callback as a ref and then reads the sibling bodies' own
+  // `addTriggerRef` props as render-time ref access. Re-running it per render costs
+  // two assignments to a box nothing renders from.
+  const bodies = state.entries.map((entry) => (
+    <Activity
+      key={`${state.identity}:${state.generation}:${entry.id}`}
+      mode={state.activeId === entry.id ? "visible" : "hidden"}
+    >
+      <QuickEntrySessionBody
+        form={entry.form}
+        prefill={entry.prefill}
+        subject={entry.subject}
+        view={entry.view}
+        host={entry.host}
+        bodies={entry.bodies}
+        actingProfileId={ctx.actingProfileId}
+        onDone={() => {
+          if (ctx.visit.complete(entry.id)) onDone();
+        }}
+        onRetry={() => ctx.visit.retry(entry.id)}
+        onSelectDay={(day) => ctx.visit.selectDay(entry.id, day)}
+        canAdd={ctx.writableProfiles.some(
+          (profile) => profile.id === entry.subject
+        )}
+        onOpenIntake={(kind, trigger) =>
+          ctx.visit.openIntake(entry.id, kind, trigger)
+        }
+        onExitIntake={() => ctx.visit.exitIntake(entry.id)}
+        onIntakeSaved={(activation) =>
+          ctx.visit.acceptIntakeSave(entry.id, activation)
+        }
+        onRefreshDose={() =>
+          ctx.visit.refreshDose(entry.id, entry.bodyActivation)
+        }
+        addTriggerRef={entry.addTriggerRef}
+        focusReturn={entry.focusReturn}
+        onFocusReturn={(activation) =>
+          ctx.visit.focusDoseReturn(entry.id, activation)
+        }
+      />
+    </Activity>
+  ));
   return (
-    <div className="contents" ref={ctx.resume.bodiesRef}>
-      {state.entries.map((entry) => (
-        <Activity
-          key={`${state.identity}:${state.generation}:${entry.id}`}
-          mode={state.activeId === entry.id ? "visible" : "hidden"}
-        >
-          <QuickEntrySessionBody
-            form={entry.form}
-            prefill={entry.prefill}
-            subject={entry.subject}
-            view={entry.view}
-            host={entry.host}
-            bodies={entry.bodies}
-            actingProfileId={ctx.actingProfileId}
-            onDone={() => {
-              if (ctx.visit.complete(entry.id)) onDone();
-            }}
-            onRetry={() => ctx.visit.retry(entry.id)}
-            onSelectDay={(day) => ctx.visit.selectDay(entry.id, day)}
-            canAdd={ctx.writableProfiles.some(
-              (profile) => profile.id === entry.subject
-            )}
-            onOpenIntake={(kind, trigger) =>
-              ctx.visit.openIntake(entry.id, kind, trigger)
-            }
-            onExitIntake={() => ctx.visit.exitIntake(entry.id)}
-            onIntakeSaved={(activation) =>
-              ctx.visit.acceptIntakeSave(entry.id, activation)
-            }
-            onRefreshDose={() =>
-              ctx.visit.refreshDose(entry.id, entry.bodyActivation)
-            }
-            addTriggerRef={entry.addTriggerRef}
-            focusReturn={entry.focusReturn}
-            onFocusReturn={(activation) =>
-              ctx.visit.focusDoseReturn(entry.id, activation)
-            }
-          />
-        </Activity>
-      ))}
+    <div className="contents" ref={(node) => ctx.resume.attachBodies(node)}>
+      {bodies}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { zonedDateParts } from "@/lib/date";
 import {
   foodSlotForHhmm,
@@ -53,24 +53,40 @@ interface VisitBoundaryFacts {
  *
  * Created once by `useVisitResumeWatch` in the provider and handed back through the
  * quick-entry context — `noteSlotBoundaries` to whoever gathered the windows
- * (`QuickLogMenu`'s `loadLogSheetContext`), `bodiesRef` to the element the visited
- * bodies render inside.
+ * (`QuickLogMenu`'s `loadLogSheetContext`), `attachBodies` to the element the visited
+ * bodies render inside, `peek` to the listener that reads both back.
  */
+// THREE FUNCTIONS AND NO REF OBJECTS. The boxes below ARE refs, but they stay
+// private to this module: a context value that carries a `RefObject` field makes
+// every property read off that value a render-time ref access as far as
+// react-hooks/refs is concerned, which reaches the JSX the wrapper is handed to.
+// Two commit-time writers and one event-time reader say the same thing and keep
+// the rule's guarantee honest — none of the three is called during render.
 export interface VisitResumeWatch {
   noteSlotBoundaries: (boundaries: FoodSlotBoundaries | null) => void;
-  bodiesRef: RefObject<HTMLDivElement | null>;
-  boundaries: RefObject<FoodSlotBoundaries | null>;
+  attachBodies: (node: HTMLDivElement | null) => void;
+  peek: () => {
+    bodies: HTMLDivElement | null;
+    boundaries: FoodSlotBoundaries | null;
+  };
 }
 
 export function useVisitResumeWatch(): VisitResumeWatch {
   const boundaries = useRef<FoodSlotBoundaries | null>(null);
-  const bodiesRef = useRef<HTMLDivElement | null>(null);
+  const bodies = useRef<HTMLDivElement | null>(null);
   const noteSlotBoundaries = useCallback((next: FoodSlotBoundaries | null) => {
     boundaries.current = next;
   }, []);
+  const attachBodies = useCallback((node: HTMLDivElement | null) => {
+    bodies.current = node;
+  }, []);
+  const peek = useCallback(
+    () => ({ bodies: bodies.current, boundaries: boundaries.current }),
+    []
+  );
   return useMemo(
-    () => ({ noteSlotBoundaries, bodiesRef, boundaries }),
-    [noteSlotBoundaries]
+    () => ({ noteSlotBoundaries, attachBodies, peek }),
+    [attachBodies, noteSlotBoundaries, peek]
   );
 }
 
@@ -98,32 +114,32 @@ export function useVisitResumeBoundary({
   onCrossed: () => void;
 }): void {
   const hasUnsavedInputWithin = useUnsavedInputWithin();
-  const backgroundedAt = useRef<VisitBoundaryFacts | null>(null);
-  // THE DAY IS DERIVED AT EVENT TIME, not read off the last render. The live clock
-  // (`RouteDayContext`) advances on its own midnight timer, which also fires on
-  // resume — but nothing orders that timer against this listener, so reading its
-  // rendered `today` here would decide a midnight crossing on a race. The zone is
-  // the clock's; the day is the same Intl derivation the clock itself renders,
-  // asked now.
-  const read = useRef<() => VisitBoundaryFacts | null>(() => null);
-  read.current = () => {
-    if (!timeZone) return null;
-    const { date, hhmm } = zonedDateParts(timeZone, new Date());
-    const splits = watch.boundaries.current;
-    return { day: date, slot: splits ? foodSlotForHhmm(hhmm, splits) : null };
-  };
 
   useEffect(() => {
     if (!watching) return;
-    backgroundedAt.current = null;
+    // THE DAY IS DERIVED AT EVENT TIME, not read off the last render. The live clock
+    // (`RouteDayContext`) advances on its own midnight timer, which also fires on
+    // resume — but nothing orders that timer against this listener, so reading its
+    // rendered `today` here would decide a midnight crossing on a race. The zone is
+    // the clock's; the day is the same Intl derivation the clock itself renders,
+    // asked now.
+    const read = (): VisitBoundaryFacts | null => {
+      if (!timeZone) return null;
+      const { date, hhmm } = zonedDateParts(timeZone, new Date());
+      const splits = watch.peek().boundaries;
+      return { day: date, slot: splits ? foodSlotForHhmm(hhmm, splits) : null };
+    };
+    // Scoped to this subscription, so a closed sheet or a changed clock discards
+    // the outbound snapshot rather than comparing against it later.
+    let backgroundedAt: VisitBoundaryFacts | null = null;
     const onVisibilityChange = () => {
       if (document.hidden) {
-        backgroundedAt.current = read.current();
+        backgroundedAt = read();
         return;
       }
-      const before = backgroundedAt.current;
-      backgroundedAt.current = null;
-      const after = read.current();
+      const before = backgroundedAt;
+      backgroundedAt = null;
+      const after = read();
       if (!before || !after) return;
       if (before.day === after.day && before.slot === after.slot) return;
       // NEVER OVER A DRAFT. The header keeps naming the window it gathered in,
@@ -131,13 +147,11 @@ export function useVisitResumeBoundary({
       // has just picked their phone back up. The registry is asked about the
       // visited bodies' subtree ONLY: a dirty form on the page behind the sheet is
       // not this sheet's unsaved work.
-      if (hasUnsavedInputWithin(watch.bodiesRef.current)) return;
+      if (hasUnsavedInputWithin(watch.peek().bodies)) return;
       onCrossed();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
+    return () =>
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      backgroundedAt.current = null;
-    };
-  }, [hasUnsavedInputWithin, onCrossed, watch, watching]);
+  }, [hasUnsavedInputWithin, onCrossed, timeZone, watch, watching]);
 }
