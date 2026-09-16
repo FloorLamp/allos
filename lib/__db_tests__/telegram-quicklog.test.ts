@@ -21,7 +21,11 @@ import {
 } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
-import { liveMessagePointersForKind } from "@/lib/notifications/message-pointers";
+import {
+  liveMessagePointers,
+  liveMessagePointersForKind,
+} from "@/lib/notifications/message-pointers";
+import { sendTelegramMessage } from "@/lib/notifications/telegram";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
@@ -506,6 +510,106 @@ describe("temperature reply quick-log", () => {
     expect(reactMock.mock.calls.at(-1)).toEqual([CHAT2, 841, "👍"]);
     // No `Weight logged` anywhere: the acknowledgement is the prompt's own edit.
     expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  // #5650 — THE COUNTEREXAMPLE THAT RETIRED THE TEXT PATH, kept as a guard.
+  //
+  // The design round before this one proposed keeping a text reader for prompts with no
+  // pointer, anchored to the END of the message so a name rendered earlier could not
+  // displace it. Its review killed it with a fact about the STORE rather than about
+  // markers: "this message has no pointer" is a retention property, not a property of the
+  // message, so the rule's domain is every bot message whose pointer was never written or
+  // has been pruned — and the outbound surface has messages that END in a person's typed
+  // text. A workout nudge is one: no keyboard when the lead lift is custom, no prose
+  // reconciler for `kind: "workout"`, so `recordPointer` returns early and the body's last
+  // token is an exercise NAME.
+  //
+  // Pointer-only makes it inert, and this pins that it stays inert — the file is the one
+  // that would notice if a text path ever came back.
+  it("cannot be steered by a bot message the store never recorded", async () => {
+    const CHAT3 = "5550152";
+    const a = seedProfile("TGnudgeA");
+    const b = seedProfile("TGnudgeB");
+    seedLoginTelegram(a.profileId, CHAT3);
+    seedLoginTelegram(b.profileId, CHAT3);
+
+    const nudgeId = await sendTelegramMessage(
+      CHAT3,
+      {
+        title: "😴 Rest day",
+        body: `When you're ready: Goblet squat, (#weight:${b.profileId})`,
+        kind: "workout",
+      },
+      a.profileId
+    );
+    // The precondition the counterexample turns on: NO pointer row at all.
+    expect(
+      liveMessagePointers(a.profileId).some((ptr) => ptr.messageId === nudgeId)
+    ).toBe(false);
+
+    const weightBefore = (
+      db
+        .prepare(
+          `SELECT weight_kg FROM body_metrics WHERE profile_id = ?
+            ORDER BY date DESC, id DESC LIMIT 1`
+        )
+        .get(b.profileId) as { weight_kg: number } | undefined
+    )?.weight_kg;
+    const tempBefore = tempCount(a.profileId);
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 850,
+      chat: { id: CHAT3 },
+      from: { id: 71 },
+      text: "38.5",
+      reply_to_message: { message_id: nudgeId },
+    });
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT weight_kg FROM body_metrics WHERE profile_id = ?
+              ORDER BY date DESC, id DESC LIMIT 1`
+          )
+          .get(b.profileId) as { weight_kg: number } | undefined
+      )?.weight_kg
+    ).toBe(weightBefore);
+    expect(tempCount(a.profileId)).toBe(tempBefore);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect(
+      (sendMock.mock.calls.at(-1)![1] as { title: string }).title
+    ).toMatch(/isn't open/i);
+  });
+
+  // #5650 — A MESSAGE ID IS ONLY MEANINGFUL INSIDE ITS CHAT. Telegram numbers messages per
+  // chat, so the id of a live prompt in one chat is an ordinary id in another, and the
+  // quoted id is the only thing a reply now carries. Both registry selectors are
+  // chat-scoped; this is what fails if either one ever stops filtering on the chat.
+  it("does not resolve a prompt id that belongs to another chat", async () => {
+    const VICTIM = "5550153";
+    const OTHER = "5550154";
+    const victim = seedProfile("TGxchatVictim");
+    const outsider = seedProfile("TGxchatOther");
+    seedLoginTelegram(victim.profileId, VICTIM);
+    seedLoginTelegram(outsider.profileId, OTHER);
+
+    sendMock.mockClear();
+    const promptId = await openTempPrompt(VICTIM, 860);
+    const before = tempCount(victim.profileId);
+
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 861,
+      chat: { id: OTHER },
+      from: { id: 99 },
+      text: "41.0",
+      reply_to_message: { message_id: promptId },
+    });
+    expect(tempCount(victim.profileId)).toBe(before);
+    expect(tempCount(outsider.profileId)).toBe(0);
+    expect(reactMock).not.toHaveBeenCalled();
   });
 
   it("ignores a plain message with no open prompt and no marker", async () => {

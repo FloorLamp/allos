@@ -1718,6 +1718,56 @@ describe("Received receipt operation", () => {
     expect(reactMock).not.toHaveBeenCalled();
   });
 
+  // #5650 — THE WIDENING THE REGISTRY CLOSES BY CONSTRUCTION.
+  //
+  // `kind` is NOT the family, and a design round that assumed it was would have shipped
+  // this: THREE different messages carry `kind: "refill"` and record a pointer — the
+  // low-supply reminder with its Received button, the receipt prompt that button opens,
+  // and the `Supply update` rebuild — and only the middle one is a question. Resolving a
+  // reply by the pointer's kind would let a number typed under the REMINDER settle a
+  // receipt nobody opened, with the offer id recovered from the reminder's own keyboard.
+  // Neither `main` nor any earlier head can do that, because a reminder carried no marker
+  // and so could not be replied to at all.
+  //
+  // `typedPromptAt` keys on the OFFER ROW'S `promptId` instead, so a reminder's message id
+  // matches no offer and the reply resolves to nothing. This asserts that, because the
+  // failure it guards against would be a write nobody asked for.
+  it("a number replied to the low-supply REMINDER settles no receipt", async () => {
+    const f = await receivedFixture(nextReceiptChat());
+    // Open the receipt, so a pending offer with a promptId really does exist — the attack
+    // is worthless if there is nothing for it to settle.
+    await handleCallbackQuery(f.open);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    const reminderId = f.open.message.message_id;
+    // The reminder holds a pointer, of a typed-reply kind, with the offer's own token on
+    // its keyboard. Every ingredient a kind-keyed resolver would have used is present.
+    expect(
+      liveMessagePointers(f.profileId).find(
+        (ptr) => ptr.messageId === reminderId
+      )?.kind
+    ).toBe("refill");
+
+    const before = sendCount();
+    reactMock.mockClear();
+    expect(
+      await handleTypedReply({
+        message_id: 850,
+        chat: { id: f.chatId },
+        from: { id: 71 },
+        text: "120",
+        reply_to_message: { message_id: reminderId },
+      })
+    ).toBe(true);
+    expect(receivedCount(f)).toBe(4);
+    expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
+      "pending"
+    );
+    expect(receiptBodies(before)).toEqual(["Reply to the prompt you mean."]);
+    expect(reactMock).not.toHaveBeenCalled();
+  });
+
   // ---- #5654: the same number, typed WITHOUT the Reply swipe ----
 
   it("settles a bare number against the sender's one open prompt, and never adds twice", async () => {
