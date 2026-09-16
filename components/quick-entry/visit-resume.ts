@@ -48,20 +48,21 @@ interface VisitBoundaryFacts {
 }
 
 /**
- * The provider-owned half: the two things the listener reads at event time, neither
+ * The provider-owned half: the two boxes the listener reads at event time, neither
  * of which is state, because nothing renders from either.
  *
  * Created once by `useVisitResumeWatch` in the provider and handed back through the
  * quick-entry context — `noteSlotBoundaries` to whoever gathered the windows
  * (`QuickLogMenu`'s `loadLogSheetContext`), `attachBodies` to the element the visited
  * bodies render inside, `peek` to the listener that reads both back.
+ *
+ * THREE FUNCTIONS AND NO REF OBJECTS. The boxes ARE refs, but they stay private to
+ * this module: a context value carrying a `RefObject` field makes every property
+ * read off that value a render-time ref access as far as react-hooks/refs is
+ * concerned, and that verdict reaches the JSX standing beside the wrapper. Two
+ * commit-time writers and one event-time reader say the same thing while keeping
+ * the rule's guarantee honest — none of the three is called during render.
  */
-// THREE FUNCTIONS AND NO REF OBJECTS. The boxes below ARE refs, but they stay
-// private to this module: a context value that carries a `RefObject` field makes
-// every property read off that value a render-time ref access as far as
-// react-hooks/refs is concerned, which reaches the JSX the wrapper is handed to.
-// Two commit-time writers and one event-time reader say the same thing and keep
-// the rule's guarantee honest — none of the three is called during render.
 export interface VisitResumeWatch {
   noteSlotBoundaries: (boundaries: FoodSlotBoundaries | null) => void;
   attachBodies: (node: HTMLDivElement | null) => void;
