@@ -9,7 +9,7 @@ import {
   hydratedClick,
 } from "./helpers";
 import { MONTHS_SHORT, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
-import { formatLongDate } from "@/lib/format-date";
+import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 
 // `/history` — THE APP'S RECORD (#3958 phase 1).
 //
@@ -197,7 +197,7 @@ test.describe("the record (#3958)", () => {
     const content = appContent(page);
     const h1 = page.getByRole("heading", { level: 1 });
     await expect(h1).toHaveCount(1);
-    await expect(h1).toHaveText(formatLongDate(DAY));
+    await expect(h1).toHaveText(formatLongDate(DAY, DEFAULT_FORMAT_PREFS));
     const count = content.getByText(/^\d+ records?$/);
     await expect(count).toBeVisible();
     await expect(content.getByText("History", { exact: true })).toHaveCount(1);

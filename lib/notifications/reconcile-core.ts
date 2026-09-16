@@ -61,7 +61,7 @@ import type { InlineKeyboard } from "./telegram-render";
 import { plainBody } from "./rich-text";
 import type { NotificationMessage } from "./types";
 import { formatMessageLine } from "./message-line";
-import { formatMonthDay } from "../format-date";
+import { DEFAULT_FORMAT_PREFS, formatMonthDay } from "../format-date";
 import { zonedDateParts } from "../date";
 
 // The PROSE witness (#1913 item 4): a stable fingerprint of what a message SAYS.
@@ -482,7 +482,7 @@ export function closingTallyDetail(tally: ClosingTally): CloseDetail {
     if (!bucket) {
       const when = at
         ? spansDates
-          ? `${formatMonthDay(at.date)}, ${at.clock}`
+          ? `${formatMonthDay(at.date, DEFAULT_FORMAT_PREFS)}, ${at.clock}`
           : at.clock
         : "";
       bucket = { outcome: when ? `taken ${when}` : "taken", names: [] };
