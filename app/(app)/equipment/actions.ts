@@ -49,7 +49,7 @@ function refresh() {
 export async function createEquipmentAction(
   input: EquipmentFormInput
 ): Promise<{ ok: true; equipment: Equipment } | { ok: false; error: string }> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const c = clean(input);
   if (!isTrainingRelevant(getProfileAge(profile.id)))
     return {
@@ -70,7 +70,7 @@ export async function createEquipmentAction(
       ok: false,
       error: `You already have equipment named "${c.name}".`,
     };
-  const equipment = createEquipment(profile.id, c);
+  const equipment = createEquipment(writeProfileId, c);
   refresh();
   return { ok: true, equipment };
 }
@@ -79,7 +79,7 @@ export async function updateEquipmentAction(
   id: number,
   input: EquipmentFormInput
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const c = clean(input);
   const existing = getEquipmentById(profile.id, id);
   if (
@@ -97,7 +97,7 @@ export async function updateEquipmentAction(
       ok: false,
       error: `You already have equipment named "${c.name}".`,
     };
-  updateEquipment(profile.id, id, c);
+  updateEquipment(writeProfileId, id, c);
   refresh();
   return { ok: true };
 }
@@ -131,8 +131,8 @@ export async function setEquipmentRetiredAction(
   id: number,
   retired: boolean
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { profile } = await requireWriteAccess();
-  const outcome = setEquipmentRetired(profile.id, id, retired);
+  const { writeProfileId } = await requireWriteAccess();
+  const outcome = setEquipmentRetired(writeProfileId, id, retired);
   refresh();
   if (outcome.kind === "not-found") {
     return {

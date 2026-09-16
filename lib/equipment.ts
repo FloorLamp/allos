@@ -1,3 +1,20 @@
+// Equipment rows, and the three write cores the manager UI drives. Those three take the
+// id a write gate returned rather than any number: `profileId` on createEquipment,
+// updateEquipment and setEquipmentRetired is lib/auth's WriteAuthorizedProfileId, which
+// only the gates mint, so an action that never gated has no value to pass and `tsc`
+// refuses the call (#5348). The import is type-only — erased at build, so these cores
+// still run auth-blind and app/(app)/equipment/actions.ts still owns the gate and the
+// revalidation (#319). A branded number is still a number, so the reads below and
+// deleteEquipment (whose write goes through the undo registry's captureDelete, outside
+// the branded set) take one unchanged.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a
+// call site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses
+// production code the `as WriteAuthorizedProfileId` forge, across every production module
+// (#5864). It does NOT refuse a method-position bivariant call or an implicit `any`; that
+// residual is tracked at #5892 and this seam does not close it.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, writeTx } from "./db";
 import { casUpdate, readForUpdate } from "./tx";
 import type { Equipment } from "./types";
@@ -74,7 +91,7 @@ export function equipmentNameExists(
 }
 
 export function createEquipment(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   input: EquipmentInput
 ): Equipment {
   const info = db
@@ -92,7 +109,7 @@ export function createEquipment(
 }
 
 export function updateEquipment(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   id: number,
   input: EquipmentInput
 ): void {
@@ -124,7 +141,7 @@ export type EquipmentRetireOutcome =
   { kind: "applied" } | { kind: "already" } | { kind: "not-found" };
 
 export function setEquipmentRetired(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   id: number,
   retired: boolean
 ): EquipmentRetireOutcome {
