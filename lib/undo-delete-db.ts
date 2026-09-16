@@ -397,10 +397,10 @@ export function captureDelete(
       // over an all-null source. This is the seam that frees BOTH, the way every other
       // source kind's is freed; centralized here so the readings table's Delete and
       // Data → Manage's SELECTED-ROWS delete inherit it from the one capture they
-      // share. Data → Manage's "Delete all" is the one person-reachable delete that
-      // never enters a capture, so it calls the same seam itself before its wipe
-      // (app/(app)/data/manage-actions.ts). What is left on the action alone is the
-      // three integration paths, none of which can select this metric.
+      // share. Data → Manage's "Delete all" takes no capture, so it calls this same
+      // seam itself before its wipe (app/(app)/data/manage-actions.ts). A delete that
+      // reaches neither is left to the action, which keeps it from throwing but cannot
+      // finish the de-link.
       unlinkFollowUpsForMetricSample(profileId, rootId);
     }
 

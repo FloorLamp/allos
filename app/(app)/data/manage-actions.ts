@@ -242,17 +242,21 @@ export async function deleteAllDatasetRows(
   // Tombstone-tracked rows must survive a wipe as tombstones too, so a re-sync can't
   // resurrect the whole set (#653). Captured before the delete.
   const tombstoneRows = tombstoneAllPreImages(resolved.table, profile.id);
-  // `metric_samples` is the one deletable dataset whose rows a care-plan follow-up
-  // can name (#5409), and this is the ONE delete on this page that never enters
-  // captureDelete: the selected-rows path above always takes the undo branch for it
-  // (DATASET_UNDO_KIND maps the table, and the type forces that decision), so the
-  // detach seam runs there. Here it does not. The pair is ON DELETE SET NULL, so the
-  // wipe below would not throw — SQLite would null the id and leave `source_kind`
-  // standing over an all-null source, the dangling discriminator migration 184 exists
-  // to repair. Run the same shared seam, over the rows this wipe is about to remove.
-  // Anchored on `metric_samples` rather than on the follow-ups so it frees exactly
-  // those rows' links and nothing else. The four older source pairs are NO ACTION and
-  // have no equivalent: on their tables this statement still throws.
+  // A `metric_samples` row can be named by a care-plan follow-up (#5409). The
+  // selected-rows path above takes the undo branch for this table (DATASET_UNDO_KIND
+  // maps it, and the type forces that decision), so its detach seam runs inside
+  // captureDelete; this wipe takes no capture, so nothing runs it here. The pair is
+  // ON DELETE SET NULL, so the wipe below would not throw — SQLite would null the id
+  // and leave `source_kind` standing over an all-null source, the dangling
+  // discriminator migration 184 exists to repair. So run the same shared seam first,
+  // for this profile's links to the rows this wipe removes.
+  //
+  // Anchored on `metric_samples` rather than on `care_plan_items` so a link held by
+  // ANOTHER profile is not freed against a row this wipe is not removing. Such a link
+  // is left dangling — the cross-profile case #5409 records as not done.
+  //
+  // The seam is not in a transaction with the wipe: a wipe that failed after it would
+  // leave these links already freed.
   if (resolved.table === "metric_samples") {
     const linked = db
       .prepare(
