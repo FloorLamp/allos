@@ -773,10 +773,11 @@ export async function settleRefillReply(
   reply: TypedReply,
   ctx: TypedReplyContext
 ): Promise<TypedReplyOutcome> {
-  // A marker that named no operation cannot name a receipt: every prompt this family
-  // sends carries its offer id, so this is a hand-edited or truncated quote. The same
-  // answer covers an update with no sender or no id of its own — a receipt is bound to
-  // the sender who opened it and settles under its reply's id, so neither can be assumed.
+  // A resolution that named no operation cannot name a receipt. Under pointer-only the
+  // operation comes from the offer row itself, so this branch is unreachable for refill
+  // and kept as the type's own floor rather than as a live case. What it does still cover
+  // is an update with no sender or no id of its own — a receipt is bound to the sender who
+  // opened it and settles under its reply's id, so neither can be assumed.
   if (
     reply.operationId == null ||
     ctx.senderId == null ||

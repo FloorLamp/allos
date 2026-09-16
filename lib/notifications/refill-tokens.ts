@@ -55,7 +55,14 @@ export function parseRefillCallback(data: unknown): RefillCallback | null {
   return { profileId, itemId };
 }
 
-// The receipt's REPLY marker and its number grammar left this file at #5650: both are
-// the typed-reply contract's (./typed-reply), shared now with `/temp` and `/weight`
-// rather than spelled a third time here. What stays is what is genuinely this family's
-// — the CALLBACK tokens its buttons carry.
+// THE RECEIPT'S REPLY MARKER IS GONE, not moved (#5650). `parseRefillReplyMarker` read
+// `(refill:<pid>:<offerId>)` out of a replied-to message with an UNANCHORED regex, and
+// the refill arm ran first — so a profile or supply item named `(refill:N:M)` claimed a
+// `/temp` reply and the reading was discarded. That is still true on `main`. The owner's
+// ruling retired the whole text path rather than anchoring it: a typed reply resolves
+// against the pointer the bot recorded for the quoted message, so there is no marker in
+// any prompt body and nothing to parse out of one.
+//
+// The number grammar left with it, to the typed-reply contract (./typed-reply), shared
+// now with `/temp` and `/weight` rather than spelled a third time here. What stays is
+// what is genuinely this family's — the CALLBACK tokens its buttons carry.

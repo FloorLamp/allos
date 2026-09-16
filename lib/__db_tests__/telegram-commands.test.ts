@@ -542,11 +542,17 @@ describe("a multi-profile chat never guesses (#1995)", () => {
     // attribution used to be a marker in the body, printed right after the name — which
     // is exactly the adjacency that let a profile named like a marker steer a reply.
     for (const who of [ada, ben]) {
-      const live = liveMessagePointersForKind(who.profileId, SHARED_CHAT, "weight");
+      const live = liveMessagePointersForKind(
+        who.profileId,
+        SHARED_CHAT,
+        "weight"
+      );
       expect(live).toHaveLength(1);
       expect(live[0].chatId).toBe(SHARED_CHAT);
     }
-    expect(bodies.every((b) => !/\((#)?(temp|weight|refill):/.test(b))).toBe(true);
+    expect(bodies.every((b) => !/\((#)?(temp|weight|refill):/.test(b))).toBe(
+      true
+    );
   });
 
   it("/food sends one keyboard PER profile — the food rebuild reads one subject", async () => {

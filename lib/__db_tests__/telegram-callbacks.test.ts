@@ -1710,7 +1710,9 @@ describe("Received receipt operation", () => {
         reply_to_message: { message_id: 999999 },
       })
     ).toBe(true);
-    expect(receiptBodies(unrecorded)).toEqual(["Reply to the prompt you mean."]);
+    expect(receiptBodies(unrecorded)).toEqual([
+      "Reply to the prompt you mean.",
+    ]);
     expect(receivedCount(f)).toBe(4);
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
       "pending"

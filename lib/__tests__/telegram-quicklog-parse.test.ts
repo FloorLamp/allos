@@ -116,14 +116,16 @@ describe("resolving a message to one open prompt", () => {
     // WHICH prompt this answers comes from the store. There is no other input that could
     // carry it — which is the property pointer-only exists for.
     const { registry: asTemp } = registry([{ ...tempPrompt, promptId: 500 }]);
-    expect(resolveTypedReply({ text: "38.5", replyToId: 500 }, asTemp)).toEqual({
-      kind: "reply",
-      reply: { ...tempPrompt, promptId: 500, text: "38.5" },
-    });
-    const { registry: asRefill } = registry([receipt]);
-    expect(resolveTypedReply({ text: "38.5", replyToId: 500 }, asRefill)).toEqual(
-      { kind: "reply", reply: { ...receipt, text: "38.5" } }
+    expect(resolveTypedReply({ text: "38.5", replyToId: 500 }, asTemp)).toEqual(
+      {
+        kind: "reply",
+        reply: { ...tempPrompt, promptId: 500, text: "38.5" },
+      }
     );
+    const { registry: asRefill } = registry([receipt]);
+    expect(
+      resolveTypedReply({ text: "38.5", replyToId: 500 }, asRefill)
+    ).toEqual({ kind: "reply", reply: { ...receipt, text: "38.5" } });
   });
 
   it("refuses a number replied to a message the store has no prompt for", () => {

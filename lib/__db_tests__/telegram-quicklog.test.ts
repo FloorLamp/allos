@@ -224,9 +224,9 @@ describe("temperature reply quick-log", () => {
     await handleIncomingMessage(tempReply("39.1", promptId, 807));
     expect(tempCount(p.profileId)).toBe(before + 1);
     expect(reactMock).not.toHaveBeenCalled();
-    expect(
-      (sendMock.mock.calls.at(-1)![1] as { title: string }).title
-    ).toMatch(/isn't open/i);
+    expect((sendMock.mock.calls.at(-1)![1] as { title: string }).title).toMatch(
+      /isn't open/i
+    );
   });
 
   it("refuses an unreadable reading with one message and no reaction", async () => {
@@ -577,9 +577,9 @@ describe("temperature reply quick-log", () => {
     ).toBe(weightBefore);
     expect(tempCount(a.profileId)).toBe(tempBefore);
     expect(reactMock).not.toHaveBeenCalled();
-    expect(
-      (sendMock.mock.calls.at(-1)![1] as { title: string }).title
-    ).toMatch(/isn't open/i);
+    expect((sendMock.mock.calls.at(-1)![1] as { title: string }).title).toMatch(
+      /isn't open/i
+    );
   });
 
   // #5650 — A MESSAGE ID IS ONLY MEANINGFUL INSIDE ITS CHAT. Telegram numbers messages per
