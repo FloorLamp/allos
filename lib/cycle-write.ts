@@ -1,15 +1,23 @@
 // Write cores for the menstrual-cycle log (issue #714). profileId-first, and the id must be
 // the one a write gate returned: the parameter is lib/auth's WriteAuthorizedProfileId, which
-// only the gates mint, so an action that never gated has no value to pass and `tsc` refuses
-// the call (#5348). That stops the ACCIDENTAL ungated call and not a deliberate one — nothing
-// refuses `as WriteAuthorizedProfileId` yet, in this tier or in production, and the lint rule
-// that would (WRITE_BRAND_CAST, shaped like eslint.config.mjs's RPE_BRAND_CAST) is still owed
-// on that file. The import is type-only — erased at build, so the core still runs auth-blind
-// and the Server Action still owns the gate + revalidation (#319). The one-tap
-// "period started" / "period ended" / "still bleeding" transitions carry the interesting
-// logic (dedup, the open-period guard, the plausible-gap guard, the end-after-start check,
-// the reopen recency window) and answer from a typed outcome union, so a handler never
-// unconditionally confirms; plain create/edit/delete ride the store CRUD.
+// only the gates mint, so an action that never gated has no value to pass (#5348). The
+// import is type-only — erased at build, so the core still runs auth-blind and the Server
+// Action still owns the gate + revalidation (#319), and a branded number is still a number,
+// so the reads take one unchanged.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+//
+// The one-tap "period started" / "period ended" / "still bleeding" transitions carry the
+// interesting logic (dedup, the open-period guard, the plausible-gap guard, the
+// end-after-start check, the reopen recency window) and answer from a typed outcome union,
+// so a handler never unconditionally confirms; plain create/edit/delete ride the store CRUD.
 //
 // Every refusal is a REPORT, never a repair: a core that can't do the obvious thing says
 // which thing it couldn't do and writes nothing (#1681). The offer conditions the Cycle
