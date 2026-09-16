@@ -431,6 +431,11 @@ describe("the dispatch-brief CLI", () => {
     expect(first.stdout).toContain("BASE_SHA=$(git rev-parse FETCH_HEAD)");
     expect(first.stdout).toContain('echo "PINNED_BASE_SHA=$BASE_SHA"');
     expect(first.stdout).toContain("reset or rewrite against the printed SHA");
+    // The node line says WHICH .nvmrc its major came from (#5906). A lane
+    // exports this PATH into every shell without re-checking it, so a major
+    // read from the generating checkout rather than the merge target runs the
+    // whole lane, gates included, on a runtime main does not pin.
+    expect(first.stdout).toMatch(/\.nvmrc @ (origin\/main|this checkout)/);
 
     const second = run(
       "new",
