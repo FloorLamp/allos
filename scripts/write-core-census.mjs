@@ -96,10 +96,10 @@ const FENCES = [
 
 const SKIP_DIR = /(^|\/)(__tests__|__db_tests__|__action_tests__)(\/|$)/;
 const ACTION_FILE = /^app\/\(app\)\/(.*\/)?[\w-]*actions\.ts$/;
-// How far a non-writing core is followed before its write is called unfound. The
-// manifest measured that propagating "calls something that writes" without a
-// parameter test yields an unusable 478, so this walk starts only from declarations
-// that already passed the parameter half and reports the hop count it needed.
+// How far the WIDER walk follows a non-writing declaration before giving up. That
+// walk exists only to print how many more declarations a transitive reading would
+// admit, beside the argument-checked one-hop bucket the report actually names — the
+// cost of dropping the argument test, recomputed here rather than quoted.
 const DELEGATE_MAX_DEPTH = 3;
 
 // ─── scanning lib/** ─────────────────────────────────────────────────────────
