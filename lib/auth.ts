@@ -84,10 +84,12 @@ export interface CurrentSession {
 //
 // The profile id a write gate answers with, as a type only this module can produce.
 // It is `Tx`'s argument (lib/db.ts, #2133) applied to authorization: a write core that
-// takes `WriteAuthorizedProfileId` instead of `profileId: number` cannot be called
-// from an action that never gated, because nothing outside the three gates below can
-// make one — `tsc` refuses a plain number, and the brand symbol is not exported, so
-// no other file can even spell the type's shape. A branded number is still a number,
+// takes `WriteAuthorizedProfileId` instead of `profileId: number` cannot be called BY
+// ACCIDENT from an action that never gated — `tsc` refuses a plain number, and the
+// brand symbol is not exported, so no other file can spell it. Deliberately is another
+// matter: eslint.config.mjs's WRITE_BRAND_CAST refuses the cast shapes, and the
+// residual — which is partly made of casts, and partly a decision rather than a limit
+// — is listed there in full (#5914). A branded number is still a number,
 // so it passes anywhere `number` is accepted and no read path changes.
 //
 // Minted by exactly three gates: `requireWriteAccess` (the acting profile),

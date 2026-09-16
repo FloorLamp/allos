@@ -33,19 +33,71 @@ const WRITE_BRANDS = ["WriteAuthorizedProfileId"];
 // not chase what a name resolves to (lib/temporal-types.ts says what that leaves to
 // review). `.typeAnnotation` pins a match to the cast's TYPE side, so a brand inside
 // the expression being cast (`foo<LocalDay>() as string`) is not this rule's business;
-// the `:not(TSTypeLiteral …)` clause is the row-shape exemption.
+// the `:not(TSTypeLiteral …)` clause is the row-shape exemption, and the selector
+// after it is where that exemption STOPS (#5914).
+//
+// WHAT THIS RULE REFUSES IS CAST SHAPES, NOT EVERY ROUTE TO A BRAND. The difference is
+// load-bearing enough that callers state it rather than saying "a cast is refused",
+// and the residual has THREE separate causes, not one. lib/__tests__/temporal-types.test.ts
+// pins every shape below against the real rule, so the list and the rule cannot drift:
+//
+//   1. A NAME TO RESOLVE. `({ d } as Row).d`, `s as Row["d"]`, `interface Ds extends
+//      Array<LocalDay>`. The brand is never spelled in the cast, so nothing syntactic
+//      can see it, and the row types themselves are legitimate.
+//   2. A VALUE TO FOLLOW. The brand IS spelled in the cast, but it is reached through
+//      something the cast produced rather than off the cast itself: an element of a
+//      cast array, an awaited cast promise, a cast function's return, a spread copy,
+//      or a row bound to a `const` first. Following those needs types, not syntax.
+//   3. A DECISION. `pick<LocalDay>(s)` — a brand named as a CALL's type argument — is
+//      matchable (the same position IS refused on a type alias below). It is left open
+//      because that position is also how honest code parameterises over the brand
+//      (`useState<LocalDay | null>(null)`, `new Map<LocalDay, Row>()`) and the rule
+//      cannot tell those from a launderer. An alias has no such second use.
 const brandCastSelectors = (brands) => {
   const cast = ":matches(TSAsExpression, TSTypeAssertion)";
   const names = `/^(?:${brands.join("|")})$/`;
   // A reference to a brand by bare name, qualified name (`TT.LocalDay`) or
   // `import("…").LocalDay`.
   const ref = `:matches(TSTypeReference[typeName.name=${names}], TSTypeReference[typeName.right.name=${names}], TSImportType[qualifier.name=${names}])`;
+  // The ways a cast is read STRAIGHT back out, each landing on the cast node itself:
+  // `(c).d`, `(c)!.d` and `const { d } = c`. `satisfies` joins the two cast operators
+  // here only — it does not widen what counts as a cast anywhere else in this builder.
+  const annotated =
+    ":matches(TSAsExpression, TSTypeAssertion, TSSatisfiesExpression)";
+  const readThrough = [
+    `MemberExpression > ${annotated}.object`,
+    `MemberExpression > TSNonNullExpression.object > ${annotated}.expression`,
+    `VariableDeclarator[id.type="ObjectPattern"] > ${annotated}.init`,
+  ];
   return [
     // `s as LocalDay`, `<LocalDay>s`, `s as unknown as LocalDay`.
     `${cast} > ${ref}.typeAnnotation`,
     // The brand anywhere inside the cast's type — a union, array, tuple, intersection,
     // `NonNullable<>`, `Readonly<>`, `Array<>` — except inside an object type literal.
     `${cast} > *.typeAnnotation ${ref}:not(TSTypeLiteral ${ref})`,
+    // `({ id } as { id: WriteAuthorizedProfileId }).id` — the exemption above, read
+    // straight back out (#5914). Asserting a row's shape in order to USE the row is
+    // what the exemption is for, and that binds the row first; a value taken off the
+    // cast itself mints the brand from the cast alone.
+    //
+    // THE CAST'S TYPE MUST BE THE ROW ITSELF, not a container of rows: casting a query
+    // result to `{ d: LocalDay }[]` and mapping it reaches the brand only through a
+    // BOUND row inside the callback, which is the protected idiom, and `.length` is not
+    // a member of the row at all. Both reddened while this matched a brand anywhere
+    // under the cast's type, so it matches the row literal directly — as the cast's
+    // whole type or as a member of its union — and containers stay exempt.
+    //
+    // Over-approximates in one direction, by design: a selector cannot match the read
+    // NAME against the branded member's name, so reading a non-branded field off such a
+    // cast (`(row as { d: LocalDay; n: number }).n`) is refused too. Binding the row
+    // first, which is how a row is ordinarily used, stays allowed.
+    ...[
+      "TSTypeLiteral.typeAnnotation",
+      "TSUnionType.typeAnnotation > TSTypeLiteral",
+    ].map(
+      (row) =>
+        `:matches(${readThrough.map((r) => `${r} > ${row}`).join(", ")}) ${ref}`
+    ),
     // `type D = LocalDay`, `type D = LocalDay & {}`, `type Ds = LocalDay[]` — an alias
     // that mentions a brand outside an object shape exists only to cast around the
     // rule. `type Row = { d: LocalDay }` is a row shape and stays allowed.
