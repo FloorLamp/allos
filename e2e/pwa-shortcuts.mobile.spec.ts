@@ -185,7 +185,7 @@ test.describe("?quick= deep links", () => {
     await page.goto("/?quick=not-a-shortcut");
 
     await expectQuickParamCleared(page, "not-a-shortcut", "");
-    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
-    await expect(page.getByTestId("activity-form")).toHaveCount(0);
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0); // testid-scope-ok: the quick-entry sheet portals to <body> (BottomSheet), one copy
+    await expect(page.getByTestId("activity-form")).toHaveCount(0); // testid-scope-ok: the activity editor portals to <body>, one copy
   });
 });
