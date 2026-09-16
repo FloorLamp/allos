@@ -178,7 +178,7 @@ export default function QuickLogMenu({
     canStartWorkout,
     trainingRelevant,
   } = useActivityEditor(LOG_SURFACE);
-  const { open: openQuickEntry } = useQuickEntry();
+  const { open: openQuickEntry, noteSlotBoundaries } = useQuickEntry();
 
   const segments = logSheetSegments(cycleRelevant, substanceRelevant)
     .map((entry) => ({
@@ -204,6 +204,15 @@ export default function QuickLogMenu({
   );
 
   const { context, state: contextState } = useLogSheetContext(open);
+  // THE GATHER'S ONE NON-OFFER FIELD, handed straight back to the provider (#5902).
+  // The sheet's resume check needs to know which food window it opened in, and this
+  // gather already runs on every open — so the boundaries ride it rather than
+  // earning a read of their own. Nothing on this menu renders them. `null` on a
+  // close or a failed gather, which leaves the profile day as the only boundary the
+  // resume check can still compare.
+  useEffect(() => {
+    noteSlotBoundaries(context?.slotBoundaries ?? null);
+  }, [context, noteSlotBoundaries]);
   const shown = segments.find((s) => s.id === segment) ?? segments[0];
   const maxRows = maxLogSheetRows(segments);
   const hasGatheredOffers = Boolean(

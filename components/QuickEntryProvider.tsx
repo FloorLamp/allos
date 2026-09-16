@@ -7,6 +7,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -47,7 +48,13 @@ import { CREATE_ACTIONS } from "./CreateAction";
 import { bristolScaleLines } from "@/lib/bristol-stool";
 import { isWithinReach, logHeading, SHEET_REACH } from "@/lib/log-manifest";
 import { dayContextKey, type DayContextParts } from "@/lib/day-context-key";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, zonedDateParts } from "@/lib/date";
+import {
+  foodSlotForHhmm,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "@/lib/food-slot";
+import { useUnsavedInputWithin } from "./DirtyFormRegistry";
 import { formatRelativeTime, formatWeekdayDate } from "@/lib/format-date";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { TimezoneProvider } from "./TimezoneProvider";
@@ -177,6 +184,15 @@ interface QuickEntryApi {
     subjectProfileId?: number
   ) => void;
   close: () => void;
+  /**
+   * The sheet's food-window splits, published by whoever gathered them (#5902).
+   * `QuickLogMenu`'s open-time `loadLogSheetContext` is that gatherer and the only
+   * caller; the provider keeps the last answer so the visit's resume check can ask
+   * which window it opened in without a second read. `null` clears it — a sheet
+   * that closed, or a gather that failed, leaves the day as the only boundary the
+   * resume check can still compare.
+   */
+  noteSlotBoundaries: (boundaries: FoodSlotBoundaries | null) => void;
 }
 
 interface QuickEntryHostApi extends QuickEntryApi {
@@ -189,6 +205,12 @@ interface QuickEntryHostApi extends QuickEntryApi {
   visit: QuickEntryVisitHostApi;
   actingProfileId: number;
   writableProfiles: SessionProfile[];
+  // Read at event time, never rendered: see `noteSlotBoundaries`.
+  slotBoundariesRef: { current: FoodSlotBoundaries | null };
+  // The element the visited bodies render inside — the subtree the resume check
+  // asks the dirty-form registry about. Null while the menu is the whole sheet,
+  // which is also the honest answer: a menu of buttons holds no draft.
+  visitBodiesRef: { current: HTMLDivElement | null };
 }
 
 interface QuickEntrySession {
@@ -247,6 +269,7 @@ interface QuickEntryVisitHostApi {
   ) => void;
   back: () => void;
   beginClose: () => void;
+  invalidate: () => void;
   complete: (entryId: number) => boolean;
   retry: (entryId: number) => void;
   selectDay: (entryId: number, day: string) => void;
@@ -290,6 +313,7 @@ export function useQuickEntry(): QuickEntryApi {
   return useMemo(
     () => ({
       close: ctx.close,
+      noteSlotBoundaries: ctx.noteSlotBoundaries,
       open: (
         form: QuickEntryForm,
         prefill?: QuickEntryPrefill,
@@ -360,6 +384,29 @@ function sheetForEntry(
     : SHEET[entry.form];
 }
 
+// The two facts a visit is allowed to go stale against (#5902): which profile-local
+// DAY it is, and which food WINDOW that day is in. Both read from the profile's own
+// clock, never the device's.
+interface VisitBoundaryFacts {
+  day: string;
+  // Null while the open-time gather has not published boundaries (it failed, or the
+  // sheet was backgrounded before it landed). Two nulls compare equal, so the day
+  // stays a live boundary even then; a null on one side alone decides nothing.
+  slot: FoodSlot | null;
+}
+
+// Did the clock leave the window this visit was gathered in? Day first, because a
+// day change is a boundary crossing whether or not the window happens to match.
+function crossedVisitBoundary(
+  before: VisitBoundaryFacts,
+  after: VisitBoundaryFacts
+): boolean {
+  if (before.day !== after.day) return true;
+  return (
+    before.slot !== null && after.slot !== null && before.slot !== after.slot
+  );
+}
+
 export function useQuickEntryVisit(
   outerOpen: boolean,
   onInvalidated: () => void
@@ -367,6 +414,10 @@ export function useQuickEntryVisit(
   const ctx = useContext(Ctx);
   const dayContext = useOptionalDayContext();
   const ownerId = useId();
+  const liveProfileClocks = useLiveProfileClocks();
+  const hasUnsavedInputWithin = useUnsavedInputWithin();
+  const backgroundedAt = useRef<VisitBoundaryFacts | null>(null);
+  const readBoundaryFacts = useRef<() => VisitBoundaryFacts | null>(() => null);
   const [edge, setEdge] = useState(() => ({
     open: outerOpen,
     serial: outerOpen ? 1 : 0,
@@ -403,6 +454,78 @@ export function useQuickEntryVisit(
     if (outerOpen && currentVisit && ctx.visit.state.invalidated)
       onInvalidated();
   }, [ctx.visit.state.invalidated, currentVisit, onInvalidated, outerOpen]);
+
+  // ── THE SHEET DOES NOT SURVIVE A BOUNDARY IT CARES ABOUT (#5902) ────────────
+  //
+  // Backgrounding a PWA and returning hours later leaves a surviving page exactly
+  // as it was, and nothing in the sheet notices: the morning's "Due & usual now"
+  // chips still stand, a visited body still holds the morning's rows, and the food
+  // header still says "Add to Morning" while a bare tap files the serving there.
+  // Owner ruling 2026-09-15: the sheet CLOSES on that return, and never over a
+  // draft. Regathering in place was considered and reversed for size.
+  //
+  // WHY THE VISIT OWNER AND NOT EITHER HOST. Both the phone sheet and the desktop
+  // panel's overlay path run through this hook, so one listener here is the whole
+  // behaviour and neither host file learns a thing about clocks.
+  //
+  // TWO GUARDS, AND NO TIMER. Nothing runs while the sheet is closed or while the
+  // document is hidden — the facts are taken once on the way out and compared once
+  // on the way back — and a return INSIDE the same window on the same day does
+  // nothing at all. An ordinary app switch is therefore free; only a crossing
+  // closes. There is no minute threshold, because "long enough to matter" is
+  // exactly "the clock left the window", which is a fact rather than a guess.
+  //
+  // THE DAY IS DERIVED AT EVENT TIME, not read off the last render. The live clock
+  // (`RouteDayContext`) advances on its own midnight timer, which also fires on
+  // resume — but nothing orders that timer against this listener, so reading its
+  // rendered `today` here would decide a midnight crossing on a race. The ZONE is
+  // the live clock's; the day is `dateStrInTz`'s own derivation from it, which is
+  // what the clock itself renders.
+  readBoundaryFacts.current = () => {
+    const clock = liveProfileClocks.get(ctx.actingProfileId);
+    if (!clock) return null;
+    const { date, hhmm } = zonedDateParts(clock.timeZone, new Date());
+    const boundaries = ctx.slotBoundariesRef.current;
+    return {
+      day: date,
+      slot: boundaries ? foodSlotForHhmm(hhmm, boundaries) : null,
+    };
+  };
+
+  const invalidateVisit = ctx.visit.invalidate;
+  const visitBodiesRef = ctx.visitBodiesRef;
+  useEffect(() => {
+    if (!outerOpen || !currentVisit) return;
+    backgroundedAt.current = null;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        backgroundedAt.current = readBoundaryFacts.current();
+        return;
+      }
+      const before = backgroundedAt.current;
+      backgroundedAt.current = null;
+      const after = readBoundaryFacts.current();
+      if (!before || !after || !crossedVisitBoundary(before, after)) return;
+      // NEVER OVER A DRAFT. The header keeps naming the old window, which is the
+      // accepted cost of not putting a confirm in front of someone who has just
+      // picked their phone back up. The registry is asked about the visited
+      // bodies' subtree only: a dirty form on the page BEHIND the sheet is not
+      // this sheet's unsaved work.
+      if (hasUnsavedInputWithin(visitBodiesRef.current)) return;
+      invalidateVisit();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      backgroundedAt.current = null;
+    };
+  }, [
+    currentVisit,
+    hasUnsavedInputWithin,
+    invalidateVisit,
+    outerOpen,
+    visitBodiesRef,
+  ]);
 
   const activeEntry = (currentVisit ? ctx.visit.state.entries : []).find(
     (entry) => entry.id === ctx.visit.state.activeId
@@ -742,21 +865,43 @@ export default function QuickEntryProvider({
       visitRequestRefs.current.set(key, token + 1);
   }, []);
 
+  // THE ONE INVALIDATION. Started as the last-good subscription's own closure;
+  // named because #5902's resume crossing ends in exactly this state — the visit
+  // emptied and flagged, which every host already turns into its close through
+  // `onInvalidated`. A second close path is what naming it avoids.
+  const invalidateVisit = useCallback(() => {
+    invalidateVisitRequests();
+    updateVisit((current) => ({
+      ...current,
+      activeId: null,
+      entries: [],
+      returnFocus: null,
+      invalidated: true,
+      completable: false,
+    }));
+  }, [invalidateVisitRequests, updateVisit]);
+
   useLayoutEffect(() => {
     const invalidate = () => {
-      invalidateVisitRequests();
+      // The last-good invalidation reaches the DIRECT overlay too; a resume
+      // crossing is the visit's business alone and leaves this sheet alone.
       setOpen(false);
-      updateVisit((current) => ({
-        ...current,
-        activeId: null,
-        entries: [],
-        returnFocus: null,
-        invalidated: true,
-        completable: false,
-      }));
+      invalidateVisit();
     };
     return subscribeLastGoodInvalidation(invalidate);
-  }, [invalidateVisitRequests, updateVisit]);
+  }, [invalidateVisit]);
+
+  // The last food-window splits anybody gathered for this sheet (#5902). A ref,
+  // not state: only the resume listener reads it, at event time, and a re-render
+  // of the whole provider on every sheet open would buy nothing.
+  const slotBoundariesRef = useRef<FoodSlotBoundaries | null>(null);
+  const noteSlotBoundaries = useCallback(
+    (boundaries: FoodSlotBoundaries | null) => {
+      slotBoundariesRef.current = boundaries;
+    },
+    []
+  );
+  const visitBodiesRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
     clearLastGood();
@@ -1783,14 +1928,18 @@ export default function QuickEntryProvider({
     () => ({
       open: openForm,
       close,
+      noteSlotBoundaries,
       actingProfileId,
       writableProfiles,
+      slotBoundariesRef,
+      visitBodiesRef,
       visit: {
         state: visitState,
         start: startVisit,
         open: openVisitForm,
         back: backVisit,
         beginClose: beginVisitClose,
+        invalidate: invalidateVisit,
         complete: completeVisitEntry,
         retry: retryVisitEntry,
         selectDay: selectVisitDay,
@@ -1814,6 +1963,8 @@ export default function QuickEntryProvider({
       openVisitForm,
       exitIntake,
       acceptIntakeSave,
+      invalidateVisit,
+      noteSlotBoundaries,
       refreshDose,
       focusDoseReturn,
       retryVisitEntry,
@@ -2142,45 +2293,53 @@ export function QuickEntryVisitBodies({
     );
   const { state } = ctx.visit;
   if (state.identity !== identity) return null;
-  return state.entries.map((entry) => (
-    <Activity
-      key={`${state.identity}:${state.generation}:${entry.id}`}
-      mode={state.activeId === entry.id ? "visible" : "hidden"}
-    >
-      <QuickEntrySessionBody
-        form={entry.form}
-        prefill={entry.prefill}
-        subject={entry.subject}
-        view={entry.view}
-        host={entry.host}
-        bodies={entry.bodies}
-        actingProfileId={ctx.actingProfileId}
-        onDone={() => {
-          if (ctx.visit.complete(entry.id)) onDone();
-        }}
-        onRetry={() => ctx.visit.retry(entry.id)}
-        onSelectDay={(day) => ctx.visit.selectDay(entry.id, day)}
-        canAdd={ctx.writableProfiles.some(
-          (profile) => profile.id === entry.subject
-        )}
-        onOpenIntake={(kind, trigger) =>
-          ctx.visit.openIntake(entry.id, kind, trigger)
-        }
-        onExitIntake={() => ctx.visit.exitIntake(entry.id)}
-        onIntakeSaved={(activation) =>
-          ctx.visit.acceptIntakeSave(entry.id, activation)
-        }
-        onRefreshDose={() =>
-          ctx.visit.refreshDose(entry.id, entry.bodyActivation)
-        }
-        addTriggerRef={entry.addTriggerRef}
-        focusReturn={entry.focusReturn}
-        onFocusReturn={(activation) =>
-          ctx.visit.focusDoseReturn(entry.id, activation)
-        }
-      />
-    </Activity>
-  ));
+  // `display: contents`, so the wrapper generates no box and the bodies remain the
+  // sheet's own children for layout. It exists to be a NODE: the resume check
+  // (#5902) asks the dirty-form registry whether this subtree holds unsaved input,
+  // and that question needs a root. Nothing else reads it.
+  return (
+    <div className="contents" ref={ctx.visitBodiesRef}>
+      {state.entries.map((entry) => (
+        <Activity
+          key={`${state.identity}:${state.generation}:${entry.id}`}
+          mode={state.activeId === entry.id ? "visible" : "hidden"}
+        >
+          <QuickEntrySessionBody
+            form={entry.form}
+            prefill={entry.prefill}
+            subject={entry.subject}
+            view={entry.view}
+            host={entry.host}
+            bodies={entry.bodies}
+            actingProfileId={ctx.actingProfileId}
+            onDone={() => {
+              if (ctx.visit.complete(entry.id)) onDone();
+            }}
+            onRetry={() => ctx.visit.retry(entry.id)}
+            onSelectDay={(day) => ctx.visit.selectDay(entry.id, day)}
+            canAdd={ctx.writableProfiles.some(
+              (profile) => profile.id === entry.subject
+            )}
+            onOpenIntake={(kind, trigger) =>
+              ctx.visit.openIntake(entry.id, kind, trigger)
+            }
+            onExitIntake={() => ctx.visit.exitIntake(entry.id)}
+            onIntakeSaved={(activation) =>
+              ctx.visit.acceptIntakeSave(entry.id, activation)
+            }
+            onRefreshDose={() =>
+              ctx.visit.refreshDose(entry.id, entry.bodyActivation)
+            }
+            addTriggerRef={entry.addTriggerRef}
+            focusReturn={entry.focusReturn}
+            onFocusReturn={(activation) =>
+              ctx.visit.focusDoseReturn(entry.id, activation)
+            }
+          />
+        </Activity>
+      ))}
+    </div>
+  );
 }
 
 function QuickEntryBodyMount({
