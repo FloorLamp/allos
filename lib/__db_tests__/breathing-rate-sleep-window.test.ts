@@ -43,6 +43,7 @@ import { BREATHING_RATE_METRIC } from "@/lib/breathing-rate";
 import { getMetricDailyTotals } from "@/lib/queries/metrics";
 import { ALL_ROWS } from "@/lib/trends";
 import { gatherHistoryLog } from "@/lib/history";
+import { getLastNightSummary } from "@/lib/queries/sleep";
 
 const ORIGIN = "com.fitbit.FitbitMobile";
 const WAKE_DAY = "2026-09-05";
@@ -244,6 +245,35 @@ describe("the four payload shapes, in order (#5409 acceptance)", () => {
     expect(sleepRow?.detail.indexOf("13.6 br/min")).toBeGreaterThan(
       sleepRow?.detail.indexOf("6h") ?? -1
     );
+  });
+
+  it("states the SAME number on the Sleep page hero, and nothing on a night without one", () => {
+    // THE FOURTH SURFACE (#5409, owner ruling 2026-09-11: one cell, only when present).
+    // What this pins is not that the hero has a number but that it has THE number the
+    // record's Sleep row states for the same night — the hero reads the reading through
+    // the same natural key (the main session's start) and the same source election, so
+    // the two surfaces cannot disagree about one night (#221).
+    const profileId = newProfile("Hero states it");
+    push(profileId, {
+      stamp: "2026-09-05T09:29:00Z",
+      sessions: [{ start: BED, end: FINAL_WAKE }],
+      breathing: [{ time: FINAL_WAKE, rate: 13.6 }],
+    });
+    const summary = getLastNightSummary(profileId);
+    expect(summary?.wakeDay).toBe(WAKE_DAY);
+    expect(summary?.breathingRateBpm).toBe(13.6);
+
+    // ABSENT, NOT ZERO. A night recorded without the band has no reading, and the cell
+    // is not rendered at all — `null` is what makes "only when present" fall out of the
+    // field rather than needing a second gate on the surface.
+    const bare = newProfile("Hero without one");
+    push(bare, {
+      stamp: "2026-09-05T09:29:00Z",
+      sessions: [{ start: BED, end: FINAL_WAKE }],
+    });
+    const bareSummary = getLastNightSummary(bare);
+    expect(bareSummary?.wakeDay).toBe(WAKE_DAY);
+    expect(bareSummary?.breathingRateBpm).toBeNull();
   });
 
   it("leaves a wearable SPOT reading an observation", () => {

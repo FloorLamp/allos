@@ -7,6 +7,7 @@ import {
   type LastNightSummary,
   type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
+import { formatBreathingRate } from "@/lib/breathing-rate";
 import { formatClockMinutes } from "@/lib/format-date";
 import { SLEEP_SKEW_HEDGE, sleepSkewSettledLine } from "@/lib/sleep-clock-skew";
 import type { TimeFormat } from "@/lib/format-date";
@@ -17,7 +18,8 @@ import type { BedtimeSupplementSummary } from "@/lib/sleep-bedtime-supplements";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
 
 // The Sleep page hero (issue #1066): last night reduced to facts — duration, a
-// stage stacked bar, bed/wake, and the delta vs the trailing-30-night baseline —
+// stage stacked bar, bed/wake, the delta vs the trailing-30-night baseline, and —
+// on the nights that have one — the wearable breathing rate (#5409) —
 // ALL of the MAIN overnight session (#1118). Naps have their own detailed card
 // below, so this hero stays exclusively about the night. Deliberately factual,
 // never scored (no invented sleep score — the pillars-not-a-composite stance).
@@ -97,6 +99,7 @@ export default function SleepHero({
   clockSkewSettledMinutes?: number | null;
 }) {
   const delta = baselineDeltaPhrase(summary);
+  const breathingRate = formatBreathingRate(summary.breathingRateBpm);
   const source = activityProvenanceLabel(summary.source);
   return (
     <section className="card section-seam mb-6" data-testid="sleep-hero">
@@ -196,6 +199,25 @@ export default function SleepHero({
             </p>
           )}
         </div>
+
+        {/* ONE CELL, ONLY WHEN PRESENT (#5409, owner ruling 2026-09-11): the night's
+            breathing rate joins the hero as a fourth cell on the nights that have
+            one, and is ABSENT — not a zero, not a dash — on the nights that do not.
+            A manual logger's hero is unchanged, because a duration-only row has no
+            session for a wearable reading to be keyed to. The number is spelled by
+            the same pure formatter the record's Sleep row uses, so the two surfaces
+            cannot round one vendor value two ways. */}
+        {breathingRate && (
+          <div>
+            <p className="section-label mb-1">Breathing rate</p>
+            <p
+              className="text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100"
+              data-testid="sleep-hero-breathing-rate"
+            >
+              {breathingRate}
+            </p>
+          </div>
+        )}
       </div>
 
       {bedtimeSupplements && (

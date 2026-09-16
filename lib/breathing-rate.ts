@@ -178,3 +178,23 @@ export function mainSessionForDay(
   }
   return best;
 }
+
+/**
+ * The night's reading as every surface states it: `13.6 br/min`.
+ *
+ * ONE DECIMAL, AND NO TRAILING ZERO. A tracker reports 13.6; a stored 14 prints as
+ * "14 br/min", not "14.0". Null for a reading that is absent or not a finite number —
+ * nothing is invented, and the caller drops its segment or its cell.
+ *
+ * IT LIVES HERE, in the pure half, because three surfaces state the same number and
+ * they must state it the same way (#221): the record's Sleep row (`lib/history.ts`),
+ * the Sleep page hero, and — through `TREND_METRIC_META["breathing-rate"].decimals`,
+ * which is the same one decimal — the body-census chart. Two roundings of one vendor
+ * value is the defect this file already exists to prevent one spelling of.
+ */
+export function formatBreathingRate(
+  value: number | null | undefined
+): string | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return `${Number(value.toFixed(1))} br/min`;
+}

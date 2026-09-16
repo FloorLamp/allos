@@ -55,6 +55,7 @@ import { formatMinutes } from "./duration";
 import {
   BREATHING_RATE_METRIC,
   breathingRateSourceRank,
+  formatBreathingRate,
 } from "./breathing-rate";
 import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
 import { historyHref, medicationHref, metricDetailHref } from "./hrefs";
@@ -211,15 +212,15 @@ export interface HistoryGather extends HistoryGatherCore {
 /**
  * The night's breathing rate, as the Sleep row states it, or null when it has none.
  *
- * ONE DECIMAL, AND NO TRAILING ZERO. A tracker reports 13.6; a stored 14 prints as
- * "14 br/min", not "14.0". Nothing is invented when the reading is absent — the segment
- * is dropped and the row reads exactly as it did before #5409.
+ * The spelling itself is `formatBreathingRate` in the pure half, shared with the Sleep
+ * page hero so the two surfaces cannot round one vendor value two ways (#221). What
+ * stays here is only the row's own rule: nothing is invented when the reading is absent
+ * — the segment is dropped and the row reads exactly as it did before #5409.
  */
 function breathingRateSegment(
   reading: { value: number } | undefined
 ): string | null {
-  if (!reading || !Number.isFinite(reading.value)) return null;
-  return `${Number(reading.value.toFixed(1))} br/min`;
+  return formatBreathingRate(reading?.value);
 }
 
 function wants(opts: HistoryGatherOptions, kind: HistoryKind): boolean {

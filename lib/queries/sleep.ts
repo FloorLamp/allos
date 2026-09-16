@@ -13,6 +13,7 @@ import {
   getSleepSessionsInRange,
   getSleepSessionsSince,
   getSleepStageDailyTotals,
+  getBreathingRatesForNights,
   getLatestMetricSample,
   getMetricDailyTotals,
   getMetricSeriesBySource,
@@ -192,10 +193,32 @@ export function getLastNightSummary(
     });
   }
   const sessions = getSleepSessions(profileId);
+  // THE NIGHT'S BREATHING RATE (#5409, the 2026-09-11 hero ruling), read over the
+  // latest recorded wake day and a day either side and nothing else. The bound comes
+  // from the sessions already in hand rather than from a trailing day window, so a
+  // profile whose latest night is two hundred days back still reads its own night's
+  // reading (`domain-dormancy.test.ts`'s case) instead of an empty recent window.
+  //
+  // The election and the two keys live in the reader; `lastNightSummary` picks the
+  // main session's key first and falls back to the wake day, which is the order the
+  // record's Sleep row already reads them in.
+  const latestSessionDay = sessions.reduce(
+    (best, s) => (s.date > best ? s.date : best),
+    ""
+  );
+  const breathingRates = latestSessionDay
+    ? getBreathingRatesForNights(
+        profileId,
+        shiftDateStr(latestSessionDay, -1),
+        shiftDateStr(latestSessionDay, 1)
+      )
+    : undefined;
   const windowSummary = lastNightSummary(
     sessions,
     profileDayZone(profileId),
-    stagesByDay
+    stagesByDay,
+    {},
+    breathingRates
   );
   const durationTrend = getSleepDurationTrend(profileId, 180);
   const latestTotal = durationTrend.at(-1);
