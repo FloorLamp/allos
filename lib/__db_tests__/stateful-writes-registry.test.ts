@@ -49,6 +49,10 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "document_coverage_markers",
       // #2138: the retire flag that gates pickers/availability/suggestions —
       // equipment's state-named CAS core.
+      // #5941: the reversal record of an episode's medication reconciliation — the only
+      // thing that can undo "ending this illness closed these courses", and the reason the
+      // med NAME travels as a snapshot (#1808) that survives the med row.
+      "episode_stopped_meds",
       "equipment",
       // #2756: the fasting lifecycle. `ended_at IS NULL` IS the active state, and the
       // one-active-per-profile invariant is what every derivation downstream assumes —
@@ -98,6 +102,13 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "shared_supplies",
       // #2140: the active-situation set rewrite + illness-episode sync machine.
       "situations",
+      // #5941: a row is the only pointer to a stripped photo on disk (#1844) — the
+      // delete reclaims the file, the insert dedups on the processed hash, and the
+      // re-key re-parents the #1093 binding rather than cascade-dropping it.
+      "symptom_photos",
+      // #5941: the same custody for a clip and its poster (#1224), plus `has_location`
+      // — the flag that says an embedded GPS atom was detected rather than assumed.
+      "symptom_videos",
     ]);
   });
 
