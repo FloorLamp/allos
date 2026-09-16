@@ -70,6 +70,7 @@ import { getFindingSuppressions, snoozeFinding } from "../queries/upcoming";
 import {
   daysOfSupplyLeft,
   isLowSupply,
+  rememberedFillFor,
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../refill";
 import {
@@ -332,17 +333,29 @@ interface RefillStock {
   lastFillSize: number | null;
 }
 
+// The remembered fill is read the way the QUANTITY already is: off the container the
+// item is actually linked to. It is not a second `CASE` alongside the quantity's, because
+// which container's fill a one-tap may reuse is a rule with an owner — `rememberedFillFor`
+// (#5121 owner ruling, #5911) — and SQL is where that rule would quietly acquire a second
+// spelling and, with it, the fallback arm the rule exists to refuse. So the statement
+// fetches both sides and the pure function picks; `lastFillSize` null here means "ask for
+// a size", which is what a pooled bottle that remembers nothing must make the receipt do.
 function refillStock(profileId: number, itemId: number): RefillStock | null {
-  return (
-    (db
-      .prepare(
-        `SELECT i.id, i.kind, i.name, i.supply_id AS supplyId,
+  const row = db
+    .prepare(
+      `SELECT i.id, i.kind, i.name, i.supply_id AS supplyId,
     CASE WHEN i.supply_id IS NULL THEN i.quantity_on_hand ELSE p.quantity_on_hand END AS quantity,
-    i.last_fill_size AS lastFillSize FROM intake_items i
+    i.last_fill_size AS itemLastFillSize, p.last_fill_size AS poolLastFillSize
+    FROM intake_items i
     LEFT JOIN shared_supplies p ON p.id = i.supply_id WHERE i.profile_id = ? AND i.id = ?`
-      )
-      .get(profileId, itemId) as RefillStock | undefined) ?? null
-  );
+    )
+    .get(profileId, itemId) as
+    | (Omit<RefillStock, "lastFillSize"> & {
+        itemLastFillSize: number | null;
+        poolLastFillSize: number | null;
+      })
+    | undefined;
+  return row ? { ...row, lastFillSize: rememberedFillFor(row) } : null;
 }
 
 function hasRefillToken(
@@ -502,10 +515,9 @@ export async function handleReceivedCallback(
         ...row.offer,
         state: "sending",
         origin: { chatId: chat, messageId, senderId, callbackId: cq.id },
-        defaultSize:
-          stock.lastFillSize != null && stock.lastFillSize > 0
-            ? stock.lastFillSize
-            : null,
+        // Already the container's own remembered fill, and already null when nothing
+        // is remembered for it — `rememberedFillFor` owns both halves of that.
+        defaultSize: stock.lastFillSize,
       };
       return replaceRefillOffer(token.profileId, token.offerId, row.offer, next)
         ? next

@@ -51,13 +51,13 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
   },
   {
     table: "shared_supplies",
-    columns: ["quantity_on_hand"],
+    columns: ["quantity_on_hand", "last_fill_size"],
     cores: [
       "lib/queries/intake/refill.ts",
       "lib/queries/intake/supply-pool.ts",
     ],
     offerState: "refillRecencyLine",
-    why: "#1374/#467: the household bottle's counter is written by MANY takers, so every adjustment is a compare-and-set under the IMMEDIATE write lock — refill.ts owns the dose decrement and the relative refill increment, supply-pool.ts owns pool create/edit and the link/unlink transfers. A raw absolute UPDATE from a fourth module would clobber a concurrent taker's decrement, which is the exact accounting split #1374 exists to end.",
+    why: "TWO COLUMNS, TWO REASONS. #1374/#467: the household bottle's counter is written by MANY takers, so every adjustment is a compare-and-set under the IMMEDIATE write lock — refill.ts owns the dose decrement and the relative refill increment, supply-pool.ts owns pool create/edit and the link/unlink transfers. A raw absolute UPDATE from a fourth module would clobber a concurrent taker's decrement, which is the exact accounting split #1374 exists to end. #5911, and NOT that argument: `last_fill_size` is an absolute set and last-writer-wins is the correct semantics for \"the usual refill\", so it carries no clobber hazard at all. It is listed because it is a stored number a ONE-TAP reads back and ADDS to a household count, reusable only for the container it was a fill of — `rememberedFillFor` (lib/refill.ts) is the one place that rule lives, and these two cores are the modules that reach the column through it. What the scan refuses, then, is a `last_fill_size`-only write from a module outside these cores — a correction path, a backfill, a settings edit — which would set a household bottle's usual refill by a route on which the container rule never ran. Naming the column is what makes that refusal real: the two existing writes both spell `SET quantity_on_hand = ?, last_fill_size = ?`, so until it was named the counter's own narrowing caught them by statement shape rather than by intent.",
   },
   {
     table: "intake_item_logs",
