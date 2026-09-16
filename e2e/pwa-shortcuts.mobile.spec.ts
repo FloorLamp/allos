@@ -27,14 +27,26 @@ import { QUICK_PARAM } from "@/lib/pwa-shortcuts";
 // effect runs. Wait for the handler's own effect marker to name the exact value it
 // consumed, then read the browser's live location. page.url() is a Playwright-side
 // cache whose same-document update notification can lag under shard load (#1992).
+//
+// `opened` is the SECOND half of that marker (#5922) and is asserted with the first,
+// because consuming a value and opening its surface are two questions and this suite
+// used to ask only one. `""` means the value was consumed and nothing opened.
+//
+// WHAT THIS SUITE STILL CANNOT SEE. Every worker's server here is `next start` with
+// NODE_ENV=production (e2e/fixtures.ts), so React effects run once. `next dev` turns
+// on StrictMode and runs them twice, and #5922 was a teardown that landed between the
+// two passes — invisible to a browser suite by construction, which is why five green
+// `goto("/?quick=log-stool")` call sites in bristol-stool.spec.ts coexisted with a
+// deep link that opened nothing for a person. That half is pinned one tier down, in
+// components/__tests__/quick-entry-last-good.test.tsx.
 async function expectQuickParamCleared(
   page: Page,
-  expected: string
+  expected: string,
+  opened: string
 ): Promise<void> {
-  await expect(page.getByTestId("quick-shortcut-handler")).toHaveAttribute(
-    "data-consumed",
-    expected
-  );
+  const marker = page.getByTestId("quick-shortcut-handler");
+  await expect(marker).toHaveAttribute("data-consumed", expected);
+  await expect(marker).toHaveAttribute("data-opened", opened);
   const quick = await page.evaluate(
     (param) => new URL(window.location.href).searchParams.get(param),
     QUICK_PARAM
@@ -120,7 +132,7 @@ test.describe("?quick= deep links", () => {
 
     // The param is replaced away as soon as it is read, so a reload or a
     // back-navigation doesn't re-pop the editor over work in progress.
-    await expectQuickParamCleared(page, "log-activity");
+    await expectQuickParamCleared(page, "log-activity", "activity");
   });
 
   test("log-dose opens the shared quick-entry overlay on the dose form", async ({
@@ -135,7 +147,7 @@ test.describe("?quick= deep links", () => {
       "data-form",
       "dose"
     );
-    await expectQuickParamCleared(page, "log-dose");
+    await expectQuickParamCleared(page, "log-dose", "overlay:dose");
   });
 
   test("search opens the command palette", async ({ page }) => {
@@ -146,7 +158,7 @@ test.describe("?quick= deep links", () => {
     await expect(
       page.getByRole("combobox", { name: "Search or run a command" })
     ).toBeVisible();
-    await expectQuickParamCleared(page, "search");
+    await expectQuickParamCleared(page, "search", "search");
   });
 
   test("a shortcut works from a page other than the dashboard", async ({
@@ -159,7 +171,21 @@ test.describe("?quick= deep links", () => {
 
     await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
     // Stripping the param must preserve the path.
-    await expectQuickParamCleared(page, "log-dose");
+    await expectQuickParamCleared(page, "log-dose", "overlay:dose");
     expect(new URL(page.url()).pathname).toBe("/trends");
+  });
+
+  test("an unrecognized value is consumed and SAYS it opened nothing", async ({
+    page,
+  }) => {
+    // A stale bookmark or a truncated share. `shortcutAction` is strict on purpose —
+    // popping an editor nobody asked for would be worse — so the right outcome is the
+    // dashboard, unchanged. What #5922 added is that the handler states that outcome
+    // instead of leaving "the param vanished and nothing happened" to be inferred.
+    await page.goto("/?quick=not-a-shortcut");
+
+    await expectQuickParamCleared(page, "not-a-shortcut", "");
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    await expect(page.getByTestId("activity-form")).toHaveCount(0);
   });
 });
