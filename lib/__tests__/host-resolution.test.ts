@@ -201,7 +201,7 @@ describe("resolveReadToken", () => {
 // contents: a test that asserted the file says 24 would be the dev-config
 // restatement docs/change-policy.md forbids.
 describe("nvmrcMajorAt", () => {
-  it.each([
+  it.each<[string, string | null, string]>([
     ["24\n", "24", "a bare major, as this repo pins it"],
     ["v24.21.0\n", "24", "an nvm-style full version"],
     ["  22  \n", "22", "surrounding whitespace"],
