@@ -73,7 +73,7 @@ function postedReactions(
 }
 
 export async function addAllergy(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   // Canonicalize a RECOGNIZED allergen spelling on write (#1676): the drug-allergy
   // cross-check and the cross-reactivity matcher both key on this string, so storing
   // "soy" rather than the vocabulary's "Soybean" silently costs the profile a check.
@@ -139,7 +139,11 @@ export async function addAllergy(formData: FormData): Promise<FormResult> {
       sqlNow()
     );
   if (reactions)
-    setAllergyReactions(profile.id, Number(info.lastInsertRowid), reactions);
+    setAllergyReactions(
+      writeProfileId,
+      Number(info.lastInsertRowid),
+      reactions
+    );
   revalidateAllergies();
   return formOk();
 }

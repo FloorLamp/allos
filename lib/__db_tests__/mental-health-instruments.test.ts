@@ -38,6 +38,16 @@ import {
 } from "@/lib/rule-finding-prefixes";
 import { MENTAL_HEALTH_PREFIX } from "@/lib/mental-health";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 function newProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -57,7 +67,7 @@ describe("recordInstrumentScore — the score is a biomarker reading, no flag", 
     const p = newProfile("MH score");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       {
         instrument: "PHQ-9",
         date: td,
@@ -99,7 +109,7 @@ describe("recordInstrumentScore — the score is a biomarker reading, no flag", 
     const p = newProfile("MH items");
     const td = today(p);
     const recordId = recordInstrumentScore(
-      p,
+      gated(p),
       {
         instrument: "PHQ-9",
         date: td,
@@ -135,7 +145,7 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
     const p = newProfile("MH severe");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "PHQ-9", date: td, total: 24 },
       "page"
     );
@@ -164,7 +174,7 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
     const p = newProfile("MH item9");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       {
         instrument: "PHQ-9",
         date: td,
@@ -184,7 +194,7 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
     const p = newProfile("MH calm");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       {
         instrument: "PHQ-9",
         date: td,
@@ -204,7 +214,7 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
   it("the crisis line never reaches the Telegram digest (no crisis content on any channel)", () => {
     const p = newProfile("MH nopush");
     recordInstrumentScore(
-      p,
+      gated(p),
       {
         instrument: "PHQ-9",
         date: today(p),
@@ -233,12 +243,12 @@ describe("screening satisfaction (#716)", () => {
     setBirthdate(p, "1990-01-01");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "PHQ-9", date: td, total: 4 },
       "page"
     );
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "GAD-7", date: td, total: 3 },
       "page"
     );
@@ -254,12 +264,12 @@ describe("milestone exemption (#716) — never gamify a mental-health score", ()
     const p = newProfile("MH exempt");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "PHQ-9", date: td, total: 12 },
       "page"
     );
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "GAD-7", date: td, total: 10 },
       "page"
     );

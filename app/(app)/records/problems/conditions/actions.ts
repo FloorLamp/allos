@@ -136,11 +136,11 @@ export async function updateCondition(formData: FormData): Promise<FormResult> {
 export async function confirmConditionSuggestion(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const { writeProfileId } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Couldn't read that suggestion.");
   const code = String(formData.get("code") ?? "").trim() || null;
-  const outcome = addSuggestedConditionCore(profile.id, { name, code });
+  const outcome = addSuggestedConditionCore(writeProfileId, { name, code });
   if (outcome.kind === "invalid")
     return formError("Couldn't add the condition.");
   revalidateConditions();

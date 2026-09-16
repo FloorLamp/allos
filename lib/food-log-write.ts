@@ -18,6 +18,28 @@
 // spelling of it. Everything else here — catalog canonicalization, the event ledger the
 // counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
+// THE UNDO CORE TAKES THE ID A WRITE GATE RETURNED: `profileId` on undoFoodServingCore is
+// lib/auth's WriteAuthorizedProfileId, which only the gates mint, so an action that never
+// gated holds nothing it takes (#5348). The import is type-only — erased at build — so this
+// module still runs auth-blind and its two Server Action callers (nutrition and
+// medical/substance-use, both of which reach it through gateItemProfile) still own the gate.
+//
+// A branded number is still a number, so logFoodServingCore, updateFoodLogEventCore,
+// deleteFoodLogEventCore and restampFoodEventsCore take one unchanged — each is reached from
+// another lib module as well as from a Server Action, so none has a single gated caller to
+// take a minted id from. This file is the nutrition ledger and its row is the nutrition row
+// of #5348; only the one core this domain's substance surface taps is branded here.
+//
+// What the brand buys is stated narrowly on purpose. `tsc` refuses a plain number at a call
+// site — the ordinary accident — and eslint.config.mjs's WRITE_BRAND_CAST refuses production
+// code the `as WriteAuthorizedProfileId` forge, across every production module (#5852,
+// #5864); a test tier is deliberately left free to cast, the same allowance RPE_BRAND_CAST
+// makes. Those are the accidents it catches; it does not make the brand unforgeable, and the
+// residual is not a list anyone has closed (#5892, #5914). So "calls a branded core" is
+// EVIDENCE of a gate, not PROOF of one — lib/__tests__/actions-write-access.test.ts's
+// step-aside rests on that reading.
+
+import type { WriteAuthorizedProfileId } from "./auth";
 import { db, readTx, today, writeTx } from "./db";
 import {
   FOOD_SERVING_LOG,
@@ -319,7 +341,7 @@ export const logFoodServingCoreDeclares = FOOD_SERVING_LOG;
 // auth-blind core next to logFoodServingCore so a future Telegram "undo" button reuses
 // the same computation rather than duplicating the two-statement sequence.
 export function undoFoodServingCore(
-  profileId: number,
+  profileId: WriteAuthorizedProfileId,
   group: string,
   date: string,
   mealSlot?: FoodSlot,

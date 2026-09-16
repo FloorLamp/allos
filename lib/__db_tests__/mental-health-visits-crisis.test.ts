@@ -25,6 +25,16 @@ import {
 } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 function newProfile(name: string): number {
   return Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -126,7 +136,7 @@ describe("#996 — the crisis finding reads the configured resources", () => {
     const p = newProfile(name);
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "PHQ-9", date: td, total: 24 },
       "page"
     );
@@ -179,7 +189,7 @@ describe("#996 — the crisis signal stays with the profile (privacy pin)", () =
     const p = newProfile("crisis private");
     const td = today(p);
     recordInstrumentScore(
-      p,
+      gated(p),
       { instrument: "PHQ-9", date: td, total: 25 },
       "page"
     );

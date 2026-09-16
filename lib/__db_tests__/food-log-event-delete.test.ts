@@ -14,6 +14,16 @@ import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { getFoodMealDays } from "@/lib/queries";
 import { type FoodSlot } from "@/lib/food-slot";
 
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
+
 // Per-window tallies through the meal grouping the web surface renders
 // (getFoodMealDays.slotCounts) — the live consumer of the window derivation, standing
 // where the retired slot-count query (getFoodSlotServingsOnDate, #2019/#2227) used to.
@@ -181,7 +191,7 @@ describe("deleteFoodLogEventCore — the counter moves with the row (#1963)", ()
     const untouched = seed(profileId, "berries", anchor, "19:00:00", "Evening");
     updateFoodLogEventCore(profileId, corrected, { mealSlot: "Evening" });
 
-    undoFoodServingCore(profileId, "berries", anchor, "Evening");
+    undoFoodServingCore(gated(profileId), "berries", anchor, "Evening");
     expect(ledgerIds(profileId)).toEqual([corrected]);
     expect(ledgerIds(profileId)).not.toContain(untouched);
   });
