@@ -35,9 +35,16 @@ import SubmitButton from "@/components/SubmitButton";
 // present posts `profile_id` and is re-gated by `gateItemProfile`.
 
 export interface StoolReadingRow {
-  /** The `metric_samples` row id — the correction's whole address. */
+  /** The `stool_events` row id — the correction's whole address. */
   id: number;
-  type: number;
+  /**
+   * The row's stored type, or NULL for an occurrence nobody saw the form of (#5872).
+   * The picker opens on the scale's midpoint for a null, exactly as the ADD mode does,
+   * because slice 1 ships no surface that writes an untyped row — #5872 slice 2's
+   * `Didn't see` tile is what creates them, and it is that slice's job to give this
+   * control an eighth state and the CLEAR the write core already accepts.
+   */
+  type: number | null;
 }
 
 export default function StoolForm({

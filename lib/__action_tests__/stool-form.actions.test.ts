@@ -13,8 +13,8 @@ import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { loadStoolDay, logStoolForm } from "@/app/(app)/stool-actions";
 import { logBristolStool } from "@/lib/offline/writes";
-import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 // Frozen so "the row an unstated tap writes" is a single comparable value: the seam
@@ -27,14 +27,48 @@ beforeEach(() => {
   vi.setSystemTime(new Date(NOW_ISO));
 });
 
-function rows(profileId: number) {
-  return db
-    .prepare(
-      `SELECT source, metric, date, started_at, ended_at, value
-         FROM metric_samples WHERE profile_id = ? AND metric = ?
-        ORDER BY started_at`
-    )
-    .all(profileId, BRISTOL_STOOL_METRIC);
+interface Row {
+  date: string;
+  occurred_at: string | null;
+  time_source: string | null;
+  value: number | null;
+  /**
+   * The BEST-KNOWN instant as the profile-local `<date>THH:MM:SS` the surfaces print —
+   * projected, not stored, so the assertions below go on comparing the shape they
+   * always compared while the ledger keeps canonical UTC (#5872).
+   */
+  started_at: string;
+}
+
+function rows(profileId: number): Row[] {
+  const tz = getTimezone(profileId);
+  return (
+    db
+      .prepare(
+        `SELECT date, occurred_at, recorded_at, time_source, type AS value
+           FROM stool_events WHERE profile_id = ?
+          ORDER BY COALESCE(occurred_at, recorded_at), id`
+      )
+      .all(profileId) as (Omit<Row, "started_at"> & { recorded_at: string })[]
+  ).map(({ recorded_at, ...row }) => ({
+    ...row,
+    started_at: localWall(tz, row.occurred_at ?? recorded_at),
+  }));
+}
+
+function localWall(tz: string, at: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(at));
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 describe("logStoolForm — the unstated tap is unchanged (#3273)", () => {
@@ -66,11 +100,15 @@ describe("logStoolForm — the unstated tap is unchanged (#3273)", () => {
     const [before] = rows(control.id);
     expect(tapped).toEqual(before);
     // Spelled out too, because "equal to the control" is only as strong as the
-    // control: the seam's SECONDS survive, which is the second-grain key itself.
+    // control. NOBODY STATED A TIME, and since #5872 the row says so: `occurred_at`
+    // is null and the only instant it carries is the tap that filed it. The seam's
+    // SECONDS survive on that stamp — the old store put them in the reading's own
+    // instant, which is the invented time this ledger retires.
     expect(tapped).toMatchObject({
       date,
+      occurred_at: null,
+      time_source: null,
       started_at: `${date}T21:30:07`,
-      ended_at: `${date}T21:30:07`,
       value: 4,
     });
   });
@@ -111,13 +149,15 @@ describe("logStoolForm — a stated earlier time writes THAT instant (#3273)", (
 
     expect(rows(profile.id)).toEqual([
       {
-        source: "manual",
-        metric: BRISTOL_STOOL_METRIC,
         date,
-        // :00 — a stated wall time carries no seconds, so restating the same minute
-        // CORRECTS that reading rather than inventing a second movement.
+        // :00 — a stated wall time carries no seconds. It no longer decides whether a
+        // re-log merges: the ledger is append-only, so restating the same minute makes
+        // a SECOND row rather than correcting the first (#5872 defect 1).
         started_at: `${date}T07:05:00`,
-        ended_at: `${date}T07:05:00`,
+        occurred_at: utcInstant(
+          zonedWallTimeToUtc(getTimezone(profile.id), date, "07:05")!
+        ),
+        time_source: "stated",
         value: 3,
       },
     ]);
@@ -140,9 +180,14 @@ describe("logStoolForm — a stated earlier time writes THAT instant (#3273)", (
       `${date}T19:40:00`,
     ]);
     expect(stored.map((r) => r.value)).toEqual([2, 6]);
+    // INVERTED BY #5872: restating 19:40 used to upsert onto the row already there and
+    // leave the day at 2. Two movements stated at one minute are two movements.
+    //
+    // FALSIFIED against the unfixed tree, where this answers `dayCount: 2`.
     expect(await logStoolForm(fd({ type: 6, at: "19:40" }))).toMatchObject({
-      dayCount: 2,
+      dayCount: 3,
     });
+    expect(rows(profile.id)).toHaveLength(3);
   });
 
   it("a malformed statement costs the STATEMENT, never the reading", async () => {
@@ -155,9 +200,12 @@ describe("logStoolForm — a stated earlier time writes THAT instant (#3273)", (
       ok: true,
       type: 5,
     });
-    // The reading lands, on the clock seam — the same posture the food log takes.
+    // The reading lands and the STATEMENT is what is lost — the same posture the food
+    // log takes. It is lost as an absence now rather than as a stamped clock minute.
     expect(rows(profile.id)[0]).toMatchObject({
       started_at: `${date}T21:30:07`,
+      occurred_at: null,
+      time_source: null,
       value: 5,
     });
   });
@@ -258,20 +306,20 @@ describe("loadStoolDay — the day it lists is the day it was gated for (#5663)"
     hhmm: string,
     value: number
   ): number {
+    // A seeded reading is a STATED one: the fixture stands in for a movement somebody
+    // timed, so it writes the canonical instant that wall minute means in the profile's
+    // own zone plus `time_source = 'stated'`.
+    const at = utcInstant(
+      zonedWallTimeToUtc(getTimezone(profileId), date, hhmm)!
+    );
     return Number(
       db
         .prepare(
-          `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
-             VALUES (?, 'manual', ?, ?, ?, ?, ?)`
+          `INSERT INTO stool_events
+             (profile_id, date, recorded_at, occurred_at, time_source, type)
+           VALUES (?, ?, ?, ?, 'stated', ?)`
         )
-        .run(
-          profileId,
-          BRISTOL_STOOL_METRIC,
-          date,
-          `${date}T${hhmm}:00`,
-          `${date}T${hhmm}:00`,
-          value
-        ).lastInsertRowid
+        .run(profileId, date, at, at, value).lastInsertRowid
     );
   }
 

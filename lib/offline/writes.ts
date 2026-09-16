@@ -57,7 +57,8 @@ import {
   type CompositionInputRaw,
 } from "@/lib/composition-input";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
-import { BRISTOL_STOOL_METRIC, parseBristolType } from "@/lib/bristol-stool";
+import { parseBristolType } from "@/lib/bristol-stool";
+import { logStoolCore } from "@/lib/stool-log-write";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
@@ -819,70 +820,44 @@ export const insertCompositionDeclares = BODY_READING_WRITE;
 // body-metric writers above use: `wrote: false` on a rejected input (bad date, or a
 // value the scale does not name), and on a written row the REFUSAL of a stated time
 // the gate would not take — a notice, never a failure (#4425).
+//
+// A THIN ADAPTER SINCE #5872, not a write. A stool is an event in `stool_events` now,
+// so the whole judgement — the date bound, the scale membership, the stated-time gate,
+// and the decision NOT to invent an instant nobody stated — lives in `logStoolCore` and
+// this function translates the two callers' shapes onto it. There is no second copy of
+// any of those rules here, which is the drift this module exists to prevent.
+//
+// WHAT THE CAPTURED INSTANT BECOMES. The offline replay hands the instant the tap
+// HAPPENED at, and that is a capture stamp: it lands in `recorded_at`. It does NOT land
+// in `occurred_at`, because a replayed tap states no more about when the movement
+// happened than a live one does — the old store had nowhere to put the distinction and
+// stamped the wall clock into the reading's own instant, which is exactly the invented
+// time this ledger retires.
 export function logBristolStool(
   profileId: number,
   date: string,
   type: unknown,
-  // The observation's profile-local wall clock, "HH:MM". Omitted → read from the
-  // clock seam, which is what a one-tap log does: the moment IS now.
+  // The observation's profile-local wall clock, "HH:MM". Omitted → nobody stated one,
+  // which is now a STATE the row records rather than a cue to read the clock.
   at?: string | null,
   instant: Date = clockNow()
 ): { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal } {
-  // The shared date invariant (#4425): any real past day, never the future. The tap
-  // itself states no day — `logStoolForm` stamps today — so `TAP_REACH` files
-  // `stool-form` as `today`; the core is open for the dated surfaces #4433 will add.
-  if (!isPastWriteAccepted(today(profileId), date)) return { wrote: false };
   const bristolType = parseBristolType(type);
   if (bristolType === null) return { wrote: false };
-  // SECOND precision, not minute, and the resolution is load-bearing.
-  //
-  // The key is the instant, so two readings are two rows exactly when they fall on
-  // different seconds. That lines up with the affordance's declared repeat class
-  // rather than fighting it: `stool-form` is `additive`, and the accidental
-  // double-tap is absorbed by the one-tap ledger's POST_SUCCESS_COOLDOWN_MS window.
-  // The cooldown is two seconds and the key's resolution is one, so a tap the ledger
-  // would absorb and a tap this key would collapse are the SAME tap — a deliberate
-  // second movement always lands on a later second and is always its own row. At
-  // minute resolution the two mechanisms would not line up, and a genuine second
-  // reading forty seconds after the first would be lost with the surviving row
-  // looking perfectly normal.
-  //
-  // A caller that STATES a wall time gives HH:MM and lands on :00, so restating the
-  // same time corrects that reading — which is what a stated time means. Only the
-  // clock path carries seconds, and it reads them off the instant in UTC: every IANA
-  // zone in the modern era is a whole-minute offset, so the seconds are the same
-  // number on any wall clock.
-  // JUDGED, NOT SHAPE-CHECKED (#4425). This ran `normalizeClockTime` alone — a shape
-  // check — so "Happened earlier?" took 23:50 typed at 09:00 and filed a bowel movement
-  // fourteen hours in the future, on a row whose natural key IS that instant. It now
-  // runs the one acceptance gate every other stated instant runs (`judgeStatedAt`,
-  // #2236), against the clock seam, and reports what it would not take.
-  //
-  // The refusal COSTS the statement, never the observation — the body-metric contract:
-  // losing the stated minute is cosmetic, losing the log is not — so a refused time
-  // falls back to the clock exactly as an unstated one does. `other-day` cannot fire
-  // here because the instant is BUILT from `date`; a wall time that does not exist on
-  // that day (a DST gap) is `malformed`, which is the honest word for a time the
-  // calendar has no room for.
-  const tz = getTimezone(profileId);
-  const shaped = normalizeClockTime(at ?? null);
-  const verdict = shaped
-    ? judgeStatedAt(statedInstantOnDate(date, shaped, tz), tz, date, clockNow())
-    : ({ kind: "unstated" } as const);
-  const stated = verdict.kind === "accepted" ? shaped : null;
-  const refused = verdict.kind === "refused" ? verdict.reason : undefined;
-  const ts = stated
-    ? `${date}T${stated}:00`
-    : sampleTime(profileId, date, instant);
-  writeTx(() => {
-    db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
-         VALUES (?, 'manual', ?, ?, ?, ?, ?)
-       ON CONFLICT DO UPDATE SET
-         value = excluded.value, date = excluded.date`
-    ).run(profileId, BRISTOL_STOOL_METRIC, date, ts, ts, bristolType);
-  });
-  return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
+  const outcome = logStoolCore(
+    profileId,
+    date,
+    bristolType,
+    normalizeClockTime(at ?? null),
+    utcInstant(instant)
+  );
+  if (outcome.kind !== "logged") return { wrote: false };
+  return {
+    wrote: true,
+    ...(outcome.statedTimeRefused
+      ? { statedTimeRefused: outcome.statedTimeRefused }
+      : {}),
+  };
 }
 export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 

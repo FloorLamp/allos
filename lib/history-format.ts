@@ -344,19 +344,19 @@ export type HistoryRowEdit =
     }
   | {
       /**
-       * ONE BRISTOL READING, BY ITS `metric_samples` ROW ID — and the TYPE is the only
-       * field a correction may move.
+       * ONE RECORDED MOVEMENT, BY ITS `stool_events` ROW ID — and the TYPE is the field
+       * a correction moves.
        *
-       * The row's natural key IS its instant (`logBristolStool`), so a date or a time
-       * field here would not MOVE the reading: restating a minute upserts, and a
-       * different minute writes a second row beside the first. The instant is therefore
-       * half the row's address in the sense `symptom`'s (date, symptom) is — carried,
-       * not offered. The mis-taps #4433 names are both type mis-taps ("type 3, meant 4")
-       * and a double tap, which is the delete.
+       * `type` is NULLABLE since #5872, and both halves of that are the point: null is
+       * an occurrence nobody saw the form of, so the door can SET a type on one ("I saw
+       * it after all") and CLEAR one back. While the reading lived in `metric_samples`
+       * its natural key was its instant, so neither was expressible — the store had
+       * nowhere to hold the absence, and restating a minute upserted rather than
+       * correcting.
        */
       kind: "stool";
       rowId: number;
-      type: number;
+      type: number | null;
     }
   | {
       /**

@@ -338,6 +338,38 @@ export function formatWeekdayDate(
   );
 }
 
+// THE DAY SWITCHER'S VOCABULARY, in one place (#5663 ruling 5, owner 2026-09-15).
+// Today / Yesterday / the compact weekday date for anything earlier — the words
+// `BoundedDaySwitcher` puts on its tabs, and now also the word the surfaces beneath it
+// use for the day they are standing on. It was derived inline in the switcher; a second
+// surface needed the same answer, and two copies of a vocabulary are two chances to
+// disagree about the day the person is looking at.
+//
+// NOT `formatRelativeDate`, WHICH LOOKS LIKE THE ANSWER AND IS NOT. That labeller
+// agrees here on exactly the two days this is about and diverges on every other one: at
+// three days back it says "3 days ago" where a switcher tab says "Thu, Sep 12", and at
+// ten "1 week ago" against "Tue, Sep 5". Both return a plausible string, so folding
+// them together would quietly change either the switcher's older tabs or every existing
+// `formatRelativeDate` caller, with nothing to fail on the way.
+//
+// THE KIND IS RETURNED WITH THE LABEL because callers speak it differently. A tab is
+// titled ("Yesterday"); a count line beneath it is prose ("1 yesterday", "1 on Thu,
+// Sep 12"). Handing back the kind lets that caller take the same answer without
+// string-matching "Yesterday" to find out which of the three it got.
+//
+// Pure, and `prefs` is threaded rather than read from a hook, so a server render can
+// call it.
+export function daySwitcherLabel(
+  date: string,
+  today: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): { readonly kind: "today" | "yesterday" | "date"; readonly label: string } {
+  const back = daysBetweenDateStr(date, today); // today − date
+  if (back === 0) return { kind: "today", label: "Today" };
+  if (back === 1) return { kind: "yesterday", label: "Yesterday" };
+  return { kind: "date", label: formatWeekdayDate(date, prefs) };
+}
+
 // Parse the two timestamp serializations the app stores: an ISO instant
 // ("2026-07-24T22:14:15.000Z", the JSONL logs) and SQLite's zone-less
 // `datetime('now')` form ("2026-07-24 22:14:15", the audit table), the latter

@@ -13,11 +13,13 @@
 // resolves to a curated symptom slug, so a vocabulary rename cannot silently drop one.
 //
 // THE STOOL EFFECT IS NOT A SYMPTOM AND DOES NOT PRETEND TO BE. "Loose stools" is a
-// Bristol 6–7 observation in `metric_samples` (lib/bristol-stool.ts) — one sample per
-// event, counted and never averaged — while the other four are day-grain
-// `symptom_logs` rows with a severity. One list, two stores, and `source` is what tells
-// a reader which one it must go to. Fusing them into one enum without that marker is
-// how a reader ends up asking the symptom table for a Bristol type.
+// Bristol 6–7 reading in the `stool_events` ledger (#5872; lib/queries/bristol-stool.ts)
+// — one row per occurrence, carrying an OPTIONAL type, counted and never averaged —
+// while the other four are day-grain `symptom_logs` rows with a severity. One list, two
+// stores, and `source` is what tells a reader which one it must go to. Fusing them into
+// one enum without that marker is how a reader ends up asking the symptom table for a
+// Bristol type. An untyped stool row names no Bristol type and so counts as zero loose
+// stools, which is why the threshold below takes a `number` and never a nullable one.
 //
 // Pure: no React, no DB, no clock. The labels come from the curated symptom catalog
 // rather than being retyped here, so the chip in the sensitivity form and the marker in
