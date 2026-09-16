@@ -1406,7 +1406,11 @@ function bareNumber(
 // edit, so an empty list here is what success looks like. The title arrives PREFIXED with
 // the subject's label, so match on its tail; the ambiguity answer is named by no profile
 // and carries its own title.
-const REPLY_TITLES = ["Supply receipt", "More than one open prompt"];
+const REPLY_TITLES = [
+  "Supply receipt",
+  "More than one open prompt",
+  "That prompt isn't open",
+];
 function receiptBodies(from: number): string[] {
   return vi
     .mocked(sendMessageRaw)
@@ -1486,12 +1490,11 @@ function receiptReply(
     chat: { id: f.chatId },
     from: { id: 71 },
     text: amount,
-    reply_to_message: {
-      message_id: offer.promptId,
-      // A DELIVERED marker, in the pre-#5650 spelling that is still sitting in real
-      // chats: the one grammar accepts it exactly as written.
-      text: `(refill:${f.profileId}:${f.offerId})`,
-    },
+    // THE QUOTED MESSAGE'S ID AND NOTHING ELSE (#5650, pointer-only). The receipt prompt
+    // used to end in `(refill:<pid>:<offerId>)` and this is where that string was replayed;
+    // the offer row's own `promptId` is the handle now, and the prompt body carries no
+    // marker for anybody to replay.
+    reply_to_message: { message_id: offer.promptId },
   };
 }
 
@@ -1686,29 +1689,28 @@ describe("Received receipt operation", () => {
     await handleCallbackQuery(f.open);
     const before = sendCount();
     reactMock.mockClear();
-    // A quoted MARKER claims the message even when the answer is a refusal (#5654's
-    // two-answer rule): `true`, so no later handler is re-offered it.
+    // A NUMBER typed with the Reply swipe claims the message even when the answer is a
+    // refusal (#5654's two-answer rule): `true`, so no later handler is re-offered it.
     expect(await handleTypedReply(receiptReply(f, "abc", 811))).toBe(true);
     expect(receiptBodies(before)).toEqual([
       "Enter a positive number of units, such as 90.",
     ]);
     expect(receivedCount(f)).toBe(4);
 
-    // A marker naming a profile this chat may not write. The prompt is untouched.
-    const foreign = seedProfile("Receipt marker foreign");
-    const unauthorized = sendCount();
+    // THERE IS NO FORGED MARKER TO REFUSE ANY MORE (#5650, pointer-only). This used to
+    // quote a marker naming a profile the chat may not write, and assert the arm answered
+    // `That profile isn't linked to this chat anymore.` rather than swallowing it. A reply
+    // now carries only the quoted message's ID, and every id the registry resolves belongs
+    // to a profile of THIS chat — so the whole forgery class is unreachable rather than
+    // refused, and what is left to pin is what an id the registry does NOT hold gets.
+    const unrecorded = sendCount();
     expect(
       await handleTypedReply({
         ...receiptReply(f, "30", 812),
-        reply_to_message: {
-          message_id: readRefillOffer(f.profileId, f.offerId)!.offer.promptId,
-          text: `(refill:${foreign.profileId}:${f.offerId})`,
-        },
+        reply_to_message: { message_id: 999999 },
       })
     ).toBe(true);
-    expect(receiptBodies(unauthorized)).toEqual([
-      "That profile isn't linked to this chat anymore.",
-    ]);
+    expect(receiptBodies(unrecorded)).toEqual(["Reply to the prompt you mean."]);
     expect(receivedCount(f)).toBe(4);
     expect(readRefillOffer(f.profileId, f.offerId)!.offer.state).toBe(
       "pending"

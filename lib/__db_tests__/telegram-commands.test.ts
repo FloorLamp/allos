@@ -24,6 +24,7 @@ import {
 } from "@/lib/notifications/telegram-api";
 import { TELEGRAM_COMMANDS } from "@/lib/notifications/telegram-commands";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+import { liveMessagePointersForKind } from "@/lib/notifications/message-pointers";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
@@ -66,6 +67,14 @@ function say(text: string, chatId: string = CHAT) {
     chat: { id: chatId },
     text,
   });
+}
+
+// Send a real `/weight` and hand back the id the wire assigned its prompt — the id the
+// send chokepoint recorded a pointer under. Under pointer-only (#5650) that pointer IS
+// the prompt: a reply quotes its id and the registry says which family and whose profile.
+async function openWeightPrompt(chatId: string = CHAT): Promise<number> {
+  await say("/weight", chatId);
+  return sentMessageId();
 }
 
 // The body of the single message the dispatcher sent.
@@ -375,12 +384,21 @@ describe("/practice on demand (#1895)", () => {
 });
 
 describe("/weight on demand (#1895)", () => {
-  it("prompts with a per-profile reply marker", async () => {
+  it("prompts with a kind that records the pointer the reply resolves against", async () => {
     await say("/weight");
     expect(sendMock).toHaveBeenCalledTimes(1);
     const msg = sendMock.mock.calls[0][1] as { body: unknown; kind?: string };
+    // The KIND is what makes the send chokepoint record a pointer for this message
+    // (`awaitsTypedReply`), and that pointer is the whole of the prompt's identity now.
     expect(msg.kind).toBe("weight");
-    expect(String(msg.body)).toContain(`(#weight:${p.profileId})`);
+    // NO MARKER. `(#weight:<pid>)` used to end this body and carry the attribution; it is
+    // retired, because the body also renders a profile NAME a person types in-app and a
+    // reader that trusts one has to trust the other.
+    expect(String(msg.body)).not.toMatch(/\((#)?(temp|weight|refill):/);
+    const pointer = liveMessagePointersForKind(p.profileId, CHAT, "weight");
+    expect(pointer.map((ptr) => ptr.messageId)).toContain(
+      await sentMessageId()
+    );
   });
 
   it("the REPLY lands through the shared core, in canonical kg", async () => {
@@ -390,17 +408,16 @@ describe("/weight on demand (#1895)", () => {
       )
       .get(p.profileId, today(p.profileId)) as { n: number };
 
+    const promptId = await openWeightPrompt();
     editMock.mockClear();
     reactMock.mockClear();
+    sendMock.mockClear();
     await handleIncomingMessage({
       message_id: 2,
       chat: { id: CHAT },
       from: { id: 71 },
       text: "82.5",
-      reply_to_message: {
-        message_id: 60,
-        text: `Reply with weight (#weight:${p.profileId})`,
-      },
+      reply_to_message: { message_id: promptId },
     });
 
     const row = db
@@ -429,12 +446,17 @@ describe("/weight on demand (#1895)", () => {
     // on the reading. The `⚖️ Weight logged: …` message this used to send is gone.
     expect(sendMock).not.toHaveBeenCalled();
     const edit = editMock.mock.calls.at(-1)!;
-    expect(edit[1]).toBe(60);
+    expect(edit[1]).toBe(promptId);
     expect(String(edit[2])).toContain("82.5 kg");
     expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 2, "👍"]);
   });
 
-  it("refuses a copied marker for a profile not linked to the replying chat", async () => {
+  // THERE IS NO MARKER LEFT TO COPY (#5650, pointer-only). This case used to quote a
+  // marker naming a profile the chat cannot write and assert the arm refused it. A reply
+  // carries only the quoted message's ID now, and every id the registry resolves belongs
+  // to a profile of this chat — so the forgery is unreachable rather than refused, and
+  // what a reply to a message the store holds no prompt for gets is the thing to pin.
+  it("answers a number replied to a message it holds no prompt for, and writes nothing", async () => {
     const foreign = seedProfile("Weight marker foreign");
     const before = db
       .prepare(
@@ -447,9 +469,8 @@ describe("/weight on demand (#1895)", () => {
       message_id: 6,
       chat: { id: CHAT },
       text: "82.5",
-      reply_to_message: {
-        text: `Reply with weight (#weight:${foreign.profileId})`,
-      },
+      // A pre-#5650 prompt, or one whose pointer has been pruned. Either way: no record.
+      reply_to_message: { message_id: 999999 },
     });
 
     const after = db
@@ -459,7 +480,8 @@ describe("/weight on demand (#1895)", () => {
       )
       .all(foreign.profileId);
     expect(after).toEqual(before);
-    expect(replyBody()).toMatch(/isn't linked to this chat/i);
+    expect(replyBody()).toMatch(/isn't open/i);
+    expect(replyBody()).toMatch(/Reply to the prompt you mean/i);
   });
 
   it("an explicit lb reply converts at the boundary", async () => {
@@ -467,9 +489,7 @@ describe("/weight on demand (#1895)", () => {
       message_id: 3,
       chat: { id: CHAT },
       text: "180 lb",
-      reply_to_message: {
-        text: `Reply with weight (#weight:${p.profileId})`,
-      },
+      reply_to_message: { message_id: await openWeightPrompt() },
     });
     const row = db
       .prepare(
@@ -485,9 +505,7 @@ describe("/weight on demand (#1895)", () => {
       message_id: 4,
       chat: { id: CHAT },
       text: "quite heavy today",
-      reply_to_message: {
-        text: `Reply with weight (#weight:${p.profileId})`,
-      },
+      reply_to_message: { message_id: await openWeightPrompt() },
     });
     expect(replyBody()).toMatch(/not logged/i);
   });
@@ -497,29 +515,30 @@ describe("/weight on demand (#1895)", () => {
       message_id: 5,
       chat: { id: CHAT },
       text: "9000",
-      reply_to_message: {
-        text: `Reply with weight (#weight:${p.profileId})`,
-      },
+      reply_to_message: { message_id: await openWeightPrompt() },
     });
     expect(replyBody()).toMatch(/too high to be real/i);
   });
 });
 
 describe("a multi-profile chat never guesses (#1995)", () => {
-  it("/weight prompts each profile by name, each with its own marker", async () => {
+  it("/weight prompts each profile by name, each with its own pointer", async () => {
     await say("/weight", SHARED_CHAT);
     expect(sendMock).toHaveBeenCalledTimes(2);
     const bodies = sendMock.mock.calls.map((c) =>
       String((c[1] as { body: unknown }).body)
     );
-    expect(bodies.some((b) => b.includes(`(#weight:${ada.profileId})`))).toBe(
-      true
-    );
-    expect(bodies.some((b) => b.includes(`(#weight:${ben.profileId})`))).toBe(
-      true
-    );
     expect(bodies.some((b) => b.includes("Ada"))).toBe(true);
     expect(bodies.some((b) => b.includes("Ben"))).toBe(true);
+    // ONE PROMPT PER PROFILE, each findable on its OWN record (#5650 pointer-only). The
+    // attribution used to be a marker in the body, printed right after the name — which
+    // is exactly the adjacency that let a profile named like a marker steer a reply.
+    for (const who of [ada, ben]) {
+      const live = liveMessagePointersForKind(who.profileId, SHARED_CHAT, "weight");
+      expect(live).toHaveLength(1);
+      expect(live[0].chatId).toBe(SHARED_CHAT);
+    }
+    expect(bodies.every((b) => !/\((#)?(temp|weight|refill):/.test(b))).toBe(true);
   });
 
   it("/food sends one keyboard PER profile — the food rebuild reads one subject", async () => {

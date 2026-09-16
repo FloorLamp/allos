@@ -20,7 +20,6 @@ import {
   setMessageReaction,
 } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
-import { typedReplyMarker } from "@/lib/notifications/typed-reply";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import { liveMessagePointersForKind } from "@/lib/notifications/message-pointers";
 
@@ -35,20 +34,32 @@ const editMock = vi.mocked(editMessageTextRaw);
 const sendMock = vi.mocked(sendMessageRaw);
 const reactMock = vi.mocked(setMessageReaction);
 
-// A typed reply to a prompt already sitting in the chat: the prompt's own id is what the
-// acknowledgement edits, and the reply's own id is what wears the reaction (#5650).
-const PROMPT_ID = 700;
-function tempReply(text: string, profileId: number, messageId = 801) {
+// A typed reply to a prompt sitting in the chat (#5650, POINTER-ONLY). The quoted
+// message's ID is the whole of what a reply carries about which prompt it answers — there
+// is no marker in the text and `TelegramMessage.reply_to_message` does not even have a
+// `text` field to put one in. The prompt's id is what the acknowledgement edits; the
+// reply's own id is what wears the reaction.
+function tempReply(text: string, promptId: number, messageId = 801) {
   return {
     message_id: messageId,
     chat: { id: CHAT },
     from: { id: 71 },
     text,
-    reply_to_message: {
-      message_id: PROMPT_ID,
-      text: `Reply with the temperature. ${typedReplyMarker("temp", profileId)}`,
-    },
+    reply_to_message: { message_id: promptId },
   };
+}
+
+// Send a real `/temp` and hand back the id the wire assigned its prompt — which is the id
+// the send chokepoint recorded a pointer under. Every explicit-reply test starts here,
+// because under pointer-only a prompt that was never sent cannot be replied to.
+async function openTempPrompt(chatId = CHAT, messageId = 800): Promise<number> {
+  await handleIncomingMessage({
+    message_id: messageId,
+    chat: { id: chatId },
+    from: { id: 71 },
+    text: "/temp",
+  });
+  return (await sendMock.mock.results.at(-1)!.value) as number;
 }
 
 const CHAT = "5550150";
@@ -131,9 +142,11 @@ describe("temperature reply quick-log", () => {
   // text, so a successful reading costs the chat no new line at all.
   it("a reply to a /temp prompt logs a reading, wears 👍 and edits its prompt", async () => {
     sendMock.mockClear();
+    const promptId = await openTempPrompt();
+    sendMock.mockClear();
     editMock.mockClear();
     reactMock.mockClear();
-    const handled = await handleIncomingMessage(tempReply("38.9", p.profileId));
+    const handled = await handleIncomingMessage(tempReply("38.9", promptId));
     // 38.9°C ≈ 102.0°F canonical.
     const row = db
       .prepare(
@@ -147,41 +160,92 @@ describe("temperature reply quick-log", () => {
     expect(row!.value_num).toBeLessThan(103);
     expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 801, "👍"]);
     const edit = editMock.mock.calls.at(-1)!;
-    expect(edit[1]).toBe(PROMPT_ID);
+    expect(edit[1]).toBe(promptId);
     expect(edit[2]).toMatch(/Temperature logged/);
-    // The marker stays: an explicit Reply to the settled prompt still attributes.
-    expect(edit[2]).toContain(`(#temp:${p.profileId})`);
+    // NO MARKER, ANYWHERE. The edited prompt used to keep `(#temp:<pid>)` so a second
+    // explicit Reply still attributed; pointer-only retired the grammar, and nothing in
+    // this flow writes a marker-shaped string into a message any more.
+    expect(edit[2]).not.toMatch(/\((#)?(temp|weight|refill):/);
     expect(sendMock).not.toHaveBeenCalled();
     expect(handled).toBeUndefined(); // handleIncomingMessage returns void
   });
 
-  it("refuses a copied marker for a profile not linked to the replying chat", async () => {
-    const foreign = seedProfile("TG temp marker foreign");
+  // #5650 OWNER RULING (2026-09-16) — POINTER-ONLY, AND ITS ACCEPTED COST.
+  //
+  // A typed reply resolves ONLY against a message the bot recorded. A prompt sent before
+  // this build recorded pointers, one pruned at `MESSAGE_POINTER_RETENTION_DAYS`, one
+  // already answered, or a message that was never a prompt: all four are the same thing
+  // to the store — no record — and all four now get the contract's "reply to the prompt"
+  // answer instead of a write. That is the ruled behaviour and the price of the marker
+  // going away, so it is pinned as intended rather than left to be discovered.
+  it("answers a reply to a message it holds no prompt for, and writes nothing", async () => {
     sendMock.mockClear();
     reactMock.mockClear();
+    const before = tempCount(p.profileId);
 
-    await handleIncomingMessage(tempReply("38.2", foreign.profileId, 802));
+    // 999999 is no prompt of this chat's: a pre-#5650 prompt, or a pruned one.
+    await handleIncomingMessage(tempReply("38.2", 999999, 802));
 
-    expect(tempCount(foreign.profileId)).toBe(0);
-    // A refusal is the ONE case that still costs a message — and it is spoken, never
-    // swallowed. No reaction: nothing was applied.
+    expect(tempCount(p.profileId)).toBe(before);
     expect(sendMock).toHaveBeenCalledTimes(1);
-    const reply = sendMock.mock.calls[0][1] as { body: string };
-    expect(reply.body).toMatch(/isn't linked to this chat/i);
+    const reply = sendMock.mock.calls[0][1] as { title: string; body: string };
+    expect(reply.title).toMatch(/isn't open/i);
+    expect(reply.body).toBe("Reply to the prompt you mean.");
+    // Nothing was applied, so nothing wears the 👍.
     expect(reactMock).not.toHaveBeenCalled();
+  });
+
+  it("does not claim ordinary text that merely replies to something", async () => {
+    // The refusal above is for a NUMBER, which was plainly aimed at a question. Anything
+    // else replying to an unrecorded message is ordinary chat and must still fall through
+    // to the rest of the dispatch chain (#1895).
+    sendMock.mockClear();
+    await handleIncomingMessage(tempReply("thanks!", 999999, 804));
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("closes the prompt on settle, so a second Reply to it writes nothing", async () => {
+    sendMock.mockClear();
+    const promptId = await openTempPrompt(CHAT, 805);
+    const before = tempCount(p.profileId);
+    await handleIncomingMessage(tempReply("37.4", promptId, 806));
+    expect(tempCount(p.profileId)).toBe(before + 1);
+
+    // THE DOUBLE-LOG THAT THE MARKER USED TO ALLOW. The marker was stateless, so a second
+    // explicit Reply to an already-answered prompt attributed again and wrote the day a
+    // second time — parity with main, and named as such on the earlier head. With the
+    // marker gone, settling drops the pointer and the message stops being a prompt.
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage(tempReply("39.1", promptId, 807));
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock).not.toHaveBeenCalled();
+    expect(
+      (sendMock.mock.calls.at(-1)![1] as { title: string }).title
+    ).toMatch(/isn't open/i);
   });
 
   it("refuses an unreadable reading with one message and no reaction", async () => {
     sendMock.mockClear();
+    const promptId = await openTempPrompt(CHAT, 808);
+    sendMock.mockClear();
     reactMock.mockClear();
     const before = tempCount(p.profileId);
-    await handleIncomingMessage(tempReply("no idea", p.profileId, 803));
+    await handleIncomingMessage(tempReply("no idea", promptId, 803));
     expect(tempCount(p.profileId)).toBe(before);
     expect(sendMock).toHaveBeenCalledTimes(1);
     expect((sendMock.mock.calls[0][1] as { body: string }).body).toMatch(
       /Couldn't read a temperature/i
     );
     expect(reactMock).not.toHaveBeenCalled();
+
+    // A REFUSAL LEAVES THE PROMPT OPEN. Nothing was written, so the question still
+    // stands and a second try at the same message settles it — which is also what keeps
+    // this test from leaving a stray open prompt behind for the bare-number tests.
+    sendMock.mockClear();
+    await handleIncomingMessage(tempReply("38.0", promptId, 809));
+    expect(tempCount(p.profileId)).toBe(before + 1);
+    expect(reactMock.mock.calls.at(-1)).toEqual([CHAT, 809, "👍"]);
   });
 
   // #5650 ruling 2: the obvious thing to type after the bot asks a question.
@@ -363,6 +427,84 @@ describe("temperature reply quick-log", () => {
     });
     expect(tempCount(p.profileId)).toBe(before + 1);
     expect(reactMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  // #5650 — THE FALSIFIER, PINNED. This is the attack that sent two earlier heads back,
+  // executed against the shipped flow rather than argued about.
+  //
+  // Both earlier designs put a MARKER in the prompt's body and read it back off the reply
+  // target. A prompt in a multi-profile chat renders a PROFILE NAME — in the `[Name]`
+  // attribution prefix and again in `${who}temperature` — ahead of that marker, and a
+  // profile name is free text a person types in-app. So a profile named `(#weight:<other>)`
+  // turned its own `/temp` reply into a weight write on the OTHER profile: zero
+  // temperature readings, the fever escalation never evaluated, and the chat told
+  // `Weight logged`.
+  //
+  // `main` has the same class through a different door: `parseRefillReplyMarker` is
+  // unanchored and the refill arm runs first, so a profile named `(refill:N:M)` discards a
+  // `/temp` reading there TODAY — reproduced at 123667ea7 before this round was written.
+  //
+  // Under pointer-only there is nothing to steer with, because nothing reads the text.
+  // THE ASSERTION IS THE WRITE, NOT THE PARSE: a guard that only checked which family was
+  // chosen would pass on a build that chose right and wrote wrong.
+  it("cannot be steered by a profile named like a marker", async () => {
+    const CHAT2 = "5550151";
+    const other = seedProfile("TGplain");
+    seedLoginTelegram(other.profileId, CHAT2);
+    // A legal profile name. The `#` is spelled, as the executed attack spelled it.
+    const hostile = seedProfile(`(#weight:${other.profileId})`);
+    seedLoginTelegram(hostile.profileId, CHAT2);
+
+    const weightOf = (profileId: number) =>
+      (
+        db
+          .prepare(
+            `SELECT weight_kg FROM body_metrics WHERE profile_id = ?
+              ORDER BY date DESC, id DESC LIMIT 1`
+          )
+          .get(profileId) as { weight_kg: number } | undefined
+      )?.weight_kg;
+    const weightBefore = weightOf(other.profileId);
+    const tempBefore = tempCount(hostile.profileId);
+
+    sendMock.mockClear();
+    // A real `/temp`: two profiles, so two prompts, each rendering its own name.
+    await handleIncomingMessage({
+      message_id: 840,
+      chat: { id: CHAT2 },
+      from: { id: 71 },
+      text: "/temp",
+    });
+    // The prompt for the hostile-named profile is the LAST of the two sent, and its
+    // delivered body really does carry the marker-shaped name — the attack's precondition
+    // is present, so this is not passing for want of a lever.
+    const prompts = sendMock.mock.calls.map(
+      (call) => call[1] as { title: string; body: string }
+    );
+    expect(prompts).toHaveLength(2);
+    const hostilePrompt = prompts.at(-1)!;
+    expect(`${hostilePrompt.title}\n${hostilePrompt.body}`).toContain(
+      `(#weight:${other.profileId})`
+    );
+    const promptId = (await sendMock.mock.results.at(-1)!.value) as number;
+
+    sendMock.mockClear();
+    reactMock.mockClear();
+    await handleIncomingMessage({
+      message_id: 841,
+      chat: { id: CHAT2 },
+      from: { id: 71 },
+      text: "38.5",
+      reply_to_message: { message_id: promptId },
+    });
+
+    // The reading landed, on the profile whose prompt was quoted.
+    expect(tempCount(hostile.profileId)).toBe(tempBefore + 1);
+    // And the named profile's weight was not touched — the executed attack moved it.
+    expect(weightOf(other.profileId)).toBe(weightBefore);
+    expect(reactMock.mock.calls.at(-1)).toEqual([CHAT2, 841, "👍"]);
+    // No `Weight logged` anywhere: the acknowledgement is the prompt's own edit.
     expect(sendMock).not.toHaveBeenCalled();
   });
 

@@ -63,9 +63,15 @@ export interface TelegramMessage {
   message_id?: number;
   chat?: { id?: number | string };
   text?: string;
-  // The message this one replies to (Telegram populates it for a reply). Used by the
-  // #859 temperature reply quick-log to attribute a "38.5" reply to its /temp prompt.
-  reply_to_message?: { message_id?: number; text?: string };
+  // The message this one replies to (Telegram populates it for a reply). ITS ID AND
+  // NOTHING ELSE — the typed-reply contract resolves a reply against the prompt the bot
+  // RECORDED at that id, and reads no part of what the quoted message said (#5650).
+  //
+  // Telegram does send `text` here; leaving it off the type is the point. A marker in the
+  // quoted body is what two falsifying passes broke, because a prompt renders names a
+  // person types in-app ahead of it, so this field is where a text path would come back.
+  // Off the type, it cannot be read without someone widening this line on purpose.
+  reply_to_message?: { message_id?: number };
 }
 
 export interface TelegramUpdate {
