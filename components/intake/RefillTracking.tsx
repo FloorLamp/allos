@@ -52,7 +52,7 @@ export default function RefillTracking({
     ? (bottles.find((option) => String(option.id) === supplyId) ?? null)
     : null;
   const rememberedFill = rememberedFillFor({
-    supplyId: pooled ? (Number(supplyId) || null) : null,
+    supplyId: pooled ? Number(supplyId) || null : null,
     itemLastFillSize: s?.last_fill_size ?? null,
     poolLastFillSize: linkedBottle?.lastFillSize ?? null,
   });
