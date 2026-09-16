@@ -252,6 +252,11 @@ export interface SleepDateRange {
 // The latest sleep summary inside a selected Trends window. This is a distinct
 // question from "last night": newer sessions outside the window cannot decide
 // whether an older window has sleep, nor can they supply its headline value.
+//
+// `breathingRateBpm` is deliberately LEFT NULL here. The 2026-09-11 ruling put the
+// reading on the Sleep page HERO; Trends states the same quantity as its own nightly
+// chart (`breathing-rate`), and no Trends surface reads this field. Filling it would
+// buy a query for a number nothing renders.
 // Timed sessions use the canonical main-vs-nap classifier; duration-only manual
 // rows remain available without inventing bed/wake clocks.
 export function getSleepSummaryInRange(
