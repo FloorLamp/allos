@@ -70,13 +70,13 @@ export async function setTtcStartAction(
 export async function logLhTestAction(
   formData: StampedFormData
 ): Promise<TtcActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const result = formData.get("result");
   if (!isLhResult(result)) {
     return { ok: false, error: "Record the test as positive or negative." };
   }
   const outcome = logLhTestCore(
-    profile.id,
+    writeProfileId,
     today(profile.id),
     result,
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
@@ -93,14 +93,14 @@ export async function logLhTestAction(
 export async function logBbtAction(
   formData: FormData
 ): Promise<TtcActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const raw = Number(String(formData.get("value") ?? "").trim());
   if (!Number.isFinite(raw)) {
     return { ok: false, error: "Enter a valid temperature." };
   }
   const unit = String(formData.get("unit") ?? "F") === "C" ? "C" : "F";
   const outcome = logBbtCore(
-    profile.id,
+    writeProfileId,
     today(profile.id),
     toCanonicalTempF(raw, unit)
   );
@@ -114,13 +114,13 @@ export async function logBbtAction(
 export async function logMucusAction(
   formData: StampedFormData
 ): Promise<TtcActionResult> {
-  const { profile } = await requireWriteAccess();
+  const { profile, writeProfileId } = await requireWriteAccess();
   const quality = formData.get("quality");
   if (!isMucusQuality(quality)) {
     return { ok: false, error: "Pick a cervical-mucus observation." };
   }
   const outcome = logMucusCore(
-    profile.id,
+    writeProfileId,
     today(profile.id),
     quality,
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")

@@ -22,6 +22,15 @@ import { resolveSituationId } from "@/lib/settings";
 import { getOpenEpisodeRow } from "@/lib/illness-episode-store";
 import { logSymptomCore } from "@/lib/symptom-log-write";
 import { shiftDateStr } from "@/lib/date";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 function newProfile(name: string): number {
   return Number(
@@ -144,7 +153,9 @@ describe("episode-end → accept → med leaves Current; restart revives (#880)"
     ).toBe(true);
 
     // Accept the suggestion: end the episode AND close the ibuprofen course.
-    const outcome = endEpisodeWithMedReconciliation(p, episodeId, [ibuprofen]);
+    const outcome = endEpisodeWithMedReconciliation(gated(p), episodeId, [
+      ibuprofen,
+    ]);
     expect(outcome.kind).toBe("ended");
     expect(outcome.stoppedItemIds).toEqual([ibuprofen]);
     expect(getOpenEpisodeRow(p, "Illness")).toBeNull();

@@ -51,13 +51,13 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
   },
   {
     table: "shared_supplies",
-    columns: ["quantity_on_hand"],
+    columns: ["quantity_on_hand", "last_fill_size"],
     cores: [
       "lib/queries/intake/refill.ts",
       "lib/queries/intake/supply-pool.ts",
     ],
     offerState: "refillRecencyLine",
-    why: "#1374/#467: the household bottle's counter is written by MANY takers, so every adjustment is a compare-and-set under the IMMEDIATE write lock — refill.ts owns the dose decrement and the relative refill increment, supply-pool.ts owns pool create/edit and the link/unlink transfers. A raw absolute UPDATE from a fourth module would clobber a concurrent taker's decrement, which is the exact accounting split #1374 exists to end.",
+    why: "TWO COLUMNS, TWO REASONS. #1374/#467: the household bottle's counter is written by MANY takers, so every adjustment is a compare-and-set under the IMMEDIATE write lock — refill.ts owns the dose decrement and the relative refill increment, supply-pool.ts owns pool create/edit and the link/unlink transfers. A raw absolute UPDATE from a fourth module would clobber a concurrent taker's decrement, which is the exact accounting split #1374 exists to end. #5911, and NOT that argument: `last_fill_size` is an absolute set, so last-writer-wins is correct for \"the usual refill\" and no clobber hazard reaches it. It is listed because a ONE-TAP reads it back and ADDS it to a HOUSEHOLD count, and a remembered size is reusable only for the container it was a fill of. `rememberedFillFor` (lib/refill.ts) is the one place that rule lives, and ONE core reaches this column through it — refill.ts's pooled branch; supply-pool.ts is here for the counter one column over. So the scan refuses a `last_fill_size`-only write, such as a correction or a backfill, setting a household bottle's usual refill by a route the container rule never ran on. Naming the column is what makes that refusal real: the one write that names it spells `SET quantity_on_hand = ?, last_fill_size = ?`, so before the column was named the counter's own narrowing caught it by statement shape rather than by intent.",
   },
   {
     table: "intake_item_logs",
@@ -205,6 +205,40 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     // by the #1776 inventory route as the `covered` list. There is no control whose label
     // could disagree with the write.
     why: '#5941/#1828: the marker is the evidence half of a verdict whose OTHER half is recomputed on every read — it records which bytes were offered and which clinical key covered them, and coveredDocumentHashes re-asks whether that coverage still holds against the documents the profile has right now. That split is the design, and it is what a raw write breaks: lib/document-coverage.ts\'s single upsert is idempotent on (profile_id, content_hash) and refreshes both the key and refused_at, so a scheduled re-offer keeps exactly one row that reads as "still being offered". A second writer would either mint a marker with a clinical key the read predicate cannot match — a hash that leaves `covered` forever and is re-offered every run, which IS #1828 — or delete one whose coverage is still true, and there is no invalidation hook anywhere to tell the difference, because the design deliberately has none. Not column-narrowed: content_hash is the identity and clinical_key + refused_at ARE the evidence.',
+  },
+  {
+    table: "symptom_photos",
+    cores: [
+      "lib/symptom-photo-write.ts",
+      "lib/symptom-log-write.ts",
+      "lib/photo/metadata-backfill.ts",
+    ],
+    // No `offerState`, honestly: the episode photo strip renders its per-photo caption and
+    // delete controls from the rows it just read, so the label cannot disagree with the
+    // write — but that pairing has not been extracted into one shared pure function.
+    why: "#5941/#859/#1093/#1844: the row is the ONLY pointer to a file on disk, and the bytes it points at are a photo of somebody's rash. Three disciplines meet in one table and none of them is visible in the SQL. FILE CUSTODY: deleteSymptomPhotoCore reads `stored_path` BEFORE the DELETE because unlinkPhotoFiles is what reclaims the photo and the thumbnail derived beside it — a raw DELETE elsewhere leaves both on disk with nothing pointing at them, which is the #1290 leak re-opened by hand. DEDUP: the INSERT is preceded by a per-profile lookup on the PROCESSED content hash inside the same writeTx, so a re-upload reuses the row instead of minting a second one over the same bytes. THE STRIPPED BYTES: since #1844 phase 3 nothing may write a row for bytes that did not come through processPhoto — the core stores the file itself, so a row minted elsewhere is the only way to get an un-stripped GPS-carrying photo back into the domain. The two other LITERAL writers are cores because they own the row's own upkeep: lib/symptom-log-write.ts RE-PARENTS a photo's `symptom_log_id` onto the surviving same-date log when a custom symptom is re-keyed (#203 says re-parent, never cascade-drop, and foreign_keys=ON would reject the drop otherwise) and re-keys the denormalized `symptom` label with it, and lib/photo/metadata-backfill.ts writes only mime_type/size_bytes/content_hash on rows whose bytes it just re-encoded. `cores` is NOT the list of everything that writes this table and must not be read as one: lib/undo-delete.ts declares symptom_photos a `deleteExplicitly` child of the `symptom-day` kind, so lib/undo-delete-db.ts deletes rows here on capture and re-inserts them on restore, and lib/profile-delete.ts's erasure sweep reaches it over OWNED_TABLES. Both reach the table through an INTERPOLATED name — the undo machinery's `${child.table}` and `${entity.table}`, the sweep's `${t}` — which this scan cannot read either way, so listing those modules would widen the allowlist and gate nothing. What this entry gates is the statement a new writer would spell with the table named LITERALLY. Contrast episode_stopped_meds below, where lib/undo-delete-db.ts IS a core: there the same module names the table literally, this scan reads that statement, and so the entry has to name the module. Neither sentence spells the DML verb in front of those expressions on purpose — a `why` string is source text like any other, and lib/__tests__/body-metrics-delete-scan.test.ts reads every delete-from-an-interpolation in the tree. Not column-narrowed: content_hash is the dedup identity, stored_path is the file custody, symptom_log_id is the #1093 binding, and caption is the only field a user types.",
+  },
+  {
+    table: "symptom_videos",
+    cores: ["lib/symptom-video-write.ts"],
+    // No `offerState`, honestly: the clip strip renders its caption and delete controls
+    // from the rows it just read, the same shape as the photo strip, and the same shared
+    // pure derivation has not been extracted.
+    why: "#5941/#1224/#859: the symptom_photos posture for VIDEO, and the same three facts the SQL does not show. A row is the only pointer to a stored clip AND its poster, so deleteSymptomVideoCore reads both paths before the DELETE and hands them to unlinkVideoFiles — a raw DELETE elsewhere strands a seizure or tremor clip on disk with nothing referencing it. The INSERT is preceded by a per-profile content-hash lookup inside the same writeTx, so a re-upload of the identical clip reuses the row. And the clip is stored AS-IS by design (no re-encode, the no-native-dependency line), with `has_location` recording that an embedded GPS atom was DETECTED so the UI can say so — a row minted outside this core would carry that flag's default and claim a clip is clean when nothing looked. lib/symptom-video-write.ts is the one PRODUCTION module holding LITERAL DML on this table, which is the only thing this entry can gate: three e2e files delete rows here directly and sit outside the scan's surface entirely, and lib/profile-delete.ts's erasure sweep reaches the table interpolated over OWNED_TABLES. The undo-delete machinery does NOT, and deliberately: lib/undo-delete.ts records that a clip binds to the DAY and carries no symptom_log_id, so the symptom-day capture leaves clips alone rather than widening what the one-tap destroys. Registering the one literal writer means a second literal one has to argue for itself rather than appear. Not column-narrowed: content_hash is the dedup identity, stored_path/poster_path are the file custody, has_location is the privacy statement, and caption is the only field a user types.",
+  },
+  {
+    table: "episode_stopped_meds",
+    cores: [
+      "lib/illness-episode-write.ts",
+      "lib/illness-episode-store.ts",
+      "lib/undo-delete-db.ts",
+      "lib/import-persist.ts",
+    ],
+    // No `offerState`: the reversal record is never rendered as an affordance of its own.
+    // The reopen sheet lists what it CAN restore, and that list is
+    // getEpisodeReopenMedRestore's re-derivation against the courses as they are now —
+    // there is no control whose label could disagree with the write.
+    why: "#5941/#1140/#1808/#203: a row here is the REVERSAL RECORD of a write that already happened — \"ending this illness closed these courses\" — and it is the only thing that can undo it. The reopen path does not trust it blindly: getEpisodeReopenMedRestore re-derives what is still restorable by joining the course and checking it is still the LATEST one and still stopped with reason 'illness_resolved'. That is what a raw write breaks in both directions. A row minted elsewhere offers a restore for a course that was never closed by this episode; a row deleted elsewhere silently drops a close the user can no longer reverse, and the episode stops being able to say what it stopped at all — which is why migration 137 made `med_name` a SNAPSHOT that survives the med row being deleted or re-extracted. The four writers are the four legitimate custodians and no more: lib/illness-episode-write.ts mints the record as the courses close and clears it on reopen, lib/illness-episode-store.ts carries it through the row operations the episode itself undergoes (re-parented onto the keeper on merge with UPDATE OR IGNORE then the loser's leftovers dropped, and cleared when the episode is deleted — the #199 side-state rule), lib/undo-delete-db.ts removes it OUTRIGHT when the med itself is erased by hand (a deliberate asymmetry recorded in its own comment: erasing a med is a statement about the med, unlike a document reprocess, which leaves the episode's narrative standing by name), and lib/import-persist.ts frees `item_id`/`course_id` when a profile move leaves the link pointing outside the row's profile, keeping the name snapshot. Not column-narrowed: episode_id + item_id + course_id ARE the reversal, and med_name is the snapshot that makes it readable after the med is gone.",
   },
 ];
 

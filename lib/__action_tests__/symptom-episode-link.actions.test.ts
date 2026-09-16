@@ -13,6 +13,15 @@ import { logSymptom, setSymptomEpisode } from "@/app/(app)/symptom-actions";
 import { getEpisodeSymptomLogs } from "@/lib/queries";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import type { WriteAuthorizedProfileId } from "@/lib/auth";
+
+// The cores this file drives take the id a write gate minted (#5348). A test seeds its
+// own profiles, so there is no gate return to pass on: it casts — once, here, rather than
+// at each call site. WRITE_BRAND_CAST (eslint.config.mjs) binds production modules; the
+// test tiers are deliberately exempt, the same allowance RPE_BRAND_CAST makes.
+function gated(profileId: number): WriteAuthorizedProfileId {
+  return profileId as WriteAuthorizedProfileId;
+}
 
 const revalidate = vi.mocked(revalidatePath);
 const DATE = "2026-03-04";
@@ -36,7 +45,12 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Sick Actor", login.id);
     actAs(login, profile);
-    const epId = createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
+    const epId = createEpisodeRow(
+      gated(profile.id),
+      "Illness",
+      "2026-03-03",
+      null
+    );
 
     const res = await logSymptom(
       fd({ symptom: "cough", severity: 3, date: DATE })
@@ -64,9 +78,19 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Plural Actor", login.id);
     actAs(login, profile);
-    const older = createEpisodeRow(profile.id, "Flu", "2026-03-01", null);
-    const middle = createEpisodeRow(profile.id, "Migraine", "2026-03-02", null);
-    createEpisodeRow(profile.id, "Stomach bug", "2026-03-03", null);
+    const older = createEpisodeRow(
+      gated(profile.id),
+      "Flu",
+      "2026-03-01",
+      null
+    );
+    const middle = createEpisodeRow(
+      gated(profile.id),
+      "Migraine",
+      "2026-03-02",
+      null
+    );
+    createEpisodeRow(gated(profile.id), "Stomach bug", "2026-03-03", null);
 
     expect(
       await logSymptom(
@@ -103,9 +127,19 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Future Actor", login.id);
     actAs(login, profile);
-    const future = createEpisodeRow(profile.id, "Illness", "2026-03-05", null);
+    const future = createEpisodeRow(
+      gated(profile.id),
+      "Illness",
+      "2026-03-05",
+      null
+    );
     const other = createProfile("Other Subject", login.id);
-    const foreign = createEpisodeRow(other.id, "Illness", "2026-03-03", null);
+    const foreign = createEpisodeRow(
+      gated(other.id),
+      "Illness",
+      "2026-03-03",
+      null
+    );
 
     const result = await logSymptom(
       fd({ symptom: "cough", severity: 2, date: DATE, episodeId: future })
@@ -130,13 +164,13 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const profile = createProfile("Strict Target Actor", login.id);
     actAs(login, profile);
     const fallback = createEpisodeRow(
-      profile.id,
+      gated(profile.id),
       "Newest open",
       "2026-03-03",
       null
     );
     const closed = createEpisodeRow(
-      profile.id,
+      gated(profile.id),
       "Closed",
       "2026-03-01",
       "2026-03-03"
@@ -171,7 +205,12 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Detach Actor", login.id);
     actAs(login, profile);
-    const epId = createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
+    const epId = createEpisodeRow(
+      gated(profile.id),
+      "Illness",
+      "2026-03-03",
+      null
+    );
     await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
     expect(episodeIdOf(profile.id, "cough")).toBe(epId);
 
@@ -186,7 +225,12 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Reattach Actor", login.id);
     actAs(login, profile);
-    const epId = createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
+    const epId = createEpisodeRow(
+      gated(profile.id),
+      "Illness",
+      "2026-03-03",
+      null
+    );
     await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
     await setSymptomEpisode(fd({ symptom: "cough", date: DATE })); // detach
     expect(episodeIdOf(profile.id, "cough")).toBeNull();
@@ -203,9 +247,14 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     const profile = createProfile("Owner", admin.id);
     const other = createProfile("Stranger", admin.id);
     actAs(admin, profile);
-    createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
+    createEpisodeRow(gated(profile.id), "Illness", "2026-03-03", null);
     await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
-    const foreignEp = createEpisodeRow(other.id, "Illness", "2026-03-03", null);
+    const foreignEp = createEpisodeRow(
+      gated(other.id),
+      "Illness",
+      "2026-03-03",
+      null
+    );
 
     // Admin CAN write to `profile`, but the target episode belongs to `other`.
     const res = await setSymptomEpisode(
@@ -224,7 +273,7 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     const admin = createLogin({ role: "admin" });
     const foreign = createProfile("Ungranted", admin.id);
     const foreignEp = createEpisodeRow(
-      foreign.id,
+      gated(foreign.id),
       "Illness",
       "2026-03-03",
       null
